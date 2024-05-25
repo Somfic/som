@@ -1,4 +1,3 @@
-use anyhow::*;
 use regex::Regex;
 
 #[derive(Debug, PartialEq, Eq)]
