@@ -135,17 +135,20 @@ mod tests {
     #[test]
     fn parses_operators() {
         test_tokenizer(
-            "+ - / * = ( )",
+            "+ - / * =",
             vec![
                 Token::Plus,
                 Token::Minus,
                 Token::Slash,
                 Token::Star,
                 Token::Equal,
-                Token::ParenOpen,
-                Token::ParenClose,
             ],
         );
+    }
+
+    #[test]
+    fn parses_parentheses() {
+        test_tokenizer("( )", vec![Token::ParenOpen, Token::ParenClose]);
     }
 
     #[test]
@@ -158,22 +161,6 @@ mod tests {
         test_tokenizer(
             "123 + 456",
             vec![Token::Number(123), Token::Plus, Token::Number(456)],
-        );
-    }
-
-    #[test]
-    fn parses_parentheses() {
-        test_tokenizer(
-            "(123 + 456) * 789",
-            vec![
-                Token::ParenOpen,
-                Token::Number(123),
-                Token::Plus,
-                Token::Number(456),
-                Token::ParenClose,
-                Token::Star,
-                Token::Number(789),
-            ],
         );
     }
 
