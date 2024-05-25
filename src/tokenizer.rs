@@ -14,6 +14,8 @@ pub enum Token {
     Star,
     ParenOpen,
     ParenClose,
+    CurlyOpen,
+    CurlyClose,
 }
 
 type SpecItem = (Regex, fn(&str) -> Token);
@@ -54,6 +56,12 @@ impl Tokenizer {
                 }),
                 (Regex::new(r#"^(?P<paren_close>\))"#).unwrap(), |_| {
                     Token::ParenClose
+                }),
+                (Regex::new(r#"^(?P<curly_open>\{)"#).unwrap(), |_| {
+                    Token::CurlyOpen
+                }),
+                (Regex::new(r#"^(?P<curly_close>\})"#).unwrap(), |_| {
+                    Token::CurlyClose
                 }),
             ],
         }
@@ -138,6 +146,11 @@ mod tests {
                 Token::ParenClose,
             ],
         );
+    }
+
+    #[test]
+    fn parses_curly_braces() {
+        test_tokenizer("{ }", vec![Token::CurlyOpen, Token::CurlyClose]);
     }
 
     #[test]
