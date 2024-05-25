@@ -5,6 +5,7 @@ pub enum Token {
     Ignore,
     Number(i32),
     String(String),
+    Character(char),
     Identifier(String),
     Equal,
     Plus,
@@ -36,6 +37,9 @@ impl Tokenizer {
                 }),
                 (Regex::new(r#"^'([^"]*)'"#).unwrap(), |s: &str| {
                     Token::String(s.to_string())
+                }),
+                (Regex::new(r#"^`(.)`"#).unwrap(), |s: &str| {
+                    Token::Character(s.chars().nth(0).unwrap())
                 }),
                 (Regex::new(r#"^([a-zA-Z_]\w*)"#).unwrap(), |s: &str| {
                     Token::Identifier(s.to_string())
@@ -103,6 +107,16 @@ mod tests {
     #[test]
     fn parses_strings() {
         test_tokenizer("'hello'", vec![Token::String("hello".to_string())]);
+    }
+
+    #[test]
+    fn parses_characters() {
+        test_tokenizer("`a`", vec![Token::Character('a')]);
+    }
+
+    #[test]
+    fn parses_emoji() {
+        test_tokenizer("`🦀`", vec![Token::Character('🦀')]);
     }
 
     #[test]
