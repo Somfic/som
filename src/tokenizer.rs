@@ -42,7 +42,7 @@ impl Tokenizer {
                 (Regex::new(r#"^(\+)"#).unwrap(), |_| Token::Plus),
                 (Regex::new(r#"^(-)"#).unwrap(), |_| Token::Minus),
                 (Regex::new(r#"^(\/)"#).unwrap(), |_| Token::Slash),
-                (Regex::new(r#"^(\*)"#).unwrap(), |_| Token::Star),s
+                (Regex::new(r#"^(\*)"#).unwrap(), |_| Token::Star),
                 (Regex::new(r#"^(=)"#).unwrap(), |_| Token::Equal),
             ],
         }
