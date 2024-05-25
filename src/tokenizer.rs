@@ -81,3 +81,81 @@ impl Iterator for Tokenizer {
         panic!("Unexpected token {}", haystack);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignores_whitespace() {
+        test_tokenizer("  \t\n", vec![]);
+    }
+
+    #[test]
+    fn ignores_comments() {
+        test_tokenizer("// this is a comment", vec![]);
+    }
+
+    #[test]
+    fn parses_numbers() {
+        test_tokenizer("123", vec![Token::Number(123)]);
+    }
+
+    #[test]
+    fn parses_strings() {
+        test_tokenizer("'hello'", vec![Token::String("hello".to_string())]);
+    }
+
+    #[test]
+    fn parses_identifiers() {
+        test_tokenizer("foo", vec![Token::Identifier("foo".to_string())]);
+    }
+
+    #[test]
+    fn parses_operators() {
+        test_tokenizer(
+            "+ - / * = ( )",
+            vec![
+                Token::Plus,
+                Token::Minus,
+                Token::Slash,
+                Token::Star,
+                Token::Equal,
+                Token::ParenOpen,
+                Token::ParenClose,
+            ],
+        );
+    }
+
+    #[test]
+    fn parses_multiple_tokens() {
+        test_tokenizer(
+            "123 + 456",
+            vec![Token::Number(123), Token::Plus, Token::Number(456)],
+        );
+    }
+
+    #[test]
+    fn parses_parentheses() {
+        test_tokenizer(
+            "(123 + 456) * 789",
+            vec![
+                Token::ParenOpen,
+                Token::Number(123),
+                Token::Plus,
+                Token::Number(456),
+                Token::ParenClose,
+                Token::Star,
+                Token::Number(789),
+            ],
+        );
+    }
+
+    fn test_tokenizer(input: &str, expected: Vec<Token>) {
+        let tokens: Vec<Token> = Tokenizer::new(input.to_string())
+            .filter(|t| *t != Token::Ignore)
+            .collect();
+
+        assert_eq!(tokens, expected,);
+    }
+}
