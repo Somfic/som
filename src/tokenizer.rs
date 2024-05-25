@@ -12,6 +12,8 @@ pub enum Token {
     Minus,
     Slash,
     Star,
+    ParenOpen,
+    ParenClose,
 }
 
 type SpecItem = (Regex, fn(&str) -> Token);
@@ -44,6 +46,12 @@ impl Tokenizer {
                 (Regex::new(r#"^(\/)"#).unwrap(), |_| Token::Slash),
                 (Regex::new(r#"^(\*)"#).unwrap(), |_| Token::Star),
                 (Regex::new(r#"^(=)"#).unwrap(), |_| Token::Equal),
+                (Regex::new(r#"^(?P<paren_open>\()"#).unwrap(), |_| {
+                    Token::ParenOpen
+                }),
+                (Regex::new(r#"^(?P<paren_close>\))"#).unwrap(), |_| {
+                    Token::ParenClose
+                }),
             ],
         }
     }
