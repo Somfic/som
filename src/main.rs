@@ -1,8 +1,8 @@
 use anyhow::*;
+use scanner::Token;
 use std::{env, io::BufRead};
-use tokenizer::Token;
 
-pub mod tokenizer;
+pub mod scanner;
 
 fn main() -> Result<()> {
     let active_directory = std::env::current_dir().unwrap();
@@ -17,7 +17,7 @@ fn main() -> Result<()> {
         .collect::<Vec<String>>()
         .join("\n");
 
-    let tokens: Vec<Token> = tokenizer::Tokenizer::new(content)
+    let tokens: Vec<Token> = scanner::Tokenizer::new(content)
         .filter(|t| *t != Token::Ignore)
         .collect();
 
