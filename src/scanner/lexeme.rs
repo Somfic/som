@@ -86,7 +86,7 @@ pub enum Token {
     If,
     /// An else keyword; `else`.
     Else,
-	
+
     /// A while keyword; `while`.
     While,
     /// A for keyword; `for`.
