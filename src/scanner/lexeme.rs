@@ -17,7 +17,7 @@ impl Lexeme {
 
     pub fn invalid(start: usize, length: usize) -> Lexeme {
         Lexeme::Invalid(Range {
-            position: start,
+            position: start - 1,
             length,
         })
     }
