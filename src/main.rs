@@ -17,7 +17,7 @@ fn main() -> Result<()> {
         .collect::<Vec<String>>()
         .join("\n");
 
-    let tokens: Vec<Token> = scanner::Tokenizer::new(content)
+    let tokens: Vec<Token> = scanner::Scanner::new(content)
         .filter(|t| *t != Token::Ignore)
         .collect();
 
