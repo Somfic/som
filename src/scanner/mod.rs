@@ -20,15 +20,15 @@ pub enum Token {
 
 type SpecItem = (Regex, fn(&str) -> Token);
 
-pub struct Tokenizer {
+pub struct Scanner {
     input: String,
     cursor: usize,
     spec: Vec<SpecItem>,
 }
 
-impl Tokenizer {
-    pub fn new(input: String) -> Tokenizer {
-        Tokenizer {
+impl Scanner {
+    pub fn new(input: String) -> Scanner {
+        Scanner {
             input,
             cursor: 0,
             spec: vec![
@@ -68,7 +68,7 @@ impl Tokenizer {
     }
 }
 
-impl Iterator for Tokenizer {
+impl Iterator for Scanner {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -165,7 +165,7 @@ mod tests {
     }
 
     fn test_tokenizer(input: &str, expected: Vec<Token>) {
-        let tokens: Vec<Token> = Tokenizer::new(input.to_string())
+        let tokens: Vec<Token> = Scanner::new(input.to_string())
             .filter(|t| *t != Token::Ignore)
             .collect();
 
