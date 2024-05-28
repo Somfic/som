@@ -1,55 +1,17 @@
+use lexeme::Lexeme;
+use lexeme::Range;
+use lexeme::Token;
 use regex::Regex;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Lexeme {
-    Valid(Token, Range),
-    Invalid(Range),
-}
-
-impl Lexeme {
-    pub fn valid(token: Token, start: usize, length: usize) -> Lexeme {
-        Lexeme::Valid(
-            token,
-            Range {
-                position: start,
-                length,
-            },
-        )
-    }
-
-    pub fn invalid(start: usize, length: usize) -> Lexeme {
-        Lexeme::Invalid(Range {
-            position: start,
-            length,
-        })
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Range {
-    pub position: usize,
-    pub length: usize,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum Token {
-    Ignore,
-    Number(i32),
-    String(String),
-    Character(char),
-    Identifier(String),
-    Equal,
-    Plus,
-    Minus,
-    Slash,
-    Star,
-    ParenOpen,
-    ParenClose,
-    CurlyOpen,
-    CurlyClose,
-}
+pub mod lexeme;
 
 type SpecItem = (Regex, fn(&str) -> Token);
+
+macro_rules! r {
+    ($pattern:expr) => {
+        Regex::new(format!("^{}", $pattern).as_str()).unwrap()
+    };
+}
 
 pub struct Scanner {
     input: String,
@@ -63,36 +25,46 @@ impl Scanner {
             input,
             cursor: 0,
             spec: vec![
-                (Regex::new(r#"^(\s+)"#).unwrap(), |_| Token::Ignore),
-                (Regex::new(r#"^\/\/(.*)"#).unwrap(), |_| Token::Ignore),
-                (Regex::new(r#"^(\d+)"#).unwrap(), |s: &str| {
-                    Token::Number(s.parse().unwrap())
+                (r!(r"(\s+)"), |_| Token::Ignore),
+                (r!(r"//(.*)"), |_| Token::Ignore),
+                (r!(r"(\()"), |_| Token::ParenOpen),
+                (r!(r"(\))"), |_| Token::ParenClose),
+                (r!(r"(\{)"), |_| Token::CurlyOpen),
+                (r!(r"(\})"), |_| Token::CurlyClose),
+                (r!(r"(\[)"), |_| Token::SquareOpen),
+                (r!(r"(\])"), |_| Token::SquareClose),
+                (r!(r"(\,)"), |_| Token::Comma),
+                (r!(r"(\.)"), |_| Token::Dot),
+                (r!(r"(\:)"), |_| Token::Colon),
+                (r!(r"(;)"), |_| Token::Semicolon),
+                (r!(r"(\+)"), |_| Token::Plus),
+                (r!(r"(-)"), |_| Token::Minus),
+                (r!(r"(/)"), |_| Token::Slash),
+                (r!(r"(\*)"), |_| Token::Star),
+                (r!(r"(=)"), |_| Token::Equal),
+                (r!(r"(!)"), |_| Token::Not),
+                (r!(r"(<)"), |_| Token::LessThan),
+                (r!(r"(>)"), |_| Token::GreaterThan),
+                (r!(r"(<=)"), |_| Token::LessThanOrEqual),
+                (r!(r"(>=)"), |_| Token::GreaterThanOrEqual),
+                (r!(r"(==)"), |_| Token::Equiality),
+                (r!(r"(!=)"), |_| Token::Inequality),
+                (r!(r"(if)"), |_| Token::If),
+                (r!(r"(else)"), |_| Token::Else),
+                (r!(r"(while)"), |_| Token::While),
+                (r!(r"(for)"), |_| Token::For),
+                (r!(r"(let)"), |_| Token::Let),
+                (r!(r"(fn)"), |_| Token::Function),
+                (r!(r"(return)"), |_| Token::Return),
+                (r!(r"(true)"), |_| Token::Boolean(true)),
+                (r!(r"(false)"), |_| Token::Boolean(false)),
+                (r!(r"(\d+)"), |value| Token::Number(value.parse().unwrap())),
+                (r!(r"'([^']*)'"), |value| Token::String(value.to_string())),
+                (r!(r"`([^`]*)`"), |value| {
+                    Token::Character(value.chars().next().unwrap())
                 }),
-                (Regex::new(r#"^'([^"]*)'"#).unwrap(), |s: &str| {
-                    Token::String(s.to_string())
-                }),
-                (Regex::new(r#"^`(.)`"#).unwrap(), |s: &str| {
-                    Token::Character(s.chars().nth(0).unwrap())
-                }),
-                (Regex::new(r#"^([a-zA-Z_]\w*)"#).unwrap(), |s: &str| {
-                    Token::Identifier(s.to_string())
-                }),
-                (Regex::new(r#"^(\+)"#).unwrap(), |_| Token::Plus),
-                (Regex::new(r#"^(-)"#).unwrap(), |_| Token::Minus),
-                (Regex::new(r#"^(\/)"#).unwrap(), |_| Token::Slash),
-                (Regex::new(r#"^(\*)"#).unwrap(), |_| Token::Star),
-                (Regex::new(r#"^(=)"#).unwrap(), |_| Token::Equal),
-                (Regex::new(r#"^(?P<paren_open>\()"#).unwrap(), |_| {
-                    Token::ParenOpen
-                }),
-                (Regex::new(r#"^(?P<paren_close>\))"#).unwrap(), |_| {
-                    Token::ParenClose
-                }),
-                (Regex::new(r#"^(?P<curly_open>\{)"#).unwrap(), |_| {
-                    Token::CurlyOpen
-                }),
-                (Regex::new(r#"^(?P<curly_close>\})"#).unwrap(), |_| {
-                    Token::CurlyClose
+                (r!(r"([a-zA-Z_]\w*)"), |value| {
+                    Token::Identifier(value.to_string())
                 }),
             ],
         }
@@ -270,10 +242,10 @@ mod tests {
     #[test]
     fn parses_invalid_lexeme_at_end() {
         test_scanner(
-            "123~~~",
+            "123~~~±±±",
             vec![
                 Lexeme::valid(Token::Number(123), 0, 3),
-                Lexeme::invalid(3, 3),
+                Lexeme::invalid(3, 6),
             ],
         );
     }
