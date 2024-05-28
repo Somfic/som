@@ -1,6 +1,37 @@
 use regex::Regex;
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum Lexeme {
+    Valid(Token, Range),
+    Invalid(Range),
+}
+
+impl Lexeme {
+    pub fn valid(token: Token, start: usize, length: usize) -> Lexeme {
+        Lexeme::Valid(
+            token,
+            Range {
+                position: start,
+                length,
+            },
+        )
+    }
+
+    pub fn invalid(start: usize, length: usize) -> Lexeme {
+        Lexeme::Invalid(Range {
+            position: start,
+            length,
+        })
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Range {
+    pub position: usize,
+    pub length: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Token {
     Ignore,
     Number(i32),
@@ -69,27 +100,65 @@ impl Scanner {
 }
 
 impl Iterator for Scanner {
-    type Item = Token;
+    type Item = Lexeme;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor >= self.input.len() {
+        if self.cursor >= self.input.chars().count() {
             return None;
         }
 
-        let haystack = &self.input[self.cursor..];
+        let find_token = |input: &str, cursor: usize| -> Option<(Token, Range, usize)> {
+            let haystack = &input.chars().skip(cursor).collect::<String>();
 
-        for (regex, handler) in &self.spec {
-            let capture = regex.captures(haystack);
+            for (regex, handler) in &self.spec {
+                let capture = regex.captures(haystack);
 
-            if let Some((capture, matched)) = capture.and_then(|c| Some((c.get(0)?, c.get(1)?))) {
-                let value = matched.as_str();
-                let token = handler(value);
-                self.cursor += capture.end();
-                return Some(token);
+                if let Some((capture, matched)) = capture.and_then(|c| Some((c.get(0)?, c.get(1)?)))
+                {
+                    let value = matched.as_str();
+                    let token = handler(value);
+                    let length = capture.as_str().chars().count(); // TODO: Check if we shouldn't use as_str().len() instead
+                    let new_cursor = cursor + capture.end();
+                    return Some((
+                        token,
+                        Range {
+                            position: cursor,
+                            length,
+                        },
+                        new_cursor,
+                    ));
+                }
             }
+
+            None
+        };
+
+        // Search for the next lexeme. If we get a None value, keep increasing the cursor until the next lexeme would be found. Return an Invalid Lexeme, and have the next call to this function handle the next valid lexeme.
+        let token = find_token(&self.input, self.cursor);
+        if token.is_none() {
+            let cursor_start = self.cursor;
+            let mut cursor = self.cursor;
+            while find_token(&self.input, cursor).is_none() {
+                cursor += 1;
+
+                if cursor >= self.input.chars().count() {
+                    break;
+                }
+            }
+
+            let length = cursor - self.cursor;
+            self.cursor = cursor;
+            return Some(Lexeme::invalid(cursor_start, length));
         }
 
-        panic!("Unexpected token {}", haystack);
+        let (token, range, new_cursor) = token.unwrap();
+        self.cursor = new_cursor;
+
+        if token == Token::Ignore {
+            self.next()
+        } else {
+            Some(Lexeme::valid(token, range.position, range.length))
+        }
     }
 }
 
@@ -99,76 +168,119 @@ mod tests {
 
     #[test]
     fn ignores_whitespace() {
-        test_tokenizer("  \t\n", vec![]);
+        test_scanner("  \t\n", vec![]);
     }
 
     #[test]
     fn ignores_comments() {
-        test_tokenizer("// this is a comment", vec![]);
+        test_scanner("// this is a comment", vec![]);
     }
 
     #[test]
     fn parses_numbers() {
-        test_tokenizer("123", vec![Token::Number(123)]);
+        test_scanner("123", vec![Lexeme::valid(Token::Number(123), 0, 3)]);
     }
 
     #[test]
     fn parses_strings() {
-        test_tokenizer("'hello'", vec![Token::String("hello".to_string())]);
+        test_scanner(
+            "'hello'",
+            vec![Lexeme::valid(Token::String("hello".to_string()), 0, 7)],
+        );
     }
 
     #[test]
     fn parses_characters() {
-        test_tokenizer("`a`", vec![Token::Character('a')]);
+        test_scanner("`a`", vec![Lexeme::valid(Token::Character('a'), 0, 3)]);
     }
 
     #[test]
     fn parses_emoji() {
-        test_tokenizer("`🦀`", vec![Token::Character('🦀')]);
+        test_scanner("`🦀`", vec![Lexeme::valid(Token::Character('🦀'), 0, 3)]);
     }
 
     #[test]
     fn parses_identifiers() {
-        test_tokenizer("foo", vec![Token::Identifier("foo".to_string())]);
+        test_scanner(
+            "foo",
+            vec![Lexeme::valid(Token::Identifier("foo".to_string()), 0, 3)],
+        );
     }
 
     #[test]
     fn parses_operators() {
-        test_tokenizer(
+        test_scanner(
             "+ - / * =",
             vec![
-                Token::Plus,
-                Token::Minus,
-                Token::Slash,
-                Token::Star,
-                Token::Equal,
+                Lexeme::valid(Token::Plus, 0, 1),
+                Lexeme::valid(Token::Minus, 2, 1),
+                Lexeme::valid(Token::Slash, 4, 1),
+                Lexeme::valid(Token::Star, 6, 1),
+                Lexeme::valid(Token::Equal, 8, 1),
             ],
         );
     }
 
     #[test]
     fn parses_parentheses() {
-        test_tokenizer("( )", vec![Token::ParenOpen, Token::ParenClose]);
+        test_scanner(
+            "( )",
+            vec![
+                Lexeme::valid(Token::ParenOpen, 0, 1),
+                Lexeme::valid(Token::ParenClose, 2, 1),
+            ],
+        );
     }
 
     #[test]
     fn parses_curly_braces() {
-        test_tokenizer("{ }", vec![Token::CurlyOpen, Token::CurlyClose]);
+        test_scanner(
+            "{ }",
+            vec![
+                Lexeme::valid(Token::CurlyOpen, 0, 1),
+                Lexeme::valid(Token::CurlyClose, 2, 1),
+            ],
+        );
     }
 
     #[test]
     fn parses_multiple_tokens() {
-        test_tokenizer(
+        test_scanner(
             "123 + 456",
-            vec![Token::Number(123), Token::Plus, Token::Number(456)],
+            vec![
+                Lexeme::valid(Token::Number(123), 0, 3),
+                Lexeme::valid(Token::Plus, 4, 1),
+                Lexeme::valid(Token::Number(456), 6, 3),
+            ],
         );
     }
 
-    fn test_tokenizer(input: &str, expected: Vec<Token>) {
-        let tokens: Vec<Token> = Scanner::new(input.to_string())
-            .filter(|t| *t != Token::Ignore)
-            .collect();
+    #[test]
+    fn parsers_invalid_lexeme() {
+        test_scanner(
+            "123~456",
+            vec![
+                Lexeme::valid(Token::Number(123), 0, 3),
+                Lexeme::invalid(3, 1),
+                Lexeme::valid(Token::Number(456), 4, 3),
+            ],
+        );
+    }
 
-        assert_eq!(tokens, expected,);
+    #[test]
+    fn parses_invalid_lexeme_at_end() {
+        test_scanner(
+            "123~~~",
+            vec![
+                Lexeme::valid(Token::Number(123), 0, 3),
+                Lexeme::invalid(3, 3),
+            ],
+        );
+    }
+
+    fn test_scanner(input: &str, expected: Vec<Lexeme>) {
+        let lexemes = Scanner::new(input.to_string()).collect::<Vec<_>>();
+
+        assert_eq!(lexemes, expected,);
     }
 }
