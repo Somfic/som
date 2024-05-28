@@ -1,5 +1,4 @@
 use anyhow::*;
-use scanner::Token;
 use std::{env, io::BufRead};
 
 pub mod scanner;
