@@ -46,5 +46,10 @@ fn main() -> Result<()> {
         }
     }
 
+    let transpiler = transpiler::Transpiler::new(parsed.unwrap());
+    let transpiled = transpiler.transpile();
+
+    println!("{}", transpiled);
+
     Ok(())
 }
