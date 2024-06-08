@@ -47,7 +47,7 @@ impl Scanner {
                 (r!(r"(>)"), |_| Token::GreaterThan),
                 (r!(r"(<=)"), |_| Token::LessThanOrEqual),
                 (r!(r"(>=)"), |_| Token::GreaterThanOrEqual),
-                (r!(r"(==)"), |_| Token::Equiality),
+                (r!(r"(==)"), |_| Token::Equality),
                 (r!(r"(!=)"), |_| Token::Inequality),
                 (r!(r"(if)"), |_| Token::If),
                 (r!(r"(else)"), |_| Token::Else),

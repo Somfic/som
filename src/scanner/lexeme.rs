@@ -96,7 +96,7 @@ pub enum Token {
     /// A greater-than-or-equal sign; `>=`.
     GreaterThanOrEqual,
     /// An equality sign; `==`.
-    Equiality,
+    Equality,
     /// An inequality sign; `!=`.
     Inequality,
 
