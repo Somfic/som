@@ -204,6 +204,29 @@ impl Default for Lookup {
             }
         });
 
+        lookup.add_expression_handler(Token::ParenOpen, |parser, cursor| {
+            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::ParenOpen))?;
+            let paren_open = tokens.first().unwrap();
+            if let Lexeme::Valid(Token::ParenOpen, _) = paren_open {
+                let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::None)?;
+                let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::ParenClose))?;
+                let paren_close = tokens.first().unwrap();
+                if let Lexeme::Valid(Token::ParenClose, _) = paren_close {
+                    Ok((Expression::Grouping(Box::new(expression)), cursor))
+                } else {
+                    Err(Diagnostic::error(
+                        paren_close.range(),
+                        "Expected a closing parenthesis",
+                    ))
+                }
+            } else {
+                Err(Diagnostic::error(
+                    paren_open.range(),
+                    "Expected an opening parenthesis",
+                ))
+            }
+        });
+
         lookup
     }
 }

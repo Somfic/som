@@ -21,6 +21,7 @@ pub enum Expression {
     String(String),
     Symbol(String),
     Binary(Box<Expression>, BinaryOperation, Box<Expression>),
+    Grouping(Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -235,6 +236,29 @@ mod tests {
                         Box::new(Expression::Number(456.0))
                     )),
                     BinaryOperation::Plus,
+                    Box::new(Expression::Number(789.0))
+                )
+            )]))
+        );
+    }
+
+    #[test]
+    fn parses_expression_grouping() {
+        let code = "(123 + 456) * 789;";
+        let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
+        let mut parser = Parser::new(lexemes);
+        let result = parser.parse().unwrap();
+
+        assert_eq!(
+            result,
+            Symbol::Statement(Statement::Block(vec![Statement::Expression(
+                Expression::Binary(
+                    Box::new(Expression::Grouping(Box::new(Expression::Binary(
+                        Box::new(Expression::Number(123.0)),
+                        BinaryOperation::Plus,
+                        Box::new(Expression::Number(456.0))
+                    )))),
+                    BinaryOperation::Times,
                     Box::new(Expression::Number(789.0))
                 )
             )]))
