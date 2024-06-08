@@ -67,12 +67,7 @@ impl Lookup {
         self.statement_lookup.insert(token, handler);
     }
 
-    pub(crate) fn add_expression_handler(
-        &mut self,
-        token: Token,
-        binding_power: BindingPower,
-        handler: ExpressionHandler,
-    ) {
+    pub(crate) fn add_expression_handler(&mut self, token: Token, handler: ExpressionHandler) {
         self.expression_lookup.insert(token, handler);
     }
 
@@ -100,7 +95,7 @@ impl Default for Lookup {
         lookup.add_left_expression_handler(
             Token::Plus,
             BindingPower::Additive,
-            |parser, cursor, lhs, binding| {
+            |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
                     super::expression::parse(parser, cursor + 1, &BindingPower::Additive)?;
                 Some((
@@ -113,7 +108,7 @@ impl Default for Lookup {
         lookup.add_left_expression_handler(
             Token::Minus,
             BindingPower::Additive,
-            |parser, cursor, lhs, binding| {
+            |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
                     super::expression::parse(parser, cursor + 1, &BindingPower::Additive)?;
                 Some((
@@ -127,7 +122,7 @@ impl Default for Lookup {
         lookup.add_left_expression_handler(
             Token::Star,
             BindingPower::Multiplicative,
-            |parser, cursor, lhs, binding| {
+            |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
                     super::expression::parse(parser, cursor + 1, &BindingPower::Multiplicative)?;
                 Some((
@@ -140,7 +135,7 @@ impl Default for Lookup {
         lookup.add_left_expression_handler(
             Token::Slash,
             BindingPower::Multiplicative,
-            |parser, cursor, lhs, binding| {
+            |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
                     super::expression::parse(parser, cursor + 1, &BindingPower::Multiplicative)?;
                 Some((
@@ -151,61 +146,45 @@ impl Default for Lookup {
         );
 
         // Literals and symbols
-        lookup.add_expression_handler(
-            Token::Decimal(0.0),
-            BindingPower::Primary,
-            |parser, cursor| {
-                let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Decimal(_)))?;
-                let integer = tokens.first().unwrap();
-                if let Lexeme::Valid(Token::Decimal(value), _) = integer {
-                    Some((Expression::Number(*value), cursor))
-                } else {
-                    None
-                }
-            },
-        );
+        lookup.add_expression_handler(Token::Decimal(0.0), |parser, cursor| {
+            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Decimal(_)))?;
+            let integer = tokens.first().unwrap();
+            if let Lexeme::Valid(Token::Decimal(value), _) = integer {
+                Some((Expression::Number(*value), cursor))
+            } else {
+                None
+            }
+        });
 
-        lookup.add_expression_handler(
-            Token::Integer(0),
-            BindingPower::Primary,
-            |parser, cursor| {
-                let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Integer(_)))?;
-                let integer = tokens.first().unwrap();
-                if let Lexeme::Valid(Token::Integer(value), _) = integer {
-                    Some((Expression::Number(*value as f64), cursor))
-                } else {
-                    None
-                }
-            },
-        );
+        lookup.add_expression_handler(Token::Integer(0), |parser, cursor| {
+            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Integer(_)))?;
+            let integer = tokens.first().unwrap();
+            if let Lexeme::Valid(Token::Integer(value), _) = integer {
+                Some((Expression::Number(*value as f64), cursor))
+            } else {
+                None
+            }
+        });
 
-        lookup.add_expression_handler(
-            Token::String("".to_string()),
-            BindingPower::Primary,
-            |parser, cursor| {
-                let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::String(_)))?;
-                let string = tokens.first().unwrap();
-                if let Lexeme::Valid(Token::String(value), _) = string {
-                    Some((Expression::String(value.clone()), cursor))
-                } else {
-                    None
-                }
-            },
-        );
+        lookup.add_expression_handler(Token::String("".to_string()), |parser, cursor| {
+            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::String(_)))?;
+            let string = tokens.first().unwrap();
+            if let Lexeme::Valid(Token::String(value), _) = string {
+                Some((Expression::String(value.clone()), cursor))
+            } else {
+                None
+            }
+        });
 
-        lookup.add_expression_handler(
-            Token::Identifier("".to_string()),
-            BindingPower::Primary,
-            |parser, cursor| {
-                let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Identifier(_)))?;
-                let identifier = tokens.first().unwrap();
-                if let Lexeme::Valid(Token::Identifier(value), _) = identifier {
-                    Some((Expression::Symbol(value.clone()), cursor))
-                } else {
-                    None
-                }
-            },
-        );
+        lookup.add_expression_handler(Token::Identifier("".to_string()), |parser, cursor| {
+            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Identifier(_)))?;
+            let identifier = tokens.first().unwrap();
+            if let Lexeme::Valid(Token::Identifier(value), _) = identifier {
+                Some((Expression::Symbol(value.clone()), cursor))
+            } else {
+                None
+            }
+        });
 
         lookup.add_statement_handler(Token::Semicolon, |parser, cursor| {
             let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::Primary)?;
