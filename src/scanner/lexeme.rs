@@ -1,7 +1,18 @@
-#[derive(Debug, PartialEq, Eq)]
+use std::{fmt::Display, hash::Hash};
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Lexeme {
     Valid(Token, Range),
     Invalid(Range),
+}
+
+impl Display for Lexeme {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Lexeme::Valid(token, range) => write!(f, "{:?} at {:?}", token, range),
+            Lexeme::Invalid(range) => write!(f, "Invalid token at {:?}", range),
+        }
+    }
 }
 
 impl Lexeme {
@@ -23,13 +34,13 @@ impl Lexeme {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Range {
     pub position: usize,
     pub length: usize,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub enum Token {
     /// A token that should be ignored. This is used for whitespace, comments, etc.
     Ignore,
@@ -103,7 +114,9 @@ pub enum Token {
     /// A boolean; `true`, `false`.
     Boolean(bool),
     /// A number; `42`, `12`, `-7`.
-    Number(i32),
+    Integer(i64),
+    /// A decimal; `3.14`, `2.718`, `-1.0`.
+    Decimal(f64),
     /// A string; `"foo"`, `"bar"`, `"baz"`.
     String(String),
     /// A character; `'a'`, `'b'`, `'c'`.
@@ -111,4 +124,50 @@ pub enum Token {
 
     /// An identifying name; `foo`, `bar`, `baz`.
     Identifier(String),
+}
+
+impl Hash for Token {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // Hash based on enum variant, not value
+        std::mem::discriminant(self).hash(state);
+    }
+}
+
+impl Eq for Token {}
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        core::mem::discriminant(self) == core::mem::discriminant(other)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Token;
+
+    #[test]
+    fn partial_eq_impl() {
+        let a = Token::Integer(42);
+        let b = Token::Integer(41);
+        let c = Token::String("42".to_owned());
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+    }
+
+    #[test]
+    fn hash_impl() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let mut hasher = DefaultHasher::new();
+        Token::Integer(42).hash(&mut hasher);
+        let a = hasher.finish();
+
+        let mut hasher = DefaultHasher::new();
+        Token::Integer(41).hash(&mut hasher);
+        let b = hasher.finish();
+
+        assert_eq!(a, b);
+    }
 }

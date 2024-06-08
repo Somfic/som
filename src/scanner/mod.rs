@@ -58,7 +58,10 @@ impl Scanner {
                 (r!(r"(return)"), |_| Token::Return),
                 (r!(r"(true)"), |_| Token::Boolean(true)),
                 (r!(r"(false)"), |_| Token::Boolean(false)),
-                (r!(r"(\d+)"), |value| Token::Number(value.parse().unwrap())),
+                (r!(r"(\d+\.\d+)"), |value| {
+                    Token::Decimal(value.parse().unwrap())
+                }),
+                (r!(r"(\d+)"), |value| Token::Integer(value.parse().unwrap())),
                 (r!(r"'([^']*)'"), |value| Token::String(value.to_string())),
                 (r!(r"`([^`]*)`"), |value| {
                     Token::Character(value.chars().next().unwrap())
@@ -149,8 +152,16 @@ mod tests {
     }
 
     #[test]
-    fn parses_numbers() {
-        test_scanner("123", vec![Lexeme::valid(Token::Number(123), 0, 3)]);
+    fn parses_integers() {
+        test_scanner("123", vec![Lexeme::valid(Token::Integer(123), 0, 3)]);
+    }
+
+    #[test]
+    fn parses_decimals() {
+        test_scanner(
+            "123.456",
+            vec![Lexeme::valid(Token::Decimal(123.456), 0, 7)],
+        );
     }
 
     #[test]
@@ -220,9 +231,9 @@ mod tests {
         test_scanner(
             "123 + 456",
             vec![
-                Lexeme::valid(Token::Number(123), 0, 3),
+                Lexeme::valid(Token::Integer(123), 0, 3),
                 Lexeme::valid(Token::Plus, 4, 1),
-                Lexeme::valid(Token::Number(456), 6, 3),
+                Lexeme::valid(Token::Integer(456), 6, 3),
             ],
         );
     }
@@ -232,9 +243,9 @@ mod tests {
         test_scanner(
             "123~456",
             vec![
-                Lexeme::valid(Token::Number(123), 0, 3),
+                Lexeme::valid(Token::Integer(123), 0, 3),
                 Lexeme::invalid(3, 1),
-                Lexeme::valid(Token::Number(456), 4, 3),
+                Lexeme::valid(Token::Integer(456), 4, 3),
             ],
         );
     }
@@ -244,7 +255,7 @@ mod tests {
         test_scanner(
             "123~~~±±±",
             vec![
-                Lexeme::valid(Token::Number(123), 0, 3),
+                Lexeme::valid(Token::Integer(123), 0, 3),
                 Lexeme::invalid(3, 6),
             ],
         );
