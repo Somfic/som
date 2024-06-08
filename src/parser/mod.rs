@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn parses_addition() {
-        let code = "123 + 456";
+        let code = "123 + 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
         let result = parser.parse();
@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn parses_subtraction() {
-        let code = "123 - 456";
+        let code = "123 - 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
         let result = parser.parse();
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn parses_multiplication() {
-        let code = "123 * 456";
+        let code = "123 * 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
         let result = parser.parse();
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn parses_division() {
-        let code = "123 / 456";
+        let code = "123 / 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
         let result = parser.parse();
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn parses_long_expression() {
-        let code = "123 + 456 - 789 + 101";
+        let code = "123 + 456 - 789 + 101;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
         let result = parser.parse();
@@ -183,7 +183,7 @@ mod tests {
 
     #[test]
     fn gives_precedence_to_multiplication() {
-        let code = "123 * 456 + 789";
+        let code = "123 * 456 + 789;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
         let result = parser.parse();

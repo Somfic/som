@@ -261,6 +261,18 @@ mod tests {
         );
     }
 
+    #[test]
+    fn parses_semicolons() {
+        test_scanner(
+            "123;456",
+            vec![
+                Lexeme::valid(Token::Integer(123), 0, 3),
+                Lexeme::valid(Token::Semicolon, 3, 1),
+                Lexeme::valid(Token::Integer(456), 4, 3),
+            ],
+        );
+    }
+
     fn test_scanner(input: &str, expected: Vec<Lexeme>) {
         let lexemes = Scanner::new(input.to_string()).collect::<Vec<_>>();
 

@@ -1,6 +1,5 @@
-use crate::scanner::lexeme::{Lexeme, Token};
-
-use super::{lookup::BindingPower, BinaryOperation, Expression, Parser};
+use super::{lookup::BindingPower, Expression, Parser};
+use crate::scanner::lexeme::Lexeme;
 
 pub fn parse(
     parser: &Parser,
@@ -27,13 +26,24 @@ pub fn parse(
             Lexeme::Invalid(_) => break,
         };
 
-        let token_binding_power = parser.lookup.binding_power_lookup.get(token)?;
+        let token_binding_power = parser
+            .lookup
+            .binding_power_lookup
+            .get(token)
+            .unwrap_or(&BindingPower::None);
 
         if binding_power > token_binding_power {
             break;
         }
 
-        let left_expression_handler = parser.lookup.left_expression_lookup.get(token)?;
+        let left_expression_handler = parser.lookup.left_expression_lookup.get(token);
+
+        if left_expression_handler.is_none() {
+            break;
+        }
+
+        let left_expression_handler = left_expression_handler.unwrap();
+
         let (right_hand_side, new_cursor) =
             left_expression_handler(parser, cursor, left_hand_side, binding_power)?;
 
@@ -42,27 +52,4 @@ pub fn parse(
     }
 
     Some((left_hand_side, cursor))
-}
-
-pub fn parse_binary(
-    parser: &Parser,
-    cursor: usize,
-    left_hand_side: Box<Expression>,
-    binding_power: &BindingPower,
-) -> Option<(Expression, usize)> {
-    let operator = parser.lexemes.get(cursor)?;
-    let operator = match operator {
-        Lexeme::Valid(Token::Plus, _) => BinaryOperation::Plus,
-        Lexeme::Valid(Token::Minus, _) => BinaryOperation::Minus,
-        Lexeme::Valid(Token::Star, _) => BinaryOperation::Times,
-        Lexeme::Valid(Token::Slash, _) => BinaryOperation::Divide,
-        _ => return None,
-    };
-
-    let (right_hand_side, cursor) = parse(parser, cursor, binding_power)?;
-
-    Some((
-        Expression::Binary(left_hand_side, operator, Box::new(right_hand_side)),
-        cursor,
-    ))
 }
