@@ -1,6 +1,6 @@
 use lookup::Lookup;
 
-use crate::scanner::lexeme::Lexeme;
+use crate::scanner::lexeme::{Lexeme, Range};
 
 pub mod expression;
 pub mod lookup;
@@ -48,21 +48,36 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Symbol {
+    pub fn parse(&mut self) -> Result<Symbol, Diagnostic> {
         let mut statements = vec![];
         let mut cursor = 0;
 
         while cursor < self.lexemes.len() {
             match statement::parse(self, cursor) {
-                Some((statement, new_cursor)) => {
+                Ok((statement, new_cursor)) => {
                     cursor = new_cursor;
                     statements.push(statement);
                 }
-                None => panic!("Failed to parse statement"),
+                Err(diagnostic) => return Err(diagnostic),
             }
         }
 
-        Symbol::Statement(Statement::Block(statements))
+        Ok(Symbol::Statement(Statement::Block(statements)))
+    }
+}
+
+#[derive(Debug)]
+pub struct Diagnostic {
+    pub range: Range,
+    pub message: String,
+}
+
+impl Diagnostic {
+    fn error(range: &Range, message: impl Into<String>) -> Diagnostic {
+        Diagnostic {
+            range: range.clone(),
+            message: message.into(),
+        }
     }
 }
 
@@ -77,7 +92,7 @@ mod tests {
         let code = "123 + 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
-        let result = parser.parse();
+        let result = parser.parse().expect("Failed to parse");
 
         assert_eq!(
             result,
@@ -96,7 +111,7 @@ mod tests {
         let code = "123 - 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
-        let result = parser.parse();
+        let result = parser.parse().unwrap();
 
         assert_eq!(
             result,
@@ -115,7 +130,7 @@ mod tests {
         let code = "123 * 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
-        let result = parser.parse();
+        let result = parser.parse().unwrap();
 
         assert_eq!(
             result,
@@ -134,7 +149,7 @@ mod tests {
         let code = "123 / 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
-        let result = parser.parse();
+        let result = parser.parse().unwrap();
 
         assert_eq!(
             result,
@@ -153,7 +168,7 @@ mod tests {
         let code = "123 + 456 - 789 + 101;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
-        let result = parser.parse();
+        let result = parser.parse().unwrap();
 
         assert_eq!(
             result,
@@ -180,7 +195,7 @@ mod tests {
         let code = "123 * 456 + 789;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
-        let result = parser.parse();
+        let result = parser.parse().unwrap();
 
         assert_eq!(
             result,

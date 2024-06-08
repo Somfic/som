@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{expression, BinaryOperation, Expression, Parser, Statement};
+use super::{expression, BinaryOperation, Diagnostic, Expression, Parser, Statement};
 use crate::scanner::lexeme::{Lexeme, Token};
 
 macro_rules! expect_tokens {
@@ -8,7 +8,13 @@ macro_rules! expect_tokens {
             let mut i = $cursor;
             let mut lexemes = Vec::new();
              $(
-                let lexeme = $parser.lexemes.get(i)?;
+                let lexeme = $parser.lexemes.get(i);
+
+                if lexeme.is_none() {
+                    return Err(Diagnostic::error($parser.lexemes.last().unwrap().range(), "Unexpected end of input"));
+                }
+
+                let lexeme = lexeme.unwrap();
 
                 if let Lexeme::Valid(token, _) = lexeme {
                     let mut matched = false;
@@ -22,15 +28,15 @@ macro_rules! expect_tokens {
                         lexemes.push(lexeme);
                         i += 1;
                     } else {
-                        return None;
+                        return Err(Diagnostic::error(lexeme.range(), "Unexpected token"));
                     }
                 } else {
-                    return None;
+                    return Err(Diagnostic::error(lexeme.range(), "Invalid token"));
                 }
             )*
 
             // If all tokens matched, return the matched tokens
-            Some((lexemes, i))
+            Ok((lexemes, i))
         }};
 }
 
@@ -49,11 +55,10 @@ pub enum BindingPower {
     Primary = 10,
 }
 
-//
-pub type StatementHandler = fn(&Parser, usize) -> Option<(Statement, usize)>;
-pub type ExpressionHandler = fn(&Parser, usize) -> Option<(Expression, usize)>;
+pub type StatementHandler = fn(&Parser, usize) -> Result<(Statement, usize), Diagnostic>;
+pub type ExpressionHandler = fn(&Parser, usize) -> Result<(Expression, usize), Diagnostic>;
 pub type LeftExpressionHandler =
-    fn(&Parser, usize, Expression, &BindingPower) -> Option<(Expression, usize)>;
+    fn(&Parser, usize, Expression, &BindingPower) -> Result<(Expression, usize), Diagnostic>;
 
 pub struct Lookup {
     pub statement_lookup: HashMap<Token, StatementHandler>,
@@ -98,7 +103,7 @@ impl Default for Lookup {
             |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
                     super::expression::parse(parser, cursor + 1, &BindingPower::Additive)?;
-                Some((
+                Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Plus, Box::new(rhs)),
                     cursor,
                 ))
@@ -111,7 +116,7 @@ impl Default for Lookup {
             |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
                     super::expression::parse(parser, cursor + 1, &BindingPower::Additive)?;
-                Some((
+                Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Minus, Box::new(rhs)),
                     cursor,
                 ))
@@ -125,7 +130,7 @@ impl Default for Lookup {
             |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
                     super::expression::parse(parser, cursor + 1, &BindingPower::Multiplicative)?;
-                Some((
+                Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Times, Box::new(rhs)),
                     cursor,
                 ))
@@ -138,7 +143,7 @@ impl Default for Lookup {
             |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
                     super::expression::parse(parser, cursor + 1, &BindingPower::Multiplicative)?;
-                Some((
+                Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Divide, Box::new(rhs)),
                     cursor,
                 ))
@@ -150,9 +155,9 @@ impl Default for Lookup {
             let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Decimal(_)))?;
             let integer = tokens.first().unwrap();
             if let Lexeme::Valid(Token::Decimal(value), _) = integer {
-                Some((Expression::Number(*value), cursor))
+                Ok((Expression::Number(*value), cursor))
             } else {
-                None
+                Err(Diagnostic::error(integer.range(), "Expected a decimal"))
             }
         });
 
@@ -160,9 +165,9 @@ impl Default for Lookup {
             let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Integer(_)))?;
             let integer = tokens.first().unwrap();
             if let Lexeme::Valid(Token::Integer(value), _) = integer {
-                Some((Expression::Number(*value as f64), cursor))
+                Ok((Expression::Number(*value as f64), cursor))
             } else {
-                None
+                Err(Diagnostic::error(integer.range(), "Expected an integer"))
             }
         });
 
@@ -170,9 +175,9 @@ impl Default for Lookup {
             let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::String(_)))?;
             let string = tokens.first().unwrap();
             if let Lexeme::Valid(Token::String(value), _) = string {
-                Some((Expression::String(value.clone()), cursor))
+                Ok((Expression::String(value.clone()), cursor))
             } else {
-                None
+                Err(Diagnostic::error(string.range(), "Expected a string"))
             }
         });
 
@@ -180,9 +185,12 @@ impl Default for Lookup {
             let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Identifier(_)))?;
             let identifier = tokens.first().unwrap();
             if let Lexeme::Valid(Token::Identifier(value), _) = identifier {
-                Some((Expression::Symbol(value.clone()), cursor))
+                Ok((Expression::Symbol(value.clone()), cursor))
             } else {
-                None
+                Err(Diagnostic::error(
+                    identifier.range(),
+                    "Expected an identifier",
+                ))
             }
         });
 
@@ -192,9 +200,9 @@ impl Default for Lookup {
             let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Semicolon))?;
             let semicolon = tokens.first().unwrap();
             if let Lexeme::Valid(Token::Semicolon, _) = semicolon {
-                Some((Statement::Expression(expression), cursor))
+                Ok((Statement::Expression(expression), cursor))
             } else {
-                None
+                Err(Diagnostic::error(semicolon.range(), "Expected a semicolon"))
             }
         });
 
