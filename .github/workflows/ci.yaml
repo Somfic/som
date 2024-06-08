@@ -63,6 +63,10 @@ jobs:
       - name: Test
         run: cargo test
 
+      - name: Install committer
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        run: cargo install --locked committer || true
+
       - name: Tag
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         run: |
