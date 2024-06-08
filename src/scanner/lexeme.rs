@@ -32,6 +32,13 @@ impl Lexeme {
             length,
         })
     }
+
+    pub fn range(&self) -> &Range {
+        match self {
+            Lexeme::Valid(_, range) => range,
+            Lexeme::Invalid(range) => range,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,21 +1,40 @@
-use super::{lookup::BindingPower, Expression, Parser};
-use crate::scanner::lexeme::Lexeme;
+use super::{lookup::BindingPower, Diagnostic, Expression, Parser};
+use crate::scanner::lexeme::{Lexeme, Range};
 
 pub fn parse(
     parser: &Parser,
     cursor: usize,
     binding_power: &BindingPower,
-) -> Option<(Expression, usize)> {
+) -> Result<(Expression, usize), Diagnostic> {
     let mut cursor = cursor;
 
     // Consume the current lexeme
-    let lexeme = parser.lexemes.get(cursor)?;
+    let lexeme = parser.lexemes.get(cursor);
+
+    if lexeme.is_none() {
+        return Err(Diagnostic::error(
+            &Range {
+                position: cursor,
+                length: 0,
+            },
+            "Expected expression",
+        ));
+    }
+
+    let lexeme = lexeme.unwrap();
+
     let token = match lexeme {
         Lexeme::Valid(token, _) => token,
-        Lexeme::Invalid(_) => return None,
+        Lexeme::Invalid(_) => return Err(Diagnostic::error(lexeme.range(), "Invalid token")),
     };
 
-    let expression_handler = parser.lookup.expression_lookup.get(token)?;
+    let expression_handler = parser.lookup.expression_lookup.get(token);
+
+    if expression_handler.is_none() {
+        return Err(Diagnostic::error(lexeme.range(), "Expected expression"));
+    }
+
+    let expression_handler = expression_handler.unwrap();
 
     let (mut left_hand_side, new_cursor) = expression_handler(parser, cursor)?;
     cursor = new_cursor;
@@ -51,5 +70,5 @@ pub fn parse(
         left_hand_side = right_hand_side;
     }
 
-    Some((left_hand_side, cursor))
+    Ok((left_hand_side, cursor))
 }

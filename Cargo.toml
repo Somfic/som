@@ -8,4 +8,6 @@ description = "The 'som' programming language"
 
 [dependencies]
 anyhow = "1.0"
+codespan = "0.11.1"
+codespan-reporting = "0.11.1"
 regex = "1.10"
