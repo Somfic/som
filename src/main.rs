@@ -8,6 +8,7 @@ use codespan_reporting::{
     },
 };
 use core::result::Result::Ok;
+use transpiler::{bend::BendTranspiler, Transpiler};
 
 pub mod parser;
 pub mod scanner;
@@ -46,8 +47,7 @@ fn main() -> Result<()> {
         }
     }
 
-    let transpiler = transpiler::Transpiler::new(parsed.unwrap());
-    let transpiled = transpiler.transpile();
+    let transpiled = BendTranspiler::transpile(&parsed.unwrap());
 
     println!("{}", transpiled);
 
