@@ -11,16 +11,17 @@ use core::result::Result::Ok;
 
 pub mod parser;
 pub mod scanner;
+pub mod transpiler;
 
 fn main() -> Result<()> {
-    let code = "waaaat * 1 + 1 - 1 - 1;";
+    let code = "1 *  (2 + 3); 'aaaaa'; a + 1 + 2; b * ( a + 3);";
     let file = SimpleFile::new("main", code);
 
     let tokens = scanner::Scanner::new(code.to_owned()).collect::<Vec<_>>();
     let mut parser = parser::Parser::new(tokens);
     let parsed = parser.parse();
 
-    match parsed {
+    match &parsed {
         Ok(_) => {}
         Err(diagnostics) => {
             let diagnostic: Diagnostic<()> = Diagnostic::error()
