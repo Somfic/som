@@ -45,7 +45,7 @@ pub fn parse(
         let left_expression_handler = left_expression_handler.unwrap();
 
         let (right_hand_side, new_cursor) =
-            left_expression_handler(parser, cursor, left_hand_side, binding_power)?;
+            left_expression_handler(parser, cursor, left_hand_side, token_binding_power)?;
 
         cursor = new_cursor;
         left_hand_side = right_hand_side;
