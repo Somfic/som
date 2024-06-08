@@ -1,19 +1,13 @@
 use lookup::Lookup;
 
-use crate::scanner::lexeme::{Lexeme, Token};
+use crate::scanner::lexeme::Lexeme;
 
 pub mod expression;
 pub mod lookup;
 pub mod statement;
 
-#[derive(Debug, Clone)]
-pub enum Symbol {
-    Terminal(Token),
-    NonTerminal(NonTerminal),
-}
-
 #[derive(Debug, Clone, PartialEq)]
-pub enum NonTerminal {
+pub enum Symbol {
     Expression(Expression),
     Statement(Statement),
     Unknown(Lexeme),
@@ -54,7 +48,7 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> NonTerminal {
+    pub fn parse(&mut self) -> Symbol {
         let mut statements = vec![];
         let mut cursor = 0;
 
@@ -68,7 +62,7 @@ impl Parser {
             }
         }
 
-        NonTerminal::Statement(Statement::Block(statements))
+        Symbol::Statement(Statement::Block(statements))
     }
 }
 
@@ -87,7 +81,7 @@ mod tests {
 
         assert_eq!(
             result,
-            NonTerminal::Statement(Statement::Block(vec![Statement::Expression(
+            Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
                     BinaryOperation::Plus,
@@ -106,7 +100,7 @@ mod tests {
 
         assert_eq!(
             result,
-            NonTerminal::Statement(Statement::Block(vec![Statement::Expression(
+            Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
                     BinaryOperation::Minus,
@@ -125,7 +119,7 @@ mod tests {
 
         assert_eq!(
             result,
-            NonTerminal::Statement(Statement::Block(vec![Statement::Expression(
+            Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
                     BinaryOperation::Times,
@@ -144,7 +138,7 @@ mod tests {
 
         assert_eq!(
             result,
-            NonTerminal::Statement(Statement::Block(vec![Statement::Expression(
+            Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
                     BinaryOperation::Divide,
@@ -163,7 +157,7 @@ mod tests {
 
         assert_eq!(
             result,
-            NonTerminal::Statement(Statement::Block(vec![Statement::Expression(
+            Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
                     BinaryOperation::Plus,
@@ -190,7 +184,7 @@ mod tests {
 
         assert_eq!(
             result,
-            NonTerminal::Statement(Statement::Block(vec![Statement::Expression(
+            Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Binary(
                         Box::new(Expression::Number(123.0)),
