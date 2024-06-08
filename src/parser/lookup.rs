@@ -188,7 +188,14 @@ impl Default for Lookup {
 
         lookup.add_statement_handler(Token::Semicolon, |parser, cursor| {
             let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::Primary)?;
-            Some((Statement::Expression(expression), cursor))
+            // Expect a semicolon after the expression
+            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Semicolon))?;
+            let semicolon = tokens.first().unwrap();
+            if let Lexeme::Valid(Token::Semicolon, _) = semicolon {
+                Some((Statement::Expression(expression), cursor))
+            } else {
+                None
+            }
         });
 
         lookup
