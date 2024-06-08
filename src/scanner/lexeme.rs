@@ -41,7 +41,7 @@ impl Lexeme {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Range {
     pub position: usize,
     pub length: usize,

@@ -17,19 +17,17 @@ macro_rules! expect_tokens {
                 let lexeme = lexeme.unwrap();
 
                 if let Lexeme::Valid(token, _) = lexeme {
-                    let mut matched = false;
                      $(
                         if let $token = token {
-                            matched = true;
+                            // Continue
+                        } else {
+                            // Use to string for the token
+                            return Err(Diagnostic::error(lexeme.range(), format!("Expected `{}`", stringify!($token))));
                         }
                     )*
-                    // Check if the token matches any of the patterns in the tuple
-                    if matched {
-                        lexemes.push(lexeme);
-                        i += 1;
-                    } else {
-                        return Err(Diagnostic::error(lexeme.range(), "Unexpected token"));
-                    }
+
+                    lexemes.push(lexeme);
+                    i += 1;
                 } else {
                     return Err(Diagnostic::error(lexeme.range(), "Invalid token"));
                 }

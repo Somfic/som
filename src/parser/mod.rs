@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use lookup::Lookup;
 
 use crate::scanner::lexeme::{Lexeme, Range};
@@ -38,6 +40,7 @@ pub enum BinaryOperation {
 pub struct Parser {
     lookup: Lookup,
     lexemes: Vec<Lexeme>,
+    cursor: usize,
 }
 
 impl Parser {
@@ -45,24 +48,19 @@ impl Parser {
         Self {
             lookup: Lookup::default(),
             lexemes,
+            cursor: 0,
         }
     }
 
-    pub fn parse(&mut self) -> Result<Symbol, Vec<Diagnostic>> {
+    pub fn parse(&mut self) -> Result<Symbol, HashSet<Diagnostic>> {
         let mut statements = vec![];
-        let mut cursor = 0;
+        let mut diagnostics = HashSet::new();
 
-        let mut diagnostics = vec![];
-
-        while cursor < self.lexemes.len() {
-            match statement::parse(self, cursor) {
-                Ok((statement, new_cursor)) => {
-                    cursor = new_cursor;
-                    statements.push(statement);
-                }
+        for result in self.into_iter() {
+            match result {
+                Ok(statement) => statements.push(statement),
                 Err(diagnostic) => {
-                    diagnostics.push(diagnostic);
-                    cursor += 1;
+                    diagnostics.insert(diagnostic);
                 }
             }
         }
@@ -75,7 +73,28 @@ impl Parser {
     }
 }
 
-#[derive(Debug)]
+impl Iterator for Parser {
+    type Item = Result<Statement, Diagnostic>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.cursor >= self.lexemes.len() {
+            return None;
+        }
+
+        match statement::parse(self, self.cursor) {
+            Ok((statement, new_cursor)) => {
+                self.cursor = new_cursor;
+                Some(Ok(statement))
+            }
+            Err(diagnostic) => {
+                self.cursor += 1;
+                Some(Err(diagnostic))
+            }
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Diagnostic {
     pub range: Range,
     pub message: String,
@@ -119,11 +138,11 @@ mod tests {
     fn parses_subtraction() {
         let code = "123 - 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(lexemes);
-        let result = parser.parse().unwrap();
+        let parser = Parser::new(lexemes).parse();
+        let parser = parser.unwrap();
 
         assert_eq!(
-            result,
+            parser,
             Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
