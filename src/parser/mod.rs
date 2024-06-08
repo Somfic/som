@@ -48,9 +48,11 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Symbol, Diagnostic> {
+    pub fn parse(&mut self) -> Result<Symbol, Vec<Diagnostic>> {
         let mut statements = vec![];
         let mut cursor = 0;
+
+        let mut diagnostics = vec![];
 
         while cursor < self.lexemes.len() {
             match statement::parse(self, cursor) {
@@ -58,11 +60,18 @@ impl Parser {
                     cursor = new_cursor;
                     statements.push(statement);
                 }
-                Err(diagnostic) => return Err(diagnostic),
+                Err(diagnostic) => {
+                    diagnostics.push(diagnostic);
+                    cursor += 1;
+                }
             }
         }
 
-        Ok(Symbol::Statement(Statement::Block(statements)))
+        if diagnostics.is_empty() {
+            Ok(Symbol::Statement(Statement::Block(statements)))
+        } else {
+            Err(diagnostics)
+        }
     }
 }
 
