@@ -31,7 +31,10 @@ pub fn parse(
     let expression_handler = parser.lookup.expression_lookup.get(token);
 
     if expression_handler.is_none() {
-        return Err(Diagnostic::error(lexeme.range(), "Expected expression"));
+        return Err(Diagnostic::error(
+            lexeme.range(),
+            "Cannot parse this expression",
+        ));
     }
 
     let expression_handler = expression_handler.unwrap();
