@@ -1,7 +1,13 @@
 macro_rules! expect_token {
     ($parser:expr, $cursor:expr, $token_type:expr) => {{
-        crate::parser::macros::expect_tokens!($parser, $cursor, ($token_type))
-            .map(|(lexemes, cursor)| (lexemes.first().unwrap().clone(), cursor))
+        let lexeme = crate::parser::macros::expect_tokens!($parser, $cursor, ($token_type))
+            .map(|(lexemes, cursor)| (lexemes.first().unwrap().clone(), cursor))?;
+
+        if let Lexeme::Valid(token) = &lexeme.0 {
+            Ok((token, lexeme.1))
+        } else {
+            Err(Diagnostic::error(lexeme.0.range(), "Invalid token"))
+        }
     }};
 }
 
@@ -13,7 +19,8 @@ macro_rules! expect_tokens {
                 let lexeme = $parser.lexemes.get(i);
 
                 if lexeme.is_none() {
-                    return Err(Diagnostic::error($parser.lexemes.last().unwrap().range(), "Unexpected end of input"));
+                    let expected_token_types = vec![$($token_type.to_string()),*];
+                    return Err(Diagnostic::error($parser.lexemes.last().unwrap().range(), format!("Expected `{}`", expected_token_types.join("` followed by `"))));
                 }
 
                 let lexeme = lexeme.unwrap();

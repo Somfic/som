@@ -1,3 +1,4 @@
+use core::panic;
 use std::collections::HashMap;
 
 use super::{
@@ -118,53 +119,42 @@ impl Default for Lookup {
         // Literals and symbols
         lookup.add_expression_handler(TokenType::Decimal, |parser, cursor| {
             let (decimal, cursor) = expect_token!(parser, cursor, TokenType::Decimal)?;
-            if let Lexeme::Valid(decimal) = decimal {
-                if let TokenValue::Decimal(value) = decimal.value {
-                    return Ok((Expression::Number(value), cursor));
-                }
-                panic!("Token with decimal type does not have a decimal value");
+
+            if let TokenValue::Decimal(value) = decimal.value {
+                return Ok((Expression::Number(value), cursor));
             }
 
-            Err(Diagnostic::error(decimal.range(), "Expected a decimal"))
+            panic!("expect_token! should return a valid token and handle the error case");
         });
 
         lookup.add_expression_handler(TokenType::Integer, |parser, cursor| {
             let (integer, cursor) = expect_token!(parser, cursor, TokenType::Integer)?;
-            if let Lexeme::Valid(integer) = integer {
-                if let TokenValue::Integer(value) = integer.value {
-                    return Ok((Expression::Number(value as f64), cursor));
-                }
-                panic!("Token with integer type does not have an integer value");
+
+            if let TokenValue::Integer(value) = integer.value {
+                return Ok((Expression::Number(value as f64), cursor));
             }
 
-            Err(Diagnostic::error(integer.range(), "Expected an integer"))
+            panic!("expect_token! should return a valid token and handle the error case");
         });
 
         lookup.add_expression_handler(TokenType::String, |parser, cursor| {
             let (string, cursor) = expect_token!(parser, cursor, TokenType::String)?;
-            if let Lexeme::Valid(string) = string {
-                if let TokenValue::String(string) = string.value.clone() {
-                    return Ok((Expression::String(string), cursor));
-                }
-                panic!("Token with string type does not have a string value");
+
+            if let TokenValue::String(string) = string.value.clone() {
+                return Ok((Expression::String(string), cursor));
             }
 
-            Err(Diagnostic::error(string.range(), "Expected a string"))
+            panic!("expect_token! should return a valid token and handle the error case");
         });
 
         lookup.add_expression_handler(TokenType::Identifier, |parser, cursor| {
             let (identifier, cursor) = expect_token!(parser, cursor, TokenType::Identifier)?;
-            if let Lexeme::Valid(identifier) = identifier {
-                if let TokenValue::Identifier(identifier) = identifier.value.clone() {
-                    return Ok((Expression::Identifier(identifier), cursor));
-                }
-                panic!("Token with identifier type does not have an identifier value");
+
+            if let TokenValue::Identifier(identifier) = identifier.value.clone() {
+                return Ok((Expression::Identifier(identifier), cursor));
             }
 
-            Err(Diagnostic::error(
-                identifier.range(),
-                "Expected an identifier",
-            ))
+            panic!("expect_token! should return a valid token and handle the error case");
         });
 
         lookup.add_statement_handler(TokenType::Semicolon, |parser, cursor| {
