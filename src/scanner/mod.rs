@@ -1,6 +1,4 @@
 use lexeme::Lexeme;
-use lexeme::Range;
-use lexeme::Token;
 use lexeme::TokenType;
 use lexeme::TokenValue;
 use regex::Regex;

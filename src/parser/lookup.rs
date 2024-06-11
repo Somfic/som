@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use super::{
     expression, macros::expect_token, BinaryOperation, Diagnostic, Expression, Parser, Statement,
 };
-use crate::scanner::lexeme::{Lexeme, Token, TokenType, TokenValue};
+use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum BindingPower {
