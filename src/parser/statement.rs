@@ -1,11 +1,10 @@
-use crate::scanner::lexeme::{Lexeme, Range, Token, TokenType};
+use crate::scanner::lexeme::{Lexeme, Range, TokenType};
 
 use super::{
     expression, lookup::BindingPower, macros::expect_token, Diagnostic, Parser, Statement,
 };
 
 pub fn parse(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagnostic> {
-    let mut cursor = cursor;
     let lexeme = parser.lexemes.get(cursor);
 
     if lexeme.is_none() {
