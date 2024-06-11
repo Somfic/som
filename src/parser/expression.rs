@@ -24,16 +24,16 @@ pub fn parse(
     let lexeme = lexeme.unwrap();
 
     let token = match lexeme {
-        Lexeme::Valid(token, _) => token,
+        Lexeme::Valid(token) => token,
         Lexeme::Invalid(_) => return Err(Diagnostic::error(lexeme.range(), "Invalid token")),
     };
 
-    let expression_handler = parser.lookup.expression_lookup.get(token);
+    let expression_handler = parser.lookup.expression_lookup.get(&token.token_type);
 
     if expression_handler.is_none() {
         return Err(Diagnostic::error(
             lexeme.range(),
-            "Cannot parse this expression",
+            "Expected expression".to_string(),
         ));
     }
 
@@ -44,21 +44,21 @@ pub fn parse(
 
     while let Some(lexeme) = parser.lexemes.get(cursor) {
         let token = match lexeme {
-            Lexeme::Valid(token, _) => token,
+            Lexeme::Valid(token) => token,
             Lexeme::Invalid(_) => break,
         };
 
         let token_binding_power = parser
             .lookup
             .binding_power_lookup
-            .get(token)
+            .get(&token.token_type)
             .unwrap_or(&BindingPower::None);
 
         if binding_power > token_binding_power {
             break;
         }
 
-        let left_expression_handler = parser.lookup.left_expression_lookup.get(token);
+        let left_expression_handler = parser.lookup.left_expression_lookup.get(&token.token_type);
 
         if left_expression_handler.is_none() {
             break;

@@ -6,6 +6,7 @@ use crate::scanner::lexeme::{Lexeme, Range};
 
 pub mod expression;
 pub mod lookup;
+pub mod macros;
 pub mod statement;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,7 +20,7 @@ pub enum Symbol {
 pub enum Expression {
     Number(f64),
     String(String),
-    Symbol(String),
+    Identifier(String),
     Binary(Box<Expression>, BinaryOperation, Box<Expression>),
     Grouping(Box<Expression>),
 }
@@ -248,6 +249,8 @@ mod tests {
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
         let result = parser.parse().unwrap();
+
+        println!("{:?}", result);
 
         assert_eq!(
             result,
