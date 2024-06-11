@@ -1,6 +1,8 @@
-use crate::scanner::lexeme::{Lexeme, Range, Token};
+use crate::scanner::lexeme::{Lexeme, Range, Token, TokenType};
 
-use super::{expression, lookup::BindingPower, Diagnostic, Parser, Statement};
+use super::{
+    expression, lookup::BindingPower, macros::expect_token, Diagnostic, Parser, Statement,
+};
 
 pub fn parse(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagnostic> {
     let mut cursor = cursor;
@@ -25,18 +27,7 @@ pub fn parse(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagn
     let (expression, new_cursor) = expression::parse(parser, cursor, &BindingPower::None)?;
 
     // Expect a semicolon
-    let lexeme = parser.lexemes.get(new_cursor);
-    if let Some(Lexeme::Valid(Token::Semicolon, _)) = lexeme {
-        cursor = new_cursor + 1;
-    } else {
-        return Err(Diagnostic::error(
-            &Range {
-                position: parser.lexemes.get(new_cursor - 1).unwrap().range().position + 1,
-                length: 1,
-            },
-            "Expected semicolon",
-        ));
-    }
+    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Semicolon)?;
 
     Ok((Statement::Expression(expression), cursor))
 }

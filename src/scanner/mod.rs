@@ -1,11 +1,13 @@
 use lexeme::Lexeme;
 use lexeme::Range;
 use lexeme::Token;
+use lexeme::TokenType;
+use lexeme::TokenValue;
 use regex::Regex;
 
 pub mod lexeme;
 
-type SpecItem = (Regex, fn(&str) -> Token);
+type SpecItem = (Regex, fn(&str) -> (TokenType, TokenValue));
 
 macro_rules! r {
     ($pattern:expr) => {
@@ -25,52 +27,97 @@ impl Scanner {
             input,
             cursor: 0,
             spec: vec![
-                (r!(r"(\s+)"), |_| Token::Ignore),
-                (r!(r"//(.*)"), |_| Token::Ignore),
-                (r!(r"(\()"), |_| Token::ParenOpen),
-                (r!(r"(\))"), |_| Token::ParenClose),
-                (r!(r"(\{)"), |_| Token::CurlyOpen),
-                (r!(r"(\})"), |_| Token::CurlyClose),
-                (r!(r"(\[)"), |_| Token::SquareOpen),
-                (r!(r"(\])"), |_| Token::SquareClose),
-                (r!(r"(\,)"), |_| Token::Comma),
-                (r!(r"(\.)"), |_| Token::Dot),
-                (r!(r"(\:)"), |_| Token::Colon),
-                (r!(r"(;)"), |_| Token::Semicolon),
-                (r!(r"(\+)"), |_| Token::Plus),
-                (r!(r"(-)"), |_| Token::Minus),
-                (r!(r"(/)"), |_| Token::Slash),
-                (r!(r"(\*)"), |_| Token::Star),
-                (r!(r"(=)"), |_| Token::Equal),
-                (r!(r"(!)"), |_| Token::Not),
-                (r!(r"(<)"), |_| Token::LessThan),
-                (r!(r"(>)"), |_| Token::GreaterThan),
-                (r!(r"(<=)"), |_| Token::LessThanOrEqual),
-                (r!(r"(>=)"), |_| Token::GreaterThanOrEqual),
-                (r!(r"(==)"), |_| Token::Equality),
-                (r!(r"(!=)"), |_| Token::Inequality),
-                (r!(r"(if)"), |_| Token::If),
-                (r!(r"(else)"), |_| Token::Else),
-                (r!(r"(while)"), |_| Token::While),
-                (r!(r"(for)"), |_| Token::For),
-                (r!(r"(let)"), |_| Token::Let),
-                (r!(r"(fn)"), |_| Token::Function),
-                (r!(r"(return)"), |_| Token::Return),
-                (r!(r"(true)"), |_| Token::Boolean(true)),
-                (r!(r"(false)"), |_| Token::Boolean(false)),
-                (r!(r"(\d+\.\d+)"), |value| {
-                    Token::Decimal(value.parse().unwrap())
+                (r!(r"(\s+)"), |_| (TokenType::Ignore, TokenValue::None)),
+                (r!(r"//(.*)"), |_| (TokenType::Ignore, TokenValue::None)),
+                (r!(r"(\()"), |_| (TokenType::ParenOpen, TokenValue::None)),
+                (r!(r"(\))"), |_| (TokenType::ParenClose, TokenValue::None)),
+                (r!(r"(\{)"), |_| (TokenType::CurlyOpen, TokenValue::None)),
+                (r!(r"(\})"), |_| (TokenType::CurlyClose, TokenValue::None)),
+                (r!(r"(\[)"), |_| (TokenType::SquareOpen, TokenValue::None)),
+                (r!(r"(\])"), |_| (TokenType::SquareClose, TokenValue::None)),
+                (r!(r"(\,)"), |_| (TokenType::Comma, TokenValue::None)),
+                (r!(r"(\.)"), |_| (TokenType::Dot, TokenValue::None)),
+                (r!(r"(\:)"), |_| (TokenType::Colon, TokenValue::None)),
+                (r!(r"(;)"), |_| (TokenType::Semicolon, TokenValue::None)),
+                (r!(r"(\+)"), |_| (TokenType::Plus, TokenValue::None)),
+                (r!(r"(-)"), |_| (TokenType::Minus, TokenValue::None)),
+                (r!(r"(/)"), |_| (TokenType::Slash, TokenValue::None)),
+                (r!(r"(\*)"), |_| (TokenType::Star, TokenValue::None)),
+                (r!(r"(=)"), |_| (TokenType::Equal, TokenValue::None)),
+                (r!(r"(!)"), |_| (TokenType::Not, TokenValue::None)),
+                (r!(r"(<)"), |_| (TokenType::LessThan, TokenValue::None)),
+                (r!(r"(>)"), |_| (TokenType::GreaterThan, TokenValue::None)),
+                (r!(r"(<=)"), |_| {
+                    (TokenType::LessThanOrEqual, TokenValue::None)
                 }),
-                (r!(r"(\d+)"), |value| Token::Integer(value.parse().unwrap())),
-                (r!(r"'([^']*)'"), |value| Token::String(value.to_string())),
+                (r!(r"(>=)"), |_| {
+                    (TokenType::GreaterThanOrEqual, TokenValue::None)
+                }),
+                (r!(r"(==)"), |_| (TokenType::Equality, TokenValue::None)),
+                (r!(r"(!=)"), |_| (TokenType::Inequality, TokenValue::None)),
+                (r!(r"(if)"), |_| (TokenType::If, TokenValue::None)),
+                (r!(r"(else)"), |_| (TokenType::Else, TokenValue::None)),
+                (r!(r"(while)"), |_| (TokenType::While, TokenValue::None)),
+                (r!(r"(for)"), |_| (TokenType::For, TokenValue::None)),
+                (r!(r"(let)"), |_| (TokenType::Let, TokenValue::None)),
+                (r!(r"(fn)"), |_| (TokenType::Function, TokenValue::None)),
+                (r!(r"(return)"), |_| (TokenType::Return, TokenValue::None)),
+                (r!(r"(true)"), |_| {
+                    (TokenType::Boolean, TokenValue::Boolean(true))
+                }),
+                (r!(r"(false)"), |_| {
+                    (TokenType::Boolean, TokenValue::Boolean(false))
+                }),
+                (r!(r"(\d+\.\d+)"), |value| {
+                    (
+                        TokenType::Decimal,
+                        TokenValue::Decimal(value.parse().unwrap()),
+                    )
+                }),
+                (r!(r"(\d+)"), |value| {
+                    (
+                        TokenType::Integer,
+                        TokenValue::Integer(value.parse().unwrap()),
+                    )
+                }),
+                (r!(r"'([^']*)'"), |value| {
+                    (TokenType::String, TokenValue::String(value.to_string()))
+                }),
                 (r!(r"`([^`]*)`"), |value| {
-                    Token::Character(value.chars().next().unwrap())
+                    (
+                        TokenType::Character,
+                        TokenValue::Character(value.chars().next().unwrap()),
+                    )
                 }),
                 (r!(r"([a-zA-Z_]\w*)"), |value| {
-                    Token::Identifier(value.to_string())
+                    (
+                        TokenType::Identifier,
+                        TokenValue::Identifier(value.to_string()),
+                    )
                 }),
             ],
         }
+    }
+
+    fn find_lexeme(&self, cursor: usize) -> Option<(Lexeme, usize)> {
+        let haystack = &self.input.chars().skip(cursor).collect::<String>();
+
+        for (regex, handler) in &self.spec {
+            let capture = regex.captures(haystack);
+
+            if let Some((capture, matched)) = capture.and_then(|c| Some((c.get(0)?, c.get(1)?))) {
+                let value = matched.as_str();
+                let (token_type, token_value) = handler(value);
+                let length = capture.as_str().chars().count(); // TODO: Check if we shouldn't use as_str().len() instead
+                let new_cursor = cursor + capture.end();
+                return Some((
+                    Lexeme::valid(token_type, token_value, cursor, length),
+                    new_cursor,
+                ));
+            }
+        }
+
+        None
     }
 }
 
@@ -82,38 +129,12 @@ impl Iterator for Scanner {
             return None;
         }
 
-        let find_token = |input: &str, cursor: usize| -> Option<(Token, Range, usize)> {
-            let haystack = &input.chars().skip(cursor).collect::<String>();
-
-            for (regex, handler) in &self.spec {
-                let capture = regex.captures(haystack);
-
-                if let Some((capture, matched)) = capture.and_then(|c| Some((c.get(0)?, c.get(1)?)))
-                {
-                    let value = matched.as_str();
-                    let token = handler(value);
-                    let length = capture.as_str().chars().count(); // TODO: Check if we shouldn't use as_str().len() instead
-                    let new_cursor = cursor + capture.end();
-                    return Some((
-                        token,
-                        Range {
-                            position: cursor,
-                            length,
-                        },
-                        new_cursor,
-                    ));
-                }
-            }
-
-            None
-        };
-
         // Search for the next lexeme. If we get a None value, keep increasing the cursor until the next lexeme would be found. Return an Invalid Lexeme, and have the next call to this function handle the next valid lexeme.
-        let token = find_token(&self.input, self.cursor);
-        if token.is_none() {
+        let lexeme = self.find_lexeme(self.cursor);
+        if lexeme.is_none() {
             let cursor_start = self.cursor;
             let mut cursor = self.cursor;
-            while find_token(&self.input, cursor).is_none() {
+            while self.find_lexeme(cursor).is_none() {
                 cursor += 1;
 
                 if cursor >= self.input.chars().count() {
@@ -126,14 +147,16 @@ impl Iterator for Scanner {
             return Some(Lexeme::invalid(cursor_start, length));
         }
 
-        let (token, range, new_cursor) = token.unwrap();
+        let (lexeme, new_cursor) = lexeme.unwrap();
         self.cursor = new_cursor;
 
-        if token == Token::Ignore {
-            self.next()
-        } else {
-            Some(Lexeme::valid(token, range.position, range.length))
+        if let Lexeme::Valid(token) = &lexeme {
+            if token.token_type == TokenType::Ignore {
+                return self.next();
+            }
         }
+
+        Some(lexeme)
     }
 }
 
@@ -153,14 +176,27 @@ mod tests {
 
     #[test]
     fn parses_integers() {
-        test_scanner("123", vec![Lexeme::valid(Token::Integer(123), 0, 3)]);
+        test_scanner(
+            "123",
+            vec![Lexeme::valid(
+                TokenType::Integer,
+                TokenValue::Integer(123),
+                0,
+                3,
+            )],
+        );
     }
 
     #[test]
     fn parses_decimals() {
         test_scanner(
             "123.456",
-            vec![Lexeme::valid(Token::Decimal(123.456), 0, 7)],
+            vec![Lexeme::valid(
+                TokenType::Decimal,
+                TokenValue::Decimal(123.456),
+                0,
+                7,
+            )],
         );
     }
 
@@ -168,25 +204,50 @@ mod tests {
     fn parses_strings() {
         test_scanner(
             "'hello'",
-            vec![Lexeme::valid(Token::String("hello".to_string()), 0, 7)],
+            vec![Lexeme::valid(
+                TokenType::String,
+                TokenValue::String("hello".to_string()),
+                0,
+                7,
+            )],
         );
     }
 
     #[test]
     fn parses_characters() {
-        test_scanner("`a`", vec![Lexeme::valid(Token::Character('a'), 0, 3)]);
+        test_scanner(
+            "`a`",
+            vec![Lexeme::valid(
+                TokenType::Character,
+                TokenValue::Character('a'),
+                0,
+                3,
+            )],
+        );
     }
-
     #[test]
     fn parses_emoji() {
-        test_scanner("`🦀`", vec![Lexeme::valid(Token::Character('🦀'), 0, 3)]);
+        test_scanner(
+            "`🦀`",
+            vec![Lexeme::valid(
+                TokenType::Character,
+                TokenValue::Character('🦀'),
+                0,
+                3,
+            )],
+        );
     }
 
     #[test]
     fn parses_identifiers() {
         test_scanner(
             "foo",
-            vec![Lexeme::valid(Token::Identifier("foo".to_string()), 0, 3)],
+            vec![Lexeme::valid(
+                TokenType::Identifier,
+                TokenValue::Identifier("foo".to_string()),
+                0,
+                3,
+            )],
         );
     }
 
@@ -195,22 +256,21 @@ mod tests {
         test_scanner(
             "+ - / * =",
             vec![
-                Lexeme::valid(Token::Plus, 0, 1),
-                Lexeme::valid(Token::Minus, 2, 1),
-                Lexeme::valid(Token::Slash, 4, 1),
-                Lexeme::valid(Token::Star, 6, 1),
-                Lexeme::valid(Token::Equal, 8, 1),
+                Lexeme::valid(TokenType::Plus, TokenValue::None, 0, 1),
+                Lexeme::valid(TokenType::Minus, TokenValue::None, 2, 1),
+                Lexeme::valid(TokenType::Slash, TokenValue::None, 4, 1),
+                Lexeme::valid(TokenType::Star, TokenValue::None, 6, 1),
+                Lexeme::valid(TokenType::Equal, TokenValue::None, 8, 1),
             ],
         );
     }
-
     #[test]
     fn parses_parentheses() {
         test_scanner(
             "( )",
             vec![
-                Lexeme::valid(Token::ParenOpen, 0, 1),
-                Lexeme::valid(Token::ParenClose, 2, 1),
+                Lexeme::valid(TokenType::ParenOpen, TokenValue::None, 0, 1),
+                Lexeme::valid(TokenType::ParenClose, TokenValue::None, 2, 1),
             ],
         );
     }
@@ -220,8 +280,8 @@ mod tests {
         test_scanner(
             "{ }",
             vec![
-                Lexeme::valid(Token::CurlyOpen, 0, 1),
-                Lexeme::valid(Token::CurlyClose, 2, 1),
+                Lexeme::valid(TokenType::CurlyOpen, TokenValue::None, 0, 1),
+                Lexeme::valid(TokenType::CurlyClose, TokenValue::None, 2, 1),
             ],
         );
     }
@@ -231,21 +291,21 @@ mod tests {
         test_scanner(
             "123 + 456",
             vec![
-                Lexeme::valid(Token::Integer(123), 0, 3),
-                Lexeme::valid(Token::Plus, 4, 1),
-                Lexeme::valid(Token::Integer(456), 6, 3),
+                Lexeme::valid(TokenType::Integer, TokenValue::Integer(123), 0, 3),
+                Lexeme::valid(TokenType::Plus, TokenValue::None, 4, 1),
+                Lexeme::valid(TokenType::Integer, TokenValue::Integer(456), 6, 3),
             ],
         );
     }
 
     #[test]
-    fn parsers_invalid_lexeme() {
+    fn parses_invalid_lexeme() {
         test_scanner(
             "123~456",
             vec![
-                Lexeme::valid(Token::Integer(123), 0, 3),
+                Lexeme::valid(TokenType::Integer, TokenValue::Integer(123), 0, 3),
                 Lexeme::invalid(3, 1),
-                Lexeme::valid(Token::Integer(456), 4, 3),
+                Lexeme::valid(TokenType::Integer, TokenValue::Integer(456), 4, 3),
             ],
         );
     }
@@ -255,7 +315,7 @@ mod tests {
         test_scanner(
             "123~~~±±±",
             vec![
-                Lexeme::valid(Token::Integer(123), 0, 3),
+                Lexeme::valid(TokenType::Integer, TokenValue::Integer(123), 0, 3),
                 Lexeme::invalid(3, 6),
             ],
         );
@@ -266,9 +326,9 @@ mod tests {
         test_scanner(
             "123;456",
             vec![
-                Lexeme::valid(Token::Integer(123), 0, 3),
-                Lexeme::valid(Token::Semicolon, 3, 1),
-                Lexeme::valid(Token::Integer(456), 4, 3),
+                Lexeme::valid(TokenType::Integer, TokenValue::Integer(123), 0, 3),
+                Lexeme::valid(TokenType::Semicolon, TokenValue::None, 3, 1),
+                Lexeme::valid(TokenType::Integer, TokenValue::Integer(456), 4, 3),
             ],
         );
     }
@@ -276,6 +336,6 @@ mod tests {
     fn test_scanner(input: &str, expected: Vec<Lexeme>) {
         let lexemes = Scanner::new(input.to_string()).collect::<Vec<_>>();
 
-        assert_eq!(lexemes, expected,);
+        assert_eq!(lexemes, expected);
     }
 }

@@ -2,28 +2,29 @@ use std::{fmt::Display, hash::Hash};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Lexeme {
-    Valid(Token, Range),
+    Valid(Token),
     Invalid(Range),
 }
 
 impl Display for Lexeme {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Lexeme::Valid(token, range) => write!(f, "{:?} at {:?}", token, range),
+            Lexeme::Valid(token) => write!(f, "{:?} at {:?}", token, token.range),
             Lexeme::Invalid(range) => write!(f, "Invalid token at {:?}", range),
         }
     }
 }
 
 impl Lexeme {
-    pub fn valid(token: Token, start: usize, length: usize) -> Lexeme {
-        Lexeme::Valid(
-            token,
+    pub fn valid(token_type: TokenType, value: TokenValue, start: usize, length: usize) -> Lexeme {
+        Lexeme::Valid(Token::new(
+            token_type,
+            value,
             Range {
                 position: start,
                 length,
             },
-        )
+        ))
     }
 
     pub fn invalid(start: usize, length: usize) -> Lexeme {
@@ -35,7 +36,7 @@ impl Lexeme {
 
     pub fn range(&self) -> &Range {
         match self {
-            Lexeme::Valid(_, range) => range,
+            Lexeme::Valid(token) => &token.range,
             Lexeme::Invalid(range) => range,
         }
     }
@@ -47,11 +48,38 @@ pub struct Range {
     pub length: usize,
 }
 
-#[derive(Debug, Clone)]
-pub enum Token {
+#[derive(Debug, Clone, PartialEq)]
+pub struct Token {
+    pub token_type: TokenType,
+    pub value: TokenValue,
+    pub range: Range,
+}
+
+impl Token {
+    pub fn new(token_type: TokenType, value: TokenValue, range: Range) -> Token {
+        Token {
+            token_type,
+            value,
+            range,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenValue {
+    None,
+    Boolean(bool),
+    Integer(i64),
+    Decimal(f64),
+    String(String),
+    Character(char),
+    Identifier(String),
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+pub enum TokenType {
     /// A token that should be ignored. This is used for whitespace, comments, etc.
     Ignore,
-
     /// An opening parenthesis; `(`.
     ParenOpen,
     /// A closing parenthesis; `)`.
@@ -119,62 +147,59 @@ pub enum Token {
     Return,
 
     /// A boolean; `true`, `false`.
-    Boolean(bool),
+    Boolean,
     /// A number; `42`, `12`, `-7`.
-    Integer(i64),
+    Integer,
     /// A decimal; `3.14`, `2.718`, `-1.0`.
-    Decimal(f64),
+    Decimal,
     /// A string; `"foo"`, `"bar"`, `"baz"`.
-    String(String),
+    String,
     /// A character; `'a'`, `'b'`, `'c'`.
-    Character(char),
+    Character,
 
     /// An identifying name; `foo`, `bar`, `baz`.
-    Identifier(String),
+    Identifier,
 }
 
-impl Hash for Token {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // Hash based on enum variant, not value
-        std::mem::discriminant(self).hash(state);
-    }
-}
-
-impl Eq for Token {}
-
-impl PartialEq for Token {
-    fn eq(&self, other: &Self) -> bool {
-        core::mem::discriminant(self) == core::mem::discriminant(other)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::Token;
-
-    #[test]
-    fn partial_eq_impl() {
-        let a = Token::Integer(42);
-        let b = Token::Integer(41);
-        let c = Token::String("42".to_owned());
-
-        assert_eq!(a, b);
-        assert_ne!(a, c);
-    }
-
-    #[test]
-    fn hash_impl() {
-        use std::collections::hash_map::DefaultHasher;
-        use std::hash::{Hash, Hasher};
-
-        let mut hasher = DefaultHasher::new();
-        Token::Integer(42).hash(&mut hasher);
-        let a = hasher.finish();
-
-        let mut hasher = DefaultHasher::new();
-        Token::Integer(41).hash(&mut hasher);
-        let b = hasher.finish();
-
-        assert_eq!(a, b);
+impl Display for TokenType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TokenType::Ignore => write!(f, ""),
+            TokenType::ParenOpen => write!(f, "("),
+            TokenType::ParenClose => write!(f, ")"),
+            TokenType::CurlyOpen => write!(f, "{{"),
+            TokenType::CurlyClose => write!(f, "}}"),
+            TokenType::SquareOpen => write!(f, "["),
+            TokenType::SquareClose => write!(f, "]"),
+            TokenType::Comma => write!(f, ","),
+            TokenType::Dot => write!(f, "."),
+            TokenType::Colon => write!(f, ":"),
+            TokenType::Semicolon => write!(f, ";"),
+            TokenType::Plus => write!(f, "+"),
+            TokenType::Minus => write!(f, "-"),
+            TokenType::Slash => write!(f, "/"),
+            TokenType::Star => write!(f, "*"),
+            TokenType::Equal => write!(f, "="),
+            TokenType::Not => write!(f, "!"),
+            TokenType::LessThan => write!(f, "<"),
+            TokenType::GreaterThan => write!(f, ">"),
+            TokenType::LessThanOrEqual => write!(f, "<="),
+            TokenType::GreaterThanOrEqual => write!(f, ">="),
+            TokenType::Equality => write!(f, "=="),
+            TokenType::Inequality => write!(f, "!="),
+            TokenType::If => write!(f, "if"),
+            TokenType::Else => write!(f, "else"),
+            TokenType::While => write!(f, "while"),
+            TokenType::For => write!(f, "for"),
+            TokenType::Let => write!(f, "let"),
+            TokenType::Function => write!(f, "fn"),
+            TokenType::Return => write!(f, "return"),
+            TokenType::Boolean => write!(f, "boolean"),
+            TokenType::Integer => write!(f, "integer"),
+            TokenType::Decimal => write!(f, "decimal"),
+            TokenType::String => write!(f, "string"),
+            TokenType::Character => write!(f, "character"),
+            TokenType::Identifier => write!(f, "identifier"),
+        }
     }
 }

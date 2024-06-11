@@ -1,42 +1,9 @@
 use std::collections::HashMap;
 
-use super::{expression, BinaryOperation, Diagnostic, Expression, Parser, Statement};
-use crate::scanner::lexeme::{Lexeme, Token};
-
-macro_rules! expect_tokens {
-     ($parser:expr, $cursor:expr, $(($($token:pat),*)),*) => {{
-            let mut i = $cursor;
-            let mut lexemes = Vec::new();
-             $(
-                let lexeme = $parser.lexemes.get(i);
-
-                if lexeme.is_none() {
-                    return Err(Diagnostic::error($parser.lexemes.last().unwrap().range(), "Unexpected end of input"));
-                }
-
-                let lexeme = lexeme.unwrap();
-
-                if let Lexeme::Valid(token, _) = lexeme {
-                     $(
-                        if let $token = token {
-                            // Continue
-                        } else {
-                            // Use to string for the token
-                            return Err(Diagnostic::error(lexeme.range(), format!("Expected `{}`", stringify!($token))));
-                        }
-                    )*
-
-                    lexemes.push(lexeme);
-                    i += 1;
-                } else {
-                    return Err(Diagnostic::error(lexeme.range(), "Invalid token"));
-                }
-            )*
-
-            // If all tokens matched, return the matched tokens
-            Ok((lexemes, i))
-        }};
-}
+use super::{
+    expression, macros::expect_token, BinaryOperation, Diagnostic, Expression, Parser, Statement,
+};
+use crate::scanner::lexeme::{Lexeme, Token, TokenType, TokenValue};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum BindingPower {
@@ -59,24 +26,24 @@ pub type LeftExpressionHandler =
     fn(&Parser, usize, Expression, &BindingPower) -> Result<(Expression, usize), Diagnostic>;
 
 pub struct Lookup {
-    pub statement_lookup: HashMap<Token, StatementHandler>,
-    pub expression_lookup: HashMap<Token, ExpressionHandler>,
-    pub left_expression_lookup: HashMap<Token, LeftExpressionHandler>,
-    pub binding_power_lookup: HashMap<Token, BindingPower>,
+    pub statement_lookup: HashMap<TokenType, StatementHandler>,
+    pub expression_lookup: HashMap<TokenType, ExpressionHandler>,
+    pub left_expression_lookup: HashMap<TokenType, LeftExpressionHandler>,
+    pub binding_power_lookup: HashMap<TokenType, BindingPower>,
 }
 
 impl Lookup {
-    pub(crate) fn add_statement_handler(&mut self, token: Token, handler: StatementHandler) {
+    pub(crate) fn add_statement_handler(&mut self, token: TokenType, handler: StatementHandler) {
         self.statement_lookup.insert(token, handler);
     }
 
-    pub(crate) fn add_expression_handler(&mut self, token: Token, handler: ExpressionHandler) {
+    pub(crate) fn add_expression_handler(&mut self, token: TokenType, handler: ExpressionHandler) {
         self.expression_lookup.insert(token, handler);
     }
 
     pub(crate) fn add_left_expression_handler(
         &mut self,
-        token: Token,
+        token: TokenType,
         binding_power: BindingPower,
         handler: LeftExpressionHandler,
     ) {
@@ -96,7 +63,7 @@ impl Default for Lookup {
 
         // Addative
         lookup.add_left_expression_handler(
-            Token::Plus,
+            TokenType::Plus,
             BindingPower::Additive,
             |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
@@ -109,7 +76,7 @@ impl Default for Lookup {
         );
 
         lookup.add_left_expression_handler(
-            Token::Minus,
+            TokenType::Minus,
             BindingPower::Additive,
             |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
@@ -123,7 +90,7 @@ impl Default for Lookup {
 
         // Multiplicative
         lookup.add_left_expression_handler(
-            Token::Star,
+            TokenType::Star,
             BindingPower::Multiplicative,
             |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
@@ -136,7 +103,7 @@ impl Default for Lookup {
         );
 
         lookup.add_left_expression_handler(
-            Token::Slash,
+            TokenType::Slash,
             BindingPower::Multiplicative,
             |parser, cursor, lhs, _binding| {
                 let (rhs, cursor) =
@@ -149,82 +116,69 @@ impl Default for Lookup {
         );
 
         // Literals and symbols
-        lookup.add_expression_handler(Token::Decimal(0.0), |parser, cursor| {
-            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Decimal(_)))?;
-            let integer = tokens.first().unwrap();
-            if let Lexeme::Valid(Token::Decimal(value), _) = integer {
-                Ok((Expression::Number(*value), cursor))
-            } else {
-                Err(Diagnostic::error(integer.range(), "Expected a decimal"))
-            }
-        });
-
-        lookup.add_expression_handler(Token::Integer(0), |parser, cursor| {
-            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Integer(_)))?;
-            let integer = tokens.first().unwrap();
-            if let Lexeme::Valid(Token::Integer(value), _) = integer {
-                Ok((Expression::Number(*value as f64), cursor))
-            } else {
-                Err(Diagnostic::error(integer.range(), "Expected an integer"))
-            }
-        });
-
-        lookup.add_expression_handler(Token::String("".to_string()), |parser, cursor| {
-            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::String(_)))?;
-            let string = tokens.first().unwrap();
-            if let Lexeme::Valid(Token::String(value), _) = string {
-                Ok((Expression::String(value.clone()), cursor))
-            } else {
-                Err(Diagnostic::error(string.range(), "Expected a string"))
-            }
-        });
-
-        lookup.add_expression_handler(Token::Identifier("".to_string()), |parser, cursor| {
-            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Identifier(_)))?;
-            let identifier = tokens.first().unwrap();
-            if let Lexeme::Valid(Token::Identifier(value), _) = identifier {
-                Ok((Expression::Symbol(value.clone()), cursor))
-            } else {
-                Err(Diagnostic::error(
-                    identifier.range(),
-                    "Expected an identifier",
-                ))
-            }
-        });
-
-        lookup.add_statement_handler(Token::Semicolon, |parser, cursor| {
-            let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::Primary)?;
-            // Expect a semicolon after the expression
-            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::Semicolon))?;
-            let semicolon = tokens.first().unwrap();
-            if let Lexeme::Valid(Token::Semicolon, _) = semicolon {
-                Ok((Statement::Expression(expression), cursor))
-            } else {
-                Err(Diagnostic::error(semicolon.range(), "Expected a semicolon"))
-            }
-        });
-
-        lookup.add_expression_handler(Token::ParenOpen, |parser, cursor| {
-            let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::ParenOpen))?;
-            let paren_open = tokens.first().unwrap();
-            if let Lexeme::Valid(Token::ParenOpen, _) = paren_open {
-                let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::None)?;
-                let (tokens, cursor) = expect_tokens!(parser, cursor, (Token::ParenClose))?;
-                let paren_close = tokens.first().unwrap();
-                if let Lexeme::Valid(Token::ParenClose, _) = paren_close {
-                    Ok((Expression::Grouping(Box::new(expression)), cursor))
-                } else {
-                    Err(Diagnostic::error(
-                        paren_close.range(),
-                        "Expected a closing parenthesis",
-                    ))
+        lookup.add_expression_handler(TokenType::Decimal, |parser, cursor| {
+            let (decimal, cursor) = expect_token!(parser, cursor, TokenType::Decimal)?;
+            if let Lexeme::Valid(decimal) = decimal {
+                if let TokenValue::Decimal(value) = decimal.value {
+                    return Ok((Expression::Number(value), cursor));
                 }
-            } else {
-                Err(Diagnostic::error(
-                    paren_open.range(),
-                    "Expected an opening parenthesis",
-                ))
+                panic!("Token with decimal type does not have a decimal value");
             }
+
+            Err(Diagnostic::error(decimal.range(), "Expected a decimal"))
+        });
+
+        lookup.add_expression_handler(TokenType::Integer, |parser, cursor| {
+            let (integer, cursor) = expect_token!(parser, cursor, TokenType::Integer)?;
+            if let Lexeme::Valid(integer) = integer {
+                if let TokenValue::Integer(value) = integer.value {
+                    return Ok((Expression::Number(value as f64), cursor));
+                }
+                panic!("Token with integer type does not have an integer value");
+            }
+
+            Err(Diagnostic::error(integer.range(), "Expected an integer"))
+        });
+
+        lookup.add_expression_handler(TokenType::String, |parser, cursor| {
+            let (string, cursor) = expect_token!(parser, cursor, TokenType::String)?;
+            if let Lexeme::Valid(string) = string {
+                if let TokenValue::String(string) = string.value.clone() {
+                    return Ok((Expression::String(string), cursor));
+                }
+                panic!("Token with string type does not have a string value");
+            }
+
+            Err(Diagnostic::error(string.range(), "Expected a string"))
+        });
+
+        lookup.add_expression_handler(TokenType::Identifier, |parser, cursor| {
+            let (identifier, cursor) = expect_token!(parser, cursor, TokenType::Identifier)?;
+            if let Lexeme::Valid(identifier) = identifier {
+                if let TokenValue::Identifier(identifier) = identifier.value.clone() {
+                    return Ok((Expression::Identifier(identifier), cursor));
+                }
+                panic!("Token with identifier type does not have an identifier value");
+            }
+
+            Err(Diagnostic::error(
+                identifier.range(),
+                "Expected an identifier",
+            ))
+        });
+
+        lookup.add_statement_handler(TokenType::Semicolon, |parser, cursor| {
+            let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::Primary)?;
+            let (_, cursor) = expect_token!(parser, cursor, TokenType::Semicolon)?;
+            Ok((Statement::Expression(expression), cursor))
+        });
+
+        lookup.add_expression_handler(TokenType::ParenOpen, |parser, cursor| {
+            let (_, cursor) = expect_token!(parser, cursor, TokenType::ParenOpen)?;
+            let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::None)?;
+            let (_, cursor) = expect_token!(parser, cursor, TokenType::ParenClose)?;
+
+            Ok((Expression::Grouping(Box::new(expression)), cursor))
         });
 
         lookup
