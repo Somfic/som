@@ -109,6 +109,35 @@ impl Diagnostic {
             message: message.into(),
         }
     }
+
+    fn combine(diagnostics: Vec<Diagnostic>) -> Diagnostic {
+        let min_range = diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.range.clone())
+            .min_by_key(|range| range.position)
+            .unwrap();
+
+        let max_range = diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.range.clone())
+            .max_by_key(|range| range.position + range.length)
+            .unwrap();
+
+        Diagnostic {
+            range: Range {
+                position: min_range.position,
+                length: max_range.position + max_range.length - min_range.position,
+            },
+            message: diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.message.clone())
+                .collect::<HashSet<_>>()
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", "),
+        }
+    }
 }
 
 #[cfg(test)]
