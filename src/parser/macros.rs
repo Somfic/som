@@ -1,3 +1,4 @@
+#[allow(unused_macros)]
 macro_rules! expect_statement {
     ($parser:expr, $cursor:expr) => {{
         crate::parser::statement::parse($parser, $cursor)
@@ -127,6 +128,7 @@ macro_rules! expect_tokens {
 
 pub(crate) use expect_any_token;
 pub(crate) use expect_expression;
+#[allow(unused_imports)]
 pub(crate) use expect_statement;
 pub(crate) use expect_token;
 pub(crate) use expect_tokens;

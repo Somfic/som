@@ -4,7 +4,7 @@ use super::{
     macros::{expect_expression, expect_token},
     statement, typing, Diagnostic, Parser,
 };
-use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
+use crate::scanner::lexeme::{TokenType, TokenValue};
 use core::panic;
 use std::collections::HashMap;
 
@@ -79,6 +79,7 @@ impl Lookup {
         self.type_lookup.insert(token, handler);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn add_left_type_handler(&mut self, token: TokenType, handler: LeftTypeHandler) {
         if self.left_type_lookup.contains_key(&token) {
             panic!("Token already has a left type handler");
