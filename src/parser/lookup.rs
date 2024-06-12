@@ -1,10 +1,13 @@
+use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
 use core::panic;
 use std::collections::HashMap;
 
 use super::{
-    expression, macros::expect_token, BinaryOperation, Diagnostic, Expression, Parser, Statement,
+    ast::{BinaryOperation, Expression, Statement},
+    macros::{expect_expression, expect_token},
+    statement::parse_variable_declaration,
+    Diagnostic, Parser,
 };
-use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum BindingPower {

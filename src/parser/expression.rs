@@ -1,4 +1,4 @@
-use super::{lookup::BindingPower, Diagnostic, Expression, Parser};
+use super::{ast::Expression, lookup::BindingPower, Diagnostic, Parser};
 use crate::scanner::lexeme::{Lexeme, Range};
 
 pub fn parse(
