@@ -1,3 +1,15 @@
+macro_rules! expect_statement {
+    ($parser:expr, $cursor:expr) => {{
+        crate::parser::statement::parse($parser, $cursor)
+    }};
+}
+
+macro_rules! expect_expression {
+    ($parser:expr, $cursor:expr, $binding_power:expr) => {{
+        crate::parser::expression::parse($parser, $cursor, &$binding_power)
+    }};
+}
+
 macro_rules! expect_token {
     ($parser:expr, $cursor:expr, $token_type:expr) => {{
         let lexeme = crate::parser::macros::expect_tokens!($parser, $cursor, ($token_type))
@@ -44,5 +56,7 @@ macro_rules! expect_tokens {
         }};
 }
 
+pub(crate) use expect_expression;
+pub(crate) use expect_statement;
 pub(crate) use expect_token;
 pub(crate) use expect_tokens;
