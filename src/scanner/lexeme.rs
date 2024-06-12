@@ -162,6 +162,8 @@ pub enum TokenType {
 
     /// A struct keyword; `struct`.
     Struct,
+    /// A enum keyword; `enum`.
+    Enum,
 }
 
 impl Display for TokenType {
@@ -204,6 +206,7 @@ impl Display for TokenType {
             TokenType::Character => write!(f, "<character>"),
             TokenType::Identifier => write!(f, "<identifier>"),
             TokenType::Struct => write!(f, "struct"),
+            TokenType::Enum => write!(f, "enum"),
         }
     }
 }

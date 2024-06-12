@@ -61,6 +61,7 @@ impl Scanner {
                 (r!(r"(fn)"), |_| (TokenType::Function, TokenValue::None)),
                 (r!(r"(return)"), |_| (TokenType::Return, TokenValue::None)),
                 (r!(r"(struct)"), |_| (TokenType::Struct, TokenValue::None)),
+                (r!(r"(enum)"), |_| (TokenType::Enum, TokenValue::None)),
                 (r!(r"(true)"), |_| {
                     (TokenType::Boolean, TokenValue::Boolean(true))
                 }),
