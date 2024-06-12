@@ -18,9 +18,7 @@ impl Transpiler for BendTranspiler {
             Symbol::Unknown(lexeme) => {
                 output.push_str(&format!("Unknown lexeme: {:?}", lexeme));
             }
-            Symbol::Type(_) => {
-                output.push_str(format!("Type not supported").as_str());
-            }
+            Symbol::Type(_) => {}
         }
 
         output

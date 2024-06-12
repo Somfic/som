@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     parser::macros::expect_any_token,
-    scanner::lexeme::{Lexeme, Range, Token, TokenType},
+    scanner::lexeme::{Lexeme, TokenType},
 };
 
 pub fn parse(
