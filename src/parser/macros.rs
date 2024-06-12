@@ -10,6 +10,35 @@ macro_rules! expect_expression {
     }};
 }
 
+macro_rules! expect_type {
+    ($parser:expr, $cursor:expr, $binding_power:expr) => {{
+        crate::parser::typing::parse($parser, $cursor, &$binding_power)
+    }};
+}
+
+macro_rules! expect_valid_token {
+    ($parser:expr, $cursor:expr) => {{
+        let lexeme = $parser.lexemes.get($cursor);
+
+        if lexeme.is_none() {
+            return Err(Diagnostic::error(
+                &crate::scanner::lexeme::Range {
+                    position: $cursor,
+                    length: 0,
+                },
+                "Unexpected end of file",
+            ));
+        }
+
+        let lexeme = lexeme.unwrap();
+
+        match lexeme {
+            Lexeme::Valid(token) => (token, lexeme.range()),
+            Lexeme::Invalid(_) => return Err(Diagnostic::error(lexeme.range(), "Invalid token")),
+        }
+    }};
+}
+
 // allows for multiple token types to be expected
 // peek_any_token!(parser, cursor, TokenType::Plus, TokenType::Minus);
 macro_rules! expect_any_token {
@@ -40,7 +69,7 @@ macro_rules! expect_token {
         match result {
             Ok((lexemes, cursor)) => {
                 let lexeme = lexemes.first().unwrap().clone();
-                if let Lexeme::Valid(token) = &lexeme {
+                if let crate::scanner::lexeme::Lexeme::Valid(token) = &lexeme {
                     Ok((token, cursor))
                 } else {
                     Err(Diagnostic::error(lexeme.range(), "Invalid token"))
@@ -61,7 +90,7 @@ macro_rules! expect_tokens {
             if error.is_none() {
             match $parser.lexemes.get(i) {
                 Some(lexeme) => {
-                    if let Lexeme::Valid(token) = lexeme {
+                    if let crate::scanner::lexeme::Lexeme::Valid(token) = lexeme {
                         let mut matched = false;
 
                         $(
@@ -101,3 +130,5 @@ pub(crate) use expect_expression;
 pub(crate) use expect_statement;
 pub(crate) use expect_token;
 pub(crate) use expect_tokens;
+pub(crate) use expect_type;
+pub(crate) use expect_valid_token;
