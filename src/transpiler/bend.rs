@@ -1,4 +1,4 @@
-use crate::parser::ast::{BinaryOperation, Expression, Statement, Symbol};
+use crate::parser::ast::{BinaryOperation, Expression, Statement, Symbol, UnaryOperation};
 
 use super::Transpiler;
 
@@ -17,6 +17,9 @@ impl Transpiler for BendTranspiler {
             }
             Symbol::Unknown(lexeme) => {
                 output.push_str(&format!("Unknown lexeme: {:?}", lexeme));
+            }
+            Symbol::Type(_) => {
+                output.push_str(format!("Type not supported").as_str());
             }
         }
 
@@ -43,6 +46,19 @@ fn transpile_expression(expression: &Expression) -> String {
         }
         Expression::Grouping(expression) => {
             format!("({})", transpile_expression(expression))
+        }
+        Expression::Assignment(identifier, expression) => {
+            let identifier = transpile_expression(identifier);
+            let expression = transpile_expression(expression);
+            format!("{} = {}", identifier, expression)
+        }
+        Expression::Unary(operation, expression) => {
+            let operation = match operation {
+                UnaryOperation::Negate => "-",
+                UnaryOperation::Inverse => "!",
+            };
+            let expression = transpile_expression(expression);
+            format!("{}{}", operation, expression)
         }
     }
 }
