@@ -46,11 +46,7 @@ macro_rules! expect_any_token {
     ($parser:expr, $cursor:expr, $($token_type:expr),*) => {{
         let expected_token_types = vec![$($token_type.to_string()),*];
 
-        println!("Expecting any of: {:?}", expected_token_types);
-
         let expected_tokens = vec![$(expect_token!($parser, $cursor, $token_type)),*];
-
-        println!("Expected tokens: {:?}", expected_tokens);
 
         // If any of the expected tokens are valid, return the first valid token
         match expected_tokens.into_iter().find(|token| token.is_ok()) {
@@ -59,6 +55,17 @@ macro_rules! expect_any_token {
                 let lexeme = $parser.lexemes.get($cursor).unwrap();
                 Err(Diagnostic::error(lexeme.range(), format!("Expected `{}`", expected_token_types.join("` or `"))))
             }
+        }
+    }};
+}
+
+macro_rules! expect_optional_token {
+    ($parser:expr, $cursor:expr, $token_type:expr) => {{
+        let result = expect_token!($parser, $cursor, $token_type);
+
+        match result {
+            Ok((token, cursor)) => Ok((Some(token), cursor)),
+            Err(_) => Ok((None, $cursor)),
         }
     }};
 }
@@ -128,6 +135,7 @@ macro_rules! expect_tokens {
 
 pub(crate) use expect_any_token;
 pub(crate) use expect_expression;
+pub(crate) use expect_optional_token;
 #[allow(unused_imports)]
 pub(crate) use expect_statement;
 pub(crate) use expect_token;

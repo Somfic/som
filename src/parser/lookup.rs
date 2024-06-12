@@ -216,6 +216,7 @@ impl Default for Lookup {
 
         lookup.add_type_handler(TokenType::Identifier, typing::parse_symbol);
         lookup.add_type_handler(TokenType::SquareOpen, typing::parse_array);
+        lookup.add_statement_handler(TokenType::Struct, statement::parse_struct);
 
         lookup
     }

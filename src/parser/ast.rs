@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::scanner::lexeme::Lexeme;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +26,7 @@ pub enum Statement {
     Block(Vec<Statement>),
     Declaration(String, Option<Type>, Expression),
     Expression(Expression),
+    Struct(String, HashMap<String, Type>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
