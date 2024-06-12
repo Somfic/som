@@ -22,20 +22,14 @@ macro_rules! expect_valid_token {
         let lexeme = $parser.lexemes.get($cursor);
 
         if lexeme.is_none() {
-            return Err(Diagnostic::error(
-                &crate::scanner::lexeme::Range {
-                    position: $cursor,
-                    length: 0,
-                },
-                "Unexpected end of file",
-            ));
+            return Err(Diagnostic::error($cursor, 0, "Unexpected end of file"));
         }
 
         let lexeme = lexeme.unwrap();
 
         match lexeme {
             Lexeme::Valid(token) => (token, lexeme.range()),
-            Lexeme::Invalid(_) => return Err(Diagnostic::error(lexeme.range(), "Invalid token")),
+            Lexeme::Invalid(_) => return Err(Diagnostic::error($cursor, 1, "Invalid token")),
         }
     }};
 }
@@ -51,10 +45,7 @@ macro_rules! expect_any_token {
         // If any of the expected tokens are valid, return the first valid token
         match expected_tokens.into_iter().find(|token| token.is_ok()) {
             Some(token) => token,
-            None => {
-                let lexeme = $parser.lexemes.get($cursor).unwrap();
-                Err(Diagnostic::error(lexeme.range(), format!("Expected `{}`", expected_token_types.join("` or `"))))
-            }
+            None => Err(Diagnostic::error($cursor, 1, format!("Expected `{}`", expected_token_types.join("` or `"))))
         }
     }};
 }
@@ -81,7 +72,7 @@ macro_rules! expect_token {
                 if let crate::scanner::lexeme::Lexeme::Valid(token) = &lexeme {
                     Ok((token, cursor))
                 } else {
-                    Err(Diagnostic::error(lexeme.range(), "Invalid token"))
+                    Err(Diagnostic::error($cursor, 1, "Invalid token"))
                 }
             }
             Err(err) => Err(err),
@@ -106,7 +97,7 @@ macro_rules! expect_tokens {
                             if $token_type == token.token_type {
                                 matched = true;
                             } else {
-                                error = Some(Diagnostic::error(lexeme.range(), format!("Expected `{}`", $token_type.to_string())));
+                                error = Some(Diagnostic::error(i, 0, format!("Expected `{}`", $token_type.to_string())));
                             }
                         )*
 
@@ -115,12 +106,12 @@ macro_rules! expect_tokens {
                             i += 1;
                         }
                     } else {
-                        error = Some(Diagnostic::error(lexeme.range(), "Unknown token"));
+                        error = Some(Diagnostic::error(i, 0, "Unknown token"));
                     }
                 }
                 None => {
                     let expected_token_types = vec![$($token_type.to_string()),*];
-                    error = Some(Diagnostic::error(&crate::scanner::lexeme::Range {position: $cursor, length: 0}, format!("Expected `{}`", expected_token_types.join("` followed by `"))));
+                    error = Some(Diagnostic::error(i, 1, format!("Expected `{}`", expected_token_types.join("` followed by `"))));
                 }
             }
         }

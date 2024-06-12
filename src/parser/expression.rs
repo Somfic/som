@@ -23,7 +23,8 @@ pub fn parse(
         .expression_lookup
         .get(&token.token_type)
         .ok_or(Diagnostic::error(
-            range,
+            range.position,
+            range.length,
             format!("No expression handler for {:?}", token.token_type),
         ))?;
 
@@ -101,10 +102,8 @@ pub fn parse_struct_initializer(
         Expression::Identifier(identifier) => identifier.clone(),
         _ => {
             return Err(Diagnostic::error(
-                &Range {
-                    position: cursor,
-                    length: 0,
-                },
+                cursor,
+                1,
                 format!("Expected identifier, found {:?}", lhs),
             ))
         }

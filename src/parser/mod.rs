@@ -1,9 +1,10 @@
+use core::panic;
 use std::collections::HashSet;
 
 use ast::{Statement, Symbol};
 use lookup::Lookup;
 
-use crate::scanner::lexeme::{Lexeme, Range};
+use crate::scanner::lexeme::{Lexeme, Range, TokenType};
 
 pub mod ast;
 pub mod expression;
@@ -12,14 +13,14 @@ pub mod macros;
 pub mod statement;
 pub mod typing;
 
-pub struct Parser {
+pub struct Parser<'a> {
     lookup: Lookup,
-    lexemes: Vec<Lexeme>,
+    lexemes: &'a Vec<Lexeme>,
     cursor: usize,
 }
 
-impl Parser {
-    pub fn new(lexemes: Vec<Lexeme>) -> Self {
+impl<'a> Parser<'a> {
+    pub fn new(lexemes: &'a Vec<Lexeme>) -> Self {
         Self {
             lookup: Lookup::default(),
             lexemes,
@@ -30,14 +31,43 @@ impl Parser {
     pub fn parse(&mut self) -> Result<Symbol, HashSet<Diagnostic>> {
         let mut statements = vec![];
         let mut diagnostics = HashSet::new();
+        let mut current_error: Option<(Diagnostic, usize)> = None;
+        let mut last_safe_cursor = 0;
 
-        for result in self.into_iter() {
-            match result {
-                Ok(statement) => statements.push(statement),
-                Err(diagnostic) => {
-                    diagnostics.insert(diagnostic);
+        while self.cursor < self.lexemes.len() {
+            if current_error.is_some() {
+                let (error_diagnostic, error_start_cursor) = current_error.take().unwrap();
+
+                // Skip to the next semicolon
+                // TODO: This is a naive approach, we should skip to the next statement
+                while let Some(Lexeme::Valid(token)) = self.lexemes.get(self.cursor) {
+                    self.cursor += 1;
+
+                    if token.token_type == TokenType::Semicolon {
+                        break;
+                    }
                 }
+
+                // diagnostics.insert(Diagnostic::error(
+                //     error_start_cursor,
+                //     self.cursor - error_start_cursor,
+                //     "Syntax error",
+                // ));
+
+                diagnostics.insert(error_diagnostic);
             }
+
+            match statement::parse(self, self.cursor) {
+                Ok((statement, new_cursor)) => {
+                    self.cursor = new_cursor;
+                    last_safe_cursor = new_cursor;
+                    statements.push(statement);
+                }
+                Err(diagnostic) => {
+                    self.cursor += 1;
+                    current_error = Some((diagnostic, last_safe_cursor));
+                }
+            };
         }
 
         if diagnostics.is_empty() {
@@ -48,46 +78,25 @@ impl Parser {
     }
 }
 
-impl Iterator for Parser {
-    type Item = Result<Statement, Diagnostic>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor >= self.lexemes.len() {
-            return None;
-        }
-
-        match statement::parse(self, self.cursor) {
-            Ok((statement, new_cursor)) => {
-                self.cursor = new_cursor;
-                Some(Ok(statement))
-            }
-            Err(diagnostic) => {
-                self.cursor += 1;
-                // TODO: Diagnostic::combine here?
-                Some(Err(diagnostic))
-            }
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Diagnostic {
     pub range: Range,
     pub message: String,
-    pub context: Option<Box<Diagnostic>>,
 }
 
 impl Diagnostic {
-    fn error(range: &Range, message: impl Into<String>) -> Diagnostic {
+    fn error(cursor: usize, length: usize, message: impl Into<String>) -> Diagnostic {
         Diagnostic {
-            range: range.clone(),
+            range: Range {
+                position: cursor,
+                length,
+            },
             message: message.into(),
-            context: None,
         }
     }
 
     #[allow(dead_code)]
-    fn combine(diagnostics: Vec<Diagnostic>) -> Diagnostic {
+    fn combine(diagnostics: &[Diagnostic]) -> Diagnostic {
         let min_range = diagnostics
             .iter()
             .map(|diagnostic| diagnostic.range.clone())
@@ -101,10 +110,8 @@ impl Diagnostic {
             .unwrap();
 
         Diagnostic::error(
-            &Range {
-                position: min_range.position,
-                length: max_range.position + max_range.length - min_range.position,
-            },
+            min_range.position,
+            max_range.position + max_range.length - min_range.position,
             diagnostics
                 .iter()
                 .map(|diagnostic| diagnostic.message.clone())
@@ -112,7 +119,7 @@ impl Diagnostic {
                 .iter()
                 .cloned()
                 .collect::<Vec<_>>()
-                .join(", "),
+                .join("\n"),
         )
     }
 }
@@ -129,7 +136,7 @@ mod tests {
     fn parses_addition() {
         let code = "123 + 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(lexemes);
+        let mut parser = Parser::new(&lexemes);
         let result = parser.parse().expect("Failed to parse");
 
         assert_eq!(
@@ -148,7 +155,7 @@ mod tests {
     fn parses_subtraction() {
         let code = "123 - 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let parser = Parser::new(lexemes).parse();
+        let parser = Parser::new(&lexemes).parse();
         let parser = parser.unwrap();
 
         assert_eq!(
@@ -167,7 +174,7 @@ mod tests {
     fn parses_multiplication() {
         let code = "123 * 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(lexemes);
+        let mut parser = Parser::new(&lexemes);
         let result = parser.parse().unwrap();
 
         assert_eq!(
@@ -186,7 +193,7 @@ mod tests {
     fn parses_division() {
         let code = "123 / 456;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(lexemes);
+        let mut parser = Parser::new(&lexemes);
         let result = parser.parse().unwrap();
 
         assert_eq!(
@@ -205,7 +212,7 @@ mod tests {
     fn parses_long_expression() {
         let code = "123 + 456 - 789 + 101;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(lexemes);
+        let mut parser = Parser::new(&lexemes);
         let result = parser.parse().unwrap();
 
         assert_eq!(
@@ -232,7 +239,7 @@ mod tests {
     fn gives_precedence_to_multiplication() {
         let code = "123 * 456 + 789;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(lexemes);
+        let mut parser = Parser::new(&lexemes);
         let result = parser.parse().unwrap();
 
         assert_eq!(
@@ -255,7 +262,7 @@ mod tests {
     fn parses_expression_grouping() {
         let code = "(123 + 456) * 789;";
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(lexemes);
+        let mut parser = Parser::new(&lexemes);
         let result = parser.parse().unwrap();
 
         assert_eq!(

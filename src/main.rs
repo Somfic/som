@@ -8,24 +8,44 @@ use codespan_reporting::{
     },
 };
 use core::result::Result::Ok;
+use scanner::lexeme::{Lexeme, Range};
 use transpiler::{bend::BendTranspiler, Transpiler};
 
 pub mod parser;
 pub mod scanner;
 pub mod transpiler;
 
+fn lexeme_range_to_source_range(lexemes: &[Lexeme], diagnostic: &parser::Diagnostic) -> Range {
+    let start = if diagnostic.range.position >= lexemes.len() {
+        let last_lexeme = lexemes[lexemes.len() - 1].range();
+        last_lexeme.position + 1
+    } else {
+        let start_lexeme = lexemes[diagnostic.range.position].range();
+        start_lexeme.position
+    };
+
+    let end = if diagnostic.range.position + diagnostic.range.length >= lexemes.len() {
+        let last_lexeme = lexemes[lexemes.len() - 1].range();
+        last_lexeme.position + last_lexeme.length
+    } else {
+        let end_lexeme = lexemes[diagnostic.range.position + diagnostic.range.length].range();
+        end_lexeme.position + end_lexeme.length
+    };
+
+    Range {
+        position: start,
+        length: end - start,
+    }
+}
+
 fn main() -> Result<()> {
     let code = "
-    struct Person { name: string, age: number }
-
-    var lucas = Person { name: 'Lucas', age: 25, address: Address { street: 'Elo', number: 12 } };
-    var karen = Person { name: 'Karen', age: 24 };
-    var age_difference = lucas - karen;
+        1 = (1));
     ";
-    let file = SimpleFile::new("main", code);
+    let file: SimpleFile<&str, &str> = SimpleFile::new("main", code);
 
-    let tokens = scanner::Scanner::new(code.to_owned()).collect::<Vec<_>>();
-    let mut parser = parser::Parser::new(tokens);
+    let lexemes = scanner::Scanner::new(code.to_owned()).collect::<Vec<_>>();
+    let mut parser = parser::Parser::new(&lexemes);
     let parsed = parser.parse();
 
     match &parsed {
@@ -37,12 +57,10 @@ fn main() -> Result<()> {
                     diagnostics
                         .iter()
                         .map(|diagnostic| {
-                            Label::primary(
-                                (),
-                                diagnostic.range.position
-                                    ..diagnostic.range.position + diagnostic.range.length,
-                            )
-                            .with_message(diagnostic.message.to_string())
+                            let range = lexeme_range_to_source_range(&lexemes, &diagnostic);
+
+                            Label::primary((), range.position..range.position + range.length)
+                                .with_message(diagnostic.message.to_string())
                         })
                         .collect(),
                 );

@@ -15,20 +15,14 @@ pub fn parse(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagn
     let lexeme = parser.lexemes.get(cursor);
 
     if lexeme.is_none() {
-        return Err(Diagnostic::error(
-            &Range {
-                position: cursor,
-                length: 0,
-            },
-            "Expected expression",
-        ));
+        return Err(Diagnostic::error(cursor, 1, "Expected expression"));
     }
 
     let lexeme = lexeme.unwrap();
 
     let token = match lexeme {
         Lexeme::Valid(token) => token,
-        Lexeme::Invalid(_) => return Err(Diagnostic::error(lexeme.range(), "Invalid token")),
+        Lexeme::Invalid(_) => return Err(Diagnostic::error(cursor, 0, "Invalid token")),
     };
 
     let statement_handler = parser.lookup.statement_lookup.get(&token.token_type);
@@ -82,19 +76,14 @@ pub fn parse_struct(parser: &Parser, cursor: usize) -> Result<(Statement, usize)
         _ => panic!("expect_token! should return a valid token and handle the error case"),
     };
 
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::CurlyOpen)?;
+    let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
     let mut new_cursor = cursor;
     let mut members: HashMap<String, Type> = HashMap::new();
 
     while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
         let (member_name, member_type, cursor) = match token.token_type {
-            TokenType::CurlyClose => break,
+            TokenType::Semicolon => break,
             _ => {
-                if !members.is_empty() {
-                    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Comma)?;
-                    new_cursor = cursor;
-                }
-
                 let (field_name, cursor) =
                     expect_token!(parser, new_cursor, TokenType::Identifier)?;
                 let field_name = match &field_name.value {
@@ -117,7 +106,7 @@ pub fn parse_struct(parser: &Parser, cursor: usize) -> Result<(Statement, usize)
         new_cursor = cursor;
     }
 
-    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::CurlyClose)?;
+    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Semicolon)?;
 
     Ok((Statement::Struct(name, members), cursor))
 }
