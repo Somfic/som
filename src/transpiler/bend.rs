@@ -62,5 +62,9 @@ fn transpile_statement(statement: &Statement) -> String {
             let expression = transpile_expression(expression);
             format!("{};\n", expression)
         }
+        Statement::Declaration(identifier, expression) => {
+            let expression = transpile_expression(expression);
+            format!("let {} = {};\n", identifier, expression)
+        }
     }
 }

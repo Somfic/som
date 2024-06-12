@@ -62,6 +62,7 @@ impl Iterator for Parser {
             }
             Err(diagnostic) => {
                 self.cursor += 1;
+                // TODO: Diagnostic::combine here?
                 Some(Err(diagnostic))
             }
         }
@@ -82,6 +83,7 @@ impl Diagnostic {
         }
     }
 
+    #[allow(dead_code)]
     fn combine(diagnostics: Vec<Diagnostic>) -> Diagnostic {
         let min_range = diagnostics
             .iter()

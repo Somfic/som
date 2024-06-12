@@ -1,13 +1,11 @@
-use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
-use core::panic;
-use std::collections::HashMap;
-
 use super::{
     ast::{BinaryOperation, Expression, Statement},
     macros::{expect_expression, expect_token},
-    statement::parse_variable_declaration,
-    Diagnostic, Parser,
+    statement, Diagnostic, Parser,
 };
+use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
+use core::panic;
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, PartialOrd)]
 pub enum BindingPower {
@@ -70,8 +68,8 @@ impl Default for Lookup {
             TokenType::Plus,
             BindingPower::Additive,
             |parser, cursor, lhs, _binding| {
-                let (rhs, cursor) =
-                    super::expression::parse(parser, cursor + 1, &BindingPower::Additive)?;
+                let (_, cursor) = expect_token!(parser, cursor, TokenType::Plus)?;
+                let (rhs, cursor) = expect_expression!(parser, cursor, &BindingPower::Additive)?;
                 Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Plus, Box::new(rhs)),
                     cursor,
@@ -83,8 +81,8 @@ impl Default for Lookup {
             TokenType::Minus,
             BindingPower::Additive,
             |parser, cursor, lhs, _binding| {
-                let (rhs, cursor) =
-                    super::expression::parse(parser, cursor + 1, &BindingPower::Additive)?;
+                let (_, cursor) = expect_token!(parser, cursor, TokenType::Minus)?;
+                let (rhs, cursor) = expect_expression!(parser, cursor, &BindingPower::Additive)?;
                 Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Minus, Box::new(rhs)),
                     cursor,
@@ -97,8 +95,9 @@ impl Default for Lookup {
             TokenType::Star,
             BindingPower::Multiplicative,
             |parser, cursor, lhs, _binding| {
+                let (_, cursor) = expect_token!(parser, cursor, TokenType::Star)?;
                 let (rhs, cursor) =
-                    super::expression::parse(parser, cursor + 1, &BindingPower::Multiplicative)?;
+                    expect_expression!(parser, cursor, &BindingPower::Multiplicative)?;
                 Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Times, Box::new(rhs)),
                     cursor,
@@ -110,8 +109,9 @@ impl Default for Lookup {
             TokenType::Slash,
             BindingPower::Multiplicative,
             |parser, cursor, lhs, _binding| {
+                let (_, cursor) = expect_token!(parser, cursor, TokenType::Slash)?;
                 let (rhs, cursor) =
-                    super::expression::parse(parser, cursor + 1, &BindingPower::Multiplicative)?;
+                    expect_expression!(parser, cursor, &BindingPower::Multiplicative)?;
                 Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Divide, Box::new(rhs)),
                     cursor,
@@ -160,19 +160,15 @@ impl Default for Lookup {
             panic!("expect_token! should return a valid token and handle the error case");
         });
 
-        lookup.add_statement_handler(TokenType::Semicolon, |parser, cursor| {
-            let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::Primary)?;
-            let (_, cursor) = expect_token!(parser, cursor, TokenType::Semicolon)?;
-            Ok((Statement::Expression(expression), cursor))
-        });
-
         lookup.add_expression_handler(TokenType::ParenOpen, |parser, cursor| {
             let (_, cursor) = expect_token!(parser, cursor, TokenType::ParenOpen)?;
-            let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::None)?;
+            let (expression, cursor) = expect_expression!(parser, cursor, &BindingPower::None)?;
             let (_, cursor) = expect_token!(parser, cursor, TokenType::ParenClose)?;
 
             Ok((Expression::Grouping(Box::new(expression)), cursor))
         });
+
+        lookup.add_statement_handler(TokenType::Var, statement::parse_declaration);
 
         lookup
     }
