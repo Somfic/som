@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::scanner::lexeme::Lexeme;
 
@@ -28,6 +28,7 @@ pub enum Statement {
     Declaration(String, Option<Type>, Expression),
     Expression(Expression),
     Struct(String, HashMap<String, Type>),
+    Enum(String, HashSet<String>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

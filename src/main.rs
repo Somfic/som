@@ -40,7 +40,13 @@ fn lexeme_range_to_source_range(lexemes: &[Lexeme], diagnostic: &parser::Diagnos
 
 fn main() -> Result<()> {
     let code = "
-        1 = (1));
+        enum result: success failure;
+
+        struct person:
+            name: string
+            age: int
+        ;
+
     ";
     let file: SimpleFile<&str, &str> = SimpleFile::new("main", code);
 

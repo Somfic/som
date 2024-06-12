@@ -221,8 +221,10 @@ impl Default for Lookup {
         );
         lookup.add_type_handler(TokenType::Identifier, typing::parse_symbol);
         lookup.add_type_handler(TokenType::SquareOpen, typing::parse_array);
-        lookup.add_statement_handler(TokenType::Struct, statement::parse_struct);
         lookup.add_type_handler(TokenType::CurlyOpen, typing::parse_tuple);
+
+        lookup.add_statement_handler(TokenType::Struct, statement::parse_struct);
+        lookup.add_statement_handler(TokenType::Enum, statement::parse_enum);
 
         lookup
     }

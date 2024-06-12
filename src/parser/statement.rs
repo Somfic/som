@@ -1,5 +1,5 @@
 use core::panic;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::scanner::lexeme::{Lexeme, Range, TokenType, TokenValue};
 
@@ -109,4 +109,43 @@ pub fn parse_struct(parser: &Parser, cursor: usize) -> Result<(Statement, usize)
     let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Semicolon)?;
 
     Ok((Statement::Struct(name, members), cursor))
+}
+
+pub fn parse_enum(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagnostic> {
+    let (_, cursor) = expect_token!(parser, cursor, TokenType::Enum)?;
+    let (name, cursor) = expect_token!(parser, cursor, TokenType::Identifier)?;
+    let name = match &name.value {
+        TokenValue::Identifier(name) => name.clone(),
+        _ => panic!("expect_token! should return a valid token and handle the error case"),
+    };
+    let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
+
+    let mut new_cursor = cursor;
+    let mut members: HashSet<String> = HashSet::new();
+
+    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
+        let (member_name, cursor) = match token.token_type {
+            TokenType::Semicolon => break,
+            _ => {
+                let (field_name, cursor) =
+                    expect_token!(parser, new_cursor, TokenType::Identifier)?;
+                let field_name = match &field_name.value {
+                    TokenValue::Identifier(field_name) => field_name.clone(),
+                    _ => panic!(
+                        "expect_token! should return a valid token and handle the error case"
+                    ),
+                };
+
+                (field_name, cursor)
+            }
+        };
+
+        new_cursor = cursor;
+        // TODO: Handle warning for overwritten members
+        members.insert(member_name);
+    }
+
+    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Semicolon)?;
+
+    Ok((Statement::Enum(name, members), cursor))
 }
