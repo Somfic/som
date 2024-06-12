@@ -59,6 +59,7 @@ macro_rules! expect_any_token {
     }};
 }
 
+#[allow(unused_macros)]
 macro_rules! expect_optional_token {
     ($parser:expr, $cursor:expr, $token_type:expr) => {{
         let result = expect_token!($parser, $cursor, $token_type);
@@ -135,6 +136,7 @@ macro_rules! expect_tokens {
 
 pub(crate) use expect_any_token;
 pub(crate) use expect_expression;
+#[allow(unused_imports)]
 pub(crate) use expect_optional_token;
 #[allow(unused_imports)]
 pub(crate) use expect_statement;

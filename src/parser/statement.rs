@@ -1,10 +1,7 @@
 use core::panic;
 use std::collections::HashMap;
 
-use crate::{
-    parser::macros::expect_optional_token,
-    scanner::lexeme::{Lexeme, Range, TokenType, TokenValue},
-};
+use crate::scanner::lexeme::{Lexeme, Range, TokenType, TokenValue};
 
 use super::{
     ast::Type,
@@ -114,7 +111,7 @@ pub fn parse_struct(parser: &Parser, cursor: usize) -> Result<(Statement, usize)
             }
         };
 
-        // TODO: Handle warning for overwritten member  
+        // TODO: Handle warning for overwritten member
         members.insert(member_name, member_type);
 
         new_cursor = cursor;
