@@ -47,4 +47,5 @@ pub enum BinaryOperation {
 pub enum Type {
     Symbol(String),
     Array(Box<Type>),
+    Tuple(HashMap<String, Type>),
 }
