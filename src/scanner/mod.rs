@@ -60,6 +60,7 @@ impl Scanner {
                 (r!(r"(var)"), |_| (TokenType::Var, TokenValue::None)),
                 (r!(r"(fn)"), |_| (TokenType::Function, TokenValue::None)),
                 (r!(r"(return)"), |_| (TokenType::Return, TokenValue::None)),
+                (r!(r"(struct)"), |_| (TokenType::Struct, TokenValue::None)),
                 (r!(r"(true)"), |_| {
                     (TokenType::Boolean, TokenValue::Boolean(true))
                 }),
@@ -328,6 +329,14 @@ mod tests {
                 Lexeme::valid(TokenType::Semicolon, TokenValue::None, 3, 1),
                 Lexeme::valid(TokenType::Integer, TokenValue::Integer(456), 4, 3),
             ],
+        );
+    }
+
+    #[test]
+    fn parses_struct() {
+        test_scanner(
+            "struct",
+            vec![Lexeme::valid(TokenType::Struct, TokenValue::None, 0, 6)],
         );
     }
 

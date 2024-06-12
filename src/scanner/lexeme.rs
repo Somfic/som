@@ -159,6 +159,9 @@ pub enum TokenType {
 
     /// An identifying name; `foo`, `bar`, `baz`.
     Identifier,
+
+    /// A struct keyword; `struct`.
+    Struct,
 }
 
 impl Display for TokenType {
@@ -200,6 +203,7 @@ impl Display for TokenType {
             TokenType::String => write!(f, "string"),
             TokenType::Character => write!(f, "character"),
             TokenType::Identifier => write!(f, "identifier"),
+            TokenType::Struct => write!(f, "struct"),
         }
     }
 }
