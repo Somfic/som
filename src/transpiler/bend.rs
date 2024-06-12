@@ -1,4 +1,4 @@
-use crate::parser::{BinaryOperation, Expression, Statement, Symbol};
+use crate::parser::ast::{BinaryOperation, Expression, Statement, Symbol};
 
 use super::Transpiler;
 

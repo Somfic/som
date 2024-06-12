@@ -1,4 +1,4 @@
-use crate::parser::Symbol;
+use crate::parser::ast::Symbol;
 
 pub mod bend;
 

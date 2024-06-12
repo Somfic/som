@@ -1,43 +1,15 @@
 use std::collections::HashSet;
 
+use ast::{Statement, Symbol};
 use lookup::Lookup;
 
 use crate::scanner::lexeme::{Lexeme, Range};
 
+pub mod ast;
 pub mod expression;
 pub mod lookup;
 pub mod macros;
 pub mod statement;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Symbol {
-    Expression(Expression),
-    Statement(Statement),
-    Unknown(Lexeme),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Expression {
-    Number(f64),
-    String(String),
-    Identifier(String),
-    Binary(Box<Expression>, BinaryOperation, Box<Expression>),
-    Grouping(Box<Expression>),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Statement {
-    Block(Vec<Statement>),
-    Expression(Expression),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BinaryOperation {
-    Plus,
-    Minus,
-    Times,
-    Divide,
-}
 
 pub struct Parser {
     lookup: Lookup,
@@ -142,6 +114,8 @@ impl Diagnostic {
 
 #[cfg(test)]
 mod tests {
+    use ast::{BinaryOperation, Expression};
+
     use crate::scanner::Scanner;
 
     use super::*;
