@@ -106,6 +106,15 @@ fn transpile_statement(statement: &Statement) -> String {
             output.push_str("}\n");
             output
         }
+        Statement::Enum(name, members) => {
+            let mut output = String::new();
+            output.push_str(&format!("enum {} {{\n", name));
+            for member in members {
+                output.push_str(&format!("{},\n", member));
+            }
+            output.push_str("}\n");
+            output
+        }
     }
 }
 
