@@ -9,7 +9,7 @@ pub enum Lexeme {
 impl Display for Lexeme {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Lexeme::Valid(token) => write!(f, "{:?} at {:?}", token, token.range),
+            Lexeme::Valid(token) => write!(f, "{}", token.token_type),
             Lexeme::Invalid(range) => write!(f, "Invalid token at {:?}", range),
         }
     }
@@ -197,12 +197,12 @@ impl Display for TokenType {
             TokenType::Var => write!(f, "var"),
             TokenType::Function => write!(f, "fn"),
             TokenType::Return => write!(f, "return"),
-            TokenType::Boolean => write!(f, "boolean"),
-            TokenType::Integer => write!(f, "integer"),
-            TokenType::Decimal => write!(f, "decimal"),
-            TokenType::String => write!(f, "string"),
-            TokenType::Character => write!(f, "character"),
-            TokenType::Identifier => write!(f, "identifier"),
+            TokenType::Boolean => write!(f, "<boolean>"),
+            TokenType::Integer => write!(f, "<integer>"),
+            TokenType::Decimal => write!(f, "<decimal>"),
+            TokenType::String => write!(f, "<string>"),
+            TokenType::Character => write!(f, "<character>"),
+            TokenType::Identifier => write!(f, "<identifier>"),
             TokenType::Struct => write!(f, "struct"),
         }
     }

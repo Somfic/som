@@ -19,6 +19,7 @@ pub enum Expression {
     Binary(Box<Expression>, BinaryOperation, Box<Expression>),
     Grouping(Box<Expression>),
     Assignment(Box<Expression>, Box<Expression>),
+    StructInitializer(String, HashMap<String, Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

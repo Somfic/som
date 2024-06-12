@@ -58,6 +58,19 @@ fn transpile_expression(expression: &Expression) -> String {
             let expression = transpile_expression(expression);
             format!("{}{}", operation, expression)
         }
+        Expression::StructInitializer(name, members) => {
+            let mut output = String::new();
+            output.push_str(&format!("{} {{\n", name));
+            for (member, expression) in members {
+                output.push_str(&format!(
+                    "{}: {},\n",
+                    member,
+                    transpile_expression(expression)
+                ));
+            }
+            output.push('}');
+            output
+        }
     }
 }
 
@@ -67,7 +80,7 @@ fn transpile_statement(statement: &Statement) -> String {
             let mut output = String::new();
             output.push_str("{\n");
             for statement in statements {
-                output.push_str(&format!("  {}", transpile_statement(statement)));
+                output.push_str(&transpile_statement(statement));
             }
             output.push_str("}\n");
             output
@@ -88,9 +101,9 @@ fn transpile_statement(statement: &Statement) -> String {
             let mut output = String::new();
             output.push_str(&format!("struct {} {{\n", name));
             for (member, typing) in members {
-                output.push_str(&format!("    {}: {};\n", member, transpile_type(typing)));
+                output.push_str(&format!("{}: {};\n", member, transpile_type(typing)));
             }
-            output.push_str("  }\n");
+            output.push_str("}\n");
             output
         }
     }

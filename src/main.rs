@@ -15,7 +15,13 @@ pub mod scanner;
 pub mod transpiler;
 
 fn main() -> Result<()> {
-    let code = "struct Result { ok: number, err: string }";
+    let code = "
+    struct Person { name: string, age: number }
+
+    var lucas = Person { name: 'Lucas', age: 25, address: Address { street: 'Elo', number: 12 } };
+    var karen = Person { name: 'Karen', age: 24 };
+    var age_difference = lucas - karen;
+    ";
     let file = SimpleFile::new("main", code);
 
     let tokens = scanner::Scanner::new(code.to_owned()).collect::<Vec<_>>();
