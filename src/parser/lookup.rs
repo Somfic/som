@@ -1,7 +1,8 @@
 use super::{
-    ast::{BinaryOperation, Expression, Statement},
+    ast::{BinaryOperation, Expression, Statement, Type},
+    expression,
     macros::{expect_expression, expect_token},
-    statement, Diagnostic, Parser,
+    statement, typing, Diagnostic, Parser,
 };
 use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
 use core::panic;
@@ -22,6 +23,9 @@ pub enum BindingPower {
     Primary = 10,
 }
 
+pub type TypeHandler = fn(&Parser, usize) -> Result<(Type, usize), Diagnostic>;
+pub type LeftTypeHandler =
+    fn(&Parser, usize, Type, &BindingPower) -> Result<(Type, usize), Diagnostic>;
 pub type StatementHandler = fn(&Parser, usize) -> Result<(Statement, usize), Diagnostic>;
 pub type ExpressionHandler = fn(&Parser, usize) -> Result<(Expression, usize), Diagnostic>;
 pub type LeftExpressionHandler =
@@ -66,6 +70,22 @@ impl Lookup {
         self.left_expression_lookup.insert(token.clone(), handler);
         self.binding_power_lookup.insert(token, binding_power);
     }
+
+    pub(crate) fn add_type_handler(&mut self, token: TokenType, handler: TypeHandler) {
+        if self.type_lookup.contains_key(&token) {
+            panic!("Token already has a type handler");
+        }
+
+        self.type_lookup.insert(token, handler);
+    }
+
+    pub(crate) fn add_left_type_handler(&mut self, token: TokenType, handler: LeftTypeHandler) {
+        if self.left_type_lookup.contains_key(&token) {
+            panic!("Token already has a left type handler");
+        }
+
+        self.left_type_lookup.insert(token, handler);
+    }
 }
 
 impl Default for Lookup {
@@ -75,6 +95,8 @@ impl Default for Lookup {
             expression_lookup: HashMap::new(),
             left_expression_lookup: HashMap::new(),
             binding_power_lookup: HashMap::new(),
+            type_lookup: HashMap::new(),
+            left_type_lookup: HashMap::new(),
         };
 
         // Addative
@@ -190,6 +212,9 @@ impl Default for Lookup {
             BindingPower::Assignment,
             expression::parse_assignment,
         );
+
+        lookup.add_type_handler(TokenType::Identifier, typing::parse_symbol);
+        lookup.add_type_handler(TokenType::SquareOpen, typing::parse_array);
 
         lookup
     }

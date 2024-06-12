@@ -4,6 +4,7 @@ use crate::scanner::lexeme::Lexeme;
 pub enum Symbol {
     Expression(Expression),
     Statement(Statement),
+    Type(Type),
     Unknown(Lexeme),
 }
 
@@ -21,7 +22,7 @@ pub enum Expression {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Block(Vec<Statement>),
-    Declaration(String, Expression),
+    Declaration(String, Option<Type>, Expression),
     Expression(Expression),
 }
 
@@ -37,4 +38,10 @@ pub enum BinaryOperation {
     Minus,
     Times,
     Divide,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Type {
+    Symbol(String),
+    Array(Box<Type>),
 }

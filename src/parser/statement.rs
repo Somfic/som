@@ -3,7 +3,10 @@ use core::panic;
 use crate::scanner::lexeme::{Lexeme, Range, TokenType, TokenValue};
 
 use super::{
-    expression, lookup::BindingPower, macros::expect_token, Diagnostic, Parser, Statement,
+    expression,
+    lookup::BindingPower,
+    macros::{expect_any_token, expect_expression, expect_token, expect_type},
+    Diagnostic, Parser, Statement,
 };
 
 pub fn parse(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagnostic> {
@@ -48,12 +51,23 @@ pub fn parse_declaration(parser: &Parser, cursor: usize) -> Result<(Statement, u
         TokenValue::Identifier(identifier) => identifier,
         _ => panic!("expect_token! should return a valid token and handle the error case"),
     };
+
+    let (token, _) = expect_any_token!(parser, cursor, TokenType::Colon, TokenType::Equal)?;
+    let (typing, cursor) = match token.token_type {
+        TokenType::Colon => {
+            let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
+            let (typing, cursor) = expect_type!(parser, cursor, BindingPower::None)?;
+            (Some(typing), cursor)
+        }
+        _ => (None, cursor),
+    };
+
     let (_, cursor) = expect_token!(parser, cursor, TokenType::Equal)?;
-    let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::None)?;
+    let (expression, cursor) = expect_expression!(parser, cursor, &BindingPower::None)?;
     let (_, cursor) = expect_token!(parser, cursor, TokenType::Semicolon)?;
 
     Ok((
-        Statement::Declaration(identifier.clone(), expression),
+        Statement::Declaration(identifier.clone(), typing, expression),
         cursor,
     ))
 }

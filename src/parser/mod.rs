@@ -10,6 +10,7 @@ pub mod expression;
 pub mod lookup;
 pub mod macros;
 pub mod statement;
+pub mod typing;
 
 pub struct Parser {
     lookup: Lookup,

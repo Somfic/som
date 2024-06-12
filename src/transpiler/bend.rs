@@ -1,4 +1,4 @@
-use crate::parser::ast::{BinaryOperation, Expression, Statement, Symbol, UnaryOperation};
+use crate::parser::ast::{BinaryOperation, Expression, Statement, Symbol, Type, UnaryOperation};
 
 use super::Transpiler;
 
@@ -78,9 +78,20 @@ fn transpile_statement(statement: &Statement) -> String {
             let expression = transpile_expression(expression);
             format!("{};\n", expression)
         }
-        Statement::Declaration(identifier, expression) => {
+        Statement::Declaration(identifier, typing, expression) => {
             let expression = transpile_expression(expression);
-            format!("let {} = {};\n", identifier, expression)
+            let typing = match typing {
+                Some(typing) => format!(": {}", transpile_type(typing)),
+                None => String::new(),
+            };
+            format!("let {}{} = {};\n", identifier, typing, expression)
         }
+    }
+}
+
+fn transpile_type(typing: &Type) -> String {
+    match typing {
+        Type::Symbol(symbol) => symbol.clone(),
+        Type::Array(typing) => format!("{}[]", transpile_type(typing)),
     }
 }
