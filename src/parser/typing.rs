@@ -85,9 +85,6 @@ pub fn parse_tuple(parser: &Parser, cursor: usize) -> Result<(Type, usize), Diag
                     new_cursor = cursor;
                 }
 
-                // { number, string }
-                // { tires: number, color: string }
-                println!("Checking for optional token");
                 let (colon, _) = expect_optional_token!(parser, new_cursor + 1, TokenType::Colon)?;
 
                 match colon {

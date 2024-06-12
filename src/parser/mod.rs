@@ -62,7 +62,7 @@ impl Iterator for Parser {
                 Some(Ok(statement))
             }
             Err(diagnostic) => {
-                self.cursor += 1000000000;
+                self.cursor += 1;
                 // TODO: Diagnostic::combine here?
                 Some(Err(diagnostic))
             }
@@ -74,6 +74,7 @@ impl Iterator for Parser {
 pub struct Diagnostic {
     pub range: Range,
     pub message: String,
+    pub context: Option<Box<Diagnostic>>,
 }
 
 impl Diagnostic {
@@ -81,6 +82,7 @@ impl Diagnostic {
         Diagnostic {
             range: range.clone(),
             message: message.into(),
+            context: None,
         }
     }
 
@@ -98,12 +100,12 @@ impl Diagnostic {
             .max_by_key(|range| range.position + range.length)
             .unwrap();
 
-        Diagnostic {
-            range: Range {
+        Diagnostic::error(
+            &Range {
                 position: min_range.position,
                 length: max_range.position + max_range.length - min_range.position,
             },
-            message: diagnostics
+            diagnostics
                 .iter()
                 .map(|diagnostic| diagnostic.message.clone())
                 .collect::<HashSet<_>>()
@@ -111,7 +113,7 @@ impl Diagnostic {
                 .cloned()
                 .collect::<Vec<_>>()
                 .join(", "),
-        }
+        )
     }
 }
 

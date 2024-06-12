@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::{
     ast::{Expression, UnaryOperation},
     lookup::BindingPower,
@@ -6,7 +8,7 @@ use super::{
 };
 use crate::{
     parser::macros::expect_any_token,
-    scanner::lexeme::{Lexeme, TokenType},
+    scanner::lexeme::{Lexeme, Range, TokenType, TokenValue},
 };
 
 pub fn parse(
@@ -87,4 +89,58 @@ pub fn parse_unary(parser: &Parser, cursor: usize) -> Result<(Expression, usize)
         }
         _ => unreachable!(),
     }
+}
+
+pub fn parse_struct_initializer(
+    parser: &Parser,
+    cursor: usize,
+    lhs: Expression,
+    binding_power: &BindingPower,
+) -> Result<(Expression, usize), Diagnostic> {
+    let identifier = match lhs {
+        Expression::Identifier(identifier) => identifier.clone(),
+        _ => {
+            return Err(Diagnostic::error(
+                &Range {
+                    position: cursor,
+                    length: 0,
+                },
+                format!("Expected identifier, found {:?}", lhs),
+            ))
+        }
+    };
+
+    let (_, cursor) = expect_token!(parser, cursor, TokenType::CurlyOpen)?;
+
+    let mut members = HashMap::new();
+    let mut new_cursor = cursor;
+
+    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
+        if token.token_type == TokenType::CurlyClose {
+            break;
+        }
+
+        if !members.is_empty() {
+            let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Comma)?;
+            new_cursor = cursor;
+        }
+
+        let (member, cursor) = expect_token!(parser, new_cursor, TokenType::Identifier)?;
+        let member = match &member.value {
+            TokenValue::Identifier(member) => member.clone(),
+            _ => panic!("expect_token! should only return identifiers"),
+        };
+
+        let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
+
+        let (expression, cursor) = expect_expression!(parser, cursor, binding_power)?;
+
+        members.insert(member, expression);
+
+        new_cursor = cursor;
+    }
+
+    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::CurlyClose)?;
+
+    Ok((Expression::StructInitializer(identifier, members), cursor))
 }
