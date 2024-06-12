@@ -138,8 +138,8 @@ pub enum TokenType {
     /// A for keyword; `for`.
     For,
 
-    /// A let keyword; `let`.
-    Let,
+    /// A var keyword; `var`.
+    Var,
 
     /// A function keyword; `fn`.
     Function,
@@ -191,7 +191,7 @@ impl Display for TokenType {
             TokenType::Else => write!(f, "else"),
             TokenType::While => write!(f, "while"),
             TokenType::For => write!(f, "for"),
-            TokenType::Let => write!(f, "let"),
+            TokenType::Var => write!(f, "var"),
             TokenType::Function => write!(f, "fn"),
             TokenType::Return => write!(f, "return"),
             TokenType::Boolean => write!(f, "boolean"),
