@@ -88,9 +88,9 @@ fn transpile_statement(statement: &Statement) -> String {
             let mut output = String::new();
             output.push_str(&format!("struct {} {{\n", name));
             for (member, typing) in members {
-                output.push_str(&format!("  {}: {},\n", member, transpile_type(typing)));
+                output.push_str(&format!("    {}: {};\n", member, transpile_type(typing)));
             }
-            output.push_str("}\n");
+            output.push_str("  }\n");
             output
         }
     }
@@ -100,5 +100,14 @@ fn transpile_type(typing: &Type) -> String {
     match typing {
         Type::Symbol(symbol) => symbol.clone(),
         Type::Array(typing) => format!("{}[]", transpile_type(typing)),
+        Type::Tuple(members) => {
+            let mut output = String::new();
+            output.push('(');
+            for (member, typing) in members {
+                output.push_str(&format!("{}: {}, ", member, transpile_type(typing)));
+            }
+            output.push(')');
+            output
+        }
     }
 }

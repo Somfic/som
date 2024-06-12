@@ -1,7 +1,9 @@
+use std::collections::HashMap;
+
 use super::{
     ast::Type,
     lookup::BindingPower,
-    macros::{expect_token, expect_type, expect_valid_token},
+    macros::{expect_optional_token, expect_token, expect_type, expect_valid_token},
     Diagnostic, Parser,
 };
 use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
@@ -67,4 +69,59 @@ pub fn parse_array(parser: &Parser, cursor: usize) -> Result<(Type, usize), Diag
     let (element_type, cursor) = expect_type!(parser, cursor, &BindingPower::None)?;
     let (_, cursor) = expect_token!(parser, cursor, TokenType::SquareClose)?;
     Ok((Type::Array(Box::new(element_type)), cursor))
+}
+
+pub fn parse_tuple(parser: &Parser, cursor: usize) -> Result<(Type, usize), Diagnostic> {
+    let (_, cursor) = expect_token!(parser, cursor, TokenType::CurlyOpen)?;
+    let mut new_cursor = cursor;
+    let mut members: HashMap<String, Type> = HashMap::new();
+
+    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
+        let (member_name, member_type, cursor) = match token.token_type {
+            TokenType::CurlyClose => break,
+            _ => {
+                if !members.is_empty() {
+                    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Comma)?;
+                    new_cursor = cursor;
+                }
+
+                // { number, string }
+                // { tires: number, color: string }
+                println!("Checking for optional token");
+                let (colon, _) = expect_optional_token!(parser, new_cursor + 1, TokenType::Colon)?;
+
+                match colon {
+                    Some(_) => {
+                        let (field_name, cursor) =
+                            expect_token!(parser, new_cursor, TokenType::Identifier)?;
+                        let field_name = match &field_name.value {
+                            TokenValue::Identifier(field_name) => field_name.clone(),
+                            _ => panic!("expect_token! should only return identifiers"),
+                        };
+
+                        let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
+                        let (field_type, cursor) =
+                            expect_type!(parser, cursor, BindingPower::None)?;
+
+                        (field_name, field_type, cursor)
+                    }
+                    None => {
+                        let field_name = members.len().to_string();
+                        let (field_type, cursor) =
+                            expect_type!(parser, new_cursor, BindingPower::None)?;
+                        (field_name, field_type, cursor)
+                    }
+                }
+            }
+        };
+
+        // TODO: Check for duplicate member names
+        members.insert(member_name, member_type);
+
+        new_cursor = cursor;
+    }
+
+    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::CurlyClose)?;
+
+    Ok((Type::Tuple(members), cursor))
 }
