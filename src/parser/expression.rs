@@ -1,5 +1,13 @@
-use super::{ast::Expression, lookup::BindingPower, Diagnostic, Parser};
-use crate::scanner::lexeme::{Lexeme, Range};
+use super::{
+    ast::{Expression, UnaryOperation},
+    lookup::BindingPower,
+    macros::{expect_expression, expect_token},
+    Diagnostic, Parser,
+};
+use crate::{
+    parser::macros::expect_any_token,
+    scanner::lexeme::{Lexeme, Range, Token, TokenType},
+};
 
 pub fn parse(
     parser: &Parser,
@@ -74,4 +82,37 @@ pub fn parse(
     }
 
     Ok((left_hand_side, cursor))
+}
+
+pub fn parse_assignment(
+    parser: &Parser,
+    cursor: usize,
+    lhs: Expression,
+    binding_power: &BindingPower,
+) -> Result<(Expression, usize), Diagnostic> {
+    let (_, cursor) = expect_token!(parser, cursor, TokenType::Equal)?;
+    let (rhs, cursor) = expect_expression!(parser, cursor, binding_power)?;
+
+    Ok((Expression::Assignment(Box::new(lhs), Box::new(rhs)), cursor))
+}
+
+pub fn parse_unary(parser: &Parser, cursor: usize) -> Result<(Expression, usize), Diagnostic> {
+    let (token, cursor) = expect_any_token!(parser, cursor, TokenType::Minus, TokenType::Not)?;
+    match token.token_type {
+        TokenType::Minus => {
+            let (expression, cursor) = expect_expression!(parser, cursor, &BindingPower::Unary)?;
+            Ok((
+                Expression::Unary(UnaryOperation::Negate, Box::new(expression)),
+                cursor,
+            ))
+        }
+        TokenType::Not => {
+            let (expression, cursor) = expect_expression!(parser, cursor, &BindingPower::Unary)?;
+            Ok((
+                Expression::Unary(UnaryOperation::Inverse, Box::new(expression)),
+                cursor,
+            ))
+        }
+        _ => unreachable!(),
+    }
 }

@@ -31,15 +31,25 @@ pub struct Lookup {
     pub statement_lookup: HashMap<TokenType, StatementHandler>,
     pub expression_lookup: HashMap<TokenType, ExpressionHandler>,
     pub left_expression_lookup: HashMap<TokenType, LeftExpressionHandler>,
+    pub type_lookup: HashMap<TokenType, TypeHandler>,
+    pub left_type_lookup: HashMap<TokenType, LeftTypeHandler>,
     pub binding_power_lookup: HashMap<TokenType, BindingPower>,
 }
 
 impl Lookup {
     pub(crate) fn add_statement_handler(&mut self, token: TokenType, handler: StatementHandler) {
+        if self.statement_lookup.contains_key(&token) {
+            panic!("Token already has a statement handler");
+        }
+
         self.statement_lookup.insert(token, handler);
     }
 
     pub(crate) fn add_expression_handler(&mut self, token: TokenType, handler: ExpressionHandler) {
+        if self.expression_lookup.contains_key(&token) {
+            panic!("Token already has an expression handler");
+        }
+
         self.expression_lookup.insert(token, handler);
     }
 
@@ -49,6 +59,10 @@ impl Lookup {
         binding_power: BindingPower,
         handler: LeftExpressionHandler,
     ) {
+        if self.binding_power_lookup.contains_key(&token) {
+            panic!("Token already has a binding power");
+        }
+
         self.left_expression_lookup.insert(token.clone(), handler);
         self.binding_power_lookup.insert(token, binding_power);
     }
@@ -168,7 +182,14 @@ impl Default for Lookup {
             Ok((Expression::Grouping(Box::new(expression)), cursor))
         });
 
+        lookup.add_expression_handler(TokenType::Minus, expression::parse_unary);
+        lookup.add_expression_handler(TokenType::Not, expression::parse_unary);
         lookup.add_statement_handler(TokenType::Var, statement::parse_declaration);
+        lookup.add_left_expression_handler(
+            TokenType::Equal,
+            BindingPower::Assignment,
+            expression::parse_assignment,
+        );
 
         lookup
     }
