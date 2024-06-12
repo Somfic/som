@@ -40,13 +40,15 @@ fn lexeme_range_to_source_range(lexemes: &[Lexeme], diagnostic: &parser::Diagnos
 
 fn main() -> Result<()> {
     let code = "
-        enum result: success failure;
+        enum color: red green blue;
 
         struct person:
-            name: string
-            age: int
+            .name: string
+            .age: number
         ;
 
+        // let lucas = person::new('Lucas', 22);
+        // lucas.age_in_days();
     ";
     let file: SimpleFile<&str, &str> = SimpleFile::new("main", code);
 
@@ -63,7 +65,7 @@ fn main() -> Result<()> {
                     diagnostics
                         .iter()
                         .map(|diagnostic| {
-                            let range = lexeme_range_to_source_range(&lexemes, &diagnostic);
+                            let range = lexeme_range_to_source_range(&lexemes, diagnostic);
 
                             Label::primary((), range.position..range.position + range.length)
                                 .with_message(diagnostic.message.to_string())

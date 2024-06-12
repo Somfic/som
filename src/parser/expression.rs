@@ -1,15 +1,16 @@
-use std::collections::HashMap;
-
 use super::{
     ast::{Expression, UnaryOperation},
     lookup::BindingPower,
-    macros::{expect_expression, expect_token, expect_valid_token},
+    macros::{
+        expect_expression, expect_token, expect_token_value, expect_tokens, expect_valid_token,
+    },
     Diagnostic, Parser,
 };
 use crate::{
     parser::macros::expect_any_token,
-    scanner::lexeme::{Lexeme, Range, TokenType, TokenValue},
+    scanner::lexeme::{Lexeme, TokenType, TokenValue},
 };
+use std::collections::HashMap;
 
 pub fn parse(
     parser: &Parser,
@@ -65,7 +66,7 @@ pub fn parse_assignment(
     lhs: Expression,
     binding_power: &BindingPower,
 ) -> Result<(Expression, usize), Diagnostic> {
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::Equal)?;
+    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Equal)?;
     let (rhs, cursor) = expect_expression!(parser, cursor, binding_power)?;
 
     Ok((Expression::Assignment(Box::new(lhs), Box::new(rhs)), cursor))
@@ -104,7 +105,7 @@ pub fn parse_struct_initializer(
             return Err(Diagnostic::error(
                 cursor,
                 1,
-                format!("Expected identifier, found {:?}", lhs),
+                format!("Expected {}, found {:?}", TokenType::Identifier, lhs),
             ))
         }
     };
@@ -124,17 +125,14 @@ pub fn parse_struct_initializer(
             new_cursor = cursor;
         }
 
-        let (member, cursor) = expect_token!(parser, new_cursor, TokenType::Identifier)?;
-        let member = match &member.value {
-            TokenValue::Identifier(member) => member.clone(),
-            _ => panic!("expect_token! should only return identifiers"),
-        };
+        let (tokens, cursor) =
+            expect_tokens!(parser, new_cursor, TokenType::Identifier, TokenType::Colon)?;
 
-        let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
+        let identifier = expect_token_value!(tokens[0], TokenValue::Identifier);
 
         let (expression, cursor) = expect_expression!(parser, cursor, binding_power)?;
 
-        members.insert(member, expression);
+        members.insert(identifier, expression);
 
         new_cursor = cursor;
     }

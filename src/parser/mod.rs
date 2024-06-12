@@ -1,10 +1,7 @@
-use core::panic;
-use std::collections::HashSet;
-
+use crate::scanner::lexeme::{Lexeme, Range};
 use ast::{Statement, Symbol};
 use lookup::Lookup;
-
-use crate::scanner::lexeme::{Lexeme, Range, TokenType};
+use std::collections::HashSet;
 
 pub mod ast;
 pub mod expression;
@@ -36,11 +33,11 @@ impl<'a> Parser<'a> {
 
         while self.cursor < self.lexemes.len() {
             if current_error.is_some() {
-                let (error_diagnostic, error_start_cursor) = current_error.take().unwrap();
+                let (error_diagnostic, _error_start_cursor) = current_error.take().unwrap();
 
                 // Skip to the next semicolon
                 // TODO: This is a naive approach, we should skip to the next statement
-                while let Some(Lexeme::Valid(token)) = self.lexemes.get(self.cursor) {
+                while let Some(Lexeme::Valid(_)) = self.lexemes.get(self.cursor) {
                     self.cursor += 1;
 
                     // Try to parse the next statement
