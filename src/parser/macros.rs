@@ -45,7 +45,7 @@ macro_rules! expect_any_token {
         // If any of the expected tokens are valid, return the first valid token
         match expected_tokens.into_iter().find(|token| token.is_ok()) {
             Some(token) => token,
-            None => Err(Diagnostic::error($cursor, 1, format!("Expected `{}`", expected_token_types.join("` or `"))))
+            None => Err(Diagnostic::error($cursor, 1, format!("Expected {}", expected_token_types.join(" or "))))
         }
     }};
 }
@@ -64,12 +64,12 @@ macro_rules! expect_optional_token {
 
 macro_rules! expect_token {
     ($parser:expr, $cursor:expr, $token_type:expr) => {{
-        let result = crate::parser::macros::expect_tokens!($parser, $cursor, ($token_type));
+        let result = crate::parser::macros::expect_tokens!($parser, $cursor, $token_type);
 
         match result {
-            Ok((lexemes, cursor)) => {
-                let lexeme = lexemes.first().unwrap().clone();
-                if let crate::scanner::lexeme::Lexeme::Valid(token) = &lexeme {
+            Ok((tokens, cursor)) => {
+                let token = tokens.first().unwrap().clone();
+                if token.token_type == $token_type {
                     Ok((token, cursor))
                 } else {
                     Err(Diagnostic::error($cursor, 1, "Invalid token"))
@@ -80,47 +80,44 @@ macro_rules! expect_token {
     }};
 }
 
+macro_rules! expect_token_value {
+    ($token:expr, $value:path) => {{
+        match &$token.value {
+            $value(value) => value.clone(),
+            _ => panic!("expect_token_value! should only return identifiers"),
+        }
+    }};
+}
+
 macro_rules! expect_tokens {
-    ($parser:expr, $cursor:expr, $(($($token_type:expr),*)),*) => {{
+    ($parser:expr, $cursor:expr, $($token_type:expr),*) => {{
         let mut i = $cursor;
-        let mut lexemes = Vec::new();
-        let mut error: Option<Diagnostic> = None;
+        let mut tokens = Vec::new();
+        let mut is_valid = true;
 
         $(
-            if error.is_none() {
-            match $parser.lexemes.get(i) {
-                Some(lexeme) => {
-                    if let crate::scanner::lexeme::Lexeme::Valid(token) = lexeme {
-                        let mut matched = false;
+            let lexeme = $parser.lexemes.get(i);
 
-                        $(
-                            if $token_type == token.token_type {
-                                matched = true;
-                            } else {
-                                error = Some(Diagnostic::error(i, 0, format!("Expected `{}`", $token_type.to_string())));
-                            }
-                        )*
-
-                        if matched {
-                            lexemes.push(lexeme);
-                            i += 1;
-                        }
+            match lexeme {
+                Some(crate::scanner::lexeme::Lexeme::Valid(token)) => {
+                    if token.token_type == $token_type {
+                        tokens.push(token.clone());
+                        i += 1;
                     } else {
-                        error = Some(Diagnostic::error(i, 0, "Unknown token"));
+                        is_valid = false;
                     }
                 }
-                None => {
-                    let expected_token_types = vec![$($token_type.to_string()),*];
-                    error = Some(Diagnostic::error(i, 1, format!("Expected `{}`", expected_token_types.join("` followed by `"))));
+                _ => {
+                    is_valid = false;
                 }
             }
-        }
         )*
 
-        if let Some(err) = error {
-            Err(err)
+        if is_valid {
+            Ok((tokens, i))
         } else {
-            Ok((lexemes, i))
+            let tokens = vec![$($token_type.to_string()),*];
+            Err(Diagnostic::error($cursor, tokens.len(), format!("Expected {}", tokens.join(" and "))))
         }
     }};
 }
@@ -132,6 +129,7 @@ pub(crate) use expect_optional_token;
 #[allow(unused_imports)]
 pub(crate) use expect_statement;
 pub(crate) use expect_token;
+pub(crate) use expect_token_value;
 pub(crate) use expect_tokens;
 pub(crate) use expect_type;
 pub(crate) use expect_valid_token;

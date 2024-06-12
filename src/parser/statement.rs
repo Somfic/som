@@ -1,13 +1,15 @@
+use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
 use core::panic;
 use std::collections::{HashMap, HashSet};
-
-use crate::scanner::lexeme::{Lexeme, Range, TokenType, TokenValue};
 
 use super::{
     ast::Type,
     expression,
     lookup::BindingPower,
-    macros::{expect_any_token, expect_expression, expect_token, expect_type},
+    macros::{
+        expect_any_token, expect_expression, expect_token, expect_token_value, expect_tokens,
+        expect_type,
+    },
     Diagnostic, Parser, Statement,
 };
 
@@ -41,7 +43,7 @@ pub fn parse_expression(parser: &Parser, cursor: usize) -> Result<(Statement, us
 }
 
 pub fn parse_declaration(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagnostic> {
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::Var)?;
+    let (_, cursor) = expect_token!(parser, cursor, TokenType::Let)?;
     let (identifier, cursor) = expect_token!(parser, cursor, TokenType::Identifier)?;
     let identifier = match &identifier.value {
         TokenValue::Identifier(identifier) => identifier,
@@ -69,14 +71,16 @@ pub fn parse_declaration(parser: &Parser, cursor: usize) -> Result<(Statement, u
 }
 
 pub fn parse_struct(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagnostic> {
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::Struct)?;
-    let (name, cursor) = expect_token!(parser, cursor, TokenType::Identifier)?;
-    let name = match &name.value {
-        TokenValue::Identifier(name) => name.clone(),
-        _ => panic!("expect_token! should return a valid token and handle the error case"),
-    };
+    let (tokens, cursor) = expect_tokens!(
+        parser,
+        cursor,
+        TokenType::Struct,
+        TokenType::Identifier,
+        TokenType::Colon
+    )?;
 
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
+    let identifier = expect_token_value!(tokens[1], TokenValue::Identifier);
+
     let mut new_cursor = cursor;
     let mut members: HashMap<String, Type> = HashMap::new();
 
@@ -84,19 +88,19 @@ pub fn parse_struct(parser: &Parser, cursor: usize) -> Result<(Statement, usize)
         let (member_name, member_type, cursor) = match token.token_type {
             TokenType::Semicolon => break,
             _ => {
-                let (field_name, cursor) =
-                    expect_token!(parser, new_cursor, TokenType::Identifier)?;
-                let field_name = match &field_name.value {
-                    TokenValue::Identifier(field_name) => field_name.clone(),
-                    _ => panic!(
-                        "expect_token! should return a valid token and handle the error case"
-                    ),
-                };
+                let (tokens, cursor) = expect_tokens!(
+                    parser,
+                    new_cursor,
+                    TokenType::Dot,
+                    TokenType::Identifier,
+                    TokenType::Colon
+                )?;
 
-                let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
+                let identifier = expect_token_value!(tokens[1], TokenValue::Identifier);
+
                 let (field_type, cursor) = expect_type!(parser, cursor, BindingPower::None)?;
 
-                (field_name, field_type, cursor)
+                (identifier, field_type, cursor)
             }
         };
 
@@ -108,17 +112,19 @@ pub fn parse_struct(parser: &Parser, cursor: usize) -> Result<(Statement, usize)
 
     let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Semicolon)?;
 
-    Ok((Statement::Struct(name, members), cursor))
+    Ok((Statement::Struct(identifier, members), cursor))
 }
 
 pub fn parse_enum(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagnostic> {
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::Enum)?;
-    let (name, cursor) = expect_token!(parser, cursor, TokenType::Identifier)?;
-    let name = match &name.value {
-        TokenValue::Identifier(name) => name.clone(),
-        _ => panic!("expect_token! should return a valid token and handle the error case"),
-    };
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
+    let (tokens, cursor) = expect_tokens!(
+        parser,
+        cursor,
+        TokenType::Enum,
+        TokenType::Identifier,
+        TokenType::Colon
+    )?;
+
+    let identifier = expect_token_value!(tokens[1], TokenValue::Identifier);
 
     let mut new_cursor = cursor;
     let mut members: HashSet<String> = HashSet::new();
@@ -129,12 +135,8 @@ pub fn parse_enum(parser: &Parser, cursor: usize) -> Result<(Statement, usize), 
             _ => {
                 let (field_name, cursor) =
                     expect_token!(parser, new_cursor, TokenType::Identifier)?;
-                let field_name = match &field_name.value {
-                    TokenValue::Identifier(field_name) => field_name.clone(),
-                    _ => panic!(
-                        "expect_token! should return a valid token and handle the error case"
-                    ),
-                };
+
+                let field_name = expect_token_value!(field_name, TokenValue::Identifier);
 
                 (field_name, cursor)
             }
@@ -147,5 +149,5 @@ pub fn parse_enum(parser: &Parser, cursor: usize) -> Result<(Statement, usize), 
 
     let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Semicolon)?;
 
-    Ok((Statement::Enum(name, members), cursor))
+    Ok((Statement::Enum(identifier, members), cursor))
 }

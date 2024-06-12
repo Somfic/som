@@ -207,7 +207,7 @@ impl Default for Lookup {
 
         lookup.add_expression_handler(TokenType::Minus, expression::parse_unary);
         lookup.add_expression_handler(TokenType::Not, expression::parse_unary);
-        lookup.add_statement_handler(TokenType::Var, statement::parse_declaration);
+        lookup.add_statement_handler(TokenType::Let, statement::parse_declaration);
         lookup.add_left_expression_handler(
             TokenType::Equal,
             BindingPower::Assignment,

@@ -57,7 +57,7 @@ impl Scanner {
                 (r!(r"(else)"), |_| (TokenType::Else, TokenValue::None)),
                 (r!(r"(while)"), |_| (TokenType::While, TokenValue::None)),
                 (r!(r"(for)"), |_| (TokenType::For, TokenValue::None)),
-                (r!(r"(var)"), |_| (TokenType::Var, TokenValue::None)),
+                (r!(r"(let)"), |_| (TokenType::Let, TokenValue::None)),
                 (r!(r"(fn)"), |_| (TokenType::Function, TokenValue::None)),
                 (r!(r"(return)"), |_| (TokenType::Return, TokenValue::None)),
                 (r!(r"(struct)"), |_| (TokenType::Struct, TokenValue::None)),
