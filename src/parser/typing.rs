@@ -21,7 +21,8 @@ pub fn parse(
             .type_lookup
             .get(&token.token_type)
             .ok_or(Diagnostic::error(
-                range,
+                range.position,
+                range.length,
                 format!("No type handler for {:?}", token.token_type),
             ))?;
 
