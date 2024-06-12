@@ -15,7 +15,7 @@ pub mod scanner;
 pub mod transpiler;
 
 fn main() -> Result<()> {
-    let code = "struct Result { ok: number, error: string }";
+    let code = "struct Result { ok: number, err: string }";
     let file = SimpleFile::new("main", code);
 
     let tokens = scanner::Scanner::new(code.to_owned()).collect::<Vec<_>>();

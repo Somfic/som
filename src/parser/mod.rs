@@ -62,7 +62,7 @@ impl Iterator for Parser {
                 Some(Ok(statement))
             }
             Err(diagnostic) => {
-                self.cursor += 1;
+                self.cursor += 1000000000;
                 // TODO: Diagnostic::combine here?
                 Some(Err(diagnostic))
             }
@@ -255,8 +255,6 @@ mod tests {
         let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
         let mut parser = Parser::new(lexemes);
         let result = parser.parse().unwrap();
-
-        println!("{:?}", result);
 
         assert_eq!(
             result,

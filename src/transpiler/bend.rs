@@ -84,6 +84,15 @@ fn transpile_statement(statement: &Statement) -> String {
             };
             format!("let {}{} = {};\n", identifier, typing, expression)
         }
+        Statement::Struct(name, members) => {
+            let mut output = String::new();
+            output.push_str(&format!("struct {} {{\n", name));
+            for (member, typing) in members {
+                output.push_str(&format!("  {}: {},\n", member, transpile_type(typing)));
+            }
+            output.push_str("}\n");
+            output
+        }
     }
 }
 
