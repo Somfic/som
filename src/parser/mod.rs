@@ -43,9 +43,10 @@ impl<'a> Parser<'a> {
                 while let Some(Lexeme::Valid(token)) = self.lexemes.get(self.cursor) {
                     self.cursor += 1;
 
-                    if token.token_type == TokenType::Semicolon {
+                    // Try to parse the next statement
+                    if statement::parse(self, self.cursor).is_ok() {
                         break;
-                    }
+                    };
                 }
 
                 // diagnostics.insert(Diagnostic::error(
