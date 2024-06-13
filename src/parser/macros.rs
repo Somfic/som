@@ -93,7 +93,7 @@ macro_rules! expect_tokens {
     ($parser:expr, $cursor:expr, $($token_type:expr),*) => {{
         let mut i = $cursor;
         let mut tokens = Vec::new();
-        let mut is_valid = true;
+        let mut valid = 0;
 
         $(
             let lexeme = $parser.lexemes.get(i);
@@ -102,22 +102,22 @@ macro_rules! expect_tokens {
                 Some(crate::scanner::lexeme::Lexeme::Valid(token)) => {
                     if token.token_type == $token_type {
                         tokens.push(token.clone());
-                        i += 1;
-                    } else {
-                        is_valid = false;
+                        valid += 1;
                     }
                 }
-                _ => {
-                    is_valid = false;
-                }
-            }
+                _ => {}
+            };
+
+            i += 1;
         )*
 
-        if is_valid {
+        let all_tokens = vec![$($token_type),*];
+
+        if valid == all_tokens.len() {
             Ok((tokens, i))
         } else {
-            let tokens = vec![$($token_type.to_string()),*];
-            Err(Diagnostic::error($cursor, tokens.len(), format!("Expected {}", tokens.join(" and "))))
+            let unexpected_tokens = all_tokens.iter().skip(valid).map(|t| t.to_string()).collect::<Vec<_>>();
+            Err(Diagnostic::error($cursor + valid, 1, format!("Expected {}", unexpected_tokens.join(" and "))))
         }
     }};
 }
