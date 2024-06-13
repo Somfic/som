@@ -8,25 +8,13 @@ use super::{
     lookup::BindingPower,
     macros::{
         expect_any_token, expect_expression, expect_token, expect_token_value, expect_tokens,
-        expect_type,
+        expect_type, expect_valid_token,
     },
     Diagnostic, Parser, Statement,
 };
 
 pub fn parse(parser: &Parser, cursor: usize) -> Result<(Statement, usize), Diagnostic> {
-    let lexeme = parser.lexemes.get(cursor);
-
-    if lexeme.is_none() {
-        return Err(Diagnostic::error(cursor, 1, "Expected expression"));
-    }
-
-    let lexeme = lexeme.unwrap();
-
-    let token = match lexeme {
-        Lexeme::Valid(token) => token,
-        Lexeme::Invalid(_) => return Err(Diagnostic::error(cursor, 0, "Invalid token")),
-    };
-
+    let (token, _) = expect_valid_token!(parser, cursor);
     let statement_handler = parser.lookup.statement_lookup.get(&token.token_type);
 
     match statement_handler {
