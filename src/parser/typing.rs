@@ -21,9 +21,9 @@ pub fn parse(
             .type_lookup
             .get(&token.token_type)
             .ok_or(Diagnostic::error(
-                range.position,
+                cursor,
                 range.length,
-                format!("No type handler for {:?}", token.token_type),
+                format!("Cannot create a type from {}", token.token_type),
             ))?;
 
     let (mut left_hand_side, new_cursor) = type_handler(parser, cursor)?;
