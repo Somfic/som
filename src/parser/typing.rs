@@ -15,16 +15,11 @@ pub fn parse(
 ) -> Result<(Type, usize), Diagnostic> {
     let mut cursor = cursor;
     let (token, range) = expect_valid_token!(parser, cursor);
-    let type_handler =
-        parser
-            .lookup
-            .type_lookup
-            .get(&token.token_type)
-            .ok_or(Diagnostic::error(
-                cursor,
-                range.length,
-                format!("Cannot create a type from {}", token.token_type),
-            ))?;
+    let type_handler = parser
+        .lookup
+        .type_lookup
+        .get(&token.token_type)
+        .ok_or(Diagnostic::error(cursor, range.length, "Expected a type"))?;
 
     let (mut left_hand_side, new_cursor) = type_handler(parser, cursor)?;
 
