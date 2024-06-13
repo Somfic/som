@@ -62,7 +62,6 @@ impl<'a> Parser<'a> {
                     statements.push(statement);
                 }
                 Err(diagnostic) => {
-                    self.cursor += 1;
                     current_error = Some((diagnostic, last_safe_cursor));
                 }
             };
