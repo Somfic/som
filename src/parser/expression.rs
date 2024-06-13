@@ -26,7 +26,7 @@ pub fn parse(
         .ok_or(Diagnostic::error(
             cursor,
             range.length,
-            format!("Cannot create an expression from {}", token.token_type),
+            "Expected a new expression",
         ))?;
 
     let (mut left_hand_side, new_cursor) = expression_handler(parser, cursor)?;
