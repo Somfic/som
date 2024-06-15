@@ -1,12 +1,14 @@
 use std::{fmt::Display, hash::Hash};
 
+use crate::diagnostic::Range;
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum Lexeme {
-    Valid(Token),
-    Invalid(Range),
+pub enum Lexeme<'a> {
+    Valid(Token<'a>),
+    Invalid(Range<'a>),
 }
 
-impl Display for Lexeme {
+impl<'a> Display for Lexeme<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Lexeme::Valid(token) => write!(f, "`{}`", token.token_type),
@@ -15,20 +17,28 @@ impl Display for Lexeme {
     }
 }
 
-impl Lexeme {
-    pub fn valid(token_type: TokenType, value: TokenValue, start: usize, length: usize) -> Lexeme {
+impl<'a> Lexeme<'a> {
+    pub fn valid(
+        file_id: impl Into<&'a str>,
+        token_type: TokenType,
+        value: TokenValue,
+        start: usize,
+        length: usize,
+    ) -> Lexeme<'a> {
         Lexeme::Valid(Token::new(
             token_type,
             value,
             Range {
+                file_id: file_id.into(),
                 position: start,
                 length,
             },
         ))
     }
 
-    pub fn invalid(start: usize, length: usize) -> Lexeme {
+    pub fn invalid(file_id: impl Into<&'a str>, start: usize, length: usize) -> Lexeme<'a> {
         Lexeme::Invalid(Range {
+            file_id: file_id.into(),
             position: start,
             length,
         })
@@ -40,22 +50,21 @@ impl Lexeme {
             Lexeme::Invalid(range) => range,
         }
     }
-}
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct Range {
-    pub position: usize,
-    pub length: usize,
+    pub fn is_valid(&self) -> bool {
+        matches!(self, Lexeme::Valid(_))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Token {
+pub struct Token<'a> {
     pub token_type: TokenType,
     pub value: TokenValue,
-    pub range: Range,
+    /// The range of the token in the source code.
+    pub range: Range<'a>,
 }
 
-impl Token {
+impl<'a> Token<'a> {
     pub fn new(token_type: TokenType, value: TokenValue, range: Range) -> Token {
         Token {
             token_type,

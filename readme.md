@@ -2,24 +2,24 @@
 
 > An idiot admires complexity, a genius admires simplicity.
 
-```ts
-struct person:
-  name: string
-  age: number
+```rust
+enum breed:
+  siamese
+  persian
+  maine_coon
+  sphynx
+  other ~ string
 
-  age_in_days() -> number:
-    let age_in_months = .age * 12;
-    age_in_months * 30
-  ;
+type cat:
+  name ~ string
+  age ~ number
+  breed ~ breed
 
-  *new(name: string, age: number) -> self:
-    self {
-      name
-      age
-    }
-  ;
-;
+spec purrer:
+  pur ~ fn (self) -> number
 
-let lucas = person::new('Lucas', 22);
-lucas.age_in_days(); // 7920
+code purrer for cat:
+  pur: (self) -> {
+    12
+  }
 ```

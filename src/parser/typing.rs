@@ -3,23 +3,31 @@ use std::collections::HashMap;
 use super::{
     ast::Type,
     lookup::BindingPower,
-    macros::{expect_optional_token, expect_token, expect_type, expect_valid_token},
-    Diagnostic, Parser,
+    macros::{expect_optional_token, expect_tokens, expect_type, expect_valid_token},
+    Parser,
 };
-use crate::scanner::lexeme::{Lexeme, TokenType, TokenValue};
+use crate::{
+    diagnostic::Error,
+    scanner::lexeme::{Lexeme, TokenType, TokenValue},
+};
 
-pub fn parse(
-    parser: &Parser,
+pub fn parse<'a>(
+    parser: &'a Parser<'a>,
     cursor: usize,
     binding_power: &BindingPower,
-) -> Result<(Type, usize), Diagnostic> {
+) -> Result<(Type, usize), Error<'a>> {
     let mut cursor = cursor;
-    let (token, range) = expect_valid_token!(parser, cursor);
+    let (token, range) = expect_valid_token!(parser, cursor)?;
     let type_handler = parser
         .lookup
         .type_lookup
         .get(&token.token_type)
-        .ok_or(Diagnostic::error(cursor, range.length, "Expected a type"))?;
+        .ok_or(Error::primary(
+            parser.lexemes.get(cursor).unwrap().range().file_id,
+            cursor,
+            range.length,
+            "Expected a type",
+        ))?;
 
     let (mut left_hand_side, new_cursor) = type_handler(parser, cursor)?;
 
@@ -51,24 +59,24 @@ pub fn parse(
     Ok((left_hand_side, cursor))
 }
 
-pub fn parse_symbol(parser: &Parser, cursor: usize) -> Result<(Type, usize), Diagnostic> {
-    let (identifier, cursor) = expect_token!(parser, cursor, TokenType::Identifier)?;
-    let identifier = match &identifier.value {
+pub fn parse_symbol<'a>(parser: &'a Parser, cursor: usize) -> Result<(Type, usize), Error<'a>> {
+    let (identifier, cursor) = expect_tokens!(parser, cursor, TokenType::Identifier)?;
+    let identifier = match &identifier[0].value {
         TokenValue::Identifier(identifier) => identifier,
         _ => panic!("expect_token! should only return identifiers"),
     };
     Ok((Type::Symbol(identifier.clone()), cursor))
 }
 
-pub fn parse_array(parser: &Parser, cursor: usize) -> Result<(Type, usize), Diagnostic> {
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::SquareOpen)?;
+pub fn parse_array<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Type, usize), Error<'a>> {
+    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::SquareOpen)?;
     let (element_type, cursor) = expect_type!(parser, cursor, &BindingPower::None)?;
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::SquareClose)?;
+    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::SquareClose)?;
     Ok((Type::Array(Box::new(element_type)), cursor))
 }
 
-pub fn parse_tuple(parser: &Parser, cursor: usize) -> Result<(Type, usize), Diagnostic> {
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::CurlyOpen)?;
+pub fn parse_tuple<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Type, usize), Error<'a>> {
+    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::CurlyOpen)?;
     let mut new_cursor = cursor;
     let mut members: HashMap<String, Type> = HashMap::new();
 
@@ -77,7 +85,7 @@ pub fn parse_tuple(parser: &Parser, cursor: usize) -> Result<(Type, usize), Diag
             TokenType::CurlyClose => break,
             _ => {
                 if !members.is_empty() {
-                    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Comma)?;
+                    let (_, cursor) = expect_tokens!(parser, new_cursor, TokenType::Comma)?;
                     new_cursor = cursor;
                 }
 
@@ -86,13 +94,13 @@ pub fn parse_tuple(parser: &Parser, cursor: usize) -> Result<(Type, usize), Diag
                 match colon {
                     Some(_) => {
                         let (field_name, cursor) =
-                            expect_token!(parser, new_cursor, TokenType::Identifier)?;
-                        let field_name = match &field_name.value {
+                            expect_tokens!(parser, new_cursor, TokenType::Identifier)?;
+                        let field_name = match &field_name[0].value {
                             TokenValue::Identifier(field_name) => field_name.clone(),
                             _ => panic!("expect_token! should only return identifiers"),
                         };
 
-                        let (_, cursor) = expect_token!(parser, cursor, TokenType::Colon)?;
+                        let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Colon)?;
                         let (field_type, cursor) =
                             expect_type!(parser, cursor, BindingPower::None)?;
 
@@ -114,7 +122,7 @@ pub fn parse_tuple(parser: &Parser, cursor: usize) -> Result<(Type, usize), Diag
         new_cursor = cursor;
     }
 
-    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::CurlyClose)?;
+    let (_, cursor) = expect_tokens!(parser, new_cursor, TokenType::CurlyClose)?;
 
     Ok((Type::Tuple(members), cursor))
 }

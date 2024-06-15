@@ -1,29 +1,29 @@
 use super::{
     ast::{Expression, UnaryOperation},
     lookup::BindingPower,
-    macros::{
-        expect_expression, expect_token, expect_token_value, expect_tokens, expect_valid_token,
-    },
-    Diagnostic, Parser,
+    macros::{expect_expression, expect_token_value, expect_tokens, expect_valid_token},
+    Parser,
 };
 use crate::{
+    diagnostic::Error,
     parser::macros::expect_any_token,
     scanner::lexeme::{Lexeme, TokenType, TokenValue},
 };
 use std::collections::HashMap;
 
-pub fn parse(
-    parser: &Parser,
+pub fn parse<'a>(
+    parser: &'a Parser<'a>,
     cursor: usize,
     binding_power: &BindingPower,
-) -> Result<(Expression, usize), Diagnostic> {
+) -> Result<(Expression, usize), Error<'a>> {
     let mut cursor = cursor;
-    let (token, range) = expect_valid_token!(parser, cursor);
+    let (token, range) = expect_valid_token!(parser, cursor)?;
     let expression_handler = parser
         .lookup
         .expression_lookup
         .get(&token.token_type)
-        .ok_or(Diagnostic::error(
+        .ok_or(Error::primary(
+            range.file_id,
             cursor,
             range.length,
             "Expected a new expression",
@@ -60,19 +60,22 @@ pub fn parse(
     Ok((left_hand_side, cursor))
 }
 
-pub fn parse_assignment(
-    parser: &Parser,
+pub fn parse_assignment<'a>(
+    parser: &'a Parser<'a>,
     cursor: usize,
     lhs: Expression,
     binding_power: &BindingPower,
-) -> Result<(Expression, usize), Diagnostic> {
+) -> Result<(Expression, usize), Error<'a>> {
     let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Equal)?;
     let (rhs, cursor) = expect_expression!(parser, cursor, binding_power)?;
 
     Ok((Expression::Assignment(Box::new(lhs), Box::new(rhs)), cursor))
 }
 
-pub fn parse_unary(parser: &Parser, cursor: usize) -> Result<(Expression, usize), Diagnostic> {
+pub fn parse_unary<'a>(
+    parser: &'a Parser<'a>,
+    cursor: usize,
+) -> Result<(Expression, usize), Error<'a>> {
     let (token, cursor) = expect_any_token!(parser, cursor, TokenType::Minus, TokenType::Not)?;
     match token.token_type {
         TokenType::Minus => {
@@ -93,24 +96,20 @@ pub fn parse_unary(parser: &Parser, cursor: usize) -> Result<(Expression, usize)
     }
 }
 
-pub fn parse_struct_initializer(
-    parser: &Parser,
+pub fn parse_struct_initializer<'a>(
+    parser: &'a Parser<'a>,
     cursor: usize,
     lhs: Expression,
     binding_power: &BindingPower,
-) -> Result<(Expression, usize), Diagnostic> {
+) -> Result<(Expression, usize), Error<'a>> {
     let identifier = match lhs {
         Expression::Identifier(identifier) => identifier.clone(),
         _ => {
-            return Err(Diagnostic::error(
-                cursor,
-                1,
-                format!("Expected {}, found {:?}", TokenType::Identifier, lhs),
-            ))
+            unreachable!()
         }
     };
 
-    let (_, cursor) = expect_token!(parser, cursor, TokenType::CurlyOpen)?;
+    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::CurlyOpen)?;
 
     let mut members = HashMap::new();
     let mut new_cursor = cursor;
@@ -121,7 +120,7 @@ pub fn parse_struct_initializer(
         }
 
         if !members.is_empty() {
-            let (_, cursor) = expect_token!(parser, new_cursor, TokenType::Comma)?;
+            let (_, cursor) = expect_tokens!(parser, new_cursor, TokenType::Comma)?;
             new_cursor = cursor;
         }
 
@@ -137,7 +136,7 @@ pub fn parse_struct_initializer(
         new_cursor = cursor;
     }
 
-    let (_, cursor) = expect_token!(parser, new_cursor, TokenType::CurlyClose)?;
+    let (_, cursor) = expect_tokens!(parser, new_cursor, TokenType::CurlyClose)?;
 
     Ok((Expression::StructInitializer(identifier, members), cursor))
 }

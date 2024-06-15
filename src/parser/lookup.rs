@@ -1,10 +1,14 @@
 use super::{
     ast::{BinaryOperation, Expression, Statement, Type},
     expression,
-    macros::{expect_expression, expect_token},
-    statement, typing, Diagnostic, Parser,
+    macros::{expect_expression, expect_tokens},
+    statement, typing, Parser,
 };
-use crate::scanner::lexeme::{TokenType, TokenValue};
+use crate::{
+    diagnostic::Error,
+    parser::macros::expect_token_value,
+    scanner::lexeme::{TokenType, TokenValue},
+};
 use core::panic;
 use std::collections::HashMap;
 
@@ -23,25 +27,30 @@ pub enum BindingPower {
     Primary = 10,
 }
 
-pub type TypeHandler = fn(&Parser, usize) -> Result<(Type, usize), Diagnostic>;
-pub type LeftTypeHandler =
-    fn(&Parser, usize, Type, &BindingPower) -> Result<(Type, usize), Diagnostic>;
-pub type StatementHandler = fn(&Parser, usize) -> Result<(Statement, usize), Diagnostic>;
-pub type ExpressionHandler = fn(&Parser, usize) -> Result<(Expression, usize), Diagnostic>;
-pub type LeftExpressionHandler =
-    fn(&Parser, usize, Expression, &BindingPower) -> Result<(Expression, usize), Diagnostic>;
+pub type TypeHandler<'a> = fn(&'a Parser<'a>, usize) -> Result<(Type, usize), Error<'a>>;
+pub type LeftTypeHandler<'a> =
+    fn(&'a Parser<'a>, usize, Type, &BindingPower) -> Result<(Type, usize), Error<'a>>;
+pub type StatementHandler<'a> = fn(&'a Parser<'a>, usize) -> Result<(Statement, usize), Error<'a>>;
+pub type ExpressionHandler<'a> =
+    fn(&'a Parser<'a>, usize) -> Result<(Expression, usize), Error<'a>>;
+pub type LeftExpressionHandler<'a> =
+    fn(&'a Parser<'a>, usize, Expression, &BindingPower) -> Result<(Expression, usize), Error<'a>>;
 
-pub struct Lookup {
-    pub statement_lookup: HashMap<TokenType, StatementHandler>,
-    pub expression_lookup: HashMap<TokenType, ExpressionHandler>,
-    pub left_expression_lookup: HashMap<TokenType, LeftExpressionHandler>,
-    pub type_lookup: HashMap<TokenType, TypeHandler>,
-    pub left_type_lookup: HashMap<TokenType, LeftTypeHandler>,
+pub struct Lookup<'a> {
+    pub statement_lookup: HashMap<TokenType, StatementHandler<'a>>,
+    pub expression_lookup: HashMap<TokenType, ExpressionHandler<'a>>,
+    pub left_expression_lookup: HashMap<TokenType, LeftExpressionHandler<'a>>,
+    pub type_lookup: HashMap<TokenType, TypeHandler<'a>>,
+    pub left_type_lookup: HashMap<TokenType, LeftTypeHandler<'a>>,
     pub binding_power_lookup: HashMap<TokenType, BindingPower>,
 }
 
-impl Lookup {
-    pub(crate) fn add_statement_handler(&mut self, token: TokenType, handler: StatementHandler) {
+impl<'a> Lookup<'a> {
+    pub(crate) fn add_statement_handler(
+        &mut self,
+        token: TokenType,
+        handler: StatementHandler<'a>,
+    ) {
         if self.statement_lookup.contains_key(&token) {
             panic!("Token already has a statement handler");
         }
@@ -49,7 +58,11 @@ impl Lookup {
         self.statement_lookup.insert(token, handler);
     }
 
-    pub(crate) fn add_expression_handler(&mut self, token: TokenType, handler: ExpressionHandler) {
+    pub(crate) fn add_expression_handler(
+        &mut self,
+        token: TokenType,
+        handler: ExpressionHandler<'a>,
+    ) {
         if self.expression_lookup.contains_key(&token) {
             panic!("Token already has an expression handler");
         }
@@ -61,7 +74,7 @@ impl Lookup {
         &mut self,
         token: TokenType,
         binding_power: BindingPower,
-        handler: LeftExpressionHandler,
+        handler: LeftExpressionHandler<'a>,
     ) {
         if self.binding_power_lookup.contains_key(&token) {
             panic!("Token already has a binding power");
@@ -71,7 +84,7 @@ impl Lookup {
         self.binding_power_lookup.insert(token, binding_power);
     }
 
-    pub(crate) fn add_type_handler(&mut self, token: TokenType, handler: TypeHandler) {
+    pub(crate) fn add_type_handler(&mut self, token: TokenType, handler: TypeHandler<'a>) {
         if self.type_lookup.contains_key(&token) {
             panic!("Token already has a type handler");
         }
@@ -80,7 +93,7 @@ impl Lookup {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn add_left_type_handler(&mut self, token: TokenType, handler: LeftTypeHandler) {
+    pub(crate) fn add_left_type_handler(&mut self, token: TokenType, handler: LeftTypeHandler<'a>) {
         if self.left_type_lookup.contains_key(&token) {
             panic!("Token already has a left type handler");
         }
@@ -89,7 +102,7 @@ impl Lookup {
     }
 }
 
-impl Default for Lookup {
+impl<'a> Default for Lookup<'a> {
     fn default() -> Self {
         let mut lookup = Lookup {
             statement_lookup: HashMap::new(),
@@ -105,7 +118,7 @@ impl Default for Lookup {
             TokenType::Plus,
             BindingPower::Additive,
             |parser, cursor, lhs, _binding| {
-                let (_, cursor) = expect_token!(parser, cursor, TokenType::Plus)?;
+                let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Plus)?;
                 let (rhs, cursor) = expect_expression!(parser, cursor, &BindingPower::Additive)?;
                 Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Plus, Box::new(rhs)),
@@ -118,7 +131,7 @@ impl Default for Lookup {
             TokenType::Minus,
             BindingPower::Additive,
             |parser, cursor, lhs, _binding| {
-                let (_, cursor) = expect_token!(parser, cursor, TokenType::Minus)?;
+                let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Minus)?;
                 let (rhs, cursor) = expect_expression!(parser, cursor, &BindingPower::Additive)?;
                 Ok((
                     Expression::Binary(Box::new(lhs), BinaryOperation::Minus, Box::new(rhs)),
@@ -132,7 +145,7 @@ impl Default for Lookup {
             TokenType::Star,
             BindingPower::Multiplicative,
             |parser, cursor, lhs, _binding| {
-                let (_, cursor) = expect_token!(parser, cursor, TokenType::Star)?;
+                let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Star)?;
                 let (rhs, cursor) =
                     expect_expression!(parser, cursor, &BindingPower::Multiplicative)?;
                 Ok((
@@ -146,7 +159,7 @@ impl Default for Lookup {
             TokenType::Slash,
             BindingPower::Multiplicative,
             |parser, cursor, lhs, _binding| {
-                let (_, cursor) = expect_token!(parser, cursor, TokenType::Slash)?;
+                let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Slash)?;
                 let (rhs, cursor) =
                     expect_expression!(parser, cursor, &BindingPower::Multiplicative)?;
                 Ok((
@@ -158,50 +171,33 @@ impl Default for Lookup {
 
         // Literals and symbols
         lookup.add_expression_handler(TokenType::Decimal, |parser, cursor| {
-            let (decimal, cursor) = expect_token!(parser, cursor, TokenType::Decimal)?;
-
-            if let TokenValue::Decimal(value) = decimal.value {
-                return Ok((Expression::Number(value), cursor));
-            }
-
-            panic!("expect_token! should return a valid token and handle the error case");
+            let (decimal, cursor) = expect_tokens!(parser, cursor, TokenType::Decimal)?;
+            let decimal = expect_token_value!(decimal[0], TokenValue::Decimal);
+            Ok((Expression::Number(decimal), cursor))
         });
 
         lookup.add_expression_handler(TokenType::Integer, |parser, cursor| {
-            let (integer, cursor) = expect_token!(parser, cursor, TokenType::Integer)?;
-
-            if let TokenValue::Integer(value) = integer.value {
-                return Ok((Expression::Number(value as f64), cursor));
-            }
-
-            panic!("expect_token! should return a valid token and handle the error case");
+            let (integer, cursor) = expect_tokens!(parser, cursor, TokenType::Integer)?;
+            let integer = expect_token_value!(integer[0], TokenValue::Integer);
+            Ok((Expression::Number(integer as f64), cursor))
         });
 
         lookup.add_expression_handler(TokenType::String, |parser, cursor| {
-            let (string, cursor) = expect_token!(parser, cursor, TokenType::String)?;
-
-            if let TokenValue::String(string) = string.value.clone() {
-                return Ok((Expression::String(string), cursor));
-            }
-
-            panic!("expect_token! should return a valid token and handle the error case");
+            let (string, cursor) = expect_tokens!(parser, cursor, TokenType::String)?;
+            let string = expect_token_value!(string[0], TokenValue::String);
+            Ok((Expression::String(string), cursor))
         });
 
         lookup.add_expression_handler(TokenType::Identifier, |parser, cursor| {
-            let (identifier, cursor) = expect_token!(parser, cursor, TokenType::Identifier)?;
-
-            if let TokenValue::Identifier(identifier) = identifier.value.clone() {
-                return Ok((Expression::Identifier(identifier), cursor));
-            }
-
-            panic!("expect_token! should return a valid token and handle the error case");
+            let (identifier, cursor) = expect_tokens!(parser, cursor, TokenType::Identifier)?;
+            let identifier = expect_token_value!(identifier[0], TokenValue::Identifier);
+            Ok((Expression::Identifier(identifier), cursor))
         });
 
         lookup.add_expression_handler(TokenType::ParenOpen, |parser, cursor| {
-            let (_, cursor) = expect_token!(parser, cursor, TokenType::ParenOpen)?;
+            let (_, cursor) = expect_tokens!(parser, cursor, TokenType::ParenOpen)?;
             let (expression, cursor) = expect_expression!(parser, cursor, &BindingPower::None)?;
-            let (_, cursor) = expect_token!(parser, cursor, TokenType::ParenClose)?;
-
+            let (_, cursor) = expect_tokens!(parser, cursor, TokenType::ParenClose)?;
             Ok((Expression::Grouping(Box::new(expression)), cursor))
         });
 
