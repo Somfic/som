@@ -1,4 +1,7 @@
-use crate::scanner::lexeme::{Lexeme, Range};
+use crate::{
+    diagnostic::{Diagnostic, Error},
+    scanner::lexeme::Lexeme,
+};
 use ast::{Statement, Symbol};
 use lookup::Lookup;
 use std::collections::HashSet;
@@ -11,58 +14,62 @@ pub mod statement;
 pub mod typing;
 
 pub struct Parser<'a> {
-    lookup: Lookup,
-    lexemes: &'a Vec<Lexeme>,
-    cursor: usize,
+    lookup: Lookup<'a>,
+    lexemes: &'a Vec<Lexeme<'a>>,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(lexemes: &'a Vec<Lexeme>) -> Self {
+    pub fn new(lexemes: &'a Vec<Lexeme<'a>>) -> Self {
         Self {
             lookup: Lookup::default(),
             lexemes,
-            cursor: 0,
         }
     }
 
-    pub fn parse(&mut self) -> Result<Symbol, HashSet<Diagnostic>> {
+    pub fn parse(&'a mut self) -> Result<Symbol, HashSet<Diagnostic>> {
         let mut statements = vec![];
         let mut diagnostics = HashSet::new();
-        let mut current_error: Option<(Diagnostic, usize)> = None;
         let mut last_safe_cursor = 0;
+        let mut cursor = 0;
+        let mut panic_mode = false;
 
-        while self.cursor < self.lexemes.len() {
-            if current_error.is_some() {
-                let (error_diagnostic, _error_start_cursor) = current_error.take().unwrap();
-
-                // Skip to the next semicolon
-                // TODO: This is a naive approach, we should skip to the next statement
-                while let Some(Lexeme::Valid(_)) = self.lexemes.get(self.cursor) {
-                    self.cursor += 1;
-
+        while cursor < self.lexemes.len() {
+            if panic_mode {
+                // Skip to the next valid statement
+                while let Some(lexeme) = self.lexemes.get(cursor) {
                     // Try to parse the next statement
-                    if statement::parse(self, self.cursor).is_ok() {
+                    if lexeme.is_valid() && statement::parse(self, cursor).is_ok() {
+                        diagnostics.insert(
+                            Diagnostic::warning("Unparsed code").with_error(
+                                Error::primary(
+                                    lexeme.range().file_id,
+                                    cursor,
+                                    cursor - last_safe_cursor,
+                                    "This code was not parsed",
+                                )
+                                .transform_range(self.lexemes),
+                            ),
+                        );
+
                         break;
                     };
+
+                    cursor += 1;
                 }
-
-                // diagnostics.insert(Diagnostic::error(
-                //     error_start_cursor,
-                //     self.cursor - error_start_cursor,
-                //     "Syntax error",
-                // ));
-
-                diagnostics.insert(error_diagnostic);
             }
 
-            match statement::parse(self, self.cursor) {
+            match statement::parse(self, cursor) {
                 Ok((statement, new_cursor)) => {
-                    self.cursor = new_cursor;
+                    cursor = new_cursor;
                     last_safe_cursor = new_cursor;
                     statements.push(statement);
                 }
-                Err(diagnostic) => {
-                    current_error = Some((diagnostic, last_safe_cursor));
+                Err(error) => {
+                    diagnostics.insert(
+                        Diagnostic::error("Syntax error")
+                            .with_error(error.clone().transform_range(self.lexemes)),
+                    );
+                    panic_mode = true;
                 }
             };
         }
@@ -75,145 +82,74 @@ impl<'a> Parser<'a> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Diagnostic {
-    pub range: Range,
-    pub message: String,
-}
-
-impl Diagnostic {
-    fn error(cursor: usize, length: usize, message: impl Into<String>) -> Diagnostic {
-        Diagnostic {
-            range: Range {
-                position: cursor,
-                length,
-            },
-            message: message.into(),
-        }
-    }
-
-    #[allow(dead_code)]
-    fn combine(diagnostics: &[Diagnostic]) -> Diagnostic {
-        let min_range = diagnostics
-            .iter()
-            .map(|diagnostic| diagnostic.range.clone())
-            .min_by_key(|range| range.position)
-            .unwrap();
-
-        let max_range = diagnostics
-            .iter()
-            .map(|diagnostic| diagnostic.range.clone())
-            .max_by_key(|range| range.position + range.length)
-            .unwrap();
-
-        Diagnostic::error(
-            min_range.position,
-            max_range.position + max_range.length - min_range.position,
-            diagnostics
-                .iter()
-                .map(|diagnostic| diagnostic.message.clone())
-                .collect::<HashSet<_>>()
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("\n"),
-        )
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use ast::{BinaryOperation, Expression};
 
-    use crate::scanner::Scanner;
+    use crate::{files::Files, scanner::Scanner};
 
     use super::*;
 
     #[test]
     fn parses_addition() {
-        let code = "123 + 456;";
-        let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(&lexemes);
-        let result = parser.parse().expect("Failed to parse");
-
-        assert_eq!(
-            result,
+        test_parser(
+            "123 + 456;",
             Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
                     BinaryOperation::Plus,
-                    Box::new(Expression::Number(456.0))
-                )
-            )]))
+                    Box::new(Expression::Number(456.0)),
+                ),
+            )])),
         );
     }
 
     #[test]
     fn parses_subtraction() {
-        let code = "123 - 456;";
-        let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let parser = Parser::new(&lexemes).parse();
-        let parser = parser.unwrap();
-
-        assert_eq!(
-            parser,
+        test_parser(
+            "123 - 456;",
             Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
                     BinaryOperation::Minus,
-                    Box::new(Expression::Number(456.0))
-                )
-            )]))
+                    Box::new(Expression::Number(456.0)),
+                ),
+            )])),
         );
     }
 
     #[test]
     fn parses_multiplication() {
-        let code = "123 * 456;";
-        let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(&lexemes);
-        let result = parser.parse().unwrap();
-
-        assert_eq!(
-            result,
+        test_parser(
+            "123 * 456;",
             Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
                     BinaryOperation::Times,
-                    Box::new(Expression::Number(456.0))
-                )
-            )]))
+                    Box::new(Expression::Number(456.0)),
+                ),
+            )])),
         );
     }
 
     #[test]
     fn parses_division() {
-        let code = "123 / 456;";
-        let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(&lexemes);
-        let result = parser.parse().unwrap();
-
-        assert_eq!(
-            result,
+        test_parser(
+            "123 / 456;",
             Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
                     BinaryOperation::Divide,
-                    Box::new(Expression::Number(456.0))
-                )
-            )]))
+                    Box::new(Expression::Number(456.0)),
+                ),
+            )])),
         );
     }
 
     #[test]
     fn parses_long_expression() {
-        let code = "123 + 456 - 789 + 101;";
-        let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(&lexemes);
-        let result = parser.parse().unwrap();
-
-        assert_eq!(
-            result,
+        test_parser(
+            "123 + 456 - 789 + 101;",
             Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Number(123.0)),
@@ -224,57 +160,60 @@ mod tests {
                         Box::new(Expression::Binary(
                             Box::new(Expression::Number(789.0)),
                             BinaryOperation::Plus,
-                            Box::new(Expression::Number(101.0))
-                        ))
-                    ))
-                )
-            )]))
+                            Box::new(Expression::Number(101.0)),
+                        )),
+                    )),
+                ),
+            )])),
         );
     }
 
     #[test]
     fn gives_precedence_to_multiplication() {
-        let code = "123 * 456 + 789;";
-        let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(&lexemes);
-        let result = parser.parse().unwrap();
-
-        assert_eq!(
-            result,
+        test_parser(
+            "123 * 456 + 789;",
             Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Binary(
                         Box::new(Expression::Number(123.0)),
                         BinaryOperation::Times,
-                        Box::new(Expression::Number(456.0))
+                        Box::new(Expression::Number(456.0)),
                     )),
                     BinaryOperation::Plus,
-                    Box::new(Expression::Number(789.0))
-                )
-            )]))
+                    Box::new(Expression::Number(789.0)),
+                ),
+            )])),
         );
     }
 
     #[test]
     fn parses_expression_grouping() {
-        let code = "(123 + 456) * 789;";
-        let lexemes = Scanner::new(code.to_owned()).collect::<Vec<_>>();
-        let mut parser = Parser::new(&lexemes);
-        let result = parser.parse().unwrap();
-
-        assert_eq!(
-            result,
+        test_parser(
+            "(123 + 456) * 789;",
             Symbol::Statement(Statement::Block(vec![Statement::Expression(
                 Expression::Binary(
                     Box::new(Expression::Grouping(Box::new(Expression::Binary(
                         Box::new(Expression::Number(123.0)),
                         BinaryOperation::Plus,
-                        Box::new(Expression::Number(456.0))
+                        Box::new(Expression::Number(456.0)),
                     )))),
                     BinaryOperation::Times,
-                    Box::new(Expression::Number(789.0))
-                )
-            )]))
+                    Box::new(Expression::Number(789.0)),
+                ),
+            )])),
         );
+    }
+
+    fn test_parser(code: &str, expected: Symbol) {
+        let mut files = Files::default();
+        files.insert("test", code);
+
+        let scanner = Scanner::new(&files);
+        let lexemes = scanner.parse();
+
+        let mut parser = Parser::new(&lexemes);
+        let parsed = parser.parse().unwrap();
+
+        assert_eq!(parsed, expected);
     }
 }

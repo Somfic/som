@@ -3,11 +3,11 @@ use std::collections::{HashMap, HashSet};
 use crate::scanner::lexeme::Lexeme;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Symbol {
+pub enum Symbol<'a> {
     Expression(Expression),
     Statement(Statement),
     Type(Type),
-    Unknown(Lexeme),
+    Unknown(Lexeme<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
