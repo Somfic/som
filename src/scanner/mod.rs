@@ -1,12 +1,12 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic::Error;
 use crate::files::Files;
-use lexeme::Lexeme;
-use lexeme::TokenType;
-use lexeme::TokenValue;
+use token::Token;
+use token::TokenType;
+use token::TokenValue;
 use regex::Regex;
 
-pub mod lexeme;
+pub mod token;
 
 type SpecItem = (Regex, fn(&str) -> (TokenType, TokenValue));
 
@@ -100,7 +100,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(&self) -> Result<Vec<Lexeme>, Vec<Diagnostic>> {
+    pub fn parse(&self) -> Result<Vec<Token>, Vec<Diagnostic>> {
         let mut lexemes = Vec::new();
         let mut diagnostics = Vec::new();
 
@@ -139,7 +139,7 @@ impl<'a> Scanner<'a> {
                         }
 
                         let length = capture.as_str().chars().count();
-                        let lexeme = Lexeme::new(file, token_type, token_value, cursor, length);
+                        let lexeme = Token::new(file, token_type, token_value, cursor, length);
 
                         lexemes.push(lexeme);
 
@@ -335,7 +335,7 @@ mod tests {
         let expected = expected
             .into_iter()
             .map(|(token_type, token_value, cursor, length)| {
-                Lexeme::new("test file", token_type, token_value, cursor, length)
+                Token::new("test file", token_type, token_value, cursor, length)
             })
             .collect::<Vec<_>>();
 

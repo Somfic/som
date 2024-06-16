@@ -9,7 +9,7 @@ use codespan_reporting::{
 use core::result::Result::Ok;
 use files::Files;
 use parser::Grammar;
-use scanner::lexeme;
+use scanner::token;
 
 pub mod diagnostic;
 pub mod files;

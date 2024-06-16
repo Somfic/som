@@ -3,7 +3,7 @@ use codespan_reporting::term::{
     Config,
 };
 
-use crate::{files::Files, scanner::lexeme::Lexeme};
+use crate::{files::Files, scanner::token::Token};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Diagnostic<'a> {
@@ -67,7 +67,7 @@ impl<'a> Error<'a> {
         }
     }
 
-    pub(crate) fn transform_range(mut self, lexemes: &'a [Lexeme<'a>]) -> Error {
+    pub(crate) fn transform_range(mut self, lexemes: &'a [Token<'a>]) -> Error {
         self.range = self.range.to_source_code_range(lexemes);
         self
     }
@@ -157,7 +157,7 @@ pub struct Range<'a> {
 }
 
 impl<'a> Range<'a> {
-    pub fn to_source_code_range(self, lexemes: &[Lexeme]) -> Self {
+    pub fn to_source_code_range(self, lexemes: &[Token]) -> Self {
         let start = if self.position >= lexemes.len() {
             let last_lexeme = &lexemes[lexemes.len() - 1].range;
             last_lexeme.position + 1

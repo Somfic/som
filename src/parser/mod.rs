@@ -1,6 +1,6 @@
 use std::{collections::HashMap, os::macos::raw::stat};
 
-use crate::scanner::lexeme::{self, Lexeme, TokenType};
+use crate::scanner::token::{self, Token, TokenType};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
@@ -295,7 +295,7 @@ impl EarleyParser {
 mod test {
     use crate::{
         files::Files,
-        scanner::{lexeme::TokenType, Scanner},
+        scanner::{token::TokenType, Scanner},
     };
 
     use super::{Grammar, NonTerminal, Term};

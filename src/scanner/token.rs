@@ -3,19 +3,19 @@ use std::{fmt::Display, hash::Hash};
 use crate::diagnostic::Range;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Lexeme<'a> {
+pub struct Token<'a> {
     pub token_type: TokenType,
     pub value: TokenValue,
     pub range: Range<'a>,
 }
 
-impl<'a> Display for Lexeme<'a> {
+impl<'a> Display for Token<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "`{}`", self.token_type)
     }
 }
 
-impl<'a> Lexeme<'a> {
+impl<'a> Token<'a> {
     pub fn new(
         file_id: &'a str,
         token_type: TokenType,
