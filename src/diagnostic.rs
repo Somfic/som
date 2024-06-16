@@ -1,10 +1,26 @@
-use crate::scanner::lexeme::Lexeme;
+use codespan_reporting::term::{
+    termcolor::{ColorChoice, StandardStream},
+    Config,
+};
+
+use crate::{files::Files, scanner::lexeme::Lexeme};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Diagnostic<'a> {
     pub severity: Severity,
     pub title: String,
     pub errors: Vec<Error<'a>>,
+}
+
+impl<'a> Diagnostic<'a> {
+    pub fn print(&self, files: &'a Files) {
+        codespan_reporting::term::emit(
+            &mut StandardStream::stderr(ColorChoice::Auto),
+            &Config::default(),
+            files,
+            &self.clone().into(),
+        );
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -106,7 +122,7 @@ impl<'a> Diagnostic<'a> {
 }
 
 impl<'a> From<Diagnostic<'a>> for codespan_reporting::diagnostic::Diagnostic<&'a str> {
-    fn from(val: Diagnostic<'a>) -> Self {
+    fn from(val: Diagnostic<'a>) -> codespan_reporting::diagnostic::Diagnostic<&'a str> {
         codespan_reporting::diagnostic::Diagnostic::<&'a str>::new(val.severity.into())
             .with_message(val.title)
             .with_labels(val.errors.into_iter().map(|error| error.into()).collect())
@@ -114,7 +130,7 @@ impl<'a> From<Diagnostic<'a>> for codespan_reporting::diagnostic::Diagnostic<&'a
 }
 
 impl<'a> From<Error<'a>> for codespan_reporting::diagnostic::Label<&'a str> {
-    fn from(val: Error<'a>) -> Self {
+    fn from(val: Error<'a>) -> codespan_reporting::diagnostic::Label<&'a str> {
         codespan_reporting::diagnostic::Label::new(
             val.label.into(),
             val.range.file_id,
@@ -143,18 +159,18 @@ pub struct Range<'a> {
 impl<'a> Range<'a> {
     pub fn to_source_code_range(self, lexemes: &[Lexeme]) -> Self {
         let start = if self.position >= lexemes.len() {
-            let last_lexeme = lexemes[lexemes.len() - 1].range();
+            let last_lexeme = &lexemes[lexemes.len() - 1].range;
             last_lexeme.position + 1
         } else {
-            let start_lexeme = lexemes[self.position].range();
+            let start_lexeme = &lexemes[self.position].range;
             start_lexeme.position
         };
 
         let end = if self.position + self.length >= lexemes.len() {
-            let last_lexeme = lexemes[lexemes.len() - 1].range();
+            let last_lexeme = &lexemes[lexemes.len() - 1].range;
             last_lexeme.position + last_lexeme.length
         } else {
-            let end_lexeme = lexemes[self.position + self.length].range();
+            let end_lexeme = &lexemes[self.position + self.length].range;
             end_lexeme.position + end_lexeme.length
         };
 

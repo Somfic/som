@@ -1,3 +1,5 @@
+use crate::diagnostic::Diagnostic;
+use crate::diagnostic::Error;
 use crate::files::Files;
 use lexeme::Lexeme;
 use lexeme::TokenType;
@@ -98,13 +100,13 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(&self) -> Vec<Lexeme> {
+    pub fn parse(&self) -> Result<Vec<Lexeme>, Vec<Diagnostic>> {
         let mut lexemes = Vec::new();
+        let mut diagnostics = Vec::new();
 
         for file in self.files.file_ids() {
             let content = self.files.get(file).unwrap();
             let mut cursor = 0;
-
             let mut panic_start_at = None;
             while cursor < content.chars().count() {
                 let haystack = content.chars().skip(cursor).collect::<String>();
@@ -117,7 +119,14 @@ impl<'a> Scanner<'a> {
                         capture.and_then(|c| Some((c.get(0)?, c.get(1)?)))
                     {
                         if let Some(start) = panic_start_at.take() {
-                            lexemes.push(Lexeme::invalid(file, start, cursor - start - 1));
+                            diagnostics.push(Diagnostic::error("Literal error").with_error(
+                                Error::primary(
+                                    file,
+                                    start,
+                                    cursor - start - 1,
+                                    "This literal was not recognized",
+                                ),
+                            ));
                         }
 
                         let value = matched.as_str();
@@ -130,7 +139,7 @@ impl<'a> Scanner<'a> {
                         }
 
                         let length = capture.as_str().chars().count();
-                        let lexeme = Lexeme::valid(file, token_type, token_value, cursor, length);
+                        let lexeme = Lexeme::new(file, token_type, token_value, cursor, length);
 
                         lexemes.push(lexeme);
 
@@ -150,7 +159,11 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        lexemes
+        if diagnostics.is_empty() {
+            Ok(lexemes)
+        } else {
+            Err(diagnostics)
+        }
     }
 }
 
@@ -322,10 +335,18 @@ mod tests {
         let expected = expected
             .into_iter()
             .map(|(token_type, token_value, cursor, length)| {
-                Lexeme::valid("test file", token_type, token_value, cursor, length)
+                Lexeme::new("test file", token_type, token_value, cursor, length)
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(lexemes, expected);
+        match lexemes {
+            Ok(lexemes) => assert_eq!(lexemes, expected),
+            Err(diagnostics) => {
+                for diagnostic in diagnostics.iter() {
+                    diagnostic.print(&files);
+                }
+                panic!("Expected lexemes, but got diagnostics");
+            }
+        }
     }
 }

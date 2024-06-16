@@ -8,13 +8,13 @@ use codespan_reporting::{
 };
 use core::result::Result::Ok;
 use files::Files;
-use transpiler::{bend::BendTranspiler, Transpiler};
+use parser::Grammar;
+use scanner::lexeme;
 
 pub mod diagnostic;
 pub mod files;
 pub mod parser;
 pub mod scanner;
-pub mod transpiler;
 
 fn main() -> Result<()> {
     let mut files = Files::default();
@@ -28,32 +28,15 @@ fn main() -> Result<()> {
     let scanner = scanner::Scanner::new(&files);
     let lexemes = scanner.parse();
 
-    let mut parser = parser::Parser::new(&lexemes);
-    let parsed = parser.parse();
-
-    match &parsed {
-        Ok(_) => {}
+    let lexemes = match &lexemes {
+        Ok(lexemes) => lexemes,
         Err(diagnostics) => {
-            // Print the diagnostics
-            for diagnostic in diagnostics.iter() {
-                println!("{:?}", diagnostic);
-            }
-
-            let diagnostics: Vec<Diagnostic<&str>> =
-                diagnostics.iter().map(|d| d.clone().into()).collect();
-
-            let writer = StandardStream::stderr(ColorChoice::Auto);
-            let config = codespan_reporting::term::Config::default();
-
-            for diagnostic in diagnostics {
-                term::emit(&mut writer.lock(), &config, &files, &diagnostic)?;
-            }
+            diagnostics
+                .iter()
+                .for_each(|diagnostic| diagnostic.print(&files));
+            panic!("Failed to scan");
         }
-    }
-
-    let transpiled = BendTranspiler::transpile(&parsed.unwrap());
-
-    println!("{}", transpiled);
+    };
 
     Ok(())
 }
