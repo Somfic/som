@@ -1,8 +1,8 @@
 use anyhow::Result;
 use core::result::Result::Ok;
 use files::Files;
-use parser::Grammar;
 
+pub mod ast;
 pub mod diagnostic;
 pub mod files;
 pub mod parser;
@@ -30,7 +30,7 @@ fn main() -> Result<()> {
         }
     };
 
-    let parser = parser::EarleyParser::new(Grammar::default());
+    let parser = parser::EarleyParser::default();
     let ast = parser.parse(tokens);
 
     let _ast = match &ast {

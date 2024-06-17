@@ -1,125 +1,25 @@
-use std::collections::{HashMap, HashSet};
+use grammar::{Grammar, NonTerminal, Term};
 
 use crate::{
     diagnostic::{Diagnostic, Error},
-    scanner::token::{Token, TokenType},
+    scanner::token::Token,
 };
+use std::collections::HashSet;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Term {
-    Terminal(TokenType),
-    NonTerminal(NonTerminal),
-}
-
-impl std::fmt::Display for Term {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Term::Terminal(token_type) => write!(f, "{}", token_type),
-            Term::NonTerminal(non_terminal) => write!(f, "{}", non_terminal),
-        }
-    }
-}
-
-impl std::fmt::Display for NonTerminal {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<{:?}>", self)
-    }
-}
+pub mod grammar;
 
 #[derive(Debug)]
-pub struct Grammar {
-    pub rules: HashMap<NonTerminal, Vec<Vec<Term>>>,
+pub struct Chart<'a> {
+    pub states: Vec<Vec<EarleyItem<'a>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum NonTerminal {
-    Start,
-    RootItems,
-    RootItem,
-    EnumDeclaration,
-    EnumItems,
-    EnumItem,
-}
-
-impl Default for Grammar {
+impl Default for Chart<'_> {
     fn default() -> Self {
-        let mut grammar = Grammar {
-            rules: HashMap::new(),
-        };
-
-        // start -> root_items
-        grammar.add_rule(
-            NonTerminal::Start,
-            vec![Term::NonTerminal(NonTerminal::RootItems)],
-        );
-        // root_items -> root_item root_items | root_item
-        grammar.add_rules(
-            NonTerminal::RootItems,
-            vec![
-                vec![
-                    Term::NonTerminal(NonTerminal::RootItems),
-                    Term::NonTerminal(NonTerminal::RootItem),
-                ],
-                vec![Term::NonTerminal(NonTerminal::RootItem)],
-            ],
-        );
-        // root_item -> enum_declaration
-        grammar.add_rule(
-            NonTerminal::RootItem,
-            vec![Term::NonTerminal(NonTerminal::EnumDeclaration)],
-        );
-        // enum_declaration -> <enum> <identifier> <colon> enum_items <semicolon>
-        grammar.add_rule(
-            NonTerminal::EnumDeclaration,
-            vec![
-                Term::Terminal(TokenType::Enum),
-                Term::Terminal(TokenType::Identifier),
-                Term::Terminal(TokenType::Colon),
-                Term::NonTerminal(NonTerminal::EnumItems),
-                Term::Terminal(TokenType::Semicolon),
-            ],
-        );
-        // enum_items -> enum_item enum_items | enum_item
-        grammar.add_rules(
-            NonTerminal::EnumItems,
-            vec![
-                vec![
-                    Term::NonTerminal(NonTerminal::EnumItem),
-                    Term::NonTerminal(NonTerminal::EnumItems),
-                ],
-                vec![Term::NonTerminal(NonTerminal::EnumItem)],
-            ],
-        );
-        // enum_item -> <identifier>
-        grammar.add_rule(
-            NonTerminal::EnumItem,
-            vec![Term::Terminal(TokenType::Identifier)],
-        );
-
-        grammar
+        Self::new(0)
     }
 }
 
-impl Grammar {
-    pub fn add_rule(&mut self, non_terminal: NonTerminal, rule: Vec<Term>) {
-        self.rules.entry(non_terminal).or_default().push(rule);
-    }
-
-    pub fn add_rules(&mut self, non_terminal: NonTerminal, rules: Vec<Vec<Term>>) {
-        self.rules.entry(non_terminal).or_default().extend(rules);
-    }
-
-    fn get(&self, start: &NonTerminal) -> Option<&Vec<Vec<Term>>> {
-        self.rules.get(start)
-    }
-}
-
-#[derive(Debug)]
-pub struct Chart {
-    pub states: Vec<Vec<EarleyItem>>,
-}
-
-impl Chart {
+impl<'a> Chart<'a> {
     fn new(input_len: usize) -> Self {
         Chart {
             states: vec![vec![]; input_len + 1],
@@ -128,14 +28,21 @@ impl Chart {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct EarleyItem {
+pub struct EarleyItem<'a> {
     pub head: NonTerminal,
     pub body: Vec<Term>,
     pub dot: usize,
     pub start: usize,
+    pub tree: Vec<ParseNode<'a>>,
 }
 
-impl std::fmt::Display for EarleyItem {
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParseNode<'a> {
+    Terminal(Token<'a>),
+    NonTerminal(NonTerminal, Vec<ParseNode<'a>>),
+}
+
+impl<'a> std::fmt::Display for EarleyItem<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} -> ", self.head)?;
         for (i, term) in self.body.iter().enumerate() {
@@ -151,13 +58,14 @@ impl std::fmt::Display for EarleyItem {
     }
 }
 
-impl EarleyItem {
+impl<'a> EarleyItem<'a> {
     pub fn new(head: NonTerminal, body: Vec<Term>, dot: usize, start: usize) -> Self {
         Self {
             head,
             body,
             dot,
             start,
+            tree: Vec::new(),
         }
     }
 
@@ -170,23 +78,16 @@ impl EarleyItem {
     }
 }
 
-#[derive(Debug)]
-pub struct EarleyParser {
+#[derive(Debug, Default)]
+pub struct EarleyParser<'a> {
     grammar: Grammar,
-    chart: Chart,
+    chart: Chart<'a>,
 }
 
-impl EarleyParser {
-    pub fn new(grammar: Grammar) -> Self {
-        EarleyParser {
-            grammar,
-            chart: Chart::new(0),
-        }
-    }
-
+impl<'a> EarleyParser<'a> {
     /// Parses the given input tokens according to the grammar.
     /// Returns true if the input is accepted by the grammar, otherwise false.
-    pub fn parse<'a>(mut self, tokens: &'a [Token]) -> Result<(), Vec<Diagnostic<'a>>> {
+    pub fn parse(mut self, tokens: &'a [Token]) -> Result<ParseNode<'a>, Vec<Diagnostic<'a>>> {
         let mut diagnostics = Vec::new();
 
         self.chart = Chart::new(tokens.len());
@@ -249,7 +150,7 @@ impl EarleyParser {
                         }
                         Term::Terminal(token_type) => {
                             if i < tokens.len() && token_type == &token.unwrap().token_type {
-                                self.scan(i, &item);
+                                self.scan(i, &item, token.unwrap());
                             }
                         }
                     }
@@ -260,11 +161,16 @@ impl EarleyParser {
             }
         }
 
-        let matched = self.chart.states[tokens.len()].iter().any(|item| {
+        let matched = self.chart.states[tokens.len()].iter().find(|item| {
             item.head == NonTerminal::Start && item.dot == item.body.len() && item.start == 0
         });
 
-        if !matched {
+        if let Some(item) = matched {
+            Ok(ParseNode::NonTerminal(
+                NonTerminal::Start,
+                item.tree.clone(),
+            ))
+        } else {
             // Expected more input ...
             let expected_symbols: Vec<String> = self
                 .chart
@@ -299,11 +205,7 @@ impl EarleyParser {
                     ),
                 );
             }
-        }
 
-        if matched {
-            Ok(())
-        } else {
             Err(diagnostics)
         }
     }
@@ -324,13 +226,17 @@ impl EarleyParser {
     }
 
     /// Scans the next input token and advances the dot in the corresponding Earley item.
-    fn scan(&mut self, position: usize, item: &EarleyItem) {
-        let next_item = EarleyItem::new(
+    fn scan(&mut self, position: usize, item: &EarleyItem<'a>, token: &Token<'a>) {
+        let mut next_item = EarleyItem::<'a>::new(
             item.head.clone(),
             item.body.clone(),
             item.dot + 1,
             item.start,
         );
+
+        next_item.tree.clone_from(&item.tree);
+        next_item.tree.push(ParseNode::Terminal(token.clone()));
+
         if !self.chart.states[position + 1].contains(&next_item) {
             self.chart.states[position + 1].push(next_item);
         }
@@ -338,17 +244,21 @@ impl EarleyParser {
 
     /// Completes a rule when the dot has reached the end of the right-hand side,
     /// and propagates this completion to other Earley items that were waiting for this rule.
-    fn complete(&mut self, position: usize, item: &EarleyItem) {
+    fn complete(&mut self, position: usize, item: &EarleyItem<'a>) {
         let start_state_set = self.chart.states[item.start].clone();
         for state in start_state_set {
             if let Some(Term::NonTerminal(non_terminal)) = state.next() {
                 if non_terminal == &item.head {
-                    let next_item = EarleyItem::new(
+                    let mut next_item = EarleyItem::new(
                         state.head.clone(),
                         state.body.clone(),
                         state.dot + 1,
                         state.start,
                     );
+                    next_item.tree.clone_from(&state.tree);
+                    next_item
+                        .tree
+                        .push(ParseNode::NonTerminal(item.head.clone(), item.tree.clone()));
                     if !self.chart.states[position].contains(&next_item) {
                         self.chart.states[position].push(next_item);
                     }
@@ -360,20 +270,15 @@ impl EarleyParser {
 
 #[cfg(test)]
 mod test {
-    use super::Grammar;
     use crate::{files::Files, scanner::Scanner};
 
     #[test]
     pub fn test() {
-        let grammar = Grammar::default();
-
         let mut files = Files::default();
         files.insert(
             "main",
             "
             enum test: red green blue;
-
-            enum _test2: red green blue
     ",
         );
 
@@ -388,9 +293,11 @@ mod test {
             }
         };
 
-        let parser = super::EarleyParser::new(grammar);
+        let parser = super::EarleyParser::default();
         match parser.parse(&tokens) {
-            Ok(_) => {}
+            Ok(tree) => {
+                println!("{:#?}", tree);
+            }
             Err(diagnostics) => {
                 for diagnostic in diagnostics {
                     diagnostic.print(&files);
