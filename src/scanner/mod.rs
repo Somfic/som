@@ -1,10 +1,10 @@
 use crate::diagnostic::Diagnostic;
 use crate::diagnostic::Error;
 use crate::files::Files;
+use regex::Regex;
 use token::Token;
 use token::TokenType;
 use token::TokenValue;
-use regex::Regex;
 
 pub mod token;
 
@@ -123,7 +123,7 @@ impl<'a> Scanner<'a> {
                                 Error::primary(
                                     file,
                                     start,
-                                    cursor - start - 1,
+                                    cursor - start,
                                     "This literal was not recognized",
                                 ),
                             ));
@@ -156,6 +156,17 @@ impl<'a> Scanner<'a> {
                 if !was_matched {
                     cursor += 1;
                 }
+            }
+
+            if let Some(start) = panic_start_at.take() {
+                diagnostics.push(
+                    Diagnostic::error("Literal error").with_error(Error::primary(
+                        file,
+                        start,
+                        content.chars().count() - start + 1,
+                        "This literal was not recognized",
+                    )),
+                );
             }
         }
 

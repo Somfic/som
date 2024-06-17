@@ -1,6 +1,9 @@
-use std::{collections::HashMap, os::macos::raw::stat};
+use std::collections::{HashMap, HashSet};
 
-use crate::scanner::token::{self, Token, TokenType};
+use crate::{
+    diagnostic::{Diagnostic, Error},
+    scanner::token::{Token, TokenType},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
@@ -17,22 +20,6 @@ impl std::fmt::Display for Term {
     }
 }
 
-// 1 + 1;
-// 2 + (2 + 2);
-// START -> STATEMENTS
-// STATEMENTS -> STATEMENT STATEMENTS | STATEMENT
-// STATEMENT -> EXPRESSION SEMICOLON
-// EXPRESSION -> EXPRESSION PLUS EXPRESSION
-// EXPRESSION -> INTEGER
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum NonTerminal {
-    Start,
-    Statements,
-    Statement,
-    Expression,
-}
-
 impl std::fmt::Display for NonTerminal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "<{:?}>", self)
@@ -44,27 +31,82 @@ pub struct Grammar {
     pub rules: HashMap<NonTerminal, Vec<Vec<Term>>>,
 }
 
-impl Grammar {
-    pub fn new() -> Self {
-        Self {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NonTerminal {
+    Start,
+    RootItems,
+    RootItem,
+    EnumDeclaration,
+    EnumItems,
+    EnumItem,
+}
+
+impl Default for Grammar {
+    fn default() -> Self {
+        let mut grammar = Grammar {
             rules: HashMap::new(),
-        }
+        };
+
+        // start -> root_items
+        grammar.add_rule(
+            NonTerminal::Start,
+            vec![Term::NonTerminal(NonTerminal::RootItems)],
+        );
+        // root_items -> root_item root_items | root_item
+        grammar.add_rules(
+            NonTerminal::RootItems,
+            vec![
+                vec![
+                    Term::NonTerminal(NonTerminal::RootItems),
+                    Term::NonTerminal(NonTerminal::RootItem),
+                ],
+                vec![Term::NonTerminal(NonTerminal::RootItem)],
+            ],
+        );
+        // root_item -> enum_declaration
+        grammar.add_rule(
+            NonTerminal::RootItem,
+            vec![Term::NonTerminal(NonTerminal::EnumDeclaration)],
+        );
+        // enum_declaration -> <enum> <identifier> <colon> enum_items <semicolon>
+        grammar.add_rule(
+            NonTerminal::EnumDeclaration,
+            vec![
+                Term::Terminal(TokenType::Enum),
+                Term::Terminal(TokenType::Identifier),
+                Term::Terminal(TokenType::Colon),
+                Term::NonTerminal(NonTerminal::EnumItems),
+                Term::Terminal(TokenType::Semicolon),
+            ],
+        );
+        // enum_items -> enum_item enum_items | enum_item
+        grammar.add_rules(
+            NonTerminal::EnumItems,
+            vec![
+                vec![
+                    Term::NonTerminal(NonTerminal::EnumItem),
+                    Term::NonTerminal(NonTerminal::EnumItems),
+                ],
+                vec![Term::NonTerminal(NonTerminal::EnumItem)],
+            ],
+        );
+        // enum_item -> <identifier>
+        grammar.add_rule(
+            NonTerminal::EnumItem,
+            vec![Term::Terminal(TokenType::Identifier)],
+        );
+
+        grammar
     }
 }
 
 impl Grammar {
     pub fn add_rule(&mut self, non_terminal: NonTerminal, rule: Vec<Term>) {
-        self.rules
-            .entry(non_terminal)
-            .or_insert_with(Vec::new)
-            .push(rule);
+        self.rules.entry(non_terminal).or_default().push(rule);
     }
 
     pub fn add_rules(&mut self, non_terminal: NonTerminal, rules: Vec<Vec<Term>>) {
-        self.rules
-            .entry(non_terminal)
-            .or_insert_with(Vec::new)
-            .extend(rules);
+        self.rules.entry(non_terminal).or_default().extend(rules);
     }
 
     fn get(&self, start: &NonTerminal) -> Option<&Vec<Vec<Term>>> {
@@ -144,8 +186,10 @@ impl EarleyParser {
 
     /// Parses the given input tokens according to the grammar.
     /// Returns true if the input is accepted by the grammar, otherwise false.
-    pub fn parse(&mut self, input: Vec<TokenType>) -> bool {
-        self.chart = Chart::new(input.len());
+    pub fn parse<'a>(mut self, tokens: &'a [Token]) -> Result<(), Vec<Diagnostic<'a>>> {
+        let mut diagnostics = Vec::new();
+
+        self.chart = Chart::new(tokens.len());
 
         // Initial state
         if let Some(start_rules) = self.grammar.get(&NonTerminal::Start) {
@@ -154,12 +198,12 @@ impl EarleyParser {
             }
         }
 
-        for i in 0..=input.len() {
+        for i in 0..=tokens.len() {
+            let token = tokens.get(i);
             let mut j = 0;
 
             if self.chart.states[i].is_empty() {
-                // Expected another input ...
-                let terminal_symbols = self
+                let expected_symbols: Vec<String> = self
                     .chart
                     .states
                     .get(i - 1)
@@ -168,14 +212,32 @@ impl EarleyParser {
                             .iter()
                             .filter_map(|item| item.next())
                             .filter_map(|term| match term {
-                                Term::Terminal(token_type) => Some(token_type),
+                                Term::Terminal(token_type) => Some(token_type.to_string()),
                                 _ => None,
                             })
-                            .collect::<Vec<&TokenType>>()
+                            .collect::<HashSet<String>>()
                     })
-                    .unwrap_or_default();
+                    .iter()
+                    .flat_map(|set| set.clone())
+                    .collect::<Vec<_>>();
 
-                println!("Terminal symbols: {:?}", terminal_symbols);
+                let token = tokens.get(i).unwrap_or(tokens.last().unwrap());
+
+                if !expected_symbols.is_empty() {
+                    diagnostics.push(
+                        Diagnostic::error("Syntax error").with_error(
+                            Error::primary(
+                                token.range.file_id,
+                                i - 1,
+                                0,
+                                format!("Expected {}", expected_symbols.join(" or ")),
+                            )
+                            .transform_range(tokens),
+                        ),
+                    );
+                }
+
+                // TODO: enter panic mode
             }
 
             while j < self.chart.states[i].len() {
@@ -186,7 +248,7 @@ impl EarleyParser {
                             self.predict(i, non_terminal);
                         }
                         Term::Terminal(token_type) => {
-                            if i < input.len() && token_type == &input[i] {
+                            if i < tokens.len() && token_type == &token.unwrap().token_type {
                                 self.scan(i, &item);
                             }
                         }
@@ -198,49 +260,52 @@ impl EarleyParser {
             }
         }
 
-        println!("States: {}", input.len());
-        let states = self.chart.states.iter().enumerate().map(|(i, state)| {
-            format!(
-                "State {}: {}",
-                i,
-                state
-                    .iter()
-                    .map(|item| format!("{}", item))
-                    .collect::<Vec<String>>()
-                    .join("\n         ")
-            )
-        });
-
-        for state in states {
-            println!("{}", state);
-        }
-
-        let matched = self.chart.states[input.len()].iter().any(|item| {
+        let matched = self.chart.states[tokens.len()].iter().any(|item| {
             item.head == NonTerminal::Start && item.dot == item.body.len() && item.start == 0
         });
 
         if !matched {
             // Expected more input ...
-            let terminal_symbols = self
+            let expected_symbols: Vec<String> = self
                 .chart
                 .states
-                .get(input.len())
+                .get(tokens.len())
                 .map(|state| {
                     state
                         .iter()
                         .filter_map(|item| item.next())
                         .filter_map(|term| match term {
-                            Term::Terminal(token_type) => Some(token_type),
+                            Term::Terminal(token_type) => Some(token_type.to_string()),
                             _ => None,
                         })
-                        .collect::<Vec<&TokenType>>()
+                        .collect::<HashSet<String>>()
                 })
-                .unwrap_or_default();
+                .iter()
+                .flat_map(|set| set.clone())
+                .collect::<Vec<_>>();
 
-            println!("Terminal symbols: {:?}", terminal_symbols);
+            let token = tokens.last().unwrap();
+
+            if !expected_symbols.is_empty() {
+                diagnostics.push(
+                    Diagnostic::error("Syntax error").with_error(
+                        Error::primary(
+                            token.range.file_id,
+                            tokens.len(),
+                            0,
+                            format!("Expected {}", expected_symbols.join(" or ")),
+                        )
+                        .transform_range(tokens),
+                    ),
+                );
+            }
         }
 
-        matched
+        if matched {
+            Ok(())
+        } else {
+            Err(diagnostics)
+        }
     }
 
     /// Predicts the possible expansions of a non-terminal symbol at a given position in the input.
@@ -253,6 +318,8 @@ impl EarleyParser {
                     self.chart.states[position].push(item);
                 }
             }
+        } else {
+            panic!("No rules found for non-terminal: {}", non_terminal);
         }
     }
 
@@ -293,84 +360,42 @@ impl EarleyParser {
 
 #[cfg(test)]
 mod test {
-    use crate::{
-        files::Files,
-        scanner::{token::TokenType, Scanner},
-    };
-
-    use super::{Grammar, NonTerminal, Term};
+    use super::Grammar;
+    use crate::{files::Files, scanner::Scanner};
 
     #[test]
     pub fn test() {
-        let mut grammar = Grammar::new();
-
-        // 1 + 1;
-        // 2 + (2 + 2);
-        // START -> STATEMENTS
-        // STATEMENTS -> STATEMENT STATEMENTS | STATEMENT
-        // STATEMENT -> EXPRESSION SEMICOLON
-        // EXPRESSION -> EXPRESSION PLUS EXPRESSION
-        // EXPRESSION -> INTEGER
-        grammar.add_rule(
-            NonTerminal::Start,
-            vec![Term::NonTerminal(NonTerminal::Statements)],
-        );
-
-        grammar.add_rules(
-            NonTerminal::Statements,
-            vec![
-                vec![
-                    Term::NonTerminal(NonTerminal::Statement),
-                    Term::NonTerminal(NonTerminal::Statements),
-                ],
-                vec![Term::NonTerminal(NonTerminal::Statement)],
-            ],
-        );
-
-        grammar.add_rule(
-            NonTerminal::Statement,
-            vec![
-                Term::NonTerminal(NonTerminal::Expression),
-                Term::Terminal(TokenType::Semicolon),
-            ],
-        );
-
-        grammar.add_rule(
-            NonTerminal::Expression,
-            vec![
-                Term::NonTerminal(NonTerminal::Expression),
-                Term::Terminal(TokenType::Plus),
-                Term::NonTerminal(NonTerminal::Expression),
-            ],
-        );
-
-        grammar.add_rules(
-            NonTerminal::Expression,
-            vec![
-                vec![Term::Terminal(TokenType::Integer)],
-                vec![Term::Terminal(TokenType::Decimal)],
-            ],
-        );
-
-        let mut parser = super::EarleyParser::new(grammar);
+        let grammar = Grammar::default();
 
         let mut files = Files::default();
         files.insert(
             "main",
             "
-            12 + 12;
-            12 + 1 + 12;
-            ;
+            enum test: red green blue;
+
+            enum _test2: red green blue
     ",
         );
 
         let scanner = Scanner::new(&files);
-        let lexemes = scanner.parse().unwrap();
-        let token_types = lexemes
-            .iter()
-            .map(|l| l.token_type.clone())
-            .collect::<Vec<TokenType>>();
+        let tokens = match scanner.parse() {
+            Ok(tokens) => tokens,
+            Err(diagnostics) => {
+                for diagnostic in diagnostics {
+                    diagnostic.print(&files);
+                }
+                panic!("Failed to scan");
+            }
+        };
 
-        assert!(parser.parse(token_types));
+        let parser = super::EarleyParser::new(grammar);
+        match parser.parse(&tokens) {
+            Ok(_) => {}
+            Err(diagnostics) => {
+                for diagnostic in diagnostics {
+                    diagnostic.print(&files);
+                }
+            }
+        }
     }
 }

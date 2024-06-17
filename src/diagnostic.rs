@@ -19,7 +19,8 @@ impl<'a> Diagnostic<'a> {
             &Config::default(),
             files,
             &self.clone().into(),
-        );
+        )
+        .unwrap();
     }
 }
 
@@ -67,7 +68,7 @@ impl<'a> Error<'a> {
         }
     }
 
-    pub(crate) fn transform_range(mut self, lexemes: &'a [Token<'a>]) -> Error {
+    pub(crate) fn transform_range(mut self, lexemes: &[Token<'a>]) -> Error<'a> {
         self.range = self.range.to_source_code_range(lexemes);
         self
     }
