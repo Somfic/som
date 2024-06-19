@@ -1,7 +1,7 @@
 use grammar::{Grammar, NonTerminal, Term};
 
 use crate::{
-    diagnostic::{Diagnostic, Error},
+    diagnostic::{Diagnostic, Error, Range},
     scanner::token::Token,
 };
 use std::collections::HashSet;
@@ -40,6 +40,24 @@ pub struct EarleyItem<'a> {
 pub enum ParseNode<'a> {
     Terminal(Token<'a>),
     NonTerminal(NonTerminal, Vec<ParseNode<'a>>),
+}
+
+impl<'a> ParseNode<'a> {
+    pub fn range(&'a self) -> Range<'a> {
+        match self {
+            ParseNode::Terminal(token) => token.range.clone(),
+            ParseNode::NonTerminal(_, children) => {
+                let start = children.first().unwrap().range().position;
+                let end = children.last().unwrap().range();
+                let end = end.position + end.length;
+                Range {
+                    file_id: children.first().unwrap().range().file_id,
+                    position: start,
+                    length: end - start,
+                }
+            }
+        }
+    }
 }
 
 impl<'a> std::fmt::Display for EarleyItem<'a> {
@@ -262,45 +280,6 @@ impl<'a> EarleyParser<'a> {
                     if !self.chart.states[position].contains(&next_item) {
                         self.chart.states[position].push(next_item);
                     }
-                }
-            }
-        }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::{files::Files, scanner::Scanner};
-
-    #[test]
-    pub fn test() {
-        let mut files = Files::default();
-        files.insert(
-            "main",
-            "
-            enum test: red green blue;
-    ",
-        );
-
-        let scanner = Scanner::new(&files);
-        let tokens = match scanner.parse() {
-            Ok(tokens) => tokens,
-            Err(diagnostics) => {
-                for diagnostic in diagnostics {
-                    diagnostic.print(&files);
-                }
-                panic!("Failed to scan");
-            }
-        };
-
-        let parser = super::EarleyParser::default();
-        match parser.parse(&tokens) {
-            Ok(tree) => {
-                println!("{:#?}", tree);
-            }
-            Err(diagnostics) => {
-                for diagnostic in diagnostics {
-                    diagnostic.print(&files);
                 }
             }
         }

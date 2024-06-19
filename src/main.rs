@@ -1,4 +1,5 @@
 use anyhow::Result;
+use ast::builder::build_ast;
 use core::result::Result::Ok;
 use files::Files;
 
@@ -13,7 +14,7 @@ fn main() -> Result<()> {
     files.insert(
         "main",
         "
-        12 + 12;
+        enum colors: green blue red;
     ",
     );
 
@@ -31,15 +32,26 @@ fn main() -> Result<()> {
     };
 
     let parser = parser::EarleyParser::default();
-    let ast = parser.parse(tokens);
 
-    let _ast = match &ast {
-        Ok(ast) => ast,
+    let parse_tree = match parser.parse(tokens) {
+        Ok(parse_tree) => parse_tree,
         Err(diagnostics) => {
             diagnostics
                 .iter()
                 .for_each(|diagnostic| diagnostic.print(&files));
             panic!("Failed to parse");
+        }
+    };
+
+    println!("{:#?}", parse_tree);
+
+    let ast = match build_ast(&parse_tree) {
+        Ok(ast) => ast,
+        Err(diagnostics) => {
+            diagnostics
+                .iter()
+                .for_each(|diagnostic| diagnostic.print(&files));
+            panic!("Failed to build AST");
         }
     };
 
