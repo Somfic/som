@@ -1,7 +1,7 @@
 use crate::{
-    ast::Statement,
+    abstract_syntax_tree::Statement,
+    concrete_syntax_tree::{grammar::NonTerminal, ParseNode},
     diagnostic::{Diagnostic, Error},
-    parser::{grammar::NonTerminal, ParseNode},
 };
 
 use super::Ast;

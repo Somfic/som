@@ -1,12 +1,12 @@
+use abstract_syntax_tree::builder::build_ast;
 use anyhow::Result;
-use ast::builder::build_ast;
 use core::result::Result::Ok;
 use files::Files;
 
-pub mod ast;
+pub mod abstract_syntax_tree;
+pub mod concrete_syntax_tree;
 pub mod diagnostic;
 pub mod files;
-pub mod parser;
 pub mod scanner;
 
 fn main() -> Result<()> {
@@ -31,7 +31,7 @@ fn main() -> Result<()> {
         }
     };
 
-    let parser = parser::EarleyParser::default();
+    let parser = concrete_syntax_tree::EarleyParser::default();
 
     let parse_tree = match parser.parse(tokens) {
         Ok(parse_tree) => parse_tree,
