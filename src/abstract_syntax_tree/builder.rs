@@ -1,17 +1,17 @@
 use crate::{
     abstract_syntax_tree::Statement,
-    concrete_syntax_tree::{grammar::NonTerminal, ParseNode},
+    concrete_syntax_tree::{grammar::NonTerminal, ConcreteSyntax},
     diagnostic::{Diagnostic, Error},
 };
 
 use super::Ast;
 
-pub fn build_ast<'a>(parse_tree: &'a ParseNode<'a>) -> Result<Ast<'a>, Vec<Diagnostic<'a>>> {
+pub fn build_ast<'a>(syntax: &'a ConcreteSyntax<'a>) -> Result<Ast<'a>, Vec<Diagnostic<'a>>> {
     let mut diagnostics = Vec::new();
     let mut ast = Ast::Statement(Statement::Empty);
 
-    match parse_tree {
-        ParseNode::NonTerminal(NonTerminal::Start, children) => {
+    match syntax {
+        ConcreteSyntax::NonTerminal(NonTerminal::Start, children) => {
             match children
                 .iter()
                 .map(|child| build_ast(child))
@@ -26,14 +26,14 @@ pub fn build_ast<'a>(parse_tree: &'a ParseNode<'a>) -> Result<Ast<'a>, Vec<Diagn
             ast = Ast::Statement(Statement::Empty);
         }
         _ => {
-            let range = parse_tree.range();
+            let range = syntax.range();
 
             diagnostics.push(
                 Diagnostic::error("Structure error").with_error(Error::primary(
                     range.file_id,
                     range.position,
                     range.length,
-                    format!("Expected start, got {:?}", parse_tree),
+                    format!("Expected start, got {:?}", syntax),
                 )),
             );
         }
@@ -47,10 +47,10 @@ pub fn build_ast<'a>(parse_tree: &'a ParseNode<'a>) -> Result<Ast<'a>, Vec<Diagn
 }
 
 pub fn build_top_level_statement<'a>(
-    parse_tree: &'a ParseNode<'a>,
+    parse_tree: &'a ConcreteSyntax<'a>,
 ) -> Result<Ast<'a>, Vec<Diagnostic<'a>>> {
     match parse_tree {
-        ParseNode::NonTerminal(NonTerminal::RootItems, children) => {
+        ConcreteSyntax::NonTerminal(NonTerminal::RootItems, children) => {
             let root_items = children
                 .iter()
                 .map(|child| build_ast(child))

@@ -33,20 +33,20 @@ pub struct EarleyItem<'a> {
     pub body: Vec<Term>,
     pub dot: usize,
     pub start: usize,
-    pub tree: Vec<ParseNode<'a>>,
+    pub tree: Vec<ConcreteSyntax<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ParseNode<'a> {
+pub enum ConcreteSyntax<'a> {
     Terminal(Token<'a>),
-    NonTerminal(NonTerminal, Vec<ParseNode<'a>>),
+    NonTerminal(NonTerminal, Vec<ConcreteSyntax<'a>>),
 }
 
-impl<'a> ParseNode<'a> {
+impl<'a> ConcreteSyntax<'a> {
     pub fn range(&'a self) -> Range<'a> {
         match self {
-            ParseNode::Terminal(token) => token.range.clone(),
-            ParseNode::NonTerminal(_, children) => {
+            ConcreteSyntax::Terminal(token) => token.range.clone(),
+            ConcreteSyntax::NonTerminal(_, children) => {
                 let start = children.first().unwrap().range().position;
                 let end = children.last().unwrap().range();
                 let end = end.position + end.length;
@@ -105,7 +105,7 @@ pub struct EarleyParser<'a> {
 impl<'a> EarleyParser<'a> {
     /// Parses the given input tokens according to the grammar.
     /// Returns true if the input is accepted by the grammar, otherwise false.
-    pub fn parse(mut self, tokens: &'a [Token]) -> Result<ParseNode<'a>, Vec<Diagnostic<'a>>> {
+    pub fn parse(mut self, tokens: &'a [Token]) -> Result<ConcreteSyntax<'a>, Vec<Diagnostic<'a>>> {
         let mut diagnostics = Vec::new();
 
         self.chart = Chart::new(tokens.len());
@@ -184,7 +184,7 @@ impl<'a> EarleyParser<'a> {
         });
 
         if let Some(item) = matched {
-            Ok(ParseNode::NonTerminal(
+            Ok(ConcreteSyntax::NonTerminal(
                 NonTerminal::Start,
                 item.tree.clone(),
             ))
@@ -253,7 +253,7 @@ impl<'a> EarleyParser<'a> {
         );
 
         next_item.tree.clone_from(&item.tree);
-        next_item.tree.push(ParseNode::Terminal(token.clone()));
+        next_item.tree.push(ConcreteSyntax::Terminal(token.clone()));
 
         if !self.chart.states[position + 1].contains(&next_item) {
             self.chart.states[position + 1].push(next_item);
@@ -274,9 +274,10 @@ impl<'a> EarleyParser<'a> {
                         state.start,
                     );
                     next_item.tree.clone_from(&state.tree);
-                    next_item
-                        .tree
-                        .push(ParseNode::NonTerminal(item.head.clone(), item.tree.clone()));
+                    next_item.tree.push(ConcreteSyntax::NonTerminal(
+                        item.head.clone(),
+                        item.tree.clone(),
+                    ));
                     if !self.chart.states[position].contains(&next_item) {
                         self.chart.states[position].push(next_item);
                     }
