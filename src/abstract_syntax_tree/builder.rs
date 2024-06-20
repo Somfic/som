@@ -4,11 +4,13 @@ use crate::{
     diagnostic::{Diagnostic, Error},
 };
 
-use super::Ast;
+use super::AstractSyntax;
 
-pub fn build_ast<'a>(syntax: &'a ConcreteSyntax<'a>) -> Result<Ast<'a>, Vec<Diagnostic<'a>>> {
+pub fn build_ast<'a>(
+    syntax: &'a ConcreteSyntax<'a>,
+) -> Result<AstractSyntax<'a>, Vec<Diagnostic<'a>>> {
     let mut diagnostics = Vec::new();
-    let mut ast = Ast::Statement(Statement::Empty);
+    let mut ast = AstractSyntax::Statement(Statement::Empty);
 
     match syntax {
         ConcreteSyntax::NonTerminal(NonTerminal::Start, children) => {
@@ -23,7 +25,7 @@ pub fn build_ast<'a>(syntax: &'a ConcreteSyntax<'a>) -> Result<Ast<'a>, Vec<Diag
                 }
             }
 
-            ast = Ast::Statement(Statement::Empty);
+            ast = AstractSyntax::Statement(Statement::Empty);
         }
         _ => {
             let range = syntax.range();
@@ -48,7 +50,7 @@ pub fn build_ast<'a>(syntax: &'a ConcreteSyntax<'a>) -> Result<Ast<'a>, Vec<Diag
 
 pub fn build_top_level_statement<'a>(
     parse_tree: &'a ConcreteSyntax<'a>,
-) -> Result<Ast<'a>, Vec<Diagnostic<'a>>> {
+) -> Result<AstractSyntax<'a>, Vec<Diagnostic<'a>>> {
     match parse_tree {
         ConcreteSyntax::NonTerminal(NonTerminal::RootItems, children) => {
             let root_items = children
@@ -56,7 +58,7 @@ pub fn build_top_level_statement<'a>(
                 .map(|child| build_ast(child))
                 .collect::<Result<Vec<_>, _>>()?;
 
-            Ok(Ast::Statement(Statement::Empty))
+            Ok(AstractSyntax::Statement(Statement::Empty))
         }
         _ => {
             let range = parse_tree.range();

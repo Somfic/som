@@ -4,7 +4,7 @@ use crate::diagnostic::Range;
 
 pub mod builder;
 
-pub enum Ast<'a> {
+pub enum AstractSyntax<'a> {
     Statement(Statement<'a>),
 }
 pub enum Statement<'a> {
