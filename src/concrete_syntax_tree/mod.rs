@@ -4,7 +4,7 @@ use crate::{
     diagnostic::{Diagnostic, Error, Range},
     scanner::token::Token,
 };
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt::Display};
 
 pub mod grammar;
 
@@ -40,6 +40,22 @@ pub struct EarleyItem<'a> {
 pub enum ConcreteSyntax<'a> {
     Terminal(Token<'a>),
     NonTerminal(NonTerminal, Vec<ConcreteSyntax<'a>>),
+}
+
+impl<'a> Display for ConcreteSyntax<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConcreteSyntax::Terminal(token) => write!(f, "{}", token.token_type),
+            ConcreteSyntax::NonTerminal(non_terminal, children) => {
+                write!(f, "{}", non_terminal)?;
+                if !children.is_empty() {
+                    // And (n) children
+                    write!(f, " ({})", children.len())?;
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 impl<'a> ConcreteSyntax<'a> {
@@ -286,3 +302,4 @@ impl<'a> EarleyParser<'a> {
         }
     }
 }
+q

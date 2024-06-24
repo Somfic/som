@@ -14,7 +14,7 @@ fn main() -> Result<()> {
     files.insert(
         "main",
         "
-        enum colors: green blue red;
+        enum colors: green blue red
     ",
     );
 
@@ -33,7 +33,7 @@ fn main() -> Result<()> {
 
     let parser = concrete_syntax_tree::EarleyParser::default();
 
-    let parse_tree = match parser.parse(tokens) {
+    let concrete_syntax = match parser.parse(tokens) {
         Ok(parse_tree) => parse_tree,
         Err(diagnostics) => {
             diagnostics
@@ -43,9 +43,9 @@ fn main() -> Result<()> {
         }
     };
 
-    println!("{:#?}", parse_tree);
+    println!("Concrete syntax:\n{:#?}", concrete_syntax);
 
-    let ast = match build_ast(&parse_tree) {
+    let ast = match build_ast(&concrete_syntax) {
         Ok(ast) => ast,
         Err(diagnostics) => {
             diagnostics
@@ -54,6 +54,8 @@ fn main() -> Result<()> {
             panic!("Failed to build AST");
         }
     };
+
+    println!("Abstract syntax:\n{:#?}", ast);
 
     Ok(())
 }
