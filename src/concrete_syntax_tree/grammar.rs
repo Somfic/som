@@ -3,16 +3,22 @@ use std::collections::HashMap;
 use crate::scanner::token::TokenType;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Term {
+pub enum Symbol {
     Terminal(TokenType),
     NonTerminal(NonTerminal),
+    OneOrMore(NonTerminal),
+    ZeroOrMore(NonTerminal),
+    Optional(NonTerminal),
 }
 
-impl std::fmt::Display for Term {
+impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Term::Terminal(token_type) => write!(f, "{}", token_type),
-            Term::NonTerminal(non_terminal) => write!(f, "{}", non_terminal),
+            Symbol::Terminal(token_type) => write!(f, "{}", token_type),
+            Symbol::NonTerminal(non_terminal) => write!(f, "{}", non_terminal),
+            Symbol::OneOrMore(non_terminal) => write!(f, "{}+", non_terminal),
+            Symbol::ZeroOrMore(non_terminal) => write!(f, "{}*", non_terminal),
+            Symbol::Optional(non_terminal) => write!(f, "{}?", non_terminal),
         }
     }
 }
@@ -20,10 +26,8 @@ impl std::fmt::Display for Term {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum NonTerminal {
     Start,
-    RootItems,
     RootItem,
     EnumDeclaration,
-    EnumItems,
     EnumItem,
 }
 
@@ -35,7 +39,7 @@ impl std::fmt::Display for NonTerminal {
 
 #[derive(Debug)]
 pub struct Grammar {
-    pub rules: HashMap<NonTerminal, Vec<Vec<Term>>>,
+    pub rules: HashMap<NonTerminal, Vec<Vec<Symbol>>>,
 }
 
 impl Default for Grammar {
@@ -44,53 +48,33 @@ impl Default for Grammar {
             rules: HashMap::new(),
         };
 
-        // start -> root_items
+        // start -> root_item+
         grammar.add_rule(
             NonTerminal::Start,
-            vec![Term::NonTerminal(NonTerminal::RootItems)],
+            vec![Symbol::ZeroOrMore(NonTerminal::RootItem)],
         );
-        // root_items -> root_item root_items | root_item
-        grammar.add_rules(
-            NonTerminal::RootItems,
-            vec![
-                vec![
-                    Term::NonTerminal(NonTerminal::RootItems),
-                    Term::NonTerminal(NonTerminal::RootItem),
-                ],
-                vec![Term::NonTerminal(NonTerminal::RootItem)],
-            ],
-        );
+
         // root_item -> enum_declaration
         grammar.add_rule(
             NonTerminal::RootItem,
-            vec![Term::NonTerminal(NonTerminal::EnumDeclaration)],
+            vec![Symbol::NonTerminal(NonTerminal::EnumDeclaration)],
         );
-        // enum_declaration -> <enum> <identifier> <colon> <identifier>? <semicolon>
+        // enum_declaration -> <enum> <identifier> <colon> enum_item+ <semicolon>
         grammar.add_rule(
             NonTerminal::EnumDeclaration,
             vec![
-                Term::Terminal(TokenType::Enum),
-                Term::Terminal(TokenType::Identifier),
-                Term::Terminal(TokenType::Colon),
-                Term::NonTerminal(NonTerminal::EnumItems),
-                Term::Terminal(TokenType::Semicolon),
+                Symbol::Terminal(TokenType::Enum),
+                Symbol::Terminal(TokenType::Identifier),
+                Symbol::Terminal(TokenType::Colon),
+                Symbol::OneOrMore(NonTerminal::EnumItem),
+                Symbol::Terminal(TokenType::Semicolon),
             ],
         );
-        // enum_items -> enum_item enum_items | enum_item
-        grammar.add_rules(
-            NonTerminal::EnumItems,
-            vec![
-                vec![
-                    Term::NonTerminal(NonTerminal::EnumItem),
-                    Term::NonTerminal(NonTerminal::EnumItems),
-                ],
-                vec![Term::NonTerminal(NonTerminal::EnumItem)],
-            ],
-        );
+
         // enum_item -> <identifier>
         grammar.add_rule(
             NonTerminal::EnumItem,
-            vec![Term::Terminal(TokenType::Identifier)],
+            vec![Symbol::Terminal(TokenType::Identifier)],
         );
 
         grammar
@@ -98,15 +82,15 @@ impl Default for Grammar {
 }
 
 impl Grammar {
-    pub fn add_rule(&mut self, non_terminal: NonTerminal, rule: Vec<Term>) {
+    pub fn add_rule(&mut self, non_terminal: NonTerminal, rule: Vec<Symbol>) {
         self.rules.entry(non_terminal).or_default().push(rule);
     }
 
-    pub fn add_rules(&mut self, non_terminal: NonTerminal, rules: Vec<Vec<Term>>) {
+    pub fn add_rules(&mut self, non_terminal: NonTerminal, rules: Vec<Vec<Symbol>>) {
         self.rules.entry(non_terminal).or_default().extend(rules);
     }
 
-    pub fn get(&self, start: &NonTerminal) -> Option<&Vec<Vec<Term>>> {
+    pub fn get(&self, start: &NonTerminal) -> Option<&Vec<Vec<Symbol>>> {
         self.rules.get(start)
     }
 }

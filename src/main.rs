@@ -15,6 +15,8 @@ fn main() -> Result<()> {
         "main",
         "
         enum colors: green blue red
+
+        enum colors: green blue red;
     ",
     );
 
