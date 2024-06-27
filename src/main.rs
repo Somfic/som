@@ -21,12 +21,17 @@ fn main() -> Result<()> {
     files.insert(
         "main",
         "
-        12 + 12
+        enum hello:
+            a
+            b
+            c;
     ",
     );
 
     let scanner = scanner::Scanner::new(&files);
     let lexemes = scanner.parse();
+
+    println!("{:#?}", lexemes);
 
     let mut parser = parser::Parser::new(&lexemes);
     let parsed = parser.parse();

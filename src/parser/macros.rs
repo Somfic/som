@@ -33,7 +33,7 @@ macro_rules! expect_valid_token {
             },
             None => Err(crate::diagnostic::Error::primary(
                 $parser.lexemes.get(0).unwrap().range().file_id,
-                $cursor,
+                $cursor + 1,
                 0,
                 "Unexpected end of file",
             )),
@@ -72,7 +72,7 @@ macro_rules! expect_any_token {
             },
             None => Err(crate::diagnostic::Error::primary(
                 $parser.lexemes.get(0).unwrap().range().file_id,
-                $cursor,
+                $cursor + 1,
                 0,
                 "Unexpected end of file",
             )),
