@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use crate::files::Files;
 use lexeme::Lexeme;
 use lexeme::TokenType;
@@ -106,6 +108,8 @@ impl<'a> Scanner<'a> {
             let mut cursor = 0;
 
             let mut panic_start_at = None;
+            let indentation_level = 0;
+
             while cursor < content.chars().count() {
                 let haystack = content.chars().skip(cursor).collect::<String>();
                 let mut was_matched = false;
@@ -125,6 +129,44 @@ impl<'a> Scanner<'a> {
 
                         if token_type == TokenType::Ignore {
                             was_matched = true;
+
+                            // Walk all the characters in the token. If the character is an \n, set indentation level to 0.
+                            //  If its a \t increase indentation level by one
+
+                            let mut indentation = 0;
+
+                            for c in capture.as_str().chars() {
+                                if c == '\n' {
+                                    indentation = 0;
+                                }
+
+                                if c == '\t' {
+                                    indentation += 1;
+                                }
+                            }
+
+                            match indentation.cmp(&indentation_level) {
+                                Ordering::Greater => {
+                                    lexemes.push(Lexeme::valid(
+                                        file,
+                                        TokenType::IndentationOpen,
+                                        TokenValue::None,
+                                        cursor,
+                                        1,
+                                    ));
+                                }
+                                Ordering::Less => {
+                                    lexemes.push(Lexeme::valid(
+                                        file,
+                                        TokenType::IndentationClose,
+                                        TokenValue::None,
+                                        cursor,
+                                        1,
+                                    ));
+                                }
+                                _ => {}
+                            }
+
                             cursor += capture.as_str().chars().count();
                             break;
                         }
@@ -157,6 +199,18 @@ impl<'a> Scanner<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_indentation() {
+        test_scanner(
+            "struct enum:\n",
+            vec![
+                (TokenType::Integer, TokenValue::Integer(1), 0, 1),
+                (TokenType::IndentationOpen, TokenValue::None, 1, 1),
+                (TokenType::Integer, TokenValue::Integer(2), 3, 1),
+            ],
+        );
+    }
 
     #[test]
     fn ignores_whitespace() {
@@ -325,6 +379,23 @@ mod tests {
                 Lexeme::valid("test file", token_type, token_value, cursor, length)
             })
             .collect::<Vec<_>>();
+
+        println!(
+            "Got:      {}",
+            lexemes
+                .iter()
+                .map(|lexeme| lexeme.to_string())
+                .collect::<Vec<_>>()
+                .join(" + ")
+        );
+        println!(
+            "Expected: {}",
+            expected
+                .iter()
+                .map(|lexeme| lexeme.to_string())
+                .collect::<Vec<_>>()
+                .join(" + ")
+        );
 
         assert_eq!(lexemes, expected);
     }

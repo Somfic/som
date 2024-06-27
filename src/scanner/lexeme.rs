@@ -89,6 +89,12 @@ pub enum TokenValue {
 pub enum TokenType {
     /// A token that should be ignored. This is used for whitespace, comments, etc.
     Ignore,
+
+    /// The opening of an indentation level.
+    IndentationOpen,
+    /// The closing of an indentation level.
+    IndentationClose,
+
     /// An opening parenthesis; `(`.
     ParenOpen,
     /// A closing parenthesis; `)`.
@@ -179,6 +185,8 @@ impl Display for TokenType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenType::Ignore => write!(f, ""),
+            TokenType::IndentationOpen => write!(f, "opening indentation level"),
+            TokenType::IndentationClose => write!(f, "closing indentation level"),
             TokenType::ParenOpen => write!(f, "`(`"),
             TokenType::ParenClose => write!(f, "`)`"),
             TokenType::CurlyOpen => write!(f, "`{{`"),
