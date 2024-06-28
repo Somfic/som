@@ -10,12 +10,16 @@ use super::{
 };
 use crate::{
     diagnostic::Error,
-    scanner::lexeme::{Lexeme, TokenType, TokenValue},
+    parser::macros::expect_optional_token,
+    scanner::lexeme::{Token, TokenType, TokenValue},
 };
 use core::panic;
 use std::collections::{HashMap, HashSet};
 
-pub fn parse<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Statement, usize), Error<'a>> {
+pub fn parse<'a>(
+    parser: &'a Parser<'a>,
+    cursor: usize,
+) -> Result<(Statement, usize), Vec<Error<'a>>> {
     let (token, _) = expect_valid_token!(parser, cursor)?;
     let statement_handler = parser.lookup.statement_lookup.get(&token.token_type);
 
@@ -28,7 +32,7 @@ pub fn parse<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Statement, us
 pub fn parse_expression<'a>(
     parser: &'a Parser<'a>,
     cursor: usize,
-) -> Result<(Statement, usize), Error<'a>> {
+) -> Result<(Statement, usize), Vec<Error<'a>>> {
     let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::None)?;
     let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Semicolon)?;
 
@@ -38,7 +42,7 @@ pub fn parse_expression<'a>(
 pub fn parse_declaration<'a>(
     parser: &'a Parser<'a>,
     cursor: usize,
-) -> Result<(Statement, usize), Error<'a>> {
+) -> Result<(Statement, usize), Vec<Error<'a>>> {
     let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Let)?;
     let (identifier, cursor) = expect_tokens!(parser, cursor, TokenType::Identifier)?;
     let identifier = match &identifier[0].value {
@@ -69,7 +73,7 @@ pub fn parse_declaration<'a>(
 pub fn parse_struct<'a>(
     parser: &'a Parser<'a>,
     cursor: usize,
-) -> Result<(Statement, usize), Error<'a>> {
+) -> Result<(Statement, usize), Vec<Error<'a>>> {
     let (tokens, cursor) = expect_tokens!(
         parser,
         cursor,
@@ -80,10 +84,13 @@ pub fn parse_struct<'a>(
 
     let identifier = expect_token_value!(tokens[1], TokenValue::Identifier);
 
+    let (indentation_open, cursor) =
+        expect_optional_token!(parser, cursor, TokenType::IndentationOpen);
+
     let mut new_cursor = cursor;
     let mut members: HashMap<String, Type> = HashMap::new();
 
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
+    while let Some(token) = parser.tokens.get(new_cursor) {
         let (member_name, member_type, cursor) = match token.token_type {
             TokenType::Semicolon => break,
             _ => {
@@ -117,7 +124,7 @@ pub fn parse_struct<'a>(
 pub fn parse_enum<'a>(
     parser: &'a Parser<'a>,
     cursor: usize,
-) -> Result<(Statement, usize), Error<'a>> {
+) -> Result<(Statement, usize), Vec<Error<'a>>> {
     let (tokens, cursor) = expect_tokens!(
         parser,
         cursor,
@@ -131,7 +138,7 @@ pub fn parse_enum<'a>(
     let mut new_cursor = cursor;
     let mut members: HashSet<String> = HashSet::new();
 
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
+    while let Some(token) = parser.tokens.get(new_cursor) {
         let (member_name, cursor) = match token.token_type {
             TokenType::Semicolon => break,
             _ => {

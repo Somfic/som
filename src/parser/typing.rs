@@ -8,32 +8,32 @@ use super::{
 };
 use crate::{
     diagnostic::Error,
-    scanner::lexeme::{Lexeme, TokenType, TokenValue},
+    scanner::lexeme::{Token, TokenType, TokenValue},
 };
 
 pub fn parse<'a>(
     parser: &'a Parser<'a>,
     cursor: usize,
     binding_power: &BindingPower,
-) -> Result<(Type, usize), Error<'a>> {
+) -> Result<(Type, usize), Vec<Error<'a>>> {
     let mut cursor = cursor;
     let (token, range) = expect_valid_token!(parser, cursor)?;
     let type_handler = parser
         .lookup
         .type_lookup
         .get(&token.token_type)
-        .ok_or(Error::primary(
-            parser.lexemes.get(cursor).unwrap().range().file_id,
+        .ok_or(vec![Error::primary(
+            parser.tokens.get(cursor).unwrap().range.file_id,
             cursor,
             range.length,
             "Expected a type",
-        ))?;
+        )])?;
 
     let (mut left_hand_side, new_cursor) = type_handler(parser, cursor)?;
 
     cursor = new_cursor;
 
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(cursor) {
+    while let Some(token) = parser.tokens.get(cursor) {
         let token_binding_power = parser
             .lookup
             .binding_power_lookup
@@ -59,7 +59,10 @@ pub fn parse<'a>(
     Ok((left_hand_side, cursor))
 }
 
-pub fn parse_symbol<'a>(parser: &'a Parser, cursor: usize) -> Result<(Type, usize), Error<'a>> {
+pub fn parse_symbol<'a>(
+    parser: &'a Parser,
+    cursor: usize,
+) -> Result<(Type, usize), Vec<Error<'a>>> {
     let (identifier, cursor) = expect_tokens!(parser, cursor, TokenType::Identifier)?;
     let identifier = match &identifier[0].value {
         TokenValue::Identifier(identifier) => identifier,
@@ -68,19 +71,25 @@ pub fn parse_symbol<'a>(parser: &'a Parser, cursor: usize) -> Result<(Type, usiz
     Ok((Type::Symbol(identifier.clone()), cursor))
 }
 
-pub fn parse_array<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Type, usize), Error<'a>> {
+pub fn parse_array<'a>(
+    parser: &'a Parser<'a>,
+    cursor: usize,
+) -> Result<(Type, usize), Vec<Error<'a>>> {
     let (_, cursor) = expect_tokens!(parser, cursor, TokenType::SquareOpen)?;
     let (element_type, cursor) = expect_type!(parser, cursor, &BindingPower::None)?;
     let (_, cursor) = expect_tokens!(parser, cursor, TokenType::SquareClose)?;
     Ok((Type::Array(Box::new(element_type)), cursor))
 }
 
-pub fn parse_tuple<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Type, usize), Error<'a>> {
+pub fn parse_tuple<'a>(
+    parser: &'a Parser<'a>,
+    cursor: usize,
+) -> Result<(Type, usize), Vec<Error<'a>>> {
     let (_, cursor) = expect_tokens!(parser, cursor, TokenType::CurlyOpen)?;
     let mut new_cursor = cursor;
     let mut members: HashMap<String, Type> = HashMap::new();
 
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
+    while let Some(token) = parser.tokens.get(new_cursor) {
         let (member_name, member_type, cursor) = match token.token_type {
             TokenType::CurlyClose => break,
             _ => {
@@ -89,7 +98,7 @@ pub fn parse_tuple<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Type, u
                     new_cursor = cursor;
                 }
 
-                let (colon, _) = expect_optional_token!(parser, new_cursor + 1, TokenType::Colon)?;
+                let (colon, _) = expect_optional_token!(parser, new_cursor + 1, TokenType::Colon);
 
                 match colon {
                     Some(_) => {

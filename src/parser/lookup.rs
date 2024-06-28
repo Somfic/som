@@ -27,14 +27,19 @@ pub enum BindingPower {
     Primary = 10,
 }
 
-pub type TypeHandler<'a> = fn(&'a Parser<'a>, usize) -> Result<(Type, usize), Error<'a>>;
+pub type TypeHandler<'a> = fn(&'a Parser<'a>, usize) -> Result<(Type, usize), Vec<Error<'a>>>;
 pub type LeftTypeHandler<'a> =
-    fn(&'a Parser<'a>, usize, Type, &BindingPower) -> Result<(Type, usize), Error<'a>>;
-pub type StatementHandler<'a> = fn(&'a Parser<'a>, usize) -> Result<(Statement, usize), Error<'a>>;
+    fn(&'a Parser<'a>, usize, Type, &BindingPower) -> Result<(Type, usize), Vec<Error<'a>>>;
+pub type StatementHandler<'a> =
+    fn(&'a Parser<'a>, usize) -> Result<(Statement, usize), Vec<Error<'a>>>;
 pub type ExpressionHandler<'a> =
-    fn(&'a Parser<'a>, usize) -> Result<(Expression, usize), Error<'a>>;
-pub type LeftExpressionHandler<'a> =
-    fn(&'a Parser<'a>, usize, Expression, &BindingPower) -> Result<(Expression, usize), Error<'a>>;
+    fn(&'a Parser<'a>, usize) -> Result<(Expression, usize), Vec<Error<'a>>>;
+pub type LeftExpressionHandler<'a> = fn(
+    &'a Parser<'a>,
+    usize,
+    Expression,
+    &BindingPower,
+) -> Result<(Expression, usize), Vec<Error<'a>>>;
 
 pub struct Lookup<'a> {
     pub statement_lookup: HashMap<TokenType, StatementHandler<'a>>,

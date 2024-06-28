@@ -1,7 +1,10 @@
 use std::cmp::Ordering;
+use std::collections::HashSet;
 
+use crate::diagnostic::Diagnostic;
+use crate::diagnostic::Error;
 use crate::files::Files;
-use lexeme::Lexeme;
+use lexeme::Token;
 use lexeme::TokenType;
 use lexeme::TokenValue;
 use regex::Regex;
@@ -100,15 +103,16 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(&self) -> Vec<Lexeme> {
-        let mut lexemes = Vec::new();
+    pub fn parse(&self) -> (Vec<Token>, HashSet<Diagnostic>) {
+        let mut tokens = Vec::new();
+        let mut diagnostics = HashSet::new();
 
         for file in self.files.file_ids() {
             let content = self.files.get(file).unwrap();
             let mut cursor = 0;
 
             let mut panic_start_at = None;
-            let indentation_level = 0;
+            let mut indentation_level = 0;
 
             while cursor < content.chars().count() {
                 let haystack = content.chars().skip(cursor).collect::<String>();
@@ -121,7 +125,9 @@ impl<'a> Scanner<'a> {
                         capture.and_then(|c| Some((c.get(0)?, c.get(1)?)))
                     {
                         if let Some(start) = panic_start_at.take() {
-                            lexemes.push(Lexeme::invalid(file, start, cursor - start - 1));
+                            diagnostics.insert(Diagnostic::error("Invalid character").with_error(
+                                Error::primary(file, start, start - cursor, "Invalid character"),
+                            ));
                         }
 
                         let value = matched.as_str();
@@ -147,7 +153,7 @@ impl<'a> Scanner<'a> {
 
                             match indentation.cmp(&indentation_level) {
                                 Ordering::Greater => {
-                                    lexemes.push(Lexeme::valid(
+                                    tokens.push(Token::new(
                                         file,
                                         TokenType::IndentationOpen,
                                         TokenValue::None,
@@ -156,7 +162,7 @@ impl<'a> Scanner<'a> {
                                     ));
                                 }
                                 Ordering::Less => {
-                                    lexemes.push(Lexeme::valid(
+                                    tokens.push(Token::new(
                                         file,
                                         TokenType::IndentationClose,
                                         TokenValue::None,
@@ -167,14 +173,15 @@ impl<'a> Scanner<'a> {
                                 _ => {}
                             }
 
+                            indentation_level = indentation;
                             cursor += capture.as_str().chars().count();
                             break;
                         }
 
                         let length = capture.as_str().chars().count();
-                        let lexeme = Lexeme::valid(file, token_type, token_value, cursor, length);
+                        let lexeme = Token::new(file, token_type, token_value, cursor, length);
 
-                        lexemes.push(lexeme);
+                        tokens.push(lexeme);
 
                         cursor += length;
                         was_matched = true;
@@ -190,9 +197,33 @@ impl<'a> Scanner<'a> {
                     cursor += 1;
                 }
             }
+
+            if let Some(start) = panic_start_at.take() {
+                diagnostics.insert(Diagnostic::error("Invalid characters").with_error(
+                    Error::primary(file, cursor, cursor - start, "Invalid characters"),
+                ));
+            }
+
+            for _ in 0..indentation_level {
+                tokens.push(Token::new(
+                    file,
+                    TokenType::IndentationClose,
+                    TokenValue::None,
+                    cursor,
+                    1,
+                ));
+            }
+
+            // tokens.push(Token::valid(
+            //     file,
+            //     TokenType::EndOfFile,
+            //     TokenValue::None,
+            //     cursor,
+            //     0,
+            // ));
         }
 
-        lexemes
+        (tokens, diagnostics)
     }
 }
 
@@ -203,11 +234,23 @@ mod tests {
     #[test]
     fn parses_indentation() {
         test_scanner(
-            "struct enum:\n",
+            "struct enum:
+                2
+                1",
             vec![
-                (TokenType::Integer, TokenValue::Integer(1), 0, 1),
-                (TokenType::IndentationOpen, TokenValue::None, 1, 1),
-                (TokenType::Integer, TokenValue::Integer(2), 3, 1),
+                (TokenType::Struct, TokenValue::None, 0, 6),
+                (TokenType::Enum, TokenValue::None, 7, 4),
+                (TokenType::Colon, TokenValue::None, 11, 1),
+                (TokenType::IndentationOpen, TokenValue::None, 12, 1),
+                (TokenType::Integer, TokenValue::Integer(1), 14, 1),
+                (TokenType::Integer, TokenValue::Integer(2), 18, 1),
+                (TokenType::IndentationClose, TokenValue::None, 19, 1),
+                (TokenType::Struct, TokenValue::None, 20, 6),
+                (TokenType::IndentationOpen, TokenValue::None, 26, 1),
+                (TokenType::IndentationOpen, TokenValue::None, 27, 1),
+                (TokenType::Integer, TokenValue::Integer(1), 28, 1),
+                (TokenType::IndentationClose, TokenValue::None, 29, 1),
+                (TokenType::IndentationClose, TokenValue::None, 30, 1),
             ],
         );
     }
@@ -332,7 +375,7 @@ mod tests {
     //         "123~456",
     //         vec![
     //             (TokenType::Integer, TokenValue::Integer(123), 0, 3),
-    //             Lexeme::invalid(3, 1),
+    //             Token::invalid(3, 1),
     //             (TokenType::Integer, TokenValue::Integer(456), 4, 3),
     //         ],
     //     );
@@ -344,7 +387,7 @@ mod tests {
     //         "123~~~±±±",
     //         vec![
     //             (TokenType::Integer, TokenValue::Integer(123), 0, 3),
-    //             Lexeme::invalid(3, 6),
+    //             Token::invalid(3, 6),
     //         ],
     //     );
     // }
@@ -371,32 +414,43 @@ mod tests {
         files.insert("test file", input);
 
         let scanner = Scanner::new(&files);
-        let lexemes = scanner.parse();
+        let tokens = scanner.parse();
 
         let expected = expected
             .into_iter()
             .map(|(token_type, token_value, cursor, length)| {
-                Lexeme::valid("test file", token_type, token_value, cursor, length)
+                Token::new("test file", token_type, token_value, cursor, length)
             })
             .collect::<Vec<_>>();
 
         println!(
             "Got:      {}",
-            lexemes
+            tokens
+                .0
                 .iter()
-                .map(|lexeme| lexeme.to_string())
+                .map(|lexeme| format!(
+                    "{}@{}..{}",
+                    lexeme,
+                    lexeme.range.position,
+                    lexeme.range.position + lexeme.range.length
+                ))
                 .collect::<Vec<_>>()
-                .join(" + ")
+                .join("\n")
         );
         println!(
             "Expected: {}",
             expected
                 .iter()
-                .map(|lexeme| lexeme.to_string())
+                .map(|lexeme| format!(
+                    "{}@{}..{}",
+                    lexeme,
+                    lexeme.range.position,
+                    lexeme.range.position + lexeme.range.length
+                ))
                 .collect::<Vec<_>>()
-                .join(" + ")
+                .join("\n")
         );
 
-        assert_eq!(lexemes, expected);
+        assert_eq!(tokens.0, expected);
     }
 }

@@ -7,7 +7,7 @@ use super::{
 use crate::{
     diagnostic::Error,
     parser::macros::expect_any_token,
-    scanner::lexeme::{Lexeme, TokenType, TokenValue},
+    scanner::lexeme::{Token, TokenType, TokenValue},
 };
 use std::collections::HashMap;
 
@@ -15,25 +15,25 @@ pub fn parse<'a>(
     parser: &'a Parser<'a>,
     cursor: usize,
     binding_power: &BindingPower,
-) -> Result<(Expression, usize), Error<'a>> {
+) -> Result<(Expression, usize), Vec<Error<'a>>> {
     let mut cursor = cursor;
     let (token, range) = expect_valid_token!(parser, cursor)?;
     let expression_handler = parser
         .lookup
         .expression_lookup
         .get(&token.token_type)
-        .ok_or(Error::primary(
+        .ok_or(vec![Error::primary(
             range.file_id,
             cursor,
             range.length,
             "Expected a new expression",
-        ))?;
+        )])?;
 
     let (mut left_hand_side, new_cursor) = expression_handler(parser, cursor)?;
 
     cursor = new_cursor;
 
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(cursor) {
+    while let Some(token) = parser.tokens.get(cursor) {
         let token_binding_power = parser
             .lookup
             .binding_power_lookup
@@ -65,7 +65,7 @@ pub fn parse_assignment<'a>(
     cursor: usize,
     lhs: Expression,
     binding_power: &BindingPower,
-) -> Result<(Expression, usize), Error<'a>> {
+) -> Result<(Expression, usize), Vec<Error<'a>>> {
     let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Equal)?;
     let (rhs, cursor) = expect_expression!(parser, cursor, binding_power)?;
 
@@ -75,7 +75,7 @@ pub fn parse_assignment<'a>(
 pub fn parse_unary<'a>(
     parser: &'a Parser<'a>,
     cursor: usize,
-) -> Result<(Expression, usize), Error<'a>> {
+) -> Result<(Expression, usize), Vec<Error<'a>>> {
     let (token, cursor) = expect_any_token!(parser, cursor, TokenType::Minus, TokenType::Not)?;
     match token.token_type {
         TokenType::Minus => {
@@ -101,7 +101,7 @@ pub fn parse_struct_initializer<'a>(
     cursor: usize,
     lhs: Expression,
     binding_power: &BindingPower,
-) -> Result<(Expression, usize), Error<'a>> {
+) -> Result<(Expression, usize), Vec<Error<'a>>> {
     let identifier = match lhs {
         Expression::Identifier(identifier) => identifier.clone(),
         _ => {
@@ -114,7 +114,7 @@ pub fn parse_struct_initializer<'a>(
     let mut members = HashMap::new();
     let mut new_cursor = cursor;
 
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
+    while let Some(token) = parser.tokens.get(new_cursor) {
         if token.token_type == TokenType::CurlyClose {
             break;
         }

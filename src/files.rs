@@ -6,8 +6,8 @@ pub struct Files<'a> {
 }
 
 impl<'a> Files<'a> {
-    pub fn insert(&mut self, file_id: impl Into<&'a str>, source: impl Into<&'a str>) {
-        self.files.insert(file_id.into(), source.into());
+    pub fn insert(&mut self, file_id: &'a str, source: &'a str) {
+        self.files.insert(file_id, source);
     }
 
     pub fn file_ids(&self) -> Vec<&'a str> {

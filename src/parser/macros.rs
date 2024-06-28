@@ -19,24 +19,16 @@ macro_rules! expect_type {
 
 macro_rules! expect_valid_token {
     ($parser:expr, $cursor:expr) => {{
-        let lexeme = $parser.lexemes.get($cursor);
+        let token = $parser.tokens.get($cursor);
 
-        match lexeme {
-            Some(lexeme) => match lexeme {
-                Lexeme::Valid(token) => Ok((token, lexeme.range())),
-                Lexeme::Invalid(_) => Err(crate::diagnostic::Error::primary(
-                    lexeme.range().file_id,
-                    $cursor,
-                    1,
-                    "Invalid token",
-                )),
-            },
-            None => Err(crate::diagnostic::Error::primary(
-                $parser.lexemes.get(0).unwrap().range().file_id,
+        match token {
+            Some(token) => Ok((token, &token.range)),
+            None => Err(vec![crate::diagnostic::Error::primary(
+                $parser.tokens.get(0).unwrap().range.file_id,
                 $cursor + 1,
                 0,
                 "Unexpected end of file",
-            )),
+            )]),
         }
     }};
 }
@@ -47,35 +39,27 @@ macro_rules! expect_any_token {
     ($parser:expr, $cursor:expr, $($token_type:expr),*) => {{
         let expected_token_types = vec![$($token_type.to_string()),*];
 
-        let lexeme = $parser.lexemes.get($cursor);
+        let token = $parser.tokens.get($cursor);
 
-        match lexeme {
-            Some(lexeme) => match lexeme {
-                Lexeme::Valid(token) => {
+        match token {
+            Some(token) => {
                     if expected_token_types.contains(&token.token_type.to_string()) {
                         Ok((token, $cursor + 1))
                     } else {
-                        Err(crate::diagnostic::Error::primary(
-                            lexeme.range().file_id,
+                        Err(vec![crate::diagnostic::Error::primary(
+                            token.range.file_id,
                             $cursor,
                             1,
                             format!("Expected {}", expected_token_types.join(" or ")),
-                        ))
+                        )])
                     }
                 }
-                Lexeme::Invalid(_) => Err(crate::diagnostic::Error::primary(
-                    lexeme.range().file_id,
-                    $cursor,
-                    1,
-                    "Invalid token",
-                )),
-            },
-            None => Err(crate::diagnostic::Error::primary(
-                $parser.lexemes.get(0).unwrap().range().file_id,
+            None => Err(vec![crate::diagnostic::Error::primary(
+                $parser.tokens.get(0).unwrap().range.file_id,
                 $cursor + 1,
                 0,
                 "Unexpected end of file",
-            )),
+            )]),
         }
     }};
 }
@@ -86,8 +70,8 @@ macro_rules! expect_optional_token {
         let result = expect_tokens!($parser, $cursor, $token_type);
 
         match result {
-            Ok((token, cursor)) => Ok((Some(token), cursor)),
-            Err(_) => Ok((None, $cursor)),
+            Ok((token, cursor)) => (Some(token[0].clone()), cursor),
+            Err(_) => (None, $cursor),
         }
     }};
 }
@@ -104,16 +88,18 @@ macro_rules! expect_tokens {
     ($parser:expr, $cursor:expr, $($token_type:expr),*) => {{
         let mut i = $cursor;
         let mut tokens = Vec::new();
-        let mut valid = 0;
+
+        let mut invalid_indecies = Vec::new();
 
         $(
-            let lexeme: Option<&crate::scanner::lexeme::Lexeme> = $parser.lexemes.get(i);
+            let token: Option<&crate::scanner::lexeme::Token> = $parser.tokens.get(i);
 
-            match lexeme {
-                Some(crate::scanner::lexeme::Lexeme::Valid(token)) => {
+            match token {
+                Some(token) => {
                     if token.token_type == $token_type {
                         tokens.push(token.clone());
-                        valid += 1;
+                    } else {
+                        invalid_indecies.push((i, $token_type));
                     }
                 }
                 _ => {}
@@ -122,13 +108,26 @@ macro_rules! expect_tokens {
             i += 1;
         )*
 
-        let all_tokens = vec![$($token_type),*];
-
-        if valid == all_tokens.len() {
+        if invalid_indecies.is_empty() {
             Ok((tokens, i))
         } else {
-            let unexpected_tokens = all_tokens.iter().skip(valid).map(|t| t.to_string()).collect::<Vec<_>>();
-            Err(crate::diagnostic::Error::primary($parser.lexemes.get(0).unwrap().range().file_id, $cursor + valid, 1, format!("Expected {}", unexpected_tokens.join(" and "))))
+
+            let mut errors = Vec::new();
+
+            for (invalid_index, expected_token_type) in invalid_indecies {
+                let actual_token = $parser.tokens.get(invalid_index).unwrap();
+
+                errors.push(crate::diagnostic::Error::primary(
+                    $parser.tokens.get(0).unwrap().range.file_id,
+                    $cursor + invalid_index,
+                    1,
+                    format!("Expected {}", expected_token_type)
+                ).with_note(
+                    format!("Expected {}, got {}", expected_token_type, actual_token.token_type)
+                ));
+            }
+
+            Err(errors)
         }
     }};
 }

@@ -1,4 +1,4 @@
-use crate::scanner::lexeme::Lexeme;
+use crate::scanner::lexeme::Token;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Diagnostic<'a> {
@@ -12,6 +12,7 @@ pub struct Error<'a> {
     pub message: String,
     pub label: Label,
     pub range: Range<'a>,
+    pub notes: Vec<String>,
 }
 
 impl<'a> Error<'a> {
@@ -48,10 +49,16 @@ impl<'a> Error<'a> {
                 position,
                 length,
             },
+            notes: vec![],
         }
     }
 
-    pub(crate) fn transform_range(mut self, lexemes: &'a [Lexeme<'a>]) -> Error {
+    pub fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.notes.push(note.into());
+        self
+    }
+
+    pub(crate) fn transform_range(mut self, lexemes: &'a [Token<'a>]) -> Error {
         self.range = self.range.to_source_code_range(lexemes);
         self
     }
@@ -109,7 +116,19 @@ impl<'a> From<Diagnostic<'a>> for codespan_reporting::diagnostic::Diagnostic<&'a
     fn from(val: Diagnostic<'a>) -> Self {
         codespan_reporting::diagnostic::Diagnostic::<&'a str>::new(val.severity.into())
             .with_message(val.title)
-            .with_labels(val.errors.into_iter().map(|error| error.into()).collect())
+            .with_labels(
+                val.errors
+                    .clone()
+                    .into_iter()
+                    .map(|error| error.into())
+                    .collect(),
+            )
+            .with_notes(
+                val.errors
+                    .iter()
+                    .flat_map(|e| e.notes.clone())
+                    .collect::<Vec<String>>(),
+            )
     }
 }
 
@@ -141,20 +160,20 @@ pub struct Range<'a> {
 }
 
 impl<'a> Range<'a> {
-    pub fn to_source_code_range(self, lexemes: &[Lexeme]) -> Self {
+    pub fn to_source_code_range(self, lexemes: &[Token]) -> Self {
         let start = if self.position >= lexemes.len() {
-            let last_lexeme = lexemes[lexemes.len() - 1].range();
+            let last_lexeme = &lexemes[lexemes.len() - 1].range;
             last_lexeme.position + 1
         } else {
-            let start_lexeme = lexemes[self.position].range();
+            let start_lexeme = &lexemes[self.position].range;
             start_lexeme.position
         };
 
         let end = if self.position + self.length >= lexemes.len() {
-            let last_lexeme = lexemes[lexemes.len() - 1].range();
+            let last_lexeme = &lexemes[lexemes.len() - 1].range;
             last_lexeme.position + last_lexeme.length
         } else {
-            let end_lexeme = lexemes[self.position + self.length].range();
+            let end_lexeme = &lexemes[self.position + self.length].range;
             end_lexeme.position + end_lexeme.length
         };
 

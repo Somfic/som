@@ -1,6 +1,6 @@
 use crate::{
     diagnostic::{Diagnostic, Error},
-    scanner::lexeme::Lexeme,
+    scanner::lexeme::Token,
 };
 use ast::{Statement, Symbol};
 use lookup::Lookup;
@@ -15,41 +15,42 @@ pub mod typing;
 
 pub struct Parser<'a> {
     lookup: Lookup<'a>,
-    lexemes: &'a Vec<Lexeme<'a>>,
+    tokens: &'a [Token<'a>],
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(lexemes: &'a Vec<Lexeme<'a>>) -> Self {
+    pub fn new(tokens: &'a Vec<Token<'a>>) -> Self {
         Self {
             lookup: Lookup::default(),
-            lexemes,
+            tokens,
         }
     }
 
-    pub fn parse(&'a mut self) -> Result<Symbol, HashSet<Diagnostic>> {
+    pub fn parse(&'a mut self) -> (Symbol, HashSet<Diagnostic>) {
         let mut statements = vec![];
         let mut diagnostics = HashSet::new();
         let mut last_safe_cursor = 0;
         let mut cursor = 0;
         let mut panic_mode = false;
 
-        while cursor < self.lexemes.len() {
+        while cursor < self.tokens.len() {
             if panic_mode {
                 // Skip to the next valid statement
-                while let Some(lexeme) = self.lexemes.get(cursor) {
+                while let Some(token) = self.tokens.get(cursor) {
                     // Try to parse the next statement
-                    if lexeme.is_valid() && statement::parse(self, cursor).is_ok() {
-                        diagnostics.insert(
-                            Diagnostic::warning("Unparsed code").with_error(
-                                Error::primary(
-                                    lexeme.range().file_id,
-                                    cursor,
-                                    cursor - last_safe_cursor,
-                                    "This code was not parsed",
-                                )
-                                .transform_range(self.lexemes),
-                            ),
-                        );
+                    if statement::parse(self, cursor).is_ok() {
+                        // diagnostics.insert(
+                        //     Diagnostic::warning("Unparsed code").with_error(
+                        //         Error::primary(
+                        //             token.range.file_id,
+                        //             cursor,
+                        //             cursor - last_safe_cursor,
+                        //             "This code was not parsed",
+                        //         )
+                        //         .with_note("This code was not parsed since it ")
+                        //         .transform_range(self.tokens),
+                        //     ),
+                        // );
 
                         break;
                     };
@@ -65,20 +66,20 @@ impl<'a> Parser<'a> {
                     statements.push(statement);
                 }
                 Err(error) => {
-                    diagnostics.insert(
-                        Diagnostic::error("Syntax error")
-                            .with_error(error.clone().transform_range(self.lexemes)),
-                    );
+                    let mut diagnostic = Diagnostic::error("Syntax error");
+
+                    for error in error {
+                        diagnostic =
+                            diagnostic.with_error(error.clone().transform_range(self.tokens));
+                    }
+
+                    diagnostics.insert(diagnostic);
                     panic_mode = true;
                 }
             };
         }
 
-        if diagnostics.is_empty() {
-            Ok(Symbol::Statement(Statement::Block(statements)))
-        } else {
-            Err(diagnostics)
-        }
+        (Symbol::Statement(Statement::Block(statements)), diagnostics)
     }
 }
 
@@ -209,11 +210,11 @@ mod tests {
         files.insert("test", code);
 
         let scanner = Scanner::new(&files);
-        let lexemes = scanner.parse();
+        let tokens = scanner.parse().0;
 
-        let mut parser = Parser::new(&lexemes);
-        let parsed = parser.parse().unwrap();
+        let mut parser = Parser::new(&tokens);
+        let parsed = parser.parse();
 
-        assert_eq!(parsed, expected);
+        assert_eq!(parsed.0, expected);
     }
 }
