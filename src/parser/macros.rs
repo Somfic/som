@@ -49,7 +49,7 @@ macro_rules! expect_any_token {
                         Err(vec![crate::diagnostic::Error::primary(
                             token.range.file_id,
                             $cursor,
-                            1,
+                            0,
                             format!("Expected {}", expected_token_types.join(" or ")),
                         )])
                     }
@@ -102,7 +102,9 @@ macro_rules! expect_tokens {
                         invalid_indecies.push((i, $token_type));
                     }
                 }
-                _ => {}
+                _ => {
+
+                }
             };
 
             i += 1;
@@ -119,11 +121,11 @@ macro_rules! expect_tokens {
 
                 errors.push(crate::diagnostic::Error::primary(
                     $parser.tokens.get(0).unwrap().range.file_id,
-                    $cursor + invalid_index,
-                    1,
+                    $cursor,
+                    0,
                     format!("Expected {}", expected_token_type)
                 ).with_note(
-                    format!("Expected {}, got {}", expected_token_type, actual_token.token_type)
+                    format!("Expected {}, found {} ({})", expected_token_type, actual_token.token_type, actual_token.value)
                 ));
             }
 

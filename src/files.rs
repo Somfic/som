@@ -1,21 +1,34 @@
 use std::collections::HashMap;
 
-#[derive(Default)]
+use codespan_reporting::files::SimpleFiles;
+
 pub struct Files<'a> {
-    pub files: HashMap<&'a str, &'a str>,
+    files: SimpleFiles<&'a str, &'a str>,
+    file_handles: HashMap<&'a str, usize>,
+}
+
+impl<'a> Default for Files<'a> {
+    fn default() -> Self {
+        Self {
+            files: SimpleFiles::new(),
+            file_handles: HashMap::new(),
+        }
+    }
 }
 
 impl<'a> Files<'a> {
     pub fn insert(&mut self, file_id: &'a str, source: &'a str) {
-        self.files.insert(file_id, source);
-    }
-
-    pub fn file_ids(&self) -> Vec<&'a str> {
-        self.files.keys().copied().collect()
+        let handle = self.files.add(source, source);
+        self.file_handles.insert(file_id, handle);
     }
 
     pub fn get(&self, file_id: impl Into<&'a str>) -> Option<&'a str> {
-        self.files.get(file_id.into()).copied()
+        let handle = self.file_handles.get(file_id.into())?;
+        Some(self.files.get(*handle).unwrap().source())
+    }
+
+    pub fn file_ids<'b>(&'b self) -> impl Iterator<Item = &'a str> + 'b {
+        self.file_handles.keys().copied()
     }
 }
 
@@ -25,21 +38,15 @@ impl<'a> codespan_reporting::files::Files<'a> for Files<'a> {
     type Source = &'a str;
 
     fn name(&'a self, id: Self::FileId) -> Result<Self::Name, codespan_reporting::files::Error> {
-        self.files
-            .keys()
-            .find(|key| **key == id)
-            .copied()
-            .ok_or(codespan_reporting::files::Error::FileMissing)
+        Ok(id)
     }
 
     fn source(
         &'a self,
         id: Self::FileId,
     ) -> Result<Self::Source, codespan_reporting::files::Error> {
-        self.files
-            .get(id)
+        self.get(id)
             .ok_or(codespan_reporting::files::Error::FileMissing)
-            .copied()
     }
 
     fn line_index(
@@ -47,15 +54,12 @@ impl<'a> codespan_reporting::files::Files<'a> for Files<'a> {
         id: Self::FileId,
         byte_index: usize,
     ) -> Result<usize, codespan_reporting::files::Error> {
-        self.get(id)
-            .ok_or(codespan_reporting::files::Error::FileMissing)
-            .map(|source| {
-                source
-                    .char_indices()
-                    .take_while(|(index, _)| *index < byte_index)
-                    .filter(|(_, character)| *character == '\n')
-                    .count()
-            })
+        let handle = self
+            .file_handles
+            .get(id)
+            .ok_or(codespan_reporting::files::Error::FileMissing)?;
+
+        self.files.line_index(*handle, byte_index)
     }
 
     fn line_range(
@@ -63,22 +67,11 @@ impl<'a> codespan_reporting::files::Files<'a> for Files<'a> {
         id: Self::FileId,
         line_index: usize,
     ) -> Result<std::ops::Range<usize>, codespan_reporting::files::Error> {
-        self.get(id)
-            .ok_or(codespan_reporting::files::Error::FileMissing)
-            .map(|source| {
-                let start = source
-                    .lines()
-                    .take(line_index)
-                    .map(|line| line.len() + 1)
-                    .sum::<usize>();
+        let handle = self
+            .file_handles
+            .get(id)
+            .ok_or(codespan_reporting::files::Error::FileMissing)?;
 
-                let end = source
-                    .lines()
-                    .take(line_index + 1)
-                    .map(|line| line.len() + 1)
-                    .sum::<usize>();
-
-                start..end
-            })
+        self.files.line_range(*handle, line_index)
     }
 }

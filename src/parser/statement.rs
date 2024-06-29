@@ -136,7 +136,8 @@ pub fn parse_enum<'a>(
     let identifier = expect_token_value!(tokens[1], TokenValue::Identifier);
 
     let mut new_cursor = cursor;
-    let mut members: HashSet<String> = HashSet::new();
+    let mut members: HashMap<String, Token> = HashMap::new();
+    let mut errors = Vec::new();
 
     while let Some(token) = parser.tokens.get(new_cursor) {
         let (member_name, cursor) = match token.token_type {
@@ -153,10 +154,20 @@ pub fn parse_enum<'a>(
 
         new_cursor = cursor;
         // TODO: Handle warning for overwritten members
-        members.insert(member_name);
+        if let Some(overwritten_key) = members.insert(member_name, token.clone()) {
+            errors.push(
+                Error::primary(
+                    overwritten_key.range.file_id,
+                    overwritten_key.range.position,
+                    1,
+                    "This member was overwritten",
+                )
+                .with_note("This member was overwritten since it was already declared"),
+            );
+        }
     }
 
     let (_, cursor) = expect_tokens!(parser, new_cursor, TokenType::Semicolon)?;
 
-    Ok((Statement::Enum(identifier, members), cursor))
+    Ok(((Statement::Enum(identifier, members), cursor)), errors))
 }
