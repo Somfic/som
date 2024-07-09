@@ -1,28 +1,116 @@
-use crate::scanner::lexeme::Token;
+use std::collections::HashSet;
+
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
+
+use crate::{files::Files, scanner::lexeme::Token};
+
+pub struct PassResult<'a, T> {
+    pub result: T,
+    pub diagnostics: HashSet<Diagnostic<'a>>,
+}
+
+impl<'a, T> PassResult<'a, T> {
+    pub fn new(result: T, diagnostics: HashSet<Diagnostic<'a>>) -> Self {
+        Self {
+            result,
+            diagnostics,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Diagnostic<'a> {
     pub severity: Severity,
+    pub code: String,
     pub title: String,
-    pub errors: Vec<Error<'a>>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Error<'a> {
-    pub message: String,
-    pub label: Label,
-    pub range: Range<'a>,
+    pub snippets: Vec<Snippet<'a>>,
     pub notes: Vec<String>,
 }
 
-impl<'a> Error<'a> {
+impl<'a> Diagnostic<'a> {
+    pub fn error(code: impl Into<String>, message: impl Into<String>) -> Diagnostic<'a> {
+        Diagnostic::new(Severity::Error, code, message)
+    }
+
+    pub fn warning(code: impl Into<String>, message: impl Into<String>) -> Diagnostic<'a> {
+        Diagnostic::new(Severity::Warning, code, message)
+    }
+
+    pub fn note(code: impl Into<String>, message: impl Into<String>) -> Diagnostic<'a> {
+        Diagnostic::new(Severity::Note, code, message)
+    }
+
+    pub fn help(code: impl Into<String>, message: impl Into<String>) -> Diagnostic<'a> {
+        Diagnostic::new(Severity::Help, code, message)
+    }
+
+    pub fn new(
+        severity: Severity,
+        code: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Diagnostic<'a> {
+        Diagnostic {
+            severity,
+            title: message.into(),
+            snippets: vec![],
+            code: code.into(),
+            notes: vec![],
+        }
+    }
+
+    pub fn with_snippet(mut self, snippet: Snippet<'a>) -> Self {
+        self.snippets.push(snippet);
+        self
+    }
+
+    pub fn with_snippets(mut self, snippets: impl IntoIterator<Item = Snippet<'a>>) -> Self {
+        self.snippets.extend(snippets);
+        self
+    }
+
+    pub fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.notes.push(note.into());
+        self
+    }
+
+    pub fn with_notes(mut self, notes: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.notes.extend(notes.into_iter().map(|note| note.into()));
+        self
+    }
+
+    pub(crate) fn transform_range(mut self, tokens: &'a [Token<'a>]) -> Diagnostic<'a> {
+        self.snippets = self
+            .snippets
+            .into_iter()
+            .map(|snippet| {
+                let range = snippet.range.to_source_code_range(tokens);
+                Snippet {
+                    message: snippet.message,
+                    label: snippet.label,
+                    range,
+                }
+            })
+            .collect();
+
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Snippet<'a> {
+    pub message: String,
+    pub label: Label,
+    pub range: Range<'a>,
+}
+
+impl<'a> Snippet<'a> {
     pub fn primary(
         file_id: impl Into<&'a str>,
         position: usize,
         length: usize,
         message: impl Into<String>,
-    ) -> Error<'a> {
-        Error::new(file_id, Label::Primary, position, length, message)
+    ) -> Snippet<'a> {
+        Snippet::new(file_id, Label::Primary, position, length, message)
     }
 
     pub fn secondary(
@@ -30,8 +118,8 @@ impl<'a> Error<'a> {
         position: usize,
         length: usize,
         message: impl Into<String>,
-    ) -> Error<'a> {
-        Error::new(file_id, Label::Secondary, position, length, message)
+    ) -> Snippet<'a> {
+        Snippet::new(file_id, Label::Secondary, position, length, message)
     }
 
     pub fn new(
@@ -40,8 +128,8 @@ impl<'a> Error<'a> {
         position: usize,
         length: usize,
         message: impl Into<String>,
-    ) -> Error<'a> {
-        Error {
+    ) -> Snippet<'a> {
+        Snippet {
             message: message.into(),
             label,
             range: Range {
@@ -49,18 +137,7 @@ impl<'a> Error<'a> {
                 position,
                 length,
             },
-            notes: vec![],
         }
-    }
-
-    pub fn with_note(mut self, note: impl Into<String>) -> Self {
-        self.notes.push(note.into());
-        self
-    }
-
-    pub(crate) fn transform_range(mut self, lexemes: &'a [Token<'a>]) -> Error {
-        self.range = self.range.to_source_code_range(lexemes);
-        self
     }
 }
 
@@ -89,51 +166,24 @@ impl From<Severity> for codespan_reporting::diagnostic::Severity {
     }
 }
 
-impl<'a> Diagnostic<'a> {
-    pub fn error(message: impl Into<String>) -> Diagnostic<'a> {
-        Diagnostic::new(Severity::Error, message)
-    }
-
-    pub fn warning(message: impl Into<String>) -> Diagnostic<'a> {
-        Diagnostic::new(Severity::Warning, message)
-    }
-
-    pub fn new(severity: Severity, message: impl Into<String>) -> Diagnostic<'a> {
-        Diagnostic {
-            severity,
-            title: message.into(),
-            errors: vec![],
-        }
-    }
-
-    pub fn with_error(mut self, error: Error<'a>) -> Self {
-        self.errors.push(error);
-        self
-    }
-}
-
 impl<'a> From<Diagnostic<'a>> for codespan_reporting::diagnostic::Diagnostic<&'a str> {
     fn from(val: Diagnostic<'a>) -> Self {
         codespan_reporting::diagnostic::Diagnostic::<&'a str>::new(val.severity.into())
             .with_message(val.title)
             .with_labels(
-                val.errors
+                val.snippets
                     .clone()
                     .into_iter()
-                    .map(|error| error.into())
+                    .map(|snippet| snippet.into())
                     .collect(),
             )
-            .with_notes(
-                val.errors
-                    .iter()
-                    .flat_map(|e| e.notes.clone())
-                    .collect::<Vec<String>>(),
-            )
+            .with_notes(val.notes)
+            .with_code(val.code)
     }
 }
 
-impl<'a> From<Error<'a>> for codespan_reporting::diagnostic::Label<&'a str> {
-    fn from(val: Error<'a>) -> Self {
+impl<'a> From<Snippet<'a>> for codespan_reporting::diagnostic::Label<&'a str> {
+    fn from(val: Snippet<'a>) -> Self {
         codespan_reporting::diagnostic::Label::new(
             val.label.into(),
             val.range.file_id,

@@ -25,30 +25,14 @@ fn main() -> Result<()> {
     files.insert(file, source);
 
     let scanner = scanner::Scanner::new(&files);
-    let (tokens, scanner_diagnostics) = scanner.parse();
+    let scanner_pass = scanner.parse();
 
-    print_diagnostics(scanner_diagnostics, &files);
+    //sscanner_pass.print_diagnostics(&files);
 
-    let mut parser = parser::Parser::new(&tokens);
-    let (ast, parser_diagnostics) = parser.parse();
+    let mut parser = parser::Parser::new(&scanner_pass.result);
+    let parser_pass = parser.parse();
 
-    print_diagnostics(parser_diagnostics, &files);
+    parser.print_diagnostics(&files);
 
     Ok(())
-}
-
-fn print_diagnostics(diagnostics: HashSet<Diagnostic>, files: &Files) {
-    for diagnostic in diagnostics.iter() {
-        println!("{:?}", diagnostic);
-    }
-
-    let diagnostics: Vec<codespan_reporting::diagnostic::Diagnostic<&str>> =
-        diagnostics.iter().map(|d| d.clone().into()).collect();
-
-    let writer = StandardStream::stderr(ColorChoice::Auto);
-    let config = codespan_reporting::term::Config::default();
-
-    for diagnostic in diagnostics {
-        term::emit(&mut writer.lock(), &config, files, &diagnostic).unwrap();
-    }
 }

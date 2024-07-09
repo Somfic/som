@@ -30,6 +30,7 @@ fn transpile_expression(expression: &Expression) -> String {
     match expression {
         Expression::Number(number) => number.to_string(),
         Expression::String(string) => format!("\"{}\"", string),
+        Expression::Boolean(boolean) => boolean.to_string(),
         Expression::Identifier(symbol) => symbol.clone(),
         Expression::Binary(left, operation, right) => {
             let left = transpile_expression(left);

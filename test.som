@@ -1,1 +1,4 @@
-enum color: green blue red yellow 12
+
+struct test2
+	cheese ~ [int]
+	cheese ~ string

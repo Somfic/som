@@ -1,8 +1,10 @@
 use crate::{
-    diagnostic::{Diagnostic, Error},
-    scanner::lexeme::Token,
+    diagnostic::{Diagnostic, PassResult},
+    files::Files,
+    scanner::lexeme::{Token, TokenType, TokenValue},
 };
 use ast::{Statement, Symbol};
+use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use lookup::Lookup;
 use std::collections::HashSet;
 
@@ -11,81 +13,77 @@ pub mod expression;
 pub mod lookup;
 pub mod macros;
 pub mod statement;
-pub mod typing;
+
+pub type ParseResult<'a, T> = Result<T, Diagnostic<'a>>;
 
 pub struct Parser<'a> {
-    lookup: Lookup<'a>,
     tokens: &'a [Token<'a>],
+    cursor: usize,
+    lookup: lookup::Lookup<'a>,
+    diagnostics: HashSet<Diagnostic<'a>>,
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(tokens: &'a Vec<Token<'a>>) -> Self {
+    pub fn new(tokens: &'a [Token<'a>]) -> Self {
         Self {
-            lookup: Lookup::default(),
             tokens,
+            cursor: 0,
+            lookup: Lookup::default(),
+            diagnostics: HashSet::new(),
         }
     }
 
-    pub fn parse(&'a mut self) -> (Symbol, HashSet<Diagnostic>) {
-        let mut statements = vec![];
-        let mut diagnostics = HashSet::new();
-        let mut last_safe_cursor = 0;
-        let mut cursor = 0;
-        let mut panic_mode = false;
+    pub fn parse(&mut self) -> ParseResult<'a, Symbol<'a>> {
+        let mut statements = Vec::new();
 
-        while cursor < self.tokens.len() {
-            if panic_mode {
-                // Skip to the next valid statement
-                while let Some(token) = self.tokens.get(cursor) {
-                    // Try to parse the next statement
-                    if statement::parse(self, cursor).is_ok() {
-                        // diagnostics.insert(
-                        //     Diagnostic::warning("Unparsed code").with_error(
-                        //         Error::primary(
-                        //             token.range.file_id,
-                        //             cursor,
-                        //             cursor - last_safe_cursor,
-                        //             "This code was not parsed",
-                        //         )
-                        //         .with_note("This code was not parsed since it ")
-                        //         .transform_range(self.tokens),
-                        //     ),
-                        // );
-
-                        break;
-                    };
-
-                    cursor += 1;
-                }
-            }
-
-            match statement::parse(self, cursor) {
-                Ok((statement, new_cursor)) => {
-                    cursor = new_cursor;
-                    last_safe_cursor = new_cursor;
+        while self.has_tokens() {
+            match statement::parse(self) {
+                Ok(statement) => {
                     statements.push(statement);
                 }
-                Err(error) => {
-                    let mut diagnostic = Diagnostic::error("Syntax error");
-
-                    for error in error {
-                        diagnostic =
-                            diagnostic.with_error(error.clone().transform_range(self.tokens));
-                    }
-
-                    diagnostics.insert(diagnostic);
-                    panic_mode = true;
+                Err(diagnostic) => {
+                    self.diagnostics.insert(diagnostic);
                 }
-            };
+            }
         }
 
-        (Symbol::Statement(Statement::Block(statements)), diagnostics)
+        Ok(Symbol::Statement(Statement::Block(statements)))
+    }
+
+    pub(crate) fn peek(&self) -> Option<&Token<'a>> {
+        self.tokens.get(self.cursor)
+    }
+
+    pub(crate) fn consume(&mut self) -> Option<&Token<'a>> {
+        self.cursor += 1;
+        self.tokens.get(self.cursor - 1)
+    }
+
+    pub(crate) fn peek_next(&self) -> Option<&Token<'a>> {
+        self.tokens.get(self.cursor + 1)
+    }
+
+    pub(crate) fn has_tokens(&self) -> bool {
+        self.cursor < self.tokens.len()
+    }
+
+    pub fn print_diagnostics(&self, files: &Files) {
+        let diagnostics: Vec<codespan_reporting::diagnostic::Diagnostic<&str>> =
+            self.diagnostics.iter().map(|d| d.clone().into()).collect();
+
+        let writer = StandardStream::stderr(ColorChoice::Auto);
+        let config = codespan_reporting::term::Config::default();
+
+        for diagnostic in diagnostics {
+            codespan_reporting::term::emit(&mut writer.lock(), &config, files, &diagnostic)
+                .unwrap();
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ast::{BinaryOperation, Expression};
+    use ast::{BinaryOperation, Expression, Symbol};
 
     use crate::{files::Files, scanner::Scanner};
 
@@ -210,11 +208,20 @@ mod tests {
         files.insert("test", code);
 
         let scanner = Scanner::new(&files);
-        let tokens = scanner.parse().0;
+        let scanner_pass = scanner.parse();
 
-        let mut parser = Parser::new(&tokens);
-        let parsed = parser.parse();
+        let mut parser = Parser::new(&scanner_pass.result);
+        let parse_pass = parser.parse();
 
-        assert_eq!(parsed.0, expected);
+        parser.print_diagnostics(&files);
+
+        match &parse_pass {
+            Ok(parsed) => {
+                assert_eq!(parsed, &expected);
+            }
+            Err(_) => {
+                panic!("Parser failed to parse the code");
+            }
+        }
     }
 }

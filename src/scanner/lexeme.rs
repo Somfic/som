@@ -84,6 +84,14 @@ pub enum TokenType {
     Colon,
     /// A semicolon; `;`.
     Semicolon,
+    /// A tilde; `~`.
+    Tilde,
+    /// A hash; `#`.
+    Hash,
+    /// A dollar sign; `$`.
+    Dollar,
+    /// A pipe; `|`.
+    Pipe,
 
     /// A plus sign; `+`;
     Plus,
@@ -168,6 +176,10 @@ impl Display for TokenType {
             TokenType::Dot => write!(f, "`.`"),
             TokenType::Colon => write!(f, "`:`"),
             TokenType::Semicolon => write!(f, "`;`"),
+            TokenType::Tilde => write!(f, "`~`"),
+            TokenType::Hash => write!(f, "`#`"),
+            TokenType::Dollar => write!(f, "`$`"),
+            TokenType::Pipe => write!(f, "`|`"),
             TokenType::Plus => write!(f, "`+`"),
             TokenType::Minus => write!(f, "`-`"),
             TokenType::Slash => write!(f, "`/`"),

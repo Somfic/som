@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::scanner::lexeme::Token;
+use crate::{diagnostic::Range, scanner::lexeme::Token};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Symbol<'a> {
@@ -15,6 +15,7 @@ pub enum Expression {
     Number(f64),
     String(String),
     Identifier(String),
+    Boolean(bool),
     Unary(UnaryOperation, Box<Expression>),
     Binary(Box<Expression>, BinaryOperation, Box<Expression>),
     Grouping(Box<Expression>),

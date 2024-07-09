@@ -1,13 +1,12 @@
-use std::cmp::Ordering;
-use std::collections::HashSet;
-
 use crate::diagnostic::Diagnostic;
-use crate::diagnostic::Error;
+use crate::diagnostic::PassResult;
+use crate::diagnostic::Snippet;
 use crate::files::Files;
 use lexeme::Token;
 use lexeme::TokenType;
 use lexeme::TokenValue;
 use regex::Regex;
+use std::collections::HashSet;
 
 pub mod lexeme;
 
@@ -41,6 +40,10 @@ impl<'a> Scanner<'a> {
                 (r!(r"(\.)"), |_| (TokenType::Dot, TokenValue::None)),
                 (r!(r"(\:)"), |_| (TokenType::Colon, TokenValue::None)),
                 (r!(r"(;)"), |_| (TokenType::Semicolon, TokenValue::None)),
+                (r!(r"(~)"), |_| (TokenType::Tilde, TokenValue::None)),
+                (r!(r"(#)"), |_| (TokenType::Hash, TokenValue::None)),
+                (r!(r"($)"), |_| (TokenType::Dollar, TokenValue::None)),
+                (r!(r"(\|)"), |_| (TokenType::Pipe, TokenValue::None)),
                 (r!(r"(\+)"), |_| (TokenType::Plus, TokenValue::None)),
                 (r!(r"(-)"), |_| (TokenType::Minus, TokenValue::None)),
                 (r!(r"(/)"), |_| (TokenType::Slash, TokenValue::None)),
@@ -103,7 +106,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn parse(&self) -> (Vec<Token>, HashSet<Diagnostic>) {
+    pub fn parse(&self) -> PassResult<Vec<Token>> {
         let mut tokens = Vec::new();
         let mut diagnostics = HashSet::new();
 
@@ -125,9 +128,16 @@ impl<'a> Scanner<'a> {
                         capture.and_then(|c| Some((c.get(0)?, c.get(1)?)))
                     {
                         if let Some(start) = panic_start_at.take() {
-                            diagnostics.insert(Diagnostic::error("Invalid character").with_error(
-                                Error::primary(file, start, start - cursor, "Invalid character"),
-                            ));
+                            diagnostics.insert(
+                                Diagnostic::error("L0001", "Invalid character").with_snippet(
+                                    Snippet::primary(
+                                        file,
+                                        start,
+                                        cursor - start,
+                                        "Invalid character",
+                                    ),
+                                ),
+                            );
                         }
 
                         let value = matched.as_str();
@@ -139,49 +149,55 @@ impl<'a> Scanner<'a> {
                             // Walk all the characters in the token. If the character is an \n, set indentation level to 0.
                             //  If its a \t increase indentation level by one
 
+                            let mut indentation_changed = false;
                             let mut indentation = 0;
 
                             for c in capture.as_str().chars() {
                                 if c == '\n' {
                                     indentation = 0;
+                                    indentation_changed = true;
                                 }
 
                                 if c == '\t' {
                                     indentation += 1;
+                                    indentation_changed = true;
                                 }
                             }
 
-                            match indentation.cmp(&indentation_level) {
-                                Ordering::Greater => {
-                                    tokens.push(Token::new(
-                                        file,
-                                        TokenType::IndentationOpen,
-                                        TokenValue::None,
-                                        cursor,
-                                        1,
-                                    ));
+                            if indentation_changed {
+                                while indentation != indentation_level {
+                                    if indentation < indentation_level {
+                                        tokens.push(Token::new(
+                                            file,
+                                            TokenType::IndentationClose,
+                                            TokenValue::None,
+                                            cursor,
+                                            1,
+                                        ));
+                                        indentation_level -= 1;
+                                    } else {
+                                        tokens.push(Token::new(
+                                            file,
+                                            TokenType::IndentationOpen,
+                                            TokenValue::None,
+                                            cursor,
+                                            1,
+                                        ));
+                                        indentation_level += 1;
+                                    }
                                 }
-                                Ordering::Less => {
-                                    tokens.push(Token::new(
-                                        file,
-                                        TokenType::IndentationClose,
-                                        TokenValue::None,
-                                        cursor,
-                                        1,
-                                    ));
-                                }
-                                _ => {}
-                            }
 
-                            indentation_level = indentation;
-                            cursor += capture.as_str().chars().count();
-                            break;
+                                indentation_level = indentation;
+                                cursor += capture.as_str().chars().count();
+                                break;
+                            }
                         }
 
                         let length = capture.as_str().chars().count();
-                        let lexeme = Token::new(file, token_type, token_value, cursor, length);
 
-                        tokens.push(lexeme);
+                        if token_type != TokenType::Ignore {
+                            tokens.push(Token::new(file, token_type, token_value, cursor, length));
+                        }
 
                         cursor += length;
                         was_matched = true;
@@ -199,9 +215,11 @@ impl<'a> Scanner<'a> {
             }
 
             if let Some(start) = panic_start_at.take() {
-                diagnostics.insert(Diagnostic::error("Invalid characters").with_error(
-                    Error::primary(file, cursor, cursor - start, "Invalid characters"),
-                ));
+                diagnostics.insert(
+                    Diagnostic::error("L0002", "Invalid characters").with_snippet(
+                        Snippet::primary(file, cursor, cursor - start, "Invalid characters"),
+                    ),
+                );
             }
 
             for _ in 0..indentation_level {
@@ -223,7 +241,7 @@ impl<'a> Scanner<'a> {
             // ));
         }
 
-        (tokens, diagnostics)
+        PassResult::new(tokens, diagnostics)
     }
 }
 
@@ -258,6 +276,32 @@ mod tests {
     #[test]
     fn ignores_whitespace() {
         test_scanner("  \t\n", vec![]);
+    }
+
+    #[test]
+    fn parses_indentation2() {
+        test_scanner(
+            "struct test:\n\thello ~ string",
+            vec![
+                (TokenType::Struct, TokenValue::None, 0, 6),
+                (TokenType::Enum, TokenValue::None, 7, 4),
+                (TokenType::Colon, TokenValue::None, 11, 1),
+                (TokenType::IndentationOpen, TokenValue::None, 12, 1),
+                (
+                    TokenType::Identifier,
+                    TokenValue::Identifier("hello".to_string()),
+                    13,
+                    5,
+                ),
+                (TokenType::Tilde, TokenValue::None, 19, 1),
+                (
+                    TokenType::Identifier,
+                    TokenValue::Identifier("string".to_string()),
+                    21,
+                    6,
+                ),
+            ],
+        );
     }
 
     #[test]
@@ -414,7 +458,7 @@ mod tests {
         files.insert("test file", input);
 
         let scanner = Scanner::new(&files);
-        let tokens = scanner.parse();
+        let scan_pass = scanner.parse();
 
         let expected = expected
             .into_iter()
@@ -424,9 +468,9 @@ mod tests {
             .collect::<Vec<_>>();
 
         println!(
-            "Got:      {}",
-            tokens
-                .0
+            "Got:\n{}",
+            scan_pass
+                .result
                 .iter()
                 .map(|lexeme| format!(
                     "{}@{}..{}",
@@ -438,7 +482,7 @@ mod tests {
                 .join("\n")
         );
         println!(
-            "Expected: {}",
+            "Expected:\n{}",
             expected
                 .iter()
                 .map(|lexeme| format!(
@@ -451,6 +495,6 @@ mod tests {
                 .join("\n")
         );
 
-        assert_eq!(tokens.0, expected);
+        assert_eq!(scan_pass.result, expected);
     }
 }
