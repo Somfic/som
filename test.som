@@ -1,4 +1,1 @@
-
-struct test2
-	cheese ~ [int]
-	cheese ~ string
+enum;

@@ -27,12 +27,16 @@ fn main() -> Result<()> {
     let scanner = scanner::Scanner::new(&files);
     let scanner_pass = scanner.parse();
 
-    //sscanner_pass.print_diagnostics(&files);
+    // scanner_pass.print_diagnostics(&files);
 
     let mut parser = parser::Parser::new(&scanner_pass.result);
-    let parser_pass = parser.parse();
+    let parser_pass = parser.parse().unwrap();
 
     parser.print_diagnostics(&files);
+
+    let transpiler = BendTranspiler::transpile(&parser_pass);
+
+    println!("{}", transpiler);
 
     Ok(())
 }

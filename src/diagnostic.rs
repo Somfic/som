@@ -113,6 +113,15 @@ impl<'a> Snippet<'a> {
         Snippet::new(file_id, Label::Primary, position, length, message)
     }
 
+    pub fn primary_from_token(token: &Token<'a>, message: impl Into<String>) -> Snippet<'a> {
+        Snippet::primary(
+            token.range.file_id,
+            token.range.position,
+            token.range.length,
+            message,
+        )
+    }
+
     pub fn secondary(
         file_id: impl Into<&'a str>,
         position: usize,
@@ -120,6 +129,15 @@ impl<'a> Snippet<'a> {
         message: impl Into<String>,
     ) -> Snippet<'a> {
         Snippet::new(file_id, Label::Secondary, position, length, message)
+    }
+
+    pub fn secondary_from_token(token: &Token<'a>, message: impl Into<String>) -> Snippet<'a> {
+        Snippet::secondary(
+            token.range.file_id,
+            token.range.position,
+            token.range.length,
+            message,
+        )
     }
 
     pub fn new(

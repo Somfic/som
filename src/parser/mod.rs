@@ -35,14 +35,24 @@ impl<'a> Parser<'a> {
 
     pub fn parse(&mut self) -> ParseResult<'a, Symbol<'a>> {
         let mut statements = Vec::new();
+        let mut panic_mode = false;
 
         while self.has_tokens() {
             match statement::parse(self) {
                 Ok(statement) => {
+                    if panic_mode {
+                        panic_mode = false;
+                    }
+
                     statements.push(statement);
                 }
                 Err(diagnostic) => {
-                    self.diagnostics.insert(diagnostic);
+                    if !panic_mode {
+                        self.diagnostics.insert(diagnostic);
+                    }
+
+                    self.consume();
+                    panic_mode = true;
                 }
             }
         }

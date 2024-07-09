@@ -1,13 +1,14 @@
 use super::{
-    ast::{BinaryOperation, Expression, Statement, Type},
+    ast::{Expression, Statement, Type},
     ParseResult, Parser,
 };
-use crate::scanner::lexeme::{TokenType, TokenValue};
+use crate::scanner::lexeme::TokenType;
 use core::panic;
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum BindingPower {
+    #[default]
     None = 0,
     Comma = 1,
     Assignment = 2,
@@ -22,11 +23,11 @@ pub enum BindingPower {
 }
 
 pub type TypeHandler<'a> = fn(&mut Parser<'a>) -> ParseResult<'a, Type>;
-pub type LeftTypeHandler<'a> = fn(&mut Parser<'a>, Type, &BindingPower) -> ParseResult<'a, Type>;
+pub type LeftTypeHandler<'a> = fn(&mut Parser<'a>, Type, BindingPower) -> ParseResult<'a, Type>;
 pub type StatementHandler<'a> = fn(&mut Parser<'a>) -> ParseResult<'a, Statement>;
 pub type ExpressionHandler<'a> = fn(&mut Parser<'a>) -> ParseResult<'a, Expression>;
 pub type LeftExpressionHandler<'a> =
-    fn(&mut Parser<'a>, Expression, &BindingPower) -> ParseResult<'a, Expression>;
+    fn(&mut Parser<'a>, Expression, BindingPower) -> ParseResult<'a, Expression>;
 
 pub struct Lookup<'a> {
     pub statement_lookup: HashMap<TokenType, StatementHandler<'a>>,
