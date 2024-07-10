@@ -106,6 +106,8 @@ pub enum TokenType {
     Dollar,
     /// A pipe; `|`.
     Pipe,
+    /// A fat arrow; `=>`.
+    FatArrow,
     /// A left arrow; `<-`.
     LeftArrow,
     /// A right arrow; `->`.
@@ -173,9 +175,10 @@ pub enum TokenType {
     Struct,
     /// A enum keyword; `enum`.
     Enum,
-
-    /// The end of the file.
-    EndOfFile,
+    /// A trait keyword; `trait`.
+    Trait,
+    /// An implementation keyword; `impl`.
+    Implementation,
 }
 
 impl Display for TokenType {
@@ -198,6 +201,7 @@ impl Display for TokenType {
             TokenType::Hash => write!(f, "`#`"),
             TokenType::Dollar => write!(f, "`$`"),
             TokenType::Pipe => write!(f, "`|`"),
+            TokenType::FatArrow => write!(f, "`=>`"),
             TokenType::RightArrow => write!(f, "`->`"),
             TokenType::LeftArrow => write!(f, "`<-`"),
             TokenType::Plus => write!(f, "`+`"),
@@ -227,7 +231,8 @@ impl Display for TokenType {
             TokenType::Identifier => write!(f, "an identifier"),
             TokenType::Struct => write!(f, "`struct`"),
             TokenType::Enum => write!(f, "`enum`"),
-            TokenType::EndOfFile => write!(f, "end of file"),
+            TokenType::Trait => write!(f, "`trait`"),
+            TokenType::Implementation => write!(f, "`impl`"),
         }
     }
 }

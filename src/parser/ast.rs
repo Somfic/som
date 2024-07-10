@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+};
 
 use crate::scanner::lexeme::Token;
 
@@ -30,8 +33,49 @@ pub enum Statement {
     Expression(Expression),
     Struct(String, HashMap<String, Type>),
     Enum(String, HashMap<String, Option<Type>>),
-    Function(String, HashMap<String, Type>, Type, Box<Statement>),
+    Function(Function),
     Return(Expression),
+    Trait(String, HashSet<FunctionSignature>),
+    Implementation(String, Type, HashSet<Function>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Function {
+    pub signature: FunctionSignature,
+    pub body: Box<Statement>,
+}
+
+impl PartialEq for Function {
+    fn eq(&self, other: &Self) -> bool {
+        self.signature == other.signature
+    }
+}
+
+impl Eq for Function {}
+
+impl Hash for Function {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.signature.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct FunctionSignature {
+    pub name: String,
+    pub parameters: HashMap<String, Type>,
+    pub return_type: Type,
+}
+
+impl PartialEq for FunctionSignature {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Hash for FunctionSignature {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

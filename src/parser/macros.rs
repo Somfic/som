@@ -3,8 +3,6 @@ macro_rules! expect_token {
         use crate::diagnostic::Diagnostic;
         use crate::scanner::lexeme::TokenType;
 
-        println!("Expect token: {:?}", TokenType::$token);
-
         if let Some(TokenType::$token) = $parser.peek().map(|t| &t.token_type) {
             Ok($parser.consume().unwrap().clone())
         } else {

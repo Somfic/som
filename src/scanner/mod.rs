@@ -44,6 +44,7 @@ impl<'a> Scanner<'a> {
                 (r!(r"(#)"), |_| (TokenType::Hash, TokenValue::None)),
                 (r!(r"($)"), |_| (TokenType::Dollar, TokenValue::None)),
                 (r!(r"(\|)"), |_| (TokenType::Pipe, TokenValue::None)),
+                (r!(r"(=>)"), |_| (TokenType::FatArrow, TokenValue::None)),
                 (r!(r"(->)"), |_| (TokenType::RightArrow, TokenValue::None)),
                 (r!(r"(<-)"), |_| (TokenType::LeftArrow, TokenValue::None)),
                 (r!(r"(\+)"), |_| (TokenType::Plus, TokenValue::None)),
@@ -71,6 +72,10 @@ impl<'a> Scanner<'a> {
                 (r!(r"(return)"), |_| (TokenType::Return, TokenValue::None)),
                 (r!(r"(struct)"), |_| (TokenType::Struct, TokenValue::None)),
                 (r!(r"(enum)"), |_| (TokenType::Enum, TokenValue::None)),
+                (r!(r"(trait)"), |_| (TokenType::Trait, TokenValue::None)),
+                (r!(r"(impl)"), |_| {
+                    (TokenType::Implementation, TokenValue::None)
+                }),
                 (r!(r"(true)"), |_| {
                     (TokenType::Boolean, TokenValue::Boolean(true))
                 }),

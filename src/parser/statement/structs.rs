@@ -41,7 +41,7 @@ pub fn parse_struct<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
 
         let typest = typest::parse(parser, BindingPower::None)?;
 
-        members.insert(member_name, typest);
+        members.insert(member_name, typest); // TODO: Error if member already exists
     }
 
     if indentation.is_some() {

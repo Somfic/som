@@ -6,6 +6,7 @@ pub mod blocks;
 pub mod enums;
 pub mod functions;
 pub mod structs;
+pub mod traits;
 
 pub fn parse<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
     let statement_handler = parser
@@ -24,6 +25,7 @@ pub fn register(lookup: &mut super::lookup::Lookup) {
     structs::register(lookup);
     functions::register(lookup);
     blocks::register(lookup);
+    traits::register(lookup);
 }
 
 fn parse_expression<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {

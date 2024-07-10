@@ -42,7 +42,7 @@ fn parse_enum<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
             .map(|_| typest::parse(parser, BindingPower::None))
             .transpose()?;
 
-        if let Some(overwritten) = members.insert(member_name.clone(), typest) {
+        if let Some(_) = members.insert(member_name.clone(), typest) {
             warn_unneeded_token!(parser, member);
         }
     }

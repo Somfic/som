@@ -77,18 +77,52 @@ fn transpile_expression(expression: &Expression) -> String {
 
 fn transpile_statement(statement: &Statement) -> String {
     match statement {
+        Statement::Implementation(name, typest, implementations) => {
+            let mut output = String::new();
+            output.push_str(&format!(
+                "impl {} for {} {{\n",
+                transpile_type(typest),
+                name
+            ));
+            for implementation in implementations {
+                output.push_str(&transpile_statement(&Statement::Function(
+                    implementation.clone(),
+                )));
+            }
+            output.push_str("}\n");
+            output
+        }
+        Statement::Trait(name, functions) => {
+            let mut output = String::new();
+            output.push_str(&format!("trait {} {{\n", name));
+            for function in functions {
+                output.push_str(&format!("fn {}(", function.name));
+                for (parameter, typing) in &function.parameters {
+                    output.push_str(&format!("{}: {}, ", parameter, transpile_type(typing)));
+                }
+                output.push_str(&format!(
+                    ") -> {};\n",
+                    transpile_type(&function.return_type)
+                ));
+            }
+            output.push_str("}\n");
+            output
+        }
         Statement::Return(expression) => {
             let expression = transpile_expression(expression);
             format!("return {};\n", expression)
         }
-        Statement::Function(name, parameters, return_type, body) => {
+        Statement::Function(function) => {
             let mut output = String::new();
-            output.push_str(&format!("fn {}(", name));
-            for (parameter, typing) in parameters {
+            output.push_str(&format!("fn {}(", function.signature.name));
+            for (parameter, typing) in &function.signature.parameters {
                 output.push_str(&format!("{}: {}, ", parameter, transpile_type(typing)));
             }
-            output.push_str(&format!(") -> {} ", transpile_type(return_type)));
-            output.push_str(&transpile_statement(body));
+            output.push_str(&format!(
+                ") -> {} ",
+                transpile_type(&function.signature.return_type)
+            ));
+            output.push_str(&transpile_statement(&function.body));
             output
         }
         Statement::Block(statements) => {

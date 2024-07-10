@@ -1,16 +1,16 @@
-enum shape:
-	square ~ string
+struct shape:
+	shape_type ~ shape_type
+	width ~ number
+	height ~ number
+
+enum shape_type:
+	square
 	rectangle
 	circle
 
-enum color: 
-	red blue green
-
-struct person: 
-	names ~ [string]
-	age ~ number
-
-fn main(person ~ person, shapes ~ [shape]) -> number: <- 12 + 12
-
-trait area: 
+trait area:
 	fn area() -> number
+
+impl area for shape:
+	fn area() -> number:
+		width * height;

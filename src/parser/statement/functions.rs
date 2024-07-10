@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     parser::{
-        ast::{Statement, Type},
+        ast::{Function, FunctionSignature, Statement, Type},
         lookup::{BindingPower, Lookup},
         macros::{expect_token, expect_value, optional_token},
         typest, ParseResult, Parser,
@@ -15,7 +15,7 @@ pub fn register(lookup: &mut Lookup) {
     lookup.add_statement_handler(TokenType::LeftArrow, parse_return);
 }
 
-fn parse_function<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
+pub fn parse_function_signature<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, FunctionSignature> {
     expect_token!(parser, Function)?;
     let identifier = expect_token!(parser, Identifier)?;
     let identifier = expect_value!(identifier, Identifier);
@@ -38,7 +38,7 @@ fn parse_function<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
 
         let typest = typest::parse(parser, BindingPower::None)?;
 
-        parameters.insert(parameter, typest);
+        parameters.insert(parameter, typest); // TODO: Error if parameter already exists
 
         optional_token!(parser, Comma);
     }
@@ -50,16 +50,24 @@ fn parse_function<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
         .transpose()?
         .unwrap_or(Type::Void);
 
+    Ok(FunctionSignature {
+        name: identifier,
+        parameters,
+        return_type,
+    })
+}
+
+pub fn parse_function<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
+    let signature = parse_function_signature(parser)?;
+
     expect_token!(parser, Colon)?;
 
     let body = crate::parser::statement::parse(parser)?;
 
-    Ok(Statement::Function(
-        identifier,
-        parameters,
-        return_type,
-        Box::new(body),
-    ))
+    Ok(Statement::Function(Function {
+        signature,
+        body: Box::new(body),
+    }))
 }
 
 fn parse_return<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
