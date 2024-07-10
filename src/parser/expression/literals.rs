@@ -18,35 +18,35 @@ pub(crate) fn register(lookup: &mut Lookup) {
 
 fn parse_decimal<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Expression> {
     let decimal = expect_token!(parser, Decimal)?;
-    let decimal = *expect_value!(decimal, Decimal);
+    let decimal = expect_value!(decimal, Decimal);
 
     Ok(Expression::Number(decimal))
 }
 
 fn parse_integer<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Expression> {
     let integer = expect_token!(parser, Integer)?;
-    let integer = *expect_value!(integer, Integer);
+    let integer = expect_value!(integer, Integer);
 
     Ok(Expression::Number(integer as f64))
 }
 
 fn parse_string<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Expression> {
     let string = expect_token!(parser, String)?;
-    let string = expect_value!(string, String).clone();
+    let string = expect_value!(string, String);
 
     Ok(Expression::String(string))
 }
 
 fn parse_identifier<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Expression> {
     let identifier = expect_token!(parser, Identifier)?;
-    let identifier = expect_value!(identifier, Identifier).clone();
+    let identifier = expect_value!(identifier, Identifier);
 
     Ok(Expression::Identifier(identifier))
 }
 
 fn parse_boolean<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Expression> {
     let boolean = expect_token!(parser, Boolean)?;
-    let boolean = *expect_value!(boolean, Boolean);
+    let boolean = expect_value!(boolean, Boolean);
 
     Ok(Expression::Boolean(boolean))
 }

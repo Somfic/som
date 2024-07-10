@@ -3,8 +3,10 @@ macro_rules! expect_token {
         use crate::diagnostic::Diagnostic;
         use crate::scanner::lexeme::TokenType;
 
+        println!("Expect token: {:?}", TokenType::$token);
+
         if let Some(TokenType::$token) = $parser.peek().map(|t| &t.token_type) {
-            Ok($parser.consume().unwrap())
+            Ok($parser.consume().unwrap().clone())
         } else {
             let token = $parser.peek().unwrap_or($parser.tokens.last().unwrap());
             let position = if $parser.peek().is_none() {
@@ -37,7 +39,7 @@ macro_rules! expect_token {
             let token = $parser.tokens.last().unwrap();
 
             Err(
-                Diagnostic::error("expected_token", "Unexpected end of file")
+                crate::diagnostic::Diagnostic::error("expected_token", "Unexpected end of file")
                     .with_snippet(crate::diagnostic::Snippet::primary(
                         token.range.file_id,
                         token.range.position + token.range.length,
@@ -50,16 +52,45 @@ macro_rules! expect_token {
     };
 }
 
+macro_rules! optional_token {
+    ($parser:ident, $token:ident) => {{
+        use crate::scanner::lexeme::TokenType;
+
+        if let Some(TokenType::$token) = $parser.peek().map(|t| &t.token_type) {
+            Some($parser.consume().unwrap().clone())
+        } else {
+            None
+        }
+    }};
+}
+
 macro_rules! expect_value {
-    ($token:expr, $value:ident) => {{
+    ($token:ident, $value:ident) => {{
         use crate::scanner::lexeme::TokenValue;
 
         match &$token.value {
-            TokenValue::$value(value) => value,
+            TokenValue::$value(value) => value.clone(),
             _ => panic!("expect_token_value! should only return identifiers"),
         }
     }};
 }
 
+macro_rules! warn_unneeded_token {
+    ($parser:ident, $token:expr) => {
+        $parser.diagnostics.insert(
+            crate::diagnostic::Diagnostic::warning(
+                "unneeded_token",
+                "Unneeded token in enum declaration",
+            )
+            .with_snippet(crate::diagnostic::Snippet::primary_from_token(
+                &$token,
+                "Unneeded token in enum declaration",
+            )),
+        );
+    };
+}
+
 pub(crate) use expect_token;
 pub(crate) use expect_value;
+pub(crate) use optional_token;
+pub(crate) use warn_unneeded_token;

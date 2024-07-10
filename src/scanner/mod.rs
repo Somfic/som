@@ -44,6 +44,8 @@ impl<'a> Scanner<'a> {
                 (r!(r"(#)"), |_| (TokenType::Hash, TokenValue::None)),
                 (r!(r"($)"), |_| (TokenType::Dollar, TokenValue::None)),
                 (r!(r"(\|)"), |_| (TokenType::Pipe, TokenValue::None)),
+                (r!(r"(->)"), |_| (TokenType::RightArrow, TokenValue::None)),
+                (r!(r"(<-)"), |_| (TokenType::LeftArrow, TokenValue::None)),
                 (r!(r"(\+)"), |_| (TokenType::Plus, TokenValue::None)),
                 (r!(r"(-)"), |_| (TokenType::Minus, TokenValue::None)),
                 (r!(r"(/)"), |_| (TokenType::Slash, TokenValue::None)),

@@ -1,21 +1,20 @@
-use std::collections::{HashMap, HashSet};
-
 use crate::{
     parser::{
         ast::Statement,
         lookup::{BindingPower, Lookup},
-        macros::{expect_token, expect_value, optional_token, warn_unneeded_token},
+        macros::{expect_token, expect_value, optional_token},
         typest, ParseResult, Parser,
     },
     scanner::lexeme::TokenType,
 };
+use std::collections::HashMap;
 
 pub fn register(lookup: &mut Lookup) {
-    lookup.add_statement_handler(TokenType::Enum, parse_enum);
+    lookup.add_statement_handler(TokenType::Struct, parse_struct);
 }
 
-fn parse_enum<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
-    expect_token!(parser, Enum)?;
+pub fn parse_struct<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
+    expect_token!(parser, Struct)?;
     let identifier = expect_token!(parser, Identifier)?;
     let identifier = expect_value!(identifier, Identifier);
     expect_token!(parser, Colon)?;
@@ -38,13 +37,11 @@ fn parse_enum<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
         let member = expect_token!(parser, Identifier)?;
         let member_name = expect_value!(member, Identifier);
 
-        let typest = optional_token!(parser, Tilde)
-            .map(|_| typest::parse(parser, BindingPower::None))
-            .transpose()?;
+        expect_token!(parser, Tilde)?;
 
-        if let Some(overwritten) = members.insert(member_name.clone(), typest) {
-            warn_unneeded_token!(parser, member);
-        }
+        let typest = typest::parse(parser, BindingPower::None)?;
+
+        members.insert(member_name, typest);
     }
 
     if indentation.is_some() {
@@ -54,5 +51,5 @@ fn parse_enum<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
         expect_token!(parser, Semicolon)?;
     }
 
-    Ok(Statement::Enum(identifier, members))
+    Ok(Statement::Struct(identifier, members))
 }

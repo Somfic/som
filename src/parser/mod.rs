@@ -13,6 +13,7 @@ pub mod expression;
 pub mod lookup;
 pub mod macros;
 pub mod statement;
+pub mod typest;
 
 pub type ParseResult<'a, T> = Result<T, Diagnostic<'a>>;
 

@@ -27,6 +27,15 @@ fn main() -> Result<()> {
     let scanner = scanner::Scanner::new(&files);
     let scanner_pass = scanner.parse();
 
+    println!(
+        "{:?}",
+        scanner_pass
+            .result
+            .iter()
+            .map(|t| &t.token_type)
+            .collect::<Vec<_>>()
+    );
+
     // scanner_pass.print_diagnostics(&files);
 
     let mut parser = parser::Parser::new(&scanner_pass.result);

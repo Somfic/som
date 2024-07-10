@@ -1,1 +1,16 @@
-enum;
+enum shape:
+	square ~ string
+	rectangle
+	circle
+
+enum color: 
+	red blue green
+
+struct person: 
+	names ~ [string]
+	age ~ number
+
+fn main(person ~ person, shapes ~ [shape]) -> number: <- 12 + 12
+
+trait area: 
+	fn area() -> number

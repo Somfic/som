@@ -77,6 +77,20 @@ fn transpile_expression(expression: &Expression) -> String {
 
 fn transpile_statement(statement: &Statement) -> String {
     match statement {
+        Statement::Return(expression) => {
+            let expression = transpile_expression(expression);
+            format!("return {};\n", expression)
+        }
+        Statement::Function(name, parameters, return_type, body) => {
+            let mut output = String::new();
+            output.push_str(&format!("fn {}(", name));
+            for (parameter, typing) in parameters {
+                output.push_str(&format!("{}: {}, ", parameter, transpile_type(typing)));
+            }
+            output.push_str(&format!(") -> {} ", transpile_type(return_type)));
+            output.push_str(&transpile_statement(body));
+            output
+        }
         Statement::Block(statements) => {
             let mut output = String::new();
             output.push_str("{\n");
@@ -110,8 +124,12 @@ fn transpile_statement(statement: &Statement) -> String {
         Statement::Enum(name, members) => {
             let mut output = String::new();
             output.push_str(&format!("enum {} {{\n", name));
-            for member in members {
-                output.push_str(&format!("{},\n", member));
+            for (name, typest) in members {
+                output.push_str(name);
+                if let Some(typing) = typest {
+                    output.push_str(&format!("({})", transpile_type(typing)));
+                }
+                output.push_str(",\n");
             }
             output.push_str("}\n");
             output
@@ -121,6 +139,7 @@ fn transpile_statement(statement: &Statement) -> String {
 
 fn transpile_type(typing: &Type) -> String {
     match typing {
+        Type::Void => "void".to_string(),
         Type::Symbol(symbol) => symbol.clone(),
         Type::Array(typing) => format!("{}[]", transpile_type(typing)),
         Type::Tuple(members) => {

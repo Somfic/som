@@ -29,7 +29,9 @@ pub enum Statement {
     Declaration(String, Option<Type>, Expression),
     Expression(Expression),
     Struct(String, HashMap<String, Type>),
-    Enum(String, HashSet<String>),
+    Enum(String, HashMap<String, Option<Type>>),
+    Function(String, HashMap<String, Type>, Type, Box<Statement>),
+    Return(Expression),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +50,7 @@ pub enum BinaryOperation {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
+    Void,
     Symbol(String),
     Array(Box<Type>),
     Tuple(HashMap<String, Type>),

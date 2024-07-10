@@ -106,6 +106,10 @@ pub enum TokenType {
     Dollar,
     /// A pipe; `|`.
     Pipe,
+    /// A left arrow; `<-`.
+    LeftArrow,
+    /// A right arrow; `->`.
+    RightArrow,
 
     /// A plus sign; `+`;
     Plus,
@@ -194,6 +198,8 @@ impl Display for TokenType {
             TokenType::Hash => write!(f, "`#`"),
             TokenType::Dollar => write!(f, "`$`"),
             TokenType::Pipe => write!(f, "`|`"),
+            TokenType::RightArrow => write!(f, "`->`"),
+            TokenType::LeftArrow => write!(f, "`<-`"),
             TokenType::Plus => write!(f, "`+`"),
             TokenType::Minus => write!(f, "`-`"),
             TokenType::Slash => write!(f, "`/`"),

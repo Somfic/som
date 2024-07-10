@@ -124,6 +124,8 @@ impl<'a> Default for Lookup<'a> {
         };
 
         super::expression::register(&mut lookup);
+        super::statement::register(&mut lookup);
+        super::typest::register(&mut lookup);
 
         lookup
     }
