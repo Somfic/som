@@ -1,6 +1,6 @@
 use crate::parser::ast::Symbol;
 
-pub mod bend;
+pub mod javascript;
 
 pub trait Transpiler {
     fn transpile(symbol: &Symbol) -> String;

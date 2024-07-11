@@ -6,11 +6,10 @@ use std::{
 use crate::scanner::lexeme::Token;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Symbol<'a> {
+pub enum Symbol {
     Expression(Expression),
     Statement(Statement),
     Type(Type),
-    Unknown(Token<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +23,7 @@ pub enum Expression {
     Grouping(Box<Expression>),
     Assignment(Box<Expression>, Box<Expression>),
     StructInitializer(String, HashMap<String, Expression>),
+    FunctionCall(String, Vec<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -31,12 +31,12 @@ pub enum Statement {
     Block(Vec<Statement>),
     Declaration(String, Option<Type>, Expression),
     Expression(Expression),
-    Struct(String, HashMap<String, Type>),
-    Enum(String, HashMap<String, Option<Type>>),
+    Struct(String, HashSet<FieldSignature>),
+    Enum(String, HashSet<EnumMember>),
     Function(Function),
     Return(Expression),
-    Trait(String, HashSet<FunctionSignature>),
-    Implementation(String, Type, HashSet<Function>),
+    Trait(String, HashSet<FunctionSignature>, HashSet<FieldSignature>),
+    Implementation(String, String, HashSet<Function>),
 }
 
 #[derive(Debug, Clone)]
@@ -59,20 +59,38 @@ impl Hash for Function {
     }
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature {
     pub name: String,
     pub parameters: HashMap<String, Type>,
     pub return_type: Type,
 }
 
-impl PartialEq for FunctionSignature {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
+impl Hash for FunctionSignature {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
     }
 }
 
-impl Hash for FunctionSignature {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldSignature {
+    pub name: String,
+    pub typest: Type,
+}
+
+impl Hash for FieldSignature {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumMember {
+    pub name: String,
+    pub typest: Option<Type>,
+}
+
+impl Hash for EnumMember {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);
     }

@@ -2,7 +2,9 @@ use super::{ast::Expression, lookup::BindingPower, macros::expect_token, ParseRe
 use crate::diagnostic::{Diagnostic, Snippet};
 
 pub mod binary;
+pub mod functions;
 pub mod literals;
+pub mod structs;
 
 pub fn parse<'a>(
     parser: &mut Parser<'a>,
@@ -51,6 +53,8 @@ pub fn parse<'a>(
 pub(crate) fn register(lookup: &mut super::lookup::Lookup) {
     literals::register(lookup);
     binary::register(lookup);
+    structs::register(lookup);
+    functions::register(lookup);
 
     lookup.add_expression_handler(crate::scanner::lexeme::TokenType::ParenOpen, parse_grouping);
 }

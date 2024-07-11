@@ -2,13 +2,15 @@ use std::collections::HashSet;
 
 use crate::{
     parser::{
-        ast::{Function, Statement},
+        ast::{FieldSignature, Function, Statement},
         lookup::{BindingPower, Lookup},
-        macros::{expect_token, expect_value},
+        macros::{either_token, expect_token, expect_value},
         ParseResult, Parser,
     },
     scanner::lexeme::TokenType,
 };
+
+use super::{functions, structs};
 
 pub fn register(lookup: &mut Lookup) {
     lookup.add_statement_handler(TokenType::Trait, parse_trait);
@@ -25,6 +27,7 @@ fn parse_trait<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
     expect_token!(parser, IndentationOpen)?;
 
     let mut functions = HashSet::new();
+    let mut fields = HashSet::new();
 
     loop {
         let token = expect_token!(parser)?;
@@ -33,13 +36,26 @@ fn parse_trait<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
             break;
         }
 
-        let function = crate::parser::statement::functions::parse_function_signature(parser)?;
-        functions.insert(function); // TODO: Error if function already exists
+        let token = either_token!(parser, Function, Identifier)?;
+
+        match token.token_type {
+            TokenType::Function => {
+                let function = functions::parse_function_signature(parser)?;
+                functions.insert(function); // TODO: Warning on duplicate
+            }
+            TokenType::Identifier => {
+                let field = structs::parse_field(parser)?;
+                fields.insert(field); // TODO: Warning on duplicate
+            }
+            _ => unreachable!(),
+        }
+
+        // TODO: Error if function already exists
     }
 
     expect_token!(parser, IndentationClose)?;
 
-    Ok(Statement::Trait(identifier, functions))
+    Ok(Statement::Trait(identifier, functions, fields))
 }
 
 fn parse_impl<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
@@ -49,7 +65,8 @@ fn parse_impl<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
 
     expect_token!(parser, For)?;
 
-    let typest = crate::parser::typest::parse(parser, BindingPower::None)?;
+    let typest = expect_token!(parser, Identifier)?;
+    let typest = expect_value!(typest, Identifier);
 
     expect_token!(parser, Colon)?;
     expect_token!(parser, IndentationOpen)?;

@@ -5,13 +5,14 @@ use crate::{
         ast::{Function, FunctionSignature, Statement, Type},
         lookup::{BindingPower, Lookup},
         macros::{expect_token, expect_value, optional_token},
+        statement::variables,
         typest, ParseResult, Parser,
     },
     scanner::lexeme::TokenType,
 };
 
 pub fn register(lookup: &mut Lookup) {
-    lookup.add_statement_handler(TokenType::Function, parse_function);
+    lookup.add_statement_handler(TokenType::Function, parse_function_declaration);
     lookup.add_statement_handler(TokenType::LeftArrow, parse_return);
 }
 
@@ -31,14 +32,9 @@ pub fn parse_function_signature<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, 
             break;
         }
 
-        let parameter = expect_token!(parser, Identifier)?;
-        let parameter = expect_value!(parameter, Identifier);
+        let (name, typest) = variables::parse_explicit_variable_signature(parser, "parameter")?;
 
-        expect_token!(parser, Tilde)?;
-
-        let typest = typest::parse(parser, BindingPower::None)?;
-
-        parameters.insert(parameter, typest); // TODO: Error if parameter already exists
+        parameters.insert(name, typest); // TODO: Error if parameter already exists
 
         optional_token!(parser, Comma);
     }
@@ -57,7 +53,7 @@ pub fn parse_function_signature<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, 
     })
 }
 
-pub fn parse_function<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
+pub fn parse_function_declaration<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
     let signature = parse_function_signature(parser)?;
 
     expect_token!(parser, Colon)?;

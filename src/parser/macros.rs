@@ -62,6 +62,42 @@ macro_rules! optional_token {
     }};
 }
 
+macro_rules! either_token {
+    ($parser:ident, $($token:ident),*) => {
+        {
+            use crate::scanner::lexeme::TokenType;
+
+            let token = $parser.peek().map(|t| &t.token_type);
+
+            if $(token == Some(&TokenType::$token))||* {
+                Ok($parser.peek().unwrap().clone())
+            } else {
+                let token = $parser.peek().unwrap_or($parser.tokens.last().unwrap());
+                let position = if $parser.peek().is_none() {
+                    token.range.position + token.range.length
+                } else {
+                    token.range.position
+                };
+
+                Err(
+                    crate::diagnostic::Diagnostic::error("expected_token", "Unexpected token")
+                        .with_snippet(crate::diagnostic::Snippet::primary(
+                            token.range.file_id,
+                            position,
+                            1,
+                            "Unexpected token",
+                        ))
+                        .with_note(format!(
+                            "Expected one of {:?}, but got {} instead",
+                            vec![ $(TokenType::$token),* ],
+                            token.token_type
+                        )),
+                )
+            }
+        }
+    };
+}
+
 macro_rules! expect_value {
     ($token:ident, $value:ident) => {{
         use crate::scanner::lexeme::TokenValue;
@@ -88,6 +124,7 @@ macro_rules! warn_unneeded_token {
     };
 }
 
+pub(crate) use either_token;
 pub(crate) use expect_token;
 pub(crate) use expect_value;
 pub(crate) use optional_token;

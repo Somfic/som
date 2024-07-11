@@ -34,7 +34,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> ParseResult<'a, Symbol<'a>> {
+    pub fn parse(&mut self) -> ParseResult<'a, Symbol> {
         let mut statements = Vec::new();
         let mut panic_mode = false;
 

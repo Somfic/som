@@ -1,16 +1,22 @@
-struct shape:
-	shape_type ~ shape_type
+fn main():
+	let square = square { width: 12, height: 10 };
+	let circle = circle { radius: 5 };
+	let total_area = rectange.area () + circle.area ();
+
+struct square:
 	width ~ number
 	height ~ number
 
-enum shape_type:
-	square
-	rectangle
-	circle
+struct circle:
+	radius ~ number
 
 trait area:
-	fn area() -> number
+	fn area(self ~ Self) -> number
 
-impl area for shape:
-	fn area() -> number:
-		width * height;
+impl area for square:
+	fn area(self ~ Self) -> number:
+		<- self.width * self.height
+
+impl area for circle:
+	fn area(self ~ Self) -> number:
+		<- 3.14 * self.radius * self.radius

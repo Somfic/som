@@ -1,13 +1,15 @@
 use crate::{
     parser::{
-        ast::Statement,
+        ast::{FieldSignature, Statement},
         lookup::{BindingPower, Lookup},
         macros::{expect_token, expect_value, optional_token},
         typest, ParseResult, Parser,
     },
     scanner::lexeme::TokenType,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+use super::variables;
 
 pub fn register(lookup: &mut Lookup) {
     lookup.add_statement_handler(TokenType::Struct, parse_struct);
@@ -21,7 +23,7 @@ pub fn parse_struct<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
 
     let indentation = optional_token!(parser, IndentationOpen);
 
-    let mut members = HashMap::new();
+    let mut members = HashSet::new();
 
     loop {
         let token = expect_token!(parser)?;
@@ -34,14 +36,9 @@ pub fn parse_struct<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
             break;
         }
 
-        let member = expect_token!(parser, Identifier)?;
-        let member_name = expect_value!(member, Identifier);
+        let field = parse_field(parser)?;
 
-        expect_token!(parser, Tilde)?;
-
-        let typest = typest::parse(parser, BindingPower::None)?;
-
-        members.insert(member_name, typest); // TODO: Error if member already exists
+        members.insert(field); // TODO: Error if member already exists
     }
 
     if indentation.is_some() {
@@ -52,4 +49,10 @@ pub fn parse_struct<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
     }
 
     Ok(Statement::Struct(identifier, members))
+}
+
+pub fn parse_field<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, FieldSignature> {
+    let (name, typest) = variables::parse_explicit_variable_signature(parser, "field")?;
+
+    Ok(FieldSignature { name, typest })
 }

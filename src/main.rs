@@ -1,13 +1,13 @@
-use anyhow::Result;
+use anyhow::{Ok, Result};
 use codespan_reporting::term::{
     self,
     termcolor::{ColorChoice, StandardStream},
 };
-use core::result::Result::Ok;
-use diagnostic::Diagnostic;
+
+use diagnostic::{Diagnostic, Snippet};
 use files::Files;
 use std::{collections::HashSet, env::args, fs::read};
-use transpiler::{bend::BendTranspiler, Transpiler};
+use transpiler::{javascript::JavaScriptTranspiler, Transpiler};
 
 pub mod diagnostic;
 pub mod files;
@@ -27,6 +27,20 @@ fn main() -> Result<()> {
     let scanner = scanner::Scanner::new(&files);
     let scanner_pass = scanner.parse();
 
+    // let mut debug = Diagnostic::warning("", "");
+
+    // scanner_pass.result.iter().for_each(|token| {
+    //     debug = debug.clone().with_snippet(Snippet::secondary_from_token(
+    //         token,
+    //         token.token_type.to_string(),
+    //     ));
+    // });
+
+    // let writer = StandardStream::stderr(ColorChoice::Always);
+    // let config = term::Config::default();
+
+    // term::emit(&mut writer.lock(), &config, &files, &debug.into()).unwrap();
+
     println!(
         "{:?}",
         scanner_pass
@@ -43,9 +57,9 @@ fn main() -> Result<()> {
 
     parser.print_diagnostics(&files);
 
-    let transpiler = BendTranspiler::transpile(&parser_pass);
+    let mut transpiled = JavaScriptTranspiler::transpile(&parser_pass);
 
-    println!("{}", transpiler);
+    println!("{}", transpiled);
 
     Ok(())
 }

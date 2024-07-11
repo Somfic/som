@@ -2,13 +2,15 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     parser::{
-        ast::Statement,
+        ast::{EnumMember, Statement},
         lookup::{BindingPower, Lookup},
         macros::{expect_token, expect_value, optional_token, warn_unneeded_token},
         typest, ParseResult, Parser,
     },
     scanner::lexeme::TokenType,
 };
+
+use super::variables;
 
 pub fn register(lookup: &mut Lookup) {
     lookup.add_statement_handler(TokenType::Enum, parse_enum);
@@ -22,7 +24,7 @@ fn parse_enum<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
 
     let indentation = optional_token!(parser, IndentationOpen);
 
-    let mut members = HashMap::new();
+    let mut members = HashSet::new();
 
     loop {
         let token = expect_token!(parser)?;
@@ -35,16 +37,9 @@ fn parse_enum<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
             break;
         }
 
-        let member = expect_token!(parser, Identifier)?;
-        let member_name = expect_value!(member, Identifier);
+        let enum_member = parse_enum_member(parser)?;
 
-        let typest = optional_token!(parser, Tilde)
-            .map(|_| typest::parse(parser, BindingPower::None))
-            .transpose()?;
-
-        if let Some(_) = members.insert(member_name.clone(), typest) {
-            warn_unneeded_token!(parser, member);
-        }
+        members.insert(enum_member); // TODO: Error if member already exists
     }
 
     if indentation.is_some() {
@@ -55,4 +50,10 @@ fn parse_enum<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, Statement> {
     }
 
     Ok(Statement::Enum(identifier, members))
+}
+
+pub fn parse_enum_member<'a>(parser: &mut Parser<'a>) -> ParseResult<'a, EnumMember> {
+    let (name, typest) = variables::parse_variable_signature(parser)?;
+
+    Ok(EnumMember { name, typest })
 }

@@ -103,7 +103,7 @@ impl<'a> Scanner<'a> {
                         TokenValue::Character(value.chars().next().unwrap()),
                     )
                 }),
-                (r!(r"([a-zA-Z_]\w*)"), |value| {
+                (r!(r"([a-zA-Z_][\w.]*)"), |value| {
                     (
                         TokenType::Identifier,
                         TokenValue::Identifier(value.to_string()),
