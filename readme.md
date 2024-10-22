@@ -23,3 +23,29 @@ code purrer for cat:
     12
   }
 ```
+
+```rust
+comp Name: 
+  name ~ string;
+
+comp Age: age ~ number;
+
+enum tail_length:
+  short,
+  medium,
+  long;
+
+type Cat
+  tail_length ~ tail_length, 
+  + Name, 
+  + Age;
+
+spec Purrer:
+  pur ~ fn(self) -> number;
+
+code Purrer for Cat:
+  fn pur(self) -> number {
+    print`($"{self.name} ({self.age}) is purring");
+  };
+
+```
