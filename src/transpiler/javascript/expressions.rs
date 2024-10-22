@@ -66,10 +66,10 @@ fn transpile_struct_initializer(_name: &str, fields: &HashMap<String, Expression
     format!("{{ {} }}", fields)
 }
 
-fn transpile_function_call(name: &str, parameters: &Vec<Expression>) -> String {
+fn transpile_function_call(name: &str, parameters: &[Expression]) -> String {
     let parameters = parameters
         .iter()
-        .map(|parameter| transpile(parameter))
+        .map(transpile)
         .collect::<Vec<String>>()
         .join(", ");
 

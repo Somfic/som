@@ -1,14 +1,13 @@
-use std::collections::{HashMap, HashSet};
-
 use crate::{
     parser::{
         ast::{EnumMember, Statement},
-        lookup::{BindingPower, Lookup},
-        macros::{expect_token, expect_value, optional_token, warn_unneeded_token},
-        typest, ParseResult, Parser,
+        lookup::Lookup,
+        macros::{expect_token, expect_value, optional_token},
+        ParseResult, Parser,
     },
     scanner::lexeme::TokenType,
 };
+use std::collections::HashSet;
 
 use super::variables;
 

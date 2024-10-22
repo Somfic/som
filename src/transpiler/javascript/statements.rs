@@ -22,10 +22,10 @@ pub fn transpile(statement: &Statement) -> String {
     }
 }
 
-fn transpile_block(block: &Vec<Statement>) -> String {
+fn transpile_block(block: &[Statement]) -> String {
     block
         .iter()
-        .map(|statement| transpile(statement))
+        .map(transpile)
         .collect::<Vec<String>>()
         .join("\n")
 }
@@ -43,11 +43,11 @@ fn transpile_expression(expression: &Expression) -> String {
     format!("{};", expression)
 }
 
-fn transpile_struct(name: &String, fields: &HashSet<FieldSignature>) -> String {
+fn transpile_struct(name: &str, fields: &HashSet<FieldSignature>) -> String {
     "".to_string()
 }
 
-fn transpile_enum(name: &String, members: &HashSet<EnumMember>) -> String {
+fn transpile_enum(name: &str, members: &HashSet<EnumMember>) -> String {
     "".to_string()
 }
 

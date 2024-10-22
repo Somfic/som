@@ -5,7 +5,7 @@ use crate::{
 
 use super::{
     ast::Type,
-    lookup::{self, BindingPower, Lookup},
+    lookup::{BindingPower, Lookup},
     macros::{expect_token, expect_value},
     ParseResult, Parser,
 };

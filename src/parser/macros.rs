@@ -22,7 +22,7 @@ macro_rules! expect_token {
                         format!("Expected {} here", TokenType::$token),
                     ))
                     .with_note(format!(
-                        "Expected {}, but got {} instead",
+                        "Expected {}, but found {} instead",
                         TokenType::$token,
                         token.token_type
                     )),
@@ -88,8 +88,12 @@ macro_rules! either_token {
                             "Unexpected token",
                         ))
                         .with_note(format!(
-                            "Expected one of {:?}, but got {} instead",
-                            vec![ $(TokenType::$token),* ],
+                            "Expected {}, but found {} instead",
+                            vec![ $(TokenType::$token),* ]
+                                .iter()
+                                .map(|t| format!("{}", t))
+                                .collect::<Vec<String>>()
+                                .join(" or "),
                             token.token_type
                         )),
                 )

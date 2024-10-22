@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use crate::{
     parser::{
-        ast::{FieldSignature, Function, Statement},
-        lookup::{BindingPower, Lookup},
+        ast::{Function, Statement},
+        lookup::Lookup,
         macros::{either_token, expect_token, expect_value},
         ParseResult, Parser,
     },

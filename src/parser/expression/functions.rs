@@ -1,10 +1,8 @@
-use std::collections::HashMap;
-
 use crate::{
     parser::{
         ast::Expression,
         lookup::{BindingPower, Lookup},
-        macros::{expect_token, expect_value, optional_token},
+        macros::{expect_token, optional_token},
     },
     scanner::lexeme::TokenType,
 };

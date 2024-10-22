@@ -1,12 +1,6 @@
 use anyhow::{Ok, Result};
-use codespan_reporting::term::{
-    self,
-    termcolor::{ColorChoice, StandardStream},
-};
-
-use diagnostic::{Diagnostic, Snippet};
 use files::Files;
-use std::{collections::HashSet, env::args, fs::read};
+use std::{env::args, fs::read};
 use transpiler::{javascript::JavaScriptTranspiler, Transpiler};
 
 pub mod diagnostic;
@@ -14,6 +8,7 @@ pub mod files;
 pub mod parser;
 pub mod scanner;
 pub mod transpiler;
+pub mod typechecker;
 
 fn main() -> Result<()> {
     let args: Vec<String> = args().skip(1).collect();
@@ -55,9 +50,7 @@ fn main() -> Result<()> {
     let mut parser = parser::Parser::new(&scanner_pass.result);
     let parser_pass = parser.parse().unwrap();
 
-    parser.print_diagnostics(&files);
-
-    let mut transpiled = JavaScriptTranspiler::transpile(&parser_pass);
+    let transpiled = JavaScriptTranspiler::transpile(&parser_pass);
 
     println!("{}", transpiled);
 

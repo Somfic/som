@@ -1,8 +1,5 @@
+use crate::scanner::lexeme::Token;
 use std::collections::HashSet;
-
-use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
-
-use crate::{files::Files, scanner::lexeme::Token};
 
 pub struct PassResult<'a, T> {
     pub result: T,

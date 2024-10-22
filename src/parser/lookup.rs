@@ -24,7 +24,7 @@ pub enum BindingPower {
 
 pub type TypeHandler<'a> = fn(&mut Parser<'a>) -> ParseResult<'a, Type>;
 pub type LeftTypeHandler<'a> = fn(&mut Parser<'a>, Type, BindingPower) -> ParseResult<'a, Type>;
-pub type StatementHandler<'a> = fn(&mut Parser<'a>) -> ParseResult<'a, Statement>;
+pub type StatementHandler<'a> = fn(&mut Parser<'a>) -> ParseResult<'a, Satement>;
 pub type ExpressionHandler<'a> = fn(&mut Parser<'a>) -> ParseResult<'a, Expression>;
 pub type LeftExpressionHandler<'a> =
     fn(&mut Parser<'a>, Expression, BindingPower) -> ParseResult<'a, Expression>;

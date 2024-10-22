@@ -1,15 +1,14 @@
+use super::variables;
 use crate::{
     parser::{
         ast::{FieldSignature, Statement},
-        lookup::{BindingPower, Lookup},
+        lookup::Lookup,
         macros::{expect_token, expect_value, optional_token},
-        typest, ParseResult, Parser,
+        ParseResult, Parser,
     },
     scanner::lexeme::TokenType,
 };
-use std::collections::{HashMap, HashSet};
-
-use super::variables;
+use std::collections::HashSet;
 
 pub fn register(lookup: &mut Lookup) {
     lookup.add_statement_handler(TokenType::Struct, parse_struct);

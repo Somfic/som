@@ -1,7 +1,6 @@
 use super::Transpiler;
 use crate::parser::ast::Symbol;
-use anyhow::Result;
-use deno_core::{JsRuntime, RuntimeOptions};
+use deno_core::JsRuntime;
 
 pub mod expressions;
 pub mod statements;

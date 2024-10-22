@@ -3,13 +3,55 @@ use std::{
     hash::Hash,
 };
 
-use crate::scanner::lexeme::Token;
+use crate::diagnostic::Range;
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Symbol {
-    Expression(Expression),
-    Statement(Statement),
-    Type(Type),
+pub enum Symbol<'a> {
+    Expression(ExpressionSymbol<'a>),
+    Statement(StatementSymbol<'a>),
+    Type(TypeSymbol<'a>),
+}
+
+impl Symbol<'_> {
+    pub fn range(&self) -> &Range {
+        match self {
+            Symbol::Expression(expression) => &expression.range,
+            Symbol::Statement(statement) => &statement.range,
+            Symbol::Type(typest) => &typest.range,
+        }
+    }
+}
+
+pub struct ExpressionSymbol<'a> {
+    pub range: Range<'a>,
+    pub value: Expression,
+}
+
+impl<'a> ExpressionSymbol<'a> {
+    pub fn new(value: Expression, range: Range<'a>) -> Self {
+        Self { value, range }
+    }
+}
+
+pub struct StatementSymbol<'a> {
+    pub range: Range<'a>,
+    pub value: Satement,
+}
+
+impl<'a> StatementSymbol<'a> {
+    pub fn new(value: Satement, range: Range<'a>) -> Self {
+        Self { value, range }
+    }
+}
+
+pub struct TypeSymbol<'a> {
+    pub range: Range<'a>,
+    pub value: Type,
+}
+
+impl<'a> TypeSymbol<'a> {
+    pub fn new(value: Type, range: Range<'a>) -> Self {
+        Self { value, range }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -27,8 +69,8 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Statement {
-    Block(Vec<Statement>),
+pub enum Satement {
+    Block(Vec<Expression>),
     Declaration(String, Option<Type>, Expression),
     Expression(Expression),
     Struct(String, HashSet<FieldSignature>),
@@ -39,10 +81,18 @@ pub enum Statement {
     Implementation(String, String, HashSet<Function>),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Type {
+    Void,
+    Symbol(String),
+    Array(Box<Type>),
+    Tuple(HashMap<String, Type>),
+}
+
 #[derive(Debug, Clone)]
 pub struct Function {
     pub signature: FunctionSignature,
-    pub body: Box<Statement>,
+    pub body: Box<Satement>,
 }
 
 impl PartialEq for Function {
@@ -108,12 +158,4 @@ pub enum BinaryOperation {
     Minus,
     Times,
     Divide,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Type {
-    Void,
-    Symbol(String),
-    Array(Box<Type>),
-    Tuple(HashMap<String, Type>),
 }

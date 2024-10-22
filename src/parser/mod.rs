@@ -1,9 +1,5 @@
-use crate::{
-    diagnostic::{Diagnostic, PassResult},
-    files::Files,
-    scanner::lexeme::{Token, TokenType, TokenValue},
-};
-use ast::{Statement, Symbol};
+use crate::{diagnostic::Diagnostic, files::Files, scanner::lexeme::Token};
+use ast::{Satement, StatementSymbol, Symbol};
 use codespan_reporting::term::termcolor::{ColorChoice, StandardStream};
 use lookup::Lookup;
 use std::collections::HashSet;
@@ -34,7 +30,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> ParseResult<'a, Symbol> {
+    pub fn parse(&mut self) -> ParseResult<'a, StatementSymbol> {
         let mut statements = Vec::new();
         let mut panic_mode = false;
 
@@ -58,7 +54,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        Ok(Symbol::Statement(Statement::Block(statements)))
+        Ok(StatementSymbol::new(Satement::Block(statements)))
     }
 
     pub(crate) fn peek(&self) -> Option<&Token<'a>> {
@@ -68,10 +64,6 @@ impl<'a> Parser<'a> {
     pub(crate) fn consume(&mut self) -> Option<&Token<'a>> {
         self.cursor += 1;
         self.tokens.get(self.cursor - 1)
-    }
-
-    pub(crate) fn peek_next(&self) -> Option<&Token<'a>> {
-        self.tokens.get(self.cursor + 1)
     }
 
     pub(crate) fn has_tokens(&self) -> bool {
