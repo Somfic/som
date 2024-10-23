@@ -25,27 +25,30 @@ code purrer for cat:
 ```
 
 ```rust
-comp Name: 
+type Name: 
   name ~ string;
 
-comp Age: age ~ number;
+type Age: 
+  age ~ number;
 
-enum tail_length:
-  short,
-  medium,
+enum Tail:
+  none
+  medium
   long;
 
-type Cat
-  tail_length ~ tail_length, 
-  + Name, 
-  + Age;
+type Cat with Name, Age:
+  sleep_count ~ number
+  tail_length ~ Tail.none;
 
 spec Purrer:
   pur ~ fn(self) -> number;
 
-code Purrer for Cat:
+code Purrer  Cat:
   fn pur(self) -> number {
     print`($"{self.name} ({self.age}) is purring");
-  };
+  }
 
+  fn sleep(self) {
+    self.sleep_count++;
+  };
 ```
