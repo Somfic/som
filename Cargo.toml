@@ -7,6 +7,6 @@ authors = ["Somfic"]
 description = "The 'som' programming language"
 
 [dependencies]
-anyhow = "1.0"
-codespan-reporting = "0.11.1"
+miette = { version = "7.2.0", features = ["fancy"] }
+pretty_assertions = "1.4.1"
 regex = "1.10"
