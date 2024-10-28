@@ -6,7 +6,7 @@ pub mod lexer;
 pub mod parser;
 
 fn main() {
-    let input = "2 + 3 * 2;";
+    let input = "1";
 
     let mut lexer = Lexer::new(input);
     let tokens = lexer.collect::<Vec<_>>();
