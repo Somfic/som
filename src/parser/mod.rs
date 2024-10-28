@@ -1,12 +1,13 @@
 use crate::lexer::{Lexer, Token, TokenKind};
 use ast::{Statement, Symbol};
-use lookup::Lookup;
+use lookup::{BindingPower, Lookup};
 use miette::{Context, Error, Result};
-use std::{borrow::Cow, collections::HashMap, os::macos};
+use std::{borrow::Cow, collections::HashMap};
 
 pub mod ast;
 pub mod expression;
 pub mod lookup;
+pub mod statement;
 
 pub struct Parser<'de> {
     source: &'de str,
@@ -24,7 +25,6 @@ impl<'de> Parser<'de> {
     }
 
     pub fn parse(&mut self) -> Result<Symbol<'de>> {
-        expression::parse(self)?;
-        todo!()
+        Ok(Symbol::Statement(statement::parse(self)?))
     }
 }

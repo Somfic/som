@@ -38,11 +38,12 @@ impl<'de> Lexer<'de> {
             Some(Err(e)) => Err(e),
             None => Err(miette::miette! {
                 labels = vec![
-                    LabeledSpan::at_offset(self.byte_offset - 1, "Expected more source code here")
+                    LabeledSpan::at_offset(self.byte_offset - 1, format!("Expected {} here", expected))
                 ],
-                help = "More source code was expected, but none was found",
-                "{unexpected}",
+                help = format!("{} was expected, but no more code was found", expected),
+                "unexpected end of input",
             }
+            .wrap_err(unexpected.to_string())
             .with_source_code(self.whole.to_string())),
         }
     }
@@ -67,7 +68,7 @@ impl<'de> Lexer<'de> {
                 labels = vec![
                     LabeledSpan::at_offset(self.byte_offset - 1, "Expected more source code here")
                 ],
-                help = "More source code was expected, but none was found",
+                help = "more source code was expected, but none was found",
                 "{unexpected}",
             }
             .with_source_code(self.whole.to_string())),
@@ -421,6 +422,37 @@ mod test {
         ];
 
         test_tokens_eq(lexer, expected_tokens);
+    }
+
+    #[test]
+    fn peeking() {
+        let input = "1 2 3";
+
+        let mut lexer = Lexer::new(input);
+
+        let first = lexer.peek().unwrap().as_ref().unwrap();
+        assert_eq!(first.kind, TokenKind::Integer);
+        assert_eq!(first.value, TokenValue::Integer(1));
+
+        let first = lexer.next().unwrap().unwrap();
+        assert_eq!(first.kind, TokenKind::Integer);
+        assert_eq!(first.value, TokenValue::Integer(1));
+
+        let second = lexer.peek().unwrap().as_ref().unwrap();
+        assert_eq!(second.kind, TokenKind::Integer);
+        assert_eq!(second.value, TokenValue::Integer(2));
+
+        let second = lexer.next().unwrap().unwrap();
+        assert_eq!(second.kind, TokenKind::Integer);
+        assert_eq!(second.value, TokenValue::Integer(2));
+
+        let third = lexer.peek().unwrap().as_ref().unwrap();
+        assert_eq!(third.kind, TokenKind::Integer);
+        assert_eq!(third.value, TokenValue::Integer(3));
+
+        let third = lexer.next().unwrap().unwrap();
+        assert_eq!(third.kind, TokenKind::Integer);
+        assert_eq!(third.value, TokenValue::Integer(3));
     }
 
     fn test_tokens_eq(lexer: Lexer<'_>, tokens: Vec<(TokenKind, TokenValue<'_>)>) {
