@@ -6,14 +6,7 @@ pub mod lexer;
 pub mod parser;
 
 fn main() {
-    let input = "1";
-
-    let mut lexer = Lexer::new(input);
-    let tokens = lexer.collect::<Vec<_>>();
-
-    for token in &tokens {
-        println!("{:?}", token);
-    }
+    let input = "1 + 1111;";
 
     let mut parser = Parser::new(input);
     let symbol = match parser.parse() {
