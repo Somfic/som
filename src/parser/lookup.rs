@@ -28,7 +28,7 @@ pub enum BindingPower {
 pub type StatementHandler<'de> = fn(&mut Parser<'de>) -> Result<Statement<'de>>;
 pub type ExpressionHandler<'de> = fn(&mut Parser<'de>) -> Result<Expression<'de>>;
 pub type LeftExpressionHandler<'de> =
-    fn(&mut Parser<'de>, Expression, BindingPower) -> Result<Expression<'de>>;
+    fn(&mut Parser<'de>, Expression<'de>, BindingPower) -> Result<Expression<'de>>;
 
 pub struct Lookup<'de> {
     pub statement_lookup: HashMap<TokenKind, StatementHandler<'de>>,
@@ -128,14 +128,10 @@ fn integer<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
 }
 
 fn addition<'de>(
-    parser: &mut Parser,
-    lhs: Expression,
+    parser: &mut Parser<'de>,
+    lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let token = parser
-        .lexer
-        .expect(TokenKind::Plus, "expected a plus sign")?;
-
     let rhs = expression::parse(parser, bp)?;
 
     Ok(Expression::Binary {
