@@ -35,10 +35,11 @@ pub fn parse<'de>(
         }
         .with_source_code(parser.source.to_string()),
     )?;
-
     let mut lhs = handler(parser)?;
 
-    while let Some(token) = parser.lexer.peek() {
+    let mut next_token = parser.lexer.peek();
+
+    while let Some(token) = next_token {
         let token = match token {
             Ok(token) => token,
             Err(err) => return Err(miette::miette!(err.to_string())), // FIXME: better error handling
@@ -64,22 +65,9 @@ pub fn parse<'de>(
         parser.lexer.next();
 
         lhs = handler(parser, lhs, token_binding_power)?;
+
+        next_token = parser.lexer.peek();
     }
 
     Ok(lhs)
-}
-
-pub fn add_handlers<'de>(lookup: &'de mut Lookup<'de>) {
-    lookup.add_left_expression_handler(
-        TokenKind::Plus,
-        BindingPower::Additive,
-        |parser: &mut Parser<'_>, lhs: Expression<'_>, bp| -> Result<Expression<'_>> {
-            let rhs = parse(parser, bp)?;
-            Ok(Expression::Binary {
-                operator: BinaryOperator::Add,
-                left: Box::new(lhs),
-                right: Box::new(rhs),
-            })
-        },
-    );
 }
