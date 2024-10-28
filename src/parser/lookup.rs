@@ -1,9 +1,9 @@
-use crate::lexer::TokenKind;
+use crate::lexer::{TokenKind, TokenValue};
 use miette::Result;
 use std::collections::HashMap;
 
 use super::{
-    ast::{Expression, Statement},
+    ast::{BinaryOperator, Expression, Primitive, Statement},
     expression, Parser,
 };
 
@@ -25,10 +25,10 @@ pub enum BindingPower {
 // pub type TypeHandler<'de> = fn(&mut Parser<'de>) -> Result<(Type, usize), Error<'de>>;
 // pub type LeftTypeHandler<'de> =
 //     fn(&'de Parser<'de>, usize, Type, &BindingPower) -> Result<(Type, usize), Error<'de>>;
-pub type StatementHandler<'de> = fn(&'de mut Parser<'de>) -> Result<Statement<'de>>;
-pub type ExpressionHandler<'de> = fn(&'de mut Parser<'de>) -> Result<Expression<'de>>;
+pub type StatementHandler<'de> = fn(&mut Parser<'de>) -> Result<Statement<'de>>;
+pub type ExpressionHandler<'de> = fn(&mut Parser<'de>) -> Result<Expression<'de>>;
 pub type LeftExpressionHandler<'de> =
-    fn(&'de mut Parser<'de>, Expression, BindingPower) -> Result<Expression<'de>>;
+    fn(&mut Parser<'de>, Expression, BindingPower) -> Result<Expression<'de>>;
 
 pub struct Lookup<'de> {
     pub statement_lookup: HashMap<TokenKind, StatementHandler<'de>>,
@@ -41,41 +41,44 @@ pub struct Lookup<'de> {
 
 impl<'de> Lookup<'de> {
     pub(crate) fn add_statement_handler(
-        &'de mut self,
+        mut self,
         token: TokenKind,
         handler: StatementHandler<'de>,
-    ) {
+    ) -> Self {
         if self.statement_lookup.contains_key(&token) {
             panic!("Token already has a statement handler");
         }
 
         self.statement_lookup.insert(token, handler);
+        self
     }
 
     pub(crate) fn add_expression_handler(
-        &'de mut self,
+        mut self,
         token: TokenKind,
         handler: ExpressionHandler<'de>,
-    ) {
+    ) -> Self {
         if self.expression_lookup.contains_key(&token) {
             panic!("Token already has an expression handler");
         }
 
         self.expression_lookup.insert(token, handler);
+        self
     }
 
     pub(crate) fn add_left_expression_handler(
-        &'de mut self,
+        mut self,
         token: TokenKind,
         binding_power: BindingPower,
         handler: LeftExpressionHandler<'de>,
-    ) {
+    ) -> Self {
         if self.binding_power_lookup.contains_key(&token) {
             panic!("Token already has a binding power");
         }
 
         self.left_expression_lookup.insert(token.clone(), handler);
         self.binding_power_lookup.insert(token, binding_power);
+        self
     }
 
     // pub(crate) fn add_type_handler(&mut self, token: TokenType, handler: TypeHandler<'de>) {
@@ -98,17 +101,46 @@ impl<'de> Lookup<'de> {
 
 impl<'de> Default for Lookup<'de> {
     fn default() -> Self {
-        let mut lookup = Lookup {
+        Lookup {
             statement_lookup: HashMap::new(),
             expression_lookup: HashMap::new(),
             left_expression_lookup: HashMap::new(),
             binding_power_lookup: HashMap::new(),
             // type_lookup: HashMap::new(),
             // left_type_lookup: HashMap::new(),
-        };
-
-        expression::add_handlers(&mut lookup);
-
-        lookup
+        }
+        .add_expression_handler(TokenKind::Integer, integer)
+        .add_left_expression_handler(TokenKind::Plus, BindingPower::Additive, addition)
     }
+}
+
+fn integer<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Integer, "expected an integer")?;
+
+    let value = match token.value {
+        TokenValue::Integer(v) => v,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::Primitive(Primitive::Integer(value)))
+}
+
+fn addition<'de>(
+    parser: &mut Parser,
+    lhs: Expression,
+    bp: BindingPower,
+) -> Result<Expression<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Plus, "expected a plus sign")?;
+
+    let rhs = expression::parse(parser, bp)?;
+
+    Ok(Expression::Binary {
+        operator: BinaryOperator::Add,
+        left: Box::new(lhs),
+        right: Box::new(rhs),
+    })
 }
