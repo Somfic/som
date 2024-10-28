@@ -25,7 +25,7 @@ pub enum Expression<'de> {
 #[derive(Debug)]
 pub enum Primitive<'de> {
     Integer(i64),
-    Float(f64),
+    Decimal(f64),
     String(Cow<'de, str>),
     Boolean(bool),
 }
