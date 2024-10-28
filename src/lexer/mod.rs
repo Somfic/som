@@ -31,14 +31,19 @@ impl<'de> Lexer<'de> {
                 labels = vec![
                     token.label(format!("Expected {} here", expected))
                 ],
-                help = format!("Expected {}, got {}", expected, token),
+                help = format!("Expected {}, got {}", expected, token.kind),
                 "{unexpected}",
             }
             .with_source_code(self.whole.to_string())),
             Some(Err(e)) => Err(e),
             None => Err(miette::miette! {
-                "unexpected end of input"
-            }),
+                labels = vec![
+                    LabeledSpan::at_offset(self.byte_offset - 1, "Expected more source code here")
+                ],
+                help = "More source code was expected, but none was found",
+                "{unexpected}",
+            }
+            .with_source_code(self.whole.to_string())),
         }
     }
 
@@ -59,9 +64,18 @@ impl<'de> Lexer<'de> {
             .with_source_code(self.whole.to_string())),
             Some(Err(e)) => Err(e),
             None => Err(miette::miette! {
-                "unexpected end of input"
-            }),
+                labels = vec![
+                    LabeledSpan::at_offset(self.byte_offset - 1, "Expected more source code here")
+                ],
+                help = "More source code was expected, but none was found",
+                "{unexpected}",
+            }
+            .with_source_code(self.whole.to_string())),
         }
+    }
+
+    pub fn expect_any(&mut self, unexpected: &str) -> Result<Token<'de>, miette::Error> {
+        self.expect_where(|_| true, unexpected)
     }
 
     pub fn peek(&mut self) -> Option<&Result<Token<'de>, miette::Error>> {
