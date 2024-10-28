@@ -29,9 +29,9 @@ impl<'de> Lexer<'de> {
             Some(Ok(token)) if expected == token.kind => Ok(token),
             Some(Ok(token)) => Err(miette::miette! {
                 labels = vec![
-                    token.label(format!("Expected {} here", expected))
+                    token.label(format!("expected {} here", expected))
                 ],
-                help = format!("Expected {}, got {}", expected, token.kind),
+                help = format!("expected {}, got {} instead", expected, token.kind),
                 "{unexpected}",
             }
             .with_source_code(self.whole.to_string())),
@@ -59,14 +59,14 @@ impl<'de> Lexer<'de> {
                 labels = vec![
                     token.label("here")
                 ],
-                help = format!("Expected {token:?}"),
+                help = format!("expected {token:?}"),
                 "{unexpected}",
             }
             .with_source_code(self.whole.to_string())),
             Some(Err(e)) => Err(e),
             None => Err(miette::miette! {
                 labels = vec![
-                    LabeledSpan::at_offset(self.byte_offset - 1, "Expected more source code here")
+                    LabeledSpan::at_offset(self.byte_offset - 1, "expected more source code here")
                 ],
                 help = "more source code was expected, but none was found",
                 "{unexpected}",

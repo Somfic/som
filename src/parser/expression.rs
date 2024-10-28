@@ -20,8 +20,8 @@ pub fn parse<'de>(
         Some(Err(err)) => return Err(miette::miette!(err.to_string())), // FIXME: better error handling
         None => {
             return Err(miette::miette! {
-                help = "expected a new expression",
-                "expected a new expression, found EOF"
+                help = "expected an expression",
+                "expected an expression"
             }
             .with_source_code(parser.source.to_string()))
         }
@@ -29,9 +29,9 @@ pub fn parse<'de>(
 
     let handler = parser.lookup.expression_lookup.get(&token.kind).ok_or(
         miette::miette! {
-            labels = vec![token.label("expected a new expression")],
-            help = format!("cannot parse {} into a new expression", token.kind),
-            "expected a new expression, found {}", token.kind
+            labels = vec![token.label("expected an expression")],
+            help = format!("{} is not an expression", token.kind),
+            "expected an expression, found {}", token.kind
         }
         .with_source_code(parser.source.to_string()),
     )?;

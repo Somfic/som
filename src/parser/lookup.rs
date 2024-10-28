@@ -110,7 +110,13 @@ impl<'de> Default for Lookup<'de> {
             // left_type_lookup: HashMap::new(),
         }
         .add_expression_handler(TokenKind::Integer, integer)
+        .add_expression_handler(TokenKind::Decimal, decimal)
         .add_left_expression_handler(TokenKind::Plus, BindingPower::Additive, addition)
+        .add_left_expression_handler(
+            TokenKind::Star,
+            BindingPower::Multiplicative,
+            multiplication,
+        )
     }
 }
 
@@ -127,6 +133,19 @@ fn integer<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
     Ok(Expression::Primitive(Primitive::Integer(value)))
 }
 
+fn decimal<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Decimal, "expected a decimal")?;
+
+    let value = match token.value {
+        TokenValue::Decimal(v) => v,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::Primitive(Primitive::Decimal(value)))
+}
+
 fn addition<'de>(
     parser: &mut Parser<'de>,
     lhs: Expression<'de>,
@@ -136,6 +155,20 @@ fn addition<'de>(
 
     Ok(Expression::Binary {
         operator: BinaryOperator::Add,
+        left: Box::new(lhs),
+        right: Box::new(rhs),
+    })
+}
+
+fn multiplication<'de>(
+    parser: &mut Parser<'de>,
+    lhs: Expression<'de>,
+    bp: BindingPower,
+) -> Result<Expression<'de>> {
+    let rhs = expression::parse(parser, bp)?;
+
+    Ok(Expression::Binary {
+        operator: BinaryOperator::Multiply,
         left: Box::new(lhs),
         right: Box::new(rhs),
     })
