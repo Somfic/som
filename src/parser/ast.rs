@@ -20,6 +20,7 @@ pub enum Expression<'de> {
         left: Box<Expression<'de>>,
         right: Box<Expression<'de>>,
     },
+    Group(Box<Expression<'de>>),
 }
 
 #[derive(Debug)]

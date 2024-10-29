@@ -25,10 +25,10 @@ code purrer for cat:
 ```
 
 ```rust
-comp Name: 
+struct Name: 
   name ~ string;
 
-comp Age: age ~ number;
+struct Age: age ~ number;
 
 enum tail_length:
   short,

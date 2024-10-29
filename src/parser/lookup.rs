@@ -109,67 +109,48 @@ impl<'de> Default for Lookup<'de> {
             // type_lookup: HashMap::new(),
             // left_type_lookup: HashMap::new(),
         }
-        .add_expression_handler(TokenKind::Integer, integer)
-        .add_expression_handler(TokenKind::Decimal, decimal)
-        .add_left_expression_handler(TokenKind::Plus, BindingPower::Additive, addition)
+        .add_expression_handler(TokenKind::Integer, expression::primitive::integer)
+        .add_expression_handler(TokenKind::Decimal, expression::primitive::decimal)
+        .add_expression_handler(TokenKind::ParenOpen, group)
+        .add_expression_handler(TokenKind::If, if_)
+        .add_left_expression_handler(
+            TokenKind::Plus,
+            BindingPower::Additive,
+            expression::binary::addition,
+        )
+        .add_left_expression_handler(
+            TokenKind::Minus,
+            BindingPower::Additive,
+            expression::binary::subtraction,
+        )
         .add_left_expression_handler(
             TokenKind::Star,
             BindingPower::Multiplicative,
-            multiplication,
+            expression::binary::multiplication,
+        )
+        .add_left_expression_handler(
+            TokenKind::Slash,
+            BindingPower::Multiplicative,
+            expression::binary::division,
         )
     }
 }
 
-fn integer<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
-    let token = parser
+fn if_<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+    parser.lexer.expect(TokenKind::If, "expected an if")?;
+    let condition = expression::parse(parser, BindingPower::None)?;
+
+    todo!()
+}
+
+fn group<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+    parser
         .lexer
-        .expect(TokenKind::Integer, "expected an integer")?;
-
-    let value = match token.value {
-        TokenValue::Integer(v) => v,
-        _ => unreachable!(),
-    };
-
-    Ok(Expression::Primitive(Primitive::Integer(value)))
-}
-
-fn decimal<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
-    let token = parser
+        .expect(TokenKind::ParenOpen, "expected a left parenthesis")?;
+    let expression = expression::parse(parser, BindingPower::None)?;
+    parser
         .lexer
-        .expect(TokenKind::Decimal, "expected a decimal")?;
+        .expect(TokenKind::ParenClose, "expected a right parenthesis")?;
 
-    let value = match token.value {
-        TokenValue::Decimal(v) => v,
-        _ => unreachable!(),
-    };
-
-    Ok(Expression::Primitive(Primitive::Decimal(value)))
-}
-
-fn addition<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
-    bp: BindingPower,
-) -> Result<Expression<'de>> {
-    let rhs = expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::Add,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
-}
-
-fn multiplication<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
-    bp: BindingPower,
-) -> Result<Expression<'de>> {
-    let rhs = expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::Multiply,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    Ok(Expression::Group(Box::new(expression)))
 }

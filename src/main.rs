@@ -6,7 +6,7 @@ pub mod lexer;
 pub mod parser;
 
 fn main() {
-    let input = "1 * 2 + 3;";
+    let input = "1 / ( 1 * 1 )\n";
 
     let mut parser = Parser::new(input);
     let symbol = match parser.parse() {

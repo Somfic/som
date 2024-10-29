@@ -11,6 +11,9 @@ use super::{
     Parser,
 };
 
+pub mod binary;
+pub mod primitive;
+
 pub fn parse<'de>(
     parser: &mut Parser<'de>,
     binding_power: BindingPower,
