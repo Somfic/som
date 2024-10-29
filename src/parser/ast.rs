@@ -40,6 +40,8 @@ pub enum Primitive<'de> {
     Integer(i64),
     Decimal(f64),
     String(Cow<'de, str>),
+    Identifier(Cow<'de, str>),
+    Character(char),
     Boolean(bool),
     Unit,
 }
