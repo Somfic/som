@@ -1,15 +1,7 @@
 use miette::Result;
 
-use crate::{
-    lexer::{TokenKind, TokenValue},
-    parser::lookup::BindingPower,
-};
-
-use super::{
-    ast::{BinaryOperator, Expression, Primitive},
-    lookup::Lookup,
-    Parser,
-};
+use super::{ast::Expression, Parser};
+use crate::parser::lookup::BindingPower;
 
 pub mod binary;
 pub mod primitive;
