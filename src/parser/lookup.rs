@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::{
     ast::{BinaryOperator, Expression, Primitive, Statement},
-    expression, Parser,
+    expression, statement, Parser,
 };
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -185,6 +185,7 @@ impl<'de> Default for Lookup<'de> {
             BindingPower::Relational,
             expression::binary::or,
         )
+        .add_statement_handler(TokenKind::Let, statement::let_)
     }
 }
 

@@ -8,7 +8,9 @@ pub enum Symbol<'de> {
 
 #[derive(Debug)]
 pub enum Statement<'de> {
+    Block(Vec<Statement<'de>>),
     Expression(Expression<'de>),
+    Assignment(Cow<'de, str>, Expression<'de>),
 }
 
 #[derive(Debug)]
