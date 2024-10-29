@@ -5,18 +5,27 @@ use crate::parser::{
 };
 use miette::Result;
 
+pub fn parse_binary_expression<'de>(
+    parser: &mut Parser<'de>,
+    lhs: Expression<'de>,
+    bp: BindingPower,
+    operator: BinaryOperator,
+) -> Result<Expression<'de>> {
+    let rhs = crate::parser::expression::parse(parser, bp)?;
+
+    Ok(Expression::Binary {
+        operator,
+        left: Box::new(lhs),
+        right: Box::new(rhs),
+    })
+}
+
 pub fn addition<'de>(
     parser: &mut Parser<'de>,
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::Add,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Add)
 }
 
 pub fn multiplication<'de>(
@@ -24,13 +33,7 @@ pub fn multiplication<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::Multiply,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Multiply)
 }
 
 pub fn subtraction<'de>(
@@ -38,13 +41,7 @@ pub fn subtraction<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::Subtract,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Subtract)
 }
 
 pub fn division<'de>(
@@ -52,13 +49,7 @@ pub fn division<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::Divide,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Divide)
 }
 
 pub fn modulo<'de>(
@@ -66,13 +57,7 @@ pub fn modulo<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::Modulo,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Modulo)
 }
 
 pub fn equal<'de>(
@@ -80,13 +65,7 @@ pub fn equal<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::Equal,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Equality)
 }
 
 pub fn not_equal<'de>(
@@ -94,13 +73,7 @@ pub fn not_equal<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::NotEqual,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Inequality)
 }
 
 pub fn less_than<'de>(
@@ -108,13 +81,7 @@ pub fn less_than<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::LessThan,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::LessThan)
 }
 
 pub fn less_than_or_equal<'de>(
@@ -122,13 +89,7 @@ pub fn less_than_or_equal<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::LessThanOrEqual,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::LessThanOrEqual)
 }
 
 pub fn greater_than<'de>(
@@ -136,13 +97,7 @@ pub fn greater_than<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::GreaterThan,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::GreaterThan)
 }
 
 pub fn greater_than_or_equal<'de>(
@@ -150,13 +105,7 @@ pub fn greater_than_or_equal<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::GreaterThanOrEqual,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::GreaterThanOrEqual)
 }
 
 pub fn and<'de>(
@@ -164,13 +113,7 @@ pub fn and<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::And,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::And)
 }
 
 pub fn or<'de>(
@@ -178,11 +121,5 @@ pub fn or<'de>(
     lhs: Expression<'de>,
     bp: BindingPower,
 ) -> Result<Expression<'de>> {
-    let rhs = crate::parser::expression::parse(parser, bp)?;
-
-    Ok(Expression::Binary {
-        operator: BinaryOperator::Or,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Or)
 }
