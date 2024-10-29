@@ -111,8 +111,9 @@ impl<'de> Default for Lookup<'de> {
         }
         .add_expression_handler(TokenKind::Integer, expression::primitive::integer)
         .add_expression_handler(TokenKind::Decimal, expression::primitive::decimal)
+        .add_expression_handler(TokenKind::Boolean, expression::primitive::boolean)
         .add_expression_handler(TokenKind::ParenOpen, group)
-        .add_expression_handler(TokenKind::If, if_)
+        .add_left_expression_handler(TokenKind::If, BindingPower::None, if_)
         .add_expression_handler(TokenKind::Not, expression::unary::negate)
         .add_expression_handler(TokenKind::Minus, expression::unary::negative)
         .add_expression_handler(TokenKind::CurlyOpen, block)
@@ -184,10 +185,12 @@ impl<'de> Default for Lookup<'de> {
     }
 }
 
-fn if_<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
-    parser.lexer.expect(TokenKind::If, "expected an if")?;
-    let condition = expression::parse(parser, BindingPower::None)?;
-    let truthy = expression::parse(parser, BindingPower::None)?;
+fn if_<'de>(
+    parser: &mut Parser<'de>,
+    lhs: Expression<'de>,
+    binding_power: BindingPower,
+) -> Result<Expression<'de>> {
+    let condition = expression::parse(parser, binding_power)?;
 
     let falsy = if parser.lexer.peek().map_or(false, |token| {
         token
@@ -202,7 +205,7 @@ fn if_<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
 
     Ok(Expression::If {
         condition: Box::new(condition),
-        truthy: Box::new(truthy),
+        truthy: Box::new(lhs),
         falsy: falsy.map(Box::new),
     })
 }

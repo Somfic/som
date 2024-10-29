@@ -32,3 +32,16 @@ pub fn decimal<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
 
     Ok(Expression::Primitive(Primitive::Decimal(value)))
 }
+
+pub fn boolean<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Boolean, "expected a boolean")?;
+
+    let value = match token.value {
+        TokenValue::Boolean(v) => v,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::Primitive(Primitive::Boolean(value)))
+}
