@@ -106,6 +106,10 @@ pub enum TokenKind {
     Equality,
     /// An inequality sign; `!=`.
     Inequality,
+    /// An and sign; `&&`.
+    And,
+    /// An or sign; `||`.
+    Or,
 
     /// An at sign; `@`.
     At,
@@ -211,6 +215,8 @@ impl Display for TokenKind {
             TokenKind::Question => write!(f, "`?`"),
             TokenKind::Pipe => write!(f, "`|`"),
             TokenKind::Caret => write!(f, "`^`"),
+            TokenKind::And => todo!("`&&`"),
+            TokenKind::Or => todo!("`||`"),
         }
     }
 }

@@ -13,6 +13,7 @@ use super::{
 
 pub mod binary;
 pub mod primitive;
+pub mod unary;
 
 pub fn parse<'de>(
     parser: &mut Parser<'de>,
