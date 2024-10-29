@@ -25,6 +25,10 @@ pub enum Expression<'de> {
         operand: Box<Expression<'de>>,
     },
     Group(Box<Expression<'de>>),
+    Block {
+        statements: Vec<Statement<'de>>,
+        return_value: Box<Expression<'de>>,
+    },
 }
 
 #[derive(Debug)]
@@ -33,6 +37,7 @@ pub enum Primitive<'de> {
     Decimal(f64),
     String(Cow<'de, str>),
     Boolean(bool),
+    Unit,
 }
 
 #[derive(Debug)]
