@@ -20,6 +20,10 @@ pub enum Expression<'de> {
         left: Box<Expression<'de>>,
         right: Box<Expression<'de>>,
     },
+    Unary {
+        operator: UnaryOperator,
+        operand: Box<Expression<'de>>,
+    },
     Group(Box<Expression<'de>>),
 }
 
@@ -37,4 +41,19 @@ pub enum BinaryOperator {
     Subtract,
     Multiply,
     Divide,
+    Modulo,
+    Equal,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    And,
+    Or,
+}
+
+#[derive(Debug)]
+pub enum UnaryOperator {
+    Negate,
+    Negative,
 }

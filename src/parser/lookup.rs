@@ -113,6 +113,8 @@ impl<'de> Default for Lookup<'de> {
         .add_expression_handler(TokenKind::Decimal, expression::primitive::decimal)
         .add_expression_handler(TokenKind::ParenOpen, group)
         .add_expression_handler(TokenKind::If, if_)
+        .add_expression_handler(TokenKind::Not, expression::unary::negate)
+        .add_expression_handler(TokenKind::Minus, expression::unary::negative)
         .add_left_expression_handler(
             TokenKind::Plus,
             BindingPower::Additive,
@@ -132,6 +134,51 @@ impl<'de> Default for Lookup<'de> {
             TokenKind::Slash,
             BindingPower::Multiplicative,
             expression::binary::division,
+        )
+        .add_left_expression_handler(
+            TokenKind::Equality,
+            BindingPower::Assignment,
+            expression::binary::equal,
+        )
+        .add_left_expression_handler(
+            TokenKind::Inequality,
+            BindingPower::Assignment,
+            expression::binary::not_equal,
+        )
+        .add_left_expression_handler(
+            TokenKind::LessThan,
+            BindingPower::Relational,
+            expression::binary::less_than,
+        )
+        .add_left_expression_handler(
+            TokenKind::LessThanOrEqual,
+            BindingPower::Relational,
+            expression::binary::less_than_or_equal,
+        )
+        .add_left_expression_handler(
+            TokenKind::GreaterThan,
+            BindingPower::Relational,
+            expression::binary::greater_than,
+        )
+        .add_left_expression_handler(
+            TokenKind::GreaterThanOrEqual,
+            BindingPower::Relational,
+            expression::binary::greater_than_or_equal,
+        )
+        .add_left_expression_handler(
+            TokenKind::Percent,
+            BindingPower::Multiplicative,
+            expression::binary::modulo,
+        )
+        .add_left_expression_handler(
+            TokenKind::And,
+            BindingPower::Relational,
+            expression::binary::and,
+        )
+        .add_left_expression_handler(
+            TokenKind::Or,
+            BindingPower::Relational,
+            expression::binary::or,
         )
     }
 }
