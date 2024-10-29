@@ -34,7 +34,7 @@ impl<'de> Lexer<'de> {
                 help = format!("expected {}, got {} instead", expected, token.kind),
                 "{unexpected}",
             }
-            .with_source_code(self.whole.to_string())),
+          ),
             Some(Err(e)) => Err(e),
             None => Err(miette::miette! {
                 labels = vec![
@@ -44,7 +44,7 @@ impl<'de> Lexer<'de> {
                 "unexpected end of input",
             }
             .wrap_err(unexpected.to_string())
-            .with_source_code(self.whole.to_string())),
+            ),
         }
     }
 
@@ -61,8 +61,7 @@ impl<'de> Lexer<'de> {
                 ],
                 help = format!("expected {token:?}"),
                 "{unexpected}",
-            }
-            .with_source_code(self.whole.to_string())),
+            }),
             Some(Err(e)) => Err(e),
             None => Err(miette::miette! {
                 labels = vec![
@@ -70,8 +69,7 @@ impl<'de> Lexer<'de> {
                 ],
                 help = "more source code was expected, but none was found",
                 "{unexpected}",
-            }
-            .with_source_code(self.whole.to_string())),
+            }),
         }
     }
 
@@ -149,8 +147,14 @@ impl<'de> Iterator for Lexer<'de> {
             '%' => Ok((TokenKind::Percent, TokenValue::None)),
             '=' => self.parse_compound_operator(TokenKind::Equal, TokenKind::Equality, '='),
             '!' => self.parse_compound_operator(TokenKind::Not, TokenKind::Inequality, '='),
-            '<' => self.parse_compound_operator(TokenKind::LessThan, TokenKind::LessThanOrEqual, '='),
-            '>' => self.parse_compound_operator(TokenKind::GreaterThan, TokenKind::GreaterThanOrEqual, '='),
+            '<' => {
+                self.parse_compound_operator(TokenKind::LessThan, TokenKind::LessThanOrEqual, '=')
+            }
+            '>' => self.parse_compound_operator(
+                TokenKind::GreaterThan,
+                TokenKind::GreaterThanOrEqual,
+                '=',
+            ),
             'a'..='z' | 'A'..='Z' | '_' => {
                 // Identifiers
                 let mut ident = String::new();
@@ -170,8 +174,12 @@ impl<'de> Iterator for Lexer<'de> {
                     "else" => Ok((TokenKind::Else, TokenValue::None)),
                     "fn" => Ok((TokenKind::Function, TokenValue::None)),
                     "true" => Ok((TokenKind::Boolean, TokenValue::Boolean(true))),
-                    "false" =>Ok((TokenKind::Boolean, TokenValue::Boolean(false))),
-                    ident => Ok((TokenKind::Identifier, TokenValue::Identifier(ident.to_string().into()))),
+                    "false" => Ok((TokenKind::Boolean, TokenValue::Boolean(false))),
+                    "let" => Ok((TokenKind::Let, TokenValue::None)),
+                    ident => Ok((
+                        TokenKind::Identifier,
+                        TokenValue::Identifier(ident.to_string().into()),
+                    )),
                 }
             }
             // Whole and decimal numbers
@@ -191,15 +199,14 @@ impl<'de> Iterator for Lexer<'de> {
                 if let Ok(num) = number.parse::<i64>() {
                     Ok((TokenKind::Integer, TokenValue::Integer(num)))
                 } else if let Ok(num) = number.parse::<f64>() {
-                     Ok((TokenKind::Decimal, TokenValue::Decimal(num)))
+                    Ok((TokenKind::Decimal, TokenValue::Decimal(num)))
                 } else {
                     Err(miette::miette! {
                         labels = vec![
                             LabeledSpan::at(self.byte_offset - number.len()..self.byte_offset, "this number")
                         ],
                         "invalid number"
-                    }
-                    .with_source_code(self.whole.to_string()))
+                    })
                 }
             }
             '"' => {
@@ -233,22 +240,18 @@ impl<'de> Iterator for Lexer<'de> {
                             LabeledSpan::at(self.byte_offset..self.byte_offset + c.len_utf8(), "this character")
                         ],
                         "expected closing single quote"
-                    }
-                    .with_source_code(self.whole.to_string()))
+                    })
                 }
             }
             ' ' | '\r' | '\t' | '\n' => {
                 return self.next();
             }
-            _ => {
-                Err(miette::miette! {
-                    labels = vec![
-                        LabeledSpan::at(self.byte_offset - c.len_utf8()..self.byte_offset, "this character")
-                    ],
-                    "unexpected character '{c}' in input"
-                }
-                .with_source_code(self.whole.to_string()))
-            }
+            _ => Err(miette::miette! {
+                labels = vec![
+                    LabeledSpan::at(self.byte_offset - c.len_utf8()..self.byte_offset, "this character")
+                ],
+                "unexpected character '{c}' in input"
+            }),
         };
 
         let byte_length = self
@@ -260,6 +263,7 @@ impl<'de> Iterator for Lexer<'de> {
             kind,
             value,
             span: SourceSpan::new(start_offset.into(), byte_length),
+            original: &self.whole[start_offset..self.byte_offset],
         }))
     }
 }

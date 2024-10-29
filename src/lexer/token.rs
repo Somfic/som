@@ -4,6 +4,7 @@ use std::{borrow::Cow, fmt::Display, hash::Hash};
 pub struct Token<'de> {
     pub kind: TokenKind,
     pub value: TokenValue<'de>,
+    pub original: &'de str,
     pub span: miette::SourceSpan,
 }
 

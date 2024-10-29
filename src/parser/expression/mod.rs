@@ -18,19 +18,19 @@ pub fn parse<'de>(
             return Err(miette::miette! {
                 help = "expected an expression",
                 "expected an expression"
-            }
-            .with_source_code(parser.source.to_string()))
+            })
         }
     };
 
-    let handler = parser.lookup.expression_lookup.get(&token.kind).ok_or(
-        miette::miette! {
+    let handler = parser
+        .lookup
+        .expression_lookup
+        .get(&token.kind)
+        .ok_or(miette::miette! {
             labels = vec![token.label("expected an expression")],
             help = format!("{} is not an expression", token.kind),
             "expected an expression, found {}", token.kind
-        }
-        .with_source_code(parser.source.to_string()),
-    )?;
+        })?;
     let mut lhs = handler(parser)?;
 
     let mut next_token = parser.lexer.peek();
