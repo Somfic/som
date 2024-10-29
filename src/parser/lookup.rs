@@ -184,11 +184,27 @@ impl<'de> Default for Lookup<'de> {
     }
 }
 
-fn if_<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+fn if_<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
     parser.lexer.expect(TokenKind::If, "expected an if")?;
     let condition = expression::parse(parser, BindingPower::None)?;
+    let truthy = expression::parse(parser, BindingPower::None)?;
 
-    todo!()
+    let falsy = if parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind == TokenKind::Else)
+    }) {
+        parser.lexer.next();
+        Some(expression::parse(parser, BindingPower::None)?)
+    } else {
+        None
+    };
+
+    Ok(Expression::If {
+        condition: Box::new(condition),
+        truthy: Box::new(truthy),
+        falsy: falsy.map(Box::new),
+    })
 }
 
 fn group<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
@@ -210,21 +226,48 @@ fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
 
     // A list of statements separated by semicolons. If the last statement is not ended with a semicolon, it is considered the return value.
     let mut statements = Vec::new();
-    while parser.lexer.peek().map_or(false, |token| {
-        token
-            .as_ref()
-            .map_or(false, |token| token.kind != TokenKind::CurlyClose)
-    }) {
-        let statement = crate::parser::statement::parse(parser)?;
+    let mut last_is_return = true;
+
+    loop {
+        // Check if a closing curly brace is found.
+        if parser.lexer.peek().map_or(false, |token| {
+            token
+                .as_ref()
+                .map_or(false, |token| token.kind == TokenKind::CurlyClose)
+        }) {
+            break;
+        }
+
+        // Expect a semicolon after each statement except the last one.
+        if !statements.is_empty() {
+            parser
+                .lexer
+                .expect(TokenKind::Semicolon, "expected a semicolon")?;
+        }
+
+        if parser.lexer.peek().map_or(false, |token| {
+            token
+                .as_ref()
+                .map_or(false, |token| token.kind == TokenKind::CurlyClose)
+        }) {
+            last_is_return = false;
+            break;
+        }
+
+        let statement = crate::parser::statement::parse(parser, true)?;
         statements.push(statement);
     }
 
-    let return_value = match statements.last() {
-        Some(Statement::Expression(_)) => match statements.pop() {
-            Some(Statement::Expression(expression)) => expression,
-            _ => unreachable!(),
-        },
-        _ => Expression::Primitive(Primitive::Unit),
+    let return_value = if last_is_return {
+        match statements.last() {
+            Some(Statement::Expression(_)) => match statements.pop() {
+                Some(Statement::Expression(expression)) => expression,
+                _ => unreachable!(),
+            },
+            _ => Expression::Primitive(Primitive::Unit),
+        }
+    } else {
+        Expression::Primitive(Primitive::Unit)
     };
 
     let expression = Expression::Block {

@@ -6,11 +6,7 @@ pub mod lexer;
 pub mod parser;
 
 fn main() {
-    let input = "{1+1; 2 + 2;};\n";
-
-    let value = if 12 / 2 == 2 {
-        2;
-    };
+    let input = "let value = if 12 % 2 == 0 true else false;\n";
 
     let mut parser = Parser::new(input);
     let symbol = match parser.parse() {

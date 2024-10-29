@@ -25,6 +25,6 @@ impl<'de> Parser<'de> {
     }
 
     pub fn parse(&mut self) -> Result<Symbol<'de>> {
-        Ok(Symbol::Statement(statement::parse(self)?))
+        Ok(Symbol::Statement(statement::parse(self, false)?))
     }
 }

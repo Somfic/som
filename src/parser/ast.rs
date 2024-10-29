@@ -8,7 +8,6 @@ pub enum Symbol<'de> {
 
 #[derive(Debug)]
 pub enum Statement<'de> {
-    Block(Vec<Statement<'de>>),
     Expression(Expression<'de>),
 }
 
@@ -28,6 +27,11 @@ pub enum Expression<'de> {
     Block {
         statements: Vec<Statement<'de>>,
         return_value: Box<Expression<'de>>,
+    },
+    If {
+        condition: Box<Expression<'de>>,
+        truthy: Box<Expression<'de>>,
+        falsy: Option<Box<Expression<'de>>>,
     },
 }
 
