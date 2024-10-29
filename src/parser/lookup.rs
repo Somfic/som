@@ -115,6 +115,7 @@ impl<'de> Default for Lookup<'de> {
         .add_expression_handler(TokenKind::If, if_)
         .add_expression_handler(TokenKind::Not, expression::unary::negate)
         .add_expression_handler(TokenKind::Minus, expression::unary::negative)
+        .add_expression_handler(TokenKind::CurlyOpen, block)
         .add_left_expression_handler(
             TokenKind::Plus,
             BindingPower::Additive,
@@ -198,6 +199,42 @@ fn group<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
     parser
         .lexer
         .expect(TokenKind::ParenClose, "expected a right parenthesis")?;
+
+    Ok(Expression::Group(Box::new(expression)))
+}
+
+fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::CurlyOpen, "expected a left curly brace")?;
+
+    // A list of statements separated by semicolons. If the last statement is not ended with a semicolon, it is considered the return value.
+    let mut statements = Vec::new();
+    while parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind != TokenKind::CurlyClose)
+    }) {
+        let statement = crate::parser::statement::parse(parser)?;
+        statements.push(statement);
+    }
+
+    let return_value = match statements.last() {
+        Some(Statement::Expression(_)) => match statements.pop() {
+            Some(Statement::Expression(expression)) => expression,
+            _ => unreachable!(),
+        },
+        _ => Expression::Primitive(Primitive::Unit),
+    };
+
+    let expression = Expression::Block {
+        statements,
+        return_value: Box::new(return_value),
+    };
+
+    parser
+        .lexer
+        .expect(TokenKind::CurlyClose, "expected a right curly brace")?;
 
     Ok(Expression::Group(Box::new(expression)))
 }
