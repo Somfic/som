@@ -45,3 +45,42 @@ pub fn boolean<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
 
     Ok(Expression::Primitive(Primitive::Boolean(value)))
 }
+
+pub fn character<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Character, "expected a character")?;
+
+    let value = match token.value {
+        TokenValue::Character(v) => v,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::Primitive(Primitive::Character(value)))
+}
+
+pub fn string<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::String, "expected a string")?;
+
+    let value = match token.value {
+        TokenValue::String(v) => v,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::Primitive(Primitive::String(value)))
+}
+
+pub fn identifier<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Identifier, "expected an identifier")?;
+
+    let value = match token.value {
+        TokenValue::Identifier(v) => v,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::Primitive(Primitive::Identifier(value)))
+}
