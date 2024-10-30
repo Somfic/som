@@ -1,6 +1,14 @@
-use crate::lexer::{TokenKind, TokenValue};
+use crate::lexer::{self, TokenKind, TokenValue};
 
-use super::{ast::Statement, expression, lookup::BindingPower, Parser};
+use super::{
+    ast::{
+        EnumMemberDeclaration, FunctionHeader, ParameterDeclaration, Statement,
+        StructMemberDeclaration,
+    },
+    expression,
+    lookup::BindingPower,
+    typing, Parser,
+};
 use miette::{Context, Result};
 
 pub fn parse<'de>(parser: &mut Parser<'de>, optional_semicolon: bool) -> Result<Statement<'de>> {
@@ -62,7 +70,10 @@ pub fn let_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         .lexer
         .expect(TokenKind::Semicolon, "expected a semicolon")?;
 
-    Ok(Statement::Assignment(identifier, expression))
+    Ok(Statement::Assignment {
+        name: identifier,
+        value: expression,
+    })
 }
 
 pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
@@ -103,7 +114,14 @@ pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
             _ => unreachable!(),
         };
 
-        fields.push(field);
+        parser.lexer.expect(TokenKind::Tilde, "expected a tilde")?;
+
+        let explicit_type = typing::parse(parser, BindingPower::None)?;
+
+        fields.push(StructMemberDeclaration {
+            name: field,
+            explicit_type,
+        });
     }
 
     parser
@@ -154,7 +172,10 @@ pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
             _ => unreachable!(),
         };
 
-        variants.push(variant);
+        variants.push(EnumMemberDeclaration {
+            name: variant,
+            value_type: None,
+        });
     }
 
     parser
@@ -207,19 +228,37 @@ pub fn function_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
             _ => unreachable!(),
         };
 
-        parameters.push(parameter);
+        parser.lexer.expect(TokenKind::Tilde, "expected a tilde")?;
+
+        let explicit_type = typing::parse(parser, BindingPower::None)?;
+
+        parameters.push(ParameterDeclaration {
+            name: parameter,
+            explicit_type,
+        });
     }
 
     parser
         .lexer
         .expect(TokenKind::ParenClose, "expected a close parenthesis")?;
 
+    let explicit_return_type = match parser.lexer.peek_expect(TokenKind::Tilde) {
+        None => None,
+        Some(_) => {
+            parser.lexer.next();
+            Some(typing::parse(parser, BindingPower::None)?)
+        }
+    };
+
     let body = expression::parse(parser, BindingPower::None)?;
 
     Ok(Statement::Function {
-        name: identifier,
-        parameters,
+        header: FunctionHeader {
+            name: identifier,
+            parameters,
+        },
         body,
+        explicit_return_type,
     })
 }
 
@@ -291,14 +330,24 @@ pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
                 _ => unreachable!(),
             };
 
-            parameters.push(parameter);
+            parser.lexer.expect(TokenKind::Tilde, "expected a tilde")?;
+
+            let explicit_type = typing::parse(parser, BindingPower::None)?;
+
+            parameters.push(ParameterDeclaration {
+                name: parameter,
+                explicit_type,
+            });
         }
 
         parser
             .lexer
             .expect(TokenKind::ParenClose, "expected a close parenthesis")?;
 
-        functions.push((function, parameters));
+        functions.push(FunctionHeader {
+            name: function,
+            parameters,
+        })
     }
 
     parser
