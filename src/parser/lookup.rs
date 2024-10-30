@@ -117,6 +117,7 @@ impl<'de> Default for Lookup<'de> {
         .add_expression_handler(TokenKind::Identifier, expression::primitive::identifier)
         .add_expression_handler(TokenKind::ParenOpen, group)
         .add_left_expression_handler(TokenKind::If, BindingPower::None, if_)
+        .add_left_expression_handler(TokenKind::ParenOpen, BindingPower::None, expression::call)
         .add_expression_handler(TokenKind::Not, expression::unary::negate)
         .add_expression_handler(TokenKind::Minus, expression::unary::negative)
         .add_expression_handler(TokenKind::CurlyOpen, block)

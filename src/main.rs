@@ -10,22 +10,15 @@ pub mod parser;
 
 fn main() {
     let input = "
-    let x = {1};
-    let a = \"hello\";
-    let b = 123;
-    let b = b if b <= 100 else 100;
+    fn main() {
+        fib(9999);
+    }
 
-    struct Human: name, age;
-    enum Color: red, green, blue, orange;
-
-    fn add(a, b) { a + b }
-    fn sub(a, b) { a - b }
-    fn mul(a, b) { a * b }
-    fn div(a, b) { a / b }
-
-    trait Add: 
-        fn add(a, b);
-    ";
+    fn fib(n ~ number) ~ number {
+        return if n < 2;
+        fib(n - 1) + fib(n - 2)
+    }
+        ";
 
     miette::set_hook(Box::new(|_| {
         Box::new(

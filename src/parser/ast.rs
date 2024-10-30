@@ -52,6 +52,10 @@ pub enum Expression<'de> {
         truthy: Box<Expression<'de>>,
         falsy: Option<Box<Expression<'de>>>,
     },
+    Call {
+        callee: Box<Expression<'de>>,
+        arguments: Vec<Expression<'de>>,
+    },
 }
 
 #[derive(Debug)]
