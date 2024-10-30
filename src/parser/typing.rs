@@ -1,6 +1,5 @@
-use crate::lexer::{TokenKind, TokenValue};
-
 use super::{ast::Type, lookup::BindingPower, Parser};
+use crate::lexer::{TokenKind, TokenValue};
 use miette::Result;
 
 pub fn parse<'de>(parser: &mut Parser<'de>, binding_power: BindingPower) -> Result<Type<'de>> {
@@ -59,6 +58,43 @@ pub fn parse<'de>(parser: &mut Parser<'de>, binding_power: BindingPower) -> Resu
     }
 
     Ok(lhs)
+}
+
+pub fn unit<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::ParenOpen, "expected an opening parenthesis")?;
+    parser
+        .lexer
+        .expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
+
+    Ok(Type::Unit)
+}
+
+pub fn collection<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::SquareOpen, "expected an opening bracket")?;
+    let element = parse(parser, BindingPower::None)?;
+    parser
+        .lexer
+        .expect(TokenKind::SquareClose, "expected a closing bracket")?;
+
+    Ok(Type::Collection(Box::new(element)))
+}
+
+pub fn set<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::CurlyOpen, "expected an opening curly brace")?;
+
+    let element = parse(parser, BindingPower::None)?;
+
+    parser
+        .lexer
+        .expect(TokenKind::CurlyClose, "expected a closing curly brace")?;
+
+    Ok(Type::Set(Box::new(element)))
 }
 
 pub fn identifier<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {

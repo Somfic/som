@@ -121,6 +121,8 @@ pub enum UnaryOperator {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type<'de> {
+    Unit,
     Symbol(Cow<'de, str>),
-    Array(Box<Type<'de>>),
+    Collection(Box<Type<'de>>),
+    Set(Box<Type<'de>>),
 }
