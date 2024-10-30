@@ -8,7 +8,7 @@ pub struct Token<'de> {
     pub span: miette::SourceSpan,
 }
 
-impl<'de> Token<'de> {
+impl Token<'_> {
     pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
         miette::LabeledSpan::at(self.span, text.into())
     }
