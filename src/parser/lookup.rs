@@ -98,7 +98,7 @@ impl<'de> Lookup<'de> {
     // }
 }
 
-impl<'de> Default for Lookup<'de> {
+impl Default for Lookup<'_> {
     fn default() -> Self {
         Lookup {
             statement_lookup: HashMap::new(),
