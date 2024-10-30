@@ -1,5 +1,3 @@
-use crate::lexer::{self, TokenKind, TokenValue};
-
 use super::{
     ast::{
         EnumMemberDeclaration, FunctionHeader, ParameterDeclaration, Statement,
@@ -9,6 +7,7 @@ use super::{
     lookup::BindingPower,
     typing, Parser,
 };
+use crate::lexer::{TokenKind, TokenValue};
 use miette::{Context, Result};
 
 pub fn parse<'de>(parser: &mut Parser<'de>, optional_semicolon: bool) -> Result<Statement<'de>> {
