@@ -200,7 +200,6 @@ impl<'de> Iterator for Lexer<'de> {
                     "dec" => Ok((TokenKind::DecimalType, TokenValue::None)),
                     "str" => Ok((TokenKind::StringType, TokenValue::None)),
                     "char" => Ok((TokenKind::CharacterType, TokenValue::None)),
-                    "()" => Ok((TokenKind::UnitType, TokenValue::None)),
                     ident => Ok((
                         TokenKind::Identifier,
                         TokenValue::Identifier(ident.to_string().into()),
