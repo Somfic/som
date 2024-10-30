@@ -1,23 +1,14 @@
 use lexer::{Lexer, TokenKind};
 use owo_colors::{Style, Styled};
 use parser::Parser;
+use passer::Passer;
 use std::vec;
 
 pub mod lexer;
 pub mod parser;
+pub mod passer;
 
 fn main() {
-    let input = "
-    fn main() {
-        fib(9999);
-    }
-
-    fn fib(n ~ int) ~ int {
-        return if n < 2;
-        fib(n - 1) + fib(n - 20)
-    }
-        ";
-
     miette::set_hook(Box::new(|_| {
         Box::new(
             miette::MietteHandlerOpts::new()
@@ -30,6 +21,17 @@ fn main() {
     }))
     .unwrap();
 
+    let input = "
+    fn main() {
+        fib(9999);
+    }
+
+    fn fib(n ~ int) ~ int {
+        return n if n < 2;
+        fib(n - 1) + fib(n - 20)
+    }
+        ";
+
     let mut parser = Parser::new(input);
     let symbol = match parser.parse() {
         Ok(symbol) => symbol,
@@ -39,7 +41,15 @@ fn main() {
         }
     };
 
-    println!("{:?}", symbol);
+    let typing_pass = passer::typing::TypingPasser::pass(&symbol).unwrap();
+
+    for note in typing_pass.non_critical {
+        println!("{:?}", note.with_source_code(input.to_string()));
+    }
+
+    for note in typing_pass.critical {
+        println!("{:?}", note.with_source_code(input.to_string()));
+    }
 }
 
 struct SomHighlighter {}
@@ -80,8 +90,9 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                         | TokenKind::DecimalType
                         | TokenKind::BooleanType
                         | TokenKind::StringType
-                        | TokenKind::CharacterType
-                        | TokenKind::UnitType => Style::new().fg_rgb::<86, 156, 214>().italic(),
+                        | TokenKind::CharacterType => {
+                            Style::new().fg_rgb::<86, 156, 214>().italic()
+                        }
                         TokenKind::Equal
                         | TokenKind::LessThan
                         | TokenKind::GreaterThan

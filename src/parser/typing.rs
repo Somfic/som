@@ -63,7 +63,11 @@ pub fn parse<'de>(parser: &mut Parser<'de>, binding_power: BindingPower) -> Resu
 pub fn unit<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
     parser
         .lexer
-        .expect(TokenKind::UnitType, "expected an unit type")?;
+        .expect(TokenKind::ParenOpen, "expected an opening parenthesis")?;
+
+    parser
+        .lexer
+        .expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
 
     Ok(Type::Unit)
 }

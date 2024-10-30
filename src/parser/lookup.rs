@@ -196,7 +196,7 @@ impl Default for Lookup<'_> {
         .add_statement_handler(TokenKind::Function, statement::function_)
         .add_statement_handler(TokenKind::Trait, statement::trait_)
         .add_type_handler(TokenKind::Identifier, typing::identifier)
-        .add_type_handler(TokenKind::UnitType, typing::unit)
+        .add_type_handler(TokenKind::ParenOpen, typing::unit)
         .add_type_handler(TokenKind::CharacterType, typing::character)
         .add_type_handler(TokenKind::BooleanType, typing::boolean)
         .add_type_handler(TokenKind::IntegerType, typing::integer)
