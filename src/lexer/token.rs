@@ -165,6 +165,19 @@ pub enum TokenKind {
     Enum,
     /// A trait keyword; `trait`.
     Trait,
+
+    /// The boolean type; `bool`.
+    BooleanType,
+    /// The integer type; `int`.
+    IntegerType,
+    /// The decimal type; `dec`.
+    DecimalType,
+    /// The string type; `str`.
+    StringType,
+    /// The character type; `char`.
+    CharacterType,
+    /// The unit type; `()`.
+    UnitType,
 }
 
 impl Display for TokenKind {
@@ -221,6 +234,12 @@ impl Display for TokenKind {
             TokenKind::And => write!(f, "`&&`"),
             TokenKind::Or => write!(f, "`||`"),
             TokenKind::Trait => write!(f, "`trait`"),
+            TokenKind::BooleanType => write!(f, "a boolean type"),
+            TokenKind::IntegerType => write!(f, "an integer type"),
+            TokenKind::DecimalType => write!(f, "a decimal type"),
+            TokenKind::StringType => write!(f, "a string type"),
+            TokenKind::CharacterType => write!(f, "a character type"),
+            TokenKind::UnitType => write!(f, "a unit type"),
         }
     }
 }

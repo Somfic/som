@@ -195,6 +195,12 @@ impl<'de> Iterator for Lexer<'de> {
                     "struct" => Ok((TokenKind::Struct, TokenValue::None)),
                     "enum" => Ok((TokenKind::Enum, TokenValue::None)),
                     "trait" => Ok((TokenKind::Trait, TokenValue::None)),
+                    "bool" => Ok((TokenKind::BooleanType, TokenValue::None)),
+                    "int" => Ok((TokenKind::IntegerType, TokenValue::None)),
+                    "dec" => Ok((TokenKind::DecimalType, TokenValue::None)),
+                    "str" => Ok((TokenKind::StringType, TokenValue::None)),
+                    "char" => Ok((TokenKind::CharacterType, TokenValue::None)),
+                    "()" => Ok((TokenKind::UnitType, TokenValue::None)),
                     ident => Ok((
                         TokenKind::Identifier,
                         TokenValue::Identifier(ident.to_string().into()),
