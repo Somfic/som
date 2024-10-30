@@ -1,8 +1,7 @@
-use crate::lexer::{Lexer, Token, TokenKind};
+use crate::lexer::Lexer;
 use ast::{Statement, Symbol};
-use lookup::{BindingPower, Lookup};
-use miette::{Context, Error, Result};
-use std::{borrow::Cow, collections::HashMap};
+use lookup::Lookup;
+use miette::Result;
 
 pub mod ast;
 pub mod expression;
@@ -10,7 +9,6 @@ pub mod lookup;
 pub mod statement;
 
 pub struct Parser<'de> {
-    source: &'de str,
     lexer: Lexer<'de>,
     lookup: Lookup<'de>,
 }
@@ -18,7 +16,6 @@ pub struct Parser<'de> {
 impl<'de> Parser<'de> {
     pub fn new(input: &'de str) -> Self {
         Parser {
-            source: input,
             lexer: Lexer::new(input),
             lookup: Lookup::default(),
         }

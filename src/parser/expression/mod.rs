@@ -86,7 +86,7 @@ pub fn call<'de>(
                 .expect(TokenKind::Comma, "expected a comma between arguments")?;
         }
 
-        let argument = parse(parser, BindingPower::None)?;
+        let argument = parse(parser, binding_power.clone())?;
         arguments.push(argument);
     }
 

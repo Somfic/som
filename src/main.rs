@@ -1,9 +1,7 @@
-use std::vec;
-
 use lexer::{Lexer, TokenKind};
-use miette::{highlighters::Highlighter, LabeledSpan};
-use owo_colors::{colors, styles, OwoColorize, Style, Styled};
+use owo_colors::{Style, Styled};
 use parser::Parser;
+use std::vec;
 
 pub mod lexer;
 pub mod parser;
@@ -50,7 +48,7 @@ struct SomHighlighterState {}
 impl miette::highlighters::Highlighter for SomHighlighter {
     fn start_highlighter_state<'h>(
         &'h self,
-        source: &dyn miette::SpanContents<'_>,
+        _source: &dyn miette::SpanContents<'_>,
     ) -> Box<dyn miette::highlighters::HighlighterState + 'h> {
         Box::new(SomHighlighterState {})
     }

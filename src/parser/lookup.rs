@@ -1,11 +1,10 @@
-use crate::lexer::{TokenKind, TokenValue};
-use miette::Result;
-use std::collections::HashMap;
-
 use super::{
-    ast::{BinaryOperator, Expression, Primitive, Statement},
+    ast::{Expression, Primitive, Statement},
     expression, statement, Parser,
 };
+use crate::lexer::TokenKind;
+use miette::Result;
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum BindingPower {
