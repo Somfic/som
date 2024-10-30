@@ -190,7 +190,7 @@ impl<'de> Iterator for Lexer<'de> {
                 let mut number = String::new();
                 number.push(c);
                 while let Some(c) = self.remainder.chars().next() {
-                    if c.is_digit(10) || c == '.' {
+                    if c.is_ascii_digit() || c == '.' {
                         number.push(c);
                         self.remainder = &self.remainder[c.len_utf8()..];
                         self.byte_offset += c.len_utf8();
