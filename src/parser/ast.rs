@@ -10,23 +10,26 @@ pub enum Symbol<'de> {
 pub enum Statement<'de> {
     Block(Vec<Statement<'de>>),
     Expression(Expression<'de>),
-    Assignment(Cow<'de, str>, Expression<'de>),
+    Assignment {
+        name: Cow<'de, str>,
+        value: Expression<'de>,
+    },
     Struct {
         name: Cow<'de, str>,
-        fields: Vec<Cow<'de, str>>,
+        fields: Vec<StructMemberDeclaration<'de>>,
     },
     Enum {
         name: Cow<'de, str>,
-        variants: Vec<Cow<'de, str>>,
+        variants: Vec<EnumMemberDeclaration<'de>>,
     },
     Function {
-        name: Cow<'de, str>,
-        parameters: Vec<Cow<'de, str>>,
+        header: FunctionHeader<'de>,
         body: Expression<'de>,
+        explicit_return_type: Option<Type<'de>>,
     },
     Trait {
         name: Cow<'de, str>,
-        functions: Vec<(Cow<'de, str>, Vec<Cow<'de, str>>)>,
+        functions: Vec<FunctionHeader<'de>>,
     },
 }
 
@@ -56,6 +59,30 @@ pub enum Expression<'de> {
         callee: Box<Expression<'de>>,
         arguments: Vec<Expression<'de>>,
     },
+}
+
+#[derive(Debug)]
+pub struct FunctionHeader<'de> {
+    pub name: Cow<'de, str>,
+    pub parameters: Vec<ParameterDeclaration<'de>>,
+}
+
+#[derive(Debug)]
+pub struct ParameterDeclaration<'de> {
+    pub name: Cow<'de, str>,
+    pub explicit_type: Type<'de>,
+}
+
+#[derive(Debug)]
+pub struct StructMemberDeclaration<'de> {
+    pub name: Cow<'de, str>,
+    pub explicit_type: Type<'de>,
+}
+
+#[derive(Debug)]
+pub struct EnumMemberDeclaration<'de> {
+    pub name: Cow<'de, str>,
+    pub value_type: Option<Type<'de>>,
 }
 
 #[derive(Debug)]
@@ -90,4 +117,10 @@ pub enum BinaryOperator {
 pub enum UnaryOperator {
     Negate,
     Negative,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Type<'de> {
+    Symbol(Cow<'de, str>),
+    Array(Box<Type<'de>>),
 }

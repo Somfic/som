@@ -7,6 +7,7 @@ pub mod ast;
 pub mod expression;
 pub mod lookup;
 pub mod statement;
+pub mod typing;
 
 pub struct Parser<'de> {
     lexer: Lexer<'de>,

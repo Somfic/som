@@ -86,6 +86,22 @@ impl<'de> Lexer<'de> {
         self.peeked.as_ref()
     }
 
+    pub fn peek_expect(
+        &mut self,
+        expected: TokenKind,
+    ) -> Option<&Result<Token<'de>, miette::Error>> {
+        match self.peek() {
+            Some(Ok(token::Token { kind, .. })) => {
+                if *kind == expected {
+                    self.peeked.as_ref()
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    }
+
     fn parse_compound_operator(
         &mut self,
         single: TokenKind,

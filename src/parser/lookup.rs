@@ -1,6 +1,6 @@
 use super::{
-    ast::{Expression, Primitive, Statement},
-    expression, statement, Parser,
+    ast::{Expression, Primitive, Statement, Type},
+    expression, statement, typing, Parser,
 };
 use crate::lexer::TokenKind;
 use miette::Result;
@@ -21,9 +21,8 @@ pub enum BindingPower {
     Primary = 10,
 }
 
-// pub type TypeHandler<'de> = fn(&mut Parser<'de>) -> Result<(Type, usize), Error<'de>>;
-// pub type LeftTypeHandler<'de> =
-//     fn(&'de Parser<'de>, usize, Type, &BindingPower) -> Result<(Type, usize), Error<'de>>;
+pub type TypeHandler<'de> = fn(&mut Parser<'de>) -> Result<Type<'de>>;
+pub type LeftTypeHandler<'de> = fn(&mut Parser<'de>, Type, BindingPower) -> Result<Type<'de>>;
 pub type StatementHandler<'de> = fn(&mut Parser<'de>) -> Result<Statement<'de>>;
 pub type ExpressionHandler<'de> = fn(&mut Parser<'de>) -> Result<Expression<'de>>;
 pub type LeftExpressionHandler<'de> =
@@ -33,8 +32,8 @@ pub struct Lookup<'de> {
     pub statement_lookup: HashMap<TokenKind, StatementHandler<'de>>,
     pub expression_lookup: HashMap<TokenKind, ExpressionHandler<'de>>,
     pub left_expression_lookup: HashMap<TokenKind, LeftExpressionHandler<'de>>,
-    // pub type_lookup: HashMap<TokenKind, TypeHandler<'de>>,
-    // pub left_type_lookup: HashMap<TokenKind, LeftTypeHandler<'de>>,
+    pub type_lookup: HashMap<TokenKind, TypeHandler<'de>>,
+    pub left_type_lookup: HashMap<TokenKind, LeftTypeHandler<'de>>,
     pub binding_power_lookup: HashMap<TokenKind, BindingPower>,
 }
 
@@ -80,22 +79,28 @@ impl<'de> Lookup<'de> {
         self
     }
 
-    // pub(crate) fn add_type_handler(&mut self, token: TokenType, handler: TypeHandler<'de>) {
-    //     if self.type_lookup.contains_key(&token) {
-    //         panic!("Token already has a type handler");
-    //     }
+    pub(crate) fn add_type_handler(mut self, token: TokenKind, handler: TypeHandler<'de>) -> Self {
+        if self.type_lookup.contains_key(&token) {
+            panic!("Token already has a type handler");
+        }
 
-    //     self.type_lookup.insert(token, handler);
-    // }
+        self.type_lookup.insert(token, handler);
+        self
+    }
 
-    // #[allow(dead_code)]
-    // pub(crate) fn add_left_type_handler(&mut self, token: TokenType, handler: LeftTypeHandler<'de>) {
-    //     if self.left_type_lookup.contains_key(&token) {
-    //         panic!("Token already has a left type handler");
-    //     }
+    #[allow(dead_code)]
+    pub(crate) fn add_left_type_handler(
+        mut self,
+        token: TokenKind,
+        handler: LeftTypeHandler<'de>,
+    ) -> Self {
+        if self.left_type_lookup.contains_key(&token) {
+            panic!("Token already has a left type handler");
+        }
 
-    //     self.left_type_lookup.insert(token, handler);
-    // }
+        self.left_type_lookup.insert(token, handler);
+        self
+    }
 }
 
 impl Default for Lookup<'_> {
@@ -105,8 +110,8 @@ impl Default for Lookup<'_> {
             expression_lookup: HashMap::new(),
             left_expression_lookup: HashMap::new(),
             binding_power_lookup: HashMap::new(),
-            // type_lookup: HashMap::new(),
-            // left_type_lookup: HashMap::new(),
+            type_lookup: HashMap::new(),
+            left_type_lookup: HashMap::new(),
         }
         .add_expression_handler(TokenKind::Integer, expression::primitive::integer)
         .add_expression_handler(TokenKind::Decimal, expression::primitive::decimal)
@@ -190,6 +195,7 @@ impl Default for Lookup<'_> {
         .add_statement_handler(TokenKind::Enum, statement::enum_)
         .add_statement_handler(TokenKind::Function, statement::function_)
         .add_statement_handler(TokenKind::Trait, statement::trait_)
+        .add_type_handler(TokenKind::Identifier, typing::identifier)
     }
 }
 
