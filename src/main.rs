@@ -77,7 +77,8 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                         | TokenKind::Let
                         | TokenKind::Struct
                         | TokenKind::Enum
-                        | TokenKind::Function | TokenKind::Trait => Style::new().fg_rgb::<197, 120, 221>(),
+                        | TokenKind::Function
+                        | TokenKind::Trait => Style::new().fg_rgb::<197, 120, 221>(),
                         TokenKind::Identifier => Style::new().fg_rgb::<224, 108, 117>(),
                         TokenKind::String => Style::new().fg_rgb::<152, 195, 121>().italic(),
                         TokenKind::Integer | TokenKind::Decimal => {
