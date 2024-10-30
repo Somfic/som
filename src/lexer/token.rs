@@ -163,6 +163,8 @@ pub enum TokenKind {
     Struct,
     /// A enum keyword; `enum`.
     Enum,
+    /// A trait keyword; `trait`.
+    Trait,
 }
 
 impl Display for TokenKind {
@@ -216,8 +218,9 @@ impl Display for TokenKind {
             TokenKind::Question => write!(f, "`?`"),
             TokenKind::Pipe => write!(f, "`|`"),
             TokenKind::Caret => write!(f, "`^`"),
-            TokenKind::And => todo!("`&&`"),
-            TokenKind::Or => todo!("`||`"),
+            TokenKind::And => write!(f, "`&&`"),
+            TokenKind::Or => write!(f, "`||`"),
+            TokenKind::Trait => write!(f, "`trait`"),
         }
     }
 }

@@ -9,7 +9,23 @@ pub mod lexer;
 pub mod parser;
 
 fn main() {
-    let input = "let value = a == { let b = 1 if true else 2 };";
+    let input = "
+    let x = {1};
+    let a = \"hello\";
+    let b = 123;
+    let b = b if b <= 100 else 100;
+
+    struct Human: name, age;
+    enum Color: red, green, blue, orange;
+
+    fn add(a, b) { a + b }
+    fn sub(a, b) { a - b }
+    fn mul(a, b) { a * b }
+    fn div(a, b) { a / b }
+
+    trait Add: 
+        fn add(a, b);
+    ";
 
     miette::set_hook(Box::new(|_| {
         Box::new(
@@ -56,32 +72,26 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                 let style: Style = match &token {
                     Ok(token) => match &token.kind {
                         // Comment / quote -> 92, 99, 112 + italic
-                        TokenKind::If | TokenKind::Else | TokenKind::Let => {
-                            Style::new().fg_rgb::<197, 120, 221>()
-                        }
+                        TokenKind::If
+                        | TokenKind::Else
+                        | TokenKind::Let
+                        | TokenKind::Struct
+                        | TokenKind::Enum
+                        | TokenKind::Function | TokenKind::Trait => Style::new().fg_rgb::<197, 120, 221>(),
                         TokenKind::Identifier => Style::new().fg_rgb::<224, 108, 117>(),
                         TokenKind::String => Style::new().fg_rgb::<152, 195, 121>().italic(),
                         TokenKind::Integer | TokenKind::Decimal => {
                             Style::new().fg_rgb::<209, 154, 102>()
                         }
                         TokenKind::Boolean => Style::new().fg_rgb::<86, 156, 214>(),
-                        TokenKind::CurlyOpen
-                        | TokenKind::CurlyClose
-                        | TokenKind::ParenOpen
-                        | TokenKind::ParenClose
-                        | TokenKind::SquareOpen
-                        | TokenKind::SquareClose
-                        | TokenKind::Equal
+
+                        TokenKind::Equal
                         | TokenKind::LessThan
                         | TokenKind::GreaterThan
                         | TokenKind::LessThanOrEqual
                         | TokenKind::GreaterThanOrEqual
                         | TokenKind::Equality
                         | TokenKind::Inequality
-                        | TokenKind::Plus
-                        | TokenKind::Minus
-                        | TokenKind::Star
-                        | TokenKind::Slash
                         | TokenKind::Percent
                         | TokenKind::Not
                         | TokenKind::And
