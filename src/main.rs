@@ -12,9 +12,9 @@ fn main() {
         fib(9999);
     }
 
-    fn fib(n ~ number) ~ [number] {
+    fn fib(n ~ int) ~ int {
         return if n < 2;
-        fib(n - 1) + fib(n - 2)
+        fib(n - 1) + fib(n - 20)
     }
         ";
 
@@ -76,7 +76,12 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                             Style::new().fg_rgb::<209, 154, 102>()
                         }
                         TokenKind::Boolean => Style::new().fg_rgb::<86, 156, 214>(),
-
+                        TokenKind::IntegerType
+                        | TokenKind::DecimalType
+                        | TokenKind::BooleanType
+                        | TokenKind::StringType
+                        | TokenKind::CharacterType
+                        | TokenKind::UnitType => Style::new().fg_rgb::<86, 156, 214>().italic(),
                         TokenKind::Equal
                         | TokenKind::LessThan
                         | TokenKind::GreaterThan

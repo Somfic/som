@@ -63,12 +63,49 @@ pub fn parse<'de>(parser: &mut Parser<'de>, binding_power: BindingPower) -> Resu
 pub fn unit<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
     parser
         .lexer
-        .expect(TokenKind::ParenOpen, "expected an opening parenthesis")?;
-    parser
-        .lexer
-        .expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
+        .expect(TokenKind::UnitType, "expected an unit type")?;
 
     Ok(Type::Unit)
+}
+
+pub fn boolean<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::BooleanType, "expected a boolean type")?;
+
+    Ok(Type::Boolean)
+}
+
+pub fn integer<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::IntegerType, "expected an integer type")?;
+
+    Ok(Type::Integer)
+}
+
+pub fn decimal<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::DecimalType, "expected a decimal type")?;
+
+    Ok(Type::Decimal)
+}
+
+pub fn string<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::StringType, "expected a string type")?;
+
+    Ok(Type::String)
+}
+
+pub fn character<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::CharacterType, "expected a character type")?;
+
+    Ok(Type::Character)
 }
 
 pub fn collection<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
