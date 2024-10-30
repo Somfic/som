@@ -11,6 +11,23 @@ pub enum Statement<'de> {
     Block(Vec<Statement<'de>>),
     Expression(Expression<'de>),
     Assignment(Cow<'de, str>, Expression<'de>),
+    Struct {
+        name: Cow<'de, str>,
+        fields: Vec<Cow<'de, str>>,
+    },
+    Enum {
+        name: Cow<'de, str>,
+        variants: Vec<Cow<'de, str>>,
+    },
+    Function {
+        name: Cow<'de, str>,
+        parameters: Vec<Cow<'de, str>>,
+        body: Expression<'de>,
+    },
+    Trait {
+        name: Cow<'de, str>,
+        functions: Vec<(Cow<'de, str>, Vec<Cow<'de, str>>)>,
+    },
 }
 
 #[derive(Debug)]

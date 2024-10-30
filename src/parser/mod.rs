@@ -28,7 +28,7 @@ impl<'de> Parser<'de> {
         let mut statements = vec![];
 
         while self.lexer.peek().is_some() {
-            statements.push(statement::parse(self, false).wrap_err("while parsing main block")?);
+            statements.push(statement::parse(self, false)?);
         }
 
         Ok(Symbol::Statement(Statement::Block(statements)))
