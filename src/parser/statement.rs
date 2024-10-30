@@ -48,7 +48,7 @@ pub fn let_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         .expect(TokenKind::Let, "expected a let keyword")?;
     let identifier = parser
         .lexer
-        .expect(TokenKind::Identifier, "expected an identifier")?;
+        .expect(TokenKind::Identifier, "expected a variable name")?;
     let identifier = match identifier.value {
         TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
@@ -72,7 +72,7 @@ pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 
     let identifier = parser
         .lexer
-        .expect(TokenKind::Identifier, "expected an identifier")?;
+        .expect(TokenKind::Identifier, "expected a struct name")?;
 
     let identifier = match identifier.value {
         TokenValue::Identifier(identifier) => identifier,
@@ -89,12 +89,14 @@ pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
             .map_or(false, |token| token.kind != TokenKind::Semicolon)
     }) {
         if !fields.is_empty() {
-            parser.lexer.expect(TokenKind::Comma, "expected a comma")?;
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between fields")?;
         }
 
         let field = parser
             .lexer
-            .expect(TokenKind::Identifier, "expected an identifier")?;
+            .expect(TokenKind::Identifier, "expected a field name")?;
 
         let field = match field.value {
             TokenValue::Identifier(field) => field,
@@ -121,7 +123,7 @@ pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 
     let identifier = parser
         .lexer
-        .expect(TokenKind::Identifier, "expected an identifier")?;
+        .expect(TokenKind::Identifier, "expected an enum name")?;
 
     let identifier = match identifier.value {
         TokenValue::Identifier(identifier) => identifier,
@@ -138,12 +140,14 @@ pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
             .map_or(false, |token| token.kind != TokenKind::Semicolon)
     }) {
         if !variants.is_empty() {
-            parser.lexer.expect(TokenKind::Comma, "expected a comma")?;
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between enum members")?;
         }
 
         let variant = parser
             .lexer
-            .expect(TokenKind::Identifier, "expected an identifier")?;
+            .expect(TokenKind::Identifier, "expected an enum member name")?;
 
         let variant = match variant.value {
             TokenValue::Identifier(variant) => variant,
@@ -166,11 +170,11 @@ pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 pub fn function_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
     parser
         .lexer
-        .expect(TokenKind::Function, "expected a fn keyword")?;
+        .expect(TokenKind::Function, "expected a function keyword")?;
 
     let identifier = parser
         .lexer
-        .expect(TokenKind::Identifier, "expected an identifier")?;
+        .expect(TokenKind::Identifier, "expected function name")?;
 
     let identifier = match identifier.value {
         TokenValue::Identifier(identifier) => identifier,
@@ -189,12 +193,14 @@ pub fn function_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
             .map_or(false, |token| token.kind != TokenKind::ParenClose)
     }) {
         if !parameters.is_empty() {
-            parser.lexer.expect(TokenKind::Comma, "expected a comma")?;
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between parameters")?;
         }
 
         let parameter = parser
             .lexer
-            .expect(TokenKind::Identifier, "expected an identifier")?;
+            .expect(TokenKind::Identifier, "expected a parameter name")?;
 
         let parameter = match parameter.value {
             TokenValue::Identifier(parameter) => parameter,
@@ -224,7 +230,7 @@ pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 
     let identifier = parser
         .lexer
-        .expect(TokenKind::Identifier, "expected an identifier")?;
+        .expect(TokenKind::Identifier, "expected a trait name")?;
 
     let identifier = match identifier.value {
         TokenValue::Identifier(identifier) => identifier,
@@ -241,16 +247,18 @@ pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
             .map_or(false, |token| token.kind != TokenKind::Semicolon)
     }) {
         if !functions.is_empty() {
-            parser.lexer.expect(TokenKind::Comma, "expected a comma")?;
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between functions")?;
         }
 
         parser
             .lexer
-            .expect(TokenKind::Function, "expected a fn keyword")?;
+            .expect(TokenKind::Function, "expected a function keyword")?;
 
         let function = parser
             .lexer
-            .expect(TokenKind::Identifier, "expected an identifier")?;
+            .expect(TokenKind::Identifier, "expected a function name")?;
 
         let function = match function.value {
             TokenValue::Identifier(function) => function,
@@ -269,12 +277,14 @@ pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
                 .map_or(false, |token| token.kind != TokenKind::ParenClose)
         }) {
             if !parameters.is_empty() {
-                parser.lexer.expect(TokenKind::Comma, "expected a comma")?;
+                parser
+                    .lexer
+                    .expect(TokenKind::Comma, "expected a comma in between arguments")?;
             }
 
             let parameter = parser
                 .lexer
-                .expect(TokenKind::Identifier, "expected an identifier")?;
+                .expect(TokenKind::Identifier, "expected an argument name")?;
 
             let parameter = match parameter.value {
                 TokenValue::Identifier(parameter) => parameter,
@@ -283,6 +293,10 @@ pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 
             parameters.push(parameter);
         }
+
+        parser
+            .lexer
+            .expect(TokenKind::ParenClose, "expected a close parenthesis")?;
 
         functions.push((function, parameters));
     }

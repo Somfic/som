@@ -1,7 +1,7 @@
 use miette::Result;
 
 use super::{ast::Expression, Parser};
-use crate::parser::lookup::BindingPower;
+use crate::{lexer::TokenKind, parser::lookup::BindingPower};
 
 pub mod binary;
 pub mod primitive;
@@ -66,4 +66,36 @@ pub fn parse<'de>(
     }
 
     Ok(lhs)
+}
+
+pub fn call<'de>(
+    parser: &mut Parser<'de>,
+    lhs: Expression<'de>,
+    binding_power: BindingPower,
+) -> Result<Expression<'de>> {
+    let mut arguments = Vec::new();
+
+    while parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind != TokenKind::ParenClose)
+    }) {
+        if !arguments.is_empty() {
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between arguments")?;
+        }
+
+        let argument = parse(parser, BindingPower::None)?;
+        arguments.push(argument);
+    }
+
+    parser
+        .lexer
+        .expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
+
+    Ok(Expression::Call {
+        callee: Box::new(lhs),
+        arguments,
+    })
 }
