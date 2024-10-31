@@ -65,10 +65,6 @@ pub fn let_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         .expect(TokenKind::Equal, "expected an equal sign")?;
     let expression = expression::parse(parser, BindingPower::None)?;
 
-    parser
-        .lexer
-        .expect(TokenKind::Semicolon, "expected a semicolon")?;
-
     Ok(Statement::Assignment {
         name: identifier,
         value: expression,

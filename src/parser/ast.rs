@@ -1,12 +1,12 @@
 use std::borrow::Cow;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Symbol<'de> {
     Statement(Statement<'de>),
     Expression(Expression<'de>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Statement<'de> {
     Block(Vec<Statement<'de>>),
     Expression(Expression<'de>),
@@ -39,7 +39,7 @@ pub enum Statement<'de> {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expression<'de> {
     Primitive(Primitive<'de>),
     Binary {
@@ -67,31 +67,31 @@ pub enum Expression<'de> {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionHeader<'de> {
     pub name: Cow<'de, str>,
     pub parameters: Vec<ParameterDeclaration<'de>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParameterDeclaration<'de> {
     pub name: Cow<'de, str>,
     pub explicit_type: Type<'de>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StructMemberDeclaration<'de> {
     pub name: Cow<'de, str>,
     pub explicit_type: Type<'de>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct EnumMemberDeclaration<'de> {
     pub name: Cow<'de, str>,
     pub value_type: Option<Type<'de>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Primitive<'de> {
     Integer(i64),
     Decimal(f64),
@@ -102,7 +102,7 @@ pub enum Primitive<'de> {
     Unit,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BinaryOperator {
     Add,
     Subtract,
@@ -119,7 +119,7 @@ pub enum BinaryOperator {
     Or,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum UnaryOperator {
     Negate,
     Negative,
