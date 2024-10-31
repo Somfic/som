@@ -5,7 +5,7 @@ use super::{
     },
     expression,
     lookup::BindingPower,
-    typing, Parser,
+    statement, typing, Parser,
 };
 use crate::lexer::{TokenKind, TokenValue};
 use miette::{Context, Result};
@@ -356,5 +356,42 @@ pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
     Ok(Statement::Trait {
         name: identifier,
         functions,
+    })
+}
+
+pub fn return_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::Return, "expected a return keyword")?;
+
+    let expression = expression::parse(parser, BindingPower::None)?;
+
+    Ok(Statement::Return(expression))
+}
+
+pub fn if_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::If, "expected an if keyword")?;
+
+    let condition = expression::parse(parser, BindingPower::None)?;
+
+    let truthy = statement::parse(parser, true)?;
+
+    let falsy = if parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind == TokenKind::Else)
+    }) {
+        parser.lexer.next();
+        Some(statement::parse(parser, true)?)
+    } else {
+        None
+    };
+
+    Ok(Statement::Conditional {
+        condition: Box::new(condition),
+        truthy: Box::new(truthy),
+        falsy: falsy.map(Box::new),
     })
 }

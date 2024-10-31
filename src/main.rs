@@ -1,7 +1,10 @@
 use lexer::{Lexer, TokenKind};
 use owo_colors::{Style, Styled};
-use parser::Parser;
-use passer::Passer;
+use parser::{
+    ast::{Expression, Statement},
+    Parser,
+};
+use passer::{typing::Typing, Passer};
 use std::vec;
 
 pub mod lexer;
@@ -21,15 +24,7 @@ fn main() {
     }))
     .unwrap();
 
-    let input = "
-    fn main() {
-        fib(9999);
-    }
-
-    fn fib(n ~ int) ~ int {
-        return n if n < 2;
-        fib(n - 1) + fib(n - 20)
-    }
+    let input = "true if true else 12 if true else 'h';
         ";
 
     let mut parser = Parser::new(input);
@@ -41,14 +36,39 @@ fn main() {
         }
     };
 
-    let typing_pass = passer::typing::TypingPasser::pass(&symbol).unwrap();
-
-    for note in typing_pass.non_critical {
-        println!("{:?}", note.with_source_code(input.to_string()));
+    match symbol {
+        parser::ast::Symbol::Statement(statement) => print_statement(statement),
+        parser::ast::Symbol::Expression(expression) => print_expression(expression),
     }
 
-    for note in typing_pass.critical {
-        println!("{:?}", note.with_source_code(input.to_string()));
+    // let typing_pass = passer::typing::TypingPasser::pass(&symbol).unwrap();
+
+    // for note in typing_pass.non_critical {
+    //     println!("{:?}", note.with_source_code(input.to_string()));
+    // }
+
+    // for note in typing_pass.critical {
+    //     println!("{:?}", note.with_source_code(input.to_string()));
+    // }
+}
+
+fn print_expression(expression: Expression) {
+    println!(
+        "{:?} of type ({:?})",
+        expression,
+        expression.possible_types()
+    );
+}
+
+fn print_statement(statement: Statement) {
+    match statement {
+        Statement::Block(statements) => {
+            for statement in statements {
+                print_statement(statement);
+            }
+        }
+        Statement::Expression(expression) => print_expression(expression),
+        _ => println!("{:?}", statement),
     }
 }
 
@@ -79,7 +99,8 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                         | TokenKind::Struct
                         | TokenKind::Enum
                         | TokenKind::Function
-                        | TokenKind::Trait => Style::new().fg_rgb::<197, 120, 221>(),
+                        | TokenKind::Trait
+                        | TokenKind::Return => Style::new().fg_rgb::<197, 120, 221>(),
                         TokenKind::Identifier => Style::new().fg_rgb::<224, 108, 117>(),
                         TokenKind::String => Style::new().fg_rgb::<152, 195, 121>().italic(),
                         TokenKind::Integer | TokenKind::Decimal => {

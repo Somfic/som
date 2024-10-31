@@ -31,6 +31,12 @@ pub enum Statement<'de> {
         name: Cow<'de, str>,
         functions: Vec<FunctionHeader<'de>>,
     },
+    Return(Expression<'de>),
+    Conditional {
+        condition: Box<Expression<'de>>,
+        truthy: Box<Statement<'de>>,
+        falsy: Option<Box<Statement<'de>>>,
+    },
 }
 
 #[derive(Debug)]
@@ -50,10 +56,10 @@ pub enum Expression<'de> {
         statements: Vec<Statement<'de>>,
         return_value: Box<Expression<'de>>,
     },
-    If {
+    Conditional {
         condition: Box<Expression<'de>>,
         truthy: Box<Expression<'de>>,
-        falsy: Option<Box<Expression<'de>>>,
+        falsy: Box<Expression<'de>>,
     },
     Call {
         callee: Box<Expression<'de>>,
