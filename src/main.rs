@@ -24,7 +24,14 @@ fn main() {
     }))
     .unwrap();
 
-    let input = "true if true else 12 if true else 'h';
+    let input = " fn main() {
+        fib(9999);
+    }
+
+    fn fib(n ~ int) ~ int {
+        if n < 2 return n;
+        fib(n - 1) + fib(n - 20)
+    }
         ";
 
     let mut parser = Parser::new(input);
@@ -67,8 +74,9 @@ fn print_statement(statement: Statement) {
                 print_statement(statement);
             }
         }
+        Statement::Return(expression) => print_expression(expression),
         Statement::Expression(expression) => print_expression(expression),
-        _ => println!("{:?}", statement),
+        _ => {}
     }
 }
 
