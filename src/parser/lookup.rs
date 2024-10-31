@@ -120,7 +120,7 @@ impl Default for Lookup<'_> {
         .add_expression_handler(TokenKind::String, expression::primitive::string)
         .add_expression_handler(TokenKind::Identifier, expression::primitive::identifier)
         .add_expression_handler(TokenKind::ParenOpen, group)
-        .add_left_expression_handler(TokenKind::If, BindingPower::None, if_)
+        .add_left_expression_handler(TokenKind::If, BindingPower::None, conditional)
         .add_left_expression_handler(TokenKind::ParenOpen, BindingPower::None, expression::call)
         .add_expression_handler(TokenKind::Not, expression::unary::negate)
         .add_expression_handler(TokenKind::Minus, expression::unary::negative)
@@ -204,31 +204,28 @@ impl Default for Lookup<'_> {
         .add_type_handler(TokenKind::StringType, typing::string)
         .add_type_handler(TokenKind::SquareOpen, typing::collection)
         .add_type_handler(TokenKind::CurlyOpen, typing::set)
+        .add_statement_handler(TokenKind::Return, statement::return_)
+        .add_statement_handler(TokenKind::If, statement::if_)
     }
 }
 
-fn if_<'de>(
+fn conditional<'de>(
     parser: &mut Parser<'de>,
     lhs: Expression<'de>,
     binding_power: BindingPower,
 ) -> Result<Expression<'de>> {
-    let condition = expression::parse(parser, binding_power)?;
+    let condition = expression::parse(parser, binding_power.clone())?;
 
-    let falsy = if parser.lexer.peek().map_or(false, |token| {
-        token
-            .as_ref()
-            .map_or(false, |token| token.kind == TokenKind::Else)
-    }) {
-        parser.lexer.next();
-        Some(expression::parse(parser, BindingPower::None)?)
-    } else {
-        None
-    };
+    parser
+        .lexer
+        .expect(TokenKind::Else, "expected an else branch")?;
 
-    Ok(Expression::If {
+    let falsy = expression::parse(parser, binding_power)?;
+
+    Ok(Expression::Conditional {
         condition: Box::new(condition),
         truthy: Box::new(lhs),
-        falsy: falsy.map(Box::new),
+        falsy: Box::new(falsy),
     })
 }
 
