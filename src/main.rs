@@ -24,11 +24,14 @@ fn main() {
     }))
     .unwrap();
 
-    let input = " fn main() {
+    let input = "
+    fn main() {
         fib(9999);
     }
 
     fn fib(n ~ int) ~ int {
+        let n = 12;
+
         if n < 2 return n;
         fib(n - 1) + fib(n - 20)
     }
@@ -43,7 +46,7 @@ fn main() {
         }
     };
 
-    match symbol {
+    match &symbol {
         parser::ast::Symbol::Statement(statement) => print_statement(statement),
         parser::ast::Symbol::Expression(expression) => print_expression(expression),
     }
@@ -59,25 +62,41 @@ fn main() {
     // }
 }
 
-fn print_expression(expression: Expression) {
-    println!(
-        "{:?} of type ({:?})",
-        expression,
-        expression.possible_types()
-    );
+fn print_expression(expression: &Expression) {
+    match &expression {
+        Expression::Block {
+            statements,
+            return_value,
+        } => {
+            for statement in statements {
+                print_statement(statement);
+            }
+            print_expression(return_value);
+        }
+        Expression::Group(expression) => print_expression(expression),
+        e => println!("{:?} typeof {:?}", e, e.possible_types()),
+    }
 }
 
-fn print_statement(statement: Statement) {
+fn print_statement(statement: &Statement) {
     match statement {
         Statement::Block(statements) => {
             for statement in statements {
                 print_statement(statement);
             }
         }
+        Statement::Function {
+            header,
+            body,
+            explicit_return_type,
+        } => {
+            print_expression(body);
+        }
         Statement::Return(expression) => print_expression(expression),
         Statement::Expression(expression) => print_expression(expression),
+        Statement::Assignment { name, value } => print_expression(value),
         _ => {}
-    }
+    };
 }
 
 struct SomHighlighter {}
