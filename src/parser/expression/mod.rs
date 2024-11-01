@@ -1,6 +1,9 @@
 use miette::Result;
 
-use super::{ast::Expression, Parser};
+use super::{
+    ast::{Expression, ExpressionValue},
+    Parser,
+};
 use crate::{lexer::TokenKind, parser::lookup::BindingPower};
 
 pub mod binary;
@@ -94,8 +97,11 @@ pub fn call<'de>(
         .lexer
         .expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
 
-    Ok(Expression::Call {
-        callee: Box::new(lhs),
-        arguments,
-    })
+    Ok(Expression::at(
+        lhs.span,
+        ExpressionValue::Call {
+            callee: Box::new(lhs.clone()),
+            arguments,
+        },
+    ))
 }

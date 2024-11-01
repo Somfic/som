@@ -1,9 +1,9 @@
 use super::{
-    ast::{Expression, Primitive, Statement, Type},
+    ast::{Expression, ExpressionValue, Primitive, Statement, Type},
     expression, statement, typing, Parser,
 };
-use crate::lexer::TokenKind;
-use miette::Result;
+use crate::lexer::{TokenKind, TokenValue};
+use miette::{Result, SourceSpan};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -216,33 +216,39 @@ fn conditional<'de>(
 ) -> Result<Expression<'de>> {
     let condition = expression::parse(parser, binding_power.clone())?;
 
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::Else, "expected an else branch")?;
 
     let falsy = expression::parse(parser, binding_power)?;
 
-    Ok(Expression::Conditional {
-        condition: Box::new(condition),
-        truthy: Box::new(lhs),
-        falsy: Box::new(falsy),
-    })
+    Ok(Expression::at_multiple(
+        vec![condition.span, token.span, falsy.span],
+        ExpressionValue::Conditional {
+            condition: Box::new(condition),
+            truthy: Box::new(lhs),
+            falsy: Box::new(falsy),
+        },
+    ))
 }
 
 fn group<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
-    parser
+    let open = parser
         .lexer
         .expect(TokenKind::ParenOpen, "expected a left parenthesis")?;
     let expression = expression::parse(parser, BindingPower::None)?;
-    parser
+    let close = parser
         .lexer
         .expect(TokenKind::ParenClose, "expected a right parenthesis")?;
 
-    Ok(Expression::Group(Box::new(expression)))
+    Ok(Expression::at_multiple(
+        vec![open.span, expression.span, close.span],
+        ExpressionValue::Group(Box::new(expression)),
+    ))
 }
 
 fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
-    parser
+    let open = parser
         .lexer
         .expect(TokenKind::CurlyOpen, "expected a left curly brace")?;
 
@@ -286,20 +292,32 @@ fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
                 Some(Statement::Expression(expression)) => expression,
                 _ => unreachable!(),
             },
-            _ => Expression::Primitive(Primitive::Unit),
+            _ => Expression::at(
+                SourceSpan::new(0.into(), 0),
+                ExpressionValue::Primitive(Primitive::Unit),
+            ),
         }
     } else {
-        Expression::Primitive(Primitive::Unit)
+        Expression::at(
+            SourceSpan::new(0.into(), 0),
+            ExpressionValue::Primitive(Primitive::Unit),
+        )
     };
 
-    let expression = Expression::Block {
-        statements,
-        return_value: Box::new(return_value),
-    };
+    let expression = Expression::at(
+        return_value.span,
+        ExpressionValue::Block {
+            statements,
+            return_value: Box::new(return_value),
+        },
+    );
 
-    parser
+    let close = parser
         .lexer
         .expect(TokenKind::CurlyClose, "expected a right curly brace")?;
 
-    Ok(Expression::Group(Box::new(expression)))
+    Ok(Expression::at_multiple(
+        vec![open.span, close.span],
+        ExpressionValue::Group(Box::new(expression)),
+    ))
 }

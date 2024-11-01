@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 
+use miette::SourceSpan;
+
 #[derive(Debug, Clone)]
 pub enum Symbol<'de> {
     Statement(Statement<'de>),
@@ -40,7 +42,47 @@ pub enum Statement<'de> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Expression<'de> {
+pub struct Expression<'de> {
+    pub value: ExpressionValue<'de>,
+    pub span: miette::SourceSpan,
+}
+
+impl<'de> Expression<'de> {
+    pub fn at(span: miette::SourceSpan, value: ExpressionValue<'de>) -> Self {
+        Self { value, span }
+    }
+
+    pub fn at_multiple(
+        spans: Vec<impl Into<miette::SourceSpan>>,
+        value: ExpressionValue<'de>,
+    ) -> Expression<'de> {
+        let spans = spans.into_iter().map(|s| s.into()).collect::<Vec<_>>();
+
+        let start = spans
+            .iter()
+            .min_by_key(|s| s.offset())
+            .map(|s| s.offset())
+            .unwrap_or(0);
+
+        // Go through all the spans and find the one with the highest end offset
+        let end = spans
+            .iter()
+            .max_by_key(|s| s.offset() + s.len())
+            .map(|s| s.offset() + s.len())
+            .unwrap_or(0);
+
+        let span = miette::SourceSpan::new(start.into(), end - start);
+
+        Expression::at(span, value)
+    }
+
+    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
+        miette::LabeledSpan::at(self.span, text.into())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ExpressionValue<'de> {
     Primitive(Primitive<'de>),
     Binary {
         operator: BinaryOperator,
