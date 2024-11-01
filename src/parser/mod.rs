@@ -1,5 +1,5 @@
 use crate::lexer::Lexer;
-use ast::{Statement, Symbol};
+use ast::{Spannable, Statement, StatementValue, Symbol};
 use lookup::Lookup;
 use miette::Result;
 
@@ -29,6 +29,9 @@ impl<'de> Parser<'de> {
             statements.push(statement::parse(self, false)?);
         }
 
-        Ok(Symbol::Statement(Statement::Block(statements)))
+        Ok(Symbol::Statement(Statement::at_multiple(
+            statements.iter().map(|s| s.span).collect(),
+            StatementValue::Block(statements),
+        )))
     }
 }
