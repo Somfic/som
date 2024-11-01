@@ -1,13 +1,13 @@
 use super::{
     ast::{
-        EnumMemberDeclaration, FunctionHeader, ParameterDeclaration, Statement,
-        StructMemberDeclaration,
+        EnumMemberDeclaration, FunctionHeader, ParameterDeclaration, Spannable, Statement,
+        StatementValue, StructMemberDeclaration,
     },
     expression,
     lookup::BindingPower,
     statement, typing, Parser,
 };
-use crate::lexer::{TokenKind, TokenValue};
+use crate::lexer::{Token, TokenKind, TokenValue};
 use miette::{Context, Result};
 
 pub fn parse<'de>(parser: &mut Parser<'de>, optional_semicolon: bool) -> Result<Statement<'de>> {
@@ -33,16 +33,21 @@ pub fn parse<'de>(parser: &mut Parser<'de>, optional_semicolon: bool) -> Result<
                 .wrap_err("while parsing a statement")?;
 
             if !optional_semicolon {
-                parser
+                let token = parser
                     .lexer
                     .expect(
                         TokenKind::Semicolon,
                         "expected a semicolon at the end of an expression",
                     )
                     .wrap_err(format!("while parsing for {}", token_kind))?;
-            }
 
-            Statement::Expression(expression)
+                Statement::at_multiple(
+                    vec![expression.span, token.span],
+                    StatementValue::Expression(expression),
+                )
+            } else {
+                Statement::at(expression.span, StatementValue::Expression(expression))
+            }
         }
     };
 
@@ -50,13 +55,13 @@ pub fn parse<'de>(parser: &mut Parser<'de>, optional_semicolon: bool) -> Result<
 }
 
 pub fn let_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::Let, "expected a let keyword")?;
     let identifier = parser
         .lexer
         .expect(TokenKind::Identifier, "expected a variable name")?;
-    let identifier = match identifier.value {
+    let name = match identifier.value {
         TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
     };
@@ -65,14 +70,17 @@ pub fn let_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         .expect(TokenKind::Equal, "expected an equal sign")?;
     let expression = expression::parse(parser, BindingPower::None)?;
 
-    Ok(Statement::Assignment {
-        name: identifier,
-        value: expression,
-    })
+    Ok(Statement::at_multiple(
+        vec![token.span, identifier.span],
+        StatementValue::Assignment {
+            name,
+            value: expression,
+        },
+    ))
 }
 
 pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::Struct, "expected a struct keyword")?;
 
@@ -80,7 +88,7 @@ pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         .lexer
         .expect(TokenKind::Identifier, "expected a struct name")?;
 
-    let identifier = match identifier.value {
+    let name = match identifier.value {
         TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
     };
@@ -123,14 +131,14 @@ pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         .lexer
         .expect(TokenKind::Semicolon, "expected a semicolon")?;
 
-    Ok(Statement::Struct {
-        name: identifier,
-        fields,
-    })
+    Ok(Statement::at_multiple(
+        vec![token.span, identifier.span],
+        StatementValue::Struct { name, fields },
+    ))
 }
 
 pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::Enum, "expected an enum keyword")?;
 
@@ -138,7 +146,7 @@ pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         .lexer
         .expect(TokenKind::Identifier, "expected an enum name")?;
 
-    let identifier = match identifier.value {
+    let name = match identifier.value {
         TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
     };
@@ -177,14 +185,14 @@ pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         .lexer
         .expect(TokenKind::Semicolon, "expected a semicolon")?;
 
-    Ok(Statement::Enum {
-        name: identifier,
-        variants,
-    })
+    Ok(Statement::at_multiple(
+        vec![token.span, identifier.span],
+        StatementValue::Enum { name, variants },
+    ))
 }
 
 pub fn function_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::Function, "expected a function keyword")?;
 
@@ -192,7 +200,7 @@ pub fn function_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         .lexer
         .expect(TokenKind::Identifier, "expected function name")?;
 
-    let identifier = match identifier.value {
+    let name = match identifier.value {
         TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
     };
@@ -247,13 +255,13 @@ pub fn function_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 
     let body = expression::parse(parser, BindingPower::None)?;
 
-    Ok(Statement::Function {
+    Ok(Statement::at_multiple(vec![], value)::Function {
         header: FunctionHeader {
-            name: identifier,
+            name,
             parameters,
+            explicit_return_type,
         },
         body,
-        explicit_return_type,
     })
 }
 

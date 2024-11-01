@@ -1,6 +1,6 @@
 use super::{Passer, PasserResult};
 use crate::parser::{
-    ast::{Expression, ExpressionValue, Statement, Symbol, Type},
+    ast::{Expression, ExpressionValue, Statement, StatementValue, Symbol, Type},
     expression,
 };
 use miette::{Error, LabeledSpan, Report, Result};
@@ -14,20 +14,20 @@ impl Passer for TypingPasser {
 }
 
 
-pub fn walk_statement<'de>(statement: &Statement<'de>, statement_fn: fn(&Statement<'de>, expression_fn: fn(&Expression<'de>)) {
+pub fn walk_statement<'de>(statement: &Statement<'de>, statement_fn: fn(&Statement<'de>), expression_fn: fn(&Expression<'de>)) {
     match statement {
         Statement::Block(statements) => statements.iter().for_each(|statement| {
-            walk_statement(statement, statement_fn);
+            walk_statement(statement, statement_fn, expression_fn);
         }),
-        Statement::Expression(expression) => walk_expression(expression),
+        Statement::Expression(expression) => walk_expression(statement_fn, expression_fn),
         Statement::Assignment { name, value } => walk_expression(expression, expression_fn),
-        Statement::Struct { name, fields } => todo!(),
-        Statement::Enum { name, variants } => todo!(),
+        Statement::Struct { name, fields } => {},
+        Statement::Enum { name, variants } => {},
         Statement::Function {
             header,
             body,
             explicit_return_type,
-        } => todo!(),
+        } => ,
         Statement::Trait { name, functions } => todo!(),
         Statement::Return(expression) => todo!(),
         Statement::Conditional {
@@ -38,8 +38,8 @@ pub fn walk_statement<'de>(statement: &Statement<'de>, statement_fn: fn(&Stateme
     }
 }
 
-pub fn walk_expression<'de, T>(expression: Expression<'de>, statement_fn: fn(&Statement<'de>, expression_fn: fn(&Expression<'de>)) {
-
+pub fn walk_expression<'de, T>(expression: Expression<'de>, statement_fn: fn(&Statement<'de>, expression_fn: fn(&Expression<'de>))) {
+    todo!()
 }
 
 pub trait Typing {
@@ -91,6 +91,43 @@ impl Typing for Expression<'_> {
                 callee,
                 arguments: _,
             } => callee.possible_types(),
+        }
+    }
+}
+
+impl Typing for Statement<'_> {
+    fn possible_types(&self) -> Vec<(Type, miette::SourceSpan)> {
+        match &self.value {
+            StatementValue::Block(statements) => vec![],
+            StatementValue::Expression(expression) => expression.possible_types(),
+            StatementValue::Assignment { name: _, value } => value.possible_types(),
+            StatementValue::Struct { name, fields } => vec![(Type::Symbol(name.clone()), self.span)],
+            StatementValue::Enum { name, variants } => vec![(Type::Symbol(name.clone()), self.span)],
+            StatementValue::Function {
+                header: _,
+                body,
+               
+            } => {
+                let mut types = body.possible_types();
+                if let Some(explicit_return_type) = explicit_return_type {
+                    types.push((explicit_return_type,));
+                }
+                types
+            }
+            StatementValue::Trait { name, functions } => vec![(Type::Symbol(name.clone()), self.span)],
+            StatementValue::Return(expression) => expression.possible_types(),
+            StatementValue::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => {
+                let mut types = condition.possible_types();
+                types.extend(truthy.possible_types());
+                if let Some(falsy) = falsy {
+                    types.extend(falsy.possible_types());
+                }
+                types
+            }
         }
     }
 }

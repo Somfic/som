@@ -1,5 +1,5 @@
 use super::{
-    ast::{Expression, ExpressionValue, Primitive, Statement, Type},
+    ast::{Expression, ExpressionValue, Primitive, Spannable, Statement, StatementValue, Type},
     expression, statement, typing, Parser,
 };
 use crate::lexer::{TokenKind, TokenValue};
@@ -287,9 +287,9 @@ fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
     }
 
     let return_value = if last_is_return {
-        match statements.last() {
-            Some(Statement::Expression(_)) => match statements.pop() {
-                Some(Statement::Expression(expression)) => expression,
+        match statements.last().map(|s| &s.value) {
+            Some(StatementValue::Expression(_)) => match statements.pop().map(|s| s.value) {
+                Some(StatementValue::Expression(expression)) => expression,
                 _ => unreachable!(),
             },
             _ => Expression::at(

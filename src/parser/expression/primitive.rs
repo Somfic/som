@@ -1,7 +1,7 @@
 use crate::{
     lexer::{TokenKind, TokenValue},
     parser::{
-        ast::{Expression, ExpressionValue, Primitive},
+        ast::{Expression, ExpressionValue, Primitive, Spannable},
         Parser,
     },
 };

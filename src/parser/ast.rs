@@ -9,7 +9,13 @@ pub enum Symbol<'de> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Statement<'de> {
+pub struct Statement<'de> {
+    pub value: StatementValue<'de>,
+    pub span: miette::SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+pub enum StatementValue<'de> {
     Block(Vec<Statement<'de>>),
     Expression(Expression<'de>),
     Assignment {
@@ -27,7 +33,6 @@ pub enum Statement<'de> {
     Function {
         header: FunctionHeader<'de>,
         body: Expression<'de>,
-        explicit_return_type: Option<Type<'de>>,
     },
     Trait {
         name: Cow<'de, str>,
@@ -45,40 +50,6 @@ pub enum Statement<'de> {
 pub struct Expression<'de> {
     pub value: ExpressionValue<'de>,
     pub span: miette::SourceSpan,
-}
-
-impl<'de> Expression<'de> {
-    pub fn at(span: miette::SourceSpan, value: ExpressionValue<'de>) -> Self {
-        Self { value, span }
-    }
-
-    pub fn at_multiple(
-        spans: Vec<impl Into<miette::SourceSpan>>,
-        value: ExpressionValue<'de>,
-    ) -> Expression<'de> {
-        let spans = spans.into_iter().map(|s| s.into()).collect::<Vec<_>>();
-
-        let start = spans
-            .iter()
-            .min_by_key(|s| s.offset())
-            .map(|s| s.offset())
-            .unwrap_or(0);
-
-        // Go through all the spans and find the one with the highest end offset
-        let end = spans
-            .iter()
-            .max_by_key(|s| s.offset() + s.len())
-            .map(|s| s.offset() + s.len())
-            .unwrap_or(0);
-
-        let span = miette::SourceSpan::new(start.into(), end - start);
-
-        Expression::at(span, value)
-    }
-
-    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
-        miette::LabeledSpan::at(self.span, text.into())
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -113,6 +84,7 @@ pub enum ExpressionValue<'de> {
 pub struct FunctionHeader<'de> {
     pub name: Cow<'de, str>,
     pub parameters: Vec<ParameterDeclaration<'de>>,
+    pub explicit_return_type: Option<Type<'de>>,
 }
 
 #[derive(Debug, Clone)]
@@ -168,7 +140,13 @@ pub enum UnaryOperator {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Type<'de> {
+pub struct Type<'de> {
+    pub value: TypeValue<'de>,
+    pub span: SourceSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeValue<'de> {
     Unit,
     Boolean,
     Integer,
@@ -178,4 +156,54 @@ pub enum Type<'de> {
     Symbol(Cow<'de, str>),
     Collection(Box<Type<'de>>),
     Set(Box<Type<'de>>),
+}
+
+pub trait Spannable<'de>: Sized {
+    type Value;
+
+    fn at(span: miette::SourceSpan, value: Self::Value) -> Self;
+
+    fn at_multiple(spans: Vec<impl Into<miette::SourceSpan>>, value: Self::Value) -> Self {
+        let spans = spans.into_iter().map(|s| s.into()).collect::<Vec<_>>();
+
+        let start = spans
+            .iter()
+            .min_by_key(|s| s.offset())
+            .map(|s| s.offset())
+            .unwrap_or(0);
+
+        let end = spans
+            .iter()
+            .max_by_key(|s| s.offset() + s.len())
+            .map(|s| s.offset() + s.len())
+            .unwrap_or(0);
+
+        let span = miette::SourceSpan::new(start.into(), end - start);
+
+        Self::at(span, value)
+    }
+}
+
+impl<'de> Spannable<'de> for Expression<'de> {
+    type Value = ExpressionValue<'de>;
+
+    fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
+        Self { value, span }
+    }
+}
+
+impl<'de> Spannable<'de> for Statement<'de> {
+    type Value = StatementValue<'de>;
+
+    fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
+        Self { value, span }
+    }
+}
+
+impl<'de> Spannable<'de> for Type<'de> {
+    type Value = TypeValue<'de>;
+
+    fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
+        Self { value, span }
+    }
 }
