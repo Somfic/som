@@ -1,6 +1,6 @@
 use super::{Passer, PasserResult};
 use crate::parser::{
-    ast::{Expression, ExpressionValue, Statement, StatementValue, Symbol, Type},
+    ast::{Expression, ExpressionValue, Spannable, Statement, StatementValue, Symbol, Type, TypeValue},
     expression,
 };
 use miette::{Error, LabeledSpan, Report, Result};
@@ -50,7 +50,7 @@ impl Typing for Expression<'_> {
     fn possible_types(&self) -> Vec<(Type, miette::SourceSpan)> {
         match &self.value {
             ExpressionValue::Primitive(primitive) => vec![match primitive {
-                crate::parser::ast::Primitive::Integer(_) => (Type::Integer, self.span),
+                crate::parser::ast::Primitive::Integer(_) => Type::at(self.span, TypeValue::Integer),
                 crate::parser::ast::Primitive::Decimal(_) => (Type::Decimal, self.span),
                 crate::parser::ast::Primitive::String(_) => (Type::String, self.span),
                 crate::parser::ast::Primitive::Identifier(value) => {
