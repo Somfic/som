@@ -1,5 +1,5 @@
 use crate::parser::{
-    ast::{BinaryOperator, Expression},
+    ast::{BinaryOperator, Expression, ExpressionValue},
     lookup::BindingPower,
     Parser,
 };
@@ -13,11 +13,14 @@ pub fn parse_binary_expression<'de>(
 ) -> Result<Expression<'de>> {
     let rhs = crate::parser::expression::parse(parser, bp)?;
 
-    Ok(Expression::Binary {
-        operator,
-        left: Box::new(lhs),
-        right: Box::new(rhs),
-    })
+    Ok(Expression::at_multiple(
+        vec![rhs.span, lhs.span],
+        ExpressionValue::Binary {
+            operator,
+            left: Box::new(lhs),
+            right: Box::new(rhs),
+        },
+    ))
 }
 
 pub fn addition<'de>(

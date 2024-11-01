@@ -1,7 +1,7 @@
 use crate::{
     lexer::TokenKind,
     parser::{
-        ast::{Expression, UnaryOperator},
+        ast::{Expression, ExpressionValue, UnaryOperator},
         lookup::BindingPower,
         Parser,
     },
@@ -9,25 +9,31 @@ use crate::{
 use miette::Result;
 
 pub fn negate<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::Not, "expected a negate operator")?;
     let expression = crate::parser::expression::parse(parser, BindingPower::None)?;
 
-    Ok(Expression::Unary {
-        operator: UnaryOperator::Negate,
-        operand: Box::new(expression),
-    })
+    Ok(Expression::at_multiple(
+        vec![token.span, expression.span],
+        ExpressionValue::Unary {
+            operator: UnaryOperator::Negate,
+            operand: Box::new(expression),
+        },
+    ))
 }
 
 pub fn negative<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::Minus, "expected a negative operator")?;
     let expression = crate::parser::expression::parse(parser, BindingPower::None)?;
 
-    Ok(Expression::Unary {
-        operator: UnaryOperator::Negative,
-        operand: Box::new(expression),
-    })
+    Ok(Expression::at_multiple(
+        vec![token.span, expression.span],
+        ExpressionValue::Unary {
+            operator: UnaryOperator::Negative,
+            operand: Box::new(expression),
+        },
+    ))
 }

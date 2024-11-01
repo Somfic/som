@@ -1,7 +1,7 @@
 use lexer::{Lexer, TokenKind};
 use owo_colors::{Style, Styled};
 use parser::{
-    ast::{Expression, Statement},
+    ast::{Expression, ExpressionValue, Statement},
     Parser,
 };
 use passer::{typing::Typing, Passer};
@@ -10,6 +10,19 @@ use std::vec;
 pub mod lexer;
 pub mod parser;
 pub mod passer;
+
+const INPUT: &str = "
+fn main() {
+    fib(9999);
+}
+
+fn fib(n ~ int) ~ int {
+    let n = 12;
+
+    if n < 2 return n;
+    fib(n - 1) + fib(n - 20)
+}
+";
 
 fn main() {
     miette::set_hook(Box::new(|_| {
@@ -24,79 +37,24 @@ fn main() {
     }))
     .unwrap();
 
-    let input = "
-    fn main() {
-        fib(9999);
-    }
-
-    fn fib(n ~ int) ~ int {
-        let n = 12;
-
-        if n < 2 return n;
-        fib(n - 1) + fib(n - 20)
-    }
-        ";
-
-    let mut parser = Parser::new(input);
+    let mut parser = Parser::new(INPUT);
     let symbol = match parser.parse() {
         Ok(symbol) => symbol,
         Err(err) => {
-            println!("{:?}", err.with_source_code(input.to_string()));
+            println!("{:?}", err.with_source_code(INPUT));
             return;
         }
     };
 
-    match &symbol {
-        parser::ast::Symbol::Statement(statement) => print_statement(statement),
-        parser::ast::Symbol::Expression(expression) => print_expression(expression),
+    let typing_pass = passer::typing::TypingPasser::pass(&symbol).unwrap();
+
+    for note in typing_pass.non_critical {
+        println!("{:?}", note.with_source_code(INPUT));
     }
 
-    // let typing_pass = passer::typing::TypingPasser::pass(&symbol).unwrap();
-
-    // for note in typing_pass.non_critical {
-    //     println!("{:?}", note.with_source_code(input.to_string()));
-    // }
-
-    // for note in typing_pass.critical {
-    //     println!("{:?}", note.with_source_code(input.to_string()));
-    // }
-}
-
-fn print_expression(expression: &Expression) {
-    match &expression {
-        Expression::Block {
-            statements,
-            return_value,
-        } => {
-            for statement in statements {
-                print_statement(statement);
-            }
-            print_expression(return_value);
-        }
-        Expression::Group(expression) => print_expression(expression),
-        e => println!("{:?} typeof {:?}", e, e.possible_types()),
+    for note in typing_pass.critical {
+        println!("{:?}", note.with_source_code(INPUT));
     }
-}
-
-fn print_statement(statement: &Statement) {
-    match statement {
-        Statement::Block(statements) => {
-            for statement in statements {
-                print_statement(statement);
-            }
-        }
-        Statement::Function {
-            header,
-            body,
-            explicit_return_type,
-        } => {
-            print_expression(body);
-        }
-        Statement::Return(expression) => print_expression(expression),
-        Statement::Expression(expression) => print_expression(expression),
-        Statement::Assignment { name, value } => print_expression(value),
-        _ => {}
-    };
 }
 
 struct SomHighlighter {}

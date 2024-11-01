@@ -1,7 +1,7 @@
 use crate::{
     lexer::{TokenKind, TokenValue},
     parser::{
-        ast::{Expression, Primitive},
+        ast::{Expression, ExpressionValue, Primitive},
         Parser,
     },
 };
@@ -17,7 +17,10 @@ pub fn integer<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
         _ => unreachable!(),
     };
 
-    Ok(Expression::Primitive(Primitive::Integer(value)))
+    Ok(Expression::at(
+        token.span,
+        ExpressionValue::Primitive(Primitive::Integer(value)),
+    ))
 }
 
 pub fn decimal<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
@@ -30,7 +33,10 @@ pub fn decimal<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
         _ => unreachable!(),
     };
 
-    Ok(Expression::Primitive(Primitive::Decimal(value)))
+    Ok(Expression::at(
+        token.span,
+        ExpressionValue::Primitive(Primitive::Decimal(value)),
+    ))
 }
 
 pub fn boolean<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
@@ -43,7 +49,10 @@ pub fn boolean<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
         _ => unreachable!(),
     };
 
-    Ok(Expression::Primitive(Primitive::Boolean(value)))
+    Ok(Expression::at(
+        token.span,
+        ExpressionValue::Primitive(Primitive::Boolean(value)),
+    ))
 }
 
 pub fn character<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
@@ -56,7 +65,10 @@ pub fn character<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
         _ => unreachable!(),
     };
 
-    Ok(Expression::Primitive(Primitive::Character(value)))
+    Ok(Expression::at(
+        token.span,
+        ExpressionValue::Primitive(Primitive::Character(value)),
+    ))
 }
 
 pub fn string<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
@@ -69,7 +81,10 @@ pub fn string<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
         _ => unreachable!(),
     };
 
-    Ok(Expression::Primitive(Primitive::String(value)))
+    Ok(Expression::at(
+        token.span,
+        ExpressionValue::Primitive(Primitive::String(value)),
+    ))
 }
 
 pub fn identifier<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
@@ -82,5 +97,8 @@ pub fn identifier<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
         _ => unreachable!(),
     };
 
-    Ok(Expression::Primitive(Primitive::Identifier(value)))
+    Ok(Expression::at(
+        token.span,
+        ExpressionValue::Primitive(Primitive::Identifier(value)),
+    ))
 }
