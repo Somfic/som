@@ -12,16 +12,7 @@ pub mod parser;
 pub mod passer;
 
 const INPUT: &str = "
-fn main() {
-    fib(9999);
-}
-
-fn fib(n ~ int) ~ int {
-    let n = 12;
-
-    if n < 2 return n;
-    fib(n - 1) + fib(n - 20)
-}
+let a = 1 + 1.1 - true * 'c' / \"hello\"
 ";
 
 fn main() {
@@ -87,7 +78,9 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                         | TokenKind::Trait
                         | TokenKind::Return => Style::new().fg_rgb::<197, 120, 221>(),
                         TokenKind::Identifier => Style::new().fg_rgb::<224, 108, 117>(),
-                        TokenKind::String => Style::new().fg_rgb::<152, 195, 121>().italic(),
+                        TokenKind::String | TokenKind::Character => {
+                            Style::new().fg_rgb::<152, 195, 121>().italic()
+                        }
                         TokenKind::Integer | TokenKind::Decimal => {
                             Style::new().fg_rgb::<209, 154, 102>()
                         }

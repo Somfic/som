@@ -1,6 +1,10 @@
+use core::net;
+
 use super::{Passer, PasserResult};
 use crate::parser::{
-    ast::{Expression, ExpressionValue, Spannable, Statement, StatementValue, Symbol, Type, TypeValue},
+    ast::{
+        Expression, ExpressionValue, Spannable, Statement, StatementValue, Symbol, Type, TypeValue,
+    },
     expression,
 };
 use miette::{Error, LabeledSpan, Report, Result};
@@ -9,56 +13,202 @@ pub struct TypingPasser;
 
 impl Passer for TypingPasser {
     fn pass(ast: &Symbol<'_>) -> Result<PasserResult> {
-       todo!()
+        fn check_expression(expression: &Expression<'_>) -> Result<PasserResult> {
+            let mut critical = vec![];
+
+            let types = expression.possible_types();
+
+            // Get only distinct types, by comparing the `TypeValue` enum
+            let types = types.into_iter().fold(vec![], |mut acc, ty| {
+                if !acc.iter().any(|t: &Type<'_>| t.value == ty.value) {
+                    acc.push(ty);
+                }
+                acc
+            });
+
+            if types.is_empty() || types.len() == 1 {
+                return Ok(PasserResult::default());
+            }
+
+            let labels = types
+                .iter()
+                .map(|ty| LabeledSpan::at(ty.span, format!("{}", ty)))
+                .collect::<Vec<_>>();
+
+            critical.push(miette::miette! {
+                labels = labels,
+                help = "expression has multiple possible types",
+                "{:?} has multiple possible types", expression.value
+            });
+
+            Ok(PasserResult {
+                critical,
+                non_critical: vec![],
+            })
+        }
+
+        fn check_statement(statement: &Statement<'_>) -> Result<PasserResult> {
+            let mut critical = vec![];
+
+            let types = statement.possible_types();
+
+            if types.is_empty() || types.len() == 1 {
+                return Ok(PasserResult::default());
+            }
+
+            let labels = types
+                .iter()
+                .map(|ty| LabeledSpan::at(ty.span, format!("{}", ty)))
+                .collect::<Vec<_>>();
+
+            critical.push(miette::miette! {
+                labels = labels,
+                help = "statement has multiple possible types",
+                "{:?} has multiple possible types", statement.value
+            });
+
+            Ok(PasserResult {
+                critical,
+                non_critical: vec![],
+            })
+        }
+
+        walk(ast, check_statement, check_expression)
     }
 }
 
+pub fn walk<'de>(
+    symbol: &Symbol<'de>,
+    statement_fn: fn(&Statement<'de>) -> Result<PasserResult>,
+    expression_fn: fn(&Expression<'de>) -> Result<PasserResult>,
+) -> Result<PasserResult> {
+    match symbol {
+        Symbol::Statement(statement) => walk_statement(statement, statement_fn, expression_fn),
+        Symbol::Expression(expression) => walk_expression(expression, statement_fn, expression_fn),
+    }
+}
 
-pub fn walk_statement<'de>(statement: &Statement<'de>, statement_fn: fn(&Statement<'de>), expression_fn: fn(&Expression<'de>)) {
-    match statement {
-        Statement::Block(statements) => statements.iter().for_each(|statement| {
-            walk_statement(statement, statement_fn, expression_fn);
-        }),
-        Statement::Expression(expression) => walk_expression(statement_fn, expression_fn),
-        Statement::Assignment { name, value } => walk_expression(expression, expression_fn),
-        Statement::Struct { name, fields } => {},
-        Statement::Enum { name, variants } => {},
-        Statement::Function {
-            header,
-            body,
-            explicit_return_type,
-        } => ,
-        Statement::Trait { name, functions } => todo!(),
-        Statement::Return(expression) => todo!(),
-        Statement::Conditional {
+pub fn walk_statement<'de>(
+    statement: &Statement<'de>,
+    statement_fn: fn(&Statement<'de>) -> Result<PasserResult>,
+    expression_fn: fn(&Expression<'de>) -> Result<PasserResult>,
+) -> Result<PasserResult> {
+    let mut result = statement_fn(statement)?;
+
+    match &statement.value {
+        StatementValue::Block(statements) => {
+            for statement in statements {
+                result = result.combine(walk_statement(statement, statement_fn, expression_fn)?);
+            }
+        }
+        StatementValue::Expression(expression) => {
+            result = result.combine(walk_expression(expression, statement_fn, expression_fn)?);
+        }
+        StatementValue::Assignment { name, value } => {
+            result = result.combine(walk_expression(value, statement_fn, expression_fn)?);
+        }
+        StatementValue::Struct { name, fields } => {}
+        StatementValue::Enum { name, variants } => {}
+        StatementValue::Function { header, body } => {
+            result = result.combine(walk_expression(body, statement_fn, expression_fn)?);
+        }
+        StatementValue::Trait { name, functions } => {}
+        StatementValue::Return(expression) => {
+            result = result.combine(walk_expression(expression, statement_fn, expression_fn)?);
+        }
+        StatementValue::Conditional {
             condition,
             truthy,
             falsy,
-        } => todo!(),
+        } => {
+            result = result.combine(walk_expression(condition, statement_fn, expression_fn)?);
+            result = result.combine(walk_statement(truthy, statement_fn, expression_fn)?);
+            if let Some(falsy) = falsy {
+                result = result.combine(walk_statement(falsy, statement_fn, expression_fn)?);
+            }
+        }
     }
+
+    Ok(result)
 }
 
-pub fn walk_expression<'de, T>(expression: Expression<'de>, statement_fn: fn(&Statement<'de>, expression_fn: fn(&Expression<'de>))) {
-    todo!()
+pub fn walk_expression<'de>(
+    expression: &Expression<'de>,
+    statement_fn: fn(&Statement<'de>) -> Result<PasserResult>,
+    expression_fn: fn(&Expression<'de>) -> Result<PasserResult>,
+) -> Result<PasserResult> {
+    let mut result = expression_fn(expression)?;
+
+    match &expression.value {
+        ExpressionValue::Binary {
+            operator,
+            left,
+            right,
+        } => {
+            result = result.combine(walk_expression(left, statement_fn, expression_fn)?);
+            result = result.combine(walk_expression(right, statement_fn, expression_fn)?);
+        }
+        ExpressionValue::Unary { operator, operand } => {
+            result = result.combine(walk_expression(operand, statement_fn, expression_fn)?);
+        }
+        ExpressionValue::Group(expression) => {
+            result = result.combine(walk_expression(expression, statement_fn, expression_fn)?);
+        }
+        ExpressionValue::Block {
+            statements,
+            return_value,
+        } => {
+            for statement in statements {
+                result = result.combine(walk_statement(statement, statement_fn, expression_fn)?);
+            }
+            result = result.combine(walk_expression(return_value, statement_fn, expression_fn)?);
+        }
+        ExpressionValue::Conditional {
+            condition,
+            truthy,
+            falsy,
+        } => {
+            result = result.combine(walk_expression(condition, statement_fn, expression_fn)?);
+            result = result.combine(walk_expression(truthy, statement_fn, expression_fn)?);
+            result = result.combine(walk_expression(falsy, statement_fn, expression_fn)?);
+        }
+        ExpressionValue::Call { callee, arguments } => {
+            result = result.combine(walk_expression(callee, statement_fn, expression_fn)?);
+            for argument in arguments {
+                result = result.combine(walk_expression(argument, statement_fn, expression_fn)?);
+            }
+        }
+        ExpressionValue::Primitive(_) => {}
+    }
+
+    Ok(result)
 }
 
-pub trait Typing {
-    fn possible_types(&self) -> Vec<(Type, miette::SourceSpan)>;
+pub trait Typing<'de> {
+    fn possible_types(&self) -> Vec<Type<'de>>;
 }
 
-impl Typing for Expression<'_> {
-    fn possible_types(&self) -> Vec<(Type, miette::SourceSpan)> {
+impl<'de> Typing<'de> for Expression<'de> {
+    fn possible_types(&self) -> Vec<Type<'de>> {
         match &self.value {
             ExpressionValue::Primitive(primitive) => vec![match primitive {
-                crate::parser::ast::Primitive::Integer(_) => Type::at(self.span, TypeValue::Integer),
-                crate::parser::ast::Primitive::Decimal(_) => (Type::Decimal, self.span),
-                crate::parser::ast::Primitive::String(_) => (Type::String, self.span),
-                crate::parser::ast::Primitive::Identifier(value) => {
-                    (Type::Symbol(value.clone()), self.span)
+                crate::parser::ast::Primitive::Integer(_) => {
+                    Type::at(self.span, TypeValue::Integer)
                 }
-                crate::parser::ast::Primitive::Character(_) => (Type::Character, self.span),
-                crate::parser::ast::Primitive::Boolean(_) => (Type::Boolean, self.span),
-                crate::parser::ast::Primitive::Unit => (Type::Unit, self.span),
+                crate::parser::ast::Primitive::Decimal(_) => {
+                    Type::at(self.span, TypeValue::Decimal)
+                }
+                crate::parser::ast::Primitive::String(_) => Type::at(self.span, TypeValue::String),
+                crate::parser::ast::Primitive::Identifier(value) => {
+                    Type::at(self.span, TypeValue::Symbol(value.clone()))
+                }
+                crate::parser::ast::Primitive::Character(_) => {
+                    Type::at(self.span, TypeValue::Character)
+                }
+                crate::parser::ast::Primitive::Boolean(_) => {
+                    Type::at(self.span, TypeValue::Boolean)
+                }
+                crate::parser::ast::Primitive::Unit => Type::at(self.span, TypeValue::Unit),
             }],
             ExpressionValue::Binary {
                 operator: _,
@@ -95,34 +245,35 @@ impl Typing for Expression<'_> {
     }
 }
 
-impl Typing for Statement<'_> {
-    fn possible_types(&self) -> Vec<(Type, miette::SourceSpan)> {
+impl<'de> Typing<'de> for Statement<'de> {
+    fn possible_types(&self) -> Vec<Type<'de>> {
         match &self.value {
             StatementValue::Block(statements) => vec![],
             StatementValue::Expression(expression) => expression.possible_types(),
             StatementValue::Assignment { name: _, value } => value.possible_types(),
-            StatementValue::Struct { name, fields } => vec![(Type::Symbol(name.clone()), self.span)],
-            StatementValue::Enum { name, variants } => vec![(Type::Symbol(name.clone()), self.span)],
-            StatementValue::Function {
-                header: _,
-                body,
-               
-            } => {
+            StatementValue::Struct { name, fields } => {
+                vec![Type::at(self.span, TypeValue::Symbol(name.clone()))]
+            }
+            StatementValue::Enum { name, variants } => {
+                vec![Type::at(self.span, TypeValue::Symbol(name.clone()))]
+            }
+            StatementValue::Function { header, body } => {
                 let mut types = body.possible_types();
-                if let Some(explicit_return_type) = explicit_return_type {
-                    types.push((explicit_return_type,));
+                if let Some(explicit_return_type) = &header.explicit_return_type {
+                    types.push(explicit_return_type.clone());
                 }
                 types
             }
-            StatementValue::Trait { name, functions } => vec![(Type::Symbol(name.clone()), self.span)],
+            StatementValue::Trait { name, functions } => {
+                vec![Type::at(self.span, TypeValue::Symbol(name.clone()))]
+            }
             StatementValue::Return(expression) => expression.possible_types(),
             StatementValue::Conditional {
                 condition,
                 truthy,
                 falsy,
             } => {
-                let mut types = condition.possible_types();
-                types.extend(truthy.possible_types());
+                let mut types = truthy.possible_types();
                 if let Some(falsy) = falsy {
                     types.extend(falsy.possible_types());
                 }

@@ -1,4 +1,8 @@
-use super::{ast::Type, lookup::BindingPower, Parser};
+use super::{
+    ast::{Spannable, Type, TypeValue},
+    lookup::BindingPower,
+    Parser,
+};
 use crate::lexer::{TokenKind, TokenValue};
 use miette::Result;
 
@@ -61,81 +65,90 @@ pub fn parse<'de>(parser: &mut Parser<'de>, binding_power: BindingPower) -> Resu
 }
 
 pub fn unit<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
-    parser
+    let open = parser
         .lexer
         .expect(TokenKind::ParenOpen, "expected an opening parenthesis")?;
 
-    parser
+    let close = parser
         .lexer
         .expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
 
-    Ok(Type::Unit)
+    Ok(Type::at_multiple(
+        vec![open.span, close.span],
+        TypeValue::Unit,
+    ))
 }
 
 pub fn boolean<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::BooleanType, "expected a boolean type")?;
 
-    Ok(Type::Boolean)
+    Ok(Type::at(token.span, TypeValue::Boolean))
 }
 
 pub fn integer<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::IntegerType, "expected an integer type")?;
 
-    Ok(Type::Integer)
+    Ok(Type::at(token.span, TypeValue::Integer))
 }
 
 pub fn decimal<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::DecimalType, "expected a decimal type")?;
 
-    Ok(Type::Decimal)
+    Ok(Type::at(token.span, TypeValue::Decimal))
 }
 
 pub fn string<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::StringType, "expected a string type")?;
 
-    Ok(Type::String)
+    Ok(Type::at(token.span, TypeValue::String))
 }
 
 pub fn character<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
-    parser
+    let token = parser
         .lexer
         .expect(TokenKind::CharacterType, "expected a character type")?;
 
-    Ok(Type::Character)
+    Ok(Type::at(token.span, TypeValue::Character))
 }
 
 pub fn collection<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
-    parser
+    let open = parser
         .lexer
         .expect(TokenKind::SquareOpen, "expected an opening bracket")?;
     let element = parse(parser, BindingPower::None)?;
-    parser
+    let close = parser
         .lexer
         .expect(TokenKind::SquareClose, "expected a closing bracket")?;
 
-    Ok(Type::Collection(Box::new(element)))
+    Ok(Type::at_multiple(
+        vec![open.span, element.span, close.span],
+        TypeValue::Collection(Box::new(element)),
+    ))
 }
 
 pub fn set<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
-    parser
+    let open = parser
         .lexer
         .expect(TokenKind::CurlyOpen, "expected an opening curly brace")?;
 
     let element = parse(parser, BindingPower::None)?;
 
-    parser
+    let close = parser
         .lexer
         .expect(TokenKind::CurlyClose, "expected a closing curly brace")?;
 
-    Ok(Type::Set(Box::new(element)))
+    Ok(Type::at_multiple(
+        vec![open.span, element.span, close.span],
+        TypeValue::Set(Box::new(element)),
+    ))
 }
 
 pub fn identifier<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
@@ -143,10 +156,10 @@ pub fn identifier<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
         .lexer
         .expect(TokenKind::Identifier, "expected an identifier")?;
 
-    let identifier = match token.value {
+    let name = match token.value {
         TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
     };
 
-    Ok(Type::Symbol(identifier))
+    Ok(Type::at(token.span, TypeValue::Symbol(name)))
 }

@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Display};
 
 use miette::SourceSpan;
 
@@ -156,6 +156,22 @@ pub enum TypeValue<'de> {
     Symbol(Cow<'de, str>),
     Collection(Box<Type<'de>>),
     Set(Box<Type<'de>>),
+}
+
+impl Display for Type<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.value {
+            TypeValue::Unit => write!(f, "an unit"),
+            TypeValue::Boolean => write!(f, "a boolean"),
+            TypeValue::Integer => write!(f, "an integer"),
+            TypeValue::Decimal => write!(f, "a decimal"),
+            TypeValue::Character => write!(f, "a character"),
+            TypeValue::String => write!(f, "a string"),
+            TypeValue::Symbol(name) => write!(f, "{}", name),
+            TypeValue::Collection(element) => write!(f, "[{}]", element),
+            TypeValue::Set(element) => write!(f, "{{{}}}", element),
+        }
+    }
 }
 
 pub trait Spannable<'de>: Sized {
