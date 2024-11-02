@@ -12,7 +12,9 @@ pub mod parser;
 pub mod passer;
 
 const INPUT: &str = "
-let a = 1 if true else 2
+fn test() {
+    let a = 12 + {true + false;};
+}
 ";
 
 fn main() {

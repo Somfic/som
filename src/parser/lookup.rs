@@ -3,7 +3,7 @@ use super::{
     expression, statement, typing, Parser,
 };
 use crate::lexer::{TokenKind, TokenValue};
-use miette::{Result, SourceSpan};
+use miette::{Context, Result, SourceSpan};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
@@ -282,7 +282,8 @@ fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
             break;
         }
 
-        let statement = crate::parser::statement::parse(parser, true)?;
+        let statement =
+            crate::parser::statement::parse(parser, true).wrap_err("while parsing block")?;
         statements.push(statement);
     }
 
@@ -293,13 +294,17 @@ fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
                 _ => unreachable!(),
             },
             _ => Expression::at(
-                SourceSpan::new(0.into(), 0),
+                statements
+                    .last()
+                    .map_or(SourceSpan::new(0.into(), 0), |s| s.span),
                 ExpressionValue::Primitive(Primitive::Unit),
             ),
         }
     } else {
         Expression::at(
-            SourceSpan::new(0.into(), 0),
+            statements
+                .last()
+                .map_or(SourceSpan::new(0.into(), 0), |s| s.span),
             ExpressionValue::Primitive(Primitive::Unit),
         )
     };

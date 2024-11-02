@@ -161,7 +161,7 @@ pub enum TypeValue<'de> {
 impl Display for Type<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.value {
-            TypeValue::Unit => write!(f, "an unit"),
+            TypeValue::Unit => write!(f, "nothing"),
             TypeValue::Boolean => write!(f, "a boolean"),
             TypeValue::Integer => write!(f, "an integer"),
             TypeValue::Decimal => write!(f, "a decimal"),

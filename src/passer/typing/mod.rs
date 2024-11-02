@@ -18,15 +18,14 @@ impl Passer for TypingPasser {
 
             let types = expression.possible_types();
 
-            // Get only distinct types, by comparing the `TypeValue` enum
-            let types = types.into_iter().fold(vec![], |mut acc, ty| {
+            let distinct_types = types.clone().into_iter().fold(vec![], |mut acc, ty| {
                 if !acc.iter().any(|t: &Type<'_>| t.value == ty.value) {
                     acc.push(ty);
                 }
                 acc
             });
 
-            if types.is_empty() || types.len() == 1 {
+            if distinct_types.is_empty() || distinct_types.len() == 1 {
                 return Ok(PasserResult::default());
             }
 
@@ -50,17 +49,16 @@ impl Passer for TypingPasser {
         fn check_statement(statement: &Statement<'_>) -> Result<PasserResult> {
             let mut critical = vec![];
 
-            let types = statement
-                .possible_types()
-                .into_iter()
-                .fold(vec![], |mut acc, ty| {
-                    if !acc.iter().any(|t: &Type<'_>| t.value == ty.value) {
-                        acc.push(ty);
-                    }
-                    acc
-                });
+            let types = statement.possible_types();
 
-            if types.is_empty() || types.len() == 1 {
+            let distinct_types = types.clone().into_iter().fold(vec![], |mut acc, ty| {
+                if !acc.iter().any(|t: &Type<'_>| t.value == ty.value) {
+                    acc.push(ty);
+                }
+                acc
+            });
+
+            if distinct_types.is_empty() || distinct_types.len() == 1 {
                 return Ok(PasserResult::default());
             }
 
