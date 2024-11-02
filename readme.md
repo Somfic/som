@@ -49,3 +49,17 @@ code Purrer for Cat:
   };
 
 ```
+
+
+```
+install cmake
+install strawberryperl
+
+winget install Ninja-build.Ninja
+
+
+cargo install llvmenv
+llvmenv init
+llvmenv entries
+llvmenv build-entry 10.0.0
+```
