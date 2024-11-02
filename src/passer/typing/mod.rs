@@ -14,36 +14,7 @@ pub struct TypingPasser;
 impl Passer for TypingPasser {
     fn pass(ast: &Symbol<'_>) -> Result<PasserResult> {
         fn check_expression(expression: &Expression<'_>) -> Result<PasserResult> {
-            let mut critical = vec![];
-
-            let types = expression.possible_types();
-
-            let distinct_types = types.clone().into_iter().fold(vec![], |mut acc, ty| {
-                if !acc.iter().any(|t: &Type<'_>| t.value == ty.value) {
-                    acc.push(ty);
-                }
-                acc
-            });
-
-            if distinct_types.is_empty() || distinct_types.len() == 1 {
-                return Ok(PasserResult::default());
-            }
-
-            let labels = types
-                .iter()
-                .map(|ty| LabeledSpan::at(ty.span, format!("{}", ty)))
-                .collect::<Vec<_>>();
-
-            // critical.push(miette::miette! {
-            //     labels = labels,
-            //     help = "expression has multiple possible types",
-            //     "{:?} has multiple possible types", expression.value
-            // });
-
-            Ok(PasserResult {
-                critical,
-                non_critical: vec![],
-            })
+            Ok(PasserResult::default())
         }
 
         fn check_statement(statement: &Statement<'_>) -> Result<PasserResult> {
@@ -70,7 +41,7 @@ impl Passer for TypingPasser {
             critical.push(miette::miette! {
                 labels = labels,
                 help = "statement has multiple possible types",
-                "{:?} has multiple possible types", statement.value
+                "{} has multiple possible types", statement.value
             });
 
             Ok(PasserResult {

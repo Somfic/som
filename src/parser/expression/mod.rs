@@ -93,12 +93,12 @@ pub fn call<'de>(
         arguments.push(argument);
     }
 
-    parser
+    let close = parser
         .lexer
         .expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
 
-    Ok(Expression::at(
-        lhs.span,
+    Ok(Expression::at_multiple(
+        vec![lhs.span, close.span],
         ExpressionValue::Call {
             callee: Box::new(lhs.clone()),
             arguments,

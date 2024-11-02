@@ -46,6 +46,108 @@ pub enum StatementValue<'de> {
     },
 }
 
+impl Display for StatementValue<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StatementValue::Block(vec) => write!(f, "a block of {} statements", vec.len()),
+            StatementValue::Expression(expression) => write!(f, "{}", expression),
+            StatementValue::Assignment { name, value } => {
+                write!(f, "`{}` assignment with {}", name, value)
+            }
+            StatementValue::Struct { name, fields } => write!(f, "`{}` struct", name),
+            StatementValue::Enum { name, variants } => write!(f, "`{}` enum", name),
+            StatementValue::Function { header, body } => write!(f, "`{}` function", header.name),
+            StatementValue::Trait { name, functions } => write!(f, "`{}` trait", name),
+            StatementValue::Return(expression) => write!(f, "returning {}", expression),
+            StatementValue::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => write!(f, "conditional statement"),
+        }
+    }
+}
+
+impl Display for Statement<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl Display for ExpressionValue<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExpressionValue::Primitive(primitive) => write!(f, "{}", primitive),
+            ExpressionValue::Binary {
+                operator,
+                left,
+                right,
+            } => write!(f, "{} expression", operator),
+            ExpressionValue::Unary { operator, operand } => write!(f, "{} expression", operator),
+            ExpressionValue::Group(expression) => write!(f, "grouped expression"),
+            ExpressionValue::Block {
+                statements,
+                return_value,
+            } => write!(f, "block expression"),
+            ExpressionValue::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => write!(f, "conditional expression"),
+            ExpressionValue::Call { callee, arguments } => write!(f, "calling {}", callee.value),
+        }
+    }
+}
+
+impl Display for Primitive<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Primitive::Integer(value) => write!(f, "{}", value),
+            Primitive::Decimal(value) => write!(f, "{}", value),
+            Primitive::String(value) => write!(f, "{}", value),
+            Primitive::Identifier(value) => write!(f, "{}", value),
+            Primitive::Character(value) => write!(f, "{}", value),
+            Primitive::Boolean(value) => write!(f, "{}", value),
+            Primitive::Unit => write!(f, "nothing"),
+        }
+    }
+}
+
+impl Display for Expression<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl Display for BinaryOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BinaryOperator::Add => write!(f, "addition"),
+            BinaryOperator::Subtract => write!(f, "subtraction"),
+            BinaryOperator::Multiply => write!(f, "multiplication"),
+            BinaryOperator::Divide => write!(f, "division"),
+            BinaryOperator::Modulo => write!(f, "modulo"),
+            BinaryOperator::Equality => write!(f, "equality"),
+            BinaryOperator::Inequality => write!(f, "inequality"),
+            BinaryOperator::LessThan => write!(f, "less than"),
+            BinaryOperator::LessThanOrEqual => write!(f, "less than or equal"),
+            BinaryOperator::GreaterThan => write!(f, "greater than"),
+            BinaryOperator::GreaterThanOrEqual => write!(f, "greater than or equal"),
+            BinaryOperator::And => write!(f, "and"),
+            BinaryOperator::Or => write!(f, "or"),
+        }
+    }
+}
+
+impl Display for UnaryOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnaryOperator::Negate => write!(f, "negation"),
+            UnaryOperator::Negative => write!(f, "negative"),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Expression<'de> {
     pub value: ExpressionValue<'de>,
