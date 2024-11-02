@@ -35,11 +35,11 @@ impl Passer for TypingPasser {
                 .map(|ty| LabeledSpan::at(ty.span, format!("{}", ty)))
                 .collect::<Vec<_>>();
 
-            critical.push(miette::miette! {
-                labels = labels,
-                help = "expression has multiple possible types",
-                "{:?} has multiple possible types", expression.value
-            });
+            // critical.push(miette::miette! {
+            //     labels = labels,
+            //     help = "expression has multiple possible types",
+            //     "{:?} has multiple possible types", expression.value
+            // });
 
             Ok(PasserResult {
                 critical,
@@ -50,7 +50,15 @@ impl Passer for TypingPasser {
         fn check_statement(statement: &Statement<'_>) -> Result<PasserResult> {
             let mut critical = vec![];
 
-            let types = statement.possible_types();
+            let types = statement
+                .possible_types()
+                .into_iter()
+                .fold(vec![], |mut acc, ty| {
+                    if !acc.iter().any(|t: &Type<'_>| t.value == ty.value) {
+                        acc.push(ty);
+                    }
+                    acc
+                });
 
             if types.is_empty() || types.len() == 1 {
                 return Ok(PasserResult::default());
