@@ -9,7 +9,7 @@ pub trait Passer {
     fn pass(ast: &Symbol<'_>) -> Result<PasserResult>;
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PasserResult {
     pub non_critical: Vec<Report>,
     pub critical: Vec<Report>,

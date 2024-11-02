@@ -244,14 +244,14 @@ pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 }
 
 pub fn return_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
-    let token = parser
+    parser
         .lexer
         .expect(TokenKind::Return, "expected a return keyword")?;
 
     let expression = expression::parse(parser, BindingPower::None)?;
 
-    Ok(Statement::at_multiple(
-        vec![token.span, expression.span],
+    Ok(Statement::at(
+        expression.span,
         StatementValue::Return(expression),
     ))
 }

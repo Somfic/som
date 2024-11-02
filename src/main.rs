@@ -12,8 +12,9 @@ pub mod parser;
 pub mod passer;
 
 const INPUT: &str = "
-fn test() {
-    let a = 12 + {true + false;};
+fn main() {
+    let string = \"Hello, world!\";
+    println(argument);
 }
 ";
 
