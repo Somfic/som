@@ -12,7 +12,7 @@ pub mod parser;
 pub mod passer;
 
 const INPUT: &str = "
-let a = 1 + 1.1 - true * 'c' / \"hello\"
+let a = 1 if true else 2
 ";
 
 fn main() {
