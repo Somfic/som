@@ -154,6 +154,18 @@ pub struct Expression<'de> {
     pub span: miette::SourceSpan,
 }
 
+impl Expression<'_> {
+    pub fn label(&self, label: impl Into<String>) -> miette::LabeledSpan {
+        miette::LabeledSpan::at(self.span, label)
+    }
+}
+
+impl Statement<'_> {
+    pub fn label(&self, label: impl Into<String>) -> miette::LabeledSpan {
+        miette::LabeledSpan::at(self.span, label)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ExpressionValue<'de> {
     Primitive(Primitive<'de>),
@@ -301,6 +313,26 @@ pub trait Spannable<'de>: Sized {
         Self::at(span, value)
     }
 }
+
+pub trait CombineSpan {
+    fn combine(spans: Vec<SourceSpan>) -> SourceSpan {
+        let start = spans
+            .iter()
+            .min_by_key(|s| s.offset())
+            .map(|s| s.offset())
+            .unwrap_or(0);
+
+        let end = spans
+            .iter()
+            .max_by_key(|s| s.offset() + s.len())
+            .map(|s| s.offset() + s.len())
+            .unwrap_or(0);
+
+        SourceSpan::new(start.into(), end - start)
+    }
+}
+
+impl CombineSpan for SourceSpan {}
 
 impl<'de> Spannable<'de> for Expression<'de> {
     type Value = ExpressionValue<'de>;

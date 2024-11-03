@@ -1,11 +1,15 @@
 use core::net;
 
 use super::{Passer, PasserResult};
-use crate::parser::{
-    ast::{
-        Expression, ExpressionValue, Spannable, Statement, StatementValue, Symbol, Type, TypeValue,
+use crate::{
+    parser::{
+        ast::{
+            Expression, ExpressionValue, Spannable, Statement, StatementValue, Symbol, Type,
+            TypeValue,
+        },
+        expression,
     },
-    expression,
+    passer::walk,
 };
 use miette::{Error, LabeledSpan, Report, Result};
 
