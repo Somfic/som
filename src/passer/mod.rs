@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 
-use crate::parser::ast::Symbol;
+use crate::parser::ast::{Expression, ExpressionValue, Statement, StatementValue, Symbol};
 use miette::{Report, Result, SourceSpan};
 
 pub mod typing;
+pub mod unused;
 
 pub trait Passer {
     fn pass(ast: &Symbol<'_>) -> Result<PasserResult>;

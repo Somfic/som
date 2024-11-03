@@ -14,7 +14,14 @@ pub mod passer;
 const INPUT: &str = "
 fn main() {
     let string = \"Hello, world!\";
-    println(argument);
+    return 12;
+
+    {
+        let string = \"Hello, world!\";
+        return 12;
+    };
+
+    let abc = 12;
 }
 ";
 
@@ -41,6 +48,7 @@ fn main() {
     };
 
     let typing_pass = passer::typing::TypingPasser::pass(&symbol).unwrap();
+    let typing_pass = typing_pass.combine(passer::unused::UnusedPass::pass(&symbol).unwrap());
 
     for note in typing_pass.non_critical {
         println!("{:?}", note.with_source_code(INPUT));
