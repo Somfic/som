@@ -1,6 +1,5 @@
-use std::{borrow::Cow, fmt::Display};
-
 use miette::SourceSpan;
+use std::{borrow::Cow, fmt::Display};
 
 #[derive(Debug, Clone)]
 pub enum Symbol<'de> {
@@ -108,7 +107,7 @@ impl Display for Primitive<'_> {
             Primitive::Identifier(value) => write!(f, "{}", value),
             Primitive::Character(value) => write!(f, "{}", value),
             Primitive::Boolean(value) => write!(f, "{}", value),
-            Primitive::Unit => write!(f, "nothing"),
+            Primitive::Unit => write!(f, "§"),
         }
     }
 }

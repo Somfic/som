@@ -1,27 +1,22 @@
+use generator::CodeGenerator;
 use lexer::{Lexer, TokenKind};
 use owo_colors::{Style, Styled};
 use parser::{
     ast::{Expression, ExpressionValue, Statement},
     Parser,
 };
-use passer::{typing::Typing, Passer};
 use std::vec;
 
+pub mod generator;
 pub mod lexer;
 pub mod parser;
-pub mod passer;
+pub mod typing;
 
 const INPUT: &str = "
 fn main() {
-    let string = \"Hello, world!\";
-    return 12;
+    let cum = 12;
 
-    {
-        let string = \"Hello, world!\";
-        return 12;
-    };
-
-    let abc = 12;
+     1 + 1 if cum > 12 else 2
 }
 ";
 
@@ -47,16 +42,10 @@ fn main() {
         }
     };
 
-    let typing_pass = passer::typing::TypingPasser::pass(&symbol).unwrap();
-    let typing_pass = typing_pass.combine(passer::unused::UnusedPass::pass(&symbol).unwrap());
+    let mut generator = CodeGenerator::new(&symbol);
+    let code = generator.compile();
 
-    for note in typing_pass.non_critical {
-        println!("{:?}", note.with_source_code(INPUT));
-    }
-
-    for note in typing_pass.critical {
-        println!("{:?}", note.with_source_code(INPUT));
-    }
+    println!("{}", code);
 }
 
 struct SomHighlighter {}
