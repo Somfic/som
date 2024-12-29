@@ -1,7 +1,10 @@
 use super::{
     ast::{
-        EnumMemberDeclaration, FunctionHeader, ParameterDeclaration, Spannable, Statement,
-        StatementValue, StructMemberDeclaration,
+        untyped::{
+            EnumMemberDeclaration, FunctionHeader, ParameterDeclaration, Statement, StatementValue,
+            StructMemberDeclaration,
+        },
+        Spannable,
     },
     expression,
     lookup::BindingPower,

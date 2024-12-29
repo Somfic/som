@@ -1,7 +1,10 @@
 use miette::Result;
 
 use super::{
-    ast::{Expression, ExpressionValue, Spannable},
+    ast::{
+        untyped::{Expression, ExpressionValue},
+        Spannable,
+    },
     Parser,
 };
 use crate::{lexer::TokenKind, parser::lookup::BindingPower};

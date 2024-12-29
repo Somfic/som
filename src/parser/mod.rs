@@ -1,5 +1,8 @@
 use crate::lexer::Lexer;
-use ast::{Spannable, Statement, StatementValue, Symbol};
+use ast::{
+    untyped::{Statement, StatementValue, Symbol},
+    Spannable,
+};
 use lookup::Lookup;
 use miette::Result;
 
@@ -7,6 +10,7 @@ pub mod ast;
 pub mod expression;
 pub mod lookup;
 pub mod statement;
+pub mod typechecker;
 pub mod typing;
 
 pub struct Parser<'de> {
@@ -15,9 +19,9 @@ pub struct Parser<'de> {
 }
 
 impl<'de> Parser<'de> {
-    pub fn new(input: &'de str) -> Self {
-        Parser {
-            lexer: Lexer::new(input),
+    pub fn new(lexer: Lexer<'de>) -> Self {
+        Self {
+            lexer,
             lookup: Lookup::default(),
         }
     }
