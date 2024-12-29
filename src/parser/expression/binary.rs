@@ -1,5 +1,8 @@
 use crate::parser::{
-    ast::{BinaryOperator, Expression, ExpressionValue, Spannable},
+    ast::{
+        untyped::{BinaryOperator, Expression, ExpressionValue},
+        Spannable,
+    },
     lookup::BindingPower,
     Parser,
 };

@@ -1,5 +1,8 @@
 use super::{
-    ast::{Spannable, Type, TypeValue},
+    ast::{
+        untyped::{Type, TypeValue},
+        Spannable,
+    },
     lookup::BindingPower,
     Parser,
 };

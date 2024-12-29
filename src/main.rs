@@ -1,27 +1,22 @@
+use crate::parser::typechecker::TypeChecker;
 use lexer::{Lexer, TokenKind};
 use owo_colors::{Style, Styled};
 use parser::{
-    ast::{Expression, ExpressionValue, Statement},
+    ast::untyped::{Expression, ExpressionValue},
     Parser,
 };
-use passer::{typing::Typing, Passer};
 use std::vec;
 
 pub mod lexer;
 pub mod parser;
-pub mod passer;
 
 const INPUT: &str = "
+enum Test: a, b, c;
+
 fn main() {
-    let string = \"Hello, world!\";
-    return 12;
-
-    {
-        let string = \"Hello, world!\";
-        return 12;
-    };
-
-    let abc = 12;
+    let a = 12;
+    let b = 'a';
+    let c = a + b;
 }
 ";
 
@@ -38,7 +33,9 @@ fn main() {
     }))
     .unwrap();
 
-    let mut parser = Parser::new(INPUT);
+    let lexer = Lexer::new(INPUT);
+
+    let mut parser = Parser::new(lexer);
     let symbol = match parser.parse() {
         Ok(symbol) => symbol,
         Err(err) => {
@@ -47,16 +44,27 @@ fn main() {
         }
     };
 
-    let typing_pass = passer::typing::TypingPasser::pass(&symbol).unwrap();
-    let typing_pass = typing_pass.combine(passer::unused::UnusedPass::pass(&symbol).unwrap());
+    let mut typechecker = TypeChecker::new(symbol);
+    let symbol = match typechecker.check() {
+        Ok(symbol) => symbol,
+        Err(err) => {
+            println!("{:?}", err.with_source_code(INPUT));
+            return;
+        }
+    };
 
-    for note in typing_pass.non_critical {
-        println!("{:?}", note.with_source_code(INPUT));
-    }
+    println!("{:?}", symbol);
 
-    for note in typing_pass.critical {
-        println!("{:?}", note.with_source_code(INPUT));
-    }
+    // let typing_pass = passer::typing::TypingPasser::pass(&symbol).unwrap();
+    //let typing_pass = typing_pass.combine(passer::unused::UnusedPass::pass(&symbol).unwrap());
+
+    // for note in typing_pass.non_critical {
+    //     println!("{:?}", note.with_source_code(INPUT));
+    // }
+
+    // for note in typing_pass.critical {
+    //     println!("{:?}", note.with_source_code(INPUT));
+    // }
 }
 
 struct SomHighlighter {}

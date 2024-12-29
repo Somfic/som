@@ -1,5 +1,8 @@
 use super::{
-    ast::{Expression, ExpressionValue, Primitive, Spannable, Statement, StatementValue, Type},
+    ast::{
+        untyped::{Expression, ExpressionValue, Primitive, Statement, StatementValue, Type},
+        Spannable,
+    },
     expression, statement, typing, Parser,
 };
 use crate::lexer::{TokenKind, TokenValue};
