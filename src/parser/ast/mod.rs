@@ -78,21 +78,6 @@ impl<'de> Type<'de> {
             span,
         }
     }
-
-    pub fn matches(&self, other: &Type<'de>) -> bool {
-        match (&self.value, &other.value) {
-            (TypeValue::Unit, TypeValue::Unit)
-            | (TypeValue::Boolean, TypeValue::Boolean)
-            | (TypeValue::Integer, TypeValue::Integer)
-            | (TypeValue::Decimal, TypeValue::Decimal)
-            | (TypeValue::Character, TypeValue::Character)
-            | (TypeValue::String, TypeValue::String) => true,
-            (TypeValue::Symbol(a), TypeValue::Symbol(b)) => a == b,
-            (TypeValue::Collection(a), TypeValue::Collection(b)) => a.matches(b),
-            (TypeValue::Set(a), TypeValue::Set(b)) => a.matches(b),
-            _ => false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,9 +93,86 @@ pub enum TypeValue<'de> {
     Set(Box<Type<'de>>),
 }
 
+impl<'de> TypeValue<'de> {
+    pub fn matches(&self, other: &TypeValue<'de>) -> bool {
+        match (&self, &other) {
+            (TypeValue::Unit, TypeValue::Unit)
+            | (TypeValue::Boolean, TypeValue::Boolean)
+            | (TypeValue::Integer, TypeValue::Integer)
+            | (TypeValue::Decimal, TypeValue::Decimal)
+            | (TypeValue::Character, TypeValue::Character)
+            | (TypeValue::String, TypeValue::String) => true,
+            (TypeValue::Symbol(a), TypeValue::Symbol(b)) => a == b,
+            (TypeValue::Collection(a), TypeValue::Collection(b)) => a.value.matches(&b.value),
+            (TypeValue::Set(a), TypeValue::Set(b)) => a.value.matches(&b.value),
+            _ => false,
+        }
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        match self {
+            TypeValue::Integer | TypeValue::Decimal => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_primitive(&self) -> bool {
+        match self {
+            TypeValue::Unit
+            | TypeValue::Boolean
+            | TypeValue::Integer
+            | TypeValue::Decimal
+            | TypeValue::Character
+            | TypeValue::String => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_collection(&self) -> bool {
+        match self {
+            TypeValue::Collection(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_set(&self) -> bool {
+        match self {
+            TypeValue::Set(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_symbol(&self) -> bool {
+        match self {
+            TypeValue::Symbol(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_unit(&self) -> bool {
+        match self {
+            TypeValue::Unit => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_boolean(&self) -> bool {
+        match self {
+            TypeValue::Boolean => true,
+            _ => false,
+        }
+    }
+}
+
 impl Display for Type<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.value {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl Display for TypeValue<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self {
             TypeValue::Unit => write!(f, "nothing"),
             TypeValue::Boolean => write!(f, "a boolean"),
             TypeValue::Integer => write!(f, "an integer"),

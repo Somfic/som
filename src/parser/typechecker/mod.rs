@@ -1,5 +1,7 @@
+use std::fmt::format;
+
 use super::{
-    ast::{typed, untyped, Type},
+    ast::{typed, untyped, Type, TypeValue},
     expression,
 };
 use miette::{MietteDiagnostic, Report, Result};
@@ -27,11 +29,7 @@ impl<'de> TypeChecker<'de> {
             }
         };
 
-        if self.errors.is_empty() {
-            vec![]
-        } else {
-            self.errors
-        }
+        self.errors
     }
 
     fn check_statement(&mut self, statement: &untyped::Statement<'de>) {
@@ -91,7 +89,9 @@ impl<'de> TypeChecker<'de> {
             } => {
                 let left = self.type_of(left)?;
                 let right = self.type_of(right)?;
-                expect_match(left, right)
+                expect_allowed_binary_operation(&left, &right, operator)?;
+                expect_match(&left, &right)?;
+                Ok(left.clone())
             }
             untyped::ExpressionValue::Unary { operator, operand } => self.type_of(operand),
             _ => todo!("type_of: {:?}", expression),
@@ -99,9 +99,46 @@ impl<'de> TypeChecker<'de> {
     }
 }
 
-fn expect_match<'de>(left: Type<'de>, right: Type<'de>) -> Result<Type<'de>, MietteDiagnostic> {
-    if left.matches(&right) {
-        Ok(left)
+fn expect_allowed_binary_operation<'de>(
+    left: &Type<'de>,
+    right: &Type<'de>,
+    operator: &untyped::BinaryOperator,
+) -> Result<(), MietteDiagnostic> {
+    match operator {
+        untyped::BinaryOperator::Add
+        | untyped::BinaryOperator::Subtract
+        | untyped::BinaryOperator::Multiply
+        | untyped::BinaryOperator::Divide => {
+            if left.value.is_numeric() && right.value.is_numeric() {
+                Ok(())
+            } else {
+                let mut labels = vec![];
+
+                if !left.value.is_numeric() {
+                    labels.push(left.label(format!("{}", left)));
+                }
+
+                if !right.value.is_numeric() {
+                    labels.push(right.label(format!("{}", right)));
+                }
+
+                Err(MietteDiagnostic {
+                    code: None,
+                    severity: None,
+                    url: None,
+                    labels: Some(labels),
+                    help: Some(format!("only numeric types can be used for {}", operator)),
+                    message: format!("expected numeric types for {}", operator),
+                })
+            }
+        }
+        _ => todo!("expect_allowed_binary_operation: {:?}", operator),
+    }
+}
+
+fn expect_match<'de>(left: &Type<'de>, right: &Type<'de>) -> Result<(), MietteDiagnostic> {
+    if left.value.matches(&right.value) {
+        Ok(())
     } else {
         Err(MietteDiagnostic {
             code: None,
