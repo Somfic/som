@@ -1,4 +1,4 @@
-use miette::SourceSpan;
+use super::Type;
 use std::{borrow::Cow, fmt::Display};
 
 #[derive(Debug, Clone)]
@@ -250,39 +250,4 @@ pub enum BinaryOperator {
 pub enum UnaryOperator {
     Negate,
     Negative,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Type<'de> {
-    pub value: TypeValue<'de>,
-    pub span: SourceSpan,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TypeValue<'de> {
-    Unit,
-    Boolean,
-    Integer,
-    Decimal,
-    Character,
-    String,
-    Symbol(Cow<'de, str>),
-    Collection(Box<Type<'de>>),
-    Set(Box<Type<'de>>),
-}
-
-impl Display for Type<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.value {
-            TypeValue::Unit => write!(f, "nothing"),
-            TypeValue::Boolean => write!(f, "a boolean"),
-            TypeValue::Integer => write!(f, "an integer"),
-            TypeValue::Decimal => write!(f, "a decimal"),
-            TypeValue::Character => write!(f, "a character"),
-            TypeValue::String => write!(f, "a string"),
-            TypeValue::Symbol(name) => write!(f, "{}", name),
-            TypeValue::Collection(element) => write!(f, "[{}]", element),
-            TypeValue::Set(element) => write!(f, "{{{}}}", element),
-        }
-    }
 }

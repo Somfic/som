@@ -1,7 +1,128 @@
+use std::{borrow::Cow, fmt::Display};
+
 use miette::SourceSpan;
 
 pub mod typed;
 pub mod untyped;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Type<'de> {
+    pub value: TypeValue<'de>,
+    pub span: SourceSpan,
+}
+
+impl<'de> Type<'de> {
+    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
+        miette::LabeledSpan::at(self.span, text.into())
+    }
+
+    pub fn unit(span: SourceSpan) -> Self {
+        Self {
+            value: TypeValue::Unit,
+            span,
+        }
+    }
+
+    pub fn boolean(span: SourceSpan) -> Self {
+        Self {
+            value: TypeValue::Boolean,
+            span,
+        }
+    }
+
+    pub fn integer(span: SourceSpan) -> Self {
+        Self {
+            value: TypeValue::Integer,
+            span,
+        }
+    }
+
+    pub fn decimal(span: SourceSpan) -> Self {
+        Self {
+            value: TypeValue::Decimal,
+            span,
+        }
+    }
+
+    pub fn character(span: SourceSpan) -> Self {
+        Self {
+            value: TypeValue::Character,
+            span,
+        }
+    }
+
+    pub fn string(span: SourceSpan) -> Self {
+        Self {
+            value: TypeValue::String,
+            span,
+        }
+    }
+
+    pub fn symbol(span: SourceSpan, name: Cow<'de, str>) -> Self {
+        Self {
+            value: TypeValue::Symbol(name),
+            span,
+        }
+    }
+
+    pub fn collection(span: SourceSpan, element: Type<'de>) -> Self {
+        Self {
+            value: TypeValue::Collection(Box::new(element)),
+            span,
+        }
+    }
+
+    pub fn set(span: SourceSpan, element: Type<'de>) -> Self {
+        Self {
+            value: TypeValue::Set(Box::new(element)),
+            span,
+        }
+    }
+
+    pub fn matches(&self, other: &Type<'de>) -> bool {
+        match (&self.value, &other.value) {
+            (TypeValue::Unit, TypeValue::Unit)
+            | (TypeValue::Boolean, TypeValue::Boolean)
+            | (TypeValue::Integer, TypeValue::Integer)
+            | (TypeValue::Decimal, TypeValue::Decimal)
+            | (TypeValue::Character, TypeValue::Character)
+            | (TypeValue::String, TypeValue::String) => true,
+            (TypeValue::Symbol(a), TypeValue::Symbol(b)) => a == b,
+            (TypeValue::Collection(a), TypeValue::Collection(b)) => a.matches(b),
+            (TypeValue::Set(a), TypeValue::Set(b)) => a.matches(b),
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeValue<'de> {
+    Unit,
+    Boolean,
+    Integer,
+    Decimal,
+    Character,
+    String,
+    Symbol(Cow<'de, str>),
+    Collection(Box<Type<'de>>),
+    Set(Box<Type<'de>>),
+}
+
+impl Display for Type<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.value {
+            TypeValue::Unit => write!(f, "nothing"),
+            TypeValue::Boolean => write!(f, "a boolean"),
+            TypeValue::Integer => write!(f, "an integer"),
+            TypeValue::Decimal => write!(f, "a decimal"),
+            TypeValue::Character => write!(f, "a character"),
+            TypeValue::String => write!(f, "a string"),
+            TypeValue::Symbol(name) => write!(f, "{}", name),
+            TypeValue::Collection(element) => write!(f, "[{}]", element),
+            TypeValue::Set(element) => write!(f, "{{{}}}", element),
+        }
+    }
+}
 
 pub trait Spannable<'de>: Sized {
     type Value;
@@ -65,8 +186,8 @@ impl<'de> Spannable<'de> for untyped::Statement<'de> {
     }
 }
 
-impl<'de> Spannable<'de> for untyped::Type<'de> {
-    type Value = untyped::TypeValue<'de>;
+impl<'de> Spannable<'de> for Type<'de> {
+    type Value = TypeValue<'de>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
         Self { value, span }
