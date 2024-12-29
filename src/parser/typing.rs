@@ -1,7 +1,6 @@
 use super::{
     ast::{
-        untyped::{Type, TypeValue},
-        Spannable,
+        Spannable, {Type, TypeValue},
     },
     lookup::BindingPower,
     Parser,
