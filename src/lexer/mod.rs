@@ -156,7 +156,7 @@ impl<'de> Iterator for Lexer<'de> {
             '~' => Ok((TokenKind::Tilde, TokenValue::None)),
             '?' => Ok((TokenKind::Question, TokenValue::None)),
             ':' => Ok((TokenKind::Colon, TokenValue::None)),
-            '-' => Ok((TokenKind::Minus, TokenValue::None)),
+            '-' => self.parse_compound_operator(TokenKind::Minus, TokenKind::Arrow, '>'),
             '+' => Ok((TokenKind::Plus, TokenValue::None)),
             '*' => Ok((TokenKind::Star, TokenValue::None)),
             '/' => Ok((TokenKind::Slash, TokenValue::None)),

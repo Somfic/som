@@ -120,6 +120,8 @@ pub enum TokenKind {
     Dollar,
     /// A tilde sign; `~`.
     Tilde,
+    /// An arrow; `->`.
+    Arrow,
     /// A question mark; `?`.
     Question,
     /// A pipe; `|`.
@@ -226,6 +228,7 @@ impl Display for TokenKind {
             TokenKind::Hash => write!(f, "`#`"),
             TokenKind::Dollar => write!(f, "`$`"),
             TokenKind::Tilde => write!(f, "`~`"),
+            TokenKind::Arrow => write!(f, "`->`"),
             TokenKind::Question => write!(f, "`?`"),
             TokenKind::Pipe => write!(f, "`|`"),
             TokenKind::Caret => write!(f, "`^`"),

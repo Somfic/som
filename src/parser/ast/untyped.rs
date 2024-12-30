@@ -198,24 +198,28 @@ pub struct FunctionHeader<'de> {
     pub name: Cow<'de, str>,
     pub parameters: Vec<ParameterDeclaration<'de>>,
     pub explicit_return_type: Option<Type<'de>>,
+    pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct ParameterDeclaration<'de> {
     pub name: Cow<'de, str>,
     pub explicit_type: Type<'de>,
+    pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct StructMemberDeclaration<'de> {
     pub name: Cow<'de, str>,
     pub explicit_type: Type<'de>,
+    pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct EnumMemberDeclaration<'de> {
     pub name: Cow<'de, str>,
     pub value_type: Option<Type<'de>>,
+    pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]

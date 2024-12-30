@@ -53,7 +53,38 @@ impl<'ast> TypeChecker<'ast> {
                 }
             }
             untyped::StatementValue::Function { header, body } => {
-                self.check_expression(body, environment);
+                environment.set(
+                    header.name.clone(),
+                    Type::function(
+                        header.span,
+                        header
+                            .parameters
+                            .iter()
+                            .map(|p| p.explicit_type.clone())
+                            .collect(),
+                        header
+                            .explicit_return_type
+                            .clone()
+                            .unwrap_or(Type::unit(header.span)),
+                    ),
+                );
+
+                header.parameters.iter().for_each(|p| {
+                    environment.set(p.name.clone(), p.explicit_type.clone());
+                });
+
+                let implicit_return_type = self
+                    .check_expression(body, environment)
+                    .unwrap_or(Type::unit(body.span));
+
+                self.expect_match(
+                    &header
+                        .explicit_return_type
+                        .clone()
+                        .unwrap_or(Type::unit(header.span)),
+                    &implicit_return_type,
+                    "explicit and implicit return types must match".into(),
+                );
             }
             untyped::StatementValue::Return(expr) => {
                 self.check_expression(expr, environment);
@@ -66,7 +97,6 @@ impl<'ast> TypeChecker<'ast> {
             }
             untyped::StatementValue::Assignment { name, value } => {
                 if let Some(expression_type) = self.check_expression(value, environment) {
-                    println!("{}: {:?}", name, expression_type);
                     environment.set(name.clone(), expression_type);
                 }
             }
@@ -177,6 +207,50 @@ impl<'ast> TypeChecker<'ast> {
 
                 Ok(truthy)
             }
+            untyped::ExpressionValue::Call { callee, arguments } => {
+                let callee = self.type_of(callee, environment)?;
+
+                match callee.clone().value {
+                    TypeValue::Function {
+                        parameters,
+                        return_type,
+                    } => {
+                        if parameters.len() != arguments.len() {
+                            return Err(vec![MietteDiagnostic {
+                                code: None,
+                                severity: None,
+                                url: None,
+                                labels: Some(callee.label("function call")),
+                                help: Some(format!(
+                                    "expected {} arguments, but found {}",
+                                    parameters.len(),
+                                    arguments.len()
+                                )),
+                                message: "incorrect number of arguments".to_owned(),
+                            }]);
+                        }
+
+                        for (parameter, argument) in parameters.iter().zip(arguments) {
+                            let argument = self.type_of(argument, environment)?;
+                            self.expect_match(
+                                &parameter,
+                                &argument,
+                                "argument and parameter must match".into(),
+                            );
+                        }
+
+                        Ok((return_type.span(callee.span)).clone())
+                    }
+                    _ => Err(vec![MietteDiagnostic {
+                        code: None,
+                        severity: None,
+                        url: None,
+                        labels: Some(callee.label("function call")),
+                        help: Some("only functions may be called".into()),
+                        message: "not a function".to_owned(),
+                    }]),
+                }
+            }
             _ => todo!("type_of: {:?}", expression),
         }
     }
@@ -263,7 +337,7 @@ impl<'ast> TypeChecker<'ast> {
     }
 
     fn expect_types(&mut self, ty: &Type<'ast>, expected: &[TypeValue], message: String) {
-        if !expected.iter().any(|e| *e == ty.value) {
+        if !expected.iter().any(|ex| ty.value.matches(ex)) {
             let mut labels = vec![];
             labels.extend(ty.label(format!("{}", ty)));
 

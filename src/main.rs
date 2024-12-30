@@ -15,12 +15,14 @@ pub mod lexer;
 pub mod parser;
 
 const INPUT: &str = "
-enum Test: a, b, c;
+fn add(left ~ int, right ~ int) -> fn(int, int) -> int {
+    left + right
+}
 
 fn main() {
-    let x = true;
-
-    let is_event = \"even\" if x % 2 == 0 else \"odd\";
+    let a = 1;
+    let b = 2;
+    let c = add(a, b);
 }
 ";
 
