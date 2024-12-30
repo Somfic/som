@@ -18,9 +18,9 @@ const INPUT: &str = "
 enum Test: a, b, c;
 
 fn main() {
-    let x = 0;
+    let x = true;
 
-    let y = true if x > 12.0 else 12;
+    let is_event = \"even\" if x % 2 == 0 else \"odd\";
 }
 ";
 

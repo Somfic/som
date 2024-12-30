@@ -245,6 +245,19 @@ pub enum BinaryOperator {
     And,
     Or,
 }
+impl BinaryOperator {
+    pub fn is_comparison(&self) -> bool {
+        match self {
+            BinaryOperator::Equality
+            | BinaryOperator::Inequality
+            | BinaryOperator::LessThan
+            | BinaryOperator::LessThanOrEqual
+            | BinaryOperator::GreaterThan
+            | BinaryOperator::GreaterThanOrEqual => true,
+            _ => false,
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum UnaryOperator {
