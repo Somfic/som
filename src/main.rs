@@ -18,10 +18,13 @@ const INPUT: &str = "
 enum Test: a, b, c;
 
 fn main() {
-    let a = 12;
-    let b = 'a';
-    let c = a + b;
-    let c = a + b;
+    let a = 'a';
+    let b = a;
+    let c = b;
+
+    let c = 1;
+
+    let d = 1 + x;
 }
 ";
 

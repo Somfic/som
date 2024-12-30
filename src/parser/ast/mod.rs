@@ -9,17 +9,30 @@ pub mod untyped;
 pub struct Type<'de> {
     pub value: TypeValue<'de>,
     pub span: SourceSpan,
+    pub original_span: Option<SourceSpan>,
 }
 
 impl<'de> Type<'de> {
-    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
-        miette::LabeledSpan::at(self.span, text.into())
+    pub fn label(&self, text: impl Into<String>) -> Vec<miette::LabeledSpan> {
+        let mut labels = vec![];
+
+        labels.push(miette::LabeledSpan::at(self.span, text.into()));
+
+        if let Some(original_span) = self.original_span {
+            labels.push(miette::LabeledSpan::at(
+                original_span,
+                "original type declaration".to_string(),
+            ));
+        }
+
+        labels
     }
 
     pub fn unit(span: SourceSpan) -> Self {
         Self {
             value: TypeValue::Unit,
             span,
+            original_span: None,
         }
     }
 
@@ -27,6 +40,7 @@ impl<'de> Type<'de> {
         Self {
             value: TypeValue::Boolean,
             span,
+            original_span: None,
         }
     }
 
@@ -34,6 +48,7 @@ impl<'de> Type<'de> {
         Self {
             value: TypeValue::Integer,
             span,
+            original_span: None,
         }
     }
 
@@ -41,6 +56,7 @@ impl<'de> Type<'de> {
         Self {
             value: TypeValue::Decimal,
             span,
+            original_span: None,
         }
     }
 
@@ -48,6 +64,7 @@ impl<'de> Type<'de> {
         Self {
             value: TypeValue::Character,
             span,
+            original_span: None,
         }
     }
 
@@ -55,6 +72,7 @@ impl<'de> Type<'de> {
         Self {
             value: TypeValue::String,
             span,
+            original_span: None,
         }
     }
 
@@ -62,6 +80,7 @@ impl<'de> Type<'de> {
         Self {
             value: TypeValue::Symbol(name),
             span,
+            original_span: None,
         }
     }
 
@@ -69,6 +88,7 @@ impl<'de> Type<'de> {
         Self {
             value: TypeValue::Collection(Box::new(element)),
             span,
+            original_span: None,
         }
     }
 
@@ -76,7 +96,16 @@ impl<'de> Type<'de> {
         Self {
             value: TypeValue::Set(Box::new(element)),
             span,
+            original_span: None,
         }
+    }
+
+    pub fn span(mut self, span: SourceSpan) -> Self {
+        if self.original_span.is_none() {
+            self.original_span = Some(self.span);
+        }
+        self.span = span;
+        self
     }
 }
 
@@ -252,6 +281,10 @@ impl<'de> Spannable<'de> for Type<'de> {
     type Value = TypeValue<'de>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
-        Self { value, span }
+        Self {
+            value,
+            span,
+            original_span: None,
+        }
     }
 }
