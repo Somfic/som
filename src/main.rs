@@ -18,14 +18,9 @@ const INPUT: &str = "
 enum Test: a, b, c;
 
 fn main() {
-    let x = 'b';
+    let x = 0;
 
-    {
-        let x = 'a';
-        let y = 1 + x;
-    };
-
-    let y = 1 + x;
+    let y = true if x > 12.0 else 12;
 }
 ";
 
