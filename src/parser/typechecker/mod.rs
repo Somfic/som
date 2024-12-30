@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, fmt::format};
+use std::{borrow::Cow, collections::HashMap};
 
 use super::{
     ast::{typed, untyped, Type, TypeValue},
@@ -6,64 +6,80 @@ use super::{
 };
 use miette::{MietteDiagnostic, Report, Result};
 
-pub struct TypeChecker<'de> {
-    symbol: untyped::Symbol<'de>,
+pub struct TypeChecker<'ast> {
+    symbol: untyped::Symbol<'ast>,
     errors: Vec<MietteDiagnostic>,
-    environment: Environment<'de>,
 }
 
-impl<'de> TypeChecker<'de> {
-    pub fn new(symbol: untyped::Symbol<'de>) -> Self {
+impl<'ast> TypeChecker<'ast> {
+    pub fn new(symbol: untyped::Symbol<'ast>) -> Self {
         Self {
             symbol,
             errors: vec![],
-            environment: Environment::new(None),
         }
     }
 
     pub fn check(mut self) -> Vec<MietteDiagnostic> {
+        // Initially, there is no parent environment
+        let mut environment = Environment::new(None);
+
         match self.symbol.clone() {
-            untyped::Symbol::Statement(statement) => {
-                self.check_statement(&statement);
+            untyped::Symbol::Statement(stmt) => {
+                self.check_statement(&stmt, &mut environment);
             }
-            untyped::Symbol::Expression(expression) => {
-                self.check_expression(&expression);
+            untyped::Symbol::Expression(expr) => {
+                self.check_expression(&expr, &environment);
             }
         };
 
         self.errors
     }
 
-    fn check_statement(&mut self, statement: &untyped::Statement<'de>) {
+    fn check_statement<'env>(
+        &mut self,
+        statement: &untyped::Statement<'ast>,
+        environment: &mut Environment<'env, 'ast>,
+    ) {
         match &statement.value {
-            untyped::StatementValue::Expression(expression) => {
-                self.check_expression(expression);
+            untyped::StatementValue::Expression(expr) => {
+                self.check_expression(expr, environment);
             }
             untyped::StatementValue::Block(statements) => {
-                for statement in statements {
-                    self.check_statement(statement);
+                // Create a new child environment
+                let mut environment = Environment::new(Some(environment));
+
+                for stmt in statements {
+                    self.check_statement(stmt, &mut environment);
                 }
             }
             untyped::StatementValue::Function { header, body } => {
-                self.check_expression(body);
+                self.check_expression(body, environment);
             }
-            untyped::StatementValue::Return(expression) => {
-                self.check_expression(expression);
+            untyped::StatementValue::Return(expr) => {
+                self.check_expression(expr, environment);
             }
-            untyped::StatementValue::Enum { name, variants } => {}
-            untyped::StatementValue::Struct { name, fields } => {}
+            untyped::StatementValue::Enum { name, variants } => {
+                // Not implemented yet
+            }
+            untyped::StatementValue::Struct { name, fields } => {
+                // Not implemented yet
+            }
             untyped::StatementValue::Assignment { name, value } => {
-                if let Some(expression_type) = self.check_expression(value) {
+                if let Some(expression_type) = self.check_expression(value, environment) {
                     println!("{}: {:?}", name, expression_type);
-                    self.environment.set(name.clone(), expression_type);
+                    environment.set(name.clone(), expression_type);
                 }
             }
             _ => todo!("check_statement: {:?}", statement),
         };
     }
 
-    fn check_expression(&mut self, expression: &untyped::Expression<'de>) -> Option<Type<'de>> {
-        match self.type_of(expression) {
+    fn check_expression<'env>(
+        &mut self,
+        expression: &untyped::Expression<'ast>,
+        environment: &'env Environment<'env, 'ast>,
+    ) -> Option<Type<'ast>> {
+        match self.type_of(expression, environment) {
             Ok(ty) => Some(ty),
             Err(err) => {
                 self.errors.push(err);
@@ -72,21 +88,21 @@ impl<'de> TypeChecker<'de> {
         }
     }
 
-    fn type_of(
+    fn type_of<'env>(
         &mut self,
-        expression: &untyped::Expression<'de>,
-    ) -> Result<Type<'de>, MietteDiagnostic> {
+        expression: &untyped::Expression<'ast>,
+        environment: &Environment<'env, 'ast>,
+    ) -> Result<Type<'ast>, MietteDiagnostic> {
         match &expression.value {
             untyped::ExpressionValue::Primitive(primitive) => match primitive {
                 untyped::Primitive::Integer(_) => Ok(Type::integer(expression.span)),
                 untyped::Primitive::Decimal(_) => Ok(Type::decimal(expression.span)),
                 untyped::Primitive::Boolean(_) => Ok(Type::boolean(expression.span)),
                 untyped::Primitive::String(_) => Ok(Type::string(expression.span)),
-                untyped::Primitive::Identifier(name) => self
-                    .environment
+                untyped::Primitive::Identifier(name) => environment
                     .get(name)
                     .cloned()
-                    .map(|e| e.span(expression.span))
+                    .map(|ty| ty.span(expression.span))
                     .ok_or_else(|| MietteDiagnostic {
                         code: None,
                         severity: None,
@@ -98,61 +114,68 @@ impl<'de> TypeChecker<'de> {
                 untyped::Primitive::Character(_) => Ok(Type::character(expression.span)),
                 untyped::Primitive::Unit => Ok(Type::unit(expression.span)),
             },
-            untyped::ExpressionValue::Group(expression) => self.type_of(expression),
+            untyped::ExpressionValue::Group(expr) => self.type_of(expr, environment),
             untyped::ExpressionValue::Block {
                 statements,
                 return_value,
             } => {
-                for statement in statements {
-                    self.check_statement(statement);
+                // Child environment
+                let mut environment = Environment::new(Some(environment));
+
+                for stmt in statements {
+                    self.check_statement(stmt, &mut environment);
                 }
 
-                self.type_of(return_value)
+                self.type_of(return_value, &environment)
             }
             untyped::ExpressionValue::Binary {
                 operator,
                 left,
                 right,
             } => {
-                let left = self.type_of(left)?;
-                let right = self.type_of(right)?;
-                expect_allowed_binary_operation(&left, &right, operator)?;
-                expect_match(&left, &right)?;
-                Ok(left.clone())
+                let left_ty = self.type_of(left, environment)?;
+                let right_ty = self.type_of(right, environment)?;
+                expect_allowed_binary_operation(&left_ty, &right_ty, operator)?;
+                expect_match(&left_ty, &right_ty)?;
+                Ok(left_ty) // Return the type of the left side (they match anyway)
             }
-            untyped::ExpressionValue::Unary { operator, operand } => self.type_of(operand),
+            untyped::ExpressionValue::Unary { operator, operand } => {
+                self.type_of(operand, environment)
+            }
             _ => todo!("type_of: {:?}", expression),
         }
     }
 }
 
-struct Environment<'de> {
-    parent: Option<Box<Environment<'de>>>,
-    bindings: HashMap<Cow<'de, str>, Type<'de>>,
+struct Environment<'env, 'ast> {
+    parent: Option<&'env Environment<'env, 'ast>>,
+    bindings: HashMap<Cow<'env, str>, Type<'ast>>,
 }
 
-impl<'de> Environment<'de> {
-    fn new(parent: Option<Environment<'de>>) -> Self {
+impl<'env, 'ast> Environment<'env, 'ast> {
+    fn new(parent: Option<&'env Environment<'env, 'ast>>) -> Self {
         Self {
-            parent: parent.map(Box::new),
+            parent,
             bindings: HashMap::new(),
         }
     }
 
-    fn set(&mut self, name: Cow<'de, str>, ty: Type<'de>) {
+    fn set(&mut self, name: Cow<'env, str>, ty: Type<'ast>) {
         self.bindings.insert(name, ty);
     }
 
-    fn get(&self, name: &Cow<'de, str>) -> Option<&Type<'de>> {
+    fn get(&self, name: &Cow<'env, str>) -> Option<&Type<'ast>> {
         self.bindings
             .get(name)
-            .or_else(|| self.parent.as_ref().and_then(|parent| parent.get(name)))
+            .or_else(|| self.parent.and_then(|p| p.get(name)))
     }
 }
 
-fn expect_allowed_binary_operation<'de>(
-    left: &Type<'de>,
-    right: &Type<'de>,
+// Helper functions for type-checking
+
+fn expect_allowed_binary_operation<'a>(
+    left: &Type<'a>,
+    right: &Type<'a>,
     operator: &untyped::BinaryOperator,
 ) -> Result<(), MietteDiagnostic> {
     match operator {
@@ -164,23 +187,20 @@ fn expect_allowed_binary_operation<'de>(
                 Ok(())
             } else {
                 let mut labels = vec![];
-
                 if !left.value.is_numeric() {
                     labels.extend(left.label(format!("{} may not be used for {}", left, operator)));
                 }
-
                 if !right.value.is_numeric() {
                     labels
                         .extend(right.label(format!("{} may not be used for {}", right, operator)));
                 }
-
                 Err(MietteDiagnostic {
                     code: None,
                     severity: None,
                     url: None,
                     labels: Some(labels),
-                    help: Some(format!("only numeric types may be used for {}", operator)),
-                    message: format!("expected numeric types for {}", operator),
+                    help: Some(format!("only numeric types may be used for `{}`", operator)),
+                    message: format!("expected numeric types for `{}`", operator),
                 })
             }
         }
@@ -188,7 +208,7 @@ fn expect_allowed_binary_operation<'de>(
     }
 }
 
-fn expect_match<'de>(left: &Type<'de>, right: &Type<'de>) -> Result<(), MietteDiagnostic> {
+fn expect_match<'a>(left: &Type<'a>, right: &Type<'a>) -> Result<(), MietteDiagnostic> {
     if left.value.matches(&right.value) {
         Ok(())
     } else {
