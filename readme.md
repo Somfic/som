@@ -25,30 +25,41 @@ code purrer for cat:
 ```
 
 ```rust
-type Name: 
+struct Name: 
   name ~ string;
 
-type Age: 
-  age ~ number;
+struct Age: age ~ number;
 
-enum Tail:
-  none
-  medium
+enum tail_length:
+  short,
+  medium,
   long;
 
-type Cat with Name, Age:
-  sleep_count ~ number
-  tail_length ~ Tail.none;
+type Cat
+  tail_length ~ tail_length, 
+  + Name, 
+  + Age;
 
 spec Purrer:
   pur ~ fn(self) -> number;
 
-code Purrer  Cat:
+code Purrer for Cat:
   fn pur(self) -> number {
     print`($"{self.name} ({self.age}) is purring");
-  }
-
-  fn sleep(self) {
-    self.sleep_count++;
   };
+
+```
+
+
+```
+install cmake
+install strawberryperl
+
+winget install Ninja-build.Ninja
+
+
+cargo install llvmenv
+llvmenv init
+llvmenv entries
+llvmenv build-entry 10.0.0
 ```

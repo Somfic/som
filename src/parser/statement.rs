@@ -1,155 +1,359 @@
 use super::{
-    ast::Type,
+    ast::{
+        untyped::{
+            EnumMemberDeclaration, FunctionHeader, ParameterDeclaration, Statement, StatementValue,
+            StructMemberDeclaration,
+        },
+        Spannable,
+    },
     expression,
     lookup::BindingPower,
-    macros::{
-        expect_any_token, expect_expression, expect_token_value, expect_tokens, expect_type,
-        expect_valid_token,
-    },
-    Parser, Statement,
+    statement, typing, Parser,
 };
-use crate::{
-    diagnostic::Error,
-    scanner::lexeme::{Lexeme, TokenType, TokenValue},
-};
-use core::panic;
-use std::collections::{HashMap, HashSet};
+use crate::lexer::{Token, TokenKind, TokenValue};
+use miette::{Context, Result};
 
-pub fn parse<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Statement, usize), Error<'a>> {
-    let (token, _) = expect_valid_token!(parser, cursor)?;
-    let statement_handler = parser.lookup.statement_lookup.get(&token.token_type);
-
-    match statement_handler {
-        Some(statement_handler) => statement_handler(parser, cursor),
-        None => parse_expression(parser, cursor),
-    }
-}
-
-pub fn parse_expression<'a>(
-    parser: &'a Parser<'a>,
-    cursor: usize,
-) -> Result<(Statement, usize), Error<'a>> {
-    let (expression, cursor) = expression::parse(parser, cursor, &BindingPower::None)?;
-    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Semicolon)?;
-
-    Ok((Statement::Expression(expression), cursor))
-}
-
-pub fn parse_declaration<'a>(
-    parser: &'a Parser<'a>,
-    cursor: usize,
-) -> Result<(Statement, usize), Error<'a>> {
-    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Let)?;
-    let (identifier, cursor) = expect_tokens!(parser, cursor, TokenType::Identifier)?;
-    let identifier = match &identifier[0].value {
-        TokenValue::Identifier(identifier) => identifier,
-        _ => panic!("expect_token! should return a valid token and handle the error case"),
-    };
-
-    let (token, _) = expect_any_token!(parser, cursor, TokenType::Colon, TokenType::Equal)?;
-    let (typing, cursor) = match token.token_type {
-        TokenType::Colon => {
-            let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Colon)?;
-            let (typing, cursor) = expect_type!(parser, cursor, BindingPower::None)?;
-            (Some(typing), cursor)
+pub fn parse<'de>(parser: &mut Parser<'de>, optional_semicolon: bool) -> Result<Statement<'de>> {
+    let token = match parser.lexer.peek().as_ref() {
+        Some(Ok(token)) => token,
+        Some(Err(err)) => return Err(miette::miette!(err.to_string())), // FIXME: better error handling
+        None => {
+            return Err(miette::miette! {
+                help = "expected a statement",
+                "expected a statement"
+            })
         }
-        _ => (None, cursor),
     };
 
-    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Equal)?;
-    let (expression, cursor) = expect_expression!(parser, cursor, &BindingPower::None)?;
-    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Semicolon)?;
+    let statement_handler = parser.lookup.statement_lookup.get(&token.kind);
 
-    Ok((
-        Statement::Declaration(identifier.clone(), typing, expression),
-        cursor,
+    let token_kind = &token.clone();
+
+    let statement = match statement_handler {
+        Some(handler) => handler(parser)?,
+        None => {
+            let expression = expression::parse(parser, BindingPower::None)
+                .wrap_err("while parsing a statement")?;
+
+            if !optional_semicolon {
+                let token = parser
+                    .lexer
+                    .expect(
+                        TokenKind::Semicolon,
+                        "expected a semicolon at the end of an expression",
+                    )
+                    .wrap_err(format!("while parsing for {}", token_kind))?;
+
+                Statement::at_multiple(
+                    vec![expression.span, token.span],
+                    StatementValue::Expression(expression),
+                )
+            } else {
+                Statement::at(expression.span, StatementValue::Expression(expression))
+            }
+        }
+    };
+
+    Ok(statement)
+}
+
+pub fn let_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Let, "expected a let keyword")?;
+    let identifier = parser
+        .lexer
+        .expect(TokenKind::Identifier, "expected a variable name")?;
+    let name = match identifier.value {
+        TokenValue::Identifier(identifier) => identifier,
+        _ => unreachable!(),
+    };
+    parser
+        .lexer
+        .expect(TokenKind::Equal, "expected an equal sign")?;
+    let expression = expression::parse(parser, BindingPower::None)?;
+
+    Ok(Statement::at_multiple(
+        vec![token.span, identifier.span],
+        StatementValue::Assignment {
+            name,
+            value: expression,
+        },
     ))
 }
 
-pub fn parse_struct<'a>(
-    parser: &'a Parser<'a>,
-    cursor: usize,
-) -> Result<(Statement, usize), Error<'a>> {
-    let (tokens, cursor) = expect_tokens!(
-        parser,
-        cursor,
-        TokenType::Struct,
-        TokenType::Identifier,
-        TokenType::Colon
-    )?;
+pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Struct, "expected a struct keyword")?;
 
-    let identifier = expect_token_value!(tokens[1], TokenValue::Identifier);
+    let identifier = parser
+        .lexer
+        .expect(TokenKind::Identifier, "expected a struct name")?;
 
-    let mut new_cursor = cursor;
-    let mut members: HashMap<String, Type> = HashMap::new();
+    let name = match identifier.value {
+        TokenValue::Identifier(identifier) => identifier,
+        _ => unreachable!(),
+    };
 
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
-        let (member_name, member_type, cursor) = match token.token_type {
-            TokenType::Semicolon => break,
-            _ => {
-                let (tokens, cursor) = expect_tokens!(
-                    parser,
-                    new_cursor,
-                    TokenType::Dot,
-                    TokenType::Identifier,
-                    TokenType::Colon
-                )?;
+    parser.lexer.expect(TokenKind::Colon, "expected a colon")?;
 
-                let identifier = expect_token_value!(tokens[1], TokenValue::Identifier);
+    let mut fields = vec![];
 
-                let (field_type, cursor) = expect_type!(parser, cursor, BindingPower::None)?;
+    while parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind != TokenKind::Semicolon)
+    }) {
+        if !fields.is_empty() {
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between fields")?;
+        }
 
-                (identifier, field_type, cursor)
-            }
+        let field = parser
+            .lexer
+            .expect(TokenKind::Identifier, "expected a field name")?;
+
+        let field = match field.value {
+            TokenValue::Identifier(field) => field,
+            _ => unreachable!(),
         };
 
-        // TODO: Handle warning for overwritten member
-        members.insert(member_name, member_type);
+        parser.lexer.expect(TokenKind::Tilde, "expected a tilde")?;
 
-        new_cursor = cursor;
+        let explicit_type = typing::parse(parser, BindingPower::None)?;
+
+        fields.push(StructMemberDeclaration {
+            name: field,
+            explicit_type,
+        });
     }
 
-    let (_, cursor) = expect_tokens!(parser, new_cursor, TokenType::Semicolon)?;
+    parser
+        .lexer
+        .expect(TokenKind::Semicolon, "expected a semicolon")?;
 
-    Ok((Statement::Struct(identifier, members), cursor))
+    Ok(Statement::at_multiple(
+        vec![token.span, identifier.span],
+        StatementValue::Struct { name, fields },
+    ))
 }
 
-pub fn parse_enum<'a>(
-    parser: &'a Parser<'a>,
-    cursor: usize,
-) -> Result<(Statement, usize), Error<'a>> {
-    let (tokens, cursor) = expect_tokens!(
-        parser,
-        cursor,
-        TokenType::Enum,
-        TokenType::Identifier,
-        TokenType::Colon
-    )?;
+pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Enum, "expected an enum keyword")?;
 
-    let identifier = expect_token_value!(tokens[1], TokenValue::Identifier);
+    let identifier = parser
+        .lexer
+        .expect(TokenKind::Identifier, "expected an enum name")?;
 
-    let mut new_cursor = cursor;
-    let mut members: HashSet<String> = HashSet::new();
+    let name = match identifier.value {
+        TokenValue::Identifier(identifier) => identifier,
+        _ => unreachable!(),
+    };
 
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
-        let (member_name, cursor) = match token.token_type {
-            TokenType::Semicolon => break,
-            _ => {
-                let (field_name, cursor) =
-                    expect_tokens!(parser, new_cursor, TokenType::Identifier)?;
+    parser.lexer.expect(TokenKind::Colon, "expected a colon")?;
 
-                let field_name = expect_token_value!(field_name[0], TokenValue::Identifier);
+    let mut variants = vec![];
 
-                (field_name, cursor)
-            }
+    while parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind != TokenKind::Semicolon)
+    }) {
+        if !variants.is_empty() {
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between enum members")?;
+        }
+
+        let variant = parser
+            .lexer
+            .expect(TokenKind::Identifier, "expected an enum member name")?;
+
+        let variant = match variant.value {
+            TokenValue::Identifier(variant) => variant,
+            _ => unreachable!(),
         };
 
-        new_cursor = cursor;
-        // TODO: Handle warning for overwritten members
-        members.insert(member_name);
+        variants.push(EnumMemberDeclaration {
+            name: variant,
+            value_type: None,
+        });
     }
 
-    let (_, cursor) = expect_tokens!(parser, new_cursor, TokenType::Semicolon)?;
+    parser
+        .lexer
+        .expect(TokenKind::Semicolon, "expected a semicolon")?;
 
-    Ok((Statement::Enum(identifier, members), cursor))
+    Ok(Statement::at_multiple(
+        vec![token.span, identifier.span],
+        StatementValue::Enum { name, variants },
+    ))
+}
+
+pub fn function_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    let header = parse_function_header(parser)?;
+    let body = expression::parse(parser, BindingPower::None)?;
+
+    Ok(Statement::at_multiple(
+        vec![body.span],
+        StatementValue::Function { header, body },
+    ))
+}
+
+pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::Trait, "expected a trait keyword")?;
+
+    let identifier = parser
+        .lexer
+        .expect(TokenKind::Identifier, "expected a trait name")?;
+
+    let name = match identifier.value {
+        TokenValue::Identifier(identifier) => identifier,
+        _ => unreachable!(),
+    };
+
+    parser.lexer.expect(TokenKind::Colon, "expected a colon")?;
+
+    let mut functions = vec![];
+
+    while parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind != TokenKind::Semicolon)
+    }) {
+        if !functions.is_empty() {
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between functions")?;
+        }
+
+        functions.push(parse_function_header(parser)?);
+    }
+
+    parser
+        .lexer
+        .expect(TokenKind::Semicolon, "expected a semicolon")?;
+
+    Ok(Statement::at_multiple(
+        vec![identifier.span],
+        StatementValue::Trait { name, functions },
+    ))
+}
+
+pub fn return_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    parser
+        .lexer
+        .expect(TokenKind::Return, "expected a return keyword")?;
+
+    let expression = expression::parse(parser, BindingPower::None)?;
+
+    Ok(Statement::at(
+        expression.span,
+        StatementValue::Return(expression),
+    ))
+}
+
+pub fn if_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::If, "expected an if keyword")?;
+
+    let condition = expression::parse(parser, BindingPower::None)?;
+
+    let truthy = statement::parse(parser, true)?;
+
+    let falsy = if parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind == TokenKind::Else)
+    }) {
+        parser.lexer.next();
+        Some(statement::parse(parser, true)?)
+    } else {
+        None
+    };
+
+    Ok(Statement::at_multiple(
+        vec![token.span, condition.span],
+        StatementValue::Conditional {
+            condition: Box::new(condition),
+            truthy: Box::new(truthy),
+            falsy: falsy.map(Box::new),
+        },
+    ))
+}
+
+fn parse_function_header<'de>(parser: &mut Parser<'de>) -> Result<FunctionHeader<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Function, "expected a function keyword")?;
+
+    let identifier = parser
+        .lexer
+        .expect(TokenKind::Identifier, "expected function name")?;
+
+    let name = match identifier.value {
+        TokenValue::Identifier(identifier) => identifier,
+        _ => unreachable!(),
+    };
+
+    parser
+        .lexer
+        .expect(TokenKind::ParenOpen, "expected an open parenthesis")?;
+
+    let mut parameters = vec![];
+
+    while parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind != TokenKind::ParenClose)
+    }) {
+        if !parameters.is_empty() {
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between parameters")?;
+        }
+
+        let parameter = parser
+            .lexer
+            .expect(TokenKind::Identifier, "expected a parameter name")?;
+
+        let parameter = match parameter.value {
+            TokenValue::Identifier(parameter) => parameter,
+            _ => unreachable!(),
+        };
+
+        parser.lexer.expect(TokenKind::Tilde, "expected a tilde")?;
+
+        let explicit_type = typing::parse(parser, BindingPower::None)?;
+
+        parameters.push(ParameterDeclaration {
+            name: parameter,
+            explicit_type,
+        });
+    }
+
+    parser
+        .lexer
+        .expect(TokenKind::ParenClose, "expected a close parenthesis")?;
+
+    let explicit_return_type = match parser.lexer.peek_expect(TokenKind::Tilde) {
+        None => None,
+        Some(_) => {
+            parser.lexer.next();
+            Some(typing::parse(parser, BindingPower::None)?)
+        }
+    };
+
+    Ok(FunctionHeader {
+        name,
+        parameters,
+        explicit_return_type,
+    })
 }

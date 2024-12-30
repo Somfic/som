@@ -1,128 +1,167 @@
-use std::collections::HashMap;
-
 use super::{
-    ast::Type,
+    ast::{
+        Spannable, {Type, TypeValue},
+    },
     lookup::BindingPower,
-    macros::{expect_optional_token, expect_tokens, expect_type, expect_valid_token},
     Parser,
 };
-use crate::{
-    diagnostic::Error,
-    scanner::lexeme::{Lexeme, TokenType, TokenValue},
-};
+use crate::lexer::{TokenKind, TokenValue};
+use miette::Result;
 
-pub fn parse<'a>(
-    parser: &'a Parser<'a>,
-    cursor: usize,
-    binding_power: &BindingPower,
-) -> Result<(Type, usize), Error<'a>> {
-    let mut cursor = cursor;
-    let (token, range) = expect_valid_token!(parser, cursor)?;
-    let type_handler = parser
+pub fn parse<'de>(parser: &mut Parser<'de>, binding_power: BindingPower) -> Result<Type<'de>> {
+    let token = match parser.lexer.peek().as_ref() {
+        Some(Ok(token)) => token,
+        Some(Err(err)) => return Err(miette::miette!(err.to_string())), // FIXME: better error handling
+        None => {
+            return Err(miette::miette! {
+                help = "expected a type",
+                "expected a type"
+            })
+        }
+    };
+
+    let handler = parser
         .lookup
         .type_lookup
-        .get(&token.token_type)
-        .ok_or(Error::primary(
-            parser.lexemes.get(cursor).unwrap().range().file_id,
-            cursor,
-            range.length,
-            "Expected a type",
-        ))?;
+        .get(&token.kind)
+        .ok_or(miette::miette! {
+            labels = vec![token.label("expected a type")],
+            help = format!("{} is not a type", token.kind),
+            "expected a type, found {}", token.kind
+        })?;
+    let mut lhs = handler(parser)?;
 
-    let (mut left_hand_side, new_cursor) = type_handler(parser, cursor)?;
+    let mut next_token = parser.lexer.peek();
 
-    cursor = new_cursor;
+    while let Some(token) = next_token {
+        let token = match token {
+            Ok(token) => token,
+            Err(err) => return Err(miette::miette!(err.to_string())), // FIXME: better error handling
+        };
 
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(cursor) {
-        let token_binding_power = parser
-            .lookup
-            .binding_power_lookup
-            .get(&token.token_type)
-            .unwrap_or(&BindingPower::None);
+        let token_binding_power = {
+            let binding_power_lookup = parser.lookup.binding_power_lookup.clone();
+            binding_power_lookup
+                .get(&token.kind)
+                .unwrap_or(&BindingPower::None)
+                .clone()
+        };
 
         if binding_power > token_binding_power {
             break;
         }
 
-        let left_type_handler = match parser.lookup.left_type_lookup.get(&token.token_type) {
+        let handler = match parser.lookup.left_type_lookup.get(&token.kind) {
             Some(handler) => handler,
             None => break,
         };
 
-        let (right_hand_side, new_cursor) =
-            left_type_handler(parser, cursor, left_hand_side, token_binding_power)?;
+        parser.lexer.next();
 
-        cursor = new_cursor;
-        left_hand_side = right_hand_side;
+        lhs = handler(parser, lhs, token_binding_power)?;
+
+        next_token = parser.lexer.peek();
     }
 
-    Ok((left_hand_side, cursor))
+    Ok(lhs)
 }
 
-pub fn parse_symbol<'a>(parser: &'a Parser, cursor: usize) -> Result<(Type, usize), Error<'a>> {
-    let (identifier, cursor) = expect_tokens!(parser, cursor, TokenType::Identifier)?;
-    let identifier = match &identifier[0].value {
+pub fn unit<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let open = parser
+        .lexer
+        .expect(TokenKind::ParenOpen, "expected an opening parenthesis")?;
+
+    let close = parser
+        .lexer
+        .expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
+
+    Ok(Type::at_multiple(
+        vec![open.span, close.span],
+        TypeValue::Unit,
+    ))
+}
+
+pub fn boolean<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::BooleanType, "expected a boolean type")?;
+
+    Ok(Type::at(token.span, TypeValue::Boolean))
+}
+
+pub fn integer<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::IntegerType, "expected an integer type")?;
+
+    Ok(Type::at(token.span, TypeValue::Integer))
+}
+
+pub fn decimal<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::DecimalType, "expected a decimal type")?;
+
+    Ok(Type::at(token.span, TypeValue::Decimal))
+}
+
+pub fn string<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::StringType, "expected a string type")?;
+
+    Ok(Type::at(token.span, TypeValue::String))
+}
+
+pub fn character<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::CharacterType, "expected a character type")?;
+
+    Ok(Type::at(token.span, TypeValue::Character))
+}
+
+pub fn collection<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let open = parser
+        .lexer
+        .expect(TokenKind::SquareOpen, "expected an opening bracket")?;
+    let element = parse(parser, BindingPower::None)?;
+    let close = parser
+        .lexer
+        .expect(TokenKind::SquareClose, "expected a closing bracket")?;
+
+    Ok(Type::at_multiple(
+        vec![open.span, element.span, close.span],
+        TypeValue::Collection(Box::new(element)),
+    ))
+}
+
+pub fn set<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let open = parser
+        .lexer
+        .expect(TokenKind::CurlyOpen, "expected an opening curly brace")?;
+
+    let element = parse(parser, BindingPower::None)?;
+
+    let close = parser
+        .lexer
+        .expect(TokenKind::CurlyClose, "expected a closing curly brace")?;
+
+    Ok(Type::at_multiple(
+        vec![open.span, element.span, close.span],
+        TypeValue::Set(Box::new(element)),
+    ))
+}
+
+pub fn identifier<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Identifier, "expected an identifier")?;
+
+    let name = match token.value {
         TokenValue::Identifier(identifier) => identifier,
-        _ => panic!("expect_token! should only return identifiers"),
+        _ => unreachable!(),
     };
-    Ok((Type::Symbol(identifier.clone()), cursor))
-}
 
-pub fn parse_array<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Type, usize), Error<'a>> {
-    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::SquareOpen)?;
-    let (element_type, cursor) = expect_type!(parser, cursor, &BindingPower::None)?;
-    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::SquareClose)?;
-    Ok((Type::Array(Box::new(element_type)), cursor))
-}
-
-pub fn parse_tuple<'a>(parser: &'a Parser<'a>, cursor: usize) -> Result<(Type, usize), Error<'a>> {
-    let (_, cursor) = expect_tokens!(parser, cursor, TokenType::CurlyOpen)?;
-    let mut new_cursor = cursor;
-    let mut members: HashMap<String, Type> = HashMap::new();
-
-    while let Some(Lexeme::Valid(token)) = parser.lexemes.get(new_cursor) {
-        let (member_name, member_type, cursor) = match token.token_type {
-            TokenType::CurlyClose => break,
-            _ => {
-                if !members.is_empty() {
-                    let (_, cursor) = expect_tokens!(parser, new_cursor, TokenType::Comma)?;
-                    new_cursor = cursor;
-                }
-
-                let (colon, _) = expect_optional_token!(parser, new_cursor + 1, TokenType::Colon)?;
-
-                match colon {
-                    Some(_) => {
-                        let (field_name, cursor) =
-                            expect_tokens!(parser, new_cursor, TokenType::Identifier)?;
-                        let field_name = match &field_name[0].value {
-                            TokenValue::Identifier(field_name) => field_name.clone(),
-                            _ => panic!("expect_token! should only return identifiers"),
-                        };
-
-                        let (_, cursor) = expect_tokens!(parser, cursor, TokenType::Colon)?;
-                        let (field_type, cursor) =
-                            expect_type!(parser, cursor, BindingPower::None)?;
-
-                        (field_name, field_type, cursor)
-                    }
-                    None => {
-                        let field_name = members.len().to_string();
-                        let (field_type, cursor) =
-                            expect_type!(parser, new_cursor, BindingPower::None)?;
-                        (field_name, field_type, cursor)
-                    }
-                }
-            }
-        };
-
-        // TODO: Check for duplicate member names
-        members.insert(member_name, member_type);
-
-        new_cursor = cursor;
-    }
-
-    let (_, cursor) = expect_tokens!(parser, new_cursor, TokenType::CurlyClose)?;
-
-    Ok((Type::Tuple(members), cursor))
+    Ok(Type::at(token.span, TypeValue::Symbol(name)))
 }
