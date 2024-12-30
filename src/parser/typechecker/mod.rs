@@ -1,10 +1,10 @@
-use std::{borrow::Cow, collections::HashMap};
-
 use super::{
     ast::{typed, untyped, Type, TypeValue},
     expression,
 };
-use miette::{MietteDiagnostic, Report, Result};
+use crate::parser::ast::CombineSpan;
+use miette::{MietteDiagnostic, Report, Result, SourceSpan};
+use std::{borrow::Cow, collections::HashMap};
 
 pub struct TypeChecker<'ast> {
     symbol: untyped::Symbol<'ast>,
@@ -109,7 +109,7 @@ impl<'ast> TypeChecker<'ast> {
                             severity: None,
                             url: None,
                             labels: Some(vec![expression.label("undeclared variable")]),
-                            help: Some(format!("`{}` is not declared", name)),
+                            help: Some(format!("{} is not declared", name)),
                             message: "undeclared variable".to_owned(),
                         }]
                     }),
@@ -137,9 +137,20 @@ impl<'ast> TypeChecker<'ast> {
             } => {
                 let left = self.type_of(left, environment)?;
                 let right = self.type_of(right, environment)?;
-                self.expect_match(&left, &right);
+                self.expect_match(
+                    &left,
+                    &right,
+                    "left and right must be of the same type".into(),
+                );
                 self.expect_allowed_binary_operation(&left, &right, operator);
-                Ok(left)
+
+                if operator.is_comparison() {
+                    Ok(Type::boolean(expression.span))
+                } else {
+                    Ok(left
+                        .clone()
+                        .span(SourceSpan::combine(vec![left.span, right.span])))
+                }
             }
             untyped::ExpressionValue::Unary { operator, operand } => {
                 self.type_of(operand, environment)
@@ -153,7 +164,16 @@ impl<'ast> TypeChecker<'ast> {
                 let truthy = self.type_of(truthy, environment)?;
                 let falsy = self.type_of(falsy, environment)?;
 
-                self.expect_match(&truthy, &falsy);
+                self.expect_type(
+                    &condition,
+                    TypeValue::Boolean,
+                    "the condition must be boolean".into(),
+                );
+                self.expect_match(
+                    &truthy,
+                    &falsy,
+                    "truthy and falsy branches must be of the same type".into(),
+                );
 
                 Ok(truthy)
             }
@@ -161,10 +181,10 @@ impl<'ast> TypeChecker<'ast> {
         }
     }
 
-    fn expect_allowed_binary_operation<'a>(
+    fn expect_allowed_binary_operation(
         &mut self,
-        left: &Type<'a>,
-        right: &Type<'a>,
+        left: &Type<'ast>,
+        right: &Type<'ast>,
         operator: &untyped::BinaryOperator,
     ) {
         match operator {
@@ -177,34 +197,48 @@ impl<'ast> TypeChecker<'ast> {
             | untyped::BinaryOperator::LessThanOrEqual
             | untyped::BinaryOperator::GreaterThan
             | untyped::BinaryOperator::GreaterThanOrEqual => {
-                if !left.value.is_numeric() || !right.value.is_numeric() {
-                    let mut labels = vec![];
-                    if !left.value.is_numeric() {
-                        labels.extend(
-                            left.label(format!("{} may not be used for {}", left, operator)),
-                        );
-                    }
-                    if !right.value.is_numeric() {
-                        labels.extend(
-                            right.label(format!("{} may not be used for {}", right, operator)),
-                        );
-                    }
+                // if !left.value.is_numeric() || !right.value.is_numeric() {
+                //     let mut labels = vec![];
+                //     if !left.value.is_numeric() {
+                //         labels.extend(
+                //             left.label(format!("{}", left)),
+                //         );
+                //     }
+                //     if !right.value.is_numeric() {
+                //         labels.extend(
+                //             right.label(format!("{}", right)),
+                //         );
+                //     }
 
-                    self.errors.push(MietteDiagnostic {
-                        code: None,
-                        severity: None,
-                        url: None,
-                        labels: Some(labels),
-                        help: Some(format!("only numeric types may be used for `{}`", operator)),
-                        message: format!("expected numeric types for `{}`", operator),
-                    });
-                }
+                //     self.errors.push(MietteDiagnostic {
+                //         code: None,
+                //         severity: None,
+                //         url: None,
+                //         labels: Some(labels),
+                //         help: Some(format!("only numeric types may be used for {}", operator)),
+                //         message: format!("type mismatch, expected numeric types for {}, but found ", operator),
+                //     });
+                // }
+                self.expect_types(
+                    left,
+                    &[TypeValue::Integer, TypeValue::Decimal],
+                    "left side must be a numeric type".into(),
+                );
+
+                self.expect_types(
+                    right,
+                    &[TypeValue::Integer, TypeValue::Decimal],
+                    "right side must be a numeric type".into(),
+                );
+            }
+            untyped::BinaryOperator::Equality | untyped::BinaryOperator::Inequality => {
+                // TODO: Implement equality and inequality
             }
             _ => todo!("expect_allowed_binary_operation: {:?}", operator),
         }
     }
 
-    fn expect_match<'a>(&mut self, left: &Type<'a>, right: &Type<'a>) {
+    fn expect_match(&mut self, left: &Type<'ast>, right: &Type<'ast>, message: String) {
         if !left.value.matches(&right.value) {
             let mut labels = vec![];
             labels.extend(left.label(format!("{}", left)));
@@ -215,8 +249,39 @@ impl<'ast> TypeChecker<'ast> {
                 severity: None,
                 url: None,
                 labels: Some(labels),
-                help: Some(format!("{} is not the same type as {}", left, right)),
-                message: "type mismatch".to_owned(),
+                help: Some(format!(
+                    "type mismatch, expected types to match, but found {} and {}",
+                    left, right
+                )),
+                message,
+            });
+        }
+    }
+
+    fn expect_type(&mut self, ty: &Type<'ast>, expected: TypeValue, message: String) {
+        self.expect_types(ty, &[expected], message);
+    }
+
+    fn expect_types(&mut self, ty: &Type<'ast>, expected: &[TypeValue], message: String) {
+        if !expected.iter().any(|e| *e == ty.value) {
+            let mut labels = vec![];
+            labels.extend(ty.label(format!("{}", ty)));
+
+            self.errors.push(MietteDiagnostic {
+                code: None,
+                severity: None,
+                url: None,
+                labels: Some(labels),
+                help: Some(format!(
+                    "unexpected type, expected {} but found {}",
+                    expected
+                        .iter()
+                        .map(|ex| ex.to_string())
+                        .collect::<Vec<String>>()
+                        .join(" or "),
+                    ty
+                )),
+                message,
             });
         }
     }
