@@ -110,7 +110,7 @@ pub fn string<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
         .lexer
         .expect(TokenKind::StringType, "expected a string type")?;
 
-    Ok(Type::at(token.span, TypeValue::String))
+    Ok(Type::string(token.span))
 }
 
 pub fn character<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
@@ -118,7 +118,7 @@ pub fn character<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
         .lexer
         .expect(TokenKind::CharacterType, "expected a character type")?;
 
-    Ok(Type::at(token.span, TypeValue::Character))
+    Ok(Type::character(token.span))
 }
 
 pub fn collection<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
@@ -163,5 +163,57 @@ pub fn identifier<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
         _ => unreachable!(),
     };
 
-    Ok(Type::at(token.span, TypeValue::Symbol(name)))
+    Ok(Type::symbol(token.span, name))
+}
+
+pub fn function<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
+    let function = parser
+        .lexer
+        .expect(TokenKind::Function, "expected a function type")?;
+
+    let open = parser
+        .lexer
+        .expect(TokenKind::ParenOpen, "expected an opening parenthesis")?;
+
+    let mut parameters = Vec::new();
+
+    while parser.lexer.peek().map_or(false, |token| {
+        token
+            .as_ref()
+            .map_or(false, |token| token.kind != TokenKind::ParenClose)
+    }) {
+        if !parameters.is_empty() {
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between parameters")?;
+        }
+
+        let parameter = parse(parser, BindingPower::None)?;
+        parameters.push(parameter);
+    }
+
+    let close = parser
+        .lexer
+        .expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
+
+    let explicit_return_type = match parser.lexer.peek_expect(TokenKind::Arrow) {
+        None => None,
+        Some(_) => {
+            parser.lexer.next();
+            Some(parse(parser, BindingPower::None)?)
+        }
+    };
+
+    Ok(Type::at_multiple(
+        vec![
+            function.span,
+            open.span,
+            close.span,
+            explicit_return_type.as_ref().map_or(open.span, |t| t.span),
+        ],
+        TypeValue::Function {
+            parameters,
+            return_type: Box::new(explicit_return_type.unwrap_or_else(|| Type::unit(open.span))),
+        },
+    ))
 }

@@ -207,6 +207,7 @@ impl Default for Lookup<'_> {
         .add_type_handler(TokenKind::StringType, typing::string)
         .add_type_handler(TokenKind::SquareOpen, typing::collection)
         .add_type_handler(TokenKind::CurlyOpen, typing::set)
+        .add_type_handler(TokenKind::Function, typing::function)
         .add_statement_handler(TokenKind::Return, statement::return_)
         .add_statement_handler(TokenKind::If, statement::if_)
     }

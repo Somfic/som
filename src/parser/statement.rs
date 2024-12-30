@@ -11,7 +11,8 @@ use super::{
     statement, typing, Parser,
 };
 use crate::lexer::{Token, TokenKind, TokenValue};
-use miette::{Context, Result};
+use crate::parser::ast::CombineSpan;
+use miette::{Context, Result, SourceSpan};
 
 pub fn parse<'de>(parser: &mut Parser<'de>, optional_semicolon: bool) -> Result<Statement<'de>> {
     let token = match parser.lexer.peek().as_ref() {
@@ -115,7 +116,7 @@ pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
             .lexer
             .expect(TokenKind::Identifier, "expected a field name")?;
 
-        let field = match field.value {
+        let field_name = match field.value {
             TokenValue::Identifier(field) => field,
             _ => unreachable!(),
         };
@@ -125,7 +126,8 @@ pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
         let explicit_type = typing::parse(parser, BindingPower::None)?;
 
         fields.push(StructMemberDeclaration {
-            name: field,
+            span: SourceSpan::combine(vec![field.span, explicit_type.span]),
+            name: field_name,
             explicit_type,
         });
     }
@@ -173,13 +175,14 @@ pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
             .lexer
             .expect(TokenKind::Identifier, "expected an enum member name")?;
 
-        let variant = match variant.value {
+        let variant_name = match variant.value {
             TokenValue::Identifier(variant) => variant,
             _ => unreachable!(),
         };
 
         variants.push(EnumMemberDeclaration {
-            name: variant,
+            span: variant.span,
+            name: variant_name,
             value_type: None,
         });
     }
@@ -324,7 +327,7 @@ fn parse_function_header<'de>(parser: &mut Parser<'de>) -> Result<FunctionHeader
             .lexer
             .expect(TokenKind::Identifier, "expected a parameter name")?;
 
-        let parameter = match parameter.value {
+        let parameter_name = match parameter.value {
             TokenValue::Identifier(parameter) => parameter,
             _ => unreachable!(),
         };
@@ -334,16 +337,17 @@ fn parse_function_header<'de>(parser: &mut Parser<'de>) -> Result<FunctionHeader
         let explicit_type = typing::parse(parser, BindingPower::None)?;
 
         parameters.push(ParameterDeclaration {
-            name: parameter,
+            span: SourceSpan::combine(vec![parameter.span, explicit_type.span]),
+            name: parameter_name,
             explicit_type,
         });
     }
 
-    parser
+    let close = parser
         .lexer
         .expect(TokenKind::ParenClose, "expected a close parenthesis")?;
 
-    let explicit_return_type = match parser.lexer.peek_expect(TokenKind::Tilde) {
+    let explicit_return_type = match parser.lexer.peek_expect(TokenKind::Arrow) {
         None => None,
         Some(_) => {
             parser.lexer.next();
@@ -351,7 +355,13 @@ fn parse_function_header<'de>(parser: &mut Parser<'de>) -> Result<FunctionHeader
         }
     };
 
+    let mut spans = vec![token.span, close.span];
+    if let Some(explicit_return_type) = &explicit_return_type {
+        spans.push(explicit_return_type.span);
+    }
+
     Ok(FunctionHeader {
+        span: SourceSpan::combine(spans),
         name,
         parameters,
         explicit_return_type,

@@ -100,6 +100,17 @@ impl<'de> Type<'de> {
         }
     }
 
+    pub fn function(span: SourceSpan, parameters: Vec<Type<'de>>, return_type: Type<'de>) -> Self {
+        Self {
+            value: TypeValue::Function {
+                parameters,
+                return_type: Box::new(return_type),
+            },
+            span,
+            original_span: None,
+        }
+    }
+
     pub fn span(mut self, span: SourceSpan) -> Self {
         if self.original_span.is_none() {
             self.original_span = Some(self.span);
@@ -120,6 +131,10 @@ pub enum TypeValue<'de> {
     Symbol(Cow<'de, str>),
     Collection(Box<Type<'de>>),
     Set(Box<Type<'de>>),
+    Function {
+        parameters: Vec<Type<'de>>,
+        return_type: Box<Type<'de>>,
+    },
 }
 
 impl<'de> TypeValue<'de> {
@@ -208,9 +223,29 @@ impl Display for TypeValue<'_> {
             TypeValue::Decimal => write!(f, "a decimal"),
             TypeValue::Character => write!(f, "a character"),
             TypeValue::String => write!(f, "a string"),
-            TypeValue::Symbol(name) => write!(f, "{}", name),
+            TypeValue::Symbol(name) => write!(f, "`{}`", name),
             TypeValue::Collection(element) => write!(f, "[{}]", element),
             TypeValue::Set(element) => write!(f, "{{{}}}", element),
+            TypeValue::Function {
+                parameters,
+                return_type,
+            } => {
+                write!(
+                    f,
+                    "fn ({})",
+                    parameters
+                        .iter()
+                        .map(|p| p.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                )?;
+
+                if !return_type.value.is_unit() {
+                    write!(f, " -> {}", return_type)?;
+                }
+
+                Ok(())
+            }
         }
     }
 }
