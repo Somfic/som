@@ -1,64 +1,64 @@
-use anyhow::Result;
-use codespan_reporting::{
-    diagnostic::Diagnostic,
-    term::{
-        self,
-        termcolor::{ColorChoice, StandardStream},
-    },
+use crate::parser::typechecker::TypeChecker;
+use highlighter::SomHighlighter;
+use lexer::{Lexer, TokenKind};
+use miette::{miette, Diagnostic};
+use owo_colors::{Style, Styled};
+use parser::{
+    ast::untyped::{Expression, ExpressionValue},
+    Parser,
 };
-use core::result::Result::Ok;
-use files::Files;
-use transpiler::{bend::BendTranspiler, Transpiler};
+use std::vec;
+use thiserror::Error;
 
-pub mod diagnostic;
-pub mod files;
+pub mod highlighter;
+pub mod lexer;
 pub mod parser;
-pub mod scanner;
-pub mod transpiler;
 
-fn main() -> Result<()> {
-    let mut files = Files::default();
-    files.insert(
-        "main",
-        "
-        enum hello:
-            a
-            b
-            c;
-    ",
-    );
+const INPUT: &str = "
+enum Test: a, b, c;
 
-    let scanner = scanner::Scanner::new(&files);
-    let lexemes = scanner.parse();
+fn main() {
+    let x = 'b';
 
-    println!("{:#?}", lexemes);
+    {
+        let x = 'a';
+        let y = 1 + x;
+    };
 
-    let mut parser = parser::Parser::new(&lexemes);
-    let parsed = parser.parse();
+    let y = 1 + x;
+}
+";
 
-    match &parsed {
-        Ok(_) => {}
-        Err(diagnostics) => {
-            // Print the diagnostics
-            for diagnostic in diagnostics.iter() {
-                println!("{:?}", diagnostic);
-            }
+fn main() {
+    miette::set_hook(Box::new(|_| {
+        Box::new(
+            miette::MietteHandlerOpts::new()
+                .terminal_links(true)
+                .unicode(true)
+                .context_lines(3)
+                .with_syntax_highlighting(SomHighlighter {})
+                .build(),
+        )
+    }))
+    .unwrap();
 
-            let diagnostics: Vec<Diagnostic<&str>> =
-                diagnostics.iter().map(|d| d.clone().into()).collect();
+    let mut errors = vec![];
 
-            let writer = StandardStream::stderr(ColorChoice::Auto);
-            let config = codespan_reporting::term::Config::default();
+    let lexer = Lexer::new(INPUT);
 
-            for diagnostic in diagnostics {
-                term::emit(&mut writer.lock(), &config, &files, &diagnostic)?;
-            }
+    let mut parser = Parser::new(lexer);
+    let symbol = match parser.parse() {
+        Ok(symbol) => symbol,
+        Err(err) => {
+            println!("{:?}", err.with_source_code(INPUT));
+            return;
         }
+    };
+
+    let typechecker = TypeChecker::new(symbol);
+    errors.extend(typechecker.check());
+
+    for error in errors {
+        println!("{:?}", miette!(error).with_source_code(INPUT));
     }
-
-    let transpiled = BendTranspiler::transpile(&parsed.unwrap());
-
-    println!("{}", transpiled);
-
-    Ok(())
 }
