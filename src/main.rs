@@ -15,14 +15,12 @@ pub mod lexer;
 pub mod parser;
 
 const INPUT: &str = "
-fn add(left ~ int, right ~ int) -> fn(int, int) -> int {
-    left + right
-}
+fn fib(n ~ int) -> int {
+    if n < 2 {
+        return n;
+    };
 
-fn main() {
-    let a = 1;
-    let b = 2;
-    let c = add(a, b);
+    return fib(n - 1) + fib(n - 2);
 }
 ";
 
