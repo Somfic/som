@@ -230,9 +230,7 @@ impl<'ast> TypeChecker<'ast> {
                 Ok(truthy)
             }
             untyped::ExpressionValue::Call { callee, arguments } => {
-                println!("callee: {:?}", callee);
                 let callee = self.type_of(callee, environment)?;
-                println!("callee: {:?}", callee);
 
                 match callee.clone().value {
                     TypeValue::Function {
