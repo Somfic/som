@@ -19,10 +19,10 @@ impl<'de> Type<'de> {
         labels.push(miette::LabeledSpan::at(self.span, text.into()));
 
         if let Some(original_span) = self.original_span {
-            labels.push(miette::LabeledSpan::at(
-                original_span,
-                "original type declaration".to_string(),
-            ));
+            // labels.push(miette::LabeledSpan::at(
+            //     original_span,
+            //     "original type declaration".to_string(),
+            // ));
         }
 
         labels

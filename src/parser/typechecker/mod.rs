@@ -100,6 +100,27 @@ impl<'ast> TypeChecker<'ast> {
                     environment.set(name.clone(), expression_type);
                 }
             }
+            untyped::StatementValue::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => {
+                let condition = self
+                    .check_expression(condition, environment)
+                    .unwrap_or(Type::unit(condition.span));
+
+                self.expect_type(
+                    &condition,
+                    TypeValue::Boolean,
+                    "the condition must be boolean".into(),
+                );
+
+                self.check_statement(truthy, environment);
+
+                if let Some(falsy) = falsy {
+                    self.check_statement(falsy, environment);
+                }
+            }
             _ => todo!("check_statement: {:?}", statement),
         };
     }
@@ -208,7 +229,9 @@ impl<'ast> TypeChecker<'ast> {
                 Ok(truthy)
             }
             untyped::ExpressionValue::Call { callee, arguments } => {
+                println!("callee: {:?}", callee);
                 let callee = self.type_of(callee, environment)?;
+                println!("callee: {:?}", callee);
 
                 match callee.clone().value {
                     TypeValue::Function {

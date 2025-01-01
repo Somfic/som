@@ -20,7 +20,7 @@ fn fib(n ~ int) -> int {
         return n;
     };
 
-    return fib(n - 1) + fib(n - 2);
+    fib(n - 1) + fib(n - 2)
 }
 ";
 
