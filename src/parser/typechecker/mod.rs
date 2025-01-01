@@ -401,7 +401,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         self.bindings.insert(name, ty);
     }
 
-    fn get(&self, name: &Cow<'env, str>) -> Option<&Type<'ast>> {
+    fn get(&self, name: &str) -> Option<&Type<'ast>> {
         self.bindings
             .get(name)
             .or_else(|| self.parent.and_then(|p| p.get(name)))
