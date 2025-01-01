@@ -262,10 +262,10 @@ fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
 
     loop {
         // Check if a closing curly brace is found.
-        if parser.lexer.peek().map_or(false, |token| {
+        if parser.lexer.peek().is_some_and(|token| {
             token
                 .as_ref()
-                .map_or(false, |token| token.kind == TokenKind::CurlyClose)
+                .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
         }) {
             break;
         }
@@ -277,10 +277,10 @@ fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
                 .expect(TokenKind::Semicolon, "expected a semicolon")?;
         }
 
-        if parser.lexer.peek().map_or(false, |token| {
+        if parser.lexer.peek().is_some_and(|token| {
             token
                 .as_ref()
-                .map_or(false, |token| token.kind == TokenKind::CurlyClose)
+                .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
         }) {
             last_is_return = false;
             break;

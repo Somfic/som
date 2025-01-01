@@ -101,10 +101,10 @@ pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 
     let mut fields = vec![];
 
-    while parser.lexer.peek().map_or(false, |token| {
+    while parser.lexer.peek().is_some_and(|token| {
         token
             .as_ref()
-            .map_or(false, |token| token.kind != TokenKind::Semicolon)
+            .is_ok_and(|token| token.kind != TokenKind::Semicolon)
     }) {
         if !fields.is_empty() {
             parser
@@ -160,10 +160,10 @@ pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 
     let mut variants = vec![];
 
-    while parser.lexer.peek().map_or(false, |token| {
+    while parser.lexer.peek().is_some_and(|token| {
         token
             .as_ref()
-            .map_or(false, |token| token.kind != TokenKind::Semicolon)
+            .is_ok_and(|token| token.kind != TokenKind::Semicolon)
     }) {
         if !variants.is_empty() {
             parser
@@ -225,10 +225,10 @@ pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 
     let mut functions = vec![];
 
-    while parser.lexer.peek().map_or(false, |token| {
+    while parser.lexer.peek().is_some_and(|token| {
         token
             .as_ref()
-            .map_or(false, |token| token.kind != TokenKind::Semicolon)
+            .is_ok_and(|token| token.kind != TokenKind::Semicolon)
     }) {
         if !functions.is_empty() {
             parser
@@ -271,10 +271,10 @@ pub fn if_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
 
     let truthy = statement::parse(parser, true)?;
 
-    let falsy = if parser.lexer.peek().map_or(false, |token| {
+    let falsy = if parser.lexer.peek().is_some_and(|token| {
         token
             .as_ref()
-            .map_or(false, |token| token.kind == TokenKind::Else)
+            .is_ok_and(|token| token.kind == TokenKind::Else)
     }) {
         parser.lexer.next();
         Some(statement::parse(parser, true)?)
@@ -312,10 +312,10 @@ fn parse_function_header<'de>(parser: &mut Parser<'de>) -> Result<FunctionHeader
 
     let mut parameters = vec![];
 
-    while parser.lexer.peek().map_or(false, |token| {
+    while parser.lexer.peek().is_some_and(|token| {
         token
             .as_ref()
-            .map_or(false, |token| token.kind != TokenKind::ParenClose)
+            .is_ok_and(|token| token.kind != TokenKind::ParenClose)
     }) {
         if !parameters.is_empty() {
             parser

@@ -177,10 +177,10 @@ pub fn function<'de>(parser: &mut Parser<'de>) -> Result<Type<'de>> {
 
     let mut parameters = Vec::new();
 
-    while parser.lexer.peek().map_or(false, |token| {
+    while parser.lexer.peek().is_some_and(|token| {
         token
             .as_ref()
-            .map_or(false, |token| token.kind != TokenKind::ParenClose)
+            .is_ok_and(|token| token.kind != TokenKind::ParenClose)
     }) {
         if !parameters.is_empty() {
             parser
