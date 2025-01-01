@@ -14,9 +14,7 @@ pub struct Type<'de> {
 
 impl<'de> Type<'de> {
     pub fn label(&self, text: impl Into<String>) -> Vec<miette::LabeledSpan> {
-        let mut labels = vec![];
-
-        labels.push(miette::LabeledSpan::at(self.span, text.into()));
+        let labels = vec![miette::LabeledSpan::at(self.span, text.into())];
 
         if let Some(_original_span) = self.original_span {
             // labels.push(miette::LabeledSpan::at(
@@ -154,57 +152,39 @@ impl<'de> TypeValue<'de> {
     }
 
     pub fn is_numeric(&self) -> bool {
-        match self {
-            TypeValue::Integer | TypeValue::Decimal => true,
-            _ => false,
-        }
+        matches!(self, TypeValue::Integer | TypeValue::Decimal)
     }
 
     pub fn is_primitive(&self) -> bool {
-        match self {
+        matches!(
+            self,
             TypeValue::Unit
-            | TypeValue::Boolean
-            | TypeValue::Integer
-            | TypeValue::Decimal
-            | TypeValue::Character
-            | TypeValue::String => true,
-            _ => false,
-        }
+                | TypeValue::Boolean
+                | TypeValue::Integer
+                | TypeValue::Decimal
+                | TypeValue::Character
+                | TypeValue::String
+        )
     }
 
     pub fn is_collection(&self) -> bool {
-        match self {
-            TypeValue::Collection(_) => true,
-            _ => false,
-        }
+        matches!(self, TypeValue::Collection(_))
     }
 
     pub fn is_set(&self) -> bool {
-        match self {
-            TypeValue::Set(_) => true,
-            _ => false,
-        }
+        matches!(self, TypeValue::Set(_))
     }
 
     pub fn is_symbol(&self) -> bool {
-        match self {
-            TypeValue::Symbol(_) => true,
-            _ => false,
-        }
+        matches!(self, TypeValue::Symbol(_))
     }
 
     pub fn is_unit(&self) -> bool {
-        match self {
-            TypeValue::Unit => true,
-            _ => false,
-        }
+        matches!(self, TypeValue::Unit)
     }
 
     pub fn is_boolean(&self) -> bool {
-        match self {
-            TypeValue::Boolean => true,
-            _ => false,
-        }
+        matches!(self, TypeValue::Boolean)
     }
 }
 

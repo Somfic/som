@@ -257,15 +257,15 @@ pub enum BinaryOperator {
 }
 impl BinaryOperator {
     pub fn is_comparison(&self) -> bool {
-        match self {
+        matches!(
+            self,
             BinaryOperator::Equality
-            | BinaryOperator::Inequality
-            | BinaryOperator::LessThan
-            | BinaryOperator::LessThanOrEqual
-            | BinaryOperator::GreaterThan
-            | BinaryOperator::GreaterThanOrEqual => true,
-            _ => false,
-        }
+                | BinaryOperator::Inequality
+                | BinaryOperator::LessThan
+                | BinaryOperator::LessThanOrEqual
+                | BinaryOperator::GreaterThan
+                | BinaryOperator::GreaterThanOrEqual
+        )
     }
 }
 
