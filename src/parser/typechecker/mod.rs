@@ -1,9 +1,6 @@
-use super::{
-    ast::{typed, untyped, Type, TypeValue},
-    expression,
-};
+use super::ast::{untyped, Type, TypeValue};
 use crate::parser::ast::CombineSpan;
-use miette::{MietteDiagnostic, Report, Result, SourceSpan};
+use miette::{MietteDiagnostic, Result, SourceSpan};
 use std::{borrow::Cow, collections::HashMap};
 
 pub struct TypeChecker<'ast> {

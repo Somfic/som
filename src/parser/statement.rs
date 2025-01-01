@@ -10,7 +10,7 @@ use super::{
     lookup::BindingPower,
     statement, typing, Parser,
 };
-use crate::lexer::{Token, TokenKind, TokenValue};
+use crate::lexer::{TokenKind, TokenValue};
 use crate::parser::ast::CombineSpan;
 use miette::{Context, Result, SourceSpan};
 
