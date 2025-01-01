@@ -257,7 +257,7 @@ impl<'ast> TypeChecker<'ast> {
                         for (parameter, argument) in parameters.iter().zip(arguments) {
                             let argument = self.type_of(argument, environment)?;
                             self.expect_match(
-                                &parameter,
+                                parameter,
                                 &argument,
                                 "argument and parameter must match".into(),
                             );
