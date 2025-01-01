@@ -53,15 +53,15 @@ impl Display for StatementValue<'_> {
             StatementValue::Assignment { name, value } => {
                 write!(f, "`{}` assignment with {}", name, value)
             }
-            StatementValue::Struct { name, fields } => write!(f, "`{}` struct", name),
-            StatementValue::Enum { name, variants } => write!(f, "`{}` enum", name),
-            StatementValue::Function { header, body } => write!(f, "`{}` function", header.name),
-            StatementValue::Trait { name, functions } => write!(f, "`{}` trait", name),
+            StatementValue::Struct { name, fields: _ } => write!(f, "`{}` struct", name),
+            StatementValue::Enum { name, variants: _ } => write!(f, "`{}` enum", name),
+            StatementValue::Function { header, body: _ } => write!(f, "`{}` function", header.name),
+            StatementValue::Trait { name, functions: _ } => write!(f, "`{}` trait", name),
             StatementValue::Return(expression) => write!(f, "returning {}", expression),
             StatementValue::Conditional {
-                condition,
-                truthy,
-                falsy,
+                condition: _,
+                truthy: _,
+                falsy: _,
             } => write!(f, "conditional statement"),
         }
     }
@@ -79,21 +79,27 @@ impl Display for ExpressionValue<'_> {
             ExpressionValue::Primitive(primitive) => write!(f, "{}", primitive),
             ExpressionValue::Binary {
                 operator,
-                left,
-                right,
+                left: _,
+                right: _,
             } => write!(f, "{} expression", operator),
-            ExpressionValue::Unary { operator, operand } => write!(f, "{} expression", operator),
-            ExpressionValue::Group(expression) => write!(f, "grouped expression"),
+            ExpressionValue::Unary {
+                operator,
+                operand: _,
+            } => write!(f, "{} expression", operator),
+            ExpressionValue::Group(_expression) => write!(f, "grouped expression"),
             ExpressionValue::Block {
-                statements,
-                return_value,
+                statements: _,
+                return_value: _,
             } => write!(f, "block expression"),
             ExpressionValue::Conditional {
-                condition,
-                truthy,
-                falsy,
+                condition: _,
+                truthy: _,
+                falsy: _,
             } => write!(f, "conditional expression"),
-            ExpressionValue::Call { callee, arguments } => write!(f, "calling {}", callee.value),
+            ExpressionValue::Call {
+                callee,
+                arguments: _,
+            } => write!(f, "calling {}", callee.value),
         }
     }
 }

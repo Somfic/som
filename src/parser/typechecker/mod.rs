@@ -86,10 +86,13 @@ impl<'ast> TypeChecker<'ast> {
             untyped::StatementValue::Return(expr) => {
                 self.check_expression(expr, environment);
             }
-            untyped::StatementValue::Enum { name, variants } => {
+            untyped::StatementValue::Enum {
+                name: _,
+                variants: _,
+            } => {
                 // Not implemented yet
             }
-            untyped::StatementValue::Struct { name, fields } => {
+            untyped::StatementValue::Struct { name: _, fields: _ } => {
                 // Not implemented yet
             }
             untyped::StatementValue::Assignment { name, value } => {
@@ -200,9 +203,10 @@ impl<'ast> TypeChecker<'ast> {
                         .span(SourceSpan::combine(vec![left.span, right.span])))
                 }
             }
-            untyped::ExpressionValue::Unary { operator, operand } => {
-                self.type_of(operand, environment)
-            }
+            untyped::ExpressionValue::Unary {
+                operator: _,
+                operand,
+            } => self.type_of(operand, environment),
             untyped::ExpressionValue::Conditional {
                 condition,
                 truthy,
@@ -271,7 +275,6 @@ impl<'ast> TypeChecker<'ast> {
                     }]),
                 }
             }
-            _ => todo!("type_of: {:?}", expression),
         }
     }
 
