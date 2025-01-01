@@ -11,11 +11,7 @@ pub mod parser;
 
 const INPUT: &str = "
 fn fib(n ~ int) -> int {
-    if n < 2 {
-        return n;
-    };
-
-    fib(n - 1) + fib(n - 2)
+    n if n < 2 else fib(n - 1) + fib(n - 2)
 }
 ";
 
