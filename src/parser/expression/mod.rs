@@ -77,7 +77,7 @@ pub fn parse<'de>(
 pub fn call<'de>(
     parser: &mut Parser<'de>,
     lhs: Expression<'de>,
-    binding_power: BindingPower,
+    _binding_power: BindingPower,
 ) -> Result<Expression<'de>> {
     let mut arguments = Vec::new();
 
@@ -92,7 +92,7 @@ pub fn call<'de>(
                 .expect(TokenKind::Comma, "expected a comma between arguments")?;
         }
 
-        let argument = parse(parser, binding_power.clone())?;
+        let argument = parse(parser, BindingPower::None)?;
         arguments.push(argument);
     }
 
