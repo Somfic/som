@@ -8,7 +8,6 @@ use parser::{
     Parser,
 };
 use std::vec;
-use thiserror::Error;
 
 pub mod highlighter;
 pub mod lexer;
