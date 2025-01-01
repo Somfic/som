@@ -5,7 +5,7 @@ use super::{
     },
     expression, statement, typing, Parser,
 };
-use crate::lexer::{TokenKind, TokenValue};
+use crate::lexer::TokenKind;
 use miette::{Context, Result, SourceSpan};
 use std::collections::HashMap;
 

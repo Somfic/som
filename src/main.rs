@@ -1,12 +1,8 @@
 use crate::parser::typechecker::TypeChecker;
 use highlighter::SomHighlighter;
-use lexer::{Lexer, TokenKind};
-use miette::{miette, Diagnostic};
-use owo_colors::{Style, Styled};
-use parser::{
-    ast::untyped::{Expression, ExpressionValue},
-    Parser,
-};
+use lexer::Lexer;
+use miette::miette;
+use parser::Parser;
 use std::vec;
 
 pub mod highlighter;
