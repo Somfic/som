@@ -1,8 +1,12 @@
 use super::ast::{untyped, Type, TypeValue};
 use crate::parser::ast::CombineSpan;
+use environment::Environment;
 use miette::{MietteDiagnostic, Result, SourceSpan};
 use std::{borrow::Cow, collections::HashMap};
 
+mod environment;
+#[cfg(test)]
+mod tests;
 pub struct TypeChecker<'ast> {
     symbol: untyped::Symbol<'ast>,
     errors: Vec<MietteDiagnostic>,
@@ -273,6 +277,25 @@ impl<'ast> TypeChecker<'ast> {
                     }]),
                 }
             }
+            untyped::ExpressionValue::Lambda(lambda) => {
+                let mut environment = Environment::new(Some(environment));
+
+                for parameter in &lambda.parameters {
+                    environment.set(parameter.name.clone(), parameter.explicit_type.clone());
+                }
+
+                let body = self.type_of(&lambda.body, &environment)?;
+
+                Ok(Type::function(
+                    expression.span,
+                    lambda
+                        .parameters
+                        .iter()
+                        .map(|p| p.explicit_type.clone())
+                        .collect(),
+                    body,
+                ))
+            }
         }
     }
 
@@ -379,29 +402,5 @@ impl<'ast> TypeChecker<'ast> {
                 message,
             });
         }
-    }
-}
-
-struct Environment<'env, 'ast> {
-    parent: Option<&'env Environment<'env, 'ast>>,
-    bindings: HashMap<Cow<'env, str>, Type<'ast>>,
-}
-
-impl<'env, 'ast> Environment<'env, 'ast> {
-    fn new(parent: Option<&'env Environment<'env, 'ast>>) -> Self {
-        Self {
-            parent,
-            bindings: HashMap::new(),
-        }
-    }
-
-    fn set(&mut self, name: Cow<'env, str>, ty: Type<'ast>) {
-        self.bindings.insert(name, ty);
-    }
-
-    fn get(&self, name: &str) -> Option<&Type<'ast>> {
-        self.bindings
-            .get(name)
-            .or_else(|| self.parent.and_then(|p| p.get(name)))
     }
 }

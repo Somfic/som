@@ -10,9 +10,14 @@ pub mod lexer;
 pub mod parser;
 
 const INPUT: &str = "
-fn fib(n ~ int) -> int {
-    n if n < 2 else fib(n - 1) + fib(n - 2)
+fn main() {
+    let a = |a ~ int| a * a;
+
+    let b = a;
+
+    let c = b(2);
 }
+
 ";
 
 fn main() {
@@ -21,7 +26,7 @@ fn main() {
             miette::MietteHandlerOpts::new()
                 .terminal_links(true)
                 .unicode(true)
-                .context_lines(3)
+                .context_lines(2)
                 .with_syntax_highlighting(SomHighlighter {})
                 .build(),
         )
