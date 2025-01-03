@@ -1,13 +1,16 @@
-use miette::Result;
+use miette::{Result, SourceSpan};
 
 use super::{
     ast::{
-        untyped::{Expression, ExpressionValue},
-        Spannable,
+        untyped::{Expression, ExpressionValue, Lambda, ParameterDeclaration},
+        CombineSpan, Spannable,
     },
     Parser,
 };
-use crate::{lexer::TokenKind, parser::lookup::BindingPower};
+use crate::{
+    lexer::{TokenKind, TokenValue},
+    parser::lookup::BindingPower,
+};
 
 pub mod binary;
 pub mod primitive;
@@ -106,5 +109,61 @@ pub fn call<'de>(
             callee: Box::new(lhs.clone()),
             arguments,
         },
+    ))
+}
+
+pub fn lambda<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+    let pipe = parser
+        .lexer
+        .expect(TokenKind::Pipe, "expected a pipe before lambda arguments")?;
+
+    let mut parameters = Vec::new();
+
+    while parser.lexer.peek().is_some_and(|token| {
+        token
+            .as_ref()
+            .is_ok_and(|token| token.kind != TokenKind::Pipe)
+    }) {
+        if !parameters.is_empty() {
+            parser
+                .lexer
+                .expect(TokenKind::Comma, "expected a comma between arguments")?;
+        }
+
+        let parameter = parser.lexer.expect(
+            TokenKind::Identifier,
+            "expected an identifier for a lambda argument",
+        )?;
+
+        let name = match parameter.value {
+            TokenValue::Identifier(v) => v,
+            _ => unreachable!(),
+        };
+
+        parser
+            .lexer
+            .expect(TokenKind::Tilde, "expected a tilde after lambda argument")?;
+
+        let explicit_type = super::typing::parse(parser, BindingPower::None)?;
+
+        parameters.push(ParameterDeclaration {
+            span: SourceSpan::combine(vec![parameter.span, explicit_type.span]),
+            name,
+            explicit_type,
+        });
+    }
+
+    let pipe = parser
+        .lexer
+        .expect(TokenKind::Pipe, "expected a pipe after lambda arguments")?;
+
+    let body = parse(parser, BindingPower::None)?;
+
+    Ok(Expression::at_multiple(
+        vec![pipe.span, body.span],
+        ExpressionValue::Lambda(Lambda {
+            parameters,
+            body: Box::new(body),
+        }),
     ))
 }

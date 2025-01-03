@@ -128,6 +128,7 @@ impl Default for Lookup<'_> {
         .add_expression_handler(TokenKind::Not, expression::unary::negate)
         .add_expression_handler(TokenKind::Minus, expression::unary::negative)
         .add_expression_handler(TokenKind::CurlyOpen, block)
+        .add_expression_handler(TokenKind::Pipe, expression::lambda)
         .add_left_expression_handler(
             TokenKind::Plus,
             BindingPower::Additive,

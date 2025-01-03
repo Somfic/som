@@ -100,6 +100,7 @@ impl Display for ExpressionValue<'_> {
                 callee,
                 arguments: _,
             } => write!(f, "calling {}", callee.value),
+            ExpressionValue::Lambda(_) => write!(f, "lambda expression"),
         }
     }
 }
@@ -197,6 +198,7 @@ pub enum ExpressionValue<'de> {
         callee: Box<Expression<'de>>,
         arguments: Vec<Expression<'de>>,
     },
+    Lambda(Lambda<'de>),
 }
 
 #[derive(Debug, Clone)]
@@ -205,6 +207,12 @@ pub struct FunctionHeader<'de> {
     pub parameters: Vec<ParameterDeclaration<'de>>,
     pub explicit_return_type: Option<Type<'de>>,
     pub span: miette::SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+pub struct Lambda<'de> {
+    pub parameters: Vec<ParameterDeclaration<'de>>,
+    pub body: Box<Expression<'de>>,
 }
 
 #[derive(Debug, Clone)]
