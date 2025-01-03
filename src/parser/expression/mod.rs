@@ -113,7 +113,7 @@ pub fn call<'de>(
 }
 
 pub fn lambda<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
-    let pipe = parser
+    parser
         .lexer
         .expect(TokenKind::Pipe, "expected a pipe before lambda arguments")?;
 

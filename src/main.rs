@@ -11,7 +11,7 @@ pub mod parser;
 
 const INPUT: &str = "
 fn main() {
-    let a = |a ~ int| a * a;
+    let a = |a ~ int| { 1 + 1; a };
 
     let b = a;
 

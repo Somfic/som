@@ -2,7 +2,6 @@ use super::ast::{untyped, Type, TypeValue};
 use crate::parser::ast::CombineSpan;
 use environment::Environment;
 use miette::{MietteDiagnostic, Result, SourceSpan};
-use std::{borrow::Cow, collections::HashMap};
 
 mod environment;
 #[cfg(test)]
