@@ -141,6 +141,8 @@ pub enum TokenKind {
 
     /// A var keyword; `var`.
     Let,
+    /// A type keyword; `type`.
+    Type,
 
     /// A function keyword; `fn`.
     Function,
@@ -213,6 +215,7 @@ impl Display for TokenKind {
             TokenKind::While => write!(f, "`while`"),
             TokenKind::For => write!(f, "`for`"),
             TokenKind::Let => write!(f, "`let`"),
+            TokenKind::Type => write!(f, "`type`"),
             TokenKind::Function => write!(f, "`fn`"),
             TokenKind::Return => write!(f, "`return`"),
             TokenKind::Boolean => write!(f, "a boolean value"),

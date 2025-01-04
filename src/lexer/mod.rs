@@ -192,6 +192,7 @@ impl<'de> Iterator for Lexer<'de> {
                     "true" => Ok((TokenKind::Boolean, TokenValue::Boolean(true))),
                     "false" => Ok((TokenKind::Boolean, TokenValue::Boolean(false))),
                     "let" => Ok((TokenKind::Let, TokenValue::None)),
+                    "type" => Ok((TokenKind::Type, TokenValue::None)),
                     "struct" => Ok((TokenKind::Struct, TokenValue::None)),
                     "enum" => Ok((TokenKind::Enum, TokenValue::None)),
                     "trait" => Ok((TokenKind::Trait, TokenValue::None)),

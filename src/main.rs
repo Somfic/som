@@ -10,23 +10,10 @@ pub mod lexer;
 pub mod parser;
 
 const INPUT: &str = "
-type Color {
-    Red,
-    Hex (string),
-    Rgb { r: int, g: int, b: int }
-}
-
-code Color {
-    fn to_hex(color ~ Color) -> string {
-        match color:
-            Red => \"#FF0000\"
-            Hex(hex) => hex
-            Rgb { r, g, b } => format!(\"#{:02X}{:02X}{:02X}\", r, g, b)
-    }
-}
+type HexCode = int;
 
 fn main() {
-    let a = |a ~ int| { 1 + 1; a };
+    let a = |a ~ HexCode| { 1 + 1; a };
 
     let b = a;
 

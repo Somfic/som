@@ -367,3 +367,42 @@ fn parse_function_header<'de>(parser: &mut Parser<'de>) -> Result<FunctionHeader
         explicit_return_type,
     })
 }
+
+pub fn type_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+    let token = parser
+        .lexer
+        .expect(TokenKind::Type, "expected a type keyword")?;
+
+    let identifier = parser
+        .lexer
+        .expect(TokenKind::Identifier, "expected a type name")?;
+
+    let name = match identifier.value {
+        TokenValue::Identifier(identifier) => identifier,
+        _ => unreachable!(),
+    };
+
+    if parser.lexer.peek_expect(TokenKind::Equal).is_some() {
+        // type alias
+        parser
+            .lexer
+            .expect(TokenKind::Equal, "expected an equal sign")?;
+
+        let explicit_type = typing::parse(parser, BindingPower::None)?;
+
+        parser
+            .lexer
+            .expect(TokenKind::Semicolon, "expected a semicolon")?;
+
+        Ok(Statement::at_multiple(
+            vec![token.span, identifier.span],
+            StatementValue::TypeAlias {
+                name,
+                explicit_type,
+            },
+        ))
+    } else {
+        // type definition
+        todo!()
+    }
+}

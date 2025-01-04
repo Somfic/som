@@ -195,6 +195,7 @@ impl Default for Lookup<'_> {
             expression::binary::or,
         )
         .add_statement_handler(TokenKind::Let, statement::let_)
+        .add_statement_handler(TokenKind::Type, statement::type_)
         .add_statement_handler(TokenKind::Struct, statement::struct_)
         .add_statement_handler(TokenKind::Enum, statement::enum_)
         .add_statement_handler(TokenKind::Function, statement::function_)

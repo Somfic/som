@@ -1,9 +1,11 @@
+use std::env;
+
 use super::ast::{untyped, Type, TypeValue};
 use crate::parser::ast::CombineSpan;
 use environment::Environment;
 use miette::{MietteDiagnostic, Result, SourceSpan};
 
-mod environment;
+pub mod environment;
 #[cfg(test)]
 mod tests;
 pub struct TypeChecker<'ast> {
@@ -124,7 +126,16 @@ impl<'ast> TypeChecker<'ast> {
                     self.check_statement(falsy, environment);
                 }
             }
-            _ => todo!("check_statement: {:?}", statement),
+            untyped::StatementValue::Trait { name, functions } => todo!(),
+            untyped::StatementValue::TypeAlias {
+                name,
+                explicit_type,
+            } => {
+                environment.set(
+                    name.clone(),
+                    Type::alias(explicit_type.span, name.clone(), explicit_type.clone()),
+                );
+            }
         };
     }
 
@@ -257,6 +268,7 @@ impl<'ast> TypeChecker<'ast> {
 
                         for (parameter, argument) in parameters.iter().zip(arguments) {
                             let argument = self.type_of(argument, environment)?;
+
                             self.expect_match(
                                 parameter,
                                 &argument,
@@ -280,6 +292,24 @@ impl<'ast> TypeChecker<'ast> {
                 let mut environment = Environment::new(Some(environment));
 
                 for parameter in &lambda.parameters {
+                    // If it's a symbol, it's a type alias
+                    let explicit_type = match parameter.explicit_type.clone() {
+                        Type::Symbol(name) => environment
+                            .get(&name)
+                            .cloned()
+                            .ok_or_else(|| {
+                                vec![MietteDiagnostic {
+                                    code: None,
+                                    severity: None,
+                                    url: None,
+                                    labels: Some(vec![parameter.label("undeclared type")]),
+                                    help: Some(format!("{} is not declared", name)),
+                                    message: "undeclared type".to_owned(),
+                                }]
+                            })?,
+                        ty => ty,
+                    };
+
                     environment.set(parameter.name.clone(), parameter.explicit_type.clone());
                 }
 
@@ -356,7 +386,7 @@ impl<'ast> TypeChecker<'ast> {
     }
 
     fn expect_match(&mut self, left: &Type<'ast>, right: &Type<'ast>, message: String) {
-        if !left.value.matches(&right.value) {
+        if left != right {
             let mut labels = vec![];
             labels.extend(left.label(format!("{}", left)));
             labels.extend(right.label(format!("{}", right)));
@@ -367,7 +397,7 @@ impl<'ast> TypeChecker<'ast> {
                 url: None,
                 labels: Some(labels),
                 help: Some(format!(
-                    "type mismatch, expected types to match, but found {} and {}",
+                    "type mismatch, expected types to be equivalent, but found {} and {}",
                     left, right
                 )),
                 message,
@@ -380,7 +410,7 @@ impl<'ast> TypeChecker<'ast> {
     }
 
     fn expect_types(&mut self, ty: &Type<'ast>, expected: &[TypeValue], message: String) {
-        if !expected.iter().any(|ex| ty.value.matches(ex)) {
+        if !expected.iter().any(|ex| ty.value == *ex) {
             let mut labels = vec![];
             labels.extend(ty.label(format!("{}", ty)));
 
