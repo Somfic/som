@@ -6,6 +6,11 @@ pub struct Environment<'env, 'ast> {
     bindings: HashMap<Cow<'env, str>, Type<'ast>>,
 }
 
+pub enum EnvironmentType<'ast> {
+    Primitive(Type<'ast>),
+    Alias(Cow<'ast, str>),
+}
+
 impl<'env, 'ast> Environment<'env, 'ast> {
     pub fn new(parent: Option<&'env Environment<'env, 'ast>>) -> Self {
         Self {

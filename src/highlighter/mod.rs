@@ -26,6 +26,7 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                         TokenKind::If
                         | TokenKind::Else
                         | TokenKind::Let
+                        | TokenKind::Type
                         | TokenKind::Struct
                         | TokenKind::Enum
                         | TokenKind::Function

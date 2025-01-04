@@ -43,6 +43,10 @@ pub enum StatementValue<'de> {
         truthy: Box<Statement<'de>>,
         falsy: Option<Box<Statement<'de>>>,
     },
+    TypeAlias {
+        name: std::borrow::Cow<'de, str>,
+        explicit_type: crate::parser::ast::Type<'de>,
+    },
 }
 
 impl Display for StatementValue<'_> {
@@ -63,6 +67,12 @@ impl Display for StatementValue<'_> {
                 truthy: _,
                 falsy: _,
             } => write!(f, "conditional statement"),
+            StatementValue::TypeAlias {
+                name,
+                explicit_type,
+            } => {
+                write!(f, "`{}` type alias with type {}", name, explicit_type)
+            }
         }
     }
 }

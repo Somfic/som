@@ -1,11 +1,11 @@
-use std::{borrow::Cow, fmt::Display};
-
+use super::typechecker::environment::Environment;
 use miette::SourceSpan;
+use std::{borrow::Cow, fmt::Display};
 
 pub mod typed;
 pub mod untyped;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Type<'de> {
     pub value: TypeValue<'de>,
     pub span: SourceSpan,
@@ -109,12 +109,35 @@ impl<'de> Type<'de> {
         }
     }
 
+    pub fn alias(span: SourceSpan, name: Cow<'de, str>, alias: Type<'de>) -> Self {
+        Self {
+            value: TypeValue::Alias(name, Box::new(alias)),
+            span,
+            original_span: None,
+        }
+    }
+
     pub fn span(mut self, span: SourceSpan) -> Self {
         if self.original_span.is_none() {
             self.original_span = Some(self.span);
         }
         self.span = span;
         self
+    }
+}
+
+impl Eq for Type<'_> {}
+impl PartialEq for Type<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        if let TypeValue::Alias(_, a) = &self.value {
+            return a.value.eq(&other.value);
+        }
+
+        if let TypeValue::Alias(_, b) = &other.value {
+            return self.value.eq(&b.value);
+        }
+
+        self.value.eq(&other.value)
     }
 }
 
@@ -126,6 +149,7 @@ pub enum TypeValue<'de> {
     Decimal,
     Character,
     String,
+    Alias(Cow<'de, str>, Box<Type<'de>>),
     Symbol(Cow<'de, str>),
     Collection(Box<Type<'de>>),
     Set(Box<Type<'de>>),
@@ -133,59 +157,6 @@ pub enum TypeValue<'de> {
         parameters: Vec<Type<'de>>,
         return_type: Box<Type<'de>>,
     },
-}
-
-impl<'de> TypeValue<'de> {
-    pub fn matches(&self, other: &TypeValue<'de>) -> bool {
-        match (&self, &other) {
-            (TypeValue::Unit, TypeValue::Unit)
-            | (TypeValue::Boolean, TypeValue::Boolean)
-            | (TypeValue::Integer, TypeValue::Integer)
-            | (TypeValue::Decimal, TypeValue::Decimal)
-            | (TypeValue::Character, TypeValue::Character)
-            | (TypeValue::String, TypeValue::String) => true,
-            (TypeValue::Symbol(a), TypeValue::Symbol(b)) => a == b,
-            (TypeValue::Collection(a), TypeValue::Collection(b)) => a.value.matches(&b.value),
-            (TypeValue::Set(a), TypeValue::Set(b)) => a.value.matches(&b.value),
-            _ => false,
-        }
-    }
-
-    pub fn is_numeric(&self) -> bool {
-        matches!(self, TypeValue::Integer | TypeValue::Decimal)
-    }
-
-    pub fn is_primitive(&self) -> bool {
-        matches!(
-            self,
-            TypeValue::Unit
-                | TypeValue::Boolean
-                | TypeValue::Integer
-                | TypeValue::Decimal
-                | TypeValue::Character
-                | TypeValue::String
-        )
-    }
-
-    pub fn is_collection(&self) -> bool {
-        matches!(self, TypeValue::Collection(_))
-    }
-
-    pub fn is_set(&self) -> bool {
-        matches!(self, TypeValue::Set(_))
-    }
-
-    pub fn is_symbol(&self) -> bool {
-        matches!(self, TypeValue::Symbol(_))
-    }
-
-    pub fn is_unit(&self) -> bool {
-        matches!(self, TypeValue::Unit)
-    }
-
-    pub fn is_boolean(&self) -> bool {
-        matches!(self, TypeValue::Boolean)
-    }
 }
 
 impl Display for Type<'_> {
@@ -220,12 +191,13 @@ impl Display for TypeValue<'_> {
                         .join(", "),
                 )?;
 
-                if !return_type.value.is_unit() {
+                if return_type.value != TypeValue::Unit {
                     write!(f, " -> {}", return_type)?;
                 }
 
                 Ok(())
             }
+            TypeValue::Alias(name, alias) => write!(f, "`{}` type alias with type {}", name, alias),
         }
     }
 }
