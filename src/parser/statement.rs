@@ -14,7 +14,7 @@ use crate::lexer::{TokenKind, TokenValue};
 use crate::parser::ast::CombineSpan;
 use miette::{Context, Result, SourceSpan};
 
-pub fn parse<'de>(parser: &mut Parser<'de>, optional_semicolon: bool) -> Result<Statement<'de>> {
+pub fn parse<'ast>(parser: &mut Parser<'ast>, optional_semicolon: bool) -> Result<Statement<'ast>> {
     let token = match parser.lexer.peek().as_ref() {
         Some(Ok(token)) => token,
         Some(Err(err)) => return Err(miette::miette!(err.to_string())), // FIXME: better error handling
@@ -58,7 +58,7 @@ pub fn parse<'de>(parser: &mut Parser<'de>, optional_semicolon: bool) -> Result<
     Ok(statement)
 }
 
-pub fn let_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+pub fn let_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Let, "expected a let keyword")?;
@@ -83,7 +83,7 @@ pub fn let_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
     ))
 }
 
-pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+pub fn struct_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Struct, "expected a struct keyword")?;
@@ -142,7 +142,7 @@ pub fn struct_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
     ))
 }
 
-pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+pub fn enum_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Enum, "expected an enum keyword")?;
@@ -197,7 +197,7 @@ pub fn enum_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
     ))
 }
 
-pub fn function_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+pub fn function_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     let header = parse_function_header(parser)?;
     let body = expression::parse(parser, BindingPower::None)?;
 
@@ -207,7 +207,7 @@ pub fn function_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
     ))
 }
 
-pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+pub fn trait_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     parser
         .lexer
         .expect(TokenKind::Trait, "expected a trait keyword")?;
@@ -249,7 +249,7 @@ pub fn trait_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
     ))
 }
 
-pub fn return_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+pub fn return_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     parser
         .lexer
         .expect(TokenKind::Return, "expected a return keyword")?;
@@ -262,7 +262,7 @@ pub fn return_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
     ))
 }
 
-pub fn if_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+pub fn if_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::If, "expected an if keyword")?;
@@ -292,7 +292,7 @@ pub fn if_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
     ))
 }
 
-fn parse_function_header<'de>(parser: &mut Parser<'de>) -> Result<FunctionHeader<'de>> {
+fn parse_function_header<'ast>(parser: &mut Parser<'ast>) -> Result<FunctionHeader<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Function, "expected a function keyword")?;
@@ -368,7 +368,7 @@ fn parse_function_header<'de>(parser: &mut Parser<'de>) -> Result<FunctionHeader
     })
 }
 
-pub fn type_<'de>(parser: &mut Parser<'de>) -> Result<Statement<'de>> {
+pub fn type_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Type, "expected a type keyword")?;

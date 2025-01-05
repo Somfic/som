@@ -24,27 +24,27 @@ pub enum BindingPower {
     Primary = 10,
 }
 
-pub type TypeHandler<'de> = fn(&mut Parser<'de>) -> Result<Type<'de>>;
-pub type LeftTypeHandler<'de> = fn(&mut Parser<'de>, Type, BindingPower) -> Result<Type<'de>>;
-pub type StatementHandler<'de> = fn(&mut Parser<'de>) -> Result<Statement<'de>>;
-pub type ExpressionHandler<'de> = fn(&mut Parser<'de>) -> Result<Expression<'de>>;
-pub type LeftExpressionHandler<'de> =
-    fn(&mut Parser<'de>, Expression<'de>, BindingPower) -> Result<Expression<'de>>;
+pub type TypeHandler<'ast> = fn(&mut Parser<'ast>) -> Result<Type<'ast>>;
+pub type LeftTypeHandler<'ast> = fn(&mut Parser<'ast>, Type, BindingPower) -> Result<Type<'ast>>;
+pub type StatementHandler<'ast> = fn(&mut Parser<'ast>) -> Result<Statement<'ast>>;
+pub type ExpressionHandler<'ast> = fn(&mut Parser<'ast>) -> Result<Expression<'ast>>;
+pub type LeftExpressionHandler<'ast> =
+    fn(&mut Parser<'ast>, Expression<'ast>, BindingPower) -> Result<Expression<'ast>>;
 
-pub struct Lookup<'de> {
-    pub statement_lookup: HashMap<TokenKind, StatementHandler<'de>>,
-    pub expression_lookup: HashMap<TokenKind, ExpressionHandler<'de>>,
-    pub left_expression_lookup: HashMap<TokenKind, LeftExpressionHandler<'de>>,
-    pub type_lookup: HashMap<TokenKind, TypeHandler<'de>>,
-    pub left_type_lookup: HashMap<TokenKind, LeftTypeHandler<'de>>,
+pub struct Lookup<'ast> {
+    pub statement_lookup: HashMap<TokenKind, StatementHandler<'ast>>,
+    pub expression_lookup: HashMap<TokenKind, ExpressionHandler<'ast>>,
+    pub left_expression_lookup: HashMap<TokenKind, LeftExpressionHandler<'ast>>,
+    pub type_lookup: HashMap<TokenKind, TypeHandler<'ast>>,
+    pub left_type_lookup: HashMap<TokenKind, LeftTypeHandler<'ast>>,
     pub binding_power_lookup: HashMap<TokenKind, BindingPower>,
 }
 
-impl<'de> Lookup<'de> {
+impl<'ast> Lookup<'ast> {
     pub(crate) fn add_statement_handler(
         mut self,
         token: TokenKind,
-        handler: StatementHandler<'de>,
+        handler: StatementHandler<'ast>,
     ) -> Self {
         if self.statement_lookup.contains_key(&token) {
             panic!("Token already has a statement handler");
@@ -57,7 +57,7 @@ impl<'de> Lookup<'de> {
     pub(crate) fn add_expression_handler(
         mut self,
         token: TokenKind,
-        handler: ExpressionHandler<'de>,
+        handler: ExpressionHandler<'ast>,
     ) -> Self {
         if self.expression_lookup.contains_key(&token) {
             panic!("Token already has an expression handler");
@@ -71,7 +71,7 @@ impl<'de> Lookup<'de> {
         mut self,
         token: TokenKind,
         binding_power: BindingPower,
-        handler: LeftExpressionHandler<'de>,
+        handler: LeftExpressionHandler<'ast>,
     ) -> Self {
         if self.binding_power_lookup.contains_key(&token) {
             panic!("Token already has a binding power");
@@ -82,7 +82,7 @@ impl<'de> Lookup<'de> {
         self
     }
 
-    pub(crate) fn add_type_handler(mut self, token: TokenKind, handler: TypeHandler<'de>) -> Self {
+    pub(crate) fn add_type_handler(mut self, token: TokenKind, handler: TypeHandler<'ast>) -> Self {
         if self.type_lookup.contains_key(&token) {
             panic!("Token already has a type handler");
         }
@@ -95,7 +95,7 @@ impl<'de> Lookup<'de> {
     pub(crate) fn add_left_type_handler(
         mut self,
         token: TokenKind,
-        handler: LeftTypeHandler<'de>,
+        handler: LeftTypeHandler<'ast>,
     ) -> Self {
         if self.left_type_lookup.contains_key(&token) {
             panic!("Token already has a left type handler");
@@ -215,11 +215,11 @@ impl Default for Lookup<'_> {
     }
 }
 
-fn conditional<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+fn conditional<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     binding_power: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     let condition = expression::parse(parser, binding_power.clone())?;
 
     let token = parser
@@ -238,7 +238,7 @@ fn conditional<'de>(
     ))
 }
 
-fn group<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+fn group<'ast>(parser: &mut Parser<'ast>) -> Result<Expression<'ast>> {
     let open = parser
         .lexer
         .expect(TokenKind::ParenOpen, "expected a left parenthesis")?;
@@ -253,7 +253,7 @@ fn group<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
     ))
 }
 
-fn block<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+fn block<'ast>(parser: &mut Parser<'ast>) -> Result<Expression<'ast>> {
     let open = parser
         .lexer
         .expect(TokenKind::CurlyOpen, "expected a left curly brace")?;

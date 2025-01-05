@@ -292,24 +292,7 @@ impl<'ast> TypeChecker<'ast> {
                 let mut environment = Environment::new(Some(environment));
 
                 for parameter in &lambda.parameters {
-                    // If it's a symbol, it's a type alias
-                    let explicit_type = match parameter.explicit_type.clone() {
-                        Type::Symbol(name) => environment
-                            .get(&name)
-                            .cloned()
-                            .ok_or_else(|| {
-                                vec![MietteDiagnostic {
-                                    code: None,
-                                    severity: None,
-                                    url: None,
-                                    labels: Some(vec![parameter.label("undeclared type")]),
-                                    help: Some(format!("{} is not declared", name)),
-                                    message: "undeclared type".to_owned(),
-                                }]
-                            })?,
-                        ty => ty,
-                    };
-
+                    println!("{:?}", parameter);
                     environment.set(parameter.name.clone(), parameter.explicit_type.clone());
                 }
 

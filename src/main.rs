@@ -14,12 +14,7 @@ type HexCode = int;
 
 fn main() {
     let a = |a ~ HexCode| { 1 + 1; a };
-
-    let b = a;
-
-    let c = b(2);
 }
-
 ";
 
 fn main() {

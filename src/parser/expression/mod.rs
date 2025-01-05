@@ -16,10 +16,10 @@ pub mod binary;
 pub mod primitive;
 pub mod unary;
 
-pub fn parse<'de>(
-    parser: &mut Parser<'de>,
+pub fn parse<'ast>(
+    parser: &mut Parser<'ast>,
     binding_power: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     let token = match parser.lexer.peek().as_ref() {
         Some(Ok(token)) => token,
         Some(Err(err)) => return Err(miette::miette!(err.to_string())), // FIXME: better error handling
@@ -77,11 +77,11 @@ pub fn parse<'de>(
     Ok(lhs)
 }
 
-pub fn call<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn call<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     _binding_power: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     let mut arguments = Vec::new();
 
     while parser.lexer.peek().is_some_and(|token| {
@@ -112,7 +112,7 @@ pub fn call<'de>(
     ))
 }
 
-pub fn lambda<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+pub fn lambda<'ast>(parser: &mut Parser<'ast>) -> Result<Expression<'ast>> {
     parser
         .lexer
         .expect(TokenKind::Pipe, "expected a pipe before lambda arguments")?;
