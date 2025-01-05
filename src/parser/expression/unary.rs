@@ -11,7 +11,7 @@ use crate::{
 };
 use miette::Result;
 
-pub fn negate<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+pub fn negate<'ast>(parser: &mut Parser<'ast>) -> Result<Expression<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Not, "expected a negate operator")?;
@@ -26,7 +26,7 @@ pub fn negate<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
     ))
 }
 
-pub fn negative<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+pub fn negative<'ast>(parser: &mut Parser<'ast>) -> Result<Expression<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Minus, "expected a negative operator")?;

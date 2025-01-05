@@ -2,50 +2,50 @@ use super::Type;
 use std::{borrow::Cow, fmt::Display};
 
 #[derive(Debug, Clone)]
-pub enum Symbol<'de> {
-    Statement(Statement<'de>),
-    Expression(Expression<'de>),
+pub enum Symbol<'ast> {
+    Statement(Statement<'ast>),
+    Expression(Expression<'ast>),
 }
 
 #[derive(Debug, Clone)]
-pub struct Statement<'de> {
-    pub value: StatementValue<'de>,
+pub struct Statement<'ast> {
+    pub value: StatementValue<'ast>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
-pub enum StatementValue<'de> {
-    Block(Vec<Statement<'de>>),
-    Expression(Expression<'de>),
+pub enum StatementValue<'ast> {
+    Block(Vec<Statement<'ast>>),
+    Expression(Expression<'ast>),
     Assignment {
-        name: Cow<'de, str>,
-        value: Expression<'de>,
+        name: Cow<'ast, str>,
+        value: Expression<'ast>,
     },
     Struct {
-        name: Cow<'de, str>,
-        fields: Vec<StructMemberDeclaration<'de>>,
+        name: Cow<'ast, str>,
+        fields: Vec<StructMemberDeclaration<'ast>>,
     },
     Enum {
-        name: Cow<'de, str>,
-        variants: Vec<EnumMemberDeclaration<'de>>,
+        name: Cow<'ast, str>,
+        variants: Vec<EnumMemberDeclaration<'ast>>,
     },
     Function {
-        header: FunctionHeader<'de>,
-        body: Expression<'de>,
+        header: FunctionHeader<'ast>,
+        body: Expression<'ast>,
     },
     Trait {
-        name: Cow<'de, str>,
-        functions: Vec<FunctionHeader<'de>>,
+        name: Cow<'ast, str>,
+        functions: Vec<FunctionHeader<'ast>>,
     },
-    Return(Expression<'de>),
+    Return(Expression<'ast>),
     Conditional {
-        condition: Box<Expression<'de>>,
-        truthy: Box<Statement<'de>>,
-        falsy: Option<Box<Statement<'de>>>,
+        condition: Box<Expression<'ast>>,
+        truthy: Box<Statement<'ast>>,
+        falsy: Option<Box<Statement<'ast>>>,
     },
     TypeAlias {
-        name: std::borrow::Cow<'de, str>,
-        explicit_type: crate::parser::ast::Type<'de>,
+        name: std::borrow::Cow<'ast, str>,
+        explicit_type: crate::parser::ast::Type<'ast>,
     },
 }
 
@@ -165,8 +165,8 @@ impl Display for UnaryOperator {
 }
 
 #[derive(Debug, Clone)]
-pub struct Expression<'de> {
-    pub value: ExpressionValue<'de>,
+pub struct Expression<'ast> {
+    pub value: ExpressionValue<'ast>,
     pub span: miette::SourceSpan,
 }
 
@@ -183,75 +183,75 @@ impl Statement<'_> {
 }
 
 #[derive(Debug, Clone)]
-pub enum ExpressionValue<'de> {
-    Primitive(Primitive<'de>),
+pub enum ExpressionValue<'ast> {
+    Primitive(Primitive<'ast>),
     Binary {
         operator: BinaryOperator,
-        left: Box<Expression<'de>>,
-        right: Box<Expression<'de>>,
+        left: Box<Expression<'ast>>,
+        right: Box<Expression<'ast>>,
     },
     Unary {
         operator: UnaryOperator,
-        operand: Box<Expression<'de>>,
+        operand: Box<Expression<'ast>>,
     },
-    Group(Box<Expression<'de>>),
+    Group(Box<Expression<'ast>>),
     Block {
-        statements: Vec<Statement<'de>>,
-        return_value: Box<Expression<'de>>,
+        statements: Vec<Statement<'ast>>,
+        return_value: Box<Expression<'ast>>,
     },
     Conditional {
-        condition: Box<Expression<'de>>,
-        truthy: Box<Expression<'de>>,
-        falsy: Box<Expression<'de>>,
+        condition: Box<Expression<'ast>>,
+        truthy: Box<Expression<'ast>>,
+        falsy: Box<Expression<'ast>>,
     },
     Call {
-        callee: Box<Expression<'de>>,
-        arguments: Vec<Expression<'de>>,
+        callee: Box<Expression<'ast>>,
+        arguments: Vec<Expression<'ast>>,
     },
-    Lambda(Lambda<'de>),
+    Lambda(Lambda<'ast>),
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionHeader<'de> {
-    pub name: Cow<'de, str>,
-    pub parameters: Vec<ParameterDeclaration<'de>>,
-    pub explicit_return_type: Option<Type<'de>>,
+pub struct FunctionHeader<'ast> {
+    pub name: Cow<'ast, str>,
+    pub parameters: Vec<ParameterDeclaration<'ast>>,
+    pub explicit_return_type: Option<Type<'ast>>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
-pub struct Lambda<'de> {
-    pub parameters: Vec<ParameterDeclaration<'de>>,
-    pub body: Box<Expression<'de>>,
+pub struct Lambda<'ast> {
+    pub parameters: Vec<ParameterDeclaration<'ast>>,
+    pub body: Box<Expression<'ast>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ParameterDeclaration<'de> {
-    pub name: Cow<'de, str>,
-    pub explicit_type: Type<'de>,
+pub struct ParameterDeclaration<'ast> {
+    pub name: Cow<'ast, str>,
+    pub explicit_type: Type<'ast>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
-pub struct StructMemberDeclaration<'de> {
-    pub name: Cow<'de, str>,
-    pub explicit_type: Type<'de>,
+pub struct StructMemberDeclaration<'ast> {
+    pub name: Cow<'ast, str>,
+    pub explicit_type: Type<'ast>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
-pub struct EnumMemberDeclaration<'de> {
-    pub name: Cow<'de, str>,
-    pub value_type: Option<Type<'de>>,
+pub struct EnumMemberDeclaration<'ast> {
+    pub name: Cow<'ast, str>,
+    pub value_type: Option<Type<'ast>>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
-pub enum Primitive<'de> {
+pub enum Primitive<'ast> {
     Integer(i64),
     Decimal(f64),
-    String(Cow<'de, str>),
-    Identifier(Cow<'de, str>),
+    String(Cow<'ast, str>),
+    Identifier(Cow<'ast, str>),
     Character(char),
     Boolean(bool),
     Unit,

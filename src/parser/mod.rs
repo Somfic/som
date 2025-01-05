@@ -13,20 +13,20 @@ pub mod statement;
 pub mod typechecker;
 pub mod typing;
 
-pub struct Parser<'de> {
-    lexer: Lexer<'de>,
-    lookup: Lookup<'de>,
+pub struct Parser<'ast> {
+    lexer: Lexer<'ast>,
+    lookup: Lookup<'ast>,
 }
 
-impl<'de> Parser<'de> {
-    pub fn new(lexer: Lexer<'de>) -> Self {
+impl<'ast> Parser<'ast> {
+    pub fn new(lexer: Lexer<'ast>) -> Self {
         Self {
             lexer,
             lookup: Lookup::default(),
         }
     }
 
-    pub fn parse(&mut self) -> Result<Symbol<'de>> {
+    pub fn parse(&mut self) -> Result<Symbol<'ast>> {
         let mut statements = vec![];
 
         while self.lexer.peek().is_some() {

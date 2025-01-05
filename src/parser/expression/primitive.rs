@@ -10,7 +10,7 @@ use crate::{
 };
 use miette::Result;
 
-pub fn integer<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+pub fn integer<'ast>(parser: &mut Parser) -> Result<Expression<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Integer, "expected an integer")?;
@@ -26,7 +26,7 @@ pub fn integer<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
     ))
 }
 
-pub fn decimal<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+pub fn decimal<'ast>(parser: &mut Parser) -> Result<Expression<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Decimal, "expected a decimal")?;
@@ -42,7 +42,7 @@ pub fn decimal<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
     ))
 }
 
-pub fn boolean<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+pub fn boolean<'ast>(parser: &mut Parser) -> Result<Expression<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Boolean, "expected a boolean")?;
@@ -58,7 +58,7 @@ pub fn boolean<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
     ))
 }
 
-pub fn character<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
+pub fn character<'ast>(parser: &mut Parser) -> Result<Expression<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Character, "expected a character")?;
@@ -74,7 +74,7 @@ pub fn character<'de>(parser: &mut Parser) -> Result<Expression<'de>> {
     ))
 }
 
-pub fn string<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+pub fn string<'ast>(parser: &mut Parser<'ast>) -> Result<Expression<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::String, "expected a string")?;
@@ -90,7 +90,7 @@ pub fn string<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
     ))
 }
 
-pub fn identifier<'de>(parser: &mut Parser<'de>) -> Result<Expression<'de>> {
+pub fn identifier<'ast>(parser: &mut Parser<'ast>) -> Result<Expression<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Identifier, "expected an identifier")?;

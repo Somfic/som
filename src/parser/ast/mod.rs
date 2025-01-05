@@ -6,13 +6,13 @@ pub mod typed;
 pub mod untyped;
 
 #[derive(Debug, Clone)]
-pub struct Type<'de> {
-    pub value: TypeValue<'de>,
+pub struct Type<'ast> {
+    pub value: TypeValue<'ast>,
     pub span: SourceSpan,
     pub original_span: Option<SourceSpan>,
 }
 
-impl<'de> Type<'de> {
+impl<'ast> Type<'ast> {
     pub fn label(&self, text: impl Into<String>) -> Vec<miette::LabeledSpan> {
         let labels = vec![miette::LabeledSpan::at(self.span, text.into())];
 
@@ -74,7 +74,7 @@ impl<'de> Type<'de> {
         }
     }
 
-    pub fn symbol(span: SourceSpan, name: Cow<'de, str>) -> Self {
+    pub fn symbol(span: SourceSpan, name: Cow<'ast, str>) -> Self {
         Self {
             value: TypeValue::Symbol(name),
             span,
@@ -82,7 +82,7 @@ impl<'de> Type<'de> {
         }
     }
 
-    pub fn collection(span: SourceSpan, element: Type<'de>) -> Self {
+    pub fn collection(span: SourceSpan, element: Type<'ast>) -> Self {
         Self {
             value: TypeValue::Collection(Box::new(element)),
             span,
@@ -90,7 +90,7 @@ impl<'de> Type<'de> {
         }
     }
 
-    pub fn set(span: SourceSpan, element: Type<'de>) -> Self {
+    pub fn set(span: SourceSpan, element: Type<'ast>) -> Self {
         Self {
             value: TypeValue::Set(Box::new(element)),
             span,
@@ -98,7 +98,11 @@ impl<'de> Type<'de> {
         }
     }
 
-    pub fn function(span: SourceSpan, parameters: Vec<Type<'de>>, return_type: Type<'de>) -> Self {
+    pub fn function(
+        span: SourceSpan,
+        parameters: Vec<Type<'ast>>,
+        return_type: Type<'ast>,
+    ) -> Self {
         Self {
             value: TypeValue::Function {
                 parameters,
@@ -109,7 +113,7 @@ impl<'de> Type<'de> {
         }
     }
 
-    pub fn alias(span: SourceSpan, name: Cow<'de, str>, alias: Type<'de>) -> Self {
+    pub fn alias(span: SourceSpan, name: Cow<'ast, str>, alias: Type<'ast>) -> Self {
         Self {
             value: TypeValue::Alias(name, Box::new(alias)),
             span,
@@ -142,20 +146,20 @@ impl PartialEq for Type<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TypeValue<'de> {
+pub enum TypeValue<'ast> {
     Unit,
     Boolean,
     Integer,
     Decimal,
     Character,
     String,
-    Alias(Cow<'de, str>, Box<Type<'de>>),
-    Symbol(Cow<'de, str>),
-    Collection(Box<Type<'de>>),
-    Set(Box<Type<'de>>),
+    Alias(Cow<'ast, str>, Box<Type<'ast>>),
+    Symbol(Cow<'ast, str>),
+    Collection(Box<Type<'ast>>),
+    Set(Box<Type<'ast>>),
     Function {
-        parameters: Vec<Type<'de>>,
-        return_type: Box<Type<'de>>,
+        parameters: Vec<Type<'ast>>,
+        return_type: Box<Type<'ast>>,
     },
 }
 
@@ -202,7 +206,7 @@ impl Display for TypeValue<'_> {
     }
 }
 
-pub trait Spannable<'de>: Sized {
+pub trait Spannable<'ast>: Sized {
     type Value;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self;
@@ -248,24 +252,24 @@ pub trait CombineSpan {
 
 impl CombineSpan for SourceSpan {}
 
-impl<'de> Spannable<'de> for untyped::Expression<'de> {
-    type Value = untyped::ExpressionValue<'de>;
+impl<'ast> Spannable<'ast> for untyped::Expression<'ast> {
+    type Value = untyped::ExpressionValue<'ast>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
         Self { value, span }
     }
 }
 
-impl<'de> Spannable<'de> for untyped::Statement<'de> {
-    type Value = untyped::StatementValue<'de>;
+impl<'ast> Spannable<'ast> for untyped::Statement<'ast> {
+    type Value = untyped::StatementValue<'ast>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
         Self { value, span }
     }
 }
 
-impl<'de> Spannable<'de> for Type<'de> {
-    type Value = TypeValue<'de>;
+impl<'ast> Spannable<'ast> for Type<'ast> {
+    type Value = TypeValue<'ast>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
         Self {

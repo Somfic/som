@@ -1,10 +1,10 @@
 use std::{borrow::Cow, fmt::Display, hash::Hash};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Token<'de> {
+pub struct Token<'ast> {
     pub kind: TokenKind,
-    pub value: TokenValue<'de>,
-    pub original: &'de str,
+    pub value: TokenValue<'ast>,
+    pub original: &'ast str,
     pub span: miette::SourceSpan,
 }
 
@@ -24,14 +24,14 @@ impl Display for Token<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenValue<'de> {
+pub enum TokenValue<'ast> {
     None,
     Boolean(bool),
     Integer(i64),
     Decimal(f64),
-    String(Cow<'de, str>),
+    String(Cow<'ast, str>),
     Character(char),
-    Identifier(Cow<'de, str>),
+    Identifier(Cow<'ast, str>),
 }
 
 impl Display for TokenValue<'_> {

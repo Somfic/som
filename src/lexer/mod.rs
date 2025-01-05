@@ -3,15 +3,15 @@ pub use token::*;
 
 use miette::{LabeledSpan, Result, SourceSpan};
 
-pub struct Lexer<'de> {
-    whole: &'de str,
-    remainder: &'de str,
+pub struct Lexer<'ast> {
+    whole: &'ast str,
+    remainder: &'ast str,
     byte_offset: usize,
-    peeked: Option<Result<Token<'de>, miette::Error>>,
+    peeked: Option<Result<Token<'ast>, miette::Error>>,
 }
 
-impl<'de> Lexer<'de> {
-    pub fn new(input: &'de str) -> Self {
+impl<'ast> Lexer<'ast> {
+    pub fn new(input: &'ast str) -> Self {
         Self {
             whole: input,
             remainder: input,
@@ -24,7 +24,7 @@ impl<'de> Lexer<'de> {
         &mut self,
         expected: TokenKind,
         unexpected: &str,
-    ) -> Result<Token<'de>, miette::Error> {
+    ) -> Result<Token<'ast>, miette::Error> {
         match self.next() {
             Some(Ok(token)) if expected == token.kind => Ok(token),
             Some(Ok(token)) => Err(miette::miette! {
@@ -50,9 +50,9 @@ impl<'de> Lexer<'de> {
 
     pub fn expect_where(
         &mut self,
-        mut check: impl FnMut(&Token<'de>) -> bool,
+        mut check: impl FnMut(&Token<'ast>) -> bool,
         unexpected: &str,
-    ) -> Result<Token<'de>, miette::Error> {
+    ) -> Result<Token<'ast>, miette::Error> {
         match self.next() {
             Some(Ok(token)) if check(&token) => Ok(token),
             Some(Ok(token)) => Err(miette::miette! {
@@ -73,11 +73,11 @@ impl<'de> Lexer<'de> {
         }
     }
 
-    pub fn expect_any(&mut self, unexpected: &str) -> Result<Token<'de>, miette::Error> {
+    pub fn expect_any(&mut self, unexpected: &str) -> Result<Token<'ast>, miette::Error> {
         self.expect_where(|_| true, unexpected)
     }
 
-    pub fn peek(&mut self) -> Option<&Result<Token<'de>, miette::Error>> {
+    pub fn peek(&mut self) -> Option<&Result<Token<'ast>, miette::Error>> {
         if self.peeked.is_some() {
             return self.peeked.as_ref();
         }
@@ -89,7 +89,7 @@ impl<'de> Lexer<'de> {
     pub fn peek_expect(
         &mut self,
         expected: TokenKind,
-    ) -> Option<&Result<Token<'de>, miette::Error>> {
+    ) -> Option<&Result<Token<'ast>, miette::Error>> {
         match self.peek() {
             Some(Ok(token::Token { kind, .. })) => {
                 if *kind == expected {
@@ -107,7 +107,7 @@ impl<'de> Lexer<'de> {
         single: TokenKind,
         compound: TokenKind,
         expected_char: char,
-    ) -> Result<(TokenKind, TokenValue<'de>)> {
+    ) -> Result<(TokenKind, TokenValue<'ast>)> {
         if let Some(c) = self.remainder.chars().next() {
             if c == expected_char {
                 self.remainder = &self.remainder[c.len_utf8()..];
@@ -122,8 +122,8 @@ impl<'de> Lexer<'de> {
     }
 }
 
-impl<'de> Iterator for Lexer<'de> {
-    type Item = Result<Token<'de>>;
+impl<'ast> Iterator for Lexer<'ast> {
+    type Item = Result<Token<'ast>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.peeked.take() {
@@ -138,7 +138,7 @@ impl<'de> Iterator for Lexer<'de> {
         self.remainder = chars.as_str();
         self.byte_offset += c.len_utf8();
 
-        let kind: Result<(TokenKind, TokenValue<'de>)> = match c {
+        let kind: Result<(TokenKind, TokenValue<'ast>)> = match c {
             '(' => Ok((TokenKind::ParenOpen, TokenValue::None)),
             ')' => Ok((TokenKind::ParenClose, TokenValue::None)),
             '{' => Ok((TokenKind::CurlyOpen, TokenValue::None)),

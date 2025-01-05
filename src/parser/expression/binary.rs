@@ -8,12 +8,12 @@ use crate::parser::{
 };
 use miette::Result;
 
-pub fn parse_binary_expression<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn parse_binary_expression<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
     operator: BinaryOperator,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     let rhs = crate::parser::expression::parse(parser, bp)?;
 
     Ok(Expression::at_multiple(
@@ -26,106 +26,106 @@ pub fn parse_binary_expression<'de>(
     ))
 }
 
-pub fn addition<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn addition<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Add)
 }
 
-pub fn multiplication<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn multiplication<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Multiply)
 }
 
-pub fn subtraction<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn subtraction<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Subtract)
 }
 
-pub fn division<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn division<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Divide)
 }
 
-pub fn modulo<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn modulo<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Modulo)
 }
 
-pub fn equal<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn equal<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Equality)
 }
 
-pub fn not_equal<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn not_equal<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Inequality)
 }
 
-pub fn less_than<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn less_than<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::LessThan)
 }
 
-pub fn less_than_or_equal<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn less_than_or_equal<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::LessThanOrEqual)
 }
 
-pub fn greater_than<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn greater_than<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::GreaterThan)
 }
 
-pub fn greater_than_or_equal<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn greater_than_or_equal<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::GreaterThanOrEqual)
 }
 
-pub fn and<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn and<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::And)
 }
 
-pub fn or<'de>(
-    parser: &mut Parser<'de>,
-    lhs: Expression<'de>,
+pub fn or<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
     bp: BindingPower,
-) -> Result<Expression<'de>> {
+) -> Result<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Or)
 }
