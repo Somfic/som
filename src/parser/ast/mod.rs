@@ -1,4 +1,3 @@
-use super::typechecker::environment::Environment;
 use miette::SourceSpan;
 use std::{borrow::Cow, fmt::Display};
 

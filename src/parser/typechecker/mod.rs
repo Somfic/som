@@ -1,5 +1,3 @@
-use std::env;
-
 use super::ast::{untyped, Type, TypeValue};
 use crate::parser::ast::CombineSpan;
 use environment::Environment;
@@ -126,7 +124,10 @@ impl<'ast> TypeChecker<'ast> {
                     self.check_statement(falsy, environment);
                 }
             }
-            untyped::StatementValue::Trait { name, functions } => todo!(),
+            untyped::StatementValue::Trait {
+                name: _,
+                functions: _,
+            } => todo!(),
             untyped::StatementValue::TypeAlias {
                 name,
                 explicit_type,
