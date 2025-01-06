@@ -293,7 +293,6 @@ impl<'ast> TypeChecker<'ast> {
                 let mut environment = Environment::new(Some(environment));
 
                 for parameter in &lambda.parameters {
-                    println!("{:?}", parameter);
                     environment.set(parameter.name.clone(), parameter.explicit_type.clone());
                 }
 

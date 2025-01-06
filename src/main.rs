@@ -11,9 +11,10 @@ pub mod parser;
 
 const INPUT: &str = "
 type HexCode = int;
+type HexCode2 = HexCode;
 
 fn main() {
-    let a = |a ~ HexCode| { 1 + 1; a };
+    let a = |a ~ int| { 1 + a };
 }
 ";
 

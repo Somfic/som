@@ -1,4 +1,4 @@
-use crate::parser::ast::Type;
+use crate::parser::ast::{Type, TypeValue};
 use std::{borrow::Cow, collections::HashMap};
 
 pub struct Environment<'env, 'ast> {
@@ -20,7 +20,14 @@ impl<'env, 'ast> Environment<'env, 'ast> {
     }
 
     pub fn set(&mut self, name: Cow<'env, str>, ty: Type<'ast>) {
-        self.bindings.insert(name, ty);
+        if let TypeValue::Symbol(symbol_name) = ty.value.clone() {
+            let symbol = self.get(&symbol_name).unwrap();
+            println!("Symbol: {:?}", symbol);
+            self.bindings.insert(name, symbol.clone());
+        } else {
+            println!("{:?} {:?}", name, ty.value);
+            self.bindings.insert(name, ty);
+        }
     }
 
     pub fn get(&self, name: &str) -> Option<&Type<'ast>> {

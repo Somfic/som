@@ -1,6 +1,8 @@
 use miette::SourceSpan;
 use std::{borrow::Cow, fmt::Display};
 
+use super::typechecker::environment::Environment;
+
 pub mod typed;
 pub mod untyped;
 
@@ -127,20 +129,23 @@ impl<'ast> Type<'ast> {
         self.span = span;
         self
     }
+
+    pub fn base_type(&self) -> &Type<'ast> {
+        if let TypeValue::Alias(_, alias) = &self.value {
+            return alias.base_type();
+        };
+
+        self
+    }
 }
 
 impl Eq for Type<'_> {}
 impl PartialEq for Type<'_> {
     fn eq(&self, other: &Self) -> bool {
-        if let TypeValue::Alias(_, a) = &self.value {
-            return a.value.eq(&other.value);
-        }
+        let a = self.base_type();
+        let b = other.base_type();
 
-        if let TypeValue::Alias(_, b) = &other.value {
-            return self.value.eq(&b.value);
-        }
-
-        self.value.eq(&other.value)
+        a.value.eq(&b.value)
     }
 }
 
