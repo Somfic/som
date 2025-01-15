@@ -102,7 +102,7 @@ pub fn struct_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     let mut fields = vec![];
 
     while parser.lexer.peek().is_some_and(|token| {
-        token
+        token   
             .as_ref()
             .is_ok_and(|token| token.kind != TokenKind::Semicolon)
     }) {
@@ -155,7 +155,7 @@ pub fn enum_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
         TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
     };
-
+ 
     parser.lexer.expect(TokenKind::Colon, "expected a colon")?;
 
     let mut variants = vec![];

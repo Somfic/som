@@ -1,4 +1,4 @@
-use crate::parser::typechecker::TypeChecker;
+use crate::typer::TypeChecker;
 use highlighter::SomHighlighter;
 use lexer::Lexer;
 use miette::miette;
@@ -8,13 +8,16 @@ use std::vec;
 pub mod highlighter;
 pub mod lexer;
 pub mod parser;
+pub mod typer;
 
 const INPUT: &str = "
 type HexCode = int;
 type HexCode2 = HexCode;
 
+type Color = a, b, c;
+
 fn main() {
-    let a = |a ~ int| { 1 + a };
+    let a = |a ~ HexCode2| { 1 + a };
 }
 ";
 

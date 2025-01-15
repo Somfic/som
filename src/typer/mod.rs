@@ -1,5 +1,4 @@
-use super::ast::{untyped, Type, TypeValue};
-use crate::parser::ast::CombineSpan;
+use crate::parser::ast::{untyped, CombineSpan, Type, TypeValue};
 use environment::Environment;
 use miette::{MietteDiagnostic, Result, SourceSpan};
 
