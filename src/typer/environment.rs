@@ -20,12 +20,16 @@ impl<'env, 'ast> Environment<'env, 'ast> {
     }
 
     pub fn set(&mut self, name: Cow<'env, str>, ty: Type<'ast>) {
-        if let TypeValue::Symbol(symbol_name) = ty.value.clone() {
-            let symbol = self.get(&symbol_name).unwrap();
-            println!("Symbol: {:?}", symbol);
-            self.bindings.insert(name, symbol.clone());
-        } else {
-            println!("{:?} {:?}", name, ty.value);
+        if let TypeValue::Symbol(symbol_name) = ty.base_type().value.clone() {
+            match self.get(&symbol_name) {
+                Some(symbol) => {
+                    self.bindings.insert(name, symbol.clone());
+                }
+                None => {
+                    self.bindings.insert(name, ty);
+                }
+            }
+        } else {   
             self.bindings.insert(name, ty);
         }
     }
@@ -34,5 +38,6 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         self.bindings
             .get(name)
             .or_else(|| self.parent.and_then(|p| p.get(name)))
+            .map(|ty| ty.base_type())
     }
 }

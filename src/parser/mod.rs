@@ -10,7 +10,6 @@ pub mod ast;
 pub mod expression;
 pub mod lookup;
 pub mod statement;
-pub mod typechecker;
 pub mod typing;
 
 pub struct Parser<'ast> {

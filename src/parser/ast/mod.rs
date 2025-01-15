@@ -1,8 +1,6 @@
 use miette::SourceSpan;
 use std::{borrow::Cow, fmt::Display};
 
-use super::typechecker::environment::Environment;
-
 pub mod typed;
 pub mod untyped;
 
