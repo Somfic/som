@@ -1,4 +1,7 @@
-use crate::parser::ast::{untyped, CombineSpan, Type, TypeValue};
+use crate::parser::ast::{
+    BinaryOperator, CombineSpan, Expression, ExpressionValue, Primitive, Statement, StatementValue,
+    Type, TypeValue,
+};
 use environment::Environment;
 use miette::{MietteDiagnostic, Result, SourceSpan};
 
@@ -6,14 +9,14 @@ pub mod environment;
 #[cfg(test)]
 mod tests;
 pub struct TypeChecker<'ast> {
-    symbol: untyped::Symbol<'ast>,
+    statements: &'ast Vec<Statement<'ast>>,
     errors: Vec<MietteDiagnostic>,
 }
 
 impl<'ast> TypeChecker<'ast> {
-    pub fn new(symbol: untyped::Symbol<'ast>) -> Self {
+    pub fn new(statements: &'ast Vec<Statement<'ast>>) -> Self {
         Self {
-            symbol,
+            statements,
             errors: vec![],
         }
     }
@@ -22,28 +25,23 @@ impl<'ast> TypeChecker<'ast> {
         // Initially, there is no parent environment
         let mut environment = Environment::new(None);
 
-        match self.symbol.clone() {
-            untyped::Symbol::Statement(stmt) => {
-                self.check_statement(&stmt, &mut environment);
-            }
-            untyped::Symbol::Expression(expr) => {
-                self.check_expression(&expr, &environment);
-            }
-        };
+        for statement in self.statements {
+            self.check_statement(&statement, &mut environment);
+        }
 
         self.errors
     }
 
     fn check_statement<'env>(
         &mut self,
-        statement: &untyped::Statement<'ast>,
+        statement: &Statement<'ast>,
         environment: &mut Environment<'env, 'ast>,
     ) {
         match &statement.value {
-            untyped::StatementValue::Expression(expr) => {
+            StatementValue::Expression(expr) => {
                 self.check_expression(expr, environment);
             }
-            untyped::StatementValue::Block(statements) => {
+            StatementValue::Block(statements) => {
                 // Create a new child environment
                 let mut environment = Environment::new(Some(environment));
 
@@ -51,7 +49,7 @@ impl<'ast> TypeChecker<'ast> {
                     self.check_statement(stmt, &mut environment);
                 }
             }
-            untyped::StatementValue::Function { header, body } => {
+            StatementValue::Function { header, body } => {
                 environment.set(
                     header.name.clone(),
                     Type::function(
@@ -85,24 +83,24 @@ impl<'ast> TypeChecker<'ast> {
                     "explicit and implicit return types must match".into(),
                 );
             }
-            untyped::StatementValue::Return(expr) => {
+            StatementValue::Return(expr) => {
                 self.check_expression(expr, environment);
             }
-            untyped::StatementValue::Enum {
+            StatementValue::Enum {
                 name: _,
                 variants: _,
             } => {
                 // Not implemented yet
             }
-            untyped::StatementValue::Struct { name: _, fields: _ } => {
+            StatementValue::Struct { name: _, fields: _ } => {
                 // Not implemented yet
             }
-            untyped::StatementValue::Assignment { name, value } => {
+            StatementValue::Assignment { name, value } => {
                 if let Some(expression_type) = self.check_expression(value, environment) {
                     environment.set(name.clone(), expression_type);
                 }
             }
-            untyped::StatementValue::Conditional {
+            StatementValue::Conditional {
                 condition,
                 truthy,
                 falsy,
@@ -123,11 +121,11 @@ impl<'ast> TypeChecker<'ast> {
                     self.check_statement(falsy, environment);
                 }
             }
-            untyped::StatementValue::Trait {
+            StatementValue::Trait {
                 name: _,
                 functions: _,
             } => todo!(),
-            untyped::StatementValue::TypeAlias {
+            StatementValue::TypeAlias {
                 name,
                 explicit_type,
             } => {
@@ -141,7 +139,7 @@ impl<'ast> TypeChecker<'ast> {
 
     fn check_expression<'env>(
         &mut self,
-        expression: &untyped::Expression<'ast>,
+        expression: &Expression<'ast>,
         environment: &'env Environment<'env, 'ast>,
     ) -> Option<Type<'ast>> {
         match self.type_of(expression, environment) {
@@ -155,16 +153,16 @@ impl<'ast> TypeChecker<'ast> {
 
     fn type_of<'env>(
         &mut self,
-        expression: &untyped::Expression<'ast>,
+        expression: &Expression<'ast>,
         environment: &Environment<'env, 'ast>,
     ) -> Result<Type<'ast>, Vec<MietteDiagnostic>> {
         match &expression.value {
-            untyped::ExpressionValue::Primitive(primitive) => match primitive {
-                untyped::Primitive::Integer(_) => Ok(Type::integer(expression.span)),
-                untyped::Primitive::Decimal(_) => Ok(Type::decimal(expression.span)),
-                untyped::Primitive::Boolean(_) => Ok(Type::boolean(expression.span)),
-                untyped::Primitive::String(_) => Ok(Type::string(expression.span)),
-                untyped::Primitive::Identifier(name) => environment
+            ExpressionValue::Primitive(primitive) => match primitive {
+                Primitive::Integer(_) => Ok(Type::integer(expression.span)),
+                Primitive::Decimal(_) => Ok(Type::decimal(expression.span)),
+                Primitive::Boolean(_) => Ok(Type::boolean(expression.span)),
+                Primitive::String(_) => Ok(Type::string(expression.span)),
+                Primitive::Identifier(name) => environment
                     .get(name)
                     .cloned()
                     .map(|ty| ty.span(expression.span))
@@ -178,11 +176,11 @@ impl<'ast> TypeChecker<'ast> {
                             message: "undeclared variable".to_owned(),
                         }]
                     }),
-                untyped::Primitive::Character(_) => Ok(Type::character(expression.span)),
-                untyped::Primitive::Unit => Ok(Type::unit(expression.span)),
+                Primitive::Character(_) => Ok(Type::character(expression.span)),
+                Primitive::Unit => Ok(Type::unit(expression.span)),
             },
-            untyped::ExpressionValue::Group(expr) => self.type_of(expr, environment),
-            untyped::ExpressionValue::Block {
+            ExpressionValue::Group(expr) => self.type_of(expr, environment),
+            ExpressionValue::Block {
                 statements,
                 return_value,
             } => {
@@ -195,7 +193,7 @@ impl<'ast> TypeChecker<'ast> {
 
                 self.type_of(return_value, &environment)
             }
-            untyped::ExpressionValue::Binary {
+            ExpressionValue::Binary {
                 operator,
                 left,
                 right,
@@ -217,11 +215,11 @@ impl<'ast> TypeChecker<'ast> {
                         .span(SourceSpan::combine(vec![left.span, right.span])))
                 }
             }
-            untyped::ExpressionValue::Unary {
+            ExpressionValue::Unary {
                 operator: _,
                 operand,
             } => self.type_of(operand, environment),
-            untyped::ExpressionValue::Conditional {
+            ExpressionValue::Conditional {
                 condition,
                 truthy,
                 falsy,
@@ -243,7 +241,7 @@ impl<'ast> TypeChecker<'ast> {
 
                 Ok(truthy)
             }
-            untyped::ExpressionValue::Call { callee, arguments } => {
+            ExpressionValue::Call { callee, arguments } => {
                 let callee = self.type_of(callee, environment)?;
 
                 match callee.clone().value {
@@ -288,7 +286,7 @@ impl<'ast> TypeChecker<'ast> {
                     }]),
                 }
             }
-            untyped::ExpressionValue::Lambda(lambda) => {
+            ExpressionValue::Lambda(lambda) => {
                 let mut environment = Environment::new(Some(environment));
 
                 for parameter in &lambda.parameters {
@@ -314,18 +312,18 @@ impl<'ast> TypeChecker<'ast> {
         &mut self,
         left: &Type<'ast>,
         right: &Type<'ast>,
-        operator: &untyped::BinaryOperator,
+        operator: &BinaryOperator,
     ) {
         match operator {
-            untyped::BinaryOperator::Add
-            | untyped::BinaryOperator::Subtract
-            | untyped::BinaryOperator::Multiply
-            | untyped::BinaryOperator::Divide
-            | untyped::BinaryOperator::Modulo
-            | untyped::BinaryOperator::LessThan
-            | untyped::BinaryOperator::LessThanOrEqual
-            | untyped::BinaryOperator::GreaterThan
-            | untyped::BinaryOperator::GreaterThanOrEqual => {
+            BinaryOperator::Add
+            | BinaryOperator::Subtract
+            | BinaryOperator::Multiply
+            | BinaryOperator::Divide
+            | BinaryOperator::Modulo
+            | BinaryOperator::LessThan
+            | BinaryOperator::LessThanOrEqual
+            | BinaryOperator::GreaterThan
+            | BinaryOperator::GreaterThanOrEqual => {
                 // if !left.value.is_numeric() || !right.value.is_numeric() {
                 //     let mut labels = vec![];
                 //     if !left.value.is_numeric() {
@@ -360,7 +358,7 @@ impl<'ast> TypeChecker<'ast> {
                     "right side must be a numeric type".into(),
                 );
             }
-            untyped::BinaryOperator::Equality | untyped::BinaryOperator::Inequality => {
+            BinaryOperator::Equality | BinaryOperator::Inequality => {
                 // TODO: Implement equality and inequality
             }
             _ => todo!("expect_allowed_binary_operation: {:?}", operator),

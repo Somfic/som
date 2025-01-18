@@ -2,8 +2,7 @@ use miette::{Result, SourceSpan};
 
 use super::{
     ast::{
-        untyped::{Expression, ExpressionValue, Lambda, ParameterDeclaration},
-        CombineSpan, Spannable,
+        CombineSpan, Spannable, {Expression, ExpressionValue, Lambda, ParameterDeclaration},
     },
     Parser,
 };

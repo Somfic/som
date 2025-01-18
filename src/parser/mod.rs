@@ -1,8 +1,5 @@
 use crate::lexer::Lexer;
-use ast::{
-    untyped::{Statement, StatementValue, Symbol},
-    Spannable,
-};
+use ast::Statement;
 use lookup::Lookup;
 use miette::Result;
 
@@ -25,16 +22,13 @@ impl<'ast> Parser<'ast> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Symbol<'ast>> {
+    pub fn parse(&mut self) -> Result<Vec<Statement<'ast>>> {
         let mut statements = vec![];
 
         while self.lexer.peek().is_some() {
             statements.push(statement::parse(self, false)?);
         }
 
-        Ok(Symbol::Statement(Statement::at_multiple(
-            statements.iter().map(|s| s.span).collect(),
-            StatementValue::Block(statements),
-        )))
+        Ok(statements)
     }
 }
