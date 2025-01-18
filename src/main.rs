@@ -11,13 +11,9 @@ pub mod parser;
 pub mod typer;
 
 const INPUT: &str = "
-type HexCode = int;
-type HexCode2 = HexCode;
-
-type Color = a, b, c;
 
 fn main() {
-    let a = |a ~ HexCode2| { 1 + a };
+    let a = 1 + '2';
 }
 ";
 
@@ -39,15 +35,15 @@ fn main() {
     let lexer = Lexer::new(INPUT);
 
     let mut parser = Parser::new(lexer);
-    let symbol = match parser.parse() {
-        Ok(symbol) => symbol,
+    let statements = match parser.parse() {
+        Ok(statements) => statements,
         Err(err) => {
             println!("{:?}", err.with_source_code(INPUT));
             return;
         }
     };
 
-    let typechecker = TypeChecker::new(symbol);
+    let typechecker = TypeChecker::new(&statements);
     errors.extend(typechecker.check());
 
     for error in errors {

@@ -2,8 +2,7 @@ use crate::{
     lexer::{TokenKind, TokenValue},
     parser::{
         ast::{
-            untyped::{Expression, ExpressionValue, Primitive},
-            Spannable,
+            Spannable, {Expression, ExpressionValue, Primitive},
         },
         Parser,
     },
@@ -11,8 +10,8 @@ use crate::{
 use miette::Result;
 
 pub fn integer<'ast>(parser: &mut Parser) -> Result<Expression<'ast>> {
-    let token = parser 
-        .lexer 
+    let token = parser
+        .lexer
         .expect(TokenKind::Integer, "expected an integer")?;
 
     let value = match token.value {

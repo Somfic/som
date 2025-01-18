@@ -2,8 +2,7 @@ use crate::{
     lexer::TokenKind,
     parser::{
         ast::{
-            untyped::{Expression, ExpressionValue, UnaryOperator},
-            Spannable,
+            Spannable, {Expression, ExpressionValue, UnaryOperator},
         },
         lookup::BindingPower,
         Parser,

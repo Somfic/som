@@ -1,7 +1,6 @@
 use super::{
     ast::{
-        untyped::{Expression, ExpressionValue, Primitive, Statement, StatementValue},
-        Spannable, Type,
+        Spannable, Type, {Expression, ExpressionValue, Primitive, Statement, StatementValue},
     },
     expression, statement, typing, Parser,
 };

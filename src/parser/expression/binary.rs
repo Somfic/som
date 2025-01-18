@@ -1,7 +1,6 @@
 use crate::parser::{
     ast::{
-        untyped::{BinaryOperator, Expression, ExpressionValue},
-        Spannable,
+        Spannable, {BinaryOperator, Expression, ExpressionValue},
     },
     lookup::BindingPower,
     Parser,
