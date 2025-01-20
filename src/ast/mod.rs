@@ -1,5 +1,3 @@
-use miette::SourceSpan;
-
 mod expression;
 mod module;
 mod span;
