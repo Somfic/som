@@ -13,12 +13,8 @@ pub mod parser;
 pub mod typer;
 
 const INPUT: &str = "
-fn add(a ~ int, b ~ int) -> int {
-    a + b
-}
-
 fn main() {
-    let a = 12 if true else add(1, 2);
+    let a = 1;
 }
 ";
 
@@ -52,7 +48,9 @@ fn main() {
 
     let mut typechecker = TypeChecker::new();
     match typechecker.type_check(vec![module]) {
-        Ok(_) => {}
+        Ok(modules) => {
+            println!("{:?}", modules);
+        }
         Err(err) => errors.extend(err),
     }
 
