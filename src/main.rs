@@ -13,9 +13,12 @@ pub mod parser;
 pub mod typer;
 
 const INPUT: &str = "
+fn add(a ~ int, b ~ int) -> int {
+    a + b
+}
 
 fn main() {
-    let a = 1 + '2';
+    let a = 12 if true else add(1, 2);
 }
 ";
 

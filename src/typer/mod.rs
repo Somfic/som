@@ -44,8 +44,7 @@ impl<'ast> TypeChecker {
         let typed_statements = module
             .definitions
             .into_iter()
-            .map(|stmt| self.type_check_statement(&stmt, environment))
-            .flatten()
+            .filter_map(|stmt| self.type_check_statement(&stmt, environment))
             .collect();
 
         Module {
@@ -67,24 +66,116 @@ impl<'ast> TypeChecker {
                     span: statement.span,
                 })
             }
-            StatementValue::Function { header, body } => {
+            StatementValue::Block(statements) => {
                 let mut environment = Environment::new(Some(environment));
 
-                for parameter in &header.parameters {
-                    environment.set(parameter.name.clone(), parameter.explicit_type.clone());
-                }
+                let statements = statements
+                    .iter()
+                    .filter_map(|stmt| self.type_check_statement(stmt, &mut environment))
+                    .collect();
+
+                Some(TypedStatement {
+                    value: StatementValue::Block(statements),
+                    span: statement.span,
+                })
+            }
+            StatementValue::Function { header, body } => {
+                environment.set(
+                    header.name.clone(),
+                    Type::function(
+                        header.span,
+                        header
+                            .parameters
+                            .iter()
+                            .map(|p| p.explicit_type.clone())
+                            .collect(),
+                        header
+                            .explicit_return_type
+                            .clone()
+                            .unwrap_or(Type::unit(header.span)),
+                    ),
+                );
+
+                let mut environment = Environment::new(Some(environment));
+
+                header.parameters.iter().for_each(|p| {
+                    environment.set(p.name.clone(), p.explicit_type.clone());
+                });
 
                 let body = self.type_check_expression(body, &environment)?;
+
+                self.expect_match(
+                    &header
+                        .clone()
+                        .explicit_return_type
+                        .unwrap_or(Type::unit(header.span)),
+                    &body.ty,
+                    "return type mismatch".into(),
+                );
 
                 Some(TypedStatement {
                     value: StatementValue::Function {
                         header: header.clone(),
-                        body,
+                        body: body.clone(),
                     },
                     span: statement.span,
                 })
             }
-            _ => todo!("type_check_statement: {}", statement),
+            StatementValue::Return(expr) => {
+                let expr = self.type_check_expression(expr, environment)?;
+                Some(TypedStatement {
+                    value: StatementValue::Return(expr),
+                    span: statement.span,
+                })
+            }
+            StatementValue::Assignment { name, value } => {
+                println!("{name}: {:?}", environment.get(name).map(|e| &e.value));
+                let value = self.type_check_expression(value, environment)?;
+                environment.set(name.clone(), value.ty.clone());
+                Some(TypedStatement {
+                    value: StatementValue::Assignment {
+                        name: name.clone(),
+                        value,
+                    },
+                    span: statement.span,
+                })
+            }
+            StatementValue::Struct { name, fields } => todo!(),
+            StatementValue::Enum { name, variants } => todo!(),
+            StatementValue::Trait { name, functions } => todo!(),
+            StatementValue::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => {
+                let condition = self.type_check_expression(condition, environment)?;
+
+                self.expect_type(
+                    &condition.ty,
+                    TypeValue::Boolean,
+                    "the condition must be boolean".into(),
+                );
+
+                let truthy = self.type_check_statement(truthy, environment)?;
+
+                let falsy = match falsy {
+                    Some(falsy) => Some(self.type_check_statement(falsy, environment)?),
+                    None => None,
+                };
+
+                Some(TypedStatement {
+                    value: StatementValue::Conditional {
+                        condition: Box::new(condition),
+                        truthy: Box::new(truthy),
+                        falsy: falsy.map(Box::new),
+                    },
+                    span: statement.span,
+                })
+            }
+            StatementValue::TypeAlias {
+                name,
+                explicit_type,
+            } => todo!(),
         }
     }
 
@@ -93,7 +184,7 @@ impl<'ast> TypeChecker {
         expression: &Expression<'ast>,
         environment: &'env Environment<'env, 'ast>,
     ) -> Option<TypedExpression<'ast>> {
-        match self.type_of(&expression, environment) {
+        match self.type_of(expression, environment) {
             Ok(ty) => Some(expression.clone().to_typed(ty)),
             Err(err) => {
                 self.errors.extend(err);
@@ -218,9 +309,9 @@ impl<'ast> TypeChecker {
                         for (parameter, argument) in parameters.iter().zip(arguments) {
                             let argument = self.type_of(argument, environment)?;
 
-                            self.expect_match(
-                                parameter,
+                            self.expect_type(
                                 &argument,
+                                parameter.clone().value,
                                 "argument and parameter must match".into(),
                             );
                         }
