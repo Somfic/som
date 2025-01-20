@@ -129,7 +129,6 @@ impl<'ast> TypeChecker {
                 })
             }
             StatementValue::Assignment { name, value } => {
-                println!("{name}: {:?}", environment.get(name).map(|e| &e.value));
                 let value = self.type_check_expression(value, environment)?;
                 environment.set(name.clone(), value.ty.clone());
                 Some(TypedStatement {
