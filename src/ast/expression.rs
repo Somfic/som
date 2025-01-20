@@ -1,9 +1,8 @@
-use crate::parser::ast::ParameterDeclaration;
 use std::{borrow::Cow, fmt::Display};
 
-use super::Statement;
+use super::{ParameterDeclaration, Statement, Type};
 
-impl Display for ExpressionValue<'_> {
+impl Display for ExpressionValue<'_, Expression<'_>> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ExpressionValue::Primitive(primitive) => write!(f, "{}", primitive),
@@ -86,8 +85,15 @@ impl Display for UnaryOperator {
 
 #[derive(Debug, Clone)]
 pub struct Expression<'ast> {
-    pub value: ExpressionValue<'ast>,
+    pub value: ExpressionValue<'ast, Expression<'ast>>,
     pub span: miette::SourceSpan,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypedExpression<'ast> {
+    pub value: ExpressionValue<'ast, Expression<'ast>>,
+    pub span: miette::SourceSpan,
+    pub ty: Type<'ast>,
 }
 
 impl Expression<'_> {
@@ -96,31 +102,47 @@ impl Expression<'_> {
     }
 }
 
+impl<'ast> Expression<'ast> {
+    pub fn to_typed(self, ty: Type<'ast>) -> TypedExpression<'ast> {
+        TypedExpression {
+            value: self.value,
+            span: self.span,
+            ty,
+        }
+    }
+}
+
+impl TypedExpression<'_> {
+    pub fn label(&self, label: impl Into<String>) -> miette::LabeledSpan {
+        miette::LabeledSpan::at(self.span, label)
+    }
+}
+
 #[derive(Debug, Clone)]
-pub enum ExpressionValue<'ast> {
+pub enum ExpressionValue<'ast, Expression> {
     Primitive(Primitive<'ast>),
     Binary {
         operator: BinaryOperator,
-        left: Box<Expression<'ast>>,
-        right: Box<Expression<'ast>>,
+        left: Box<Expression>,
+        right: Box<Expression>,
     },
     Unary {
         operator: UnaryOperator,
-        operand: Box<Expression<'ast>>,
+        operand: Box<Expression>,
     },
-    Group(Box<Expression<'ast>>),
+    Group(Box<Expression>),
     Block {
-        statements: Vec<Statement<'ast>>,
-        return_value: Box<Expression<'ast>>,
+        statements: Vec<Statement<'ast, Expression>>,
+        return_value: Box<Expression>,
     },
     Conditional {
-        condition: Box<Expression<'ast>>,
-        truthy: Box<Expression<'ast>>,
-        falsy: Box<Expression<'ast>>,
+        condition: Box<Expression>,
+        truthy: Box<Expression>,
+        falsy: Box<Expression>,
     },
     Call {
-        callee: Box<Expression<'ast>>,
-        arguments: Vec<Expression<'ast>>,
+        callee: Box<Expression>,
+        arguments: Vec<Expression>,
     },
     Lambda(Lambda<'ast>),
 }

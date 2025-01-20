@@ -1,11 +1,8 @@
-use super::{
-    ast::{
-        Spannable, {Type, TypeValue},
-    },
-    lookup::BindingPower,
-    Parser,
+use super::{lookup::BindingPower, Parser};
+use crate::{
+    ast::{Spannable, Type, TypeValue},
+    lexer::{TokenKind, TokenValue},
 };
-use crate::lexer::{TokenKind, TokenValue};
 use miette::Result;
 
 pub fn parse<'ast>(parser: &mut Parser<'ast>, binding_power: BindingPower) -> Result<Type<'ast>> {
@@ -66,7 +63,7 @@ pub fn parse<'ast>(parser: &mut Parser<'ast>, binding_power: BindingPower) -> Re
     Ok(lhs)
 }
 
-pub fn unit<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_unit<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let open = parser
         .lexer
         .expect(TokenKind::ParenOpen, "expected an opening parenthesis")?;
@@ -81,7 +78,7 @@ pub fn unit<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     ))
 }
 
-pub fn boolean<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::BooleanType, "expected a boolean type")?;
@@ -89,7 +86,7 @@ pub fn boolean<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     Ok(Type::at(token.span, TypeValue::Boolean))
 }
 
-pub fn integer<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_integer<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::IntegerType, "expected an integer type")?;
@@ -97,7 +94,7 @@ pub fn integer<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     Ok(Type::at(token.span, TypeValue::Integer))
 }
 
-pub fn decimal<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_decimal<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::DecimalType, "expected a decimal type")?;
@@ -105,7 +102,7 @@ pub fn decimal<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     Ok(Type::at(token.span, TypeValue::Decimal))
 }
 
-pub fn string<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_string<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::StringType, "expected a string type")?;
@@ -113,7 +110,7 @@ pub fn string<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     Ok(Type::string(token.span))
 }
 
-pub fn character<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_character<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::CharacterType, "expected a character type")?;
@@ -121,7 +118,7 @@ pub fn character<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     Ok(Type::character(token.span))
 }
 
-pub fn collection<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_collection<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let open = parser
         .lexer
         .expect(TokenKind::SquareOpen, "expected an opening bracket")?;
@@ -136,7 +133,7 @@ pub fn collection<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     ))
 }
 
-pub fn set<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_set<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let open = parser
         .lexer
         .expect(TokenKind::CurlyOpen, "expected an opening curly brace")?;
@@ -153,7 +150,7 @@ pub fn set<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     ))
 }
 
-pub fn identifier<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_identifier<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let token = parser
         .lexer
         .expect(TokenKind::Identifier, "expected an identifier")?;
@@ -166,7 +163,7 @@ pub fn identifier<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     Ok(Type::symbol(token.span, name))
 }
 
-pub fn function<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
+pub fn parse_function<'ast>(parser: &mut Parser<'ast>) -> Result<Type<'ast>> {
     let function = parser
         .lexer
         .expect(TokenKind::Function, "expected a function type")?;

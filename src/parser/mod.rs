@@ -1,9 +1,12 @@
-use crate::lexer::Lexer;
-use ast::Statement;
+use std::borrow::Cow;
+
+use crate::{
+    ast::{Expression, Module},
+    lexer::Lexer,
+};
 use lookup::Lookup;
 use miette::Result;
 
-pub mod ast;
 pub mod expression;
 pub mod lookup;
 pub mod statement;
@@ -22,13 +25,16 @@ impl<'ast> Parser<'ast> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Statement<'ast>>> {
-        let mut statements = vec![];
+    pub fn parse(&mut self) -> Result<Module<'ast, Expression<'ast>>> {
+        let mut module = Module {
+            name: Cow::Borrowed("main"),
+            definitions: vec![],
+        };
 
         while self.lexer.peek().is_some() {
-            statements.push(statement::parse(self, false)?);
+            module.definitions.push(statement::parse(self, false)?);
         }
 
-        Ok(statements)
+        Ok(module)
     }
 }

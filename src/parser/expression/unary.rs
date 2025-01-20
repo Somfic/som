@@ -1,12 +1,7 @@
 use crate::{
+    ast::{Expression, ExpressionValue, Spannable, UnaryOperator},
     lexer::TokenKind,
-    parser::{
-        ast::{
-            Spannable, {Expression, ExpressionValue, UnaryOperator},
-        },
-        lookup::BindingPower,
-        Parser,
-    },
+    parser::{lookup::BindingPower, Parser},
 };
 use miette::Result;
 

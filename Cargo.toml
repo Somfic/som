@@ -7,7 +7,7 @@ authors = ["Somfic"]
 description = "The 'som' programming language"
 
 [dependencies]
-inkwell = "0.5.0"
+# inkwcell = { version = "0.5.0", features = ["llvm18-0"] }
 miette = { version = "7.4.0", features = ["fancy", "syntect-highlighter"] }
 owo-colors = "4.1.0"
 pretty_assertions = "1.4.1"
