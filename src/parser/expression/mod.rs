@@ -1,12 +1,8 @@
 use miette::{Result, SourceSpan};
 
-use super::{
-    ast::{
-        CombineSpan, Spannable, {Expression, ExpressionValue, Lambda, ParameterDeclaration},
-    },
-    Parser,
-};
+use super::Parser;
 use crate::{
+    ast::{CombineSpan, Expression, ExpressionValue, Lambda, ParameterDeclaration, Spannable},
     lexer::{TokenKind, TokenValue},
     parser::lookup::BindingPower,
 };

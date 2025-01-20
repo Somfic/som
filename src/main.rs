@@ -5,6 +5,8 @@ use miette::miette;
 use parser::Parser;
 use std::vec;
 
+pub mod ast;
+pub mod compiler;
 pub mod highlighter;
 pub mod lexer;
 pub mod parser;
@@ -16,6 +18,8 @@ fn main() {
     let a = 1 + '2';
 }
 ";
+
+pub type Result<T> = std::result::Result<T, Vec<miette::MietteDiagnostic>>;
 
 fn main() {
     miette::set_hook(Box::new(|_| {
@@ -35,7 +39,7 @@ fn main() {
     let lexer = Lexer::new(INPUT);
 
     let mut parser = Parser::new(lexer);
-    let statements = match parser.parse() {
+    let module: ast::Module<'_, ast::Expression<'_>> = match parser.parse() {
         Ok(statements) => statements,
         Err(err) => {
             println!("{:?}", err.with_source_code(INPUT));
@@ -43,8 +47,11 @@ fn main() {
         }
     };
 
-    let typechecker = TypeChecker::new(&statements);
-    errors.extend(typechecker.check());
+    let mut typechecker = TypeChecker::new();
+    match typechecker.type_check(vec![module]) {
+        Ok(_) => {}
+        Err(err) => errors.extend(err),
+    }
 
     for error in errors {
         println!("{:?}", miette!(error).with_source_code(INPUT));

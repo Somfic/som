@@ -1,20 +1,17 @@
-use super::{
+use super::{expression, lookup::BindingPower, statement, typing, Parser};
+use crate::{
     ast::{
-        Spannable,
-        {
-            EnumMemberDeclaration, FunctionHeader, ParameterDeclaration, Statement, StatementValue,
-            StructMemberDeclaration,
-        },
+        CombineSpan, EnumMemberDeclaration, Expression, FunctionHeader, ParameterDeclaration,
+        Spannable, Statement, StatementValue, StructMemberDeclaration,
     },
-    expression,
-    lookup::BindingPower,
-    statement, typing, Parser,
+    lexer::{TokenKind, TokenValue},
 };
-use crate::lexer::{TokenKind, TokenValue};
-use crate::parser::ast::CombineSpan;
 use miette::{Context, Result, SourceSpan};
 
-pub fn parse<'ast>(parser: &mut Parser<'ast>, optional_semicolon: bool) -> Result<Statement<'ast>> {
+pub fn parse<'ast>(
+    parser: &mut Parser<'ast>,
+    optional_semicolon: bool,
+) -> Result<Statement<'ast, Expression<'ast>>> {
     let token = match parser.lexer.peek().as_ref() {
         Some(Ok(token)) => token,
         Some(Err(err)) => return Err(miette::miette!(err.to_string())), // FIXME: better error handling
@@ -58,7 +55,9 @@ pub fn parse<'ast>(parser: &mut Parser<'ast>, optional_semicolon: bool) -> Resul
     Ok(statement)
 }
 
-pub fn let_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
+pub fn parse_declaration<'ast>(
+    parser: &mut Parser<'ast>,
+) -> Result<Statement<'ast, Expression<'ast>>> {
     let token = parser
         .lexer
         .expect(TokenKind::Let, "expected a let keyword")?;
@@ -83,7 +82,7 @@ pub fn let_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     ))
 }
 
-pub fn struct_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
+pub fn parse_struct<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast, Expression<'ast>>> {
     let token = parser
         .lexer
         .expect(TokenKind::Struct, "expected a struct keyword")?;
@@ -142,7 +141,7 @@ pub fn struct_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     ))
 }
 
-pub fn enum_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
+pub fn parse_enum<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast, Expression<'ast>>> {
     let token = parser
         .lexer
         .expect(TokenKind::Enum, "expected an enum keyword")?;
@@ -197,7 +196,9 @@ pub fn enum_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     ))
 }
 
-pub fn function_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
+pub fn parse_function<'ast>(
+    parser: &mut Parser<'ast>,
+) -> Result<Statement<'ast, Expression<'ast>>> {
     let header = parse_function_header(parser)?;
     let body = expression::parse(parser, BindingPower::None)?;
 
@@ -207,7 +208,7 @@ pub fn function_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     ))
 }
 
-pub fn trait_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
+pub fn parse_trait<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast, Expression<'ast>>> {
     parser
         .lexer
         .expect(TokenKind::Trait, "expected a trait keyword")?;
@@ -249,7 +250,7 @@ pub fn trait_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     ))
 }
 
-pub fn return_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
+pub fn parse_return<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast, Expression<'ast>>> {
     parser
         .lexer
         .expect(TokenKind::Return, "expected a return keyword")?;
@@ -262,7 +263,9 @@ pub fn return_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
     ))
 }
 
-pub fn if_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
+pub fn parse_condition<'ast>(
+    parser: &mut Parser<'ast>,
+) -> Result<Statement<'ast, Expression<'ast>>> {
     let token = parser
         .lexer
         .expect(TokenKind::If, "expected an if keyword")?;
@@ -368,7 +371,7 @@ fn parse_function_header<'ast>(parser: &mut Parser<'ast>) -> Result<FunctionHead
     })
 }
 
-pub fn type_<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast>> {
+pub fn parse_type<'ast>(parser: &mut Parser<'ast>) -> Result<Statement<'ast, Expression<'ast>>> {
     let token = parser
         .lexer
         .expect(TokenKind::Type, "expected a type keyword")?;

@@ -1,9 +1,6 @@
-use crate::parser::{
-    ast::{
-        Spannable, {BinaryOperator, Expression, ExpressionValue},
-    },
-    lookup::BindingPower,
-    Parser,
+use crate::{
+    ast::{BinaryOperator, Expression, ExpressionValue, Spannable},
+    parser::{lookup::BindingPower, Parser},
 };
 use miette::Result;
 

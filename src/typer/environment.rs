@@ -1,5 +1,6 @@
-use crate::parser::ast::{Type, TypeValue};
 use std::{borrow::Cow, collections::HashMap};
+
+use crate::ast::{Type, TypeValue};
 
 pub struct Environment<'env, 'ast> {
     parent: Option<&'env Environment<'env, 'ast>>,
@@ -29,7 +30,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
                     self.bindings.insert(name, ty);
                 }
             }
-        } else {   
+        } else {
             self.bindings.insert(name, ty);
         }
     }

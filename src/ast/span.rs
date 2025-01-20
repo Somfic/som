@@ -1,12 +1,6 @@
 use miette::SourceSpan;
-use std::{borrow::Cow, fmt::Display};
 
-mod expression;
-mod statement;
-mod typing;
-pub use self::expression::*;
-pub use self::statement::*;
-pub use self::typing::*;
+use super::{Expression, ExpressionValue, Statement, StatementValue, Type, TypeValue};
 
 pub trait Spannable<'ast>: Sized {
     type Value;
@@ -55,15 +49,15 @@ pub trait CombineSpan {
 impl CombineSpan for SourceSpan {}
 
 impl<'ast> Spannable<'ast> for Expression<'ast> {
-    type Value = ExpressionValue<'ast>;
+    type Value = ExpressionValue<'ast, Expression<'ast>>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
         Self { value, span }
     }
 }
 
-impl<'ast> Spannable<'ast> for Statement<'ast> {
-    type Value = StatementValue<'ast>;
+impl<'ast, Expression> Spannable<'ast> for Statement<'ast, Expression> {
+    type Value = StatementValue<'ast, Expression>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
         Self { value, span }

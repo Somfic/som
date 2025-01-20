@@ -10,12 +10,5 @@ fn basic_type() {
     }
     "#;
 
-    let lexer = Lexer::new(code);
-    let mut parser = Parser::new(lexer);
-    let statements = parser.parse().unwrap();
-
-    let typechecker = TypeChecker::new(&statements);
-    let errors = typechecker.check();
-
-    assert!(errors.is_empty());
+    todo!()
 }

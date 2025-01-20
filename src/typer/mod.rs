@@ -1,149 +1,100 @@
-use crate::parser::ast::{
-    BinaryOperator, CombineSpan, Expression, ExpressionValue, Primitive, Statement, StatementValue,
-    Type, TypeValue,
+use crate::ast::{
+    BinaryOperator, CombineSpan, Expression, ExpressionValue, Module, Primitive, Statement,
+    StatementValue, Type, TypeValue, TypedExpression, TypedStatement,
 };
+use crate::Result;
 use environment::Environment;
-use miette::{MietteDiagnostic, Result, SourceSpan};
+use miette::{MietteDiagnostic, SourceSpan};
 
 pub mod environment;
 #[cfg(test)]
 mod tests;
-pub struct TypeChecker<'ast> {
-    statements: &'ast Vec<Statement<'ast>>,
+pub struct TypeChecker {
     errors: Vec<MietteDiagnostic>,
 }
 
-impl<'ast> TypeChecker<'ast> {
-    pub fn new(statements: &'ast Vec<Statement<'ast>>) -> Self {
-        Self {
-            statements,
-            errors: vec![],
-        }
+impl<'ast> TypeChecker {
+    pub fn new() -> Self {
+        Self { errors: vec![] }
     }
 
-    pub fn check(mut self) -> Vec<MietteDiagnostic> {
-        // Initially, there is no parent environment
+    pub fn type_check(
+        &mut self,
+        modules: Vec<Module<'ast, Expression<'ast>>>,
+    ) -> Result<Vec<Module<'ast, TypedExpression<'ast>>>> {
         let mut environment = Environment::new(None);
 
-        for statement in self.statements {
-            self.check_statement(&statement, &mut environment);
-        }
+        let typed_modules = modules
+            .into_iter()
+            .map(|module| self.type_check_module(module, &mut environment))
+            .collect();
 
-        self.errors
+        if self.errors.is_empty() {
+            Ok(typed_modules)
+        } else {
+            Err(self.errors.clone())
+        }
     }
 
-    fn check_statement<'env>(
+    fn type_check_module<'env>(
         &mut self,
-        statement: &Statement<'ast>,
+        module: Module<'ast, Expression<'ast>>,
         environment: &mut Environment<'env, 'ast>,
-    ) {
+    ) -> Module<'ast, TypedExpression<'ast>> {
+        let typed_statements = module
+            .definitions
+            .into_iter()
+            .map(|stmt| self.type_check_statement(&stmt, environment))
+            .flatten()
+            .collect();
+
+        Module {
+            definitions: typed_statements,
+            name: module.name,
+        }
+    }
+
+    fn type_check_statement<'env>(
+        &mut self,
+        statement: &Statement<'ast, Expression<'ast>>,
+        environment: &mut Environment<'env, 'ast>,
+    ) -> Option<TypedStatement<'ast>> {
         match &statement.value {
             StatementValue::Expression(expr) => {
-                self.check_expression(expr, environment);
-            }
-            StatementValue::Block(statements) => {
-                // Create a new child environment
-                let mut environment = Environment::new(Some(environment));
-
-                for stmt in statements {
-                    self.check_statement(stmt, &mut environment);
-                }
+                let expr = self.type_check_expression(expr, environment)?;
+                Some(TypedStatement {
+                    value: StatementValue::Expression(expr),
+                    span: statement.span,
+                })
             }
             StatementValue::Function { header, body } => {
-                environment.set(
-                    header.name.clone(),
-                    Type::function(
-                        header.span,
-                        header
-                            .parameters
-                            .iter()
-                            .map(|p| p.explicit_type.clone())
-                            .collect(),
-                        header
-                            .explicit_return_type
-                            .clone()
-                            .unwrap_or(Type::unit(header.span)),
-                    ),
-                );
+                let mut environment = Environment::new(Some(environment));
 
-                header.parameters.iter().for_each(|p| {
-                    environment.set(p.name.clone(), p.explicit_type.clone());
-                });
-
-                let implicit_return_type = self
-                    .check_expression(body, environment)
-                    .unwrap_or(Type::unit(body.span));
-
-                self.expect_match(
-                    &header
-                        .explicit_return_type
-                        .clone()
-                        .unwrap_or(Type::unit(header.span)),
-                    &implicit_return_type,
-                    "explicit and implicit return types must match".into(),
-                );
-            }
-            StatementValue::Return(expr) => {
-                self.check_expression(expr, environment);
-            }
-            StatementValue::Enum {
-                name: _,
-                variants: _,
-            } => {
-                // Not implemented yet
-            }
-            StatementValue::Struct { name: _, fields: _ } => {
-                // Not implemented yet
-            }
-            StatementValue::Assignment { name, value } => {
-                if let Some(expression_type) = self.check_expression(value, environment) {
-                    environment.set(name.clone(), expression_type);
+                for parameter in &header.parameters {
+                    environment.set(parameter.name.clone(), parameter.explicit_type.clone());
                 }
-            }
-            StatementValue::Conditional {
-                condition,
-                truthy,
-                falsy,
-            } => {
-                let condition = self
-                    .check_expression(condition, environment)
-                    .unwrap_or(Type::unit(condition.span));
 
-                self.expect_type(
-                    &condition,
-                    TypeValue::Boolean,
-                    "the condition must be boolean".into(),
-                );
+                let body = self.type_check_expression(body, &environment)?;
 
-                self.check_statement(truthy, environment);
-
-                if let Some(falsy) = falsy {
-                    self.check_statement(falsy, environment);
-                }
+                Some(TypedStatement {
+                    value: StatementValue::Function {
+                        header: header.clone(),
+                        body,
+                    },
+                    span: statement.span,
+                })
             }
-            StatementValue::Trait {
-                name: _,
-                functions: _,
-            } => todo!(),
-            StatementValue::TypeAlias {
-                name,
-                explicit_type,
-            } => {
-                environment.set(
-                    name.clone(),
-                    Type::alias(explicit_type.span, name.clone(), explicit_type.clone()),
-                );
-            }
-        };
+            _ => todo!("type_check_statement: {}", statement),
+        }
     }
 
-    fn check_expression<'env>(
+    fn type_check_expression<'env>(
         &mut self,
         expression: &Expression<'ast>,
         environment: &'env Environment<'env, 'ast>,
-    ) -> Option<Type<'ast>> {
-        match self.type_of(expression, environment) {
-            Ok(ty) => Some(ty),
+    ) -> Option<TypedExpression<'ast>> {
+        match self.type_of(&expression, environment) {
+            Ok(ty) => Some(expression.clone().to_typed(ty)),
             Err(err) => {
                 self.errors.extend(err);
                 None
@@ -155,7 +106,7 @@ impl<'ast> TypeChecker<'ast> {
         &mut self,
         expression: &Expression<'ast>,
         environment: &Environment<'env, 'ast>,
-    ) -> Result<Type<'ast>, Vec<MietteDiagnostic>> {
+    ) -> Result<Type<'ast>> {
         match &expression.value {
             ExpressionValue::Primitive(primitive) => match primitive {
                 Primitive::Integer(_) => Ok(Type::integer(expression.span)),
@@ -188,7 +139,7 @@ impl<'ast> TypeChecker<'ast> {
                 let mut environment = Environment::new(Some(environment));
 
                 for stmt in statements {
-                    self.check_statement(stmt, &mut environment);
+                    self.type_check_statement(stmt, &mut environment);
                 }
 
                 self.type_of(return_value, &environment)

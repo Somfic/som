@@ -1,10 +1,8 @@
-use super::{
-    ast::{
-        Spannable, Type, {Expression, ExpressionValue, Primitive, Statement, StatementValue},
-    },
-    expression, statement, typing, Parser,
+use super::{expression, statement, typing, Parser};
+use crate::{
+    ast::{Expression, ExpressionValue, Primitive, Spannable, Statement, StatementValue, Type},
+    lexer::TokenKind,
 };
-use crate::lexer::TokenKind;
 use miette::{Context, Result, SourceSpan};
 use std::collections::HashMap;
 
@@ -25,7 +23,8 @@ pub enum BindingPower {
 
 pub type TypeHandler<'ast> = fn(&mut Parser<'ast>) -> Result<Type<'ast>>;
 pub type LeftTypeHandler<'ast> = fn(&mut Parser<'ast>, Type, BindingPower) -> Result<Type<'ast>>;
-pub type StatementHandler<'ast> = fn(&mut Parser<'ast>) -> Result<Statement<'ast>>;
+pub type StatementHandler<'ast> =
+    fn(&mut Parser<'ast>) -> Result<Statement<'ast, Expression<'ast>>>;
 pub type ExpressionHandler<'ast> = fn(&mut Parser<'ast>) -> Result<Expression<'ast>>;
 pub type LeftExpressionHandler<'ast> =
     fn(&mut Parser<'ast>, Expression<'ast>, BindingPower) -> Result<Expression<'ast>>;
@@ -193,24 +192,24 @@ impl Default for Lookup<'_> {
             BindingPower::Relational,
             expression::binary::or,
         )
-        .add_statement_handler(TokenKind::Let, statement::let_)
-        .add_statement_handler(TokenKind::Type, statement::type_)
-        .add_statement_handler(TokenKind::Struct, statement::struct_)
-        .add_statement_handler(TokenKind::Enum, statement::enum_)
-        .add_statement_handler(TokenKind::Function, statement::function_)
-        .add_statement_handler(TokenKind::Trait, statement::trait_)
-        .add_type_handler(TokenKind::Identifier, typing::identifier)
-        .add_type_handler(TokenKind::ParenOpen, typing::unit)
-        .add_type_handler(TokenKind::CharacterType, typing::character)
-        .add_type_handler(TokenKind::BooleanType, typing::boolean)
-        .add_type_handler(TokenKind::IntegerType, typing::integer)
-        .add_type_handler(TokenKind::DecimalType, typing::decimal)
-        .add_type_handler(TokenKind::StringType, typing::string)
-        .add_type_handler(TokenKind::SquareOpen, typing::collection)
-        .add_type_handler(TokenKind::CurlyOpen, typing::set)
-        .add_type_handler(TokenKind::Function, typing::function)
-        .add_statement_handler(TokenKind::Return, statement::return_)
-        .add_statement_handler(TokenKind::If, statement::if_)
+        .add_statement_handler(TokenKind::Let, statement::parse_declaration)
+        .add_statement_handler(TokenKind::Type, statement::parse_type)
+        .add_statement_handler(TokenKind::Struct, statement::parse_struct)
+        .add_statement_handler(TokenKind::Enum, statement::parse_enum)
+        .add_statement_handler(TokenKind::Function, statement::parse_function)
+        .add_statement_handler(TokenKind::Trait, statement::parse_trait)
+        .add_type_handler(TokenKind::Identifier, typing::parse_identifier)
+        .add_type_handler(TokenKind::ParenOpen, typing::parse_unit)
+        .add_type_handler(TokenKind::CharacterType, typing::parse_character)
+        .add_type_handler(TokenKind::BooleanType, typing::parse_boolean)
+        .add_type_handler(TokenKind::IntegerType, typing::parse_integer)
+        .add_type_handler(TokenKind::DecimalType, typing::parse_decimal)
+        .add_type_handler(TokenKind::StringType, typing::parse_string)
+        .add_type_handler(TokenKind::SquareOpen, typing::parse_collection)
+        .add_type_handler(TokenKind::CurlyOpen, typing::parse_set)
+        .add_type_handler(TokenKind::Function, typing::parse_function)
+        .add_statement_handler(TokenKind::Return, statement::parse_return)
+        .add_statement_handler(TokenKind::If, statement::parse_condition)
     }
 }
 

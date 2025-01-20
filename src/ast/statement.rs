@@ -1,20 +1,24 @@
-use std::{borrow::Cow, fmt::Display};
+use super::{Type, TypedExpression};
+use std::{
+    borrow::Cow,
+    fmt::{Display, Formatter},
+};
 
-use super::{Expression, Type};
+pub type TypedStatement<'ast> = Statement<'ast, TypedExpression<'ast>>;
 
 #[derive(Debug, Clone)]
-pub struct Statement<'ast> {
-    pub value: StatementValue<'ast>,
+pub struct Statement<'ast, Expression> {
+    pub value: StatementValue<'ast, Expression>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
-pub enum StatementValue<'ast> {
-    Block(Vec<Statement<'ast>>),
-    Expression(Expression<'ast>),
+pub enum StatementValue<'ast, Expression> {
+    Block(Vec<Statement<'ast, Expression>>),
+    Expression(Expression),
     Assignment {
         name: Cow<'ast, str>,
-        value: Expression<'ast>,
+        value: Expression,
     },
     Struct {
         name: Cow<'ast, str>,
@@ -26,26 +30,26 @@ pub enum StatementValue<'ast> {
     },
     Function {
         header: FunctionHeader<'ast>,
-        body: Expression<'ast>,
+        body: Expression,
     },
     Trait {
         name: Cow<'ast, str>,
         functions: Vec<FunctionHeader<'ast>>,
     },
-    Return(Expression<'ast>),
+    Return(Expression),
     Conditional {
-        condition: Box<Expression<'ast>>,
-        truthy: Box<Statement<'ast>>,
-        falsy: Option<Box<Statement<'ast>>>,
+        condition: Box<Expression>,
+        truthy: Box<Statement<'ast, Expression>>,
+        falsy: Option<Box<Statement<'ast, Expression>>>,
     },
     TypeAlias {
         name: std::borrow::Cow<'ast, str>,
-        explicit_type: crate::parser::ast::Type<'ast>,
+        explicit_type: Type<'ast>,
     },
 }
 
-impl Display for StatementValue<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<Expression: Display> Display for StatementValue<'_, Expression> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             StatementValue::Block(vec) => write!(f, "a block of {} statements", vec.len()),
             StatementValue::Expression(expression) => write!(f, "{}", expression),
@@ -72,13 +76,13 @@ impl Display for StatementValue<'_> {
     }
 }
 
-impl Display for Statement<'_> {
+impl<Expression: Display> Display for Statement<'_, Expression> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
     }
 }
 
-impl Statement<'_> {
+impl<Expression: Display> Statement<'_, Expression> {
     pub fn label(&self, label: impl Into<String>) -> miette::LabeledSpan {
         miette::LabeledSpan::at(self.span, label)
     }
