@@ -1,4 +1,5 @@
 use crate::typer::TypeChecker;
+use compiler::Compiler;
 use highlighter::SomHighlighter;
 use lexer::Lexer;
 use miette::miette;
@@ -47,12 +48,16 @@ fn main() {
     };
 
     let mut typechecker = TypeChecker::new();
-    match typechecker.type_check(vec![module]) {
-        Ok(modules) => {
-            println!("{:?}", modules);
+    let modules = match typechecker.type_check(vec![module]) {
+        Ok(modules) => modules,
+        Err(err) => {
+            errors.extend(err);
+            vec![]
         }
-        Err(err) => errors.extend(err),
-    }
+    };
+
+    let mut compiler = Compiler::new();
+    compiler.compile(modules);
 
     for error in errors {
         println!("{:?}", miette!(error).with_source_code(INPUT));
