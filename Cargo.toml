@@ -7,10 +7,9 @@ authors = ["Somfic"]
 description = "The 'som' programming language"
 
 [dependencies]
-inkwell = { version = "0.5.0", features = ["llvm18-0"] }
-llvm-sys-180 = { package = "llvm-sys", version = "191.0.0", features = [
-  "prefer-static",
-] }
 miette = { version = "7.4.0", features = ["fancy", "syntect-highlighter"] }
 owo-colors = "4.1.0"
 pretty_assertions = "1.4.1"
+
+[build]
+rustflags = ["-D", "warnings"]

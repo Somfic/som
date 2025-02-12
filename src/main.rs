@@ -1,17 +1,8 @@
-use crate::typer::TypeChecker;
-use compiler::Compiler;
-use highlighter::SomHighlighter;
-use lexer::Lexer;
-use miette::miette;
-use parser::Parser;
-use std::vec;
+mod prelude;
+pub use prelude::*;
 
-pub mod ast;
-pub mod compiler;
-pub mod highlighter;
-pub mod lexer;
-pub mod parser;
-pub mod typer;
+mod compiler;
+mod runner;
 
 const INPUT: &str = "
 fn main() {
@@ -19,47 +10,18 @@ fn main() {
 }
 ";
 
-pub type Result<T> = std::result::Result<T, Vec<miette::MietteDiagnostic>>;
-
 fn main() {
-    miette::set_hook(Box::new(|_| {
-        Box::new(
-            miette::MietteHandlerOpts::new()
-                .terminal_links(true)
-                .unicode(true)
-                .context_lines(2)
-                .with_syntax_highlighting(SomHighlighter {})
-                .build(),
-        )
-    }))
-    .unwrap();
-
-    let mut errors = vec![];
-
-    let lexer = Lexer::new(INPUT);
-
-    let mut parser = Parser::new(lexer);
-    let module: ast::Module<'_, ast::Expression<'_>> = match parser.parse() {
-        Ok(statements) => statements,
-        Err(err) => {
-            println!("{:?}", err.with_source_code(INPUT));
-            return;
+    if let Err(e) = run() {
+        for error in e {
+            eprintln!("{}", error);
         }
-    };
-
-    let mut typechecker = TypeChecker::new();
-    let modules = match typechecker.type_check(vec![module]) {
-        Ok(modules) => modules,
-        Err(err) => {
-            errors.extend(err);
-            vec![]
-        }
-    };
-
-    let mut compiler = Compiler::new();
-    compiler.compile(modules);
-
-    for error in errors {
-        println!("{:?}", miette!(error).with_source_code(INPUT));
     }
+}
+
+fn run() -> Result<()> {
+    let compiled = compiler::compile(INPUT)?;
+    let result = runner::run(compiled)?;
+
+    println!("{:?}", result);
+    Ok(())
 }
