@@ -3,6 +3,9 @@ pub use prelude::*;
 
 mod compiler;
 mod runner;
+#[cfg(test)]
+mod tests;
+mod tokenizer;
 
 const INPUT: &str = "
 fn main() {
