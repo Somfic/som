@@ -7,6 +7,4 @@ fn pattern_matching() {
         _     = print("unknown command")
       }
     "#;
-
-
 }
