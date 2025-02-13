@@ -1,8 +1,18 @@
 use miette::MietteDiagnostic;
 
-use crate::{prelude::*, tokenizer};
+use crate::{
+    parser::{BindingPower, Parser},
+    prelude::*,
+    tokenizer::{self, TokenKind, Tokenizer},
+};
 use std::path::PathBuf;
 
 pub fn compile(source_code: &str) -> Result<PathBuf> {
-    let tokens = tokenizer::tokenize(source_code)?;
+    let mut parser = Parser::new(source_code);
+
+    let expression = parser.parse_expression(BindingPower::None)?;
+
+    println!("{:?}", expression);
+
+    Ok(PathBuf::new())
 }
