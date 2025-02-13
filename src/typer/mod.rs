@@ -6,17 +6,21 @@ use crate::prelude::*;
 mod error;
 mod expression;
 
-pub struct Typer {
+pub struct Typer<'ast> {
     errors: Vec<MietteDiagnostic>,
+    expression: Expression<'ast>,
 }
 
-impl<'ast> Typer {
-    pub fn new() -> Self {
-        Self { errors: Vec::new() }
+impl<'ast> Typer<'ast> {
+    pub fn new(expression: Expression<'ast>) -> Self {
+        Self {
+            errors: Vec::new(),
+            expression,
+        }
     }
 
-    pub fn type_check(&mut self, expression: Expression<'ast>) -> Result<TypedExpression<'ast>> {
-        let expression = self.type_check_expression(&expression)?;
+    pub fn type_check(&mut self) -> Result<TypedExpression<'ast>> {
+        let expression = self.type_check_expression(&self.expression.clone())?;
 
         if self.errors.is_empty() {
             Ok(expression)

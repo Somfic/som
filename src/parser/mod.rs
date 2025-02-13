@@ -3,32 +3,51 @@ use crate::prelude::*;
 use crate::tokenizer::Tokenizer;
 pub use lookup::BindingPower;
 use lookup::Lookup;
+use miette::MietteDiagnostic;
 
 mod expression;
 mod lookup;
 
 pub struct Parser<'ast> {
-    pub tokens: Tokenizer<'ast>,
-    pub lookup: Lookup<'ast>,
+    errors: Vec<MietteDiagnostic>,
+    tokens: Tokenizer<'ast>,
+    lookup: Lookup<'ast>,
 }
 
 impl<'ast> Parser<'ast> {
     pub fn new(source_code: &'ast str) -> Self {
         Self {
+            errors: Vec::new(),
             tokens: Tokenizer::new(source_code),
             lookup: Lookup::default(),
         }
     }
 
-    pub fn parse_expression(&mut self, bp: lookup::BindingPower) -> Result<Expression<'ast>> {
+    fn report_error(&mut self, error: MietteDiagnostic) {
+        self.errors.push(error);
+    }
+
+    pub fn parse(&mut self) -> Result<Expression<'ast>> {
+        let result = self.parse_expression(BindingPower::None)?;
+
+        if self.errors.is_empty() {
+            Ok(result)
+        } else {
+            Err(self.errors.clone())
+        }
+    }
+
+    fn parse_expression(&mut self, bp: lookup::BindingPower) -> Result<Expression<'ast>> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),
             None => {
+                // TODO: Use report_error and return some sort of phantom expression so that
+                //  we can handle multiple errors in the parse pass
                 return Err(vec![miette::diagnostic! {
                     help = "expected an expression",
                     "expected an expression"
-                }])
+                }]);
             }
         };
 

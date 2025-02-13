@@ -11,7 +11,7 @@ mod tests;
 mod tokenizer;
 mod typer;
 
-const INPUT: &str = "a+1";
+const INPUT: &str = "1+1";
 
 fn main() {
     if let Err(e) = run(INPUT) {
@@ -22,8 +22,9 @@ fn main() {
 }
 
 fn run(source_code: &str) -> Result<()> {
-    let compiled = compiler::compile(source_code)?;
-    let result = runner::run(compiled)?;
+    let expression = parser::Parser::new(source_code).parse()?;
+    let expression = typer::Typer::new(expression).type_check()?;
+    let result = compiler::Compiler::new(expression).compile()?;
 
     println!("{:?}", result);
     Ok(())
