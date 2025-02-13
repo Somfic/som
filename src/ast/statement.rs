@@ -1,4 +1,4 @@
-use super::{Expression, TypedExpression};
+use super::{Expression, Type, TypedExpression};
 
 pub type TypedStatement<'ast> = GenericStatement<TypedExpression<'ast>>;
 pub type Statement<'ast> = GenericStatement<Expression<'ast>>;

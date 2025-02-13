@@ -9,8 +9,9 @@ mod runner;
 #[cfg(test)]
 mod tests;
 mod tokenizer;
+mod typer;
 
-const INPUT: &str = "1+2";
+const INPUT: &str = "a+1";
 
 fn main() {
     if let Err(e) = run(INPUT) {
