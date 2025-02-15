@@ -5,19 +5,19 @@ use cranelift_module::{DataDescription, Module};
 pub struct Jit {
     /// The function builder context, which is reused across multiple
     /// FunctionBuilder instances.
-    builder_context: FunctionBuilderContext,
+    pub builder_context: FunctionBuilderContext,
 
     /// The main Cranelift context, which holds the state for codegen. Cranelift
     /// separates this from `Module` to allow for parallel compilation, with a
     /// context per thread, though this isn't in the simple demo here.
-    ctx: codegen::Context,
+    pub ctx: codegen::Context,
 
     /// The data description, which is to data objects what `ctx` is to functions.
-    data_description: DataDescription,
+    pub data_description: DataDescription,
 
     /// The module, with the jit backend, which manages the JIT'd
     /// functions.
-    module: JITModule,
+    pub module: JITModule,
 }
 
 impl Default for Jit {
