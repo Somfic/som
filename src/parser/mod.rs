@@ -78,7 +78,7 @@ impl<'ast> Parser<'ast> {
                     .clone()
             };
 
-            if bp > token_binding_power {
+            if bp >= token_binding_power {
                 break;
             }
 

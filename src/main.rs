@@ -13,9 +13,11 @@ mod tests;
 mod tokenizer;
 mod typer;
 
-const INPUT: &str = "100000000000000000000000000000000000000000000000000000000000000000000000 - 100000000000000000000000000000000000000000000000000000000000000000000000";
+const INPUT: &str = "10 - 1 - 1";
 
 fn main() {
+    println!("{}\n", INPUT);
+
     let expression = parse(INPUT)
         .map_err(|errors| {
             for error in errors {
@@ -36,7 +38,7 @@ fn main() {
         .run()
         .expect("failed to run expression");
 
-    println!("Result: {}", result);
+    println!("{}", result);
 }
 
 fn parse(source_code: &str) -> ParserResult<TypedExpression<'_>> {

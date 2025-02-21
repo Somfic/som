@@ -1,26 +1,18 @@
 use crate::{
-    ast::{
-        BinaryOperator, ExpressionValue, Primitive, Statement, StatementValue, TypedExpression,
-        TypedStatement,
-    },
+    ast::{BinaryOperator, ExpressionValue, Primitive, TypedExpression},
     prelude::*,
 };
 use cranelift::{
     codegen::{
         control::ControlPlane,
-        ir::{entities::AnyEntity, Function, UserFuncName},
+        ir::{Function, UserFuncName},
         verifier::VerifierError,
-        CompileError, CompiledCode, Final,
+        CompileError, CompiledCode,
     },
-    prelude::{
-        isa::{unwind::systemv::RegisterMappingError, CallConv},
-        *,
-    },
+    prelude::*,
 };
-use cranelift_module::{Linkage, Module};
+use cranelift_module::Module;
 use jit::Jit;
-use miette::{diagnostic, LabeledSpan};
-use std::path::PathBuf;
 
 pub mod jit;
 
@@ -61,6 +53,8 @@ impl<'ast> Compiler<'ast> {
             builder.finalize();
         }
 
+        println!("{}", self.jit.ctx.func);
+
         let mut ctrl_plane = ControlPlane::default();
         self.jit
             .ctx
@@ -85,6 +79,8 @@ impl<'ast> Compiler<'ast> {
                 match operator {
                     BinaryOperator::Add => builder.ins().iadd(left_val, right_val),
                     BinaryOperator::Subtract => builder.ins().isub(left_val, right_val),
+                    BinaryOperator::Multiply => builder.ins().imul(left_val, right_val),
+                    BinaryOperator::Divide => builder.ins().udiv(left_val, right_val),
                     _ => unimplemented!(),
                 }
             }
