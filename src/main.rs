@@ -11,7 +11,7 @@ mod tests;
 mod tokenizer;
 mod typer;
 
-const INPUT: &str = "1 + 1";
+const INPUT: &str = "1 + 1 + 1";
 
 fn main() {
     if let Err(e) = run(INPUT) {
