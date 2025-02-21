@@ -43,7 +43,6 @@ impl<'ast> Parser<'ast> {
             Some(Err(err)) => return Err(err.to_vec()),
             None => {
                 // TODO: Use report_error and return some sort of phantom expression so that
-                // Issue URL: https://github.com/Somfic/som/issues/29
                 //  we can handle multiple errors in the parse pass
                 return Err(vec![miette::diagnostic! {
                     help = "expected an expression",
