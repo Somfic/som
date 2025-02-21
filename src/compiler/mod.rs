@@ -2,7 +2,14 @@ use crate::{
     ast::{Statement, StatementValue, TypedExpression, TypedStatement},
     prelude::*,
 };
-use cranelift::prelude::*;
+use cranelift::{
+    codegen::{
+        control::ControlPlane,
+        ir::{Function, UserFuncName},
+        CompiledCode, Final,
+    },
+    prelude::{isa::CallConv, *},
+};
 use cranelift_module::Module;
 use jit::Jit;
 use std::path::PathBuf;
@@ -22,42 +29,33 @@ impl<'ast> Compiler<'ast> {
         }
     }
 
-    pub fn compile(&mut self) -> Result<PathBuf> {
-        todo!()
+    pub fn compile(&mut self) -> Result<CompiledCode> {
+        let mut sig = Signature::new(CallConv::SystemV);
+        sig.returns.push(AbiParam::new(types::I64));
 
-        // let function_name = "main";
-        // let params = vec![];
-        // let returns = vec![];
-        // let statements = vec![TypedStatement {
-        //     value: StatementValue::Expression(self.expression.clone()),
-        //     span: self.expression.span,
-        // }];
+        let mut func = Function::with_name_signature(UserFuncName::user(0, 0), sig);
+        let mut func_builder_ctx = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut func, &mut func_builder_ctx);
 
-        // for parameter in &params {
-        //     self.jit.ctx.func.signature.params.push(AbiParam::new(
-        //         self.jit.module.target_config().pointer_type(),
-        //     ));
-        // }
+        let entry_block = builder.create_block();
+        builder.switch_to_block(entry_block);
+        builder.seal_block(entry_block);
 
-        // for return_type in &returns {
-        //     self.jit.ctx.func.signature.returns.push(AbiParam::new(
-        //         self.jit.module.target_config().pointer_type(),
-        //     ));
-        // }
+        let const1 = builder.ins().iconst(types::I64, 1);
+        let sum = builder.ins().iadd(const1, const1);
+        builder.ins().return_(&[sum]);
 
-        // let mut builder =
-        //     FunctionBuilder::new(&mut self.jit.ctx.func, &mut self.jit.builder_context);
+        builder.finalize();
 
-        // let entry_block = builder.create_block();
-        // builder.append_block_params_for_function_params(entry_block);
+        println!("generated ir:\n{}", func.display());
 
-        // builder.switch_to_block(entry_block);
+        let isa_builder = cranelift_native::builder().unwrap();
+        let flag_builder = cranelift::codegen::settings::builder();
+        let flags = cranelift::codegen::settings::Flags::new(flag_builder);
+        let isa = isa_builder.finish(flags).unwrap();
 
-        // builder.seal_block(entry_block);
-
-        // let variables =
-        //     declare_variables(int, &mut builder, &params, &the_return, &stmts, entry_block);
-
-        // Ok(PathBuf::new())
+        let mut context = cranelift::codegen::Context::for_function(func);
+        let mut ctrl_plane = ControlPlane::default();
+        Ok(context.compile(&*isa, &mut ctrl_plane).unwrap().clone())
     }
 }

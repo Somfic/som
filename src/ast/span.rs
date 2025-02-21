@@ -60,10 +60,6 @@ impl<'ast> Spannable<'ast> for Type<'ast> {
     type Value = TypeValue<'ast>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
-        Self {
-            value,
-            span,
-            original_span: None,
-        }
+        Self { value, span }
     }
 }

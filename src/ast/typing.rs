@@ -5,7 +5,6 @@ use std::{borrow::Cow, fmt::Display};
 pub struct Type<'ast> {
     pub value: TypeValue<'ast>,
     pub span: SourceSpan,
-    pub original_span: Option<SourceSpan>,
 }
 
 impl<'ast> Type<'ast> {
@@ -17,7 +16,6 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::Unit,
             span: *span,
-            original_span: None,
         }
     }
 
@@ -25,7 +23,6 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::Boolean,
             span: *span,
-            original_span: None,
         }
     }
 
@@ -33,7 +30,6 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::Integer,
             span: *span,
-            original_span: None,
         }
     }
 
@@ -41,7 +37,6 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::Decimal,
             span: *span,
-            original_span: None,
         }
     }
 
@@ -49,7 +44,6 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::Character,
             span: *span,
-            original_span: None,
         }
     }
 
@@ -57,7 +51,6 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::String,
             span: *span,
-            original_span: None,
         }
     }
 
@@ -65,7 +58,6 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::Symbol(name),
             span: *span,
-            original_span: None,
         }
     }
 
@@ -73,7 +65,6 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::Collection(Box::new(element)),
             span: *span,
-            original_span: None,
         }
     }
 
@@ -81,7 +72,6 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::Set(Box::new(element)),
             span: *span,
-            original_span: None,
         }
     }
 
@@ -96,7 +86,6 @@ impl<'ast> Type<'ast> {
                 return_type: Box::new(return_type),
             },
             span: *span,
-            original_span: None,
         }
     }
 
@@ -104,14 +93,10 @@ impl<'ast> Type<'ast> {
         Self {
             value: TypeValue::Alias(name, Box::new(alias)),
             span: *span,
-            original_span: None,
         }
     }
 
     pub fn span(mut self, span: SourceSpan) -> Self {
-        if self.original_span.is_none() {
-            self.original_span = Some(self.span);
-        }
         self.span = span;
         self
     }
