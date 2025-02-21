@@ -1,23 +1,20 @@
-#[cfg(test)]
-mod tests;
-pub mod token;
-
+use crate::prelude::*;
+mod token;
+use miette::{LabeledSpan, SourceSpan};
 pub use token::*;
 
-use miette::{LabeledSpan, Result, SourceSpan};
-
-pub struct Lexer<'ast> {
-    whole: &'ast str,
+pub struct Tokenizer<'ast> {
+    source_code: &'ast str,
     remainder: &'ast str,
     byte_offset: usize,
-    peeked: Option<Result<Token<'ast>, miette::Error>>,
+    peeked: Option<ParserResult<Token<'ast>>>,
 }
 
-impl<'ast> Lexer<'ast> {
-    pub fn new(input: &'ast str) -> Self {
-        Self {
-            whole: input,
-            remainder: input,
+impl<'ast> Tokenizer<'ast> {
+    pub fn new(source_code: &'ast str) -> Tokenizer<'ast> {
+        Tokenizer {
+            source_code,
+            remainder: source_code,
             byte_offset: 0,
             peeked: None,
         }
@@ -26,61 +23,36 @@ impl<'ast> Lexer<'ast> {
     pub fn expect(
         &mut self,
         expected: TokenKind,
-        unexpected: &str,
-    ) -> Result<Token<'ast>, miette::Error> {
+        error_message: impl Into<String>,
+    ) -> ParserResult<Token<'ast>> {
+        let error_message = error_message.into();
+
         match self.next() {
+            // The token is what we expected
             Some(Ok(token)) if expected == token.kind => Ok(token),
-            Some(Ok(token)) => Err(miette::miette! {
+
+            // The token is not what we expected
+            Some(Ok(token)) => Err(vec![miette::diagnostic! {
                 labels = vec![
                     token.label(format!("expected {} here", expected))
                 ],
                 help = format!("expected {}, got {} instead", expected, token.kind),
-                "{unexpected}",
-            }
-          ),
+                "{error_message}"
+            }]),
+            // There was an error parsing the token
             Some(Err(e)) => Err(e),
-            None => Err(miette::miette! {
+            // There are no more tokens to parse
+            None => Err(vec![miette::diagnostic! {
                 labels = vec![
-                    LabeledSpan::at_offset(self.byte_offset - 1, format!("Expected {} here", expected))
+                    LabeledSpan::at_offset(self.byte_offset - 1, format!("expected {} here", expected))
                 ],
                 help = format!("{} was expected, but no more code was found", expected),
                 "unexpected end of input",
-            }
-            .wrap_err(unexpected.to_string())
-            ),
+            }]),
         }
     }
 
-    pub fn expect_where(
-        &mut self,
-        mut check: impl FnMut(&Token<'ast>) -> bool,
-        unexpected: &str,
-    ) -> Result<Token<'ast>, miette::Error> {
-        match self.next() {
-            Some(Ok(token)) if check(&token) => Ok(token),
-            Some(Ok(token)) => Err(miette::miette! {
-                labels = vec![
-                    token.label("here")
-                ],
-                help = format!("expected {token:?}"),
-                "{unexpected}",
-            }),
-            Some(Err(e)) => Err(e),
-            None => Err(miette::miette! {
-                labels = vec![
-                    LabeledSpan::at_offset(self.byte_offset - 1, "expected more source code here")
-                ],
-                help = "more source code was expected, but none was found",
-                "{unexpected}",
-            }),
-        }
-    }
-
-    pub fn expect_any(&mut self, unexpected: &str) -> Result<Token<'ast>, miette::Error> {
-        self.expect_where(|_| true, unexpected)
-    }
-
-    pub fn peek(&mut self) -> Option<&Result<Token<'ast>, miette::Error>> {
+    pub fn peek(&mut self) -> Option<&ParserResult<Token<'ast>>> {
         if self.peeked.is_some() {
             return self.peeked.as_ref();
         }
@@ -89,10 +61,7 @@ impl<'ast> Lexer<'ast> {
         self.peeked.as_ref()
     }
 
-    pub fn peek_expect(
-        &mut self,
-        expected: TokenKind,
-    ) -> Option<&Result<Token<'ast>, miette::Error>> {
+    pub fn peek_expect(&mut self, expected: TokenKind) -> Option<&ParserResult<Token<'ast>>> {
         match self.peek() {
             Some(Ok(token::Token { kind, .. })) => {
                 if *kind == expected {
@@ -110,7 +79,7 @@ impl<'ast> Lexer<'ast> {
         single: TokenKind,
         compound: TokenKind,
         expected_char: char,
-    ) -> Result<(TokenKind, TokenValue<'ast>)> {
+    ) -> ParserResult<(TokenKind, TokenValue<'ast>)> {
         if let Some(c) = self.remainder.chars().next() {
             if c == expected_char {
                 self.remainder = &self.remainder[c.len_utf8()..];
@@ -125,8 +94,8 @@ impl<'ast> Lexer<'ast> {
     }
 }
 
-impl<'ast> Iterator for Lexer<'ast> {
-    type Item = Result<Token<'ast>>;
+impl<'ast> Iterator for Tokenizer<'ast> {
+    type Item = ParserResult<Token<'ast>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.peeked.take() {
@@ -141,7 +110,7 @@ impl<'ast> Iterator for Lexer<'ast> {
         self.remainder = chars.as_str();
         self.byte_offset += c.len_utf8();
 
-        let kind: Result<(TokenKind, TokenValue<'ast>)> = match c {
+        let kind: ParserResult<(TokenKind, TokenValue<'ast>)> = match c {
             '(' => Ok((TokenKind::ParenOpen, TokenValue::None)),
             ')' => Ok((TokenKind::ParenClose, TokenValue::None)),
             '{' => Ok((TokenKind::CurlyOpen, TokenValue::None)),
@@ -230,12 +199,12 @@ impl<'ast> Iterator for Lexer<'ast> {
                 } else if let Ok(num) = number.parse::<f64>() {
                     Ok((TokenKind::Decimal, TokenValue::Decimal(num)))
                 } else {
-                    Err(miette::miette! {
+                    Err(vec![miette::diagnostic! {
                         labels = vec![
                             LabeledSpan::at(self.byte_offset - number.len()..self.byte_offset, "this number")
                         ],
                         "invalid number"
-                    })
+                    }])
                 }
             }
             '"' => {
@@ -264,23 +233,23 @@ impl<'ast> Iterator for Lexer<'ast> {
                     self.byte_offset += c.len_utf8();
                     Ok((TokenKind::Character, TokenValue::Character(c)))
                 } else {
-                    Err(miette::miette! {
+                    Err(vec![miette::diagnostic! {
                         labels = vec![
                             LabeledSpan::at(self.byte_offset..self.byte_offset + c.len_utf8(), "this character")
                         ],
                         "expected closing single quote"
-                    })
+                    }])
                 }
             }
             ' ' | '\r' | '\t' | '\n' => {
                 return self.next();
             }
-            _ => Err(miette::miette! {
+            _ => Err(vec![miette::diagnostic! {
                 labels = vec![
                     LabeledSpan::at(self.byte_offset - c.len_utf8()..self.byte_offset, "this character")
                 ],
                 "unexpected character '{c}' in input"
-            }),
+            }]),
         };
 
         let byte_length = self
@@ -292,7 +261,7 @@ impl<'ast> Iterator for Lexer<'ast> {
             kind,
             value,
             span: SourceSpan::new(start_offset.into(), byte_length),
-            original: &self.whole[start_offset..self.byte_offset],
+            original: &self.source_code[start_offset..self.byte_offset],
         }))
     }
 }

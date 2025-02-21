@@ -1,40 +1,99 @@
-use std::borrow::Cow;
-
-use crate::{
-    ast::{Expression, Module},
-    lexer::Lexer,
-};
+use crate::ast::Expression;
+use crate::prelude::*;
+use crate::tokenizer::Tokenizer;
+pub use lookup::BindingPower;
 use lookup::Lookup;
-use miette::Result;
+use miette::MietteDiagnostic;
 
-pub mod expression;
-pub mod lookup;
-pub mod statement;
-pub mod typing;
+mod expression;
+mod lookup;
 
 pub struct Parser<'ast> {
-    lexer: Lexer<'ast>,
+    errors: Vec<MietteDiagnostic>,
+    tokens: Tokenizer<'ast>,
     lookup: Lookup<'ast>,
 }
 
 impl<'ast> Parser<'ast> {
-    pub fn new(lexer: Lexer<'ast>) -> Self {
+    pub fn new(source_code: &'ast str) -> Self {
         Self {
-            lexer,
+            errors: Vec::new(),
+            tokens: Tokenizer::new(source_code),
             lookup: Lookup::default(),
         }
     }
 
-    pub fn parse(&mut self) -> Result<Module<'ast, Expression<'ast>>> {
-        let mut module = Module {
-            name: Cow::Borrowed("main"),
-            definitions: vec![],
+    fn report_error(&mut self, error: MietteDiagnostic) {
+        self.errors.push(error);
+    }
+
+    pub fn parse(&mut self) -> ParserResult<Expression<'ast>> {
+        let result = self.parse_expression(BindingPower::None)?;
+
+        if self.errors.is_empty() {
+            Ok(result)
+        } else {
+            Err(self.errors.clone())
+        }
+    }
+
+    fn parse_expression(&mut self, bp: lookup::BindingPower) -> ParserResult<Expression<'ast>> {
+        let token = match self.tokens.peek().as_ref() {
+            Some(Ok(token)) => token,
+            Some(Err(err)) => return Err(err.to_vec()),
+            None => {
+                // TODO: Use report_error and return some sort of phantom expression so that
+                //  we can handle multiple errors in the parse pass
+                return Err(vec![miette::diagnostic! {
+                    help = "expected an expression",
+                    "expected an expression"
+                }]);
+            }
         };
 
-        while self.lexer.peek().is_some() {
-            module.definitions.push(statement::parse(self, false)?);
+        let handler =
+            self.lookup
+                .expression_lookup
+                .get(&token.kind)
+                .ok_or(vec![miette::diagnostic! {
+                    labels = vec![token.label("expected an expression")],
+                    help = format!("{} is not an expression", token.kind),
+                    "expected an expression, found {}", token.kind
+                }])?;
+        let mut lhs = handler(self)?;
+
+        let mut next_token = self.tokens.peek();
+
+        while let Some(token) = next_token {
+            let token = match token {
+                Ok(token) => token,
+                Err(err) => return Err(err.to_vec()),
+            };
+
+            let token_binding_power = {
+                let binding_power_lookup = self.lookup.binding_power_lookup.clone();
+                binding_power_lookup
+                    .get(&token.kind)
+                    .unwrap_or(&BindingPower::None)
+                    .clone()
+            };
+
+            if bp >= token_binding_power {
+                break;
+            }
+
+            let handler = match self.lookup.left_expression_lookup.get(&token.kind) {
+                Some(handler) => handler,
+                None => break,
+            };
+
+            self.tokens.next();
+
+            lhs = handler(self, lhs, token_binding_power)?;
+
+            next_token = self.tokens.peek();
         }
 
-        Ok(module)
+        Ok(lhs)
     }
 }

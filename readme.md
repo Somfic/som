@@ -7,3 +7,11 @@ fn fib(n ~ int) -> int {
     n if n < 2 else fib(n - 1) + fib(n - 2)
 }
 ```
+
+### Building project
+
+1. Install CMake
+
+```
+cargo install llvmenv
+```

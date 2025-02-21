@@ -1,65 +1,51 @@
-use crate::typer::TypeChecker;
-use compiler::Compiler;
-use highlighter::SomHighlighter;
-use lexer::Lexer;
+mod prelude;
+use ast::{Type, TypedExpression};
+use cranelift::codegen::CompiledCode;
 use miette::miette;
-use parser::Parser;
-use std::vec;
+pub use prelude::*;
 
-pub mod ast;
-pub mod compiler;
-pub mod highlighter;
-pub mod lexer;
-pub mod parser;
-pub mod typer;
+mod ast;
+mod compiler;
+mod parser;
+mod runner;
+#[cfg(test)]
+mod tests;
+mod tokenizer;
+mod typer;
 
-const INPUT: &str = "
+const INPUT: &str = "10 - 1 - 1";
+
 fn main() {
-    let a = 1;
+    println!("{}\n", INPUT);
+
+    let expression = parse(INPUT)
+        .map_err(|errors| {
+            for error in errors {
+                eprintln!("{:?}", miette!(error).with_source_code(INPUT));
+            }
+        })
+        .expect("failed to parse expression");
+
+    let compiled = compile(expression)
+        .map_err(|error| {
+            for error in error {
+                eprintln!("{:?}", error);
+            }
+        })
+        .expect("failed to compile expression");
+
+    let result = runner::Runner::new(compiled)
+        .run()
+        .expect("failed to run expression");
+
+    println!("{}", result);
 }
-";
 
-pub type Result<T> = std::result::Result<T, Vec<miette::MietteDiagnostic>>;
+fn parse(source_code: &str) -> ParserResult<TypedExpression<'_>> {
+    let expression = parser::Parser::new(source_code).parse()?;
+    typer::Typer::new(expression).type_check()
+}
 
-fn main() {
-    miette::set_hook(Box::new(|_| {
-        Box::new(
-            miette::MietteHandlerOpts::new()
-                .terminal_links(true)
-                .unicode(true)
-                .context_lines(2)
-                .with_syntax_highlighting(SomHighlighter {})
-                .build(),
-        )
-    }))
-    .unwrap();
-
-    let mut errors = vec![];
-
-    let lexer = Lexer::new(INPUT);
-
-    let mut parser = Parser::new(lexer);
-    let module: ast::Module<'_, ast::Expression<'_>> = match parser.parse() {
-        Ok(statements) => statements,
-        Err(err) => {
-            println!("{:?}", err.with_source_code(INPUT));
-            return;
-        }
-    };
-
-    let mut typechecker = TypeChecker::new();
-    let modules = match typechecker.type_check(vec![module]) {
-        Ok(modules) => modules,
-        Err(err) => {
-            errors.extend(err);
-            vec![]
-        }
-    };
-
-    let mut compiler = Compiler::new();
-    compiler.compile(modules);
-
-    for error in errors {
-        println!("{:?}", miette!(error).with_source_code(INPUT));
-    }
+fn compile(expression: TypedExpression<'_>) -> CompilerResult<CompiledCode> {
+    compiler::Compiler::new(expression).compile()
 }

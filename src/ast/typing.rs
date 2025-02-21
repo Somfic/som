@@ -1,102 +1,82 @@
-use std::{borrow::Cow, fmt::Display};
-
 use miette::SourceSpan;
+use std::{borrow::Cow, fmt::Display};
 
 #[derive(Debug, Clone)]
 pub struct Type<'ast> {
     pub value: TypeValue<'ast>,
     pub span: SourceSpan,
-    pub original_span: Option<SourceSpan>,
 }
 
 impl<'ast> Type<'ast> {
-    pub fn label(&self, text: impl Into<String>) -> Vec<miette::LabeledSpan> {
-        let labels = vec![miette::LabeledSpan::at(self.span, text.into())];
-
-        if let Some(_original_span) = self.original_span {
-            // labels.push(miette::LabeledSpan::at(
-            //     original_span,
-            //     "original type declaration".to_string(),
-            // ));
-        }
-
-        labels
+    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
+        miette::LabeledSpan::at(self.span, text.into())
     }
 
-    pub fn unit(span: SourceSpan) -> Self {
+    pub fn unit(span: &SourceSpan) -> Self {
         Self {
             value: TypeValue::Unit,
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
-    pub fn boolean(span: SourceSpan) -> Self {
+    pub fn boolean(span: &SourceSpan) -> Self {
         Self {
             value: TypeValue::Boolean,
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
-    pub fn integer(span: SourceSpan) -> Self {
+    pub fn integer(span: &SourceSpan) -> Self {
         Self {
             value: TypeValue::Integer,
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
-    pub fn decimal(span: SourceSpan) -> Self {
+    pub fn decimal(span: &SourceSpan) -> Self {
         Self {
             value: TypeValue::Decimal,
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
-    pub fn character(span: SourceSpan) -> Self {
+    pub fn character(span: &SourceSpan) -> Self {
         Self {
             value: TypeValue::Character,
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
-    pub fn string(span: SourceSpan) -> Self {
+    pub fn string(span: &SourceSpan) -> Self {
         Self {
             value: TypeValue::String,
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
-    pub fn symbol(span: SourceSpan, name: Cow<'ast, str>) -> Self {
+    pub fn symbol(span: &SourceSpan, name: Cow<'ast, str>) -> Self {
         Self {
             value: TypeValue::Symbol(name),
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
-    pub fn collection(span: SourceSpan, element: Type<'ast>) -> Self {
+    pub fn collection(span: &SourceSpan, element: Type<'ast>) -> Self {
         Self {
             value: TypeValue::Collection(Box::new(element)),
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
-    pub fn set(span: SourceSpan, element: Type<'ast>) -> Self {
+    pub fn set(span: &SourceSpan, element: Type<'ast>) -> Self {
         Self {
             value: TypeValue::Set(Box::new(element)),
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
     pub fn function(
-        span: SourceSpan,
+        span: &SourceSpan,
         parameters: Vec<Type<'ast>>,
         return_type: Type<'ast>,
     ) -> Self {
@@ -105,23 +85,18 @@ impl<'ast> Type<'ast> {
                 parameters,
                 return_type: Box::new(return_type),
             },
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
-    pub fn alias(span: SourceSpan, name: Cow<'ast, str>, alias: Type<'ast>) -> Self {
+    pub fn alias(span: &SourceSpan, name: Cow<'ast, str>, alias: Type<'ast>) -> Self {
         Self {
             value: TypeValue::Alias(name, Box::new(alias)),
-            span,
-            original_span: None,
+            span: *span,
         }
     }
 
     pub fn span(mut self, span: SourceSpan) -> Self {
-        if self.original_span.is_none() {
-            self.original_span = Some(self.span);
-        }
         self.span = span;
         self
     }
