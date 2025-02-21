@@ -10,7 +10,7 @@ use cranelift::{
     },
     prelude::{isa::CallConv, *},
 };
-use cranelift_module::Module;
+use cranelift_module::{Linkage, Module};
 use jit::Jit;
 use std::path::PathBuf;
 
@@ -30,32 +30,65 @@ impl<'ast> Compiler<'ast> {
     }
 
     pub fn compile(&mut self) -> Result<CompiledCode> {
-        let mut sig = Signature::new(CallConv::SystemV);
-        sig.returns.push(AbiParam::new(types::I64));
+        self.jit
+            .ctx
+            .func
+            .signature
+            .returns
+            .push(AbiParam::new(types::I64));
+        self.jit.ctx.func.name = UserFuncName::user(0, 0);
 
-        let mut func = Function::with_name_signature(UserFuncName::user(0, 0), sig);
-        let mut func_builder_ctx = FunctionBuilderContext::new();
-        let mut builder = FunctionBuilder::new(&mut func, &mut func_builder_ctx);
+        {
+            let mut builder =
+                FunctionBuilder::new(&mut self.jit.ctx.func, &mut self.jit.builder_context);
+            let entry_block = builder.create_block();
+            builder.switch_to_block(entry_block);
+            builder.seal_block(entry_block);
 
-        let entry_block = builder.create_block();
-        builder.switch_to_block(entry_block);
-        builder.seal_block(entry_block);
+            match &self.expression.value {
+                crate::ast::ExpressionValue::Primitive(primitive) => todo!(),
+                crate::ast::ExpressionValue::Binary {
+                    operator,
+                    left,
+                    right,
+                } => match operator {
+                    crate::ast::BinaryOperator::Add => {
+                        let left = match &left.value {
+                            crate::ast::ExpressionValue::Primitive(primitive) => match primitive {
+                                crate::ast::Primitive::Integer(value) => {
+                                    builder.ins().iconst(types::I64, *value)
+                                }
+                                _ => todo!(),
+                            },
+                            _ => todo!(),
+                        };
 
-        let const1 = builder.ins().iconst(types::I64, 1);
-        let sum = builder.ins().iadd(const1, const1);
-        builder.ins().return_(&[sum]);
+                        let right = match &right.value {
+                            crate::ast::ExpressionValue::Primitive(primitive) => match primitive {
+                                crate::ast::Primitive::Integer(value) => {
+                                    builder.ins().iconst(types::I64, *value)
+                                }
+                                _ => todo!(),
+                            },
+                            _ => todo!(),
+                        };
 
-        builder.finalize();
+                        let sum = builder.ins().iadd(left, right);
+                        builder.ins().return_(&[sum]);
+                    }
+                    _ => todo!(),
+                },
+            }
 
-        println!("generated ir:\n{}", func.display());
+            builder.finalize();
+        }
 
-        let isa_builder = cranelift_native::builder().unwrap();
-        let flag_builder = cranelift::codegen::settings::builder();
-        let flags = cranelift::codegen::settings::Flags::new(flag_builder);
-        let isa = isa_builder.finish(flags).unwrap();
-
-        let mut context = cranelift::codegen::Context::for_function(func);
         let mut ctrl_plane = ControlPlane::default();
-        Ok(context.compile(&*isa, &mut ctrl_plane).unwrap().clone())
+        Ok(self
+            .jit
+            .ctx
+            .compile(self.jit.module.isa(), &mut ctrl_plane)
+            .expect("compilation failed")
+            .clone())
     }
 }
