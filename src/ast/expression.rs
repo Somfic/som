@@ -8,19 +8,9 @@ pub struct Expression<'ast> {
     pub span: miette::SourceSpan,
 }
 
-impl<'ast> Expression<'ast> {
-    pub fn with_type(&self, ty: Type<'ast>) -> TypedExpression<'ast> {
-        TypedExpression {
-            value: self.clone().value,
-            span: self.span,
-            ty: ty.clone(),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct TypedExpression<'ast> {
-    pub value: ExpressionValue<'ast, Expression<'ast>>,
+    pub value: ExpressionValue<'ast, TypedExpression<'ast>>,
     pub span: miette::SourceSpan,
     pub ty: Type<'ast>,
 }

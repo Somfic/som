@@ -39,14 +39,36 @@ impl<'ast> Typer<'ast> {
     ) -> Result<TypedExpression<'ast>> {
         match &expression.value {
             ExpressionValue::Primitive(primitive) => match primitive {
-                Primitive::Integer(_) => Ok(expression.with_type(Type::integer(&expression.span))),
-                Primitive::Decimal(_) => Ok(expression.with_type(Type::decimal(&expression.span))),
-                Primitive::String(_) => Ok(expression.with_type(Type::string(&expression.span))),
-                Primitive::Character(_) => {
-                    Ok(expression.with_type(Type::character(&expression.span)))
-                }
-                Primitive::Boolean(_) => Ok(expression.with_type(Type::boolean(&expression.span))),
-                Primitive::Unit => Ok(expression.with_type(Type::unit(&expression.span))),
+                Primitive::Integer(_) => Ok(TypedExpression {
+                    value: ExpressionValue::Primitive(primitive.clone()),
+                    ty: Type::integer(&expression.span),
+                    span: expression.span,
+                }),
+                Primitive::Decimal(_) => Ok(TypedExpression {
+                    value: ExpressionValue::Primitive(primitive.clone()),
+                    ty: Type::decimal(&expression.span),
+                    span: expression.span,
+                }),
+                Primitive::String(_) => Ok(TypedExpression {
+                    value: ExpressionValue::Primitive(primitive.clone()),
+                    ty: Type::string(&expression.span),
+                    span: expression.span,
+                }),
+                Primitive::Character(_) => Ok(TypedExpression {
+                    value: ExpressionValue::Primitive(primitive.clone()),
+                    ty: Type::character(&expression.span),
+                    span: expression.span,
+                }),
+                Primitive::Boolean(_) => Ok(TypedExpression {
+                    value: ExpressionValue::Primitive(primitive.clone()),
+                    ty: Type::boolean(&expression.span),
+                    span: expression.span,
+                }),
+                Primitive::Unit => Ok(TypedExpression {
+                    value: ExpressionValue::Primitive(primitive.clone()),
+                    ty: Type::unit(&expression.span),
+                    span: expression.span,
+                }),
                 Primitive::Identifier(value) => todo!(),
             },
             ExpressionValue::Binary {
@@ -54,14 +76,23 @@ impl<'ast> Typer<'ast> {
                 left,
                 right,
             } => {
-                let left = self.type_check_expression(&left)?;
-                let right = self.type_check_expression(&right)?;
+                let left = self.type_check_expression(left)?;
+                let right = self.type_check_expression(right)?;
+                let left_ty = left.ty.clone();
 
-                if left.ty != right.ty {
-                    self.report_error(error::new_mismatched_types(left.ty.clone(), right.ty));
+                if left_ty != right.ty {
+                    self.report_error(error::new_mismatched_types(&left_ty, &right.ty));
                 }
 
-                Ok(expression.with_type(left.ty.clone()))
+                Ok(TypedExpression {
+                    value: ExpressionValue::Binary {
+                        operator: operator.clone(),
+                        left: Box::new(left),
+                        right: Box::new(right),
+                    },
+                    ty: left_ty,
+                    span: expression.span,
+                })
             }
         }
     }

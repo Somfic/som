@@ -23,39 +23,41 @@ impl<'ast> Compiler<'ast> {
     }
 
     pub fn compile(&mut self) -> Result<PathBuf> {
-        let function_name = "main";
-        let params = vec![];
-        let returns = vec![];
-        let statements = vec![TypedStatement {
-            value: StatementValue::Expression(self.expression.clone()),
-            span: self.expression.span,
-        }];
+        todo!()
 
-        for parameter in &params {
-            self.jit.ctx.func.signature.params.push(AbiParam::new(
-                self.jit.module.target_config().pointer_type(),
-            ));
-        }
+        // let function_name = "main";
+        // let params = vec![];
+        // let returns = vec![];
+        // let statements = vec![TypedStatement {
+        //     value: StatementValue::Expression(self.expression.clone()),
+        //     span: self.expression.span,
+        // }];
 
-        for return_type in &returns {
-            self.jit.ctx.func.signature.returns.push(AbiParam::new(
-                self.jit.module.target_config().pointer_type(),
-            ));
-        }
+        // for parameter in &params {
+        //     self.jit.ctx.func.signature.params.push(AbiParam::new(
+        //         self.jit.module.target_config().pointer_type(),
+        //     ));
+        // }
 
-        let mut builder =
-            FunctionBuilder::new(&mut self.jit.ctx.func, &mut self.jit.builder_context);
+        // for return_type in &returns {
+        //     self.jit.ctx.func.signature.returns.push(AbiParam::new(
+        //         self.jit.module.target_config().pointer_type(),
+        //     ));
+        // }
 
-        let entry_block = builder.create_block();
-        builder.append_block_params_for_function_params(entry_block);
+        // let mut builder =
+        //     FunctionBuilder::new(&mut self.jit.ctx.func, &mut self.jit.builder_context);
 
-        builder.switch_to_block(entry_block);
+        // let entry_block = builder.create_block();
+        // builder.append_block_params_for_function_params(entry_block);
 
-        builder.seal_block(entry_block);
+        // builder.switch_to_block(entry_block);
 
-        let variables =
-            declare_variables(int, &mut builder, &params, &the_return, &stmts, entry_block);
+        // builder.seal_block(entry_block);
 
-        Ok(PathBuf::new())
+        // let variables =
+        //     declare_variables(int, &mut builder, &params, &the_return, &stmts, entry_block);
+
+        // Ok(PathBuf::new())
     }
 }

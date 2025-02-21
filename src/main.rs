@@ -24,6 +24,9 @@ fn main() {
 fn run(source_code: &str) -> Result<()> {
     let expression = parser::Parser::new(source_code).parse()?;
     let expression = typer::Typer::new(expression).type_check()?;
+
+    println!("{:?}", expression);
+
     let result = compiler::Compiler::new(expression).compile()?;
 
     println!("{:?}", result);
