@@ -8,13 +8,18 @@ use crate::{
 use cranelift::{
     codegen::{
         control::ControlPlane,
-        ir::{Function, UserFuncName},
-        CompiledCode, Final,
+        ir::{entities::AnyEntity, Function, UserFuncName},
+        verifier::VerifierError,
+        CompileError, CompiledCode, Final,
     },
-    prelude::{isa::CallConv, *},
+    prelude::{
+        isa::{unwind::systemv::RegisterMappingError, CallConv},
+        *,
+    },
 };
 use cranelift_module::{Linkage, Module};
 use jit::Jit;
+use miette::{diagnostic, LabeledSpan};
 use std::path::PathBuf;
 
 pub mod jit;
@@ -32,7 +37,7 @@ impl<'ast> Compiler<'ast> {
         }
     }
 
-    pub fn compile(&mut self) -> Result<CompiledCode> {
+    pub fn compile(&mut self) -> CompilerResult<CompiledCode> {
         self.jit
             .ctx
             .func
@@ -57,12 +62,11 @@ impl<'ast> Compiler<'ast> {
         }
 
         let mut ctrl_plane = ControlPlane::default();
-        Ok(self
-            .jit
+        self.jit
             .ctx
             .compile(self.jit.module.isa(), &mut ctrl_plane)
-            .expect("compilation failed")
-            .clone())
+            .map_err(parse_error)
+            .cloned()
     }
 
     fn compile_expression(
@@ -89,7 +93,65 @@ impl<'ast> Compiler<'ast> {
     fn compile_primitive(primitive: &Primitive<'ast>, builder: &mut FunctionBuilder) -> Value {
         match primitive {
             Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
+            Primitive::Decimal(v) => builder.ins().f64const(*v),
             _ => unimplemented!(),
         }
+    }
+}
+
+fn parse_error(error: CompileError<'_>) -> Vec<miette::Report> {
+    match error.inner {
+        codegen::CodegenError::Verifier(verifier_errors) => {
+            verifier_errors
+                .0
+                .into_iter()
+                .map(|e| miette::miette! {
+                    help = "this is a bug in the generated cranelift IR",
+                    labels = vec![e.label(error.func)],
+                    "{0}", e
+                 }.with_source_code(format!("{}", error.func)))
+                .collect()
+        }
+        codegen::CodegenError::ImplLimitExceeded => {
+            vec![miette::miette!("implementation limit was exceeded")]
+        }
+        codegen::CodegenError::CodeTooLarge => {
+            vec![miette::miette!("the compiled code is too large")]
+        }
+        codegen::CodegenError::Unsupported(feature) => {
+            vec![miette::miette! {
+                help = format!("the `{feature}` might have to be explicitly enabled"), 
+                "unsupported feature: {feature}"}
+            ]
+        }
+        codegen::CodegenError::RegisterMappingError(register_mapping_error) => vec![
+            miette::miette!("failure to map cranelift register representation to a dwarf register representation: {register_mapping_error}"),
+        ],
+        codegen::CodegenError::Regalloc(checker_errors) => vec![
+            miette::miette!("regalloc validation errors: {checker_errors:?}"),
+        ],
+        codegen::CodegenError::Pcc(pcc_error) => vec![
+            miette::miette!("proof-carrying-code validation error: {pcc_error:?}"),
+        ],
+    }
+}
+
+trait Label {
+    fn label(&self, func: &Function) -> miette::LabeledSpan;
+}
+
+impl Label for VerifierError {
+    fn label(&self, func: &Function) -> miette::LabeledSpan {
+        let func_display = format!("{func}");
+
+        let (offset, length) = match &self.context {
+            Some(snippet) => match func_display.find(snippet) {
+                Some(offset) => (offset, snippet.chars().count()),
+                None => (0, func_display.chars().count()),
+            },
+            None => (0, func_display.chars().count()),
+        };
+
+        miette::LabeledSpan::new(Some(self.message.clone()), offset, length)
     }
 }

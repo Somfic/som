@@ -7,7 +7,7 @@ pub struct Tokenizer<'ast> {
     source_code: &'ast str,
     remainder: &'ast str,
     byte_offset: usize,
-    peeked: Option<Result<Token<'ast>>>,
+    peeked: Option<ParserResult<Token<'ast>>>,
 }
 
 impl<'ast> Tokenizer<'ast> {
@@ -24,7 +24,7 @@ impl<'ast> Tokenizer<'ast> {
         &mut self,
         expected: TokenKind,
         error_message: impl Into<String>,
-    ) -> Result<Token<'ast>> {
+    ) -> ParserResult<Token<'ast>> {
         let error_message = error_message.into();
 
         match self.next() {
@@ -52,7 +52,7 @@ impl<'ast> Tokenizer<'ast> {
         }
     }
 
-    pub fn peek(&mut self) -> Option<&Result<Token<'ast>>> {
+    pub fn peek(&mut self) -> Option<&ParserResult<Token<'ast>>> {
         if self.peeked.is_some() {
             return self.peeked.as_ref();
         }
@@ -61,7 +61,7 @@ impl<'ast> Tokenizer<'ast> {
         self.peeked.as_ref()
     }
 
-    pub fn peek_expect(&mut self, expected: TokenKind) -> Option<&Result<Token<'ast>>> {
+    pub fn peek_expect(&mut self, expected: TokenKind) -> Option<&ParserResult<Token<'ast>>> {
         match self.peek() {
             Some(Ok(token::Token { kind, .. })) => {
                 if *kind == expected {
@@ -79,7 +79,7 @@ impl<'ast> Tokenizer<'ast> {
         single: TokenKind,
         compound: TokenKind,
         expected_char: char,
-    ) -> Result<(TokenKind, TokenValue<'ast>)> {
+    ) -> ParserResult<(TokenKind, TokenValue<'ast>)> {
         if let Some(c) = self.remainder.chars().next() {
             if c == expected_char {
                 self.remainder = &self.remainder[c.len_utf8()..];
@@ -95,7 +95,7 @@ impl<'ast> Tokenizer<'ast> {
 }
 
 impl<'ast> Iterator for Tokenizer<'ast> {
-    type Item = Result<Token<'ast>>;
+    type Item = ParserResult<Token<'ast>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.peeked.take() {
@@ -110,7 +110,7 @@ impl<'ast> Iterator for Tokenizer<'ast> {
         self.remainder = chars.as_str();
         self.byte_offset += c.len_utf8();
 
-        let kind: Result<(TokenKind, TokenValue<'ast>)> = match c {
+        let kind: ParserResult<(TokenKind, TokenValue<'ast>)> = match c {
             '(' => Ok((TokenKind::ParenOpen, TokenValue::None)),
             ')' => Ok((TokenKind::ParenClose, TokenValue::None)),
             '{' => Ok((TokenKind::CurlyOpen, TokenValue::None)),

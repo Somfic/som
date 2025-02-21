@@ -1,4 +1,6 @@
 mod prelude;
+use ast::{Type, TypedExpression};
+use cranelift::codegen::CompiledCode;
 use miette::miette;
 pub use prelude::*;
 
@@ -14,19 +16,34 @@ mod typer;
 const INPUT: &str = "1 + 1 + 1";
 
 fn main() {
-    if let Err(e) = run(INPUT) {
-        for error in e {
-            eprintln!("{:?}", miette!(error).with_source_code(INPUT));
-        }
-    }
+    let expression = parse(INPUT)
+        .map_err(|errors| {
+            for error in errors {
+                eprintln!("{:?}", miette!(error).with_source_code(INPUT));
+            }
+        })
+        .expect("failed to parse expression");
+
+    let compiled = compile(expression)
+        .map_err(|error| {
+            for error in error {
+                eprintln!("{:?}", error);
+            }
+        })
+        .expect("failed to compile expression");
+
+    let result = runner::Runner::new(compiled)
+        .run()
+        .expect("failed to run expression");
+
+    println!("Result: {}", result);
 }
 
-fn run(source_code: &str) -> Result<()> {
+fn parse(source_code: &str) -> ParserResult<TypedExpression<'_>> {
     let expression = parser::Parser::new(source_code).parse()?;
-    let typed = typer::Typer::new(expression).type_check()?;
-    let compiled = compiler::Compiler::new(typed).compile()?;
-    let result = runner::Runner::new(compiled).run()?;
+    typer::Typer::new(expression).type_check()
+}
 
-    println!("{:?}", result);
-    Ok(())
+fn compile(expression: TypedExpression<'_>) -> CompilerResult<CompiledCode> {
+    compiler::Compiler::new(expression).compile()
 }

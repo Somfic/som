@@ -27,7 +27,7 @@ impl<'ast> Parser<'ast> {
         self.errors.push(error);
     }
 
-    pub fn parse(&mut self) -> Result<Expression<'ast>> {
+    pub fn parse(&mut self) -> ParserResult<Expression<'ast>> {
         let result = self.parse_expression(BindingPower::None)?;
 
         if self.errors.is_empty() {
@@ -37,7 +37,7 @@ impl<'ast> Parser<'ast> {
         }
     }
 
-    fn parse_expression(&mut self, bp: lookup::BindingPower) -> Result<Expression<'ast>> {
+    fn parse_expression(&mut self, bp: lookup::BindingPower) -> ParserResult<Expression<'ast>> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),

@@ -19,7 +19,7 @@ impl<'ast> Typer<'ast> {
         }
     }
 
-    pub fn type_check(&mut self) -> Result<TypedExpression<'ast>> {
+    pub fn type_check(&mut self) -> ParserResult<TypedExpression<'ast>> {
         let expression = self.type_check_expression(&self.expression.clone())?;
 
         if self.errors.is_empty() {
@@ -36,7 +36,7 @@ impl<'ast> Typer<'ast> {
     fn type_check_expression(
         &mut self,
         expression: &Expression<'ast>,
-    ) -> Result<TypedExpression<'ast>> {
+    ) -> ParserResult<TypedExpression<'ast>> {
         match &expression.value {
             ExpressionValue::Primitive(primitive) => match primitive {
                 Primitive::Integer(_) => Ok(TypedExpression {

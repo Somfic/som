@@ -22,12 +22,13 @@ pub enum BindingPower {
     Primary = 10,
 }
 
-pub type TypeHandler<'ast> = fn(&mut Parser<'ast>) -> Result<Type<'ast>>;
-pub type LeftTypeHandler<'ast> = fn(&mut Parser<'ast>, Type, BindingPower) -> Result<Type<'ast>>;
-pub type StatementHandler<'ast> = fn(&mut Parser<'ast>) -> Result<Statement<'ast>>;
-pub type ExpressionHandler<'ast> = fn(&mut Parser<'ast>) -> Result<Expression<'ast>>;
+pub type TypeHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Type<'ast>>;
+pub type LeftTypeHandler<'ast> =
+    fn(&mut Parser<'ast>, Type, BindingPower) -> ParserResult<Type<'ast>>;
+pub type StatementHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Statement<'ast>>;
+pub type ExpressionHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Expression<'ast>>;
 pub type LeftExpressionHandler<'ast> =
-    fn(&mut Parser<'ast>, Expression<'ast>, BindingPower) -> Result<Expression<'ast>>;
+    fn(&mut Parser<'ast>, Expression<'ast>, BindingPower) -> ParserResult<Expression<'ast>>;
 
 pub struct Lookup<'ast> {
     pub statement_lookup: HashMap<TokenKind, StatementHandler<'ast>>,
@@ -115,6 +116,7 @@ impl Default for Lookup<'_> {
             left_type_lookup: HashMap::new(),
         }
         .add_expression_handler(TokenKind::Integer, expression::parse_integer)
+        .add_expression_handler(TokenKind::Decimal, expression::parse_decimal)
         .add_left_expression_handler(
             TokenKind::Plus,
             BindingPower::Additive,

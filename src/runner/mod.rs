@@ -11,7 +11,7 @@ impl Runner {
         Self { compiled }
     }
 
-    pub fn run(&self) -> Result<i64> {
+    pub fn run(&self) -> ParserResult<i64> {
         let code_bytes = self.compiled.code_buffer();
         let code_size = code_bytes.len();
         let mut mmap = MmapMut::map_anon(code_size).expect("failed to create mmap");
