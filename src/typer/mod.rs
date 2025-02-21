@@ -81,7 +81,11 @@ impl<'ast> Typer<'ast> {
                 let left_ty = left.ty.clone();
 
                 if left_ty != right.ty {
-                    self.report_error(error::new_mismatched_types(&left_ty, &right.ty));
+                    self.report_error(error::new_mismatched_types(
+                        "expected types to binary operation to match",
+                        &left_ty,
+                        &right.ty,
+                    ));
                 }
 
                 Ok(TypedExpression {

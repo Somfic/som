@@ -84,6 +84,7 @@ impl<'ast> Compiler<'ast> {
                 let right_val = Self::compile_expression(right, builder);
                 match operator {
                     BinaryOperator::Add => builder.ins().iadd(left_val, right_val),
+                    BinaryOperator::Subtract => builder.ins().isub(left_val, right_val),
                     _ => unimplemented!(),
                 }
             }
