@@ -28,6 +28,11 @@ pub enum ExpressionValue<'ast, Expression> {
         right: Box<Expression>,
     },
     Group(Box<Expression>),
+    Conditional {
+        condition: Box<Expression>,
+        truthy: Box<Expression>,
+        falsy: Box<Expression>,
+    },
     // Block {
     //     statements: Vec<Statement<'ast>>,
     //     return_value: Box<Expression>,

@@ -1,6 +1,7 @@
 use crate::{compiler::Compiler, parser::Parser, runner::Runner, typer::Typer};
 
 mod binary;
+mod conditional;
 mod group;
 mod unary;
 

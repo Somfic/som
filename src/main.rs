@@ -13,7 +13,7 @@ mod tests;
 mod tokenizer;
 mod typer;
 
-const INPUT: &str = "1.1 * ( 2 + 3 - ( -2 ) )";
+const INPUT: &str = "1 + 1 if true else 1 - 1";
 
 fn main() {
     println!("{}\n", INPUT);

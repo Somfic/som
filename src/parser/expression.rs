@@ -135,3 +135,24 @@ pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression
         ExpressionValue::Primitive(Primitive::Boolean(value)),
     ))
 }
+
+pub fn parse_conditional<'ast>(
+    parser: &mut Parser<'ast>,
+    truthy: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    let condition = parser.parse_expression(BindingPower::None)?;
+
+    parser.tokens.expect(TokenKind::Else, "expected an else")?;
+
+    let falsy = parser.parse_expression(bp)?;
+
+    Ok(Expression::at_multiple(
+        vec![condition.span, truthy.span, falsy.span],
+        ExpressionValue::Conditional {
+            condition: Box::new(condition),
+            truthy: Box::new(truthy),
+            falsy: Box::new(falsy),
+        },
+    ))
+}
