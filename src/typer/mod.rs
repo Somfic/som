@@ -1,6 +1,6 @@
 use miette::MietteDiagnostic;
 
-use crate::ast::{Expression, ExpressionValue, Primitive, Type, TypedExpression};
+use crate::ast::{Expression, ExpressionValue, Primitive, Type, TypeValue, TypedExpression};
 use crate::prelude::*;
 
 mod error;
@@ -111,6 +111,44 @@ impl<'ast> Typer<'ast> {
                     span: expression.span,
                 }),
             },
+            ExpressionValue::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => {
+                let condition = self.type_check_expression(condition)?;
+                let truthy = self.type_check_expression(truthy)?;
+                let falsy = self.type_check_expression(falsy)?;
+                let truthy_ty = truthy.ty.clone();
+
+                if condition.ty.value != TypeValue::Boolean {
+                    self.report_error(error::new_mismatched_types(
+                        "expected the condition to be a boolean",
+                        &condition.ty,
+                        &Type::boolean(&condition.span),
+                        format!("{} is not a boolean", condition.ty),
+                    ));
+                }
+
+                if truthy_ty != falsy.ty {
+                    self.report_error(error::new_mismatched_types(
+                        "expected the types of the truthy and falsy branches to match",
+                        &truthy.ty,
+                        &falsy.ty,
+                        format!("{} and {} do not match", truthy.ty, falsy.ty),
+                    ));
+                }
+
+                Ok(TypedExpression {
+                    value: ExpressionValue::Conditional {
+                        condition: Box::new(condition),
+                        truthy: Box::new(truthy),
+                        falsy: Box::new(falsy),
+                    },
+                    ty: truthy_ty,
+                    span: expression.span,
+                })
+            }
         }
     }
 }

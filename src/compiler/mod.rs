@@ -92,6 +92,17 @@ impl<'ast> Compiler<'ast> {
                     builder.ins().ineg(value)
                 }
             },
+            ExpressionValue::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => {
+                let condition = Self::compile_expression(condition, builder);
+                let truthy = Self::compile_expression(truthy, builder);
+                let falsy = Self::compile_expression(falsy, builder);
+
+                builder.ins().select(condition, truthy, falsy)
+            }
         }
     }
 
