@@ -6,6 +6,7 @@ pub fn new_mismatched_types(
     message: impl Into<String>,
     left_ty: &Type<'_>,
     right_ty: &Type<'_>,
+    hint: impl Into<String>,
 ) -> MietteDiagnostic {
     let message = message.into();
 
@@ -15,6 +16,7 @@ pub fn new_mismatched_types(
             left_ty.label(format!("{}", left_ty)),
             right_ty.label(format!("{}", right_ty)),
         ],
+        help = hint.into(),
         "{message}"
     )
 }
