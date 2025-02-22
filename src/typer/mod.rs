@@ -82,9 +82,10 @@ impl<'ast> Typer<'ast> {
 
                 if left_ty != right.ty {
                     self.report_error(error::new_mismatched_types(
-                        "expected types to binary operation to match",
+                        format!("expected the types between {operator} to match"),
                         &left_ty,
                         &right.ty,
+                        format!("{left_ty} and {} do not match", right.ty),
                     ));
                 }
 
