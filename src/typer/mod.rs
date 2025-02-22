@@ -99,6 +99,17 @@ impl<'ast> Typer<'ast> {
                 })
             }
             ExpressionValue::Group(expression) => self.type_check_expression(expression),
+            ExpressionValue::Unary { operator, operand } => match operator {
+                crate::ast::UnaryOperator::Negate => todo!(),
+                crate::ast::UnaryOperator::Negative => Ok(TypedExpression {
+                    value: ExpressionValue::Unary {
+                        operator: operator.clone(),
+                        operand: Box::new(self.type_check_expression(operand)?),
+                    },
+                    ty: Type::integer(&expression.span),
+                    span: expression.span,
+                }),
+            },
         }
     }
 }

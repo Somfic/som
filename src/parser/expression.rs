@@ -1,5 +1,7 @@
 use super::{lookup::BindingPower, Parser};
-use crate::ast::{BinaryOperator, Expression, ExpressionValue, Primitive, Spannable};
+use crate::ast::{
+    BinaryOperator, Expression, ExpressionValue, Primitive, Spannable, UnaryOperator,
+};
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, TokenValue};
 
@@ -99,5 +101,21 @@ pub fn parse_group<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
     Ok(Expression::at_multiple(
         vec![token.span, expression.span],
         ExpressionValue::Group(Box::new(expression)),
+    ))
+}
+
+pub fn parse_unary_negative<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::Minus, "expected a negative sign")?;
+
+    let expression = parser.parse_expression(BindingPower::Unary)?;
+
+    Ok(Expression::at_multiple(
+        vec![token.span, expression.span],
+        ExpressionValue::Unary {
+            operator: UnaryOperator::Negative,
+            operand: Box::new(expression),
+        },
     ))
 }

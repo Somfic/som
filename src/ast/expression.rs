@@ -18,6 +18,10 @@ pub struct TypedExpression<'ast> {
 #[derive(Debug, Clone)]
 pub enum ExpressionValue<'ast, Expression> {
     Primitive(Primitive<'ast>),
+    Unary {
+        operator: UnaryOperator,
+        operand: Box<Expression>,
+    },
     Binary {
         operator: BinaryOperator,
         left: Box<Expression>,
@@ -56,4 +60,10 @@ pub enum BinaryOperator {
     GreaterThanOrEqual,
     And,
     Or,
+}
+
+#[derive(Debug, Clone)]
+pub enum UnaryOperator {
+    Negate,
+    Negative,
 }
