@@ -84,3 +84,20 @@ pub fn parse_binary_divide<'ast>(
 ) -> ParserResult<Expression<'ast>> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Divide)
 }
+
+pub fn parse_group<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::ParenOpen, "expected the start of the grouping")?;
+
+    let expression = parser.parse_expression(BindingPower::None)?;
+
+    parser
+        .tokens
+        .expect(TokenKind::ParenClose, "expected the end of the grouping")?;
+
+    Ok(Expression::at_multiple(
+        vec![token.span, expression.span],
+        ExpressionValue::Group(Box::new(expression)),
+    ))
+}

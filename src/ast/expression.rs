@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use super::Type;
+use super::{Statement, Type};
 
 #[derive(Debug, Clone)]
 pub struct Expression<'ast> {
@@ -23,6 +23,11 @@ pub enum ExpressionValue<'ast, Expression> {
         left: Box<Expression>,
         right: Box<Expression>,
     },
+    Group(Box<Expression>),
+    // Block {
+    //     statements: Vec<Statement<'ast>>,
+    //     return_value: Box<Expression>,
+    // },
 }
 
 #[derive(Debug, Clone)]
