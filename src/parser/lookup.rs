@@ -117,6 +117,7 @@ impl Default for Lookup<'_> {
         }
         .add_expression_handler(TokenKind::Integer, expression::parse_integer)
         .add_expression_handler(TokenKind::Decimal, expression::parse_decimal)
+        .add_expression_handler(TokenKind::ParenOpen, expression::parse_group)
         .add_left_expression_handler(
             TokenKind::Plus,
             BindingPower::Additive,

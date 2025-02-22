@@ -84,6 +84,7 @@ impl<'ast> Compiler<'ast> {
                     _ => unimplemented!(),
                 }
             }
+            ExpressionValue::Group(expression) => Self::compile_expression(expression, builder),
         }
     }
 

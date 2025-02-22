@@ -98,6 +98,7 @@ impl<'ast> Typer<'ast> {
                     span: expression.span,
                 })
             }
+            ExpressionValue::Group(expression) => self.type_check_expression(expression),
         }
     }
 }
