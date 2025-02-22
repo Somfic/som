@@ -119,3 +119,19 @@ pub fn parse_unary_negative<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Exp
         },
     ))
 }
+
+pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::Boolean, "expected a boolean")?;
+
+    let value = match token.value {
+        TokenValue::Boolean(value) => value,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::at(
+        token.span,
+        ExpressionValue::Primitive(Primitive::Boolean(value)),
+    ))
+}
