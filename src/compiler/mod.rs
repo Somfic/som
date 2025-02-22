@@ -99,6 +99,7 @@ impl<'ast> Compiler<'ast> {
         match primitive {
             Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
             Primitive::Decimal(v) => builder.ins().f64const(*v),
+            Primitive::Boolean(v) => builder.ins().iconst(types::I8, *v as i64),
             _ => unimplemented!(),
         }
     }
