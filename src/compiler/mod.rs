@@ -101,6 +101,9 @@ impl<'ast> Compiler<'ast> {
                 let truthy = Self::compile_expression(truthy, builder);
                 let falsy = Self::compile_expression(falsy, builder);
 
+                // TODO: Check if this is fine? The resulting IR runs both branches and then
+                //  selects the result to return, but really we should only run the branch that
+                //  is selected based on the condition.
                 builder.ins().select(condition, truthy, falsy)
             }
         }
