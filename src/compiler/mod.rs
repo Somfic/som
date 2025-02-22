@@ -85,6 +85,13 @@ impl<'ast> Compiler<'ast> {
                 }
             }
             ExpressionValue::Group(expression) => Self::compile_expression(expression, builder),
+            ExpressionValue::Unary { operator, operand } => match operator {
+                crate::ast::UnaryOperator::Negate => todo!(),
+                crate::ast::UnaryOperator::Negative => {
+                    let value = Self::compile_expression(operand, builder);
+                    builder.ins().ineg(value)
+                }
+            },
         }
     }
 
