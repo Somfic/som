@@ -1,6 +1,6 @@
-use crate::ast::Expression;
+use crate::ast::{Expression, Statement};
 use crate::prelude::*;
-use crate::tokenizer::Tokenizer;
+use crate::tokenizer::{TokenKind, Tokenizer};
 pub use lookup::BindingPower;
 use lookup::Lookup;
 use miette::MietteDiagnostic;
@@ -95,5 +95,33 @@ impl<'ast> Parser<'ast> {
         }
 
         Ok(lhs)
+    }
+
+    fn parse_statement(&mut self, require_semicolon: bool) -> ParserResult<Statement<'ast>> {
+        let token = match self.tokens.peek().as_ref() {
+            Some(Ok(token)) => token,
+            Some(Err(err)) => return Err(err.to_vec()),
+            None => {
+                return Err(vec![miette::diagnostic! {
+                    help = "expected a statement",
+                    "expected a statement"
+                }]);
+            }
+        };
+
+        match self.lookup.statement_lookup.get(&token.kind) {
+            Some(handler) => handler(self),
+            None => {
+                // parse expression
+                let expression = self.parse_expression(BindingPower::None)?;
+
+                if require_semicolon {
+                    self.tokens
+                        .expect(TokenKind::Semicolon, "expected a closing semicolon")?;
+                }
+
+                Ok(Statement::expression(expression.span, expression))
+            }
+        }
     }
 }

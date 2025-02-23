@@ -1,5 +1,7 @@
 use crate::{
-    ast::{BinaryOperator, ExpressionValue, Primitive, TypedExpression},
+    ast::{
+        BinaryOperator, ExpressionValue, Primitive, StatementValue, TypedExpression, TypedStatement,
+    },
     prelude::*,
 };
 use cranelift::{
@@ -81,7 +83,7 @@ impl<'ast> Compiler<'ast> {
                     BinaryOperator::Subtract => builder.ins().isub(left_val, right_val),
                     BinaryOperator::Multiply => builder.ins().imul(left_val, right_val),
                     BinaryOperator::Divide => builder.ins().udiv(left_val, right_val),
-                    _ => unimplemented!(),
+                    _ => unimplemented!("{operator:?}"),
                 }
             }
             ExpressionValue::Group(expression) => Self::compile_expression(expression, builder),
@@ -106,6 +108,28 @@ impl<'ast> Compiler<'ast> {
                 //  is selected based on the condition.
                 builder.ins().select(condition, truthy, falsy)
             }
+            ExpressionValue::Block { statements, result } => {
+                // open a new block
+                let block = builder.create_block();
+                builder.switch_to_block(block);
+                builder.seal_block(block);
+
+                for statement in statements {
+                    Self::compile_statement(statement, builder);
+                }
+
+                Self::compile_expression(result, builder)
+            }
+            _ => unimplemented!("{expression:?}"),
+        }
+    }
+
+    fn compile_statement(statement: &TypedStatement<'ast>, builder: &mut FunctionBuilder) {
+        match &statement.value {
+            StatementValue::Expression(expression) => {
+                Self::compile_expression(expression, builder);
+            }
+            _ => unimplemented!("{statement:?}"),
         }
     }
 
@@ -114,7 +138,8 @@ impl<'ast> Compiler<'ast> {
             Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
             Primitive::Decimal(v) => builder.ins().f64const(*v),
             Primitive::Boolean(v) => builder.ins().iconst(types::I8, *v as i64),
-            _ => unimplemented!(),
+            Primitive::Unit => Value::,
+            _ => unimplemented!("{primitive:?}"),
         }
     }
 }
@@ -129,7 +154,7 @@ fn parse_error(error: CompileError<'_>) -> Vec<miette::Report> {
                     help = "this is a bug in the generated cranelift IR",
                     labels = vec![e.label(error.func)],
                     "{0}", e
-                 }.with_source_code(format!("{}", error.func)))
+                 }.with_source_code(format!("{}", error.func))) 
                 .collect()
         }
         codegen::CodegenError::ImplLimitExceeded => {

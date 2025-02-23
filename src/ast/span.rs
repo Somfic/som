@@ -49,7 +49,7 @@ pub trait CombineSpan {
 impl CombineSpan for SourceSpan {}
 
 impl<'ast> Spannable<'ast> for Expression<'ast> {
-    type Value = ExpressionValue<'ast, Expression<'ast>>;
+    type Value = ExpressionValue<'ast, Statement<'ast>, Expression<'ast>>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
         Self { value, span }
