@@ -1,6 +1,9 @@
 use miette::MietteDiagnostic;
 
-use crate::ast::{Expression, ExpressionValue, Primitive, Type, TypeValue, TypedExpression};
+use crate::ast::{
+    Expression, ExpressionValue, Primitive, Statement, StatementValue, Type, TypeValue,
+    TypedExpression, TypedStatement,
+};
 use crate::prelude::*;
 
 mod error;
@@ -147,6 +150,50 @@ impl<'ast> Typer<'ast> {
                     },
                     ty: truthy_ty,
                     span: expression.span,
+                })
+            }
+            ExpressionValue::Block { statements, result } => {
+                let statements = statements
+                    .iter()
+                    .map(|statement| self.type_check_statement(statement))
+                    .collect::<ParserResult<Vec<_>>>()?;
+
+                let result = self.type_check_expression(result)?;
+                let result_ty = result.ty.clone();
+
+                Ok(TypedExpression {
+                    value: ExpressionValue::Block {
+                        statements,
+                        result: Box::new(result),
+                    },
+                    ty: result_ty,
+                    span: expression.span,
+                })
+            }
+        }
+    }
+
+    fn type_check_statement(
+        &mut self,
+        statement: &Statement<'ast>,
+    ) -> ParserResult<TypedStatement<'ast>> {
+        match &statement.value {
+            StatementValue::Block(statements) => {
+                let statements = statements
+                    .iter()
+                    .map(|statement| self.type_check_statement(statement))
+                    .collect::<ParserResult<Vec<_>>>()?;
+
+                Ok(TypedStatement {
+                    value: StatementValue::Block(statements),
+                    span: statement.span,
+                })
+            }
+            StatementValue::Expression(expression) => {
+                let expression = self.type_check_expression(expression)?;
+                Ok(TypedStatement {
+                    value: StatementValue::Expression(expression),
+                    span: statement.span,
                 })
             }
         }

@@ -14,3 +14,15 @@ pub enum StatementValue<Expression> {
     Block(Vec<GenericStatement<Expression>>),
     Expression(Expression),
 }
+
+impl<'ast> GenericStatement<Expression<'ast>> {
+    pub fn expression(
+        span: miette::SourceSpan,
+        value: Expression<'ast>,
+    ) -> GenericStatement<Expression<'ast>> {
+        Self {
+            value: StatementValue::Expression(value),
+            span,
+        }
+    }
+}

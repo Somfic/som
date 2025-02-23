@@ -120,6 +120,7 @@ impl Default for Lookup<'_> {
         .add_expression_handler(TokenKind::ParenOpen, expression::parse_group)
         .add_expression_handler(TokenKind::Minus, expression::parse_unary_negative)
         .add_expression_handler(TokenKind::Boolean, expression::parse_boolean)
+        .add_expression_handler(TokenKind::CurlyOpen, expression::parse_block)
         .add_left_expression_handler(
             TokenKind::If,
             BindingPower::Logical,

@@ -1,22 +1,22 @@
 use std::{borrow::Cow, fmt::Display};
 
-use super::{Statement, Type};
+use super::{Statement, Type, TypedStatement};
 
 #[derive(Debug, Clone)]
 pub struct Expression<'ast> {
-    pub value: ExpressionValue<'ast, Expression<'ast>>,
+    pub value: ExpressionValue<'ast, Statement<'ast>, Expression<'ast>>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypedExpression<'ast> {
-    pub value: ExpressionValue<'ast, TypedExpression<'ast>>,
+    pub value: ExpressionValue<'ast, TypedStatement<'ast>, TypedExpression<'ast>>,
     pub span: miette::SourceSpan,
     pub ty: Type<'ast>,
 }
 
 #[derive(Debug, Clone)]
-pub enum ExpressionValue<'ast, Expression> {
+pub enum ExpressionValue<'ast, Statement, Expression> {
     Primitive(Primitive<'ast>),
     Unary {
         operator: UnaryOperator,
@@ -33,10 +33,10 @@ pub enum ExpressionValue<'ast, Expression> {
         truthy: Box<Expression>,
         falsy: Box<Expression>,
     },
-    // Block {
-    //     statements: Vec<Statement<'ast>>,
-    //     return_value: Box<Expression>,
-    // },
+    Block {
+        statements: Vec<Statement>,
+        result: Box<Expression>,
+    },
 }
 
 #[derive(Debug, Clone)]

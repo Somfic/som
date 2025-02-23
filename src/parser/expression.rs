@@ -1,6 +1,7 @@
 use super::{lookup::BindingPower, Parser};
 use crate::ast::{
-    BinaryOperator, Expression, ExpressionValue, Primitive, Spannable, UnaryOperator,
+    BinaryOperator, Expression, ExpressionValue, Primitive, Spannable, Statement, StatementValue,
+    UnaryOperator,
 };
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, TokenValue};
@@ -153,6 +154,74 @@ pub fn parse_conditional<'ast>(
             condition: Box::new(condition),
             truthy: Box::new(truthy),
             falsy: Box::new(falsy),
+        },
+    ))
+}
+
+pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+    let open = parser.tokens.expect(
+        TokenKind::CurlyOpen,
+        "expected the start of an expression block",
+    )?;
+
+    let mut statements = Vec::new();
+    let mut last_is_return = true;
+
+    loop {
+        if parser.tokens.peek().is_some_and(|token| {
+            token
+                .as_ref()
+                .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
+        }) {
+            break;
+        }
+
+        if !statements.is_empty() {
+            parser
+                .tokens
+                .expect(TokenKind::Semicolon, "expected a closing semicolon")?;
+        }
+
+        if parser.tokens.peek().is_some_and(|token| {
+            token
+                .as_ref()
+                .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
+        }) {
+            last_is_return = false;
+            break;
+        }
+
+        let statement = parser.parse_statement(false)?;
+        statements.push(statement);
+    }
+
+    let result = if last_is_return {
+        match statements.last().map(|s| &s.value) {
+            Some(StatementValue::Expression(_)) => match statements.pop().map(|s| s.value) {
+                Some(StatementValue::Expression(expression)) => Some(expression),
+                _ => unreachable!(),
+            },
+            _ => todo!(),
+        }
+    } else {
+        None
+    };
+
+    let close = parser.tokens.expect(
+        TokenKind::CurlyClose,
+        "expected the end of the expression block",
+    )?;
+
+    let result = match result {
+        Some(result) => result,
+        None => Expression::at(close.span, ExpressionValue::Primitive(Primitive::Unit)),
+    };
+
+    Ok(Expression::at_multiple(
+        vec![open.span, close.span],
+        ExpressionValue::Block {
+            statements,
+            result: Box::new(result),
         },
     ))
 }
