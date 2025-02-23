@@ -20,3 +20,18 @@ pub fn new_mismatched_types(
         "{message}"
     )
 }
+
+pub fn new_mismatched_type(
+    message: impl Into<String>,
+    ty: &Type<'_>,
+    hint: impl Into<String>,
+) -> MietteDiagnostic {
+    let message = message.into();
+
+    diagnostic!(
+        severity = Severity::Error,
+        labels = vec![ty.label(format!("{}", ty)),],
+        help = hint.into(),
+        "{message}"
+    )
+}
