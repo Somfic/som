@@ -138,7 +138,7 @@ impl<'ast> Compiler<'ast> {
             Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
             Primitive::Decimal(v) => builder.ins().f64const(*v),
             Primitive::Boolean(v) => builder.ins().iconst(types::I8, *v as i64),
-            Primitive::Unit => builder.ins().iconst(types::I8, 0),
+            Primitive::Unit => builder.ins().iconst(types::I8, 0), // TODO: ideally we don't introduce a IR step for nothing ...
             _ => unimplemented!("{primitive:?}"),
         }
     }
