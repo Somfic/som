@@ -138,7 +138,7 @@ impl<'ast> Compiler<'ast> {
             Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
             Primitive::Decimal(v) => builder.ins().f64const(*v),
             Primitive::Boolean(v) => builder.ins().iconst(types::I8, *v as i64),
-            Primitive::Unit => Value::,
+            Primitive::Unit => builder.ins().iconst(types::I8, 0),
             _ => unimplemented!("{primitive:?}"),
         }
     }

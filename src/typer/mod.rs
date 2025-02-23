@@ -25,6 +25,17 @@ impl<'ast> Typer<'ast> {
     pub fn type_check(&mut self) -> ParserResult<TypedExpression<'ast>> {
         let expression = self.type_check_expression(&self.expression.clone())?;
 
+        if expression.ty.value != TypeValue::Integer {
+            self.report_error(error::new_mismatched_type(
+                "expected the expression to return an integer",
+                &expression.ty,
+                format!(
+                    "the main expression returns {}, which is not an integer",
+                    expression.ty
+                ),
+            ));
+        }
+
         if self.errors.is_empty() {
             Ok(expression)
         } else {
