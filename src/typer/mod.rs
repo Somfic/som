@@ -37,7 +37,8 @@ impl<'ast> Typer<'ast> {
                 "expected the expression to return an integer",
                 &expression.ty,
                 format!(
-                    "the main expression returns {}, which is not an integer",
+                    "change the main expression to return {}, instead of {}",
+                    TypeValue::Integer,
                     expression.ty
                 ),
             ));
