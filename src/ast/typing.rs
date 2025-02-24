@@ -19,6 +19,13 @@ impl<'ast> Type<'ast> {
         }
     }
 
+    pub fn unknown(span: &SourceSpan) -> Self {
+        Self {
+            value: TypeValue::Unknown,
+            span: *span,
+        }
+    }
+
     pub fn boolean(span: &SourceSpan) -> Self {
         Self {
             value: TypeValue::Boolean,
@@ -122,6 +129,7 @@ impl PartialEq for Type<'_> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeValue<'ast> {
+    Unknown,
     Unit,
     Boolean,
     Integer,
@@ -147,6 +155,7 @@ impl Display for Type<'_> {
 impl Display for TypeValue<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
+            TypeValue::Unknown => write!(f, "unknown"),
             TypeValue::Unit => write!(f, "nothing"),
             TypeValue::Boolean => write!(f, "a boolean"),
             TypeValue::Integer => write!(f, "an integer"),

@@ -1,3 +1,7 @@
+use std::borrow::Cow;
+use std::env;
+
+use environment::Environment;
 use miette::MietteDiagnostic;
 
 use crate::ast::{
@@ -6,8 +10,8 @@ use crate::ast::{
 };
 use crate::prelude::*;
 
+mod environment;
 mod error;
-mod expression;
 
 pub struct Typer<'ast> {
     errors: Vec<MietteDiagnostic>,
@@ -23,10 +27,13 @@ impl<'ast> Typer<'ast> {
     }
 
     pub fn type_check(&mut self) -> ParserResult<TypedExpression<'ast>> {
-        let expression = self.type_check_expression(&self.expression.clone())?;
+        let mut environment = Environment::new();
+
+        // TODO: Get rid of this clone
+        let expression = self.type_check_expression(&self.expression.clone(), &mut environment)?;
 
         if expression.ty.value != TypeValue::Integer {
-            self.report_error(error::new_mismatched_type(
+            self.report_error(error::mismatched_type(
                 "expected the expression to return an integer",
                 &expression.ty,
                 format!(
@@ -50,6 +57,7 @@ impl<'ast> Typer<'ast> {
     fn type_check_expression(
         &mut self,
         expression: &Expression<'ast>,
+        environment: &mut Environment<'_, 'ast>,
     ) -> ParserResult<TypedExpression<'ast>> {
         match &expression.value {
             ExpressionValue::Primitive(primitive) => match primitive {
@@ -83,19 +91,33 @@ impl<'ast> Typer<'ast> {
                     ty: Type::unit(&expression.span),
                     span: expression.span,
                 }),
-                Primitive::Identifier(value) => Ok(TypedExpression {
-                    value: ExpressionValue::Primitive(primitive.clone()),
-                    ty: Type::integer(&expression.span),
-                    span: expression.span,
-                }),
+                Primitive::Identifier(value) => match environment.lookup(value) {
+                    Some(ty) => Ok(TypedExpression {
+                        value: ExpressionValue::Primitive(primitive.clone()),
+                        ty: ty.clone(),
+                        span: expression.span,
+                    }),
+                    None => {
+                        self.report_error(error::undefined_identifier(
+                            format!("the identifier {value} is not defined"),
+                            value,
+                            expression.span,
+                        ));
+                        Ok(TypedExpression {
+                            value: ExpressionValue::Primitive(primitive.clone()),
+                            ty: Type::unknown(&expression.span),
+                            span: expression.span,
+                        })
+                    }
+                },
             },
             ExpressionValue::Binary {
                 operator,
                 left,
                 right,
             } => {
-                let left = self.type_check_expression(left)?;
-                let right = self.type_check_expression(right)?;
+                let left = self.type_check_expression(left, environment)?;
+                let right = self.type_check_expression(right, environment)?;
                 let left_ty = left.ty.clone();
 
                 if left_ty != right.ty {
@@ -117,13 +139,15 @@ impl<'ast> Typer<'ast> {
                     span: expression.span,
                 })
             }
-            ExpressionValue::Group(expression) => self.type_check_expression(expression),
+            ExpressionValue::Group(expression) => {
+                self.type_check_expression(expression, environment)
+            }
             ExpressionValue::Unary { operator, operand } => match operator {
                 crate::ast::UnaryOperator::Negate => todo!(),
                 crate::ast::UnaryOperator::Negative => Ok(TypedExpression {
                     value: ExpressionValue::Unary {
                         operator: operator.clone(),
-                        operand: Box::new(self.type_check_expression(operand)?),
+                        operand: Box::new(self.type_check_expression(operand, environment)?),
                     },
                     ty: Type::integer(&expression.span),
                     span: expression.span,
@@ -134,9 +158,9 @@ impl<'ast> Typer<'ast> {
                 truthy,
                 falsy,
             } => {
-                let condition = self.type_check_expression(condition)?;
-                let truthy = self.type_check_expression(truthy)?;
-                let falsy = self.type_check_expression(falsy)?;
+                let condition = self.type_check_expression(condition, environment)?;
+                let truthy = self.type_check_expression(truthy, environment)?;
+                let falsy = self.type_check_expression(falsy, environment)?;
                 let truthy_ty = truthy.ty.clone();
 
                 if condition.ty.value != TypeValue::Boolean {
@@ -170,10 +194,10 @@ impl<'ast> Typer<'ast> {
             ExpressionValue::Block { statements, result } => {
                 let statements = statements
                     .iter()
-                    .map(|statement| self.type_check_statement(statement))
+                    .map(|statement| self.type_check_statement(statement, environment))
                     .collect::<ParserResult<Vec<_>>>()?;
 
-                let result = self.type_check_expression(result)?;
+                let result = self.type_check_expression(result, environment)?;
                 let result_ty = result.ty.clone();
 
                 Ok(TypedExpression {
@@ -191,12 +215,15 @@ impl<'ast> Typer<'ast> {
     fn type_check_statement(
         &mut self,
         statement: &Statement<'ast>,
+        environment: &mut Environment<'_, 'ast>,
     ) -> ParserResult<TypedStatement<'ast>> {
         match &statement.value {
             StatementValue::Block(statements) => {
+                let environment = &mut environment.block();
+
                 let statements = statements
                     .iter()
-                    .map(|statement| self.type_check_statement(statement))
+                    .map(|statement| self.type_check_statement(statement, environment))
                     .collect::<ParserResult<Vec<_>>>()?;
 
                 Ok(TypedStatement {
@@ -205,14 +232,17 @@ impl<'ast> Typer<'ast> {
                 })
             }
             StatementValue::Expression(expression) => {
-                let expression = self.type_check_expression(expression)?;
+                let expression = self.type_check_expression(expression, environment)?;
                 Ok(TypedStatement {
                     value: StatementValue::Expression(expression),
                     span: statement.span,
                 })
             }
             StatementValue::Declaration(name, expression) => {
-                let expression = self.type_check_expression(expression)?;
+                let expression = self.type_check_expression(expression, environment)?;
+
+                environment.declare(name.clone(), expression.ty.clone());
+
                 Ok(TypedStatement {
                     value: StatementValue::Declaration(name.clone(), Box::new(expression)),
                     span: statement.span,
