@@ -2,7 +2,8 @@ use std::env;
 
 use crate::{
     ast::{
-        BinaryOperator, ExpressionValue, Primitive, StatementValue, TypedExpression, TypedStatement,
+        BinaryOperator, ExpressionValue, Primitive, StatementValue, TypeValue, TypedExpression,
+        TypedStatement,
     },
     prelude::*,
 };
@@ -77,10 +78,10 @@ impl<'ast> Compiler<'ast> {
     fn compile_expression(
         expression: &TypedExpression<'ast>,
         builder: &mut FunctionBuilder,
-        environment: &mut CompileEnvironment<'_>,
+        environment: &mut CompileEnvironment<'ast>,
     ) -> Value {
         match &expression.value {
-            ExpressionValue::Primitive(p) => Self::compile_primitive(p, builder),
+            ExpressionValue::Primitive(p) => Self::compile_primitive(p, builder, environment),
             ExpressionValue::Binary {
                 operator,
                 left,
@@ -127,7 +128,7 @@ impl<'ast> Compiler<'ast> {
                 builder.seal_block(block);
 
                 for statement in statements {
-                    Self::compile_statement(statement, builder);
+                    Self::compile_statement(statement, builder, environment);
                 }
 
                 Self::compile_expression(result, builder, environment)
@@ -139,7 +140,7 @@ impl<'ast> Compiler<'ast> {
     fn compile_statement(
         statement: &TypedStatement<'ast>,
         builder: &mut FunctionBuilder,
-        environment: &mut CompileEnvironment<'_>,
+        environment: &mut CompileEnvironment<'ast>,
     ) {
         match &statement.value {
             StatementValue::Expression(expression) => {
@@ -152,16 +153,18 @@ impl<'ast> Compiler<'ast> {
             }
             StatementValue::Declaration(name, expression) => {
                 let value = Self::compile_expression(expression, builder, environment);
-                // TODO: Convert between variable name and variable id
-                let var = environment.lookup(name);
-                builder.declare_var(var, types::I64);
+                let var = environment.declare(name.clone(), builder, &expression.ty.value);
                 builder.def_var(var, value);
             }
             _ => unimplemented!("{statement:?}"),
         }
     }
 
-    fn compile_primitive(primitive: &Primitive<'ast>, builder: &mut FunctionBuilder) -> Value {
+    fn compile_primitive(
+        primitive: &Primitive<'ast>,
+        builder: &mut FunctionBuilder,
+        environment: &mut CompileEnvironment<'ast>,
+    ) -> Value {
         match primitive {
             Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
             Primitive::Decimal(v) => builder.ins().f64const(*v),
@@ -169,7 +172,7 @@ impl<'ast> Compiler<'ast> {
             Primitive::Unit => builder.ins().iconst(types::I8, 0), // TODO: ideally we don't introduce a IR step for nothing ...
             Primitive::Identifier(name) => {
                 // TODO: Convert between variable name and variable id
-                let var = Variable::new(1);
+                let var = environment.lookup(name).unwrap().clone();
                 builder.use_var(var)
             }
             _ => unimplemented!("{primitive:?}"),

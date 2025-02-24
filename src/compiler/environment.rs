@@ -1,6 +1,8 @@
 use cranelift::prelude::{types, EntityRef, FunctionBuilder, Variable};
 use std::{borrow::Cow, cell::Cell, collections::HashMap, rc::Rc};
 
+use crate::ast::TypeValue;
+
 pub struct CompileEnvironment<'env> {
     parent: Option<&'env CompileEnvironment<'env>>,
     variables: HashMap<Cow<'env, str>, Variable>,
@@ -20,11 +22,11 @@ impl<'env> CompileEnvironment<'env> {
         &mut self,
         name: Cow<'env, str>,
         builder: &mut FunctionBuilder,
-        cl_type: types::Type,
+        ty: &TypeValue,
     ) -> Variable {
         let var = Variable::new(self.next_var.get());
         self.next_var.set(self.next_var.get() + 1);
-        builder.declare_var(var, cl_type);
+        builder.declare_var(var, Self::convert_type(ty));
         self.variables.insert(name, var);
         var
     }
@@ -41,6 +43,15 @@ impl<'env> CompileEnvironment<'env> {
             parent: Some(self),
             variables: self.variables.clone(),
             next_var: Rc::clone(&self.next_var),
+        }
+    }
+
+    fn convert_type(ty: &TypeValue) -> types::Type {
+        match ty {
+            TypeValue::Integer => types::I64,
+            TypeValue::Decimal => types::F64,
+            TypeValue::Boolean => types::I8,
+            _ => panic!("unsupported type"),
         }
     }
 }
