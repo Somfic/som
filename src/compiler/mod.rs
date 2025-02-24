@@ -1,3 +1,5 @@
+use std::env;
+
 use crate::{
     ast::{
         BinaryOperator, ExpressionValue, Primitive, StatementValue, TypedExpression, TypedStatement,
@@ -14,8 +16,10 @@ use cranelift::{
     prelude::*,
 };
 use cranelift_module::Module;
+use environment::CompileEnvironment;
 use jit::Jit;
 
+pub mod environment;
 pub mod jit;
 
 pub struct Compiler<'ast> {
@@ -41,15 +45,18 @@ impl<'ast> Compiler<'ast> {
         self.jit.ctx.func.name = UserFuncName::user(0, 0);
 
         {
+            let mut environment = CompileEnvironment::new();
+
             let builder_context = &mut self.jit.builder_context;
             let expression = &self.expression;
 
-            let mut builder = FunctionBuilder::new(&mut self.jit.ctx.func, builder_context);
+            let mut builder: FunctionBuilder<'_> =
+                FunctionBuilder::new(&mut self.jit.ctx.func, builder_context);
             let entry_block = builder.create_block();
             builder.switch_to_block(entry_block);
             builder.seal_block(entry_block);
 
-            let value = Self::compile_expression(expression, &mut builder);
+            let value = Self::compile_expression(expression, &mut builder, &mut environment);
             builder.ins().return_(&[value]);
 
             // TODO: Should probably call ctx.verify here or something ... ?
@@ -70,6 +77,7 @@ impl<'ast> Compiler<'ast> {
     fn compile_expression(
         expression: &TypedExpression<'ast>,
         builder: &mut FunctionBuilder,
+        environment: &mut CompileEnvironment<'_>,
     ) -> Value {
         match &expression.value {
             ExpressionValue::Primitive(p) => Self::compile_primitive(p, builder),
@@ -78,8 +86,8 @@ impl<'ast> Compiler<'ast> {
                 left,
                 right,
             } => {
-                let left_val = Self::compile_expression(left, builder);
-                let right_val = Self::compile_expression(right, builder);
+                let left_val = Self::compile_expression(left, builder, environment);
+                let right_val = Self::compile_expression(right, builder, environment);
                 match operator {
                     BinaryOperator::Add => builder.ins().iadd(left_val, right_val),
                     BinaryOperator::Subtract => builder.ins().isub(left_val, right_val),
@@ -88,11 +96,13 @@ impl<'ast> Compiler<'ast> {
                     _ => unimplemented!("{operator:?}"),
                 }
             }
-            ExpressionValue::Group(expression) => Self::compile_expression(expression, builder),
+            ExpressionValue::Group(expression) => {
+                Self::compile_expression(expression, builder, environment)
+            }
             ExpressionValue::Unary { operator, operand } => match operator {
                 crate::ast::UnaryOperator::Negate => todo!(),
                 crate::ast::UnaryOperator::Negative => {
-                    let value = Self::compile_expression(operand, builder);
+                    let value = Self::compile_expression(operand, builder, environment);
                     builder.ins().ineg(value)
                 }
             },
@@ -101,9 +111,9 @@ impl<'ast> Compiler<'ast> {
                 truthy,
                 falsy,
             } => {
-                let condition = Self::compile_expression(condition, builder);
-                let truthy = Self::compile_expression(truthy, builder);
-                let falsy = Self::compile_expression(falsy, builder);
+                let condition = Self::compile_expression(condition, builder, environment);
+                let truthy = Self::compile_expression(truthy, builder, environment);
+                let falsy = Self::compile_expression(falsy, builder, environment);
 
                 // TODO: Check if this is fine? The resulting IR runs both branches and then
                 //  selects the result to return, but really we should only run the branch that
@@ -120,26 +130,30 @@ impl<'ast> Compiler<'ast> {
                     Self::compile_statement(statement, builder);
                 }
 
-                Self::compile_expression(result, builder)
+                Self::compile_expression(result, builder, environment)
             }
             _ => unimplemented!("{expression:?}"),
         }
     }
 
-    fn compile_statement(statement: &TypedStatement<'ast>, builder: &mut FunctionBuilder) {
+    fn compile_statement(
+        statement: &TypedStatement<'ast>,
+        builder: &mut FunctionBuilder,
+        environment: &mut CompileEnvironment<'_>,
+    ) {
         match &statement.value {
             StatementValue::Expression(expression) => {
-                Self::compile_expression(expression, builder);
+                Self::compile_expression(expression, builder, environment);
             }
             StatementValue::Block(statements) => {
                 for statement in statements {
-                    Self::compile_statement(statement, builder);
+                    Self::compile_statement(statement, builder, environment);
                 }
             }
             StatementValue::Declaration(name, expression) => {
-                let value = Self::compile_expression(expression, builder);
+                let value = Self::compile_expression(expression, builder, environment);
                 // TODO: Convert between variable name and variable id
-                let var = Variable::new(1);
+                let var = environment.lookup(name);
                 builder.declare_var(var, types::I64);
                 builder.def_var(var, value);
             }
