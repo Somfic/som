@@ -2,10 +2,10 @@ use cranelift::codegen::CompiledCode;
 
 use crate::{
     ast::TypedExpression,
-    compiler::{self, Compiler},
-    parser::{self, Parser},
-    runner::{self, Runner},
-    typer::{self, Typer},
+    compiler::{self},
+    parser::{self},
+    runner::{self},
+    typer::{self},
     CompilerResult, ParserResult,
 };
 
@@ -14,6 +14,7 @@ mod block;
 mod conditional;
 mod group;
 mod unary;
+mod variables;
 
 pub fn run_and_assert(source_code: impl Into<String>, expected: i64) {
     let source_code = source_code.into();

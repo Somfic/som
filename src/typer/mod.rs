@@ -83,7 +83,11 @@ impl<'ast> Typer<'ast> {
                     ty: Type::unit(&expression.span),
                     span: expression.span,
                 }),
-                Primitive::Identifier(value) => todo!(),
+                Primitive::Identifier(value) => Ok(TypedExpression {
+                    value: ExpressionValue::Primitive(primitive.clone()),
+                    ty: Type::integer(&expression.span),
+                    span: expression.span,
+                }),
             },
             ExpressionValue::Binary {
                 operator,
@@ -204,6 +208,13 @@ impl<'ast> Typer<'ast> {
                 let expression = self.type_check_expression(expression)?;
                 Ok(TypedStatement {
                     value: StatementValue::Expression(expression),
+                    span: statement.span,
+                })
+            }
+            StatementValue::Declaration(name, expression) => {
+                let expression = self.type_check_expression(expression)?;
+                Ok(TypedStatement {
+                    value: StatementValue::Declaration(name.clone(), Box::new(expression)),
                     span: statement.span,
                 })
             }
