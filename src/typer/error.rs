@@ -1,4 +1,4 @@
-use miette::{diagnostic, MietteDiagnostic, Severity};
+use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
 use crate::ast::Type;
 
@@ -21,7 +21,7 @@ pub fn new_mismatched_types(
     )
 }
 
-pub fn new_mismatched_type(
+pub fn mismatched_type(
     message: impl Into<String>,
     ty: &Type<'_>,
     hint: impl Into<String>,
@@ -32,6 +32,27 @@ pub fn new_mismatched_type(
         severity = Severity::Error,
         labels = vec![ty.label(format!("{}", ty)),],
         help = hint.into(),
+        "{message}"
+    )
+}
+
+pub(crate) fn undefined_identifier(
+    message: impl Into<String>,
+    identifier_name: &str,
+    label: SourceSpan,
+) -> MietteDiagnostic {
+    let message = message.into();
+
+    let label = LabeledSpan::new(
+        format!("`{identifier_name}` is not defined in this scope").into(),
+        label.offset(),
+        label.len(),
+    );
+
+    diagnostic!(
+        severity = Severity::Error,
+        labels = vec![label],
+        help = "try adding a declaration",
         "{message}"
     )
 }
