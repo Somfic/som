@@ -124,14 +124,19 @@ impl<'ast> Compiler<'ast> {
             ExpressionValue::Block { statements, result } => {
                 // open a new block
                 let block = builder.create_block();
-                builder.switch_to_block(block);
-                builder.seal_block(block);
+                builder.append_block_param(block, convert_type(&result.ty.value));
 
                 for statement in statements {
                     Self::compile_statement(statement, builder, environment);
                 }
 
-                Self::compile_expression(result, builder, environment)
+                let result = Self::compile_expression(result, builder, environment);
+
+                builder.ins().jump(block, &[result]);
+                builder.switch_to_block(block);
+                builder.seal_block(block);
+
+                builder.block_params(block)[0]
             }
             _ => unimplemented!("{expression:?}"),
         }
@@ -177,6 +182,15 @@ impl<'ast> Compiler<'ast> {
             }
             _ => unimplemented!("{primitive:?}"),
         }
+    }
+}
+
+pub(crate) fn convert_type(ty: &TypeValue) -> types::Type {
+    match ty {
+        TypeValue::Integer => types::I64,
+        TypeValue::Decimal => types::F64,
+        TypeValue::Boolean => types::I8,
+        _ => panic!("unsupported type"),
     }
 }
 

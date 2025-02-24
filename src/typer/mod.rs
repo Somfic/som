@@ -95,7 +95,7 @@ impl<'ast> Typer<'ast> {
                 Primitive::Identifier(value) => match environment.lookup(value) {
                     Some(ty) => Ok(TypedExpression {
                         value: ExpressionValue::Primitive(primitive.clone()),
-                        ty: ty.clone(),
+                        ty: ty.clone().span(expression.span),
                         span: expression.span,
                     }),
                     None => {
@@ -183,12 +183,12 @@ impl<'ast> Typer<'ast> {
                 }
 
                 Ok(TypedExpression {
+                    ty: truthy_ty.span(condition.span),
                     value: ExpressionValue::Conditional {
                         condition: Box::new(condition),
                         truthy: Box::new(truthy),
                         falsy: Box::new(falsy),
                     },
-                    ty: truthy_ty,
                     span: expression.span,
                 })
             }

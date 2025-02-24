@@ -26,7 +26,7 @@ impl<'env> CompileEnvironment<'env> {
     ) -> Variable {
         let var = Variable::new(self.next_var.get());
         self.next_var.set(self.next_var.get() + 1);
-        builder.declare_var(var, Self::convert_type(ty));
+        builder.declare_var(var, super::convert_type(ty));
         self.variables.insert(name, var);
         var
     }
@@ -43,15 +43,6 @@ impl<'env> CompileEnvironment<'env> {
             parent: Some(self),
             variables: self.variables.clone(),
             next_var: Rc::clone(&self.next_var),
-        }
-    }
-
-    fn convert_type(ty: &TypeValue) -> types::Type {
-        match ty {
-            TypeValue::Integer => types::I64,
-            TypeValue::Decimal => types::F64,
-            TypeValue::Boolean => types::I8,
-            _ => panic!("unsupported type"),
         }
     }
 }
