@@ -1,25 +1,28 @@
+use std::borrow::Cow;
+
 use super::{Expression, Type, TypedExpression};
 
-pub type TypedStatement<'ast> = GenericStatement<TypedExpression<'ast>>;
-pub type Statement<'ast> = GenericStatement<Expression<'ast>>;
+pub type TypedStatement<'ast> = GenericStatement<'ast, TypedExpression<'ast>>;
+pub type Statement<'ast> = GenericStatement<'ast, Expression<'ast>>;
 
 #[derive(Debug, Clone)]
-pub struct GenericStatement<Expression> {
-    pub value: StatementValue<Expression>,
+pub struct GenericStatement<'ast, Expression> {
+    pub value: StatementValue<'ast, Expression>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
-pub enum StatementValue<Expression> {
-    Block(Vec<GenericStatement<Expression>>),
+pub enum StatementValue<'ast, Expression> {
+    Block(Vec<GenericStatement<'ast, Expression>>),
     Expression(Expression),
+    Declaration(Cow<'ast, str>, Box<Expression>),
 }
 
-impl<'ast> GenericStatement<Expression<'ast>> {
+impl<'ast> GenericStatement<'ast, Expression<'ast>> {
     pub fn expression(
         span: miette::SourceSpan,
         value: Expression<'ast>,
-    ) -> GenericStatement<Expression<'ast>> {
+    ) -> GenericStatement<'ast, Expression<'ast>> {
         Self {
             value: StatementValue::Expression(value),
             span,

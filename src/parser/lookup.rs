@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{expression, Parser};
+use super::{expression, statement, Parser};
 use crate::{
     ast::{Expression, Statement, Type},
     prelude::*,
@@ -121,6 +121,7 @@ impl Default for Lookup<'_> {
         .add_expression_handler(TokenKind::Minus, expression::parse_unary_negative)
         .add_expression_handler(TokenKind::Boolean, expression::parse_boolean)
         .add_expression_handler(TokenKind::CurlyOpen, expression::parse_block)
+        .add_expression_handler(TokenKind::Identifier, expression::parse_identifier)
         .add_left_expression_handler(
             TokenKind::If,
             BindingPower::Logical,
@@ -146,5 +147,6 @@ impl Default for Lookup<'_> {
             BindingPower::Multiplicative,
             expression::parse_binary_divide,
         )
+        .add_statement_handler(TokenKind::Let, statement::parse_let)
     }
 }

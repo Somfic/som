@@ -13,7 +13,7 @@ mod tests;
 mod tokenizer;
 mod typer;
 
-const INPUT: &str = "{ 1 + 1; }";
+const INPUT: &str = "{ let a = { 12 }; a }";
 
 fn main() {
     println!("{}\n", INPUT);

@@ -7,6 +7,7 @@ use miette::MietteDiagnostic;
 
 mod expression;
 mod lookup;
+mod statement;
 
 pub struct Parser<'ast> {
     errors: Vec<MietteDiagnostic>,
@@ -56,8 +57,8 @@ impl<'ast> Parser<'ast> {
                 .expression_lookup
                 .get(&token.kind)
                 .ok_or(vec![miette::diagnostic! {
-                    labels = vec![token.label("expected an expression")],
-                    help = format!("{} is not an expression", token.kind),
+                    labels = vec![token.label("expected an expression here")],
+                    help = format!("{} cannot be parsed as an expression", token.kind),
                     "expected an expression, found {}", token.kind
                 }])?;
         let mut lhs = handler(self)?;

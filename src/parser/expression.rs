@@ -225,3 +225,19 @@ pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
         },
     ))
 }
+
+pub fn parse_identifier<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::Identifier, "expected an identifier")?;
+
+    let name = match token.value {
+        TokenValue::Identifier(name) => name,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::at(
+        token.span,
+        ExpressionValue::Primitive(Primitive::Identifier(name)),
+    ))
+}

@@ -52,6 +52,8 @@ impl<'ast> Compiler<'ast> {
             let value = Self::compile_expression(expression, &mut builder);
             builder.ins().return_(&[value]);
 
+            // TODO: Should probably call ctx.verify here or something ... ?
+
             builder.finalize();
         }
 
@@ -129,6 +131,18 @@ impl<'ast> Compiler<'ast> {
             StatementValue::Expression(expression) => {
                 Self::compile_expression(expression, builder);
             }
+            StatementValue::Block(statements) => {
+                for statement in statements {
+                    Self::compile_statement(statement, builder);
+                }
+            }
+            StatementValue::Declaration(name, expression) => {
+                let value = Self::compile_expression(expression, builder);
+                // TODO: Convert between variable name and variable id
+                let var = Variable::new(1);
+                builder.declare_var(var, types::I64);
+                builder.def_var(var, value);
+            }
             _ => unimplemented!("{statement:?}"),
         }
     }
@@ -139,6 +153,11 @@ impl<'ast> Compiler<'ast> {
             Primitive::Decimal(v) => builder.ins().f64const(*v),
             Primitive::Boolean(v) => builder.ins().iconst(types::I8, *v as i64),
             Primitive::Unit => builder.ins().iconst(types::I8, 0), // TODO: ideally we don't introduce a IR step for nothing ...
+            Primitive::Identifier(name) => {
+                // TODO: Convert between variable name and variable id
+                let var = Variable::new(1);
+                builder.use_var(var)
+            }
             _ => unimplemented!("{primitive:?}"),
         }
     }
