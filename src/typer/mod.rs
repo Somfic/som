@@ -13,39 +13,30 @@ use crate::prelude::*;
 mod environment;
 mod error;
 
-pub struct Typer<'ast> {
+pub struct Typer {
     errors: Vec<MietteDiagnostic>,
-    expression: Expression<'ast>,
 }
 
-impl<'ast> Typer<'ast> {
-    pub fn new(expression: Expression<'ast>) -> Self {
-        Self {
-            errors: Vec::new(),
-            expression,
-        }
+impl Typer {
+    pub fn new() -> Self {
+        Self { errors: Vec::new() }
     }
 
-    pub fn type_check(&mut self) -> ParserResult<TypedExpression<'ast>> {
+    pub fn type_check<'ast>(
+        &mut self,
+        statements: Vec<Statement<'ast>>,
+    ) -> ParserResult<Vec<TypedStatement<'ast>>> {
         let mut environment = Environment::new();
 
-        // TODO: Get rid of this clone
-        let expression = self.type_check_expression(&self.expression.clone(), &mut environment)?;
+        let mut typed_statements: Vec<TypedStatement<'ast>> = Vec::new();
 
-        if expression.ty.value != TypeValue::Integer {
-            self.report_error(error::mismatched_type(
-                "expected the expression to return an integer",
-                &expression.ty,
-                format!(
-                    "change the main expression to return {}, instead of {}",
-                    TypeValue::Integer,
-                    expression.ty
-                ),
-            ));
+        for statement in &statements {
+            let statement = self.type_check_statement(statement, &mut environment)?;
+            typed_statements.push(statement);
         }
 
         if self.errors.is_empty() {
-            Ok(expression)
+            Ok(typed_statements)
         } else {
             Err(self.errors.clone())
         }
@@ -55,7 +46,7 @@ impl<'ast> Typer<'ast> {
         self.errors.push(error);
     }
 
-    fn type_check_expression(
+    fn type_check_expression<'ast>(
         &mut self,
         expression: &Expression<'ast>,
         environment: &mut Environment<'_, 'ast>,
@@ -213,7 +204,7 @@ impl<'ast> Typer<'ast> {
         }
     }
 
-    fn type_check_statement(
+    fn type_check_statement<'ast>(
         &mut self,
         statement: &Statement<'ast>,
         environment: &mut Environment<'_, 'ast>,
@@ -245,7 +236,7 @@ impl<'ast> Typer<'ast> {
                 environment.declare(name.clone(), expression.ty.clone());
 
                 Ok(TypedStatement {
-                    value: StatementValue::Declaration(name.clone(), Box::new(expression)),
+                    value: StatementValue::Declaration(name.clone(), expression),
                     span: statement.span,
                 })
             }

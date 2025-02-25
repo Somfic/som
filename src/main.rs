@@ -1,5 +1,5 @@
 mod prelude;
-use ast::{Type, TypedExpression};
+use ast::{Type, TypedExpression, TypedStatement};
 use cranelift::codegen::CompiledCode;
 use miette::miette;
 pub use prelude::*;
@@ -41,11 +41,11 @@ fn main() {
     println!("{}", result);
 }
 
-fn parse(source_code: &str) -> ParserResult<TypedExpression<'_>> {
-    let expression = parser::Parser::new(source_code).parse()?;
-    typer::Typer::new(expression).type_check()
+fn parse(source_code: &str) -> ParserResult<Vec<TypedStatement<'_>>> {
+    let statements = parser::Parser::new(source_code).parse()?;
+    let statements = typer::Typer::new().type_check(statements)?;
 }
 
-fn compile(expression: TypedExpression<'_>) -> CompilerResult<CompiledCode> {
-    compiler::Compiler::new(expression).compile()
+fn compile(statements: Vec<TypedStatement<'_>>) -> CompilerResult<CompiledCode> {
+    compiler::Compiler::new().compile(statements)
 }

@@ -28,6 +28,6 @@ pub fn parse_let<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast
 
     Ok(Statement::at_multiple(
         vec![identifier.span, expression.span],
-        StatementValue::Declaration(identifier_name, Box::new(expression)),
+        StatementValue::Declaration(identifier_name, expression),
     ))
 }
