@@ -28,11 +28,24 @@ impl<'ast> Parser<'ast> {
         self.errors.push(error);
     }
 
-    pub fn parse(&mut self) -> ParserResult<Expression<'ast>> {
-        let result = self.parse_expression(BindingPower::None)?;
+    pub fn parse(&mut self) -> ParserResult<Vec<Statement<'ast>>> {
+        let mut statetements = vec![];
+
+        while let Some(token) = self.tokens.peek() {
+            match token {
+                Ok(_) => {
+                    let statement = self.parse_statement(true)?;
+                    statetements.push(statement);
+                }
+                Err(err) => {
+                    self.errors.extend(err.to_vec());
+                    self.tokens.next();
+                }
+            }
+        }
 
         if self.errors.is_empty() {
-            Ok(result)
+            Ok(statetements)
         } else {
             Err(self.errors.clone())
         }

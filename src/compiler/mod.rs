@@ -1,71 +1,48 @@
-use std::env;
-
 use crate::{
     ast::{
-        BinaryOperator, ExpressionValue, Primitive, StatementValue, TypeValue, TypedExpression,
-        TypedStatement,
+        BinaryOperator, ExpressionValue, Module, Primitive, StatementValue, TypeValue,
+        TypedExpression, TypedModule, TypedStatement,
     },
     prelude::*,
 };
 use cranelift::{
     codegen::{
         control::ControlPlane,
-        ir::{Function, UserFuncName},
+        ir::{function, Function, UserFuncName},
         verifier::VerifierError,
         CompileError, CompiledCode,
     },
     prelude::*,
 };
-use cranelift_module::Module;
 use environment::CompileEnvironment;
 use jit::Jit;
+use std::env;
 
 pub mod environment;
 pub mod jit;
 
-pub struct Compiler<'ast> {
+pub struct Compiler {
     jit: Jit,
-    expression: TypedExpression<'ast>,
 }
 
-impl<'ast> Compiler<'ast> {
-    pub fn new(expression: TypedExpression<'ast>) -> Self {
+impl Compiler {
+    pub fn new() -> Self {
         Self {
             jit: Jit::default(),
-            expression,
         }
     }
 
-    pub fn compile(&mut self) -> CompilerResult<CompiledCode> {
-        self.jit
-            .ctx
-            .func
-            .signature
-            .returns
-            .push(AbiParam::new(types::I64));
-        self.jit.ctx.func.name = UserFuncName::user(0, 0);
+    pub fn compile<'ast>(
+        &mut self,
+        modules: Vec<TypedModule<'ast>>,
+    ) -> CompilerResult<CompiledCode> {
+        let mut compiled_modules = vec![];
 
-        {
-            let mut environment = CompileEnvironment::new();
-
-            let builder_context = &mut self.jit.builder_context;
-            let expression = &self.expression;
-
-            let mut builder: FunctionBuilder<'_> =
-                FunctionBuilder::new(&mut self.jit.ctx.func, builder_context);
-            let entry_block = builder.create_block();
-            builder.switch_to_block(entry_block);
-            builder.seal_block(entry_block);
-
-            let value = Self::compile_expression(expression, &mut builder, &mut environment);
-            builder.ins().return_(&[value]);
-
-            // TODO: Should probably call ctx.verify here or something ... ?
-
-            builder.finalize();
+        for module in modules {
+            compiled_modules.append(self.compile_module(&module)?);
         }
 
-        println!("{}", self.jit.ctx.func);
+        println!("{}", self.jit.module.finalize_definitions());
 
         let mut ctrl_plane = ControlPlane::default();
         self.jit
@@ -75,113 +52,130 @@ impl<'ast> Compiler<'ast> {
             .cloned()
     }
 
-    fn compile_expression(
-        expression: &TypedExpression<'ast>,
-        builder: &mut FunctionBuilder,
-        environment: &mut CompileEnvironment<'ast>,
-    ) -> Value {
-        match &expression.value {
-            ExpressionValue::Primitive(p) => Self::compile_primitive(p, builder, environment),
-            ExpressionValue::Binary {
-                operator,
-                left,
-                right,
-            } => {
-                let left_val = Self::compile_expression(left, builder, environment);
-                let right_val = Self::compile_expression(right, builder, environment);
-                match operator {
-                    BinaryOperator::Add => builder.ins().iadd(left_val, right_val),
-                    BinaryOperator::Subtract => builder.ins().isub(left_val, right_val),
-                    BinaryOperator::Multiply => builder.ins().imul(left_val, right_val),
-                    BinaryOperator::Divide => builder.ins().udiv(left_val, right_val),
-                    _ => unimplemented!("{operator:?}"),
-                }
-            }
-            ExpressionValue::Group(expression) => {
-                Self::compile_expression(expression, builder, environment)
-            }
-            ExpressionValue::Unary { operator, operand } => match operator {
-                crate::ast::UnaryOperator::Negate => todo!(),
-                crate::ast::UnaryOperator::Negative => {
-                    let value = Self::compile_expression(operand, builder, environment);
-                    builder.ins().ineg(value)
-                }
-            },
-            ExpressionValue::Conditional {
-                condition,
-                truthy,
-                falsy,
-            } => {
-                let condition = Self::compile_expression(condition, builder, environment);
-                let truthy = Self::compile_expression(truthy, builder, environment);
-                let falsy = Self::compile_expression(falsy, builder, environment);
+    fn compile_module<'ast>(&mut self, module: &TypedModule<'ast>) -> Result<CompiledCode> {
+        let environment = &mut CompileEnvironment::new();
 
-                // TODO: Check if this is fine? The resulting IR runs both branches and then
-                //  selects the result to return, but really we should only run the branch that
-                //  is selected based on the condition.
-                builder.ins().select(condition, truthy, falsy)
-            }
-            ExpressionValue::Block { statements, result } => {
-                // open a new block
-                let block = builder.create_block();
-                builder.append_block_param(block, convert_type(&result.ty.value));
+        for (function_name, function) in &module.functions {
+            let mut builder = environment.declare_function(self, function_name.clone());
+            let body = compile_expression(&function.expression, &mut builder, environment);
 
-                for statement in statements {
-                    Self::compile_statement(statement, builder, environment);
-                }
-
-                let result = Self::compile_expression(result, builder, environment);
-
-                builder.ins().jump(block, &[result]);
-                builder.switch_to_block(block);
-                builder.seal_block(block);
-
-                builder.block_params(block)[0]
-            }
-            _ => unimplemented!("{expression:?}"),
+            builder.ins().return_(&[body]);
+            builder.finalize();
         }
+
+        let mut ctrl_plane = ControlPlane::default();
+        self.jit
+            .ctx
+            .compile(self.jit.module.isa(), &mut ctrl_plane)
+            .map_err(parse_error)
+            .cloned()
     }
+}
 
-    fn compile_statement(
-        statement: &TypedStatement<'ast>,
-        builder: &mut FunctionBuilder,
-        environment: &mut CompileEnvironment<'ast>,
-    ) {
-        match &statement.value {
-            StatementValue::Expression(expression) => {
-                Self::compile_expression(expression, builder, environment);
+fn compile_expression<'ast>(
+    expression: &TypedExpression<'ast>,
+    builder: &mut FunctionBuilder,
+    environment: &mut CompileEnvironment<'ast>,
+) -> Value {
+    match &expression.value {
+        ExpressionValue::Primitive(p) => compile_primitive(p, builder, environment),
+        ExpressionValue::Binary {
+            operator,
+            left,
+            right,
+        } => {
+            let left_val = compile_expression(left, builder, environment);
+            let right_val = compile_expression(right, builder, environment);
+            match operator {
+                BinaryOperator::Add => builder.ins().iadd(left_val, right_val),
+                BinaryOperator::Subtract => builder.ins().isub(left_val, right_val),
+                BinaryOperator::Multiply => builder.ins().imul(left_val, right_val),
+                BinaryOperator::Divide => builder.ins().udiv(left_val, right_val),
+                _ => unimplemented!("{operator:?}"),
             }
-            StatementValue::Block(statements) => {
-                for statement in statements {
-                    Self::compile_statement(statement, builder, environment);
-                }
-            }
-            StatementValue::Declaration(name, expression) => {
-                let value = Self::compile_expression(expression, builder, environment);
-                let var = environment.declare(name.clone(), builder, &expression.ty.value);
-                builder.def_var(var, value);
-            }
-            _ => unimplemented!("{statement:?}"),
         }
+        ExpressionValue::Group(expression) => compile_expression(expression, builder, environment),
+        ExpressionValue::Unary { operator, operand } => match operator {
+            crate::ast::UnaryOperator::Negate => todo!(),
+            crate::ast::UnaryOperator::Negative => {
+                let value = compile_expression(operand, builder, environment);
+                builder.ins().ineg(value)
+            }
+        },
+        ExpressionValue::Conditional {
+            condition,
+            truthy,
+            falsy,
+        } => {
+            let condition = compile_expression(condition, builder, environment);
+            let truthy = compile_expression(truthy, builder, environment);
+            let falsy = compile_expression(falsy, builder, environment);
+
+            // TODO: Check if this is fine? The resulting IR runs both branches and then
+            //  selects the result to return, but really we should only run the branch that
+            //  is selected based on the condition.
+            builder.ins().select(condition, truthy, falsy)
+        }
+        ExpressionValue::Block { statements, result } => {
+            // open a new block
+            let block = builder.create_block();
+            builder.append_block_param(block, convert_type(&result.ty.value));
+
+            for statement in statements {
+                compile_statement(statement, builder, environment);
+            }
+
+            let result = compile_expression(result, builder, environment);
+
+            builder.ins().jump(block, &[result]);
+            builder.switch_to_block(block);
+            builder.seal_block(block);
+
+            builder.block_params(block)[0]
+        }
+        _ => unimplemented!("{expression:?}"),
     }
+}
 
-    fn compile_primitive(
-        primitive: &Primitive<'ast>,
-        builder: &mut FunctionBuilder,
-        environment: &mut CompileEnvironment<'ast>,
-    ) -> Value {
-        match primitive {
-            Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
-            Primitive::Decimal(v) => builder.ins().f64const(*v),
-            Primitive::Boolean(v) => builder.ins().iconst(types::I8, *v as i64),
-            Primitive::Unit => builder.ins().iconst(types::I8, 0), // TODO: ideally we don't introduce a IR step for nothing ...
-            Primitive::Identifier(name) => {
-                // TODO: Convert between variable name and variable id
-                let var = environment.lookup(name).unwrap().clone();
-                builder.use_var(var)
-            }
-            _ => unimplemented!("{primitive:?}"),
+fn compile_statement<'ast>(
+    statement: &TypedStatement<'ast>,
+    builder: &mut FunctionBuilder,
+    environment: &mut CompileEnvironment<'ast>,
+) {
+    match &statement.value {
+        StatementValue::Expression(expression) => {
+            compile_expression(expression, builder, environment);
         }
+        StatementValue::Block(statements) => {
+            for statement in statements {
+                compile_statement(statement, builder, environment);
+            }
+        }
+        StatementValue::Declaration(name, expression) => {
+            let value = compile_expression(expression, builder, environment);
+            let var = environment.declare_variable(name.clone(), builder, &expression.ty.value);
+            builder.def_var(var, value);
+        }
+        _ => unimplemented!("{statement:?}"),
+    }
+}
+
+fn compile_primitive<'ast>(
+    primitive: &Primitive<'ast>,
+    builder: &mut FunctionBuilder,
+    environment: &mut CompileEnvironment<'ast>,
+) -> Value {
+    match primitive {
+        Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
+        Primitive::Decimal(v) => builder.ins().f64const(*v),
+        Primitive::Boolean(v) => builder.ins().iconst(types::I8, *v as i64),
+        Primitive::Unit => builder.ins().iconst(types::I8, 0), // TODO: ideally we don't introduce a IR step for nothing ...
+        Primitive::Identifier(name) => {
+            // TODO: Convert between variable name and variable id
+            let var = environment.lookup(name).unwrap().clone();
+            builder.use_var(var)
+        }
+        _ => unimplemented!("{primitive:?}"),
     }
 }
 

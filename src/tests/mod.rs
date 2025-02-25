@@ -1,7 +1,7 @@
 use cranelift::codegen::CompiledCode;
 
 use crate::{
-    ast::TypedExpression,
+    ast::{TypedExpression, TypedStatement},
     compiler::{self},
     parser::{self},
     runner::{self},
@@ -47,12 +47,12 @@ pub fn run_and_assert(source_code: impl Into<String>, expected: i64) {
     assert_eq!(result, expected);
 }
 
-fn parse(source_code: impl Into<String>) -> ParserResult<TypedExpression<'static>> {
+fn parse<'ast>(source_code: impl Into<String>) -> ParserResult<Vec<TypedStatement<'ast>>> {
     let source_code = source_code.into();
-    let expression = parser::Parser::new(Box::leak(source_code.into_boxed_str())).parse()?;
-    typer::Typer::new(expression).type_check()
+    let statements = parser::Parser::new(Box::leak(source_code.into_boxed_str())).parse()?;
+    typer::Typer::new().type_check(statements)
 }
 
-fn compile(expression: TypedExpression<'_>) -> CompilerResult<CompiledCode> {
-    compiler::Compiler::new(expression).compile()
+fn compile<'ast>(statements: Vec<TypedStatement<'ast>>) -> CompilerResult<CompiledCode> {
+    compiler::Compiler::new().compile(statements)
 }

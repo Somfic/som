@@ -1,8 +1,10 @@
 mod expression;
+mod module;
 mod span;
 mod statement;
 mod typing;
 pub use expression::*;
+pub use module::*;
 pub use span::*;
 pub use statement::*;
 pub use typing::*;

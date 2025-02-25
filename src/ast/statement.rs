@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 
 use super::{Expression, Type, TypedExpression};
 
@@ -15,7 +15,7 @@ pub struct GenericStatement<'ast, Expression> {
 pub enum StatementValue<'ast, Expression> {
     Block(Vec<GenericStatement<'ast, Expression>>),
     Expression(Expression),
-    Declaration(Cow<'ast, str>, Box<Expression>),
+    Declaration(Cow<'ast, str>, Expression),
 }
 
 impl<'ast> GenericStatement<'ast, Expression<'ast>> {
