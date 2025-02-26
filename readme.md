@@ -9,15 +9,19 @@ fn split(text ~ string, split ~ character) -> string, string {
 ```
 
 ```rust
-fn fib(n ~ int) -> int {
-    n if n < 2 else fib(n - 1) + fib(n - 2)
-}
+fn fib(n ~ int) -> int
+    1 if n <= 1 else fib(n - 1) + fib(n - 2)
 ```
 
-### Building project
+```rust
+type Option<T> = Some(T)
+               | None
 
-1. Install CMake
+type Color = Red 
+           | Green 
+           | Blue 
+           | Hex(string) 
+           | Rgb(Rgb)
 
-```
-cargo install llvmenv
+type Rgb = { r ~ int, g ~ int, b ~ int }
 ```
