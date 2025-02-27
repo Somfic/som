@@ -9,7 +9,6 @@ pub type Module<'ast> = GenericModule<'ast, Expression<'ast>>;
 #[derive(Debug, Clone)]
 pub struct GenericModule<'ast, Expression> {
     pub functions: HashMap<Cow<'ast, str>, FunctionDeclaration<'ast, Expression>>,
-    pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]

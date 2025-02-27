@@ -1,4 +1,6 @@
-use crate::ast::{Expression, Statement};
+use std::collections::HashMap;
+
+use crate::ast::{Expression, Module, Statement};
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, Tokenizer};
 pub use lookup::BindingPower;
@@ -28,14 +30,14 @@ impl<'ast> Parser<'ast> {
         self.errors.push(error);
     }
 
-    pub fn parse(&mut self) -> ParserResult<Vec<Statement<'ast>>> {
-        let mut statetements = vec![];
+    pub fn parse(&mut self) -> ParserResult<Vec<Module<'ast>>> {
+        let mut modules = vec![];
 
         while let Some(token) = self.tokens.peek() {
             match token {
                 Ok(_) => {
-                    let statement = self.parse_statement(true)?;
-                    statetements.push(statement);
+                    let module = self.parse_module()?;
+                    modules.push(module);
                 }
                 Err(err) => {
                     self.errors.extend(err.to_vec());
@@ -45,10 +47,32 @@ impl<'ast> Parser<'ast> {
         }
 
         if self.errors.is_empty() {
-            Ok(statetements)
+            Ok(modules)
         } else {
             Err(self.errors.clone())
         }
+    }
+
+    fn parse_module(&mut self) -> ParserResult<Module<'ast>> {
+        let mut functions = HashMap::new();
+
+        while let Some(token) = self.tokens.peek() {
+            match token {
+                Ok(token) => match token.kind {
+                    TokenKind::Function => {
+                        let function = self.parse_statement(false)?;
+                        functions.insert(function.name.clone(), function);
+                    }
+                    _ => break,
+                },
+                Err(err) => {
+                    self.errors.extend(err.to_vec());
+                    self.tokens.next();
+                }
+            }
+        }
+
+        Ok(Module { functions })
     }
 
     fn parse_expression(&mut self, bp: lookup::BindingPower) -> ParserResult<Expression<'ast>> {
