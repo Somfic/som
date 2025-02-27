@@ -1,12 +1,10 @@
+use super::Compiler;
+use crate::ast::TypeValue;
 use cranelift::{
     codegen::ir::UserFuncName,
-    prelude::{types, EntityRef, FunctionBuilder, Variable},
+    prelude::{EntityRef, FunctionBuilder, Variable},
 };
 use std::{borrow::Cow, cell::Cell, collections::HashMap, rc::Rc};
-
-use crate::ast::TypeValue;
-
-use super::Compiler;
 
 pub struct CompileEnvironment<'env> {
     parent: Option<&'env CompileEnvironment<'env>>,
@@ -40,6 +38,12 @@ impl<'env> CompileEnvironment<'env> {
         FunctionBuilder::new(&mut compiler.jit.ctx.func, builder_context)
     }
 
+    pub fn lookup_function(&self, name: &str) -> Option<&u32> {
+        self.functions
+            .get(name)
+            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_function(name)))
+    }
+
     pub fn declare_variable(
         &mut self,
         name: Cow<'env, str>,
@@ -53,18 +57,19 @@ impl<'env> CompileEnvironment<'env> {
         var
     }
 
-    pub fn lookup(&self, name: &str) -> Option<&Variable> {
+    pub fn lookup_variable(&self, name: &str) -> Option<&Variable> {
         self.variables
             .get(name)
-            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup(name)))
+            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_variable(name)))
     }
 
-    // For handling new blocks, you can clone the current env or implement a more complex scoping system.
     pub fn block(&'env self) -> Self {
         Self {
             parent: Some(self),
             variables: self.variables.clone(),
+            functions: self.functions.clone(),
             next_variable: Rc::clone(&self.next_variable),
+            next_function: Rc::clone(&self.next_function),
         }
     }
 }

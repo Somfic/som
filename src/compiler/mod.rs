@@ -172,7 +172,7 @@ fn compile_primitive<'ast>(
         Primitive::Unit => builder.ins().iconst(types::I8, 0), // TODO: ideally we don't introduce a IR step for nothing ...
         Primitive::Identifier(name) => {
             // TODO: Convert between variable name and variable id
-            let var = environment.lookup(name).unwrap().clone();
+            let var = environment.lookup_variable(name).unwrap().clone();
             builder.use_var(var)
         }
         _ => unimplemented!("{primitive:?}"),
