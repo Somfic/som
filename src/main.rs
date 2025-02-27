@@ -16,29 +16,8 @@ mod typer;
 const INPUT: &str = "{ let b = { 1 + 1; 1 }; b + 1 }";
 
 fn main() {
-    println!("{}\n", INPUT);
-
-    let expression = parse(INPUT)
-        .map_err(|errors| {
-            for error in errors {
-                eprintln!("{:?}", miette!(error).with_source_code(INPUT));
-            }
-        })
-        .expect("failed to parse expression");
-
-    let compiled = compile(expression)
-        .map_err(|error| {
-            for error in error {
-                eprintln!("{:?}", error);
-            }
-        })
-        .expect("failed to compile expression");
-
-    let result = runner::Runner::new(compiled)
-        .run()
-        .expect("failed to run expression");
-
-    println!("{}", result);
+    let result = tests::run(source_code);
+    println!("Result: {}", result);
 }
 
 fn parse(source_code: &str) -> ParserResult<Vec<TypedStatement<'_>>> {
