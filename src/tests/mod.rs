@@ -16,7 +16,7 @@ mod group;
 mod unary;
 mod variables;
 
-pub fn run_and_assert(source_code: impl Into<String>, expected: i64) {
+pub fn run(source_code: impl Into<String>) -> i64 {
     let source_code = source_code.into();
 
     println!("{}\n", source_code);
@@ -32,7 +32,7 @@ pub fn run_and_assert(source_code: impl Into<String>, expected: i64) {
         })
         .expect("failed to parse expression");
 
-    let compiled = compile(expression)
+    let compiled = compile(statements)
         .map_err(|error| {
             for error in error {
                 eprintln!("{:?}", error);
@@ -44,7 +44,11 @@ pub fn run_and_assert(source_code: impl Into<String>, expected: i64) {
         .run()
         .expect("failed to run expression");
 
-    assert_eq!(result, expected);
+    result
+}
+
+pub fn run_and_assert(source_code: impl Into<String>, expected: i64) {
+    assert_eq!(run(source_code), expected);
 }
 
 fn parse<'ast>(source_code: impl Into<String>) -> ParserResult<Vec<TypedStatement<'ast>>> {
