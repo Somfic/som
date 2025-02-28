@@ -40,6 +40,12 @@ pub fn parse_function<'ast>(
             break;
         }
 
+        if !parameters.is_empty() {
+            parser
+                .tokens
+                .expect(TokenKind::Comma, "expected a comma between parameters")?;
+        }
+
         let parameter = parser
             .tokens
             .expect(TokenKind::Identifier, "expected a parameter name")?;
