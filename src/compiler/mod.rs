@@ -7,15 +7,11 @@ use crate::{
 };
 use cranelift::{
     codegen::{
-        control::ControlPlane,
-        ir::{function, Function, UserFuncName},
+        ir::{Function, UserFuncName},
         verifier::VerifierError,
-        CompileError, CompiledCode,
+        CompileError,
     },
-    prelude::{
-        isa::{CallConv, OwnedTargetIsa, TargetIsa},
-        *,
-    },
+    prelude::*,
 };
 use cranelift_module::{Linkage, Module};
 
@@ -31,10 +27,7 @@ impl Compiler {
         Self {}
     }
 
-    pub fn compile<'ast>(
-        &mut self,
-        modules: Vec<TypedModule<'ast>>,
-    ) -> CompilerResult<CompiledCode> {
+    pub fn compile<'ast>(&mut self, modules: Vec<TypedModule<'ast>>) -> CompilerResult<*const u8> {
         let mut flag_builder = settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
         flag_builder.set("is_pic", "false").unwrap();
@@ -79,25 +72,24 @@ impl Compiler {
                 builder.append_block_params_for_function_params(entry_block);
                 builder.switch_to_block(entry_block);
 
-                let body = compile_expression(&function.expression, &mut builder, &mut environment);
+                let body = compile_expression(
+                    &function.expression,
+                    &mut builder,
+                    &mut environment.block(),
+                );
                 builder.ins().return_(&[body]);
+                builder.seal_block(entry_block);
                 builder.finalize();
 
                 // define the function in the jit_module
-                jit_module
-                    .define_function(func_id.clone(), &mut context)
-                    .unwrap();
+                jit_module.define_function(*func_id, &mut context).unwrap();
             }
         }
 
         // finalize the entire module: this writes all relocations and finalizes code memory
         jit_module.finalize_definitions().unwrap();
 
-        // extract the compiled code as needed (this depends on your use-case,
-        // for example, retrieving a pointer to an entry function or an object file)
-        // here we assume that `CompiledCode` represents the whole module's binary
-        let compiled_code = jit_module.get_finalized_function().unwrap();
-        Ok(compiled_code)
+        Ok(jit_module.get_finalized_function(environment.lookup_function("main").unwrap().0))
     }
 }
 
