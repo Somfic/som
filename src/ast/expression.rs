@@ -1,5 +1,7 @@
 use std::{borrow::Cow, fmt::Display};
 
+use miette::SourceSpan;
+
 use super::{Statement, TypedStatement, Typing};
 
 #[derive(Debug, Clone)]
@@ -37,6 +39,10 @@ pub enum ExpressionValue<'ast, Statement, Expression> {
         statements: Vec<Statement>,
         result: Box<Expression>,
     },
+    FunctionCall {
+        function_name: Cow<'ast, str>,
+        arguments: Vec<Expression>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -67,6 +73,22 @@ pub enum BinaryOperator {
     Or,
 }
 
+impl BinaryOperator {
+    pub fn is_logical(&self) -> bool {
+        matches!(
+            self,
+            BinaryOperator::And
+                | BinaryOperator::Or
+                | BinaryOperator::Equality
+                | BinaryOperator::Inequality
+                | BinaryOperator::LessThan
+                | BinaryOperator::LessThanOrEqual
+                | BinaryOperator::GreaterThan
+                | BinaryOperator::GreaterThanOrEqual
+        )
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum UnaryOperator {
     Negate,
@@ -90,5 +112,16 @@ impl Display for BinaryOperator {
             BinaryOperator::And => write!(f, "an and"),
             BinaryOperator::Or => write!(f, "an or"),
         }
+    }
+}
+
+impl Expression<'_> {
+    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
+        miette::LabeledSpan::at(self.span, text.into())
+    }
+
+    pub fn span(mut self, span: SourceSpan) -> Self {
+        self.span = span;
+        self
     }
 }

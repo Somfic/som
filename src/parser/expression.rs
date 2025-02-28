@@ -88,6 +88,14 @@ pub fn parse_binary_divide<'ast>(
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Divide)
 }
 
+pub fn parse_binary_less_than<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::LessThan)
+}
+
 pub fn parse_group<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
     let token = parser
         .tokens
@@ -239,5 +247,47 @@ pub fn parse_identifier<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Express
     Ok(Expression::at(
         token.span,
         ExpressionValue::Primitive(Primitive::Identifier(name)),
+    ))
+}
+
+pub fn parse_function_call<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    let function_name = match lhs.value {
+        ExpressionValue::Primitive(Primitive::Identifier(name)) => name,
+        _ => todo!("function calls on non-identifiers"),
+    };
+
+    let mut arguments = Vec::new();
+
+    loop {
+        if parser.tokens.peek().is_some_and(|token| {
+            token
+                .as_ref()
+                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
+        }) {
+            break;
+        }
+
+        if !arguments.is_empty() {
+            parser.tokens.expect(TokenKind::Comma, "expected a comma")?;
+        }
+
+        let argument = parser.parse_expression(BindingPower::None)?;
+        arguments.push(argument);
+    }
+
+    let close = parser
+        .tokens
+        .expect(TokenKind::ParenClose, "expected the end of a function call")?;
+
+    Ok(Expression::at_multiple(
+        vec![lhs.span],
+        ExpressionValue::FunctionCall {
+            function_name,
+            arguments,
+        },
     ))
 }

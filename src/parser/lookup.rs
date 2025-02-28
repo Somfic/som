@@ -150,6 +150,16 @@ impl Default for Lookup<'_> {
             BindingPower::Multiplicative,
             expression::parse_binary_divide,
         )
+        .add_left_expression_handler(
+            TokenKind::ParenOpen,
+            BindingPower::Call,
+            expression::parse_function_call,
+        )
+        .add_left_expression_handler(
+            TokenKind::LessThan,
+            BindingPower::Logical,
+            expression::parse_binary_less_than,
+        )
         .add_statement_handler(TokenKind::Let, statement::parse_let)
         .add_typing_handler(TokenKind::Identifier, typing::parse_symbol)
         .add_typing_handler(TokenKind::IntegerType, typing::parse_integer)

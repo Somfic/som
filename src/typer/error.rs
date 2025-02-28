@@ -1,6 +1,6 @@
 use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
-use crate::ast::Typing;
+use crate::ast::{Expression, Typing};
 
 pub fn new_mismatched_types(
     message: impl Into<String>,
@@ -36,7 +36,30 @@ pub fn mismatched_type(
     )
 }
 
-pub(crate) fn undefined_identifier(
+pub fn mismatched_arguments(
+    message: impl Into<String>,
+    given_arguments: Vec<Expression>,
+    expected_arguments: Vec<Typing>,
+    hint: impl Into<String>,
+) -> MietteDiagnostic {
+    let message = message.into();
+
+    let mut labels = Vec::new();
+    for (i, argument) in given_arguments.iter().enumerate() {
+        labels.push(argument.label(format!("argument {i}")));
+    }
+    for (i, argument) in expected_arguments.iter().enumerate() {
+        labels.push(argument.label(format!("argument {i}")));
+    }
+    diagnostic!(
+        severity = Severity::Error,
+        labels = labels,
+        help = hint.into(),
+        "{message}"
+    )
+}
+
+pub(crate) fn undefined_variable(
     message: impl Into<String>,
     identifier_name: &str,
     label: SourceSpan,
@@ -44,7 +67,7 @@ pub(crate) fn undefined_identifier(
     let message = message.into();
 
     let label = LabeledSpan::new(
-        format!("`{identifier_name}` is not defined in this scope").into(),
+        format!("the variable `{identifier_name}` is not defined in this scope").into(),
         label.offset(),
         label.len(),
     );
@@ -52,7 +75,28 @@ pub(crate) fn undefined_identifier(
     diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
-        help = "try adding a declaration",
+        help = "create a variable with this name",
+        "{message}"
+    )
+}
+
+pub(crate) fn undefined_function(
+    message: impl Into<String>,
+    identifier_name: &str,
+    label: SourceSpan,
+) -> MietteDiagnostic {
+    let message = message.into();
+
+    let label = LabeledSpan::new(
+        format!("the function `{identifier_name}` is not defined in this scope").into(),
+        label.offset(),
+        label.len(),
+    );
+
+    diagnostic!(
+        severity = Severity::Error,
+        labels = vec![label],
+        help = "create a function with this name",
         "{message}"
     )
 }

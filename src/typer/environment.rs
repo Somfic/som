@@ -67,6 +67,16 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         Ok(())
     }
 
+    pub fn update_function(
+        &mut self,
+        name: Cow<'ast, str>,
+        function: TypedFunctionDeclaration<'ast>,
+    ) -> ParserResult<()> {
+        self.functions.insert(name, function);
+
+        Ok(())
+    }
+
     pub fn lookup_function(&self, name: &str) -> Option<&TypedFunctionDeclaration<'ast>> {
         self.functions
             .get(name)
