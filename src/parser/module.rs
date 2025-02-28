@@ -1,10 +1,12 @@
+use std::collections::HashMap;
+
 use crate::{
     ast::{Expression, FunctionDeclaration, Statement},
     tokenizer::TokenKind,
     ParserResult,
 };
 
-use super::Parser;
+use super::{BindingPower, Parser};
 
 pub fn parse_function<'ast>(
     parser: &mut Parser<'ast>,
@@ -27,7 +29,7 @@ pub fn parse_function<'ast>(
         "expected the start of a parameter list",
     )?;
 
-    let mut parameters = vec![];
+    let mut parameters = HashMap::new();
 
     loop {
         if parser.tokens.peek().is_some_and(|token| {
@@ -47,8 +49,25 @@ pub fn parse_function<'ast>(
             _ => unreachable!(),
         };
 
-        parameters.push(parameter);
+        parser
+            .tokens
+            .expect(TokenKind::Tilde, "expected a parameter type")?;
+
+        let parameter_type = parser.parse_typing(BindingPower::None)?;
+
+        parameters.insert(parameter, parameter_type);
     }
 
-    todo!()
+    parser.tokens.expect(
+        TokenKind::ParenClose,
+        "expected the end of a parameter list",
+    )?;
+
+    let expression = parser.parse_expression(BindingPower::None)?;
+
+    Ok(FunctionDeclaration {
+        name,
+        parameters,
+        expression,
+    })
 }

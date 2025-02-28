@@ -2,29 +2,16 @@ use crate::prelude::*;
 use cranelift::codegen::CompiledCode;
 use memmap2::MmapMut;
 
-pub struct Runner {
-    compiled: CompiledCode,
-}
+pub struct Runner {}
 
 impl Runner {
-    pub fn new(compiled: CompiledCode) -> Self {
-        Self { compiled }
+    pub fn new() -> Self {
+        Self {}
     }
 
-    pub fn run(&self) -> ParserResult<i64> {
-        let code_bytes = self.compiled.code_buffer();
-        let code_size = code_bytes.len();
-        let mut mmap = MmapMut::map_anon(code_size).expect("failed to create mmap");
-        mmap[..].copy_from_slice(code_bytes);
-        let exec_mmap = mmap.make_exec().expect("failed to make mmap executable");
-        let code_ptr = exec_mmap.as_ptr();
-
-        // cast the code pointer to a function pointer; our function takes no arguments and returns i64
-        let compiled_fn: extern "C" fn() -> i64 = unsafe { std::mem::transmute(code_ptr) };
-
-        // call the JITted function and print the result
+    pub fn run(&self, pointer: *const u8) -> ParserResult<i64> {
+        let compiled_fn: extern "C" fn() -> i64 = unsafe { std::mem::transmute(pointer) };
         let result = compiled_fn();
-
         Ok(result)
     }
 }

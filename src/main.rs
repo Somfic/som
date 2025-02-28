@@ -12,7 +12,7 @@ mod tests;
 mod tokenizer;
 mod typer;
 
-const INPUT: &str = "{ let b = { 1 + 1; 1 }; b + 1 }";
+const INPUT: &str = "fn main2() { let b = { 1 + 1; 1 }; b + 1 }";
 
 fn main() {
     let result = run(INPUT);
@@ -43,8 +43,8 @@ pub fn run(source_code: impl Into<String>) -> i64 {
         })
         .expect("failed to compile expression");
 
-    let result = runner::Runner::new(compiled)
-        .run()
+    let result = runner::Runner::new()
+        .run(compiled)
         .expect("failed to run expression");
 
     result
@@ -56,6 +56,6 @@ fn parse<'ast>(source_code: impl Into<String>) -> ParserResult<Vec<TypedModule<'
     typer::Typer::new().type_check(modules)
 }
 
-fn compile<'ast>(modules: Vec<TypedModule<'ast>>) -> CompilerResult<CompiledCode> {
+fn compile<'ast>(modules: Vec<TypedModule<'ast>>) -> CompilerResult<*const u8> {
     compiler::Compiler::new().compile(modules)
 }

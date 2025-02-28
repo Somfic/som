@@ -67,6 +67,14 @@ impl<'ast> Parser<'ast> {
             functions.push(function);
         }
 
+        // make sure there is a main function
+        if functions.iter().all(|function| function.name != "main") {
+            return Err(vec![miette::diagnostic! {
+                help = "add a main function",
+                "missing main function"
+            }]);
+        }
+
         Ok(Module { functions })
     }
 
