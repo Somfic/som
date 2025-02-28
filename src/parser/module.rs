@@ -67,6 +67,7 @@ pub fn parse_function<'ast>(
 
     Ok(FunctionDeclaration {
         name,
+        span: name_token.span,
         parameters,
         expression,
     })

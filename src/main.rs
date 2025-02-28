@@ -12,7 +12,7 @@ mod tests;
 mod tokenizer;
 mod typer;
 
-const INPUT: &str = "fn main2() { let b = { 1 + 1; 1 }; b + 1 }";
+const INPUT: &str = "fn main() { let b = { 1 + 1; 1 }; b + 1 }";
 
 fn main() {
     let result = run(INPUT);
