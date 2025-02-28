@@ -24,4 +24,7 @@ type Color = Red
            | Rgb(Rgb)
 
 type Rgb = { r ~ int, g ~ int, b ~ int }
+
+fn print_color(color ~ Color)
+    print(color)
 ```
