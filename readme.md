@@ -13,11 +13,6 @@ fn fib(n ~ int) -> int {
 ```
 
 ```rust
-fn fib(n ~ int) -> int
-    1 if n <= 1 else fib(n - 1) + fib(n - 2)
-```
-
-```rust
 type Option<T> = Some(T)
                | None
 
