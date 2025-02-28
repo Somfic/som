@@ -4,8 +4,51 @@ on:
     - push
     - pull_request
 
+
+
 jobs:
+  test:
+    concurrency:
+      group: ${{ github.workflow }}
+    name: test
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+          components: rustfmt, clippy
+
+      - name: Set up cargo cache
+        uses: actions/cache@v4
+        continue-on-error: false
+        with:
+          save-always: true
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/            
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+        
+      - name: Test
+        run: cargo test
+
+
   cicd:
+    needs: test
     concurrency:
       group: ${{ github.workflow }}
     name: ci/cd
@@ -60,9 +103,6 @@ jobs:
       #     rm -rf ~/.cargo/advisory-db
       #     cargo audit
       #     cargo pants
-
-      - name: Test
-        run: cargo test
 
       - name: Install committer
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
