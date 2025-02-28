@@ -49,8 +49,6 @@ jobs:
 
   cicd:
     needs: test
-    concurrency:
-      group: ${{ github.workflow }}
     name: ci/cd
     runs-on: ubuntu-latest
     permissions: write-all
