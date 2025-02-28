@@ -13,7 +13,7 @@ use cranelift::{
         CompileError, CompiledCode,
     },
     prelude::{
-        isa::{CallConv, TargetIsa},
+        isa::{CallConv, OwnedTargetIsa, TargetIsa},
         *,
     },
 };
@@ -45,65 +45,59 @@ impl Compiler {
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
 
-        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-
-        let mut compiled_modules = vec![];
-
-        for module in modules {
-            compiled_modules.push(self.compile_module(&module));
-        }
-
-        todo!()
-    }
-
-    fn compile_module<'ast>(
-        &mut self,
-        builder: JITBuilder,
-        module: &TypedModule<'ast>,
-    ) -> JITModule {
+        let builder = JITBuilder::new(cranelift_module::default_libcall_names()).unwrap();
         let mut jit_module = JITModule::new(builder);
+        let mut environment = CompileEnvironment::new();
 
-        let environment = &mut CompileEnvironment::new();
-
-        // declare functions
-        for function in &module.functions {
-            let mut signature = Signature::new(isa.default_call_conv());
-
-            function.parameters.iter().for_each(|p| {
+        // first, declare all functions from all modules
+        for module in &modules {
+            for function in &module.functions {
+                let mut signature = Signature::new(isa.default_call_conv());
+                for p in &function.parameters {
+                    signature
+                        .params
+                        .push(AbiParam::new(convert_type(&p.1.value)));
+                }
                 signature
-                    .params
-                    .push(AbiParam::new(convert_type(&p.1.value)));
-            });
-
-            signature
-                .returns
-                .push(AbiParam::new(convert_type(&function.expression.ty.value)));
-
-            environment.declare_function(function.name.clone(), signature, &mut jit_module);
+                    .returns
+                    .push(AbiParam::new(convert_type(&function.expression.ty.value)));
+                environment.declare_function(function.name.clone(), signature, &mut jit_module);
+            }
         }
 
-        // compile functions
-        for function in &module.functions {
-            let mut context = jit_module.make_context();
-            let (func_id, signature) = environment.lookup_function(&function.name).unwrap();
+        // next, compile each function
+        for module in &modules {
+            for function in &module.functions {
+                let mut context = jit_module.make_context();
+                let (func_id, signature) = environment.lookup_function(&function.name).unwrap();
+                context.func =
+                    Function::with_name_signature(UserFuncName::user(0, 0), signature.clone());
+                let mut func_ctx = FunctionBuilderContext::new();
+                let mut builder = FunctionBuilder::new(&mut context.func, &mut func_ctx);
 
-            // TODO Get the function through the func_id
-            context.func =
-                Function::with_name_signature(UserFuncName::user(0, 0), signature.clone());
+                let entry_block = builder.create_block();
+                builder.append_block_params_for_function_params(entry_block);
+                builder.switch_to_block(entry_block);
 
-            let mut func_ctx = FunctionBuilderContext::new();
-            let mut builder = FunctionBuilder::new(&mut context.func, &mut func_ctx);
+                let body = compile_expression(&function.expression, &mut builder, &mut environment);
+                builder.ins().return_(&[body]);
+                builder.finalize();
 
-            let entry_block = builder.create_block();
-            builder.append_block_params_for_function_params(entry_block);
-            builder.switch_to_block(entry_block);
-
-            let body = compile_expression(&function.expression, &mut builder, environment);
-            builder.ins().return_(&[body]);
-            builder.finalize();
+                // define the function in the jit_module
+                jit_module
+                    .define_function(func_id.clone(), &mut context)
+                    .unwrap();
+            }
         }
 
-        jit_module
+        // finalize the entire module: this writes all relocations and finalizes code memory
+        jit_module.finalize_definitions().unwrap();
+
+        // extract the compiled code as needed (this depends on your use-case,
+        // for example, retrieving a pointer to an entry function or an object file)
+        // here we assume that `CompiledCode` represents the whole module's binary
+        let compiled_code = jit_module.get_finalized_function().unwrap();
+        Ok(compiled_code)
     }
 }
 
