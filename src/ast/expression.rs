@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt::Display};
 
-use super::{Statement, Typing, TypedStatement};
+use super::{Statement, TypedStatement, Typing};
 
 #[derive(Debug, Clone)]
 pub struct Expression<'ast> {
