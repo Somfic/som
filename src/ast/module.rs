@@ -17,6 +17,7 @@ pub type FunctionDeclaration<'ast, Expression> = GenericFunctionDeclaration<'ast
 #[derive(Debug, Clone)]
 pub struct GenericFunctionDeclaration<'ast, Expression> {
     pub name: Cow<'ast, str>,
+    pub span: miette::SourceSpan,
     pub parameters: HashMap<Cow<'ast, str>, Typing<'ast>>,
     pub expression: Expression,
 }

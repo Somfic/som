@@ -50,15 +50,19 @@ impl Typer {
         let mut typed_functions = vec![];
 
         for function in &module.functions {
-            let mut environment = environment.block();
             let return_value =
-                self.type_check_expression(&function.expression, &mut environment)?;
+                self.type_check_expression(&function.expression, &mut environment.clone())?;
 
-            typed_functions.push(TypedFunctionDeclaration {
+            let declaration = TypedFunctionDeclaration {
                 name: function.name.clone(),
+                span: function.span,
                 parameters: function.parameters.clone(),
                 expression: return_value,
-            });
+            };
+
+            environment.declare_function(function.name.clone(), declaration.clone())?;
+
+            typed_functions.push(declaration);
         }
 
         Ok(TypedModule {
@@ -87,7 +91,7 @@ impl Typer {
                     span: expression.span,
                 }),
                 Primitive::Unit => todo!("unit types"),
-                Primitive::Identifier(value) => match environment.lookup(value) {
+                Primitive::Identifier(value) => match environment.lookup_variable(value) {
                     Some(ty) => Ok(TypedExpression {
                         value: ExpressionValue::Primitive(primitive.clone()),
                         ty: ty.clone().span(expression.span),
@@ -237,7 +241,7 @@ impl Typer {
             StatementValue::Declaration(name, expression) => {
                 let expression = self.type_check_expression(expression, environment)?;
 
-                environment.declare(name.clone(), expression.ty.clone());
+                environment.declare_variable(name.clone(), expression.ty.clone());
 
                 Ok(TypedStatement {
                     value: StatementValue::Declaration(name.clone(), expression),
