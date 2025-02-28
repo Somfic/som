@@ -1,7 +1,7 @@
 use miette::SourceSpan;
 
 use super::{
-    Expression, ExpressionValue, GenericStatement, Statement, StatementValue, Type, TypeValue,
+    Expression, ExpressionValue, GenericStatement, Statement, StatementValue, Typing, TypingValue,
 };
 
 pub trait Spannable<'ast>: Sized {
@@ -66,8 +66,8 @@ impl<'ast> Spannable<'ast> for Statement<'ast> {
     }
 }
 
-impl<'ast> Spannable<'ast> for Type<'ast> {
-    type Value = TypeValue<'ast>;
+impl<'ast> Spannable<'ast> for Typing<'ast> {
+    type Value = TypingValue<'ast>;
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
         Self { value, span }

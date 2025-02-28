@@ -1,11 +1,11 @@
 use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
-use crate::ast::Type;
+use crate::ast::Typing;
 
 pub fn new_mismatched_types(
     message: impl Into<String>,
-    left_ty: &Type<'_>,
-    right_ty: &Type<'_>,
+    left_ty: &Typing<'_>,
+    right_ty: &Typing<'_>,
     hint: impl Into<String>,
 ) -> MietteDiagnostic {
     let message = message.into();
@@ -23,7 +23,7 @@ pub fn new_mismatched_types(
 
 pub fn mismatched_type(
     message: impl Into<String>,
-    ty: &Type<'_>,
+    ty: &Typing<'_>,
     hint: impl Into<String>,
 ) -> MietteDiagnostic {
     let message = message.into();

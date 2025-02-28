@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        BinaryOperator, ExpressionValue, Module, Primitive, StatementValue, TypeValue,
-        TypedExpression, TypedModule, TypedStatement,
+        BinaryOperator, ExpressionValue, Module, Primitive, StatementValue, TypedExpression,
+        TypedModule, TypedStatement, TypingValue,
     },
     prelude::*,
 };
@@ -14,22 +14,17 @@ use cranelift::{
     },
     prelude::*,
 };
+use cranelift_jit::{JITBuilder, JITModule};
 use environment::CompileEnvironment;
-use jit::Jit;
 use std::env;
 
 pub mod environment;
-pub mod jit;
 
-pub struct Compiler {
-    jit: Jit,
-}
+pub struct Compiler {}
 
 impl Compiler {
     pub fn new() -> Self {
-        Self {
-            jit: Jit::default(),
-        }
+        Self {}
     }
 
     pub fn compile<'ast>(
@@ -39,20 +34,23 @@ impl Compiler {
         let mut compiled_modules = vec![];
 
         for module in modules {
-            compiled_modules.append(self.compile_module(&module)?);
+            compiled_modules.push(self.compile_module(&module));
         }
 
-        println!("{}", self.jit.module.finalize_definitions());
-
-        let mut ctrl_plane = ControlPlane::default();
-        self.jit
-            .ctx
-            .compile(self.jit.module.isa(), &mut ctrl_plane)
-            .map_err(parse_error)
-            .cloned()
+        let mut compiled = CompiledCode::new();
+        for module in compiled_modules {
+            compiled.append(module);
+        }
+        Ok(compiled)
     }
 
-    fn compile_module<'ast>(&mut self, module: &TypedModule<'ast>) -> Result<CompiledCode> {
+    fn compile_module<'ast>(&mut self, module: &TypedModule<'ast>) -> JITModule {
+        let builder = JITBuilder::new(
+            self.jit.module.isa(),
+            self.jit.module.triple(),
+            &*self.jit.module.flags(),
+        );
+
         let environment = &mut CompileEnvironment::new();
 
         for (function_name, function) in &module.functions {
@@ -179,11 +177,11 @@ fn compile_primitive<'ast>(
     }
 }
 
-pub(crate) fn convert_type(ty: &TypeValue) -> types::Type {
+pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
     match ty {
-        TypeValue::Integer => types::I64,
-        TypeValue::Decimal => types::F64,
-        TypeValue::Boolean => types::I8,
+        TypingValue::Integer => types::I64,
+        TypingValue::Decimal => types::F64,
+        TypingValue::Boolean => types::I8,
         _ => panic!("unsupported type"),
     }
 }

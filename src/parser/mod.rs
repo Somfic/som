@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ast::{Expression, Module, Statement};
+use crate::ast::{Expression, Module, Statement, Typing};
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, Tokenizer};
 pub use lookup::BindingPower;
@@ -9,7 +9,9 @@ use miette::MietteDiagnostic;
 
 mod expression;
 mod lookup;
+mod module;
 mod statement;
+mod typing;
 
 pub struct Parser<'ast> {
     errors: Vec<MietteDiagnostic>,
@@ -28,6 +30,10 @@ impl<'ast> Parser<'ast> {
 
     fn report_error(&mut self, error: MietteDiagnostic) {
         self.errors.push(error);
+    }
+
+    fn report_errors(&mut self, errors: &[MietteDiagnostic]) {
+        self.errors.extend_from_slice(errors);
     }
 
     pub fn parse(&mut self) -> ParserResult<Vec<Module<'ast>>> {
@@ -54,28 +60,17 @@ impl<'ast> Parser<'ast> {
     }
 
     fn parse_module(&mut self) -> ParserResult<Module<'ast>> {
-        let mut functions = HashMap::new();
+        let mut functions = vec![];
 
-        while let Some(token) = self.tokens.peek() {
-            match token {
-                Ok(token) => match token.kind {
-                    TokenKind::Function => {
-                        let function = self.parse_statement(false)?;
-                        functions.insert(function.name.clone(), function);
-                    }
-                    _ => break,
-                },
-                Err(err) => {
-                    self.errors.extend(err.to_vec());
-                    self.tokens.next();
-                }
-            }
+        while self.tokens.peek().is_some() {
+            let function = module::parse_function(self)?;
+            functions.push(function);
         }
 
         Ok(Module { functions })
     }
 
-    fn parse_expression(&mut self, bp: lookup::BindingPower) -> ParserResult<Expression<'ast>> {
+    pub(crate) fn parse_expression(&mut self, bp: BindingPower) -> ParserResult<Expression<'ast>> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),
@@ -135,7 +130,10 @@ impl<'ast> Parser<'ast> {
         Ok(lhs)
     }
 
-    fn parse_statement(&mut self, require_semicolon: bool) -> ParserResult<Statement<'ast>> {
+    pub(crate) fn parse_statement(
+        &mut self,
+        require_semicolon: bool,
+    ) -> ParserResult<Statement<'ast>> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),
@@ -161,5 +159,63 @@ impl<'ast> Parser<'ast> {
                 Ok(Statement::expression(expression.span, expression))
             }
         }
+    }
+
+    pub(crate) fn parse_typing(&mut self, bp: BindingPower) -> ParserResult<Typing<'ast>> {
+        let token = match self.tokens.peek().as_ref() {
+            Some(Ok(token)) => token,
+            Some(Err(err)) => return Err(err.to_vec()),
+            None => {
+                return Err(vec![miette::diagnostic! {
+                    help = "expected a type",
+                    "expected a type"
+                }]);
+            }
+        };
+
+        let handler =
+            self.lookup
+                .typing_lookup
+                .get(&token.kind)
+                .ok_or(vec![miette::diagnostic! {
+                    labels = vec![token.label("expected a type here")],
+                    help = format!("{} cannot be parsed as a type", token.kind),
+                    "expected a type, found {}", token.kind
+                }])?;
+        let mut lhs = handler(self)?;
+
+        let mut next_token = self.tokens.peek();
+
+        while let Some(token) = next_token {
+            let token = match token {
+                Ok(token) => token,
+                Err(err) => return Err(err.to_vec()),
+            };
+
+            let token_binding_power = {
+                let binding_power_lookup = self.lookup.binding_power_lookup.clone();
+                binding_power_lookup
+                    .get(&token.kind)
+                    .unwrap_or(&BindingPower::None)
+                    .clone()
+            };
+
+            if bp >= token_binding_power {
+                break;
+            }
+
+            let handler = match self.lookup.left_typing_lookup.get(&token.kind) {
+                Some(handler) => handler,
+                None => break,
+            };
+
+            self.tokens.next();
+
+            lhs = handler(self, lhs, token_binding_power)?;
+
+            next_token = self.tokens.peek();
+        }
+
+        Ok(lhs)
     }
 }

@@ -1,14 +1,10 @@
-use std::borrow::Cow;
-use std::env;
-
-use environment::Environment;
-use miette::MietteDiagnostic;
-
 use crate::ast::{
-    Expression, ExpressionValue, Primitive, Statement, StatementValue, Type, TypeValue,
-    TypedExpression, TypedStatement,
+    Expression, ExpressionValue, Module, Primitive, Statement, StatementValue, TypedExpression,
+    TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
 };
 use crate::prelude::*;
+use environment::Environment;
+use miette::MietteDiagnostic;
 
 mod environment;
 mod error;
@@ -24,19 +20,19 @@ impl Typer {
 
     pub fn type_check<'ast>(
         &mut self,
-        statements: Vec<Statement<'ast>>,
-    ) -> ParserResult<Vec<TypedStatement<'ast>>> {
+        modules: Vec<Module<'ast>>,
+    ) -> ParserResult<Vec<TypedModule<'ast>>> {
         let mut environment = Environment::new();
 
-        let mut typed_statements: Vec<TypedStatement<'ast>> = Vec::new();
+        let mut typed_modules: Vec<TypedModule<'ast>> = Vec::new();
 
-        for statement in &statements {
-            let statement = self.type_check_statement(statement, &mut environment)?;
-            typed_statements.push(statement);
+        for module in &modules {
+            let module = self.type_check_module(module, &mut environment)?;
+            typed_modules.push(module);
         }
 
         if self.errors.is_empty() {
-            Ok(typed_statements)
+            Ok(typed_modules)
         } else {
             Err(self.errors.clone())
         }
@@ -44,6 +40,30 @@ impl Typer {
 
     fn report_error(&mut self, error: MietteDiagnostic) {
         self.errors.push(error);
+    }
+
+    fn type_check_module<'ast>(
+        &mut self,
+        module: &Module<'ast>,
+        environment: &mut Environment<'_, 'ast>,
+    ) -> ParserResult<TypedModule<'ast>> {
+        let mut typed_functions = vec![];
+
+        for function in &module.functions {
+            let mut environment = environment.block();
+            let return_value =
+                self.type_check_expression(&function.expression, &mut environment)?;
+
+            typed_functions.push(TypedFunctionDeclaration {
+                name: function.name.clone(),
+                parameters: function.parameters.clone(),
+                expression: return_value,
+            });
+        }
+
+        Ok(TypedModule {
+            functions: typed_functions,
+        })
     }
 
     fn type_check_expression<'ast>(
@@ -55,34 +75,18 @@ impl Typer {
             ExpressionValue::Primitive(primitive) => match primitive {
                 Primitive::Integer(_) => Ok(TypedExpression {
                     value: ExpressionValue::Primitive(primitive.clone()),
-                    ty: Type::integer(&expression.span),
+                    ty: Typing::integer(&expression.span),
                     span: expression.span,
                 }),
-                Primitive::Decimal(_) => Ok(TypedExpression {
-                    value: ExpressionValue::Primitive(primitive.clone()),
-                    ty: Type::decimal(&expression.span),
-                    span: expression.span,
-                }),
-                Primitive::String(_) => Ok(TypedExpression {
-                    value: ExpressionValue::Primitive(primitive.clone()),
-                    ty: Type::string(&expression.span),
-                    span: expression.span,
-                }),
-                Primitive::Character(_) => Ok(TypedExpression {
-                    value: ExpressionValue::Primitive(primitive.clone()),
-                    ty: Type::character(&expression.span),
-                    span: expression.span,
-                }),
+                Primitive::Decimal(_) => todo!("decimal types"),
+                Primitive::String(_) => todo!("string types"),
+                Primitive::Character(_) => todo!("character types"),
                 Primitive::Boolean(_) => Ok(TypedExpression {
                     value: ExpressionValue::Primitive(primitive.clone()),
-                    ty: Type::boolean(&expression.span),
+                    ty: Typing::boolean(&expression.span),
                     span: expression.span,
                 }),
-                Primitive::Unit => Ok(TypedExpression {
-                    value: ExpressionValue::Primitive(primitive.clone()),
-                    ty: Type::unit(&expression.span),
-                    span: expression.span,
-                }),
+                Primitive::Unit => todo!("unit types"),
                 Primitive::Identifier(value) => match environment.lookup(value) {
                     Some(ty) => Ok(TypedExpression {
                         value: ExpressionValue::Primitive(primitive.clone()),
@@ -97,7 +101,7 @@ impl Typer {
                         ));
                         Ok(TypedExpression {
                             value: ExpressionValue::Primitive(primitive.clone()),
-                            ty: Type::unknown(&expression.span),
+                            ty: Typing::unknown(&expression.span),
                             span: expression.span,
                         })
                     }
@@ -141,7 +145,7 @@ impl Typer {
                         operator: operator.clone(),
                         operand: Box::new(self.type_check_expression(operand, environment)?),
                     },
-                    ty: Type::integer(&expression.span),
+                    ty: Typing::integer(&expression.span),
                     span: expression.span,
                 }),
             },
@@ -155,11 +159,11 @@ impl Typer {
                 let falsy = self.type_check_expression(falsy, environment)?;
                 let truthy_ty = truthy.ty.clone();
 
-                if condition.ty.value != TypeValue::Boolean {
+                if condition.ty.value != TypingValue::Boolean {
                     self.report_error(error::new_mismatched_types(
                         "expected the condition to be a boolean",
                         &condition.ty,
-                        &Type::boolean(&condition.span),
+                        &Typing::boolean(&condition.span),
                         format!("{} is not a boolean", condition.ty),
                     ));
                 }
