@@ -1,18 +1,9 @@
-use cranelift::codegen::CompiledCode;
-
-use crate::{
-    ast::{TypedExpression, TypedModule, TypedStatement},
-    compiler::{self},
-    parser::{self},
-    run,
-    runner::{self},
-    typer::{self},
-    CompilerResult, ParserResult,
-};
+use crate::run;
 
 mod binary;
 mod block;
 mod conditional;
+mod function;
 mod group;
 mod unary;
 mod variables;

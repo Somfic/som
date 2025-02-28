@@ -13,7 +13,7 @@ use std::{borrow::Cow, cell::Cell, collections::HashMap, rc::Rc};
 pub struct CompileEnvironment<'env> {
     parent: Option<&'env CompileEnvironment<'env>>,
     variables: HashMap<Cow<'env, str>, Variable>,
-    functions: HashMap<Cow<'env, str>, (FuncId, Signature)>,
+    functions: HashMap<Cow<'env, str>, (FuncId, Signature, &'env TypedFunctionDeclaration<'env>)>,
     next_variable: Rc<Cell<usize>>,
 }
 
@@ -29,20 +29,24 @@ impl<'env> CompileEnvironment<'env> {
 
     pub fn declare_function<'ast>(
         &mut self,
-        name: Cow<'env, str>,
+        function: &'env TypedFunctionDeclaration<'ast>,
         signature: Signature,
         module: &mut JITModule,
     ) -> FuncId {
         let func_id = module
-            .declare_function(&name.clone(), Linkage::Export, &signature)
+            .declare_function(&function.name, Linkage::Export, &signature)
             .unwrap();
 
-        self.functions.insert(name, (func_id, signature));
+        self.functions
+            .insert(function.name.clone(), (func_id, signature, function));
 
         func_id
     }
 
-    pub fn lookup_function(&self, name: &str) -> Option<&(FuncId, Signature)> {
+    pub fn lookup_function(
+        &self,
+        name: &str,
+    ) -> Option<&(FuncId, Signature, &'env TypedFunctionDeclaration<'env>)> {
         self.functions
             .get(name)
             .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_function(name)))

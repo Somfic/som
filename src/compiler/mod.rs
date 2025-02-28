@@ -7,7 +7,7 @@ use crate::{
 };
 use cranelift::{
     codegen::{
-        ir::{Function, UserFuncName},
+        ir::{Function, UserExternalNameRef, UserFuncName},
         verifier::VerifierError,
         CompileError,
     },
@@ -53,8 +53,8 @@ impl Compiler {
                 }
                 signature
                     .returns
-                    .push(AbiParam::new(convert_type(&function.expression.ty.value)));
-                environment.declare_function(function.name.clone(), signature, &mut jit_module);
+                    .push(AbiParam::new(convert_type(&function.body.ty.value)));
+                environment.declare_function(function, signature, &mut jit_module);
             }
         }
 
@@ -62,9 +62,11 @@ impl Compiler {
         for module in &modules {
             for function in &module.functions {
                 let mut context = jit_module.make_context();
-                let (func_id, signature) = environment.lookup_function(&function.name).unwrap();
-                context.func =
-                    Function::with_name_signature(UserFuncName::user(0, 0), signature.clone());
+                let (func_id, signature, declaration) = {
+                    let lookup = environment.lookup_function(&function.name).unwrap();
+                    (lookup.0, lookup.1.clone(), lookup.2)
+                };
+                context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature);
                 let mut func_ctx = FunctionBuilderContext::new();
                 let mut builder = FunctionBuilder::new(&mut context.func, &mut func_ctx);
 
@@ -72,17 +74,30 @@ impl Compiler {
                 builder.append_block_params_for_function_params(entry_block);
                 builder.switch_to_block(entry_block);
 
+                let block_params = builder.block_params(entry_block).to_vec();
+                for (i, (param, param_ty)) in function.parameters.iter().enumerate() {
+                    let variable =
+                        environment.declare_variable(param.clone(), &mut builder, &param_ty.value);
+
+                    builder.def_var(variable, block_params[i]);
+                }
+
+                // add function parameters to the environment
+
                 let body = compile_expression(
-                    &function.expression,
+                    &function.body,
                     &mut builder,
                     &mut environment.block(),
+                    &mut jit_module,
                 );
                 builder.ins().return_(&[body]);
                 builder.seal_block(entry_block);
                 builder.finalize();
 
                 // define the function in the jit_module
-                jit_module.define_function(*func_id, &mut context).unwrap();
+                jit_module
+                    .define_function(func_id.clone(), &mut context)
+                    .unwrap();
             }
         }
 
@@ -97,29 +112,37 @@ fn compile_expression<'ast>(
     expression: &TypedExpression<'ast>,
     builder: &mut FunctionBuilder,
     environment: &mut CompileEnvironment<'ast>,
+    jit_module: &mut JITModule,
 ) -> Value {
     match &expression.value {
-        ExpressionValue::Primitive(p) => compile_primitive(p, builder, environment),
+        ExpressionValue::Primitive(p) => compile_primitive(p, builder, environment, jit_module),
         ExpressionValue::Binary {
             operator,
             left,
             right,
         } => {
-            let left_val = compile_expression(left, builder, environment);
-            let right_val = compile_expression(right, builder, environment);
+            let left_val = compile_expression(left, builder, environment, jit_module);
+            let right_val = compile_expression(right, builder, environment, jit_module);
             match operator {
                 BinaryOperator::Add => builder.ins().iadd(left_val, right_val),
                 BinaryOperator::Subtract => builder.ins().isub(left_val, right_val),
                 BinaryOperator::Multiply => builder.ins().imul(left_val, right_val),
                 BinaryOperator::Divide => builder.ins().udiv(left_val, right_val),
+                BinaryOperator::LessThan => {
+                    builder
+                        .ins()
+                        .icmp(IntCC::SignedLessThan, left_val, right_val)
+                }
                 _ => unimplemented!("{operator:?}"),
             }
         }
-        ExpressionValue::Group(expression) => compile_expression(expression, builder, environment),
+        ExpressionValue::Group(expression) => {
+            compile_expression(expression, builder, environment, jit_module)
+        }
         ExpressionValue::Unary { operator, operand } => match operator {
             crate::ast::UnaryOperator::Negate => todo!(),
             crate::ast::UnaryOperator::Negative => {
-                let value = compile_expression(operand, builder, environment);
+                let value = compile_expression(operand, builder, environment, jit_module);
                 builder.ins().ineg(value)
             }
         },
@@ -128,14 +151,34 @@ fn compile_expression<'ast>(
             truthy,
             falsy,
         } => {
-            let condition = compile_expression(condition, builder, environment);
-            let truthy = compile_expression(truthy, builder, environment);
-            let falsy = compile_expression(falsy, builder, environment);
+            let cond_val = compile_expression(condition, builder, environment, jit_module);
+            let then_block = builder.create_block();
+            let else_block = builder.create_block();
+            let merge_block = builder.create_block();
 
-            // TODO: Check if this is fine? The resulting IR runs both branches and then
-            //  selects the result to return, but really we should only run the branch that
-            //  is selected based on the condition.
-            builder.ins().select(condition, truthy, falsy)
+            // append a block parameter to merge_block of the expected type (i64 here)
+            builder.append_block_param(merge_block, types::I64);
+
+            builder
+                .ins()
+                .brif(cond_val, then_block, &[], else_block, &[]);
+
+            // compile truthy branch
+            builder.switch_to_block(then_block);
+            let true_val = compile_expression(truthy, builder, environment, jit_module);
+            builder.ins().jump(merge_block, &[true_val]);
+            builder.seal_block(then_block);
+
+            // compile falsy branch
+            builder.switch_to_block(else_block);
+            let false_val = compile_expression(falsy, builder, environment, jit_module);
+            builder.ins().jump(merge_block, &[false_val]);
+            builder.seal_block(else_block);
+
+            // merge the branches
+            builder.switch_to_block(merge_block);
+            builder.seal_block(merge_block);
+            builder.block_params(merge_block)[0]
         }
         ExpressionValue::Block { statements, result } => {
             // open a new block
@@ -143,10 +186,10 @@ fn compile_expression<'ast>(
             builder.append_block_param(block, convert_type(&result.ty.value));
 
             for statement in statements {
-                compile_statement(statement, builder, environment);
+                compile_statement(statement, builder, environment, jit_module);
             }
 
-            let result = compile_expression(result, builder, environment);
+            let result = compile_expression(result, builder, environment, jit_module);
 
             builder.ins().jump(block, &[result]);
             builder.switch_to_block(block);
@@ -154,7 +197,24 @@ fn compile_expression<'ast>(
 
             builder.block_params(block)[0]
         }
-        _ => unimplemented!("{expression:?}"),
+        ExpressionValue::FunctionCall {
+            function_name,
+            arguments,
+        } => {
+            let arg_values: Vec<Value> = arguments
+                .iter()
+                .map(|arg| compile_expression(arg, builder, environment, jit_module))
+                .collect();
+
+            let (func_id, _signature, _declaration) = environment
+                .lookup_function(function_name)
+                .expect("function not declared");
+
+            let callee = jit_module.declare_func_in_func(*func_id, builder.func);
+            let call_inst = builder.ins().call(callee, &arg_values);
+
+            builder.inst_results(call_inst)[0]
+        }
     }
 }
 
@@ -162,18 +222,19 @@ fn compile_statement<'ast>(
     statement: &TypedStatement<'ast>,
     builder: &mut FunctionBuilder,
     environment: &mut CompileEnvironment<'ast>,
+    jit_module: &mut JITModule,
 ) {
     match &statement.value {
         StatementValue::Expression(expression) => {
-            compile_expression(expression, builder, environment);
+            compile_expression(expression, builder, environment, jit_module);
         }
         StatementValue::Block(statements) => {
             for statement in statements {
-                compile_statement(statement, builder, environment);
+                compile_statement(statement, builder, environment, jit_module);
             }
         }
         StatementValue::Declaration(name, expression) => {
-            let value = compile_expression(expression, builder, environment);
+            let value = compile_expression(expression, builder, environment, jit_module);
             let var = environment.declare_variable(name.clone(), builder, &expression.ty.value);
             builder.def_var(var, value);
         }
@@ -185,6 +246,7 @@ fn compile_primitive<'ast>(
     primitive: &Primitive<'ast>,
     builder: &mut FunctionBuilder,
     environment: &mut CompileEnvironment<'ast>,
+    jit_module: &mut JITModule,
 ) -> Value {
     match primitive {
         Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
@@ -193,7 +255,9 @@ fn compile_primitive<'ast>(
         Primitive::Unit => builder.ins().iconst(types::I8, 0), // TODO: ideally we don't introduce a IR step for nothing ...
         Primitive::Identifier(name) => {
             // TODO: Convert between variable name and variable id
-            let var = environment.lookup_variable(name).unwrap().clone();
+            let var = *environment
+                .lookup_variable(name)
+                .unwrap_or_else(|| panic!("variable {name} not found"));
             builder.use_var(var)
         }
         _ => unimplemented!("{primitive:?}"),

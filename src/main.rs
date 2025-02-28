@@ -12,7 +12,17 @@ mod tests;
 mod tokenizer;
 mod typer;
 
-const INPUT: &str = "fn main() { let b = { 1 + 1; 1 }; b + 1 }";
+const INPUT: &str = "
+
+fn fib(n ~ int) -> int {
+    n if n < 2 else fib(n - 1) + fib(n - 2)
+}
+
+fn main() { 
+    fib(10)
+}
+
+";
 
 fn main() {
     let result = run(INPUT);

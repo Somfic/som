@@ -19,5 +19,6 @@ pub struct GenericFunctionDeclaration<'ast, Expression> {
     pub name: Cow<'ast, str>,
     pub span: miette::SourceSpan,
     pub parameters: HashMap<Cow<'ast, str>, Typing<'ast>>,
-    pub expression: Expression,
+    pub body: Expression,
+    pub return_type: Option<Typing<'ast>>,
 }

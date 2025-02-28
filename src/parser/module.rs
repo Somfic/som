@@ -63,12 +63,27 @@ pub fn parse_function<'ast>(
         "expected the end of a parameter list",
     )?;
 
+    let return_type = if parser.tokens.peek().is_some_and(|token| {
+        token
+            .as_ref()
+            .is_ok_and(|token| token.kind == TokenKind::Arrow)
+    }) {
+        parser
+            .tokens
+            .expect(TokenKind::Arrow, "expected a return type")?;
+
+        Some(parser.parse_typing(BindingPower::None)?)
+    } else {
+        None
+    };
+
     let expression = parser.parse_expression(BindingPower::None)?;
 
     Ok(FunctionDeclaration {
         name,
         span: name_token.span,
         parameters,
-        expression,
+        body: expression,
+        return_type,
     })
 }

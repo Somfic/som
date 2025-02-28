@@ -1,9 +1,10 @@
 use crate::ast::{
-    Expression, ExpressionValue, Module, Primitive, Statement, StatementValue, TypedExpression,
-    TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
+    BinaryOperator, Expression, ExpressionValue, Module, Primitive, Statement, StatementValue,
+    TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
 };
 use crate::prelude::*;
 use environment::Environment;
+use error::mismatched_arguments;
 use miette::MietteDiagnostic;
 
 mod environment;
@@ -50,17 +51,56 @@ impl Typer {
         let mut typed_functions = vec![];
 
         for function in &module.functions {
-            let return_value =
-                self.type_check_expression(&function.expression, &mut environment.clone())?;
-
-            let declaration = TypedFunctionDeclaration {
+            let dummy = TypedExpression {
+                value: ExpressionValue::Primitive(Primitive::Unit), // or another dummy value
+                ty: function
+                    .return_type
+                    .clone()
+                    .unwrap_or(Typing::unknown(&function.span)),
+                span: function.span,
+            };
+            let placeholder = TypedFunctionDeclaration {
                 name: function.name.clone(),
                 span: function.span,
                 parameters: function.parameters.clone(),
-                expression: return_value,
+                body: dummy,
+                return_type: function.return_type.clone(),
             };
+            environment.declare_function(function.name.clone(), placeholder.clone())?;
+        }
 
-            environment.declare_function(function.name.clone(), declaration.clone())?;
+        for function in &module.functions {
+            // declare the function parameters in the environment
+            for (name, ty) in &function.parameters {
+                environment.declare_variable(name.clone(), ty.clone());
+            }
+
+            let return_value =
+                self.type_check_expression(&function.body, &mut environment.clone())?;
+
+            if let Some(return_type) = &function.return_type {
+                if return_value.ty != *return_type {
+                    self.report_error(error::new_mismatched_types(
+                        "expected the return type to match",
+                        &return_value.ty,
+                        return_type,
+                        format!("{} and {} do not match", return_value.ty, return_type),
+                    ));
+                }
+            }
+
+            // TODO: Add a warning that when using recursive functions, the return type must be explicitly set
+
+            let declaration: crate::ast::GenericFunctionDeclaration<'_, TypedExpression<'_>> =
+                TypedFunctionDeclaration {
+                    name: function.name.clone(),
+                    span: function.span,
+                    parameters: function.parameters.clone(),
+                    body: return_value,
+                    return_type: function.return_type.clone(),
+                };
+
+            environment.update_function(function.name.clone(), declaration.clone())?;
 
             typed_functions.push(declaration);
         }
@@ -98,7 +138,7 @@ impl Typer {
                         span: expression.span,
                     }),
                     None => {
-                        self.report_error(error::undefined_identifier(
+                        self.report_error(error::undefined_variable(
                             format!("the identifier {value} is not defined"),
                             value,
                             expression.span,
@@ -129,13 +169,19 @@ impl Typer {
                     ));
                 }
 
+                let ty = if operator.is_logical() {
+                    Typing::boolean(&expression.span)
+                } else {
+                    left_ty
+                };
+
                 Ok(TypedExpression {
                     value: ExpressionValue::Binary {
                         operator: operator.clone(),
                         left: Box::new(left),
                         right: Box::new(right),
                     },
-                    ty: left_ty,
+                    ty,
                     span: expression.span,
                 })
             }
@@ -206,6 +252,63 @@ impl Typer {
                         result: Box::new(result),
                     },
                     ty: result_ty,
+                    span: expression.span,
+                })
+            }
+            ExpressionValue::FunctionCall {
+                function_name,
+                arguments,
+            } => {
+                let function = environment.lookup_function(function_name).ok_or_else(|| {
+                    vec![error::undefined_function(
+                        format!("the function {function_name} is not defined"),
+                        function_name,
+                        expression.span,
+                    )]
+                })?;
+
+                if function.parameters.len() != arguments.len() {
+                    mismatched_arguments(
+                        format!(
+                            "expected {} arguments, but got {}",
+                            function.parameters.len(),
+                            arguments.len()
+                        ),
+                        arguments.clone(),
+                        function.parameters.values().cloned().collect::<Vec<_>>(),
+                        format!(
+                            "expected {} but got {}",
+                            function.parameters.len(),
+                            arguments.len()
+                        ),
+                    );
+                }
+
+                let mut typed_arguments = Vec::new();
+                let expected_types: Vec<_> = function.parameters.values().cloned().collect();
+                for (i, argument) in arguments.iter().enumerate() {
+                    let argument =
+                        self.type_check_expression(argument, &mut environment.clone())?;
+                    let expected_ty = &expected_types[i];
+
+                    if argument.ty != *expected_ty {
+                        self.report_error(error::new_mismatched_types(
+                            format!("expected the type of argument {i} to be {expected_ty}"),
+                            &argument.ty,
+                            expected_ty,
+                            format!("{} and {} do not match", argument.ty, expected_ty),
+                        ));
+                    }
+
+                    typed_arguments.push(argument);
+                }
+
+                Ok(TypedExpression {
+                    value: ExpressionValue::FunctionCall {
+                        function_name: function_name.clone(),
+                        arguments: typed_arguments,
+                    },
+                    ty: function.body.ty.clone(),
                     span: expression.span,
                 })
             }
