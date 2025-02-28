@@ -156,8 +156,7 @@ fn compile_expression<'ast>(
             let else_block = builder.create_block();
             let merge_block = builder.create_block();
 
-            // append a block parameter to merge_block of the expected type (i64 here)
-            builder.append_block_param(merge_block, types::I64);
+            builder.append_block_param(merge_block, convert_type(&truthy.ty.value));
 
             builder
                 .ins()
