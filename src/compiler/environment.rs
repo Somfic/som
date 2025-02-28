@@ -1,17 +1,20 @@
 use super::Compiler;
-use crate::ast::TypingValue;
+use crate::ast::{TypedFunctionDeclaration, TypingValue};
 use cranelift::{
-    codegen::ir::UserFuncName,
-    prelude::{EntityRef, FunctionBuilder, Variable},
+    codegen::ir::{Function, UserFuncName},
+    prelude::{
+        EntityRef, ExternalName, FunctionBuilder, FunctionBuilderContext, Signature, Variable,
+    },
 };
+use cranelift_jit::JITModule;
+use cranelift_module::{FuncId, Linkage, Module};
 use std::{borrow::Cow, cell::Cell, collections::HashMap, rc::Rc};
 
 pub struct CompileEnvironment<'env> {
     parent: Option<&'env CompileEnvironment<'env>>,
     variables: HashMap<Cow<'env, str>, Variable>,
-    functions: HashMap<Cow<'env, str>, u32>,
+    functions: HashMap<Cow<'env, str>, (FuncId, Signature)>,
     next_variable: Rc<Cell<usize>>,
-    next_function: Rc<Cell<u32>>,
 }
 
 impl<'env> CompileEnvironment<'env> {
@@ -21,24 +24,25 @@ impl<'env> CompileEnvironment<'env> {
             variables: HashMap::new(),
             functions: HashMap::new(),
             next_variable: Rc::new(Cell::new(0)),
-            next_function: Rc::new(Cell::new(0)),
         }
     }
 
     pub fn declare_function<'ast>(
         &mut self,
-        compiler: &'ast mut Compiler,
         name: Cow<'env, str>,
-    ) -> FunctionBuilder<'ast> {
-        compiler.jit.ctx.func.name = UserFuncName::user(0, self.next_function.get());
-        self.functions.insert(name, self.next_function.get());
-        self.next_function.set(self.next_function.get() + 1);
+        signature: Signature,
+        module: &mut JITModule,
+    ) -> FuncId {
+        let func_id = module
+            .declare_function(&name.clone(), Linkage::Export, &signature)
+            .unwrap();
 
-        let builder_context = &mut compiler.jit.builder_context;
-        FunctionBuilder::new(&mut compiler.jit.ctx.func, builder_context)
+        self.functions.insert(name, (func_id, signature));
+
+        func_id
     }
 
-    pub fn lookup_function(&self, name: &str) -> Option<&u32> {
+    pub fn lookup_function(&self, name: &str) -> Option<&(FuncId, Signature)> {
         self.functions
             .get(name)
             .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_function(name)))
@@ -69,7 +73,6 @@ impl<'env> CompileEnvironment<'env> {
             variables: self.variables.clone(),
             functions: self.functions.clone(),
             next_variable: Rc::clone(&self.next_variable),
-            next_function: Rc::clone(&self.next_function),
         }
     }
 }

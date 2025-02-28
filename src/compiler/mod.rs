@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        BinaryOperator, ExpressionValue, Module, Primitive, StatementValue, TypedExpression,
-        TypedModule, TypedStatement, TypingValue,
+        BinaryOperator, ExpressionValue, Primitive, StatementValue, TypedExpression, TypedModule,
+        TypedStatement, TypingValue,
     },
     prelude::*,
 };
@@ -12,11 +12,15 @@ use cranelift::{
         verifier::VerifierError,
         CompileError, CompiledCode,
     },
-    prelude::*,
+    prelude::{
+        isa::{CallConv, TargetIsa},
+        *,
+    },
 };
+use cranelift_module::{Linkage, Module};
+
 use cranelift_jit::{JITBuilder, JITModule};
 use environment::CompileEnvironment;
-use std::env;
 
 pub mod environment;
 
@@ -31,42 +35,75 @@ impl Compiler {
         &mut self,
         modules: Vec<TypedModule<'ast>>,
     ) -> CompilerResult<CompiledCode> {
+        let mut flag_builder = settings::builder();
+        flag_builder.set("use_colocated_libcalls", "false").unwrap();
+        flag_builder.set("is_pic", "false").unwrap();
+        let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
+            panic!("host machine is not supported: {}", msg);
+        });
+        let isa = isa_builder
+            .finish(settings::Flags::new(flag_builder))
+            .unwrap();
+
+        let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
+
         let mut compiled_modules = vec![];
 
         for module in modules {
             compiled_modules.push(self.compile_module(&module));
         }
 
-        let mut compiled = CompiledCode::new();
-        for module in compiled_modules {
-            compiled.append(module);
-        }
-        Ok(compiled)
+        todo!()
     }
 
-    fn compile_module<'ast>(&mut self, module: &TypedModule<'ast>) -> JITModule {
-        let builder = JITBuilder::new(
-            self.jit.module.isa(),
-            self.jit.module.triple(),
-            &*self.jit.module.flags(),
-        );
+    fn compile_module<'ast>(
+        &mut self,
+        builder: JITBuilder,
+        module: &TypedModule<'ast>,
+    ) -> JITModule {
+        let mut jit_module = JITModule::new(builder);
 
         let environment = &mut CompileEnvironment::new();
 
-        for (function_name, function) in &module.functions {
-            let mut builder = environment.declare_function(self, function_name.clone());
-            let body = compile_expression(&function.expression, &mut builder, environment);
+        // declare functions
+        for function in &module.functions {
+            let mut signature = Signature::new(isa.default_call_conv());
 
+            function.parameters.iter().for_each(|p| {
+                signature
+                    .params
+                    .push(AbiParam::new(convert_type(&p.1.value)));
+            });
+
+            signature
+                .returns
+                .push(AbiParam::new(convert_type(&function.expression.ty.value)));
+
+            environment.declare_function(function.name.clone(), signature, &mut jit_module);
+        }
+
+        // compile functions
+        for function in &module.functions {
+            let mut context = jit_module.make_context();
+            let (func_id, signature) = environment.lookup_function(&function.name).unwrap();
+
+            // TODO Get the function through the func_id
+            context.func =
+                Function::with_name_signature(UserFuncName::user(0, 0), signature.clone());
+
+            let mut func_ctx = FunctionBuilderContext::new();
+            let mut builder = FunctionBuilder::new(&mut context.func, &mut func_ctx);
+
+            let entry_block = builder.create_block();
+            builder.append_block_params_for_function_params(entry_block);
+            builder.switch_to_block(entry_block);
+
+            let body = compile_expression(&function.expression, &mut builder, environment);
             builder.ins().return_(&[body]);
             builder.finalize();
         }
 
-        let mut ctrl_plane = ControlPlane::default();
-        self.jit
-            .ctx
-            .compile(self.jit.module.isa(), &mut ctrl_plane)
-            .map_err(parse_error)
-            .cloned()
+        jit_module
     }
 }
 
@@ -177,15 +214,6 @@ fn compile_primitive<'ast>(
     }
 }
 
-pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
-    match ty {
-        TypingValue::Integer => types::I64,
-        TypingValue::Decimal => types::F64,
-        TypingValue::Boolean => types::I8,
-        _ => panic!("unsupported type"),
-    }
-}
-
 fn parse_error(error: CompileError<'_>) -> Vec<miette::Report> {
     match error.inner {
         codegen::CodegenError::Verifier(verifier_errors) => {
@@ -240,5 +268,13 @@ impl Label for VerifierError {
         };
 
         miette::LabeledSpan::new(Some(self.message.clone()), offset, length)
+    }
+}
+
+pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
+    match ty {
+        TypingValue::Integer => types::I64,
+        TypingValue::Boolean => types::I8,
+        _ => panic!("unsupported type"),
     }
 }
