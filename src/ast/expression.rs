@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt::Display};
 
-use super::{Statement, Type, TypedStatement};
+use super::{Statement, Typing, TypedStatement};
 
 #[derive(Debug, Clone)]
 pub struct Expression<'ast> {
@@ -12,7 +12,7 @@ pub struct Expression<'ast> {
 pub struct TypedExpression<'ast> {
     pub value: ExpressionValue<'ast, TypedStatement<'ast>, TypedExpression<'ast>>,
     pub span: miette::SourceSpan,
-    pub ty: Type<'ast>,
+    pub ty: Typing<'ast>,
 }
 
 #[derive(Debug, Clone)]

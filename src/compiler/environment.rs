@@ -1,5 +1,5 @@
 use super::Compiler;
-use crate::ast::TypeValue;
+use crate::ast::TypingValue;
 use cranelift::{
     codegen::ir::UserFuncName,
     prelude::{EntityRef, FunctionBuilder, Variable},
@@ -48,7 +48,7 @@ impl<'env> CompileEnvironment<'env> {
         &mut self,
         name: Cow<'env, str>,
         builder: &mut FunctionBuilder,
-        ty: &TypeValue,
+        ty: &TypingValue,
     ) -> Variable {
         let var = Variable::new(self.next_variable.get());
         self.next_variable.set(self.next_variable.get() + 1);

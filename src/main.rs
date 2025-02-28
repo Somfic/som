@@ -1,7 +1,6 @@
 mod prelude;
-use ast::{Type, TypedExpression, TypedStatement};
+use ast::TypedModule;
 use cranelift::codegen::CompiledCode;
-use miette::miette;
 pub use prelude::*;
 
 mod ast;
@@ -16,15 +15,47 @@ mod typer;
 const INPUT: &str = "{ let b = { 1 + 1; 1 }; b + 1 }";
 
 fn main() {
-    let result = tests::run(source_code);
+    let result = run(INPUT);
     println!("Result: {}", result);
 }
 
-fn parse(source_code: &str) -> ParserResult<Vec<TypedStatement<'_>>> {
-    let statements = parser::Parser::new(source_code).parse()?;
-    let statements = typer::Typer::new().type_check(statements)?;
+pub fn run(source_code: impl Into<String>) -> i64 {
+    let source_code = source_code.into();
+
+    println!("{}\n", source_code);
+
+    let statements = parse(&source_code)
+        .map_err(|errors| {
+            for error in errors {
+                eprintln!(
+                    "{:?}",
+                    miette::miette!(error).with_source_code(source_code.clone())
+                );
+            }
+        })
+        .expect("failed to parse expression");
+
+    let compiled = compile(statements)
+        .map_err(|error| {
+            for error in error {
+                eprintln!("{:?}", error);
+            }
+        })
+        .expect("failed to compile expression");
+
+    let result = runner::Runner::new(compiled)
+        .run()
+        .expect("failed to run expression");
+
+    result
 }
 
-fn compile(statements: Vec<TypedStatement<'_>>) -> CompilerResult<CompiledCode> {
-    compiler::Compiler::new().compile(statements)
+fn parse<'ast>(source_code: impl Into<String>) -> ParserResult<Vec<TypedModule<'ast>>> {
+    let source_code = source_code.into();
+    let modules = parser::Parser::new(Box::leak(source_code.into_boxed_str())).parse()?;
+    typer::Typer::new().type_check(modules)
+}
+
+fn compile<'ast>(modules: Vec<TypedModule<'ast>>) -> CompilerResult<CompiledCode> {
+    compiler::Compiler::new().compile(modules)
 }

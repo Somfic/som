@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use super::{expression, statement, Parser};
+use super::{expression, statement, typing, Parser};
 use crate::{
-    ast::{Expression, Statement, Type},
+    ast::{Expression, Statement, Typing},
     prelude::*,
     tokenizer::TokenKind,
 };
@@ -22,9 +22,9 @@ pub enum BindingPower {
     Primary = 10,
 }
 
-pub type TypeHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Type<'ast>>;
-pub type LeftTypeHandler<'ast> =
-    fn(&mut Parser<'ast>, Type, BindingPower) -> ParserResult<Type<'ast>>;
+pub type TypingHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Typing<'ast>>;
+pub type LeftTypingHandler<'ast> =
+    fn(&mut Parser<'ast>, Typing, BindingPower) -> ParserResult<Typing<'ast>>;
 pub type StatementHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Statement<'ast>>;
 pub type ExpressionHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Expression<'ast>>;
 pub type LeftExpressionHandler<'ast> =
@@ -34,8 +34,8 @@ pub struct Lookup<'ast> {
     pub statement_lookup: HashMap<TokenKind, StatementHandler<'ast>>,
     pub expression_lookup: HashMap<TokenKind, ExpressionHandler<'ast>>,
     pub left_expression_lookup: HashMap<TokenKind, LeftExpressionHandler<'ast>>,
-    pub type_lookup: HashMap<TokenKind, TypeHandler<'ast>>,
-    pub left_type_lookup: HashMap<TokenKind, LeftTypeHandler<'ast>>,
+    pub typing_lookup: HashMap<TokenKind, TypingHandler<'ast>>,
+    pub left_typing_lookup: HashMap<TokenKind, LeftTypingHandler<'ast>>,
     pub binding_power_lookup: HashMap<TokenKind, BindingPower>,
 }
 
@@ -81,26 +81,29 @@ impl<'ast> Lookup<'ast> {
         self
     }
 
-    pub(crate) fn add_type_handler(mut self, token: TokenKind, handler: TypeHandler<'ast>) -> Self {
-        if self.type_lookup.contains_key(&token) {
+    pub(crate) fn add_typing_handler(
+        mut self,
+        token: TokenKind,
+        handler: TypingHandler<'ast>,
+    ) -> Self {
+        if self.typing_lookup.contains_key(&token) {
             panic!("Token already has a type handler");
         }
 
-        self.type_lookup.insert(token, handler);
+        self.typing_lookup.insert(token, handler);
         self
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn add_left_type_handler(
+    pub(crate) fn add_left_typing_handler(
         mut self,
         token: TokenKind,
-        handler: LeftTypeHandler<'ast>,
+        handler: LeftTypingHandler<'ast>,
     ) -> Self {
-        if self.left_type_lookup.contains_key(&token) {
+        if self.left_typing_lookup.contains_key(&token) {
             panic!("Token already has a left type handler");
         }
 
-        self.left_type_lookup.insert(token, handler);
+        self.left_typing_lookup.insert(token, handler);
         self
     }
 }
@@ -112,8 +115,8 @@ impl Default for Lookup<'_> {
             expression_lookup: HashMap::new(),
             left_expression_lookup: HashMap::new(),
             binding_power_lookup: HashMap::new(),
-            type_lookup: HashMap::new(),
-            left_type_lookup: HashMap::new(),
+            typing_lookup: HashMap::new(),
+            left_typing_lookup: HashMap::new(),
         }
         .add_expression_handler(TokenKind::Integer, expression::parse_integer)
         .add_expression_handler(TokenKind::Decimal, expression::parse_decimal)
@@ -148,5 +151,7 @@ impl Default for Lookup<'_> {
             expression::parse_binary_divide,
         )
         .add_statement_handler(TokenKind::Let, statement::parse_let)
+        .add_typing_handler(TokenKind::Identifier, typing::parse_symbol)
+        .add_typing_handler(TokenKind::IntegerType, typing::parse_integer)
     }
 }
