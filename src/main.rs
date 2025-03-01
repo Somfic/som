@@ -17,7 +17,7 @@ fn main() {
     fib(1, 1)
 }
 
-fn fib(n ~ int) -> int {
+fn fib(n ~ int, result ~ bool) -> int {
     result if n < 2 else fib(n - 1) + fib(n - 2)
 }
 ";

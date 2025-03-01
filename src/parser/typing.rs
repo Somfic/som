@@ -9,7 +9,7 @@ use super::Parser;
 pub fn parse_symbol<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
     let token = parser
         .tokens
-        .expect(TokenKind::Identifier, "expected a symbol")?;
+        .expect(TokenKind::Identifier, "expected a type")?;
 
     let name = match token.value {
         TokenValue::Identifier(name) => name,
@@ -25,10 +25,21 @@ pub fn parse_symbol<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast
 pub fn parse_integer<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
     let token = parser
         .tokens
-        .expect(TokenKind::IntegerType, "expected an integer")?;
+        .expect(TokenKind::IntegerType, "expected an integer type")?;
 
     Ok(Typing {
         value: TypingValue::Integer,
+        span: token.span,
+    })
+}
+
+pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::BooleanType, "expected a boolean type")?;
+
+    Ok(Typing {
+        value: TypingValue::Boolean,
         span: token.span,
     })
 }
