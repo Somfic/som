@@ -14,11 +14,11 @@ mod typer;
 
 const INPUT: &str = "
 fn main() { 
-    fib(1, 1)
+    fib(1)
 }
 
-fn fib(n ~ int, result ~ bool) -> int {
-    result if n < 2 else fib(n - 1) + fib(n - 2)
+fn fib(n ~ int) -> int {
+    n if n < 2 else fib(n - 1) + fib(n - 2)
 }
 ";
 

@@ -261,9 +261,6 @@ impl Typer {
                 function_name,
                 arguments,
             } => {
-                println!("function call: {function_name}");
-                println!("arguments: {arguments:?}");
-
                 let function = environment.lookup_function(function_name).ok_or_else(|| {
                     vec![error::undefined_function(
                         format!("the function {function_name} is not defined"),
@@ -273,11 +270,7 @@ impl Typer {
                     .unwrap()]
                 })?;
 
-                println!("function: {function:?}");
-
                 if function.parameters.len() != arguments.len() {
-                    println!("mismatched arguments");
-
                     self.report_error(mismatched_arguments(
                         format!(
                             "expected {} arguments, but got {}",
