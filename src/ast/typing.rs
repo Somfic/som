@@ -33,6 +33,13 @@ impl<'ast> Typing<'ast> {
         }
     }
 
+    pub fn decimal(span: &SourceSpan) -> Self {
+        Self {
+            value: TypingValue::Decimal,
+            span: *span,
+        }
+    }
+
     pub fn symbol(span: &SourceSpan, name: Cow<'ast, str>) -> Self {
         Self {
             value: TypingValue::Symbol(name),
@@ -64,6 +71,7 @@ pub enum TypingValue<'ast> {
     Unknown,
     Integer,
     Boolean,
+    Decimal,
     Symbol(Cow<'ast, str>),
 }
 
@@ -78,6 +86,7 @@ impl Display for TypingValue<'_> {
         match &self {
             TypingValue::Unknown => write!(f, "unknown"),
             TypingValue::Integer => write!(f, "an integer"),
+            TypingValue::Decimal => write!(f, "a decimal"),
             TypingValue::Symbol(name) => write!(f, "{}", name),
             TypingValue::Boolean => write!(f, "a boolean"),
         }

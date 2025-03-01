@@ -75,6 +75,20 @@ impl<'ast> Parser<'ast> {
             }]);
         }
 
+        // set the main function to return an integer
+        for function in &mut functions {
+            if function.name == "main" {
+                if function.return_type.is_none() {
+                    function.return_type = Some(Typing::integer(&function.span));
+                } else {
+                    return Err(vec![miette::diagnostic! {
+                        help = "remove the return type",
+                        "main function must return an integer"
+                    }]);
+                }
+            }
+        }
+
         Ok(Module { functions })
     }
 
