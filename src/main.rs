@@ -1,10 +1,12 @@
 mod prelude;
 use ast::TypedModule;
 use cranelift::codegen::CompiledCode;
+use highlighter::SomHighlighter;
 pub use prelude::*;
 
 mod ast;
 mod compiler;
+mod highlighter;
 mod parser;
 mod runner;
 #[cfg(test)]
@@ -22,6 +24,18 @@ fn main() {
 ";
 
 fn main() {
+    miette::set_hook(Box::new(|_| {
+        Box::new(
+            miette::MietteHandlerOpts::new()
+                .terminal_links(true)
+                .unicode(true)
+                .context_lines(2)
+                .with_syntax_highlighting(SomHighlighter {})
+                .build(),
+        )
+    }))
+    .unwrap();
+
     let result = run(INPUT);
     println!("Result: {}", result);
 }
