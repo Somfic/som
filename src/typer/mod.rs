@@ -230,7 +230,7 @@ impl Typer {
                 }
 
                 Ok(TypedExpression {
-                    ty: truthy_ty.span(condition.span),
+                    ty: truthy_ty.span(truthy.span),
                     value: ExpressionValue::Conditional {
                         condition: Box::new(condition),
                         truthy: Box::new(truthy),
