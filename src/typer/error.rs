@@ -7,10 +7,14 @@ pub fn new_mismatched_types(
     left_ty: &Typing<'_>,
     right_ty: &Typing<'_>,
     hint: impl Into<String>,
-) -> MietteDiagnostic {
+) -> Option<MietteDiagnostic> {
     let message = message.into();
 
-    diagnostic!(
+    if left_ty.is_unknown() || right_ty.is_unknown() {
+        return None;
+    }
+
+    Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![
             left_ty.label(format!("{}", left_ty)),
@@ -18,22 +22,26 @@ pub fn new_mismatched_types(
         ],
         help = hint.into(),
         "{message}"
-    )
+    ))
 }
 
 pub fn mismatched_type(
     message: impl Into<String>,
     ty: &Typing<'_>,
     hint: impl Into<String>,
-) -> MietteDiagnostic {
+) -> Option<MietteDiagnostic> {
     let message = message.into();
 
-    diagnostic!(
+    if ty.is_unknown() {
+        return None;
+    }
+
+    Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![ty.label(format!("{}", ty)),],
         help = hint.into(),
         "{message}"
-    )
+    ))
 }
 
 pub fn mismatched_arguments(
@@ -41,7 +49,7 @@ pub fn mismatched_arguments(
     given_arguments: Vec<Expression>,
     expected_arguments: Vec<Typing>,
     hint: impl Into<String>,
-) -> MietteDiagnostic {
+) -> Option<MietteDiagnostic> {
     let message = message.into();
 
     let mut labels = Vec::new();
@@ -51,19 +59,19 @@ pub fn mismatched_arguments(
     for (i, argument) in expected_arguments.iter().enumerate() {
         labels.push(argument.label(format!("argument {i}")));
     }
-    diagnostic!(
+    Some(diagnostic!(
         severity = Severity::Error,
         labels = labels,
         help = hint.into(),
         "{message}"
-    )
+    ))
 }
 
 pub(crate) fn undefined_variable(
     message: impl Into<String>,
     identifier_name: &str,
     label: SourceSpan,
-) -> MietteDiagnostic {
+) -> Option<MietteDiagnostic> {
     let message = message.into();
 
     let label = LabeledSpan::new(
@@ -72,19 +80,19 @@ pub(crate) fn undefined_variable(
         label.len(),
     );
 
-    diagnostic!(
+    Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
         help = "create a variable with this name",
         "{message}"
-    )
+    ))
 }
 
 pub(crate) fn undefined_function(
     message: impl Into<String>,
     identifier_name: &str,
     label: SourceSpan,
-) -> MietteDiagnostic {
+) -> Option<MietteDiagnostic> {
     let message = message.into();
 
     let label = LabeledSpan::new(
@@ -93,10 +101,10 @@ pub(crate) fn undefined_function(
         label.len(),
     );
 
-    diagnostic!(
+    Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
         help = "create a function with this name",
         "{message}"
-    )
+    ))
 }
