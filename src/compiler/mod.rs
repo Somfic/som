@@ -324,6 +324,8 @@ pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
     match ty {
         TypingValue::Integer => types::I64,
         TypingValue::Boolean => types::I8,
-        _ => panic!("unsupported type {ty:?}"),
+        TypingValue::Decimal => types::F64,
+        TypingValue::Unknown => unreachable!(),
+        TypingValue::Symbol(cow) => unreachable!(),
     }
 }

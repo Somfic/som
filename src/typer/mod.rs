@@ -124,7 +124,11 @@ impl Typer {
                     ty: Typing::integer(&expression.span),
                     span: expression.span,
                 }),
-                Primitive::Decimal(_) => todo!("decimal types"),
+                Primitive::Decimal(_) => Ok(TypedExpression {
+                    value: ExpressionValue::Primitive(primitive.clone()),
+                    ty: Typing::decimal(&expression.span),
+                    span: expression.span,
+                }),
                 Primitive::String(_) => todo!("string types"),
                 Primitive::Character(_) => todo!("character types"),
                 Primitive::Boolean(_) => Ok(TypedExpression {
