@@ -22,6 +22,10 @@ impl<'ast> Typing<'ast> {
         }
     }
 
+    pub fn is_unknown(&self) -> bool {
+        matches!(self.value, TypingValue::Unknown)
+    }
+
     pub fn integer(span: &SourceSpan) -> Self {
         Self {
             value: TypingValue::Integer,

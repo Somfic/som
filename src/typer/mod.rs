@@ -39,8 +39,10 @@ impl Typer {
         }
     }
 
-    fn report_error(&mut self, error: MietteDiagnostic) {
-        self.errors.push(error);
+    fn report_error(&mut self, error: Option<MietteDiagnostic>) {
+        if let Some(error) = error {
+            self.errors.push(error);
+        }
     }
 
     fn type_check_module<'ast>(
@@ -259,16 +261,24 @@ impl Typer {
                 function_name,
                 arguments,
             } => {
+                println!("function call: {function_name}");
+                println!("arguments: {arguments:?}");
+
                 let function = environment.lookup_function(function_name).ok_or_else(|| {
                     vec![error::undefined_function(
                         format!("the function {function_name} is not defined"),
                         function_name,
                         expression.span,
-                    )]
+                    )
+                    .unwrap()]
                 })?;
 
+                println!("function: {function:?}");
+
                 if function.parameters.len() != arguments.len() {
-                    mismatched_arguments(
+                    println!("mismatched arguments");
+
+                    self.report_error(mismatched_arguments(
                         format!(
                             "expected {} arguments, but got {}",
                             function.parameters.len(),
@@ -281,7 +291,7 @@ impl Typer {
                             function.parameters.len(),
                             arguments.len()
                         ),
-                    );
+                    ));
                 }
 
                 let mut typed_arguments = Vec::new();
@@ -289,7 +299,10 @@ impl Typer {
                 for (i, argument) in arguments.iter().enumerate() {
                     let argument =
                         self.type_check_expression(argument, &mut environment.clone())?;
-                    let expected_ty = &expected_types[i];
+                    let expected_ty = &expected_types
+                        .get(i)
+                        .cloned()
+                        .unwrap_or(Typing::unknown(&argument.span));
 
                     if argument.ty != *expected_ty {
                         self.report_error(error::new_mismatched_types(
