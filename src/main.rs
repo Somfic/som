@@ -17,7 +17,13 @@ mod typer;
 const INPUT: &str = "
 fn main() { 
     let a = 1;
-    a = 2;
+
+    if true {
+        a = 2
+    } else {
+        a = 3
+    };
+
     a
 }
 ";
@@ -63,11 +69,9 @@ pub fn run(source_code: impl Into<String>) -> i64 {
         })
         .expect("failed to compile expression");
 
-    let result = runner::Runner::new()
+    runner::Runner::new()
         .run(compiled)
-        .expect("failed to run expression");
-
-    result
+        .expect("failed to run expression")
 }
 
 fn parse<'ast>(source_code: impl Into<String>) -> ParserResult<Vec<TypedModule<'ast>>> {
