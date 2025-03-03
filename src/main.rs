@@ -17,7 +17,7 @@ mod typer;
 const INPUT: &str = "
 fn main() { 
     let a = 1;
-    2 = 2;
+    a = 2;
     a
 }
 ";
