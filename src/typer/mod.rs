@@ -322,6 +322,19 @@ impl Typer {
                     span: expression.span,
                 })
             }
+            ExpressionValue::Assignment { name, value } => {
+                let value = self.type_check_expression(value, environment)?;
+                environment.assign_variable(name.clone(), value.ty.clone());
+
+                Ok(TypedExpression {
+                    value: ExpressionValue::Assignment {
+                        name: name.clone(),
+                        value: Box::new(value),
+                    },
+                    ty: Typing::unknown(&expression.span),
+                    span: expression.span,
+                })
+            }
         }
     }
 

@@ -291,3 +291,24 @@ pub fn parse_function_call<'ast>(
         },
     ))
 }
+
+pub fn parse_assignment<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    let name = match lhs.value {
+        ExpressionValue::Primitive(Primitive::Identifier(name)) => name,
+        _ => todo!("assignment on non-identifiers"),
+    };
+
+    let value = parser.parse_expression(bp)?;
+
+    Ok(Expression::at_multiple(
+        vec![lhs.span, value.span],
+        ExpressionValue::Assignment {
+            name,
+            value: Box::new(value),
+        },
+    ))
+}

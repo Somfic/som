@@ -6,7 +6,7 @@ use crate::{
 
 use super::{BindingPower, Parser};
 
-pub fn parse_let<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
+pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
     parser
         .tokens
         .expect(TokenKind::Let, "expected a variable declaration")?;

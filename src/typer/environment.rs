@@ -39,6 +39,21 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         self.variables.insert(name, ty);
     }
 
+    pub fn assign_variable(&mut self, name: Cow<'ast, str>, ty: Typing<'ast>) {
+        match self.lookup_variable(name.as_ref()) {
+            Some(existing_type) => {
+                if existing_type != &ty {
+                    panic!("type mismatch");
+                } else {
+                    self.variables.insert(name, ty);
+                }
+            }
+            None => {
+                panic!("variable not found");
+            }
+        }
+    }
+
     pub fn lookup_variable(&self, name: &str) -> Option<&Typing<'ast>> {
         self.variables
             .get(name)
