@@ -214,6 +214,12 @@ fn compile_expression<'ast>(
 
             builder.inst_results(call_inst)[0]
         }
+        ExpressionValue::Assignment { name, value } => {
+            let value = compile_expression(value, builder, environment, jit_module);
+            let var = environment.lookup_variable(name).unwrap();
+            builder.def_var(*var, value);
+            value
+        }
     }
 }
 

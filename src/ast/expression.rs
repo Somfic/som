@@ -43,6 +43,10 @@ pub enum ExpressionValue<'ast, Statement, Expression> {
         function_name: Cow<'ast, str>,
         arguments: Vec<Expression>,
     },
+    Assignment {
+        name: Cow<'ast, str>,
+        value: Box<Expression>,
+    },
 }
 
 #[derive(Debug, Clone)]
