@@ -1,3 +1,5 @@
+use miette::diagnostic;
+
 use super::{lookup::BindingPower, Parser};
 use crate::ast::{
     BinaryOperator, Expression, ExpressionValue, Primitive, Spannable, Statement, StatementValue,
@@ -298,9 +300,13 @@ pub fn parse_assignment<'ast>(
     bp: BindingPower,
 ) -> ParserResult<Expression<'ast>> {
     let name = match lhs.value {
-        ExpressionValue::Primitive(Primitive::Identifier(name)) => name,
-        _ => todo!("assignment on non-identifiers"),
-    };
+        ExpressionValue::Primitive(Primitive::Identifier(name)) => Ok(name),
+        _ => Err(vec![diagnostic!(
+            labels = vec![lhs.label("expected a variable name")],
+            help = "assignments can only be made to variables",
+            "invalid assign target"
+        )]),
+    }?;
 
     let value = parser.parse_expression(bp)?;
 
