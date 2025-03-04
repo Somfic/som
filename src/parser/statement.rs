@@ -31,3 +31,17 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
         StatementValue::Declaration(identifier_name, expression),
     ))
 }
+
+pub fn parse_condition<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
+    parser
+        .tokens
+        .expect(TokenKind::If, "expected an if statement")?;
+
+    let condition = parser.parse_expression(BindingPower::Logical)?;
+    let body = parser.parse_statement(false)?;
+
+    Ok(Statement::at_multiple(
+        vec![condition.span, body.span],
+        StatementValue::Condition(condition, Box::new(body)),
+    ))
+}

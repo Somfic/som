@@ -53,6 +53,13 @@ impl<'ast> Typing<'ast> {
             span: *span,
         }
     }
+
+    pub fn unit(span: &SourceSpan) -> Self {
+        Self {
+            value: TypingValue::Unit,
+            span: *span,
+        }
+    }
 }
 
 impl Typing<'_> {
@@ -72,6 +79,7 @@ pub enum TypingValue<'ast> {
     Integer,
     Boolean,
     Decimal,
+    Unit,
     Symbol(Cow<'ast, str>),
 }
 
@@ -89,6 +97,7 @@ impl Display for TypingValue<'_> {
             TypingValue::Decimal => write!(f, "a decimal"),
             TypingValue::Symbol(name) => write!(f, "{}", name),
             TypingValue::Boolean => write!(f, "a boolean"),
+            TypingValue::Unit => write!(f, "nothing"),
         }
     }
 }
