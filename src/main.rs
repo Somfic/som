@@ -19,7 +19,7 @@ fn main() {
     let a = 1;
 
     if true {
-        let a = 3;
+        let a = 4;
     };
 
     a
