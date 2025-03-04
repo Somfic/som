@@ -19,9 +19,7 @@ fn main() {
     let a = 1;
 
     if true {
-        a = 2
-    } else {
-        a = 3
+        let a = 3;
     };
 
     a
