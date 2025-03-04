@@ -1,6 +1,5 @@
 mod prelude;
 use ast::TypedModule;
-use cranelift::codegen::CompiledCode;
 use highlighter::SomHighlighter;
 pub use prelude::*;
 
