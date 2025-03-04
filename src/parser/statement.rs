@@ -13,11 +13,11 @@ pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'a
 
     let mut statements = Vec::new();
     loop {
-        if parser.tokens.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
-        }) {
+        if parser
+            .tokens
+            .peek()
+            .is_some_and(|token| token.kind == TokenKind::CurlyClose)
+        {
             break;
         }
 

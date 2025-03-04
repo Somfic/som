@@ -178,11 +178,11 @@ pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
     let mut last_is_return = true;
 
     loop {
-        if parser.tokens.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
-        }) {
+        if parser
+            .tokens
+            .peek()
+            .is_some_and(|token| token.kind == TokenKind::CurlyClose)
+        {
             break;
         }
 
@@ -192,11 +192,11 @@ pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
                 .expect(TokenKind::Semicolon, "expected a closing semicolon")?;
         }
 
-        if parser.tokens.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
-        }) {
+        if parser
+            .tokens
+            .peek()
+            .is_some_and(|token| token.kind == TokenKind::CurlyClose)
+        {
             last_is_return = false;
             break;
         }
@@ -265,11 +265,11 @@ pub fn parse_function_call<'ast>(
     let mut arguments = Vec::new();
 
     loop {
-        if parser.tokens.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
-        }) {
+        if parser
+            .tokens
+            .peek()
+            .is_some_and(|token| token.kind == TokenKind::ParenClose)
+        {
             break;
         }
 
@@ -301,11 +301,11 @@ pub fn parse_assignment<'ast>(
 ) -> ParserResult<Expression<'ast>> {
     let name = match lhs.value {
         ExpressionValue::Primitive(Primitive::Identifier(name)) => Ok(name),
-        _ => Err(vec![diagnostic!(
+        _ => Err(Diagnostics::with(diagnostic!(
             labels = vec![lhs.label("expected a variable name")],
             help = "assignments can only be made to variables",
             "invalid assign target"
-        )]),
+        ))),
     }?;
 
     let value = parser.parse_expression(bp)?;

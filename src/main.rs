@@ -15,13 +15,12 @@ mod typer;
 
 const INPUT: &str = "
 fn main() { 
-    let a = 1;
+    let dawd = a;
+    let a = 0;
+}
 
-    if true {
-        let a = 4;
-    };
-
-    a
+fn main() { 
+   0
 }
 ";
 
@@ -49,12 +48,7 @@ pub fn run(source_code: impl Into<String>) -> i64 {
 
     let statements = parse(&source_code)
         .map_err(|errors| {
-            for error in errors {
-                eprintln!(
-                    "{:?}",
-                    miette::miette!(error).with_source_code(source_code.clone())
-                );
-            }
+            errors.print(source_code);
         })
         .expect("failed to parse expression");
 
@@ -77,6 +71,6 @@ fn parse<'ast>(source_code: impl Into<String>) -> ParserResult<Vec<TypedModule<'
     typer::Typer::new().type_check(modules)
 }
 
-fn compile<'ast>(modules: Vec<TypedModule<'ast>>) -> CompilerResult<*const u8> {
+fn compile(modules: Vec<TypedModule<'_>>) -> CompilerResult<*const u8> {
     compiler::Compiler::new().compile(modules)
 }

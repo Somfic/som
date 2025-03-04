@@ -4,7 +4,7 @@ use miette::LabeledSpan;
 
 use crate::{
     ast::{TypedFunctionDeclaration, Typing, TypingValue},
-    ParserResult,
+    Diagnostic, Diagnostics, ParserResult,
 };
 
 #[derive(Debug, Clone)]
@@ -66,7 +66,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         function: TypedFunctionDeclaration<'ast>,
     ) -> ParserResult<()> {
         if let Some(existing_function) = self.lookup_function(name.as_ref()) {
-            return Err(vec![miette::diagnostic!(
+            return Err(Diagnostics::with(miette::diagnostic!(
                 labels = vec![
                     LabeledSpan::at(function.span, "duplicate function name"),
                     LabeledSpan::at(existing_function.span, "function name previously used here")
@@ -74,7 +74,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
                 help = format!("choose a different name for this function"),
                 "function `{}` already declared",
                 existing_function.name
-            )]);
+            )));
         }
 
         self.functions.insert(name, function);

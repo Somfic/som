@@ -7,7 +7,7 @@ pub struct Tokenizer<'ast> {
     source_code: &'ast str,
     remainder: &'ast str,
     byte_offset: usize,
-    peeked: Option<ParserResult<Token<'ast>>>,
+    peeked: Option<Token<'ast>>,
 }
 
 impl<'ast> Tokenizer<'ast> {
@@ -32,38 +32,41 @@ impl<'ast> Tokenizer<'ast> {
             Some(Ok(token)) if expected == token.kind => Ok(token),
 
             // The token is not what we expected
-            Some(Ok(token)) => Err(vec![miette::diagnostic! {
+            Some(Ok(token)) => Err(Diagnostics::with(miette::diagnostic! {
                 labels = vec![
                     token.label(format!("expected {} here", expected))
                 ],
                 help = format!("expected {}, got {} instead", expected, token.kind),
                 "{error_message}"
-            }]),
+            })),
             // There was an error parsing the token
             Some(Err(e)) => Err(e),
             // There are no more tokens to parse
-            None => Err(vec![miette::diagnostic! {
+            None => Err(Diagnostics::with(miette::diagnostic! {
                 labels = vec![
                     LabeledSpan::at_offset(self.byte_offset - 1, format!("expected {} here", expected))
                 ],
                 help = format!("{} was expected, but no more code was found", expected),
                 "unexpected end of input",
-            }]),
+            })),
         }
     }
 
-    pub fn peek(&mut self) -> Option<&ParserResult<Token<'ast>>> {
+    pub fn peek(&mut self) -> Option<&Token<'ast>> {
         if self.peeked.is_some() {
             return self.peeked.as_ref();
         }
 
-        self.peeked = self.next();
+        self.peeked = match self.next() {
+            Some(Ok(token)) => Some(token),
+            _ => None,
+        };
         self.peeked.as_ref()
     }
 
-    pub fn peek_expect(&mut self, expected: TokenKind) -> Option<&ParserResult<Token<'ast>>> {
+    pub fn peek_expect(&mut self, expected: TokenKind) -> Option<&Token<'ast>> {
         match self.peek() {
-            Some(Ok(token::Token { kind, .. })) => {
+            Some(Token { kind, .. }) => {
                 if *kind == expected {
                     self.peeked.as_ref()
                 } else {
@@ -99,7 +102,7 @@ impl<'ast> Iterator for Tokenizer<'ast> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.peeked.take() {
-            return Some(next);
+            return Some(Ok(next));
         }
 
         let mut chars = self.remainder.chars();
@@ -199,12 +202,12 @@ impl<'ast> Iterator for Tokenizer<'ast> {
                 } else if let Ok(num) = number.parse::<f64>() {
                     Ok((TokenKind::Decimal, TokenValue::Decimal(num)))
                 } else {
-                    Err(vec![miette::diagnostic! {
+                    Err(Diagnostics::with(miette::diagnostic! {
                         labels = vec![
                             LabeledSpan::at(self.byte_offset - number.len()..self.byte_offset, "this number")
                         ],
                         "invalid number"
-                    }])
+                    }))
                 }
             }
             '"' => {
@@ -233,23 +236,23 @@ impl<'ast> Iterator for Tokenizer<'ast> {
                     self.byte_offset += c.len_utf8();
                     Ok((TokenKind::Character, TokenValue::Character(c)))
                 } else {
-                    Err(vec![miette::diagnostic! {
+                    Err(Diagnostics::with(miette::diagnostic! {
                         labels = vec![
                             LabeledSpan::at(self.byte_offset..self.byte_offset + c.len_utf8(), "this character")
                         ],
                         "expected closing single quote"
-                    }])
+                    }))
                 }
             }
             ' ' | '\r' | '\t' | '\n' => {
                 return self.next();
             }
-            _ => Err(vec![miette::diagnostic! {
+            _ => Err(Diagnostics::with(miette::diagnostic! {
                 labels = vec![
                     LabeledSpan::at(self.byte_offset - c.len_utf8()..self.byte_offset, "this character")
                 ],
                 "unexpected character '{c}' in input"
-            }]),
+            })),
         };
 
         let byte_length = self

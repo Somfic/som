@@ -1,15 +1,16 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{Expression, FunctionDeclaration, Statement},
+    ast::{Expression, ExpressionValue, FunctionDeclaration, Primitive, Spannable, Statement},
     tokenizer::TokenKind,
-    ParserResult,
+    Diagnostics, ParserResult,
 };
 
 use super::{BindingPower, Parser};
 
 pub fn parse_function<'ast>(
     parser: &mut Parser<'ast>,
+    errors: &mut Diagnostics,
 ) -> ParserResult<FunctionDeclaration<'ast, Expression<'ast>>> {
     parser
         .tokens
@@ -32,11 +33,11 @@ pub fn parse_function<'ast>(
     let mut parameters = HashMap::new();
 
     loop {
-        if parser.tokens.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
-        }) {
+        if parser
+            .tokens
+            .peek()
+            .is_some_and(|token| token.kind == TokenKind::ParenClose)
+        {
             break;
         }
 
@@ -69,11 +70,11 @@ pub fn parse_function<'ast>(
         "expected the end of a parameter list",
     )?;
 
-    let return_type = if parser.tokens.peek().is_some_and(|token| {
-        token
-            .as_ref()
-            .is_ok_and(|token| token.kind == TokenKind::Arrow)
-    }) {
+    let return_type = if parser
+        .tokens
+        .peek()
+        .is_some_and(|token| token.kind == TokenKind::Arrow)
+    {
         parser
             .tokens
             .expect(TokenKind::Arrow, "expected a return type")?;
@@ -83,7 +84,13 @@ pub fn parse_function<'ast>(
         None
     };
 
-    let expression = parser.parse_expression(BindingPower::None)?;
+    let expression = parser
+        .parse_expression(BindingPower::None)
+        .map_err(|e| errors.extend(e))
+        .unwrap_or(Expression::at(
+            name_token.span,
+            ExpressionValue::Primitive(Primitive::Unit),
+        ));
 
     Ok(FunctionDeclaration {
         name,

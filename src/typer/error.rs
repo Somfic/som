@@ -49,7 +49,7 @@ pub fn mismatched_arguments(
     given_arguments: Vec<Expression>,
     expected_arguments: Vec<Typing>,
     hint: impl Into<String>,
-) -> Option<MietteDiagnostic> {
+) -> MietteDiagnostic {
     let message = message.into();
 
     let mut labels = Vec::new();
@@ -59,19 +59,20 @@ pub fn mismatched_arguments(
     for (i, argument) in expected_arguments.iter().enumerate() {
         labels.push(argument.label(format!("argument {i}")));
     }
-    Some(diagnostic!(
+
+    diagnostic!(
         severity = Severity::Error,
         labels = labels,
         help = hint.into(),
         "{message}"
-    ))
+    )
 }
 
 pub(crate) fn undefined_variable(
     message: impl Into<String>,
     identifier_name: &str,
     label: SourceSpan,
-) -> Option<MietteDiagnostic> {
+) -> MietteDiagnostic {
     let message = message.into();
 
     let label = LabeledSpan::new(
@@ -80,19 +81,19 @@ pub(crate) fn undefined_variable(
         label.len(),
     );
 
-    Some(diagnostic!(
+    diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
         help = "create a variable with this name",
         "{message}"
-    ))
+    )
 }
 
 pub(crate) fn undefined_function(
     message: impl Into<String>,
     identifier_name: &str,
     label: SourceSpan,
-) -> Option<MietteDiagnostic> {
+) -> MietteDiagnostic {
     let message = message.into();
 
     let label = LabeledSpan::new(
@@ -101,10 +102,10 @@ pub(crate) fn undefined_function(
         label.len(),
     );
 
-    Some(diagnostic!(
+    diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
         help = "create a function with this name",
         "{message}"
-    ))
+    )
 }
