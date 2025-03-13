@@ -1,6 +1,5 @@
 mod prelude;
 use ast::TypedModule;
-use cranelift::codegen::CompiledCode;
 use highlighter::SomHighlighter;
 pub use prelude::*;
 
@@ -19,9 +18,7 @@ fn main() {
     let a = 1;
 
     if true {
-        a = 2
-    } else {
-        a = 3
+        let a = 4;
     };
 
     a

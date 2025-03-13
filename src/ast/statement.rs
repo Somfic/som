@@ -16,6 +16,7 @@ pub enum StatementValue<'ast, Expression> {
     Block(Vec<GenericStatement<'ast, Expression>>),
     Expression(Expression),
     Declaration(Cow<'ast, str>, Expression),
+    Condition(Expression, Box<GenericStatement<'ast, Expression>>),
 }
 
 impl<'ast> GenericStatement<'ast, Expression<'ast>> {
