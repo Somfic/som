@@ -13,7 +13,7 @@ pretty_assertions = "1.4.1"
 cranelift = "0.117.0"
 cranelift-module = "0.117.0"
 cranelift-jit = "0.117.0"
-cranelift-native = "0.117.0"
+cranelift-native = "0.117.2"
 memmap2 = "0.9.5"
 
 [build]
