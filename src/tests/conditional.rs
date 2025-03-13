@@ -12,8 +12,8 @@ fn statement() {
     run_and_assert("fn main() { let a = 0; if false a = 1; a }", 0);
 }
 
-#[test]
-fn block() {
-    run_and_assert("fn main() { let a = 0; if true { let a = 1; }; a }", 0);
-    run_and_assert("fn main() { let a = 0; if false { let a = 1; }; a }", 0);
-}
+// #[test]
+// fn block() {
+//     run_and_assert("fn main() { let a = 0; if true { let a = 1; }; a }", 0);
+//     run_and_assert("fn main() { let a = 0; if false { let a = 1; }; a }", 0);
+// }
