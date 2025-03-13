@@ -11,7 +11,7 @@ miette = { version = "7.5.0", features = ["fancy", "syntect-highlighter"] }
 owo-colors = "4.1.0"
 pretty_assertions = "1.4.1"
 cranelift = "0.117.0"
-cranelift-module = "0.117.0"
+cranelift-module = "0.117.2"
 cranelift-jit = "0.117.0"
 cranelift-native = "0.117.0"
 memmap2 = "0.9.5"
