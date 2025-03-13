@@ -243,7 +243,32 @@ fn compile_statement<'ast>(
             let var = environment.declare_variable(name.clone(), builder, &expression.ty.value);
             builder.def_var(var, value);
         }
-        _ => unimplemented!("{statement:?}"),
+        StatementValue::Condition(condition, statement) => {
+            let cond_val = compile_expression(condition, builder, environment, jit_module);
+            let then_block = builder.create_block();
+            let else_block = builder.create_block();
+            let merge_block = builder.create_block();
+
+            builder
+                .ins()
+                .brif(cond_val, then_block, &[], else_block, &[]);
+
+            // compile truthy branch
+            builder.switch_to_block(then_block);
+            let mut environment = environment.block();
+            compile_statement(statement, builder, &mut environment, jit_module);
+            builder.ins().jump(merge_block, &[]);
+            builder.seal_block(then_block);
+
+            // compile falsy branch
+            builder.switch_to_block(else_block);
+            builder.ins().jump(merge_block, &[]);
+            builder.seal_block(else_block);
+
+            // merge the branches
+            builder.switch_to_block(merge_block);
+            builder.seal_block(merge_block);
+        }
     }
 }
 
@@ -331,7 +356,8 @@ pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
         TypingValue::Integer => types::I64,
         TypingValue::Boolean => types::I8,
         TypingValue::Decimal => types::F64,
-        TypingValue::Unknown => unreachable!(),
-        TypingValue::Symbol(cow) => unreachable!(),
+        TypingValue::Unknown => unreachable!("unknown type"),
+        TypingValue::Symbol(cow) => unreachable!("{cow}"),
+        TypingValue::Unit => types::I8,
     }
 }

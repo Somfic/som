@@ -160,6 +160,7 @@ impl Default for Lookup<'_> {
             BindingPower::Logical,
             expression::parse_binary_less_than,
         )
+        .add_statement_handler(TokenKind::CurlyOpen, statement::parse_block)
         .add_statement_handler(TokenKind::Let, statement::parse_declaration)
         .add_left_expression_handler(
             TokenKind::Equal,
@@ -169,5 +170,6 @@ impl Default for Lookup<'_> {
         .add_typing_handler(TokenKind::Identifier, typing::parse_symbol)
         .add_typing_handler(TokenKind::IntegerType, typing::parse_integer)
         .add_typing_handler(TokenKind::BooleanType, typing::parse_boolean)
+        .add_statement_handler(TokenKind::If, statement::parse_condition)
     }
 }

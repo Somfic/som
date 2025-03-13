@@ -113,7 +113,7 @@ impl<'ast> Parser<'ast> {
                 .ok_or(vec![miette::diagnostic! {
                     labels = vec![token.label("expected an expression here")],
                     help = format!("{} cannot be parsed as an expression", token.kind),
-                    "expected an expression, found {}", token.kind
+                    "expected an new expression, found {}", token.kind
                 }])?;
         let mut lhs = handler(self)?;
 
