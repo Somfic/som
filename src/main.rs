@@ -1,4 +1,6 @@
 mod prelude;
+use std::{fs::File, io::Read};
+
 use ast::TypedModule;
 use cranelift::codegen::CompiledCode;
 use highlighter::SomHighlighter;
@@ -16,15 +18,11 @@ mod typer;
 
 const INPUT: &str = "
 fn main() { 
-    let a = 1;
+    fib(10)
+}
 
-    if true {
-        a = 2
-    } else {
-        a = 3
-    };
-
-    a
+fn fib(n ~ int) -> int {
+    n if n < 2 else fib(n - 1) + fib(n - 2)
 }
 ";
 
