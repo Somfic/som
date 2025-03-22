@@ -217,7 +217,7 @@ pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
                 Some(StatementValue::Expression(expression)) => Some(expression),
                 _ => unreachable!(),
             },
-            _ => todo!("returning from a block with non-expression statements"),
+            _ => None, //todo!("returning from a block with non-expression statements"),
         }
     } else {
         None
