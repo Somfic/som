@@ -2,7 +2,6 @@ mod prelude;
 use std::{fs::File, io::Read};
 
 use ast::TypedModule;
-use cranelift::codegen::CompiledCode;
 use highlighter::SomHighlighter;
 pub use prelude::*;
 

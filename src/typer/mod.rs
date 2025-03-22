@@ -136,7 +136,11 @@ impl Typer {
                     ty: Typing::boolean(&expression.span),
                     span: expression.span,
                 }),
-                Primitive::Unit => todo!("unit types"),
+                Primitive::Unit => Ok(TypedExpression {
+                    value: ExpressionValue::Primitive(primitive.clone()),
+                    ty: Typing::unit(&expression.span),
+                    span: expression.span,
+                }),
                 Primitive::Identifier(value) => match environment.lookup_variable(value) {
                     Some(ty) => Ok(TypedExpression {
                         value: ExpressionValue::Primitive(primitive.clone()),
@@ -372,6 +376,24 @@ impl Typer {
                 Ok(TypedStatement {
                     value: StatementValue::Declaration(name.clone(), expression),
                     span: statement.span,
+                })
+            }
+            StatementValue::Condition(condition, statement) => {
+                let condition = self.type_check_expression(condition, environment)?;
+                let statement = self.type_check_statement(statement, environment)?;
+
+                if condition.ty.value != TypingValue::Boolean {
+                    self.report_error(error::new_mismatched_types(
+                        "expected the condition to be a boolean",
+                        &condition.ty,
+                        &Typing::boolean(&condition.span),
+                        format!("{} is not a boolean", condition.ty),
+                    ));
+                }
+
+                Ok(TypedStatement {
+                    span: condition.span,
+                    value: StatementValue::Condition(condition, Box::new(statement)),
                 })
             }
         }
