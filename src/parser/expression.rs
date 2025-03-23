@@ -158,6 +158,12 @@ pub fn parse_conditional<'ast>(
 
     let falsy = parser.parse_expression(bp)?;
 
+    if true {
+        // truthy
+    } else {
+        // falsy
+    }
+
     Ok(Expression::at_multiple(
         vec![condition.span, truthy.span, falsy.span],
         ExpressionValue::Conditional {
