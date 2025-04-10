@@ -267,6 +267,31 @@ fn compile_statement<'ast>(
             builder.switch_to_block(merge_block);
             builder.seal_block(merge_block);
         }
+        StatementValue::WhileLoop(condition, body) => {
+            let cond_block = builder.create_block();
+            let body_block = builder.create_block();
+            let merge_block = builder.create_block();
+
+            builder.ins().jump(cond_block, &[]);
+
+            // compile condition block
+            builder.switch_to_block(cond_block);
+            let cond_val = compile_expression(condition, builder, environment, jit_module);
+            builder
+                .ins()
+                .brif(cond_val, body_block, &[], merge_block, &[]);
+
+            // compile body block
+            builder.switch_to_block(body_block);
+            compile_statement(body, builder, environment, jit_module);
+            builder.ins().jump(cond_block, &[]);
+            builder.seal_block(body_block);
+
+            // merge block
+            builder.switch_to_block(merge_block);
+            builder.seal_block(merge_block);
+            builder.seal_block(cond_block);
+        }
     }
 }
 

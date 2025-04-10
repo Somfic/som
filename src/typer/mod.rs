@@ -1,6 +1,6 @@
 use crate::ast::{
-    Expression, ExpressionValue, Module, Primitive, Statement, StatementValue,
-    TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
+    Expression, ExpressionValue, Module, Primitive, Statement, StatementValue, TypedExpression,
+    TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
 };
 use crate::prelude::*;
 use environment::Environment;
@@ -394,6 +394,24 @@ impl Typer {
                 Ok(TypedStatement {
                     span: condition.span,
                     value: StatementValue::Condition(condition, Box::new(statement)),
+                })
+            }
+            StatementValue::WhileLoop(condition, statement) => {
+                let condition = self.type_check_expression(condition, environment)?;
+                let statement = self.type_check_statement(statement, environment)?;
+
+                if condition.ty.value != TypingValue::Boolean {
+                    self.report_error(error::new_mismatched_types(
+                        "expected the condition of loop to be a boolean",
+                        &condition.ty,
+                        &Typing::boolean(&condition.span),
+                        format!("{} is not a boolean", condition.ty),
+                    ));
+                }
+
+                Ok(TypedStatement {
+                    span: condition.span,
+                    value: StatementValue::WhileLoop(condition, Box::new(statement)),
                 })
             }
         }

@@ -171,5 +171,6 @@ impl Default for Lookup<'_> {
         .add_typing_handler(TokenKind::IntegerType, typing::parse_integer)
         .add_typing_handler(TokenKind::BooleanType, typing::parse_boolean)
         .add_statement_handler(TokenKind::If, statement::parse_condition)
+        .add_statement_handler(TokenKind::While, statement::parse_while_loop)
     }
 }

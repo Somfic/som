@@ -164,6 +164,8 @@ impl<'ast> Iterator for Tokenizer<'ast> {
                     "true" => Ok((TokenKind::Boolean, TokenValue::Boolean(true))),
                     "false" => Ok((TokenKind::Boolean, TokenValue::Boolean(false))),
                     "let" => Ok((TokenKind::Let, TokenValue::None)),
+                    "while" => Ok((TokenKind::While, TokenValue::None)),
+                    "for" => Ok((TokenKind::For, TokenValue::None)),
                     "type" => Ok((TokenKind::Type, TokenValue::None)),
                     "struct" => Ok((TokenKind::Struct, TokenValue::None)),
                     "enum" => Ok((TokenKind::Enum, TokenValue::None)),
