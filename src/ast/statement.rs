@@ -1,6 +1,6 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::borrow::Cow;
 
-use super::{Expression, TypedExpression, Typing};
+use super::{Expression, TypedExpression};
 
 pub type TypedStatement<'ast> = GenericStatement<'ast, TypedExpression<'ast>>;
 pub type Statement<'ast> = GenericStatement<'ast, Expression<'ast>>;

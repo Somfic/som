@@ -3,7 +3,7 @@ use std::{borrow::Cow, collections::HashMap};
 use miette::LabeledSpan;
 
 use crate::{
-    ast::{TypedFunctionDeclaration, Typing, TypingValue},
+    ast::{TypedFunctionDeclaration, Typing},
     ParserResult,
 };
 

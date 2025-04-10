@@ -1,11 +1,7 @@
-use super::Compiler;
 use crate::ast::{TypedFunctionDeclaration, TypingValue};
-use cranelift::{
-    codegen::ir::{Function, UserFuncName},
-    prelude::{
-        EntityRef, ExternalName, FunctionBuilder, FunctionBuilderContext, Signature, Variable,
-    },
-};
+use cranelift::prelude::{
+        EntityRef, FunctionBuilder, Signature, Variable,
+    };
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
 use std::{borrow::Cow, cell::Cell, collections::HashMap, rc::Rc};

@@ -7,13 +7,13 @@ use crate::{
 };
 use cranelift::{
     codegen::{
-        ir::{Function, UserExternalNameRef, UserFuncName},
+        ir::{Function, UserFuncName},
         verifier::VerifierError,
         CompileError,
     },
     prelude::*,
 };
-use cranelift_module::{Linkage, Module};
+use cranelift_module::Module;
 
 use cranelift_jit::{JITBuilder, JITModule};
 use environment::CompileEnvironment;
@@ -27,7 +27,7 @@ impl Compiler {
         Self {}
     }
 
-    pub fn compile<'ast>(&mut self, modules: Vec<TypedModule<'ast>>) -> CompilerResult<*const u8> {
+    pub fn compile(&mut self, modules: Vec<TypedModule<'_>>) -> CompilerResult<*const u8> {
         let mut flag_builder = settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
         flag_builder.set("is_pic", "false").unwrap();
@@ -95,9 +95,7 @@ impl Compiler {
                 builder.finalize();
 
                 // define the function in the jit_module
-                jit_module
-                    .define_function(func_id.clone(), &mut context)
-                    .unwrap();
+                jit_module.define_function(func_id, &mut context).unwrap();
             }
         }
 

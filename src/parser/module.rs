@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{Expression, FunctionDeclaration, Statement},
+    ast::{Expression, FunctionDeclaration},
     tokenizer::TokenKind,
     ParserResult,
 };

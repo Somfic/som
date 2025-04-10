@@ -2,7 +2,7 @@ use miette::diagnostic;
 
 use super::{lookup::BindingPower, Parser};
 use crate::ast::{
-    BinaryOperator, Expression, ExpressionValue, Primitive, Spannable, Statement, StatementValue,
+    BinaryOperator, Expression, ExpressionValue, Primitive, Spannable, StatementValue,
     UnaryOperator,
 };
 use crate::prelude::*;
