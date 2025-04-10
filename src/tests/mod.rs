@@ -5,6 +5,7 @@ mod block;
 mod conditional;
 mod function;
 mod group;
+mod loops;
 mod unary;
 mod variables;
 

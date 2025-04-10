@@ -74,3 +74,17 @@ pub fn parse_condition<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statemen
         StatementValue::Condition(condition, Box::new(body)),
     ))
 }
+
+pub fn parse_while_loop<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
+    parser
+        .tokens
+        .expect(TokenKind::While, "expected a while statement")?;
+
+    let condition = parser.parse_expression(BindingPower::None)?;
+    let body = parser.parse_statement(false)?;
+
+    Ok(Statement::at_multiple(
+        vec![condition.span, body.span],
+        StatementValue::WhileLoop(condition, Box::new(body)),
+    ))
+}

@@ -17,6 +17,7 @@ pub enum StatementValue<'ast, Expression> {
     Expression(Expression),
     Declaration(Cow<'ast, str>, Expression),
     Condition(Expression, Box<GenericStatement<'ast, Expression>>),
+    WhileLoop(Expression, Box<GenericStatement<'ast, Expression>>),
 }
 
 impl<'ast> GenericStatement<'ast, Expression<'ast>> {
