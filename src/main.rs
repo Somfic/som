@@ -1,5 +1,4 @@
 mod prelude;
-use std::{fs::File, io::Read};
 
 use ast::TypedModule;
 use highlighter::SomHighlighter;
@@ -77,6 +76,6 @@ fn parse<'ast>(source_code: impl Into<String>) -> ParserResult<Vec<TypedModule<'
     typer::Typer::new().type_check(modules)
 }
 
-fn compile<'ast>(modules: Vec<TypedModule<'ast>>) -> CompilerResult<*const u8> {
+fn compile(modules: Vec<TypedModule<'_>>) -> CompilerResult<*const u8> {
     compiler::Compiler::new().compile(modules)
 }

@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOperator, Expression, ExpressionValue, Module, Primitive, Statement, StatementValue,
+    Expression, ExpressionValue, Module, Primitive, Statement, StatementValue,
     TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
 };
 use crate::prelude::*;

@@ -1,6 +1,4 @@
 use crate::prelude::*;
-use cranelift::codegen::CompiledCode;
-use memmap2::MmapMut;
 
 pub struct Runner {}
 
