@@ -1,0 +1,25 @@
+intrinsic assert(condition ~ bool) ~ unit
+
+fn main() {
+    assert(1 + 1 == 2);
+    assert(1 + 2 + 3 == 6);
+    assert(1 + 2 + 3 + 4 + 5 == 15);
+    
+    assert(1 - 1 == 0);
+    assert(1 - 2 - 3 == -4);
+    assert(1 - 2 - 3 - 4 - 5 == -13);
+    
+    assert(1 * 1 == 1);
+    assert(1 * 2 * 3 == 6);
+    assert(1 * 2 * 3 * 4 * 5 == 120);
+    
+    assert(1 / 1 == 1);
+    assert(1 / 2 / 3 == 0);
+    assert(1 / 2 / 3 / 4 / 5 == 0);
+    
+    assert(1 == 1);
+    assert(!(1 == 2));
+    assert(!(1 == 2 == 3));
+    assert(1 == 2 == 2);
+    assert(!(1 == 2 == 1));
+}

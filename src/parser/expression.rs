@@ -98,6 +98,62 @@ pub fn parse_binary_less_than<'ast>(
     parse_binary_expression(parser, lhs, bp, BinaryOperator::LessThan)
 }
 
+pub fn parse_binary_greater_than<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::GreaterThan)
+}
+
+pub fn parse_binary_less_than_or_equal<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::LessThanOrEqual)
+}
+
+pub fn parse_binary_greater_than_or_equal<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::GreaterThanOrEqual)
+}
+
+pub fn parse_binary_equal<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Equality)
+}
+
+pub fn parse_binary_not_equal<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Inequality)
+}
+
+pub fn parse_binary_and<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::And)
+}
+
+pub fn parse_binary_or<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    parse_binary_expression(parser, lhs, bp, BinaryOperator::Or)
+}
+
 pub fn parse_group<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
     let token = parser
         .tokens
@@ -112,6 +168,22 @@ pub fn parse_group<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
     Ok(Expression::at_multiple(
         vec![token.span, expression.span],
         ExpressionValue::Group(Box::new(expression)),
+    ))
+}
+
+pub fn parse_unary_negation<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::Not, "expected a negation sign")?;
+
+    let expression = parser.parse_expression(BindingPower::Unary)?;
+
+    Ok(Expression::at_multiple(
+        vec![token.span, expression.span],
+        ExpressionValue::Unary {
+            operator: UnaryOperator::Negate,
+            operand: Box::new(expression),
+        },
     ))
 }
 
@@ -292,7 +364,7 @@ pub fn parse_function_call<'ast>(
         .expect(TokenKind::ParenClose, "expected the end of a function call")?;
 
     Ok(Expression::at_multiple(
-        vec![lhs.span],
+        vec![lhs.span, close.span],
         ExpressionValue::FunctionCall {
             function_name,
             arguments,

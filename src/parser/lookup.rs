@@ -121,6 +121,7 @@ impl Default for Lookup<'_> {
         .add_expression_handler(TokenKind::Integer, expression::parse_integer)
         .add_expression_handler(TokenKind::Decimal, expression::parse_decimal)
         .add_expression_handler(TokenKind::ParenOpen, expression::parse_group)
+        .add_expression_handler(TokenKind::Not, expression::parse_unary_negation)
         .add_expression_handler(TokenKind::Minus, expression::parse_unary_negative)
         .add_expression_handler(TokenKind::Boolean, expression::parse_boolean)
         .add_expression_handler(TokenKind::CurlyOpen, expression::parse_block)
@@ -160,6 +161,41 @@ impl Default for Lookup<'_> {
             BindingPower::Logical,
             expression::parse_binary_less_than,
         )
+        .add_left_expression_handler(
+            TokenKind::GreaterThan,
+            BindingPower::Logical,
+            expression::parse_binary_greater_than,
+        )
+        .add_left_expression_handler(
+            TokenKind::LessThanOrEqual,
+            BindingPower::Logical,
+            expression::parse_binary_less_than_or_equal,
+        )
+        .add_left_expression_handler(
+            TokenKind::GreaterThanOrEqual,
+            BindingPower::Logical,
+            expression::parse_binary_greater_than_or_equal,
+        )
+        .add_left_expression_handler(
+            TokenKind::Equality,
+            BindingPower::Logical,
+            expression::parse_binary_equal,
+        )
+        .add_left_expression_handler(
+            TokenKind::Inequality,
+            BindingPower::Logical,
+            expression::parse_binary_not_equal,
+        )
+        .add_left_expression_handler(
+            TokenKind::And,
+            BindingPower::Logical,
+            expression::parse_binary_and,
+        )
+        .add_left_expression_handler(
+            TokenKind::Or,
+            BindingPower::Logical,
+            expression::parse_binary_or,
+        )
         .add_statement_handler(TokenKind::CurlyOpen, statement::parse_block)
         .add_statement_handler(TokenKind::Let, statement::parse_declaration)
         .add_left_expression_handler(
@@ -167,6 +203,7 @@ impl Default for Lookup<'_> {
             BindingPower::Assignment,
             expression::parse_assignment,
         )
+        .add_typing_handler(TokenKind::UnitType, typing::parse_unit)
         .add_typing_handler(TokenKind::Identifier, typing::parse_symbol)
         .add_typing_handler(TokenKind::IntegerType, typing::parse_integer)
         .add_typing_handler(TokenKind::BooleanType, typing::parse_boolean)

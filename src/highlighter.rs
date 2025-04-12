@@ -30,10 +30,11 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                         | TokenKind::Struct
                         | TokenKind::Enum
                         | TokenKind::Function
+                        | TokenKind::Intrinsic
                         | TokenKind::Trait
                         | TokenKind::While
                         | TokenKind::For
-                        | TokenKind::Return => Style::new().fg_rgb::<197, 120, 221>(),
+                        | TokenKind::Return => Style::new().fg_rgb::<197, 120, 221>().italic(),
                         TokenKind::Identifier => Style::new().fg_rgb::<224, 108, 117>(),
                         TokenKind::String | TokenKind::Character => {
                             Style::new().fg_rgb::<152, 195, 121>().italic()

@@ -146,6 +146,8 @@ pub enum TokenKind {
 
     /// A function keyword; `fn`.
     Function,
+    /// An intrinsic keyword; `intrinsic`.
+    Intrinsic,
     /// A return keyword; `return`.
     Return,
 
@@ -170,6 +172,8 @@ pub enum TokenKind {
     /// A trait keyword; `trait`.
     Trait,
 
+    /// The unit type; `unit`.
+    UnitType,
     /// The boolean type; `bool`.
     BooleanType,
     /// The integer type; `int`.
@@ -217,6 +221,7 @@ impl Display for TokenKind {
             TokenKind::Let => write!(f, "`let`"),
             TokenKind::Type => write!(f, "`type`"),
             TokenKind::Function => write!(f, "`fn`"),
+            TokenKind::Intrinsic => write!(f, "`intrinsic`"),
             TokenKind::Return => write!(f, "`return`"),
             TokenKind::Boolean => write!(f, "a boolean value"),
             TokenKind::Integer => write!(f, "an integer value"),
@@ -238,6 +243,7 @@ impl Display for TokenKind {
             TokenKind::And => write!(f, "`&&`"),
             TokenKind::Or => write!(f, "`||`"),
             TokenKind::Trait => write!(f, "`trait`"),
+            TokenKind::UnitType => write!(f, "a unit type"),
             TokenKind::BooleanType => write!(f, "a boolean type"),
             TokenKind::IntegerType => write!(f, "an integer type"),
             TokenKind::DecimalType => write!(f, "a decimal type"),

@@ -13,7 +13,7 @@ use cranelift::{
     },
     prelude::*,
 };
-use cranelift_module::Module;
+use cranelift_module::{Linkage, Module};
 
 use cranelift_jit::{JITBuilder, JITModule};
 use environment::CompileEnvironment;
@@ -42,7 +42,23 @@ impl Compiler {
         let mut jit_module = JITModule::new(builder);
         let mut environment = CompileEnvironment::new();
 
-        // first, declare all functions from all modules
+        // declare all intrinsic functions from all modules
+        for module in &modules {
+            for function in &module.intrinsic_functions {
+                let mut signature = Signature::new(isa.default_call_conv());
+                for p in &function.parameters {
+                    signature
+                        .params
+                        .push(AbiParam::new(convert_type(&p.1.value)));
+                }
+                signature
+                    .returns
+                    .push(AbiParam::new(convert_type(&function.return_type.value)));
+                environment.declare_intrinsic(function, signature, &mut jit_module);
+            }
+        }
+
+        // declare all functions from all modules
         for module in &modules {
             for function in &module.functions {
                 let mut signature = Signature::new(isa.default_call_conv());
@@ -58,13 +74,56 @@ impl Compiler {
             }
         }
 
+        // compile each intrinsic function
+        for module in &modules {
+            for function in &module.intrinsic_functions {
+                let mut context = jit_module.make_context();
+                let (func_id, signature) = {
+                    let lookup = environment.lookup_function(&function.name).unwrap();
+                    (lookup.0, lookup.1.clone())
+                };
+                context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature);
+                let mut func_ctx = FunctionBuilderContext::new();
+                let mut builder = FunctionBuilder::new(&mut context.func, &mut func_ctx);
+
+                let entry_block = builder.create_block();
+                builder.append_block_params_for_function_params(entry_block);
+                builder.switch_to_block(entry_block);
+
+                let block_params = builder.block_params(entry_block).to_vec();
+                for (i, (param, param_ty)) in function.parameters.iter().enumerate() {
+                    let variable =
+                        environment.declare_variable(param.clone(), &mut builder, &param_ty.value);
+
+                    builder.def_var(variable, block_params[i]);
+                }
+
+                match function.name.as_ref() {
+                    "assert" => {
+                        let cond = block_params[0];
+                        let code = TrapCode::unwrap_user(123);
+                        builder.ins().trapz(cond, code);
+                        let unit_val = builder.ins().iconst(types::I8, 0);
+                        builder.ins().return_(&[unit_val]);
+                    }
+                    _ => panic!("unknown intrinsic function"),
+                };
+
+                builder.seal_block(entry_block);
+                builder.finalize();
+
+                // define the function in the jit_module
+                jit_module.define_function(func_id, &mut context).unwrap();
+            }
+        }
+
         // next, compile each function
         for module in &modules {
             for function in &module.functions {
                 let mut context = jit_module.make_context();
-                let (func_id, signature, declaration) = {
+                let (func_id, signature) = {
                     let lookup = environment.lookup_function(&function.name).unwrap();
-                    (lookup.0, lookup.1.clone(), lookup.2)
+                    (lookup.0, lookup.1.clone())
                 };
                 context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature);
                 let mut func_ctx = FunctionBuilderContext::new();
@@ -131,7 +190,28 @@ fn compile_expression<'ast>(
                         .ins()
                         .icmp(IntCC::SignedLessThan, left_val, right_val)
                 }
-                _ => unimplemented!("{operator:?}"),
+                BinaryOperator::Modulo => todo!(),
+                BinaryOperator::Equality => builder.ins().icmp(IntCC::Equal, left_val, right_val),
+                BinaryOperator::Inequality => {
+                    builder.ins().icmp(IntCC::NotEqual, left_val, right_val)
+                }
+                BinaryOperator::LessThanOrEqual => {
+                    builder
+                        .ins()
+                        .icmp(IntCC::SignedLessThanOrEqual, left_val, right_val)
+                }
+                BinaryOperator::GreaterThan => {
+                    builder
+                        .ins()
+                        .icmp(IntCC::SignedGreaterThan, left_val, right_val)
+                }
+                BinaryOperator::GreaterThanOrEqual => {
+                    builder
+                        .ins()
+                        .icmp(IntCC::SignedGreaterThanOrEqual, left_val, right_val)
+                }
+                BinaryOperator::And => todo!(),
+                BinaryOperator::Or => todo!(),
             }
         }
         ExpressionValue::Group(expression) => {
@@ -203,7 +283,7 @@ fn compile_expression<'ast>(
                 .map(|arg| compile_expression(arg, builder, environment, jit_module))
                 .collect();
 
-            let (func_id, _signature, _declaration) = environment
+            let (func_id, _signature) = environment
                 .lookup_function(function_name)
                 .expect("function not declared");
 

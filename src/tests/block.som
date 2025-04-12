@@ -1,0 +1,7 @@
+intrinsic assert(condition ~ bool) ~ unit
+
+fn main() {
+    assert( { 1 + 1; 1 + 1 } == 2);
+    assert( { 1 + 1; 1 + 1; 0 } == 0);
+    assert( { { 1 + 1; 1 + 1; }; 0 } == 0);
+}

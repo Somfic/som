@@ -1,7 +1,5 @@
-use crate::ast::{TypedFunctionDeclaration, TypingValue};
-use cranelift::prelude::{
-        EntityRef, FunctionBuilder, Signature, Variable,
-    };
+use crate::ast::{IntrinsicFunctionDeclaration, TypedFunctionDeclaration, TypingValue};
+use cranelift::prelude::{EntityRef, FunctionBuilder, Signature, Variable};
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
 use std::{borrow::Cow, cell::Cell, collections::HashMap, rc::Rc};
@@ -9,7 +7,7 @@ use std::{borrow::Cow, cell::Cell, collections::HashMap, rc::Rc};
 pub struct CompileEnvironment<'env> {
     parent: Option<&'env CompileEnvironment<'env>>,
     variables: HashMap<Cow<'env, str>, Variable>,
-    functions: HashMap<Cow<'env, str>, (FuncId, Signature, &'env TypedFunctionDeclaration<'env>)>,
+    functions: HashMap<Cow<'env, str>, (FuncId, Signature)>,
     next_variable: Rc<Cell<usize>>,
 }
 
@@ -23,6 +21,22 @@ impl<'env> CompileEnvironment<'env> {
         }
     }
 
+    pub fn declare_intrinsic<'ast>(
+        &mut self,
+        function: &'env IntrinsicFunctionDeclaration<'ast>,
+        signature: Signature,
+        module: &mut JITModule,
+    ) -> FuncId {
+        let func_id = module
+            .declare_function(&function.name, Linkage::Export, &signature)
+            .unwrap();
+
+        self.functions
+            .insert(function.name.clone(), (func_id, signature));
+
+        func_id
+    }
+
     pub fn declare_function<'ast>(
         &mut self,
         function: &'env TypedFunctionDeclaration<'ast>,
@@ -34,15 +48,12 @@ impl<'env> CompileEnvironment<'env> {
             .unwrap();
 
         self.functions
-            .insert(function.name.clone(), (func_id, signature, function));
+            .insert(function.name.clone(), (func_id, signature));
 
         func_id
     }
 
-    pub fn lookup_function(
-        &self,
-        name: &str,
-    ) -> Option<&(FuncId, Signature, &'env TypedFunctionDeclaration<'env>)> {
+    pub fn lookup_function(&self, name: &str) -> Option<&(FuncId, Signature)> {
         self.functions
             .get(name)
             .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_function(name)))

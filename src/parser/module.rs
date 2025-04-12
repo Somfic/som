@@ -1,12 +1,88 @@
 use std::collections::HashMap;
 
 use crate::{
-    ast::{Expression, FunctionDeclaration},
+    ast::{Expression, FunctionDeclaration, IntrinsicFunctionDeclaration},
     tokenizer::TokenKind,
     ParserResult,
 };
 
 use super::{BindingPower, Parser};
+
+pub fn parse_intrinsic_function<'ast>(
+    parser: &mut Parser<'ast>,
+) -> ParserResult<IntrinsicFunctionDeclaration<'ast>> {
+    parser.tokens.expect(
+        TokenKind::Intrinsic,
+        "expected an intrinsic function declaration",
+    )?;
+
+    let name_token = parser
+        .tokens
+        .expect(TokenKind::Identifier, "expected a function name")?;
+
+    let name = match name_token.value {
+        crate::tokenizer::TokenValue::Identifier(name) => name,
+        _ => unreachable!(),
+    };
+
+    parser.tokens.expect(
+        TokenKind::ParenOpen,
+        "expected the start of a parameter list",
+    )?;
+
+    let mut parameters = HashMap::new();
+
+    loop {
+        if parser.tokens.peek().is_some_and(|token| {
+            token
+                .as_ref()
+                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
+        }) {
+            break;
+        }
+
+        if !parameters.is_empty() {
+            parser
+                .tokens
+                .expect(TokenKind::Comma, "expected a comma between parameters")?;
+        }
+
+        let parameter = parser
+            .tokens
+            .expect(TokenKind::Identifier, "expected a parameter name")?;
+
+        let parameter = match parameter.value {
+            crate::tokenizer::TokenValue::Identifier(name) => name,
+            _ => unreachable!(),
+        };
+
+        parser
+            .tokens
+            .expect(TokenKind::Tilde, "expected a parameter type")?;
+
+        let parameter_type = parser.parse_typing(BindingPower::None)?;
+
+        parameters.insert(parameter, parameter_type);
+    }
+
+    parser.tokens.expect(
+        TokenKind::ParenClose,
+        "expected the end of a parameter list",
+    )?;
+
+    parser
+        .tokens
+        .expect(TokenKind::Tilde, "expected a return type")?;
+
+    let return_type = parser.parse_typing(BindingPower::None)?;
+
+    Ok(IntrinsicFunctionDeclaration {
+        name,
+        span: name_token.span,
+        parameters,
+        return_type,
+    })
+}
 
 pub fn parse_function<'ast>(
     parser: &mut Parser<'ast>,

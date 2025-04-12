@@ -43,3 +43,14 @@ pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'as
         span: token.span,
     })
 }
+
+pub fn parse_unit<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::UnitType, "expected an unit type")?;
+
+    Ok(Typing {
+        value: TypingValue::Unit,
+        span: token.span,
+    })
+}
