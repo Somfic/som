@@ -19,7 +19,7 @@ fn parameter_return_value() {
 #[test]
 fn rescursion() {
     let source_code =
-        "fn fib(n ~ int) -> int n if n < 2 else fib(n - 1) + fib(n - 2) fn main() fib(10)";
+        "fn fib(n ~ int) ~ int n if n < 2 else fib(n - 1) + fib(n - 2) fn main() fib(10)";
     let expected = 55;
 
     run_and_assert(source_code, expected);

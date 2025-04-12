@@ -19,7 +19,7 @@ fn main() {
     fib(10)
 }
 
-fn fib(n ~ int) -> int {
+fn fib(n ~ int) ~ int {
     n if n < 2 else fib(n - 1) + fib(n - 2)
 }
 ";
