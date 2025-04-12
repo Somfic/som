@@ -1,4 +1,4 @@
-pub use crate::run;
+use crate::runner::run;
 
 #[test]
 fn binary() {

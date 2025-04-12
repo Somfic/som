@@ -460,7 +460,7 @@ pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
         TypingValue::Boolean => types::I8,
         TypingValue::Decimal => types::F64,
         TypingValue::Unknown => unreachable!("unknown type"),
-        TypingValue::Symbol(cow) => unreachable!("{cow}"),
+        TypingValue::Symbol(cow) => todo!("{cow}"),
         TypingValue::Unit => types::I8,
     }
 }

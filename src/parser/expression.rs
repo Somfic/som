@@ -40,6 +40,22 @@ pub fn parse_decimal<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression
     ))
 }
 
+pub fn parse_string<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::String, "expected a string")?;
+
+    let value = match token.value {
+        TokenValue::String(value) => value,
+        _ => unreachable!(),
+    };
+
+    Ok(Expression::at(
+        token.span,
+        ExpressionValue::Primitive(Primitive::String(value)),
+    ))
+}
+
 fn parse_binary_expression<'ast>(
     parser: &mut Parser<'ast>,
     lhs: Expression<'ast>,
@@ -359,12 +375,12 @@ pub fn parse_function_call<'ast>(
         arguments.push(argument);
     }
 
-    let close = parser
+    parser
         .tokens
         .expect(TokenKind::ParenClose, "expected the end of a function call")?;
 
     Ok(Expression::at_multiple(
-        vec![lhs.span, close.span],
+        vec![lhs.span],
         ExpressionValue::FunctionCall {
             function_name,
             arguments,
