@@ -1,6 +1,7 @@
 use crate::ast::{
-    Expression, ExpressionValue, Module, Primitive, Statement, StatementValue, TypedExpression,
-    TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
+    Expression, ExpressionValue, IntrinsicFunctionDeclaration, Module, Primitive, Statement,
+    StatementValue, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement, Typing,
+    TypingValue,
 };
 use crate::prelude::*;
 use environment::Environment;
@@ -52,6 +53,7 @@ impl Typer {
     ) -> ParserResult<TypedModule<'ast>> {
         let mut typed_functions = vec![];
 
+        // declare signatures
         for function in &module.functions {
             let dummy = TypedExpression {
                 value: ExpressionValue::Primitive(Primitive::Unit), // or another dummy value
@@ -71,6 +73,24 @@ impl Typer {
             environment.declare_function(function.name.clone(), placeholder.clone())?;
         }
 
+        // declare intrinsic signatures
+        for function in &module.intrinsic_functions {
+            let dummy = TypedExpression {
+                value: ExpressionValue::Primitive(Primitive::Unit), // or another dummy value
+                ty: function.return_type.clone(),
+                span: function.span,
+            };
+            let placeholder = TypedFunctionDeclaration {
+                name: function.name.clone(),
+                span: function.span,
+                parameters: function.parameters.clone(),
+                body: dummy,
+                return_type: Some(function.return_type.clone()),
+            };
+            environment.declare_function(function.name.clone(), placeholder.clone())?;
+        }
+
+        // type check functions
         for function in &module.functions {
             // declare the function parameters in the environment
             for (name, ty) in &function.parameters {
@@ -109,6 +129,7 @@ impl Typer {
 
         Ok(TypedModule {
             functions: typed_functions,
+            intrinsic_functions: module.intrinsic_functions.clone(),
         })
     }
 

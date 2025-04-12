@@ -160,6 +160,7 @@ impl<'ast> Iterator for Tokenizer<'ast> {
                 match ident.as_str() {
                     "if" => Ok((TokenKind::If, TokenValue::None)),
                     "else" => Ok((TokenKind::Else, TokenValue::None)),
+                    "intrinsic" => Ok((TokenKind::Intrinsic, TokenValue::None)),
                     "fn" => Ok((TokenKind::Function, TokenValue::None)),
                     "true" => Ok((TokenKind::Boolean, TokenValue::Boolean(true))),
                     "false" => Ok((TokenKind::Boolean, TokenValue::Boolean(false))),
@@ -176,6 +177,7 @@ impl<'ast> Iterator for Tokenizer<'ast> {
                     "str" => Ok((TokenKind::StringType, TokenValue::None)),
                     "char" => Ok((TokenKind::CharacterType, TokenValue::None)),
                     "return" => Ok((TokenKind::Return, TokenValue::None)),
+                    "unit" => Ok((TokenKind::UnitType, TokenValue::None)),
                     ident => Ok((
                         TokenKind::Identifier,
                         TokenValue::Identifier(ident.to_string().into()),

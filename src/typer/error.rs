@@ -67,6 +67,27 @@ pub fn mismatched_arguments(
     ))
 }
 
+pub(crate) fn undefined_type(
+    message: impl Into<String>,
+    type_name: &str,
+    label: SourceSpan,
+) -> Option<MietteDiagnostic> {
+    let message = message.into();
+
+    let label = LabeledSpan::new(
+        format!("the type `{type_name}` is not defined in this scope").into(),
+        label.offset(),
+        label.len(),
+    );
+
+    Some(diagnostic!(
+        severity = Severity::Error,
+        labels = vec![label],
+        help = "create a type with this name",
+        "{message}"
+    ))
+}
+
 pub(crate) fn undefined_variable(
     message: impl Into<String>,
     identifier_name: &str,

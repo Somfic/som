@@ -15,12 +15,11 @@ mod tokenizer;
 mod typer;
 
 const INPUT: &str = "
-fn main() { 
-    fib(10)
-}
+intrinsic assert(condition ~ bool) ~ unit
 
-fn fib(n ~ int) ~ int {
-    n if n < 2 else fib(n - 1) + fib(n - 2)
+fn main() { 
+    let a = 1;
+    assert(1 == a);
 }
 ";
 
@@ -46,7 +45,7 @@ pub fn run(source_code: impl Into<String>) -> i64 {
 
     println!("{}\n", source_code);
 
-    let statements = parse(&source_code)
+    let modules = parse(&source_code)
         .map_err(|errors| {
             for error in errors {
                 eprintln!(
@@ -57,7 +56,7 @@ pub fn run(source_code: impl Into<String>) -> i64 {
         })
         .expect("failed to parse expression");
 
-    let compiled = compile(statements)
+    let compiled = compile(modules)
         .map_err(|error| {
             for error in error {
                 eprintln!("{:?}", error);

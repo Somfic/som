@@ -1,4 +1,3 @@
-
 use crate::ast::{Expression, Module, Statement, Typing};
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, Tokenizer};
@@ -60,10 +59,24 @@ impl<'ast> Parser<'ast> {
 
     fn parse_module(&mut self) -> ParserResult<Module<'ast>> {
         let mut functions = vec![];
+        let mut intrinsic_functions = vec![];
 
-        while self.tokens.peek().is_some() {
-            let function = module::parse_function(self)?;
-            functions.push(function);
+        while let Some(Ok(token)) = self.tokens.peek() {
+            match token.kind {
+                TokenKind::Intrinsic => {
+                    intrinsic_functions.push(module::parse_intrinsic_function(self)?);
+                }
+                TokenKind::Function => {
+                    functions.push(module::parse_function(self)?);
+                }
+                _ => {
+                    return Err(vec![miette::diagnostic! {
+                        labels = vec![token.label("expected a function or intrinsic function here")],
+                        help = format!("{} cannot be parsed as a function", token.kind),
+                        "expected a function, found {}", token.kind
+                    }]);
+                }
+            }
         }
 
         // make sure there is a main function
@@ -74,21 +87,24 @@ impl<'ast> Parser<'ast> {
             }]);
         }
 
-        // set the main function to return an integer
-        for function in &mut functions {
-            if function.name == "main" {
-                if function.return_type.is_none() {
-                    function.return_type = Some(Typing::integer(&function.span));
-                } else {
-                    return Err(vec![miette::diagnostic! {
-                        help = "remove the return type",
-                        "main function must return an integer"
-                    }]);
-                }
-            }
-        }
+        // // set the main function to return an integer
+        // for function in &mut functions {
+        //     if function.name == "main" {
+        //         if function.return_type.is_none() {
+        //             function.return_type = Some(Typing::integer(&function.span));
+        //         } else {
+        //             return Err(vec![miette::diagnostic! {
+        //                 help = "remove the return type",
+        //                 "main function must return an integer"
+        //             }]);
+        //         }
+        //     }
+        // }
 
-        Ok(Module { functions })
+        Ok(Module {
+            functions,
+            intrinsic_functions,
+        })
     }
 
     pub(crate) fn parse_expression(&mut self, bp: BindingPower) -> ParserResult<Expression<'ast>> {

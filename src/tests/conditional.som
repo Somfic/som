@@ -1,0 +1,10 @@
+intrinsic assert(condition ~ bool) ~ unit
+
+fn main() {
+    assert(1 if true else 0 == 1);
+    assert(1 if false else 0 == 0);
+    assert( { let a = 0; if true a = 1; a } == 1);
+    assert( { let a = 0; if false a = 1; a } == 0);
+    assert( { let a = 0; if true { let a = 1; }; a } == 0);
+    assert( { let a = 0; if false { let a = 1; }; a } == 0);
+}

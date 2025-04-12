@@ -1,14 +1,41 @@
-use crate::run;
+pub use crate::run;
 
-mod binary;
-mod block;
-mod conditional;
-mod function;
-mod group;
-mod loops;
-mod unary;
-mod variables;
+#[test]
+fn binary() {
+    run(include_str!("binary.som"));
+}
 
-pub fn run_and_assert(source_code: impl Into<String>, expected: i64) {
-    assert_eq!(run(source_code), expected);
+#[test]
+fn unary() {
+    run(include_str!("unary.som"));
+}
+
+#[test]
+fn variables() {
+    run(include_str!("variables.som"));
+}
+
+#[test]
+fn block() {
+    run(include_str!("block.som"));
+}
+
+#[test]
+fn conditional() {
+    run(include_str!("conditional.som"));
+}
+
+#[test]
+fn function() {
+    run(include_str!("function.som"));
+}
+
+#[test]
+fn group() {
+    run(include_str!("group.som"));
+}
+
+#[test]
+fn loops() {
+    run(include_str!("loops.som"));
 }
