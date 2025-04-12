@@ -1,0 +1,9 @@
+intrinsic assert(condition ~ bool) ~ unit
+intrinsic print() ~ unit
+
+fn fib(n ~ int) ~ int 
+    n if n < 2 else fib(n - 1) + fib(n - 2)
+
+fn main() {
+    print();
+}
