@@ -72,11 +72,11 @@ pub fn parse_function<'ast>(
     let return_type = if parser.tokens.peek().is_some_and(|token| {
         token
             .as_ref()
-            .is_ok_and(|token| token.kind == TokenKind::Arrow)
+            .is_ok_and(|token| token.kind == TokenKind::Tilde)
     }) {
         parser
             .tokens
-            .expect(TokenKind::Arrow, "expected a return type")?;
+            .expect(TokenKind::Tilde, "expected a return type")?;
 
         Some(parser.parse_typing(BindingPower::None)?)
     } else {
