@@ -102,14 +102,9 @@ impl Compiler {
                     "assert" => {
                         let cond = block_params[0];
                         let code = TrapCode::unwrap_user(123);
-                        let trap = builder.ins().trapz(cond, code);
-                        builder.inst_results(trap)[0];
-                    }
-                    "print" => {
-                        let value = block_params[0];
-                        let string = builder.ins().iconst(types::I8, 0);
-
-                        builder.inst_results(call_inst)[0];
+                        builder.ins().trapz(cond, code);
+                        let unit_val = builder.ins().iconst(types::I8, 0);
+                        builder.ins().return_(&[unit_val]);
                     }
                     _ => panic!("unknown intrinsic function"),
                 };
