@@ -1,4 +1,10 @@
-use crate::ast::{Expression, Module, Statement, Typing};
+use std::borrow::Cow;
+use std::collections::HashMap;
+
+use crate::ast::{
+    Expression, ExpressionValue, FunctionDeclaration, Module, Primitive, Spannable, Statement,
+    Typing,
+};
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, Tokenizer};
 pub use lookup::BindingPower;
@@ -37,24 +43,61 @@ impl<'ast> Parser<'ast> {
     pub fn parse(&mut self) -> ParserResult<Vec<Module<'ast>>> {
         let mut modules = vec![];
 
-        while let Some(token) = self.tokens.peek() {
-            match token {
-                Ok(_) => {
-                    let module = self.parse_module()?;
-                    modules.push(module);
-                }
-                Err(err) => {
-                    self.errors.extend(err.to_vec());
-                    self.tokens.next();
-                }
-            }
-        }
+        let entry_module = self.parse_entry_module()?;
+        modules.push(entry_module);
+
+        // while let Some(token) = self.tokens.peek() {
+        //     match token {
+        //         Ok(_) => {
+        //             let module = self.parse_module()?;
+        //             modules.push(module);
+        //         }
+        //         Err(err) => {
+        //             self.errors.extend(err.to_vec());
+        //             self.tokens.next();
+        //         }
+        //     }
+        // }
 
         if self.errors.is_empty() {
             Ok(modules)
         } else {
             Err(self.errors.clone())
         }
+    }
+
+    fn parse_entry_module(&mut self) -> ParserResult<Module<'ast>> {
+        let mut statements = vec![];
+
+        while let Some(Ok(_)) = self.tokens.peek() {
+            statements.push(self.parse_statement(true)?);
+        }
+
+        let main_expression_value = ExpressionValue::Block {
+            result: Box::new(Expression::at(
+                statements.last().unwrap().span,
+                ExpressionValue::Primitive(Primitive::Unit),
+            )),
+            statements: statements.clone(),
+        };
+
+        let main_expression = Expression::at_multiple(
+            statements.iter().map(|s| s.span).collect(),
+            main_expression_value,
+        );
+
+        let main_function = FunctionDeclaration {
+            name: Cow::Borrowed("main"),
+            span: main_expression.span,
+            body: main_expression,
+            parameters: HashMap::new(),
+            explicit_return_type: None,
+        };
+
+        Ok(Module {
+            functions: vec![main_function],
+            intrinsic_functions: vec![],
+        })
     }
 
     fn parse_module(&mut self) -> ParserResult<Module<'ast>> {
@@ -67,7 +110,7 @@ impl<'ast> Parser<'ast> {
                     intrinsic_functions.push(module::parse_intrinsic_function(self)?);
                 }
                 TokenKind::Function => {
-                    functions.push(module::parse_function(self)?);
+                    functions.push(module::parse_module_function(self)?);
                 }
                 _ => {
                     return Err(vec![miette::diagnostic! {

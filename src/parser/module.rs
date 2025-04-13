@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
     ast::{Expression, FunctionDeclaration, IntrinsicFunctionDeclaration},
-    tokenizer::TokenKind,
+    tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
 };
 
@@ -84,21 +84,28 @@ pub fn parse_intrinsic_function<'ast>(
     })
 }
 
-pub fn parse_function<'ast>(
+pub fn parse_module_function<'ast>(
     parser: &mut Parser<'ast>,
-) -> ParserResult<FunctionDeclaration<'ast, Expression<'ast>>> {
-    parser
-        .tokens
-        .expect(TokenKind::Function, "expected a function declaration")?;
-
-    let name_token = parser
+) -> ParserResult<FunctionDeclaration<'ast>> {
+    let identifier = parser
         .tokens
         .expect(TokenKind::Identifier, "expected a function name")?;
 
-    let name = match name_token.value {
-        crate::tokenizer::TokenValue::Identifier(name) => name,
+    parse_function(parser, identifier)
+}
+
+pub fn parse_function<'ast>(
+    parser: &mut Parser<'ast>,
+    identifier: Token<'ast>,
+) -> ParserResult<FunctionDeclaration<'ast>> {
+    let identifier_name = match identifier.value.clone() {
+        TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
     };
+
+    parser
+        .tokens
+        .expect(TokenKind::Function, "expected a function declaration")?;
 
     parser.tokens.expect(
         TokenKind::ParenOpen,
@@ -148,11 +155,11 @@ pub fn parse_function<'ast>(
     let return_type = if parser.tokens.peek().is_some_and(|token| {
         token
             .as_ref()
-            .is_ok_and(|token| token.kind == TokenKind::Tilde)
+            .is_ok_and(|token| token.kind == TokenKind::Arrow)
     }) {
         parser
             .tokens
-            .expect(TokenKind::Tilde, "expected a return type")?;
+            .expect(TokenKind::Arrow, "expected a return type")?;
 
         Some(parser.parse_typing(BindingPower::None)?)
     } else {
@@ -162,10 +169,10 @@ pub fn parse_function<'ast>(
     let expression = parser.parse_expression(BindingPower::None)?;
 
     Ok(FunctionDeclaration {
-        name,
-        span: name_token.span,
+        name: identifier_name,
+        span: identifier.span,
         parameters,
         body: expression,
-        return_type,
+        explicit_return_type: return_type,
     })
 }

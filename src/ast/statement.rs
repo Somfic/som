@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 
-use super::{Expression, TypedExpression};
+use super::{
+    Expression, GenericFunctionDeclaration, IntrinsicFunctionDeclaration, TypedExpression,
+};
 
 pub type TypedStatement<'ast> = GenericStatement<'ast, TypedExpression<'ast>>;
 pub type Statement<'ast> = GenericStatement<'ast, Expression<'ast>>;
@@ -18,6 +20,8 @@ pub enum StatementValue<'ast, Expression> {
     Declaration(Cow<'ast, str>, Expression),
     Condition(Expression, Box<GenericStatement<'ast, Expression>>),
     WhileLoop(Expression, Box<GenericStatement<'ast, Expression>>),
+    Function(Cow<'ast, str>, GenericFunctionDeclaration<'ast, Expression>),
+    Intrinsic(Cow<'ast, str>, IntrinsicFunctionDeclaration<'ast>),
 }
 
 impl<'ast> GenericStatement<'ast, Expression<'ast>> {
