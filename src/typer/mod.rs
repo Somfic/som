@@ -1,9 +1,10 @@
 use crate::ast::{
-    Expression, ExpressionValue, IntrinsicFunctionDeclaration, Module, Primitive, Statement,
-    StatementValue, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement, Typing,
-    TypingValue,
+    Expression, ExpressionValue, FunctionDeclaration, IntrinsicFunctionDeclaration, Module,
+    Primitive, Statement, StatementValue, TypedExpression, TypedFunctionDeclaration, TypedModule,
+    TypedStatement, Typing, TypingValue,
 };
 use crate::prelude::*;
+use cranelift::codegen::ir::Function;
 use environment::Environment;
 use error::mismatched_arguments;
 use miette::MietteDiagnostic;
@@ -53,78 +54,16 @@ impl Typer {
     ) -> ParserResult<TypedModule<'ast>> {
         let mut typed_functions = vec![];
 
-        // declare signatures
-        for function in &module.functions {
-            let dummy = TypedExpression {
-                value: ExpressionValue::Primitive(Primitive::Unit), // or another dummy value
-                ty: function
-                    .return_type
-                    .clone()
-                    .unwrap_or(Typing::unknown(&function.span)),
-                span: function.span,
-            };
-            let placeholder = TypedFunctionDeclaration {
-                name: function.name.clone(),
-                span: function.span,
-                parameters: function.parameters.clone(),
-                body: dummy,
-                return_type: function.return_type.clone(),
-            };
-            environment.declare_function(function.name.clone(), placeholder.clone())?;
-        }
-
-        // declare intrinsic signatures
         for function in &module.intrinsic_functions {
-            let dummy = TypedExpression {
-                value: ExpressionValue::Primitive(Primitive::Unit), // or another dummy value
-                ty: function.return_type.clone(),
-                span: function.span,
-            };
-            let placeholder = TypedFunctionDeclaration {
-                name: function.name.clone(),
-                span: function.span,
-                parameters: function.parameters.clone(),
-                body: dummy,
-                return_type: Some(function.return_type.clone()),
-            };
-            environment.declare_function(function.name.clone(), placeholder.clone())?;
+            self.declare_intrinsic_function(function, environment)?;
         }
 
-        // type check functions
+        for intrinsic_function in &module.functions {
+            self.declare_function(intrinsic_function, environment)?;
+        }
+
         for function in &module.functions {
-            // declare the function parameters in the environment
-            for (name, ty) in &function.parameters {
-                environment.declare_variable(name.clone(), ty.clone());
-            }
-
-            let return_value =
-                self.type_check_expression(&function.body, &mut environment.clone())?;
-
-            if let Some(return_type) = &function.return_type {
-                if return_value.ty != *return_type {
-                    self.report_error(error::new_mismatched_types(
-                        "expected the return type to match",
-                        &return_value.ty,
-                        return_type,
-                        format!("{} and {} do not match", return_value.ty, return_type),
-                    ));
-                }
-            }
-
-            // TODO: Add a warning that when using recursive functions, the return type must be explicitly set
-
-            let declaration: crate::ast::GenericFunctionDeclaration<'_, TypedExpression<'_>> =
-                TypedFunctionDeclaration {
-                    name: function.name.clone(),
-                    span: function.span,
-                    parameters: function.parameters.clone(),
-                    body: return_value,
-                    return_type: function.return_type.clone(),
-                };
-
-            environment.update_function(function.name.clone(), declaration.clone())?;
-
-            typed_functions.push(declaration);
+            typed_functions.push(self.type_check_function(function, environment)?);
         }
 
         Ok(TypedModule {
@@ -435,6 +374,108 @@ impl Typer {
                     value: StatementValue::WhileLoop(condition, Box::new(statement)),
                 })
             }
+            StatementValue::Function(name, function) => {
+                self.declare_function(function, environment);
+                let function = self.type_check_function(function, environment)?;
+
+                Ok(TypedStatement {
+                    span: function.span,
+                    value: StatementValue::Function(name.clone(), function),
+                })
+            }
+            StatementValue::Intrinsic(name, intrinsic) => {
+                self.declare_intrinsic_function(intrinsic, environment);
+
+                Ok(TypedStatement {
+                    span: intrinsic.span,
+                    value: StatementValue::Intrinsic(name.clone(), intrinsic.clone()),
+                })
+            }
         }
+    }
+
+    fn declare_function<'ast>(
+        &mut self,
+        function: &FunctionDeclaration<'ast>,
+        environment: &mut Environment<'_, 'ast>,
+    ) -> ParserResult<()> {
+        let dummy = TypedExpression {
+            value: ExpressionValue::Primitive(Primitive::Unit),
+            ty: function
+                .explicit_return_type
+                .clone()
+                .unwrap_or(Typing::unknown(&function.span)),
+            span: function.span,
+        };
+        let placeholder = TypedFunctionDeclaration {
+            name: function.name.clone(),
+            span: function.span,
+            parameters: function.parameters.clone(),
+            body: dummy,
+            explicit_return_type: function.explicit_return_type.clone(),
+        };
+        environment.declare_function(function.name.clone(), placeholder.clone())?;
+
+        Ok(())
+    }
+
+    fn declare_intrinsic_function<'ast>(
+        &mut self,
+        function: &IntrinsicFunctionDeclaration<'ast>,
+        environment: &mut Environment<'_, 'ast>,
+    ) -> ParserResult<()> {
+        let dummy = TypedExpression {
+            value: ExpressionValue::Primitive(Primitive::Unit),
+            ty: function.return_type.clone(),
+            span: function.span,
+        };
+        let placeholder = TypedFunctionDeclaration {
+            name: function.name.clone(),
+            span: function.span,
+            parameters: function.parameters.clone(),
+            body: dummy,
+            explicit_return_type: Some(function.return_type.clone()),
+        };
+        environment.declare_function(function.name.clone(), placeholder.clone())?;
+
+        Ok(())
+    }
+
+    fn type_check_function<'ast>(
+        &mut self,
+        function: &FunctionDeclaration<'ast>,
+        environment: &mut Environment<'_, 'ast>,
+    ) -> ParserResult<TypedFunctionDeclaration<'ast>> {
+        for (name, ty) in &function.parameters {
+            environment.declare_variable(name.clone(), ty.clone());
+        }
+
+        let return_value = self.type_check_expression(&function.body, &mut environment.clone())?;
+
+        if let Some(return_type) = &function.explicit_return_type {
+            if return_value.ty != *return_type {
+                self.report_error(error::new_mismatched_types(
+                    "expected the return type to match",
+                    &return_value.ty,
+                    return_type,
+                    format!("{} and {} do not match", return_value.ty, return_type),
+                ));
+            }
+        }
+
+        // TODO: Add a warning that when using recursive functions, the return type must be explicitly set
+
+        let declaration: crate::ast::GenericFunctionDeclaration<'_, TypedExpression<'_>> =
+            TypedFunctionDeclaration {
+                name: function.name.clone(),
+                span: function.span,
+                parameters: function.parameters.clone(),
+                body: return_value,
+                explicit_return_type: function.explicit_return_type.clone(),
+            };
+
+        environment.update_function(function.name.clone(), declaration.clone())?;
+
+        Ok(declaration)
     }
 }
