@@ -129,3 +129,14 @@ impl Expression<'_> {
         self
     }
 }
+
+impl TypedExpression<'_> {
+    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
+        miette::LabeledSpan::at(self.span, text.into())
+    }
+
+    pub fn span(mut self, span: SourceSpan) -> Self {
+        self.span = span;
+        self
+    }
+}

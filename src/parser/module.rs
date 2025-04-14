@@ -1,7 +1,9 @@
 use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
-    ast::{Expression, FunctionDeclaration, IntrinsicFunctionDeclaration, Typing},
+    ast::{
+        Expression, FunctionDeclaration, IntrinsicFunctionDeclaration, Paramater, Spannable, Typing,
+    },
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
 };
@@ -105,7 +107,7 @@ pub fn parse_function<'ast>(
 
 fn parse_optional_function_parameters<'ast>(
     parser: &mut Parser<'ast>,
-) -> ParserResult<HashMap<Cow<'ast, str>, Typing<'ast>>> {
+) -> ParserResult<Vec<Paramater<'ast>>> {
     let token = match parser.tokens.peek().as_ref() {
         Some(Ok(token)) => token,
         Some(Err(err)) => return Err(err.to_vec()),
@@ -122,14 +124,14 @@ fn parse_optional_function_parameters<'ast>(
             parser.tokens.next();
             parse_function_parameters(parser)
         }
-        _ => Ok(HashMap::new()),
+        _ => Ok(Vec::new()),
     }
 }
 
 fn parse_function_parameters<'ast>(
     parser: &mut Parser<'ast>,
-) -> ParserResult<HashMap<Cow<'ast, str>, Typing<'ast>>> {
-    let mut parameters = HashMap::new();
+) -> ParserResult<Vec<Paramater<'ast>>> {
+    let mut parameters = Vec::new();
 
     loop {
         if parser.tokens.peek().is_some_and(|token| {
@@ -150,7 +152,7 @@ fn parse_function_parameters<'ast>(
             .tokens
             .expect(TokenKind::Identifier, "expected a parameter name")?;
 
-        let parameter = match parameter.value {
+        let parameter_name = match parameter.value {
             crate::tokenizer::TokenValue::Identifier(name) => name,
             _ => unreachable!(),
         };
@@ -161,7 +163,12 @@ fn parse_function_parameters<'ast>(
 
         let parameter_type = parser.parse_typing(BindingPower::None)?;
 
-        parameters.insert(parameter, parameter_type);
+        let parameter = Paramater::at_multiple(
+            vec![parameter.span, parameter_type.span],
+            (parameter_name, parameter_type),
+        );
+
+        parameters.push(parameter);
     }
 
     parser.tokens.expect(

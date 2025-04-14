@@ -7,6 +7,7 @@ use crate::ast::{
 };
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, Tokenizer};
+use expression::parse_inner_block;
 pub use lookup::BindingPower;
 use lookup::Lookup;
 use miette::MietteDiagnostic;
@@ -67,30 +68,13 @@ impl<'ast> Parser<'ast> {
     }
 
     fn parse_entry_module(&mut self) -> ParserResult<Module<'ast>> {
-        let mut statements = vec![];
-
-        while let Some(Ok(_)) = self.tokens.peek() {
-            statements.push(self.parse_statement(true)?);
-        }
-
-        let main_expression_value = ExpressionValue::Block {
-            result: Box::new(Expression::at(
-                statements.last().unwrap().span,
-                ExpressionValue::Primitive(Primitive::Unit),
-            )),
-            statements: statements.clone(),
-        };
-
-        let main_expression = Expression::at_multiple(
-            statements.iter().map(|s| s.span).collect(),
-            main_expression_value,
-        );
+        let expression = parse_inner_block(self)?;
 
         let main_function = FunctionDeclaration {
-            name: Cow::Borrowed("main"),
-            span: main_expression.span,
-            body: main_expression,
-            parameters: HashMap::new(),
+            name: Cow::Borrowed("0"),
+            span: expression.span,
+            body: expression,
+            parameters: Vec::new(),
             explicit_return_type: None,
         };
 
@@ -121,28 +105,6 @@ impl<'ast> Parser<'ast> {
                 }
             }
         }
-
-        // make sure there is a main function
-        if functions.iter().all(|function| function.name != "main") {
-            return Err(vec![miette::diagnostic! {
-                help = "add a main function",
-                "missing main function"
-            }]);
-        }
-
-        // // set the main function to return an integer
-        // for function in &mut functions {
-        //     if function.name == "main" {
-        //         if function.return_type.is_none() {
-        //             function.return_type = Some(Typing::integer(&function.span));
-        //         } else {
-        //             return Err(vec![miette::diagnostic! {
-        //                 help = "remove the return type",
-        //                 "main function must return an integer"
-        //             }]);
-        //         }
-        //     }
-        // }
 
         Ok(Module {
             functions,

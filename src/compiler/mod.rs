@@ -72,7 +72,7 @@ impl Compiler {
 
         Ok(self
             .codebase
-            .get_finalized_function(environment.lookup_function("main").unwrap().0))
+            .get_finalized_function(environment.lookup_function("0").unwrap().0))
     }
 
     fn compile_expression<'ast>(
@@ -310,7 +310,7 @@ impl Compiler {
         let mut signature = Signature::new(self.isa.default_call_conv());
 
         for parameter in &function.parameters {
-            let parameter_type = convert_type(&parameter.1.value);
+            let parameter_type = convert_type(&parameter.ty.value);
             signature.params.push(AbiParam::new(parameter_type));
         }
 
@@ -329,7 +329,7 @@ impl Compiler {
         let mut signature = Signature::new(self.isa.default_call_conv());
 
         for parameter in &function.parameters {
-            let parameter_type = convert_type(&parameter.1.value);
+            let parameter_type = convert_type(&parameter.ty.value);
             signature.params.push(AbiParam::new(parameter_type));
         }
 
@@ -359,9 +359,12 @@ impl Compiler {
         builder.switch_to_block(entry_block);
 
         let block_params = builder.block_params(entry_block).to_vec();
-        for (i, (param, param_ty)) in function.parameters.iter().enumerate() {
-            let variable =
-                environment.declare_variable(param.clone(), &mut builder, &param_ty.value);
+        for (i, parameter) in function.parameters.iter().enumerate() {
+            let variable = environment.declare_variable(
+                parameter.name.clone(),
+                &mut builder,
+                &parameter.ty.value,
+            );
 
             builder.def_var(variable, block_params[i]);
         }
@@ -399,9 +402,12 @@ impl Compiler {
         builder.switch_to_block(entry_block);
 
         let block_params = builder.block_params(entry_block).to_vec();
-        for (i, (param, param_ty)) in intrinsic_function.parameters.iter().enumerate() {
-            let variable =
-                environment.declare_variable(param.clone(), &mut builder, &param_ty.value);
+        for (i, parameter) in intrinsic_function.parameters.iter().enumerate() {
+            let variable = environment.declare_variable(
+                parameter.name.clone(),
+                &mut builder,
+                &parameter.ty.value,
+            );
 
             builder.def_var(variable, block_params[i]);
         }
