@@ -16,8 +16,8 @@ let b = a;
 b = 13;
 assert(b == 13);
 
-let a ~ int = 12;
-assert(a == 12);
-
-let a ~ bool = true;
+let a = true;
+let b = false;
 assert(a == true);
+assert(b == false);
+assert(a != b);
