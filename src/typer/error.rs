@@ -1,6 +1,6 @@
 use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
-use crate::ast::{Expression, Typing};
+use crate::ast::{Expression, Paramater, TypedExpression, Typing};
 
 pub fn new_mismatched_types(
     message: impl Into<String>,
@@ -44,21 +44,62 @@ pub fn mismatched_type(
     ))
 }
 
+pub fn mismatched_argument(
+    message: impl Into<String>,
+    argument: &TypedExpression<'_>,
+    parameter: &Paramater<'_>,
+    hint: impl Into<String>,
+) -> Option<MietteDiagnostic> {
+    let message = message.into();
+
+    Some(diagnostic!(
+        severity = Severity::Error,
+        labels = vec![
+            argument.label(format!("{}", argument.ty)),
+            parameter.label(format!("{}", parameter.ty))
+        ],
+        help = hint.into(),
+        "{message}"
+    ))
+}
+
+pub fn missing_argument(
+    message: impl Into<String>,
+    function_call: &Expression<'_>,
+    parameter: &Paramater<'_>,
+    hint: impl Into<String>,
+) -> Option<MietteDiagnostic> {
+    let message = message.into();
+
+    Some(diagnostic!(
+        severity = Severity::Error,
+        labels = vec![
+            function_call.label(format!("missing `{}`", parameter.name)),
+            parameter.label(format!("{}", parameter.ty))
+        ],
+        help = hint.into(),
+        "{message}"
+    ))
+}
+
 pub fn mismatched_arguments(
     message: impl Into<String>,
-    given_arguments: Vec<Expression>,
-    expected_arguments: Vec<Typing>,
+    arguments: &Vec<TypedExpression<'_>>,
+    parameters: &Vec<Paramater<'_>>,
     hint: impl Into<String>,
 ) -> Option<MietteDiagnostic> {
     let message = message.into();
 
     let mut labels = Vec::new();
-    for (i, argument) in given_arguments.iter().enumerate() {
-        labels.push(argument.label(format!("argument {i}")));
+
+    for argument in arguments {
+        labels.push(argument.label(format!("{}", argument.ty)));
     }
-    for (i, argument) in expected_arguments.iter().enumerate() {
-        labels.push(argument.label(format!("argument {i}")));
+
+    for parameter in parameters {
+        labels.push(parameter.label(format!("{}", parameter.ty)));
     }
+
     Some(diagnostic!(
         severity = Severity::Error,
         labels = labels,

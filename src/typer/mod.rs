@@ -1,12 +1,12 @@
+use std::cmp;
+
 use crate::ast::{
     Expression, ExpressionValue, FunctionDeclaration, IntrinsicFunctionDeclaration, Module,
-    Primitive, Statement, StatementValue, TypedExpression, TypedFunctionDeclaration, TypedModule,
-    TypedStatement, Typing, TypingValue,
+    Primitive, Spannable, Statement, StatementValue, TypedExpression, TypedFunctionDeclaration,
+    TypedModule, TypedStatement, Typing, TypingValue,
 };
 use crate::prelude::*;
-use cranelift::codegen::ir::Function;
 use environment::Environment;
-use error::mismatched_arguments;
 use miette::MietteDiagnostic;
 
 mod environment;
@@ -247,43 +247,57 @@ impl Typer {
                     .unwrap()]
                 })?;
 
-                if function.parameters.len() != arguments.len() {
-                    self.report_error(mismatched_arguments(
-                        format!(
-                            "expected {} arguments, but got {}",
-                            function.parameters.len(),
-                            arguments.len()
-                        ),
-                        arguments.clone(),
-                        function.parameters.values().cloned().collect::<Vec<_>>(),
-                        format!(
-                            "expected {} but got {}",
-                            function.parameters.len(),
-                            arguments.len()
-                        ),
-                    ));
-                }
+                let mut typed_arguments = arguments.iter().map(|a| self.type_check_expression(a, environment)).flatten();
 
-                let mut typed_arguments = Vec::new();
-                let expected_types: Vec<_> = function.parameters.values().cloned().collect();
-                for (i, argument) in arguments.iter().enumerate() {
-                    let argument =
-                        self.type_check_expression(argument, &mut environment.clone())?;
-                    let expected_ty = &expected_types
-                        .get(i)
-                        .cloned()
-                        .unwrap_or(Typing::unknown(&argument.span));
+                for i in 0..cmp::max(arguments.len(), function.parameters.len()) {
+                    let argument = arguments.get(i);
+                    let parameter = function.parameters.get(i);
 
-                    if argument.ty != *expected_ty {
-                        self.report_error(error::new_mismatched_types(
-                            format!("expected the type of argument {i} to be {expected_ty}"),
-                            &argument.ty,
-                            expected_ty,
-                            format!("{} and {} do not match", argument.ty, expected_ty),
+                    if argument.is_some() && parameter.is_none() {
+                        let argument = argument.unwrap();
+                        let argument = ;
+
+                        self.report_error(error::mismatched_argument(
+                            format!("expectedarguments but got {} arguments", arguments.len()),
+                            &argument,
+                            parameter.unwrap(),
+                            format!(
+                                "the function `{}` requires  arguments but {} were given",
+                                function_name,
+                                arguments.len()
+                            ),
                         ));
                     }
 
-                    typed_arguments.push(argument);
+                    if argument.is_none() && parameter.is_some() {
+                        let parameter = parameter.unwrap();
+
+                        self.report_error(error::missing_argument(
+                            format!("expected {} arguments but got arguments", arguments.len()),
+                            expression,
+                            &parameter,
+                            format!(
+                                "the function `{}` requires arguments but {} were given",
+                                function_name,
+                                arguments.len()
+                            ),
+                        ));
+                    };
+                }
+
+                let expected_count = function.parameters.len();
+                let received_count = typed_arguments.len();
+
+                if expected_count != received_count {
+                    self.report_error(error::mismatched_arguments(
+                        "expected {} arguments but got {}",
+                        &typed_arguments,
+                        &function.parameters,
+                        format!(
+                            "the function `{}` requires {} arguments but {} were given",
+                            function_name, expected_count, received_count
+                        ),
+                    ));
                 }
 
                 Ok(TypedExpression {
@@ -291,7 +305,7 @@ impl Typer {
                         function_name: function_name.clone(),
                         arguments: typed_arguments,
                     },
-                    ty: function.body.ty.clone(),
+                    ty: Typing::at(expression.span, function.body.ty.value.clone()),
                     span: expression.span,
                 })
             }
@@ -455,8 +469,8 @@ impl Typer {
         function: &FunctionDeclaration<'ast>,
         environment: &mut Environment<'_, 'ast>,
     ) -> ParserResult<TypedFunctionDeclaration<'ast>> {
-        for (name, ty) in &function.parameters {
-            environment.declare_variable(name.clone(), ty.clone());
+        for parameter in &function.parameters {
+            environment.declare_variable(parameter.name.clone(), parameter.ty.clone());
         }
 
         let return_value = self.type_check_expression(&function.body, &mut environment.clone())?;
@@ -467,7 +481,10 @@ impl Typer {
                     "expected the return type to match",
                     &return_value.ty,
                     return_type,
-                    format!("{} and {} do not match", return_value.ty, return_type),
+                    format!(
+                        "the function `{}` requires the return type to be {}, but {} was returned",
+                        function.name, return_type, return_value.ty,
+                    ),
                 ));
             }
         }

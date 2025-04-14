@@ -262,16 +262,11 @@ pub fn parse_conditional<'ast>(
     ))
 }
 
-pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
-    let open = parser.tokens.expect(
-        TokenKind::CurlyOpen,
-        "expected the start of an expression block",
-    )?;
-
+pub fn parse_inner_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
     let mut statements = Vec::new();
     let mut last_is_return = true;
 
-    loop {
+    while parser.tokens.peek().is_some() {
         if parser.tokens.peek().is_some_and(|token| {
             token
                 .as_ref()
@@ -311,23 +306,37 @@ pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
         None
     };
 
+    let spans = statements.iter().map(|s| s.span).collect();
+
+    match result {
+        Some(result) => Ok(Expression::at_multiple(
+            spans,
+            ExpressionValue::Block {
+                statements,
+                result: Box::new(result),
+            },
+        )),
+        None => Ok(Expression::at_multiple(
+            spans,
+            ExpressionValue::Primitive(Primitive::Unit),
+        )),
+    }
+}
+
+pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+    let open = parser.tokens.expect(
+        TokenKind::CurlyOpen,
+        "expected the start of an expression block",
+    )?;
+
+    let inner_block = parse_inner_block(parser)?;
+
     let close = parser.tokens.expect(
         TokenKind::CurlyClose,
         "expected the end of the expression block",
     )?;
 
-    let result = match result {
-        Some(result) => result,
-        None => Expression::at(close.span, ExpressionValue::Primitive(Primitive::Unit)),
-    };
-
-    Ok(Expression::at_multiple(
-        vec![open.span, close.span],
-        ExpressionValue::Block {
-            statements,
-            result: Box::new(result),
-        },
-    ))
+    Ok(inner_block)
 }
 
 pub fn parse_identifier<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
@@ -375,12 +384,12 @@ pub fn parse_function_call<'ast>(
         arguments.push(argument);
     }
 
-    parser
+    let close = parser
         .tokens
         .expect(TokenKind::ParenClose, "expected the end of a function call")?;
 
     Ok(Expression::at_multiple(
-        vec![lhs.span],
+        vec![lhs.span, close.span],
         ExpressionValue::FunctionCall {
             function_name,
             arguments,
