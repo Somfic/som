@@ -1,10 +1,10 @@
+use super::Parser;
+use crate::ast::{CombineSpan, Spannable};
 use crate::{
     ast::{Typing, TypingValue},
     tokenizer::{TokenKind, TokenValue},
     ParserResult,
 };
-
-use super::Parser;
 
 pub fn parse_symbol<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
     let token = parser
@@ -42,6 +42,26 @@ pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'as
         value: TypingValue::Boolean,
         span: token.span,
     })
+}
+
+pub fn parse_generic<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::Tick, "expected a generic type")?;
+
+    let identifier = parser
+        .tokens
+        .expect(TokenKind::Identifier, "expected a type")?;
+
+    let identifier_name = match identifier.value {
+        TokenValue::Identifier(name) => name,
+        _ => unreachable!(),
+    };
+
+    Ok(Typing::at_multiple(
+        vec![token.span, identifier.span],
+        TypingValue::Generic(identifier_name),
+    ))
 }
 
 pub fn parse_unit<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {

@@ -513,5 +513,6 @@ pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
         TypingValue::Unknown => unreachable!("unknown type"),
         TypingValue::Symbol(cow) => todo!("{cow}"),
         TypingValue::Unit => types::I8,
+        TypingValue::Generic(cow) => todo!("`{cow}"),
     }
 }

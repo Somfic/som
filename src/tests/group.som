@@ -1,4 +1,4 @@
-let assert = intrinsic(condition ~ bool) -> unit;
+let assert = intrinsic fn(condition ~ bool) -> unit;
 
 assert(1 + 2 * (3 + 4) == 15);
 assert((1 + 2) * 3 + 4 == 13);

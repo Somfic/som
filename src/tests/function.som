@@ -1,10 +1,10 @@
-let assert = intrinsic(condition ~ bool) -> unit;
+let assert = intrinsic fn(condition ~ bool) -> unit;
 
-let one = fn() 1;
+let two = fn 1 + 1;
 let identity = fn(a ~ int) a;
 let fib = fn(n ~ int) -> int n if n < 2 else fib(n - 1) + fib(n - 2);
 
-assert(one() == 1);
+assert(two() == 2);
 assert(identity(1) == 1);
 assert(identity(2) == 2);
 assert(identity(2 + 2) == 4);

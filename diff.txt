@@ -1,0 +1,406 @@
+diff --git a/src/ast/span.rs b/src/ast/span.rs
+index dc9bd7f..1e832eb 100644
+--- a/src/ast/span.rs
++++ b/src/ast/span.rs
+@@ -1,8 +1,6 @@
+ use miette::SourceSpan;
+ 
+-use super::{
+-    Expression, ExpressionValue, Statement, StatementValue, Typing, TypingValue,
+-};
++use super::{Expression, ExpressionValue, Statement, StatementValue, Typing, TypingValue};
+ 
+ pub trait Spannable<'ast>: Sized {
+     type Value;
+diff --git a/src/ast/typing.rs b/src/ast/typing.rs
+index 30d82f3..c9aba89 100644
+--- a/src/ast/typing.rs
++++ b/src/ast/typing.rs
+@@ -80,6 +80,7 @@ pub enum TypingValue<'ast> {
+     Boolean,
+     Decimal,
+     Unit,
++    Generic(Cow<'ast, str>),
+     Symbol(Cow<'ast, str>),
+ }
+ 
+@@ -95,8 +96,9 @@ impl Display for TypingValue<'_> {
+             TypingValue::Unknown => write!(f, "unknown"),
+             TypingValue::Integer => write!(f, "an integer"),
+             TypingValue::Decimal => write!(f, "a decimal"),
+-            TypingValue::Symbol(name) => write!(f, "{}", name),
+             TypingValue::Boolean => write!(f, "a boolean"),
++            TypingValue::Symbol(name) => write!(f, "{}", name),
++            TypingValue::Generic(name) => write!(f, "`{}", name),
+             TypingValue::Unit => write!(f, "nothing"),
+         }
+     }
+diff --git a/src/compiler/mod.rs b/src/compiler/mod.rs
+index a8e1e13..f7602bc 100644
+--- a/src/compiler/mod.rs
++++ b/src/compiler/mod.rs
+@@ -513,5 +513,6 @@ pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
+         TypingValue::Unknown => unreachable!("unknown type"),
+         TypingValue::Symbol(cow) => todo!("{cow}"),
+         TypingValue::Unit => types::I8,
++        TypingValue::Generic(cow) => todo!("`{cow}"),
+     }
+ }
+diff --git a/src/parser/lookup.rs b/src/parser/lookup.rs
+index 46b40c6..bdc621d 100644
+--- a/src/parser/lookup.rs
++++ b/src/parser/lookup.rs
+@@ -204,6 +204,7 @@ impl Default for Lookup<'_> {
+             BindingPower::Assignment,
+             expression::parse_assignment,
+         )
++        .add_typing_handler(TokenKind::Tick, typing::parse_generic)
+         .add_typing_handler(TokenKind::UnitType, typing::parse_unit)
+         .add_typing_handler(TokenKind::Identifier, typing::parse_symbol)
+         .add_typing_handler(TokenKind::IntegerType, typing::parse_integer)
+diff --git a/src/parser/module.rs b/src/parser/module.rs
+index 09d9bea..14984eb 100644
+--- a/src/parser/module.rs
++++ b/src/parser/module.rs
+@@ -1,7 +1,7 @@
+ use std::{borrow::Cow, collections::HashMap};
+ 
+ use crate::{
+-    ast::{Expression, FunctionDeclaration, IntrinsicFunctionDeclaration},
++    ast::{Expression, FunctionDeclaration, IntrinsicFunctionDeclaration, Typing},
+     tokenizer::{Token, TokenKind, TokenValue},
+     ParserResult,
+ };
+@@ -27,55 +27,17 @@ pub fn parse_intrinsic_function<'ast>(
+         "expected an intrinsic function declaration",
+     )?;
+ 
++    parser.tokens.expect(
++        TokenKind::Function,
++        "expected an intrinsic function declaration",
++    )?;
++
+     let identifier_name = match identifier.value.clone() {
+         TokenValue::Identifier(identifier) => identifier,
+         _ => unreachable!(),
+     };
+ 
+-    parser.tokens.expect(
+-        TokenKind::ParenOpen,
+-        "expected the start of a parameter list",
+-    )?;
+-
+-    let mut parameters = HashMap::new();
+-
+-    loop {
+-        if parser.tokens.peek().is_some_and(|token| {
+-            token
+-                .as_ref()
+-                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
+-        }) {
+-            break;
+-        }
+-
+-        if !parameters.is_empty() {
+-            parser
+-                .tokens
+-                .expect(TokenKind::Comma, "expected a comma between parameters")?;
+-        }
+-
+-        let parameter = parser
+-            .tokens
+-            .expect(TokenKind::Identifier, "expected a parameter name")?;
+-
+-        let parameter = match parameter.value {
+-            crate::tokenizer::TokenValue::Identifier(name) => name,
+-            _ => unreachable!(),
+-        };
+-
+-        parser
+-            .tokens
+-            .expect(TokenKind::Tilde, "expected a parameter type")?;
+-
+-        let parameter_type = parser.parse_typing(BindingPower::None)?;
+-
+-        parameters.insert(parameter, parameter_type);
+-    }
+-
+-    parser.tokens.expect(
+-        TokenKind::ParenClose,
+-        "expected the end of a parameter list",
+-    )?;
++    let parameters = parse_optional_function_parameters(parser)?;
+ 
+     parser
+         .tokens
+@@ -114,11 +76,59 @@ pub fn parse_function<'ast>(
+         .tokens
+         .expect(TokenKind::Function, "expected a function declaration")?;
+ 
+-    parser.tokens.expect(
+-        TokenKind::ParenOpen,
+-        "expected the start of a parameter list",
+-    )?;
++    let parameters = parse_optional_function_parameters(parser)?;
+ 
++    let return_type = if parser.tokens.peek().is_some_and(|token| {
++        token
++            .as_ref()
++            .is_ok_and(|token| token.kind == TokenKind::Arrow)
++    }) {
++        parser
++            .tokens
++            .expect(TokenKind::Arrow, "expected a return type")?;
++
++        Some(parser.parse_typing(BindingPower::None)?)
++    } else {
++        None
++    };
++
++    let expression = parser.parse_expression(BindingPower::None)?;
++
++    Ok(FunctionDeclaration {
++        name: identifier_name,
++        span: identifier.span,
++        parameters,
++        body: expression,
++        explicit_return_type: return_type,
++    })
++}
++
++fn parse_optional_function_parameters<'ast>(
++    parser: &mut Parser<'ast>,
++) -> ParserResult<HashMap<Cow<'ast, str>, Typing<'ast>>> {
++    let token = match parser.tokens.peek().as_ref() {
++        Some(Ok(token)) => token,
++        Some(Err(err)) => return Err(err.to_vec()),
++        None => {
++            return Err(vec![miette::diagnostic! {
++                help = "expected a type",
++                "expected a type"
++            }]);
++        }
++    };
++
++    match token.kind {
++        TokenKind::ParenOpen => {
++            parser.tokens.next();
++            parse_function_parameters(parser)
++        }
++        _ => Ok(HashMap::new()),
++    }
++}
++
++fn parse_function_parameters<'ast>(
++    parser: &mut Parser<'ast>,
++) -> ParserResult<HashMap<Cow<'ast, str>, Typing<'ast>>> {
+     let mut parameters = HashMap::new();
+ 
+     loop {
+@@ -159,27 +169,5 @@ pub fn parse_function<'ast>(
+         "expected the end of a parameter list",
+     )?;
+ 
+-    let return_type = if parser.tokens.peek().is_some_and(|token| {
+-        token
+-            .as_ref()
+-            .is_ok_and(|token| token.kind == TokenKind::Arrow)
+-    }) {
+-        parser
+-            .tokens
+-            .expect(TokenKind::Arrow, "expected a return type")?;
+-
+-        Some(parser.parse_typing(BindingPower::None)?)
+-    } else {
+-        None
+-    };
+-
+-    let expression = parser.parse_expression(BindingPower::None)?;
+-
+-    Ok(FunctionDeclaration {
+-        name: identifier_name,
+-        span: identifier.span,
+-        parameters,
+-        body: expression,
+-        explicit_return_type: return_type,
+-    })
++    Ok(parameters)
+ }
+diff --git a/src/parser/typing.rs b/src/parser/typing.rs
+index 5978928..1807d2a 100644
+--- a/src/parser/typing.rs
++++ b/src/parser/typing.rs
+@@ -1,11 +1,11 @@
++use super::Parser;
++use crate::ast::{CombineSpan, Spannable};
+ use crate::{
+     ast::{Typing, TypingValue},
+     tokenizer::{TokenKind, TokenValue},
+     ParserResult,
+ };
+ 
+-use super::Parser;
+-
+ pub fn parse_symbol<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+     let token = parser
+         .tokens
+@@ -44,6 +44,26 @@ pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'as
+     })
+ }
+ 
++pub fn parse_generic<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
++    let token = parser
++        .tokens
++        .expect(TokenKind::Tick, "expected a generic type")?;
++
++    let identifier = parser
++        .tokens
++        .expect(TokenKind::Identifier, "expected a type")?;
++
++    let identifier_name = match identifier.value {
++        TokenValue::Identifier(name) => name,
++        _ => unreachable!(),
++    };
++
++    Ok(Typing::at_multiple(
++        vec![token.span, identifier.span],
++        TypingValue::Generic(identifier_name),
++    ))
++}
++
+ pub fn parse_unit<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+     let token = parser
+         .tokens
+diff --git a/src/tests/binary.som b/src/tests/binary.som
+index 5c2ac9c..4ae5ec3 100644
+--- a/src/tests/binary.som
++++ b/src/tests/binary.som
+@@ -1,4 +1,4 @@
+-let assert = intrinsic(condition ~ bool) -> unit;
++let assert = intrinsic fn(condition ~ bool) -> unit;
+ 
+ assert(1 + 1 == 2);
+ assert(1 + 2 + 3 == 6);
+diff --git a/src/tests/block.som b/src/tests/block.som
+index 061fb2b..3be7e2f 100644
+--- a/src/tests/block.som
++++ b/src/tests/block.som
+@@ -1,4 +1,4 @@
+-let assert = intrinsic(condition ~ bool) -> unit;
++let assert = intrinsic fn(condition ~ bool) -> unit;
+ 
+ assert( { 1 + 1; 1 + 1 } == 2);
+ assert( { 1 + 1; 1 + 1; 0 } == 0);
+diff --git a/src/tests/conditional.som b/src/tests/conditional.som
+index 0f7426d..ad9353c 100644
+--- a/src/tests/conditional.som
++++ b/src/tests/conditional.som
+@@ -1,4 +1,4 @@
+-let assert = intrinsic(condition ~ bool) -> unit;
++let assert = intrinsic fn(condition ~ bool) -> unit;
+ 
+ assert(1 if true else 0 == 1);
+ assert(1 if false else 0 == 0);
+diff --git a/src/tests/function.som b/src/tests/function.som
+index f4121ae..b698efa 100644
+--- a/src/tests/function.som
++++ b/src/tests/function.som
+@@ -1,10 +1,10 @@
+-let assert = intrinsic(condition ~ bool) -> unit;
++let assert = intrinsic fn(condition ~ bool) -> unit;
+ 
+-let one = fn() 1;
++let two = fn 1 + 1;
+ let identity = fn(a ~ int) a;
+ let fib = fn(n ~ int) -> int n if n < 2 else fib(n - 1) + fib(n - 2);
+ 
+-assert(one() == 1);
++assert(two() == 2);
+ assert(identity(1) == 1);
+ assert(identity(2) == 2);
+ assert(identity(2 + 2) == 4);
+diff --git a/src/tests/group.som b/src/tests/group.som
+index a773c2b..ac2e565 100644
+--- a/src/tests/group.som
++++ b/src/tests/group.som
+@@ -1,4 +1,4 @@
+-let assert = intrinsic(condition ~ bool) -> unit;
++let assert = intrinsic fn(condition ~ bool) -> unit;
+ 
+ assert(1 + 2 * (3 + 4) == 15);
+ assert((1 + 2) * 3 + 4 == 13);
+diff --git a/src/tests/loops.som b/src/tests/loops.som
+index e845ae8..d65bfff 100644
+--- a/src/tests/loops.som
++++ b/src/tests/loops.som
+@@ -1,4 +1,4 @@
+-let assert = intrinsic(condition ~ bool) -> unit;
++let assert = intrinsic fn(condition ~ bool) -> unit;
+ 
+ let i = 0;
+ while i < 10 {
+diff --git a/src/tests/unary.som b/src/tests/unary.som
+index 9903c5e..951f34b 100644
+--- a/src/tests/unary.som
++++ b/src/tests/unary.som
+@@ -1,4 +1,4 @@
+-let assert = intrinsic(condition ~ bool) -> unit;
++let assert = intrinsic fn(condition ~ bool) -> unit;
+ 
+ assert(-1 + 2 == 1);
+ assert(1 - -2 == 3);
+diff --git a/src/tests/variables.som b/src/tests/variables.som
+index 1ed6726..db278c0 100644
+--- a/src/tests/variables.som
++++ b/src/tests/variables.som
+@@ -1,4 +1,4 @@
+-let assert = intrinsic(condition ~ bool) -> unit;
++let assert = intrinsic fn(condition ~ bool) -> unit;
+ 
+ let a = 12; 
+ assert(a == 12);
+@@ -16,3 +16,8 @@ let b = a;
+ b = 13;
+ assert(b == 13);
+ 
++let a ~ int = 12;
++assert(a == 12);
++
++let a ~ bool = true;
++assert(a == true);
+diff --git a/src/tokenizer/mod.rs b/src/tokenizer/mod.rs
+index 3d2e587..ba44dab 100644
+--- a/src/tokenizer/mod.rs
++++ b/src/tokenizer/mod.rs
+@@ -125,6 +125,7 @@ impl<'ast> Iterator for Tokenizer<'ast> {
+             '$' => Ok((TokenKind::Dollar, TokenValue::None)),
+             '|' => Ok((TokenKind::Pipe, TokenValue::None)),
+             '^' => Ok((TokenKind::Caret, TokenValue::None)),
++            '`' => Ok((TokenKind::Tick, TokenValue::None)),
+             '~' => Ok((TokenKind::Tilde, TokenValue::None)),
+             '?' => Ok((TokenKind::Question, TokenValue::None)),
+             ':' => Ok((TokenKind::Colon, TokenValue::None)),
+diff --git a/src/tokenizer/token.rs b/src/tokenizer/token.rs
+index 4c74548..d437850 100644
+--- a/src/tokenizer/token.rs
++++ b/src/tokenizer/token.rs
+@@ -126,8 +126,10 @@ pub enum TokenKind {
+     Question,
+     /// A pipe; `|`.
+     Pipe,
+-    /// An caret; `^`.
++    /// A caret; `^`.
+     Caret,
++    /// A tick; ```.
++    Tick,
+ 
+     /// An if keyword; `if`.
+     If,
+@@ -240,6 +242,7 @@ impl Display for TokenKind {
+             TokenKind::Question => write!(f, "`?`"),
+             TokenKind::Pipe => write!(f, "`|`"),
+             TokenKind::Caret => write!(f, "`^`"),
++            TokenKind::Tick => write!(f, "`"),
+             TokenKind::And => write!(f, "`&&`"),
+             TokenKind::Or => write!(f, "`||`"),
+             TokenKind::Trait => write!(f, "`trait`"),
