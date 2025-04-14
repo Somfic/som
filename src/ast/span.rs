@@ -1,8 +1,6 @@
 use miette::SourceSpan;
 
-use super::{
-    Expression, ExpressionValue, Statement, StatementValue, Typing, TypingValue,
-};
+use super::{Expression, ExpressionValue, Statement, StatementValue, Typing, TypingValue};
 
 pub trait Spannable<'ast>: Sized {
     type Value;

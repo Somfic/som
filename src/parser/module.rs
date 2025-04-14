@@ -1,7 +1,7 @@
 use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
-    ast::{Expression, FunctionDeclaration, IntrinsicFunctionDeclaration},
+    ast::{Expression, FunctionDeclaration, IntrinsicFunctionDeclaration, Typing},
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
 };
@@ -27,55 +27,17 @@ pub fn parse_intrinsic_function<'ast>(
         "expected an intrinsic function declaration",
     )?;
 
+    parser.tokens.expect(
+        TokenKind::Function,
+        "expected an intrinsic function declaration",
+    )?;
+
     let identifier_name = match identifier.value.clone() {
         TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
     };
 
-    parser.tokens.expect(
-        TokenKind::ParenOpen,
-        "expected the start of a parameter list",
-    )?;
-
-    let mut parameters = HashMap::new();
-
-    loop {
-        if parser.tokens.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
-        }) {
-            break;
-        }
-
-        if !parameters.is_empty() {
-            parser
-                .tokens
-                .expect(TokenKind::Comma, "expected a comma between parameters")?;
-        }
-
-        let parameter = parser
-            .tokens
-            .expect(TokenKind::Identifier, "expected a parameter name")?;
-
-        let parameter = match parameter.value {
-            crate::tokenizer::TokenValue::Identifier(name) => name,
-            _ => unreachable!(),
-        };
-
-        parser
-            .tokens
-            .expect(TokenKind::Tilde, "expected a parameter type")?;
-
-        let parameter_type = parser.parse_typing(BindingPower::None)?;
-
-        parameters.insert(parameter, parameter_type);
-    }
-
-    parser.tokens.expect(
-        TokenKind::ParenClose,
-        "expected the end of a parameter list",
-    )?;
+    let parameters = parse_optional_function_parameters(parser)?;
 
     parser
         .tokens
@@ -114,11 +76,59 @@ pub fn parse_function<'ast>(
         .tokens
         .expect(TokenKind::Function, "expected a function declaration")?;
 
-    parser.tokens.expect(
-        TokenKind::ParenOpen,
-        "expected the start of a parameter list",
-    )?;
+    let parameters = parse_optional_function_parameters(parser)?;
 
+    let return_type = if parser.tokens.peek().is_some_and(|token| {
+        token
+            .as_ref()
+            .is_ok_and(|token| token.kind == TokenKind::Arrow)
+    }) {
+        parser
+            .tokens
+            .expect(TokenKind::Arrow, "expected a return type")?;
+
+        Some(parser.parse_typing(BindingPower::None)?)
+    } else {
+        None
+    };
+
+    let expression = parser.parse_expression(BindingPower::None)?;
+
+    Ok(FunctionDeclaration {
+        name: identifier_name,
+        span: identifier.span,
+        parameters,
+        body: expression,
+        explicit_return_type: return_type,
+    })
+}
+
+fn parse_optional_function_parameters<'ast>(
+    parser: &mut Parser<'ast>,
+) -> ParserResult<HashMap<Cow<'ast, str>, Typing<'ast>>> {
+    let token = match parser.tokens.peek().as_ref() {
+        Some(Ok(token)) => token,
+        Some(Err(err)) => return Err(err.to_vec()),
+        None => {
+            return Err(vec![miette::diagnostic! {
+                help = "expected a type",
+                "expected a type"
+            }]);
+        }
+    };
+
+    match token.kind {
+        TokenKind::ParenOpen => {
+            parser.tokens.next();
+            parse_function_parameters(parser)
+        }
+        _ => Ok(HashMap::new()),
+    }
+}
+
+fn parse_function_parameters<'ast>(
+    parser: &mut Parser<'ast>,
+) -> ParserResult<HashMap<Cow<'ast, str>, Typing<'ast>>> {
     let mut parameters = HashMap::new();
 
     loop {
@@ -159,27 +169,5 @@ pub fn parse_function<'ast>(
         "expected the end of a parameter list",
     )?;
 
-    let return_type = if parser.tokens.peek().is_some_and(|token| {
-        token
-            .as_ref()
-            .is_ok_and(|token| token.kind == TokenKind::Arrow)
-    }) {
-        parser
-            .tokens
-            .expect(TokenKind::Arrow, "expected a return type")?;
-
-        Some(parser.parse_typing(BindingPower::None)?)
-    } else {
-        None
-    };
-
-    let expression = parser.parse_expression(BindingPower::None)?;
-
-    Ok(FunctionDeclaration {
-        name: identifier_name,
-        span: identifier.span,
-        parameters,
-        body: expression,
-        explicit_return_type: return_type,
-    })
+    Ok(parameters)
 }

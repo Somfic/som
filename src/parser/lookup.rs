@@ -204,6 +204,7 @@ impl Default for Lookup<'_> {
             BindingPower::Assignment,
             expression::parse_assignment,
         )
+        .add_typing_handler(TokenKind::Tick, typing::parse_generic)
         .add_typing_handler(TokenKind::UnitType, typing::parse_unit)
         .add_typing_handler(TokenKind::Identifier, typing::parse_symbol)
         .add_typing_handler(TokenKind::IntegerType, typing::parse_integer)

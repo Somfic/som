@@ -125,6 +125,7 @@ impl<'ast> Iterator for Tokenizer<'ast> {
             '$' => Ok((TokenKind::Dollar, TokenValue::None)),
             '|' => Ok((TokenKind::Pipe, TokenValue::None)),
             '^' => Ok((TokenKind::Caret, TokenValue::None)),
+            '`' => Ok((TokenKind::Tick, TokenValue::None)),
             '~' => Ok((TokenKind::Tilde, TokenValue::None)),
             '?' => Ok((TokenKind::Question, TokenValue::None)),
             ':' => Ok((TokenKind::Colon, TokenValue::None)),

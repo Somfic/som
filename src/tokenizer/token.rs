@@ -126,8 +126,10 @@ pub enum TokenKind {
     Question,
     /// A pipe; `|`.
     Pipe,
-    /// An caret; `^`.
+    /// A caret; `^`.
     Caret,
+    /// A tick; ```.
+    Tick,
 
     /// An if keyword; `if`.
     If,
@@ -240,6 +242,7 @@ impl Display for TokenKind {
             TokenKind::Question => write!(f, "`?`"),
             TokenKind::Pipe => write!(f, "`|`"),
             TokenKind::Caret => write!(f, "`^`"),
+            TokenKind::Tick => write!(f, "`"),
             TokenKind::And => write!(f, "`&&`"),
             TokenKind::Or => write!(f, "`||`"),
             TokenKind::Trait => write!(f, "`trait`"),

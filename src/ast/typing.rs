@@ -80,6 +80,7 @@ pub enum TypingValue<'ast> {
     Boolean,
     Decimal,
     Unit,
+    Generic(Cow<'ast, str>),
     Symbol(Cow<'ast, str>),
 }
 
@@ -95,8 +96,9 @@ impl Display for TypingValue<'_> {
             TypingValue::Unknown => write!(f, "unknown"),
             TypingValue::Integer => write!(f, "an integer"),
             TypingValue::Decimal => write!(f, "a decimal"),
-            TypingValue::Symbol(name) => write!(f, "{}", name),
             TypingValue::Boolean => write!(f, "a boolean"),
+            TypingValue::Symbol(name) => write!(f, "{}", name),
+            TypingValue::Generic(name) => write!(f, "`{}", name),
             TypingValue::Unit => write!(f, "nothing"),
         }
     }

@@ -1,4 +1,4 @@
-let assert = intrinsic(condition ~ bool) -> unit;
+let assert = intrinsic fn(condition ~ bool) -> unit;
 
 let a = 12; 
 assert(a == 12);
@@ -16,3 +16,8 @@ let b = a;
 b = 13;
 assert(b == 13);
 
+let a ~ int = 12;
+assert(a == 12);
+
+let a ~ bool = true;
+assert(a == true);
