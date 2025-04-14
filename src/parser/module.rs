@@ -8,20 +8,27 @@ use crate::{
 
 use super::{BindingPower, Parser};
 
+pub fn parse_module_intrinsic_function<'ast>(
+    parser: &mut Parser<'ast>,
+) -> ParserResult<IntrinsicFunctionDeclaration<'ast>> {
+    let identifier = parser
+        .tokens
+        .expect(TokenKind::Identifier, "expected a function name")?;
+
+    parse_intrinsic_function(parser, identifier)
+}
+
 pub fn parse_intrinsic_function<'ast>(
     parser: &mut Parser<'ast>,
+    identifier: Token<'ast>,
 ) -> ParserResult<IntrinsicFunctionDeclaration<'ast>> {
     parser.tokens.expect(
         TokenKind::Intrinsic,
         "expected an intrinsic function declaration",
     )?;
 
-    let name_token = parser
-        .tokens
-        .expect(TokenKind::Identifier, "expected a function name")?;
-
-    let name = match name_token.value {
-        crate::tokenizer::TokenValue::Identifier(name) => name,
+    let identifier_name = match identifier.value.clone() {
+        TokenValue::Identifier(identifier) => identifier,
         _ => unreachable!(),
     };
 
@@ -72,13 +79,13 @@ pub fn parse_intrinsic_function<'ast>(
 
     parser
         .tokens
-        .expect(TokenKind::Tilde, "expected a return type")?;
+        .expect(TokenKind::Arrow, "expected a return type")?;
 
     let return_type = parser.parse_typing(BindingPower::None)?;
 
     Ok(IntrinsicFunctionDeclaration {
-        name,
-        span: name_token.span,
+        name: identifier_name,
+        span: identifier.span,
         parameters,
         return_type,
     })

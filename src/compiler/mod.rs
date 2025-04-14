@@ -15,7 +15,7 @@ use cranelift::{
     },
     prelude::{isa::TargetIsa, *},
 };
-use cranelift_module::{Linkage, Module};
+use cranelift_module::Module;
 
 use cranelift_jit::{JITBuilder, JITModule};
 use environment::CompileEnvironment;
@@ -24,6 +24,7 @@ pub mod environment;
 
 pub struct Compiler {
     isa: Arc<dyn TargetIsa>,
+    codebase: JITModule,
 }
 
 impl Compiler {
@@ -38,97 +39,57 @@ impl Compiler {
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
 
-        Self { isa }
+        let builder = JITBuilder::new(cranelift_module::default_libcall_names()).unwrap();
+        let codebase = JITModule::new(builder);
+
+        Self { isa, codebase }
     }
 
     pub fn compile(&mut self, modules: Vec<TypedModule<'_>>) -> CompilerResult<*const u8> {
-        let builder = JITBuilder::new(cranelift_module::default_libcall_names()).unwrap();
-        let mut jit_module = JITModule::new(builder);
         let mut environment = CompileEnvironment::new();
 
         for module in &modules {
             for function in &module.intrinsic_functions {
-                self.declare_intrinsic_function(function, &mut environment, &mut jit_module);
+                self.declare_intrinsic_function(function, &mut environment);
             }
 
             for function in &module.functions {
-                self.declare_function(function, &mut environment, &mut jit_module);
+                self.declare_function(function, &mut environment);
             }
         }
 
-        // compile each intrinsic function
         for module in &modules {
-            for function in &module.intrinsic_functions {
-                let mut context = jit_module.make_context();
-                let (func_id, signature) = {
-                    let lookup = environment.lookup_function(&function.name).unwrap();
-                    (lookup.0, lookup.1.clone())
-                };
-                context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature);
-                let mut func_ctx = FunctionBuilderContext::new();
-                let mut builder = FunctionBuilder::new(&mut context.func, &mut func_ctx);
-
-                let entry_block = builder.create_block();
-                builder.append_block_params_for_function_params(entry_block);
-                builder.switch_to_block(entry_block);
-
-                let block_params = builder.block_params(entry_block).to_vec();
-                for (i, (param, param_ty)) in function.parameters.iter().enumerate() {
-                    let variable =
-                        environment.declare_variable(param.clone(), &mut builder, &param_ty.value);
-
-                    builder.def_var(variable, block_params[i]);
-                }
-
-                match function.name.as_ref() {
-                    "assert" => {
-                        let cond = block_params[0];
-                        let code = TrapCode::unwrap_user(123);
-                        builder.ins().trapz(cond, code);
-                        let unit_val = builder.ins().iconst(types::I8, 0);
-                        builder.ins().return_(&[unit_val]);
-                    }
-                    _ => panic!("unknown intrinsic function"),
-                };
-
-                builder.seal_block(entry_block);
-                builder.finalize();
-
-                // define the function in the jit_module
-                jit_module.define_function(func_id, &mut context).unwrap();
+            for intrinsic_function in &module.intrinsic_functions {
+                self.compile_intrinsic_function(intrinsic_function, &mut environment);
             }
-        }
 
-        // next, compile each function
-        for module in &modules {
             for function in &module.functions {
-                self.compile_function(&mut jit_module, function, &mut environment.block());
+                self.compile_function(function, &mut environment);
             }
         }
 
-        jit_module.finalize_definitions().unwrap();
+        self.codebase.finalize_definitions().unwrap();
 
-        Ok(jit_module.get_finalized_function(environment.lookup_function("main").unwrap().0))
+        Ok(self
+            .codebase
+            .get_finalized_function(environment.lookup_function("main").unwrap().0))
     }
 
     fn compile_expression<'ast>(
         &mut self,
-        expression: &TypedExpression<'ast>,
+        expression: &'ast TypedExpression<'ast>,
         builder: &mut FunctionBuilder,
         environment: &mut CompileEnvironment<'ast>,
-        jit_module: &mut JITModule,
     ) -> Value {
         match &expression.value {
-            ExpressionValue::Primitive(p) => {
-                self.compile_primitive(p, builder, environment, jit_module)
-            }
+            ExpressionValue::Primitive(p) => self.compile_primitive(p, builder, environment),
             ExpressionValue::Binary {
                 operator,
                 left,
                 right,
             } => {
-                let left_val = self.compile_expression(left, builder, environment, jit_module);
-                let right_val = self.compile_expression(right, builder, environment, jit_module);
+                let left_val = self.compile_expression(left, builder, environment);
+                let right_val = self.compile_expression(right, builder, environment);
                 match operator {
                     BinaryOperator::Add => builder.ins().iadd(left_val, right_val),
                     BinaryOperator::Subtract => builder.ins().isub(left_val, right_val),
@@ -166,12 +127,16 @@ impl Compiler {
                 }
             }
             ExpressionValue::Group(expression) => {
-                self.compile_expression(expression, builder, environment, jit_module)
+                self.compile_expression(expression, builder, environment)
             }
             ExpressionValue::Unary { operator, operand } => match operator {
-                crate::ast::UnaryOperator::Negate => todo!(),
+                crate::ast::UnaryOperator::Negate => {
+                    let value = self.compile_expression(operand, builder, environment);
+                    let scale = builder.ins().iconst(types::I8, -1);
+                    builder.ins().iadd(value, scale)
+                }
                 crate::ast::UnaryOperator::Negative => {
-                    let value = self.compile_expression(operand, builder, environment, jit_module);
+                    let value = self.compile_expression(operand, builder, environment);
                     builder.ins().ineg(value)
                 }
             },
@@ -180,7 +145,7 @@ impl Compiler {
                 truthy,
                 falsy,
             } => {
-                let cond_val = self.compile_expression(condition, builder, environment, jit_module);
+                let cond_val = self.compile_expression(condition, builder, environment);
                 let then_block = builder.create_block();
                 let else_block = builder.create_block();
                 let merge_block = builder.create_block();
@@ -193,13 +158,13 @@ impl Compiler {
 
                 // compile truthy branch
                 builder.switch_to_block(then_block);
-                let true_val = self.compile_expression(truthy, builder, environment, jit_module);
+                let true_val = self.compile_expression(truthy, builder, environment);
                 builder.ins().jump(merge_block, &[true_val]);
                 builder.seal_block(then_block);
 
                 // compile falsy branch
                 builder.switch_to_block(else_block);
-                let false_val = self.compile_expression(falsy, builder, environment, jit_module);
+                let false_val = self.compile_expression(falsy, builder, environment);
                 builder.ins().jump(merge_block, &[false_val]);
                 builder.seal_block(else_block);
 
@@ -214,10 +179,10 @@ impl Compiler {
                 builder.append_block_param(block, convert_type(&result.ty.value));
 
                 for statement in statements {
-                    self.compile_statement(statement, builder, environment, jit_module);
+                    self.compile_statement(statement, builder, environment);
                 }
 
-                let result = self.compile_expression(result, builder, environment, jit_module);
+                let result = self.compile_expression(result, builder, environment);
 
                 builder.ins().jump(block, &[result]);
                 builder.switch_to_block(block);
@@ -231,20 +196,20 @@ impl Compiler {
             } => {
                 let arg_values: Vec<Value> = arguments
                     .iter()
-                    .map(|arg| self.compile_expression(arg, builder, environment, jit_module))
+                    .map(|arg| self.compile_expression(arg, builder, environment))
                     .collect();
 
                 let (func_id, _signature) = environment
                     .lookup_function(function_name)
                     .expect("function not declared");
 
-                let callee = jit_module.declare_func_in_func(*func_id, builder.func);
+                let callee = self.codebase.declare_func_in_func(*func_id, builder.func);
                 let call_inst = builder.ins().call(callee, &arg_values);
 
                 builder.inst_results(call_inst)[0]
             }
             ExpressionValue::Assignment { name, value } => {
-                let value = self.compile_expression(value, builder, environment, jit_module);
+                let value = self.compile_expression(value, builder, environment);
                 let var = environment.lookup_variable(name).unwrap();
                 builder.def_var(*var, value);
                 value
@@ -254,27 +219,27 @@ impl Compiler {
 
     fn compile_statement<'ast>(
         &mut self,
-        statement: &TypedStatement<'ast>,
+        statement: &'ast TypedStatement<'ast>,
         builder: &mut FunctionBuilder,
         environment: &mut CompileEnvironment<'ast>,
-        mut jit_module: &mut JITModule,
     ) {
         match &statement.value {
             StatementValue::Expression(expression) => {
-                self.compile_expression(expression, builder, environment, jit_module);
+                self.compile_expression(expression, builder, environment);
             }
             StatementValue::Block(statements) => {
+                let mut environment = environment.block();
                 for statement in statements {
-                    self.compile_statement(statement, builder, environment, jit_module);
+                    self.compile_statement(statement, builder, &mut environment);
                 }
             }
             StatementValue::Declaration(name, expression) => {
-                let value = self.compile_expression(expression, builder, environment, jit_module);
+                let value = self.compile_expression(expression, builder, environment);
                 let var = environment.declare_variable(name.clone(), builder, &expression.ty.value);
                 builder.def_var(var, value);
             }
             StatementValue::Condition(condition, statement) => {
-                let cond_val = self.compile_expression(condition, builder, environment, jit_module);
+                let cond_val = self.compile_expression(condition, builder, environment);
                 let then_block = builder.create_block();
                 let else_block = builder.create_block();
                 let merge_block = builder.create_block();
@@ -286,7 +251,7 @@ impl Compiler {
                 // compile truthy branch
                 builder.switch_to_block(then_block);
                 let mut environment = environment.block();
-                self.compile_statement(statement, builder, &mut environment, jit_module);
+                self.compile_statement(statement, builder, &mut environment);
                 builder.ins().jump(merge_block, &[]);
                 builder.seal_block(then_block);
 
@@ -308,14 +273,14 @@ impl Compiler {
 
                 // compile condition block
                 builder.switch_to_block(cond_block);
-                let cond_val = self.compile_expression(condition, builder, environment, jit_module);
+                let cond_val = self.compile_expression(condition, builder, environment);
                 builder
                     .ins()
                     .brif(cond_val, body_block, &[], merge_block, &[]);
 
                 // compile body block
                 builder.switch_to_block(body_block);
-                self.compile_statement(body, builder, environment, jit_module);
+                self.compile_statement(body, builder, environment);
                 builder.ins().jump(cond_block, &[]);
                 builder.seal_block(body_block);
 
@@ -324,10 +289,14 @@ impl Compiler {
                 builder.seal_block(merge_block);
                 builder.seal_block(cond_block);
             }
-            StatementValue::Function(name, function) => {
-                self.compile_function(&mut jit_module, function, &mut environment.block());
+            StatementValue::Function(function) => {
+                self.declare_function(function, environment);
+                self.compile_function(function, environment);
             }
-            StatementValue::Intrinsic(name, intrinsic) => todo!(),
+            StatementValue::Intrinsic(intrinsic) => {
+                self.declare_intrinsic_function(intrinsic, environment);
+                self.compile_intrinsic_function(intrinsic, environment)
+            }
         }
     }
 
@@ -335,8 +304,9 @@ impl Compiler {
         &mut self,
         function: &'ast IntrinsicFunctionDeclaration<'ast>,
         environment: &mut CompileEnvironment<'ast>,
-        jit_module: &mut JITModule,
     ) {
+        println!("Declaring intrinsic function {}", function.name);
+
         let mut signature = Signature::new(self.isa.default_call_conv());
 
         for parameter in &function.parameters {
@@ -348,14 +318,13 @@ impl Compiler {
             .returns
             .push(AbiParam::new(convert_type(&function.return_type.value)));
 
-        environment.declare_intrinsic(function, signature, jit_module);
+        environment.declare_intrinsic(function, signature, &mut self.codebase);
     }
 
     fn declare_function<'ast>(
         &mut self,
         function: &'ast TypedFunctionDeclaration<'ast>,
         environment: &mut CompileEnvironment<'ast>,
-        jit_module: &mut JITModule,
     ) {
         let mut signature = Signature::new(self.isa.default_call_conv());
 
@@ -368,19 +337,15 @@ impl Compiler {
             .returns
             .push(AbiParam::new(convert_type(&function.body.ty.value)));
 
-        environment.declare_function(function, signature, jit_module);
+        environment.declare_function(function, signature, &mut self.codebase);
     }
 
     fn compile_function<'ast>(
         &mut self,
-        jit_module: &mut JITModule,
         function: &'ast TypedFunctionDeclaration<'ast>,
         environment: &mut CompileEnvironment<'ast>,
     ) {
-        println!("compiling function {}", function.name);
-        println!("environment: {}", environment);
-
-        let mut context = jit_module.make_context();
+        let mut context = self.codebase.make_context();
         let (func_id, signature) = {
             let lookup = environment.lookup_function(&function.name).unwrap();
             (lookup.0, lookup.1.clone())
@@ -401,17 +366,63 @@ impl Compiler {
             builder.def_var(variable, block_params[i]);
         }
 
-        let body = self.compile_expression(
-            &function.body,
-            &mut builder,
-            &mut environment.block(),
-            jit_module,
-        );
+        let body = self.compile_expression(&function.body, &mut builder, environment);
         builder.ins().return_(&[body]);
         builder.seal_block(entry_block);
         builder.finalize();
 
-        jit_module.define_function(func_id, &mut context).unwrap();
+        self.codebase
+            .define_function(func_id, &mut context)
+            .unwrap();
+    }
+
+    fn compile_intrinsic_function<'ast>(
+        &mut self,
+        intrinsic_function: &IntrinsicFunctionDeclaration<'ast>,
+        environment: &mut CompileEnvironment<'ast>,
+    ) {
+        let mut context = self.codebase.make_context();
+        let (func_id, signature) = {
+            let lookup = environment
+                .lookup_function(&intrinsic_function.name)
+                .unwrap_or_else(|| {
+                    panic!("{} intrinsic function not found", intrinsic_function.name)
+                });
+            (lookup.0, lookup.1.clone())
+        };
+        context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature);
+        let mut func_ctx = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut context.func, &mut func_ctx);
+
+        let entry_block = builder.create_block();
+        builder.append_block_params_for_function_params(entry_block);
+        builder.switch_to_block(entry_block);
+
+        let block_params = builder.block_params(entry_block).to_vec();
+        for (i, (param, param_ty)) in intrinsic_function.parameters.iter().enumerate() {
+            let variable =
+                environment.declare_variable(param.clone(), &mut builder, &param_ty.value);
+
+            builder.def_var(variable, block_params[i]);
+        }
+
+        match intrinsic_function.name.as_ref() {
+            "assert" => {
+                let cond = block_params[0];
+                let code = TrapCode::unwrap_user(123);
+                builder.ins().trapz(cond, code);
+                let unit_val = builder.ins().iconst(types::I8, 0);
+                builder.ins().return_(&[unit_val]);
+            }
+            _ => panic!("unknown intrinsic function"),
+        };
+
+        builder.seal_block(entry_block);
+        builder.finalize();
+
+        self.codebase
+            .define_function(func_id, &mut context)
+            .unwrap();
     }
 
     fn compile_primitive<'ast>(
@@ -419,7 +430,6 @@ impl Compiler {
         primitive: &Primitive<'ast>,
         builder: &mut FunctionBuilder,
         environment: &mut CompileEnvironment<'ast>,
-        jit_module: &mut JITModule,
     ) -> Value {
         match primitive {
             Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),

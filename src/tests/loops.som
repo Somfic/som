@@ -1,9 +1,9 @@
-intrinsic assert(condition ~ bool) ~ unit
+let assert = intrinsic(condition ~ bool) -> unit;
 
-fn main() {
-    let i = 0;
-    while i < 10 {
-        i = i + 1;
-    };
-    assert(i == 10);
-}
+let i = 0;
+while i < 10 {
+   i = i + 1;
+};
+
+assert(i == 10);
+

@@ -57,19 +57,13 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
 
     let declaration = match parser.tokens.peek() {
         Some(Ok(token)) => match token.kind {
-            TokenKind::Function => parse_function_declaration(parser, identifier, identifier_name),
-            TokenKind::Intrinsic => {
-                parse_intrinsic_declaration(parser, identifier, identifier_name)
-            }
+            TokenKind::Function => parse_function_declaration(parser, identifier),
+            TokenKind::Intrinsic => parse_intrinsic_declaration(parser, identifier),
             TokenKind::Type => parse_type_declaration(parser, identifier, identifier_name),
             _ => parse_variable_declaration(parser, identifier, identifier_name),
         },
         _ => unreachable!(),
     }?;
-
-    parser
-        .tokens
-        .expect(TokenKind::Semicolon, "expected a semicolon")?;
 
     Ok(declaration)
 }
@@ -77,13 +71,12 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
 fn parse_function_declaration<'ast>(
     parser: &mut Parser<'ast>,
     identifier: Token<'ast>,
-    identifier_name: Cow<'ast, str>,
 ) -> ParserResult<Statement<'ast>> {
     let function = module::parse_function(parser, identifier.clone())?;
 
     Ok(Statement::at_multiple(
         vec![identifier.span, function.span],
-        StatementValue::Function(identifier_name, function),
+        StatementValue::Function(function),
     ))
 }
 
@@ -98,13 +91,12 @@ fn parse_type_declaration<'ast>(
 fn parse_intrinsic_declaration<'ast>(
     parser: &mut Parser<'ast>,
     identifier: Token<'ast>,
-    identifier_name: Cow<'ast, str>,
 ) -> ParserResult<Statement<'ast>> {
-    let intrinsic = module::parse_intrinsic_function(parser)?;
+    let intrinsic = module::parse_intrinsic_function(parser, identifier.clone())?;
 
     Ok(Statement::at_multiple(
         vec![identifier.span, intrinsic.span],
-        StatementValue::Intrinsic(identifier_name, intrinsic),
+        StatementValue::Intrinsic(intrinsic),
     ))
 }
 

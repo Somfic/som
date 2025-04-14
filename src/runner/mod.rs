@@ -1,3 +1,5 @@
+use std::panic::{catch_unwind, AssertUnwindSafe};
+
 use crate::{ast::TypedModule, compiler, parser, prelude::*, runner, typer};
 
 pub struct Runner {}
@@ -9,8 +11,11 @@ impl Runner {
 
     pub fn run(&self, pointer: *const u8) -> ParserResult<i64> {
         let compiled_fn: extern "C" fn() -> i64 = unsafe { std::mem::transmute(pointer) };
-        let result = compiled_fn();
-        Ok(result)
+        let result = catch_unwind(AssertUnwindSafe(|| compiled_fn()));
+        match result {
+            Ok(value) => Ok(value),
+            Err(_) => Err(vec![miette::diagnostic!("Runtime error")]),
+        }
     }
 }
 
@@ -38,6 +43,11 @@ pub fn run(source_code: impl Into<String>) -> i64 {
 
     runner::Runner::new()
         .run(compiled)
+        .map_err(|error| {
+            for error in error {
+                eprintln!("{:?}", error);
+            }
+        })
         .expect("failed to run expression")
 }
 

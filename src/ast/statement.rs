@@ -20,8 +20,8 @@ pub enum StatementValue<'ast, Expression> {
     Declaration(Cow<'ast, str>, Expression),
     Condition(Expression, Box<GenericStatement<'ast, Expression>>),
     WhileLoop(Expression, Box<GenericStatement<'ast, Expression>>),
-    Function(Cow<'ast, str>, GenericFunctionDeclaration<'ast, Expression>),
-    Intrinsic(Cow<'ast, str>, IntrinsicFunctionDeclaration<'ast>),
+    Function(GenericFunctionDeclaration<'ast, Expression>),
+    Intrinsic(IntrinsicFunctionDeclaration<'ast>),
 }
 
 impl<'ast> GenericStatement<'ast, Expression<'ast>> {

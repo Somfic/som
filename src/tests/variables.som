@@ -1,19 +1,18 @@
-intrinsic assert(condition ~ bool) ~ unit
+let assert = intrinsic(condition ~ bool) -> unit;
 
-fn main() { 
-    let a = 12; 
-    assert(a == 12);
+let a = 12; 
+assert(a == 12);
 
-    let a = 12; 
-    let b = a;
-    assert(b == 12);
-    
-    let a = 12; 
-    a = 13;
-    assert(a == 13);
+let a = 12; 
+let b = a;
+assert(b == 12);
 
-    let a = 12; 
-    let b = a;
-    b = 13;
-    assert(b == 13);
-}
+let a = 12; 
+a = 13;
+assert(a == 13);
+
+let a = 12; 
+let b = a;
+b = 13;
+assert(b == 13);
+

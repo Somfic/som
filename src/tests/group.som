@@ -1,7 +1,6 @@
-intrinsic assert(condition ~ bool) ~ unit
+let assert = intrinsic(condition ~ bool) -> unit;
 
-fn main() {
-    assert(1 + 2 * (3 + 4) == 15);
-    assert((1 + 2) * 3 + 4 == 13);
-    assert(1 + 2 * 3 + 4 == 11);
-}
+assert(1 + 2 * (3 + 4) == 15);
+assert((1 + 2) * 3 + 4 == 13);
+assert(1 + 2 * 3 + 4 == 11);
+
