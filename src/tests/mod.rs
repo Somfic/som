@@ -21,6 +21,11 @@ fn block() {
 }
 
 #[test]
+fn one_file() {
+    run(include_str!("one_file.som"));
+}
+
+#[test]
 fn conditional() {
     run(include_str!("conditional.som"));
 }

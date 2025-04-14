@@ -159,8 +159,17 @@ impl Typer {
                 self.type_check_expression(expression, environment)
             }
             ExpressionValue::Unary { operator, operand } => match operator {
-                crate::ast::UnaryOperator::Negate => todo!(),
+                crate::ast::UnaryOperator::Negate => Ok(TypedExpression {
+                    // TODO: check if the operand is a boolean
+                    value: ExpressionValue::Unary {
+                        operator: operator.clone(),
+                        operand: Box::new(self.type_check_expression(operand, environment)?),
+                    },
+                    ty: Typing::boolean(&expression.span),
+                    span: expression.span,
+                }),
                 crate::ast::UnaryOperator::Negative => Ok(TypedExpression {
+                    // TODO: check if its a number
                     value: ExpressionValue::Unary {
                         operator: operator.clone(),
                         operand: Box::new(self.type_check_expression(operand, environment)?),
@@ -374,21 +383,21 @@ impl Typer {
                     value: StatementValue::WhileLoop(condition, Box::new(statement)),
                 })
             }
-            StatementValue::Function(name, function) => {
-                self.declare_function(function, environment);
+            StatementValue::Function(function) => {
+                self.declare_function(function, environment)?;
                 let function = self.type_check_function(function, environment)?;
 
                 Ok(TypedStatement {
                     span: function.span,
-                    value: StatementValue::Function(name.clone(), function),
+                    value: StatementValue::Function(function),
                 })
             }
-            StatementValue::Intrinsic(name, intrinsic) => {
-                self.declare_intrinsic_function(intrinsic, environment);
+            StatementValue::Intrinsic(intrinsic) => {
+                self.declare_intrinsic_function(intrinsic, environment)?;
 
                 Ok(TypedStatement {
                     span: intrinsic.span,
-                    value: StatementValue::Intrinsic(name.clone(), intrinsic.clone()),
+                    value: StatementValue::Intrinsic(intrinsic.clone()),
                 })
             }
         }

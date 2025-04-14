@@ -107,7 +107,7 @@ impl<'ast> Parser<'ast> {
         while let Some(Ok(token)) = self.tokens.peek() {
             match token.kind {
                 TokenKind::Intrinsic => {
-                    intrinsic_functions.push(module::parse_intrinsic_function(self)?);
+                    intrinsic_functions.push(module::parse_module_intrinsic_function(self)?);
                 }
                 TokenKind::Function => {
                     functions.push(module::parse_module_function(self)?);
@@ -225,20 +225,21 @@ impl<'ast> Parser<'ast> {
             }
         };
 
-        match self.lookup.statement_lookup.get(&token.kind) {
-            Some(handler) => handler(self),
+        let statement = match self.lookup.statement_lookup.get(&token.kind) {
+            Some(handler) => handler(self)?,
             None => {
                 // parse expression
                 let expression = self.parse_expression(BindingPower::None)?;
-
-                if require_semicolon {
-                    self.tokens
-                        .expect(TokenKind::Semicolon, "expected a closing semicolon")?;
-                }
-
-                Ok(Statement::expression(expression.span, expression))
+                Statement::expression(expression.span, expression)
             }
+        };
+
+        if require_semicolon {
+            self.tokens
+                .expect(TokenKind::Semicolon, "expected a closing semicolon")?;
         }
+
+        Ok(statement)
     }
 
     pub(crate) fn parse_typing(&mut self, bp: BindingPower) -> ParserResult<Typing<'ast>> {

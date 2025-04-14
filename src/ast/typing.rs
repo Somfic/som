@@ -96,7 +96,7 @@ impl Display for TypingValue<'_> {
             TypingValue::Integer => write!(f, "an integer"),
             TypingValue::Decimal => write!(f, "a decimal"),
             TypingValue::Symbol(name) => write!(f, "{}", name),
-            TypingValue::Boolean => write!(f, "a bool"),
+            TypingValue::Boolean => write!(f, "a boolean"),
             TypingValue::Unit => write!(f, "nothing"),
         }
     }
