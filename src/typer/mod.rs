@@ -41,6 +41,10 @@ impl Typer {
         }
     }
 
+    fn report_errors(&mut self, errors: Vec<MietteDiagnostic>) {
+        self.errors.extend(errors);
+    }
+
     fn report_error(&mut self, error: Option<MietteDiagnostic>) {
         if let Some(error) = error {
             self.errors.push(error);
@@ -247,23 +251,40 @@ impl Typer {
                     .unwrap()]
                 })?;
 
-                let mut typed_arguments = arguments.iter().map(|a| self.type_check_expression(a, environment)).flatten();
+                let mut environment = environment.clone();
+                let mut results = arguments
+                    .iter()
+                    .map(|a| self.type_check_expression(a, &mut environment))
+                    .collect::<Vec<_>>();
+
+                let mut typed_arguments = results
+                    .iter()
+                    .filter_map(|r| {
+                        if let Err(e) = r {
+                            self.report_errors(e.clone());
+                            None
+                        } else {
+                            r.as_ref().ok()
+                        }
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
 
                 for i in 0..cmp::max(arguments.len(), function.parameters.len()) {
-                    let argument = arguments.get(i);
+                    let argument = typed_arguments.get(i);
                     let parameter = function.parameters.get(i);
 
                     if argument.is_some() && parameter.is_none() {
                         let argument = argument.unwrap();
-                        let argument = ;
 
-                        self.report_error(error::mismatched_argument(
-                            format!("expectedarguments but got {} arguments", arguments.len()),
-                            &argument,
-                            parameter.unwrap(),
+                        self.report_error(error::unexpected_argument(
+                            "unexpected argument",
+                            function,
+                            argument,
                             format!(
-                                "the function `{}` requires  arguments but {} were given",
+                                "the function `{}` requires {} arguments but {} were given",
                                 function_name,
+                                function.parameters.len(),
                                 arguments.len()
                             ),
                         ));
@@ -273,31 +294,33 @@ impl Typer {
                         let parameter = parameter.unwrap();
 
                         self.report_error(error::missing_argument(
-                            format!("expected {} arguments but got arguments", arguments.len()),
+                            format!("missing argument for `{}`", parameter.name),
                             expression,
-                            &parameter,
+                            parameter,
                             format!(
-                                "the function `{}` requires arguments but {} were given",
+                                "the function `{}` requires the `{}` parameter but it was not given",
                                 function_name,
-                                arguments.len()
+                                parameter.name
                             ),
                         ));
                     };
-                }
 
-                let expected_count = function.parameters.len();
-                let received_count = typed_arguments.len();
+                    if argument.is_some() && parameter.is_some() {
+                        let argument = argument.unwrap();
+                        let parameter = parameter.unwrap();
 
-                if expected_count != received_count {
-                    self.report_error(error::mismatched_arguments(
-                        "expected {} arguments but got {}",
-                        &typed_arguments,
-                        &function.parameters,
-                        format!(
-                            "the function `{}` requires {} arguments but {} were given",
-                            function_name, expected_count, received_count
-                        ),
-                    ));
+                        if argument.ty != parameter.ty {
+                            self.report_error(error::mismatched_argument(
+                                format!("mismatching argument type for `{}`", parameter.name),
+                                argument,
+                                parameter,
+                                format!(
+                                    "the function `{}` requires the `{}` parameter to be {} but it was {}",
+                                    function_name, parameter.name, parameter.ty, argument.ty
+                                ),
+                            ));
+                        }
+                    }
                 }
 
                 Ok(TypedExpression {

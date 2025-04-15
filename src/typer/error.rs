@@ -1,6 +1,9 @@
 use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
-use crate::ast::{Expression, Paramater, TypedExpression, Typing};
+use crate::ast::{
+    Expression, FunctionDeclaration, GenericFunctionDeclaration, Paramater, TypedExpression,
+    TypedFunctionDeclaration, Typing,
+};
 
 pub fn new_mismatched_types(
     message: impl Into<String>,
@@ -63,6 +66,25 @@ pub fn mismatched_argument(
     ))
 }
 
+pub fn unexpected_argument(
+    message: impl Into<String>,
+    function: &TypedFunctionDeclaration<'_>,
+    argument: &TypedExpression<'_>,
+    hint: impl Into<String>,
+) -> Option<MietteDiagnostic> {
+    let message = message.into();
+
+    Some(diagnostic!(
+        severity = Severity::Error,
+        labels = vec![
+            argument.label(format!("{}", argument.ty)),
+            function.label("unexpected argument"),
+        ],
+        help = hint.into(),
+        "{message}"
+    ))
+}
+
 pub fn missing_argument(
     message: impl Into<String>,
     function_call: &Expression<'_>,
@@ -74,35 +96,9 @@ pub fn missing_argument(
     Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![
-            function_call.label(format!("missing `{}`", parameter.name)),
-            parameter.label(format!("{}", parameter.ty))
+            function_call.label(format!("missing value for `{}`", parameter.name)),
+            parameter.label(format!("`{}` paramater", parameter.name))
         ],
-        help = hint.into(),
-        "{message}"
-    ))
-}
-
-pub fn mismatched_arguments(
-    message: impl Into<String>,
-    arguments: &Vec<TypedExpression<'_>>,
-    parameters: &Vec<Paramater<'_>>,
-    hint: impl Into<String>,
-) -> Option<MietteDiagnostic> {
-    let message = message.into();
-
-    let mut labels = Vec::new();
-
-    for argument in arguments {
-        labels.push(argument.label(format!("{}", argument.ty)));
-    }
-
-    for parameter in parameters {
-        labels.push(parameter.label(format!("{}", parameter.ty)));
-    }
-
-    Some(diagnostic!(
-        severity = Severity::Error,
-        labels = labels,
         help = hint.into(),
         "{message}"
     ))
