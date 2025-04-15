@@ -294,15 +294,18 @@ pub fn parse_inner_block<'ast>(
         match statement.value {
             StatementValue::Expression(expr) => {
                 expression = Some(expr);
+                break;
             }
-            _ => {
-                parser
-                    .tokens
-                    .expect(TokenKind::Semicolon, "expected a semicolon")?;
-            }
-        }
-        break;
+        };
+
+        parser
+            .tokens
+            .expect(TokenKind::Semicolon, "expected a semicolon")?;
     }
+
+    parser
+        .tokens
+        .expect(terminating_token, "expected the end of the block")?;
 
     let spans = statements.iter().map(|s| s.span).collect();
 
