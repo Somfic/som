@@ -42,13 +42,12 @@ impl<'ast> Tokenizer<'ast> {
             // There was an error parsing the token
             Some(Err(e)) => Err(e),
             // There are no more tokens to parse
-            None => Err(vec![miette::diagnostic! {
-                labels = vec![
-                    LabeledSpan::at_offset(self.byte_offset - 1, format!("expected {} here", expected))
-                ],
-                help = format!("{} was expected, but no more code was found", expected),
-                "unexpected end of input",
-            }]),
+            None => Ok(Token {
+                kind: TokenKind::EOF,
+                value: TokenValue::None,
+                span: SourceSpan::new(self.byte_offset.into(), 0),
+                original: "",
+            }),
         }
     }
 

@@ -261,59 +261,52 @@ pub fn parse_conditional<'ast>(
         },
     ))
 }
-
-pub fn parse_inner_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_inner_block<'ast>(
+    parser: &mut Parser<'ast>,
+    terminating_token: TokenKind,
+) -> ParserResult<Expression<'ast>> {
     let mut statements = Vec::new();
-    let mut last_is_return = true;
+    let mut result_expr = None;
 
-    while parser.tokens.peek().is_some() {
-        if parser.tokens.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
-        }) {
-            break;
-        }
-
-        if !statements.is_empty() {
-            parser
-                .tokens
-                .expect(TokenKind::Semicolon, "expected a closing semicolon")?;
-        }
-
-        if parser.tokens.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
-        }) {
-            last_is_return = false;
+    while let Some(token) = parser.tokens.peek() {
+        if token.as_ref().is_ok_and(|t| t.kind == terminating_token) {
             break;
         }
 
         let statement = parser.parse_statement(false)?;
-        statements.push(statement);
-    }
 
-    let result = if last_is_return {
-        match statements.last().map(|s| &s.value) {
-            Some(StatementValue::Expression(_)) => match statements.pop().map(|s| s.value) {
-                Some(StatementValue::Expression(expression)) => Some(expression),
-                _ => unreachable!(),
-            },
-            _ => None, //todo!("returning from a block with non-expression statements"),
+        if let Some(next_token) = parser.tokens.peek() {
+            if next_token
+                .as_ref()
+                .is_ok_and(|t| t.kind == TokenKind::Semicolon)
+            {
+                parser
+                    .tokens
+                    .expect(TokenKind::Semicolon, "expected a semicolon")?;
+                statements.push(statement);
+                continue;
+            }
         }
-    } else {
-        None
-    };
+
+        match statement.value {
+            StatementValue::Expression(expr) => {
+                result_expr = Some(expr);
+            }
+            _ => {
+                todo!("block statements can only be expressions");
+            }
+        }
+        break;
+    }
 
     let spans = statements.iter().map(|s| s.span).collect();
 
-    match result {
-        Some(result) => Ok(Expression::at_multiple(
+    match result_expr {
+        Some(expr) => Ok(Expression::at_multiple(
             spans,
             ExpressionValue::Block {
                 statements,
-                result: Box::new(result),
+                result: Box::new(expr),
             },
         )),
         None => Ok(Expression::at_multiple(
@@ -324,14 +317,14 @@ pub fn parse_inner_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expres
 }
 
 pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
-    let open = parser.tokens.expect(
+    parser.tokens.expect(
         TokenKind::CurlyOpen,
         "expected the start of an expression block",
     )?;
 
-    let inner_block = parse_inner_block(parser)?;
+    let inner_block = parse_inner_block(parser, TokenKind::CurlyClose)?;
 
-    let close = parser.tokens.expect(
+    parser.tokens.expect(
         TokenKind::CurlyClose,
         "expected the end of the expression block",
     )?;
