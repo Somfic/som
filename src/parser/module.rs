@@ -2,7 +2,7 @@ use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
     ast::{
-        Expression, FunctionDeclaration, IntrinsicFunctionDeclaration, Paramater, Spannable, Typing,
+        Expression, FunctionDeclaration, IntrinsicFunctionDeclaration, Parameter, Spannable, Typing,
     },
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
@@ -107,7 +107,7 @@ pub fn parse_function<'ast>(
 
 fn parse_optional_function_parameters<'ast>(
     parser: &mut Parser<'ast>,
-) -> ParserResult<Vec<Paramater<'ast>>> {
+) -> ParserResult<Vec<Parameter<'ast>>> {
     let token = match parser.tokens.peek().as_ref() {
         Some(Ok(token)) => token,
         Some(Err(err)) => return Err(err.to_vec()),
@@ -130,7 +130,7 @@ fn parse_optional_function_parameters<'ast>(
 
 fn parse_function_parameters<'ast>(
     parser: &mut Parser<'ast>,
-) -> ParserResult<Vec<Paramater<'ast>>> {
+) -> ParserResult<Vec<Parameter<'ast>>> {
     let mut parameters = Vec::new();
 
     loop {
@@ -163,7 +163,7 @@ fn parse_function_parameters<'ast>(
 
         let parameter_type = parser.parse_typing(BindingPower::None)?;
 
-        let parameter = Paramater::at_multiple(
+        let parameter = Parameter::at_multiple(
             vec![parameter.span, parameter_type.span],
             (parameter_name, parameter_type),
         );

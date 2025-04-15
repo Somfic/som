@@ -297,6 +297,7 @@ impl Compiler {
                 self.declare_intrinsic_function(intrinsic, environment);
                 self.compile_intrinsic_function(intrinsic, environment)
             }
+            StatementValue::Struct(structure) => self.declare_struct(structure, environment),
         }
     }
 

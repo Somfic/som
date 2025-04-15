@@ -53,12 +53,6 @@ impl<'ast> CompileEnvironment<'ast> {
         func_id
     }
 
-    pub fn lookup_function(&self, name: &str) -> Option<&(FuncId, Signature)> {
-        self.functions
-            .get(name)
-            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_function(name)))
-    }
-
     pub fn declare_variable(
         &mut self,
         name: Cow<'ast, str>,
@@ -70,6 +64,12 @@ impl<'ast> CompileEnvironment<'ast> {
         builder.declare_var(var, super::convert_type(ty));
         self.variables.insert(name, var);
         var
+    }
+
+    pub fn lookup_function(&self, name: &str) -> Option<&(FuncId, Signature)> {
+        self.functions
+            .get(name)
+            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_function(name)))
     }
 
     pub fn lookup_variable(&self, name: &str) -> Option<&Variable> {
@@ -85,45 +85,5 @@ impl<'ast> CompileEnvironment<'ast> {
             functions: self.functions.clone(),
             next_variable: Rc::clone(&self.next_variable),
         }
-    }
-}
-
-impl Display for CompileEnvironment<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // show all functions and variables in this scope, and the parent scopes, use indenting for each level
-
-        let mut current_env: Option<&CompileEnvironment> = Some(self);
-        let mut indent_level = 0;
-
-        while let Some(env) = current_env {
-            writeln!(f, "{:indent$}Functions:", "", indent = indent_level * 4)?;
-            for (name, (func_id, _signature)) in &env.functions {
-                writeln!(
-                    f,
-                    "{:indent$} - {} (FuncId: {:?})",
-                    "",
-                    name,
-                    func_id,
-                    indent = indent_level * 4
-                )?;
-            }
-
-            writeln!(f, "{:indent$}Variables:", "", indent = indent_level * 4)?;
-            for (name, var) in &env.variables {
-                writeln!(
-                    f,
-                    "{:indent$} - {} (Variable: {:?})",
-                    "",
-                    name,
-                    var,
-                    indent = indent_level * 4
-                )?;
-            }
-
-            current_env = env.parent;
-            indent_level += 1;
-        }
-
-        Ok(())
     }
 }
