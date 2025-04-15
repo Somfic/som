@@ -1,3 +1,5 @@
-let a = fn a();
+let assert = intrinsic fn(condition ~ bool) -> unit;
+let identity = fn(x ~ int) x;
 
-a() == true
+assert(1 + 1 == 2);
+identity(1 + 1)

@@ -68,7 +68,7 @@ impl<'ast> Parser<'ast> {
     }
 
     fn parse_entry_module(&mut self) -> ParserResult<Module<'ast>> {
-        let expression = parse_inner_block(self)?;
+        let expression = parse_inner_block(self, TokenKind::EOF)?;
 
         let main_function = FunctionDeclaration {
             name: Cow::Borrowed("0"),

@@ -186,6 +186,8 @@ pub enum TokenKind {
     StringType,
     /// The character type; `char`.
     CharacterType,
+    /// The end of the file; `EOF`.
+    EOF,
 }
 
 impl Display for TokenKind {
@@ -252,6 +254,7 @@ impl Display for TokenKind {
             TokenKind::DecimalType => write!(f, "a decimal type"),
             TokenKind::StringType => write!(f, "a string type"),
             TokenKind::CharacterType => write!(f, "a character type"),
+            TokenKind::EOF => write!(f, "the end of the file"),
         }
     }
 }
