@@ -51,3 +51,14 @@ pub struct IntrinsicFunctionDeclaration<'ast> {
     pub parameters: Vec<Paramater<'ast>>,
     pub return_type: Typing<'ast>,
 }
+
+impl TypedFunctionDeclaration<'_> {
+    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
+        miette::LabeledSpan::at(self.span, text.into())
+    }
+
+    pub fn span(mut self, span: SourceSpan) -> Self {
+        self.span = span;
+        self
+    }
+}
