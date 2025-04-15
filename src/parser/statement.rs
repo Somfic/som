@@ -87,67 +87,67 @@ fn parse_type_declaration<'ast>(
 ) -> ParserResult<Statement<'ast>> {
     match parser.tokens.peek() {
         Some(Ok(token)) => match token.kind {
-            TokenKind::CurlyOpen => parse_struct_declaration(parser, identifier),
+            // TokenKind::CurlyOpen => parse_struct_declaration(parser, identifier),
             _ => todo!(),
         },
         _ => unreachable!(),
     }
 }
 
-fn parse_struct_declaration<'ast>(
-    parser: &mut Parser<'ast>,
-    identifier: Token<'ast>,
-) -> ParserResult<Statement<'ast>> {
-    parser
-        .tokens
-        .expect(TokenKind::CurlyOpen, "expected a struct")?;
+// fn parse_struct_declaration<'ast>(
+//     parser: &mut Parser<'ast>,
+//     identifier: Token<'ast>,
+// ) -> ParserResult<Statement<'ast>> {
+//     parser
+//         .tokens
+//         .expect(TokenKind::CurlyOpen, "expected a struct")?;
 
-    let identifier_name = match identifier.value.clone() {
-        TokenValue::Identifier(identifier) => identifier,
-        _ => unreachable!(),
-    };
+//     let identifier_name = match identifier.value.clone() {
+//         TokenValue::Identifier(identifier) => identifier,
+//         _ => unreachable!(),
+//     };
 
-    let mut members = vec![];
+//     let mut members = vec![];
 
-    while parser.tokens.peek().is_some_and(|token| {
-        token
-            .as_ref()
-            .is_ok_and(|token| token.kind != TokenKind::CurlyClose)
-    }) {
-        let identifier = parser
-            .tokens
-            .expect(TokenKind::Identifier, "expected a struct member")?;
-        let identifier_name = match identifier.value.clone() {
-            TokenValue::Identifier(identifier) => identifier,
-            _ => unreachable!(),
-        };
+//     while parser.tokens.peek().is_some_and(|token| {
+//         token
+//             .as_ref()
+//             .is_ok_and(|token| token.kind != TokenKind::CurlyClose)
+//     }) {
+//         let identifier = parser
+//             .tokens
+//             .expect(TokenKind::Identifier, "expected a struct member")?;
+//         let identifier_name = match identifier.value.clone() {
+//             TokenValue::Identifier(identifier) => identifier,
+//             _ => unreachable!(),
+//         };
 
-        parser
-            .tokens
-            .expect(TokenKind::Tilde, "expected a struct member type")?;
+//         parser
+//             .tokens
+//             .expect(TokenKind::Tilde, "expected a struct member type")?;
 
-        let member_type = parser.parse_typing(BindingPower::None)?;
+//         let member_type = parser.parse_typing(BindingPower::None)?;
 
-        let member = StructMember::at_multiple(
-            vec![identifier.span, member_type.span],
-            (identifier_name, member_type),
-        );
-        members.push(member);
-    }
+//         let member = StructMember::at_multiple(
+//             vec![identifier.span, member_type.span],
+//             (identifier_name, member_type),
+//         );
+//         members.push(member);
+//     }
 
-    parser
-        .tokens
-        .expect(TokenKind::CurlyClose, "expected the end of a struct")?;
+//     parser
+//         .tokens
+//         .expect(TokenKind::CurlyClose, "expected the end of a struct")?;
 
-    Ok(Statement::at_multiple(
-        vec![identifier.span],
-        StatementValue::Struct(StructDeclaration {
-            name: identifier_name,
-            span: identifier.span,
-            members,
-        }),
-    ))
-}
+//     Ok(Statement::at_multiple(
+//         vec![identifier.span],
+//         StatementValue::Struct(StructDeclaration {
+//             name: identifier_name,
+//             span: identifier.span,
+//             members,
+//         }),
+//     ))
+// }
 
 fn parse_intrinsic_declaration<'ast>(
     parser: &mut Parser<'ast>,

@@ -266,7 +266,7 @@ pub fn parse_inner_block<'ast>(
     terminating_token: TokenKind,
 ) -> ParserResult<Expression<'ast>> {
     let mut statements = Vec::new();
-    let mut result_expr = None;
+    let mut expression = None;
 
     while let Some(token) = parser.tokens.peek() {
         if token.as_ref().is_ok_and(|t| t.kind == terminating_token) {
@@ -274,26 +274,31 @@ pub fn parse_inner_block<'ast>(
         }
 
         let statement = parser.parse_statement(false)?;
+        let token = parser.tokens.peek().cloned();
 
-        if let Some(next_token) = parser.tokens.peek() {
-            if next_token
-                .as_ref()
-                .is_ok_and(|t| t.kind == TokenKind::Semicolon)
-            {
-                parser
-                    .tokens
-                    .expect(TokenKind::Semicolon, "expected a semicolon")?;
-                statements.push(statement);
-                continue;
-            }
+        let is_semicolon = token.as_ref().is_some_and(|t| {
+            t.as_ref()
+                .ok()
+                .map(|token| token.kind == TokenKind::Semicolon)
+                .unwrap_or(false)
+        });
+
+        if is_semicolon {
+            parser
+                .tokens
+                .expect(TokenKind::Semicolon, "expected a semicolon")?;
+            statements.push(statement);
+            continue;
         }
 
         match statement.value {
             StatementValue::Expression(expr) => {
-                result_expr = Some(expr);
+                expression = Some(expr);
             }
             _ => {
-                todo!("block statements can only be expressions");
+                parser
+                    .tokens
+                    .expect(TokenKind::Semicolon, "expected a semicolon")?;
             }
         }
         break;
@@ -301,12 +306,12 @@ pub fn parse_inner_block<'ast>(
 
     let spans = statements.iter().map(|s| s.span).collect();
 
-    match result_expr {
-        Some(expr) => Ok(Expression::at_multiple(
+    match expression {
+        Some(expression) => Ok(Expression::at_multiple(
             spans,
             ExpressionValue::Block {
                 statements,
-                result: Box::new(expr),
+                result: Box::new(expression),
             },
         )),
         None => Ok(Expression::at_multiple(
