@@ -60,19 +60,6 @@ impl<'ast> Tokenizer<'ast> {
         self.peeked.as_ref()
     }
 
-    pub fn peek_expect(&mut self, expected: TokenKind) -> Option<&ParserResult<Token<'ast>>> {
-        match self.peek() {
-            Some(Ok(token::Token { kind, .. })) => {
-                if *kind == expected {
-                    self.peeked.as_ref()
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        }
-    }
-
     fn parse_compound_operator(
         &mut self,
         single: TokenKind,

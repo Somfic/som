@@ -3,4 +3,4 @@ let assert = intrinsic fn(condition ~ bool) -> unit;
 assert( { 1 + 1; 1 + 1 } == 2);
 assert( { 1 + 1; 1 + 1; 0 } == 0);
 assert( { { 1 + 1; 1 + 1; }; 0 } == 0);
-
+assert( { { { { 12 } } } } == 12);
