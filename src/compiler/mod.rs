@@ -305,8 +305,6 @@ impl Compiler {
         function: &'ast IntrinsicFunctionDeclaration<'ast>,
         environment: &mut CompileEnvironment<'ast>,
     ) {
-        println!("Declaring intrinsic function {}", function.name);
-
         let mut signature = Signature::new(self.isa.default_call_conv());
 
         for parameter in &function.parameters {
