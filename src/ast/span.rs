@@ -3,7 +3,8 @@ use std::borrow::Cow;
 use miette::SourceSpan;
 
 use super::{
-    Expression, ExpressionValue, Paramater, Statement, StatementValue, Typing, TypingValue,
+    Expression, ExpressionValue, Parameter, Statement, StatementValue, StructMember, Typing,
+    TypingValue,
 };
 
 pub trait Spannable<'ast>: Sized {
@@ -76,7 +77,19 @@ impl<'ast> Spannable<'ast> for Typing<'ast> {
     }
 }
 
-impl<'ast> Spannable<'ast> for Paramater<'ast> {
+impl<'ast> Spannable<'ast> for Parameter<'ast> {
+    type Value = (Cow<'ast, str>, Typing<'ast>);
+
+    fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
+        Self {
+            name: value.0,
+            span,
+            ty: value.1,
+        }
+    }
+}
+
+impl<'ast> Spannable<'ast> for StructMember<'ast> {
     type Value = (Cow<'ast, str>, Typing<'ast>);
 
     fn at(span: miette::SourceSpan, value: Self::Value) -> Self {

@@ -1,7 +1,7 @@
 use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
 use crate::ast::{
-    Expression, FunctionDeclaration, GenericFunctionDeclaration, Paramater, TypedExpression,
+    Expression, FunctionDeclaration, GenericFunctionDeclaration, Parameter, TypedExpression,
     TypedFunctionDeclaration, Typing,
 };
 
@@ -50,7 +50,7 @@ pub fn mismatched_type(
 pub fn mismatched_argument(
     message: impl Into<String>,
     argument: &TypedExpression<'_>,
-    parameter: &Paramater<'_>,
+    parameter: &Parameter<'_>,
     hint: impl Into<String>,
 ) -> Option<MietteDiagnostic> {
     let message = message.into();
@@ -88,7 +88,7 @@ pub fn unexpected_argument(
 pub fn missing_argument(
     message: impl Into<String>,
     function_call: &Expression<'_>,
-    parameter: &Paramater<'_>,
+    parameter: &Parameter<'_>,
     hint: impl Into<String>,
 ) -> Option<MietteDiagnostic> {
     let message = message.into();

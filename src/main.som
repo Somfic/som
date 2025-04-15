@@ -1,5 +1,1 @@
-let assert = intrinsic fn(condition ~ bool) -> unit;
-let identity = fn(x ~ int) x;
-
-assert(1 + 1 == 2);
-identity(1 + 1)
+let Point = type { x ~ int, y ~ int };
