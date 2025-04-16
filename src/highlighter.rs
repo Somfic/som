@@ -34,6 +34,8 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                         | TokenKind::Trait
                         | TokenKind::While
                         | TokenKind::For
+                        | TokenKind::Use
+                        | TokenKind::Mod
                         | TokenKind::Return => Style::new().fg_rgb::<197, 120, 221>().bold(),
                         TokenKind::Identifier => Style::new().fg_rgb::<224, 108, 117>(),
                         TokenKind::String | TokenKind::Character => {

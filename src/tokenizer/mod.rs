@@ -165,6 +165,8 @@ impl<'ast> Iterator for Tokenizer<'ast> {
                     "char" => Ok((TokenKind::CharacterType, TokenValue::None)),
                     "return" => Ok((TokenKind::Return, TokenValue::None)),
                     "unit" => Ok((TokenKind::UnitType, TokenValue::None)),
+                    "use" => Ok((TokenKind::Use, TokenValue::None)),
+                    "mod" => Ok((TokenKind::Mod, TokenValue::None)),
                     ident => Ok((
                         TokenKind::Identifier,
                         TokenValue::Identifier(ident.to_string().into()),

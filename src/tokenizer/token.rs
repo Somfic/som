@@ -153,6 +153,11 @@ pub enum TokenKind {
     /// A return keyword; `return`.
     Return,
 
+    /// An use keyword; `use`.
+    Use,
+    /// A mod keyword; `mod`.
+    Mod,
+
     /// A boolean; `true`, `false`.
     Boolean,
     /// A number; `42`, `12`, `-7`.
@@ -227,6 +232,8 @@ impl Display for TokenKind {
             TokenKind::Function => write!(f, "`fn`"),
             TokenKind::Intrinsic => write!(f, "`intrinsic`"),
             TokenKind::Return => write!(f, "`return`"),
+            TokenKind::Use => write!(f, "`use`"),
+            TokenKind::Mod => write!(f, "`mod`"),
             TokenKind::Boolean => write!(f, "a boolean value"),
             TokenKind::Integer => write!(f, "an integer value"),
             TokenKind::Decimal => write!(f, "a decimal value"),
@@ -254,6 +261,7 @@ impl Display for TokenKind {
             TokenKind::DecimalType => write!(f, "a decimal type"),
             TokenKind::StringType => write!(f, "a string type"),
             TokenKind::CharacterType => write!(f, "a character type"),
+
             TokenKind::EOF => write!(f, "the end of the file"),
         }
     }
