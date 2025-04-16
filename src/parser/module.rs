@@ -2,7 +2,8 @@ use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
     ast::{
-        Expression, FunctionDeclaration, IntrinsicFunctionDeclaration, Parameter, Spannable, Typing,
+        CombineSpan, Expression, FunctionDeclaration, IntrinsicFunctionDeclaration, Parameter,
+        Spannable, Typing,
     },
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
@@ -163,12 +164,11 @@ fn parse_function_parameters<'ast>(
 
         let parameter_type = parser.parse_typing(BindingPower::None)?;
 
-        let parameter = Parameter::at_multiple(
-            vec![parameter.span, parameter_type.span],
-            (parameter_name, parameter_type),
-        );
-
-        parameters.push(parameter);
+        parameters.push(Parameter {
+            name: parameter_name,
+            span: parameter.span.combine(parameter_type.span),
+            ty: parameter_type.clone(),
+        });
     }
 
     parser.tokens.expect(

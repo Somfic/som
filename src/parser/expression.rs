@@ -2,8 +2,8 @@ use miette::diagnostic;
 
 use super::{lookup::BindingPower, Parser};
 use crate::ast::{
-    BinaryOperator, Expression, ExpressionValue, Primitive, Spannable, StatementValue,
-    UnaryOperator,
+    combine_spans, BinaryOperator, CombineSpan, Expression, ExpressionValue, Primitive, Spannable,
+    StatementValue, UnaryOperator,
 };
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, TokenValue};
@@ -18,10 +18,7 @@ pub fn parse_integer<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression
         _ => unreachable!(),
     };
 
-    Ok(Expression::at(
-        token.span,
-        ExpressionValue::Primitive(Primitive::Integer(value)),
-    ))
+    Ok(ExpressionValue::Primitive(Primitive::Integer(value)).with_span(token.span))
 }
 
 pub fn parse_decimal<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
@@ -34,10 +31,7 @@ pub fn parse_decimal<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression
         _ => unreachable!(),
     };
 
-    Ok(Expression::at(
-        token.span,
-        ExpressionValue::Primitive(Primitive::Decimal(value)),
-    ))
+    Ok(ExpressionValue::Primitive(Primitive::Decimal(value)).with_span(token.span))
 }
 
 pub fn parse_string<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
@@ -50,10 +44,7 @@ pub fn parse_string<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<
         _ => unreachable!(),
     };
 
-    Ok(Expression::at(
-        token.span,
-        ExpressionValue::Primitive(Primitive::String(value)),
-    ))
+    Ok(ExpressionValue::Primitive(Primitive::String(value)).with_span(token.span))
 }
 
 fn parse_binary_expression<'ast>(
@@ -63,15 +54,14 @@ fn parse_binary_expression<'ast>(
     operator: BinaryOperator,
 ) -> ParserResult<Expression<'ast>> {
     let rhs = parser.parse_expression(bp)?;
+    let span = lhs.span.combine(rhs.span);
 
-    Ok(Expression::at_multiple(
-        vec![rhs.span, lhs.span],
-        ExpressionValue::Binary {
-            operator,
-            left: Box::new(lhs),
-            right: Box::new(rhs),
-        },
-    ))
+    Ok(ExpressionValue::Binary {
+        operator,
+        left: Box::new(lhs),
+        right: Box::new(rhs),
+    }
+    .with_span(span))
 }
 
 pub fn parse_binary_plus<'ast>(
@@ -181,10 +171,9 @@ pub fn parse_group<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
         .tokens
         .expect(TokenKind::ParenClose, "expected the end of the grouping")?;
 
-    Ok(Expression::at_multiple(
-        vec![token.span, expression.span],
-        ExpressionValue::Group(Box::new(expression)),
-    ))
+    let span = token.span.combine(expression.span);
+
+    Ok(ExpressionValue::Group(Box::new(expression)).with_span(span))
 }
 
 pub fn parse_unary_negation<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
@@ -194,13 +183,13 @@ pub fn parse_unary_negation<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Exp
 
     let expression = parser.parse_expression(BindingPower::Unary)?;
 
-    Ok(Expression::at_multiple(
-        vec![token.span, expression.span],
-        ExpressionValue::Unary {
-            operator: UnaryOperator::Negate,
-            operand: Box::new(expression),
-        },
-    ))
+    let span = token.span.combine(expression.span);
+
+    Ok(ExpressionValue::Unary {
+        operator: UnaryOperator::Negate,
+        operand: Box::new(expression),
+    }
+    .with_span(span))
 }
 
 pub fn parse_unary_negative<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
@@ -210,13 +199,13 @@ pub fn parse_unary_negative<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Exp
 
     let expression = parser.parse_expression(BindingPower::Unary)?;
 
-    Ok(Expression::at_multiple(
-        vec![token.span, expression.span],
-        ExpressionValue::Unary {
-            operator: UnaryOperator::Negative,
-            operand: Box::new(expression),
-        },
-    ))
+    let span = token.span.combine(expression.span);
+
+    Ok(ExpressionValue::Unary {
+        operator: UnaryOperator::Negative,
+        operand: Box::new(expression),
+    }
+    .with_span(span))
 }
 
 pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
@@ -229,10 +218,7 @@ pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression
         _ => unreachable!(),
     };
 
-    Ok(Expression::at(
-        token.span,
-        ExpressionValue::Primitive(Primitive::Boolean(value)),
-    ))
+    Ok(ExpressionValue::Primitive(Primitive::Boolean(value)).with_span(token.span))
 }
 
 pub fn parse_conditional<'ast>(
@@ -246,27 +232,22 @@ pub fn parse_conditional<'ast>(
 
     let falsy = parser.parse_expression(bp)?;
 
-    if true {
-        // truthy
-    } else {
-        // falsy
-    }
+    let span = condition.span.combine(truthy.span).combine(falsy.span);
 
-    Ok(Expression::at_multiple(
-        vec![condition.span, truthy.span, falsy.span],
-        ExpressionValue::Conditional {
-            condition: Box::new(condition),
-            truthy: Box::new(truthy),
-            falsy: Box::new(falsy),
-        },
-    ))
+    Ok(ExpressionValue::Conditional {
+        condition: Box::new(condition),
+        truthy: Box::new(truthy),
+        falsy: Box::new(falsy),
+    }
+    .with_span(span))
 }
+
 pub fn parse_inner_block<'ast>(
     parser: &mut Parser<'ast>,
     terminating_token: TokenKind,
 ) -> ParserResult<Expression<'ast>> {
     let mut statements = Vec::new();
-    let mut expression = None;
+    let mut final_expression = None;
 
     while let Some(token) = parser.tokens.peek() {
         if token.as_ref().is_ok_and(|t| t.kind == terminating_token) {
@@ -274,44 +255,63 @@ pub fn parse_inner_block<'ast>(
         }
 
         let statement = parser.parse_statement(false)?;
-        let token = parser.tokens.peek().cloned();
 
-        let is_semicolon = token.as_ref().is_some_and(|t| {
+        // Check if the next token is a semicolon
+        let is_semicolon = parser.tokens.peek().as_ref().is_some_and(|t| {
             t.as_ref()
                 .ok()
-                .map(|token| token.kind == TokenKind::Semicolon)
+                .map(|t| t.kind == TokenKind::Semicolon)
                 .unwrap_or(false)
         });
 
         if is_semicolon {
+            // Consume the semicolon and treat this as a statement
             parser
                 .tokens
                 .expect(TokenKind::Semicolon, "expected a semicolon")?;
             statements.push(statement);
-            continue;
+        } else {
+            // If no semicolon, validate that this is an Expression
+            if final_expression.is_some() {
+                return Err(vec![diagnostic! {
+                    labels = vec![statement.label("missing semicolon before this statement")],
+                    help = "Add a semicolon to separate the statements.",
+                    "expected a semicolon before the next statement"
+                }]);
+            }
+
+            match &statement.value {
+                StatementValue::Expression(expression) => {
+                    final_expression = Some(expression.clone());
+                }
+                _ => {
+                    return Err(vec![diagnostic! {
+                        labels = vec![statement.label("this statement must end with a semicolon")],
+                        help = "Only expressions can be used as the final statement in a block.",
+                        "expected a semicolon"
+                    }]);
+                }
+            }
+
+            parser
+                .tokens
+                .expect(terminating_token, "expected the end of the block")?;
+            break;
         }
-
-        parser
-            .tokens
-            .expect(terminating_token, "expected the end of the block")?;
-        break;
     }
 
-    let spans = statements.iter().map(|s| s.span).collect();
+    let span = combine_spans(statements.iter().map(|s| s.span).collect());
 
-    match expression {
-        Some(expression) => Ok(Expression::at_multiple(
-            spans,
-            ExpressionValue::Block {
-                statements,
-                result: Box::new(expression),
-            },
-        )),
-        None => Ok(Expression::at_multiple(
-            spans,
-            ExpressionValue::Primitive(Primitive::Unit),
-        )),
+    let final_expression = match final_expression {
+        Some(expression) => expression,
+        None => ExpressionValue::Primitive(Primitive::Unit).with_span(span),
+    };
+
+    Ok(ExpressionValue::Block {
+        statements,
+        result: Box::new(final_expression),
     }
+    .with_span(span))
 }
 
 pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
@@ -340,10 +340,7 @@ pub fn parse_identifier<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Express
         _ => unreachable!(),
     };
 
-    Ok(Expression::at(
-        token.span,
-        ExpressionValue::Primitive(Primitive::Identifier(name)),
-    ))
+    Ok(ExpressionValue::Primitive(Primitive::Identifier(name)).with_span(token.span))
 }
 
 pub fn parse_function_call<'ast>(
@@ -379,13 +376,13 @@ pub fn parse_function_call<'ast>(
         .tokens
         .expect(TokenKind::ParenClose, "expected the end of a function call")?;
 
-    Ok(Expression::at_multiple(
-        vec![lhs.span, close.span],
-        ExpressionValue::FunctionCall {
-            function_name,
-            arguments,
-        },
-    ))
+    let span = lhs.span.combine(close.span);
+
+    Ok(ExpressionValue::FunctionCall {
+        function_name,
+        arguments,
+    }
+    .with_span(span))
 }
 
 pub fn parse_assignment<'ast>(
@@ -404,11 +401,11 @@ pub fn parse_assignment<'ast>(
 
     let value = parser.parse_expression(bp)?;
 
-    Ok(Expression::at_multiple(
-        vec![lhs.span, value.span],
-        ExpressionValue::Assignment {
-            name,
-            value: Box::new(value),
-        },
-    ))
+    let span = lhs.span.combine(value.span);
+
+    Ok(ExpressionValue::Assignment {
+        name,
+        value: Box::new(value),
+    }
+    .with_span(span))
 }

@@ -1,17 +1,12 @@
+use span_derive::Span;
 use std::{borrow::Cow, fmt::Display, hash::Hash};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Span, PartialEq)]
 pub struct Token<'ast> {
     pub kind: TokenKind,
     pub value: TokenValue<'ast>,
     pub original: &'ast str,
     pub span: miette::SourceSpan,
-}
-
-impl Token<'_> {
-    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
-        miette::LabeledSpan::at(self.span, text.into())
-    }
 }
 
 impl Display for Token<'_> {

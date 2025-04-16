@@ -1,5 +1,7 @@
 mod prelude;
 
+use std::path::PathBuf;
+
 use ast::TypedModule;
 use clap::arg;
 use clap::command;
@@ -22,7 +24,7 @@ mod typer;
 #[command(version, about, long_about = None)]
 pub struct SomArgs {
     #[arg(short, long)]
-    pub source_path: String,
+    pub source_path: PathBuf,
 }
 
 fn main() {

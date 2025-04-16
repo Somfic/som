@@ -1,7 +1,8 @@
 use miette::SourceSpan;
+use span_derive::Span;
 use std::{borrow::Cow, fmt::Display};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Span)]
 pub struct Typing<'ast> {
     pub value: TypingValue<'ast>,
     pub span: SourceSpan,
@@ -62,17 +63,6 @@ impl<'ast> Typing<'ast> {
     }
 }
 
-impl Typing<'_> {
-    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
-        miette::LabeledSpan::at(self.span, text.into())
-    }
-
-    pub fn span(mut self, span: SourceSpan) -> Self {
-        self.span = span;
-        self
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypingValue<'ast> {
     Unknown,
@@ -82,6 +72,12 @@ pub enum TypingValue<'ast> {
     Unit,
     Generic(Cow<'ast, str>),
     Symbol(Cow<'ast, str>),
+}
+
+impl<'ast> TypingValue<'ast> {
+    pub fn with_span(self, span: miette::SourceSpan) -> Typing<'ast> {
+        Typing { value: self, span }
+    }
 }
 
 impl Display for Typing<'_> {

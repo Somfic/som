@@ -1,9 +1,9 @@
 use std::cmp;
 
 use crate::ast::{
-    Expression, ExpressionValue, FunctionDeclaration, IntrinsicFunctionDeclaration, Module,
-    Primitive, Spannable, Statement, StatementValue, TypedExpression, TypedFunctionDeclaration,
-    TypedModule, TypedStatement, Typing, TypingValue,
+    CombineSpan, Expression, ExpressionValue, FunctionDeclaration, IntrinsicFunctionDeclaration,
+    Module, Primitive, Spannable, Statement, StatementValue, TypedExpression,
+    TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
 };
 use crate::prelude::*;
 use environment::Environment;
@@ -108,7 +108,7 @@ impl Typer {
                 Primitive::Identifier(value) => match environment.lookup_variable(value) {
                     Some(ty) => Ok(TypedExpression {
                         value: ExpressionValue::Primitive(primitive.clone()),
-                        ty: ty.clone().span(expression.span),
+                        ty: ty.clone().with_span(expression.span),
                         span: expression.span,
                     }),
                     None => {
@@ -149,6 +149,8 @@ impl Typer {
                     left_ty
                 };
 
+                let span = left.span.combine(right.span);
+
                 Ok(TypedExpression {
                     value: ExpressionValue::Binary {
                         operator: operator.clone(),
@@ -156,7 +158,7 @@ impl Typer {
                         right: Box::new(right),
                     },
                     ty,
-                    span: expression.span,
+                    span,
                 })
             }
             ExpressionValue::Group(expression) => {
@@ -211,7 +213,7 @@ impl Typer {
                 }
 
                 Ok(TypedExpression {
-                    ty: truthy_ty.span(truthy.span),
+                    ty: truthy_ty.with_span(truthy.span),
                     value: ExpressionValue::Conditional {
                         condition: Box::new(condition),
                         truthy: Box::new(truthy),
@@ -328,7 +330,7 @@ impl Typer {
                         function_name: function_name.clone(),
                         arguments: typed_arguments,
                     },
-                    ty: Typing::at(expression.span, function.body.ty.value.clone()),
+                    ty: function.body.ty.clone().with_span(expression.span),
                     span: expression.span,
                 })
             }

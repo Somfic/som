@@ -1,7 +1,10 @@
 use std::borrow::Cow;
 
 use crate::{
-    ast::{Spannable, Statement, StatementValue, StructDeclaration, StructMember},
+    ast::{
+        combine_spans, CombineSpan, Spannable, Statement, StatementValue, StructDeclaration,
+        StructMember,
+    },
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
 };
@@ -31,10 +34,9 @@ pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'a
         .tokens
         .expect(TokenKind::CurlyClose, "expected the end of a block")?;
 
-    Ok(Statement::at_multiple(
-        statements.iter().map(|s| s.span).collect(),
-        StatementValue::Block(statements),
-    ))
+    let span = combine_spans(statements.iter().map(|s| s.span).collect());
+
+    Ok(StatementValue::Block(statements).with_span(span))
 }
 
 pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
@@ -74,10 +76,9 @@ fn parse_function_declaration<'ast>(
 ) -> ParserResult<Statement<'ast>> {
     let function = module::parse_function(parser, identifier.clone())?;
 
-    Ok(Statement::at_multiple(
-        vec![identifier.span, function.span],
-        StatementValue::Function(function),
-    ))
+    let span = identifier.span.combine(function.span);
+
+    Ok(StatementValue::Function(function).with_span(span))
 }
 
 fn parse_type_declaration<'ast>(
@@ -155,10 +156,9 @@ fn parse_intrinsic_declaration<'ast>(
 ) -> ParserResult<Statement<'ast>> {
     let intrinsic = module::parse_intrinsic_function(parser, identifier.clone())?;
 
-    Ok(Statement::at_multiple(
-        vec![identifier.span, intrinsic.span],
-        StatementValue::Intrinsic(intrinsic),
-    ))
+    let span = identifier.span.combine(intrinsic.span);
+
+    Ok(StatementValue::Intrinsic(intrinsic).with_span(span))
 }
 
 fn parse_variable_declaration<'ast>(
@@ -167,11 +167,9 @@ fn parse_variable_declaration<'ast>(
     identifier_name: Cow<'ast, str>,
 ) -> ParserResult<Statement<'ast>> {
     let expression = parser.parse_expression(BindingPower::Assignment)?;
+    let span = identifier.span.combine(expression.span);
 
-    Ok(Statement::at_multiple(
-        vec![identifier.span, expression.span],
-        StatementValue::Declaration(identifier_name, expression),
-    ))
+    Ok(StatementValue::Declaration(identifier_name, expression).with_span(span))
 }
 
 pub fn parse_condition<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
@@ -182,22 +180,20 @@ pub fn parse_condition<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statemen
     let condition = parser.parse_expression(BindingPower::None)?;
     let body = parser.parse_statement(false)?;
 
-    Ok(Statement::at_multiple(
-        vec![condition.span, body.span],
-        StatementValue::Condition(condition, Box::new(body)),
-    ))
+    let span = condition.span.combine(body.span);
+
+    Ok(StatementValue::Condition(condition, Box::new(body)).with_span(span))
 }
 
 pub fn parse_while_loop<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
-    parser
+    let token = parser
         .tokens
         .expect(TokenKind::While, "expected a while statement")?;
 
     let condition = parser.parse_expression(BindingPower::None)?;
     let body = parser.parse_statement(false)?;
 
-    Ok(Statement::at_multiple(
-        vec![condition.span, body.span],
-        StatementValue::WhileLoop(condition, Box::new(body)),
-    ))
+    let span = token.span.combine(condition.span);
+
+    Ok(StatementValue::WhileLoop(condition, Box::new(body)).with_span(span))
 }
