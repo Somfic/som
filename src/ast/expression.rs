@@ -1,16 +1,15 @@
+use span_derive::Span;
 use std::{borrow::Cow, fmt::Display};
 
-use miette::SourceSpan;
+use super::{GenericStatement, Statement, TypedStatement, Typing};
 
-use super::{Statement, TypedStatement, Typing};
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Span)]
 pub struct Expression<'ast> {
     pub value: ExpressionValue<'ast, Statement<'ast>, Expression<'ast>>,
     pub span: miette::SourceSpan,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Span)]
 pub struct TypedExpression<'ast> {
     pub value: ExpressionValue<'ast, TypedStatement<'ast>, TypedExpression<'ast>>,
     pub span: miette::SourceSpan,
@@ -47,6 +46,12 @@ pub enum ExpressionValue<'ast, Statement, Expression> {
         name: Cow<'ast, str>,
         value: Box<Expression>,
     },
+}
+
+impl<'ast> ExpressionValue<'ast, Statement<'ast>, Expression<'ast>> {
+    pub fn with_span(self, span: miette::SourceSpan) -> Expression<'ast> {
+        Expression { value: self, span }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -116,27 +121,5 @@ impl Display for BinaryOperator {
             BinaryOperator::And => write!(f, "an and"),
             BinaryOperator::Or => write!(f, "an or"),
         }
-    }
-}
-
-impl Expression<'_> {
-    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
-        miette::LabeledSpan::at(self.span, text.into())
-    }
-
-    pub fn span(mut self, span: SourceSpan) -> Self {
-        self.span = span;
-        self
-    }
-}
-
-impl TypedExpression<'_> {
-    pub fn label(&self, text: impl Into<String>) -> miette::LabeledSpan {
-        miette::LabeledSpan::at(self.span, text.into())
-    }
-
-    pub fn span(mut self, span: SourceSpan) -> Self {
-        self.span = span;
-        self
     }
 }

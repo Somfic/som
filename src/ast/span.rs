@@ -1,18 +1,11 @@
-use std::borrow::Cow;
-
 use miette::SourceSpan;
-
-use super::{
-    Expression, ExpressionValue, Parameter, Statement, StatementValue, StructMember, Typing,
-    TypingValue,
-};
 
 pub trait Spannable<'ast>: Sized {
     type Value;
 
-    fn at(span: miette::SourceSpan, value: Self::Value) -> Self;
+    fn at(span: SourceSpan, value: Self::Value) -> Self;
 
-    fn at_multiple(spans: Vec<impl Into<miette::SourceSpan>>, value: Self::Value) -> Self {
+    fn at_multiple(spans: Vec<impl Into<SourceSpan>>, value: Self::Value) -> Self {
         let spans = spans.into_iter().map(|s| s.into()).collect::<Vec<_>>();
 
         let start = spans
@@ -27,76 +20,34 @@ pub trait Spannable<'ast>: Sized {
             .map(|s| s.offset() + s.len())
             .unwrap_or(0);
 
-        let span = miette::SourceSpan::new(start.into(), end - start);
+        let span = SourceSpan::new(start.into(), end - start);
 
         Self::at(span, value)
     }
 }
 
 pub trait CombineSpan {
-    fn combine(spans: Vec<SourceSpan>) -> SourceSpan {
-        let start = spans
-            .iter()
-            .min_by_key(|s| s.offset())
-            .map(|s| s.offset())
-            .unwrap_or(0);
+    fn combine(self, span: SourceSpan) -> SourceSpan;
+}
 
-        let end = spans
-            .iter()
-            .max_by_key(|s| s.offset() + s.len())
-            .map(|s| s.offset() + s.len())
-            .unwrap_or(0);
-
-        SourceSpan::new(start.into(), end - start)
+impl CombineSpan for SourceSpan {
+    fn combine(self, span: SourceSpan) -> SourceSpan {
+        combine_spans(vec![self, span])
     }
 }
 
-impl CombineSpan for SourceSpan {}
+pub fn combine_spans(spans: Vec<SourceSpan>) -> SourceSpan {
+    let start = spans
+        .iter()
+        .min_by_key(|s| s.offset())
+        .map(|s| s.offset())
+        .unwrap_or(0);
 
-impl<'ast> Spannable<'ast> for Expression<'ast> {
-    type Value = ExpressionValue<'ast, Statement<'ast>, Expression<'ast>>;
+    let end = spans
+        .iter()
+        .max_by_key(|s| s.offset() + s.len())
+        .map(|s| s.offset() + s.len())
+        .unwrap_or(0);
 
-    fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
-        Self { value, span }
-    }
-}
-
-impl<'ast> Spannable<'ast> for Statement<'ast> {
-    type Value = StatementValue<'ast, Expression<'ast>>;
-
-    fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
-        Self { value, span }
-    }
-}
-
-impl<'ast> Spannable<'ast> for Typing<'ast> {
-    type Value = TypingValue<'ast>;
-
-    fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
-        Self { value, span }
-    }
-}
-
-impl<'ast> Spannable<'ast> for Parameter<'ast> {
-    type Value = (Cow<'ast, str>, Typing<'ast>);
-
-    fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
-        Self {
-            name: value.0,
-            span,
-            ty: value.1,
-        }
-    }
-}
-
-impl<'ast> Spannable<'ast> for StructMember<'ast> {
-    type Value = (Cow<'ast, str>, Typing<'ast>);
-
-    fn at(span: miette::SourceSpan, value: Self::Value) -> Self {
-        Self {
-            name: value.0,
-            span,
-            ty: value.1,
-        }
-    }
+    SourceSpan::new(start.into(), end - start)
 }

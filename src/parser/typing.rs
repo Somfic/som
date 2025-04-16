@@ -58,10 +58,9 @@ pub fn parse_generic<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'as
         _ => unreachable!(),
     };
 
-    Ok(Typing::at_multiple(
-        vec![token.span, identifier.span],
-        TypingValue::Generic(identifier_name),
-    ))
+    let span = token.span.combine(identifier.span);
+
+    Ok(TypingValue::Generic(identifier_name).with_span(span))
 }
 
 pub fn parse_unit<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {

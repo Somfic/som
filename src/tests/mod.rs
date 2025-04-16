@@ -26,6 +26,12 @@ fn one_file() {
 }
 
 #[test]
+fn return_codes() {
+    assert_eq!(1, run("1"));
+    assert_eq!(0, run("1;"));
+}
+
+#[test]
 fn conditional() {
     run(include_str!("conditional.som"));
 }
