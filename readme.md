@@ -3,7 +3,7 @@
 > An idiot admires complexity, a genius admires simplicity.
 
 ```rust
-let fib = fn(n ~ int) ~ int {
+let fib = fn(n ~ int) -> int {
     n if n < 2 else fib(n - 1) + fib(n - 2)
 }
 
