@@ -1,6 +1,8 @@
 use span_derive::Span;
 use std::{borrow::Cow, fmt::Display, hash::Hash};
 
+use crate::ast::Identifier;
+
 #[derive(Debug, Clone, Span, PartialEq)]
 pub struct Token<'ast> {
     pub kind: TokenKind,
@@ -24,9 +26,9 @@ pub enum TokenValue<'ast> {
     Boolean(bool),
     Integer(i64),
     Decimal(f64),
-    String(Cow<'ast, str>),
+    String(Identifier<'ast>),
     Character(char),
-    Identifier(Cow<'ast, str>),
+    Identifier(Identifier<'ast>),
 }
 
 impl Display for TokenValue<'_> {

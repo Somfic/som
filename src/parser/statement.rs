@@ -2,8 +2,8 @@ use std::borrow::Cow;
 
 use crate::{
     ast::{
-        combine_spans, CombineSpan, Spannable, Statement, StatementValue, StructDeclaration,
-        StructMember,
+        combine_spans, CombineSpan, Identifier, Spannable, Statement, StatementValue,
+        StructDeclaration, StructMember,
     },
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
@@ -84,7 +84,7 @@ fn parse_function_declaration<'ast>(
 fn parse_type_declaration<'ast>(
     parser: &mut Parser<'ast>,
     identifier: Token<'ast>,
-    identifier_name: Cow<'ast, str>,
+    identifier_name: Identifier<'ast>,
 ) -> ParserResult<Statement<'ast>> {
     match parser.tokens.peek() {
         Some(Ok(token)) => match token.kind {
@@ -164,7 +164,7 @@ fn parse_intrinsic_declaration<'ast>(
 fn parse_variable_declaration<'ast>(
     parser: &mut Parser<'ast>,
     identifier: Token<'ast>,
-    identifier_name: Cow<'ast, str>,
+    identifier_name: Identifier<'ast>,
 ) -> ParserResult<Statement<'ast>> {
     let expression = parser.parse_expression(BindingPower::Assignment)?;
     let span = identifier.span.combine(expression.span);

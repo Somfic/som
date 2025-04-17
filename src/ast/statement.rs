@@ -1,4 +1,4 @@
-use super::{Expression, TypedExpression, Typing};
+use super::{Expression, Identifier, TypedExpression, Typing};
 
 use span_derive::Span;
 use std::borrow::Cow;
@@ -16,7 +16,7 @@ pub struct GenericStatement<'ast, Expression> {
 pub enum StatementValue<'ast, Expression> {
     Block(Vec<GenericStatement<'ast, Expression>>),
     Expression(Expression),
-    Declaration(Cow<'ast, str>, Expression),
+    Declaration(Identifier<'ast>, Expression),
     Condition(Expression, Box<GenericStatement<'ast, Expression>>),
     WhileLoop(Expression, Box<GenericStatement<'ast, Expression>>),
     Function(GenericFunctionDeclaration<'ast, Expression>),
@@ -43,7 +43,7 @@ impl<'ast> GenericStatement<'ast, Expression<'ast>> {
 
 #[derive(Debug, Clone, Span)]
 pub struct StructMember<'ast> {
-    pub name: Cow<'ast, str>,
+    pub name: Identifier<'ast>,
     pub span: miette::SourceSpan,
     pub ty: Typing<'ast>,
 }
@@ -53,21 +53,21 @@ pub type FunctionDeclaration<'ast> = GenericFunctionDeclaration<'ast, Expression
 
 #[derive(Debug, Clone, Span)]
 pub struct Parameter<'ast> {
-    pub name: Cow<'ast, str>,
+    pub name: Identifier<'ast>,
     pub span: miette::SourceSpan,
     pub ty: Typing<'ast>,
 }
 
 #[derive(Debug, Clone, Span)]
 pub struct StructDeclaration<'ast> {
-    pub name: Cow<'ast, str>,
+    pub name: Identifier<'ast>,
     pub span: miette::SourceSpan,
     pub members: Vec<StructMember<'ast>>,
 }
 
 #[derive(Debug, Clone, Span)]
 pub struct GenericFunctionDeclaration<'ast, Expression> {
-    pub name: Cow<'ast, str>,
+    pub name: Identifier<'ast>,
     pub span: miette::SourceSpan,
     pub parameters: Vec<Parameter<'ast>>,
     pub body: Expression,
@@ -76,7 +76,7 @@ pub struct GenericFunctionDeclaration<'ast, Expression> {
 
 #[derive(Debug, Clone, Span)]
 pub struct IntrinsicFunctionDeclaration<'ast> {
-    pub name: Cow<'ast, str>,
+    pub name: Identifier<'ast>,
     pub span: miette::SourceSpan,
     pub parameters: Vec<Parameter<'ast>>,
     pub return_type: Typing<'ast>,

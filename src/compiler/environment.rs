@@ -1,4 +1,4 @@
-use crate::ast::{IntrinsicFunctionDeclaration, TypedFunctionDeclaration, TypingValue};
+use crate::ast::{Identifier, IntrinsicFunctionDeclaration, TypedFunctionDeclaration, TypingValue};
 use cranelift::prelude::{EntityRef, FunctionBuilder, Signature, Variable};
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
@@ -6,8 +6,8 @@ use std::{borrow::Cow, cell::Cell, collections::HashMap, fmt::Display, rc::Rc};
 
 pub struct CompileEnvironment<'ast> {
     parent: Option<&'ast CompileEnvironment<'ast>>,
-    variables: HashMap<Cow<'ast, str>, Variable>,
-    functions: HashMap<Cow<'ast, str>, (FuncId, Signature)>,
+    variables: HashMap<Identifier<'ast>, Variable>,
+    functions: HashMap<Identifier<'ast>, (FuncId, Signature)>,
     next_variable: Rc<Cell<usize>>,
 }
 
@@ -55,7 +55,7 @@ impl<'ast> CompileEnvironment<'ast> {
 
     pub fn declare_variable(
         &mut self,
-        name: Cow<'ast, str>,
+        name: Identifier<'ast>,
         builder: &mut FunctionBuilder,
         ty: &TypingValue,
     ) -> Variable {
