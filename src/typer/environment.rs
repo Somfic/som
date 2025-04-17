@@ -3,15 +3,15 @@ use std::{borrow::Cow, collections::HashMap};
 use miette::LabeledSpan;
 
 use crate::{
-    ast::{TypedFunctionDeclaration, Typing},
+    ast::{Identifier, TypedFunctionDeclaration, Typing},
     ParserResult,
 };
 
 #[derive(Debug, Clone)]
 pub struct Environment<'env, 'ast> {
     parent: Option<&'env Environment<'env, 'ast>>,
-    variables: HashMap<Cow<'ast, str>, Typing<'ast>>,
-    functions: HashMap<Cow<'ast, str>, TypedFunctionDeclaration<'ast>>,
+    variables: HashMap<Identifier<'ast>, Typing<'ast>>,
+    functions: HashMap<Identifier<'ast>, TypedFunctionDeclaration<'ast>>,
 }
 
 pub enum EnvironmentType<'ast> {
@@ -35,11 +35,11 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         }
     }
 
-    pub fn declare_variable(&mut self, name: Cow<'ast, str>, ty: Typing<'ast>) {
+    pub fn declare_variable(&mut self, name: Identifier<'ast>, ty: Typing<'ast>) {
         self.variables.insert(name, ty);
     }
 
-    pub fn assign_variable(&mut self, name: Cow<'ast, str>, ty: Typing<'ast>) {
+    pub fn assign_variable(&mut self, name: Identifier<'ast>, ty: Typing<'ast>) {
         match self.lookup_variable(name.as_ref()) {
             Some(existing_type) => {
                 if existing_type != &ty {
@@ -62,7 +62,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
 
     pub fn declare_function(
         &mut self,
-        name: Cow<'ast, str>,
+        name: Identifier<'ast>,
         function: TypedFunctionDeclaration<'ast>,
     ) -> ParserResult<()> {
         if let Some(existing_function) = self.lookup_function(name.as_ref()) {
@@ -84,7 +84,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
 
     pub fn update_function(
         &mut self,
-        name: Cow<'ast, str>,
+        name: Identifier<'ast>,
         function: TypedFunctionDeclaration<'ast>,
     ) -> ParserResult<()> {
         self.functions.insert(name, function);

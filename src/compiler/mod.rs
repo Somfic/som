@@ -515,8 +515,9 @@ pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
         TypingValue::Boolean => types::I8,
         TypingValue::Decimal => types::F64,
         TypingValue::Unknown => unreachable!("unknown type"),
-        TypingValue::Symbol(cow) => todo!("{cow}"),
+        TypingValue::Symbol(identifier) => todo!("{identifier}"),
         TypingValue::Unit => types::I8,
-        TypingValue::Generic(cow) => todo!("`{cow}"),
+        TypingValue::Generic(identifier) => todo!("`{identifier}"),
+        TypingValue::Struct(identifier) => todo!("struct `{identifier}"),
     }
 }

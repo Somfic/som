@@ -2,6 +2,8 @@ use miette::SourceSpan;
 use span_derive::Span;
 use std::{borrow::Cow, fmt::Display};
 
+use super::Identifier;
+
 #[derive(Debug, Clone, Span)]
 pub struct Typing<'ast> {
     pub value: TypingValue<'ast>,
@@ -41,7 +43,7 @@ impl<'ast> Typing<'ast> {
         }
     }
 
-    pub fn symbol(span: &SourceSpan, name: Cow<'ast, str>) -> Self {
+    pub fn symbol(span: &SourceSpan, name: Identifier<'ast>) -> Self {
         Self {
             value: TypingValue::Symbol(name),
             span: *span,
@@ -70,8 +72,9 @@ pub enum TypingValue<'ast> {
     Boolean,
     Decimal,
     Unit,
-    Generic(Cow<'ast, str>),
-    Symbol(Cow<'ast, str>),
+    Generic(Identifier<'ast>),
+    Symbol(Identifier<'ast>),
+    Struct(Identifier<'ast>),
 }
 
 impl<'ast> TypingValue<'ast> {
@@ -93,9 +96,10 @@ impl Display for TypingValue<'_> {
             TypingValue::Integer => write!(f, "an integer"),
             TypingValue::Decimal => write!(f, "a decimal"),
             TypingValue::Boolean => write!(f, "a boolean"),
-            TypingValue::Symbol(name) => write!(f, "{}", name),
-            TypingValue::Generic(name) => write!(f, "`{}", name),
+            TypingValue::Symbol(identifier) => write!(f, "{}", identifier),
+            TypingValue::Generic(identifier) => write!(f, "`{}", identifier),
             TypingValue::Unit => write!(f, "nothing"),
+            TypingValue::Struct(identifier) => write!(f, "struct {}", identifier),
         }
     }
 }

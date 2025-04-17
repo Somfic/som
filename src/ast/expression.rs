@@ -1,7 +1,7 @@
 use span_derive::Span;
 use std::{borrow::Cow, fmt::Display};
 
-use super::{GenericStatement, Statement, TypedStatement, Typing};
+use super::{GenericStatement, Identifier, Statement, TypedStatement, Typing};
 
 #[derive(Debug, Clone, Span)]
 pub struct Expression<'ast> {
@@ -39,11 +39,11 @@ pub enum ExpressionValue<'ast, Statement, Expression> {
         result: Box<Expression>,
     },
     FunctionCall {
-        function_name: Cow<'ast, str>,
+        function_name: Identifier<'ast>,
         arguments: Vec<Expression>,
     },
     Assignment {
-        name: Cow<'ast, str>,
+        name: Identifier<'ast>,
         value: Box<Expression>,
     },
 }
@@ -58,8 +58,8 @@ impl<'ast> ExpressionValue<'ast, Statement<'ast>, Expression<'ast>> {
 pub enum Primitive<'ast> {
     Integer(i64),
     Decimal(f64),
-    String(Cow<'ast, str>),
-    Identifier(Cow<'ast, str>),
+    String(Identifier<'ast>),
+    Identifier(Identifier<'ast>),
     Character(char),
     Boolean(bool),
     Unit,
