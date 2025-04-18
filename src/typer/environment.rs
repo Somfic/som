@@ -11,6 +11,7 @@ use crate::{
 pub struct Environment<'env, 'ast> {
     parent: Option<&'env Environment<'env, 'ast>>,
     variables: HashMap<Identifier<'ast>, Typing<'ast>>,
+    types: HashMap<Identifier<'ast>, Typing<'ast>>,
     functions: HashMap<Identifier<'ast>, TypedFunctionDeclaration<'ast>>,
 }
 
@@ -22,6 +23,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
     pub fn new() -> Self {
         Self {
             parent: None,
+            types: HashMap::new(),
             variables: HashMap::new(),
             functions: HashMap::new(),
         }
@@ -30,6 +32,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
     pub fn block(&'env self) -> Self {
         Self {
             parent: Some(self),
+            types: HashMap::new(),
             variables: HashMap::new(),
             functions: HashMap::new(),
         }
@@ -37,6 +40,24 @@ impl<'env, 'ast> Environment<'env, 'ast> {
 
     pub fn declare_variable(&mut self, name: Identifier<'ast>, ty: Typing<'ast>) {
         self.variables.insert(name, ty);
+    }
+
+    pub fn declare_type(&mut self, name: Identifier<'ast>, ty: Typing<'ast>) -> ParserResult<()> {
+        if let Some(existing_type) = self.lookup_type(name.as_ref()) {
+            return Err(vec![miette::diagnostic!(
+                labels = vec![
+                    LabeledSpan::at(ty.span, "duplicate type name"),
+                    LabeledSpan::at(existing_type.span, "type previously declared here")
+                ],
+                help = format!("choose a different name for this type"),
+                "type `{}` already declared",
+                name
+            )]);
+        }
+
+        self.types.insert(name, ty);
+
+        Ok(())
     }
 
     pub fn assign_variable(&mut self, name: Identifier<'ast>, ty: Typing<'ast>) {
@@ -58,6 +79,12 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         self.variables
             .get(name)
             .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_variable(name)))
+    }
+
+    pub fn lookup_type(&self, name: &str) -> Option<&Typing<'ast>> {
+        self.types
+            .get(name)
+            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_type(name)))
     }
 
     pub fn declare_function(

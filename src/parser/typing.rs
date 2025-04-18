@@ -1,5 +1,6 @@
-use super::Parser;
-use crate::ast::{CombineSpan, Spannable};
+use super::{BindingPower, Parser};
+use crate::ast::{CombineSpan, Identifier, StructMember};
+use crate::tokenizer::Token;
 use crate::{
     ast::{Typing, TypingValue},
     tokenizer::{TokenKind, TokenValue},
@@ -72,4 +73,54 @@ pub fn parse_unit<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>>
         value: TypingValue::Unit,
         span: token.span,
     })
+}
+
+pub fn parse_struct<'ast>(
+    parser: &mut Parser<'ast>,
+    identifier: Token<'ast>,
+) -> ParserResult<Typing<'ast>> {
+    parser
+        .tokens
+        .expect(TokenKind::CurlyOpen, "expected a struct type")?;
+
+    let identifier_name = match identifier.value {
+        TokenValue::Identifier(name) => name,
+        _ => unreachable!(),
+    };
+
+    let mut fields = Vec::new();
+
+    while let Some(token) = parser.tokens.peek() {
+        if token
+            .as_ref()
+            .is_ok_and(|t| t.kind == TokenKind::CurlyClose)
+        {
+            break;
+        }
+
+        let identifier = parser
+            .tokens
+            .expect(TokenKind::Identifier, "expected a struct member")?;
+
+        let identifier_name = match identifier.value {
+            TokenValue::Identifier(name) => name,
+            _ => unreachable!(),
+        };
+
+        parser.tokens.expect(TokenKind::Tilde, "expected a type")?;
+
+        let ty = parser.parse_typing(BindingPower::None)?;
+
+        let field = StructMember {
+            name: identifier_name,
+            ty,
+        };
+        fields.push(field);
+    }
+
+    parser
+        .tokens
+        .expect(TokenKind::CurlyClose, "expected a closing curly bracket")?;
+
+    Ok(TypingValue::Struct(fields).with_span(identifier.span))
 }

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp;
 
 use crate::ast::{
@@ -9,7 +10,7 @@ use crate::prelude::*;
 use environment::Environment;
 use miette::MietteDiagnostic;
 
-mod environment;
+pub mod environment;
 mod error;
 
 pub struct Typer {
@@ -113,7 +114,7 @@ impl Typer {
                     }),
                     None => {
                         self.report_error(error::undefined_variable(
-                            format!("the identifier {value} is not defined"),
+                            format!("variable `{value}` is not defined"),
                             value,
                             expression.span,
                         ));
@@ -132,21 +133,20 @@ impl Typer {
             } => {
                 let left = self.type_check_expression(left, environment)?;
                 let right = self.type_check_expression(right, environment)?;
-                let left_ty = left.ty.clone();
 
-                if left_ty != right.ty {
+                if !types_match(&left.ty, &right.ty, environment)? {
                     self.report_error(error::new_mismatched_types(
                         format!("expected the types between {operator} to match"),
-                        &left_ty,
+                        &left.ty,
                         &right.ty,
-                        format!("{left_ty} and {} do not match", right.ty),
+                        format!("{} and {} do not match", left.ty, right.ty),
                     ));
                 }
 
                 let ty = if operator.is_logical() {
                     Typing::boolean(&expression.span)
                 } else {
-                    left_ty
+                    left.ty.clone()
                 };
 
                 let span = left.span.combine(right.span);
@@ -194,7 +194,7 @@ impl Typer {
                 let falsy = self.type_check_expression(falsy, environment)?;
                 let truthy_ty = truthy.ty.clone();
 
-                if condition.ty.value != TypingValue::Boolean {
+                if !type_matches(&condition.ty, TypingValue::Boolean, environment)? {
                     self.report_error(error::new_mismatched_types(
                         "expected the condition to be a boolean",
                         &condition.ty,
@@ -203,7 +203,7 @@ impl Typer {
                     ));
                 }
 
-                if truthy_ty != falsy.ty {
+                if !types_match(&truthy.ty, &falsy.ty, environment)? {
                     self.report_error(error::new_mismatched_types(
                         "expected the types of the truthy and falsy branches to match",
                         &truthy.ty,
@@ -246,7 +246,7 @@ impl Typer {
             } => {
                 let function = environment.lookup_function(function_name).ok_or_else(|| {
                     vec![error::undefined_function(
-                        format!("the function {function_name} is not defined"),
+                        format!("function `{function_name}` is not defined"),
                         function_name,
                         expression.span,
                     )
@@ -254,12 +254,12 @@ impl Typer {
                 })?;
 
                 let mut environment = environment.clone();
-                let mut results = arguments
+                let results = arguments
                     .iter()
                     .map(|a| self.type_check_expression(a, &mut environment))
                     .collect::<Vec<_>>();
 
-                let mut typed_arguments = results
+                let typed_arguments = results
                     .iter()
                     .filter_map(|r| {
                         if let Err(e) = r {
@@ -311,7 +311,7 @@ impl Typer {
                         let argument = argument.unwrap();
                         let parameter = parameter.unwrap();
 
-                        if argument.ty != parameter.ty {
+                        if !types_match(&argument.ty, &parameter.ty, &environment)? {
                             self.report_error(error::mismatched_argument(
                                 format!("mismatching argument type for `{}`", parameter.name),
                                 argument,
@@ -376,13 +376,28 @@ impl Typer {
                     span: statement.span,
                 })
             }
-            StatementValue::Declaration(name, expression) => {
+            StatementValue::VariableDeclaration(name, explicit_type, expression) => {
                 let expression = self.type_check_expression(expression, environment)?;
+
+                if let Some(explicit_type) = explicit_type {
+                    if !types_match(&expression.ty, explicit_type, environment)? {
+                        self.report_error(error::new_mismatched_types(
+                            "expected the types to match",
+                            &expression.ty,
+                            explicit_type,
+                            format!("{} and {} do not match", expression.ty, explicit_type),
+                        ));
+                    }
+                }
 
                 environment.declare_variable(name.clone(), expression.ty.clone());
 
                 Ok(TypedStatement {
-                    value: StatementValue::Declaration(name.clone(), expression),
+                    value: StatementValue::VariableDeclaration(
+                        name.clone(),
+                        explicit_type.clone(),
+                        expression,
+                    ),
                     span: statement.span,
                 })
             }
@@ -390,7 +405,7 @@ impl Typer {
                 let condition = self.type_check_expression(condition, environment)?;
                 let statement = self.type_check_statement(statement, environment)?;
 
-                if condition.ty.value != TypingValue::Boolean {
+                if !type_matches(&condition.ty, TypingValue::Boolean, environment)? {
                     self.report_error(error::new_mismatched_types(
                         "expected the condition to be a boolean",
                         &condition.ty,
@@ -408,7 +423,7 @@ impl Typer {
                 let condition = self.type_check_expression(condition, environment)?;
                 let statement = self.type_check_statement(statement, environment)?;
 
-                if condition.ty.value != TypingValue::Boolean {
+                if !type_matches(&condition.ty, TypingValue::Boolean, environment)? {
                     self.report_error(error::new_mismatched_types(
                         "expected the condition of loop to be a boolean",
                         &condition.ty,
@@ -422,21 +437,30 @@ impl Typer {
                     value: StatementValue::WhileLoop(condition, Box::new(statement)),
                 })
             }
-            StatementValue::Function(function) => {
+            StatementValue::FunctionDeclaration(function) => {
                 self.declare_function(function, environment)?;
                 let function = self.type_check_function(function, environment)?;
 
                 Ok(TypedStatement {
                     span: function.span,
-                    value: StatementValue::Function(function),
+                    value: StatementValue::FunctionDeclaration(function),
                 })
             }
-            StatementValue::Intrinsic(intrinsic) => {
+            StatementValue::IntrinsicDeclaration(intrinsic) => {
                 self.declare_intrinsic_function(intrinsic, environment)?;
 
                 Ok(TypedStatement {
                     span: intrinsic.span,
-                    value: StatementValue::Intrinsic(intrinsic.clone()),
+                    value: StatementValue::IntrinsicDeclaration(intrinsic.clone()),
+                })
+            }
+            StatementValue::TypeDeclaration(identifier, ty) => {
+                let ty = ty.clone().with_span(statement.span);
+                environment.declare_type(identifier.clone(), ty.clone())?;
+
+                Ok(TypedStatement {
+                    span: statement.span,
+                    value: StatementValue::TypeDeclaration(identifier.clone(), ty),
                 })
             }
         }
@@ -529,4 +553,53 @@ impl Typer {
 
         Ok(declaration)
     }
+}
+
+fn types_match(a: &Typing, b: &Typing, environment: &Environment) -> ParserResult<bool> {
+    let mut errors = vec![];
+
+    let a_matches = match type_matches(a, b.value.clone(), environment) {
+        Ok(a) => a,
+        Err(e) => {
+            errors.extend(e);
+            false
+        }
+    };
+
+    let b_matches = match type_matches(b, a.value.clone(), environment) {
+        Ok(b) => b,
+        Err(e) => {
+            errors.extend(e);
+            false
+        }
+    };
+
+    if errors.is_empty() {
+        Ok(a_matches && b_matches)
+    } else {
+        Err(errors)
+    }
+}
+
+fn type_matches(ty: &Typing, value: TypingValue, environment: &Environment) -> ParserResult<bool> {
+    let (unzipped_ty, identifier_name) = match &ty.value {
+        TypingValue::Symbol(identifier) => (environment.lookup_type(identifier), identifier),
+        _ => (Some(ty), &Cow::Owned(format!("{ty}"))),
+    };
+
+    if unzipped_ty.is_none() {
+        return Err(vec![error::undefined_type(
+            format!("type `{}` is not defined", ty.value),
+            identifier_name,
+            ty.span,
+        )]);
+    }
+
+    let ty = unzipped_ty.unwrap();
+
+    if ty.value == TypingValue::Unknown {
+        return Ok(false);
+    }
+
+    Ok(ty.value == value)
 }

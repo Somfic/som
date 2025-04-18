@@ -1,15 +1,9 @@
-use std::borrow::Cow;
-
+use super::{module, typing::parse_struct, BindingPower, Parser};
 use crate::{
-    ast::{
-        combine_spans, CombineSpan, Identifier, Spannable, Statement, StatementValue,
-        StructDeclaration, StructMember,
-    },
+    ast::{combine_spans, CombineSpan, Identifier, Statement, StatementValue, Typing},
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
 };
-
-use super::{module, BindingPower, Parser};
 
 pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
     parser
@@ -53,6 +47,20 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
         _ => unreachable!(),
     };
 
+    let explicit_type = if parser.tokens.peek().is_some_and(|token| {
+        token
+            .as_ref()
+            .is_ok_and(|token| token.kind == TokenKind::Tilde)
+    }) {
+        parser
+            .tokens
+            .expect(TokenKind::Tilde, "expected an explicit type")?;
+
+        Some(parser.parse_typing(BindingPower::None)?)
+    } else {
+        None
+    };
+
     parser
         .tokens
         .expect(TokenKind::Equal, "expected an equals sign")?;
@@ -62,7 +70,7 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
             TokenKind::Function => parse_function_declaration(parser, identifier),
             TokenKind::Intrinsic => parse_intrinsic_declaration(parser, identifier),
             TokenKind::Type => parse_type_declaration(parser, identifier, identifier_name),
-            _ => parse_variable_declaration(parser, identifier, identifier_name),
+            _ => parse_variable_declaration(parser, identifier, identifier_name, explicit_type),
         },
         _ => unreachable!(),
     }?;
@@ -78,7 +86,7 @@ fn parse_function_declaration<'ast>(
 
     let span = identifier.span.combine(function.span);
 
-    Ok(StatementValue::Function(function).with_span(span))
+    Ok(StatementValue::FunctionDeclaration(function).with_span(span))
 }
 
 fn parse_type_declaration<'ast>(
@@ -86,13 +94,18 @@ fn parse_type_declaration<'ast>(
     identifier: Token<'ast>,
     identifier_name: Identifier<'ast>,
 ) -> ParserResult<Statement<'ast>> {
-    match parser.tokens.peek() {
-        Some(Ok(token)) => match token.kind {
-            // TokenKind::CurlyOpen => parse_struct_declaration(parser, identifier),
-            _ => todo!(),
-        },
-        _ => unreachable!(),
-    }
+    parser
+        .tokens
+        .expect(TokenKind::Type, "expected a type declaration")?;
+
+    let span = identifier.span;
+
+    let ty = match parser.tokens.peek().unwrap() {
+        Ok(token) if token.kind == TokenKind::CurlyOpen => parse_struct(parser, identifier)?,
+        _ => todo!("parse type declaration"),
+    };
+
+    Ok(StatementValue::TypeDeclaration(identifier_name, ty).with_span(span))
 }
 
 // fn parse_struct_declaration<'ast>(
@@ -158,18 +171,23 @@ fn parse_intrinsic_declaration<'ast>(
 
     let span = identifier.span.combine(intrinsic.span);
 
-    Ok(StatementValue::Intrinsic(intrinsic).with_span(span))
+    Ok(StatementValue::IntrinsicDeclaration(intrinsic).with_span(span))
 }
 
 fn parse_variable_declaration<'ast>(
     parser: &mut Parser<'ast>,
     identifier: Token<'ast>,
     identifier_name: Identifier<'ast>,
+    explicit_type: Option<Typing<'ast>>,
 ) -> ParserResult<Statement<'ast>> {
     let expression = parser.parse_expression(BindingPower::Assignment)?;
+
     let span = identifier.span.combine(expression.span);
 
-    Ok(StatementValue::Declaration(identifier_name, expression).with_span(span))
+    Ok(
+        StatementValue::VariableDeclaration(identifier_name, explicit_type, expression)
+            .with_span(span),
+    )
 }
 
 pub fn parse_condition<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {

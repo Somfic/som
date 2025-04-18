@@ -1,4 +1,6 @@
-use crate::ast::{Identifier, IntrinsicFunctionDeclaration, TypedFunctionDeclaration, TypingValue};
+use crate::ast::{
+    Identifier, IntrinsicFunctionDeclaration, TypedFunctionDeclaration, Typing, TypingValue,
+};
 use cranelift::prelude::{EntityRef, FunctionBuilder, Signature, Variable};
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
@@ -8,6 +10,7 @@ pub struct CompileEnvironment<'ast> {
     parent: Option<&'ast CompileEnvironment<'ast>>,
     variables: HashMap<Identifier<'ast>, Variable>,
     functions: HashMap<Identifier<'ast>, (FuncId, Signature)>,
+    types: HashMap<Identifier<'ast>, Typing<'ast>>,
     next_variable: Rc<Cell<usize>>,
 }
 
@@ -17,6 +20,7 @@ impl<'ast> CompileEnvironment<'ast> {
             parent: None,
             variables: HashMap::new(),
             functions: HashMap::new(),
+            types: HashMap::new(),
             next_variable: Rc::new(Cell::new(0)),
         }
     }
@@ -66,6 +70,15 @@ impl<'ast> CompileEnvironment<'ast> {
         var
     }
 
+    pub fn declare_type(
+        &mut self,
+        name: Identifier<'ast>,
+        builder: &mut FunctionBuilder,
+        ty: Typing<'ast>,
+    ) {
+        self.types.insert(name, ty);
+    }
+
     pub fn lookup_function(&self, name: &str) -> Option<&(FuncId, Signature)> {
         self.functions
             .get(name)
@@ -82,6 +95,7 @@ impl<'ast> CompileEnvironment<'ast> {
         Self {
             parent: Some(self),
             variables: self.variables.clone(),
+            types: self.types.clone(),
             functions: self.functions.clone(),
             next_variable: Rc::clone(&self.next_variable),
         }
