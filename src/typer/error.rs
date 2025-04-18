@@ -106,23 +106,23 @@ pub fn missing_argument(
 
 pub(crate) fn undefined_type(
     message: impl Into<String>,
-    type_name: &str,
+    identifier_name: &str,
     label: SourceSpan,
-) -> Option<MietteDiagnostic> {
+) -> MietteDiagnostic {
     let message = message.into();
 
     let label = LabeledSpan::new(
-        format!("the type `{type_name}` is not defined in this scope").into(),
+        Some("this type could not be found".into()),
         label.offset(),
         label.len(),
     );
 
-    Some(diagnostic!(
+    diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
-        help = "create a type with this name",
+        help = format!("define a type named `{}`", identifier_name),
         "{message}"
-    ))
+    )
 }
 
 pub(crate) fn undefined_variable(
@@ -133,7 +133,7 @@ pub(crate) fn undefined_variable(
     let message = message.into();
 
     let label = LabeledSpan::new(
-        format!("the variable `{identifier_name}` is not defined in this scope").into(),
+        Some("this variable could not be found".into()),
         label.offset(),
         label.len(),
     );
@@ -141,7 +141,7 @@ pub(crate) fn undefined_variable(
     Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
-        help = "create a variable with this name",
+        help = format!("define a variable named `{}`", identifier_name),
         "{message}"
     ))
 }
@@ -154,7 +154,7 @@ pub(crate) fn undefined_function(
     let message = message.into();
 
     let label = LabeledSpan::new(
-        format!("the function `{identifier_name}` is not defined in this scope").into(),
+        Some("this function could not be found".into()),
         label.offset(),
         label.len(),
     );
@@ -162,7 +162,7 @@ pub(crate) fn undefined_function(
     Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
-        help = "create a function with this name",
+        help = format!("define a function named `{}`", identifier_name),
         "{message}"
     ))
 }

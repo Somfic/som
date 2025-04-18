@@ -16,11 +16,12 @@ pub struct GenericStatement<'ast, Expression> {
 pub enum StatementValue<'ast, Expression> {
     Block(Vec<GenericStatement<'ast, Expression>>),
     Expression(Expression),
-    Declaration(Identifier<'ast>, Expression),
     Condition(Expression, Box<GenericStatement<'ast, Expression>>),
     WhileLoop(Expression, Box<GenericStatement<'ast, Expression>>),
-    Function(GenericFunctionDeclaration<'ast, Expression>),
-    Intrinsic(IntrinsicFunctionDeclaration<'ast>),
+    VariableDeclaration(Identifier<'ast>, Option<Typing<'ast>>, Expression),
+    FunctionDeclaration(GenericFunctionDeclaration<'ast, Expression>),
+    IntrinsicDeclaration(IntrinsicFunctionDeclaration<'ast>),
+    TypeDeclaration(Identifier<'ast>, Typing<'ast>),
 }
 
 impl<'ast> StatementValue<'ast, Expression<'ast>> {
@@ -41,13 +42,6 @@ impl<'ast> GenericStatement<'ast, Expression<'ast>> {
     }
 }
 
-#[derive(Debug, Clone, Span)]
-pub struct StructMember<'ast> {
-    pub name: Identifier<'ast>,
-    pub span: miette::SourceSpan,
-    pub ty: Typing<'ast>,
-}
-
 pub type TypedFunctionDeclaration<'ast> = GenericFunctionDeclaration<'ast, TypedExpression<'ast>>;
 pub type FunctionDeclaration<'ast> = GenericFunctionDeclaration<'ast, Expression<'ast>>;
 
@@ -56,13 +50,6 @@ pub struct Parameter<'ast> {
     pub name: Identifier<'ast>,
     pub span: miette::SourceSpan,
     pub ty: Typing<'ast>,
-}
-
-#[derive(Debug, Clone, Span)]
-pub struct StructDeclaration<'ast> {
-    pub name: Identifier<'ast>,
-    pub span: miette::SourceSpan,
-    pub members: Vec<StructMember<'ast>>,
 }
 
 #[derive(Debug, Clone, Span)]

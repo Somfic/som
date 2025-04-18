@@ -1,8 +1,7 @@
+use super::Identifier;
 use miette::SourceSpan;
 use span_derive::Span;
-use std::{borrow::Cow, fmt::Display};
-
-use super::Identifier;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Span)]
 pub struct Typing<'ast> {
@@ -72,9 +71,15 @@ pub enum TypingValue<'ast> {
     Boolean,
     Decimal,
     Unit,
-    Generic(Identifier<'ast>),
     Symbol(Identifier<'ast>),
-    Struct(Identifier<'ast>),
+    Generic(Identifier<'ast>),
+    Struct(Vec<StructMember<'ast>>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructMember<'ast> {
+    pub name: Identifier<'ast>,
+    pub ty: Typing<'ast>,
 }
 
 impl<'ast> TypingValue<'ast> {
@@ -99,7 +104,7 @@ impl Display for TypingValue<'_> {
             TypingValue::Symbol(identifier) => write!(f, "{}", identifier),
             TypingValue::Generic(identifier) => write!(f, "`{}", identifier),
             TypingValue::Unit => write!(f, "nothing"),
-            TypingValue::Struct(identifier) => write!(f, "struct {}", identifier),
+            TypingValue::Struct(members) => write!(f, "{{{:?}}}", members),
         }
     }
 }

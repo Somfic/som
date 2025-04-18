@@ -233,7 +233,7 @@ impl Compiler {
                     self.compile_statement(statement, builder, &mut environment);
                 }
             }
-            StatementValue::Declaration(name, expression) => {
+            StatementValue::VariableDeclaration(name, _, expression) => {
                 let value = self.compile_expression(expression, builder, environment);
                 let var = environment.declare_variable(name.clone(), builder, &expression.ty.value);
                 builder.def_var(var, value);
@@ -289,13 +289,16 @@ impl Compiler {
                 builder.seal_block(merge_block);
                 builder.seal_block(cond_block);
             }
-            StatementValue::Function(function) => {
+            StatementValue::FunctionDeclaration(function) => {
                 self.declare_function(function, environment);
                 self.compile_function(function, environment);
             }
-            StatementValue::Intrinsic(intrinsic) => {
+            StatementValue::IntrinsicDeclaration(intrinsic) => {
                 self.declare_intrinsic_function(intrinsic, environment);
                 self.compile_intrinsic_function(intrinsic, environment)
+            }
+            StatementValue::TypeDeclaration(identifier, ty) => {
+                environment.declare_type(identifier.clone(), builder, ty.clone());
             }
         }
     }
@@ -518,6 +521,6 @@ pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
         TypingValue::Symbol(identifier) => todo!("{identifier}"),
         TypingValue::Unit => types::I8,
         TypingValue::Generic(identifier) => todo!("`{identifier}"),
-        TypingValue::Struct(identifier) => todo!("struct `{identifier}"),
+        TypingValue::Struct(fields) => todo!("struct `{fields:?}"),
     }
 }
