@@ -1,12 +1,15 @@
+use std::collections::HashMap;
+
 use miette::diagnostic;
+use syn::token;
 
 use super::{lookup::BindingPower, Parser};
 use crate::ast::{
-    combine_spans, BinaryOperator, CombineSpan, Expression, ExpressionValue, Primitive, Spannable,
-    StatementValue, UnaryOperator,
+    combine_spans, BinaryOperator, CombineSpan, Expression, ExpressionValue, GenericStatement,
+    Identifier, Primitive, Spannable, StatementValue, Typing, UnaryOperator,
 };
 use crate::prelude::*;
-use crate::tokenizer::{TokenKind, TokenValue};
+use crate::tokenizer::{Token, TokenKind, TokenValue};
 
 pub fn parse_integer<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
     let token = parser
@@ -379,7 +382,7 @@ pub fn parse_function_call<'ast>(
     let span = lhs.span.combine(close.span);
 
     Ok(ExpressionValue::FunctionCall {
-        function_name,
+        identifier: function_name,
         arguments,
     }
     .with_span(span))
@@ -399,13 +402,78 @@ pub fn parse_assignment<'ast>(
         )]),
     }?;
 
-    let value = parser.parse_expression(bp)?;
+    let value = match parser.tokens.peek() {
+        // Some(Ok(token)) if token.kind == TokenKind::CurlyOpen => {
+        //     parse_struct_assignment(parser, name.clone(), bp)?.with_span(lhs.span)
+        // }
+        _ => parser.parse_expression(bp)?,
+    };
 
-    let span = lhs.span.combine(value.span);
-
-    Ok(ExpressionValue::Assignment {
-        name,
+    Ok(ExpressionValue::VariableAssignment {
+        identifier: name,
         value: Box::new(value),
     }
-    .with_span(span))
+    .with_span(lhs.span))
+}
+
+pub fn parse_struct_constructor<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    let identifier_name = match lhs.value {
+        ExpressionValue::Primitive(Primitive::Identifier(name)) => Ok(name),
+        _ => Err(vec![diagnostic!(
+            labels = vec![lhs.label("expected a variable name")],
+            help = "assignments can only be made to variables",
+            "invalid assign target"
+        )]),
+    }?;
+
+    parser
+        .tokens
+        .expect(TokenKind::CurlyOpen, "expected a list of fields")?;
+
+    let mut arguments = HashMap::new();
+
+    while let Some(token) = parser.tokens.peek() {
+        if token
+            .as_ref()
+            .is_ok_and(|token| token.kind == TokenKind::CurlyClose)
+        {
+            break;
+        }
+
+        if !arguments.is_empty() {
+            parser.tokens.expect(TokenKind::Comma, "expected a comma")?;
+        }
+
+        let identifier = parser
+            .tokens
+            .expect(TokenKind::Identifier, "expected a field name")?;
+
+        let identifier_name = match identifier.value {
+            TokenValue::Identifier(name) => name,
+            _ => unreachable!(),
+        };
+
+        parser
+            .tokens
+            .expect(TokenKind::Equal, "expected a field value")?;
+
+        let value = parser.parse_expression(BindingPower::None)?;
+
+        // TODO: error if the field already defined
+        arguments.insert(identifier_name, value);
+    }
+
+    parser
+        .tokens
+        .expect(TokenKind::CurlyClose, "expected the end of the fields")?;
+
+    Ok(ExpressionValue::StructConstructor {
+        identifier: identifier_name,
+        arguments,
+    }
+    .with_span(lhs.span))
 }

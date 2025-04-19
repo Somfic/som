@@ -1,9 +1,10 @@
 use std::borrow::Cow;
 use std::cmp;
+use std::collections::HashMap;
 
 use crate::ast::{
     CombineSpan, Expression, ExpressionValue, FunctionDeclaration, IntrinsicFunctionDeclaration,
-    Module, Primitive, Spannable, Statement, StatementValue, TypedExpression,
+    Module, Primitive, Spannable, Statement, StatementValue, StructMember, TypedExpression,
     TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
 };
 use crate::prelude::*;
@@ -241,7 +242,7 @@ impl Typer {
                 })
             }
             ExpressionValue::FunctionCall {
-                function_name,
+                identifier: function_name,
                 arguments,
             } => {
                 let function = environment.lookup_function(function_name).ok_or_else(|| {
@@ -296,15 +297,15 @@ impl Typer {
                         let parameter = parameter.unwrap();
 
                         self.report_error(error::missing_argument(
-                            format!("missing argument for `{}`", parameter.name),
-                            expression,
-                            parameter,
-                            format!(
-                                "the function `{}` requires the `{}` parameter but it was not given",
-                                function_name,
-                                parameter.name
-                            ),
-                        ));
+                                            format!("missing argument for `{}`", parameter.name),
+                                            expression,
+                                            parameter,
+                                            format!(
+                                                "the function `{}` requires the `{}` parameter but it was not given",
+                                                function_name,
+                                                parameter.name
+                                            ),
+                                        ));
                     };
 
                     if argument.is_some() && parameter.is_some() {
@@ -313,39 +314,56 @@ impl Typer {
 
                         if !types_match(&argument.ty, &parameter.ty, &environment)? {
                             self.report_error(error::mismatched_argument(
-                                format!("mismatching argument type for `{}`", parameter.name),
-                                argument,
-                                parameter,
-                                format!(
-                                    "the function `{}` requires the `{}` parameter to be {} but it was {}",
-                                    function_name, parameter.name, parameter.ty, argument.ty
-                                ),
-                            ));
+                                                format!("mismatching argument type for `{}`", parameter.name),
+                                                argument,
+                                                parameter,
+                                                format!(
+                                                    "the function `{}` requires the `{}` parameter to be {} but it was {}",
+                                                    function_name, parameter.name, parameter.ty, argument.ty
+                                                ),
+                                            ));
                         }
                     }
                 }
 
                 Ok(TypedExpression {
                     value: ExpressionValue::FunctionCall {
-                        function_name: function_name.clone(),
+                        identifier: function_name.clone(),
                         arguments: typed_arguments,
                     },
                     ty: function.body.ty.clone().with_span(expression.span),
                     span: expression.span,
                 })
             }
-            ExpressionValue::Assignment { name, value } => {
+            ExpressionValue::VariableAssignment {
+                identifier: name,
+                value,
+            } => {
                 let value = self.type_check_expression(value, environment)?;
                 environment.assign_variable(name.clone(), value.ty.clone());
 
                 Ok(TypedExpression {
-                    value: ExpressionValue::Assignment {
-                        name: name.clone(),
+                    value: ExpressionValue::VariableAssignment {
+                        identifier: name.clone(),
                         value: Box::new(value),
                     },
                     ty: Typing::unknown(&expression.span),
                     span: expression.span,
                 })
+            }
+            ExpressionValue::StructConstructor {
+                identifier,
+                arguments,
+            } => {
+                let ty = environment.lookup_type(identifier).ok_or_else(|| {
+                    vec![error::undefined_type(
+                        format!("type `{identifier}` is not defined"),
+                        identifier,
+                        expression.span,
+                    )]
+                })?;
+
+                todo!()
             }
         }
     }
@@ -461,6 +479,47 @@ impl Typer {
                 Ok(TypedStatement {
                     span: statement.span,
                     value: StatementValue::TypeDeclaration(identifier.clone(), ty),
+                })
+            }
+            StatementValue::StructDeclaration(identifier, struct_type, explicit_type, members) => {
+                let mut typed_members = HashMap::new();
+
+                for (name, value) in members {
+                    let value = self.type_check_expression(value, environment)?;
+                    typed_members.insert(name.clone(), value.clone());
+                }
+
+                let ty = TypingValue::Struct(
+                    typed_members
+                        .iter()
+                        .map(|(k, v)| StructMember {
+                            name: k.clone(),
+                            ty: v.ty.clone(),
+                        })
+                        .collect(),
+                )
+                .with_span(statement.span);
+
+                if let Some(explicit_type) = explicit_type {
+                    if !types_match(explicit_type, &ty, environment)? {
+                        self.report_error(error::new_mismatched_types(
+                            "expected the types to match",
+                            explicit_type,
+                            &ty,
+                            format!("{} and {} do not match", explicit_type, ty),
+                        ));
+                    }
+                }
+
+                environment.declare_variable(identifier.clone(), ty);
+
+                Ok(TypedStatement {
+                    value: StatementValue::StructDeclaration(
+                        identifier.clone(),
+                        explicit_type.clone(),
+                        typed_members,
+                    ),
+                    span: statement.span,
                 })
             }
         }

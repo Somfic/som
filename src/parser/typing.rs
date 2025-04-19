@@ -83,11 +83,6 @@ pub fn parse_struct<'ast>(
         .tokens
         .expect(TokenKind::CurlyOpen, "expected a struct type")?;
 
-    let identifier_name = match identifier.value {
-        TokenValue::Identifier(name) => name,
-        _ => unreachable!(),
-    };
-
     let mut fields = Vec::new();
 
     while let Some(token) = parser.tokens.peek() {
