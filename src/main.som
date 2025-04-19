@@ -1,5 +1,0 @@
-let a = fn a() a()
-
-let a = a()
-
-a + 2 == true 

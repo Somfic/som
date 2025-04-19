@@ -3,9 +3,10 @@ use std::cmp;
 use std::collections::HashMap;
 
 use crate::ast::{
-    CombineSpan, Expression, ExpressionValue, FunctionDeclaration, IntrinsicFunctionDeclaration,
-    Module, Primitive, Spannable, Statement, StatementValue, StructMember, TypedExpression,
-    TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
+    combine_spans, CombineSpan, Expression, ExpressionValue, FunctionDeclaration,
+    IntrinsicFunctionDeclaration, Module, Primitive, Spannable, Statement, StatementValue,
+    StructMember, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement, Typing,
+    TypingValue,
 };
 use crate::prelude::*;
 use environment::Environment;
@@ -501,21 +502,34 @@ impl Typer {
                 .with_span(statement.span);
 
                 if let Some(explicit_type) = explicit_type {
-                    if !types_match(explicit_type, &ty, environment)? {
+                    if !types_match(explicit_type, struct_type, environment)? {
+                        println!("explicit type: {explicit_type:?}");
+                        println!("struct type: {struct_type:?}");
+
                         self.report_error(error::new_mismatched_types(
-                            "expected the types to match",
+                            "explicit type and actual types do not match",
                             explicit_type,
-                            &ty,
-                            format!("{} and {} do not match", explicit_type, ty),
+                            struct_type,
+                            format!("the explicit type of this struct {} does not match the actual type {}", explicit_type, struct_type),
                         ));
                     }
                 }
 
-                environment.declare_variable(identifier.clone(), ty);
+                if !types_match(struct_type, &ty, environment)? {
+                    self.report_error(error::new_mismatched_types(
+                        "expected the types to match",
+                        struct_type,
+                        &ty,
+                        format!("{} and {} do not match", struct_type, ty),
+                    ));
+                }
+
+                environment.declare_variable(identifier.clone(), struct_type.clone());
 
                 Ok(TypedStatement {
                     value: StatementValue::StructDeclaration(
                         identifier.clone(),
+                        struct_type.clone(),
                         explicit_type.clone(),
                         typed_members,
                     ),
@@ -584,7 +598,7 @@ impl Typer {
         let return_value = self.type_check_expression(&function.body, &mut environment.clone())?;
 
         if let Some(return_type) = &function.explicit_return_type {
-            if return_value.ty != *return_type {
+            if !types_match(&return_value.ty, return_type, environment)? {
                 self.report_error(error::new_mismatched_types(
                     "expected the return type to match",
                     &return_value.ty,
@@ -617,10 +631,13 @@ impl Typer {
 fn types_match(a: &Typing, b: &Typing, environment: &Environment) -> ParserResult<bool> {
     let mut errors = vec![];
 
+    let a = a.unzip(environment);
+    let b = b.unzip(environment);
+
     let a_matches = match type_matches(a, b.value.clone(), environment) {
         Ok(a) => a,
         Err(e) => {
-            errors.extend(e);
+            errors.extend(e.clone());
             false
         }
     };
@@ -628,7 +645,7 @@ fn types_match(a: &Typing, b: &Typing, environment: &Environment) -> ParserResul
     let b_matches = match type_matches(b, a.value.clone(), environment) {
         Ok(b) => b,
         Err(e) => {
-            errors.extend(e);
+            errors.extend(e.clone());
             false
         }
     };
@@ -641,24 +658,53 @@ fn types_match(a: &Typing, b: &Typing, environment: &Environment) -> ParserResul
 }
 
 fn type_matches(ty: &Typing, value: TypingValue, environment: &Environment) -> ParserResult<bool> {
-    let (unzipped_ty, identifier_name) = match &ty.value {
-        TypingValue::Symbol(identifier) => (environment.lookup_type(identifier), identifier),
-        _ => (Some(ty), &Cow::Owned(format!("{ty}"))),
-    };
+    let ty = ty.unzip(environment);
+    let value = value.unzip(environment);
 
-    if unzipped_ty.is_none() {
+    if let TypingValue::Symbol(identifier) = &ty.value {
         return Err(vec![error::undefined_type(
-            format!("type `{}` is not defined", ty.value),
-            identifier_name,
+            format!("type `{}` is not defined", identifier),
+            identifier,
             ty.span,
         )]);
     }
-
-    let ty = unzipped_ty.unwrap();
 
     if ty.value == TypingValue::Unknown {
         return Ok(false);
     }
 
-    Ok(ty.value == value)
+    Ok(ty.value == *value)
+}
+
+impl Typing<'_> {
+    pub fn unzip<'env>(&'env self, environment: &'env Environment<'env, '_>) -> &'env Typing<'env> {
+        let unwrapped_ty = match &self.value {
+            TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
+            _ => None,
+        };
+
+        if let Some(ty) = unwrapped_ty {
+            ty
+        } else {
+            self
+        }
+    }
+}
+
+impl TypingValue<'_> {
+    pub fn unzip<'env>(
+        &'env self,
+        environment: &'env Environment<'env, '_>,
+    ) -> &'env TypingValue<'env> {
+        let unwrapped_ty = match &self {
+            TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
+            _ => None,
+        };
+
+        if let Some(ty) = unwrapped_ty {
+            &ty.value
+        } else {
+            self
+        }
+    }
 }

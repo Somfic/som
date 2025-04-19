@@ -81,8 +81,21 @@ impl PartialEq for TypingValue<'_> {
         match (self, other) {
             (Self::Symbol(l0), Self::Symbol(r0)) => l0 == r0,
             (Self::Generic(l0), Self::Generic(r0)) => l0 == r0,
-            (Self::Struct(l0), Self::Struct(r0)) => l0 == r0,
-            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+            (Self::Struct(lfields), Self::Struct(rfields)) => {
+                if lfields.len() != rfields.len() {
+                    return false;
+                }
+                lfields
+                    .iter()
+                    .zip(rfields.iter())
+                    .all(|(l, r)| l.name == r.name && l.ty == r.ty)
+            }
+            (Self::Integer, Self::Integer) => true,
+            (Self::Decimal, Self::Decimal) => true,
+            (Self::Boolean, Self::Boolean) => true,
+            (Self::Unit, Self::Unit) => true,
+            (Self::Unknown, Self::Unknown) => true,
+            _ => false,
         }
     }
 }
@@ -115,7 +128,15 @@ impl Display for TypingValue<'_> {
             TypingValue::Symbol(identifier) => write!(f, "{}", identifier),
             TypingValue::Generic(identifier) => write!(f, "`{}", identifier),
             TypingValue::Unit => write!(f, "nothing"),
-            TypingValue::Struct(members) => write!(f, "{{{:?}}}", members),
+            TypingValue::Struct(members) => write!(
+                f,
+                "{{ {} }}",
+                members
+                    .iter()
+                    .map(|m| format!("{} ~ {}", m.name, m.ty))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }
