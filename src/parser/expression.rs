@@ -351,12 +351,9 @@ pub fn parse_function_call<'ast>(
     lhs: Expression<'ast>,
     bp: BindingPower,
 ) -> ParserResult<Expression<'ast>> {
-    let function_name = match lhs.value {
-        ExpressionValue::Primitive(Primitive::Identifier(name)) => name,
-        _ => todo!("function calls on non-identifiers"),
-    };
-
     let mut arguments = Vec::new();
+
+    let identifier = Identifier::from_expression(&lhs)?;
 
     loop {
         if parser.tokens.peek().is_some_and(|token| {
@@ -382,7 +379,7 @@ pub fn parse_function_call<'ast>(
     let span = lhs.span.combine(close.span);
 
     Ok(ExpressionValue::FunctionCall {
-        identifier: function_name,
+        identifier,
         arguments,
     }
     .with_span(span))
@@ -393,27 +390,17 @@ pub fn parse_assignment<'ast>(
     lhs: Expression<'ast>,
     bp: BindingPower,
 ) -> ParserResult<Expression<'ast>> {
-    let name = match lhs.value {
-        ExpressionValue::Primitive(Primitive::Identifier(name)) => Ok(name),
-        _ => Err(vec![diagnostic!(
-            labels = vec![lhs.label("expected a variable name")],
-            help = "assignments can only be made to variables",
-            "invalid assign target"
-        )]),
-    }?;
+    let identifier = Identifier::from_expression(&lhs)?;
 
-    let value = match parser.tokens.peek() {
-        // Some(Ok(token)) if token.kind == TokenKind::CurlyOpen => {
-        //     parse_struct_assignment(parser, name.clone(), bp)?.with_span(lhs.span)
-        // }
-        _ => parser.parse_expression(bp)?,
-    };
+    let value = parser.parse_expression(bp)?;
+
+    let span = lhs.span.combine(value.span);
 
     Ok(ExpressionValue::VariableAssignment {
-        identifier: name,
-        value: Box::new(value),
+        identifier,
+        argument: Box::new(value),
     }
-    .with_span(lhs.span))
+    .with_span(span))
 }
 
 pub fn parse_struct_constructor<'ast>(
@@ -421,20 +408,7 @@ pub fn parse_struct_constructor<'ast>(
     lhs: Expression<'ast>,
     bp: BindingPower,
 ) -> ParserResult<Expression<'ast>> {
-    println!("parse_struct_constructor");
-
-    let identifier_name = match lhs.value {
-        ExpressionValue::Primitive(Primitive::Identifier(name)) => Ok(name),
-        _ => Err(vec![diagnostic!(
-            labels = vec![lhs.label("expected a variable name")],
-            help = "assignments can only be made to variables",
-            "invalid assign target"
-        )]),
-    }?;
-
-    parser
-        .tokens
-        .expect(TokenKind::CurlyOpen, "expected a list of fields")?;
+    let identifier = Identifier::from_expression(&lhs)?;
 
     let mut arguments = HashMap::new();
 
@@ -454,10 +428,7 @@ pub fn parse_struct_constructor<'ast>(
             .tokens
             .expect(TokenKind::Identifier, "expected a field name")?;
 
-        let identifier_name = match identifier.value {
-            TokenValue::Identifier(name) => name,
-            _ => unreachable!(),
-        };
+        let identifier = Identifier::from_token(&identifier)?;
 
         parser
             .tokens
@@ -466,16 +437,18 @@ pub fn parse_struct_constructor<'ast>(
         let value = parser.parse_expression(BindingPower::None)?;
 
         // TODO: error if the field already defined
-        arguments.insert(identifier_name, value);
+        arguments.insert(identifier, value);
     }
 
-    parser
+    let close = parser
         .tokens
         .expect(TokenKind::CurlyClose, "expected the end of the fields")?;
 
+    let span = lhs.span.combine(close.span);
+
     Ok(ExpressionValue::StructConstructor {
-        identifier: identifier_name,
+        identifier,
         arguments,
     }
-    .with_span(lhs.span))
+    .with_span(span))
 }

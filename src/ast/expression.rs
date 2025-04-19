@@ -44,7 +44,7 @@ pub enum ExpressionValue<'ast, Statement, Expression> {
     },
     VariableAssignment {
         identifier: Identifier<'ast>,
-        value: Box<Expression>,
+        argument: Box<Expression>,
     },
     StructConstructor {
         identifier: Identifier<'ast>,
@@ -62,7 +62,7 @@ impl<'ast> ExpressionValue<'ast, Statement<'ast>, Expression<'ast>> {
 pub enum Primitive<'ast> {
     Integer(i64),
     Decimal(f64),
-    String(Identifier<'ast>),
+    String(Cow<'ast, str>),
     Identifier(Identifier<'ast>),
     Character(char),
     Boolean(bool),

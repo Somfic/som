@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use crate::{
     ast::{
-        BinaryOperator, ExpressionValue, IntrinsicFunctionDeclaration, Primitive, StatementValue,
-        TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement, TypingValue,
+        BinaryOperator, ExpressionValue, Identifier, IntrinsicFunctionDeclaration, Primitive,
+        StatementValue, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
+        TypingValue,
     },
     prelude::*,
 };
@@ -70,9 +71,12 @@ impl Compiler {
 
         self.codebase.finalize_definitions().unwrap();
 
-        Ok(self
-            .codebase
-            .get_finalized_function(environment.lookup_function("0").unwrap().0))
+        Ok(self.codebase.get_finalized_function(
+            environment
+                .lookup_function(&Identifier::new("0"))
+                .unwrap()
+                .0,
+        ))
     }
 
     fn compile_expression<'ast>(
@@ -210,7 +214,7 @@ impl Compiler {
             }
             ExpressionValue::VariableAssignment {
                 identifier: name,
-                value,
+                argument: value,
             } => {
                 let value = self.compile_expression(value, builder, environment);
                 let var = environment.lookup_variable(name).unwrap();
@@ -358,7 +362,7 @@ impl Compiler {
     ) {
         let mut context = self.codebase.make_context();
         let (func_id, signature) = {
-            let lookup = environment.lookup_function(&function.name).unwrap();
+            let lookup = environment.lookup_function(&function.identifier).unwrap();
             (lookup.0, lookup.1.clone())
         };
         context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature);
@@ -372,7 +376,7 @@ impl Compiler {
         let block_params = builder.block_params(entry_block).to_vec();
         for (i, parameter) in function.parameters.iter().enumerate() {
             let variable = environment.declare_variable(
-                parameter.name.clone(),
+                parameter.identifier.clone(),
                 &mut builder,
                 &parameter.ty.value,
             );
@@ -398,9 +402,12 @@ impl Compiler {
         let mut context = self.codebase.make_context();
         let (func_id, signature) = {
             let lookup = environment
-                .lookup_function(&intrinsic_function.name)
+                .lookup_function(&intrinsic_function.identifier)
                 .unwrap_or_else(|| {
-                    panic!("{} intrinsic function not found", intrinsic_function.name)
+                    panic!(
+                        "{} intrinsic function not found",
+                        intrinsic_function.identifier
+                    )
                 });
             (lookup.0, lookup.1.clone())
         };
@@ -415,7 +422,7 @@ impl Compiler {
         let block_params = builder.block_params(entry_block).to_vec();
         for (i, parameter) in intrinsic_function.parameters.iter().enumerate() {
             let variable = environment.declare_variable(
-                parameter.name.clone(),
+                parameter.identifier.clone(),
                 &mut builder,
                 &parameter.ty.value,
             );
@@ -423,7 +430,7 @@ impl Compiler {
             builder.def_var(variable, block_params[i]);
         }
 
-        match intrinsic_function.name.as_ref() {
+        match intrinsic_function.identifier.name.to_string().as_str() {
             "assert" => {
                 let cond = block_params[0];
                 let code = TrapCode::unwrap_user(123);

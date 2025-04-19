@@ -92,14 +92,14 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
         return parse_function_declaration(parser, identifier);
     }
 
-    let declaration = parser.parse_expression(BindingPower::Assignment)?;
+    let declaration = parser.parse_expression(BindingPower::None)?;
 
     let declaration = match declaration.value {
         ExpressionValue::StructConstructor {
             identifier,
             arguments,
         } => {
-            let struct_type = TypingValue::Symbol(identifier.clone()).with_span(declaration.span);
+            let struct_type = TypingValue::Symbol(identifier).with_span(declaration.span);
 
             StatementValue::StructDeclaration(
                 identifier_name,

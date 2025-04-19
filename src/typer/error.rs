@@ -1,8 +1,8 @@
 use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
 use crate::ast::{
-    Expression, FunctionDeclaration, GenericFunctionDeclaration, Parameter, TypedExpression,
-    TypedFunctionDeclaration, Typing,
+    Expression, FunctionDeclaration, GenericFunctionDeclaration, Identifier, Parameter,
+    TypedExpression, TypedFunctionDeclaration, Typing,
 };
 
 pub fn new_mismatched_types(
@@ -96,8 +96,8 @@ pub fn missing_argument(
     Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![
-            function_call.label(format!("missing value for `{}`", parameter.name)),
-            parameter.label(format!("`{}` paramater", parameter.name))
+            function_call.label(format!("missing value for `{}`", parameter.identifier)),
+            parameter.label(format!("`{}` paramater", parameter.identifier))
         ],
         help = hint.into(),
         "{message}"
@@ -106,7 +106,7 @@ pub fn missing_argument(
 
 pub(crate) fn undefined_type(
     message: impl Into<String>,
-    identifier_name: &str,
+    identifier: &Identifier,
     label: SourceSpan,
 ) -> MietteDiagnostic {
     let message = message.into();
@@ -120,14 +120,14 @@ pub(crate) fn undefined_type(
     diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
-        help = format!("define a type named `{}`", identifier_name),
+        help = format!("define a type named `{}`", identifier),
         "{message}"
     )
 }
 
 pub(crate) fn undefined_variable(
     message: impl Into<String>,
-    identifier_name: &str,
+    identifier: &Identifier,
     label: SourceSpan,
 ) -> Option<MietteDiagnostic> {
     let message = message.into();
@@ -141,14 +141,14 @@ pub(crate) fn undefined_variable(
     Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
-        help = format!("define a variable named `{}`", identifier_name),
+        help = format!("define a variable named `{}`", identifier),
         "{message}"
     ))
 }
 
 pub(crate) fn undefined_function(
     message: impl Into<String>,
-    identifier_name: &str,
+    identifier: &Identifier,
     label: SourceSpan,
 ) -> Option<MietteDiagnostic> {
     let message = message.into();
@@ -162,7 +162,7 @@ pub(crate) fn undefined_function(
     Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
-        help = format!("define a function named `{}`", identifier_name),
+        help = format!("define a function named `{}`", identifier),
         "{message}"
     ))
 }

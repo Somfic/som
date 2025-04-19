@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{ast::Identifier, prelude::*};
 mod token;
 use miette::{LabeledSpan, SourceSpan};
 pub use token::*;
@@ -167,9 +167,12 @@ impl<'ast> Iterator for Tokenizer<'ast> {
                     "unit" => Ok((TokenKind::UnitType, TokenValue::None)),
                     "use" => Ok((TokenKind::Use, TokenValue::None)),
                     "mod" => Ok((TokenKind::Mod, TokenValue::None)),
-                    ident => Ok((
+                    _ => Ok((
                         TokenKind::Identifier,
-                        TokenValue::Identifier(ident.to_string().into()),
+                        TokenValue::Identifier(Identifier {
+                            name: ident.clone().into(),
+                            span: SourceSpan::new(self.byte_offset.into(), ident.len()),
+                        }),
                     )),
                 }
             }

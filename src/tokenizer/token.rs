@@ -1,5 +1,5 @@
 use span_derive::Span;
-use std::fmt::Display;
+use std::{borrow::Cow, fmt::Display};
 
 use crate::ast::Identifier;
 
@@ -26,7 +26,7 @@ pub enum TokenValue<'ast> {
     Boolean(bool),
     Integer(i64),
     Decimal(f64),
-    String(Identifier<'ast>),
+    String(Cow<'ast, str>),
     Character(char),
     Identifier(Identifier<'ast>),
 }

@@ -2,8 +2,8 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use crate::ast::{
-    Expression, ExpressionValue, FunctionDeclaration, Module, Primitive, Spannable, Statement,
-    Typing,
+    Expression, ExpressionValue, FunctionDeclaration, Identifier, Module, Primitive, Spannable,
+    Statement, Typing,
 };
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, Tokenizer};
@@ -71,7 +71,10 @@ impl<'ast> Parser<'ast> {
         let expression = parse_inner_block(self, TokenKind::EOF)?;
 
         let main_function = FunctionDeclaration {
-            name: Cow::Borrowed("0"),
+            identifier: Identifier {
+                name: Cow::Borrowed("main"),
+                span: expression.span,
+            },
             span: expression.span,
             body: expression,
             parameters: Vec::new(),
