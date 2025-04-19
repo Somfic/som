@@ -2,8 +2,8 @@ use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
     ast::{
-        CombineSpan, Expression, FunctionDeclaration, IntrinsicFunctionDeclaration, Parameter,
-        Spannable, Typing,
+        CombineSpan, Expression, FunctionDeclaration, Identifier, IntrinsicFunctionDeclaration,
+        Parameter, Spannable, Typing,
     },
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
@@ -63,18 +63,15 @@ pub fn parse_module_function<'ast>(
         .tokens
         .expect(TokenKind::Identifier, "expected a function name")?;
 
+    let identifier = Identifier::from_token(&identifier)?;
+
     parse_function(parser, identifier)
 }
 
 pub fn parse_function<'ast>(
     parser: &mut Parser<'ast>,
-    identifier: Token<'ast>,
+    identifier: Identifier<'ast>,
 ) -> ParserResult<FunctionDeclaration<'ast>> {
-    let identifier_name = match identifier.value.clone() {
-        TokenValue::Identifier(identifier) => identifier,
-        _ => unreachable!(),
-    };
-
     parser
         .tokens
         .expect(TokenKind::Function, "expected a function declaration")?;
@@ -98,8 +95,8 @@ pub fn parse_function<'ast>(
     let expression = parser.parse_expression(BindingPower::None)?;
 
     Ok(FunctionDeclaration {
-        identifier: identifier_name,
         span: identifier.span,
+        identifier,
         parameters,
         body: expression,
         explicit_return_type: return_type,

@@ -22,12 +22,12 @@ pub enum StatementValue<'ast, Expression> {
     FunctionDeclaration(GenericFunctionDeclaration<'ast, Expression>),
     IntrinsicDeclaration(IntrinsicFunctionDeclaration<'ast>),
     TypeDeclaration(Identifier<'ast>, Typing<'ast>),
-    StructDeclaration(
-        Identifier<'ast>,
-        Typing<'ast>,
-        Option<Typing<'ast>>,
-        HashMap<Identifier<'ast>, Expression>,
-    ),
+    StructDeclaration {
+        identifier: Identifier<'ast>,
+        explicit_type: Option<Typing<'ast>>,
+        struct_type: Typing<'ast>,
+        parameters: HashMap<Identifier<'ast>, Expression>,
+    },
 }
 
 impl<'ast> StatementValue<'ast, Expression<'ast>> {

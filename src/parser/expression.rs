@@ -444,7 +444,12 @@ pub fn parse_struct_constructor<'ast>(
         .tokens
         .expect(TokenKind::CurlyClose, "expected the end of the fields")?;
 
-    let span = lhs.span.combine(close.span);
+    let span = combine_spans(
+        arguments
+            .iter()
+            .map(|a| a.0.span.combine(a.1.span))
+            .collect(),
+    );
 
     Ok(ExpressionValue::StructConstructor {
         identifier,
