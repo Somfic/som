@@ -421,6 +421,8 @@ pub fn parse_struct_constructor<'ast>(
     lhs: Expression<'ast>,
     bp: BindingPower,
 ) -> ParserResult<Expression<'ast>> {
+    println!("parse_struct_constructor");
+
     let identifier_name = match lhs.value {
         ExpressionValue::Primitive(Primitive::Identifier(name)) => Ok(name),
         _ => Err(vec![diagnostic!(

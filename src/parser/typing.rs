@@ -75,11 +75,8 @@ pub fn parse_unit<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>>
     })
 }
 
-pub fn parse_struct<'ast>(
-    parser: &mut Parser<'ast>,
-    identifier: Token<'ast>,
-) -> ParserResult<Typing<'ast>> {
-    parser
+pub fn parse_struct<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+    let open = parser
         .tokens
         .expect(TokenKind::CurlyOpen, "expected a struct type")?;
 
@@ -117,9 +114,9 @@ pub fn parse_struct<'ast>(
         fields.push(field);
     }
 
-    parser
+    let close = parser
         .tokens
         .expect(TokenKind::CurlyClose, "expected a closing curly bracket")?;
 
-    Ok(TypingValue::Struct(fields).with_span(identifier.span))
+    Ok(TypingValue::Struct(fields).with_span(open.span.combine(close.span)))
 }

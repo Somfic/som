@@ -87,8 +87,7 @@ impl PartialEq for TypingValue<'_> {
                 }
                 lfields
                     .iter()
-                    .zip(rfields.iter())
-                    .all(|(l, r)| l.name == r.name && l.ty == r.ty)
+                    .all(|m| rfields.iter().any(|n| m.name == n.name && m.ty == n.ty))
             }
             (Self::Integer, Self::Integer) => true,
             (Self::Decimal, Self::Decimal) => true,

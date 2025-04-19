@@ -50,3 +50,8 @@ fn group() {
 fn loops() {
     run(include_str!("loops.som"));
 }
+
+#[test]
+fn types() {
+    run(include_str!("types.som"));
+}

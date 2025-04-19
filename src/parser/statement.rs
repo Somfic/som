@@ -7,8 +7,8 @@ use super::{
 };
 use crate::{
     ast::{
-        combine_spans, CombineSpan, Identifier, Statement, StatementValue, StructMember, Typing,
-        TypingValue,
+        combine_spans, CombineSpan, ExpressionValue, Identifier, Statement, StatementValue,
+        StructMember, Typing, TypingValue,
     },
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
@@ -74,18 +74,44 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
         .tokens
         .expect(TokenKind::Equal, "expected an equals sign")?;
 
-    let declaration = match parser.tokens.peek() {
-        Some(Ok(token)) => match token.kind {
-            TokenKind::Function => parse_function_declaration(parser, identifier),
-            TokenKind::Intrinsic => parse_intrinsic_declaration(parser, identifier),
-            TokenKind::Type => parse_type_declaration(parser, identifier, identifier_name),
-            TokenKind::Identifier => parse_struct_declaration(parser, identifier, explicit_type),
-            _ => parse_variable_declaration(parser, identifier, identifier_name, explicit_type),
-        },
-        _ => unreachable!(),
-    }?;
+    let next_token = parser.tokens.peek();
 
-    Ok(declaration)
+    if next_token.is_some_and(|token| {
+        token
+            .as_ref()
+            .is_ok_and(|token| token.kind == TokenKind::Type)
+    }) {
+        return parse_type_declaration(parser, identifier, identifier_name);
+    }
+
+    if next_token.is_some_and(|token| {
+        token
+            .as_ref()
+            .is_ok_and(|token| token.kind == TokenKind::Function)
+    }) {
+        return parse_function_declaration(parser, identifier);
+    }
+
+    let declaration = parser.parse_expression(BindingPower::Assignment)?;
+
+    let declaration = match declaration.value {
+        ExpressionValue::StructConstructor {
+            identifier,
+            arguments,
+        } => {
+            let struct_type = TypingValue::Symbol(identifier.clone()).with_span(declaration.span);
+
+            StatementValue::StructDeclaration(
+                identifier_name,
+                struct_type,
+                explicit_type,
+                arguments,
+            )
+        }
+        _ => StatementValue::VariableDeclaration(identifier_name, explicit_type, declaration),
+    };
+
+    Ok(declaration.with_span(identifier.span))
 }
 
 fn parse_function_declaration<'ast>(
