@@ -311,9 +311,12 @@ impl Compiler {
             StatementValue::TypeDeclaration(identifier, ty) => {
                 environment.declare_type(identifier.clone(), builder, ty.clone());
             }
-            StatementValue::StructDeclaration(identifier, struct_type, explicit_type, members) => {
-                todo!()
-            }
+            StatementValue::StructDeclaration {
+                identifier,
+                explicit_type,
+                struct_type,
+                parameters,
+            } => todo!(),
         }
     }
 

@@ -484,24 +484,34 @@ impl Typer {
                     value: StatementValue::TypeDeclaration(identifier.clone(), ty),
                 })
             }
-            StatementValue::StructDeclaration(identifier, struct_type, explicit_type, members) => {
-                let mut typed_members = HashMap::new();
+            StatementValue::StructDeclaration {
+                identifier,
+                explicit_type,
+                struct_type,
+                parameters,
+            } => {
+                let mut typed_parameters = HashMap::new();
 
-                for (name, value) in members {
+                for (name, value) in parameters {
                     let value = self.type_check_expression(value, environment)?;
-                    typed_members.insert(name.clone(), value.clone());
+                    typed_parameters.insert(name.clone(), value.clone());
                 }
 
-                let ty = TypingValue::Struct(
-                    typed_members
+                let generated_type = TypingValue::Struct(
+                    typed_parameters
                         .iter()
-                        .map(|(k, v)| StructMember {
-                            name: k.clone(),
-                            ty: v.ty.clone(),
+                        .map(|(i, e)| StructMember {
+                            name: i.clone(),
+                            ty: e.ty.clone(),
                         })
                         .collect(),
                 )
-                .with_span(statement.span);
+                .with_span(combine_spans(
+                    typed_parameters
+                        .iter()
+                        .map(|(i, e)| i.span.combine(e.span))
+                        .collect(),
+                ));
 
                 if let Some(explicit_type) = explicit_type {
                     if !types_match(explicit_type, struct_type, environment)? {
@@ -517,24 +527,24 @@ impl Typer {
                     }
                 }
 
-                if !types_match(struct_type, &ty, environment)? {
+                if !types_match(struct_type, &generated_type, environment)? {
                     self.report_error(error::new_mismatched_types(
-                        "expected the types to match",
+                        "expected the the type to match to the struct",
                         struct_type,
-                        &ty,
-                        format!("{} and {} do not match", struct_type, ty),
+                        &generated_type,
+                        format!("{} and {} do not match", struct_type, generated_type),
                     ));
                 }
 
                 environment.declare_variable(identifier.clone(), struct_type.clone());
 
                 Ok(TypedStatement {
-                    value: StatementValue::StructDeclaration(
-                        identifier.clone(),
-                        struct_type.clone(),
-                        explicit_type.clone(),
-                        typed_members,
-                    ),
+                    value: StatementValue::StructDeclaration {
+                        identifier: identifier.clone(),
+                        explicit_type: explicit_type.clone(),
+                        struct_type: struct_type.clone(),
+                        parameters: typed_parameters,
+                    },
                     span: statement.span,
                 })
             }

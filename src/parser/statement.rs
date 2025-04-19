@@ -51,10 +51,7 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
         .tokens
         .expect(TokenKind::Identifier, "expected the variable name")?;
 
-    let identifier_name = match identifier.value.clone() {
-        TokenValue::Identifier(identifier) => identifier,
-        _ => unreachable!(),
-    };
+    let identifier = Identifier::from_token(&identifier)?;
 
     let explicit_type = if parser.tokens.peek().is_some_and(|token| {
         token
@@ -81,7 +78,7 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
             .as_ref()
             .is_ok_and(|token| token.kind == TokenKind::Type)
     }) {
-        return parse_type_declaration(parser, identifier, identifier_name);
+        return parse_type_declaration(parser, identifier);
     }
 
     if next_token.is_some_and(|token| {
@@ -99,16 +96,16 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
             identifier,
             arguments,
         } => {
-            let struct_type = TypingValue::Symbol(identifier).with_span(declaration.span);
+            let struct_type = TypingValue::Symbol(identifier.clone()).with_span(identifier.span);
 
-            StatementValue::StructDeclaration(
-                identifier_name,
+            StatementValue::StructDeclaration {
+                identifier: identifier.clone(),
                 struct_type,
                 explicit_type,
-                arguments,
-            )
+                parameters: arguments,
+            }
         }
-        _ => StatementValue::VariableDeclaration(identifier_name, explicit_type, declaration),
+        _ => StatementValue::VariableDeclaration(identifier.clone(), explicit_type, declaration),
     };
 
     Ok(declaration.with_span(identifier.span))
@@ -116,7 +113,7 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
 
 fn parse_function_declaration<'ast>(
     parser: &mut Parser<'ast>,
-    identifier: Token<'ast>,
+    identifier: Identifier<'ast>,
 ) -> ParserResult<Statement<'ast>> {
     let function = module::parse_function(parser, identifier.clone())?;
 
@@ -127,8 +124,7 @@ fn parse_function_declaration<'ast>(
 
 fn parse_type_declaration<'ast>(
     parser: &mut Parser<'ast>,
-    identifier: Token<'ast>,
-    identifier_name: Identifier<'ast>,
+    identifier: Identifier<'ast>,
 ) -> ParserResult<Statement<'ast>> {
     parser
         .tokens
@@ -143,72 +139,7 @@ fn parse_type_declaration<'ast>(
     let ty = parser.parse_typing(BindingPower::None)?;
     let span = ty.span;
 
-    Ok(StatementValue::TypeDeclaration(identifier_name, ty).with_span(span))
-}
-
-fn parse_struct_declaration<'ast>(
-    parser: &mut Parser<'ast>,
-    identifier: Token<'ast>,
-    explicit_type: Option<Typing<'ast>>,
-) -> ParserResult<Statement<'ast>> {
-    let struct_identifier = parser
-        .tokens
-        .expect(TokenKind::Identifier, "expected a struct name")?;
-
-    let open = parser
-        .tokens
-        .expect(TokenKind::CurlyOpen, "expected a struct")?;
-
-    let struct_identifier_name = match struct_identifier.value.clone() {
-        TokenValue::Identifier(identifier) => identifier,
-        _ => unreachable!(),
-    };
-
-    let identifier_name = match identifier.value.clone() {
-        TokenValue::Identifier(identifier) => identifier,
-        _ => unreachable!(),
-    };
-
-    let struct_type = TypingValue::Symbol(struct_identifier_name).with_span(struct_identifier.span);
-
-    let mut members = HashMap::new();
-
-    while parser.tokens.peek().is_some_and(|token| {
-        token
-            .as_ref()
-            .is_ok_and(|token| token.kind != TokenKind::CurlyClose)
-    }) {
-        if !members.is_empty() {
-            parser.tokens.expect(TokenKind::Comma, "expected a comma")?;
-        }
-
-        let identifier = parser
-            .tokens
-            .expect(TokenKind::Identifier, "expected a member name")?;
-
-        let identifier_name = match identifier.value.clone() {
-            TokenValue::Identifier(identifier) => identifier,
-            _ => unreachable!(),
-        };
-
-        parser
-            .tokens
-            .expect(TokenKind::Equal, "expected a member value")?;
-
-        let member_value = parser.parse_expression(BindingPower::None)?;
-
-        // TODO: error if the member is already defined
-        members.insert(identifier_name, member_value);
-    }
-
-    let close = parser
-        .tokens
-        .expect(TokenKind::CurlyClose, "expected the end of a struct")?;
-
-    Ok(
-        StatementValue::StructDeclaration(identifier_name, struct_type, explicit_type, members)
-            .with_span(open.span.combine(close.span)),
-    )
+    Ok(StatementValue::TypeDeclaration(identifier, ty).with_span(span))
 }
 
 fn parse_intrinsic_declaration<'ast>(

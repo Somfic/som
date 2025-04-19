@@ -171,7 +171,7 @@ impl<'ast> Iterator for Tokenizer<'ast> {
                         TokenKind::Identifier,
                         TokenValue::Identifier(Identifier {
                             name: ident.clone().into(),
-                            span: SourceSpan::new(self.byte_offset.into(), ident.len()),
+                            span: SourceSpan::new(start_offset.into(), ident.len()),
                         }),
                     )),
                 }
