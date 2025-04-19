@@ -53,14 +53,14 @@ pub type FunctionDeclaration<'ast> = GenericFunctionDeclaration<'ast, Expression
 
 #[derive(Debug, Clone, Span)]
 pub struct Parameter<'ast> {
-    pub name: Identifier<'ast>,
+    pub identifier: Identifier<'ast>,
     pub span: miette::SourceSpan,
     pub ty: Typing<'ast>,
 }
 
 #[derive(Debug, Clone, Span)]
 pub struct GenericFunctionDeclaration<'ast, Expression> {
-    pub name: Identifier<'ast>,
+    pub identifier: Identifier<'ast>,
     pub span: miette::SourceSpan,
     pub parameters: Vec<Parameter<'ast>>,
     pub body: Expression,
@@ -69,7 +69,7 @@ pub struct GenericFunctionDeclaration<'ast, Expression> {
 
 #[derive(Debug, Clone, Span)]
 pub struct IntrinsicFunctionDeclaration<'ast> {
-    pub name: Identifier<'ast>,
+    pub identifier: Identifier<'ast>,
     pub span: miette::SourceSpan,
     pub parameters: Vec<Parameter<'ast>>,
     pub return_type: Typing<'ast>,

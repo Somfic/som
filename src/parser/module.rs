@@ -49,7 +49,7 @@ pub fn parse_intrinsic_function<'ast>(
     let return_type = parser.parse_typing(BindingPower::None)?;
 
     Ok(IntrinsicFunctionDeclaration {
-        name: identifier_name,
+        identifier: identifier_name,
         span: identifier.span,
         parameters,
         return_type,
@@ -98,7 +98,7 @@ pub fn parse_function<'ast>(
     let expression = parser.parse_expression(BindingPower::None)?;
 
     Ok(FunctionDeclaration {
-        name: identifier_name,
+        identifier: identifier_name,
         span: identifier.span,
         parameters,
         body: expression,
@@ -165,7 +165,7 @@ fn parse_function_parameters<'ast>(
         let parameter_type = parser.parse_typing(BindingPower::None)?;
 
         parameters.push(Parameter {
-            name: parameter_name,
+            identifier: parameter_name,
             span: parameter.span.combine(parameter_type.span),
             ty: parameter_type.clone(),
         });

@@ -108,25 +108,27 @@ impl Typer {
                     ty: Typing::unit(&expression.span),
                     span: expression.span,
                 }),
-                Primitive::Identifier(value) => match environment.lookup_variable(value) {
-                    Some(ty) => Ok(TypedExpression {
-                        value: ExpressionValue::Primitive(primitive.clone()),
-                        ty: ty.clone().with_span(expression.span),
-                        span: expression.span,
-                    }),
-                    None => {
-                        self.report_error(error::undefined_variable(
-                            format!("variable `{value}` is not defined"),
-                            value,
-                            expression.span,
-                        ));
-                        Ok(TypedExpression {
+                Primitive::Identifier(identifier) => {
+                    match environment.lookup_variable(&identifier) {
+                        Some(ty) => Ok(TypedExpression {
                             value: ExpressionValue::Primitive(primitive.clone()),
-                            ty: Typing::unknown(&expression.span),
+                            ty: ty.clone().with_span(expression.span),
                             span: expression.span,
-                        })
+                        }),
+                        None => {
+                            self.report_error(error::undefined_variable(
+                                format!("variable `{identifier}` is not defined"),
+                                &identifier,
+                                expression.span,
+                            ));
+                            Ok(TypedExpression {
+                                value: ExpressionValue::Primitive(primitive.clone()),
+                                ty: Typing::unknown(&expression.span),
+                                span: expression.span,
+                            })
+                        }
                     }
-                },
+                }
             },
             ExpressionValue::Binary {
                 operator,
@@ -243,13 +245,13 @@ impl Typer {
                 })
             }
             ExpressionValue::FunctionCall {
-                identifier: function_name,
+                identifier,
                 arguments,
             } => {
-                let function = environment.lookup_function(function_name).ok_or_else(|| {
+                let function = environment.lookup_function(&identifier).ok_or_else(|| {
                     vec![error::undefined_function(
-                        format!("function `{function_name}` is not defined"),
-                        function_name,
+                        format!("function `{identifier}` is not defined"),
+                        &identifier,
                         expression.span,
                     )
                     .unwrap()]
@@ -287,7 +289,7 @@ impl Typer {
                             argument,
                             format!(
                                 "the function `{}` requires {} arguments but {} were given",
-                                function_name,
+                                identifier,
                                 function.parameters.len(),
                                 arguments.len()
                             ),
@@ -298,13 +300,13 @@ impl Typer {
                         let parameter = parameter.unwrap();
 
                         self.report_error(error::missing_argument(
-                                            format!("missing argument for `{}`", parameter.name),
+                                            format!("missing argument for `{}`", parameter.identifier),
                                             expression,
                                             parameter,
                                             format!(
                                                 "the function `{}` requires the `{}` parameter but it was not given",
-                                                function_name,
-                                                parameter.name
+                                                identifier,
+                                                parameter.identifier
                                             ),
                                         ));
                     };
@@ -315,12 +317,12 @@ impl Typer {
 
                         if !types_match(&argument.ty, &parameter.ty, &environment)? {
                             self.report_error(error::mismatched_argument(
-                                                format!("mismatching argument type for `{}`", parameter.name),
+                                                format!("mismatching argument type for `{}`", parameter.identifier),
                                                 argument,
                                                 parameter,
                                                 format!(
                                                     "the function `{}` requires the `{}` parameter to be {} but it was {}",
-                                                    function_name, parameter.name, parameter.ty, argument.ty
+                                                    identifier, parameter.identifier, parameter.ty, argument.ty
                                                 ),
                                             ));
                         }
@@ -329,7 +331,7 @@ impl Typer {
 
                 Ok(TypedExpression {
                     value: ExpressionValue::FunctionCall {
-                        identifier: function_name.clone(),
+                        identifier: identifier.clone(),
                         arguments: typed_arguments,
                     },
                     ty: function.body.ty.clone().with_span(expression.span),
@@ -338,7 +340,7 @@ impl Typer {
             }
             ExpressionValue::VariableAssignment {
                 identifier: name,
-                value,
+                argument: value,
             } => {
                 let value = self.type_check_expression(value, environment)?;
                 environment.assign_variable(name.clone(), value.ty.clone());
@@ -346,7 +348,7 @@ impl Typer {
                 Ok(TypedExpression {
                     value: ExpressionValue::VariableAssignment {
                         identifier: name.clone(),
-                        value: Box::new(value),
+                        argument: Box::new(value),
                     },
                     ty: Typing::unknown(&expression.span),
                     span: expression.span,
@@ -356,10 +358,10 @@ impl Typer {
                 identifier,
                 arguments,
             } => {
-                let ty = environment.lookup_type(identifier).ok_or_else(|| {
+                let ty = environment.lookup_type(&identifier).ok_or_else(|| {
                     vec![error::undefined_type(
                         format!("type `{identifier}` is not defined"),
-                        identifier,
+                        &identifier,
                         expression.span,
                     )]
                 })?;
@@ -553,13 +555,13 @@ impl Typer {
             span: function.span,
         };
         let placeholder = TypedFunctionDeclaration {
-            name: function.name.clone(),
+            identifier: function.identifier.clone(),
             span: function.span,
             parameters: function.parameters.clone(),
             body: dummy,
             explicit_return_type: function.explicit_return_type.clone(),
         };
-        environment.declare_function(function.name.clone(), placeholder.clone())?;
+        environment.declare_function(function.identifier.clone(), placeholder.clone())?;
 
         Ok(())
     }
@@ -575,13 +577,13 @@ impl Typer {
             span: function.span,
         };
         let placeholder = TypedFunctionDeclaration {
-            name: function.name.clone(),
+            identifier: function.identifier.clone(),
             span: function.span,
             parameters: function.parameters.clone(),
             body: dummy,
             explicit_return_type: Some(function.return_type.clone()),
         };
-        environment.declare_function(function.name.clone(), placeholder.clone())?;
+        environment.declare_function(function.identifier.clone(), placeholder.clone())?;
 
         Ok(())
     }
@@ -592,7 +594,7 @@ impl Typer {
         environment: &mut Environment<'_, 'ast>,
     ) -> ParserResult<TypedFunctionDeclaration<'ast>> {
         for parameter in &function.parameters {
-            environment.declare_variable(parameter.name.clone(), parameter.ty.clone());
+            environment.declare_variable(parameter.identifier.clone(), parameter.ty.clone());
         }
 
         let return_value = self.type_check_expression(&function.body, &mut environment.clone())?;
@@ -605,7 +607,7 @@ impl Typer {
                     return_type,
                     format!(
                         "the function `{}` requires the return type to be {}, but {} was returned",
-                        function.name, return_type, return_value.ty,
+                        function.identifier, return_type, return_value.ty,
                     ),
                 ));
             }
@@ -615,14 +617,14 @@ impl Typer {
 
         let declaration: crate::ast::GenericFunctionDeclaration<'_, TypedExpression<'_>> =
             TypedFunctionDeclaration {
-                name: function.name.clone(),
+                identifier: function.identifier.clone(),
                 span: function.span,
                 parameters: function.parameters.clone(),
                 body: return_value,
                 explicit_return_type: function.explicit_return_type.clone(),
             };
 
-        environment.update_function(function.name.clone(), declaration.clone())?;
+        environment.update_function(function.identifier.clone(), declaration.clone())?;
 
         Ok(declaration)
     }
@@ -679,7 +681,7 @@ fn type_matches(ty: &Typing, value: TypingValue, environment: &Environment) -> P
 impl Typing<'_> {
     pub fn unzip<'env>(&'env self, environment: &'env Environment<'env, '_>) -> &'env Typing<'env> {
         let unwrapped_ty = match &self.value {
-            TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
+            TypingValue::Symbol(identifier) => environment.lookup_type(&identifier),
             _ => None,
         };
 
@@ -697,7 +699,7 @@ impl TypingValue<'_> {
         environment: &'env Environment<'env, '_>,
     ) -> &'env TypingValue<'env> {
         let unwrapped_ty = match &self {
-            TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
+            TypingValue::Symbol(identifier) => environment.lookup_type(&identifier),
             _ => None,
         };
 

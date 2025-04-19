@@ -10,9 +10,9 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Environment<'env, 'ast> {
     parent: Option<&'env Environment<'env, 'ast>>,
-    variables: HashMap<Identifier<'ast>, Typing<'ast>>,
-    types: HashMap<Identifier<'ast>, Typing<'ast>>,
-    functions: HashMap<Identifier<'ast>, TypedFunctionDeclaration<'ast>>,
+    variables: HashMap<Cow<'ast, str>, Typing<'ast>>,
+    types: HashMap<Cow<'ast, str>, Typing<'ast>>,
+    functions: HashMap<Cow<'ast, str>, TypedFunctionDeclaration<'ast>>,
 }
 
 pub enum EnvironmentType<'ast> {
@@ -38,12 +38,16 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         }
     }
 
-    pub fn declare_variable(&mut self, name: Identifier<'ast>, ty: Typing<'ast>) {
-        self.variables.insert(name, ty);
+    pub fn declare_variable(&mut self, identifier: Identifier<'ast>, ty: Typing<'ast>) {
+        self.variables.insert(identifier.name, ty);
     }
 
-    pub fn declare_type(&mut self, name: Identifier<'ast>, ty: Typing<'ast>) -> ParserResult<()> {
-        if let Some(existing_type) = self.lookup_type(name.as_ref()) {
+    pub fn declare_type(
+        &mut self,
+        identifier: Identifier<'ast>,
+        ty: Typing<'ast>,
+    ) -> ParserResult<()> {
+        if let Some(existing_type) = self.lookup_type(&identifier) {
             return Err(vec![miette::diagnostic!(
                 labels = vec![
                     LabeledSpan::at(ty.span, "duplicate type name"),
@@ -51,22 +55,22 @@ impl<'env, 'ast> Environment<'env, 'ast> {
                 ],
                 help = format!("choose a different name for this type"),
                 "type `{}` already declared",
-                name
+                identifier
             )]);
         }
 
-        self.types.insert(name, ty);
+        self.types.insert(identifier.name, ty);
 
         Ok(())
     }
 
-    pub fn assign_variable(&mut self, name: Identifier<'ast>, ty: Typing<'ast>) {
-        match self.lookup_variable(name.as_ref()) {
+    pub fn assign_variable(&mut self, identifier: Identifier<'ast>, ty: Typing<'ast>) {
+        match self.lookup_variable(&identifier) {
             Some(existing_type) => {
                 if existing_type != &ty {
                     panic!("type mismatch");
                 } else {
-                    self.variables.insert(name, ty);
+                    self.variables.insert(identifier.name, ty);
                 }
             }
             None => {
@@ -75,24 +79,28 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         }
     }
 
-    pub fn lookup_variable(&self, name: &str) -> Option<&Typing<'ast>> {
-        self.variables
-            .get(name)
-            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_variable(name)))
+    pub fn lookup_variable(&self, identifier: &Identifier<'ast>) -> Option<&Typing<'ast>> {
+        self.variables.get(&identifier.name).or_else(|| {
+            self.parent
+                .as_ref()
+                .and_then(|p| p.lookup_variable(&identifier))
+        })
     }
 
-    pub fn lookup_type(&self, name: &str) -> Option<&Typing<'ast>> {
-        self.types
-            .get(name)
-            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_type(name)))
+    pub fn lookup_type(&self, identifier: &Identifier<'ast>) -> Option<&Typing<'ast>> {
+        self.types.get(&identifier.name).or_else(|| {
+            self.parent
+                .as_ref()
+                .and_then(|p| p.lookup_type(&identifier))
+        })
     }
 
     pub fn declare_function(
         &mut self,
-        name: Identifier<'ast>,
+        identifier: Identifier<'ast>,
         function: TypedFunctionDeclaration<'ast>,
     ) -> ParserResult<()> {
-        if let Some(existing_function) = self.lookup_function(name.as_ref()) {
+        if let Some(existing_function) = self.lookup_function(&identifier) {
             return Err(vec![miette::diagnostic!(
                 labels = vec![
                     LabeledSpan::at(function.span, "duplicate function name"),
@@ -100,28 +108,33 @@ impl<'env, 'ast> Environment<'env, 'ast> {
                 ],
                 help = format!("choose a different name for this function"),
                 "function `{}` already declared",
-                existing_function.name
+                existing_function.identifier
             )]);
         }
 
-        self.functions.insert(name, function);
+        self.functions.insert(identifier.name, function);
 
         Ok(())
     }
 
     pub fn update_function(
         &mut self,
-        name: Identifier<'ast>,
+        identifier: Identifier<'ast>,
         function: TypedFunctionDeclaration<'ast>,
     ) -> ParserResult<()> {
-        self.functions.insert(name, function);
+        self.functions.insert(identifier.name, function);
 
         Ok(())
     }
 
-    pub fn lookup_function(&self, name: &str) -> Option<&TypedFunctionDeclaration<'ast>> {
-        self.functions
-            .get(name)
-            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_function(name)))
+    pub fn lookup_function(
+        &self,
+        identifier: &Identifier<'ast>,
+    ) -> Option<&TypedFunctionDeclaration<'ast>> {
+        self.functions.get(&identifier.name).or_else(|| {
+            self.parent
+                .as_ref()
+                .and_then(|p| p.lookup_function(&identifier))
+        })
     }
 }

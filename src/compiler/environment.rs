@@ -32,11 +32,11 @@ impl<'ast> CompileEnvironment<'ast> {
         module: &mut JITModule,
     ) -> FuncId {
         let func_id = module
-            .declare_function(&function.name, Linkage::Export, &signature)
+            .declare_function(&function.identifier.name, Linkage::Export, &signature)
             .unwrap();
 
         self.functions
-            .insert(function.name.clone(), (func_id, signature));
+            .insert(function.identifier.clone(), (func_id, signature));
 
         func_id
     }
@@ -48,11 +48,11 @@ impl<'ast> CompileEnvironment<'ast> {
         codebase: &mut JITModule,
     ) -> FuncId {
         let func_id = codebase
-            .declare_function(&function.name, Linkage::Export, &signature)
+            .declare_function(&function.identifier.name, Linkage::Export, &signature)
             .unwrap();
 
         self.functions
-            .insert(function.name.clone(), (func_id, signature));
+            .insert(function.identifier.clone(), (func_id, signature));
 
         func_id
     }
@@ -79,16 +79,20 @@ impl<'ast> CompileEnvironment<'ast> {
         self.types.insert(name, ty);
     }
 
-    pub fn lookup_function(&self, name: &str) -> Option<&(FuncId, Signature)> {
-        self.functions
-            .get(name)
-            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_function(name)))
+    pub fn lookup_function(&self, identifier: &Identifier<'ast>) -> Option<&(FuncId, Signature)> {
+        self.functions.get(identifier).or_else(|| {
+            self.parent
+                .as_ref()
+                .and_then(|p| p.lookup_function(&identifier))
+        })
     }
 
-    pub fn lookup_variable(&self, name: &str) -> Option<&Variable> {
-        self.variables
-            .get(name)
-            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_variable(name)))
+    pub fn lookup_variable(&self, identifier: &Identifier<'ast>) -> Option<&Variable> {
+        self.variables.get(identifier).or_else(|| {
+            self.parent
+                .as_ref()
+                .and_then(|p| p.lookup_variable(&identifier))
+        })
     }
 
     pub fn block(&'ast self) -> Self {
