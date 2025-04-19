@@ -93,6 +93,10 @@ pub fn parse_struct<'ast>(
             break;
         }
 
+        if !fields.is_empty() {
+            parser.tokens.expect(TokenKind::Comma, "expected a comma")?;
+        }
+
         let identifier = parser
             .tokens
             .expect(TokenKind::Identifier, "expected a struct member")?;

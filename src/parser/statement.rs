@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 
-use super::{module, typing::parse_struct, BindingPower, Parser};
+use super::{
+    module,
+    typing::{self, parse_struct},
+    BindingPower, Parser,
+};
 use crate::{
     ast::{
         combine_spans, CombineSpan, Identifier, Statement, StatementValue, StructMember, Typing,
@@ -104,12 +108,14 @@ fn parse_type_declaration<'ast>(
         .tokens
         .expect(TokenKind::Type, "expected a type declaration")?;
 
-    let span = identifier.span;
+    // let ty = match parser.tokens.peek().unwrap().map(|t| t.kind) {
+    //     TokenKind::CurlyOpen => typing::parse_struct(parser, identifier)?,
+    //     TokenKind::Identifier => typing::parse_symbol(parser)?,
+    //     _ => todo!("parse type declaration"),
+    // };
 
-    let ty = match parser.tokens.peek().unwrap() {
-        Ok(token) if token.kind == TokenKind::CurlyOpen => parse_struct(parser, identifier)?,
-        _ => todo!("parse type declaration"),
-    };
+    let ty = parser.parse_typing(BindingPower::None)?;
+    let span = ty.span;
 
     Ok(StatementValue::TypeDeclaration(identifier_name, ty).with_span(span))
 }
@@ -119,13 +125,9 @@ fn parse_struct_declaration<'ast>(
     identifier: Token<'ast>,
     explicit_type: Option<Typing<'ast>>,
 ) -> ParserResult<Statement<'ast>> {
-    println!("identifier: {:?}", identifier);
-
     let struct_identifier = parser
         .tokens
         .expect(TokenKind::Identifier, "expected a struct name")?;
-
-    println!("struct_identifier: {:?}", struct_identifier);
 
     let open = parser
         .tokens
@@ -150,9 +152,14 @@ fn parse_struct_declaration<'ast>(
             .as_ref()
             .is_ok_and(|token| token.kind != TokenKind::CurlyClose)
     }) {
+        if !members.is_empty() {
+            parser.tokens.expect(TokenKind::Comma, "expected a comma")?;
+        }
+
         let identifier = parser
             .tokens
             .expect(TokenKind::Identifier, "expected a member name")?;
+
         let identifier_name = match identifier.value.clone() {
             TokenValue::Identifier(identifier) => identifier,
             _ => unreachable!(),
