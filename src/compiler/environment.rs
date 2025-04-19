@@ -8,9 +8,9 @@ use std::{borrow::Cow, cell::Cell, collections::HashMap, fmt::Display, rc::Rc};
 
 pub struct CompileEnvironment<'ast> {
     parent: Option<&'ast CompileEnvironment<'ast>>,
-    variables: HashMap<Identifier<'ast>, Variable>,
-    functions: HashMap<Identifier<'ast>, (FuncId, Signature)>,
-    types: HashMap<Identifier<'ast>, Typing<'ast>>,
+    variables: HashMap<Cow<'ast, str>, Variable>,
+    functions: HashMap<Cow<'ast, str>, (FuncId, Signature)>,
+    types: HashMap<Cow<'ast, str>, Typing<'ast>>,
     next_variable: Rc<Cell<usize>>,
 }
 
@@ -36,7 +36,7 @@ impl<'ast> CompileEnvironment<'ast> {
             .unwrap();
 
         self.functions
-            .insert(function.identifier.clone(), (func_id, signature));
+            .insert(function.identifier.name.clone(), (func_id, signature));
 
         func_id
     }
@@ -52,46 +52,46 @@ impl<'ast> CompileEnvironment<'ast> {
             .unwrap();
 
         self.functions
-            .insert(function.identifier.clone(), (func_id, signature));
+            .insert(function.identifier.name.clone(), (func_id, signature));
 
         func_id
     }
 
     pub fn declare_variable(
         &mut self,
-        name: Identifier<'ast>,
+        identifier: Identifier<'ast>,
         builder: &mut FunctionBuilder,
         ty: &TypingValue,
     ) -> Variable {
         let var = Variable::new(self.next_variable.get());
         self.next_variable.set(self.next_variable.get() + 1);
         builder.declare_var(var, super::convert_type(ty));
-        self.variables.insert(name, var);
+        self.variables.insert(identifier.name, var);
         var
     }
 
     pub fn declare_type(
         &mut self,
-        name: Identifier<'ast>,
+        identifier: Identifier<'ast>,
         builder: &mut FunctionBuilder,
         ty: Typing<'ast>,
     ) {
-        self.types.insert(name, ty);
+        self.types.insert(identifier.name, ty);
     }
 
     pub fn lookup_function(&self, identifier: &Identifier<'ast>) -> Option<&(FuncId, Signature)> {
-        self.functions.get(identifier).or_else(|| {
+        self.functions.get(&identifier.name).or_else(|| {
             self.parent
                 .as_ref()
-                .and_then(|p| p.lookup_function(&identifier))
+                .and_then(|p| p.lookup_function(identifier))
         })
     }
 
     pub fn lookup_variable(&self, identifier: &Identifier<'ast>) -> Option<&Variable> {
-        self.variables.get(identifier).or_else(|| {
+        self.variables.get(&identifier.name).or_else(|| {
             self.parent
                 .as_ref()
-                .and_then(|p| p.lookup_variable(&identifier))
+                .and_then(|p| p.lookup_variable(identifier))
         })
     }
 

@@ -73,7 +73,7 @@ impl Compiler {
 
         Ok(self.codebase.get_finalized_function(
             environment
-                .lookup_function(&Identifier::new("0"))
+                .lookup_function(&Identifier::new("main"))
                 .unwrap()
                 .0,
         ))
@@ -316,7 +316,14 @@ impl Compiler {
                 explicit_type,
                 struct_type,
                 parameters,
-            } => todo!(),
+            } => {
+                environment.declare_type(identifier.clone(), builder, struct_type.clone());
+                for (name, value) in parameters {
+                    let var = environment.declare_variable(name.clone(), builder, &value.ty.value);
+                    let value = self.compile_expression(value, builder, environment);
+                    builder.def_var(var, value);
+                }
+            }
         }
     }
 
