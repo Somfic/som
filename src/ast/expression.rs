@@ -1,5 +1,5 @@
 use span_derive::Span;
-use std::{borrow::Cow, fmt::Display};
+use std::{borrow::Cow, collections::HashMap, fmt::Display};
 
 use super::{GenericStatement, Identifier, Statement, TypedStatement, Typing};
 
@@ -39,12 +39,16 @@ pub enum ExpressionValue<'ast, Statement, Expression> {
         result: Box<Expression>,
     },
     FunctionCall {
-        function_name: Identifier<'ast>,
+        identifier: Identifier<'ast>,
         arguments: Vec<Expression>,
     },
-    Assignment {
-        name: Identifier<'ast>,
+    VariableAssignment {
+        identifier: Identifier<'ast>,
         value: Box<Expression>,
+    },
+    StructConstructor {
+        identifier: Identifier<'ast>,
+        arguments: HashMap<Identifier<'ast>, Expression>,
     },
 }
 

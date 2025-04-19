@@ -204,6 +204,11 @@ impl Default for Lookup<'_> {
             BindingPower::Assignment,
             expression::parse_assignment,
         )
+        .add_left_expression_handler(
+            TokenKind::CurlyOpen,
+            BindingPower::Assignment,
+            expression::parse_struct_constructor,
+        )
         .add_typing_handler(TokenKind::Tick, typing::parse_generic)
         .add_typing_handler(TokenKind::UnitType, typing::parse_unit)
         .add_typing_handler(TokenKind::Identifier, typing::parse_symbol)

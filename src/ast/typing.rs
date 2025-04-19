@@ -64,7 +64,7 @@ impl<'ast> Typing<'ast> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub enum TypingValue<'ast> {
     Unknown,
     Integer,
@@ -74,6 +74,17 @@ pub enum TypingValue<'ast> {
     Symbol(Identifier<'ast>),
     Generic(Identifier<'ast>),
     Struct(Vec<StructMember<'ast>>),
+}
+
+impl PartialEq for TypingValue<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Symbol(l0), Self::Symbol(r0)) => l0 == r0,
+            (Self::Generic(l0), Self::Generic(r0)) => l0 == r0,
+            (Self::Struct(l0), Self::Struct(r0)) => l0 == r0,
+            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

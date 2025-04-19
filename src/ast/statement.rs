@@ -1,7 +1,7 @@
 use super::{Expression, Identifier, TypedExpression, Typing};
 
 use span_derive::Span;
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::HashMap};
 
 pub type TypedStatement<'ast> = GenericStatement<'ast, TypedExpression<'ast>>;
 pub type Statement<'ast> = GenericStatement<'ast, Expression<'ast>>;
@@ -22,6 +22,12 @@ pub enum StatementValue<'ast, Expression> {
     FunctionDeclaration(GenericFunctionDeclaration<'ast, Expression>),
     IntrinsicDeclaration(IntrinsicFunctionDeclaration<'ast>),
     TypeDeclaration(Identifier<'ast>, Typing<'ast>),
+    StructDeclaration(
+        Identifier<'ast>,
+        Typing<'ast>,
+        Option<Typing<'ast>>,
+        HashMap<Identifier<'ast>, Expression>,
+    ),
 }
 
 impl<'ast> StatementValue<'ast, Expression<'ast>> {

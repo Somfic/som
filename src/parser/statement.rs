@@ -1,6 +1,11 @@
+use std::collections::HashMap;
+
 use super::{module, typing::parse_struct, BindingPower, Parser};
 use crate::{
-    ast::{combine_spans, CombineSpan, Identifier, Statement, StatementValue, Typing},
+    ast::{
+        combine_spans, CombineSpan, Identifier, Statement, StatementValue, StructMember, Typing,
+        TypingValue,
+    },
     tokenizer::{Token, TokenKind, TokenValue},
     ParserResult,
 };
@@ -70,6 +75,7 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
             TokenKind::Function => parse_function_declaration(parser, identifier),
             TokenKind::Intrinsic => parse_intrinsic_declaration(parser, identifier),
             TokenKind::Type => parse_type_declaration(parser, identifier, identifier_name),
+            TokenKind::Identifier => parse_struct_declaration(parser, identifier, explicit_type),
             _ => parse_variable_declaration(parser, identifier, identifier_name, explicit_type),
         },
         _ => unreachable!(),
@@ -108,60 +114,69 @@ fn parse_type_declaration<'ast>(
     Ok(StatementValue::TypeDeclaration(identifier_name, ty).with_span(span))
 }
 
-// fn parse_struct_declaration<'ast>(
-//     parser: &mut Parser<'ast>,
-//     identifier: Token<'ast>,
-// ) -> ParserResult<Statement<'ast>> {
-//     parser
-//         .tokens
-//         .expect(TokenKind::CurlyOpen, "expected a struct")?;
+fn parse_struct_declaration<'ast>(
+    parser: &mut Parser<'ast>,
+    identifier: Token<'ast>,
+    explicit_type: Option<Typing<'ast>>,
+) -> ParserResult<Statement<'ast>> {
+    println!("identifier: {:?}", identifier);
 
-//     let identifier_name = match identifier.value.clone() {
-//         TokenValue::Identifier(identifier) => identifier,
-//         _ => unreachable!(),
-//     };
+    let struct_identifier = parser
+        .tokens
+        .expect(TokenKind::Identifier, "expected a struct name")?;
 
-//     let mut members = vec![];
+    println!("struct_identifier: {:?}", struct_identifier);
 
-//     while parser.tokens.peek().is_some_and(|token| {
-//         token
-//             .as_ref()
-//             .is_ok_and(|token| token.kind != TokenKind::CurlyClose)
-//     }) {
-//         let identifier = parser
-//             .tokens
-//             .expect(TokenKind::Identifier, "expected a struct member")?;
-//         let identifier_name = match identifier.value.clone() {
-//             TokenValue::Identifier(identifier) => identifier,
-//             _ => unreachable!(),
-//         };
+    let open = parser
+        .tokens
+        .expect(TokenKind::CurlyOpen, "expected a struct")?;
 
-//         parser
-//             .tokens
-//             .expect(TokenKind::Tilde, "expected a struct member type")?;
+    let struct_identifier_name = match struct_identifier.value.clone() {
+        TokenValue::Identifier(identifier) => identifier,
+        _ => unreachable!(),
+    };
 
-//         let member_type = parser.parse_typing(BindingPower::None)?;
+    let identifier_name = match identifier.value.clone() {
+        TokenValue::Identifier(identifier) => identifier,
+        _ => unreachable!(),
+    };
 
-//         let member = StructMember::at_multiple(
-//             vec![identifier.span, member_type.span],
-//             (identifier_name, member_type),
-//         );
-//         members.push(member);
-//     }
+    let struct_type = TypingValue::Symbol(struct_identifier_name).with_span(struct_identifier.span);
 
-//     parser
-//         .tokens
-//         .expect(TokenKind::CurlyClose, "expected the end of a struct")?;
+    let mut members = HashMap::new();
 
-//     Ok(Statement::at_multiple(
-//         vec![identifier.span],
-//         StatementValue::Struct(StructDeclaration {
-//             name: identifier_name,
-//             span: identifier.span,
-//             members,
-//         }),
-//     ))
-// }
+    while parser.tokens.peek().is_some_and(|token| {
+        token
+            .as_ref()
+            .is_ok_and(|token| token.kind != TokenKind::CurlyClose)
+    }) {
+        let identifier = parser
+            .tokens
+            .expect(TokenKind::Identifier, "expected a member name")?;
+        let identifier_name = match identifier.value.clone() {
+            TokenValue::Identifier(identifier) => identifier,
+            _ => unreachable!(),
+        };
+
+        parser
+            .tokens
+            .expect(TokenKind::Equal, "expected a member value")?;
+
+        let member_value = parser.parse_expression(BindingPower::None)?;
+
+        // TODO: error if the member is already defined
+        members.insert(identifier_name, member_value);
+    }
+
+    let close = parser
+        .tokens
+        .expect(TokenKind::CurlyClose, "expected the end of a struct")?;
+
+    Ok(
+        StatementValue::StructDeclaration(identifier_name, struct_type, explicit_type, members)
+            .with_span(open.span.combine(close.span)),
+    )
+}
 
 fn parse_intrinsic_declaration<'ast>(
     parser: &mut Parser<'ast>,
@@ -181,7 +196,6 @@ fn parse_variable_declaration<'ast>(
     explicit_type: Option<Typing<'ast>>,
 ) -> ParserResult<Statement<'ast>> {
     let expression = parser.parse_expression(BindingPower::Assignment)?;
-
     let span = identifier.span.combine(expression.span);
 
     Ok(

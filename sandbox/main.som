@@ -1,2 +1,2 @@
-let abc = type { a ~ int };
-let a ~ abcd = 0;
+let abc = type { b ~ int };
+let a ~ abc = abcd { a = 1 };

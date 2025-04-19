@@ -191,7 +191,7 @@ impl Compiler {
                 builder.block_params(block)[0]
             }
             ExpressionValue::FunctionCall {
-                function_name,
+                identifier: function_name,
                 arguments,
             } => {
                 let arg_values: Vec<Value> = arguments
@@ -208,12 +208,19 @@ impl Compiler {
 
                 builder.inst_results(call_inst)[0]
             }
-            ExpressionValue::Assignment { name, value } => {
+            ExpressionValue::VariableAssignment {
+                identifier: name,
+                value,
+            } => {
                 let value = self.compile_expression(value, builder, environment);
                 let var = environment.lookup_variable(name).unwrap();
                 builder.def_var(*var, value);
                 value
             }
+            ExpressionValue::StructConstructor {
+                identifier,
+                arguments,
+            } => todo!(),
         }
     }
 
@@ -300,6 +307,7 @@ impl Compiler {
             StatementValue::TypeDeclaration(identifier, ty) => {
                 environment.declare_type(identifier.clone(), builder, ty.clone());
             }
+            StatementValue::StructDeclaration(identifier, explicit_type, members) => todo!(),
         }
     }
 
