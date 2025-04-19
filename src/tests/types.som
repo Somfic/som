@@ -1,0 +1,5 @@
+let Integer = type int;
+let Number = type Integer;
+
+let a ~ Number = 1 + 1;
+
