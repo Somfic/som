@@ -7,7 +7,6 @@ use crate::{
         TypingValue,
     },
     prelude::*,
-    typer::environment::Environment,
 };
 use cranelift::{
     codegen::{
@@ -226,6 +225,10 @@ impl Compiler {
                 identifier,
                 arguments,
             } => todo!(),
+            ExpressionValue::FieldAccess {
+                parent_identifier,
+                identifier,
+            } => todo!(),
         }
     }
 
@@ -318,12 +321,22 @@ impl Compiler {
                 struct_type,
                 parameters,
             } => {
-                environment.declare_type(identifier.clone(), builder, struct_type.clone());
-                for (name, value) in parameters {
-                    let var = environment.declare_variable(name.clone(), builder, &value.ty.value);
-                    let value = self.compile_expression(value, builder, environment);
-                    builder.def_var(var, value);
-                }
+                let struct_slot = builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    struct_type.value.size_of(environment),
+                    0,
+                ));
+
+                let mut offset = 0;
+                parameters.iter().for_each(|(_, expression)| {
+                    let value = self.compile_expression(expression, builder, environment);
+                    builder.ins().stack_store(value, struct_slot, offset as i32);
+                    offset += expression.ty.value.size_of(environment);
+                });
+
+                builder.ins().stack_addr(types::I8, struct_slot, 0);
+
+                environment.declare_variable(identifier.clone(), builder, &struct_type.value);
             }
         }
     }
@@ -554,8 +567,8 @@ impl TypingValue<'_> {
         }
     }
 
-    pub fn size_of(&self, environment: &Environment<'_, '_>) -> usize {
-        let ty = self.unzip(environment);
+    pub fn size_of(&self, environment: &CompileEnvironment<'_>) -> u32 {
+        let ty = self.unzip_compile(environment);
 
         match ty {
             TypingValue::Unknown => 0,
@@ -569,6 +582,22 @@ impl TypingValue<'_> {
                 .iter()
                 .map(|m| m.ty.value.size_of(environment))
                 .sum(),
+        }
+    }
+
+    pub fn unzip_compile<'env>(
+        &'env self,
+        environment: &'env CompileEnvironment<'_>,
+    ) -> &'env TypingValue<'env> {
+        let unwrapped_ty = match &self {
+            TypingValue::Symbol(identifier) => environment.lookup_type(&identifier),
+            _ => None,
+        };
+
+        if let Some(ty) = unwrapped_ty {
+            &ty.value
+        } else {
+            self
         }
     }
 }

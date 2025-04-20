@@ -93,10 +93,13 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
 
     let declaration = match declaration.value {
         ExpressionValue::StructConstructor {
-            identifier,
+            identifier: struct_type_identifier,
             arguments,
         } => {
-            let struct_type = TypingValue::Symbol(identifier.clone()).with_span(identifier.span);
+            let struct_type = TypingValue::Symbol(struct_type_identifier.clone())
+                .with_span(struct_type_identifier.span);
+
+            println!("parsing struct constructor: {}", struct_type_identifier);
 
             StatementValue::StructDeclaration {
                 identifier: identifier.clone(),

@@ -50,6 +50,10 @@ pub enum ExpressionValue<'ast, Statement, Expression> {
         identifier: Identifier<'ast>,
         arguments: HashMap<Identifier<'ast>, Expression>,
     },
+    FieldAccess {
+        parent_identifier: Identifier<'ast>,
+        identifier: Identifier<'ast>,
+    },
 }
 
 impl<'ast> ExpressionValue<'ast, Statement<'ast>, Expression<'ast>> {
