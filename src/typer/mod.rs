@@ -82,7 +82,7 @@ impl Typer {
     fn type_check_expression<'ast>(
         &mut self,
         expression: &Expression<'ast>,
-        environment: &mut Environment<'_, 'ast>,
+        environment: &mut Environment<'ast, 'ast>,
     ) -> ParserResult<TypedExpression<'ast>> {
         match &expression.value {
             ExpressionValue::Primitive(primitive) => match primitive {
@@ -300,15 +300,15 @@ impl Typer {
                         let parameter = parameter.unwrap();
 
                         self.report_error(error::missing_argument(
-                                            format!("missing argument for `{}`", parameter.identifier),
-                                            expression,
-                                            parameter,
-                                            format!(
-                                                "the function `{}` requires the `{}` parameter but it was not given",
-                                                identifier,
-                                                parameter.identifier
-                                            ),
-                                        ));
+                                                    format!("missing argument for `{}`", parameter.identifier),
+                                                    expression,
+                                                    parameter,
+                                                    format!(
+                                                        "the function `{}` requires the `{}` parameter but it was not given",
+                                                        identifier,
+                                                        parameter.identifier
+                                                    ),
+                                                ));
                     };
 
                     if argument.is_some() && parameter.is_some() {
@@ -317,14 +317,14 @@ impl Typer {
 
                         if !types_match(&argument.ty, &parameter.ty, &environment)? {
                             self.report_error(error::mismatched_argument(
-                                                format!("mismatching argument type for `{}`", parameter.identifier),
-                                                argument,
-                                                parameter,
-                                                format!(
-                                                    "the function `{}` requires the `{}` parameter to be {} but it was {}",
-                                                    identifier, parameter.identifier, parameter.ty, argument.ty
-                                                ),
-                                            ));
+                                                        format!("mismatching argument type for `{}`", parameter.identifier),
+                                                        argument,
+                                                        parameter,
+                                                        format!(
+                                                            "the function `{}` requires the `{}` parameter to be {} but it was {}",
+                                                            identifier, parameter.identifier, parameter.ty, argument.ty
+                                                        ),
+                                                    ));
                         }
                     }
                 }
@@ -361,12 +361,60 @@ impl Typer {
                 let ty = environment.lookup_type(&identifier).ok_or_else(|| {
                     vec![error::undefined_type(
                         format!("type `{identifier}` is not defined"),
-                        &identifier,
+                        identifier,
                         expression.span,
                     )]
                 })?;
 
                 todo!()
+            }
+            ExpressionValue::FieldAccess {
+                parent_identifier,
+                identifier,
+            } => {
+                let struct_type =
+                    environment
+                        .lookup_variable(parent_identifier)
+                        .ok_or_else(|| {
+                            vec![error::undefined_type(
+                                format!("type `{identifier}` is not defined"),
+                                identifier,
+                                expression.span,
+                            )]
+                        })?;
+
+                let struct_type = struct_type.unzip(environment);
+
+                // check if the struct type is actually a struct
+                let struct_members = match &struct_type.value {
+                    TypingValue::Struct(struct_value) => struct_value,
+                    _ => todo!("field access on non-struct type: {struct_type:?}"),
+                };
+
+                let struct_member = struct_members
+                    .iter()
+                    .find(|member| member.name == *identifier)
+                    .map(Ok)
+                    .unwrap_or_else(|| {
+                        Err(vec![error::undefined_field(
+                            format!(
+                                "field `{}` is not defined in the struct `{}`",
+                                identifier, parent_identifier
+                            ),
+                            identifier,
+                            struct_type,
+                            expression.span,
+                        )])
+                    })?;
+
+                Ok(TypedExpression {
+                    value: ExpressionValue::FieldAccess {
+                        parent_identifier: parent_identifier.clone(),
+                        identifier: identifier.clone(),
+                    },
+                    ty: Typing::unknown(&expression.span),
+                    span: expression.span,
+                })
             }
         }
     }
@@ -441,8 +489,8 @@ impl Typer {
                 })
             }
             StatementValue::WhileLoop(condition, statement) => {
-                let condition = self.type_check_expression(condition, environment)?;
-                let statement = self.type_check_statement(statement, environment)?;
+                let condition = self.type_check_expression(condition, &mut environment.block())?;
+                let statement = self.type_check_statement(statement, &mut environment.block())?;
 
                 if !type_matches(&condition.ty, TypingValue::Boolean, environment)? {
                     self.report_error(error::new_mismatched_types(
@@ -536,6 +584,7 @@ impl Typer {
                     ));
                 }
 
+                println!("declaring variable: {identifier}");
                 environment.declare_variable(identifier.clone(), struct_type.clone());
 
                 Ok(TypedStatement {

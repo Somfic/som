@@ -403,11 +403,33 @@ pub fn parse_assignment<'ast>(
     .with_span(span))
 }
 
+pub fn parse_field_access<'ast>(
+    parser: &mut Parser<'ast>,
+    lhs: Expression<'ast>,
+    bp: BindingPower,
+) -> ParserResult<Expression<'ast>> {
+    let parent_identifier = Identifier::from_expression(&lhs)?;
+
+    let value = parser.parse_expression(bp)?;
+
+    let identifier = Identifier::from_expression(&value)?;
+
+    let span = lhs.span.combine(value.span);
+
+    Ok(ExpressionValue::FieldAccess {
+        parent_identifier,
+        identifier,
+    }
+    .with_span(span))
+}
+
 pub fn parse_struct_constructor<'ast>(
     parser: &mut Parser<'ast>,
     lhs: Expression<'ast>,
     bp: BindingPower,
 ) -> ParserResult<Expression<'ast>> {
+    println!("lhs: {:?}", lhs);
+
     let identifier = Identifier::from_expression(&lhs)?;
 
     let mut arguments = HashMap::new();

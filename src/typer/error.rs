@@ -104,7 +104,7 @@ pub fn missing_argument(
     ))
 }
 
-pub(crate) fn undefined_type(
+pub fn undefined_type(
     message: impl Into<String>,
     identifier: &Identifier,
     label: SourceSpan,
@@ -125,7 +125,7 @@ pub(crate) fn undefined_type(
     )
 }
 
-pub(crate) fn undefined_variable(
+pub fn undefined_variable(
     message: impl Into<String>,
     identifier: &Identifier,
     label: SourceSpan,
@@ -146,7 +146,29 @@ pub(crate) fn undefined_variable(
     ))
 }
 
-pub(crate) fn undefined_function(
+pub fn undefined_field(
+    message: impl Into<String>,
+    identifier: &Identifier,
+    struct_type: &Typing,
+    label: SourceSpan,
+) -> MietteDiagnostic {
+    let message = message.into();
+
+    let label = LabeledSpan::new(
+        Some("this field could not be found".into()),
+        label.offset(),
+        label.len(),
+    );
+
+    diagnostic!(
+        severity = Severity::Error,
+        labels = vec![label],
+        help = format!("define a field named `{}` on `{}`", identifier, struct_type),
+        "{message}"
+    )
+}
+
+pub fn undefined_function(
     message: impl Into<String>,
     identifier: &Identifier,
     label: SourceSpan,

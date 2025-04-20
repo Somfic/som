@@ -79,6 +79,12 @@ impl<'ast> CompileEnvironment<'ast> {
         self.types.insert(identifier.name, ty);
     }
 
+    pub fn lookup_type(&self, identifier: &Identifier<'ast>) -> Option<&Typing<'ast>> {
+        self.types
+            .get(&identifier.name)
+            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_type(identifier)))
+    }
+
     pub fn lookup_function(&self, identifier: &Identifier<'ast>) -> Option<&(FuncId, Signature)> {
         self.functions.get(&identifier.name).or_else(|| {
             self.parent

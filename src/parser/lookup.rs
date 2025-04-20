@@ -197,7 +197,7 @@ impl Default for Lookup<'_> {
             BindingPower::Logical,
             expression::parse_binary_or,
         )
-        //.add_statement_handler(TokenKind::CurlyOpen, statement::parse_block)
+        .add_statement_handler(TokenKind::CurlyOpen, statement::parse_block)
         .add_statement_handler(TokenKind::Let, statement::parse_declaration)
         .add_left_expression_handler(
             TokenKind::Equal,
@@ -208,6 +208,11 @@ impl Default for Lookup<'_> {
             TokenKind::CurlyOpen,
             BindingPower::Assignment,
             expression::parse_struct_constructor,
+        )
+        .add_left_expression_handler(
+            TokenKind::Dot,
+            BindingPower::Member,
+            expression::parse_field_access,
         )
         .add_typing_handler(TokenKind::Tick, typing::parse_generic)
         .add_typing_handler(TokenKind::UnitType, typing::parse_unit)
