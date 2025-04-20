@@ -7,6 +7,7 @@ use crate::{
         TypingValue,
     },
     prelude::*,
+    typer::environment::Environment,
 };
 use cranelift::{
     codegen::{
@@ -154,7 +155,7 @@ impl Compiler {
                 let else_block = builder.create_block();
                 let merge_block = builder.create_block();
 
-                builder.append_block_param(merge_block, convert_type(&truthy.ty.value));
+                builder.append_block_param(merge_block, truthy.ty.value.to_ir());
 
                 builder
                     .ins()
@@ -180,7 +181,7 @@ impl Compiler {
             ExpressionValue::Block { statements, result } => {
                 // open a new block
                 let block = builder.create_block();
-                builder.append_block_param(block, convert_type(&result.ty.value));
+                builder.append_block_param(block, result.ty.value.to_ir());
 
                 for statement in statements {
                     self.compile_statement(statement, builder, environment);
@@ -335,13 +336,13 @@ impl Compiler {
         let mut signature = Signature::new(self.isa.default_call_conv());
 
         for parameter in &function.parameters {
-            let parameter_type = convert_type(&parameter.ty.value);
+            let parameter_type = parameter.ty.value.to_ir();
             signature.params.push(AbiParam::new(parameter_type));
         }
 
         signature
             .returns
-            .push(AbiParam::new(convert_type(&function.return_type.value)));
+            .push(AbiParam::new(function.return_type.value.to_ir()));
 
         environment.declare_intrinsic(function, signature, &mut self.codebase);
     }
@@ -354,13 +355,13 @@ impl Compiler {
         let mut signature = Signature::new(self.isa.default_call_conv());
 
         for parameter in &function.parameters {
-            let parameter_type = convert_type(&parameter.ty.value);
+            let parameter_type = parameter.ty.value.to_ir();
             signature.params.push(AbiParam::new(parameter_type));
         }
 
         signature
             .returns
-            .push(AbiParam::new(convert_type(&function.body.ty.value)));
+            .push(AbiParam::new(function.body.ty.value.to_ir()));
 
         environment.declare_function(function, signature, &mut self.codebase);
     }
@@ -539,15 +540,35 @@ impl Label for VerifierError {
     }
 }
 
-pub(crate) fn convert_type(ty: &TypingValue) -> types::Type {
-    match ty {
-        TypingValue::Integer => types::I64,
-        TypingValue::Boolean => types::I8,
-        TypingValue::Decimal => types::F64,
-        TypingValue::Unknown => unreachable!("unknown type"),
-        TypingValue::Symbol(identifier) => todo!("{identifier}"),
-        TypingValue::Unit => types::I8,
-        TypingValue::Generic(identifier) => todo!("`{identifier}"),
-        TypingValue::Struct(fields) => todo!("struct `{fields:?}"),
+impl TypingValue<'_> {
+    pub fn to_ir(&self) -> types::Type {
+        match self {
+            TypingValue::Integer => types::I64,
+            TypingValue::Boolean => types::I8,
+            TypingValue::Decimal => types::F64,
+            TypingValue::Unknown => unreachable!("unknown type"),
+            TypingValue::Symbol(identifier) => todo!(),
+            TypingValue::Unit => types::I8,
+            TypingValue::Generic(identifier) => todo!(),
+            TypingValue::Struct(fields) => todo!(),
+        }
+    }
+
+    pub fn size_of(&self, environment: &Environment<'_, '_>) -> usize {
+        let ty = self.unzip(environment);
+
+        match ty {
+            TypingValue::Unknown => 0,
+            TypingValue::Integer => 4,
+            TypingValue::Boolean => 1,
+            TypingValue::Decimal => 4,
+            TypingValue::Unit => 1,
+            TypingValue::Symbol(identifier) => unreachable!(),
+            TypingValue::Generic(identifier) => todo!(),
+            TypingValue::Struct(members) => members
+                .iter()
+                .map(|m| m.ty.value.size_of(environment))
+                .sum(),
+        }
     }
 }
