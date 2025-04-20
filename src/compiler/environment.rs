@@ -65,7 +65,7 @@ impl<'ast> CompileEnvironment<'ast> {
     ) -> Variable {
         let var = Variable::new(self.next_variable.get());
         self.next_variable.set(self.next_variable.get() + 1);
-        builder.declare_var(var, super::convert_type(ty));
+        builder.declare_var(var, ty.to_ir());
         self.variables.insert(identifier.name, var);
         var
     }
