@@ -9,8 +9,9 @@ pub type CompilerResult<T> = std::result::Result<T, Vec<miette::Report>>;
 //     fn context(self) -> Self {
 //         self.map_err(|errors| {
 //             errors.iter().map(|error| {
-//                 miette::miette!(error).wrap_err("lol");
 //             })
 //         })
 //     }
 // }
+
+//miette::miette!(error).wrap_err("lol");
