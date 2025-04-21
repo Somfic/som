@@ -1,22 +1,16 @@
-use std::{borrow::Cow, collections::HashMap};
-
-use miette::LabeledSpan;
-
 use crate::{
     ast::{Identifier, TypedFunctionDeclaration, Typing},
     ParserResult,
 };
+use miette::LabeledSpan;
+use std::{borrow::Cow, collections::HashMap};
 
 #[derive(Debug, Clone)]
-pub struct Environment<'env, 'ast> {
+pub struct Environment<'env: 'ast, 'ast> {
     parent: Option<&'env Environment<'env, 'ast>>,
-    variables: HashMap<Cow<'ast, str>, Typing<'ast>>,
-    types: HashMap<Cow<'ast, str>, Typing<'ast>>,
-    functions: HashMap<Cow<'ast, str>, TypedFunctionDeclaration<'ast>>,
-}
-
-pub enum EnvironmentType<'ast> {
-    Primitive(Typing<'ast>),
+    variables: HashMap<Cow<'env, str>, Typing<'ast>>,
+    types: HashMap<Cow<'env, str>, Typing<'ast>>,
+    functions: HashMap<Cow<'env, str>, TypedFunctionDeclaration<'ast>>,
 }
 
 impl<'env, 'ast> Environment<'env, 'ast> {
@@ -38,14 +32,14 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         }
     }
 
-    pub fn declare_variable(&mut self, identifier: Identifier<'ast>, ty: Typing<'ast>) {
-        self.variables.insert(identifier.name, ty);
+    pub fn declare_variable(&mut self, identifier: &Identifier<'ast>, ty: &Typing<'ast>) {
+        self.variables.insert(identifier.name.clone(), ty.clone());
     }
 
     pub fn declare_type(
         &mut self,
-        identifier: Identifier<'ast>,
-        ty: Typing<'ast>,
+        identifier: &Identifier<'ast>,
+        ty: &Typing<'ast>,
     ) -> ParserResult<()> {
         if let Some(existing_type) = self.lookup_type(&identifier) {
             return Err(vec![miette::diagnostic!(
@@ -59,18 +53,18 @@ impl<'env, 'ast> Environment<'env, 'ast> {
             )]);
         }
 
-        self.types.insert(identifier.name, ty);
+        self.types.insert(identifier.name.clone(), ty.clone());
 
         Ok(())
     }
 
-    pub fn assign_variable(&mut self, identifier: Identifier<'ast>, ty: Typing<'ast>) {
+    pub fn assign_variable(&mut self, identifier: &Identifier<'ast>, ty: &Typing<'ast>) {
         match self.lookup_variable(&identifier) {
             Some(existing_type) => {
-                if existing_type != &ty {
+                if existing_type != ty {
                     panic!("type mismatch");
                 } else {
-                    self.variables.insert(identifier.name, ty);
+                    self.variables.insert(identifier.name.clone(), ty.clone());
                 }
             }
             None => {
@@ -83,22 +77,20 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         self.variables.get(&identifier.name).or_else(|| {
             self.parent
                 .as_ref()
-                .and_then(|p| p.lookup_variable(&identifier))
+                .and_then(|p| p.lookup_variable(identifier))
         })
     }
 
     pub fn lookup_type(&self, identifier: &Identifier<'ast>) -> Option<&Typing<'ast>> {
-        self.types.get(&identifier.name).or_else(|| {
-            self.parent
-                .as_ref()
-                .and_then(|p| p.lookup_type(&identifier))
-        })
+        self.types
+            .get(&identifier.name)
+            .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_type(identifier)))
     }
 
     pub fn declare_function(
         &mut self,
-        identifier: Identifier<'ast>,
-        function: TypedFunctionDeclaration<'ast>,
+        identifier: &Identifier<'ast>,
+        function: &TypedFunctionDeclaration<'ast>,
     ) -> ParserResult<()> {
         if let Some(existing_function) = self.lookup_function(&identifier) {
             return Err(vec![miette::diagnostic!(
@@ -112,7 +104,8 @@ impl<'env, 'ast> Environment<'env, 'ast> {
             )]);
         }
 
-        self.functions.insert(identifier.name, function);
+        self.functions
+            .insert(identifier.name.clone(), function.clone());
 
         Ok(())
     }
@@ -134,7 +127,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         self.functions.get(&identifier.name).or_else(|| {
             self.parent
                 .as_ref()
-                .and_then(|p| p.lookup_function(&identifier))
+                .and_then(|p| p.lookup_function(identifier))
         })
     }
 }
