@@ -939,7 +939,7 @@ dependencies = [
  "clap",
  "cranelift",
  "cranelift-jit",
- "cranelift-module 0.118.0",
+ "cranelift-module 0.119.0",
  "cranelift-native",
  "memmap2",
  "miette",
