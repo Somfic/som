@@ -440,7 +440,7 @@ dependencies = [
  "cranelift-control 0.118.0",
  "cranelift-entity 0.118.0",
  "cranelift-module 0.118.0",
- "cranelift-native",
+ "cranelift-native 0.118.0",
  "libc",
  "log",
  "region",
@@ -478,6 +478,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5b09bdd6407bf5d89661b80cf926ce731c9e8cc184bf49102267a2369a8358e"
 dependencies = [
  "cranelift-codegen 0.118.0",
+ "libc",
+ "target-lexicon",
+]
+
+[[package]]
+name = "cranelift-native"
+version = "0.119.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc852cf04128877047dc2027aa1b85c64f681dc3a6a37ff45dcbfa26e4d52d2f"
+dependencies = [
+ "cranelift-codegen 0.119.0",
  "libc",
  "target-lexicon",
 ]
@@ -940,7 +951,7 @@ dependencies = [
  "cranelift",
  "cranelift-jit",
  "cranelift-module 0.118.0",
- "cranelift-native",
+ "cranelift-native 0.119.0",
  "memmap2",
  "miette",
  "owo-colors",
