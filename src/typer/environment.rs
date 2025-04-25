@@ -6,14 +6,14 @@ use miette::LabeledSpan;
 use std::{borrow::Cow, collections::HashMap};
 
 #[derive(Debug, Clone)]
-pub struct Environment<'env: 'ast, 'ast> {
-    parent: Option<&'env Environment<'env, 'ast>>,
-    variables: HashMap<Cow<'env, str>, Typing<'ast>>,
-    types: HashMap<Cow<'env, str>, Typing<'ast>>,
-    functions: HashMap<Cow<'env, str>, TypedFunctionDeclaration<'ast>>,
+pub struct Environment<'ast> {
+    parent: Option<Box<Environment<'ast>>>,
+    variables: HashMap<Cow<'ast, str>, Typing<'ast>>,
+    types: HashMap<Cow<'ast, str>, Typing<'ast>>,
+    functions: HashMap<Cow<'ast, str>, TypedFunctionDeclaration<'ast>>,
 }
 
-impl<'env, 'ast> Environment<'env, 'ast> {
+impl<'ast> Environment<'ast> {
     pub fn new() -> Self {
         Self {
             parent: None,
@@ -23,9 +23,9 @@ impl<'env, 'ast> Environment<'env, 'ast> {
         }
     }
 
-    pub fn block(&'env self) -> Self {
+    pub fn block(&self) -> Self {
         Self {
-            parent: Some(self),
+            parent: Some(Box::new(self.clone())),
             types: HashMap::new(),
             variables: HashMap::new(),
             functions: HashMap::new(),
@@ -59,7 +59,7 @@ impl<'env, 'ast> Environment<'env, 'ast> {
     }
 
     pub fn assign_variable(&mut self, identifier: &Identifier<'ast>, ty: &Typing<'ast>) {
-        match self.lookup_variable(&identifier) {
+        match self.lookup_variable(identifier) {
             Some(existing_type) => {
                 if existing_type != ty {
                     panic!("type mismatch");
@@ -104,18 +104,18 @@ impl<'env, 'ast> Environment<'env, 'ast> {
             )]);
         }
 
-        self.functions
-            .insert(identifier.name.clone(), function.clone());
+        self.update_function(identifier, function)?;
 
         Ok(())
     }
 
     pub fn update_function(
         &mut self,
-        identifier: Identifier<'ast>,
-        function: TypedFunctionDeclaration<'ast>,
+        identifier: &Identifier<'ast>,
+        function: &TypedFunctionDeclaration<'ast>,
     ) -> ParserResult<()> {
-        self.functions.insert(identifier.name, function);
+        self.functions
+            .insert(identifier.name.clone(), function.clone());
 
         Ok(())
     }

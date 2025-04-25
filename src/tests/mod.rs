@@ -26,6 +26,11 @@ fn one_file() {
 }
 
 #[test]
+fn type_alias() {
+    run(include_str!("type_alias.som"));
+}
+
+#[test]
 fn return_codes() {
     assert_eq!(1, run("1"));
     assert_eq!(0, run("1;"));
