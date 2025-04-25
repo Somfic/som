@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::cmp;
 use std::collections::HashMap;
 
@@ -14,48 +15,51 @@ pub mod environment;
 mod error;
 
 pub struct Typer {
-    errors: Vec<MietteDiagnostic>,
+    errors: RefCell<Vec<MietteDiagnostic>>,
 }
 
 impl Typer {
     pub fn new() -> Self {
-        Self { errors: Vec::new() }
+        Self {
+            errors: RefCell::new(Vec::new()),
+        }
     }
 
     pub fn type_check<'ast>(
-        &mut self,
+        &'ast self,
         modules: Vec<Module<'ast>>,
     ) -> ParserResult<Vec<TypedModule<'ast>>> {
         let mut environment = Environment::new();
 
-        let mut typed_modules: Vec<TypedModule<'ast>> = Vec::new();
+        let mut typed_modules: Vec<TypedModule> = Vec::new();
 
         for module in &modules {
             let module = self.type_check_module(module, &mut environment)?;
             typed_modules.push(module);
         }
 
-        if self.errors.is_empty() {
+        let errors = self.errors.borrow();
+        if errors.is_empty() {
             Ok(typed_modules)
         } else {
-            Err(self.errors.clone())
+            Err(errors.clone())
         }
     }
 
-    fn report_errors(&mut self, errors: Vec<MietteDiagnostic>) {
-        self.errors.extend(errors);
+    fn report_errors(&self, errors: Vec<MietteDiagnostic>) {
+        self.errors.borrow_mut().extend(errors);
     }
 
-    fn report_error(&mut self, error: Option<MietteDiagnostic>) {
+    fn report_error(&self, error: Option<MietteDiagnostic>) {
         if let Some(error) = error {
-            self.errors.push(error);
+            self.errors.borrow_mut().push(error);
         }
     }
 
-    fn type_check_module<'env, 'ast>(
-        &mut self,
+    fn type_check_module<'ast>(
+        &'ast self,
         module: &Module<'ast>,
-        environment: &mut Environment<'env, 'ast>,
+        environment: &mut Environment<'ast>,
     ) -> ParserResult<TypedModule<'ast>> {
         let mut typed_functions = vec![];
 
@@ -78,9 +82,9 @@ impl Typer {
     }
 
     fn type_check_expression<'ast>(
-        &mut self,
+        &'ast self,
         expression: &Expression<'ast>,
-        environment: &mut Environment<'_, 'ast>,
+        environment: &mut Environment<'ast>,
     ) -> ParserResult<TypedExpression<'ast>> {
         match &expression.value {
             ExpressionValue::Primitive(primitive) => match primitive {
@@ -107,7 +111,7 @@ impl Typer {
                     span: expression.span,
                 }),
                 Primitive::Identifier(identifier) => {
-                    match environment.lookup_variable(&identifier) {
+                    match environment.lookup_variable(identifier) {
                         Some(ty) => Ok(TypedExpression {
                             value: ExpressionValue::Primitive(primitive.clone()),
                             ty: ty.clone().with_span(expression.span),
@@ -116,7 +120,7 @@ impl Typer {
                         None => {
                             self.report_error(error::undefined_variable(
                                 format!("variable `{identifier}` is not defined"),
-                                &identifier,
+                                identifier,
                                 expression.span,
                             ));
                             Ok(TypedExpression {
@@ -247,33 +251,28 @@ impl Typer {
                 identifier,
                 arguments,
             } => {
-                let function = environment.lookup_function(&identifier).ok_or_else(|| {
+                let function = environment.lookup_function(identifier).ok_or_else(|| {
                     vec![error::undefined_function(
                         format!("function `{identifier}` is not defined"),
-                        &identifier,
+                        identifier,
                         expression.span,
                     )
                     .unwrap()]
                 })?;
 
-                let environment = environment.block();
-                let results = arguments
-                    .iter()
-                    .map(|a| self.type_check_expression(a, &mut environment))
-                    .collect::<Vec<_>>();
+                let mut environment = environment.block();
+                let mut results = Vec::new();
+                for arg in arguments.iter() {
+                    results.push(self.type_check_expression(arg, &mut environment));
+                }
 
-                let typed_arguments = results
-                    .iter()
-                    .filter_map(|r| {
-                        if let Err(e) = r {
-                            self.report_errors(e.clone());
-                            None
-                        } else {
-                            r.as_ref().ok()
-                        }
-                    })
-                    .cloned()
-                    .collect::<Vec<_>>();
+                let mut typed_arguments = Vec::new();
+                for r in results {
+                    match r {
+                        Ok(expr) => typed_arguments.push(expr),
+                        Err(errors) => self.report_errors(errors),
+                    }
+                }
 
                 for i in 0..cmp::max(arguments.len(), function.parameters.len()) {
                     let argument = typed_arguments.get(i);
@@ -342,7 +341,7 @@ impl Typer {
                 argument: value,
             } => {
                 let value = self.type_check_expression(value, environment)?;
-                environment.assign_variable(&name, &value.ty);
+                environment.assign_variable(name, &value.ty);
 
                 Ok(TypedExpression {
                     value: ExpressionValue::VariableAssignment {
@@ -355,17 +354,24 @@ impl Typer {
             }
             ExpressionValue::StructConstructor {
                 identifier,
-                arguments,
+                arguments: _arguments,
             } => {
-                let ty = environment.lookup_type(identifier).ok_or_else(|| {
+                let _ty = environment.lookup_type(identifier).ok_or_else(|| {
                     vec![error::undefined_type(
                         format!("type `{identifier}` is not defined"),
                         identifier,
                         expression.span,
                     )]
                 })?;
-
-                todo!()
+                // TODO: Implement struct constructor type checking
+                Ok(TypedExpression {
+                    value: ExpressionValue::StructConstructor {
+                        identifier: identifier.clone(),
+                        arguments: HashMap::new(),
+                    },
+                    ty: Typing::unknown(&expression.span),
+                    span: expression.span,
+                })
             }
             ExpressionValue::FieldAccess {
                 parent_identifier,
@@ -418,19 +424,19 @@ impl Typer {
         }
     }
 
-    fn type_check_statement<'env, 'ast>(
-        &mut self,
+    fn type_check_statement<'ast>(
+        &'ast self,
         statement: &Statement<'ast>,
-        environment: &'env mut Environment<'env, 'ast>,
+        environment: &mut Environment<'ast>,
     ) -> ParserResult<TypedStatement<'ast>> {
         match &statement.value {
             StatementValue::Block(statements) => {
                 // clone the outer environment for this block scope
-                let mut inner_env = environment.clone();
+                let mut environment = environment.block();
 
                 let mut typed_statements = Vec::new();
                 for statement in statements.iter() {
-                    typed_statements.push(self.type_check_statement(statement, &mut inner_env)?);
+                    typed_statements.push(self.type_check_statement(statement, &mut environment)?);
                 }
                 let statements = typed_statements;
 
@@ -460,7 +466,7 @@ impl Typer {
                     }
                 }
 
-                environment.declare_variable(&name, &expression.ty);
+                environment.declare_variable(name, &expression.ty);
 
                 Ok(TypedStatement {
                     value: StatementValue::VariableDeclaration(
@@ -586,7 +592,7 @@ impl Typer {
                 }
 
                 println!("declaring variable: {identifier}");
-                environment.declare_variable(identifier, &struct_type);
+                environment.declare_variable(identifier, struct_type);
 
                 Ok(TypedStatement {
                     value: StatementValue::StructDeclaration {
@@ -602,9 +608,9 @@ impl Typer {
     }
 
     fn declare_function<'ast>(
-        &mut self,
+        &self,
         function: &FunctionDeclaration<'ast>,
-        environment: &mut Environment<'_, 'ast>,
+        environment: &mut Environment<'ast>,
     ) -> ParserResult<()> {
         let dummy = TypedExpression {
             value: ExpressionValue::Primitive(Primitive::Unit),
@@ -627,9 +633,9 @@ impl Typer {
     }
 
     fn declare_intrinsic_function<'ast>(
-        &mut self,
+        &self,
         function: &IntrinsicFunctionDeclaration<'ast>,
-        environment: &mut Environment<'_, 'ast>,
+        environment: &mut Environment<'ast>,
     ) -> ParserResult<()> {
         let dummy = TypedExpression {
             value: ExpressionValue::Primitive(Primitive::Unit),
@@ -649,9 +655,9 @@ impl Typer {
     }
 
     fn type_check_function<'ast>(
-        &mut self,
+        &'ast self,
         function: &FunctionDeclaration<'ast>,
-        environment: &mut Environment<'_, 'ast>,
+        environment: &mut Environment<'ast>,
     ) -> ParserResult<TypedFunctionDeclaration<'ast>> {
         for parameter in &function.parameters {
             environment.declare_variable(&parameter.identifier, &parameter.ty);
@@ -684,7 +690,7 @@ impl Typer {
                 explicit_return_type: function.explicit_return_type.clone(),
             };
 
-        environment.update_function(function.identifier.clone(), declaration.clone())?;
+        environment.update_function(&function.identifier, &declaration)?;
 
         Ok(declaration)
     }
@@ -739,12 +745,9 @@ fn type_matches(ty: &Typing, value: TypingValue, environment: &Environment) -> P
 }
 
 impl<'ast> Typing<'ast> {
-    pub fn unzip<'env>(&'env self, environment: &'env Environment<'env, 'ast>) -> &'env Typing<'ast>
-    where
-        'env: 'ast,
-    {
+    pub fn unzip(&'ast self, environment: &'ast Environment<'ast>) -> &'ast Typing<'ast> {
         let unwrapped_ty = match &self.value {
-            TypingValue::Symbol(identifier) => environment.lookup_type(&identifier),
+            TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
             _ => None,
         };
 
@@ -756,13 +759,10 @@ impl<'ast> Typing<'ast> {
     }
 }
 
-impl TypingValue<'_> {
-    pub fn unzip<'env, 'ast>(
-        &'env self,
-        environment: &'env Environment<'env, 'ast>,
-    ) -> &'env TypingValue<'env> {
+impl<'ast> TypingValue<'ast> {
+    pub fn unzip(&'ast self, environment: &'ast Environment<'ast>) -> &'ast TypingValue<'ast> {
         let unwrapped_ty = match &self {
-            TypingValue::Symbol(identifier) => environment.lookup_type(&identifier),
+            TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
             _ => None,
         };
 

@@ -1,0 +1,16 @@
+let Celcius = type int;
+let Kelvin = type int;
+
+
+
+let converter = fn convert(celcius ~ Celcius) -> Kelvin
+    celcius + 273;
+
+let temperature = Celcius(1);
+let kelvin = converter(temperature);
+
+
+assert kelvin == Kelvin(274);
+assert kelvin == 274; // This should be true, as the conversion is correct.
+
+

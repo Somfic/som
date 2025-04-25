@@ -1,6 +1,12 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
-use crate::{ast::TypedModule, compiler, parser, prelude::*, runner, typer};
+use crate::{
+    ast::TypedModule,
+    compiler, parser,
+    prelude::*,
+    runner,
+    typer::{self, Typer},
+};
 
 pub struct Runner {}
 
@@ -22,7 +28,8 @@ impl Runner {
 pub fn run(source_code: impl Into<String>) -> i64 {
     let source_code = source_code.into();
 
-    let modules = parse(&source_code)
+    let typer = Typer::new();
+    let modules = parse(&source_code, &typer)
         .map_err(|errors| {
             for error in errors {
                 eprintln!(
@@ -50,11 +57,11 @@ pub fn run(source_code: impl Into<String>) -> i64 {
         })
         .expect("failed to run expression")
 }
-
-fn parse<'ast>(source_code: impl Into<String>) -> ParserResult<Vec<TypedModule<'ast>>> {
+fn parse(source_code: impl Into<String>, typer: &Typer) -> ParserResult<Vec<TypedModule<'_>>> {
     let source_code = source_code.into();
     let modules = parser::Parser::new(Box::leak(source_code.into_boxed_str())).parse()?;
-    typer::Typer::new().type_check(modules)
+
+    typer.type_check(modules)
 }
 
 fn compile(modules: Vec<TypedModule<'_>>) -> CompilerResult<*const u8> {
