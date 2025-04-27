@@ -73,18 +73,25 @@ impl<'ast> Environment<'ast> {
         }
     }
 
-    pub fn lookup_variable(&self, identifier: &Identifier<'ast>) -> Option<&Typing<'ast>> {
-        self.variables.get(&identifier.name).or_else(|| {
-            self.parent
-                .as_ref()
-                .and_then(|p| p.lookup_variable(identifier))
-        })
+    pub fn lookup_variable(
+        &'ast self,
+        identifier: &Identifier<'ast>,
+    ) -> Option<&'ast Typing<'ast>> {
+        self.variables
+            .get(&identifier.name)
+            .or_else(|| {
+                self.parent
+                    .as_ref()
+                    .and_then(|p| p.lookup_variable(identifier))
+            })
+            .map(|t| t.unzip(self))
     }
 
-    pub fn lookup_type(&self, identifier: &Identifier<'ast>) -> Option<&Typing<'ast>> {
+    pub fn lookup_type(&'ast self, identifier: &Identifier<'ast>) -> Option<&'ast Typing<'ast>> {
         self.types
             .get(&identifier.name)
             .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_type(identifier)))
+            .map(|t| t.unzip(self))
     }
 
     pub fn declare_function(
@@ -121,9 +128,9 @@ impl<'ast> Environment<'ast> {
     }
 
     pub fn lookup_function(
-        &self,
+        &'ast self,
         identifier: &Identifier<'ast>,
-    ) -> Option<&TypedFunctionDeclaration<'ast>> {
+    ) -> Option<&'ast TypedFunctionDeclaration<'ast>> {
         self.functions.get(&identifier.name).or_else(|| {
             self.parent
                 .as_ref()
