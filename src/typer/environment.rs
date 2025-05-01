@@ -79,7 +79,7 @@ impl<'ast> Environment<'ast> {
     ) -> Option<&'ast Typing<'ast>> {
         self.variables
             .get(&identifier.name)
-            .or_else(|| {
+            .or_else(|| { 
                 self.parent
                     .as_ref()
                     .and_then(|p| p.lookup_variable(identifier))
