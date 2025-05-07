@@ -7,11 +7,11 @@ use crate::ast::Identifier;
 pub struct Token {
     pub kind: TokenKind,
     pub value: TokenValue,
-    pub original: str,
+    pub original: Box<str>,
     pub span: miette::SourceSpan,
 }
 
-impl Display for Token<'_> {
+impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.value {
             TokenValue::None => write!(f, "{}", self.kind),
@@ -31,7 +31,7 @@ pub enum TokenValue {
     Identifier(Identifier),
 }
 
-impl Display for TokenValue<'_> {
+impl Display for TokenValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenValue::None => write!(f, ""),

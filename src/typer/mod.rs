@@ -32,14 +32,14 @@ impl Typer {
         }
     }
 
-    pub fn type_check(self) -> Result<TyperResult> {
+    pub fn type_check(mut self) -> Result<TyperResult> {
         let mut environment = Environment::new();
 
         let mut modules: Vec<TypedModule> = Vec::new();
 
-        for module in &self.parsed.modules {
-            let module = self.type_check_module(module, &mut environment)?;
-            modules.push(module);
+        for module in self.parsed.modules.clone() {
+            let type_checked_module = self.type_check_module(&module, &mut environment)?;
+            modules.push(type_checked_module);
         }
 
         let errors = self.errors.borrow();
@@ -61,7 +61,7 @@ impl Typer {
     }
 
     fn type_check_module(
-        &self,
+        &mut self,
         module: &Module,
         environment: &mut Environment,
     ) -> Result<TypedModule> {
@@ -86,7 +86,7 @@ impl Typer {
     }
 
     fn type_check_expression(
-        self,
+        &mut self,
         expression: &Expression,
         environment: &mut Environment,
     ) -> Result<TypedExpression> {
@@ -287,7 +287,7 @@ impl Typer {
 
                         self.report_error(error::unexpected_argument(
                             "unexpected argument",
-                            function,
+                            &function,
                             argument,
                             format!(
                                 "the function `{}` requires {} arguments but {} were given",
@@ -429,7 +429,7 @@ impl Typer {
     }
 
     fn type_check_statement(
-        self,
+        &mut self,
         statement: &Statement,
         environment: &mut Environment,
     ) -> Result<TypedStatement> {
@@ -659,7 +659,7 @@ impl Typer {
     }
 
     fn type_check_function(
-        self,
+        &mut self,
         function: &FunctionDeclaration,
         environment: &mut Environment,
     ) -> Result<TypedFunctionDeclaration> {
@@ -685,7 +685,7 @@ impl Typer {
 
         // TODO: Add a warning that when using recursive functions, the return type must be explicitly set
 
-        let declaration: crate::ast::GenericFunctionDeclaration<'_, TypedExpression<'_>> =
+        let declaration: crate::ast::GenericFunctionDeclaration<TypedExpression> =
             TypedFunctionDeclaration {
                 identifier: function.identifier.clone(),
                 span: function.span,
@@ -749,7 +749,7 @@ fn type_matches(ty: &Typing, value: TypingValue, environment: &Environment) -> R
 }
 
 impl Typing {
-    pub fn unzip(self, environment: Environment) -> Typing {
+    pub fn unzip<'a>(&'a self, environment: &'a Environment) -> &'a Typing {
         let unwrapped_ty = match &self.value {
             TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
             _ => None,
@@ -764,7 +764,7 @@ impl Typing {
 }
 
 impl TypingValue {
-    pub fn unzip(self, environment: Environment) -> TypingValue {
+    pub fn unzip<'a>(&'a self, environment: &'a Environment) -> &'a TypingValue {
         let unwrapped_ty = match &self {
             TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
             _ => None,

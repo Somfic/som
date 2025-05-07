@@ -3,18 +3,18 @@ mod token;
 use miette::{LabeledSpan, SourceSpan};
 pub use token::*;
 
-pub struct Tokenizer {
-    source_code: &'static str,
-    remainder: &'static str,
+pub struct Tokenizer<'input> {
+    source_code: &'input str,
+    remainder: &'input str,
     byte_offset: usize,
     peeked: Option<Result<Token>>,
 }
 
-impl Tokenizer {
-    pub fn new(source_code: &'static str) -> Tokenizer {
+impl<'input> Tokenizer<'input> {
+    pub fn new(source_code: &'input str) -> Tokenizer<'input> {
         Tokenizer {
-            source_code,
-            remainder: source_code,
+            source_code: source_code.into(),
+            remainder: source_code.into(),
             byte_offset: 0,
             peeked: None,
         }
@@ -46,7 +46,7 @@ impl Tokenizer {
                 kind: TokenKind::EOF,
                 value: TokenValue::None,
                 span: SourceSpan::new(self.byte_offset.into(), 0),
-                original: "",
+                original: "".into(),
             }),
         }
     }
@@ -68,7 +68,7 @@ impl Tokenizer {
     ) -> Result<(TokenKind, TokenValue)> {
         if let Some(c) = self.remainder.chars().next() {
             if c == expected_char {
-                self.remainder = &self.remainder[c.len_utf8()..];
+                self.remainder = self.remainder[c.len_utf8()..].into();
                 self.byte_offset += c.len_utf8();
                 Ok((compound, TokenValue::None))
             } else {
@@ -80,7 +80,7 @@ impl Tokenizer {
     }
 }
 
-impl Iterator for Tokenizer {
+impl Iterator for Tokenizer<'_> {
     type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -93,7 +93,7 @@ impl Iterator for Tokenizer {
         let start_offset = self.byte_offset;
 
         let c = chars.next()?;
-        self.remainder = chars.as_str();
+        self.remainder = chars.as_str().into();
         self.byte_offset += c.len_utf8();
 
         let kind: Result<(TokenKind, TokenValue)> = match c {
@@ -137,7 +137,7 @@ impl Iterator for Tokenizer {
                 while let Some(c) = self.remainder.chars().next() {
                     if c.is_alphanumeric() || c == '_' {
                         ident.push(c);
-                        self.remainder = &self.remainder[c.len_utf8()..];
+                        self.remainder = self.remainder[c.len_utf8()..].into();
                         self.byte_offset += c.len_utf8();
                     } else {
                         break;
@@ -183,7 +183,7 @@ impl Iterator for Tokenizer {
                 while let Some(c) = self.remainder.chars().next() {
                     if c.is_ascii_digit() || c == '.' {
                         number.push(c);
-                        self.remainder = &self.remainder[c.len_utf8()..];
+                        self.remainder = self.remainder[c.len_utf8()..].into();
                         self.byte_offset += c.len_utf8();
                     } else {
                         break;
@@ -207,12 +207,12 @@ impl Iterator for Tokenizer {
                 let mut string = String::new();
                 while let Some(c) = self.remainder.chars().next() {
                     if c == '"' {
-                        self.remainder = &self.remainder[c.len_utf8()..];
+                        self.remainder = self.remainder[c.len_utf8()..].into();
                         self.byte_offset += c.len_utf8();
                         break;
                     } else {
                         string.push(c);
-                        self.remainder = &self.remainder[c.len_utf8()..];
+                        self.remainder = self.remainder[c.len_utf8()..].into();
                         self.byte_offset += c.len_utf8();
                     }
                 }
@@ -221,11 +221,11 @@ impl Iterator for Tokenizer {
             }
             '\'' => {
                 let c = self.remainder.chars().next()?;
-                self.remainder = &self.remainder[c.len_utf8()..];
+                self.remainder = self.remainder[c.len_utf8()..].into();
                 self.byte_offset += c.len_utf8();
 
                 if self.remainder.chars().next()? == '\'' {
-                    self.remainder = &self.remainder[c.len_utf8()..];
+                    self.remainder = self.remainder[c.len_utf8()..].into();
                     self.byte_offset += c.len_utf8();
                     Ok((TokenKind::Character, TokenValue::Character(c)))
                 } else {
@@ -257,7 +257,7 @@ impl Iterator for Tokenizer {
             kind,
             value,
             span: SourceSpan::new(start_offset.into(), byte_length),
-            original: &self.source_code[start_offset..self.byte_offset],
+            original: self.source_code[start_offset..self.byte_offset].into(),
         }))
     }
 }
