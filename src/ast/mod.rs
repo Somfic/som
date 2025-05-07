@@ -18,10 +18,16 @@ pub use typing::*;
 use crate::tokenizer::{Token, TokenKind, TokenValue};
 use crate::Result;
 
-#[derive(Debug, Clone, Span, Eq, Hash)]
+#[derive(Debug, Clone, Span, Eq)]
 pub struct Identifier {
     pub name: Box<str>,
     pub span: miette::SourceSpan,
+}
+
+impl std::hash::Hash for Identifier {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
 }
 
 impl PartialEq for Identifier {

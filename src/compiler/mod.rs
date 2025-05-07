@@ -3,8 +3,7 @@ use std::sync::Arc;
 use crate::{
     ast::{
         BinaryOperator, ExpressionValue, Identifier, IntrinsicFunctionDeclaration, Primitive,
-        StatementValue, TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement,
-        TypingValue,
+        StatementValue, TypedExpression, TypedFunctionDeclaration, TypedStatement, TypingValue,
     },
     prelude::*,
     typer::TyperResult,
@@ -55,7 +54,9 @@ impl Compiler {
     pub fn compile(mut self) -> ReportResult<*const u8> {
         let mut environment = CompileEnvironment::new();
 
-        for module in &self.typed.modules {
+        let typed_modules = self.typed.modules.clone();
+
+        for module in &typed_modules {
             for function in &module.intrinsic_functions {
                 self.declare_intrinsic_function(function, &mut environment);
             }
@@ -65,7 +66,7 @@ impl Compiler {
             }
         }
 
-        for module in &self.typed.modules {
+        for module in &typed_modules {
             for intrinsic_function in &module.intrinsic_functions {
                 self.compile_intrinsic_function(intrinsic_function, &mut environment);
             }
@@ -228,12 +229,12 @@ impl Compiler {
                 value
             }
             ExpressionValue::StructConstructor {
-                identifier,
-                arguments,
+                identifier: _,
+                arguments: _,
             } => todo!(),
             ExpressionValue::FieldAccess {
-                parent_identifier,
-                identifier,
+                parent_identifier: _,
+                identifier: _,
             } => todo!(),
         }
     }
@@ -323,7 +324,7 @@ impl Compiler {
             }
             StatementValue::StructDeclaration {
                 identifier,
-                explicit_type,
+                explicit_type: _,
                 struct_type,
                 parameters,
             } => {
@@ -569,7 +570,7 @@ impl TypingValue {
             TypingValue::Symbol(identifier) => todo!(),
             TypingValue::Unit => types::I8,
             TypingValue::Generic(identifier) => todo!(),
-            TypingValue::Struct(fields) => todo!(),
+            TypingValue::Struct(_) => todo!(),
         }
     }
 
@@ -582,8 +583,8 @@ impl TypingValue {
             TypingValue::Boolean => 1,
             TypingValue::Decimal => 4,
             TypingValue::Unit => 1,
-            TypingValue::Symbol(identifier) => unreachable!(),
-            TypingValue::Generic(identifier) => todo!(),
+            TypingValue::Symbol(_) => unreachable!(),
+            TypingValue::Generic(_) => todo!(),
             TypingValue::Struct(members) => members
                 .iter()
                 .map(|m| m.ty.value.size_of(environment))

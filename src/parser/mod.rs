@@ -19,9 +19,9 @@ mod module;
 mod statement;
 mod typing;
 
-pub struct Parser {
+pub struct Parser<'input> {
     errors: Vec<MietteDiagnostic>,
-    tokens: Tokenizer,
+    tokens: Tokenizer<'input>,
     lookup: Lookup,
 }
 
@@ -29,8 +29,8 @@ pub struct ParserResult {
     pub modules: Vec<Module>,
 }
 
-impl Parser {
-    pub fn new(tokenizer: Tokenizer) -> Self {
+impl<'input> Parser<'input> {
+    pub fn new(tokenizer: Tokenizer<'input>) -> Self {
         Self {
             errors: Vec::new(),
             tokens: tokenizer,
@@ -120,7 +120,7 @@ impl Parser {
         })
     }
 
-    pub(crate) fn parse_expression(&mut self, bp: BindingPower) -> Result<Expression> {
+    fn parse_expression(&mut self, bp: BindingPower) -> Result<Expression> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),
