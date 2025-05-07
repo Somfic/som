@@ -13,8 +13,8 @@ pub struct Tokenizer<'input> {
 impl<'input> Tokenizer<'input> {
     pub fn new(source_code: &'input str) -> Tokenizer<'input> {
         Tokenizer {
-            source_code: source_code.into(),
-            remainder: source_code.into(),
+            source_code,
+            remainder: source_code,
             byte_offset: 0,
             peeked: None,
         }
@@ -93,7 +93,7 @@ impl Iterator for Tokenizer<'_> {
         let start_offset = self.byte_offset;
 
         let c = chars.next()?;
-        self.remainder = chars.as_str().into();
+        self.remainder = chars.as_str();
         self.byte_offset += c.len_utf8();
 
         let kind: Result<(TokenKind, TokenValue)> = match c {

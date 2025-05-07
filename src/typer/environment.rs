@@ -37,7 +37,7 @@ impl Environment {
     }
 
     pub fn declare_type(&mut self, identifier: &Identifier, ty: &Typing) -> Result<()> {
-        if let Some(existing_type) = self.lookup_type(&identifier) {
+        if let Some(existing_type) = self.lookup_type(identifier) {
             return Err(vec![miette::diagnostic!(
                 labels = vec![
                     LabeledSpan::at(ty.span, "duplicate type name"),

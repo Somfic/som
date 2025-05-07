@@ -594,7 +594,7 @@ impl TypingValue {
 
     pub fn unzip_compile<'a>(&'a self, environment: &'a CompileEnvironment) -> &'a TypingValue {
         let unwrapped_ty = match &self {
-            TypingValue::Symbol(identifier) => environment.lookup_type(&identifier),
+            TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
             _ => None,
         };
 

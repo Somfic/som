@@ -1,7 +1,7 @@
 use span_derive::Span;
-use std::{borrow::Cow, collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display};
 
-use super::{GenericStatement, Identifier, Statement, TypedStatement, Typing};
+use super::{Identifier, Statement, TypedStatement, Typing};
 
 #[derive(Debug, Clone, Span)]
 pub struct Expression {

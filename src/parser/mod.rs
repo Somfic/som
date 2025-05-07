@@ -1,8 +1,6 @@
-use std::borrow::Cow;
-use std::collections::HashMap;
 
 use crate::ast::{
-    Expression, ExpressionValue, FunctionDeclaration, Identifier, Module, Primitive, Spannable,
+    Expression, FunctionDeclaration, Identifier, Module,
     Statement, Typing,
 };
 use crate::prelude::*;
@@ -11,7 +9,6 @@ use expression::parse_inner_block;
 pub use lookup::BindingPower;
 use lookup::Lookup;
 use miette::MietteDiagnostic;
-use syn::token;
 
 mod expression;
 mod lookup;

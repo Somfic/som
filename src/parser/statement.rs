@@ -1,16 +1,13 @@
-use std::collections::HashMap;
 
 use super::{
     module,
-    typing::{self, parse_struct},
     BindingPower, Parser,
 };
 use crate::{
     ast::{
-        combine_spans, CombineSpan, ExpressionValue, Identifier, Statement, StatementValue,
-        StructMember, Typing, TypingValue,
+        combine_spans, CombineSpan, ExpressionValue, Identifier, Statement, StatementValue, Typing, TypingValue,
     },
-    tokenizer::{Token, TokenKind, TokenValue},
+    tokenizer::{Token, TokenKind},
     Result,
 };
 

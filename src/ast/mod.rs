@@ -3,7 +3,6 @@ mod module;
 mod span;
 mod statement;
 mod typing;
-use std::borrow::Cow;
 use std::fmt::Display;
 
 pub use expression::*;
@@ -12,10 +11,9 @@ pub use module::*;
 pub use span::*;
 use span_derive::Span;
 pub use statement::*;
-use syn::token;
 pub use typing::*;
 
-use crate::tokenizer::{Token, TokenKind, TokenValue};
+use crate::tokenizer::{Token, TokenValue};
 use crate::Result;
 
 #[derive(Debug, Clone, Span, Eq)]

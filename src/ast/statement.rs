@@ -1,7 +1,7 @@
 use super::{Expression, Identifier, TypedExpression, Typing};
 
 use span_derive::Span;
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 pub type TypedStatement = GenericStatement<TypedExpression>;
 pub type Statement = GenericStatement<Expression>;
