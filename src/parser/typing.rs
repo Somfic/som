@@ -4,10 +4,10 @@ use crate::tokenizer::Token;
 use crate::{
     ast::{Typing, TypingValue},
     tokenizer::{TokenKind, TokenValue},
-    ParserResult,
+    Result,
 };
 
-pub fn parse_symbol<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+pub fn parse_symbol(parser: &mut Parser) -> Result<Typing> {
     let token = parser
         .tokens
         .expect(TokenKind::Identifier, "expected a type")?;
@@ -23,7 +23,7 @@ pub fn parse_symbol<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast
     })
 }
 
-pub fn parse_integer<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+pub fn parse_integer(parser: &mut Parser) -> Result<Typing> {
     let token = parser
         .tokens
         .expect(TokenKind::IntegerType, "expected an integer type")?;
@@ -34,7 +34,7 @@ pub fn parse_integer<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'as
     })
 }
 
-pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+pub fn parse_boolean(parser: &mut Parser) -> Result<Typing> {
     let token = parser
         .tokens
         .expect(TokenKind::BooleanType, "expected a boolean type")?;
@@ -45,7 +45,7 @@ pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'as
     })
 }
 
-pub fn parse_generic<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+pub fn parse_generic(parser: &mut Parser) -> Result<Typing> {
     let token = parser
         .tokens
         .expect(TokenKind::Tick, "expected a generic type")?;
@@ -64,7 +64,7 @@ pub fn parse_generic<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'as
     Ok(TypingValue::Generic(identifier_name).with_span(span))
 }
 
-pub fn parse_unit<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+pub fn parse_unit(parser: &mut Parser) -> Result<Typing> {
     let token = parser
         .tokens
         .expect(TokenKind::UnitType, "expected an unit type")?;
@@ -75,7 +75,7 @@ pub fn parse_unit<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>>
     })
 }
 
-pub fn parse_struct<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Typing<'ast>> {
+pub fn parse_struct(parser: &mut Parser) -> Result<Typing> {
     let open = parser
         .tokens
         .expect(TokenKind::CurlyOpen, "expected a struct type")?;

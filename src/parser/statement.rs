@@ -11,10 +11,10 @@ use crate::{
         StructMember, Typing, TypingValue,
     },
     tokenizer::{Token, TokenKind, TokenValue},
-    ParserResult,
+    Result,
 };
 
-pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
+pub fn parse_block(parser: &mut Parser) -> Result<Statement> {
     parser
         .tokens
         .expect(TokenKind::CurlyOpen, "expected the start of a block")?;
@@ -42,7 +42,7 @@ pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'a
     Ok(StatementValue::Block(statements).with_span(span))
 }
 
-pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
+pub fn parse_declaration(parser: &mut Parser) -> Result<Statement> {
     parser
         .tokens
         .expect(TokenKind::Let, "expected a variable declaration")?;
@@ -114,10 +114,10 @@ pub fn parse_declaration<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statem
     Ok(declaration.with_span(identifier.span))
 }
 
-fn parse_function_declaration<'ast>(
-    parser: &mut Parser<'ast>,
-    identifier: Identifier<'ast>,
-) -> ParserResult<Statement<'ast>> {
+fn parse_function_declaration(
+    parser: &mut Parser,
+    identifier: Identifier,
+) -> Result<Statement> {
     let function = module::parse_function(parser, identifier.clone())?;
 
     let span = identifier.span.combine(function.span);
@@ -125,10 +125,7 @@ fn parse_function_declaration<'ast>(
     Ok(StatementValue::FunctionDeclaration(function).with_span(span))
 }
 
-fn parse_type_declaration<'ast>(
-    parser: &mut Parser<'ast>,
-    identifier: Identifier<'ast>,
-) -> ParserResult<Statement<'ast>> {
+fn parse_type_declaration(parser: &mut Parser, identifier: Identifier) -> Result<Statement> {
     parser
         .tokens
         .expect(TokenKind::Type, "expected a type declaration")?;
@@ -145,10 +142,7 @@ fn parse_type_declaration<'ast>(
     Ok(StatementValue::TypeDeclaration(identifier, ty).with_span(span))
 }
 
-fn parse_intrinsic_declaration<'ast>(
-    parser: &mut Parser<'ast>,
-    identifier: Token<'ast>,
-) -> ParserResult<Statement<'ast>> {
+fn parse_intrinsic_declaration(parser: &mut Parser, identifier: Token) -> Result<Statement> {
     let intrinsic = module::parse_intrinsic_function(parser, identifier.clone())?;
 
     let span = identifier.span.combine(intrinsic.span);
@@ -156,12 +150,12 @@ fn parse_intrinsic_declaration<'ast>(
     Ok(StatementValue::IntrinsicDeclaration(intrinsic).with_span(span))
 }
 
-fn parse_variable_declaration<'ast>(
-    parser: &mut Parser<'ast>,
-    identifier: Token<'ast>,
-    identifier_name: Identifier<'ast>,
-    explicit_type: Option<Typing<'ast>>,
-) -> ParserResult<Statement<'ast>> {
+fn parse_variable_declaration(
+    parser: &mut Parser,
+    identifier: Token,
+    identifier_name: Identifier,
+    explicit_type: Option<Typing>,
+) -> Result<Statement> {
     let expression = parser.parse_expression(BindingPower::Assignment)?;
     let span = identifier.span.combine(expression.span);
 
@@ -171,7 +165,7 @@ fn parse_variable_declaration<'ast>(
     )
 }
 
-pub fn parse_condition<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
+pub fn parse_condition(parser: &mut Parser) -> Result<Statement> {
     parser
         .tokens
         .expect(TokenKind::If, "expected an if statement")?;
@@ -184,7 +178,7 @@ pub fn parse_condition<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statemen
     Ok(StatementValue::Condition(condition, Box::new(body)).with_span(span))
 }
 
-pub fn parse_while_loop<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Statement<'ast>> {
+pub fn parse_while_loop(parser: &mut Parser) -> Result<Statement> {
     let token = parser
         .tokens
         .expect(TokenKind::While, "expected a while statement")?;

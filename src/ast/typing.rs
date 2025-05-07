@@ -4,19 +4,19 @@ use span_derive::Span;
 use std::fmt::Display;
 
 #[derive(Debug, Clone, Span)]
-pub struct Typing<'ast> {
-    pub value: TypingValue<'ast>,
+pub struct Typing {
+    pub value: TypingValue,
     pub span: SourceSpan,
 }
 
-impl PartialEq for Typing<'_> {
+impl PartialEq for Typing {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value
     }
 }
-impl Eq for Typing<'_> {}
+impl Eq for Typing {}
 
-impl<'ast> Typing<'ast> {
+impl Typing {
     pub fn unknown(span: &SourceSpan) -> Self {
         Self {
             value: TypingValue::Unknown,
@@ -42,7 +42,7 @@ impl<'ast> Typing<'ast> {
         }
     }
 
-    pub fn symbol(span: &SourceSpan, name: Identifier<'ast>) -> Self {
+    pub fn symbol(span: &SourceSpan, name: Identifier) -> Self {
         Self {
             value: TypingValue::Symbol(name),
             span: *span,
@@ -65,18 +65,18 @@ impl<'ast> Typing<'ast> {
 }
 
 #[derive(Debug, Clone, Eq)]
-pub enum TypingValue<'ast> {
+pub enum TypingValue {
     Unknown,
     Integer,
     Boolean,
     Decimal,
     Unit,
-    Symbol(Identifier<'ast>),
-    Generic(Identifier<'ast>),
-    Struct(Vec<StructMember<'ast>>),
+    Symbol(Identifier),
+    Generic(Identifier),
+    Struct(Vec<StructMember>),
 }
 
-impl PartialEq for TypingValue<'_> {
+impl PartialEq for TypingValue {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Symbol(l0), Self::Symbol(r0)) => l0 == r0,
@@ -100,24 +100,24 @@ impl PartialEq for TypingValue<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StructMember<'ast> {
-    pub name: Identifier<'ast>,
-    pub ty: Typing<'ast>,
+pub struct StructMember {
+    pub name: Identifier,
+    pub ty: Typing,
 }
 
-impl<'ast> TypingValue<'ast> {
-    pub fn with_span(self, span: miette::SourceSpan) -> Typing<'ast> {
+impl TypingValue {
+    pub fn with_span(self, span: miette::SourceSpan) -> Typing {
         Typing { value: self, span }
     }
 }
 
-impl Display for Typing<'_> {
+impl Display for Typing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.value)
     }
 }
 
-impl Display for TypingValue<'_> {
+impl Display for TypingValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
             TypingValue::Unknown => write!(f, "unknown"),

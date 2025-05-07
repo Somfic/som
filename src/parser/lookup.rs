@@ -22,28 +22,26 @@ pub enum BindingPower {
     Primary = 10,
 }
 
-pub type TypingHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Typing<'ast>>;
-pub type LeftTypingHandler<'ast> =
-    fn(&mut Parser<'ast>, Typing, BindingPower) -> ParserResult<Typing<'ast>>;
-pub type StatementHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Statement<'ast>>;
-pub type ExpressionHandler<'ast> = fn(&mut Parser<'ast>) -> ParserResult<Expression<'ast>>;
-pub type LeftExpressionHandler<'ast> =
-    fn(&mut Parser<'ast>, Expression<'ast>, BindingPower) -> ParserResult<Expression<'ast>>;
+pub type TypingHandler = fn(&mut Parser) -> Result<Typing>;
+pub type LeftTypingHandler = fn(&mut Parser, Typing, BindingPower) -> Result<Typing>;
+pub type StatementHandler = fn(&mut Parser) -> Result<Statement>;
+pub type ExpressionHandler = fn(&mut Parser) -> Result<Expression>;
+pub type LeftExpressionHandler = fn(&mut Parser, Expression, BindingPower) -> Result<Expression>;
 
-pub struct Lookup<'ast> {
-    pub statement_lookup: HashMap<TokenKind, StatementHandler<'ast>>,
-    pub expression_lookup: HashMap<TokenKind, ExpressionHandler<'ast>>,
-    pub left_expression_lookup: HashMap<TokenKind, LeftExpressionHandler<'ast>>,
-    pub typing_lookup: HashMap<TokenKind, TypingHandler<'ast>>,
-    pub left_typing_lookup: HashMap<TokenKind, LeftTypingHandler<'ast>>,
+pub struct Lookup {
+    pub statement_lookup: HashMap<TokenKind, StatementHandler>,
+    pub expression_lookup: HashMap<TokenKind, ExpressionHandler>,
+    pub left_expression_lookup: HashMap<TokenKind, LeftExpressionHandler>,
+    pub typing_lookup: HashMap<TokenKind, TypingHandler>,
+    pub left_typing_lookup: HashMap<TokenKind, LeftTypingHandler>,
     pub binding_power_lookup: HashMap<TokenKind, BindingPower>,
 }
 
-impl<'ast> Lookup<'ast> {
+impl Lookup {
     pub(crate) fn add_statement_handler(
         mut self,
         token: TokenKind,
-        handler: StatementHandler<'ast>,
+        handler: StatementHandler,
     ) -> Self {
         if self.statement_lookup.contains_key(&token) {
             panic!("Token already has a statement handler");
@@ -56,7 +54,7 @@ impl<'ast> Lookup<'ast> {
     pub(crate) fn add_expression_handler(
         mut self,
         token: TokenKind,
-        handler: ExpressionHandler<'ast>,
+        handler: ExpressionHandler,
     ) -> Self {
         if self.expression_lookup.contains_key(&token) {
             panic!("Token already has an expression handler");
@@ -70,7 +68,7 @@ impl<'ast> Lookup<'ast> {
         mut self,
         token: TokenKind,
         binding_power: BindingPower,
-        handler: LeftExpressionHandler<'ast>,
+        handler: LeftExpressionHandler,
     ) -> Self {
         if self.binding_power_lookup.contains_key(&token) {
             panic!("Token already has a binding power");
@@ -81,11 +79,7 @@ impl<'ast> Lookup<'ast> {
         self
     }
 
-    pub(crate) fn add_typing_handler(
-        mut self,
-        token: TokenKind,
-        handler: TypingHandler<'ast>,
-    ) -> Self {
+    pub(crate) fn add_typing_handler(mut self, token: TokenKind, handler: TypingHandler) -> Self {
         if self.typing_lookup.contains_key(&token) {
             panic!("Token already has a type handler");
         }
@@ -97,7 +91,7 @@ impl<'ast> Lookup<'ast> {
     pub(crate) fn add_left_typing_handler(
         mut self,
         token: TokenKind,
-        handler: LeftTypingHandler<'ast>,
+        handler: LeftTypingHandler,
     ) -> Self {
         if self.left_typing_lookup.contains_key(&token) {
             panic!("Token already has a left type handler");
@@ -108,7 +102,7 @@ impl<'ast> Lookup<'ast> {
     }
 }
 
-impl Default for Lookup<'_> {
+impl Default for Lookup {
     fn default() -> Self {
         Lookup {
             statement_lookup: HashMap::new(),

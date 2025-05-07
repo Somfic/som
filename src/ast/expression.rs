@@ -4,21 +4,21 @@ use std::{borrow::Cow, collections::HashMap, fmt::Display};
 use super::{GenericStatement, Identifier, Statement, TypedStatement, Typing};
 
 #[derive(Debug, Clone, Span)]
-pub struct Expression<'ast> {
-    pub value: ExpressionValue<'ast, Statement<'ast>, Expression<'ast>>,
+pub struct Expression {
+    pub value: ExpressionValue<Statement, Expression>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone, Span)]
-pub struct TypedExpression<'ast> {
-    pub value: ExpressionValue<'ast, TypedStatement<'ast>, TypedExpression<'ast>>,
+pub struct TypedExpression {
+    pub value: ExpressionValue<TypedStatement, TypedExpression>,
     pub span: miette::SourceSpan,
-    pub ty: Typing<'ast>,
+    pub ty: Typing,
 }
 
 #[derive(Debug, Clone)]
-pub enum ExpressionValue<'ast, Statement, Expression> {
-    Primitive(Primitive<'ast>),
+pub enum ExpressionValue<Statement, Expression> {
+    Primitive(Primitive),
     Unary {
         operator: UnaryOperator,
         operand: Box<Expression>,
@@ -39,35 +39,35 @@ pub enum ExpressionValue<'ast, Statement, Expression> {
         result: Box<Expression>,
     },
     FunctionCall {
-        identifier: Identifier<'ast>,
+        identifier: Identifier,
         arguments: Vec<Expression>,
     },
     VariableAssignment {
-        identifier: Identifier<'ast>,
+        identifier: Identifier,
         argument: Box<Expression>,
     },
     StructConstructor {
-        identifier: Identifier<'ast>,
-        arguments: HashMap<Identifier<'ast>, Expression>,
+        identifier: Identifier,
+        arguments: HashMap<Identifier, Expression>,
     },
     FieldAccess {
-        parent_identifier: Identifier<'ast>,
-        identifier: Identifier<'ast>,
+        parent_identifier: Identifier,
+        identifier: Identifier,
     },
 }
 
-impl<'ast> ExpressionValue<'ast, Statement<'ast>, Expression<'ast>> {
-    pub fn with_span(self, span: miette::SourceSpan) -> Expression<'ast> {
+impl ExpressionValue<Statement, Expression> {
+    pub fn with_span(self, span: miette::SourceSpan) -> Expression {
         Expression { value: self, span }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum Primitive<'ast> {
+pub enum Primitive {
     Integer(i64),
     Decimal(f64),
-    String(Cow<'ast, str>),
-    Identifier(Identifier<'ast>),
+    String(Box<str>),
+    Identifier(Identifier),
     Character(char),
     Boolean(bool),
     Unit,

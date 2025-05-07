@@ -19,7 +19,7 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
         let mut sections: Vec<Styled<&'s str>> = vec![];
 
         for word in line.split(' ') {
-            for token in Tokenizer::<'s>::new(word) {
+            for token in Tokenizer::new(word) {
                 let style: Style = match &token {
                     Ok(token) => match &token.kind {
                         // Comment / quote -> 92, 99, 112 + italic
@@ -74,7 +74,7 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                 };
 
                 let token = token.unwrap();
-                sections.push(style.style(token.original));
+                sections.push(style.style(&token.original));
             }
             sections.push(Style::new().remove_all_effects().style(" "));
         }

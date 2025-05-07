@@ -3,44 +3,41 @@ use super::{Expression, Identifier, TypedExpression, Typing};
 use span_derive::Span;
 use std::{borrow::Cow, collections::HashMap};
 
-pub type TypedStatement<'ast> = GenericStatement<'ast, TypedExpression<'ast>>;
-pub type Statement<'ast> = GenericStatement<'ast, Expression<'ast>>;
+pub type TypedStatement = GenericStatement<TypedExpression>;
+pub type Statement = GenericStatement<Expression>;
 
 #[derive(Debug, Clone, Span)]
-pub struct GenericStatement<'ast, Expression> {
-    pub value: StatementValue<'ast, Expression>,
+pub struct GenericStatement<Expression> {
+    pub value: StatementValue<Expression>,
     pub span: miette::SourceSpan,
 }
 
 #[derive(Debug, Clone)]
-pub enum StatementValue<'ast, Expression> {
-    Block(Vec<GenericStatement<'ast, Expression>>),
+pub enum StatementValue<Expression> {
+    Block(Vec<GenericStatement<Expression>>),
     Expression(Expression),
-    Condition(Expression, Box<GenericStatement<'ast, Expression>>),
-    WhileLoop(Expression, Box<GenericStatement<'ast, Expression>>),
-    VariableDeclaration(Identifier<'ast>, Option<Typing<'ast>>, Expression),
-    FunctionDeclaration(GenericFunctionDeclaration<'ast, Expression>),
-    IntrinsicDeclaration(IntrinsicFunctionDeclaration<'ast>),
-    TypeDeclaration(Identifier<'ast>, Typing<'ast>),
+    Condition(Expression, Box<GenericStatement<Expression>>),
+    WhileLoop(Expression, Box<GenericStatement<Expression>>),
+    VariableDeclaration(Identifier, Option<Typing>, Expression),
+    FunctionDeclaration(GenericFunctionDeclaration<Expression>),
+    IntrinsicDeclaration(IntrinsicFunctionDeclaration),
+    TypeDeclaration(Identifier, Typing),
     StructDeclaration {
-        identifier: Identifier<'ast>,
-        explicit_type: Option<Typing<'ast>>,
-        struct_type: Typing<'ast>,
-        parameters: HashMap<Identifier<'ast>, Expression>,
+        identifier: Identifier,
+        explicit_type: Option<Typing>,
+        struct_type: Typing,
+        parameters: HashMap<Identifier, Expression>,
     },
 }
 
-impl<'ast> StatementValue<'ast, Expression<'ast>> {
-    pub fn with_span(self, span: miette::SourceSpan) -> Statement<'ast> {
+impl StatementValue<Expression> {
+    pub fn with_span(self, span: miette::SourceSpan) -> Statement {
         Statement { value: self, span }
     }
 }
 
-impl<'ast> GenericStatement<'ast, Expression<'ast>> {
-    pub fn expression(
-        span: miette::SourceSpan,
-        value: Expression<'ast>,
-    ) -> GenericStatement<'ast, Expression<'ast>> {
+impl GenericStatement<Expression> {
+    pub fn expression(span: miette::SourceSpan, value: Expression) -> GenericStatement<Expression> {
         Self {
             value: StatementValue::Expression(value),
             span,
@@ -48,29 +45,29 @@ impl<'ast> GenericStatement<'ast, Expression<'ast>> {
     }
 }
 
-pub type TypedFunctionDeclaration<'ast> = GenericFunctionDeclaration<'ast, TypedExpression<'ast>>;
-pub type FunctionDeclaration<'ast> = GenericFunctionDeclaration<'ast, Expression<'ast>>;
+pub type TypedFunctionDeclaration = GenericFunctionDeclaration<TypedExpression>;
+pub type FunctionDeclaration = GenericFunctionDeclaration<Expression>;
 
 #[derive(Debug, Clone, Span)]
-pub struct Parameter<'ast> {
-    pub identifier: Identifier<'ast>,
+pub struct Parameter {
+    pub identifier: Identifier,
     pub span: miette::SourceSpan,
-    pub ty: Typing<'ast>,
+    pub ty: Typing,
 }
 
 #[derive(Debug, Clone, Span)]
-pub struct GenericFunctionDeclaration<'ast, Expression> {
-    pub identifier: Identifier<'ast>,
+pub struct GenericFunctionDeclaration<Expression> {
+    pub identifier: Identifier,
     pub span: miette::SourceSpan,
-    pub parameters: Vec<Parameter<'ast>>,
+    pub parameters: Vec<Parameter>,
     pub body: Expression,
-    pub explicit_return_type: Option<Typing<'ast>>,
+    pub explicit_return_type: Option<Typing>,
 }
 
 #[derive(Debug, Clone, Span)]
-pub struct IntrinsicFunctionDeclaration<'ast> {
-    pub identifier: Identifier<'ast>,
+pub struct IntrinsicFunctionDeclaration {
+    pub identifier: Identifier,
     pub span: miette::SourceSpan,
-    pub parameters: Vec<Parameter<'ast>>,
-    pub return_type: Typing<'ast>,
+    pub parameters: Vec<Parameter>,
+    pub return_type: Typing,
 }

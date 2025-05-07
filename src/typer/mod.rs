@@ -7,6 +7,7 @@ use crate::ast::{
     IntrinsicFunctionDeclaration, Module, Primitive, Statement, StatementValue, StructMember,
     TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
 };
+use crate::parser::ParserResult;
 use crate::prelude::*;
 use environment::Environment;
 use miette::MietteDiagnostic;
@@ -16,31 +17,34 @@ mod error;
 
 pub struct Typer {
     errors: RefCell<Vec<MietteDiagnostic>>,
+    parsed: ParserResult,
+}
+
+pub struct TyperResult {
+    pub modules: Vec<TypedModule>,
 }
 
 impl Typer {
-    pub fn new() -> Self {
+    pub fn new(parsed: ParserResult) -> Self {
         Self {
             errors: RefCell::new(Vec::new()),
+            parsed,
         }
     }
 
-    pub fn type_check<'ast>(
-        &'ast self,
-        modules: Vec<Module<'ast>>,
-    ) -> ParserResult<Vec<TypedModule<'ast>>> {
+    pub fn type_check(self) -> Result<TyperResult> {
         let mut environment = Environment::new();
 
-        let mut typed_modules: Vec<TypedModule> = Vec::new();
+        let mut modules: Vec<TypedModule> = Vec::new();
 
-        for module in &modules {
+        for module in &self.parsed.modules {
             let module = self.type_check_module(module, &mut environment)?;
-            typed_modules.push(module);
+            modules.push(module);
         }
 
         let errors = self.errors.borrow();
         if errors.is_empty() {
-            Ok(typed_modules)
+            Ok(TyperResult { modules })
         } else {
             Err(errors.clone())
         }
@@ -56,11 +60,11 @@ impl Typer {
         }
     }
 
-    fn type_check_module<'ast>(
-        &'ast self,
-        module: &Module<'ast>,
-        environment: &mut Environment<'ast>,
-    ) -> ParserResult<TypedModule<'ast>> {
+    fn type_check_module(
+        &self,
+        module: &Module,
+        environment: &mut Environment,
+    ) -> Result<TypedModule> {
         let mut typed_functions = vec![];
 
         for function in &module.intrinsic_functions {
@@ -81,11 +85,11 @@ impl Typer {
         })
     }
 
-    fn type_check_expression<'ast>(
-        &'ast self,
-        expression: &Expression<'ast>,
-        environment: &mut Environment<'ast>,
-    ) -> ParserResult<TypedExpression<'ast>> {
+    fn type_check_expression(
+        self,
+        expression: &Expression,
+        environment: &mut Environment,
+    ) -> Result<TypedExpression> {
         match &expression.value {
             ExpressionValue::Primitive(primitive) => match primitive {
                 Primitive::Integer(_) => Ok(TypedExpression {
@@ -424,11 +428,11 @@ impl Typer {
         }
     }
 
-    fn type_check_statement<'ast>(
-        &'ast self,
-        statement: &Statement<'ast>,
-        environment: &mut Environment<'ast>,
-    ) -> ParserResult<TypedStatement<'ast>> {
+    fn type_check_statement(
+        self,
+        statement: &Statement,
+        environment: &mut Environment,
+    ) -> Result<TypedStatement> {
         match &statement.value {
             StatementValue::Block(statements) => {
                 // clone the outer environment for this block scope
@@ -607,11 +611,11 @@ impl Typer {
         }
     }
 
-    fn declare_function<'ast>(
+    fn declare_function(
         &self,
-        function: &FunctionDeclaration<'ast>,
-        environment: &mut Environment<'ast>,
-    ) -> ParserResult<()> {
+        function: &FunctionDeclaration,
+        environment: &mut Environment,
+    ) -> Result<()> {
         let dummy = TypedExpression {
             value: ExpressionValue::Primitive(Primitive::Unit),
             ty: function
@@ -632,11 +636,11 @@ impl Typer {
         Ok(())
     }
 
-    fn declare_intrinsic_function<'ast>(
+    fn declare_intrinsic_function(
         &self,
-        function: &IntrinsicFunctionDeclaration<'ast>,
-        environment: &mut Environment<'ast>,
-    ) -> ParserResult<()> {
+        function: &IntrinsicFunctionDeclaration,
+        environment: &mut Environment,
+    ) -> Result<()> {
         let dummy = TypedExpression {
             value: ExpressionValue::Primitive(Primitive::Unit),
             ty: function.return_type.clone(),
@@ -654,11 +658,11 @@ impl Typer {
         Ok(())
     }
 
-    fn type_check_function<'ast>(
-        &'ast self,
-        function: &FunctionDeclaration<'ast>,
-        environment: &mut Environment<'ast>,
-    ) -> ParserResult<TypedFunctionDeclaration<'ast>> {
+    fn type_check_function(
+        self,
+        function: &FunctionDeclaration,
+        environment: &mut Environment,
+    ) -> Result<TypedFunctionDeclaration> {
         for parameter in &function.parameters {
             environment.declare_variable(&parameter.identifier, &parameter.ty);
         }
@@ -696,7 +700,7 @@ impl Typer {
     }
 }
 
-fn types_match(a: &Typing, b: &Typing, environment: &Environment) -> ParserResult<bool> {
+fn types_match(a: &Typing, b: &Typing, environment: &Environment) -> Result<bool> {
     let mut errors = vec![];
 
     let a = a.unzip(environment);
@@ -725,7 +729,7 @@ fn types_match(a: &Typing, b: &Typing, environment: &Environment) -> ParserResul
     }
 }
 
-fn type_matches(ty: &Typing, value: TypingValue, environment: &Environment) -> ParserResult<bool> {
+fn type_matches(ty: &Typing, value: TypingValue, environment: &Environment) -> Result<bool> {
     let ty = ty.unzip(environment);
     let value = value.unzip(environment);
 
@@ -744,8 +748,8 @@ fn type_matches(ty: &Typing, value: TypingValue, environment: &Environment) -> P
     Ok(ty.value == *value)
 }
 
-impl<'ast> Typing<'ast> {
-    pub fn unzip(&'ast self, environment: &'ast Environment<'ast>) -> &'ast Typing<'ast> {
+impl Typing {
+    pub fn unzip(self, environment: Environment) -> Typing {
         let unwrapped_ty = match &self.value {
             TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
             _ => None,
@@ -759,8 +763,8 @@ impl<'ast> Typing<'ast> {
     }
 }
 
-impl<'ast> TypingValue<'ast> {
-    pub fn unzip(&'ast self, environment: &'ast Environment<'ast>) -> &'ast TypingValue<'ast> {
+impl TypingValue {
+    pub fn unzip(self, environment: Environment) -> TypingValue {
         let unwrapped_ty = match &self {
             TypingValue::Symbol(identifier) => environment.lookup_type(identifier),
             _ => None,

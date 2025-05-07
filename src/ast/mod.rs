@@ -16,35 +16,35 @@ use syn::token;
 pub use typing::*;
 
 use crate::tokenizer::{Token, TokenKind, TokenValue};
-use crate::ParserResult;
+use crate::Result;
 
 #[derive(Debug, Clone, Span, Eq, Hash)]
-pub struct Identifier<'ast> {
-    pub name: Cow<'ast, str>,
+pub struct Identifier {
+    pub name: Box<str>,
     pub span: miette::SourceSpan,
 }
 
-impl PartialEq for Identifier<'_> {
+impl PartialEq for Identifier {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
     }
 }
 
-impl Display for Identifier<'_> {
+impl Display for Identifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.name)
     }
 }
 
-impl<'ast> Identifier<'ast> {
+impl Identifier {
     pub fn new(name: impl Into<String>) -> Self {
         Identifier {
-            name: Cow::Owned(name.into()),
+            name: name.into().into(),
             span: SourceSpan::new(SourceOffset::from_location("", 0, 0), 0),
         }
     }
 
-    pub fn from_token(token: &Token<'ast>) -> ParserResult<Self> {
+    pub fn from_token(token: &Token) -> Result<Self> {
         let name = match &token.value {
             TokenValue::Identifier(name) => name,
             _ => {
@@ -61,7 +61,7 @@ impl<'ast> Identifier<'ast> {
         })
     }
 
-    pub fn from_expression(expression: &Expression<'ast>) -> ParserResult<Identifier<'ast>> {
+    pub fn from_expression(expression: &Expression) -> Result<Identifier> {
         match &expression.value {
             ExpressionValue::Primitive(Primitive::Identifier(identifier)) => Ok(identifier.clone()),
             _ => Err(vec![miette::diagnostic!(

@@ -6,14 +6,14 @@ use crate::{
         Parameter, Spannable, Typing,
     },
     tokenizer::{Token, TokenKind, TokenValue},
-    ParserResult,
+    Result,
 };
 
 use super::{BindingPower, Parser};
 
-pub fn parse_module_intrinsic_function<'ast>(
-    parser: &mut Parser<'ast>,
-) -> ParserResult<IntrinsicFunctionDeclaration<'ast>> {
+pub fn parse_module_intrinsic_function(
+    parser: &mut Parser,
+) -> Result<IntrinsicFunctionDeclaration> {
     let identifier = parser
         .tokens
         .expect(TokenKind::Identifier, "expected a function name")?;
@@ -21,10 +21,10 @@ pub fn parse_module_intrinsic_function<'ast>(
     parse_intrinsic_function(parser, identifier)
 }
 
-pub fn parse_intrinsic_function<'ast>(
-    parser: &mut Parser<'ast>,
-    identifier: Token<'ast>,
-) -> ParserResult<IntrinsicFunctionDeclaration<'ast>> {
+pub fn parse_intrinsic_function(
+    parser: &mut Parser,
+    identifier: Token,
+) -> Result<IntrinsicFunctionDeclaration> {
     parser.tokens.expect(
         TokenKind::Intrinsic,
         "expected an intrinsic function declaration",
@@ -56,9 +56,9 @@ pub fn parse_intrinsic_function<'ast>(
     })
 }
 
-pub fn parse_module_function<'ast>(
-    parser: &mut Parser<'ast>,
-) -> ParserResult<FunctionDeclaration<'ast>> {
+pub fn parse_module_function(
+    parser: &mut Parser,
+) -> Result<FunctionDeclaration> {
     let identifier = parser
         .tokens
         .expect(TokenKind::Identifier, "expected a function name")?;
@@ -68,10 +68,10 @@ pub fn parse_module_function<'ast>(
     parse_function(parser, identifier)
 }
 
-pub fn parse_function<'ast>(
-    parser: &mut Parser<'ast>,
-    identifier: Identifier<'ast>,
-) -> ParserResult<FunctionDeclaration<'ast>> {
+pub fn parse_function(
+    parser: &mut Parser,
+    identifier: Identifier,
+) -> Result<FunctionDeclaration> {
     parser
         .tokens
         .expect(TokenKind::Function, "expected a function declaration")?;
@@ -103,9 +103,9 @@ pub fn parse_function<'ast>(
     })
 }
 
-fn parse_optional_function_parameters<'ast>(
-    parser: &mut Parser<'ast>,
-) -> ParserResult<Vec<Parameter<'ast>>> {
+fn parse_optional_function_parameters(
+    parser: &mut Parser,
+) -> Result<Vec<Parameter>> {
     let token = match parser.tokens.peek().as_ref() {
         Some(Ok(token)) => token,
         Some(Err(err)) => return Err(err.to_vec()),
@@ -126,9 +126,9 @@ fn parse_optional_function_parameters<'ast>(
     }
 }
 
-fn parse_function_parameters<'ast>(
-    parser: &mut Parser<'ast>,
-) -> ParserResult<Vec<Parameter<'ast>>> {
+fn parse_function_parameters(
+    parser: &mut Parser,
+) -> Result<Vec<Parameter>> {
     let mut parameters = Vec::new();
 
     loop {

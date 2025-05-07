@@ -7,6 +7,7 @@ use crate::{
         TypingValue,
     },
     prelude::*,
+    typer::TyperResult,
 };
 use cranelift::{
     codegen::{
@@ -26,10 +27,11 @@ pub mod environment;
 pub struct Compiler {
     isa: Arc<dyn TargetIsa>,
     codebase: JITModule,
+    typed: TyperResult,
 }
 
 impl Compiler {
-    pub fn new() -> Self {
+    pub fn new(typed: TyperResult) -> Self {
         let mut flag_builder = settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
         flag_builder.set("is_pic", "false").unwrap();
@@ -43,13 +45,17 @@ impl Compiler {
         let builder = JITBuilder::new(cranelift_module::default_libcall_names()).unwrap();
         let codebase = JITModule::new(builder);
 
-        Self { isa, codebase }
+        Self {
+            isa,
+            codebase,
+            typed,
+        }
     }
 
-    pub fn compile(&mut self, modules: Vec<TypedModule<'_>>) -> CompilerResult<*const u8> {
+    pub fn compile(mut self) -> ReportResult<*const u8> {
         let mut environment = CompileEnvironment::new();
 
-        for module in &modules {
+        for module in &self.typed.modules {
             for function in &module.intrinsic_functions {
                 self.declare_intrinsic_function(function, &mut environment);
             }
@@ -59,7 +65,7 @@ impl Compiler {
             }
         }
 
-        for module in &modules {
+        for module in &self.typed.modules {
             for intrinsic_function in &module.intrinsic_functions {
                 self.compile_intrinsic_function(intrinsic_function, &mut environment);
             }
@@ -79,11 +85,11 @@ impl Compiler {
         ))
     }
 
-    fn compile_expression<'ast>(
+    fn compile_expression(
         &mut self,
-        expression: &'ast TypedExpression<'ast>,
+        expression: &TypedExpression,
         builder: &mut FunctionBuilder,
-        environment: &mut CompileEnvironment<'ast>,
+        environment: &mut CompileEnvironment,
     ) -> Value {
         match &expression.value {
             ExpressionValue::Primitive(p) => self.compile_primitive(p, builder, environment),
@@ -232,11 +238,11 @@ impl Compiler {
         }
     }
 
-    fn compile_statement<'ast>(
+    fn compile_statement(
         &mut self,
-        statement: &'ast TypedStatement<'ast>,
+        statement: &TypedStatement,
         builder: &mut FunctionBuilder,
-        environment: &mut CompileEnvironment<'ast>,
+        environment: &mut CompileEnvironment,
     ) {
         match &statement.value {
             StatementValue::Expression(expression) => {
@@ -341,10 +347,10 @@ impl Compiler {
         }
     }
 
-    fn declare_intrinsic_function<'ast>(
+    fn declare_intrinsic_function(
         &mut self,
-        function: &'ast IntrinsicFunctionDeclaration<'ast>,
-        environment: &mut CompileEnvironment<'ast>,
+        function: &IntrinsicFunctionDeclaration,
+        environment: &mut CompileEnvironment,
     ) {
         let mut signature = Signature::new(self.isa.default_call_conv());
 
@@ -360,10 +366,10 @@ impl Compiler {
         environment.declare_intrinsic(function, signature, &mut self.codebase);
     }
 
-    fn declare_function<'ast>(
+    fn declare_function(
         &mut self,
-        function: &'ast TypedFunctionDeclaration<'ast>,
-        environment: &mut CompileEnvironment<'ast>,
+        function: &TypedFunctionDeclaration,
+        environment: &mut CompileEnvironment,
     ) {
         let mut signature = Signature::new(self.isa.default_call_conv());
 
@@ -379,10 +385,10 @@ impl Compiler {
         environment.declare_function(function, signature, &mut self.codebase);
     }
 
-    fn compile_function<'ast>(
+    fn compile_function(
         &mut self,
-        function: &'ast TypedFunctionDeclaration<'ast>,
-        environment: &mut CompileEnvironment<'ast>,
+        function: &TypedFunctionDeclaration,
+        environment: &mut CompileEnvironment,
     ) {
         let mut context = self.codebase.make_context();
         let (func_id, signature) = {
@@ -418,10 +424,10 @@ impl Compiler {
             .unwrap();
     }
 
-    fn compile_intrinsic_function<'ast>(
+    fn compile_intrinsic_function(
         &mut self,
-        intrinsic_function: &IntrinsicFunctionDeclaration<'ast>,
-        environment: &mut CompileEnvironment<'ast>,
+        intrinsic_function: &IntrinsicFunctionDeclaration,
+        environment: &mut CompileEnvironment,
     ) {
         let mut context = self.codebase.make_context();
         let (func_id, signature) = {
@@ -473,11 +479,11 @@ impl Compiler {
             .unwrap();
     }
 
-    fn compile_primitive<'ast>(
+    fn compile_primitive(
         &mut self,
-        primitive: &Primitive<'ast>,
+        primitive: &Primitive,
         builder: &mut FunctionBuilder,
-        environment: &mut CompileEnvironment<'ast>,
+        environment: &mut CompileEnvironment,
     ) -> Value {
         match primitive {
             Primitive::Integer(v) => builder.ins().iconst(types::I64, *v),
@@ -553,7 +559,7 @@ impl Label for VerifierError {
     }
 }
 
-impl TypingValue<'_> {
+impl TypingValue {
     pub fn to_ir(&self) -> types::Type {
         match self {
             TypingValue::Integer => types::I64,
@@ -567,7 +573,7 @@ impl TypingValue<'_> {
         }
     }
 
-    pub fn size_of(&self, environment: &CompileEnvironment<'_>) -> u32 {
+    pub fn size_of(&self, environment: &CompileEnvironment) -> u32 {
         let ty = self.unzip_compile(environment);
 
         match ty {
@@ -585,10 +591,7 @@ impl TypingValue<'_> {
         }
     }
 
-    pub fn unzip_compile<'env>(
-        &'env self,
-        environment: &'env CompileEnvironment<'_>,
-    ) -> &'env TypingValue<'env> {
+    pub fn unzip_compile<'a>(&'a self, environment: &'a CompileEnvironment) -> &'a TypingValue {
         let unwrapped_ty = match &self {
             TypingValue::Symbol(identifier) => environment.lookup_type(&identifier),
             _ => None,
