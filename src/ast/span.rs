@@ -1,6 +1,6 @@
 use miette::SourceSpan;
 
-pub trait Spannable<'ast>: Sized {
+pub trait Spannable: Sized {
     type Value;
 
     fn at(span: SourceSpan, value: Self::Value) -> Self;

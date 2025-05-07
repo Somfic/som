@@ -11,7 +11,7 @@ use crate::ast::{
 use crate::prelude::*;
 use crate::tokenizer::{Token, TokenKind, TokenValue};
 
-pub fn parse_integer<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_integer(parser: &mut Parser) -> Result<Expression> {
     let token = parser
         .tokens
         .expect(TokenKind::Integer, "expected an integer")?;
@@ -24,7 +24,7 @@ pub fn parse_integer<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression
     Ok(ExpressionValue::Primitive(Primitive::Integer(value)).with_span(token.span))
 }
 
-pub fn parse_decimal<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_decimal(parser: &mut Parser) -> Result<Expression> {
     let token = parser
         .tokens
         .expect(TokenKind::Decimal, "expected a decimal")?;
@@ -37,7 +37,7 @@ pub fn parse_decimal<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression
     Ok(ExpressionValue::Primitive(Primitive::Decimal(value)).with_span(token.span))
 }
 
-pub fn parse_string<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_string(parser: &mut Parser) -> Result<Expression> {
     let token = parser
         .tokens
         .expect(TokenKind::String, "expected a string")?;
@@ -50,12 +50,12 @@ pub fn parse_string<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<
     Ok(ExpressionValue::Primitive(Primitive::String(value)).with_span(token.span))
 }
 
-fn parse_binary_expression<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+fn parse_binary_expression(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
     operator: BinaryOperator,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     let rhs = parser.parse_expression(bp)?;
     let span = lhs.span.combine(rhs.span);
 
@@ -67,103 +67,103 @@ fn parse_binary_expression<'ast>(
     .with_span(span))
 }
 
-pub fn parse_binary_plus<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_plus(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Add)
 }
 
-pub fn parse_binary_subtract<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_subtract(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Subtract)
 }
 
-pub fn parse_binary_multiply<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_multiply(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Multiply)
 }
 
-pub fn parse_binary_divide<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_divide(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Divide)
 }
 
-pub fn parse_binary_less_than<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_less_than(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::LessThan)
 }
 
-pub fn parse_binary_greater_than<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_greater_than(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::GreaterThan)
 }
 
-pub fn parse_binary_less_than_or_equal<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_less_than_or_equal(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::LessThanOrEqual)
 }
 
-pub fn parse_binary_greater_than_or_equal<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_greater_than_or_equal(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::GreaterThanOrEqual)
 }
 
-pub fn parse_binary_equal<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_equal(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Equality)
 }
 
-pub fn parse_binary_not_equal<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_not_equal(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Inequality)
 }
 
-pub fn parse_binary_and<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_and(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::And)
 }
 
-pub fn parse_binary_or<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_binary_or(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     parse_binary_expression(parser, lhs, bp, BinaryOperator::Or)
 }
 
-pub fn parse_group<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_group(parser: &mut Parser) -> Result<Expression> {
     let token = parser
         .tokens
         .expect(TokenKind::ParenOpen, "expected the start of the grouping")?;
@@ -179,7 +179,7 @@ pub fn parse_group<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
     Ok(ExpressionValue::Group(Box::new(expression)).with_span(span))
 }
 
-pub fn parse_unary_negation<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_unary_negation(parser: &mut Parser) -> Result<Expression> {
     let token = parser
         .tokens
         .expect(TokenKind::Not, "expected a negation sign")?;
@@ -195,7 +195,7 @@ pub fn parse_unary_negation<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Exp
     .with_span(span))
 }
 
-pub fn parse_unary_negative<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_unary_negative(parser: &mut Parser) -> Result<Expression> {
     let token = parser
         .tokens
         .expect(TokenKind::Minus, "expected a negative sign")?;
@@ -211,7 +211,7 @@ pub fn parse_unary_negative<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Exp
     .with_span(span))
 }
 
-pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_boolean(parser: &mut Parser) -> Result<Expression> {
     let token = parser
         .tokens
         .expect(TokenKind::Boolean, "expected a boolean")?;
@@ -224,11 +224,11 @@ pub fn parse_boolean<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression
     Ok(ExpressionValue::Primitive(Primitive::Boolean(value)).with_span(token.span))
 }
 
-pub fn parse_conditional<'ast>(
-    parser: &mut Parser<'ast>,
-    truthy: Expression<'ast>,
+pub fn parse_conditional(
+    parser: &mut Parser,
+    truthy: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     let condition = parser.parse_expression(BindingPower::None)?;
 
     parser.tokens.expect(TokenKind::Else, "expected an else")?;
@@ -245,10 +245,10 @@ pub fn parse_conditional<'ast>(
     .with_span(span))
 }
 
-pub fn parse_inner_block<'ast>(
-    parser: &mut Parser<'ast>,
+pub fn parse_inner_block(
+    parser: &mut Parser,
     terminating_token: TokenKind,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     let mut statements = Vec::new();
     let mut final_expression = None;
 
@@ -317,7 +317,7 @@ pub fn parse_inner_block<'ast>(
     .with_span(span))
 }
 
-pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_block(parser: &mut Parser) -> Result<Expression> {
     parser.tokens.expect(
         TokenKind::CurlyOpen,
         "expected the start of an expression block",
@@ -333,7 +333,7 @@ pub fn parse_block<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'
     Ok(inner_block)
 }
 
-pub fn parse_identifier<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Expression<'ast>> {
+pub fn parse_identifier(parser: &mut Parser) -> Result<Expression> {
     let token = parser
         .tokens
         .expect(TokenKind::Identifier, "expected an identifier")?;
@@ -346,11 +346,11 @@ pub fn parse_identifier<'ast>(parser: &mut Parser<'ast>) -> ParserResult<Express
     Ok(ExpressionValue::Primitive(Primitive::Identifier(name)).with_span(token.span))
 }
 
-pub fn parse_function_call<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_function_call(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     let mut arguments = Vec::new();
 
     let identifier = Identifier::from_expression(&lhs)?;
@@ -385,11 +385,11 @@ pub fn parse_function_call<'ast>(
     .with_span(span))
 }
 
-pub fn parse_assignment<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_assignment(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     let identifier = Identifier::from_expression(&lhs)?;
 
     let value = parser.parse_expression(bp)?;
@@ -403,11 +403,11 @@ pub fn parse_assignment<'ast>(
     .with_span(span))
 }
 
-pub fn parse_field_access<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_field_access(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     let parent_identifier = Identifier::from_expression(&lhs)?;
 
     let value = parser.parse_expression(bp)?;
@@ -423,11 +423,11 @@ pub fn parse_field_access<'ast>(
     .with_span(span))
 }
 
-pub fn parse_struct_constructor<'ast>(
-    parser: &mut Parser<'ast>,
-    lhs: Expression<'ast>,
+pub fn parse_struct_constructor(
+    parser: &mut Parser,
+    lhs: Expression,
     bp: BindingPower,
-) -> ParserResult<Expression<'ast>> {
+) -> Result<Expression> {
     println!("lhs: {:?}", lhs);
 
     let identifier = Identifier::from_expression(&lhs)?;

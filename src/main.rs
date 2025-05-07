@@ -1,19 +1,16 @@
-mod prelude;
+pub use prelude::*;
 
-use std::path::PathBuf;
-
-use ast::TypedModule;
 use clap::arg;
 use clap::command;
-use clap::Args;
 use clap::Parser;
 use highlighter::SomHighlighter;
-pub use prelude::*;
+use std::path::PathBuf;
 
 mod ast;
 mod compiler;
 mod highlighter;
 mod parser;
+mod prelude;
 mod runner;
 #[cfg(test)]
 mod tests;
@@ -47,6 +44,7 @@ fn main() {
         std::process::exit(1);
     });
 
-    let result = runner::run(source);
+    let result = run(Box::leak(source.into_boxed_str()));
+
     println!("{}", result)
 }

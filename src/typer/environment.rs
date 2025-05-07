@@ -1,19 +1,19 @@
 use crate::{
     ast::{Identifier, TypedFunctionDeclaration, Typing},
-    ParserResult,
+    Result,
 };
 use miette::LabeledSpan;
 use std::{borrow::Cow, collections::HashMap};
 
 #[derive(Debug, Clone)]
-pub struct Environment<'ast> {
-    parent: Option<Box<Environment<'ast>>>,
-    variables: HashMap<Cow<'ast, str>, Typing<'ast>>,
-    types: HashMap<Cow<'ast, str>, Typing<'ast>>,
-    functions: HashMap<Cow<'ast, str>, TypedFunctionDeclaration<'ast>>,
+pub struct Environment {
+    parent: Option<Box<Environment>>,
+    variables: HashMap<Box<str>, Typing>,
+    types: HashMap<Box<str>, Typing>,
+    functions: HashMap<Box<str>, TypedFunctionDeclaration>,
 }
 
-impl<'ast> Environment<'ast> {
+impl Environment {
     pub fn new() -> Self {
         Self {
             parent: None,
@@ -32,15 +32,11 @@ impl<'ast> Environment<'ast> {
         }
     }
 
-    pub fn declare_variable(&mut self, identifier: &Identifier<'ast>, ty: &Typing<'ast>) {
+    pub fn declare_variable(&mut self, identifier: &Identifier, ty: &Typing) {
         self.variables.insert(identifier.name.clone(), ty.clone());
     }
 
-    pub fn declare_type(
-        &mut self,
-        identifier: &Identifier<'ast>,
-        ty: &Typing<'ast>,
-    ) -> ParserResult<()> {
+    pub fn declare_type(&mut self, identifier: &Identifier, ty: &Typing) -> Result<()> {
         if let Some(existing_type) = self.lookup_type(&identifier) {
             return Err(vec![miette::diagnostic!(
                 labels = vec![
@@ -58,7 +54,7 @@ impl<'ast> Environment<'ast> {
         Ok(())
     }
 
-    pub fn assign_variable(&mut self, identifier: &Identifier<'ast>, ty: &Typing<'ast>) {
+    pub fn assign_variable(&mut self, identifier: &Identifier, ty: &Typing) {
         match self.lookup_variable(identifier) {
             Some(existing_type) => {
                 if existing_type != ty {
@@ -73,13 +69,10 @@ impl<'ast> Environment<'ast> {
         }
     }
 
-    pub fn lookup_variable(
-        &'ast self,
-        identifier: &Identifier<'ast>,
-    ) -> Option<&'ast Typing<'ast>> {
+    pub fn lookup_variable(self, identifier: &Identifier) -> Option<Typing> {
         self.variables
             .get(&identifier.name)
-            .or_else(|| { 
+            .or_else(|| {
                 self.parent
                     .as_ref()
                     .and_then(|p| p.lookup_variable(identifier))
@@ -87,7 +80,7 @@ impl<'ast> Environment<'ast> {
             .map(|t| t.unzip(self))
     }
 
-    pub fn lookup_type(&'ast self, identifier: &Identifier<'ast>) -> Option<&'ast Typing<'ast>> {
+    pub fn lookup_type(self, identifier: &Identifier) -> Option<Typing> {
         self.types
             .get(&identifier.name)
             .or_else(|| self.parent.as_ref().and_then(|p| p.lookup_type(identifier)))
@@ -96,9 +89,9 @@ impl<'ast> Environment<'ast> {
 
     pub fn declare_function(
         &mut self,
-        identifier: &Identifier<'ast>,
-        function: &TypedFunctionDeclaration<'ast>,
-    ) -> ParserResult<()> {
+        identifier: &Identifier,
+        function: &TypedFunctionDeclaration,
+    ) -> Result<()> {
         if let Some(existing_function) = self.lookup_function(&identifier) {
             return Err(vec![miette::diagnostic!(
                 labels = vec![
@@ -118,19 +111,16 @@ impl<'ast> Environment<'ast> {
 
     pub fn update_function(
         &mut self,
-        identifier: &Identifier<'ast>,
-        function: &TypedFunctionDeclaration<'ast>,
-    ) -> ParserResult<()> {
+        identifier: &Identifier,
+        function: &TypedFunctionDeclaration,
+    ) -> Result<()> {
         self.functions
             .insert(identifier.name.clone(), function.clone());
 
         Ok(())
     }
 
-    pub fn lookup_function(
-        &'ast self,
-        identifier: &Identifier<'ast>,
-    ) -> Option<&'ast TypedFunctionDeclaration<'ast>> {
+    pub fn lookup_function(self, identifier: &Identifier) -> Option<TypedFunctionDeclaration> {
         self.functions.get(&identifier.name).or_else(|| {
             self.parent
                 .as_ref()

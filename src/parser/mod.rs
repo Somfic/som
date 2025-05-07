@@ -11,6 +11,7 @@ use expression::parse_inner_block;
 pub use lookup::BindingPower;
 use lookup::Lookup;
 use miette::MietteDiagnostic;
+use syn::token;
 
 mod expression;
 mod lookup;
@@ -18,17 +19,21 @@ mod module;
 mod statement;
 mod typing;
 
-pub struct Parser<'ast> {
+pub struct Parser {
     errors: Vec<MietteDiagnostic>,
-    tokens: Tokenizer<'ast>,
-    lookup: Lookup<'ast>,
+    tokens: Tokenizer,
+    lookup: Lookup,
 }
 
-impl<'ast> Parser<'ast> {
-    pub fn new(source_code: &'ast str) -> Self {
+pub struct ParserResult {
+    pub modules: Vec<Module>,
+}
+
+impl Parser {
+    pub fn new(tokenizer: Tokenizer) -> Self {
         Self {
             errors: Vec::new(),
-            tokens: Tokenizer::new(source_code),
+            tokens: tokenizer,
             lookup: Lookup::default(),
         }
     }
@@ -41,7 +46,7 @@ impl<'ast> Parser<'ast> {
         self.errors.extend_from_slice(errors);
     }
 
-    pub fn parse(&mut self) -> ParserResult<Vec<Module<'ast>>> {
+    pub fn parse(mut self) -> Result<ParserResult> {
         let mut modules = vec![];
 
         let entry_module = self.parse_entry_module()?;
@@ -61,18 +66,18 @@ impl<'ast> Parser<'ast> {
         // }
 
         if self.errors.is_empty() {
-            Ok(modules)
+            Ok(ParserResult { modules })
         } else {
             Err(self.errors.clone())
         }
     }
 
-    fn parse_entry_module(&mut self) -> ParserResult<Module<'ast>> {
+    fn parse_entry_module(&mut self) -> Result<Module> {
         let expression = parse_inner_block(self, TokenKind::EOF)?;
 
         let main_function = FunctionDeclaration {
             identifier: Identifier {
-                name: Cow::Borrowed("main"),
+                name: "main".into(),
                 span: expression.span,
             },
             span: expression.span,
@@ -87,7 +92,7 @@ impl<'ast> Parser<'ast> {
         })
     }
 
-    fn parse_module(&mut self) -> ParserResult<Module<'ast>> {
+    fn parse_module(&mut self) -> Result<Module> {
         let mut functions = vec![];
         let mut intrinsic_functions = vec![];
 
@@ -115,7 +120,7 @@ impl<'ast> Parser<'ast> {
         })
     }
 
-    pub(crate) fn parse_expression(&mut self, bp: BindingPower) -> ParserResult<Expression<'ast>> {
+    pub(crate) fn parse_expression(&mut self, bp: BindingPower) -> Result<Expression> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),
@@ -175,10 +180,7 @@ impl<'ast> Parser<'ast> {
         Ok(lhs)
     }
 
-    pub(crate) fn parse_statement(
-        &mut self,
-        require_semicolon: bool,
-    ) -> ParserResult<Statement<'ast>> {
+    pub(crate) fn parse_statement(&mut self, require_semicolon: bool) -> Result<Statement> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),
@@ -207,7 +209,7 @@ impl<'ast> Parser<'ast> {
         Ok(statement)
     }
 
-    pub(crate) fn parse_typing(&mut self, bp: BindingPower) -> ParserResult<Typing<'ast>> {
+    pub(crate) fn parse_typing(&mut self, bp: BindingPower) -> Result<Typing> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),

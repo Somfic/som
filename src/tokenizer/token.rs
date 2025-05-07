@@ -4,10 +4,10 @@ use std::{borrow::Cow, fmt::Display};
 use crate::ast::Identifier;
 
 #[derive(Debug, Clone, Span, PartialEq)]
-pub struct Token<'ast> {
+pub struct Token {
     pub kind: TokenKind,
-    pub value: TokenValue<'ast>,
-    pub original: &'ast str,
+    pub value: TokenValue,
+    pub original: str,
     pub span: miette::SourceSpan,
 }
 
@@ -21,14 +21,14 @@ impl Display for Token<'_> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenValue<'ast> {
+pub enum TokenValue {
     None,
     Boolean(bool),
     Integer(i64),
     Decimal(f64),
-    String(Cow<'ast, str>),
+    String(Box<str>),
     Character(char),
-    Identifier(Identifier<'ast>),
+    Identifier(Identifier),
 }
 
 impl Display for TokenValue<'_> {
