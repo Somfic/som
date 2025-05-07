@@ -1,9 +1,8 @@
-use std::{borrow::Cow, collections::HashMap};
 
 use crate::{
     ast::{
-        CombineSpan, Expression, FunctionDeclaration, Identifier, IntrinsicFunctionDeclaration,
-        Parameter, Spannable, Typing,
+        CombineSpan, FunctionDeclaration, Identifier, IntrinsicFunctionDeclaration,
+        Parameter,
     },
     tokenizer::{Token, TokenKind, TokenValue},
     Result,

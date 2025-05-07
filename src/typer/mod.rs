@@ -706,7 +706,7 @@ fn types_match(a: &Typing, b: &Typing, environment: &Environment) -> Result<bool
     let a = a.unzip(environment);
     let b = b.unzip(environment);
 
-    let a_matches = match type_matches(&a, b.value.clone(), environment) {
+    let a_matches = match type_matches(a, b.value.clone(), environment) {
         Ok(a) => a,
         Err(e) => {
             errors.extend(e.clone());
@@ -714,7 +714,7 @@ fn types_match(a: &Typing, b: &Typing, environment: &Environment) -> Result<bool
         }
     };
 
-    let b_matches = match type_matches(&b, a.value.clone(), environment) {
+    let b_matches = match type_matches(b, a.value.clone(), environment) {
         Ok(b) => b,
         Err(e) => {
             errors.extend(e.clone());

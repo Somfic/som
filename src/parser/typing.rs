@@ -1,6 +1,5 @@
 use super::{BindingPower, Parser};
-use crate::ast::{CombineSpan, Identifier, StructMember};
-use crate::tokenizer::Token;
+use crate::ast::{CombineSpan, StructMember};
 use crate::{
     ast::{Typing, TypingValue},
     tokenizer::{TokenKind, TokenValue},

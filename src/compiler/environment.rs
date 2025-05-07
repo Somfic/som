@@ -4,7 +4,7 @@ use crate::ast::{
 use cranelift::prelude::{EntityRef, FunctionBuilder, Signature, Variable};
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
-use std::{borrow::Cow, cell::Cell, collections::HashMap, fmt::Display, rc::Rc};
+use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 pub struct CompileEnvironment<'parent> {
     parent: Option<&'parent CompileEnvironment<'parent>>,
@@ -107,7 +107,7 @@ impl<'parent> CompileEnvironment<'parent> {
             types: self.types.clone(),
             functions: self.functions.clone(),
             next_variable: Rc::clone(&self.next_variable),
-            parent: Some(&self),
+            parent: Some(self),
         }
     }
 }

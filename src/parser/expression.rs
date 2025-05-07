@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 
 use miette::diagnostic;
-use syn::token;
 
 use super::{lookup::BindingPower, Parser};
 use crate::ast::{
-    combine_spans, BinaryOperator, CombineSpan, Expression, ExpressionValue, GenericStatement,
-    Identifier, Primitive, Spannable, StatementValue, Typing, UnaryOperator,
+    combine_spans, BinaryOperator, CombineSpan, Expression, ExpressionValue,
+    Identifier, Primitive, StatementValue, UnaryOperator,
 };
 use crate::prelude::*;
-use crate::tokenizer::{Token, TokenKind, TokenValue};
+use crate::tokenizer::{TokenKind, TokenValue};
 
 pub fn parse_integer(parser: &mut Parser) -> Result<Expression> {
     let token = parser

@@ -9,13 +9,13 @@ pub fn run(source_code: &'static str) -> i64 {
     let parser = Parser::new(Tokenizer::new(source_code));
     let parsed = parser
         .parse()
-        .map_err(|err| print_errors_with_codebase(err, &source_code))
+        .map_err(|err| print_errors_with_codebase(err, source_code))
         .expect("failed to parse codebase");
 
     let typer = Typer::new(parsed);
     let typed = typer
         .type_check()
-        .map_err(|err| print_errors_with_codebase(err, &source_code))
+        .map_err(|err| print_errors_with_codebase(err, source_code))
         .expect("failed to type check codebase");
 
     let compiler = Compiler::new(typed);
@@ -25,12 +25,12 @@ pub fn run(source_code: &'static str) -> i64 {
         .expect("failed to compile codebase");
 
     let runner = Runner::new(compiled);
-    let ran = runner
+    
+
+    runner
         .run()
         .map_err(print_errors)
-        .expect("failed to run codebase");
-
-    ran
+        .expect("failed to run codebase")
 }
 
 fn print_errors_with_codebase(errors: Vec<miette::MietteDiagnostic>, source_code: &'static str) {
