@@ -17,8 +17,8 @@ pub fn new_mismatched_types(
     Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![
-            left_ty.label(format!("{}", left_ty)),
-            right_ty.label(format!("{}", right_ty)),
+            left_ty.label(format!("{left_ty}")),
+            right_ty.label(format!("{right_ty}")),
         ],
         help = hint.into(),
         "{message}"
@@ -38,7 +38,7 @@ pub fn mismatched_type(
 
     Some(diagnostic!(
         severity = Severity::Error,
-        labels = vec![ty.label(format!("{}", ty)),],
+        labels = vec![ty.label(format!("{ty}")),],
         help = hint.into(),
         "{message}"
     ))

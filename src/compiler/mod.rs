@@ -35,7 +35,7 @@ impl Compiler {
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
         flag_builder.set("is_pic", "false").unwrap();
         let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
-            panic!("host machine is not supported: {}", msg);
+            panic!("host machine is not supported: {msg}");
         });
         let isa = isa_builder
             .finish(settings::Flags::new(flag_builder))
@@ -426,7 +426,7 @@ impl Compiler {
             builder.def_var(variable, block_params[i]);
         }
 
-        let body = self.compile_expression(&body, &mut builder, environment);
+        let body = self.compile_expression(body, &mut builder, environment);
         builder.ins().return_(&[body]);
         builder.seal_block(entry_block);
         builder.finalize();
@@ -446,7 +446,7 @@ impl Compiler {
         let (func_id, signature) = {
             let lookup = environment
                 .lookup_function(&identifier)
-                .unwrap_or_else(|| panic!("{} intrinsic function not found", identifier));
+                .unwrap_or_else(|| panic!("{identifier} intrinsic function not found"));
             (lookup.0, lookup.1.clone())
         };
         context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature);

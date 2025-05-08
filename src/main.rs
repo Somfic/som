@@ -46,5 +46,5 @@ fn main() {
 
     let result = run(Box::leak(source.into_boxed_str()));
 
-    println!("{}", result)
+    println!("{result}")
 }

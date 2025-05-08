@@ -67,7 +67,7 @@ impl Typer {
         let mut statements = vec![];
 
         for statement in &module.statements {
-            statements.push(self.type_check_statement(&statement, environment)?);
+            statements.push(self.type_check_statement(statement, environment)?);
         }
 
         Ok(TypedModule { statements })
@@ -394,8 +394,7 @@ impl Typer {
                     .unwrap_or_else(|| {
                         Err(vec![error::undefined_field(
                             format!(
-                                "field `{}` is not defined in the struct `{}`",
-                                identifier, parent_identifier
+                                "field `{identifier}` is not defined in the struct `{parent_identifier}`"
                             ),
                             identifier,
                             &struct_type,
@@ -703,7 +702,7 @@ fn type_matches(ty: &Typing, value: TypingValue, environment: &Environment) -> R
 
     if let TypingValue::Symbol(identifier) = &ty.value {
         return Err(vec![error::undefined_type(
-            format!("type `{}` is not defined", identifier),
+            format!("type `{identifier}` is not defined"),
             identifier,
             ty.span,
         )]);
