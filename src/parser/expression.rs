@@ -424,7 +424,7 @@ pub fn parse_struct_constructor(
     lhs: Expression,
     bp: BindingPower,
 ) -> Result<Expression> {
-    println!("lhs: {:?}", lhs);
+    println!("lhs: {lhs:?}");
 
     let identifier = Identifier::from_expression(&lhs)?;
 

@@ -35,12 +35,12 @@ impl Display for TokenValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenValue::None => write!(f, ""),
-            TokenValue::Boolean(value) => write!(f, "{}", value),
-            TokenValue::Integer(value) => write!(f, "{}", value),
-            TokenValue::Decimal(value) => write!(f, "{}", value),
-            TokenValue::String(value) => write!(f, "{}", value),
-            TokenValue::Character(value) => write!(f, "{}", value),
-            TokenValue::Identifier(value) => write!(f, "{}", value),
+            TokenValue::Boolean(value) => write!(f, "{value}"),
+            TokenValue::Integer(value) => write!(f, "{value}"),
+            TokenValue::Decimal(value) => write!(f, "{value}"),
+            TokenValue::String(value) => write!(f, "{value}"),
+            TokenValue::Character(value) => write!(f, "{value}"),
+            TokenValue::Identifier(value) => write!(f, "{value}"),
         }
     }
 }

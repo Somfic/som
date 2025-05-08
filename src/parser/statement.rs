@@ -1,10 +1,9 @@
 use super::{BindingPower, Parser};
 use crate::{
     ast::{
-        combine_spans, CombineSpan, ExpressionValue, Identifier, Statement, StatementValue, Typing,
-        TypingValue,
+        combine_spans, CombineSpan, Identifier, Statement, StatementValue,
     },
-    tokenizer::{Token, TokenKind},
+    tokenizer::TokenKind,
     Result,
 };
 

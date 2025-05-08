@@ -34,7 +34,7 @@ impl<'input> Tokenizer<'input> {
             // The token is not what we expected
             Some(Ok(token)) => Err(vec![miette::diagnostic! {
                 labels = vec![
-                    token.label(format!("expected {} here", expected))
+                    token.label(format!("expected {expected} here"))
                 ],
                 help = format!("expected {}, got {} instead", expected, token.kind),
                 "{error_message}"

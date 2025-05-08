@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Function, Identifier, TypedFunction, Typing},
+    ast::{Identifier, TypedFunction, Typing},
     Result,
 };
 use miette::LabeledSpan;

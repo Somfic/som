@@ -42,6 +42,6 @@ fn print_errors_with_codebase(errors: Vec<miette::MietteDiagnostic>, source_code
 
 fn print_errors(errors: Vec<miette::Report>) {
     for error in errors {
-        eprintln!("{:?}", error);
+        eprintln!("{error:?}");
     }
 }

@@ -1,6 +1,5 @@
-use super::function::parse_function_parameters;
 use super::{BindingPower, Parser};
-use crate::ast::{CombineSpan, IntrinsicSignature, LambdaSignature, StructMember};
+use crate::ast::{CombineSpan, LambdaSignature, StructMember};
 use crate::{
     ast::{Typing, TypingValue},
     tokenizer::{TokenKind, TokenValue},

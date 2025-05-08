@@ -1,4 +1,4 @@
-use super::{FunctionSignature, Identifier, IntrinsicSignature, LambdaSignature};
+use super::{Identifier, LambdaSignature};
 use miette::SourceSpan;
 use span_derive::Span;
 use std::fmt::Display;
@@ -102,8 +102,8 @@ impl Display for TypingValue {
             TypingValue::Integer => write!(f, "an integer"),
             TypingValue::Decimal => write!(f, "a decimal"),
             TypingValue::Boolean => write!(f, "a boolean"),
-            TypingValue::Symbol(name) => write!(f, "{}", name),
-            TypingValue::Generic(identifier) => write!(f, "`{}", identifier),
+            TypingValue::Symbol(name) => write!(f, "{name}"),
+            TypingValue::Generic(identifier) => write!(f, "`{identifier}"),
             TypingValue::Unit => write!(f, "nothing"),
             TypingValue::Struct(members) => write!(
                 f,
@@ -121,7 +121,7 @@ impl Display for TypingValue {
                     lambda_signature
                         .parameters
                         .iter()
-                        .map(|p| format!("{}", p))
+                        .map(|p| format!("{p}"))
                         .collect::<Vec<_>>()
                         .join(", "),
                     lambda_signature.return_type

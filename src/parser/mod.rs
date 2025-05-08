@@ -1,5 +1,5 @@
 use crate::ast::{
-    Expression, ExpressionValue, Identifier, FunctionSignature, Module, Statement, StatementValue,
+    Expression, ExpressionValue, Identifier, Module, Statement, StatementValue,
     Typing,
 };
 use crate::prelude::*;
