@@ -1,18 +1,17 @@
-use std::cell::RefCell;
-use std::cmp;
-use std::collections::HashMap;
-
 use crate::ast::{
-    combine_spans, CombineSpan, Expression, ExpressionValue, FunctionDeclaration,
-    IntrinsicFunctionDeclaration, Module, Primitive, Statement, StatementValue, StructMember,
-    TypedExpression, TypedFunctionDeclaration, TypedModule, TypedStatement, Typing, TypingValue,
+    CombineSpan, Expression, ExpressionValue, IntrinsicFunctionDeclaration, LambdaSignature,
+    Module, Primitive, Statement, StatementValue, TypedExpression, TypedFunction, TypedModule,
+    TypedStatement, Typing, TypingValue,
 };
 use crate::parser::ParserResult;
 use crate::prelude::*;
 use environment::Environment;
 use miette::MietteDiagnostic;
+use std::cell::RefCell;
+use std::cmp;
+use std::collections::HashMap;
 
-pub mod environment;
+mod environment;
 mod error;
 
 pub struct Typer {
@@ -302,15 +301,15 @@ impl Typer {
                         let parameter = parameter.unwrap();
 
                         self.report_error(error::missing_argument(
-                                                    format!("missing argument for `{}`", parameter.identifier),
-                                                    expression,
-                                                    parameter,
-                                                    format!(
-                                                        "the function `{}` requires the `{}` parameter but it was not given",
-                                                        identifier,
-                                                        parameter.identifier
-                                                    ),
-                                                ));
+                                                            format!("missing argument for `{}`", parameter.identifier),
+                                                            expression,
+                                                            parameter,
+                                                            format!(
+                                                                "the function `{}` requires the `{}` parameter but it was not given",
+                                                                identifier,
+                                                                parameter.identifier
+                                                            ),
+                                                        ));
                     };
 
                     if argument.is_some() && parameter.is_some() {
@@ -319,14 +318,14 @@ impl Typer {
 
                         if !types_match(&argument.ty, &parameter.ty, &environment)? {
                             self.report_error(error::mismatched_argument(
-                                                        format!("mismatching argument type for `{}`", parameter.identifier),
-                                                        argument,
-                                                        parameter,
-                                                        format!(
-                                                            "the function `{}` requires the `{}` parameter to be {} but it was {}",
-                                                            identifier, parameter.identifier, parameter.ty, argument.ty
-                                                        ),
-                                                    ));
+                                                                format!("mismatching argument type for `{}`", parameter.identifier),
+                                                                argument,
+                                                                parameter,
+                                                                format!(
+                                                                    "the function `{}` requires the `{}` parameter to be {} but it was {}",
+                                                                    identifier, parameter.identifier, parameter.ty, argument.ty
+                                                                ),
+                                                            ));
                         }
                     }
                 }
@@ -425,6 +424,43 @@ impl Typer {
                     span: expression.span,
                 })
             }
+            ExpressionValue::Lambda {
+                parameters,
+                explicit_return_type,
+                body,
+            } => {
+                let mut environment = environment.block();
+
+                for parameter in parameters.iter() {
+                    environment.declare_variable(&parameter.identifier, &parameter.ty);
+                }
+
+                let return_value = self.type_check_expression(body, &mut environment)?;
+
+                if let Some(return_type) = explicit_return_type {
+                    if !types_match(&return_value.ty, return_type, &environment)? {
+                        self.report_error(error::new_mismatched_types(
+                            "expected the return type to match",
+                            &return_value.ty,
+                            return_type,
+                            format!(
+                                "the lambda requires the return type to be {}, but {} was returned",
+                                return_type, return_value.ty,
+                            ),
+                        ));
+                    }
+                }
+
+                Ok(TypedExpression {
+                    value: ExpressionValue::Lambda {
+                        parameters: parameters.clone(),
+                        explicit_return_type: explicit_return_type.clone(),
+                        body: Box::new(return_value),
+                    },
+                    ty: Typing::unknown(&expression.span),
+                    span: expression.span,
+                })
+            }
         }
     }
 
@@ -456,28 +492,32 @@ impl Typer {
                     span: statement.span,
                 })
             }
-            StatementValue::VariableDeclaration(name, explicit_type, expression) => {
-                let expression = self.type_check_expression(expression, environment)?;
+            StatementValue::Declaration {
+                identifier,
+                explicit_type,
+                value,
+            } => {
+                let value = self.type_check_expression(value, environment)?;
 
                 if let Some(explicit_type) = explicit_type {
-                    if !types_match(&expression.ty, explicit_type, environment)? {
+                    if !types_match(&value.ty, explicit_type, environment)? {
                         self.report_error(error::new_mismatched_types(
                             "expected the types to match",
-                            &expression.ty,
+                            &value.ty,
                             explicit_type,
-                            format!("{} and {} do not match", expression.ty, explicit_type),
+                            format!("{} and {} do not match", value.ty, explicit_type),
                         ));
                     }
                 }
 
-                environment.declare_variable(name, &expression.ty);
+                environment.declare_variable(identifier, &value.ty);
 
                 Ok(TypedStatement {
-                    value: StatementValue::VariableDeclaration(
-                        name.clone(),
-                        explicit_type.clone(),
-                        expression,
-                    ),
+                    value: StatementValue::Declaration {
+                        identifier: identifier.clone(),
+                        explicit_type: explicit_type.clone(),
+                        value,
+                    },
                     span: statement.span,
                 })
             }
@@ -517,103 +557,12 @@ impl Typer {
                     value: StatementValue::WhileLoop(condition, Box::new(statement)),
                 })
             }
-            StatementValue::FunctionDeclaration(function) => {
-                self.declare_function(function, environment)?;
-                let function = self.type_check_function(function, environment)?;
-
-                Ok(TypedStatement {
-                    span: function.span,
-                    value: StatementValue::FunctionDeclaration(function),
-                })
-            }
-            StatementValue::IntrinsicDeclaration(intrinsic) => {
-                self.declare_intrinsic_function(intrinsic, environment)?;
-
-                Ok(TypedStatement {
-                    span: intrinsic.span,
-                    value: StatementValue::IntrinsicDeclaration(intrinsic.clone()),
-                })
-            }
-            StatementValue::TypeDeclaration(identifier, ty) => {
-                let ty = ty.clone().with_span(statement.span);
-                environment.declare_type(identifier, &ty)?;
-
-                Ok(TypedStatement {
-                    span: statement.span,
-                    value: StatementValue::TypeDeclaration(identifier.clone(), ty),
-                })
-            }
-            StatementValue::StructDeclaration {
-                identifier,
-                explicit_type,
-                struct_type,
-                parameters,
-            } => {
-                let mut typed_parameters = HashMap::new();
-
-                for (name, value) in parameters {
-                    let value = self.type_check_expression(value, environment)?;
-                    typed_parameters.insert(name.clone(), value.clone());
-                }
-
-                let generated_type = TypingValue::Struct(
-                    typed_parameters
-                        .iter()
-                        .map(|(i, e)| StructMember {
-                            name: i.clone(),
-                            ty: e.ty.clone(),
-                        })
-                        .collect(),
-                )
-                .with_span(combine_spans(
-                    typed_parameters
-                        .iter()
-                        .map(|(i, e)| i.span.combine(e.span))
-                        .collect(),
-                ));
-
-                if let Some(explicit_type) = explicit_type {
-                    if !types_match(explicit_type, struct_type, environment)? {
-                        println!("explicit type: {explicit_type:?}");
-                        println!("struct type: {struct_type:?}");
-
-                        self.report_error(error::new_mismatched_types(
-                            "explicit type and actual types do not match",
-                            explicit_type,
-                            struct_type,
-                            format!("the explicit type of this struct {} does not match the actual type {}", explicit_type, struct_type),
-                        ));
-                    }
-                }
-
-                if !types_match(struct_type, &generated_type, environment)? {
-                    self.report_error(error::new_mismatched_types(
-                        "expected the the type to match to the struct",
-                        struct_type,
-                        &generated_type,
-                        format!("{} and {} do not match", struct_type, generated_type),
-                    ));
-                }
-
-                println!("declaring variable: {identifier}");
-                environment.declare_variable(identifier, struct_type);
-
-                Ok(TypedStatement {
-                    value: StatementValue::StructDeclaration {
-                        identifier: identifier.clone(),
-                        explicit_type: explicit_type.clone(),
-                        struct_type: struct_type.clone(),
-                        parameters: typed_parameters,
-                    },
-                    span: statement.span,
-                })
-            }
         }
     }
 
     fn declare_function(
         &self,
-        function: &FunctionDeclaration,
+        function: &LambdaSignature,
         environment: &mut Environment,
     ) -> Result<()> {
         let dummy = TypedExpression {
@@ -624,7 +573,7 @@ impl Typer {
                 .unwrap_or(Typing::unknown(&function.span)),
             span: function.span,
         };
-        let placeholder = TypedFunctionDeclaration {
+        let placeholder = TypedFunction {
             identifier: function.identifier.clone(),
             span: function.span,
             parameters: function.parameters.clone(),
@@ -646,7 +595,7 @@ impl Typer {
             ty: function.return_type.clone(),
             span: function.span,
         };
-        let placeholder = TypedFunctionDeclaration {
+        let placeholder = TypedFunction {
             identifier: function.identifier.clone(),
             span: function.span,
             parameters: function.parameters.clone(),
@@ -660,9 +609,9 @@ impl Typer {
 
     fn type_check_function(
         &mut self,
-        function: &FunctionDeclaration,
+        function: &LambdaSignature,
         environment: &mut Environment,
-    ) -> Result<TypedFunctionDeclaration> {
+    ) -> Result<TypedFunction> {
         for parameter in &function.parameters {
             environment.declare_variable(&parameter.identifier, &parameter.ty);
         }
@@ -685,14 +634,13 @@ impl Typer {
 
         // TODO: Add a warning that when using recursive functions, the return type must be explicitly set
 
-        let declaration: crate::ast::GenericFunctionDeclaration<TypedExpression> =
-            TypedFunctionDeclaration {
-                identifier: function.identifier.clone(),
-                span: function.span,
-                parameters: function.parameters.clone(),
-                body: return_value,
-                explicit_return_type: function.explicit_return_type.clone(),
-            };
+        let declaration: crate::ast::GenericFunctionDeclaration<TypedExpression> = TypedFunction {
+            identifier: function.identifier.clone(),
+            span: function.span,
+            parameters: function.parameters.clone(),
+            body: return_value,
+            explicit_return_type: function.explicit_return_type.clone(),
+        };
 
         environment.update_function(&function.identifier, &declaration)?;
 

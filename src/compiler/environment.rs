@@ -1,6 +1,4 @@
-use crate::ast::{
-    Identifier, IntrinsicFunctionDeclaration, TypedFunctionDeclaration, Typing, TypingValue,
-};
+use crate::ast::{Identifier, LambdaSignature, Typing, TypingValue};
 use cranelift::prelude::{EntityRef, FunctionBuilder, Signature, Variable};
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
@@ -25,34 +23,18 @@ impl<'parent> CompileEnvironment<'parent> {
         }
     }
 
-    pub fn declare_intrinsic(
-        &mut self,
-        function: &IntrinsicFunctionDeclaration,
-        signature: Signature,
-        module: &mut JITModule,
-    ) -> FuncId {
-        let func_id = module
-            .declare_function(&function.identifier.name, Linkage::Export, &signature)
-            .unwrap();
-
-        self.functions
-            .insert(function.identifier.name.clone(), (func_id, signature));
-
-        func_id
-    }
-
     pub fn declare_function(
         &mut self,
-        function: &TypedFunctionDeclaration,
+        identifier: Identifier,
         signature: Signature,
         codebase: &mut JITModule,
     ) -> FuncId {
         let func_id = codebase
-            .declare_function(&function.identifier.name, Linkage::Export, &signature)
+            .declare_function(&identifier.name, Linkage::Export, &signature)
             .unwrap();
 
         self.functions
-            .insert(function.identifier.name.clone(), (func_id, signature));
+            .insert(identifier.name.clone(), (func_id, signature));
 
         func_id
     }

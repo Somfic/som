@@ -46,6 +46,11 @@ pub enum ExpressionValue<Statement, Expression> {
         identifier: Identifier,
         argument: Box<Expression>,
     },
+    Lambda {
+        parameters: Vec<Parameter>,
+        explicit_return_type: Option<Box<Typing>>,
+        body: Box<Expression>,
+    },
     StructConstructor {
         identifier: Identifier,
         arguments: HashMap<Identifier, Expression>,
@@ -129,5 +134,18 @@ impl Display for BinaryOperator {
             BinaryOperator::And => write!(f, "an and"),
             BinaryOperator::Or => write!(f, "an or"),
         }
+    }
+}
+
+#[derive(Debug, Clone, Span, Eq)]
+pub struct Parameter {
+    pub identifier: Identifier,
+    pub span: miette::SourceSpan,
+    pub ty: Typing,
+}
+
+impl PartialEq for Parameter {
+    fn eq(&self, other: &Self) -> bool {
+        self.identifier == other.identifier && self.ty == other.ty
     }
 }

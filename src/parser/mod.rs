@@ -1,7 +1,6 @@
-
 use crate::ast::{
-    Expression, FunctionDeclaration, Identifier, Module,
-    Statement, Typing,
+    Expression, ExpressionValue, Identifier, LambdaSignature, Module, Statement, StatementValue,
+    Typing,
 };
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, Tokenizer};
@@ -11,8 +10,8 @@ use lookup::Lookup;
 use miette::MietteDiagnostic;
 
 mod expression;
+mod function;
 mod lookup;
-mod module;
 mod statement;
 mod typing;
 
@@ -71,50 +70,39 @@ impl<'input> Parser<'input> {
 
     fn parse_entry_module(&mut self) -> Result<Module> {
         let expression = parse_inner_block(self, TokenKind::EOF)?;
+        let span = expression.span;
 
-        let main_function = FunctionDeclaration {
-            identifier: Identifier {
-                name: "main".into(),
-                span: expression.span,
-            },
-            span: expression.span,
-            body: expression,
+        let main_function = ExpressionValue::Lambda {
             parameters: Vec::new(),
             explicit_return_type: None,
+            body: Box::new(expression),
+        }
+        .with_span(span);
+
+        let main_function_declaration = StatementValue::Declaration {
+            identifier: Identifier::new("main"),
+            explicit_type: None,
+            value: main_function,
+        };
+
+        let main_function = Statement {
+            value: main_function_declaration,
+            span,
         };
 
         Ok(Module {
-            functions: vec![main_function],
-            intrinsic_functions: vec![],
+            statements: vec![main_function],
         })
     }
 
     fn parse_module(&mut self) -> Result<Module> {
-        let mut functions = vec![];
-        let mut intrinsic_functions = vec![];
+        let statements = statement::parse_block(self)?;
+        let statements = match statements.value {
+            StatementValue::Block(statements) => statements,
+            _ => unreachable!(),
+        };
 
-        while let Some(Ok(token)) = self.tokens.peek() {
-            match token.kind {
-                TokenKind::Intrinsic => {
-                    intrinsic_functions.push(module::parse_module_intrinsic_function(self)?);
-                }
-                TokenKind::Function => {
-                    functions.push(module::parse_module_function(self)?);
-                }
-                _ => {
-                    return Err(vec![miette::diagnostic! {
-                        labels = vec![token.label("expected a function or intrinsic function here")],
-                        help = format!("{} cannot be parsed as a function", token.kind),
-                        "expected a function, found {}", token.kind
-                    }]);
-                }
-            }
-        }
-
-        Ok(Module {
-            functions,
-            intrinsic_functions,
-        })
+        Ok(Module { statements })
     }
 
     fn parse_expression(&mut self, bp: BindingPower) -> Result<Expression> {
@@ -177,7 +165,7 @@ impl<'input> Parser<'input> {
         Ok(lhs)
     }
 
-    pub(crate) fn parse_statement(&mut self, require_semicolon: bool) -> Result<Statement> {
+    pub fn parse_statement(&mut self, require_semicolon: bool) -> Result<Statement> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),
@@ -206,7 +194,7 @@ impl<'input> Parser<'input> {
         Ok(statement)
     }
 
-    pub(crate) fn parse_typing(&mut self, bp: BindingPower) -> Result<Typing> {
+    pub fn parse_typing(&mut self, bp: BindingPower) -> Result<Typing> {
         let token = match self.tokens.peek().as_ref() {
             Some(Ok(token)) => token,
             Some(Err(err)) => return Err(err.to_vec()),
