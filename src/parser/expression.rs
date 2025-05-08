@@ -4,8 +4,8 @@ use miette::diagnostic;
 
 use super::{lookup::BindingPower, Parser};
 use crate::ast::{
-    combine_spans, BinaryOperator, CombineSpan, Expression, ExpressionValue,
-    Identifier, Primitive, StatementValue, UnaryOperator,
+    combine_spans, BinaryOperator, CombineSpan, Expression, ExpressionValue, Identifier, Primitive,
+    StatementValue, UnaryOperator,
 };
 use crate::prelude::*;
 use crate::tokenizer::{TokenKind, TokenValue};
@@ -244,10 +244,7 @@ pub fn parse_conditional(
     .with_span(span))
 }
 
-pub fn parse_inner_block(
-    parser: &mut Parser,
-    terminating_token: TokenKind,
-) -> Result<Expression> {
+pub fn parse_inner_block(parser: &mut Parser, terminating_token: TokenKind) -> Result<Expression> {
     let mut statements = Vec::new();
     let mut final_expression = None;
 
