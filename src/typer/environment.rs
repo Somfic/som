@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Identifier, LambdaSignature, Typing},
+    ast::{Function, Identifier, TypedFunction, Typing},
     Result,
 };
 use miette::LabeledSpan;
@@ -10,7 +10,7 @@ pub struct Environment<'parent> {
     parent: Option<&'parent Environment<'parent>>,
     variables: HashMap<Box<str>, Typing>,
     types: HashMap<Box<str>, Typing>,
-    functions: HashMap<Box<str>, LambdaSignature>,
+    functions: HashMap<Box<str>, TypedFunction>,
 }
 
 impl<'parent> Environment<'parent> {
@@ -86,13 +86,16 @@ impl<'parent> Environment<'parent> {
     pub fn declare_function(
         &mut self,
         identifier: &Identifier,
-        function: &LambdaSignature,
+        function: &TypedFunction,
     ) -> Result<()> {
         if let Some(existing_function) = self.lookup_function(identifier) {
             return Err(vec![miette::diagnostic!(
                 labels = vec![
-                    LabeledSpan::at(function.span, "duplicate function name"),
-                    LabeledSpan::at(existing_function.span, "function name previously used here")
+                    LabeledSpan::at(function.signature.span, "duplicate function name"),
+                    LabeledSpan::at(
+                        existing_function.signature.span,
+                        "function name previously used here"
+                    )
                 ],
                 help = format!("choose a different name for this function"),
                 "function `{}` already declared",
@@ -108,7 +111,7 @@ impl<'parent> Environment<'parent> {
     pub fn update_function(
         &mut self,
         identifier: &Identifier,
-        function: &LambdaSignature,
+        function: &TypedFunction,
     ) -> Result<()> {
         self.functions
             .insert(identifier.name.clone(), function.clone());
@@ -116,7 +119,7 @@ impl<'parent> Environment<'parent> {
         Ok(())
     }
 
-    pub fn lookup_function(&self, identifier: &Identifier) -> Option<LambdaSignature> {
+    pub fn lookup_function(&self, identifier: &Identifier) -> Option<TypedFunction> {
         self.functions.get(&identifier.name).cloned().or_else(|| {
             self.parent
                 .as_ref()

@@ -77,20 +77,22 @@ impl Compiler {
     fn declare_module(&mut self, module: &TypedModule, environment: &mut CompileEnvironment) {
         for statement in &module.statements {
             match &statement.value {
-                StatementValue::Declaration {
-                    identifier,
-                    explicit_type: _,
-                    value,
-                } => match &value.ty.value {
-                    TypingValue::Function(lambda_signature) => self.declare_function(
-                        identifier.clone(),
-                        lambda_signature,
-                        value,
-                        environment,
-                    ),
-                    _ => todo!("non-function type"),
+                StatementValue::Declaration(identifier, _, value) => match &value.value {
+                    ExpressionValue::Lambda {
+                        parameters,
+                        explicit_return_type,
+                        body,
+                    } => {
+                        let signature = LambdaSignature {
+                            span: statement.span,
+                            parameters: parameters.clone(),
+                            explicit_return_type: explicit_return_type.clone(),
+                        };
+                        self.declare_function(identifier.clone(), &signature, body, environment);
+                    }
+                    _ => todo!("non-function type {:?}", value.value),
                 },
-                _ => todo!("non-declaration statement in module"),
+                _ => todo!("non-declaration statement in module {:?}", statement),
             }
         }
     }
@@ -98,20 +100,22 @@ impl Compiler {
     fn compile_module(&mut self, module: &TypedModule, environment: &mut CompileEnvironment) {
         for statement in &module.statements {
             match &statement.value {
-                StatementValue::Declaration {
-                    identifier,
-                    explicit_type: _,
-                    value,
-                } => match &value.ty.value {
-                    TypingValue::Function(lambda_signature) => self.compile_function(
-                        identifier.clone(),
-                        lambda_signature,
-                        value,
-                        environment,
-                    ),
-                    _ => todo!("non-function type"),
+                StatementValue::Declaration(identifier, _, value) => match &value.value {
+                    ExpressionValue::Lambda {
+                        parameters,
+                        explicit_return_type,
+                        body,
+                    } => {
+                        let signature = LambdaSignature {
+                            span: statement.span,
+                            parameters: parameters.clone(),
+                            explicit_return_type: explicit_return_type.clone(),
+                        };
+                        self.compile_function(identifier.clone(), &signature, body, environment);
+                    }
+                    _ => todo!("non-function type {:?}", value.value),
                 },
-                _ => todo!("non-declaration statement in module"),
+                _ => todo!("non-declaration statement in module {:?}", statement),
             }
         }
     }
@@ -290,11 +294,7 @@ impl Compiler {
                     self.compile_statement(statement, builder, &mut environment);
                 }
             }
-            StatementValue::Declaration {
-                identifier,
-                explicit_type: _,
-                value,
-            } => {
+            StatementValue::Declaration(identifier, _, value) => {
                 let var =
                     environment.declare_variable(identifier.clone(), builder, &value.ty.value);
                 let value = self.compile_expression(value, builder, environment);
@@ -351,6 +351,7 @@ impl Compiler {
                 builder.seal_block(merge_block);
                 builder.seal_block(cond_block);
             }
+            StatementValue::TypeDeclaration(identifier, typing) => todo!(),
         }
     }
 

@@ -56,7 +56,7 @@ pub fn parse_declaration(parser: &mut Parser) -> Result<Statement> {
             .tokens
             .expect(TokenKind::Tilde, "expected an explicit type")?;
 
-        Some(parser.parse_typing(BindingPower::None)?)
+        Some(Box::new(parser.parse_typing(BindingPower::None)?))
     } else {
         None
     };
@@ -65,16 +65,26 @@ pub fn parse_declaration(parser: &mut Parser) -> Result<Statement> {
         .tokens
         .expect(TokenKind::Equal, "expected an equals sign")?;
 
-    let value = parser.parse_expression(BindingPower::None)?;
-
+    let value = Box::new(parser.parse_expression(BindingPower::None)?);
     let span = identifier.span.combine(value.span);
 
-    Ok(StatementValue::Declaration {
-        identifier,
-        explicit_type,
-        value,
-    }
-    .with_span(span))
+    Ok(StatementValue::Declaration(identifier, explicit_type, value).with_span(span))
+}
+
+pub fn parse_type_declaration(parser: &mut Parser) -> Result<Statement> {
+    parser
+        .tokens
+        .expect(TokenKind::Type, "expected a type declaration")?;
+
+    let identifier = parser
+        .tokens
+        .expect(TokenKind::Identifier, "expected the type name")?;
+
+    let identifier = Identifier::from_token(&identifier)?;
+    let value = Box::new(parser.parse_typing(BindingPower::None)?);
+    let span = identifier.span.combine(value.span);
+
+    Ok(StatementValue::TypeDeclaration(identifier, value).with_span(span))
 }
 
 pub fn parse_condition(parser: &mut Parser) -> Result<Statement> {

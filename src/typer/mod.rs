@@ -1,7 +1,7 @@
 use crate::ast::{
-    CombineSpan, Expression, ExpressionValue, IntrinsicFunctionDeclaration, LambdaSignature,
-    Module, Primitive, Statement, StatementValue, TypedExpression, TypedFunction, TypedModule,
-    TypedStatement, Typing, TypingValue,
+    CombineSpan, Expression, ExpressionValue, Function, Identifier, IntrinsicSignature,
+    LambdaSignature, Module, Primitive, Statement, StatementValue, TypedExpression, TypedFunction,
+    TypedModule, TypedStatement, Typing, TypingValue,
 };
 use crate::parser::ParserResult;
 use crate::prelude::*;
@@ -64,24 +64,13 @@ impl Typer {
         module: &Module,
         environment: &mut Environment,
     ) -> Result<TypedModule> {
-        let mut typed_functions = vec![];
+        let mut statements = vec![];
 
-        for function in &module.intrinsic_functions {
-            self.declare_intrinsic_function(function, environment)?;
+        for statement in &module.statements {
+            statements.push(self.type_check_statement(&statement, environment)?);
         }
 
-        for intrinsic_function in &module.functions {
-            self.declare_function(intrinsic_function, environment)?;
-        }
-
-        for function in &module.functions {
-            typed_functions.push(self.type_check_function(function, environment)?);
-        }
-
-        Ok(TypedModule {
-            functions: typed_functions,
-            intrinsic_functions: module.intrinsic_functions.clone(),
-        })
+        Ok(TypedModule { statements })
     }
 
     fn type_check_expression(
@@ -277,21 +266,21 @@ impl Typer {
                     }
                 }
 
-                for i in 0..cmp::max(arguments.len(), function.parameters.len()) {
+                for i in 0..cmp::max(arguments.len(), function.signature.parameters.len()) {
                     let argument = typed_arguments.get(i);
-                    let parameter = function.parameters.get(i);
+                    let parameter = function.signature.parameters.get(i);
 
                     if argument.is_some() && parameter.is_none() {
                         let argument = argument.unwrap();
 
                         self.report_error(error::unexpected_argument(
                             "unexpected argument",
-                            &function,
+                            &function.signature,
                             argument,
                             format!(
                                 "the function `{}` requires {} arguments but {} were given",
                                 identifier,
-                                function.parameters.len(),
+                                function.signature.parameters.len(),
                                 arguments.len()
                             ),
                         ));
@@ -492,11 +481,7 @@ impl Typer {
                     span: statement.span,
                 })
             }
-            StatementValue::Declaration {
-                identifier,
-                explicit_type,
-                value,
-            } => {
+            StatementValue::Declaration(identifier, explicit_type, value) => {
                 let value = self.type_check_expression(value, environment)?;
 
                 if let Some(explicit_type) = explicit_type {
@@ -513,11 +498,11 @@ impl Typer {
                 environment.declare_variable(identifier, &value.ty);
 
                 Ok(TypedStatement {
-                    value: StatementValue::Declaration {
-                        identifier: identifier.clone(),
-                        explicit_type: explicit_type.clone(),
-                        value,
-                    },
+                    value: StatementValue::Declaration(
+                        identifier.clone(),
+                        explicit_type.clone(),
+                        Box::new(value),
+                    ),
                     span: statement.span,
                 })
             }
@@ -557,68 +542,76 @@ impl Typer {
                     value: StatementValue::WhileLoop(condition, Box::new(statement)),
                 })
             }
+            StatementValue::TypeDeclaration(identifier, typing) => todo!(),
         }
     }
 
     fn declare_function(
         &self,
-        function: &LambdaSignature,
+        identifier: &Identifier,
+        signature: &LambdaSignature,
         environment: &mut Environment,
     ) -> Result<()> {
         let dummy = TypedExpression {
             value: ExpressionValue::Primitive(Primitive::Unit),
-            ty: function
+            ty: signature
                 .explicit_return_type
-                .clone()
-                .unwrap_or(Typing::unknown(&function.span)),
-            span: function.span,
+                .as_ref()
+                .map(|ty| (**ty).clone())
+                .unwrap_or(Typing::unknown(&signature.span)),
+            span: signature.span,
         };
+
         let placeholder = TypedFunction {
-            identifier: function.identifier.clone(),
-            span: function.span,
-            parameters: function.parameters.clone(),
-            body: dummy,
-            explicit_return_type: function.explicit_return_type.clone(),
+            identifier: identifier.clone(),
+            signature: signature.clone(),
+            body: Box::new(dummy),
         };
-        environment.declare_function(&function.identifier, &placeholder)?;
+
+        environment.declare_function(identifier, &placeholder)?;
 
         Ok(())
     }
 
     fn declare_intrinsic_function(
         &self,
-        function: &IntrinsicFunctionDeclaration,
+        identifier: &Identifier,
+        signature: &IntrinsicSignature,
         environment: &mut Environment,
     ) -> Result<()> {
         let dummy = TypedExpression {
             value: ExpressionValue::Primitive(Primitive::Unit),
-            ty: function.return_type.clone(),
-            span: function.span,
+            ty: signature.return_type.clone(),
+            span: signature.span,
         };
+
         let placeholder = TypedFunction {
-            identifier: function.identifier.clone(),
-            span: function.span,
-            parameters: function.parameters.clone(),
-            body: dummy,
-            explicit_return_type: Some(function.return_type.clone()),
+            identifier: identifier.clone(),
+            signature: LambdaSignature {
+                span: signature.span,
+                parameters: signature.parameters.clone(),
+                explicit_return_type: Some(Box::new(signature.return_type.clone())),
+            },
+            body: Box::new(dummy),
         };
-        environment.declare_function(&function.identifier, &placeholder)?;
+
+        environment.declare_function(identifier, &placeholder)?;
 
         Ok(())
     }
 
     fn type_check_function(
         &mut self,
-        function: &LambdaSignature,
+        function: &Function,
         environment: &mut Environment,
     ) -> Result<TypedFunction> {
-        for parameter in &function.parameters {
+        for parameter in &function.signature.parameters {
             environment.declare_variable(&parameter.identifier, &parameter.ty);
         }
 
         let return_value = self.type_check_expression(&function.body, &mut environment.clone())?;
 
-        if let Some(return_type) = &function.explicit_return_type {
+        if let Some(return_type) = &function.signature.explicit_return_type {
             if !types_match(&return_value.ty, return_type, environment)? {
                 self.report_error(error::new_mismatched_types(
                     "expected the return type to match",
@@ -634,12 +627,10 @@ impl Typer {
 
         // TODO: Add a warning that when using recursive functions, the return type must be explicitly set
 
-        let declaration: crate::ast::GenericFunctionDeclaration<TypedExpression> = TypedFunction {
+        let declaration = TypedFunction {
             identifier: function.identifier.clone(),
-            span: function.span,
-            parameters: function.parameters.clone(),
-            body: return_value,
-            explicit_return_type: function.explicit_return_type.clone(),
+            signature: function.signature.clone(),
+            body: Box::new(return_value),
         };
 
         environment.update_function(&function.identifier, &declaration)?;
