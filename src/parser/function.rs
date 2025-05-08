@@ -95,9 +95,10 @@ fn parse_lambda_parameters(parser: &mut Parser) -> Result<Vec<Parameter>> {
             _ => unreachable!(),
         };
 
-        parser
-            .tokens
-            .expect(TokenKind::Tilde, "expected a parameter type")?;
+        parser.tokens.expect(
+            TokenKind::Tilde,
+            format!("expected a parameter type for `{}`", parameter_name),
+        )?;
 
         let parameter_type = parser.parse_typing(BindingPower::None)?;
 

@@ -88,20 +88,21 @@ impl<'parent> Environment<'parent> {
         identifier: &Identifier,
         function: &TypedFunction,
     ) -> Result<()> {
-        if let Some(existing_function) = self.lookup_function(identifier) {
-            return Err(vec![miette::diagnostic!(
-                labels = vec![
-                    LabeledSpan::at(function.signature.span, "duplicate function name"),
-                    LabeledSpan::at(
-                        existing_function.signature.span,
-                        "function name previously used here"
-                    )
-                ],
-                help = format!("choose a different name for this function"),
-                "function `{}` already declared",
-                identifier
-            )]);
-        }
+        // TODO: check for duplicate function names when they're publicly declared in an impl block, redefining a function inline should be fine
+        // if let Some(existing_function) = self.lookup_function(identifier) {
+        //     return Err(vec![miette::diagnostic!(
+        //         labels = vec![
+        //             LabeledSpan::at(function.signature.span, "duplicate function name"),
+        //             LabeledSpan::at(
+        //                 existing_function.signature.span,
+        //                 "function name previously used here"
+        //             )
+        //         ],
+        //         help = format!("choose a different name for this function"),
+        //         "function `{}` already declared",
+        //         identifier
+        //     )]);
+        // }
 
         self.update_function(identifier, function)?;
 

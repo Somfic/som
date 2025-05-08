@@ -3,7 +3,7 @@ pub use prelude::*;
 use clap::arg;
 use clap::command;
 use clap::Parser;
-use highlighter::SomHighlighter;
+// use highlighter::SomHighlighter;
 use std::path::PathBuf;
 
 mod ast;
@@ -31,7 +31,7 @@ fn main() {
                 .terminal_links(true)
                 .unicode(true)
                 .context_lines(2)
-                .with_syntax_highlighting(SomHighlighter {})
+                // .with_syntax_highlighting(SomHighlighter {})
                 .build(),
         )
     }))
