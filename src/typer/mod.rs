@@ -495,7 +495,28 @@ impl Typer {
                     }
                 }
 
-                environment.declare_variable(identifier, &value.ty);
+                match &value.value {
+                    ExpressionValue::Lambda {
+                        parameters,
+                        explicit_return_type,
+                        body,
+                    } => {
+                        let signature = LambdaSignature {
+                            span: statement.span,
+                            parameters: parameters.clone(),
+                            explicit_return_type: explicit_return_type.clone(),
+                        };
+
+                        let function = TypedFunction {
+                            identifier: identifier.clone(),
+                            signature: signature.clone(),
+                            body: body.clone(),
+                        };
+
+                        environment.declare_function(identifier, &function)?;
+                    }
+                    _ => environment.declare_variable(identifier, &value.ty),
+                };
 
                 Ok(TypedStatement {
                     value: StatementValue::Declaration(
