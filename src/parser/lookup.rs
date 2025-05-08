@@ -182,6 +182,7 @@ impl Default for Lookup {
         )
         .add_statement_handler(TokenKind::CurlyOpen, statement::parse_block)
         .add_statement_handler(TokenKind::Let, statement::parse_declaration)
+        .add_statement_handler(TokenKind::Type, statement::parse_type_declaration)
         .add_left_expression_handler(
             TokenKind::Equal,
             BindingPower::Assignment,

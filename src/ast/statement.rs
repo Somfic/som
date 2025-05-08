@@ -18,11 +18,8 @@ pub enum StatementValue<Expression> {
     Expression(Expression),
     Condition(Expression, Box<GenericStatement<Expression>>),
     WhileLoop(Expression, Box<GenericStatement<Expression>>),
-    Declaration {
-        identifier: Identifier,
-        explicit_type: Option<Typing>,
-        value: Expression,
-    },
+    Declaration(Identifier, Option<Box<Typing>>, Box<Expression>),
+    TypeDeclaration(Identifier, Box<Typing>),
 }
 
 impl StatementValue<Expression> {
@@ -38,6 +35,16 @@ impl GenericStatement<Expression> {
             span,
         }
     }
+}
+
+pub type TypedFunction = GenericFunction<TypedExpression>;
+pub type Function = GenericFunction<Expression>;
+
+#[derive(Debug, Clone)]
+pub struct GenericFunction<Expression> {
+    pub identifier: Identifier,
+    pub signature: LambdaSignature,
+    pub body: Box<Expression>,
 }
 
 #[derive(Debug, Clone, Span, Eq)]

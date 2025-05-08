@@ -79,19 +79,14 @@ impl<'input> Parser<'input> {
         }
         .with_span(span);
 
-        let main_function_declaration = StatementValue::Declaration {
-            identifier: Identifier::new("main"),
-            explicit_type: None,
-            value: main_function,
-        };
-
-        let main_function = Statement {
-            value: main_function_declaration,
-            span,
-        };
+        let main_function =
+            StatementValue::Declaration(Identifier::new("main"), None, Box::new(main_function));
 
         Ok(Module {
-            statements: vec![main_function],
+            statements: vec![Statement {
+                value: main_function,
+                span,
+            }],
         })
     }
 
