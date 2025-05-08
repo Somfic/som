@@ -1,15 +1,15 @@
-use crate::ast::{Expression, ExpressionValue, LambdaSignature};
+use crate::ast::{Expression, ExpressionValue, FunctionSignature};
 use crate::prelude::*;
 use crate::{ast::Parameter, tokenizer::TokenKind};
 
 use super::{BindingPower, Parser};
 
-pub fn parse_lambda_signature(parser: &mut Parser) -> Result<LambdaSignature> {
+pub fn parse_function_signature(parser: &mut Parser) -> Result<FunctionSignature> {
     parser
         .tokens
         .expect(TokenKind::Function, "expected a function declaration")?;
 
-    let parameters = parse_optional_lambda_parameters(parser)?;
+    let parameters = parse_optional_function_parameters(parser)?;
 
     let explicit_return_type = if parser.tokens.peek().is_some_and(|token| {
         token
@@ -27,7 +27,7 @@ pub fn parse_lambda_signature(parser: &mut Parser) -> Result<LambdaSignature> {
 
     let span = combine_spans(parameters.iter().map(|p| p.span).collect::<Vec<_>>());
 
-    Ok(LambdaSignature {
+    Ok(FunctionSignature {
         parameters,
         explicit_return_type,
         span,
@@ -35,7 +35,7 @@ pub fn parse_lambda_signature(parser: &mut Parser) -> Result<LambdaSignature> {
 }
 
 pub fn parse_lambda(parser: &mut Parser) -> Result<Expression> {
-    let signature = parse_lambda_signature(parser)?;
+    let signature = parse_function_signature(parser)?;
 
     let body = parser.parse_expression(BindingPower::None)?;
 
@@ -47,7 +47,7 @@ pub fn parse_lambda(parser: &mut Parser) -> Result<Expression> {
     .with_span(signature.span))
 }
 
-fn parse_optional_lambda_parameters(parser: &mut Parser) -> Result<Vec<Parameter>> {
+fn parse_optional_function_parameters(parser: &mut Parser) -> Result<Vec<Parameter>> {
     let token = match parser.tokens.peek().as_ref() {
         Some(Ok(token)) => token,
         Some(Err(err)) => return Err(err.to_vec()),
@@ -62,13 +62,13 @@ fn parse_optional_lambda_parameters(parser: &mut Parser) -> Result<Vec<Parameter
     match token.kind {
         TokenKind::ParenOpen => {
             parser.tokens.next();
-            parse_lambda_parameters(parser)
+            parse_function_parameters(parser)
         }
         _ => Ok(Vec::new()),
     }
 }
 
-fn parse_lambda_parameters(parser: &mut Parser) -> Result<Vec<Parameter>> {
+pub fn parse_function_parameters(parser: &mut Parser) -> Result<Vec<Parameter>> {
     let mut parameters = Vec::new();
 
     loop {
@@ -97,7 +97,7 @@ fn parse_lambda_parameters(parser: &mut Parser) -> Result<Vec<Parameter>> {
 
         parser.tokens.expect(
             TokenKind::Tilde,
-            format!("expected a parameter type for `{}`", parameter_name),
+            format!("expected a parameter type for `{parameter_name}`"),
         )?;
 
         let parameter_type = parser.parse_typing(BindingPower::None)?;

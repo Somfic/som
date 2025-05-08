@@ -204,6 +204,7 @@ impl Default for Lookup {
         .add_typing_handler(TokenKind::IntegerType, typing::parse_integer)
         .add_typing_handler(TokenKind::CurlyOpen, typing::parse_struct)
         .add_typing_handler(TokenKind::BooleanType, typing::parse_boolean)
+        .add_typing_handler(TokenKind::Function, typing::parse_function)
         .add_statement_handler(TokenKind::If, statement::parse_condition)
         .add_statement_handler(TokenKind::While, statement::parse_while_loop)
     }
