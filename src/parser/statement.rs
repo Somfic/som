@@ -1,11 +1,8 @@
-
-use super::{
-    module,
-    BindingPower, Parser,
-};
+use super::{BindingPower, Parser};
 use crate::{
     ast::{
-        combine_spans, CombineSpan, ExpressionValue, Identifier, Statement, StatementValue, Typing, TypingValue,
+        combine_spans, CombineSpan, ExpressionValue, Identifier, Statement, StatementValue, Typing,
+        TypingValue,
     },
     tokenizer::{Token, TokenKind},
     Result,
@@ -68,98 +65,16 @@ pub fn parse_declaration(parser: &mut Parser) -> Result<Statement> {
         .tokens
         .expect(TokenKind::Equal, "expected an equals sign")?;
 
-    let next_token = parser.tokens.peek();
+    let value = parser.parse_expression(BindingPower::None)?;
 
-    if next_token.is_some_and(|token| {
-        token
-            .as_ref()
-            .is_ok_and(|token| token.kind == TokenKind::Type)
-    }) {
-        return parse_type_declaration(parser, identifier);
+    let span = identifier.span.combine(value.span);
+
+    Ok(StatementValue::Declaration {
+        identifier,
+        explicit_type,
+        value,
     }
-
-    if next_token.is_some_and(|token| {
-        token
-            .as_ref()
-            .is_ok_and(|token| token.kind == TokenKind::Function)
-    }) {
-        return parse_function_declaration(parser, identifier);
-    }
-
-    let declaration = parser.parse_expression(BindingPower::None)?;
-
-    let declaration = match declaration.value {
-        ExpressionValue::StructConstructor {
-            identifier: struct_type_identifier,
-            arguments,
-        } => {
-            let struct_type = TypingValue::Symbol(struct_type_identifier.clone())
-                .with_span(struct_type_identifier.span);
-
-            println!("parsing struct constructor: {}", struct_type_identifier);
-
-            StatementValue::StructDeclaration {
-                identifier: identifier.clone(),
-                struct_type,
-                explicit_type,
-                parameters: arguments,
-            }
-        }
-        _ => StatementValue::VariableDeclaration(identifier.clone(), explicit_type, declaration),
-    };
-
-    Ok(declaration.with_span(identifier.span))
-}
-
-fn parse_function_declaration(
-    parser: &mut Parser,
-    identifier: Identifier,
-) -> Result<Statement> {
-    let function = module::parse_function(parser, identifier.clone())?;
-
-    let span = identifier.span.combine(function.span);
-
-    Ok(StatementValue::FunctionDeclaration(function).with_span(span))
-}
-
-fn parse_type_declaration(parser: &mut Parser, identifier: Identifier) -> Result<Statement> {
-    parser
-        .tokens
-        .expect(TokenKind::Type, "expected a type declaration")?;
-
-    // let ty = match parser.tokens.peek().unwrap().map(|t| t.kind) {
-    //     TokenKind::CurlyOpen => typing::parse_struct(parser, identifier)?,
-    //     TokenKind::Identifier => typing::parse_symbol(parser)?,
-    //     _ => todo!("parse type declaration"),
-    // };
-
-    let ty = parser.parse_typing(BindingPower::None)?;
-    let span = ty.span;
-
-    Ok(StatementValue::TypeDeclaration(identifier, ty).with_span(span))
-}
-
-fn parse_intrinsic_declaration(parser: &mut Parser, identifier: Token) -> Result<Statement> {
-    let intrinsic = module::parse_intrinsic_function(parser, identifier.clone())?;
-
-    let span = identifier.span.combine(intrinsic.span);
-
-    Ok(StatementValue::IntrinsicDeclaration(intrinsic).with_span(span))
-}
-
-fn parse_variable_declaration(
-    parser: &mut Parser,
-    identifier: Token,
-    identifier_name: Identifier,
-    explicit_type: Option<Typing>,
-) -> Result<Statement> {
-    let expression = parser.parse_expression(BindingPower::Assignment)?;
-    let span = identifier.span.combine(expression.span);
-
-    Ok(
-        StatementValue::VariableDeclaration(identifier_name, explicit_type, expression)
-            .with_span(span),
-    )
+    .with_span(span))
 }
 
 pub fn parse_condition(parser: &mut Parser) -> Result<Statement> {

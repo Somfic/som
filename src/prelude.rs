@@ -2,6 +2,8 @@ use crate::{
     compiler::Compiler, parser::Parser, runner::Runner, tokenizer::Tokenizer, typer::Typer,
 };
 
+pub use crate::ast::{combine_spans, CombineSpan};
+
 pub type Result<T> = std::result::Result<T, Vec<miette::MietteDiagnostic>>;
 pub type ReportResult<T> = std::result::Result<T, Vec<miette::Report>>;
 
@@ -25,7 +27,6 @@ pub fn run(source_code: &'static str) -> i64 {
         .expect("failed to compile codebase");
 
     let runner = Runner::new(compiled);
-    
 
     runner
         .run()

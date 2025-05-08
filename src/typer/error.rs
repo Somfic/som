@@ -1,8 +1,6 @@
 use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
-use crate::ast::{
-    Expression, Identifier, Parameter, TypedExpression, TypedFunctionDeclaration, Typing,
-};
+use crate::ast::{Expression, Identifier, LambdaSignature, Parameter, TypedExpression, Typing};
 
 pub fn new_mismatched_types(
     message: impl Into<String>,
@@ -67,7 +65,7 @@ pub fn mismatched_argument(
 
 pub fn unexpected_argument(
     message: impl Into<String>,
-    function: &TypedFunctionDeclaration,
+    function: &LambdaSignature,
     argument: &TypedExpression,
     hint: impl Into<String>,
 ) -> Option<MietteDiagnostic> {

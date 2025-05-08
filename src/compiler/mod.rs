@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     ast::{
-        BinaryOperator, ExpressionValue, Identifier, IntrinsicFunctionDeclaration, Primitive,
-        StatementValue, TypedExpression, TypedFunctionDeclaration, TypedStatement, TypingValue,
+        BinaryOperator, ExpressionValue, Identifier, IntrinsicSignature, LambdaSignature,
+        Primitive, StatementValue, TypedExpression, TypedModule, TypedStatement, TypingValue,
     },
     prelude::*,
     typer::TyperResult,
@@ -57,23 +57,11 @@ impl Compiler {
         let typed_modules = self.typed.modules.clone();
 
         for module in &typed_modules {
-            for function in &module.intrinsic_functions {
-                self.declare_intrinsic_function(function, &mut environment);
-            }
-
-            for function in &module.functions {
-                self.declare_function(function, &mut environment);
-            }
+            self.declare_module(module, &mut environment);
         }
 
         for module in &typed_modules {
-            for intrinsic_function in &module.intrinsic_functions {
-                self.compile_intrinsic_function(intrinsic_function, &mut environment);
-            }
-
-            for function in &module.functions {
-                self.compile_function(function, &mut environment);
-            }
+            self.compile_module(module, &mut environment);
         }
 
         self.codebase.finalize_definitions().unwrap();
@@ -84,6 +72,48 @@ impl Compiler {
                 .unwrap()
                 .0,
         ))
+    }
+
+    fn declare_module(&mut self, module: &TypedModule, environment: &mut CompileEnvironment) {
+        for statement in &module.statements {
+            match &statement.value {
+                StatementValue::Declaration {
+                    identifier,
+                    explicit_type: _,
+                    value,
+                } => match &value.ty.value {
+                    TypingValue::Function(lambda_signature) => self.declare_function(
+                        identifier.clone(),
+                        lambda_signature,
+                        value,
+                        environment,
+                    ),
+                    _ => todo!("non-function type"),
+                },
+                _ => todo!("non-declaration statement in module"),
+            }
+        }
+    }
+
+    fn compile_module(&mut self, module: &TypedModule, environment: &mut CompileEnvironment) {
+        for statement in &module.statements {
+            match &statement.value {
+                StatementValue::Declaration {
+                    identifier,
+                    explicit_type: _,
+                    value,
+                } => match &value.ty.value {
+                    TypingValue::Function(lambda_signature) => self.compile_function(
+                        identifier.clone(),
+                        lambda_signature,
+                        value,
+                        environment,
+                    ),
+                    _ => todo!("non-function type"),
+                },
+                _ => todo!("non-declaration statement in module"),
+            }
+        }
     }
 
     fn compile_expression(
@@ -236,6 +266,11 @@ impl Compiler {
                 parent_identifier: _,
                 identifier: _,
             } => todo!(),
+            ExpressionValue::Lambda {
+                parameters,
+                explicit_return_type,
+                body,
+            } => todo!(),
         }
     }
 
@@ -255,9 +290,14 @@ impl Compiler {
                     self.compile_statement(statement, builder, &mut environment);
                 }
             }
-            StatementValue::VariableDeclaration(name, _, expression) => {
-                let value = self.compile_expression(expression, builder, environment);
-                let var = environment.declare_variable(name.clone(), builder, &expression.ty.value);
+            StatementValue::Declaration {
+                identifier,
+                explicit_type: _,
+                value,
+            } => {
+                let var =
+                    environment.declare_variable(identifier.clone(), builder, &value.ty.value);
+                let value = self.compile_expression(value, builder, environment);
                 builder.def_var(var, value);
             }
             StatementValue::Condition(condition, statement) => {
@@ -311,89 +351,59 @@ impl Compiler {
                 builder.seal_block(merge_block);
                 builder.seal_block(cond_block);
             }
-            StatementValue::FunctionDeclaration(function) => {
-                self.declare_function(function, environment);
-                self.compile_function(function, environment);
-            }
-            StatementValue::IntrinsicDeclaration(intrinsic) => {
-                self.declare_intrinsic_function(intrinsic, environment);
-                self.compile_intrinsic_function(intrinsic, environment)
-            }
-            StatementValue::TypeDeclaration(identifier, ty) => {
-                environment.declare_type(identifier.clone(), builder, ty.clone());
-            }
-            StatementValue::StructDeclaration {
-                identifier,
-                explicit_type: _,
-                struct_type,
-                parameters,
-            } => {
-                let struct_slot = builder.create_sized_stack_slot(StackSlotData::new(
-                    StackSlotKind::ExplicitSlot,
-                    struct_type.value.size_of(environment),
-                    0,
-                ));
-
-                let mut offset = 0;
-                parameters.iter().for_each(|(_, expression)| {
-                    let value = self.compile_expression(expression, builder, environment);
-                    builder.ins().stack_store(value, struct_slot, offset as i32);
-                    offset += expression.ty.value.size_of(environment);
-                });
-
-                builder.ins().stack_addr(types::I8, struct_slot, 0);
-
-                environment.declare_variable(identifier.clone(), builder, &struct_type.value);
-            }
         }
     }
 
     fn declare_intrinsic_function(
         &mut self,
-        function: &IntrinsicFunctionDeclaration,
+        identifier: Identifier,
+        intrinsic_signature: &IntrinsicSignature,
         environment: &mut CompileEnvironment,
     ) {
         let mut signature = Signature::new(self.isa.default_call_conv());
 
-        for parameter in &function.parameters {
+        for parameter in &intrinsic_signature.parameters {
             let parameter_type = parameter.ty.value.to_ir();
             signature.params.push(AbiParam::new(parameter_type));
         }
 
         signature
             .returns
-            .push(AbiParam::new(function.return_type.value.to_ir()));
+            .push(AbiParam::new(intrinsic_signature.return_type.value.to_ir()));
 
-        environment.declare_intrinsic(function, signature, &mut self.codebase);
+        environment.declare_function(identifier, signature, &mut self.codebase);
     }
 
     fn declare_function(
         &mut self,
-        function: &TypedFunctionDeclaration,
+        identifier: Identifier,
+        function_signature: &LambdaSignature,
+        body: &TypedExpression,
         environment: &mut CompileEnvironment,
     ) {
         let mut signature = Signature::new(self.isa.default_call_conv());
 
-        for parameter in &function.parameters {
-            let parameter_type = parameter.ty.value.to_ir();
-            signature.params.push(AbiParam::new(parameter_type));
+        for parameter in &function_signature.parameters {
+            signature
+                .params
+                .push(AbiParam::new(parameter.ty.value.to_ir()));
         }
 
-        signature
-            .returns
-            .push(AbiParam::new(function.body.ty.value.to_ir()));
+        signature.returns.push(AbiParam::new(body.ty.value.to_ir()));
 
-        environment.declare_function(function, signature, &mut self.codebase);
+        environment.declare_function(identifier, signature, &mut self.codebase);
     }
 
     fn compile_function(
         &mut self,
-        function: &TypedFunctionDeclaration,
+        identifier: Identifier,
+        function_signature: &LambdaSignature,
+        body: &TypedExpression,
         environment: &mut CompileEnvironment,
     ) {
         let mut context = self.codebase.make_context();
         let (func_id, signature) = {
-            let lookup = environment.lookup_function(&function.identifier).unwrap();
+            let lookup = environment.lookup_function(&identifier).unwrap();
             (lookup.0, lookup.1.clone())
         };
         context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature);
@@ -405,7 +415,7 @@ impl Compiler {
         builder.switch_to_block(entry_block);
 
         let block_params = builder.block_params(entry_block).to_vec();
-        for (i, parameter) in function.parameters.iter().enumerate() {
+        for (i, parameter) in function_signature.parameters.iter().enumerate() {
             let variable = environment.declare_variable(
                 parameter.identifier.clone(),
                 &mut builder,
@@ -415,7 +425,7 @@ impl Compiler {
             builder.def_var(variable, block_params[i]);
         }
 
-        let body = self.compile_expression(&function.body, &mut builder, environment);
+        let body = self.compile_expression(&body, &mut builder, environment);
         builder.ins().return_(&[body]);
         builder.seal_block(entry_block);
         builder.finalize();
@@ -427,19 +437,15 @@ impl Compiler {
 
     fn compile_intrinsic_function(
         &mut self,
-        intrinsic_function: &IntrinsicFunctionDeclaration,
+        identifier: Identifier,
+        intrinsic_signature: &IntrinsicSignature,
         environment: &mut CompileEnvironment,
     ) {
         let mut context = self.codebase.make_context();
         let (func_id, signature) = {
             let lookup = environment
-                .lookup_function(&intrinsic_function.identifier)
-                .unwrap_or_else(|| {
-                    panic!(
-                        "{} intrinsic function not found",
-                        intrinsic_function.identifier
-                    )
-                });
+                .lookup_function(&identifier)
+                .unwrap_or_else(|| panic!("{} intrinsic function not found", identifier));
             (lookup.0, lookup.1.clone())
         };
         context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature);
@@ -451,7 +457,7 @@ impl Compiler {
         builder.switch_to_block(entry_block);
 
         let block_params = builder.block_params(entry_block).to_vec();
-        for (i, parameter) in intrinsic_function.parameters.iter().enumerate() {
+        for (i, parameter) in intrinsic_signature.parameters.iter().enumerate() {
             let variable = environment.declare_variable(
                 parameter.identifier.clone(),
                 &mut builder,
@@ -461,7 +467,7 @@ impl Compiler {
             builder.def_var(variable, block_params[i]);
         }
 
-        match intrinsic_function.identifier.name.to_string().as_str() {
+        match &identifier.name[..] {
             "assert" => {
                 let cond = block_params[0];
                 let code = TrapCode::unwrap_user(123);
@@ -571,6 +577,7 @@ impl TypingValue {
             TypingValue::Unit => types::I8,
             TypingValue::Generic(identifier) => todo!(),
             TypingValue::Struct(_) => todo!(),
+            TypingValue::Function(lambda_signature) => todo!(),
         }
     }
 
@@ -589,6 +596,7 @@ impl TypingValue {
                 .iter()
                 .map(|m| m.ty.value.size_of(environment))
                 .sum(),
+            TypingValue::Function(lambda_signature) => todo!(),
         }
     }
 

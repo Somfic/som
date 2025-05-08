@@ -1,19 +1,19 @@
 use crate::{
-    ast::{Identifier, TypedFunctionDeclaration, Typing},
+    ast::{Identifier, LambdaSignature, Typing},
     Result,
 };
 use miette::LabeledSpan;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
-pub struct Environment {
-    parent: Option<Box<Environment>>,
+pub struct Environment<'parent> {
+    parent: Option<&'parent Environment<'parent>>,
     variables: HashMap<Box<str>, Typing>,
     types: HashMap<Box<str>, Typing>,
-    functions: HashMap<Box<str>, TypedFunctionDeclaration>,
+    functions: HashMap<Box<str>, LambdaSignature>,
 }
 
-impl Environment {
+impl<'parent> Environment<'parent> {
     pub fn new() -> Self {
         Self {
             parent: None,
@@ -23,9 +23,9 @@ impl Environment {
         }
     }
 
-    pub fn block(&self) -> Self {
+    pub fn block(&'parent self) -> Self {
         Self {
-            parent: Some(Box::new(self.clone())),
+            parent: Some(self),
             types: HashMap::new(),
             variables: HashMap::new(),
             functions: HashMap::new(),
@@ -86,7 +86,7 @@ impl Environment {
     pub fn declare_function(
         &mut self,
         identifier: &Identifier,
-        function: &TypedFunctionDeclaration,
+        function: &LambdaSignature,
     ) -> Result<()> {
         if let Some(existing_function) = self.lookup_function(identifier) {
             return Err(vec![miette::diagnostic!(
@@ -96,7 +96,7 @@ impl Environment {
                 ],
                 help = format!("choose a different name for this function"),
                 "function `{}` already declared",
-                existing_function.identifier
+                identifier
             )]);
         }
 
@@ -108,7 +108,7 @@ impl Environment {
     pub fn update_function(
         &mut self,
         identifier: &Identifier,
-        function: &TypedFunctionDeclaration,
+        function: &LambdaSignature,
     ) -> Result<()> {
         self.functions
             .insert(identifier.name.clone(), function.clone());
@@ -116,7 +116,7 @@ impl Environment {
         Ok(())
     }
 
-    pub fn lookup_function(&self, identifier: &Identifier) -> Option<TypedFunctionDeclaration> {
+    pub fn lookup_function(&self, identifier: &Identifier) -> Option<LambdaSignature> {
         self.functions.get(&identifier.name).cloned().or_else(|| {
             self.parent
                 .as_ref()

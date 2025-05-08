@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{expression, statement, typing, Parser};
+use super::{expression, function, statement, typing, Parser};
 use crate::{
     ast::{Expression, Statement, Typing},
     prelude::*,
@@ -38,11 +38,7 @@ pub struct Lookup {
 }
 
 impl Lookup {
-    pub(crate) fn add_statement_handler(
-        mut self,
-        token: TokenKind,
-        handler: StatementHandler,
-    ) -> Self {
+    pub fn add_statement_handler(mut self, token: TokenKind, handler: StatementHandler) -> Self {
         if self.statement_lookup.contains_key(&token) {
             panic!("Token already has a statement handler");
         }
@@ -51,11 +47,7 @@ impl Lookup {
         self
     }
 
-    pub(crate) fn add_expression_handler(
-        mut self,
-        token: TokenKind,
-        handler: ExpressionHandler,
-    ) -> Self {
+    pub fn add_expression_handler(mut self, token: TokenKind, handler: ExpressionHandler) -> Self {
         if self.expression_lookup.contains_key(&token) {
             panic!("Token already has an expression handler");
         }
@@ -64,7 +56,7 @@ impl Lookup {
         self
     }
 
-    pub(crate) fn add_left_expression_handler(
+    pub fn add_left_expression_handler(
         mut self,
         token: TokenKind,
         binding_power: BindingPower,
@@ -79,7 +71,7 @@ impl Lookup {
         self
     }
 
-    pub(crate) fn add_typing_handler(mut self, token: TokenKind, handler: TypingHandler) -> Self {
+    pub fn add_typing_handler(mut self, token: TokenKind, handler: TypingHandler) -> Self {
         if self.typing_lookup.contains_key(&token) {
             panic!("Token already has a type handler");
         }
@@ -88,11 +80,7 @@ impl Lookup {
         self
     }
 
-    pub(crate) fn add_left_typing_handler(
-        mut self,
-        token: TokenKind,
-        handler: LeftTypingHandler,
-    ) -> Self {
+    pub fn add_left_typing_handler(mut self, token: TokenKind, handler: LeftTypingHandler) -> Self {
         if self.left_typing_lookup.contains_key(&token) {
             panic!("Token already has a left type handler");
         }
@@ -121,6 +109,7 @@ impl Default for Lookup {
         .add_expression_handler(TokenKind::Boolean, expression::parse_boolean)
         .add_expression_handler(TokenKind::CurlyOpen, expression::parse_block)
         .add_expression_handler(TokenKind::Identifier, expression::parse_identifier)
+        .add_expression_handler(TokenKind::Function, function::parse_lambda)
         .add_left_expression_handler(
             TokenKind::If,
             BindingPower::Logical,

@@ -1,4 +1,4 @@
-use super::Identifier;
+use super::{Identifier, LambdaSignature};
 use miette::SourceSpan;
 use span_derive::Span;
 use std::fmt::Display;
@@ -74,6 +74,7 @@ pub enum TypingValue {
     Symbol(Identifier),
     Generic(Identifier),
     Struct(Vec<StructMember>),
+    Function(LambdaSignature),
 }
 
 impl PartialEq for TypingValue {
@@ -136,6 +137,22 @@ impl Display for TypingValue {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            TypingValue::Function(lambda_signature) => {
+                write!(
+                    f,
+                    "fn({}) -> {}",
+                    lambda_signature
+                        .parameters
+                        .iter()
+                        .map(|p| format!("{}: {}", p.identifier, p.ty))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    lambda_signature
+                        .explicit_return_type
+                        .as_ref()
+                        .map_or_else(|| TypingValue::Unknown.to_string(), |t| t.to_string())
+                )
+            }
         }
     }
 }

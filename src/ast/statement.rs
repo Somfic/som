@@ -1,4 +1,4 @@
-use super::{Expression, Identifier, TypedExpression, Typing};
+use super::{Expression, Identifier, Parameter, TypedExpression, Typing};
 
 use span_derive::Span;
 use std::collections::HashMap;
@@ -18,15 +18,10 @@ pub enum StatementValue<Expression> {
     Expression(Expression),
     Condition(Expression, Box<GenericStatement<Expression>>),
     WhileLoop(Expression, Box<GenericStatement<Expression>>),
-    VariableDeclaration(Identifier, Option<Typing>, Expression),
-    FunctionDeclaration(GenericFunctionDeclaration<Expression>),
-    IntrinsicDeclaration(IntrinsicFunctionDeclaration),
-    TypeDeclaration(Identifier, Typing),
-    StructDeclaration {
+    Declaration {
         identifier: Identifier,
         explicit_type: Option<Typing>,
-        struct_type: Typing,
-        parameters: HashMap<Identifier, Expression>,
+        value: Expression,
     },
 }
 
@@ -45,28 +40,22 @@ impl GenericStatement<Expression> {
     }
 }
 
-pub type TypedFunctionDeclaration = GenericFunctionDeclaration<TypedExpression>;
-pub type FunctionDeclaration = GenericFunctionDeclaration<Expression>;
-
-#[derive(Debug, Clone, Span)]
-pub struct Parameter {
-    pub identifier: Identifier,
-    pub span: miette::SourceSpan,
-    pub ty: Typing,
-}
-
-#[derive(Debug, Clone, Span)]
-pub struct GenericFunctionDeclaration<Expression> {
-    pub identifier: Identifier,
+#[derive(Debug, Clone, Span, Eq)]
+pub struct LambdaSignature {
     pub span: miette::SourceSpan,
     pub parameters: Vec<Parameter>,
-    pub body: Expression,
-    pub explicit_return_type: Option<Typing>,
+    pub explicit_return_type: Option<Box<Typing>>,
+}
+
+impl PartialEq for LambdaSignature {
+    fn eq(&self, other: &Self) -> bool {
+        self.parameters == other.parameters
+            && self.explicit_return_type == other.explicit_return_type
+    }
 }
 
 #[derive(Debug, Clone, Span)]
-pub struct IntrinsicFunctionDeclaration {
-    pub identifier: Identifier,
+pub struct IntrinsicSignature {
     pub span: miette::SourceSpan,
     pub parameters: Vec<Parameter>,
     pub return_type: Typing,
