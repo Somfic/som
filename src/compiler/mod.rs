@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     ast::{
-        BinaryOperator, ExpressionValue, Identifier, IntrinsicSignature, LambdaSignature,
+        BinaryOperator, ExpressionValue, Identifier, IntrinsicSignature, FunctionSignature,
         Primitive, StatementValue, TypedExpression, TypedModule, TypedStatement, TypingValue,
     },
     prelude::*,
@@ -83,7 +83,7 @@ impl Compiler {
                         explicit_return_type,
                         body,
                     } => {
-                        let signature = LambdaSignature {
+                        let signature = FunctionSignature {
                             span: statement.span,
                             parameters: parameters.clone(),
                             explicit_return_type: explicit_return_type.clone(),
@@ -106,7 +106,7 @@ impl Compiler {
                         explicit_return_type,
                         body,
                     } => {
-                        let signature = LambdaSignature {
+                        let signature = FunctionSignature {
                             span: statement.span,
                             parameters: parameters.clone(),
                             explicit_return_type: explicit_return_type.clone(),
@@ -378,7 +378,7 @@ impl Compiler {
     fn declare_function(
         &mut self,
         identifier: Identifier,
-        function_signature: &LambdaSignature,
+        function_signature: &FunctionSignature,
         body: &TypedExpression,
         environment: &mut CompileEnvironment,
     ) {
@@ -398,7 +398,7 @@ impl Compiler {
     fn compile_function(
         &mut self,
         identifier: Identifier,
-        function_signature: &LambdaSignature,
+        function_signature: &FunctionSignature,
         body: &TypedExpression,
         environment: &mut CompileEnvironment,
     ) {

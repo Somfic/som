@@ -1,7 +1,7 @@
 use crate::ast::{
-    CombineSpan, Expression, ExpressionValue, Function, Identifier, IntrinsicSignature,
-    LambdaSignature, Module, Primitive, Statement, StatementValue, TypedExpression, TypedFunction,
-    TypedModule, TypedStatement, Typing, TypingValue,
+    CombineSpan, Expression, ExpressionValue, Function, FunctionSignature, Identifier,
+    IntrinsicSignature, LambdaSignature, Module, Primitive, Statement, StatementValue,
+    TypedExpression, TypedFunction, TypedModule, TypedStatement, Typing, TypingValue,
 };
 use crate::parser::ParserResult;
 use crate::prelude::*;
@@ -425,6 +425,7 @@ impl Typer {
                 }
 
                 let return_value = self.type_check_expression(body, &mut environment)?;
+                let return_value_type = return_value.ty.clone();
 
                 if let Some(return_type) = explicit_return_type {
                     if !types_match(&return_value.ty, return_type, &environment)? {
@@ -446,7 +447,11 @@ impl Typer {
                         explicit_return_type: explicit_return_type.clone(),
                         body: Box::new(return_value),
                     },
-                    ty: Typing::unknown(&expression.span),
+                    ty: TypingValue::Function(LambdaSignature {
+                        parameters: parameters.iter().map(|p| p.ty.clone()).collect(),
+                        return_type: Box::new(return_value_type),
+                    })
+                    .with_span(expression.span),
                     span: expression.span,
                 })
             }
@@ -485,6 +490,9 @@ impl Typer {
                 let value = self.type_check_expression(value, environment)?;
 
                 if let Some(explicit_type) = explicit_type {
+                    println!("explicit type: {explicit_type}");
+                    println!("value type: {}", value.ty);
+
                     if !types_match(&value.ty, explicit_type, environment)? {
                         self.report_error(error::new_mismatched_types(
                             "expected the types to match",
@@ -501,7 +509,7 @@ impl Typer {
                         explicit_return_type,
                         body,
                     } => {
-                        let signature = LambdaSignature {
+                        let signature = FunctionSignature {
                             span: statement.span,
                             parameters: parameters.clone(),
                             explicit_return_type: explicit_return_type.clone(),
@@ -570,7 +578,7 @@ impl Typer {
     fn declare_function(
         &self,
         identifier: &Identifier,
-        signature: &LambdaSignature,
+        signature: &FunctionSignature,
         environment: &mut Environment,
     ) -> Result<()> {
         let dummy = TypedExpression {
@@ -602,16 +610,16 @@ impl Typer {
     ) -> Result<()> {
         let dummy = TypedExpression {
             value: ExpressionValue::Primitive(Primitive::Unit),
-            ty: signature.return_type.clone(),
+            ty: *signature.return_type.clone(),
             span: signature.span,
         };
 
         let placeholder = TypedFunction {
             identifier: identifier.clone(),
-            signature: LambdaSignature {
+            signature: FunctionSignature {
                 span: signature.span,
                 parameters: signature.parameters.clone(),
-                explicit_return_type: Some(Box::new(signature.return_type.clone())),
+                explicit_return_type: Some(signature.return_type.clone()),
             },
             body: Box::new(dummy),
         };

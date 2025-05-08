@@ -1,5 +1,6 @@
+use super::function::parse_function_parameters;
 use super::{BindingPower, Parser};
-use crate::ast::{CombineSpan, StructMember};
+use crate::ast::{CombineSpan, IntrinsicSignature, LambdaSignature, StructMember};
 use crate::{
     ast::{Typing, TypingValue},
     tokenizer::{TokenKind, TokenValue},
@@ -118,4 +119,60 @@ pub fn parse_struct(parser: &mut Parser) -> Result<Typing> {
         .expect(TokenKind::CurlyClose, "expected a closing curly bracket")?;
 
     Ok(TypingValue::Struct(fields).with_span(open.span.combine(close.span)))
+}
+
+pub fn parse_function(parser: &mut Parser) -> Result<Typing> {
+    let token = parser
+        .tokens
+        .expect(TokenKind::Function, "expected a function type")?;
+
+    parser.tokens.expect(
+        TokenKind::ParenOpen,
+        "expected the start of a parameter list",
+    )?;
+
+    let mut parameters = Vec::new();
+
+    loop {
+        if parser.tokens.peek().is_some_and(|token| {
+            token
+                .as_ref()
+                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
+        }) {
+            break;
+        }
+
+        if !parameters.is_empty() {
+            parser
+                .tokens
+                .expect(TokenKind::Comma, "expected a comma between parameters")?;
+        }
+
+        let parameter_type = parser.parse_typing(BindingPower::None)?;
+
+        parameters.push(parameter_type);
+    }
+
+    parser.tokens.expect(
+        TokenKind::ParenClose,
+        "expected the end of a parameter list",
+    )?;
+
+    parser
+        .tokens
+        .expect(TokenKind::Arrow, "expected an arrow")?;
+
+    let return_type = parser.parse_typing(BindingPower::None)?;
+
+    let span = parameters
+        .iter()
+        .map(|p| p.span)
+        .chain(std::iter::once(return_type.span))
+        .fold(token.span, |acc, span| acc.combine(span));
+
+    Ok(TypingValue::Function(LambdaSignature {
+        parameters,
+        return_type: Box::new(return_type),
+    })
+    .with_span(span))
 }

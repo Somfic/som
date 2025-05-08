@@ -43,27 +43,45 @@ pub type Function = GenericFunction<Expression>;
 #[derive(Debug, Clone)]
 pub struct GenericFunction<Expression> {
     pub identifier: Identifier,
-    pub signature: LambdaSignature,
+    pub signature: FunctionSignature,
     pub body: Box<Expression>,
 }
 
 #[derive(Debug, Clone, Span, Eq)]
-pub struct LambdaSignature {
+pub struct FunctionSignature {
     pub span: miette::SourceSpan,
     pub parameters: Vec<Parameter>,
     pub explicit_return_type: Option<Box<Typing>>,
 }
 
-impl PartialEq for LambdaSignature {
+impl PartialEq for FunctionSignature {
     fn eq(&self, other: &Self) -> bool {
         self.parameters == other.parameters
             && self.explicit_return_type == other.explicit_return_type
     }
 }
 
-#[derive(Debug, Clone, Span)]
+#[derive(Debug, Clone, Eq)]
 pub struct IntrinsicSignature {
     pub span: miette::SourceSpan,
     pub parameters: Vec<Parameter>,
-    pub return_type: Typing,
+    pub return_type: Box<Typing>,
+}
+
+impl PartialEq for IntrinsicSignature {
+    fn eq(&self, other: &Self) -> bool {
+        self.parameters == other.parameters && self.return_type == other.return_type
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct LambdaSignature {
+    pub parameters: Vec<Typing>,
+    pub return_type: Box<Typing>,
+}
+
+impl PartialEq for LambdaSignature {
+    fn eq(&self, other: &Self) -> bool {
+        self.parameters == other.parameters && self.return_type == other.return_type
+    }
 }

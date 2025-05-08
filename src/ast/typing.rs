@@ -1,4 +1,4 @@
-use super::{Identifier, LambdaSignature};
+use super::{FunctionSignature, Identifier, IntrinsicSignature, LambdaSignature};
 use miette::SourceSpan;
 use span_derive::Span;
 use std::fmt::Display;
@@ -64,7 +64,7 @@ impl Typing {
     }
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypingValue {
     Unknown,
     Integer,
@@ -75,29 +75,6 @@ pub enum TypingValue {
     Generic(Identifier),
     Struct(Vec<StructMember>),
     Function(LambdaSignature),
-}
-
-impl PartialEq for TypingValue {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Symbol(l0), Self::Symbol(r0)) => l0 == r0,
-            (Self::Generic(l0), Self::Generic(r0)) => l0 == r0,
-            (Self::Struct(lfields), Self::Struct(rfields)) => {
-                if lfields.len() != rfields.len() {
-                    return false;
-                }
-                lfields
-                    .iter()
-                    .all(|m| rfields.iter().any(|n| m.name == n.name && m.ty == n.ty))
-            }
-            (Self::Integer, Self::Integer) => true,
-            (Self::Decimal, Self::Decimal) => true,
-            (Self::Boolean, Self::Boolean) => true,
-            (Self::Unit, Self::Unit) => true,
-            (Self::Unknown, Self::Unknown) => true,
-            _ => false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,13 +121,10 @@ impl Display for TypingValue {
                     lambda_signature
                         .parameters
                         .iter()
-                        .map(|p| format!("{}: {}", p.identifier, p.ty))
+                        .map(|p| format!("{}", p))
                         .collect::<Vec<_>>()
                         .join(", "),
-                    lambda_signature
-                        .explicit_return_type
-                        .as_ref()
-                        .map_or_else(|| TypingValue::Unknown.to_string(), |t| t.to_string())
+                    lambda_signature.return_type
                 )
             }
         }

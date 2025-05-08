@@ -1,4 +1,4 @@
-use crate::ast::{Identifier, LambdaSignature, Typing, TypingValue};
+use crate::ast::{Identifier, FunctionSignature, Typing, TypingValue};
 use cranelift::prelude::{EntityRef, FunctionBuilder, Signature, Variable};
 use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
