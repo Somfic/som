@@ -5,7 +5,7 @@ use crate::{ast::Parameter, tokenizer::TokenKind};
 use super::{BindingPower, Parser};
 
 pub fn parse_function_signature(parser: &mut Parser) -> Result<FunctionSignature> {
-    parser
+    let start = parser
         .tokens
         .expect(TokenKind::Function, "expected a function declaration")?;
 
@@ -26,6 +26,7 @@ pub fn parse_function_signature(parser: &mut Parser) -> Result<FunctionSignature
     };
 
     let span = combine_spans(parameters.iter().map(|p| p.span).collect::<Vec<_>>());
+    let span = start.span.combine(span);
 
     Ok(FunctionSignature {
         parameters,
