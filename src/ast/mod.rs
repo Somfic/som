@@ -1,4 +1,4 @@
-mod expression;
+pub mod expression;
 mod module;
 mod span;
 mod statement;

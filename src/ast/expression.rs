@@ -39,7 +39,7 @@ pub enum ExpressionValue<Statement, Expression> {
         result: Box<Expression>,
     },
     FunctionCall {
-        identifier: Identifier,
+        function: Box<Expression>,
         arguments: Vec<Expression>,
     },
     VariableAssignment {
