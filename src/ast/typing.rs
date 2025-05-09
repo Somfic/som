@@ -1,7 +1,7 @@
 use super::{Identifier, LambdaSignature};
 use miette::SourceSpan;
 use span_derive::Span;
-use std::fmt::Display;
+use std::fmt::{write, Display};
 
 #[derive(Debug, Clone, Span)]
 pub struct Typing {
@@ -114,19 +114,7 @@ impl Display for TypingValue {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            TypingValue::Function(lambda_signature) => {
-                write!(
-                    f,
-                    "fn({}) -> {}",
-                    lambda_signature
-                        .parameters
-                        .iter()
-                        .map(|p| format!("{p}"))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    lambda_signature.return_type
-                )
-            }
+            TypingValue::Function(lambda_signature) => write!(f, "{lambda_signature}"),
         }
     }
 }

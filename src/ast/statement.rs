@@ -1,7 +1,6 @@
 use super::{Expression, Identifier, Parameter, TypedExpression, Typing};
-
 use span_derive::Span;
-
+use std::fmt::Display;
 pub type TypedStatement = GenericStatement<TypedExpression>;
 pub type Statement = GenericStatement<Expression>;
 
@@ -75,12 +74,50 @@ impl PartialEq for IntrinsicSignature {
 
 #[derive(Debug, Clone, Eq)]
 pub struct LambdaSignature {
-    pub parameters: Vec<Typing>,
+    pub parameters: Vec<LambdaSignatureParameter>,
     pub return_type: Box<Typing>,
+}
+
+#[derive(Debug, Clone, Eq, Span)]
+pub struct LambdaSignatureParameter {
+    pub name: Option<Box<str>>,
+    pub ty: Typing,
+    pub span: miette::SourceSpan,
 }
 
 impl PartialEq for LambdaSignature {
     fn eq(&self, other: &Self) -> bool {
         self.parameters == other.parameters && self.return_type == other.return_type
+    }
+}
+
+impl PartialEq for LambdaSignatureParameter {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
+    }
+}
+
+impl Display for LambdaSignatureParameter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(name) = &self.name {
+            write!(f, "{} ~ {}", name, self.ty)
+        } else {
+            write!(f, "{}", self.ty)
+        }
+    }
+}
+
+impl Display for LambdaSignature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "({}) -> {}",
+            self.parameters
+                .iter()
+                .map(|param| param.to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.return_type
+        )
     }
 }

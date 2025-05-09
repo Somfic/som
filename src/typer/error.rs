@@ -1,8 +1,10 @@
+use crate::ast::{
+    Expression, FunctionSignature, Identifier, LambdaSignature, LambdaSignatureParameter,
+    Parameter, TypedExpression, Typing,
+};
 use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
-use crate::ast::{Expression, Identifier, FunctionSignature, Parameter, TypedExpression, Typing};
-
-pub fn new_mismatched_types(
+pub fn mismatched_types(
     message: impl Into<String>,
     left_ty: &Typing,
     right_ty: &Typing,
@@ -25,29 +27,10 @@ pub fn new_mismatched_types(
     ))
 }
 
-pub fn mismatched_type(
-    message: impl Into<String>,
-    ty: &Typing,
-    hint: impl Into<String>,
-) -> Option<MietteDiagnostic> {
-    let message = message.into();
-
-    if ty.is_unknown() {
-        return None;
-    }
-
-    Some(diagnostic!(
-        severity = Severity::Error,
-        labels = vec![ty.label(format!("{ty}")),],
-        help = hint.into(),
-        "{message}"
-    ))
-}
-
 pub fn mismatched_argument(
     message: impl Into<String>,
     argument: &TypedExpression,
-    parameter: &Parameter,
+    parameter: &LambdaSignatureParameter,
     hint: impl Into<String>,
 ) -> Option<MietteDiagnostic> {
     let message = message.into();
@@ -56,7 +39,7 @@ pub fn mismatched_argument(
         severity = Severity::Error,
         labels = vec![
             argument.label(format!("{}", argument.ty)),
-            parameter.label(format!("{}", parameter.ty))
+            parameter.label(format!("{}", parameter.ty)),
         ],
         help = hint.into(),
         "{message}"
@@ -65,7 +48,6 @@ pub fn mismatched_argument(
 
 pub fn unexpected_argument(
     message: impl Into<String>,
-    function: &FunctionSignature,
     argument: &TypedExpression,
     hint: impl Into<String>,
 ) -> Option<MietteDiagnostic> {
@@ -73,10 +55,7 @@ pub fn unexpected_argument(
 
     Some(diagnostic!(
         severity = Severity::Error,
-        labels = vec![
-            argument.label(format!("{}", argument.ty)),
-            function.label("unexpected argument"),
-        ],
+        labels = vec![argument.label(format!("{}", argument.ty)),],
         help = hint.into(),
         "{message}"
     ))
@@ -85,17 +64,14 @@ pub fn unexpected_argument(
 pub fn missing_argument(
     message: impl Into<String>,
     function_call: &Expression,
-    parameter: &Parameter,
+    parameter: &LambdaSignatureParameter,
     hint: impl Into<String>,
 ) -> Option<MietteDiagnostic> {
     let message = message.into();
 
     Some(diagnostic!(
         severity = Severity::Error,
-        labels = vec![
-            function_call.label(format!("missing value for `{}`", parameter.identifier)),
-            parameter.label(format!("`{}` paramater", parameter.identifier))
-        ],
+        labels = vec![function_call.label(format!("missing value for `{}`", parameter)),],
         help = hint.into(),
         "{message}"
     ))
