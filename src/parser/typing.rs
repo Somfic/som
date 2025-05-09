@@ -1,5 +1,5 @@
 use super::{BindingPower, Parser};
-use crate::ast::{CombineSpan, LambdaSignature, StructMember};
+use crate::ast::{CombineSpan, LambdaSignature, LambdaSignatureParameter, StructMember};
 use crate::{
     ast::{Typing, TypingValue},
     tokenizer::{TokenKind, TokenValue},
@@ -149,7 +149,11 @@ pub fn parse_function(parser: &mut Parser) -> Result<Typing> {
 
         let parameter_type = parser.parse_typing(BindingPower::None)?;
 
-        parameters.push(parameter_type);
+        parameters.push(LambdaSignatureParameter {
+            name: None,
+            span: parameter_type.span,
+            ty: parameter_type,
+        });
     }
 
     parser.tokens.expect(
