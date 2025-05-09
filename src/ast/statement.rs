@@ -121,3 +121,16 @@ impl Display for LambdaSignature {
         )
     }
 }
+
+impl LambdaSignatureParameter {
+    pub fn to_parameter(&self) -> Parameter {
+        Parameter {
+            identifier: Identifier {
+                name: self.name.clone().unwrap_or_default(),
+                span: self.span,
+            },
+            ty: self.ty.clone(),
+            span: self.span,
+        }
+    }
+}

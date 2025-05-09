@@ -321,11 +321,6 @@ pub fn parse_block(parser: &mut Parser) -> Result<Expression> {
 
     let inner_block = parse_inner_block(parser, TokenKind::CurlyClose)?;
 
-    parser.tokens.expect(
-        TokenKind::CurlyClose,
-        "expected the end of the expression block",
-    )?;
-
     Ok(inner_block)
 }
 
@@ -348,8 +343,6 @@ pub fn parse_function_call(
     bp: BindingPower,
 ) -> Result<Expression> {
     let mut arguments = Vec::new();
-
-    let identifier = Identifier::from_expression(&lhs)?;
 
     loop {
         if parser.tokens.peek().is_some_and(|token| {
@@ -375,7 +368,7 @@ pub fn parse_function_call(
     let span = lhs.span.combine(close.span);
 
     Ok(ExpressionValue::FunctionCall {
-        identifier,
+        function: Box::new(lhs),
         arguments,
     }
     .with_span(span))

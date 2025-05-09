@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     ast::{
-        BinaryOperator, ExpressionValue, Identifier, IntrinsicSignature, FunctionSignature,
+        BinaryOperator, ExpressionValue, FunctionSignature, Identifier, IntrinsicSignature,
         Primitive, StatementValue, TypedExpression, TypedModule, TypedStatement, TypingValue,
     },
     prelude::*,
@@ -236,22 +236,23 @@ impl Compiler {
                 builder.block_params(block)[0]
             }
             ExpressionValue::FunctionCall {
-                identifier: function_name,
+                function: function_name,
                 arguments,
             } => {
-                let arg_values: Vec<Value> = arguments
-                    .iter()
-                    .map(|arg| self.compile_expression(arg, builder, environment))
-                    .collect();
+                todo!()
+                // let arg_values: Vec<Value> = arguments
+                //     .iter()
+                //     .map(|arg| self.compile_expression(arg, builder, environment))
+                //     .collect();
 
-                let (func_id, _signature) = environment
-                    .lookup_function(function_name)
-                    .expect("function not declared");
+                // let (func_id, _signature) = environment
+                //     .lookup_function(function_name)
+                //     .expect("function not declared");
 
-                let callee = self.codebase.declare_func_in_func(*func_id, builder.func);
-                let call_inst = builder.ins().call(callee, &arg_values);
+                // let callee = self.codebase.declare_func_in_func(*func_id, builder.func);
+                // let call_inst = builder.ins().call(callee, &arg_values);
 
-                builder.inst_results(call_inst)[0]
+                // builder.inst_results(call_inst)[0]
             }
             ExpressionValue::VariableAssignment {
                 identifier: name,

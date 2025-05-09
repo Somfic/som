@@ -141,9 +141,9 @@ pub fn undefined_field(
     )
 }
 
-pub fn undefined_function(
+pub fn calling_non_function(
     message: impl Into<String>,
-    identifier: &Identifier,
+    expression: &TypedExpression,
     label: SourceSpan,
 ) -> Option<MietteDiagnostic> {
     let message = message.into();
@@ -157,7 +157,7 @@ pub fn undefined_function(
     Some(diagnostic!(
         severity = Severity::Error,
         labels = vec![label],
-        help = format!("define a function named `{}`", identifier),
+        help = format!("define a function named"),
         "{message}"
     ))
 }
