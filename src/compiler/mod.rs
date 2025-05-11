@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use crate::{
     ast::{
         BinaryOperator, ExpressionValue, FunctionSignature, Identifier, IntrinsicSignature,
@@ -16,10 +14,10 @@ use cranelift::{
     },
     prelude::{isa::TargetIsa, *},
 };
-use cranelift_module::Module;
-
 use cranelift_jit::{JITBuilder, JITModule};
+use cranelift_module::Module;
 use environment::CompileEnvironment;
+use std::sync::Arc;
 
 pub mod environment;
 
@@ -574,7 +572,7 @@ impl TypingValue {
             TypingValue::Integer => types::I64,
             TypingValue::Boolean => types::I8,
             TypingValue::Decimal => types::F64,
-            TypingValue::Unknown => unreachable!("unknown type"),
+            TypingValue::Unknown => todo!("unknown type"),
             TypingValue::Symbol(identifier) => todo!(),
             TypingValue::Unit => types::I8,
             TypingValue::Generic(identifier) => todo!(),

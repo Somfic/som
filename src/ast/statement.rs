@@ -35,16 +35,6 @@ impl GenericStatement<Expression> {
     }
 }
 
-pub type TypedFunction = GenericFunction<TypedExpression>;
-pub type Function = GenericFunction<Expression>;
-
-#[derive(Debug, Clone)]
-pub struct GenericFunction<Expression> {
-    pub identifier: Identifier,
-    pub signature: FunctionSignature,
-    pub body: Box<Expression>,
-}
-
 #[derive(Debug, Clone, Span, Eq)]
 pub struct FunctionSignature {
     pub span: miette::SourceSpan,
