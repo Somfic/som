@@ -1,7 +1,6 @@
 use crate::ast::{
-    CombineSpan, Expression, ExpressionValue, Function, FunctionSignature, Identifier,
-    IntrinsicSignature, LambdaSignature, LambdaSignatureParameter, Module, Primitive, Statement,
-    StatementValue, TypedExpression, TypedFunction, TypedModule, TypedStatement, Typing,
+    CombineSpan, Expression, ExpressionValue, LambdaSignature, LambdaSignatureParameter, Module,
+    Primitive, Statement, StatementValue, TypedExpression, TypedModule, TypedStatement, Typing,
     TypingValue,
 };
 use crate::parser::ParserResult;
@@ -522,7 +521,6 @@ impl Typer {
                     body,
                 } = &value.value
                 {
-                    // Adjusted to handle `Parameter` directly without `to_parameter`
                     let parameters: Vec<Parameter> = parameters.clone();
 
                     let return_type = explicit_return_type
@@ -543,10 +541,11 @@ impl Typer {
                     })
                     .with_span(value.span);
 
-                    // Declare the placeholder in the environment
                     environment.declare(identifier, &placeholder);
+                    for parameter in parameters.iter() {
+                        environment.declare(&parameter.identifier, &parameter.ty);
+                    }
 
-                    // Type-check the function body
                     let typed_body = self.type_check_expression(body, environment)?;
 
                     // Ensure the return type matches the explicit return type, if provided
@@ -588,8 +587,8 @@ impl Typer {
                                 value: ExpressionValue::Lambda {
                                     parameters: parameters
                                         .iter()
-                                        .map(|p| LambdaSignatureParameter {
-                                            name: Some(p.identifier.name.clone()),
+                                        .map(|p| Parameter {
+                                            identifier: p.identifier.clone(),
                                             ty: p.ty.clone(),
                                             span: p.span,
                                         })

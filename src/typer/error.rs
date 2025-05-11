@@ -1,7 +1,4 @@
-use crate::ast::{
-    Expression, FunctionSignature, Identifier, LambdaSignature, LambdaSignatureParameter,
-    Parameter, TypedExpression, Typing,
-};
+use crate::ast::{Expression, Identifier, LambdaSignatureParameter, TypedExpression, Typing};
 use miette::{diagnostic, LabeledSpan, MietteDiagnostic, Severity, SourceSpan};
 
 pub fn mismatched_types(

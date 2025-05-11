@@ -3,21 +3,23 @@
 > An idiot admires complexity, a genius admires simplicity.
 
 ```rust
-let fib = fn(n ~ int) -> int {
+let fib = fn(n ~ int){
     n if n < 2 else fib(n - 1) + fib(n - 2)
 }
-
+ -> int 
 fib(10)
 ```
 
 ```rust
-let Option<T> = enum Some(T) | None
+type Option<T> = Some(T) | None
 
-let Color = enum Red | Green | Blue 
-            | Hex(string) 
-            | Rgb(Rgb)
+type Rgb = { r ~ int, g ~ int, b ~ int }
 
-let Rgb = type { r ~ int, g ~ int, b ~ int }
+type Color = Red 
+           | Green 
+           | Blue 
+           | Hex(string) 
+           | Rgb(Rgb)
 
 fn print_color(color ~ Color)
     print(color)
