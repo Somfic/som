@@ -1,6 +1,5 @@
 use crate::prelude::*;
 mod token;
-use miette::{LabeledSpan, SourceSpan};
 pub use token::*;
 
 pub struct Lexer<'input> {

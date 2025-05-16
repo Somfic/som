@@ -58,7 +58,7 @@ pub enum LexerError {
 
 pub fn unexpected_token(token: &Token, expected: &TokenKind) -> Error {
     Error::Lexer(LexerError::UnexpectedToken {
-        help: format!("expected token of kind {expected:?}, found {}", token.kind),
+        help: format!("expected {expected}, found {}", token.kind),
         token: token.clone(),
     })
 }
