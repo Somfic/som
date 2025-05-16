@@ -1,8 +1,8 @@
 use crate::prelude::*;
 use span_derive::Span;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 
-#[derive(Debug, Clone, Span, PartialEq)]
+#[derive(Clone, Span, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub value: TokenValue,
@@ -15,6 +15,15 @@ impl Display for Token {
         match &self.value {
             TokenValue::None => write!(f, "{}", self.kind),
             value => write!(f, "{}: {}", self.kind, value),
+        }
+    }
+}
+
+impl Debug for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.value {
+            TokenValue::None => write!(f, "{:?}", self.kind),
+            _ => write!(f, "{:?}", self.value),
         }
     }
 }

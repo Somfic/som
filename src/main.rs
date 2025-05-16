@@ -15,7 +15,7 @@ fn main() {
     }))
     .unwrap();
 
-    let source = "123_~`|@#%$^&*()_+-=[]{};':\",.<>?/\\\n\n\nlet x = 42;\nfn main() {\n    println!(\"Hello, world!\");\n}\n";
+    let source = "1.1 1,";
 
     let lexer = Lexer::new(source);
 
