@@ -21,3 +21,4 @@ span_derive = { path = "span_derive" }
 syn = "2.0.101"
 quote = "1.0.40"
 proc-macro2 = "1.0.95"
+thiserror = "2.0.12"
