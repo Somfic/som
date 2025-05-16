@@ -15,13 +15,16 @@ fn main() {
     }))
     .unwrap();
 
-    let mut lexer = Lexer::new("123");
+    let source = "123_~`|@#%$^&*()_+-=[]{};':\",.<>?/\\\n\n\nlet x = 42;\nfn main() {\n    println!(\"Hello, world!\");\n}\n";
 
-    match lexer.next_token() {
-        Ok(token) => println!("Next token: {:?}", token),
-        Err(errors) => {
-            for error in errors {
-                eprintln!("{:?}", miette::miette!(error).with_source_code("123"));
+    let lexer = Lexer::new(source);
+
+    for token in lexer {
+        match token {
+            Ok(tok) => println!("{tok:?}"),
+            Err(e) => {
+                eprintln!("{:?}", miette::miette!(e).with_source_code(source));
+                break;
             }
         }
     }
