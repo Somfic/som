@@ -1,4 +1,5 @@
-use lexer::Lexer;
+use lexer::{Lexer, TokenKind};
+use miette::Context;
 
 mod lexer;
 mod prelude;
@@ -17,15 +18,13 @@ fn main() {
 
     let source = "1.1 1,";
 
-    let lexer = Lexer::new(source);
+    let mut lexer = Lexer::new(source);
 
-    for token in lexer {
-        match token {
-            Ok(tok) => println!("{tok:?}"),
-            Err(e) => {
-                eprintln!("{:?}", miette::miette!(e).with_source_code(source));
-                break;
-            }
-        }
-    }
+    lexer
+        .expect(TokenKind::Arrow)
+        .context("while parsing")
+        .map_err(|e| {
+            eprintln!("{:?}", miette::miette!(e).with_source_code(source));
+        })
+        .ok();
 }
