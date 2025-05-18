@@ -7,6 +7,7 @@ mod lexer;
 mod parser;
 mod prelude;
 mod statements;
+mod type_checker;
 mod types;
 
 fn main() {
@@ -21,16 +22,16 @@ fn main() {
     }))
     .unwrap();
 
-    let source = "1 + 1";
+    let source = "1 + true;";
 
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer);
 
-    parser
-        .parse_expression(BindingPower::None)
-        .context("while parsing")
-        .map_err(|e| {
-            eprintln!("{:?}", miette::miette!(e).with_source_code(source));
-        })
-        .ok();
+    let statement = parser
+        .parse_statement(true)
+        .context("Failed to parse statement")
+        .unwrap();
+
+    let mut type_checker = TypeChecker::new();
+    let type_checked = type_checker.check(&statement);
 }

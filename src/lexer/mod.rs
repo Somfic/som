@@ -3,10 +3,10 @@ mod token;
 pub use token::*;
 
 pub struct Lexer<'input> {
-    source_code: &'input str,
-    remainder: &'input str,
+    pub source_code: &'input str,
+    pub remainder: &'input str,
     pub byte_offset: usize,
-    peeked: Option<Result<Token>>,
+    pub peeked: Option<Result<Token>>,
 }
 
 impl<'input> Lexer<'input> {

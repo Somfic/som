@@ -1,3 +1,5 @@
+use miette::IntoDiagnostic;
+
 use crate::prelude::*;
 
 pub mod lookup;
@@ -15,37 +17,58 @@ impl<'source> Parser<'source> {
         }
     }
 
-    pub fn expect(&mut self, expected: TokenKind) -> Result<Token> {
+    pub fn expect(&mut self, expected: TokenKind, help: impl Into<String>) -> Result<Token> {
         match self.lexer.next() {
             Some(Ok(token)) if expected == token.kind => Ok(token),
-            Some(Ok(token)) => Err(parser_unexpected_token(&token, &expected).into()),
+            Some(Ok(token)) => Err(parser_unexpected_token(help, &token, &expected)),
             Some(Err(e)) => Err(e),
-            None => Ok(Token {
-                kind: TokenKind::EOF,
-                value: TokenValue::None,
-                span: SourceSpan::new(self.lexer.byte_offset.into(), 0),
-                original: "".into(),
-            }),
+            None => Err(parser_unexpected_end_of_file(
+                (self.lexer.byte_offset - 1, 0),
+                format!("{}", expected),
+            )),
         }
+    }
+
+    pub fn parse_statement(&mut self, require_semicolon: bool) -> Result<Statement> {
+        let token = match self.lexer.peek().as_ref() {
+            Some(Ok(token)) => token,
+            Some(Err(_)) => return Err(self.lexer.next().unwrap().unwrap_err()),
+            None => {
+                return Err(parser_unexpected_end_of_file(
+                    (self.lexer.byte_offset, 0),
+                    "a statement",
+                ));
+            }
+        };
+
+        let statement = match self.lookup.statement_lookup.get(&token.kind) {
+            Some(handler) => handler(self)?,
+            None => {
+                let expression = self.parse_expression(BindingPower::None)?;
+
+                Statement {
+                    value: StatementValue::Expression(expression.clone()),
+                    span: expression.span,
+                }
+            }
+        };
+
+        if require_semicolon {
+            self.expect(TokenKind::Semicolon, "expected a closing semicolon")?;
+        }
+
+        Ok(statement)
     }
 
     pub fn parse_expression(&mut self, bp: BindingPower) -> Result<Expression> {
         let token = match self.lexer.peek().as_ref() {
             Some(Ok(token)) => token,
-            Some(Err(_)) => {
-                return Err(self
-                    .lexer
-                    .next()
-                    .unwrap()
-                    .unwrap_err()
-                    .context("while parsing expression"))
-            }
+            Some(Err(_)) => return Err(self.lexer.next().unwrap().unwrap_err()),
             None => {
                 return Err(parser_unexpected_end_of_file(
                     (self.lexer.byte_offset, 0),
                     "an expression",
-                ))
-                .context("while parsing expression");
+                ));
             }
         };
 
@@ -53,24 +76,16 @@ impl<'source> Parser<'source> {
             .lookup
             .expression_lookup
             .get(&token.kind)
-            .ok_or(parser_expected_expression(token))
-            .context("while parsing expression")?;
+            .ok_or(parser_expected_expression(token))?;
 
-        let mut lhs = handler(self).context("while parsing expression")?;
+        let mut lhs = handler(self)?;
 
         let mut next_token = self.lexer.peek();
 
         while let Some(token) = next_token {
             let token = match token {
                 Ok(token) => token,
-                Err(_) => {
-                    return Err(self
-                        .lexer
-                        .next()
-                        .unwrap()
-                        .unwrap_err()
-                        .context("while parsing expression"))
-                }
+                Err(_) => return Err(self.lexer.next().unwrap().unwrap_err()),
             };
 
             let token_binding_power = {
@@ -90,8 +105,7 @@ impl<'source> Parser<'source> {
                 None => break,
             };
 
-            lhs = handler(self, lhs, token_binding_power)
-                .context("while parsing left-hand side expression")?;
+            lhs = handler(self, lhs, token_binding_power)?;
 
             next_token = self.lexer.peek();
         }
