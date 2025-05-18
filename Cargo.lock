@@ -840,18 +840,8 @@ dependencies = [
  "pretty_assertions",
  "proc-macro2",
  "quote",
- "span_derive",
  "syn",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "span_derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

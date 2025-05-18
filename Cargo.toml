@@ -17,7 +17,6 @@ cranelift-jit = "0.119.0"
 cranelift-native = "0.119.0"
 memmap2 = "0.9.5"
 clap = { version = "4.5.37", features = ["derive"] }
-span_derive = { path = "span_derive" }
 syn = "2.0.101"
 quote = "1.0.40"
 proc-macro2 = "1.0.95"
