@@ -99,6 +99,10 @@ impl Default for Lookup {
             TokenKind::Integer,
             crate::expressions::primary::integer::parse,
         )
+        .add_expression_handler(
+            TokenKind::Boolean,
+            crate::expressions::primary::boolean::parse,
+        )
         .add_left_expression_handler(
             TokenKind::Plus,
             BindingPower::Additive,

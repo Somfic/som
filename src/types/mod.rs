@@ -12,9 +12,26 @@ impl Type {
             span: source.into(),
         }
     }
+
+    pub fn equals(&self, other: &Type) -> bool {
+        self.kind == other.kind
+    }
+}
+
+impl From<Type> for SourceSpan {
+    fn from(ty: Type) -> Self {
+        ty.span
+    }
+}
+
+impl From<&Type> for SourceSpan {
+    fn from(ty: &Type) -> Self {
+        ty.span
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypeKind {
     Integer,
+    Boolean,
 }

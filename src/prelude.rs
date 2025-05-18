@@ -3,28 +3,34 @@ pub use crate::expressions::binary::BinaryOperator;
 pub use crate::expressions::primary::PrimaryExpression;
 pub use crate::parser::lookup::{BindingPower, Lookup};
 pub use crate::statements::{Statement, StatementValue};
+pub use crate::type_checker::TypeChecker;
 pub use crate::types::{Type, TypeKind};
 pub use crate::{
     expressions::{Expression, ExpressionValue, TypedExpression},
     lexer::{Lexer, Token, TokenKind, TokenValue},
 };
 pub use crate::{parser::Parser, statements::TypedStatement};
+use miette::LabeledSpan;
 pub use miette::SourceSpan;
 pub use miette::{Context, Diagnostic};
 use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, miette::Report>;
-pub type Results<T> = std::result::Result<T, Vec<miette::Report>>;
+pub type Result<T> = std::result::Result<T, Error>;
+pub type Results<T> = std::result::Result<T, Vec<Error>>;
 
 #[derive(Error, Debug, Diagnostic)]
 pub enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Lexer(LexerError),
+    Lexer(#[from] LexerError),
 
     #[error(transparent)]
     #[diagnostic(transparent)]
-    Parser(ParserError),
+    Parser(#[from] ParserError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    TypeChecker(#[from] TypeCheckerError),
 }
 
 #[derive(Error, Debug, Diagnostic)]
@@ -75,8 +81,8 @@ pub enum ParserError {
     #[error("unexpected end of file")]
     #[diagnostic()]
     UnexpectedEndOfFile {
-        #[label("expected more tokens here")]
-        span: (usize, usize),
+        #[label(collection)]
+        labels: Vec<LabeledSpan>,
         #[help]
         help: String,
     },
@@ -86,6 +92,31 @@ pub enum ParserError {
     ExpectedExpression {
         #[label("expected an expression here")]
         token: Token,
+        #[help]
+        help: String,
+    },
+
+    #[error("expected statement")]
+    #[diagnostic()]
+    ExpectedStatement {
+        #[label("expected a statement here")]
+        token: Token,
+        #[help]
+        help: String,
+    },
+}
+
+#[derive(Error, Debug, Diagnostic)]
+pub enum TypeCheckerError {
+    #[error("unexpected end of file")]
+    #[diagnostic()]
+    TypeMismatch {
+        #[label("this type")]
+        left: SourceSpan,
+
+        #[label("this type")]
+        right: SourceSpan,
+
         #[help]
         help: String,
     },
@@ -112,23 +143,42 @@ pub fn lexer_improper_character(original: &str, range: (usize, usize)) -> Error 
     })
 }
 
-pub fn parser_unexpected_token(token: &Token, expected: &TokenKind) -> Error {
+pub fn parser_unexpected_token(
+    help: impl Into<String>,
+    token: &Token,
+    expected: &TokenKind,
+) -> Error {
+    let help = help.into();
+
     Error::Parser(ParserError::UnexpectedToken {
-        help: format!("expected {expected}, found {}", token.kind),
+        help: format!("{help}, found {}", token.kind),
         token: token.clone(),
     })
 }
 
 pub fn parser_unexpected_end_of_file(span: (usize, usize), expected: impl Into<String>) -> Error {
+    let expected = expected.into();
+
     Error::Parser(ParserError::UnexpectedEndOfFile {
-        help: format!("expected {} but no more tokens were found", expected.into()),
-        span,
+        help: format!("expected {} but no more tokens were found", expected),
+        labels: vec![LabeledSpan::new(
+            Some(format!("expected {} here", expected)),
+            span.0,
+            span.1,
+        )],
     })
 }
 
 pub fn parser_expected_expression(token: &Token) -> Error {
     Error::Parser(ParserError::ExpectedExpression {
         help: format!("{token} cannot be parsed as an expression"),
+        token: token.clone(),
+    })
+}
+
+pub fn parser_expected_statement(token: &Token) -> Error {
+    Error::Parser(ParserError::ExpectedStatement {
+        help: format!("{token} cannot be parsed as a statement"),
         token: token.clone(),
     })
 }
