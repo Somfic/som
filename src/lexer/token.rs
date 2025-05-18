@@ -14,7 +14,7 @@ impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.value {
             TokenValue::None => write!(f, "{}", self.kind),
-            value => write!(f, "{}: {}", self.kind, value),
+            value => write!(f, "`{}` ({})", value, self.kind),
         }
     }
 }
@@ -48,7 +48,7 @@ pub enum TokenValue {
 impl Display for TokenValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TokenValue::None => write!(f, ""),
+            TokenValue::None => write!(f, "nothing"),
             TokenValue::Boolean(value) => write!(f, "{value}"),
             TokenValue::Integer(value) => write!(f, "{value}"),
             TokenValue::Decimal(value) => write!(f, "{value}"),
@@ -245,11 +245,11 @@ impl Display for TokenKind {
             TokenKind::Return => write!(f, "`return`"),
             TokenKind::Use => write!(f, "`use`"),
             TokenKind::Mod => write!(f, "`mod`"),
-            TokenKind::Boolean => write!(f, "a boolean value"),
-            TokenKind::Integer => write!(f, "an integer value"),
-            TokenKind::Decimal => write!(f, "a decimal value"),
-            TokenKind::String => write!(f, "a string value"),
-            TokenKind::Character => write!(f, "a character value"),
+            TokenKind::Boolean => write!(f, "a boolean"),
+            TokenKind::Integer => write!(f, "an integer"),
+            TokenKind::Decimal => write!(f, "a decimal"),
+            TokenKind::String => write!(f, "a string"),
+            TokenKind::Character => write!(f, "a character"),
             TokenKind::Identifier => write!(f, "an identifier"),
             TokenKind::Struct => write!(f, "`struct`"),
             TokenKind::Enum => write!(f, "`enum`"),
