@@ -5,7 +5,7 @@ pub use token::*;
 pub struct Lexer<'input> {
     source_code: &'input str,
     remainder: &'input str,
-    byte_offset: usize,
+    pub byte_offset: usize,
     peeked: Option<Result<Token>>,
 }
 
@@ -16,20 +16,6 @@ impl<'input> Lexer<'input> {
             remainder: source_code,
             byte_offset: 0,
             peeked: None,
-        }
-    }
-
-    pub fn expect(&mut self, expected: TokenKind) -> Result<Token> {
-        match self.next() {
-            Some(Ok(token)) if expected == token.kind => Ok(token),
-            Some(Ok(token)) => Err(unexpected_token(&token, &expected)),
-            Some(Err(e)) => Err(e),
-            None => Ok(Token {
-                kind: TokenKind::EOF,
-                value: TokenValue::None,
-                span: SourceSpan::new(self.byte_offset.into(), 0),
-                original: "".into(),
-            }),
         }
     }
 
@@ -177,10 +163,11 @@ impl Iterator for Lexer<'_> {
                 } else if let Ok(num) = number.parse::<f64>() {
                     Ok((TokenKind::Decimal, TokenValue::Decimal(num)))
                 } else {
-                    Err(improper_number(
+                    Err(lexer_improper_number(
                         &number,
                         (self.byte_offset - number.len(), self.byte_offset),
-                    ))
+                    )
+                    .into())
                 }
             }
             '"' => {
@@ -209,19 +196,21 @@ impl Iterator for Lexer<'_> {
                     self.byte_offset += c.len_utf8();
                     Ok((TokenKind::Character, TokenValue::Character(c)))
                 } else {
-                    Err(improper_character(
+                    Err(lexer_improper_character(
                         &c.to_string(),
                         (self.byte_offset - c.len_utf8(), c.len_utf8()),
-                    ))
+                    )
+                    .into())
                 }
             }
             ' ' | '\r' | '\t' | '\n' => {
                 return self.next();
             }
-            c => Err(unexpected_character(
+            c => Err(lexer_unexpected_character(
                 c,
                 (self.byte_offset - c.len_utf8(), c.len_utf8()),
-            )),
+            )
+            .into()),
         };
 
         let byte_length = self

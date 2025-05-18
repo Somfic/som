@@ -1,8 +1,13 @@
-use lexer::{Lexer, TokenKind};
+use crate::prelude::*;
 use miette::Context;
+use parser::Parser;
 
+mod expressions;
 mod lexer;
+mod parser;
 mod prelude;
+mod statements;
+mod types;
 
 fn main() {
     miette::set_hook(Box::new(|_| {
@@ -16,12 +21,13 @@ fn main() {
     }))
     .unwrap();
 
-    let source = "1.1 1,";
+    let source = "1 + 1";
 
-    let mut lexer = Lexer::new(source);
+    let lexer = Lexer::new(source);
+    let mut parser = Parser::new(lexer);
 
-    lexer
-        .expect(TokenKind::Arrow)
+    parser
+        .parse_expression(BindingPower::None)
         .context("while parsing")
         .map_err(|e| {
             eprintln!("{:?}", miette::miette!(e).with_source_code(source));
