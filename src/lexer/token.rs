@@ -1,8 +1,7 @@
 use crate::prelude::*;
-use span_derive::Span;
 use std::fmt::{Debug, Display};
 
-#[derive(Clone, Span, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Token {
     pub kind: TokenKind,
     pub value: TokenValue,
@@ -278,10 +277,10 @@ impl Display for TokenKind {
     }
 }
 
-#[derive(Debug, Clone, Span, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct Identifier {
     pub name: Box<str>,
-    pub span: miette::SourceSpan,
+    pub span: SourceSpan,
 }
 
 impl std::hash::Hash for Identifier {
