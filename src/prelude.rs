@@ -100,7 +100,7 @@ pub enum ParserError {
 
 #[derive(Clone, Error, Debug, Diagnostic)]
 pub enum TypeCheckerError {
-    #[error("unexpected end of file")]
+    #[error("mismatching types")]
     #[diagnostic()]
     TypeMismatch {
         #[label(collection, "")]
