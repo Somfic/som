@@ -14,6 +14,7 @@ use miette::LabeledSpan;
 use miette::SourceSpan;
 pub use miette::{Context, Diagnostic};
 use std::fmt::Display;
+use std::ops::Sub;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -26,21 +27,19 @@ impl std::ops::Add for Span {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let spans = vec![self.0, rhs.0];
+        let spans = [self.0, rhs.0];
 
-        let start = spans
-            .iter()
-            .min_by_key(|s| s.offset())
-            .map(|s| s.offset())
-            .unwrap_or(0);
+        let start = spans.iter().map(|s| s.offset()).min().unwrap_or(0);
 
         let end = spans
             .iter()
-            .max_by_key(|s| s.offset() + s.len())
             .map(|s| s.offset() + s.len())
-            .unwrap_or(0);
+            .max()
+            .unwrap_or(start);
 
-        Span(miette::SourceSpan::new(start.into(), end - start))
+        let length = end.sub(start);
+
+        Span(miette::SourceSpan::new(start.into(), length))
     }
 }
 
