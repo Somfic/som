@@ -14,15 +14,15 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
     })
 }
 
-pub fn type_check(expression: &Expression) -> Result<TypedExpression> {
+pub fn type_check(expression: &Expression) -> TypedExpression {
     let value = match &expression.value {
         ExpressionValue::Primary(PrimaryExpression::Boolean(value)) => value,
         _ => unreachable!(),
     };
 
-    Ok(TypedExpression {
+    TypedExpression {
         value: ExpressionValue::Primary(PrimaryExpression::Boolean(*value)),
         span: expression.into(),
         type_: Type::new(expression, TypeKind::Boolean),
-    })
+    }
 }

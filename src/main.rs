@@ -33,5 +33,12 @@ fn main() {
         .unwrap();
 
     let mut type_checker = TypeChecker::new();
-    let type_checked = type_checker.check(&statement);
+    match type_checker.check(&statement) {
+        Ok(typed_statement) => {}
+        Err(errors) => {
+            for error in errors {
+                eprintln!("{:?}", miette::miette!(error).with_source_code(source));
+            }
+        }
+    }
 }
