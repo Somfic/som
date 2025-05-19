@@ -193,11 +193,9 @@ pub fn type_checker_type_mismatch(types: Vec<&Type>, help: impl Into<String>) ->
 
     let generated_help = match most_occuring_type {
         Some(most_occuring_type) => format!("this should probably be {most_occuring_type}"),
-        None => format!("but found {}", join_with_and(distinct_types)),
+        None => format!("but {} were found", join_with_and(distinct_types)),
     };
 
-    // if we know the most occuring type, label all the invalid types
-    // otherwise, label all the types
     let labels: Vec<_> = match most_occuring_type {
         Some(_) => invalid_types
             .into_iter()
