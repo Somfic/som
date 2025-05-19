@@ -28,7 +28,7 @@ pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> Ty
     let left = type_checker.check_expression(&value.left);
     let right = type_checker.check_expression(&value.right);
 
-    type_checker.expect_same_type(
+    let ty = type_checker.expect_same_type(
         vec![&left.type_, &right.type_],
         "both sides of the addition operator must be of the same type",
     );
@@ -36,6 +36,6 @@ pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> Ty
     TypedExpression {
         value: ExpressionValue::Binary(value.clone()),
         span: expression.into(),
-        type_: Type::new(expression, TypeKind::Integer),
+        type_: Type::new(expression, ty),
     }
 }
