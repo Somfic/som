@@ -263,7 +263,7 @@ pub fn type_checker_type_mismatch(types: Vec<&Type>, help: impl Into<String>) ->
     })
 }
 
-pub fn join_with_and<T, I>(items: I) -> String
+fn join_with_and<T, I>(items: I) -> String
 where
     T: Display,
     I: IntoIterator<Item = T>,
