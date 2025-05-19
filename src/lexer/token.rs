@@ -6,7 +6,7 @@ pub struct Token {
     pub kind: TokenKind,
     pub value: TokenValue,
     pub original: Box<str>,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 impl Display for Token {
@@ -27,9 +27,15 @@ impl Debug for Token {
     }
 }
 
-impl From<Token> for SourceSpan {
+impl From<Token> for Span {
     fn from(token: Token) -> Self {
         token.span
+    }
+}
+
+impl From<Token> for miette::SourceSpan {
+    fn from(token: Token) -> Self {
+        token.span.0
     }
 }
 
@@ -280,7 +286,7 @@ impl Display for TokenKind {
 #[derive(Debug, Clone, Eq)]
 pub struct Identifier {
     pub name: Box<str>,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
 impl std::hash::Hash for Identifier {

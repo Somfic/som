@@ -1,15 +1,22 @@
 use std::fmt::Display;
+use std::hash::Hash;
 
 use crate::prelude::*;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type {
     pub kind: TypeKind,
-    pub span: SourceSpan,
+    pub span: Span,
+}
+
+impl Hash for Type {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+    }
 }
 
 impl Type {
-    pub fn new(source: impl Into<SourceSpan>, kind: TypeKind) -> Self {
+    pub fn new(source: impl Into<Span>, kind: TypeKind) -> Self {
         Self {
             kind,
             span: source.into(),
@@ -37,13 +44,13 @@ impl Display for TypeKind {
     }
 }
 
-impl From<Type> for SourceSpan {
+impl From<Type> for Span {
     fn from(ty: Type) -> Self {
         ty.span
     }
 }
 
-impl From<&Type> for SourceSpan {
+impl From<&Type> for Span {
     fn from(ty: &Type) -> Self {
         ty.span
     }

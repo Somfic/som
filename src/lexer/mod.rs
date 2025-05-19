@@ -139,7 +139,7 @@ impl Iterator for Lexer<'_> {
                         TokenKind::Identifier,
                         TokenValue::Identifier(Identifier {
                             name: ident.clone().into(),
-                            span: SourceSpan::new(start_offset.into(), ident.len()),
+                            span: Span::new(start_offset.into(), ident.len()),
                         }),
                     )),
                 }
@@ -221,7 +221,7 @@ impl Iterator for Lexer<'_> {
         Some(kind.map(|(kind, value)| Token {
             kind,
             value,
-            span: SourceSpan::new(start_offset.into(), byte_length),
+            span: Span::new(start_offset.into(), byte_length),
             original: self.source_code[start_offset..self.byte_offset].into(),
         }))
     }

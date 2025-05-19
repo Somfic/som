@@ -11,13 +11,64 @@ pub use crate::{
 };
 pub use crate::{parser::Parser, statements::TypedStatement};
 use miette::LabeledSpan;
-pub use miette::SourceSpan;
+use miette::SourceSpan;
 pub use miette::{Context, Diagnostic};
 use std::fmt::Display;
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, Error>;
 pub type Results<T> = std::result::Result<T, Vec<Error>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span(pub miette::SourceSpan);
+
+impl std::ops::Add for Span {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let spans = vec![self.0, rhs.0];
+
+        let start = spans
+            .iter()
+            .min_by_key(|s| s.offset())
+            .map(|s| s.offset())
+            .unwrap_or(0);
+
+        let end = spans
+            .iter()
+            .max_by_key(|s| s.offset() + s.len())
+            .map(|s| s.offset() + s.len())
+            .unwrap_or(0);
+
+        Span(miette::SourceSpan::new(start.into(), end - start))
+    }
+}
+
+impl Span {
+    pub fn new(start: usize, length: usize) -> Self {
+        Span(miette::SourceSpan::new(start.into(), length))
+    }
+
+    pub fn offset(&self) -> usize {
+        self.0.offset()
+    }
+
+    pub fn length(&self) -> usize {
+        self.0.len()
+    }
+}
+
+impl From<Span> for SourceSpan {
+    fn from(span: Span) -> Self {
+        span.0
+    }
+}
+
+impl From<SourceSpan> for Span {
+    fn from(span: SourceSpan) -> Self {
+        Span(span)
+    }
+}
 
 #[derive(Clone, Error, Debug, Diagnostic)]
 pub enum Error {
@@ -199,11 +250,11 @@ pub fn type_checker_type_mismatch(types: Vec<&Type>, help: impl Into<String>) ->
     let labels: Vec<_> = match most_occuring_type {
         Some(_) => invalid_types
             .into_iter()
-            .map(|ty| LabeledSpan::new(Some(format!("{ty}")), ty.span.offset(), ty.span.len()))
+            .map(|ty| LabeledSpan::new(Some(format!("{ty}")), ty.span.offset(), ty.span.length()))
             .collect(),
         None => types
             .into_iter()
-            .map(|ty| LabeledSpan::new(Some(format!("{ty}")), ty.span.offset(), ty.span.len()))
+            .map(|ty| LabeledSpan::new(Some(format!("{ty}")), ty.span.offset(), ty.span.length()))
             .collect(),
     };
 

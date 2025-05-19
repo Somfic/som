@@ -9,16 +9,16 @@ pub mod primary;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Expression {
     pub value: ExpressionValue,
-    pub span: SourceSpan,
+    pub span: Span,
 }
 
-impl From<Expression> for SourceSpan {
+impl From<Expression> for Span {
     fn from(expression: Expression) -> Self {
         expression.span
     }
 }
 
-impl From<&Expression> for SourceSpan {
+impl From<&Expression> for Span {
     fn from(expression: &Expression) -> Self {
         expression.span
     }
@@ -26,17 +26,17 @@ impl From<&Expression> for SourceSpan {
 
 pub struct TypedExpression {
     pub value: ExpressionValue,
-    pub span: SourceSpan,
+    pub span: Span,
     pub type_: Type,
 }
 
-impl From<TypedExpression> for SourceSpan {
+impl From<TypedExpression> for Span {
     fn from(typed_expression: TypedExpression) -> Self {
         typed_expression.span
     }
 }
 
-impl From<&TypedExpression> for SourceSpan {
+impl From<&TypedExpression> for Span {
     fn from(expression: &TypedExpression) -> Self {
         expression.span
     }

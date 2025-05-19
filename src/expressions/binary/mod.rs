@@ -1,4 +1,5 @@
 pub mod add;
+pub mod subtract;
 
 use crate::prelude::*;
 
@@ -12,4 +13,5 @@ pub struct BinaryExpression {
 #[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOperator {
     Add,
+    Subtract,
 }
