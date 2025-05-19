@@ -47,6 +47,9 @@ impl TypeChecker {
             },
             ExpressionValue::Binary(binary) => match binary.operator {
                 BinaryOperator::Add => expressions::binary::add::type_check(self, expression),
+                BinaryOperator::Subtract => {
+                    expressions::binary::subtract::type_check(self, expression)
+                }
             },
         }
     }

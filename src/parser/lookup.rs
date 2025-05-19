@@ -108,5 +108,10 @@ impl Default for Lookup {
             BindingPower::Additive,
             crate::expressions::binary::add::parse,
         )
+        .add_left_expression_handler(
+            TokenKind::Minus,
+            BindingPower::Additive,
+            crate::expressions::binary::subtract::parse,
+        )
     }
 }
