@@ -12,25 +12,30 @@ impl TypeChecker {
         }
     }
 
-    pub fn check(&mut self, statement: &Statement) {
-        match &statement.value {
-            StatementValue::Expression(expression) => {
-                let result = self.check_expression(expression);
-                if let Err(error) = result {
-                    self.errors.borrow_mut().push(error);
-                }
-            }
-        };
+    pub fn check(&mut self, statement: &Statement) -> Results<TypedStatement> {
+        let typed_statement = self.check_statement(statement);
 
         if !self.errors.borrow().is_empty() {
-            panic!(
-                "Type checking failed with errors: {:?}",
-                self.errors.borrow()
-            );
+            Err(self.errors.borrow().clone())
+        } else {
+            Ok(typed_statement)
         }
     }
 
-    pub fn check_expression(&mut self, expression: &Expression) -> Result<TypedExpression> {
+    pub fn check_statement(&mut self, statement: &Statement) -> TypedStatement {
+        let value = match &statement.value {
+            StatementValue::Expression(expression) => {
+                StatementValue::Expression(self.check_expression(expression))
+            }
+        };
+
+        TypedStatement {
+            value,
+            span: statement.span.clone(),
+        }
+    }
+
+    pub fn check_expression(&mut self, expression: &Expression) -> TypedExpression {
         match &expression.value {
             ExpressionValue::Primary(primary) => match primary {
                 PrimaryExpression::Integer(_) => {
@@ -46,15 +51,22 @@ impl TypeChecker {
         }
     }
 
-    pub fn expect_same_type(&self, left: &Type, right: &Type, message: &str) -> Result<()> {
-        if !left.equals(right) {
-            Err(Error::TypeChecker(TypeCheckerError::TypeMismatch {
-                left: left.into(),
-                right: right.into(),
-                help: message.to_string(),
-            }))
-        } else {
-            Ok(())
+    pub fn expect_same_type(&self, types: Vec<&Type>, message: &str) {
+        let mut ty = types.first().map(|t| &t.kind).unwrap_or(&TypeKind::Never);
+
+        for type_ in types.iter().skip(1) {
+            if type_.kind != *ty {
+                ty = &TypeKind::Never;
+                break;
+            } else {
+                ty = &type_.kind;
+            }
+        }
+
+        if ty == &TypeKind::Never {
+            self.errors
+                .borrow_mut()
+                .push(type_checker_type_mismatch(types, message));
         }
     }
 }

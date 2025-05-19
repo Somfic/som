@@ -19,27 +19,23 @@ pub fn parse(
     })
 }
 
-pub fn type_check(
-    type_checker: &mut TypeChecker,
-    expression: &Expression,
-) -> Result<TypedExpression> {
+pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> TypedExpression {
     let value = match &expression.value {
         ExpressionValue::Binary(value) => value,
         _ => unreachable!(),
     };
 
-    let left = type_checker.check_expression(&value.left)?;
-    let right = type_checker.check_expression(&value.right)?;
+    let left = type_checker.check_expression(&value.left);
+    let right = type_checker.check_expression(&value.right);
 
     type_checker.expect_same_type(
-        &left.type_,
-        &right.type_,
+        vec![&left.type_, &right.type_, &left.type_, &left.type_],
         "both sides of the addition operator must be of the same type",
-    )?;
+    );
 
-    Ok(TypedExpression {
+    TypedExpression {
         value: ExpressionValue::Binary(value.clone()),
         span: expression.into(),
         type_: Type::new(expression, TypeKind::Integer),
-    })
+    }
 }

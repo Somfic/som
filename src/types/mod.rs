@@ -1,5 +1,8 @@
+use std::fmt::Display;
+
 use crate::prelude::*;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Type {
     pub kind: TypeKind,
     pub span: SourceSpan,
@@ -18,6 +21,22 @@ impl Type {
     }
 }
 
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.kind)
+    }
+}
+
+impl Display for TypeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeKind::Never => write!(f, "never"),
+            TypeKind::Integer => write!(f, "an integer"),
+            TypeKind::Boolean => write!(f, "a boolean"),
+        }
+    }
+}
+
 impl From<Type> for SourceSpan {
     fn from(ty: Type) -> Self {
         ty.span
@@ -30,8 +49,9 @@ impl From<&Type> for SourceSpan {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeKind {
+    Never,
     Integer,
     Boolean,
 }
