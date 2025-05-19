@@ -29,7 +29,7 @@ pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> Ty
     let right = type_checker.check_expression(&value.right);
 
     type_checker.expect_same_type(
-        vec![&left.type_, &right.type_, &left.type_, &left.type_],
+        vec![&left.type_, &right.type_],
         "both sides of the addition operator must be of the same type",
     );
 
