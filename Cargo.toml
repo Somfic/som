@@ -9,7 +9,7 @@ rust-version = "1.83.0"
 
 [dependencies]
 miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
-owo-colors = "4.2.0"
+owo-colors = "4.2.1"
 pretty_assertions = "1.4.1"
 cranelift = "0.119.0"
 cranelift-module = "0.119.0"
