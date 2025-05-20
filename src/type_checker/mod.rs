@@ -60,15 +60,15 @@ impl TypeChecker {
     }
 
     pub fn expect_same_type(&self, types: Vec<&Type>, message: &str) -> TypeValue {
+        if types.iter().any(|t| t.value == TypeValue::Never) {
+            return TypeValue::Never;
+        }
+
         let mut ty = types.first().map(|t| Some(&t.value)).unwrap_or(None);
 
         for type_ in types.iter().skip(1) {
             if ty.is_none() {
                 break;
-            }
-
-            if type_.value == TypeValue::Never {
-                return TypeValue::Never;
             }
 
             if Some(&type_.value) != ty {
