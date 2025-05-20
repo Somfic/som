@@ -10,9 +10,9 @@ pub use crate::{
     lexer::{Lexer, Token, TokenKind, TokenValue},
 };
 pub use crate::{parser::Parser, statements::TypedStatement};
+pub use miette::Diagnostic;
 use miette::LabeledSpan;
 use miette::SourceSpan;
-pub use miette::{Context, Diagnostic};
 use std::fmt::Display;
 use std::ops::Sub;
 use thiserror::Error;
