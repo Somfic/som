@@ -5,41 +5,41 @@ use crate::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type {
-    pub kind: TypeKind,
+    pub value: TypeValue,
     pub span: Span,
 }
 
 impl Hash for Type {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.kind.hash(state);
+        self.value.hash(state);
     }
 }
 
 impl Type {
-    pub fn new(source: impl Into<Span>, kind: TypeKind) -> Self {
+    pub fn new(source: impl Into<Span>, value: TypeValue) -> Self {
         Self {
-            kind,
+            value,
             span: source.into(),
         }
     }
 
     pub fn equals(&self, other: &Type) -> bool {
-        self.kind == other.kind
+        self.value == other.value
     }
 }
 
 impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.kind)
+        write!(f, "{}", self.value)
     }
 }
 
-impl Display for TypeKind {
+impl Display for TypeValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TypeKind::Never => write!(f, "never"),
-            TypeKind::Integer => write!(f, "an integer"),
-            TypeKind::Boolean => write!(f, "a boolean"),
+            TypeValue::Never => write!(f, "never"),
+            TypeValue::Integer => write!(f, "an integer"),
+            TypeValue::Boolean => write!(f, "a boolean"),
         }
     }
 }
@@ -57,7 +57,7 @@ impl From<&Type> for Span {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TypeKind {
+pub enum TypeValue {
     Never,
     Integer,
     Boolean,

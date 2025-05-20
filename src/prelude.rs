@@ -4,7 +4,7 @@ pub use crate::expressions::primary::PrimaryExpression;
 pub use crate::parser::lookup::{BindingPower, Lookup};
 pub use crate::statements::{Statement, StatementValue};
 pub use crate::type_checker::TypeChecker;
-pub use crate::types::{Type, TypeKind};
+pub use crate::types::{Type, TypeValue};
 pub use crate::{
     expressions::{Expression, ExpressionValue, TypedExpression},
     lexer::{Lexer, Token, TokenKind, TokenValue},
@@ -224,7 +224,7 @@ pub fn type_checker_type_mismatch(types: Vec<&Type>, help: impl Into<String>) ->
         types
             .iter()
             .fold(std::collections::HashMap::new(), |mut acc, ty| {
-                *acc.entry(ty.kind).or_insert(0) += 1;
+                *acc.entry(ty.value).or_insert(0) += 1;
                 acc
             })
             .into_iter()
@@ -236,7 +236,7 @@ pub fn type_checker_type_mismatch(types: Vec<&Type>, help: impl Into<String>) ->
         Some(most_occuring_type) => distinct_types
             .clone()
             .into_iter()
-            .filter(|ty| ty.kind != most_occuring_type)
+            .filter(|ty| ty.value != most_occuring_type)
             .collect::<Vec<_>>(),
         None => distinct_types.clone().into_iter().collect::<Vec<_>>(),
     };
