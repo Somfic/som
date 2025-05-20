@@ -31,7 +31,7 @@ impl TypeChecker {
 
         TypedStatement {
             value,
-            span: statement.span.clone(),
+            span: statement.span,
         }
     }
 
@@ -50,28 +50,41 @@ impl TypeChecker {
                 BinaryOperator::Subtract => {
                     expressions::binary::subtract::type_check(self, expression)
                 }
+                BinaryOperator::Multiply => {
+                    expressions::binary::multiply::type_check(self, expression)
+                }
+                BinaryOperator::Divide => expressions::binary::divide::type_check(self, expression),
             },
+            ExpressionValue::Group(_) => expressions::group::type_check(self, expression),
         }
     }
 
     pub fn expect_same_type(&self, types: Vec<&Type>, message: &str) -> TypeValue {
-        let mut ty = types.first().map(|t| &t.value).unwrap_or(&TypeValue::Never);
+        let mut ty = types.first().map(|t| Some(&t.value)).unwrap_or(None);
 
         for type_ in types.iter().skip(1) {
-            if type_.value != *ty {
-                ty = &TypeValue::Never;
+            if ty.is_none() {
+                break;
+            }
+
+            if type_.value == TypeValue::Never {
+                return TypeValue::Never;
+            }
+
+            if Some(&type_.value) != ty {
+                ty = None;
                 break;
             } else {
-                ty = &type_.value;
+                ty = Some(&type_.value);
             }
         }
 
-        if ty == &TypeValue::Never {
+        if ty.is_none() {
             self.errors
                 .borrow_mut()
                 .push(type_checker_type_mismatch(types, message));
         }
 
-        *ty
+        *ty.unwrap_or(&TypeValue::Never)
     }
 }

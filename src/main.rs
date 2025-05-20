@@ -22,7 +22,7 @@ fn main() {
     }))
     .unwrap();
 
-    let source = "1 - 1 + true;";
+    let source = "(1 - 1) + true / true;";
 
     let lexer = Lexer::new(source);
 

@@ -1,12 +1,14 @@
 pub use crate::expressions::binary::BinaryExpression;
 pub use crate::expressions::binary::BinaryOperator;
 pub use crate::expressions::primary::PrimaryExpression;
+pub use crate::expressions::ExpressionValue;
+pub use crate::expressions::TypedExpressionValue;
 pub use crate::parser::lookup::{BindingPower, Lookup};
 pub use crate::statements::{Statement, StatementValue};
 pub use crate::type_checker::TypeChecker;
 pub use crate::types::{Type, TypeValue};
 pub use crate::{
-    expressions::{Expression, ExpressionValue, TypedExpression},
+    expressions::{Expression, TypedExpression},
     lexer::{Lexer, Token, TokenKind, TokenValue},
 };
 pub use crate::{parser::Parser, statements::TypedStatement};
@@ -17,6 +19,8 @@ use std::fmt::Display;
 use std::ops::Sub;
 use thiserror::Error;
 
+pub use cranelift::prelude::{FunctionBuilder, InstBuilder};
+pub type CompileValue = cranelift::prelude::Value;
 pub type Result<T> = std::result::Result<T, Error>;
 pub type Results<T> = std::result::Result<T, Vec<Error>>;
 
