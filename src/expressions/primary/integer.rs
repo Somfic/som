@@ -23,6 +23,6 @@ pub fn type_check(expression: &Expression) -> TypedExpression {
     TypedExpression {
         value: ExpressionValue::Primary(PrimaryExpression::Integer(*value)),
         span: expression.into(),
-        type_: Type::new(expression, TypeKind::Integer),
+        type_: Type::new(expression, TypeValue::Integer),
     }
 }

@@ -54,19 +54,19 @@ impl TypeChecker {
         }
     }
 
-    pub fn expect_same_type(&self, types: Vec<&Type>, message: &str) -> TypeKind {
-        let mut ty = types.first().map(|t| &t.kind).unwrap_or(&TypeKind::Never);
+    pub fn expect_same_type(&self, types: Vec<&Type>, message: &str) -> TypeValue {
+        let mut ty = types.first().map(|t| &t.value).unwrap_or(&TypeValue::Never);
 
         for type_ in types.iter().skip(1) {
-            if type_.kind != *ty {
-                ty = &TypeKind::Never;
+            if type_.value != *ty {
+                ty = &TypeValue::Never;
                 break;
             } else {
-                ty = &type_.kind;
+                ty = &type_.value;
             }
         }
 
-        if ty == &TypeKind::Never {
+        if ty == &TypeValue::Never {
             self.errors
                 .borrow_mut()
                 .push(type_checker_type_mismatch(types, message));
