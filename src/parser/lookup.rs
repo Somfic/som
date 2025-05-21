@@ -124,5 +124,6 @@ impl Default for Lookup {
             BindingPower::Multiplicative,
             crate::expressions::binary::divide::parse,
         )
+        .add_statement_handler(TokenKind::Let, crate::statements::declaration::parse)
     }
 }

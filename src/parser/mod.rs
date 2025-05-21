@@ -112,4 +112,15 @@ impl<'source> Parser<'source> {
 
         Ok(lhs)
     }
+
+    pub fn parse_identifier(&mut self) -> Result<Identifier> {
+        let token = self.expect(TokenKind::Identifier, "expected an identifier")?;
+
+        let value = match token.value {
+            TokenValue::Identifier(value) => value,
+            _ => unreachable!(),
+        };
+
+        Ok(value)
+    }
 }
