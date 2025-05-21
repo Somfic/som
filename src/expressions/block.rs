@@ -68,9 +68,15 @@ pub fn parse_inner_block(parser: &mut Parser, terminating_token: TokenKind) -> R
         }
     }
 
-    let span = statements
+    let spans = statements
         .iter()
-        .fold(Span::default(), |acc, statement| acc + statement.span);
+        .map(|statement| statement.span)
+        .chain(final_expression.as_ref().map(|e| e.span))
+        .collect::<Vec<_>>();
+
+    let start = *spans.first().unwrap();
+    let end = *spans.last().unwrap();
+    let span = start + end;
 
     let final_expression = match final_expression {
         Some(expression) => expression,
