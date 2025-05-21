@@ -95,6 +95,7 @@ impl Default for Lookup {
             typing_lookup: HashMap::new(),
             left_typing_lookup: HashMap::new(),
         }
+        .add_expression_handler(TokenKind::ParenOpen, crate::expressions::group::parse)
         .add_expression_handler(
             TokenKind::Integer,
             crate::expressions::primary::integer::parse,
@@ -112,6 +113,16 @@ impl Default for Lookup {
             TokenKind::Minus,
             BindingPower::Additive,
             crate::expressions::binary::subtract::parse,
+        )
+        .add_left_expression_handler(
+            TokenKind::Star,
+            BindingPower::Multiplicative,
+            crate::expressions::binary::multiply::parse,
+        )
+        .add_left_expression_handler(
+            TokenKind::Slash,
+            BindingPower::Multiplicative,
+            crate::expressions::binary::divide::parse,
         )
     }
 }

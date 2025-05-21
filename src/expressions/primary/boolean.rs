@@ -21,8 +21,19 @@ pub fn type_check(expression: &Expression) -> TypedExpression {
     };
 
     TypedExpression {
-        value: ExpressionValue::Primary(PrimaryExpression::Boolean(*value)),
+        value: TypedExpressionValue::Primary(PrimaryExpression::Boolean(*value)),
         span: expression.into(),
         type_: Type::new(expression, TypeValue::Boolean),
     }
+}
+
+pub fn compile(expression: &TypedExpression, function: &mut FunctionBuilder) -> CompileValue {
+    let value = match &expression.value {
+        TypedExpressionValue::Primary(PrimaryExpression::Boolean(value)) => value,
+        _ => unreachable!(),
+    };
+
+    function
+        .ins()
+        .iconst(cranelift::prelude::types::I8, *value as i64)
 }

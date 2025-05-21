@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{expressions::TypedExpressionValue, prelude::*};
 
 pub fn parse(
     parser: &mut Parser,
@@ -34,8 +34,24 @@ pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> Ty
     );
 
     TypedExpression {
-        value: ExpressionValue::Binary(value.clone()),
         span: left.span + right.span,
+        value: TypedExpressionValue::Binary(BinaryExpression {
+            left: Box::new(left),
+            operator: BinaryOperator::Subtract,
+            right: Box::new(right),
+        }),
         type_: Type::new(expression, ty),
     }
+}
+
+pub fn compile(expression: &TypedExpression, function: &mut FunctionBuilder) -> CompileValue {
+    let value = match &expression.value {
+        TypedExpressionValue::Binary(value) => value,
+        _ => unreachable!(),
+    };
+
+    let left = compile(&value.left, function);
+    let right = compile(&value.right, function);
+
+    function.ins().isub(left, right)
 }

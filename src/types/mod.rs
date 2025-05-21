@@ -58,6 +58,7 @@ impl From<&Type> for Span {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeValue {
+    /// This type is only ever used by the type checker to indicate that a value is undetermined or invalid.
     Never,
     Integer,
     Boolean,
