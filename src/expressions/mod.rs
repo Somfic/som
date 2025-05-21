@@ -1,9 +1,10 @@
 use crate::prelude::*;
 use binary::BinaryExpression;
+use group::GroupExpression;
 use primary::PrimaryExpression;
 
 pub mod binary;
-
+pub mod group;
 pub mod primary;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,7 +26,7 @@ impl From<&Expression> for Span {
 }
 
 pub struct TypedExpression {
-    pub value: ExpressionValue,
+    pub value: TypedExpressionValue,
     pub span: Span,
     pub type_: Type,
 }
@@ -42,8 +43,12 @@ impl From<&TypedExpression> for Span {
     }
 }
 
+pub type ExpressionValue = GenericExpressionValue<Expression>;
+pub type TypedExpressionValue = GenericExpressionValue<TypedExpression>;
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum ExpressionValue {
+pub enum GenericExpressionValue<Expression> {
     Primary(PrimaryExpression),
-    Binary(BinaryExpression),
+    Binary(BinaryExpression<Expression>),
+    Group(GroupExpression<Expression>),
 }
