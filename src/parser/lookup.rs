@@ -96,6 +96,7 @@ impl Default for Lookup {
             left_typing_lookup: HashMap::new(),
         }
         .add_expression_handler(TokenKind::ParenOpen, crate::expressions::group::parse)
+        .add_expression_handler(TokenKind::CurlyOpen, crate::expressions::block::parse)
         .add_expression_handler(
             TokenKind::Integer,
             crate::expressions::primary::integer::parse,

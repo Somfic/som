@@ -15,12 +15,12 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
 
     let end = parser.expect(TokenKind::ParenClose, "expected the end of the group")?;
 
-    Ok(Expression {
-        value: ExpressionValue::Group(GroupExpression {
-            expression: Box::new(expression),
-        }),
-        span: start.span + end.span,
+    let span = start.span + expression.span + end.span;
+
+    Ok(ExpressionValue::Group(GroupExpression {
+        expression: Box::new(expression),
     })
+    .with_span(span))
 }
 
 pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> TypedExpression {

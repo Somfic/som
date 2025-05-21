@@ -29,6 +29,10 @@ impl<'source> Parser<'source> {
         }
     }
 
+    pub fn peek(&mut self) -> Option<&Result<Token>> {
+        self.lexer.peek()
+    }
+
     pub fn parse_statement(&mut self, require_semicolon: bool) -> Result<Statement> {
         let token = match self.lexer.peek().as_ref() {
             Some(Ok(token)) => token,

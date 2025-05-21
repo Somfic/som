@@ -1,6 +1,6 @@
 use crate::prelude::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeclarationStatement<Expression> {
     pub identifier: Identifier,
     pub explicit_type: Option<Type>,
@@ -18,14 +18,14 @@ pub fn parse(parser: &mut Parser) -> Result<Statement> {
 
     let value = parser.parse_expression(BindingPower::Assignment)?;
 
-    Ok(Statement {
-        span: token.span + value.span,
-        value: StatementValue::Declaration(DeclarationStatement {
-            identifier,
-            explicit_type,
-            value: Box::new(value),
-        }),
+    let span = token.span + identifier.span + value.span;
+
+    Ok(StatementValue::Declaration(DeclarationStatement {
+        identifier,
+        explicit_type,
+        value: Box::new(value),
     })
+    .with_span(span))
 }
 
 pub fn type_check(type_checker: &mut TypeChecker, statement: &Statement) -> TypedStatement {

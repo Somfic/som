@@ -8,10 +8,7 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
         _ => unreachable!(),
     };
 
-    Ok(Expression {
-        value: ExpressionValue::Primary(PrimaryExpression::Boolean(value)),
-        span: token.span,
-    })
+    Ok(ExpressionValue::Primary(PrimaryExpression::Boolean(value)).with_span(token))
 }
 
 pub fn type_check(expression: &Expression) -> TypedExpression {
@@ -20,11 +17,10 @@ pub fn type_check(expression: &Expression) -> TypedExpression {
         _ => unreachable!(),
     };
 
-    TypedExpression {
-        value: TypedExpressionValue::Primary(PrimaryExpression::Boolean(*value)),
-        span: expression.into(),
-        type_: Type::new(expression, TypeValue::Boolean),
-    }
+    let type_ = Type::new(expression, TypeValue::Boolean);
+    let value = TypedExpressionValue::Primary(PrimaryExpression::Boolean(*value));
+
+    expression.with_value_type(value, type_)
 }
 
 pub fn compile(expression: &TypedExpression, function: &mut FunctionBuilder) -> CompileValue {

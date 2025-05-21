@@ -9,14 +9,14 @@ pub fn parse(
 
     let right = parser.parse_expression(binding_power)?;
 
-    Ok(Expression {
-        span: left.span + right.span,
-        value: ExpressionValue::Binary(BinaryExpression {
-            left: Box::new(left),
-            operator: BinaryOperator::Divide,
-            right: Box::new(right),
-        }),
+    let span = left.span + right.span;
+
+    Ok(ExpressionValue::Binary(BinaryExpression {
+        left: Box::new(left),
+        operator: BinaryOperator::Divide,
+        right: Box::new(right),
     })
+    .with_span(span))
 }
 
 pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> TypedExpression {
@@ -33,15 +33,14 @@ pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> Ty
         "both sides of the division must be of the same type",
     );
 
-    TypedExpression {
-        span: left.span + right.span,
-        value: TypedExpressionValue::Binary(BinaryExpression {
-            left: Box::new(left),
-            operator: BinaryOperator::Divide,
-            right: Box::new(right),
-        }),
-        type_: Type::new(expression, ty),
-    }
+    let value = TypedExpressionValue::Binary(BinaryExpression {
+        left: Box::new(left),
+        operator: BinaryOperator::Divide,
+        right: Box::new(right),
+    });
+    let type_ = Type::new(expression, ty);
+
+    expression.with_value_type(value, type_)
 }
 
 pub fn compile(expression: &TypedExpression, function: &mut FunctionBuilder) -> CompileValue {

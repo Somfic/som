@@ -28,6 +28,12 @@ pub type Results<T> = std::result::Result<T, Vec<Error>>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span(pub miette::SourceSpan);
 
+impl Default for Span {
+    fn default() -> Self {
+        Span(miette::SourceSpan::new(0.into(), 0))
+    }
+}
+
 impl std::ops::Add for Span {
     type Output = Self;
 
