@@ -3,6 +3,7 @@ pub use crate::expressions::binary::BinaryOperator;
 pub use crate::expressions::primary::PrimaryExpression;
 pub use crate::expressions::ExpressionValue;
 pub use crate::expressions::TypedExpressionValue;
+pub use crate::lexer::Identifier;
 pub use crate::parser::lookup::{BindingPower, Lookup};
 pub use crate::statements::{Statement, StatementValue};
 pub use crate::type_checker::TypeChecker;
