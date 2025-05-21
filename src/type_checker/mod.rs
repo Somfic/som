@@ -60,8 +60,22 @@ impl TypeChecker {
     }
 
     pub fn expect_same_type(&self, types: Vec<&Type>, message: &str) -> TypeValue {
+        let most_occuring_type = if types.len() <= 2 {
+            None
+        } else {
+            types
+                .iter()
+                .fold(std::collections::HashMap::new(), |mut acc, ty| {
+                    *acc.entry(ty.value).or_insert(0) += 1;
+                    acc
+                })
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .map(|(kind, _)| kind)
+        };
+
         if types.iter().any(|t| t.value == TypeValue::Never) {
-            return TypeValue::Never;
+            return most_occuring_type.unwrap_or(TypeValue::Never);
         }
 
         let mut ty = types.first().map(|t| Some(&t.value)).unwrap_or(None);
