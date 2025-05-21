@@ -40,6 +40,7 @@ impl Display for TypeValue {
             TypeValue::Never => write!(f, "never"),
             TypeValue::Integer => write!(f, "an integer"),
             TypeValue::Boolean => write!(f, "a boolean"),
+            TypeValue::Unit => write!(f, "nothing"),
         }
     }
 }
@@ -58,8 +59,10 @@ impl From<&Type> for Span {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeValue {
-    /// This type is only ever used by the type checker to indicate that a value is undetermined or invalid.
+    /// This type is only ever used internally by the type checker to indicate that a value is undetermined or invalid.
     Never,
+    /// This type is only ever used internally by the type checker to indicate that a value does not have a type. For example the type of an expression block with only statements and no last expression.
+    Unit,
     Integer,
     Boolean,
 }

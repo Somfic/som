@@ -41,6 +41,7 @@ impl TypeChecker {
                 PrimaryExpression::Boolean(_) => {
                     expressions::primary::boolean::type_check(expression)
                 }
+                PrimaryExpression::Unit => expressions::primary::unit::type_check(expression),
             },
             ExpressionValue::Binary(binary) => match binary.operator {
                 BinaryOperator::Add => expressions::binary::add::type_check(self, expression),
@@ -53,6 +54,7 @@ impl TypeChecker {
                 BinaryOperator::Divide => expressions::binary::divide::type_check(self, expression),
             },
             ExpressionValue::Group(_) => expressions::group::type_check(self, expression),
+            ExpressionValue::Block(_) => expressions::block::type_check(self, expression),
         }
     }
 

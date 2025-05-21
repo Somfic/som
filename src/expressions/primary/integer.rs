@@ -10,10 +10,7 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
         _ => unreachable!(),
     };
 
-    Ok(Expression {
-        value: ExpressionValue::Primary(PrimaryExpression::Integer(value)),
-        span: token.span,
-    })
+    Ok(ExpressionValue::Primary(PrimaryExpression::Integer(value)).with_span(token.span))
 }
 
 pub fn type_check(expression: &Expression) -> TypedExpression {
@@ -22,11 +19,10 @@ pub fn type_check(expression: &Expression) -> TypedExpression {
         _ => unreachable!(),
     };
 
-    TypedExpression {
-        value: TypedExpressionValue::Primary(PrimaryExpression::Integer(*value)),
-        span: expression.into(),
-        type_: Type::new(expression, TypeValue::Integer),
-    }
+    let value = TypedExpressionValue::Primary(PrimaryExpression::Integer(*value));
+    let type_ = Type::new(expression, TypeValue::Integer);
+
+    expression.with_value_type(value, type_)
 }
 
 pub fn compile(expression: &TypedExpression, function: &mut FunctionBuilder) -> CompileValue {
