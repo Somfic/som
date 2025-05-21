@@ -1,11 +1,19 @@
 version: 2
 updates:
   - package-ecosystem: "cargo"
+    commit-message:
+      prefix: "📌"
     directory: "/"
+    reviewers:
+      - "somfic"
     schedule:
       interval: "daily"
 
   - package-ecosystem: "github-actions"
+    commit-message:
+      prefix: "📌"
+    reviewers:
+      - "somfic"
     directory: "/.github/workflows"
     schedule:
       interval: "daily"
