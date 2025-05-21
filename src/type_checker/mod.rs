@@ -1,4 +1,4 @@
-use crate::{expressions, prelude::*};
+use crate::{expressions, prelude::*, statements};
 use std::cell::RefCell;
 
 pub struct TypeChecker {
@@ -23,15 +23,12 @@ impl TypeChecker {
     }
 
     pub fn check_statement(&mut self, statement: &Statement) -> TypedStatement {
-        let value = match &statement.value {
-            StatementValue::Expression(expression) => {
-                StatementValue::Expression(self.check_expression(expression))
-            }
-        };
-
-        TypedStatement {
-            value,
-            span: statement.span,
+        match &statement.value {
+            StatementValue::Expression(expression) => TypedStatement {
+                value: StatementValue::Expression(self.check_expression(expression)),
+                span: statement.span,
+            },
+            StatementValue::Declaration(_) => statements::declaration::type_check(self, statement),
         }
     }
 
