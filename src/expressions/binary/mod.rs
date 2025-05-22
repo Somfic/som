@@ -5,7 +5,7 @@ pub mod subtract;
 
 use crate::prelude::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct BinaryExpression<Expression> {
     pub left: Box<Expression>,
     pub operator: BinaryOperator,

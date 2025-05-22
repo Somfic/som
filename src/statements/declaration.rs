@@ -1,4 +1,4 @@
-use crate::{prelude::*, type_checker::environment::Environment};
+use crate::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeclarationStatement<Expression> {
@@ -10,7 +10,7 @@ pub struct DeclarationStatement<Expression> {
 pub fn parse(parser: &mut Parser) -> Result<Statement> {
     let token = parser.expect(TokenKind::Let, "expected a variable declaration")?;
 
-    let identifier = parser.parse_identifier()?;
+    let identifier = parser.expect_identifier()?;
 
     let explicit_type = None;
 

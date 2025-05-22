@@ -117,7 +117,60 @@ impl<'source> Parser<'source> {
         Ok(lhs)
     }
 
-    pub fn parse_identifier(&mut self) -> Result<Identifier> {
+    pub fn parse_type(&mut self, bp: BindingPower) -> Result<Type> {
+        let token = match self.lexer.peek().as_ref() {
+            Some(Ok(token)) => token,
+            Some(Err(_)) => return Err(self.lexer.next().unwrap().unwrap_err()),
+            None => {
+                return Err(parser_unexpected_end_of_file(
+                    (self.lexer.byte_offset, 0),
+                    "a type",
+                ));
+            }
+        };
+
+        let handler = self
+            .lookup
+            .type_lookup
+            .get(&token.kind)
+            .ok_or(parser_expected_type(token))?;
+
+        let mut lhs = handler(self)?;
+
+        let mut next_token = self.lexer.peek();
+
+        while let Some(token) = next_token {
+            let token = match token {
+                Ok(token) => token,
+                Err(_) => return Err(self.lexer.next().unwrap().unwrap_err()),
+            };
+
+            let token_binding_power = {
+                let binding_power_lookup = self.lookup.binding_power_lookup.clone();
+                binding_power_lookup
+                    .get(&token.kind)
+                    .unwrap_or(&BindingPower::None)
+                    .clone()
+            };
+
+            if bp >= token_binding_power {
+                break;
+            }
+
+            let handler = match self.lookup.left_type_lookup.get(&token.kind) {
+                Some(handler) => handler,
+                None => break,
+            };
+
+            lhs = handler(self, lhs, token_binding_power)?;
+
+            next_token = self.lexer.peek();
+        }
+
+        Ok(lhs)
+    }
+
+    pub fn expect_identifier(&mut self) -> Result<Identifier> {
         let token = self.expect(TokenKind::Identifier, "expected an identifier")?;
 
         let value = match token.value {

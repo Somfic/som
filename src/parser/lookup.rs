@@ -27,8 +27,8 @@ pub struct Lookup {
     pub statement_lookup: HashMap<TokenKind, StatementHandler>,
     pub expression_lookup: HashMap<TokenKind, ExpressionHandler>,
     pub left_expression_lookup: HashMap<TokenKind, LeftExpressionHandler>,
-    pub typing_lookup: HashMap<TokenKind, TypingHandler>,
-    pub left_typing_lookup: HashMap<TokenKind, LeftTypingHandler>,
+    pub type_lookup: HashMap<TokenKind, TypingHandler>,
+    pub left_type_lookup: HashMap<TokenKind, LeftTypingHandler>,
     pub binding_power_lookup: HashMap<TokenKind, BindingPower>,
 }
 
@@ -67,20 +67,20 @@ impl Lookup {
     }
 
     pub fn add_typing_handler(mut self, token: TokenKind, handler: TypingHandler) -> Self {
-        if self.typing_lookup.contains_key(&token) {
+        if self.type_lookup.contains_key(&token) {
             panic!("Token already has a type handler");
         }
 
-        self.typing_lookup.insert(token, handler);
+        self.type_lookup.insert(token, handler);
         self
     }
 
     pub fn add_left_typing_handler(mut self, token: TokenKind, handler: LeftTypingHandler) -> Self {
-        if self.left_typing_lookup.contains_key(&token) {
+        if self.left_type_lookup.contains_key(&token) {
             panic!("Token already has a left type handler");
         }
 
-        self.left_typing_lookup.insert(token, handler);
+        self.left_type_lookup.insert(token, handler);
         self
     }
 }
@@ -92,12 +92,13 @@ impl Default for Lookup {
             expression_lookup: HashMap::new(),
             left_expression_lookup: HashMap::new(),
             binding_power_lookup: HashMap::new(),
-            typing_lookup: HashMap::new(),
-            left_typing_lookup: HashMap::new(),
+            type_lookup: HashMap::new(),
+            left_type_lookup: HashMap::new(),
         }
         .add_expression_handler(TokenKind::ParenOpen, crate::expressions::group::parse)
         .add_expression_handler(TokenKind::CurlyOpen, crate::expressions::block::parse)
         .add_expression_handler(TokenKind::Identifier, crate::expressions::identifier::parse)
+        .add_expression_handler(TokenKind::Function, crate::expressions::function::parse)
         .add_expression_handler(
             TokenKind::Integer,
             crate::expressions::primary::integer::parse,
