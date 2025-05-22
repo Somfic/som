@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{prelude::*, type_checker::environment::Environment};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeclarationStatement<Expression> {
@@ -28,13 +28,19 @@ pub fn parse(parser: &mut Parser) -> Result<Statement> {
     .with_span(span))
 }
 
-pub fn type_check(type_checker: &mut TypeChecker, statement: &Statement) -> TypedStatement {
+pub fn type_check(
+    type_checker: &mut TypeChecker,
+    statement: &Statement,
+    env: &mut Environment,
+) -> TypedStatement {
     let declaration = match &statement.value {
         StatementValue::Declaration(declaration) => declaration,
         _ => unreachable!(),
     };
 
-    let value = type_checker.check_expression(&declaration.value);
+    let value = type_checker.check_expression(&declaration.value, env);
+
+    env.set(&declaration.identifier, &value.type_);
 
     TypedStatement {
         value: StatementValue::Declaration(DeclarationStatement {

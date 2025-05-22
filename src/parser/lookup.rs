@@ -97,6 +97,7 @@ impl Default for Lookup {
         }
         .add_expression_handler(TokenKind::ParenOpen, crate::expressions::group::parse)
         .add_expression_handler(TokenKind::CurlyOpen, crate::expressions::block::parse)
+        .add_expression_handler(TokenKind::Identifier, crate::expressions::identifier::parse)
         .add_expression_handler(
             TokenKind::Integer,
             crate::expressions::primary::integer::parse,

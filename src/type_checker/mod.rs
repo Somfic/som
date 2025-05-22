@@ -1,5 +1,9 @@
+use environment::Environment;
+
 use crate::{expressions, prelude::*, statements};
 use std::cell::RefCell;
+
+pub mod environment;
 
 pub struct TypeChecker {
     errors: RefCell<Vec<Error>>,
@@ -13,7 +17,9 @@ impl TypeChecker {
     }
 
     pub fn check(&mut self, statement: &Statement) -> Results<TypedStatement> {
-        let typed_statement = self.check_statement(statement);
+        let mut env = Environment::new();
+
+        let typed_statement = self.check_statement(statement, &mut env);
 
         if !self.errors.borrow().is_empty() {
             Err(self.errors.borrow().clone())
@@ -22,17 +28,27 @@ impl TypeChecker {
         }
     }
 
-    pub fn check_statement(&mut self, statement: &Statement) -> TypedStatement {
+    pub fn check_statement(
+        &mut self,
+        statement: &Statement,
+        env: &mut Environment,
+    ) -> TypedStatement {
         match &statement.value {
             StatementValue::Expression(expression) => TypedStatement {
-                value: StatementValue::Expression(self.check_expression(expression)),
+                value: StatementValue::Expression(self.check_expression(expression, env)),
                 span: statement.span,
             },
-            StatementValue::Declaration(_) => statements::declaration::type_check(self, statement),
+            StatementValue::Declaration(_) => {
+                statements::declaration::type_check(self, statement, env)
+            }
         }
     }
 
-    pub fn check_expression(&mut self, expression: &Expression) -> TypedExpression {
+    pub fn check_expression(
+        &mut self,
+        expression: &Expression,
+        env: &mut Environment,
+    ) -> TypedExpression {
         match &expression.value {
             ExpressionValue::Primary(primary) => match primary {
                 PrimaryExpression::Integer(_) => {
@@ -44,21 +60,26 @@ impl TypeChecker {
                 PrimaryExpression::Unit => expressions::primary::unit::type_check(expression),
             },
             ExpressionValue::Binary(binary) => match binary.operator {
-                BinaryOperator::Add => expressions::binary::add::type_check(self, expression),
+                BinaryOperator::Add => expressions::binary::add::type_check(self, expression, env),
                 BinaryOperator::Subtract => {
-                    expressions::binary::subtract::type_check(self, expression)
+                    expressions::binary::subtract::type_check(self, expression, env)
                 }
                 BinaryOperator::Multiply => {
-                    expressions::binary::multiply::type_check(self, expression)
+                    expressions::binary::multiply::type_check(self, expression, env)
                 }
-                BinaryOperator::Divide => expressions::binary::divide::type_check(self, expression),
+                BinaryOperator::Divide => {
+                    expressions::binary::divide::type_check(self, expression, env)
+                }
             },
-            ExpressionValue::Group(_) => expressions::group::type_check(self, expression),
-            ExpressionValue::Block(_) => expressions::block::type_check(self, expression),
+            ExpressionValue::Group(_) => expressions::group::type_check(self, expression, env),
+            ExpressionValue::Block(_) => expressions::block::type_check(self, expression, env),
+            ExpressionValue::Identifier(_) => {
+                expressions::identifier::type_check(self, expression, env)
+            }
         }
     }
 
-    pub fn expect_same_type(&self, types: Vec<&Type>, message: &str) -> TypeValue {
+    pub fn expect_same_type(&self, types: Vec<&Type>, message: impl Into<String>) -> TypeValue {
         let most_occuring_type = if types.len() <= 2 {
             None
         } else {
@@ -99,5 +120,24 @@ impl TypeChecker {
         }
 
         *ty.unwrap_or(&TypeValue::Never)
+    }
+
+    pub fn expect_declaration(
+        &self,
+        identifier: &Identifier,
+        env: &mut Environment,
+        message: impl Into<String>,
+    ) -> Type {
+        let type_ = env
+            .get(identifier)
+            .unwrap_or(Type::new(identifier, TypeValue::Never));
+
+        if type_.value == TypeValue::Never {
+            self.errors
+                .borrow_mut()
+                .push(declaration_not_found(identifier, message));
+        }
+
+        type_
     }
 }
