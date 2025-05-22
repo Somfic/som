@@ -1,4 +1,4 @@
-use crate::{prelude::*, statements::GenericStatement};
+use crate::{prelude::*, statements::GenericStatement, type_checker::environment::Environment};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockExpression<Expression> {
@@ -90,19 +90,25 @@ pub fn parse_inner_block(parser: &mut Parser, terminating_token: TokenKind) -> R
     .with_span(span))
 }
 
-pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> TypedExpression {
+pub fn type_check(
+    type_checker: &mut TypeChecker,
+    expression: &Expression,
+    env: &mut Environment,
+) -> TypedExpression {
     let block = match &expression.value {
         ExpressionValue::Block(block) => block,
         _ => unreachable!(),
     };
 
+    let mut env = env.block();
+
     let mut statements = Vec::new();
 
     for statement in &block.statements {
-        statements.push(type_checker.check_statement(statement));
+        statements.push(type_checker.check_statement(statement, &mut env));
     }
 
-    let result = type_checker.check_expression(&block.result);
+    let result = type_checker.check_expression(&block.result, &mut env);
 
     let type_ = Type::new(result.span, result.type_.value);
     let value = TypedExpressionValue::Block(BlockExpression {

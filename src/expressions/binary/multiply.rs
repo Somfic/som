@@ -19,14 +19,18 @@ pub fn parse(
     .with_span(span))
 }
 
-pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> TypedExpression {
+pub fn type_check(
+    type_checker: &mut TypeChecker,
+    expression: &Expression,
+    env: &mut Environment,
+) -> TypedExpression {
     let value = match &expression.value {
         ExpressionValue::Binary(value) => value,
         _ => unreachable!(),
     };
 
-    let left = type_checker.check_expression(&value.left);
-    let right = type_checker.check_expression(&value.right);
+    let left = type_checker.check_expression(&value.left, env);
+    let right = type_checker.check_expression(&value.right, env);
 
     let ty = type_checker.expect_same_type(
         vec![&left.type_, &right.type_],

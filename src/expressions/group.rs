@@ -1,6 +1,6 @@
 use cranelift::prelude::{FunctionBuilder, InstBuilder};
 
-use crate::prelude::*;
+use crate::{prelude::*, type_checker::environment::Environment};
 
 #[derive(Debug, Clone, PartialEq)]
 
@@ -23,13 +23,19 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
     .with_span(span))
 }
 
-pub fn type_check(type_checker: &mut TypeChecker, expression: &Expression) -> TypedExpression {
+pub fn type_check(
+    type_checker: &mut TypeChecker,
+    expression: &Expression,
+    env: &mut Environment,
+) -> TypedExpression {
     let value = match &expression.value {
         ExpressionValue::Group(GroupExpression { expression }) => expression,
         _ => unreachable!(),
     };
 
-    let value = type_checker.check_expression(value);
+    let mut env = env.block();
+
+    let value = type_checker.check_expression(value, &mut env);
 
     TypedExpression {
         type_: Type::new(expression, value.type_.value),

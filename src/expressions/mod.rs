@@ -7,6 +7,7 @@ use primary::PrimaryExpression;
 pub mod binary;
 pub mod block;
 pub mod group;
+pub mod identifier;
 pub mod primary;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +65,7 @@ pub enum GenericExpressionValue<Expression> {
     Binary(BinaryExpression<Expression>),
     Group(GroupExpression<Expression>),
     Block(BlockExpression<Expression>),
+    Identifier(Identifier),
 }
 
 impl GenericExpressionValue<Expression> {

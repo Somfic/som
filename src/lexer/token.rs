@@ -289,6 +289,18 @@ pub struct Identifier {
     pub span: Span,
 }
 
+impl From<Identifier> for Span {
+    fn from(identifier: Identifier) -> Self {
+        identifier.span
+    }
+}
+
+impl From<&Identifier> for Span {
+    fn from(identifier: &Identifier) -> Self {
+        identifier.span
+    }
+}
+
 impl std::hash::Hash for Identifier {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name.hash(state);

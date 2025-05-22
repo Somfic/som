@@ -6,6 +6,7 @@ pub use crate::expressions::TypedExpressionValue;
 pub use crate::lexer::Identifier;
 pub use crate::parser::lookup::{BindingPower, Lookup};
 pub use crate::statements::{Statement, StatementValue};
+pub use crate::type_checker::environment::Environment;
 pub use crate::type_checker::TypeChecker;
 pub use crate::types::{Type, TypeValue};
 pub use crate::{
@@ -170,6 +171,16 @@ pub enum TypeCheckerError {
         #[help]
         help: String,
     },
+
+    #[error("declaration not found")]
+    #[diagnostic()]
+    DeclarationNotFound {
+        #[label(collection, "")]
+        labels: Vec<LabeledSpan>,
+
+        #[help]
+        help: String,
+    },
 }
 
 pub fn lexer_unexpected_character(original: char, range: (usize, usize)) -> Error {
@@ -271,6 +282,17 @@ pub fn type_checker_type_mismatch(types: Vec<&Type>, help: impl Into<String>) ->
     Error::TypeChecker(TypeCheckerError::TypeMismatch {
         help: format!("{}, {generated_help}", help.into(),),
         labels,
+    })
+}
+
+pub fn declaration_not_found(identifier: &Identifier, help: impl Into<String>) -> Error {
+    Error::TypeChecker(TypeCheckerError::DeclarationNotFound {
+        help: format!("'{identifier}' was not found, {}", help.into()),
+        labels: vec![LabeledSpan::new(
+            Some(format!("'{identifier}' is not declared")),
+            identifier.span.offset(),
+            identifier.span.length(),
+        )],
     })
 }
 
