@@ -1,8 +1,8 @@
 use cranelift::prelude::{FunctionBuilder, InstBuilder};
 
-use crate::{prelude::*, type_checker::environment::Environment};
+use crate::prelude::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 
 pub struct GroupExpression<Expression> {
     pub expression: Box<Expression>,

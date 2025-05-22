@@ -5,6 +5,7 @@ pub use crate::expressions::ExpressionValue;
 pub use crate::expressions::TypedExpressionValue;
 pub use crate::lexer::Identifier;
 pub use crate::parser::lookup::{BindingPower, Lookup};
+pub use crate::statements::GenericStatement;
 pub use crate::statements::{Statement, StatementValue};
 pub use crate::type_checker::environment::Environment;
 pub use crate::type_checker::TypeChecker;
@@ -158,6 +159,15 @@ pub enum ParserError {
         #[help]
         help: String,
     },
+
+    #[error("expected type")]
+    #[diagnostic()]
+    ExpectedType {
+        #[label("expected a type here")]
+        token: Token,
+        #[help]
+        help: String,
+    },
 }
 
 #[derive(Clone, Error, Debug, Diagnostic)]
@@ -233,6 +243,13 @@ pub fn parser_unexpected_end_of_file(span: (usize, usize), expected: impl Into<S
 pub fn parser_expected_expression(token: &Token) -> Error {
     Error::Parser(ParserError::ExpectedExpression {
         help: format!("{token} cannot be parsed as an expression"),
+        token: token.clone(),
+    })
+}
+
+pub fn parser_expected_type(token: &Token) -> Error {
+    Error::Parser(ParserError::ExpectedType {
+        help: format!("{token} cannot be parsed as a type"),
         token: token.clone(),
     })
 }

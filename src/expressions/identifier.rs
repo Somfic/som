@@ -1,6 +1,6 @@
-use cranelift::prelude::{FunctionBuilder, InstBuilder};
+use cranelift::prelude::FunctionBuilder;
 
-use crate::{prelude::*, type_checker::environment::Environment};
+use crate::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
 
@@ -9,7 +9,7 @@ pub struct GroupExpression<Expression> {
 }
 
 pub fn parse(parser: &mut Parser) -> Result<Expression> {
-    let identifier = parser.parse_identifier()?;
+    let identifier = parser.expect_identifier()?;
 
     let span = identifier.span;
 

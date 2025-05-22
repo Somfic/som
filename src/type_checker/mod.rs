@@ -76,6 +76,9 @@ impl TypeChecker {
             ExpressionValue::Identifier(_) => {
                 expressions::identifier::type_check(self, expression, env)
             }
+            ExpressionValue::Function(_) => {
+                expressions::function::type_check(self, expression, env)
+            }
         }
     }
 

@@ -1,6 +1,6 @@
-use crate::{prelude::*, statements::GenericStatement, type_checker::environment::Environment};
+use crate::prelude::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct BlockExpression<Expression> {
     pub statements: Vec<GenericStatement<Expression>>,
     pub result: Box<Expression>,

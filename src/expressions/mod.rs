@@ -1,16 +1,18 @@
 use crate::prelude::*;
 use binary::BinaryExpression;
 use block::BlockExpression;
+use function::FunctionExpression;
 use group::GroupExpression;
 use primary::PrimaryExpression;
 
 pub mod binary;
 pub mod block;
+pub mod function;
 pub mod group;
 pub mod identifier;
 pub mod primary;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Expression {
     pub value: ExpressionValue,
     pub span: Span,
@@ -59,13 +61,14 @@ impl From<&TypedExpression> for Span {
 pub type ExpressionValue = GenericExpressionValue<Expression>;
 pub type TypedExpressionValue = GenericExpressionValue<TypedExpression>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum GenericExpressionValue<Expression> {
     Primary(PrimaryExpression),
     Binary(BinaryExpression<Expression>),
     Group(GroupExpression<Expression>),
     Block(BlockExpression<Expression>),
     Identifier(Identifier),
+    Function(FunctionExpression<Expression>),
 }
 
 impl GenericExpressionValue<Expression> {
