@@ -90,6 +90,7 @@ pub fn type_check(
         parameters: value.parameters.clone(),
         returns: Box::new(body.type_.clone()),
     });
+
     let value = TypedExpressionValue::Function(FunctionExpression {
         parameters: value.parameters.clone(),
         body: Box::new(body),
