@@ -89,7 +89,7 @@ impl TypeChecker {
             types
                 .iter()
                 .fold(std::collections::HashMap::new(), |mut acc, ty| {
-                    *acc.entry(ty.value).or_insert(0) += 1;
+                    *acc.entry(ty.value.clone()).or_insert(0) += 1;
                     acc
                 })
                 .into_iter()
@@ -122,7 +122,7 @@ impl TypeChecker {
                 .push(type_checker_type_mismatch(types, message));
         }
 
-        *ty.unwrap_or(&TypeValue::Never)
+        ty.unwrap_or(&TypeValue::Never).clone()
     }
 
     pub fn expect_declaration(

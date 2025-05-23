@@ -1,5 +1,5 @@
 use crate::prelude::*;
-use std::collections::HashSet;
+use std::{collections::HashSet, hash::Hash};
 
 #[derive(Debug, Clone)]
 pub struct Argument<Expression> {
@@ -9,22 +9,22 @@ pub struct Argument<Expression> {
 
 #[derive(Debug, Clone)]
 pub struct FunctionExpression<Expression> {
-    pub arguments: Vec<Argument<Expression>>,
+    pub parameters: Vec<Parameter>,
     pub explicit_return_type: Option<Type>,
     pub body: Box<Expression>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Parameter {
     pub identifier: Identifier,
-    pub type_: Type,
+    pub type_: Box<Type>,
 }
 
 pub fn parse(parser: &mut Parser) -> Result<Expression> {
     let token = parser.expect(TokenKind::Function, "expected a function signature")?;
 
     parser.expect(TokenKind::ParenOpen, "expected function arguments")?;
-    let mut arguments = vec![];
+    let mut parameters = vec![];
 
     loop {
         if parser.peek().is_some_and(|token| {
@@ -35,7 +35,7 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
             break;
         }
 
-        if !arguments.is_empty() {
+        if !parameters.is_empty() {
             parser.expect(TokenKind::Comma, "expected a comma between arguments")?;
         }
 
@@ -46,21 +46,22 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
             format!("expected a parameter type for `{}`", identifier.name),
         )?;
 
-        let value = parser.parse_expression(BindingPower::None)?;
+        let type_ = parser.parse_type(BindingPower::None)?;
 
-        arguments.push(Argument { identifier, value });
+        parameters.push(Parameter {
+            identifier,
+            type_: Box::new(type_),
+        });
     }
 
     parser.expect(TokenKind::ParenClose, "expected function arguments")?;
-
-    parser.expect(TokenKind::Arrow, "expected a function body")?;
 
     let body = parser.parse_expression(BindingPower::None)?;
 
     let span = token.span + body.span;
 
     Ok(ExpressionValue::Function(FunctionExpression {
-        arguments,
+        parameters,
         explicit_return_type: None,
         body: Box::new(body),
     })
@@ -79,25 +80,21 @@ pub fn type_check(
 
     let env = &mut env.block();
 
-    let typed_arguments = vec![];
-    for argument in &value.arguments {
-        let value = type_checker.check_expression(&argument.value, env);
-        typed_arguments.push(Argument {
-            identifier: argument.identifier.clone(),
-            value,
-        });
-        env.set(&argument.identifier, &value.type_);
+    for parameter in &value.parameters {
+        env.set(&parameter.identifier, &parameter.type_);
     }
-
-    let env = &mut env.block();
 
     let body = type_checker.check_expression(&value.body, env);
 
+    let type_ = TypeValue::Function {
+        parameters: value.parameters.clone(),
+        returns: Box::new(body.type_.value.clone()),
+    };
     let value = TypedExpressionValue::Function(FunctionExpression {
-        arguments: typed_arguments,
+        parameters: value.parameters.clone(),
         body: Box::new(body),
         explicit_return_type: value.explicit_return_type.clone(),
     });
 
-    expression.with_value_type(value, Type::new(expression, TypeValue::Unit))
+    expression.with_value_type(value, Type::new(expression, type_))
 }

@@ -26,7 +26,9 @@ pub fn type_check(
         _ => unreachable!(),
     };
 
-    let type_ = type_checker.expect_declaration(identifier, env, "identifier not found");
+    let type_ = type_checker
+        .expect_declaration(identifier, env, "identifier not found")
+        .with_span(identifier);
 
     TypedExpression {
         type_,

@@ -38,7 +38,7 @@ pub fn type_check(
     let value = type_checker.check_expression(value, &mut env);
 
     TypedExpression {
-        type_: Type::new(expression, value.type_.value),
+        type_: Type::new(expression, value.type_.value.clone()),
         value: TypedExpressionValue::Group(GroupExpression {
             expression: Box::new(value),
         }),

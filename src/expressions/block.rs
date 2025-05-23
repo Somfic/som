@@ -110,7 +110,7 @@ pub fn type_check(
 
     let result = type_checker.check_expression(&block.result, &mut env);
 
-    let type_ = Type::new(result.span, result.type_.value);
+    let type_ = Type::new(result.span, result.type_.value.clone());
     let value = TypedExpressionValue::Block(BlockExpression {
         statements,
         result: Box::new(result),
