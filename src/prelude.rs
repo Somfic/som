@@ -9,6 +9,7 @@ pub use crate::statements::GenericStatement;
 pub use crate::statements::{Statement, StatementValue};
 pub use crate::type_checker::environment::Environment;
 pub use crate::type_checker::TypeChecker;
+pub use crate::types::FunctionType;
 pub use crate::types::{Type, TypeValue};
 pub use crate::{
     expressions::{Expression, TypedExpression},
