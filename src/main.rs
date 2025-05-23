@@ -26,7 +26,7 @@ fn main() {
     let source = "
     { 
         let id = fn(a ~ int) a; 
-        id + 1 
+        id(1) + 1
     };";
 
     let lexer = Lexer::new(source);

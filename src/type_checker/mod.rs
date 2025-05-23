@@ -79,6 +79,7 @@ impl TypeChecker {
             ExpressionValue::Function(_) => {
                 expressions::function::type_check(self, expression, env)
             }
+            ExpressionValue::Call(_) => expressions::call::type_check(self, expression, env),
         }
     }
 
