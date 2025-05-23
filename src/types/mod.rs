@@ -51,16 +51,14 @@ impl Display for TypeValue {
             TypeValue::Integer => write!(f, "int"),
             TypeValue::Boolean => write!(f, "bool"),
             TypeValue::Unit => write!(f, "nothing"),
-            TypeValue::Function {
-                parameters,
-                returns,
-            } => {
-                let params = parameters
+            TypeValue::Function(function) => {
+                let params = function
+                    .parameters
                     .iter()
                     .map(|p| format!("{}", p.type_))
                     .collect::<Vec<_>>()
                     .join(", ");
-                write!(f, "fn({}) -> {}", params, returns)
+                write!(f, "fn({}) -> {}", params, function.returns)
             }
         }
     }
@@ -86,8 +84,11 @@ pub enum TypeValue {
     Unit,
     Integer,
     Boolean,
-    Function {
-        parameters: Vec<Parameter>,
-        returns: Box<TypeValue>,
-    },
+    Function(FunctionType),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FunctionType {
+    pub parameters: Vec<Parameter>,
+    pub returns: Box<Type>,
 }

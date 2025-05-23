@@ -33,7 +33,7 @@ pub fn parse(parser: &mut Parser, expression: Expression, bp: BindingPower) -> R
     let span = expression.span + close.span;
 
     Ok(ExpressionValue::Call(CallExpression {
-        callee: Box::new(expression.with_span(span)),
+        callee: Box::new(expression),
         arguments,
     })
     .with_span(span))
@@ -51,7 +51,14 @@ pub fn type_check(
 
     let callee = type_checker.check_expression(&value.callee, env);
 
-    let type_ = callee.type_.clone().with_span(callee.span);
+    let function = match &callee.type_.value {
+        TypeValue::Function(function) => function,
+        _ => {
+            panic!("not a function: {}", callee.type_);
+        }
+    };
+
+    let type_ = function.returns.clone().with_span(expression.span);
 
     let arguments = value
         .arguments

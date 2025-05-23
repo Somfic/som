@@ -86,10 +86,10 @@ pub fn type_check(
 
     let body = type_checker.check_expression(&value.body, env);
 
-    let type_ = TypeValue::Function {
+    let type_ = TypeValue::Function(FunctionType {
         parameters: value.parameters.clone(),
-        returns: Box::new(body.type_.value.clone()),
-    };
+        returns: Box::new(body.type_.clone()),
+    });
     let value = TypedExpressionValue::Function(FunctionExpression {
         parameters: value.parameters.clone(),
         body: Box::new(body),
