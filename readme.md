@@ -6,7 +6,7 @@
 let fib = fn(n ~ int){
     n if n < 2 else fib(n - 1) + fib(n - 2)
 }
- -> int 
+
 fib(10)
 ```
 
@@ -21,6 +21,5 @@ type Color = Red
            | Hex(string) 
            | Rgb(Rgb)
 
-fn print_color(color ~ Color)
-    print(color)
+let print_color = fn(color ~ Color) print(color)
 ```
