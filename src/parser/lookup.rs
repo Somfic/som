@@ -2,7 +2,7 @@ use crate::prelude::*;
 
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub enum BindingPower {
     None = 0,
     Comma = 1,
@@ -126,6 +126,11 @@ impl Default for Lookup {
             TokenKind::Slash,
             BindingPower::Multiplicative,
             crate::expressions::binary::divide::parse,
+        )
+        .add_left_expression_handler(
+            TokenKind::ParenOpen,
+            BindingPower::Call,
+            crate::expressions::call::parse,
         )
         .add_statement_handler(TokenKind::Let, crate::statements::declaration::parse)
         .add_type_handler(TokenKind::IntegerType, crate::types::integer::parse)

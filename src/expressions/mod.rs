@@ -1,12 +1,14 @@
 use crate::prelude::*;
 use binary::BinaryExpression;
 use block::BlockExpression;
+use call::CallExpression;
 use function::FunctionExpression;
 use group::GroupExpression;
 use primary::PrimaryExpression;
 
 pub mod binary;
 pub mod block;
+pub mod call;
 pub mod function;
 pub mod group;
 pub mod identifier;
@@ -24,6 +26,13 @@ impl Expression {
             value,
             span: self.span,
             type_,
+        }
+    }
+
+    pub fn with_span(self, span: impl Into<Span>) -> Self {
+        Self {
+            value: self.value.clone(),
+            span: span.into(),
         }
     }
 }
@@ -69,6 +78,7 @@ pub enum GenericExpressionValue<Expression> {
     Block(BlockExpression<Expression>),
     Identifier(Identifier),
     Function(FunctionExpression<Expression>),
+    Call(CallExpression<Expression>),
 }
 
 impl GenericExpressionValue<Expression> {
