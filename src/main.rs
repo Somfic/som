@@ -16,13 +16,18 @@ fn main() {
             miette::MietteHandlerOpts::new()
                 .terminal_links(true)
                 .unicode(true)
+                .with_cause_chain()
                 .context_lines(2)
                 .build(),
         )
     }))
     .unwrap();
 
-    let source = "{ let a = 1 + 1; b } + true;";
+    let source = "
+    { 
+        let id = fn(a ~ int) a; 
+        id + 1 
+    };";
 
     let lexer = Lexer::new(source);
 

@@ -17,8 +17,8 @@ pub enum BindingPower {
     Primary = 10,
 }
 
-pub type TypingHandler = fn(&mut Parser) -> Result<Type>;
-pub type LeftTypingHandler = fn(&mut Parser, Type, BindingPower) -> Result<Type>;
+pub type TypeHandler = fn(&mut Parser) -> Result<Type>;
+pub type LeftTypeHandler = fn(&mut Parser, Type, BindingPower) -> Result<Type>;
 pub type StatementHandler = fn(&mut Parser) -> Result<Statement>;
 pub type ExpressionHandler = fn(&mut Parser) -> Result<Expression>;
 pub type LeftExpressionHandler = fn(&mut Parser, Expression, BindingPower) -> Result<Expression>;
@@ -27,8 +27,8 @@ pub struct Lookup {
     pub statement_lookup: HashMap<TokenKind, StatementHandler>,
     pub expression_lookup: HashMap<TokenKind, ExpressionHandler>,
     pub left_expression_lookup: HashMap<TokenKind, LeftExpressionHandler>,
-    pub type_lookup: HashMap<TokenKind, TypingHandler>,
-    pub left_type_lookup: HashMap<TokenKind, LeftTypingHandler>,
+    pub type_lookup: HashMap<TokenKind, TypeHandler>,
+    pub left_type_lookup: HashMap<TokenKind, LeftTypeHandler>,
     pub binding_power_lookup: HashMap<TokenKind, BindingPower>,
 }
 
@@ -66,7 +66,7 @@ impl Lookup {
         self
     }
 
-    pub fn add_typing_handler(mut self, token: TokenKind, handler: TypingHandler) -> Self {
+    pub fn add_type_handler(mut self, token: TokenKind, handler: TypeHandler) -> Self {
         if self.type_lookup.contains_key(&token) {
             panic!("Token already has a type handler");
         }
@@ -75,7 +75,7 @@ impl Lookup {
         self
     }
 
-    pub fn add_left_typing_handler(mut self, token: TokenKind, handler: LeftTypingHandler) -> Self {
+    pub fn add_left_type_handler(mut self, token: TokenKind, handler: LeftTypeHandler) -> Self {
         if self.left_type_lookup.contains_key(&token) {
             panic!("Token already has a left type handler");
         }
@@ -128,5 +128,6 @@ impl Default for Lookup {
             crate::expressions::binary::divide::parse,
         )
         .add_statement_handler(TokenKind::Let, crate::statements::declaration::parse)
+        .add_type_handler(TokenKind::IntegerType, crate::types::integer::parse)
     }
 }

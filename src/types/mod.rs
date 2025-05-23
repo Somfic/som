@@ -1,7 +1,10 @@
-use std::fmt::Display;
+use std::fmt::{write, Display};
 use std::hash::Hash;
 
+use crate::expressions::function::Parameter;
 use crate::prelude::*;
+
+pub mod integer;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Type {
@@ -23,6 +26,13 @@ impl Type {
         }
     }
 
+    pub fn with_span(self, span: impl Into<Span>) -> Self {
+        Self {
+            value: self.value.clone(),
+            span: span.into(),
+        }
+    }
+
     pub fn equals(&self, other: &Type) -> bool {
         self.value == other.value
     }
@@ -38,9 +48,20 @@ impl Display for TypeValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TypeValue::Never => write!(f, "never"),
-            TypeValue::Integer => write!(f, "an integer"),
-            TypeValue::Boolean => write!(f, "a boolean"),
+            TypeValue::Integer => write!(f, "int"),
+            TypeValue::Boolean => write!(f, "bool"),
             TypeValue::Unit => write!(f, "nothing"),
+            TypeValue::Function {
+                parameters,
+                returns,
+            } => {
+                let params = parameters
+                    .iter()
+                    .map(|p| format!("{}", p.type_))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "fn({}) -> {}", params, returns)
+            }
         }
     }
 }
@@ -57,7 +78,7 @@ impl From<&Type> for Span {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeValue {
     /// This type is only ever used internally by the type checker to indicate that a value is undetermined or invalid.
     Never,
@@ -65,4 +86,8 @@ pub enum TypeValue {
     Unit,
     Integer,
     Boolean,
+    Function {
+        parameters: Vec<Parameter>,
+        returns: Box<TypeValue>,
+    },
 }
