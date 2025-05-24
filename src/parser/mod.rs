@@ -1,5 +1,3 @@
-use miette::IntoDiagnostic;
-
 use crate::prelude::*;
 
 pub mod lookup;
@@ -94,10 +92,9 @@ impl<'source> Parser<'source> {
 
             let token_binding_power = {
                 let binding_power_lookup = self.lookup.binding_power_lookup.clone();
-                binding_power_lookup
+                *binding_power_lookup
                     .get(&token.kind)
                     .unwrap_or(&BindingPower::None)
-                    .clone()
             };
 
             if bp >= token_binding_power {
@@ -147,10 +144,9 @@ impl<'source> Parser<'source> {
 
             let token_binding_power = {
                 let binding_power_lookup = self.lookup.binding_power_lookup.clone();
-                binding_power_lookup
+                *binding_power_lookup
                     .get(&token.kind)
                     .unwrap_or(&BindingPower::None)
-                    .clone()
             };
 
             if bp >= token_binding_power {
@@ -179,5 +175,39 @@ impl<'source> Parser<'source> {
         };
 
         Ok(value)
+    }
+
+    pub fn expect_list<T>(
+        &mut self,
+        open: TokenKind,
+        parse: fn(&mut Self) -> Result<T>,
+        divider: TokenKind,
+        close: TokenKind,
+    ) -> Result<(Vec<T>, Span)> {
+        let start = self.expect(open, "expected a list")?;
+        let mut list = vec![];
+
+        loop {
+            if self
+                .peek()
+                .is_some_and(|token| token.as_ref().is_ok_and(|token| token.kind == close))
+            {
+                break;
+            }
+
+            if !list.is_empty() {
+                self.expect(divider.clone(), "expected a comma between arguments")?;
+            }
+
+            let value = parse(self)?;
+
+            list.push(value);
+        }
+
+        let end = self.expect(close, "expected a list")?;
+
+        let span = start.span + end.span;
+
+        Ok((list, span))
     }
 }
