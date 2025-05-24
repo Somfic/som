@@ -7,30 +7,14 @@ pub struct CallExpression<Expression> {
 }
 
 pub fn parse(parser: &mut Parser, expression: Expression, bp: BindingPower) -> Result<Expression> {
-    parser.expect(TokenKind::ParenOpen, "expected a function call")?;
+    let (arguments, span) = parser.expect_list(
+        TokenKind::ParenOpen,
+        |parser| parser.parse_expression(BindingPower::None),
+        TokenKind::Comma,
+        TokenKind::ParenClose,
+    )?;
 
-    let mut arguments = vec![];
-
-    loop {
-        if parser.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
-        }) {
-            break;
-        }
-
-        if !arguments.is_empty() {
-            parser.expect(TokenKind::Comma, "expected a comma between arguments")?;
-        }
-
-        let argument = parser.parse_expression(bp)?;
-        arguments.push(argument);
-    }
-
-    let close = parser.expect(TokenKind::ParenClose, "expected a function call")?;
-
-    let span = expression.span + close.span;
+    let span = expression.span + span;
 
     Ok(ExpressionValue::Call(CallExpression {
         callee: Box::new(expression),
