@@ -49,6 +49,7 @@ impl From<&Expression> for Span {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct TypedExpression {
     pub value: TypedExpressionValue,
     pub span: Span,
@@ -66,6 +67,19 @@ impl From<&TypedExpression> for Span {
         expression.span
     }
 }
+
+impl From<TypedExpression> for miette::SourceSpan {
+    fn from(typed_expression: TypedExpression) -> Self {
+        typed_expression.span.into()
+    }
+}
+
+impl From<&TypedExpression> for miette::SourceSpan {
+    fn from(expression: &TypedExpression) -> Self {
+        expression.span.into()
+    }
+}
+
 
 pub type ExpressionValue = GenericExpressionValue<Expression>;
 pub type TypedExpressionValue = GenericExpressionValue<TypedExpression>;

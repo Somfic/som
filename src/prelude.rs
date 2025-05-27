@@ -1,5 +1,6 @@
 pub use crate::expressions::binary::BinaryExpression;
 pub use crate::expressions::binary::BinaryOperator;
+pub use crate::expressions::function::Parameter;
 pub use crate::expressions::primary::PrimaryExpression;
 pub use crate::expressions::ExpressionValue;
 pub use crate::expressions::TypedExpressionValue;
@@ -188,6 +189,32 @@ pub enum TypeCheckerError {
     DeclarationNotFound {
         #[label(collection, "")]
         labels: Vec<LabeledSpan>,
+
+        #[help]
+        help: String,
+    },
+
+    #[error("missing parameter")]
+    #[diagnostic()]
+    MissingParameter {
+        #[label("this parameter")]
+        parameter: Parameter,
+
+        #[label("expected parameter")]
+        argument: (usize, usize),
+
+        #[help]
+        help: String,
+    },
+
+    #[error("unexpected argument")]
+    #[diagnostic()]
+    UnexpectedArgument {
+        #[label("unexpected argument")]
+        argument: TypedExpression,
+
+        #[label("function signature")]
+        function: Type,
 
         #[help]
         help: String,
