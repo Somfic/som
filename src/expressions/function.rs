@@ -12,6 +12,7 @@ pub struct FunctionExpression<Expression> {
     pub parameters: Vec<Parameter>,
     pub explicit_return_type: Option<Type>,
     pub body: Box<Expression>,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, Eq)]
@@ -58,7 +59,7 @@ impl From<&Parameter> for miette::SourceSpan {
 }
 
 pub fn parse(parser: &mut Parser) -> Result<Expression> {
-    let token = parser.expect(TokenKind::Function, "expected a function signature")?;
+    let start = parser.expect(TokenKind::Function, "expected a function signature")?;
 
     parser.expect(TokenKind::ParenOpen, "expected function arguments")?;
     let mut parameters = vec![];
@@ -92,16 +93,17 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
         });
     }
 
-    parser.expect(TokenKind::ParenClose, "expected function arguments")?;
+    let end = parser.expect(TokenKind::ParenClose, "expected function arguments")?;
 
     let body = parser.parse_expression(BindingPower::None)?;
 
-    let span = token.span + body.span;
+    let span = start.span + body.span;
 
     Ok(ExpressionValue::Function(FunctionExpression {
         parameters,
         explicit_return_type: None,
         body: Box::new(body),
+        span: start.span + end.span,
     })
     .with_span(span))
 }
@@ -127,12 +129,14 @@ pub fn type_check(
     let type_ = TypeValue::Function(FunctionType {
         parameters: value.parameters.clone(),
         returns: Box::new(body.type_.clone()),
+        span: value.span,
     });
 
     let value = TypedExpressionValue::Function(FunctionExpression {
         parameters: value.parameters.clone(),
         body: Box::new(body),
         explicit_return_type: value.explicit_return_type.clone(),
+        span: value.span,
     });
 
     expression.with_value_type(value, Type::new(expression, type_))

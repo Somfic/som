@@ -58,7 +58,7 @@ pub fn type_check(
         &arguments,
         &function.parameters,
         value.last_argument_offset,
-        &callee.type_,
+        function,
         env,
     );
 
@@ -77,7 +77,7 @@ fn check_arguments(
     arguments: &[TypedExpression],
     parameters: &[Parameter],
     missing_argument_offset: usize,
-    function: &Type,
+    function: &FunctionType,
     env: &mut Environment,
 ) {
     if arguments.len() < parameters.len() {
@@ -99,7 +99,7 @@ fn check_arguments(
         for i in parameters.len()..arguments.len() {
             let argument = &arguments[i];
             type_checker.add_error(Error::TypeChecker(TypeCheckerError::UnexpectedArgument {
-                help: format!("unexpected argument at position {}", i + 1),
+                help: "remove this argument or add a parameter to the function".to_string(),
                 argument: argument.clone(),
                 function: function.clone(),
             }));
@@ -110,12 +110,11 @@ fn check_arguments(
         let argument_type = &argument.type_;
         let parameter_type = &parameter.type_;
 
-        type_checker.expect_same_type(
-            vec![argument_type, parameter_type],
-            format!(
-                "expected {} for parameter `{}`",
-                parameter_type, parameter.identifier
-            ),
+        type_checker.expect_type(
+            argument_type,
+            parameter_type,
+            parameter,
+            format!("for parameter `{}`", parameter.identifier),
         );
     }
 }

@@ -108,10 +108,29 @@ pub enum TypeValue {
     Function(FunctionType),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct FunctionType {
     pub parameters: Vec<Parameter>,
     pub returns: Box<Type>,
+    pub span: Span,
+}
+
+impl From<FunctionType> for miette::SourceSpan {
+    fn from(function: FunctionType) -> Self {
+        function.span.into()
+    }
+}
+
+impl From<&FunctionType> for miette::SourceSpan {
+    fn from(function: &FunctionType) -> Self {
+        function.span.into()
+    }
+}
+
+impl PartialEq for FunctionType {
+    fn eq(&self, other: &Self) -> bool {
+        self.parameters == other.parameters && self.returns == other.returns
+    }
 }
 
 impl Hash for FunctionType {
