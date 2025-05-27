@@ -14,10 +14,47 @@ pub struct FunctionExpression<Expression> {
     pub body: Box<Expression>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub struct Parameter {
     pub identifier: Identifier,
     pub type_: Box<Type>,
+    pub span: Span,
+}
+
+impl PartialEq for Parameter {
+    fn eq(&self, other: &Self) -> bool {
+        self.type_ == other.type_
+    }
+}
+
+impl Hash for Parameter {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.type_.hash(state);
+    }
+}
+
+impl From<Parameter> for Span {
+    fn from(parameter: Parameter) -> Self {
+        parameter.span
+    }
+}
+
+impl From<&Parameter> for Span {
+    fn from(parameter: &Parameter) -> Self {
+        parameter.span
+    }
+}
+
+impl From<Parameter> for miette::SourceSpan {
+    fn from(parameter: Parameter) -> Self {
+        parameter.span.into()
+    }
+}
+
+impl From<&Parameter> for miette::SourceSpan {
+    fn from(parameter: &Parameter) -> Self {
+        parameter.span.into()
+    }
 }
 
 pub fn parse(parser: &mut Parser) -> Result<Expression> {
@@ -49,6 +86,7 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
         let type_ = parser.parse_type(BindingPower::None)?;
 
         parameters.push(Parameter {
+            span: identifier.span + type_.span,
             identifier,
             type_: Box::new(type_),
         });

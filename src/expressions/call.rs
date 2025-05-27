@@ -4,6 +4,7 @@ pub use crate::prelude::*;
 pub struct CallExpression<Expression> {
     pub callee: Box<Expression>,
     pub arguments: Vec<Expression>,
+    pub last_argument_offset: usize,
 }
 
 pub fn parse(parser: &mut Parser, expression: Expression, bp: BindingPower) -> Result<Expression> {
@@ -19,6 +20,7 @@ pub fn parse(parser: &mut Parser, expression: Expression, bp: BindingPower) -> R
     Ok(ExpressionValue::Call(CallExpression {
         callee: Box::new(expression),
         arguments,
+        last_argument_offset: span.offset() + span.length() - 1,
     })
     .with_span(span))
 }
@@ -44,17 +46,76 @@ pub fn type_check(
 
     let type_ = function.returns.clone().with_span(expression.span);
 
-    let arguments = value
+    let arguments: Vec<_> = value
         .arguments
         .iter()
         .map(|argument| type_checker.check_expression(argument, env))
         .collect();
 
+    // check arguments
+    check_arguments(
+        type_checker,
+        &arguments,
+        &function.parameters,
+        value.last_argument_offset,
+        &callee.type_,
+        env,
+    );
+
     expression.with_value_type(
         TypedExpressionValue::Call(CallExpression {
             callee: Box::new(callee),
             arguments,
+            last_argument_offset: value.last_argument_offset,
         }),
         type_,
     )
+}
+
+fn check_arguments(
+    type_checker: &mut TypeChecker,
+    arguments: &[TypedExpression],
+    parameters: &[Parameter],
+    missing_argument_offset: usize,
+    function: &Type,
+    env: &mut Environment,
+) {
+    if arguments.len() < parameters.len() {
+        for i in arguments.len()..parameters.len() {
+            let parameter = &parameters[i];
+
+            type_checker.add_error(Error::TypeChecker(TypeCheckerError::MissingParameter {
+                help: format!(
+                    "supply a value for `{}` ({})",
+                    parameter.identifier, parameter.type_
+                ),
+                argument: (missing_argument_offset, 0),
+                parameter: parameter.clone(),
+            }));
+        }
+    }
+
+    if parameters.len() < arguments.len() {
+        for i in parameters.len()..arguments.len() {
+            let argument = &arguments[i];
+            type_checker.add_error(Error::TypeChecker(TypeCheckerError::UnexpectedArgument {
+                help: format!("unexpected argument at position {}", i + 1),
+                argument: argument.clone(),
+                function: function.clone(),
+            }));
+        }
+    }
+
+    for (i, (argument, parameter)) in arguments.iter().zip(parameters).enumerate() {
+        let argument_type = &argument.type_;
+        let parameter_type = &parameter.type_;
+
+        type_checker.expect_same_type(
+            vec![argument_type, parameter_type],
+            format!(
+                "argument at position {} does not match parameter type",
+                i + 1
+            ),
+        );
+    }
 }

@@ -144,4 +144,8 @@ impl TypeChecker {
 
         type_
     }
+
+    pub fn add_error(&self, error: Error) {
+        self.errors.borrow_mut().push(error);
+    }
 }

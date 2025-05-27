@@ -6,10 +6,28 @@ use crate::prelude::*;
 
 pub mod integer;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Eq)]
 pub struct Type {
     pub value: TypeValue,
     pub span: Span,
+}
+
+impl From<Type> for miette::SourceSpan {
+    fn from(ty: Type) -> Self {
+        ty.span.into()
+    }
+}
+
+impl From<&Type> for miette::SourceSpan {
+    fn from(ty: &Type) -> Self {
+        ty.span.into()
+    }
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        self.value == other.value
+    }
 }
 
 impl Hash for Type {
@@ -33,8 +51,11 @@ impl Type {
         }
     }
 
-    pub fn equals(&self, other: &Type) -> bool {
-        self.value == other.value
+    pub fn with_value(self, value: TypeValue) -> Self {
+        Self {
+            value,
+            span: self.span,
+        }
     }
 }
 
@@ -76,7 +97,7 @@ impl From<&Type> for Span {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum TypeValue {
     /// This type is only ever used internally by the type checker to indicate that a value is undetermined or invalid.
     Never,
@@ -87,8 +108,15 @@ pub enum TypeValue {
     Function(FunctionType),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionType {
     pub parameters: Vec<Parameter>,
     pub returns: Box<Type>,
+}
+
+impl Hash for FunctionType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.parameters.hash(state);
+        self.returns.hash(state);
+    }
 }
