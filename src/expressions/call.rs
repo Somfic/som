@@ -99,7 +99,8 @@ fn check_arguments(
         for i in parameters.len()..arguments.len() {
             let argument = &arguments[i];
             type_checker.add_error(Error::TypeChecker(TypeCheckerError::UnexpectedArgument {
-                help: "remove this argument or add a parameter to the function".to_string(),
+                help: "remove this argument or add a parameter to the function signature"
+                    .to_string(),
                 argument: argument.clone(),
                 function: function.clone(),
             }));
