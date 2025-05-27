@@ -113,8 +113,8 @@ fn check_arguments(
         type_checker.expect_same_type(
             vec![argument_type, parameter_type],
             format!(
-                "argument at position {} does not match parameter type",
-                i + 1
+                "expected {} for parameter `{}`",
+                parameter_type, parameter.identifier
             ),
         );
     }
