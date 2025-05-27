@@ -214,7 +214,7 @@ pub enum TypeCheckerError {
         argument: TypedExpression,
 
         #[label("function signature")]
-        function: Type,
+        function: FunctionType,
 
         #[help]
         help: String,
@@ -279,6 +279,34 @@ pub fn parser_expected_type(token: &Token) -> Error {
     Error::Parser(ParserError::ExpectedType {
         help: format!("{token} cannot be parsed as a type"),
         token: token.clone(),
+    })
+}
+
+pub fn type_checker_unexpected_type(
+    expected: &Type,
+    actual: &Type,
+    expected_span: impl Into<Span>,
+    help: impl Into<String>,
+) -> Error {
+    let expected_span = expected_span.into();
+
+    Error::TypeChecker(TypeCheckerError::TypeMismatch {
+        help: format!(
+            "expected type {expected} but found {actual}, {}",
+            help.into()
+        ),
+        labels: vec![
+            LabeledSpan::new(
+                Some(format!("expected {expected}")),
+                expected_span.offset(),
+                expected_span.length(),
+            ),
+            LabeledSpan::new(
+                Some(format!("found {actual}")),
+                actual.span.offset(),
+                actual.span.length(),
+            ),
+        ],
     })
 }
 

@@ -83,6 +83,31 @@ impl TypeChecker {
         }
     }
 
+    pub fn expect_type(
+        &self,
+        actual: &Type,
+        expected: &Type,
+        expected_span: impl Into<Span>,
+        message: impl Into<String>,
+    ) -> TypeValue {
+        if actual.value == expected.value {
+            return actual.value.clone();
+        }
+
+        if actual.value == TypeValue::Never || expected.value == TypeValue::Never {
+            return TypeValue::Never;
+        }
+
+        self.errors.borrow_mut().push(type_checker_unexpected_type(
+            expected,
+            actual,
+            expected_span,
+            message,
+        ));
+
+        TypeValue::Never
+    }
+
     pub fn expect_same_type(&self, types: Vec<&Type>, message: impl Into<String>) -> TypeValue {
         let most_occuring_type = if types.len() <= 2 {
             None
