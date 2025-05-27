@@ -16,7 +16,7 @@ cranelift-module = "0.120.0"
 cranelift-jit = "0.120.0"
 cranelift-native = "0.120.0"
 memmap2 = "0.9.5"
-clap = { version = "4.5.38", features = ["derive"] }
+clap = { version = "4.5.39", features = ["derive"] }
 syn = "2.0.101"
 quote = "1.0.40"
 proc-macro2 = "1.0.95"
