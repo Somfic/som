@@ -59,7 +59,6 @@ pub fn type_check(
         &function.parameters,
         value.last_argument_offset,
         function,
-        env,
     );
 
     expression.with_value_type(
@@ -78,12 +77,9 @@ fn check_arguments(
     parameters: &[Parameter],
     missing_argument_offset: usize,
     function: &FunctionType,
-    env: &mut Environment,
 ) {
     if arguments.len() < parameters.len() {
-        for i in arguments.len()..parameters.len() {
-            let parameter = &parameters[i];
-
+        for parameter in &parameters[arguments.len()..] {
             type_checker.add_error(Error::TypeChecker(TypeCheckerError::MissingParameter {
                 help: format!(
                     "supply a value for `{}` ({})",
@@ -96,8 +92,7 @@ fn check_arguments(
     }
 
     if parameters.len() < arguments.len() {
-        for i in parameters.len()..arguments.len() {
-            let argument = &arguments[i];
+        for argument in &arguments[parameters.len()..] {
             type_checker.add_error(Error::TypeChecker(TypeCheckerError::UnexpectedArgument {
                 help: "remove this argument or add a parameter to the function signature"
                     .to_string(),
@@ -107,7 +102,7 @@ fn check_arguments(
         }
     }
 
-    for (i, (argument, parameter)) in arguments.iter().zip(parameters).enumerate() {
+    for (argument, parameter) in arguments.iter().zip(parameters) {
         let argument_type = &argument.type_;
         let parameter_type = &parameter.type_;
 
