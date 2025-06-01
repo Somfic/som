@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use miette::Context;
 use parser::Parser;
 
 mod expressions;
@@ -25,17 +24,21 @@ fn main() {
 
     let source = "
     { 
-        let id = fn(a ~ int) a; 
-        id(true, false)
+        type Color = { r ~ int, g ~ int, b ~ int };
+        let red: Color = { r: 255, g: 0, b: 0 };
+
+        let a ~ int = red.r + red.g + red.b;
     };";
 
     let lexer = Lexer::new(source);
 
     let mut parser = Parser::new(lexer);
-    let parsed = match parser.parse_statement(true) {
+    let parsed = match parser.parse() {
         Ok(parsed) => parsed,
-        Err(e) => {
-            eprintln!("{:?}", miette::miette!(e).with_source_code(source));
+        Err(errors) => {
+            for error in errors {
+                eprintln!("{:?}", miette::miette!(error).with_source_code(source));
+            }
             std::process::exit(1);
         }
     };

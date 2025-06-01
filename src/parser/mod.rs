@@ -1,17 +1,30 @@
 use crate::prelude::*;
+use std::cell::RefCell;
 
 pub mod lookup;
 
 pub struct Parser<'source> {
-    lexer: Lexer<'source>,
+    pub errors: RefCell<Vec<Error>>,
+    pub lexer: Lexer<'source>,
     lookup: Lookup,
 }
 
 impl<'source> Parser<'source> {
     pub fn new(lexer: Lexer<'source>) -> Self {
         Self {
+            errors: RefCell::new(Vec::new()),
             lexer,
             lookup: Lookup::default(),
+        }
+    }
+
+    pub fn parse(&mut self) -> Results<Statement> {
+        match self.parse_statement(true) {
+            Ok(statement) => Ok(statement),
+            Err(e) => {
+                self.errors.borrow_mut().push(e);
+                return Err(self.errors.borrow().clone());
+            }
         }
     }
 
@@ -29,6 +42,10 @@ impl<'source> Parser<'source> {
 
     pub fn peek(&mut self) -> Option<&Result<Token>> {
         self.lexer.peek()
+    }
+
+    pub fn next(&mut self) -> Option<Result<Token>> {
+        self.lexer.next()
     }
 
     pub fn parse_statement(&mut self, require_semicolon: bool) -> Result<Statement> {
