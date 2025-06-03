@@ -38,7 +38,7 @@ pub fn parse_inner_block(parser: &mut Parser, terminating_token: TokenKind) -> R
                         .unwrap_or(false)
                 }) {
                     parser.next();
-                }
+
 
                 parser.next(); // consume the token that caused the error
 
