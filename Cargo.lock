@@ -436,16 +436,16 @@ checksum = "ec67bfb8bd55b1e9760eb9f5186dca8d81bd4d86110f8d5af01154a044c91802"
 
 [[package]]
 name = "cranelift-jit"
-version = "0.120.0"
+version = "0.121.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56bd917ddc524f84f4066f954062875bdfc0dffea068ee94e906d98de5ac7c33"
+checksum = "d67cdfc447f2abdb46bb30a6582cce189539c3c051c1d5330692376e1400edff"
 dependencies = [
  "anyhow",
- "cranelift-codegen 0.120.0",
- "cranelift-control 0.120.0",
- "cranelift-entity 0.120.0",
- "cranelift-module 0.120.0",
- "cranelift-native 0.120.0",
+ "cranelift-codegen 0.121.0",
+ "cranelift-control 0.121.0",
+ "cranelift-entity 0.121.0",
+ "cranelift-module 0.121.0",
+ "cranelift-native",
  "libc",
  "log",
  "region",
@@ -474,17 +474,6 @@ dependencies = [
  "anyhow",
  "cranelift-codegen 0.121.0",
  "cranelift-control 0.121.0",
-]
-
-[[package]]
-name = "cranelift-native"
-version = "0.120.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19ed3c94cb97b14f92b6a94a1d45ef8c851f6a2ad9114e5d91d233f7da638fed"
-dependencies = [
- "cranelift-codegen 0.120.0",
- "libc",
- "target-lexicon",
 ]
 
 [[package]]
@@ -967,7 +956,7 @@ dependencies = [
  "cranelift",
  "cranelift-jit",
  "cranelift-module 0.121.0",
- "cranelift-native 0.121.0",
+ "cranelift-native",
  "memmap2",
  "miette",
  "owo-colors",
@@ -1177,9 +1166,9 @@ dependencies = [
 
 [[package]]
 name = "wasmtime-jit-icache-coherence"
-version = "33.0.0"
+version = "34.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "175e924dbc944c185808466d1e90b5a7feb610f3b9abdfe26f8ee25fd1086d1c"
+checksum = "2eedc0324e37cf39b049f4dca0c30997eaab49f09006d5f4c1994e64e7b7dba8"
 dependencies = [
  "anyhow",
  "cfg-if",
