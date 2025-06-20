@@ -220,7 +220,7 @@ checksum = "05e20b81562751d4721684fde9fb8134d2ed33f44c38dde55ca787e5224e1a66"
 dependencies = [
  "cranelift-codegen 0.120.0",
  "cranelift-frontend",
- "cranelift-module",
+ "cranelift-module 0.120.0",
 ]
 
 [[package]]
@@ -444,7 +444,7 @@ dependencies = [
  "cranelift-codegen 0.120.0",
  "cranelift-control 0.120.0",
  "cranelift-entity 0.120.0",
- "cranelift-module",
+ "cranelift-module 0.120.0",
  "cranelift-native 0.120.0",
  "libc",
  "log",
@@ -463,6 +463,17 @@ dependencies = [
  "anyhow",
  "cranelift-codegen 0.120.0",
  "cranelift-control 0.120.0",
+]
+
+[[package]]
+name = "cranelift-module"
+version = "0.121.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4597eaa52bca1ed111986c7a7f70cdbe192f83d271d627201365078e37b7e84"
+dependencies = [
+ "anyhow",
+ "cranelift-codegen 0.121.0",
+ "cranelift-control 0.121.0",
 ]
 
 [[package]]
@@ -955,7 +966,7 @@ dependencies = [
  "clap",
  "cranelift",
  "cranelift-jit",
- "cranelift-module",
+ "cranelift-module 0.121.0",
  "cranelift-native 0.121.0",
  "memmap2",
  "miette",
