@@ -192,8 +192,9 @@ impl Iterator for Lexer<'_> {
                 self.byte_offset += c.len_utf8();
 
                 if self.remainder.chars().next()? == '\'' {
-                    self.remainder = self.remainder[c.len_utf8()..].into();
-                    self.byte_offset += c.len_utf8();
+                    // advance past the closing quote, not the character itself
+                    self.remainder = self.remainder['\''.len_utf8()..].into();
+                    self.byte_offset += '\''.len_utf8();
                     Ok((TokenKind::Character, TokenValue::Character(c)))
                 } else {
                     Err(lexer_improper_character(
