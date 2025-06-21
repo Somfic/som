@@ -157,7 +157,7 @@ pub enum TokenKind {
     /// A for keyword; `for`.
     For,
 
-    /// A var keyword; `var`.
+    /// A let keyword; `let`.
     Let,
     /// A type keyword; `type`.
     Type,
