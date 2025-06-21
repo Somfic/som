@@ -109,7 +109,7 @@ pub enum TokenKind {
 
     /// An equals sign; `=`.
     Equal,
-    /// A negetion sign; `!`.
+    /// A negation sign; `!`.
     Not,
     /// A less-than sign; `<`.
     LessThan,
