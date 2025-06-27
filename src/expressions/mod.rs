@@ -80,7 +80,6 @@ impl From<&TypedExpression> for miette::SourceSpan {
     }
 }
 
-
 pub type ExpressionValue = GenericExpressionValue<Expression>;
 pub type TypedExpressionValue = GenericExpressionValue<TypedExpression>;
 
