@@ -25,26 +25,7 @@ pub fn parse_inner_block(parser: &mut Parser, terminating_token: TokenKind) -> R
             break;
         }
 
-        let statement = match parser.parse_statement(false) {
-            Ok(statement) => statement,
-            Err(e) => {
-                parser.errors.borrow_mut().push(e);
-
-                // keep taking until we find a semicolon or the end of the block
-                while parser.peek().as_ref().is_some_and(|t| {
-                    t.as_ref()
-                        .ok()
-                        .map(|t| t.kind != TokenKind::Semicolon && t.kind != terminating_token)
-                        .unwrap_or(false)
-                }) {
-                    parser.next();
-
-
-                parser.next(); // consume the token that caused the error
-
-                continue;
-            }
-        };
+        let statement = parser.parse_statement(false)?;
 
         // Check if the next token is a semicolon
         let is_semicolon = parser.peek().as_ref().is_some_and(|t| {
