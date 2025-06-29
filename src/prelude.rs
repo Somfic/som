@@ -1,3 +1,4 @@
+pub use crate::compiler::Compiler;
 pub use crate::expressions::binary::BinaryExpression;
 pub use crate::expressions::binary::BinaryOperator;
 pub use crate::expressions::function::Parameter;
@@ -8,7 +9,6 @@ pub use crate::lexer::Identifier;
 pub use crate::parser::lookup::{BindingPower, Lookup};
 pub use crate::statements::GenericStatement;
 pub use crate::statements::{Statement, StatementValue};
-pub use crate::type_checker::environment::Environment;
 pub use crate::type_checker::TypeChecker;
 pub use crate::types::FunctionType;
 pub use crate::types::{Type, TypeValue};
@@ -28,6 +28,9 @@ pub use cranelift::prelude::{FunctionBuilder, InstBuilder};
 pub type CompileValue = cranelift::prelude::Value;
 pub type Result<T> = std::result::Result<T, Error>;
 pub type Results<T> = std::result::Result<T, Vec<Error>>;
+
+pub type CompileEnvironment<'env> = crate::compiler::Environment<'env>;
+pub type TypeEnvironment<'env> = crate::type_checker::Environment<'env>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Span(pub miette::SourceSpan);

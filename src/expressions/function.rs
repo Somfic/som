@@ -111,7 +111,7 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
 pub fn type_check(
     type_checker: &mut TypeChecker,
     expression: &Expression,
-    env: &mut Environment,
+    env: &mut TypeEnvironment,
 ) -> TypedExpression {
     let value = match &expression.value {
         ExpressionValue::Function(value) => value,

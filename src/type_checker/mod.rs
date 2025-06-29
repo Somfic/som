@@ -1,6 +1,5 @@
-use environment::Environment;
-
 use crate::{expressions, prelude::*, statements};
+pub use environment::Environment;
 use std::cell::RefCell;
 
 pub mod environment;

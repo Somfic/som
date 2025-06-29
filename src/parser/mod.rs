@@ -1,4 +1,7 @@
-use crate::prelude::*;
+use crate::{
+    expressions::function::FunctionExpression, prelude::*,
+    statements::declaration::DeclarationStatement,
+};
 use std::cell::RefCell;
 
 pub mod lookup;
@@ -19,13 +22,32 @@ impl<'source> Parser<'source> {
     }
 
     pub fn parse(&mut self) -> Results<Statement> {
-        match self.parse_statement(true) {
-            Ok(statement) => Ok(statement),
+        let body = match self.parse_expression(BindingPower::None) {
+            Ok(statement) => Ok::<_, Vec<Error>>(statement),
             Err(e) => {
                 self.errors.borrow_mut().push(e);
                 return Err(self.errors.borrow().clone());
             }
-        }
+        }?;
+
+        let span = body.span;
+
+        let main_function = ExpressionValue::Function(FunctionExpression {
+            parameters: Vec::new(),
+            explicit_return_type: None,
+            span: body.span,
+            body: Box::new(body),
+        })
+        .with_span(span);
+
+        let main_function = StatementValue::Declaration(DeclarationStatement {
+            identifier: Identifier::new("main", span),
+            explicit_type: None,
+            value: Box::new(main_function),
+        })
+        .with_span(span);
+
+        Ok(main_function)
     }
 
     pub fn expect(&mut self, expected: TokenKind, help: impl Into<String>) -> Result<Token> {

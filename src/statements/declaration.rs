@@ -31,7 +31,7 @@ pub fn parse(parser: &mut Parser) -> Result<Statement> {
 pub fn type_check(
     type_checker: &mut TypeChecker,
     statement: &Statement,
-    env: &mut Environment,
+    env: &mut crate::type_checker::Environment,
 ) -> TypedStatement {
     let declaration = match &statement.value {
         StatementValue::Declaration(declaration) => declaration,
@@ -50,4 +50,13 @@ pub fn type_check(
         }),
         span: statement.span,
     }
+}
+
+pub fn compile(compiler: &mut Compiler, statement: &TypedStatement, env: &mut CompileEnvironment) {
+    let declaration = match &statement.value {
+        StatementValue::Declaration(declaration) => declaration,
+        _ => unreachable!(),
+    };
+
+    todo!()
 }
