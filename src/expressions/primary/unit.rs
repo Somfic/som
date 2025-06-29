@@ -10,7 +10,8 @@ pub fn type_check(expression: &Expression) -> TypedExpression {
 pub fn compile(
     compiler: &mut Compiler,
     expression: &TypedExpression,
+    body: &mut FunctionBuilder,
     env: &mut crate::compiler::Environment,
 ) {
-    todo!()
+    body.ins().iconst(CompilerType::I8, 0);
 }

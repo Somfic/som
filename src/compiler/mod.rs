@@ -46,11 +46,18 @@ impl Compiler {
         )
     }
 
-    pub fn compile_statement(&mut self, statement: &TypedStatement, env: &mut Environment) {
+    pub fn compile_statement(
+        &mut self,
+        statement: &TypedStatement,
+        body: &mut FunctionBuilder,
+        env: &mut Environment,
+    ) {
         match &statement.value {
-            StatementValue::Expression(expression) => self.compile_expression(expression, env),
+            StatementValue::Expression(expression) => {
+                self.compile_expression(expression, body, env)
+            }
             StatementValue::Declaration(_) => {
-                statements::declaration::compile(self, statement, env)
+                statements::declaration::compile(self, statement, body, env)
             }
         }
     }
@@ -58,18 +65,19 @@ impl Compiler {
     pub fn compile_expression(
         &mut self,
         expression: &TypedExpression,
+        body: &mut FunctionBuilder,
         env: &mut CompileEnvironment,
     ) {
         match &expression.value {
             TypedExpressionValue::Primary(primary) => match primary {
                 PrimaryExpression::Unit => {
-                    expressions::primary::unit::compile(self, expression, env)
+                    expressions::primary::unit::compile(self, expression, body, env)
                 }
                 PrimaryExpression::Integer(_) => {
-                    expressions::primary::integer::compile(self, expression, env)
+                    expressions::primary::integer::compile(self, expression, body, env)
                 }
                 PrimaryExpression::Boolean(_) => {
-                    expressions::primary::boolean::compile(self, expression, env)
+                    expressions::primary::boolean::compile(self, expression, body, env)
                 }
             },
             _ => todo!(),

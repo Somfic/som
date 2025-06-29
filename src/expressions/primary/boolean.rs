@@ -26,6 +26,7 @@ pub fn type_check(expression: &Expression) -> TypedExpression {
 pub fn compile(
     compiler: &mut Compiler,
     expression: &TypedExpression,
+    body: &mut FunctionBuilder,
     env: &mut CompileEnvironment,
 ) {
     let value = match &expression.value {
@@ -33,5 +34,6 @@ pub fn compile(
         _ => unreachable!(),
     };
 
-    todo!()
+    body.ins()
+        .iconst(CompilerType::I8, if *value { 1 } else { 0 });
 }
