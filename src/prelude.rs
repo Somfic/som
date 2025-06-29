@@ -26,6 +26,7 @@ use thiserror::Error;
 
 pub use cranelift::prelude::{FunctionBuilder, InstBuilder};
 pub type CompileValue = cranelift::prelude::Value;
+pub use cranelift::prelude::types as CompilerType;
 pub type Result<T> = std::result::Result<T, Error>;
 pub type Results<T> = std::result::Result<T, Vec<Error>>;
 

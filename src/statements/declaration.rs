@@ -52,7 +52,12 @@ pub fn type_check(
     }
 }
 
-pub fn compile(compiler: &mut Compiler, statement: &TypedStatement, env: &mut CompileEnvironment) {
+pub fn compile(
+    compiler: &mut Compiler,
+    statement: &TypedStatement,
+    body: &mut FunctionBuilder,
+    env: &mut CompileEnvironment,
+) {
     let declaration = match &statement.value {
         StatementValue::Declaration(declaration) => declaration,
         _ => unreachable!(),
