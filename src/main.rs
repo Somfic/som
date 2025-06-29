@@ -1,6 +1,7 @@
 use crate::prelude::*;
 use parser::Parser;
 
+mod compiler;
 mod expressions;
 mod lexer;
 mod parser;
@@ -22,13 +23,7 @@ fn main() {
     }))
     .unwrap();
 
-    let source = "
-    { 
-        type Color = { r ~ int, g ~ int, b ~ int };
-        let red: Color = { r: 255, g: 0, b: 0 };
-
-        let a ~ int = red.r + red.g + red.b;
-    };";
+    let source = "1;";
 
     let lexer = Lexer::new(source);
 
@@ -53,4 +48,7 @@ fn main() {
             std::process::exit(1);
         }
     };
+
+    let mut compiler = Compiler::new();
+    let compiled = compiler.compile(&type_checked);
 }

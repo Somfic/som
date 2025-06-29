@@ -289,6 +289,15 @@ pub struct Identifier {
     pub span: Span,
 }
 
+impl Identifier {
+    pub fn new(name: impl Into<Box<str>>, span: Span) -> Self {
+        Self {
+            name: name.into(),
+            span,
+        }
+    }
+}
+
 impl From<Identifier> for Span {
     fn from(identifier: Identifier) -> Self {
         identifier.span

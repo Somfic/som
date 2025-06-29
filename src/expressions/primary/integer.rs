@@ -25,13 +25,15 @@ pub fn type_check(expression: &Expression) -> TypedExpression {
     expression.with_value_type(value, type_)
 }
 
-pub fn compile(expression: &TypedExpression, function: &mut FunctionBuilder) -> CompileValue {
+pub fn compile(
+    compiler: &mut Compiler,
+    expression: &TypedExpression,
+    env: &mut CompileEnvironment,
+) {
     let value = match &expression.value {
         TypedExpressionValue::Primary(PrimaryExpression::Integer(value)) => value,
         _ => unreachable!(),
     };
 
-    function
-        .ins()
-        .iconst(cranelift::prelude::types::I64, *value)
+    todo!()
 }

@@ -19,7 +19,7 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
 pub fn type_check(
     type_checker: &mut TypeChecker,
     expression: &Expression,
-    env: &mut Environment,
+    env: &mut TypeEnvironment,
 ) -> TypedExpression {
     let identifier = match &expression.value {
         ExpressionValue::Identifier(identifier) => identifier,

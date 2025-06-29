@@ -100,7 +100,7 @@ pub fn parse_inner_block(parser: &mut Parser, terminating_token: TokenKind) -> R
 pub fn type_check(
     type_checker: &mut TypeChecker,
     expression: &Expression,
-    env: &mut Environment,
+    env: &mut TypeEnvironment,
 ) -> TypedExpression {
     let block = match &expression.value {
         ExpressionValue::Block(block) => block,
