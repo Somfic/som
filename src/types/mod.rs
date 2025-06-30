@@ -108,6 +108,18 @@ pub enum TypeValue {
     Function(FunctionType),
 }
 
+impl TypeValue {
+    pub fn to_ir(&self) -> CompilerType::Type {
+        match self {
+            TypeValue::Integer => CompilerType::I64,
+            TypeValue::Boolean => CompilerType::I8,
+            TypeValue::Unit => CompilerType::I8,
+            TypeValue::Function(function) => todo!(),
+            TypeValue::Never => CompilerType::I8,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq)]
 pub struct FunctionType {
     pub parameters: Vec<Parameter>,
