@@ -4,13 +4,17 @@ use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 pub use environment::Environment;
 
-use crate::{expressions, prelude::*, statements};
+use crate::{
+    expressions,
+    prelude::*,
+    statements::{self},
+};
 
 pub mod environment;
 
 pub struct Compiler {
-    isa: Arc<dyn isa::TargetIsa>,
-    codebase: JITModule,
+    pub isa: Arc<dyn isa::TargetIsa>,
+    pub codebase: JITModule,
 }
 
 impl Compiler {
@@ -35,7 +39,15 @@ impl Compiler {
     pub fn compile(&mut self, statement: &TypedStatement) -> *const u8 {
         let mut env = Environment::new();
 
-        self.compile_statement(statement, &mut env);
+        match &statement.value {
+            StatementValue::Declaration(declaration) => match &declaration.value.value {
+                TypedExpressionValue::Function(function) => {
+                    expressions::function::compile(self, &declaration.value, &mut env);
+                }
+                _ => panic!("expected a function declaration"),
+            },
+            _ => panic!("expected a declaration statement"),
+        }
 
         self.codebase.get_finalized_function(
             env.get_function(&Identifier {

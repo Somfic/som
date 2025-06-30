@@ -1,5 +1,10 @@
 use crate::prelude::*;
-use std::{collections::HashSet, hash::Hash};
+use cranelift::{
+    codegen::ir::{Function, UserFuncName},
+    prelude::{AbiParam, Signature},
+};
+use cranelift_module::Module;
+use std::hash::Hash;
 
 #[derive(Debug, Clone)]
 pub struct Argument<Expression> {
@@ -140,4 +145,34 @@ pub fn type_check(
     });
 
     expression.with_value_type(value, Type::new(expression, type_))
+}
+
+pub fn declare(compiler: &mut Compiler, expression: &TypedExpression, env: &mut TypeEnvironment) {
+    let value = match &expression.value {
+        TypedExpressionValue::Function(value) => value,
+        _ => unreachable!(),
+    };
+
+    let mut signature = Signature::new(compiler.isa.default_call_conv());
+
+    for parameter in &value.parameters {
+        signature
+            .params
+            .push(AbiParam::new(parameter.type_.value.to_ir()));
+    }
+
+    signature
+        .returns
+        .push(AbiParam::new(value.body.type_.value.to_ir()));
+
+    env.set(, type_);
+}
+
+pub fn compile(
+    compiler: &mut Compiler,
+    expression: &TypedExpression,
+    env: &mut CompileEnvironment,
+) {
+    let mut context = compiler.codebase.make_context();
+    context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature)
 }
