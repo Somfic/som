@@ -7,7 +7,13 @@ use crate::lexer::Identifier;
 
 pub struct Environment<'env> {
     pub parent: Option<&'env Environment<'env>>,
-    pub declarations: HashMap<Identifier, Type>,
+    pub declarations: HashMap<Identifier, DeclarationValue>,
+}
+
+#[derive(Debug, Clone)]
+enum DeclarationValue {
+    Function(FuncId),
+    Variable(Type),
 }
 
 impl<'env> Environment<'env> {
@@ -25,9 +31,9 @@ impl<'env> Environment<'env> {
         }
     }
 
-    pub fn get(&self, identifier: &Identifier) -> Option<Type> {
-        if let Some(type_) = self.declarations.get(identifier) {
-            return Some(type_.clone());
+    pub fn get(&self, identifier: &Identifier) -> Option<DeclarationValue> {
+        if let Some(declaration) = self.declarations.get(identifier) {
+            return Some(declaration.clone());
         }
 
         if let Some(parent) = self.parent {
@@ -38,10 +44,16 @@ impl<'env> Environment<'env> {
     }
 
     pub fn get_function(&self, identifier: &Identifier) -> Option<FuncId> {
-        todo!()
+        match self.get(identifier) {
+            Some(DeclarationValue::Function(func_id)) => Some(func_id),
+            _ => None,
+        }
     }
 
-    pub fn set(&mut self, identifier: &Identifier, type_: &Type) {
-        self.declarations.insert(identifier.clone(), type_.clone());
+    pub fn set_function(&mut self, identifier: &Identifier, func_id: &FuncId, signature:) {
+        self.declarations.insert(
+            identifier.clone(),
+            DeclarationValue::Function(func_id.clone()),
+        );
     }
 }

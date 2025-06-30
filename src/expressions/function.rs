@@ -3,7 +3,7 @@ use cranelift::{
     codegen::ir::{Function, UserFuncName},
     prelude::{AbiParam, Signature},
 };
-use cranelift_module::Module;
+use cranelift_module::{Linkage, Module};
 use std::hash::Hash;
 
 #[derive(Debug, Clone)]
@@ -147,7 +147,12 @@ pub fn type_check(
     expression.with_value_type(value, Type::new(expression, type_))
 }
 
-pub fn declare(compiler: &mut Compiler, expression: &TypedExpression, env: &mut TypeEnvironment) {
+pub fn declare(
+    compiler: &mut Compiler,
+    identifier: &Identifier,
+    expression: &TypedExpression,
+    env: &mut CompileEnvironment,
+) {
     let value = match &expression.value {
         TypedExpressionValue::Function(value) => value,
         _ => unreachable!(),
@@ -165,7 +170,12 @@ pub fn declare(compiler: &mut Compiler, expression: &TypedExpression, env: &mut 
         .returns
         .push(AbiParam::new(value.body.type_.value.to_ir()));
 
-    env.set(, type_);
+    let func_id = compiler
+        .codebase
+        .declare_function(&identifier.name, Linkage::Export, &signature)
+        .unwrap();
+
+    env.set_function(identifier, &func_id);
 }
 
 pub fn compile(
