@@ -39,23 +39,19 @@ impl Compiler {
     pub fn compile(&mut self, statement: &TypedStatement) -> *const u8 {
         let mut env = Environment::new();
 
-        match &statement.value {
+        let main_func_id = match &statement.value {
             StatementValue::Declaration(declaration) => match &declaration.value.value {
-                TypedExpressionValue::Function(function) => {
-                    expressions::function::compile(self, &declaration.value, &mut env);
+                TypedExpressionValue::Function(_) => {
+                    expressions::function::compile(self, &declaration.value, &mut env)
                 }
                 _ => panic!("expected a function declaration"),
             },
             _ => panic!("expected a declaration statement"),
-        }
+        };
 
-        self.codebase.get_finalized_function(
-            env.get_function(&Identifier {
-                name: "main".into(),
-                span: statement.span,
-            })
-            .unwrap(),
-        )
+        // call the main function
+
+        self.codebase.get_finalized_function(main_func_id)
     }
 
     pub fn compile_statement(
@@ -63,7 +59,7 @@ impl Compiler {
         statement: &TypedStatement,
         body: &mut FunctionBuilder,
         env: &mut Environment,
-    ) {
+    ) -> CompileValue {
         match &statement.value {
             StatementValue::Expression(expression) => {
                 self.compile_expression(expression, body, env)
@@ -79,7 +75,7 @@ impl Compiler {
         expression: &TypedExpression,
         body: &mut FunctionBuilder,
         env: &mut CompileEnvironment,
-    ) {
+    ) -> CompileValue {
         match &expression.value {
             TypedExpressionValue::Primary(primary) => match primary {
                 PrimaryExpression::Unit => {

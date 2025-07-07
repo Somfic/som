@@ -30,11 +30,11 @@ pub fn compile(
     expression: &TypedExpression,
     body: &mut FunctionBuilder,
     env: &mut CompileEnvironment,
-) {
+) -> CompileValue {
     let value = match &expression.value {
         TypedExpressionValue::Primary(PrimaryExpression::Integer(value)) => value,
         _ => unreachable!(),
     };
 
-    body.ins().iconst(CompilerType::I64, *value);
+    body.ins().iconst(CompilerType::I64, *value)
 }
