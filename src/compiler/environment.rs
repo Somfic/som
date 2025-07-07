@@ -1,59 +1,39 @@
+use cranelift::prelude::EntityRef;
 use cranelift_module::FuncId;
 
 use crate::prelude::*;
-use std::collections::HashMap;
+use std::{cell::Cell, collections::HashMap, rc::Rc};
 
 use crate::lexer::Identifier;
 
 pub struct Environment<'env> {
     pub parent: Option<&'env Environment<'env>>,
-    pub declarations: HashMap<Identifier, DeclarationValue>,
-}
-
-#[derive(Debug, Clone)]
-enum DeclarationValue {
-    Function(FuncId),
-    Variable(Type),
+    next_variable: Rc<Cell<usize>>,
 }
 
 impl<'env> Environment<'env> {
     pub fn new() -> Self {
         Self {
             parent: None,
-            declarations: HashMap::new(),
+            next_variable: Rc::new(Cell::new(0)),
         }
     }
 
     pub fn block(&'env self) -> Self {
         Environment {
             parent: Some(self),
-            declarations: HashMap::new(),
+            next_variable: self.next_variable.clone(),
         }
     }
 
-    pub fn get(&self, identifier: &Identifier) -> Option<DeclarationValue> {
-        if let Some(declaration) = self.declarations.get(identifier) {
-            return Some(declaration.clone());
-        }
-
-        if let Some(parent) = self.parent {
-            return parent.get(identifier);
-        }
-
-        None
-    }
-
-    pub fn get_function(&self, identifier: &Identifier) -> Option<FuncId> {
-        match self.get(identifier) {
-            Some(DeclarationValue::Function(func_id)) => Some(func_id),
-            _ => None,
-        }
-    }
-
-    pub fn set_function(&mut self, identifier: &Identifier, func_id: &FuncId, signature:) {
-        self.declarations.insert(
-            identifier.clone(),
-            DeclarationValue::Function(func_id.clone()),
-        );
+    pub fn declare_variable(
+        &mut self,
+        builder: &mut FunctionBuilder,
+        ty: &TypeValue,
+    ) -> cranelift::prelude::Variable {
+        let var = cranelift::prelude::Variable::new(self.next_variable.get());
+        self.next_variable.set(self.next_variable.get() + 1);
+        builder.declare_var(var, ty.to_ir());
+        var
     }
 }

@@ -1,9 +1,9 @@
 use crate::prelude::*;
 use cranelift::{
     codegen::ir::{Function, UserFuncName},
-    prelude::{AbiParam, Signature},
+    prelude::{AbiParam, FunctionBuilderContext, Signature},
 };
-use cranelift_module::{Linkage, Module};
+use cranelift_module::{FuncId, Linkage, Module};
 use std::hash::Hash;
 
 #[derive(Debug, Clone)]
@@ -147,19 +147,17 @@ pub fn type_check(
     expression.with_value_type(value, Type::new(expression, type_))
 }
 
-pub fn declare(
+pub fn compile(
     compiler: &mut Compiler,
-    identifier: &Identifier,
     expression: &TypedExpression,
     env: &mut CompileEnvironment,
-) {
+) -> FuncId {
     let value = match &expression.value {
         TypedExpressionValue::Function(value) => value,
         _ => unreachable!(),
     };
 
     let mut signature = Signature::new(compiler.isa.default_call_conv());
-
     for parameter in &value.parameters {
         signature
             .params
@@ -172,17 +170,31 @@ pub fn declare(
 
     let func_id = compiler
         .codebase
-        .declare_function(&identifier.name, Linkage::Export, &signature)
+        .declare_anonymous_function(&signature) // Anonymous function
         .unwrap();
 
-    env.set_function(identifier, &func_id);
-}
-
-pub fn compile(
-    compiler: &mut Compiler,
-    expression: &TypedExpression,
-    env: &mut CompileEnvironment,
-) {
     let mut context = compiler.codebase.make_context();
-    context.func = Function::with_name_signature(UserFuncName::user(0, 0), signature)
+    context.func = Function::new();
+    context.func.signature = signature;
+
+    let mut function_context = FunctionBuilderContext::new();
+    let mut builder = FunctionBuilder::new(&mut context.func, &mut function_context);
+
+    let body_block = builder.create_block();
+    builder.append_block_params_for_function_params(body_block);
+    builder.switch_to_block(body_block);
+
+    let block_params = builder.block_params(body_block).to_vec();
+    for (i, parameter) in value.parameters.iter().enumerate() {
+        let variable = env.declare_variable(&mut builder, &parameter.type_.value);
+        builder.def_var(variable, block_params[i]);
+    }
+
+    let body = compiler.compile_expression(&value.body, &mut builder, env);
+
+    builder.ins().return_(&[body]);
+    builder.seal_block(body_block);
+    builder.finalize();
+
+    func_id
 }

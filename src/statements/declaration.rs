@@ -57,7 +57,7 @@ pub fn compile(
     statement: &TypedStatement,
     body: &mut FunctionBuilder,
     env: &mut CompileEnvironment,
-) {
+) -> CompileValue {
     let declaration = match &statement.value {
         StatementValue::Declaration(declaration) => declaration,
         _ => unreachable!(),

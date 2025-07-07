@@ -12,6 +12,6 @@ pub fn compile(
     expression: &TypedExpression,
     body: &mut FunctionBuilder,
     env: &mut crate::compiler::Environment,
-) {
-    body.ins().iconst(CompilerType::I8, 0);
+) -> CompileValue {
+    body.ins().iconst(CompilerType::I8, 0)
 }

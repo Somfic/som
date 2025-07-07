@@ -28,12 +28,12 @@ pub fn compile(
     expression: &TypedExpression,
     body: &mut FunctionBuilder,
     env: &mut CompileEnvironment,
-) {
+) -> CompileValue {
     let value = match &expression.value {
         TypedExpressionValue::Primary(PrimaryExpression::Boolean(value)) => value,
         _ => unreachable!(),
     };
 
     body.ins()
-        .iconst(CompilerType::I8, if *value { 1 } else { 0 });
+        .iconst(CompilerType::I8, if *value { 1 } else { 0 })
 }
