@@ -37,6 +37,20 @@ pub fn type_check(
     }
 }
 
-pub fn compile(expression: &TypedExpression, function: &mut FunctionBuilder) -> CompileValue {
-    todo!("implement group expression compilation");
+pub fn compile(
+    compiler: &mut Compiler,
+    expression: &TypedExpression,
+    body: &mut FunctionBuilder,
+    env: &mut CompileEnvironment,
+) -> cranelift::prelude::Value {
+    let identifier = match &expression.value {
+        TypedExpressionValue::Identifier(identifier) => identifier,
+        _ => unreachable!(),
+    };
+
+    let var = env
+        .get_variable(identifier)
+        .unwrap_or_else(|| panic!("variable {identifier} not found in environment"));
+
+    body.use_var(var)
 }

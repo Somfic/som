@@ -59,10 +59,10 @@ impl Compiler {
         statement: &TypedStatement,
         body: &mut FunctionBuilder,
         env: &mut Environment,
-    ) -> CompileValue {
+    ) {
         match &statement.value {
             StatementValue::Expression(expression) => {
-                self.compile_expression(expression, body, env)
+                self.compile_expression(expression, body, env);
             }
             StatementValue::Declaration(_) => {
                 statements::declaration::compile(self, statement, body, env)
@@ -88,7 +88,16 @@ impl Compiler {
                     expressions::primary::boolean::compile(self, expression, body, env)
                 }
             },
-            _ => todo!(),
+            TypedExpressionValue::Identifier(_) => {
+                expressions::identifier::compile(self, expression, body, env)
+            }
+            TypedExpressionValue::Block(block) => {
+                expressions::block::compile(self, block, body, env)
+            }
+            exp => todo!(
+                "compilation for expression type {:?} not implemented",
+                expression
+            ),
         }
     }
 }

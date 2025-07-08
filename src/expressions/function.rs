@@ -186,7 +186,8 @@ pub fn compile(
 
     let block_params = builder.block_params(body_block).to_vec();
     for (i, parameter) in value.parameters.iter().enumerate() {
-        let variable = env.declare_variable(&mut builder, &parameter.type_.value);
+        let variable =
+            env.declare_variable(&parameter.identifier, &mut builder, &parameter.type_.value);
         builder.def_var(variable, block_params[i]);
     }
 

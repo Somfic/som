@@ -9,14 +9,14 @@ pub struct BlockExpression<Expression> {
 pub fn parse(parser: &mut Parser) -> Result<Expression> {
     let start = parser.expect(TokenKind::CurlyOpen, "expected a block")?;
 
-    let inner = parse_inner_block(parser, TokenKind::CurlyClose)?;
+    let inner = parse_inner(parser, TokenKind::CurlyClose)?;
 
     let end = parser.expect(TokenKind::CurlyClose, "expected the end of the block")?;
 
     Ok(inner.value.with_span(start.span + end.span))
 }
 
-pub fn parse_inner_block(parser: &mut Parser, terminating_token: TokenKind) -> Result<Expression> {
+pub fn parse_inner(parser: &mut Parser, terminating_token: TokenKind) -> Result<Expression> {
     let mut statements = Vec::new();
     let mut final_expression = None;
 
@@ -124,4 +124,19 @@ pub fn type_check(
     });
 
     expression.with_value_type(value, type_)
+}
+
+pub fn compile(
+    compiler: &mut Compiler,
+    block: &BlockExpression<TypedExpression>,
+    body: &mut FunctionBuilder,
+    env: &mut CompileEnvironment,
+) -> CompileValue {
+    let mut env = env.block();
+
+    for statement in &block.statements {
+        compiler.compile_statement(statement, body, &mut env);
+    }
+
+    compiler.compile_expression(&block.result, body, &mut env)
 }
