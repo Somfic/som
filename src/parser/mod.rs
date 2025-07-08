@@ -1,5 +1,6 @@
 use crate::{
-    expressions::function::FunctionExpression, prelude::*,
+    expressions::{self, function::FunctionExpression},
+    prelude::*,
     statements::declaration::DeclarationStatement,
 };
 use std::cell::RefCell;
@@ -22,13 +23,13 @@ impl<'source> Parser<'source> {
     }
 
     pub fn parse(&mut self) -> Results<Statement> {
-        let body = match self.parse_expression(BindingPower::None) {
-            Ok(statement) => Ok::<_, Vec<Error>>(statement),
+        let body = match expressions::block::parse_inner(self, TokenKind::EOF) {
+            Ok(body) => body,
             Err(e) => {
                 self.errors.borrow_mut().push(e);
                 return Err(self.errors.borrow().clone());
             }
-        }?;
+        };
 
         let span = body.span;
 

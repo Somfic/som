@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{expressions, prelude::*};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeclarationStatement<Expression> {
@@ -57,11 +57,26 @@ pub fn compile(
     statement: &TypedStatement,
     body: &mut FunctionBuilder,
     env: &mut CompileEnvironment,
-) -> CompileValue {
+) {
     let declaration = match &statement.value {
         StatementValue::Declaration(declaration) => declaration,
         _ => unreachable!(),
     };
 
-    todo!()
+    match &declaration.value.value {
+        TypedExpressionValue::Function(_) => {
+            let func_id = expressions::function::compile(compiler, &declaration.value, env);
+            env.declare_function(&declaration.identifier, func_id);
+        }
+        _ => {
+            compiler.compile_expression(&declaration.value, body, env);
+            let var = env.declare_variable(
+                &declaration.identifier,
+                body,
+                &declaration.value.type_.value,
+            );
+            let value = compiler.compile_expression(&declaration.value, body, env);
+            body.def_var(var, value);
+        }
+    }
 }
