@@ -38,4 +38,12 @@ impl<'env> Environment<'env> {
     pub fn set(&mut self, identifier: &Identifier, type_: &Type) {
         self.declarations.insert(identifier.clone(), type_.clone());
     }
+
+    pub fn get_all(&self) -> HashMap<Identifier, Type> {
+        let mut all = self.declarations.clone();
+        if let Some(parent) = self.parent {
+            all.extend(parent.get_all());
+        }
+        all
+    }
 }

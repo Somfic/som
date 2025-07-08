@@ -163,7 +163,7 @@ impl TypeChecker {
         if type_.value == TypeValue::Never {
             self.errors
                 .borrow_mut()
-                .push(declaration_not_found(identifier, message));
+                .push(declaration_not_found(identifier, message, env));
         }
 
         type_

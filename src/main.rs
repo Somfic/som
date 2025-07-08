@@ -24,7 +24,7 @@ fn main() {
     }))
     .unwrap();
 
-    let source = "echo hello world";
+    let source = "let a = 12; aa";
 
     let lexer = Lexer::new(source);
 
