@@ -21,6 +21,12 @@ pub use crate::{parser::Parser, statements::TypedStatement};
 pub use miette::Diagnostic;
 use miette::LabeledSpan;
 use miette::SourceSpan;
+use nucleo_matcher::pattern::AtomKind;
+use nucleo_matcher::pattern::CaseMatching;
+use nucleo_matcher::pattern::Normalization;
+use nucleo_matcher::pattern::Pattern;
+use nucleo_matcher::Config;
+use nucleo_matcher::Matcher;
 use std::fmt::Display;
 use std::ops::Sub;
 use thiserror::Error;
@@ -53,7 +59,7 @@ impl std::ops::Add for Span {
 
         let end = spans
             .iter()
-            .map(|s| s.offset() + s.len())
+            .map(|s: &SourceSpan| s.offset() + s.len())
             .max()
             .unwrap_or(start);
 
@@ -363,9 +369,45 @@ pub fn type_checker_type_mismatch(types: Vec<&Type>, help: impl Into<String>) ->
     })
 }
 
-pub fn declaration_not_found(identifier: &Identifier, help: impl Into<String>) -> Error {
+pub fn declaration_not_found(
+    identifier: &Identifier,
+    help: impl Into<String>,
+    env: &TypeEnvironment,
+) -> Error {
+    let all_names: Vec<String> = env
+        .get_all()
+        .keys()
+        .map(|ident| ident.name.to_string())
+        .collect();
+
+    println!("all: {all_names:?}");
+
+    let haystack: Vec<&str> = all_names.iter().map(String::as_str).collect();
+
+    let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
+    let pattern = Pattern::new(
+        &identifier.name,
+        CaseMatching::Smart,
+        Normalization::Smart,
+        AtomKind::Fuzzy,
+    );
+
+    let sorted: Vec<_> = pattern
+        .match_list(haystack, &mut matcher)
+        .into_iter()
+        .collect();
+
+    let help = if sorted.is_empty() {
+        "no declarations found".to_string()
+    } else {
+        format!(
+            "did you mean {}?",
+            join_with_and(sorted.iter().map(|s| format!("'{}'", s.0)))
+        )
+    };
+
     Error::TypeChecker(TypeCheckerError::DeclarationNotFound {
-        help: format!("'{identifier}' was not found, {}", help.into()),
+        help: format!("'{identifier}' was not found, {help}"),
         labels: vec![LabeledSpan::new(
             Some(format!("'{identifier}' is not declared")),
             identifier.span.offset(),
