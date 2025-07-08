@@ -7,6 +7,7 @@ pub use crate::expressions::ExpressionValue;
 pub use crate::expressions::TypedExpressionValue;
 pub use crate::lexer::Identifier;
 pub use crate::parser::lookup::{BindingPower, Lookup};
+pub use crate::runner::Runner;
 pub use crate::statements::GenericStatement;
 pub use crate::statements::{Statement, StatementValue};
 pub use crate::type_checker::TypeChecker;
