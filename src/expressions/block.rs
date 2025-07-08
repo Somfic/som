@@ -71,7 +71,7 @@ pub fn parse_inner(parser: &mut Parser, terminating_token: TokenKind) -> Result<
     if statements.is_empty() && final_expression.is_none() {
         return Err(parser_unexpected_end_of_file(
             (parser.lexer.byte_offset, 0),
-            "a block with at least one statement or expression",
+            "a statement or an expression",
         ));
     }
 

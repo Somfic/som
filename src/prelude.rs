@@ -264,7 +264,7 @@ pub fn parser_unexpected_end_of_file(span: (usize, usize), expected: impl Into<S
     let expected = expected.into();
 
     Error::Parser(ParserError::UnexpectedEndOfFile {
-        help: format!("expected {expected} but no more tokens were found"),
+        help: format!("expected {expected}, but reached the end of file"),
         labels: vec![LabeledSpan::new(
             Some(format!("expected {expected} here")),
             span.0,
