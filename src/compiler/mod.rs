@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
+use cranelift_module::Module;
 pub use environment::Environment;
 
 use crate::{
@@ -49,8 +50,7 @@ impl Compiler {
             _ => panic!("expected a declaration statement"),
         };
 
-        // call the main function
-
+        self.codebase.finalize_definitions().unwrap();
         self.codebase.get_finalized_function(main_func_id)
     }
 

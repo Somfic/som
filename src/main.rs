@@ -6,6 +6,7 @@ mod expressions;
 mod lexer;
 mod parser;
 mod prelude;
+mod runner;
 mod statements;
 mod type_checker;
 mod types;
@@ -23,7 +24,7 @@ fn main() {
     }))
     .unwrap();
 
-    let source = "1;";
+    let source = "2;";
 
     let lexer = Lexer::new(source);
 
@@ -51,4 +52,9 @@ fn main() {
 
     let mut compiler = Compiler::new();
     let compiled = compiler.compile(&type_checked);
+
+    let runner = Runner::new();
+    let ran = runner.run(compiled).unwrap();
+
+    println!("Result: {ran}");
 }

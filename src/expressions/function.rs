@@ -196,5 +196,10 @@ pub fn compile(
     builder.seal_block(body_block);
     builder.finalize();
 
+    compiler
+        .codebase
+        .define_function(func_id, &mut context)
+        .unwrap();
+
     func_id
 }
