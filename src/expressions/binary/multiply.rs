@@ -47,14 +47,19 @@ pub fn type_check(
     expression.with_value_type(value, type_)
 }
 
-pub fn compile(expression: &TypedExpression, function: &mut FunctionBuilder) -> CompileValue {
+pub fn compile(
+    compiler: &mut Compiler,
+    expression: &TypedExpression,
+    body: &mut FunctionBuilder,
+    env: &mut CompileEnvironment,
+) -> CompileValue {
     let value = match &expression.value {
         TypedExpressionValue::Binary(value) => value,
         _ => unreachable!(),
     };
 
-    let left = compile(&value.left, function);
-    let right = compile(&value.right, function);
+    let left = compiler.compile_expression(&value.left, body, env);
+    let right = compiler.compile_expression(&value.right, body, env);
 
-    function.ins().imul(left, right)
+    body.ins().imul(left, right)
 }

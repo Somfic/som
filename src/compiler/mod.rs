@@ -88,13 +88,27 @@ impl Compiler {
                     expressions::primary::boolean::compile(self, expression, body, env)
                 }
             },
+            TypedExpressionValue::Binary(binary) => match binary.operator {
+                BinaryOperator::Add => {
+                    expressions::binary::add::compile(self, expression, body, env)
+                }
+                BinaryOperator::Subtract => {
+                    expressions::binary::subtract::compile(self, expression, body, env)
+                }
+                BinaryOperator::Multiply => {
+                    expressions::binary::multiply::compile(self, expression, body, env)
+                }
+                BinaryOperator::Divide => {
+                    expressions::binary::divide::compile(self, expression, body, env)
+                }
+            },
             TypedExpressionValue::Identifier(_) => {
                 expressions::identifier::compile(self, expression, body, env)
             }
             TypedExpressionValue::Block(block) => {
                 expressions::block::compile(self, block, body, env)
             }
-            exp => todo!(
+            _ => todo!(
                 "compilation for expression type {:?} not implemented",
                 expression
             ),
