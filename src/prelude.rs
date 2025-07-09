@@ -380,30 +380,12 @@ pub fn declaration_not_found(
         .map(|ident| ident.name.to_string())
         .collect();
 
-    println!("all: {all_names:?}");
+    let closest = closest_match(all_names, identifier.name.to_string());
 
-    let haystack: Vec<&str> = all_names.iter().map(String::as_str).collect();
-
-    let mut matcher = Matcher::new(Config::DEFAULT.match_paths());
-    let pattern = Pattern::new(
-        &identifier.name,
-        CaseMatching::Smart,
-        Normalization::Smart,
-        AtomKind::Fuzzy,
-    );
-
-    let sorted: Vec<_> = pattern
-        .match_list(haystack, &mut matcher)
-        .into_iter()
-        .collect();
-
-    let help = if sorted.is_empty() {
+    let help = if closest.is_none() {
         "no declarations found".to_string()
     } else {
-        format!(
-            "did you mean {}?",
-            join_with_and(sorted.iter().map(|s| format!("'{}'", s.0)))
-        )
+        format!("did you mean {}?", closest.unwrap())
     };
 
     Error::TypeChecker(TypeCheckerError::DeclarationNotFound {
@@ -436,4 +418,38 @@ where
         })
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn closest_match(haystack: Vec<String>, needle: String) -> Option<String> {
+    // create matcher engine with default config
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    // build a single-atom fuzzy pattern
+    let pattern = Pattern::new(
+        &needle,
+        CaseMatching::Smart,
+        Normalization::Smart,
+        AtomKind::Fuzzy,
+    );
+    // for each item, compute score or default to zero
+    let scored = haystack
+        .iter()
+        .map(|item| {
+            let hay = nucleo_matcher::Utf32Str::Ascii(item.as_bytes());
+            let score = pattern.score(hay, &mut matcher).unwrap_or(0);
+            (item.clone(), score)
+        })
+        .collect::<Vec<_>>();
+
+    println!("Haystack: {:?}", haystack);
+    println!("Needle: {:?}", needle);
+    println!("Scored matches: {:?}", scored);
+
+    if scored.is_empty() {
+        None
+    } else {
+        scored
+            .into_iter()
+            .max_by_key(|(_, score)| *score)
+            .map(|(item, _)| item)
+    }
 }
