@@ -24,7 +24,7 @@ fn main() {
     }))
     .unwrap();
 
-    let source = "let a = 12; aa";
+    let source = "let this_is_a_variable = 1; let this_is_a_variabl = 12; thisisavariable";
 
     let lexer = Lexer::new(source);
 
