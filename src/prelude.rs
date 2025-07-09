@@ -446,10 +446,6 @@ fn closest_match(haystack: Vec<String>, needle: String) -> Option<String> {
         })
         .collect::<Vec<_>>();
 
-    println!("Haystack: {:?}", haystack);
-    println!("Needle: {:?}", needle);
-    println!("Scored matches: {:?}", scored);
-
     if scored.is_empty() {
         None
     } else {

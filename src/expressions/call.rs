@@ -1,3 +1,6 @@
+use cranelift_module::{FuncId, Module};
+
+use crate::expressions;
 pub use crate::prelude::*;
 
 #[derive(Debug, Clone)]
@@ -113,4 +116,45 @@ fn check_arguments(
             format!("for parameter `{}`", parameter.identifier),
         );
     }
+}
+
+pub fn compile(
+    compiler: &mut Compiler,
+    expression: &TypedExpression,
+    body: &mut FunctionBuilder<'_>,
+    env: &mut crate::compiler::Environment<'_>,
+) -> CompileValue {
+    let value = match &expression.value {
+        TypedExpressionValue::Call(value) => value,
+        _ => unreachable!(),
+    };
+
+    fn get_func_id(
+        compiler: &mut Compiler,
+        expression: &TypedExpression,
+        env: &mut CompileEnvironment,
+    ) -> FuncId {
+        match &expression.value {
+            TypedExpressionValue::Function(_) => {
+                expressions::function::compile(compiler, expression, env)
+            }
+            TypedExpressionValue::Group(group) => get_func_id(compiler, &group.expression, env),
+            TypedExpressionValue::Identifier(identifier) => env.get_function(identifier).unwrap(),
+            _ => panic!("not a function: {:?}", expression),
+        }
+    }
+
+    let func_id = get_func_id(compiler, &value.callee, env);
+
+    let func_ref = compiler.codebase.declare_func_in_func(func_id, body.func);
+
+    let arg_values = value
+        .arguments
+        .iter()
+        .map(|arg| compiler.compile_expression(arg, body, env))
+        .collect::<Vec<_>>();
+
+    let call = body.ins().call(func_ref, &arg_values);
+
+    body.inst_results(call)[0]
 }

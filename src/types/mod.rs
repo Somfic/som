@@ -4,6 +4,7 @@ use std::hash::Hash;
 use crate::expressions::function::Parameter;
 use crate::prelude::*;
 
+pub mod boolean;
 pub mod integer;
 
 #[derive(Debug, Clone, Eq)]
