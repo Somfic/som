@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::prelude::*;
 use miette::LabeledSpan;
 use parser::Parser;
@@ -12,6 +14,12 @@ mod statements;
 mod type_checker;
 mod types;
 
+#[derive(clap::Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    file: PathBuf,
+}
+
 fn main() {
     miette::set_hook(Box::new(|_| {
         Box::new(
@@ -25,20 +33,27 @@ fn main() {
     }))
     .unwrap();
 
-    let source = "
-    let a = 5;
-    a = 12;
-    a
-    ";
+    let cli = <Cli as clap::Parser>::parse();
 
-    let lexer = Lexer::new(source);
+    let source = match std::fs::read_to_string(&cli.file) {
+        Ok(source) => source,
+        Err(err) => {
+            eprintln!("Error reading file {}: {}", cli.file.display(), err);
+            std::process::exit(1);
+        }
+    };
+
+    let lexer = Lexer::new(&source);
 
     let mut parser = Parser::new(lexer);
     let parsed = match parser.parse() {
         Ok(parsed) => parsed,
         Err(errors) => {
             for error in errors {
-                eprintln!("{:?}", miette::miette!(error).with_source_code(source));
+                eprintln!(
+                    "{:?}",
+                    miette::miette!(error).with_source_code(source.clone())
+                );
             }
             std::process::exit(1);
         }
@@ -49,16 +64,19 @@ fn main() {
         Ok(typed_statement) => typed_statement,
         Err(errors) => {
             for error in errors {
-                eprintln!("{:?}", miette::miette!(error).with_source_code(source));
+                eprintln!(
+                    "{:?}",
+                    miette::miette!(error).with_source_code(source.clone())
+                );
             }
             std::process::exit(1);
         }
     };
 
-    let labels = statement_to_labels(&parsed);
-    let report = miette::miette!(labels = labels.clone(), "found issues in this snippet")
-        .with_source_code(source);
-    eprintln!("{:?}", report);
+    // let labels = statement_to_labels(&parsed);
+    // let report = miette::miette!(labels = labels.clone(), "found issues in this snippet")
+    //     .with_source_code(source);
+    // eprintln!("{:?}", report);
 
     let mut compiler = Compiler::new();
     let compiled = compiler.compile(&type_checked);

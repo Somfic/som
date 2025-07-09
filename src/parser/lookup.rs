@@ -134,5 +134,6 @@ impl Default for Lookup {
         )
         .add_statement_handler(TokenKind::Let, crate::statements::declaration::parse)
         .add_type_handler(TokenKind::IntegerType, crate::types::integer::parse)
+        .add_type_handler(TokenKind::BooleanType, crate::types::boolean::parse)
     }
 }

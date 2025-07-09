@@ -108,9 +108,12 @@ impl Compiler {
             TypedExpressionValue::Block(block) => {
                 expressions::block::compile(self, block, body, env)
             }
+            TypedExpressionValue::Call(_) => {
+                expressions::call::compile(self, expression, body, env)
+            }
             _ => todo!(
                 "compilation for expression type {:?} not implemented",
-                expression
+                expression.value
             ),
         }
     }
