@@ -49,6 +49,12 @@ impl Default for Span {
     }
 }
 
+impl Span {
+    pub fn label(&self, message: impl Into<String>) -> LabeledSpan {
+        LabeledSpan::new(Some(message.into()), self.0.offset(), self.0.len())
+    }
+}
+
 impl std::ops::Add for Span {
     type Output = Self;
 
@@ -385,7 +391,7 @@ pub fn declaration_not_found(
     let help = if closest.is_none() {
         "no declarations found".to_string()
     } else {
-        format!("did you mean {}?", closest.unwrap())
+        format!("did you mean `{}`?", closest.unwrap())
     };
 
     Error::TypeChecker(TypeCheckerError::DeclarationNotFound {
