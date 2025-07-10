@@ -7,6 +7,7 @@ pub struct Lexer<'input> {
     pub remainder: &'input str,
     pub byte_offset: usize,
     pub peeked: Option<Result<Token>>,
+    current: Option<Result<Token>>,
 }
 
 impl<'input> Lexer<'input> {
@@ -16,6 +17,7 @@ impl<'input> Lexer<'input> {
             remainder: source_code,
             byte_offset: 0,
             peeked: None,
+            current: None,
         }
     }
 
@@ -26,6 +28,10 @@ impl<'input> Lexer<'input> {
 
         self.peeked = self.next();
         self.peeked.as_ref()
+    }
+
+    pub fn current(&mut self) -> Option<Result<Token>> {
+        self.current.clone()
     }
 
     fn parse_compound_operator(
@@ -53,6 +59,7 @@ impl Iterator for Lexer<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(next) = self.peeked.take() {
+            self.current = Some(next.clone());
             return Some(next);
         }
 
@@ -219,11 +226,14 @@ impl Iterator for Lexer<'_> {
             .checked_sub(start_offset)
             .expect("byte_offset should never be less than start_offset");
 
-        Some(kind.map(|(kind, value)| Token {
+        let token = Some(kind.map(|(kind, value)| Token {
             kind,
             value,
             span: Span::new(start_offset.into(), byte_length),
             original: self.source_code[start_offset..self.byte_offset].into(),
-        }))
+        }));
+
+        self.current = token.clone();
+        token
     }
 }

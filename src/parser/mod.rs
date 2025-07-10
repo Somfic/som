@@ -63,6 +63,10 @@ impl<'source> Parser<'source> {
         }
     }
 
+    pub fn current(&mut self) -> Option<Result<Token>> {
+        self.lexer.current()
+    }
+
     pub fn peek(&mut self) -> Option<&Result<Token>> {
         self.lexer.peek()
     }
