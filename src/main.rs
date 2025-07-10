@@ -1,5 +1,11 @@
+use clap_file::LockedInput;
+use miette::SourceCode;
+
 use crate::prelude::*;
-use std::path::PathBuf;
+use std::{
+    io::{BufRead, Read},
+    path::{Path, PathBuf},
+};
 
 mod compiler;
 mod expressions;
@@ -14,7 +20,14 @@ mod types;
 #[derive(clap::Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    file: PathBuf,
+    #[command(subcommand)]
+    commands: Commands,
+}
+
+#[derive(clap::Subcommand)]
+enum Commands {
+    /// Run a source file
+    Run { file: clap_file::Input },
 }
 
 fn main() {
@@ -32,15 +45,25 @@ fn main() {
 
     let cli = <Cli as clap::Parser>::parse();
 
-    let source = match std::fs::read_to_string(&cli.file) {
-        Ok(source) => source,
-        Err(err) => {
-            eprintln!("Error reading file {}: {}", cli.file.display(), err);
-            std::process::exit(1);
-        }
-    };
+    match cli.commands {
+        Commands::Run { file } => run(file.lock()),
+    }
+}
 
-    let lexer = Lexer::new(&source);
+fn run(mut input: LockedInput) {
+    let mut content = String::new();
+    input
+        .read_to_string(&mut content)
+        .expect("Failed to read input");
+
+    let name: String = input
+        .path()
+        .map(|p: &Path| p.display().to_string())
+        .unwrap_or_else(|| "<stdin>".to_string());
+
+    let source = miette::NamedSource::new(name, content);
+
+    let lexer = Lexer::new(&source.inner().as_str());
 
     let mut parser = Parser::new(lexer);
     let parsed = match parser.parse() {

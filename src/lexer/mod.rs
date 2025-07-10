@@ -11,10 +11,10 @@ pub struct Lexer<'input> {
 }
 
 impl<'input> Lexer<'input> {
-    pub fn new(source_code: &'input str) -> Lexer<'input> {
+    pub fn new(source: &'input str) -> Lexer<'input> {
         Lexer {
-            source_code,
-            remainder: source_code,
+            source_code: source,
+            remainder: source,
             byte_offset: 0,
             peeked: None,
             current: None,
