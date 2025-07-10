@@ -40,6 +40,9 @@ impl TypeChecker {
             StatementValue::Declaration(_) => {
                 statements::declaration::type_check(self, statement, env)
             }
+            StatementValue::ExternDeclaration(_) => {
+                statements::extern_declaration::type_check(self, statement, env)
+            }
         }
     }
 
@@ -50,8 +53,11 @@ impl TypeChecker {
     ) -> TypedExpression {
         match &expression.value {
             ExpressionValue::Primary(primary) => match primary {
-                PrimaryExpression::Integer(_) => {
-                    expressions::primary::integer::type_check(expression)
+                PrimaryExpression::I32(_) => {
+                    expressions::primary::integer::type_check_i32(expression)
+                }
+                PrimaryExpression::I64(_) => {
+                    expressions::primary::integer::type_check_i64(expression)
                 }
                 PrimaryExpression::Boolean(_) => {
                     expressions::primary::boolean::type_check(expression)

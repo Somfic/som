@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{prelude::*, statements};
 
 use std::collections::HashMap;
 
@@ -100,8 +100,12 @@ impl Default for Lookup {
         .add_expression_handler(TokenKind::Identifier, crate::expressions::identifier::parse)
         .add_expression_handler(TokenKind::Function, crate::expressions::function::parse)
         .add_expression_handler(
-            TokenKind::Integer,
-            crate::expressions::primary::integer::parse,
+            TokenKind::I32,
+            crate::expressions::primary::integer::parse_i32,
+        )
+        .add_expression_handler(
+            TokenKind::I64,
+            crate::expressions::primary::integer::parse_i64,
         )
         .add_expression_handler(
             TokenKind::Boolean,
@@ -133,12 +137,14 @@ impl Default for Lookup {
             crate::expressions::call::parse,
         )
         .add_statement_handler(TokenKind::Let, crate::statements::declaration::parse)
-        .add_type_handler(TokenKind::IntegerType, crate::types::integer::parse)
+        .add_type_handler(TokenKind::I32Type, crate::types::integer::parse_i32)
+        .add_type_handler(TokenKind::I64Type, crate::types::integer::parse_i64)
         .add_type_handler(TokenKind::BooleanType, crate::types::boolean::parse)
         .add_left_expression_handler(
             TokenKind::If,
             BindingPower::Logical,
             crate::expressions::conditional::parse,
         )
+        .add_statement_handler(TokenKind::Extern, statements::extern_declaration::parse)
     }
 }

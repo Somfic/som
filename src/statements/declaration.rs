@@ -12,7 +12,16 @@ pub fn parse(parser: &mut Parser) -> Result<Statement> {
 
     let identifier = parser.expect_identifier()?;
 
-    let explicit_type = None;
+    let explicit_type = if parser.peek().is_some_and(|token| {
+        token
+            .as_ref()
+            .is_ok_and(|token| token.kind == TokenKind::Tilde)
+    }) {
+        parser.expect(TokenKind::Tilde, "expected a type")?;
+        Some(parser.parse_type(BindingPower::None)?)
+    } else {
+        None
+    };
 
     parser.expect(TokenKind::Equal, "expected a value")?;
 
@@ -39,6 +48,13 @@ pub fn type_check(
     };
 
     let value = type_checker.check_expression(&declaration.value, env);
+
+    if let Some(explicit_type) = &declaration.explicit_type {
+        type_checker.expect_same_type(
+            vec![&value.type_, explicit_type],
+            "the variable should match its explicit type",
+        );
+    }
 
     env.set(&declaration.identifier, &value.type_);
 

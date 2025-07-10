@@ -66,39 +66,7 @@ impl From<&Parameter> for miette::SourceSpan {
 pub fn parse(parser: &mut Parser) -> Result<Expression> {
     let start = parser.expect(TokenKind::Function, "expected a function signature")?;
 
-    parser.expect(TokenKind::ParenOpen, "expected function arguments")?;
-    let mut parameters = vec![];
-
-    loop {
-        if parser.peek().is_some_and(|token| {
-            token
-                .as_ref()
-                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
-        }) {
-            break;
-        }
-
-        if !parameters.is_empty() {
-            parser.expect(TokenKind::Comma, "expected a comma between arguments")?;
-        }
-
-        let identifier = parser.expect_identifier()?;
-
-        parser.expect(
-            TokenKind::Tilde,
-            format!("expected a parameter type for `{}`", identifier.name),
-        )?;
-
-        let type_ = parser.parse_type(BindingPower::None)?;
-
-        parameters.push(Parameter {
-            span: identifier.span + type_.span,
-            identifier,
-            type_: Box::new(type_),
-        });
-    }
-
-    let end = parser.expect(TokenKind::ParenClose, "expected function arguments")?;
+    let (parameters, parameters_span) = parse_parameters(parser)?;
 
     // Optional return type
     let explicit_return_type = if parser.peek().is_some_and(|token| {
@@ -120,9 +88,48 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
         parameters,
         explicit_return_type,
         body: Box::new(body),
-        span: start.span + end.span,
+        span: start.span + parameters_span,
     })
     .with_span(span))
+}
+
+pub fn parse_parameters(parser: &mut Parser) -> Result<(Vec<Parameter>, Span)> {
+    let mut parameters = vec![];
+
+    let start = parser.expect(TokenKind::ParenOpen, "expected function parameters")?;
+
+    loop {
+        if parser.peek().is_some_and(|token| {
+            token
+                .as_ref()
+                .is_ok_and(|token| token.kind == TokenKind::ParenClose)
+        }) {
+            break;
+        }
+
+        if !parameters.is_empty() {
+            parser.expect(TokenKind::Comma, "expected a comma between parameters")?;
+        }
+
+        let identifier = parser.expect_identifier()?;
+
+        parser.expect(
+            TokenKind::Tilde,
+            format!("expected a type for `{}`", identifier.name),
+        )?;
+
+        let type_ = parser.parse_type(BindingPower::None)?;
+
+        parameters.push(Parameter {
+            span: identifier.span + type_.span,
+            identifier,
+            type_: Box::new(type_),
+        });
+    }
+
+    let end = parser.expect(TokenKind::ParenClose, "expected function arguments")?;
+
+    Ok((parameters, start.span + end.span))
 }
 
 pub fn type_check(
@@ -145,7 +152,7 @@ pub fn type_check(
 
     let type_ = TypeValue::Function(FunctionType {
         parameters: value.parameters.clone(),
-        returns: Box::new(body.type_.clone()),
+        return_type: Box::new(body.type_.clone()),
         span: value.span,
     });
 
@@ -216,10 +223,9 @@ pub fn compile(
     builder.seal_block(body_block);
     builder.finalize();
 
-    compiler
-        .codebase
-        .define_function(func_id, &mut context)
-        .unwrap();
+    if let Err(error) = compiler.codebase.define_function(func_id, &mut context) {
+        println!("{:#?}", error);
+    };
 
     func_id
 }

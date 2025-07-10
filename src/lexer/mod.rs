@@ -122,7 +122,7 @@ impl Iterator for Lexer<'_> {
                 match ident.as_str() {
                     "if" => Ok((TokenKind::If, TokenValue::None)),
                     "else" => Ok((TokenKind::Else, TokenValue::None)),
-                    "intrinsic" => Ok((TokenKind::Intrinsic, TokenValue::None)),
+                    "extern" => Ok((TokenKind::Extern, TokenValue::None)),
                     "fn" => Ok((TokenKind::Function, TokenValue::None)),
                     "true" => Ok((TokenKind::Boolean, TokenValue::Boolean(true))),
                     "false" => Ok((TokenKind::Boolean, TokenValue::Boolean(false))),
@@ -134,7 +134,8 @@ impl Iterator for Lexer<'_> {
                     "enum" => Ok((TokenKind::Enum, TokenValue::None)),
                     "trait" => Ok((TokenKind::Trait, TokenValue::None)),
                     "bool" => Ok((TokenKind::BooleanType, TokenValue::None)),
-                    "int" => Ok((TokenKind::IntegerType, TokenValue::None)),
+                    "i32" => Ok((TokenKind::I32Type, TokenValue::None)),
+                    "i64" => Ok((TokenKind::I64Type, TokenValue::None)),
                     "dec" => Ok((TokenKind::DecimalType, TokenValue::None)),
                     "str" => Ok((TokenKind::StringType, TokenValue::None)),
                     "char" => Ok((TokenKind::CharacterType, TokenValue::None)),
@@ -153,29 +154,53 @@ impl Iterator for Lexer<'_> {
             }
             // Whole and decimal numbers
             '0'..='9' => {
-                let mut number = String::new();
-                number.push(c);
+                // scan number (int or decimal) into `number_str`, update remainder & byte_offset...
+                let mut number_str = String::new();
+                number_str.push(c);
+                while let Some(next_c) = self.remainder.chars().next() {
+                    if next_c.is_ascii_digit() || next_c == '.' {
+                        number_str.push(next_c);
+                        self.remainder = &self.remainder[next_c.len_utf8()..];
+                        self.byte_offset += next_c.len_utf8();
+                    } else {
+                        break;
+                    }
+                }
+                // after digits/fraction, try to read a suffix
+                let mut suffix = String::new();
                 while let Some(c) = self.remainder.chars().next() {
-                    if c.is_ascii_digit() || c == '.' {
-                        number.push(c);
-                        self.remainder = self.remainder[c.len_utf8()..].into();
+                    // allow letters and digits in suffix (e.g. "i64")
+                    if c.is_ascii_alphabetic() || c.is_ascii_digit() {
+                        suffix.push(c);
+                        self.remainder = &self.remainder[c.len_utf8()..];
                         self.byte_offset += c.len_utf8();
                     } else {
                         break;
                     }
                 }
-
-                if let Ok(num) = number.parse::<i64>() {
-                    Ok((TokenKind::Integer, TokenValue::Integer(num)))
-                } else if let Ok(num) = number.parse::<f64>() {
-                    Ok((TokenKind::Decimal, TokenValue::Decimal(num)))
-                } else {
-                    Err(lexer_improper_number(
-                        &number,
-                        (self.byte_offset - number.len(), self.byte_offset),
-                    )
-                    .into())
-                }
+                // now decide based on suffix
+                let (kind, value) = match suffix.as_str() {
+                    "" => {
+                        // no suffix: default integer or decimal
+                        if number_str.contains('.') {
+                            (
+                                TokenKind::Decimal,
+                                TokenValue::Decimal(number_str.parse().unwrap()),
+                            )
+                        } else {
+                            (TokenKind::I32, TokenValue::I32(number_str.parse().unwrap()))
+                        }
+                    }
+                    "i32" => (TokenKind::I32, TokenValue::I32(number_str.parse().unwrap())),
+                    "i64" => (TokenKind::I64, TokenValue::I64(number_str.parse().unwrap())),
+                    other => {
+                        return Some(Err(lexer_improper_number(
+                            &number_str,
+                            (self.byte_offset - number_str.len(), number_str.len()),
+                        )))
+                    }
+                };
+                Ok((kind, value))
             }
             '"' => {
                 let mut string = String::new();

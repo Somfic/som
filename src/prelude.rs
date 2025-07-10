@@ -333,7 +333,7 @@ pub fn type_checker_unexpected_type(
                 expected_span.length(),
             ),
             LabeledSpan::new(
-                Some(format!("found {actual}")),
+                Some(format!("passed {actual}")),
                 actual.span.offset(),
                 actual.span.length(),
             ),

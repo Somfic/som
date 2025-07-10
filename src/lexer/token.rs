@@ -1,3 +1,5 @@
+use miette::SourceSpan;
+
 use crate::prelude::*;
 use std::fmt::{Debug, Display};
 
@@ -43,7 +45,8 @@ impl From<Token> for miette::SourceSpan {
 pub enum TokenValue {
     None,
     Boolean(bool),
-    Integer(i64),
+    I32(i32),
+    I64(i64),
     Decimal(f64),
     String(Box<str>),
     Character(char),
@@ -55,7 +58,8 @@ impl Display for TokenValue {
         match self {
             TokenValue::None => write!(f, "nothing"),
             TokenValue::Boolean(value) => write!(f, "{value}"),
-            TokenValue::Integer(value) => write!(f, "{value}"),
+            TokenValue::I32(value) => write!(f, "{value}"),
+            TokenValue::I64(value) => write!(f, "{value}"),
             TokenValue::Decimal(value) => write!(f, "{value}"),
             TokenValue::String(value) => write!(f, "{value}"),
             TokenValue::Character(value) => write!(f, "{value}"),
@@ -164,8 +168,8 @@ pub enum TokenKind {
 
     /// A function keyword; `fn`.
     Function,
-    /// An intrinsic keyword; `intrinsic`.
-    Intrinsic,
+    /// An extern keyword; `extern`.
+    Extern,
     /// A return keyword; `return`.
     Return,
 
@@ -176,8 +180,10 @@ pub enum TokenKind {
 
     /// A boolean; `true`, `false`.
     Boolean,
-    /// A number; `42`, `12`, `-7`.
-    Integer,
+    /// A 32 bit number; `42`, `12`, `-7`.
+    I32,
+    /// A 64 bit number; `42`, `12`, `-7`.
+    I64,
     /// A decimal; `3.14`, `2.718`, `-1.0`.
     Decimal,
     /// A string; `"foo"`, `"bar"`, `"baz"`.
@@ -199,8 +205,10 @@ pub enum TokenKind {
     UnitType,
     /// The boolean type; `bool`.
     BooleanType,
-    /// The integer type; `int`.
-    IntegerType,
+    /// The integer type; `i32`.
+    I32Type,
+    /// The integer type; `i64`.
+    I64Type,
     /// The decimal type; `dec`.
     DecimalType,
     /// The string type; `str`.
@@ -246,12 +254,13 @@ impl Display for TokenKind {
             TokenKind::Let => write!(f, "`let`"),
             TokenKind::Type => write!(f, "`type`"),
             TokenKind::Function => write!(f, "`fn`"),
-            TokenKind::Intrinsic => write!(f, "`intrinsic`"),
+            TokenKind::Extern => write!(f, "`extern`"),
             TokenKind::Return => write!(f, "`return`"),
             TokenKind::Use => write!(f, "`use`"),
             TokenKind::Mod => write!(f, "`mod`"),
             TokenKind::Boolean => write!(f, "a boolean"),
-            TokenKind::Integer => write!(f, "an integer"),
+            TokenKind::I32 => write!(f, "a 32 bit integer"),
+            TokenKind::I64 => write!(f, "a 64 bit integer"),
             TokenKind::Decimal => write!(f, "a decimal"),
             TokenKind::String => write!(f, "a string"),
             TokenKind::Character => write!(f, "a character"),
@@ -273,7 +282,8 @@ impl Display for TokenKind {
             TokenKind::Trait => write!(f, "`trait`"),
             TokenKind::UnitType => write!(f, "a unit type"),
             TokenKind::BooleanType => write!(f, "a boolean type"),
-            TokenKind::IntegerType => write!(f, "an integer type"),
+            TokenKind::I32Type => write!(f, "an 32 bit integer type"),
+            TokenKind::I64Type => write!(f, "an 64 bit integer type"),
             TokenKind::DecimalType => write!(f, "a decimal type"),
             TokenKind::StringType => write!(f, "a string type"),
             TokenKind::CharacterType => write!(f, "a character type"),
@@ -295,6 +305,18 @@ impl Identifier {
             name: name.into(),
             span,
         }
+    }
+}
+
+impl From<Identifier> for String {
+    fn from(value: Identifier) -> Self {
+        value.name.into()
+    }
+}
+
+impl From<&Identifier> for String {
+    fn from(value: &Identifier) -> Self {
+        value.name.to_string()
     }
 }
 
