@@ -177,6 +177,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap-file"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "229e06ea2f3a15fba5d1daddceea2fb4f65cfc9c39f57a6a977ef1122772b02c"
+
+[[package]]
 name = "clap_builder"
 version = "4.5.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -847,6 +853,7 @@ name = "som"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "clap-file",
  "cranelift",
  "cranelift-jit",
  "cranelift-module",
