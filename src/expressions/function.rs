@@ -100,13 +100,25 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
 
     let end = parser.expect(TokenKind::ParenClose, "expected function arguments")?;
 
+    // Optional return type
+    let explicit_return_type = if parser.peek().is_some_and(|token| {
+        token
+            .as_ref()
+            .is_ok_and(|token| token.kind == TokenKind::Arrow)
+    }) {
+        parser.expect(TokenKind::Arrow, "expected return type")?;
+        Some(parser.parse_type(BindingPower::None)?)
+    } else {
+        None
+    };
+
     let body = parser.parse_expression(BindingPower::None)?;
 
     let span = start.span + body.span;
 
     Ok(ExpressionValue::Function(FunctionExpression {
         parameters,
-        explicit_return_type: None,
+        explicit_return_type,
         body: Box::new(body),
         span: start.span + end.span,
     })
@@ -136,6 +148,13 @@ pub fn type_check(
         returns: Box::new(body.type_.clone()),
         span: value.span,
     });
+
+    if let Some(explicit_return_type) = &value.explicit_return_type {
+        type_checker.expect_same_type(
+            vec![&body.type_, explicit_return_type],
+            "the function's body should match the explicit return type",
+        );
+    }
 
     let value = TypedExpressionValue::Function(FunctionExpression {
         parameters: value.parameters.clone(),

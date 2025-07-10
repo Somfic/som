@@ -36,18 +36,13 @@ pub fn parse_inner(parser: &mut Parser, terminating_token: TokenKind) -> Result<
         });
 
         if is_semicolon {
-            // Consume the semicolon and treat this as a statement
             parser.expect(TokenKind::Semicolon, "expected a semicolon")?;
             statements.push(statement);
         } else {
-            // If no semicolon, validate that this is an Expression
             if final_expression.is_some() {
-                panic!("Unexpected statement without semicolon");
-                // return Err(vec![diagnostic! {
-                //     labels = vec![statement.label("missing semicolon before this statement")],
-                //     help = "Add a semicolon to separate the statements.",
-                //     "expected a semicolon before the next statement"
-                // }]);
+                return Err(parser_expected_semicolon(
+                    parser.current().unwrap().as_ref().unwrap(),
+                ));
             }
 
             match &statement.value {
@@ -55,12 +50,9 @@ pub fn parse_inner(parser: &mut Parser, terminating_token: TokenKind) -> Result<
                     final_expression = Some(expression.clone());
                 }
                 _ => {
-                    panic!("Unexpected statement without semicolon");
-                    // return Err(vec![diagnostic! {
-                    //     labels = vec![statement.label("this statement must end with a semicolon")],
-                    //     help = "Only expressions can be used as the final statement in a block.",
-                    //     "expected a semicolon"
-                    // }]);
+                    return Err(parser_expected_semicolon(
+                        parser.current().unwrap().as_ref().unwrap(),
+                    ));
                 }
             }
 

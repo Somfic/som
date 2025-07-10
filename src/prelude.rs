@@ -179,6 +179,15 @@ pub enum ParserError {
         help: String,
     },
 
+    #[error("expected closing semicolon")]
+    #[diagnostic()]
+    ExpectedSemicolon {
+        #[label("expected a semicolon here")]
+        token: Token,
+        #[help]
+        help: String,
+    },
+
     #[error("expected type")]
     #[diagnostic()]
     ExpectedType {
@@ -282,6 +291,13 @@ pub fn parser_unexpected_end_of_file(span: (usize, usize), expected: impl Into<S
             span.0,
             span.1,
         )],
+    })
+}
+
+pub fn parser_expected_semicolon(token: &Token) -> Error {
+    Error::Parser(ParserError::ExpectedSemicolon {
+        help: format!("expected a semicolon after `{}`", token.value),
+        token: token.clone(),
     })
 }
 
