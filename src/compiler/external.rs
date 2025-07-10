@@ -11,40 +11,64 @@ struct LibCCall {
     signature: fn(&JITModule) -> cranelift::prelude::Signature,
 }
 
-pub fn libc_write() -> LibCCall {
-    LibCCall {
-        name: "libc_write".into(),
-        address: libc::write as *const u8,
-        signature: |module| {
-            let mut sig = module.make_signature();
-            let ptr_t = module.isa().pointer_type();
-            sig.params
-                .push(AbiParam::new(cranelift::prelude::types::I32)); // fd
-            sig.params.push(AbiParam::new(ptr_t)); // buf ptr
-            sig.params.push(AbiParam::new(ptr_t)); // length
-            sig.returns.push(AbiParam::new(ptr_t));
-            sig
-        },
-    }
+fn void(module: &JITModule) -> AbiParam {
+    AbiParam::new(module.isa().pointer_type())
 }
 
-pub fn libc_getpid() -> LibCCall {
-    LibCCall {
-        name: "libc_getpid".into(),
-        address: libc::getpid as *const u8,
-        signature: |module| {
-            let mut sig = module.make_signature();
-            sig.returns
-                .push(AbiParam::new(cranelift::prelude::types::I32));
-            sig
-        },
-    }
+fn i32() -> AbiParam {
+    AbiParam::new(cranelift::prelude::types::I32)
+}
+
+fn i64() -> AbiParam {
+    AbiParam::new(cranelift::prelude::types::I64)
 }
 
 pub fn init_codebase() -> (JITModule, HashMap<String, DeclarationValue>) {
     let mut builder = JITBuilder::new(cranelift_module::default_libcall_names()).unwrap();
 
-    let extern_declarations = [libc_write(), libc_getpid()];
+    let extern_declarations = [
+        LibCCall {
+            name: "libc_getpid".into(),
+            address: libc::getpid as *const u8,
+            signature: |module| {
+                let mut sig = module.make_signature();
+                sig.returns.push(i32());
+                sig
+            },
+        },
+        LibCCall {
+            name: "libc_write".into(),
+            address: libc::write as *const u8,
+            signature: |module| {
+                let mut sig = module.make_signature();
+                let ptr_t = module.isa().pointer_type();
+                sig.params.push(i32());
+                sig.params.push(i64());
+                sig.params.push(i64());
+                sig.returns.push(void(module));
+                sig
+            },
+        },
+        LibCCall {
+            name: "libc_rand".into(),
+            address: libc::rand as *const u8,
+            signature: |module| {
+                let mut sig = module.make_signature();
+                sig.returns.push(i32());
+                sig
+            },
+        },
+        LibCCall {
+            name: "libc_exit".into(),
+            address: libc::exit as *const u8,
+            signature: |module| {
+                let mut sig = module.make_signature();
+                sig.params.push(i32());
+                sig.returns.push(void(module));
+                sig
+            },
+        },
+    ];
 
     for decl in &extern_declarations {
         builder.symbol(&decl.name, decl.address);
