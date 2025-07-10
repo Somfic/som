@@ -484,3 +484,43 @@ fn closest_match(haystack: Vec<String>, needle: String) -> Option<String> {
             .map(|(item, _)| item)
     }
 }
+
+pub fn run(source: miette::NamedSource<String>) -> i64 {
+    let lexer = Lexer::new(source.inner().as_str());
+
+    let mut parser = Parser::new(lexer);
+    let parsed = match parser.parse() {
+        Ok(parsed) => parsed,
+        Err(errors) => {
+            for error in errors {
+                eprintln!(
+                    "{:?}",
+                    miette::miette!(error).with_source_code(source.clone())
+                );
+            }
+            std::process::exit(1);
+        }
+    };
+
+    let mut type_checker = TypeChecker::new();
+    let type_checked = match type_checker.check(&parsed) {
+        Ok(typed_statement) => typed_statement,
+        Err(errors) => {
+            for error in errors {
+                eprintln!(
+                    "{:?}",
+                    miette::miette!(error).with_source_code(source.clone())
+                );
+            }
+            std::process::exit(1);
+        }
+    };
+
+    let mut compiler = Compiler::new();
+    let compiled = compiler.compile(&type_checked);
+
+    let runner = Runner::new();
+    let ran = runner.run(compiled).unwrap();
+
+    ran
+}
