@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
@@ -6,16 +6,19 @@ use cranelift_module::Module;
 pub use environment::Environment;
 
 use crate::{
+    compiler::environment::DeclarationValue,
     expressions,
     prelude::*,
     statements::{self},
 };
 
 pub mod environment;
+mod external;
 
 pub struct Compiler {
     pub isa: Arc<dyn isa::TargetIsa>,
     pub codebase: JITModule,
+    declarations: HashMap<String, DeclarationValue>,
 }
 
 impl Compiler {
@@ -31,14 +34,17 @@ impl Compiler {
             .finish(settings::Flags::new(flag_builder))
             .unwrap();
 
-        let builder = JITBuilder::new(cranelift_module::default_libcall_names()).unwrap();
-        let codebase = JITModule::new(builder);
+        let (codebase, declarations) = external::init_codebase();
 
-        Self { isa, codebase }
+        Self {
+            isa,
+            codebase,
+            declarations,
+        }
     }
 
     pub fn compile(&mut self, statement: &TypedStatement) -> *const u8 {
-        let mut env = Environment::new();
+        let mut env = Environment::new(self.declarations.clone());
 
         let main_func_id = match &statement.value {
             StatementValue::Declaration(declaration) => match &declaration.value.value {
@@ -67,6 +73,9 @@ impl Compiler {
             StatementValue::Declaration(_) => {
                 statements::declaration::compile(self, statement, body, env)
             }
+            StatementValue::ExternDeclaration(_) => {
+                statements::extern_declaration::compile(self, statement, body, env)
+            }
         }
     }
 
@@ -81,8 +90,11 @@ impl Compiler {
                 PrimaryExpression::Unit => {
                     expressions::primary::unit::compile(self, expression, body, env)
                 }
-                PrimaryExpression::Integer(_) => {
-                    expressions::primary::integer::compile(self, expression, body, env)
+                PrimaryExpression::I32(_) => {
+                    expressions::primary::integer::compile_i32(self, expression, body, env)
+                }
+                PrimaryExpression::I64(_) => {
+                    expressions::primary::integer::compile_i64(self, expression, body, env)
                 }
                 PrimaryExpression::Boolean(_) => {
                     expressions::primary::boolean::compile(self, expression, body, env)

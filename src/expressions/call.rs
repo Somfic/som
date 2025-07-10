@@ -47,7 +47,7 @@ pub fn type_check(
         }
     };
 
-    let type_ = function.returns.clone().with_span(expression.span);
+    let type_ = function.return_type.clone().with_span(expression.span);
 
     let arguments: Vec<_> = value
         .arguments

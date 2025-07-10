@@ -70,7 +70,8 @@ impl Display for TypeValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TypeValue::Never => write!(f, "never"),
-            TypeValue::Integer => write!(f, "int"),
+            TypeValue::I32 => write!(f, "i32"),
+            TypeValue::I64 => write!(f, "i64"),
             TypeValue::Boolean => write!(f, "bool"),
             TypeValue::Unit => write!(f, "nothing"),
             TypeValue::Function(function) => {
@@ -80,7 +81,7 @@ impl Display for TypeValue {
                     .map(|p| format!("{}", p.type_))
                     .collect::<Vec<_>>()
                     .join(", ");
-                write!(f, "fn({}) -> {}", params, function.returns)
+                write!(f, "fn({}) -> {}", params, function.return_type)
             }
         }
     }
@@ -104,7 +105,8 @@ pub enum TypeValue {
     Never,
     /// This type is only ever used internally by the type checker to indicate that a value does not have a type. For example the type of an expression block with only statements and no last expression.
     Unit,
-    Integer,
+    I32,
+    I64,
     Boolean,
     Function(FunctionType),
 }
@@ -112,11 +114,19 @@ pub enum TypeValue {
 impl TypeValue {
     pub fn to_ir(&self) -> CompilerType::Type {
         match self {
-            TypeValue::Integer => CompilerType::I64,
+            TypeValue::I32 => CompilerType::I32,
+            TypeValue::I64 => CompilerType::I64,
             TypeValue::Boolean => CompilerType::I8,
             TypeValue::Unit => CompilerType::I8,
             TypeValue::Function(function) => todo!(),
             TypeValue::Never => CompilerType::I8,
+        }
+    }
+
+    pub fn with_span(self, span: impl Into<Span>) -> Type {
+        Type {
+            value: self,
+            span: span.into(),
         }
     }
 }
@@ -124,7 +134,7 @@ impl TypeValue {
 #[derive(Debug, Clone, Eq)]
 pub struct FunctionType {
     pub parameters: Vec<Parameter>,
-    pub returns: Box<Type>,
+    pub return_type: Box<Type>,
     pub span: Span,
 }
 
@@ -142,13 +152,13 @@ impl From<&FunctionType> for miette::SourceSpan {
 
 impl PartialEq for FunctionType {
     fn eq(&self, other: &Self) -> bool {
-        self.parameters == other.parameters && self.returns == other.returns
+        self.parameters == other.parameters && self.return_type == other.return_type
     }
 }
 
 impl Hash for FunctionType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.parameters.hash(state);
-        self.returns.hash(state);
+        self.return_type.hash(state);
     }
 }
