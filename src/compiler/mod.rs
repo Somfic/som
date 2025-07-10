@@ -111,6 +111,9 @@ impl Compiler {
             TypedExpressionValue::Call(_) => {
                 expressions::call::compile(self, expression, body, env)
             }
+            TypedExpressionValue::Conditional(_) => {
+                expressions::conditional::compile(self, expression, body, env)
+            }
             _ => todo!(
                 "compilation for expression type {:?} not implemented",
                 expression.value

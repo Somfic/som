@@ -152,7 +152,7 @@ pub fn type_check(
     if let Some(explicit_return_type) = &value.explicit_return_type {
         type_checker.expect_same_type(
             vec![&body.type_, explicit_return_type],
-            "the function's body should match the explicit return type",
+            "the function's body should match it's explicit return type",
         );
     }
 
