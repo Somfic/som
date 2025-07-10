@@ -79,6 +79,9 @@ impl TypeChecker {
                 expressions::function::type_check(self, expression, env)
             }
             ExpressionValue::Call(_) => expressions::call::type_check(self, expression, env),
+            ExpressionValue::Conditional(_) => {
+                expressions::conditional::type_check(self, expression, env)
+            }
         }
     }
 
@@ -103,6 +106,29 @@ impl TypeChecker {
             expected_span,
             message,
         ));
+
+        TypeValue::Never
+    }
+
+    pub fn expect_type_value(
+        &self,
+        actual: &Type,
+        expected: &TypeValue,
+        message: impl Into<String>,
+    ) -> TypeValue {
+        if &actual.value == expected {
+            return actual.value.clone();
+        }
+
+        if actual.value == TypeValue::Never || expected == &TypeValue::Never {
+            return TypeValue::Never;
+        }
+
+        self.errors
+            .borrow_mut()
+            .push(type_checker_unexpected_type_value(
+                expected, actual, message,
+            ));
 
         TypeValue::Never
     }

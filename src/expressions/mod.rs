@@ -9,6 +9,7 @@ use primary::PrimaryExpression;
 pub mod binary;
 pub mod block;
 pub mod call;
+pub mod conditional;
 pub mod function;
 pub mod group;
 pub mod identifier;
@@ -92,6 +93,7 @@ pub enum GenericExpressionValue<Expression> {
     Identifier(Identifier),
     Function(FunctionExpression<Expression>),
     Call(CallExpression<Expression>),
+    Conditional(ConditionalExpression<Expression>),
 }
 
 impl GenericExpressionValue<Expression> {

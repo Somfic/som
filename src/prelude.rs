@@ -1,6 +1,7 @@
 pub use crate::compiler::Compiler;
 pub use crate::expressions::binary::BinaryExpression;
 pub use crate::expressions::binary::BinaryOperator;
+pub use crate::expressions::conditional::ConditionalExpression;
 pub use crate::expressions::function::Parameter;
 pub use crate::expressions::primary::PrimaryExpression;
 pub use crate::expressions::ExpressionValue;
@@ -324,10 +325,7 @@ pub fn type_checker_unexpected_type(
     let expected_span = expected_span.into();
 
     Error::TypeChecker(TypeCheckerError::TypeMismatch {
-        help: format!(
-            "expected type {expected} but found {actual}, {}",
-            help.into()
-        ),
+        help: format!("expected {expected} but found {actual}, {}", help.into()),
         labels: vec![
             LabeledSpan::new(
                 Some(format!("expected {expected}")),
@@ -340,6 +338,21 @@ pub fn type_checker_unexpected_type(
                 actual.span.length(),
             ),
         ],
+    })
+}
+
+pub fn type_checker_unexpected_type_value(
+    expected: &TypeValue,
+    actual: &Type,
+    help: impl Into<String>,
+) -> Error {
+    Error::TypeChecker(TypeCheckerError::TypeMismatch {
+        help: format!("expected {expected} but found {actual}, {}", help.into()),
+        labels: vec![LabeledSpan::new(
+            Some(format!("{actual}")),
+            actual.span.offset(),
+            actual.span.length(),
+        )],
     })
 }
 
