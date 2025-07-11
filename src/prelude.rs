@@ -4,6 +4,7 @@ pub use crate::expressions::binary::BinaryOperator;
 pub use crate::expressions::conditional::ConditionalExpression;
 pub use crate::expressions::function::Parameter;
 pub use crate::expressions::primary::PrimaryExpression;
+pub use crate::expressions::struct_constructor::StructConstructorExpression;
 pub use crate::expressions::ExpressionValue;
 pub use crate::expressions::TypedExpressionValue;
 pub use crate::lexer::Identifier;
@@ -23,6 +24,8 @@ pub use crate::{
     lexer::{Lexer, Token, TokenKind, TokenValue},
 };
 pub use crate::{parser::Parser, statements::TypedStatement};
+pub use cranelift::prelude::types as CompilerType;
+pub use cranelift::prelude::{FunctionBuilder, InstBuilder};
 pub use miette::Diagnostic;
 use miette::LabeledSpan;
 use miette::SourceSpan;
@@ -36,9 +39,7 @@ use std::fmt::Display;
 use std::ops::Sub;
 use thiserror::Error;
 
-pub use cranelift::prelude::{FunctionBuilder, InstBuilder};
 pub type CompileValue = cranelift::prelude::Value;
-pub use cranelift::prelude::types as CompilerType;
 pub type Result<T> = std::result::Result<T, Error>;
 pub type Results<T> = std::result::Result<T, Vec<Error>>;
 
@@ -184,6 +185,13 @@ pub enum ParserError {
         help: String,
     },
 
+    #[error("expected identifier")]
+    #[diagnostic()]
+    ExpectedIdentifier {
+        #[label("expected an identifier here")]
+        range: (usize, usize),
+    },
+
     #[error("expected closing semicolon")]
     #[diagnostic()]
     ExpectedSemicolon {
@@ -232,6 +240,19 @@ pub enum TypeCheckerError {
         parameter: Parameter,
 
         #[label("expected parameter")]
+        argument: (usize, usize),
+
+        #[help]
+        help: String,
+    },
+
+    #[error("missing field")]
+    #[diagnostic()]
+    MissingField {
+        #[label("this field")]
+        field: Field<TypedExpression>,
+
+        #[label("expected field")]
         argument: (usize, usize),
 
         #[help]
@@ -310,6 +331,14 @@ pub fn parser_expected_expression(token: &Token) -> Error {
     Error::Parser(ParserError::ExpectedExpression {
         help: format!("{token} cannot be parsed as an expression"),
         token: token.clone(),
+    })
+}
+
+pub fn parser_expected_identifier(span: impl Into<Span>) -> Error {
+    let span = span.into();
+
+    Error::Parser(ParserError::ExpectedIdentifier {
+        range: (span.offset(), span.length()),
     })
 }
 

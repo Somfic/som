@@ -140,7 +140,7 @@ pub fn compile(
             }
             TypedExpressionValue::Group(group) => get_func_id(compiler, &group.expression, env),
             TypedExpressionValue::Identifier(identifier) => env.get_function(identifier).unwrap(),
-            _ => panic!("not a function: {:?}", expression),
+            _ => panic!("not a function: {expression:?}"),
         }
     }
 
