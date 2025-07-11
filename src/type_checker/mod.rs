@@ -91,6 +91,9 @@ impl TypeChecker {
             ExpressionValue::Conditional(_) => {
                 expressions::conditional::type_check(self, expression, env)
             }
+            ExpressionValue::StructConstructor(_) => {
+                expressions::struct_constructor::type_check(self, expression, env)
+            }
         }
     }
 

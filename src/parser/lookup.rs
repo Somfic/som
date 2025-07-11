@@ -7,14 +7,15 @@ pub enum BindingPower {
     None = 0,
     Comma = 1,
     Assignment = 2,
-    Logical = 3,
-    Relational = 4,
-    Additive = 5,
-    Multiplicative = 6,
-    Unary = 7,
-    Call = 8,
-    Member = 9,
-    Primary = 10,
+    Declaration = 3,
+    Logical = 4,
+    Relational = 5,
+    Additive = 6,
+    Multiplicative = 7,
+    Unary = 8,
+    Call = 9,
+    Member = 10,
+    Primary = 11,
 }
 
 pub type TypeHandler = fn(&mut Parser) -> Result<Type>;
@@ -151,5 +152,10 @@ impl Default for Lookup {
         .add_statement_handler(TokenKind::Extern, statements::extern_declaration::parse)
         .add_statement_handler(TokenKind::Type, statements::type_declaration::parse)
         .add_type_handler(TokenKind::CurlyOpen, types::struct_::parse)
+        .add_left_expression_handler(
+            TokenKind::CurlyOpen,
+            BindingPower::Declaration,
+            crate::expressions::struct_constructor::parse,
+        )
     }
 }

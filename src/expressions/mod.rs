@@ -14,6 +14,7 @@ pub mod function;
 pub mod group;
 pub mod identifier;
 pub mod primary;
+pub mod struct_constructor;
 
 #[derive(Debug, Clone)]
 pub struct Expression {
@@ -94,6 +95,7 @@ pub enum GenericExpressionValue<Expression> {
     Function(FunctionExpression<Expression>),
     Call(CallExpression<Expression>),
     Conditional(ConditionalExpression<Expression>),
+    StructConstructor(StructConstructorExpression<Expression>),
 }
 
 impl GenericExpressionValue<Expression> {
