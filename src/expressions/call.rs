@@ -100,7 +100,7 @@ fn check_arguments(
                 help: "remove this argument or add a parameter to the function signature"
                     .to_string(),
                 argument: argument.clone(),
-                function: function.clone(),
+                signature: function.span,
             }));
         }
     }

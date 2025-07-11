@@ -145,6 +145,28 @@ impl TypeChecker {
         TypeValue::Never
     }
 
+    pub fn expect_struct_type(
+        &self,
+        actual: &Type,
+        message: impl Into<String>,
+    ) -> TypeValue {
+        if matches!(&actual.value, &TypeValue::Struct(_)) {
+            return actual.value.clone();
+        }
+
+        if actual.value == TypeValue::Never {
+            return TypeValue::Never;
+        }
+
+        self.errors
+            .borrow_mut()
+            .push(type_checker_unexpected_type_value(
+                "a struct", actual, message, // TODO: the fact we need a separate one for this because the enum has a value is a bit ugly...
+            ));
+
+        TypeValue::Never
+    }
+
     pub fn expect_same_type(&self, types: Vec<&Type>, message: impl Into<String>) -> TypeValue {
         let most_occuring_type = if types.len() <= 2 {
             None
