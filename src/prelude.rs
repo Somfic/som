@@ -16,6 +16,7 @@ pub use crate::statements::variable_declaration::VariableDeclarationStatement;
 pub use crate::statements::GenericStatement;
 pub use crate::statements::{Statement, StatementValue};
 pub use crate::type_checker::TypeChecker;
+use crate::types::struct_::Field;
 pub use crate::types::FunctionType;
 pub use crate::types::StructType;
 pub use crate::types::{Type, TypeValue};
@@ -250,7 +251,7 @@ pub enum TypeCheckerError {
     #[diagnostic()]
     MissingField {
         #[label("this field")]
-        field: Field<TypedExpression>,
+        field: Span,
 
         #[label("expected field")]
         argument: (usize, usize),
@@ -265,8 +266,8 @@ pub enum TypeCheckerError {
         #[label("unexpected argument")]
         argument: TypedExpression,
 
-        #[label("function signature")]
-        function: FunctionType,
+        #[label("signature")]
+        signature: Span,
 
         #[help]
         help: String,
@@ -375,12 +376,12 @@ pub fn type_checker_unexpected_type(
 }
 
 pub fn type_checker_unexpected_type_value(
-    expected: &TypeValue,
+    expected: impl Into<String>,
     actual: &Type,
     help: impl Into<String>,
 ) -> Error {
     Error::TypeChecker(TypeCheckerError::TypeMismatch {
-        help: format!("expected {expected} but found {actual}, {}", help.into()),
+        help: format!("expected {} but found {actual}, {}", expected.into(), help.into()),
         labels: vec![LabeledSpan::new(
             Some(format!("{actual}")),
             actual.span.offset(),

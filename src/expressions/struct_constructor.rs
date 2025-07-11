@@ -1,14 +1,14 @@
-use crate::prelude::*;
+use crate::{prelude::*, types::struct_::Field};
 
 #[derive(Debug, Clone)]
 pub struct StructConstructorExpression<Expression> {
     pub type_identifier: Identifier,
     pub type_: Type,
-    pub fields: Vec<Field<Expression>>,
+    pub arguments: Vec<FieldArgument<Expression>>,
 }
 
 #[derive(Debug, Clone)]
-struct Field<Expression> {
+struct FieldArgument<Expression> {
     pub span: Span,
     pub identifier: Identifier,
     pub value: Box<Expression>,
@@ -26,7 +26,7 @@ pub fn parse(
 
     parser.expect(TokenKind::CurlyOpen, "expected a struct constructor")?;
 
-    let mut fields = vec![];
+    let mut arguments = vec![];
 
     loop {
         if parser.peek().is_some_and(|token| {
@@ -37,8 +37,8 @@ pub fn parse(
             break;
         }
 
-        if !fields.is_empty() {
-            parser.expect(TokenKind::Comma, "expected a comma between fields")?;
+        if !arguments.is_empty() {
+            parser.expect(TokenKind::Comma, "expected a comma between struct arguments")?;
         }
 
         let identifier = parser.expect_identifier()?;
@@ -50,7 +50,7 @@ pub fn parse(
 
         let value = parser.parse_expression(BindingPower::None)?;
 
-        fields.push(Field {
+        arguments.push(FieldArgument {
             span: identifier.span + value.span,
             identifier,
             value: Box::new(value),
@@ -68,7 +68,7 @@ pub fn parse(
         ExpressionValue::StructConstructor(StructConstructorExpression {
             type_: TypeValue::Never.with_span(type_identifier.span), // this will be filled in with the type check pass
             type_identifier,
-            fields,
+            arguments,
         })
         .with_span(span),
     )
@@ -86,27 +86,32 @@ pub fn type_check(
 
     let type_ = env.get_type(&value.type_identifier).unwrap();
 
-    let fields = value
-        .fields
-        .iter()
-        .map(|field| {
-            let value = type_checker.check_expression(&field.value, env);
-            Field {
-                span: field.span,
-                identifier: field.identifier.clone(),
-                value: Box::new(value),
-            }
-        })
-        .collect::<Vec<_>>();
+    type_checker.expect_struct_type(&type_, "expected a struct for struct constructor");
 
-    // Check if all fields are present
+    let arguments = value
+    .arguments
+    .iter()
+    .map(|field| {
+        let value = type_checker.check_expression(&field.value, env);
+        FieldArgument {
+            span: field.span,
+            identifier: field.identifier.clone(),
+            value: Box::new(value),
+        }
+    })
+    .collect::<Vec<_>>();
+
+    // if let TypeValue::Struct(struct_) = &type_.value {
+    //     let fields = struct_.fields.clone();
+    //     check_fields(type_checker, &arguments, &fields, 0, struct_);
+    // }
 
     TypedExpression {
         type_: type_.clone().with_span(expression.span),
         value: TypedExpressionValue::StructConstructor(StructConstructorExpression {
             type_identifier: value.type_identifier.clone(),
             type_,
-            fields,
+            arguments,
         }),
         span: expression.span,
     }
@@ -114,44 +119,44 @@ pub fn type_check(
 
 fn check_fields(
     type_checker: &mut TypeChecker,
-    arguments: &[TypedExpression],
-    fields: &[Field<TypedExpression>],
+    arguments: &[FieldArgument<TypedExpression>],
+    fields: &[Field],
     missing_field_offset: usize,
-    function: &FunctionType,
+    struct_: &StructType,
 ) {
-    if arguments.len() < fields.len() {
-        for field in &fields[arguments.len()..] {
-            type_checker.add_error(Error::TypeChecker(TypeCheckerError::MissingParameter {
-                help: format!(
-                    "supply a value for `{}` ({})",
-                    field.identifier, field.type_
-                ),
-                argument: (missing_field_offset, 0),
-                parameter: field.clone(),
-            }));
-        }
-    }
+    // if arguments.len() < fields.len() {
+    //     for field in &fields[arguments.len()..] {
+    //         type_checker.add_error(Error::TypeChecker(TypeCheckerError::MissingParameter {
+    //             help: format!(
+    //                 "supply a value for `{}` ({})",
+    //                 field.identifier, field.type_
+    //             ),
+    //             argument: (missing_field_offset, 0),
+    //             parameter: field.clone(),
+    //         }));
+    //     }
+    // }
 
-    if fields.len() < arguments.len() {
-        for argument in &arguments[fields.len()..] {
-            type_checker.add_error(Error::TypeChecker(TypeCheckerError::UnexpectedArgument {
-                help: "remove this argument or add a parameter to the function signature"
-                    .to_string(),
-                argument: argument.clone(),
-                function: function.clone(),
-            }));
-        }
-    }
+    // if fields.len() < arguments.len() {
+    //     for argument in &arguments[fields.len()..] {
+    //         type_checker.add_error(Error::TypeChecker(TypeCheckerError::UnexpectedArgument {
+    //             help: "remove this argument or add a parameter to the function signature"
+    //                 .to_string(),
+    //             argument: argument.clone(),
+    //             signature: struct_.into(),
+    //         }));
+    //     }
+    // }
 
-    for (argument, parameter) in arguments.iter().zip(fields) {
-        let argument_type = &argument.type_;
-        let parameter_type = &parameter.type_;
+    // for (argument, parameter) in arguments.iter().zip(fields) {
+    //     let argument_type = &argument.type_;
+    //     let parameter_type = &parameter.type_;
 
-        type_checker.expect_type(
-            argument_type,
-            parameter_type,
-            parameter,
-            format!("for parameter `{}`", parameter.identifier),
-        );
-    }
+    //     type_checker.expect_type(
+    //         argument_type,
+    //         parameter_type,
+    //         parameter,
+    //         format!("for parameter `{}`", parameter.identifier),
+    //     );
+    // }
 }

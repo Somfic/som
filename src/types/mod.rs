@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::fmt::{write, Display};
+use std::fmt::{format, write, Display};
 use std::hash::Hash;
 
 use crate::expressions::function::Parameter;
@@ -142,6 +142,12 @@ impl TypeValue {
             value: self,
             span: span.into(),
         }
+    }
+}
+
+impl From<&TypeValue> for String {
+    fn from(value: &TypeValue) -> Self {
+        format!("{}", value)
     }
 }
 
