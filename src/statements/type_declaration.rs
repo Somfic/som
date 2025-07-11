@@ -1,4 +1,4 @@
-use crate::{expressions, prelude::*};
+use crate::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TypeDeclarationStatement {
@@ -33,6 +33,8 @@ pub fn type_check(
         StatementValue::TypeDeclaration(declaration) => declaration,
         _ => unreachable!(),
     };
+
+    env.declare_type(&declaration.identifier, &declaration.type_);
 
     TypedStatement {
         value: StatementValue::TypeDeclaration(TypeDeclarationStatement {

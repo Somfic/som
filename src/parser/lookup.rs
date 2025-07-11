@@ -136,7 +136,10 @@ impl Default for Lookup {
             BindingPower::Call,
             crate::expressions::call::parse,
         )
-        .add_statement_handler(TokenKind::Let, crate::statements::variable_declaration::parse)
+        .add_statement_handler(
+            TokenKind::Let,
+            crate::statements::variable_declaration::parse,
+        )
         .add_type_handler(TokenKind::I32Type, crate::types::integer::parse_i32)
         .add_type_handler(TokenKind::I64Type, crate::types::integer::parse_i64)
         .add_type_handler(TokenKind::BooleanType, crate::types::boolean::parse)

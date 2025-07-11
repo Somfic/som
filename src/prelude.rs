@@ -14,9 +14,9 @@ pub use crate::statements::type_declaration::TypeDeclarationStatement;
 pub use crate::statements::variable_declaration::VariableDeclarationStatement;
 pub use crate::statements::GenericStatement;
 pub use crate::statements::{Statement, StatementValue};
-pub use crate::types::StructType;
 pub use crate::type_checker::TypeChecker;
 pub use crate::types::FunctionType;
+pub use crate::types::StructType;
 pub use crate::types::{Type, TypeValue};
 pub use crate::{
     expressions::{Expression, TypedExpression},

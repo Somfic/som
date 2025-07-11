@@ -78,14 +78,14 @@ impl Display for TypeValue {
             TypeValue::Boolean => write!(f, "bool"),
             TypeValue::Unit => write!(f, "nothing"),
             TypeValue::Function(function) => {
-                        let params = function
-                            .parameters
-                            .iter()
-                            .map(|p| format!("{}", p.type_))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        write!(f, "fn({}) -> {}", params, function.return_type)
-                    },
+                let params = function
+                    .parameters
+                    .iter()
+                    .map(|p| format!("{}", p.type_))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "fn({}) -> {}", params, function.return_type)
+            }
             TypeValue::Struct(struct_) => {
                 let fields = struct_
                     .fields
@@ -94,7 +94,7 @@ impl Display for TypeValue {
                     .collect::<Vec<_>>()
                     .join(", ");
                 write!(f, "{{{}}}", fields)
-            },
+            }
         }
     }
 }

@@ -58,7 +58,7 @@ pub fn type_check(
         );
     }
 
-    env.set(&declaration.identifier, &value.type_);
+    env.declare(&declaration.identifier, &value.type_);
 
     TypedStatement {
         value: StatementValue::VariableDeclaration(VariableDeclarationStatement {
