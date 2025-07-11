@@ -127,7 +127,7 @@ pub fn parse_parameters(parser: &mut Parser) -> Result<(Vec<Parameter>, Span)> {
         });
     }
 
-    let end = parser.expect(TokenKind::ParenClose, "expected function arguments")?;
+    let end = parser.expect(TokenKind::ParenClose, "expected a closing parenthesis")?;
 
     Ok((parameters, start.span + end.span))
 }

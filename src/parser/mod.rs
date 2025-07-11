@@ -1,7 +1,7 @@
 use crate::{
     expressions::{self, function::FunctionExpression},
     prelude::*,
-    statements::declaration::DeclarationStatement,
+    statements::variable_declaration::VariableDeclarationStatement,
 };
 use std::cell::RefCell;
 
@@ -41,7 +41,7 @@ impl<'source> Parser<'source> {
         })
         .with_span(span);
 
-        let main_function = StatementValue::Declaration(DeclarationStatement {
+        let main_function = StatementValue::VariableDeclaration(VariableDeclarationStatement {
             identifier: Identifier::new("main", span),
             explicit_type: None,
             value: Box::new(main_function),

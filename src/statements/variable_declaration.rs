@@ -1,7 +1,7 @@
 use crate::{expressions, prelude::*};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DeclarationStatement<Expression> {
+pub struct VariableDeclarationStatement<Expression> {
     pub identifier: Identifier,
     pub explicit_type: Option<Type>,
     pub value: Box<Expression>,
@@ -29,12 +29,14 @@ pub fn parse(parser: &mut Parser) -> Result<Statement> {
 
     let span = token.span + identifier.span + value.span;
 
-    Ok(StatementValue::Declaration(DeclarationStatement {
-        identifier,
-        explicit_type,
-        value: Box::new(value),
-    })
-    .with_span(span))
+    Ok(
+        StatementValue::VariableDeclaration(VariableDeclarationStatement {
+            identifier,
+            explicit_type,
+            value: Box::new(value),
+        })
+        .with_span(span),
+    )
 }
 
 pub fn type_check(
@@ -43,7 +45,7 @@ pub fn type_check(
     env: &mut crate::type_checker::Environment,
 ) -> TypedStatement {
     let declaration = match &statement.value {
-        StatementValue::Declaration(declaration) => declaration,
+        StatementValue::VariableDeclaration(declaration) => declaration,
         _ => unreachable!(),
     };
 
@@ -59,7 +61,7 @@ pub fn type_check(
     env.set(&declaration.identifier, &value.type_);
 
     TypedStatement {
-        value: StatementValue::Declaration(DeclarationStatement {
+        value: StatementValue::VariableDeclaration(VariableDeclarationStatement {
             identifier: declaration.identifier.clone(),
             explicit_type: declaration.explicit_type.clone(),
             value: Box::new(value),
@@ -75,7 +77,7 @@ pub fn compile(
     env: &mut CompileEnvironment,
 ) {
     let declaration = match &statement.value {
-        StatementValue::Declaration(declaration) => declaration,
+        StatementValue::VariableDeclaration(declaration) => declaration,
         _ => unreachable!(),
     };
 

@@ -1,4 +1,4 @@
-use crate::{prelude::*, statements};
+use crate::{prelude::*, statements, types};
 
 use std::collections::HashMap;
 
@@ -136,7 +136,7 @@ impl Default for Lookup {
             BindingPower::Call,
             crate::expressions::call::parse,
         )
-        .add_statement_handler(TokenKind::Let, crate::statements::declaration::parse)
+        .add_statement_handler(TokenKind::Let, crate::statements::variable_declaration::parse)
         .add_type_handler(TokenKind::I32Type, crate::types::integer::parse_i32)
         .add_type_handler(TokenKind::I64Type, crate::types::integer::parse_i64)
         .add_type_handler(TokenKind::BooleanType, crate::types::boolean::parse)
@@ -146,5 +146,7 @@ impl Default for Lookup {
             crate::expressions::conditional::parse,
         )
         .add_statement_handler(TokenKind::Extern, statements::extern_declaration::parse)
+        .add_statement_handler(TokenKind::Type, statements::type_declaration::parse)
+        .add_type_handler(TokenKind::CurlyOpen, types::struct_::parse)
     }
 }

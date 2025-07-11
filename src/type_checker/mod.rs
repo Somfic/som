@@ -37,11 +37,14 @@ impl TypeChecker {
                 value: StatementValue::Expression(self.check_expression(expression, env)),
                 span: statement.span,
             },
-            StatementValue::Declaration(_) => {
-                statements::declaration::type_check(self, statement, env)
+            StatementValue::VariableDeclaration(_) => {
+                statements::variable_declaration::type_check(self, statement, env)
             }
             StatementValue::ExternDeclaration(_) => {
                 statements::extern_declaration::type_check(self, statement, env)
+            }
+            StatementValue::TypeDeclaration(_) => {
+                statements::type_declaration::type_check(self, statement, env)
             }
         }
     }

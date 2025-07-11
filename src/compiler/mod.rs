@@ -47,7 +47,7 @@ impl Compiler {
         let mut env = Environment::new(self.declarations.clone());
 
         let main_func_id = match &statement.value {
-            StatementValue::Declaration(declaration) => match &declaration.value.value {
+            StatementValue::VariableDeclaration(declaration) => match &declaration.value.value {
                 TypedExpressionValue::Function(_) => {
                     expressions::function::compile(self, &declaration.value, &mut env)
                 }
@@ -70,11 +70,14 @@ impl Compiler {
             StatementValue::Expression(expression) => {
                 self.compile_expression(expression, body, env);
             }
-            StatementValue::Declaration(_) => {
-                statements::declaration::compile(self, statement, body, env)
+            StatementValue::VariableDeclaration(_) => {
+                statements::variable_declaration::compile(self, statement, body, env)
             }
             StatementValue::ExternDeclaration(_) => {
                 statements::extern_declaration::compile(self, statement, body, env)
+            }
+            StatementValue::TypeDeclaration(_) => {
+                statements::type_declaration::compile(self, statement, body, env)
             }
         }
     }
