@@ -1,15 +1,11 @@
-use declaration::DeclarationStatement;
-
-use crate::{
-    prelude::*,
-    statements::extern_declaration::{ExternDeclarationStatement, ExternFunctionSignature},
-};
+use crate::prelude::*;
 
 pub type Statement = GenericStatement<Expression>;
 pub type TypedStatement = GenericStatement<TypedExpression>;
 
-pub mod declaration;
 pub mod extern_declaration;
+pub mod type_declaration;
+pub mod variable_declaration;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct GenericStatement<Expression> {
@@ -20,8 +16,9 @@ pub struct GenericStatement<Expression> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum StatementValue<Expression> {
     Expression(Expression),
-    Declaration(DeclarationStatement<Expression>),
+    VariableDeclaration(VariableDeclarationStatement<Expression>),
     ExternDeclaration(ExternDeclarationStatement),
+    TypeDeclaration(TypeDeclarationStatement),
 }
 
 impl StatementValue<Expression> {

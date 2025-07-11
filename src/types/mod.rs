@@ -1,11 +1,14 @@
+use std::collections::{HashMap, HashSet};
 use std::fmt::{write, Display};
 use std::hash::Hash;
 
 use crate::expressions::function::Parameter;
 use crate::prelude::*;
+use crate::types::struct_::Field;
 
 pub mod boolean;
 pub mod integer;
+pub mod struct_;
 
 #[derive(Debug, Clone, Eq)]
 pub struct Type {
@@ -75,14 +78,23 @@ impl Display for TypeValue {
             TypeValue::Boolean => write!(f, "bool"),
             TypeValue::Unit => write!(f, "nothing"),
             TypeValue::Function(function) => {
-                let params = function
-                    .parameters
+                        let params = function
+                            .parameters
+                            .iter()
+                            .map(|p| format!("{}", p.type_))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        write!(f, "fn({}) -> {}", params, function.return_type)
+                    },
+            TypeValue::Struct(struct_) => {
+                let fields = struct_
+                    .fields
                     .iter()
-                    .map(|p| format!("{}", p.type_))
+                    .map(|f| format!("{} ~ {}", f.identifier, f.type_))
                     .collect::<Vec<_>>()
                     .join(", ");
-                write!(f, "fn({}) -> {}", params, function.return_type)
-            }
+                write!(f, "{{{}}}", fields)
+            },
         }
     }
 }
@@ -109,6 +121,7 @@ pub enum TypeValue {
     I64,
     Boolean,
     Function(FunctionType),
+    Struct(StructType),
 }
 
 impl TypeValue {
@@ -120,6 +133,7 @@ impl TypeValue {
             TypeValue::Unit => CompilerType::I8,
             TypeValue::Function(function) => todo!(),
             TypeValue::Never => CompilerType::I8,
+            TypeValue::Struct(hash_set) => todo!(),
         }
     }
 
@@ -160,5 +174,23 @@ impl Hash for FunctionType {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.parameters.hash(state);
         self.return_type.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
+pub struct StructType {
+    pub fields: Vec<Field>,
+    pub span: Span,
+}
+
+impl PartialEq for StructType {
+    fn eq(&self, other: &Self) -> bool {
+        self.fields == other.fields
+    }
+}
+
+impl Hash for StructType {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.fields.hash(state);
     }
 }
