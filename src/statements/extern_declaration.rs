@@ -59,7 +59,7 @@ pub fn type_check(
     })
     .with_span(extern_declaration.identifier.span + extern_declaration.signature.span);
 
-    env.set(&extern_declaration.identifier, &type_);
+    env.declare(&extern_declaration.identifier, &type_);
 
     TypedStatement {
         value: StatementValue::ExternDeclaration(extern_declaration.clone()),

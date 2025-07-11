@@ -145,7 +145,7 @@ pub fn type_check(
     let env = &mut env.block();
 
     for parameter in &value.parameters {
-        env.set(&parameter.identifier, &parameter.type_);
+        env.declare(&parameter.identifier, &parameter.type_);
     }
 
     let body = type_checker.check_expression(&value.body, env);
