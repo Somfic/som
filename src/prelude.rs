@@ -5,6 +5,8 @@ pub use crate::expressions::conditional::ConditionalExpression;
 pub use crate::expressions::function::Parameter;
 pub use crate::expressions::primary::PrimaryExpression;
 pub use crate::expressions::struct_constructor::StructConstructorExpression;
+pub use crate::expressions::unary::UnaryExpression;
+pub use crate::expressions::unary::UnaryOperator;
 pub use crate::expressions::ExpressionValue;
 pub use crate::expressions::TypedExpressionValue;
 pub use crate::lexer::Identifier;
@@ -381,7 +383,11 @@ pub fn type_checker_unexpected_type_value(
     help: impl Into<String>,
 ) -> Error {
     Error::TypeChecker(TypeCheckerError::TypeMismatch {
-        help: format!("expected {} but found {actual}, {}", expected.into(), help.into()),
+        help: format!(
+            "expected {} but found {actual}, {}",
+            expected.into(),
+            help.into()
+        ),
         labels: vec![LabeledSpan::new(
             Some(format!("{actual}")),
             actual.span.offset(),

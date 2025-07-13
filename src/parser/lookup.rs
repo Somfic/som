@@ -1,4 +1,4 @@
-use crate::{prelude::*, statements, types};
+use crate::{expressions, prelude::*, statements, types};
 
 use std::collections::HashMap;
 
@@ -157,5 +157,6 @@ impl Default for Lookup {
             BindingPower::Declaration,
             crate::expressions::struct_constructor::parse,
         )
+        .add_expression_handler(TokenKind::Minus, expressions::unary::negative::parse)
     }
 }

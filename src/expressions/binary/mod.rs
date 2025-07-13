@@ -3,8 +3,6 @@ pub mod divide;
 pub mod multiply;
 pub mod subtract;
 
-use crate::prelude::*;
-
 #[derive(Debug, Clone)]
 pub struct BinaryExpression<Expression> {
     pub left: Box<Expression>,
