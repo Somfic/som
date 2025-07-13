@@ -2,6 +2,9 @@ use crate::prelude::*;
 mod token;
 pub use token::*;
 
+#[cfg(test)]
+mod tests;
+
 pub struct Lexer<'input> {
     pub source_code: &'input str,
     pub remainder: &'input str,
@@ -84,7 +87,8 @@ impl Iterator for Lexer<'_> {
             '@' => Ok((TokenKind::At, TokenValue::None)),
             '#' => Ok((TokenKind::Hash, TokenValue::None)),
             '$' => Ok((TokenKind::Dollar, TokenValue::None)),
-            '|' => Ok((TokenKind::Pipe, TokenValue::None)),
+            '&' => self.parse_compound_operator(TokenKind::Ampersand, TokenKind::And, '&'),
+            '|' => self.parse_compound_operator(TokenKind::Pipe, TokenKind::Or, '|'),
             '^' => Ok((TokenKind::Caret, TokenValue::None)),
             '`' => Ok((TokenKind::Tick, TokenValue::None)),
             '~' => Ok((TokenKind::Tilde, TokenValue::None)),
