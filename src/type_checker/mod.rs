@@ -67,6 +67,12 @@ impl TypeChecker {
                 }
                 PrimaryExpression::Unit => expressions::primary::unit::type_check(expression),
             },
+            ExpressionValue::Unary(unary) => match &unary.operator {
+                UnaryOperator::Negative => {
+                    expressions::unary::negative::type_check(self, expression, env)
+                }
+                op => todo!("Unary operator {:?} not implemented", op),
+            },
             ExpressionValue::Binary(binary) => match binary.operator {
                 BinaryOperator::Add => expressions::binary::add::type_check(self, expression, env),
                 BinaryOperator::Subtract => {
@@ -145,11 +151,7 @@ impl TypeChecker {
         TypeValue::Never
     }
 
-    pub fn expect_struct_type(
-        &self,
-        actual: &Type,
-        message: impl Into<String>,
-    ) -> TypeValue {
+    pub fn expect_struct_type(&self, actual: &Type, message: impl Into<String>) -> TypeValue {
         if matches!(&actual.value, &TypeValue::Struct(_)) {
             return actual.value.clone();
         }
@@ -161,7 +163,8 @@ impl TypeChecker {
         self.errors
             .borrow_mut()
             .push(type_checker_unexpected_type_value(
-                "a struct", actual, message, // TODO: the fact we need a separate one for this because the enum has a value is a bit ugly...
+                "a struct", actual,
+                message, // TODO: the fact we need a separate one for this because the enum has a value is a bit ugly...
             ));
 
         TypeValue::Never

@@ -15,6 +15,7 @@ pub mod group;
 pub mod identifier;
 pub mod primary;
 pub mod struct_constructor;
+pub mod unary;
 
 #[derive(Debug, Clone)]
 pub struct Expression {
@@ -87,6 +88,7 @@ pub type TypedExpressionValue = GenericExpressionValue<TypedExpression>;
 
 #[derive(Debug, Clone)]
 pub enum GenericExpressionValue<Expression> {
+    Unary(UnaryExpression<Expression>),
     Primary(PrimaryExpression),
     Binary(BinaryExpression<Expression>),
     Group(GroupExpression<Expression>),

@@ -103,6 +103,12 @@ impl Compiler {
                     expressions::primary::boolean::compile(self, expression, body, env)
                 }
             },
+            TypedExpressionValue::Unary(unary) => match &unary.operator {
+                UnaryOperator::Negative => {
+                    expressions::unary::negative::compile(self, expression, body, env)
+                }
+                op => todo!("Unary operator {:?} not implemented", op),
+            },
             TypedExpressionValue::Binary(binary) => match binary.operator {
                 BinaryOperator::Add => {
                     expressions::binary::add::compile(self, expression, body, env)
