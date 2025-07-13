@@ -127,6 +127,7 @@ pub enum TokenKind {
     Equality,
     /// An inequality sign; `!=`.
     Inequality,
+
     /// An and sign; `&&`.
     And,
     /// An or sign; `||`.
@@ -146,6 +147,8 @@ pub enum TokenKind {
     Question,
     /// A pipe; `|`.
     Pipe,
+    /// An ampersand sign; `&`.
+    Ampersand,
     /// A caret; `^`.
     Caret,
     /// A tick; ```.
@@ -287,8 +290,8 @@ impl Display for TokenKind {
             TokenKind::DecimalType => write!(f, "a decimal type"),
             TokenKind::StringType => write!(f, "a string type"),
             TokenKind::CharacterType => write!(f, "a character type"),
-
             TokenKind::EOF => write!(f, "the end of the file"),
+            TokenKind::Ampersand => write!(f, "`&`"),
         }
     }
 }
