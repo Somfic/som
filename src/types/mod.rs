@@ -6,10 +6,78 @@ use crate::expressions::function::Parameter;
 use crate::prelude::*;
 use crate::types::struct_::Field;
 
-
 pub mod boolean;
 pub mod integer;
 pub mod struct_;
+
+/// Struct layout information for memory allocation
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructLayout {
+    pub fields: Vec<FieldLayout>,
+    pub total_size: usize,
+    pub alignment: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldLayout {
+    pub identifier: Identifier,
+    pub type_: Box<Type>,
+    pub offset: usize,
+    pub size: usize,
+}
+
+impl StructLayout {
+    pub fn new(fields: &[Field]) -> Self {
+        let mut field_layouts = Vec::new();
+        let mut offset = 0;
+        let mut max_alignment = 1;
+
+        for field in fields {
+            let size = field.type_.value.size_in_bytes();
+            let alignment = field.type_.value.alignment();
+
+            // Align the offset to the field's alignment requirement
+            offset = align_to(offset, alignment);
+            max_alignment = max_alignment.max(alignment);
+
+            field_layouts.push(FieldLayout {
+                identifier: field.identifier.clone(),
+                type_: field.type_.clone(),
+                offset,
+                size,
+            });
+
+            offset += size;
+        }
+
+        // Align the total size to the struct's alignment
+        let total_size = align_to(offset, max_alignment);
+
+        StructLayout {
+            fields: field_layouts,
+            total_size,
+            alignment: max_alignment,
+        }
+    }
+
+    pub fn get_field_offset(&self, field_name: &str) -> Option<usize> {
+        self.fields
+            .iter()
+            .find(|f| f.identifier.name.as_ref() == field_name)
+            .map(|f| f.offset)
+    }
+
+    pub fn get_field_layout(&self, field_name: &str) -> Option<&FieldLayout> {
+        self.fields
+            .iter()
+            .find(|f| f.identifier.name.as_ref() == field_name)
+    }
+}
+
+/// Align a value to the given alignment
+fn align_to(value: usize, alignment: usize) -> usize {
+    (value + alignment - 1) & !(alignment - 1)
+}
 
 #[derive(Debug, Clone, Eq)]
 pub struct Type {
@@ -132,9 +200,44 @@ impl TypeValue {
             TypeValue::I64 => CompilerType::I64,
             TypeValue::Boolean => CompilerType::I8,
             TypeValue::Unit => CompilerType::I8,
-            TypeValue::Function(function) => todo!(),
+            TypeValue::Function(_function) => todo!(),
             TypeValue::Never => CompilerType::I8,
-            TypeValue::Struct(hash_set) => todo!(),
+            TypeValue::Struct(struct_type) => {
+                // Use pointer type for struct references
+                CompilerType::I64 // 64-bit pointer
+            }
+        }
+    }
+
+    /// Get the size of this type in bytes
+    pub fn size_in_bytes(&self) -> usize {
+        match self {
+            TypeValue::I32 => 4,
+            TypeValue::I64 => 8,
+            TypeValue::Boolean => 1,
+            TypeValue::Unit => 0,
+            TypeValue::Function(_) => 8, // Function pointer
+            TypeValue::Never => 0,
+            TypeValue::Struct(struct_type) => {
+                let layout = StructLayout::new(&struct_type.fields);
+                layout.total_size
+            }
+        }
+    }
+
+    /// Get the alignment requirement of this type in bytes
+    pub fn alignment(&self) -> usize {
+        match self {
+            TypeValue::I32 => 4,
+            TypeValue::I64 => 8,
+            TypeValue::Boolean => 1,
+            TypeValue::Unit => 1,
+            TypeValue::Function(_) => 8, // Function pointer
+            TypeValue::Never => 1,
+            TypeValue::Struct(struct_type) => {
+                let layout = StructLayout::new(&struct_type.fields);
+                layout.alignment
+            }
         }
     }
 

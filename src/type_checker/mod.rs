@@ -100,6 +100,9 @@ impl TypeChecker {
             ExpressionValue::StructConstructor(_) => {
                 expressions::struct_constructor::type_check(self, expression, env)
             }
+            ExpressionValue::FieldAccess(_) => {
+                expressions::field_access::type_check(self, expression, env)
+            }
         }
     }
 
