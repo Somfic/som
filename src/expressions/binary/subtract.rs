@@ -32,6 +32,25 @@ pub fn type_check(
     let left = type_checker.check_expression(&value.left, env);
     let right = type_checker.check_expression(&value.right, env);
 
+    // Check that both sides are numeric types
+    let is_numeric = |type_value: &TypeValue| matches!(type_value, TypeValue::I32 | TypeValue::I64);
+
+    if !is_numeric(&left.type_.value) {
+        type_checker.add_error(type_checker_unexpected_type_value(
+            "numeric type (i32 or i64)",
+            &left.type_,
+            "only numeric types can be subtracted",
+        ));
+    }
+
+    if !is_numeric(&right.type_.value) {
+        type_checker.add_error(type_checker_unexpected_type_value(
+            "numeric type (i32 or i64)",
+            &right.type_,
+            "only numeric types can be subtracted",
+        ));
+    }
+
     let ty = type_checker.expect_same_type(
         vec![&left.type_, &right.type_],
         "both sides of the subtraction must be of the same type",

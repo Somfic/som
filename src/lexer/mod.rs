@@ -97,7 +97,64 @@ impl Iterator for Lexer<'_> {
             '-' => self.parse_compound_operator(TokenKind::Minus, TokenKind::Arrow, '>'),
             '+' => Ok((TokenKind::Plus, TokenValue::None)),
             '*' => Ok((TokenKind::Star, TokenValue::None)),
-            '/' => Ok((TokenKind::Slash, TokenValue::None)),
+            '/' => {
+                // Check for comments
+                if let Some(next_char) = self.remainder.chars().next() {
+                    if next_char == '/' {
+                        // Single-line comment: consume until end of line
+                        self.remainder = self.remainder[next_char.len_utf8()..].into();
+                        self.byte_offset += next_char.len_utf8();
+
+                        while let Some(c) = self.remainder.chars().next() {
+                            if c == '\n' {
+                                break;
+                            }
+                            self.remainder = self.remainder[c.len_utf8()..].into();
+                            self.byte_offset += c.len_utf8();
+                        }
+
+                        // Skip the comment and get the next token
+                        return self.next();
+                    } else if next_char == '*' {
+                        // Multi-line comment: consume until */
+                        self.remainder = self.remainder[next_char.len_utf8()..].into();
+                        self.byte_offset += next_char.len_utf8();
+
+                        let mut found_end = false;
+
+                        while let Some(c) = self.remainder.chars().next() {
+                            if c == '*' {
+                                // Check if next character is '/'
+                                if let Some('/') = self.remainder.chars().nth(1) {
+                                    // Skip the '*' and '/'
+                                    self.remainder = self.remainder[c.len_utf8()..].into();
+                                    self.byte_offset += c.len_utf8();
+                                    self.remainder = self.remainder['/'.len_utf8()..].into();
+                                    self.byte_offset += '/'.len_utf8();
+                                    found_end = true;
+                                    break;
+                                }
+                            }
+                            self.remainder = self.remainder[c.len_utf8()..].into();
+                            self.byte_offset += c.len_utf8();
+                        }
+
+                        if !found_end {
+                            return Some(Err(lexer_unterminated_comment((
+                                start_offset,
+                                self.byte_offset - start_offset,
+                            ))));
+                        }
+
+                        // Skip the comment and get the next token
+                        return self.next();
+                    } else {
+                        Ok((TokenKind::Slash, TokenValue::None))
+                    }
+                } else {
+                    Ok((TokenKind::Slash, TokenValue::None))
+                }
+            }
             '%' => Ok((TokenKind::Percent, TokenValue::None)),
             '=' => self.parse_compound_operator(TokenKind::Equal, TokenKind::Equality, '='),
             '!' => self.parse_compound_operator(TokenKind::Not, TokenKind::Inequality, '='),
