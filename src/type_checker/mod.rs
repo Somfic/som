@@ -65,6 +65,9 @@ impl TypeChecker {
                 PrimaryExpression::Boolean(_) => {
                     expressions::primary::boolean::type_check(expression)
                 }
+                PrimaryExpression::String(_) => {
+                    expressions::primary::string::type_check(self, expression, env)
+                }
                 PrimaryExpression::Unit => expressions::primary::unit::type_check(expression),
             },
             ExpressionValue::Unary(unary) => match &unary.operator {

@@ -102,6 +102,9 @@ impl Compiler {
                 PrimaryExpression::Boolean(_) => {
                     expressions::primary::boolean::compile(self, expression, body, env)
                 }
+                PrimaryExpression::String(_) => {
+                    expressions::primary::string::compile(self, expression, body, env)
+                }
             },
             TypedExpressionValue::Unary(unary) => match &unary.operator {
                 UnaryOperator::Negative => {
