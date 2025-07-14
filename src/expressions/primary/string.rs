@@ -33,18 +33,21 @@ pub fn compile(
     body: &mut FunctionBuilder,
     _env: &mut CompileEnvironment,
 ) -> CompileValue {
-    let _value = match &expression.value {
+    let value = match &expression.value {
         TypedExpressionValue::Primary(PrimaryExpression::String(value)) => value,
         _ => unreachable!(),
     };
 
-    // For a demonstration, let's hardcode a string pointer
-    // In a real implementation, we'd properly manage string memory
-    // For now, we'll create a static C string and use its address
+    // Create a null-terminated C string from the SOM string literal
+    let mut c_string_bytes = value.as_bytes().to_vec();
+    c_string_bytes.push(0); // null terminator
 
-    // This is unsafe but demonstrates the concept
-    static HELLO_WORLD: &[u8] = b"Hello, World!\0";
-    let str_addr = HELLO_WORLD.as_ptr() as i64;
+    // For JIT compilation, we need to allocate the string in memory that will persist
+    // We'll use Box::leak to create a static allocation for the string
+    let c_string_boxed = c_string_bytes.into_boxed_slice();
+    let static_string: &'static [u8] = Box::leak(c_string_boxed);
+
+    let str_addr = static_string.as_ptr() as i64;
 
     body.ins().iconst(cranelift::prelude::types::I64, str_addr)
 }
