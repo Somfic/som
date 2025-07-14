@@ -538,33 +538,94 @@ where
 }
 
 pub fn closest_match(haystack: Vec<String>, needle: String) -> Option<String> {
-    // create matcher engine with default config
+    if haystack.is_empty() {
+        return None;
+    }
+
+    // Create matcher engine with optimized config for better results
     let mut matcher = Matcher::new(Config::DEFAULT);
-    // build a single-atom fuzzy pattern
+
+    // Build a fuzzy pattern with smart case matching
     let pattern = Pattern::new(
         &needle,
         CaseMatching::Smart,
         Normalization::Smart,
         AtomKind::Fuzzy,
     );
-    // for each item, compute score or default to zero
-    let scored = haystack
+
+    // Score all candidates
+    let mut scored: Vec<(String, u32)> = haystack
         .iter()
-        .map(|item| {
+        .filter_map(|item| {
             let hay = nucleo_matcher::Utf32Str::Ascii(item.as_bytes());
-            let score = pattern.score(hay, &mut matcher).unwrap_or(0);
-            (item.clone(), score)
+            pattern
+                .score(hay, &mut matcher)
+                .map(|score| (item.clone(), score))
         })
-        .collect::<Vec<_>>();
+        .collect();
 
     if scored.is_empty() {
-        None
-    } else {
-        scored
-            .into_iter()
-            .max_by_key(|(_, score)| *score)
-            .map(|(item, _)| item)
+        return None;
     }
+
+    // Sort by score (highest first)
+    scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+    let (best_match, best_score) = &scored[0];
+
+    // Calculate similarity metrics for intelligent thresholding
+    let needle_len = needle.len();
+    let match_len = best_match.len();
+    let length_diff = (needle_len as i32 - match_len as i32).abs() as usize;
+
+    // Check if there are common characters
+    let common_chars = needle.chars().filter(|c| best_match.contains(*c)).count();
+
+    // Calculate a relative score (0.0 to 1.0)
+    let relative_score = (*best_score as f64) / (needle_len.max(match_len) as f64 * 100.0);
+
+    // Apply intelligent thresholds based on different criteria:
+
+    // 1. High fuzzy score threshold (good match quality)
+    if relative_score >= 0.6 {
+        return Some(best_match.clone());
+    }
+
+    // 2. Prefix matching (starts with same characters)
+    if best_match
+        .to_lowercase()
+        .starts_with(&needle.to_lowercase())
+        || needle
+            .to_lowercase()
+            .starts_with(&best_match.to_lowercase())
+    {
+        return Some(best_match.clone());
+    }
+
+    // 3. Good character overlap with reasonable length difference
+    if common_chars >= needle_len.min(3) && length_diff <= 2 {
+        return Some(best_match.clone());
+    }
+
+    // 4. Substring matching (one contains the other)
+    if best_match.to_lowercase().contains(&needle.to_lowercase())
+        || needle.to_lowercase().contains(&best_match.to_lowercase())
+    {
+        return Some(best_match.clone());
+    }
+
+    // 5. For very short needles, be more lenient
+    if needle_len <= 3 && common_chars >= needle_len / 2 && length_diff <= 3 {
+        return Some(best_match.clone());
+    }
+
+    // 6. For longer needles, require better relative score
+    if needle_len > 6 && relative_score >= 0.3 && common_chars >= needle_len / 3 {
+        return Some(best_match.clone());
+    }
+
+    // If none of the criteria are met, don't suggest anything
+    None
 }
 
 pub fn run(source: miette::NamedSource<String>) -> i64 {
