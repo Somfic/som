@@ -2,6 +2,7 @@ pub use crate::compiler::Compiler;
 pub use crate::expressions::binary::BinaryExpression;
 pub use crate::expressions::binary::BinaryOperator;
 pub use crate::expressions::conditional::ConditionalExpression;
+pub use crate::expressions::field_access::FieldAccessExpression;
 pub use crate::expressions::function::Parameter;
 pub use crate::expressions::primary::PrimaryExpression;
 pub use crate::expressions::struct_constructor::StructConstructorExpression;
@@ -249,14 +250,27 @@ pub enum TypeCheckerError {
         help: String,
     },
 
-    #[error("missing field")]
+    #[error("non existing field")]
     #[diagnostic()]
-    MissingField {
-        #[label("this field")]
+    UnknownField {
+        #[label("this field does not exist")]
         field: Span,
 
-        #[label("expected field")]
-        argument: (usize, usize),
+        #[label("in this struct")]
+        struct_span: Span,
+
+        #[help]
+        help: String,
+    },
+
+    #[error("missing required field")]
+    #[diagnostic()]
+    MissingRequiredField {
+        #[label("missing field")]
+        field: Span,
+
+        #[label("in this constructor")]
+        constructor: Span,
 
         #[help]
         help: String,
@@ -495,7 +509,7 @@ where
         .join(" ")
 }
 
-fn closest_match(haystack: Vec<String>, needle: String) -> Option<String> {
+pub fn closest_match(haystack: Vec<String>, needle: String) -> Option<String> {
     // create matcher engine with default config
     let mut matcher = Matcher::new(Config::DEFAULT);
     // build a single-atom fuzzy pattern

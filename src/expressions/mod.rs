@@ -10,6 +10,7 @@ pub mod binary;
 pub mod block;
 pub mod call;
 pub mod conditional;
+pub mod field_access;
 pub mod function;
 pub mod group;
 pub mod identifier;
@@ -98,6 +99,7 @@ pub enum GenericExpressionValue<Expression> {
     Call(CallExpression<Expression>),
     Conditional(ConditionalExpression<Expression>),
     StructConstructor(StructConstructorExpression<Expression>),
+    FieldAccess(field_access::FieldAccessExpression<Expression>),
 }
 
 impl GenericExpressionValue<Expression> {

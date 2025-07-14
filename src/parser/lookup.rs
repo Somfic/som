@@ -157,6 +157,11 @@ impl Default for Lookup {
             BindingPower::Declaration,
             crate::expressions::struct_constructor::parse,
         )
+        .add_left_expression_handler(
+            TokenKind::Dot,
+            BindingPower::Member,
+            crate::expressions::field_access::parse,
+        )
         .add_expression_handler(TokenKind::Minus, expressions::unary::negative::parse)
     }
 }

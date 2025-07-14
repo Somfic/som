@@ -135,6 +135,12 @@ impl Compiler {
             TypedExpressionValue::Conditional(_) => {
                 expressions::conditional::compile(self, expression, body, env)
             }
+            TypedExpressionValue::StructConstructor(_) => {
+                expressions::struct_constructor::compile(self, expression, body, env)
+            }
+            TypedExpressionValue::FieldAccess(_) => {
+                expressions::field_access::compile(self, expression, body, env)
+            }
             _ => todo!(
                 "compilation for expression type {:?} not implemented",
                 expression.value
