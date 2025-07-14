@@ -8,6 +8,7 @@ use crate::types::struct_::Field;
 
 pub mod boolean;
 pub mod integer;
+pub mod string;
 pub mod struct_;
 
 /// Struct layout information for memory allocation
@@ -145,6 +146,7 @@ impl Display for TypeValue {
             TypeValue::I32 => write!(f, "i32"),
             TypeValue::I64 => write!(f, "i64"),
             TypeValue::Boolean => write!(f, "bool"),
+            TypeValue::String => write!(f, "string"),
             TypeValue::Unit => write!(f, "nothing"),
             TypeValue::Function(function) => {
                 let params = function
@@ -189,6 +191,7 @@ pub enum TypeValue {
     I32,
     I64,
     Boolean,
+    String,
     Function(FunctionType),
     Struct(StructType),
 }
@@ -199,6 +202,7 @@ impl TypeValue {
             TypeValue::I32 => CompilerType::I32,
             TypeValue::I64 => CompilerType::I64,
             TypeValue::Boolean => CompilerType::I8,
+            TypeValue::String => CompilerType::I64, // String pointer
             TypeValue::Unit => CompilerType::I8,
             TypeValue::Function(_function) => todo!(),
             TypeValue::Never => CompilerType::I8,
@@ -215,6 +219,7 @@ impl TypeValue {
             TypeValue::I32 => 4,
             TypeValue::I64 => 8,
             TypeValue::Boolean => 1,
+            TypeValue::String => 8, // String pointer
             TypeValue::Unit => 0,
             TypeValue::Function(_) => 8, // Function pointer
             TypeValue::Never => 0,
@@ -231,6 +236,7 @@ impl TypeValue {
             TypeValue::I32 => 4,
             TypeValue::I64 => 8,
             TypeValue::Boolean => 1,
+            TypeValue::String => 8, // String pointer alignment
             TypeValue::Unit => 1,
             TypeValue::Function(_) => 8, // Function pointer
             TypeValue::Never => 1,

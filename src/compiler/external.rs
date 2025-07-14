@@ -68,6 +68,17 @@ pub fn init_codebase() -> (JITModule, HashMap<String, DeclarationValue>) {
                 sig
             },
         },
+        LibCCall {
+            name: "libc_puts".into(),
+            address: libc::puts as *const u8,
+            signature: |module| {
+                let mut sig = module.make_signature();
+                let ptr_t = module.isa().pointer_type();
+                sig.params.push(AbiParam::new(ptr_t));
+                sig.returns.push(i32());
+                sig
+            },
+        },
     ];
 
     for decl in &extern_declarations {

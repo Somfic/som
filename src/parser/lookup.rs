@@ -112,6 +112,10 @@ impl Default for Lookup {
             TokenKind::Boolean,
             crate::expressions::primary::boolean::parse,
         )
+        .add_expression_handler(
+            TokenKind::String,
+            crate::expressions::primary::string::parse,
+        )
         .add_left_expression_handler(
             TokenKind::Plus,
             BindingPower::Additive,
@@ -144,6 +148,7 @@ impl Default for Lookup {
         .add_type_handler(TokenKind::I32Type, crate::types::integer::parse_i32)
         .add_type_handler(TokenKind::I64Type, crate::types::integer::parse_i64)
         .add_type_handler(TokenKind::BooleanType, crate::types::boolean::parse)
+        .add_type_handler(TokenKind::StringType, crate::types::string::parse)
         .add_left_expression_handler(
             TokenKind::If,
             BindingPower::Logical,
