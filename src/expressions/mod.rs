@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use assignment::AssignmentExpression;
 use binary::BinaryExpression;
 use block::BlockExpression;
 use call::CallExpression;
@@ -6,6 +7,7 @@ use function::FunctionExpression;
 use group::GroupExpression;
 use primary::PrimaryExpression;
 
+pub mod assignment;
 pub mod binary;
 pub mod block;
 pub mod call;
@@ -100,6 +102,7 @@ pub enum GenericExpressionValue<Expression> {
     Conditional(ConditionalExpression<Expression>),
     StructConstructor(StructConstructorExpression<Expression>),
     FieldAccess(field_access::FieldAccessExpression<Expression>),
+    Assignment(AssignmentExpression<Expression>),
 }
 
 impl GenericExpressionValue<Expression> {

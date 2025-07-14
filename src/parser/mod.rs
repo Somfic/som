@@ -1,7 +1,7 @@
 use crate::{
     expressions::{self, function::FunctionExpression},
     prelude::*,
-    statements::variable_declaration::VariableDeclarationStatement,
+    statements::{self, variable_declaration::VariableDeclarationStatement},
 };
 use std::cell::RefCell;
 
