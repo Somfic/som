@@ -63,11 +63,11 @@ pub fn type_check(
 
         let help_message = if let Some(suggestion) = closest_match {
             format!(
-                "field `{}` not found in struct, did you mean `{}`?",
+                "field `{}` does not exist in the struct, did you mean `{}`?",
                 value.field.name, suggestion
             )
         } else {
-            format!("field `{}` not found in struct", value.field.name)
+            format!("field `{}` does not exist in the struct", value.field.name)
         };
 
         type_checker.add_error(Error::TypeChecker(TypeCheckerError::UnknownField {

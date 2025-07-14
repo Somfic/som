@@ -42,6 +42,21 @@ pub fn type_check(
 
     let function = match &callee.type_.value {
         TypeValue::Function(function) => function,
+        TypeValue::Never => {
+            // Return a call expression with Never type
+            return expression.with_value_type(
+                TypedExpressionValue::Call(CallExpression {
+                    callee: Box::new(callee),
+                    arguments: value
+                        .arguments
+                        .iter()
+                        .map(|argument| type_checker.check_expression(argument, env))
+                        .collect(),
+                    last_argument_offset: value.last_argument_offset,
+                }),
+                TypeValue::Never.with_span(expression.span),
+            );
+        }
         _ => {
             panic!("not a function: {}", callee.type_);
         }
