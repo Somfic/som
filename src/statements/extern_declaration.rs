@@ -1,4 +1,4 @@
-use crate::{expressions, prelude::*, compiler::external};
+use crate::{compiler::external, expressions, prelude::*};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExternDeclarationStatement {
@@ -55,26 +55,43 @@ pub fn type_check(
     // Validate that the extern function is defined in the compiler
     let available_functions = external::get_available_extern_functions();
     let function_name = &extern_declaration.identifier.name;
-    
-    if !available_functions.iter().any(|f| f == function_name.as_ref()) {
+
+    if !available_functions
+        .iter()
+        .any(|f| f == function_name.as_ref())
+    {
         let closest = closest_match(available_functions.clone(), function_name.to_string());
-        
+
         let help_message = if let Some(suggestion) = closest {
             // Check if the suggestion is reasonable (contains some similar characters)
-            if function_name.chars().any(|c| suggestion.contains(c)) && 
-               (function_name.len() as i32 - suggestion.len() as i32).abs() <= 3 {
-                format!("Function '{}' is not defined in the compiler. Did you mean '{}'?", function_name, suggestion)
+            if function_name.chars().any(|c| suggestion.contains(c))
+                && (function_name.len() as i32 - suggestion.len() as i32).abs() <= 3
+            {
+                format!(
+                    "Function '{}' is not defined in the compiler. Did you mean '{}'?",
+                    function_name, suggestion
+                )
             } else {
-                format!("Function '{}' is not defined in the compiler. Available functions: {}", function_name, available_functions.join(", "))
+                format!(
+                    "Function '{}' is not defined in the compiler. Available functions: {}",
+                    function_name,
+                    available_functions.join(", ")
+                )
             }
         } else {
-            format!("Function '{}' is not defined in the compiler. Available functions: {}", function_name, available_functions.join(", "))
+            format!(
+                "Function '{}' is not defined in the compiler. Available functions: {}",
+                function_name,
+                available_functions.join(", ")
+            )
         };
-        
-        type_checker.add_error(Error::TypeChecker(TypeCheckerError::UnknownExternFunction {
-            function_span: extern_declaration.identifier.span,
-            help: help_message,
-        }));
+
+        type_checker.add_error(Error::TypeChecker(
+            TypeCheckerError::UnknownExternFunction {
+                function_span: extern_declaration.identifier.span,
+                help: help_message,
+            },
+        ));
     }
 
     let type_ = TypeValue::Function(FunctionType {
