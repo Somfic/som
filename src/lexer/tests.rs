@@ -2,7 +2,7 @@ use crate::prelude::*;
 
 fn tokenize(input: &str) -> Vec<Token> {
     let lexer = Lexer::new(input);
-    lexer.flatten().collect()
+    lexer.map(|result| result.unwrap()).collect()
 }
 
 #[test]
@@ -109,4 +109,67 @@ fn punctuation() {
     assert_eq!(tokens[19].kind, TokenKind::Star);
     assert_eq!(tokens[20].kind, TokenKind::Plus);
     assert_eq!(tokens[21].kind, TokenKind::Equal);
+}
+
+#[test]
+fn single_line_comments() {
+    let input = "let x = 42; // This is a comment\nlet y = 24;";
+    let tokens = tokenize(input);
+    // Should have: let, x, =, 42, ;, let, y, =, 24, ;
+    assert_eq!(tokens.len(), 10);
+    assert_eq!(tokens[0].kind, TokenKind::Let);
+    assert_eq!(tokens[1].kind, TokenKind::Identifier);
+    assert_eq!(tokens[2].kind, TokenKind::Equal);
+    assert_eq!(tokens[3].kind, TokenKind::I32);
+    assert_eq!(tokens[4].kind, TokenKind::Semicolon);
+    assert_eq!(tokens[5].kind, TokenKind::Let);
+    assert_eq!(tokens[6].kind, TokenKind::Identifier);
+    assert_eq!(tokens[7].kind, TokenKind::Equal);
+    assert_eq!(tokens[8].kind, TokenKind::I32);
+    assert_eq!(tokens[9].kind, TokenKind::Semicolon);
+}
+
+#[test]
+fn multi_line_comments() {
+    let input = "let x = /* this is a comment */ 42;";
+    let tokens = tokenize(input);
+    // Should have: let, x, =, 42, ;
+    assert_eq!(tokens.len(), 5);
+    assert_eq!(tokens[0].kind, TokenKind::Let);
+    assert_eq!(tokens[1].kind, TokenKind::Identifier);
+    assert_eq!(tokens[2].kind, TokenKind::Equal);
+    assert_eq!(tokens[3].kind, TokenKind::I32);
+    assert_eq!(tokens[4].kind, TokenKind::Semicolon);
+}
+
+#[test]
+fn multi_line_comments_with_newlines() {
+    let input = r#"let x = /*
+    this is a multi-line
+    comment spanning
+    multiple lines
+    */ 42;"#;
+    let tokens = tokenize(input);
+    // Should have: let, x, =, 42, ;
+    assert_eq!(tokens.len(), 5);
+    assert_eq!(tokens[0].kind, TokenKind::Let);
+    assert_eq!(tokens[1].kind, TokenKind::Identifier);
+    assert_eq!(tokens[2].kind, TokenKind::Equal);
+    assert_eq!(tokens[3].kind, TokenKind::I32);
+    assert_eq!(tokens[4].kind, TokenKind::Semicolon);
+}
+
+#[test] 
+fn comments_only() {
+    let input = "// Just a comment\n/* And another comment */";
+    let tokens = tokenize(input);
+    // Should have no tokens since only comments
+    assert_eq!(tokens.len(), 0);
+}
+
+#[test]
+#[should_panic] // This should fail with unterminated comment error
+fn unterminated_multi_line_comment() {
+    let input = "let x = /* unterminated comment";
+    let _tokens = tokenize(input);
 }

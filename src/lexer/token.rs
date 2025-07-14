@@ -73,6 +73,11 @@ pub enum TokenKind {
     /// A token that should be ignored. This is used for whitespace, comments, etc.
     Ignore,
 
+    /// A single-line comment; `// comment`.
+    SingleLineComment,
+    /// A multi-line comment; `/* comment */`.
+    MultiLineComment,
+
     /// The opening of an indentation level.
     IndentationOpen,
     /// The closing of an indentation level.
@@ -226,6 +231,8 @@ impl Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenKind::Ignore => write!(f, ""),
+            TokenKind::SingleLineComment => write!(f, "a single-line comment"),
+            TokenKind::MultiLineComment => write!(f, "a multi-line comment"),
             TokenKind::IndentationOpen => write!(f, "opening indentation level"),
             TokenKind::IndentationClose => write!(f, "closing indentation level"),
             TokenKind::ParenOpen => write!(f, "`(`"),

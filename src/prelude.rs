@@ -157,6 +157,16 @@ pub enum LexerError {
         #[help]
         help: String,
     },
+
+    #[error("unterminated comment")]
+    #[diagnostic()]
+    UnterminatedComment {
+        #[label("this comment was never closed")]
+        range: (usize, usize),
+
+        #[help]
+        help: String,
+    },
 }
 
 #[derive(Clone, Error, Debug, Diagnostic)]
@@ -307,6 +317,13 @@ pub fn lexer_improper_number(original: &str, range: (usize, usize)) -> Error {
 pub fn lexer_improper_character(original: &str, range: (usize, usize)) -> Error {
     Error::Lexer(LexerError::ImproperCharacter {
         help: format!("'{original}' cannot be parsed as a character"),
+        range,
+    })
+}
+
+pub fn lexer_unterminated_comment(range: (usize, usize)) -> Error {
+    Error::Lexer(LexerError::UnterminatedComment {
+        help: "Multi-line comments must be closed with '*/'".to_string(),
         range,
     })
 }
