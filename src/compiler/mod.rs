@@ -144,6 +144,9 @@ impl Compiler {
             TypedExpressionValue::FieldAccess(_) => {
                 expressions::field_access::compile(self, expression, body, env)
             }
+            TypedExpressionValue::Assignment(_) => {
+                expressions::assignment::compile(self, expression, body, env)
+            }
             _ => todo!(
                 "compilation for expression type {:?} not implemented",
                 expression.value

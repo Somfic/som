@@ -167,6 +167,11 @@ impl Default for Lookup {
             BindingPower::Member,
             crate::expressions::field_access::parse,
         )
+        .add_left_expression_handler(
+            TokenKind::Equal,
+            BindingPower::Assignment,
+            crate::expressions::assignment::parse,
+        )
         .add_expression_handler(TokenKind::Minus, expressions::unary::negative::parse)
     }
 }

@@ -106,6 +106,9 @@ impl TypeChecker {
             ExpressionValue::FieldAccess(_) => {
                 expressions::field_access::type_check(self, expression, env)
             }
+            ExpressionValue::Assignment(_) => {
+                expressions::assignment::type_check(self, expression, env)
+            }
         }
     }
 
