@@ -76,7 +76,7 @@ Additionally, your marketing has the following problems:
 [ ] Unsupported claims of greater "ease of use"
 [ ] Obviously rigged benchmarks
    [ ] Graphics, simulation, or crypto benchmarks where your code just calls
-       handwritten assembly through your FFI
+       handwritten assembly through your FFIca
    [ ] String-processing benchmarks where you just call PCRE
    [ ] Matrix-math benchmarks where you just call BLAS
 [ ] Noone really believes that your language is faster than:
