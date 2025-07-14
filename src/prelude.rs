@@ -299,6 +299,16 @@ pub enum TypeCheckerError {
         #[help]
         help: String,
     },
+
+    #[error("unknown extern function")]
+    #[diagnostic()]
+    UnknownExternFunction {
+        #[label("unknown extern function")]
+        function_span: Span,
+
+        #[help]
+        help: String,
+    },
 }
 
 pub fn lexer_unexpected_character(original: char, range: (usize, usize)) -> Error {

@@ -23,10 +23,8 @@ fn i64() -> AbiParam {
     AbiParam::new(cranelift::prelude::types::I64)
 }
 
-pub fn init_codebase() -> (JITModule, HashMap<String, DeclarationValue>) {
-    let mut builder = JITBuilder::new(cranelift_module::default_libcall_names()).unwrap();
-
-    let extern_declarations = [
+fn get_extern_declarations() -> Vec<LibCCall> {
+    vec![
         LibCCall {
             name: "libc_getpid".into(),
             address: libc::getpid as *const u8,
@@ -79,7 +77,20 @@ pub fn init_codebase() -> (JITModule, HashMap<String, DeclarationValue>) {
                 sig
             },
         },
-    ];
+    ]
+}
+
+pub fn get_available_extern_functions() -> Vec<String> {
+    get_extern_declarations()
+        .into_iter()
+        .map(|decl| decl.name)
+        .collect()
+}
+
+pub fn init_codebase() -> (JITModule, HashMap<String, DeclarationValue>) {
+    let mut builder = JITBuilder::new(cranelift_module::default_libcall_names()).unwrap();
+
+    let extern_declarations = get_extern_declarations();
 
     for decl in &extern_declarations {
         builder.symbol(&decl.name, decl.address);

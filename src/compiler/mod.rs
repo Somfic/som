@@ -13,7 +13,7 @@ use crate::{
 };
 
 pub mod environment;
-mod external;
+pub mod external;
 
 pub struct Compiler {
     pub isa: Arc<dyn isa::TargetIsa>,
