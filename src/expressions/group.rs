@@ -46,6 +46,17 @@ pub fn type_check(
     }
 }
 
-pub fn compile(expression: &TypedExpression, function: &mut FunctionBuilder) -> CompileValue {
-    todo!("implement group expression compilation");
+pub fn compile(
+    compiler: &mut Compiler,
+    expression: &TypedExpression,
+    body: &mut FunctionBuilder,
+    env: &mut CompileEnvironment,
+) -> CompileValue {
+    let group = match &expression.value {
+        TypedExpressionValue::Group(group) => group,
+        _ => unreachable!(),
+    };
+
+    // A group expression simply compiles to the result of its inner expression
+    compiler.compile_expression(&group.expression, body, env)
 }
