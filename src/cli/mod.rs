@@ -145,7 +145,7 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
 
                     // Print that the compilation failed with x errors
                     eprintln!(
-                        "  {} compilation {} with {} {}\n",
+                        "  {} compilation {} with {} {}",
                         format_state(&ProcessState::Error),
                         format_process_name("failed", &ProcessState::Error).bright_green(),
                         error_reports.len(),
