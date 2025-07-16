@@ -147,6 +147,9 @@ impl Compiler {
             TypedExpressionValue::Assignment(_) => {
                 expressions::assignment::compile(self, expression, body, env)
             }
+            TypedExpressionValue::Group(_) => {
+                expressions::group::compile(self, expression, body, env)
+            }
             _ => todo!(
                 "compilation for expression type {:?} not implemented",
                 expression.value
