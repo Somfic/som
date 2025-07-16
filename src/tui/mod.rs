@@ -183,7 +183,7 @@ fn format_elapsed_time(
     let seconds = elapsed.as_secs();
 
     // Only show elapsed time if it's been longer than 10 seconds
-    if seconds <= 10 || true {
+    if seconds <= 10 {
         return String::new();
     }
 
