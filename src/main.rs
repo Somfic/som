@@ -38,11 +38,14 @@ enum Commands {
     /// Run a source file
     Run {
         file: clap_file::Input,
+        /// Disable process tree visualization and show raw output
+        #[arg(long)]
+        raw: bool,
     },
     ProcessTree,
-    /// Display a realistic compiler simulation
+    /// Display a realistic compiler simulation demo
     CompilerDemo,
-    /// Display a failed compilation example
+    /// Display a failed compilation example demo
     CompilerFailed,
 }
 
@@ -62,7 +65,7 @@ fn main() {
     let cli = <Cli as clap::Parser>::parse();
 
     match cli.commands {
-        Commands::Run { mut file } => {
+        Commands::Run { mut file, raw } => {
             let mut content = String::new();
             file.read_to_string(&mut content)
                 .expect("Failed to read input");
@@ -74,7 +77,13 @@ fn main() {
 
             let source = miette::NamedSource::new(name, content);
 
-            let result = run(source);
+            let result = if raw {
+                // Use raw output without process tree
+                run(source)
+            } else {
+                // Use process tree visualization by default
+                run_with_process_tree(source)
+            };
 
             println!("Result: {:?}", result);
         }

@@ -19,6 +19,7 @@ pub use crate::statements::type_declaration::TypeDeclarationStatement;
 pub use crate::statements::variable_declaration::VariableDeclarationStatement;
 pub use crate::statements::GenericStatement;
 pub use crate::statements::{Statement, StatementValue};
+use crate::tui::{Process, ProcessState};
 pub use crate::type_checker::TypeChecker;
 use crate::types::struct_::Field;
 pub use crate::types::FunctionType;
@@ -42,6 +43,9 @@ use nucleo_matcher::Config;
 use nucleo_matcher::Matcher;
 use std::fmt::Display;
 use std::ops::Sub;
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, SystemTime};
 use thiserror::Error;
 
 pub type CompileValue = cranelift::prelude::Value;
@@ -666,4 +670,199 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
     let ran = runner.run(compiled).unwrap();
 
     ran
+}
+
+pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
+    use crate::tui::{Process, ProcessState};
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::{Duration, SystemTime};
+
+    let now = SystemTime::now();
+
+    // Create the process tree for compilation stages
+    let process_tree = Arc::new(Mutex::new(Process {
+        name: format!("Compiling {}", source.name()),
+        state: ProcessState::Compiling,
+        started_at: now,
+        completed_at: None,
+        children: vec![
+            Process {
+                name: "Lexical Analysis".to_string(),
+                state: ProcessState::Waiting,
+                started_at: now,
+                completed_at: None,
+                children: vec![],
+            },
+            Process {
+                name: "Parsing".to_string(),
+                state: ProcessState::Waiting,
+                started_at: now,
+                completed_at: None,
+                children: vec![],
+            },
+            Process {
+                name: "Type Checking".to_string(),
+                state: ProcessState::Waiting,
+                started_at: now,
+                completed_at: None,
+                children: vec![],
+            },
+            Process {
+                name: "Code Generation".to_string(),
+                state: ProcessState::Waiting,
+                started_at: now,
+                completed_at: None,
+                children: vec![],
+            },
+            Process {
+                name: "Execution".to_string(),
+                state: ProcessState::Waiting,
+                started_at: now,
+                completed_at: None,
+                children: vec![],
+            },
+        ],
+    }));
+
+    // Clone for the compilation thread
+    let tree_clone = Arc::clone(&process_tree);
+    let source_clone = source.clone();
+
+    // Run compilation in a separate thread
+    let compilation_result = Arc::new(Mutex::new(None));
+    let result_clone = Arc::clone(&compilation_result);
+
+    let _compilation_thread = thread::spawn(move || {
+        let result = run_compilation_stages(source_clone, tree_clone);
+        *result_clone.lock().unwrap() = Some(result);
+    });
+
+    // Display the animated tree
+    loop {
+        {
+            let tree = process_tree.lock().unwrap();
+            crate::tui::draw_process_tree_animated(&tree);
+        }
+
+        // Check if compilation is done
+        if let Some(result) = compilation_result.lock().unwrap().as_ref() {
+            match result {
+                Ok(value) => {
+                    // Update main process to completed
+                    {
+                        let mut tree = process_tree.lock().unwrap();
+                        tree.state = ProcessState::Completed;
+                        tree.completed_at = Some(SystemTime::now());
+                    }
+
+                    // Show final result for a moment
+                    thread::sleep(Duration::from_secs(1));
+                    let tree = process_tree.lock().unwrap();
+                    crate::tui::draw_process_tree_animated(&tree);
+
+                    return *value;
+                }
+                Err(_) => {
+                    // Update main process to error
+                    {
+                        let mut tree = process_tree.lock().unwrap();
+                        tree.state = ProcessState::Error;
+                        tree.completed_at = Some(SystemTime::now());
+                    }
+
+                    // Show error state for a moment
+                    thread::sleep(Duration::from_secs(2));
+                    let tree = process_tree.lock().unwrap();
+                    crate::tui::draw_process_tree_animated(&tree);
+
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn run_compilation_stages(
+    source: miette::NamedSource<String>,
+    process_tree: Arc<Mutex<Process>>,
+) -> std::result::Result<i64, String> {
+    fn update_stage_state(tree: &Arc<Mutex<Process>>, stage_name: &str, new_state: ProcessState) {
+        let mut tree = tree.lock().unwrap();
+        for child in &mut tree.children {
+            if child.name == stage_name {
+                child.state = new_state.clone();
+                if matches!(new_state, ProcessState::Completed | ProcessState::Error) {
+                    child.completed_at = Some(SystemTime::now());
+                }
+                break;
+            }
+        }
+    }
+
+    // Stage 1: Lexing
+    update_stage_state(&process_tree, "Lexical Analysis", ProcessState::Compiling);
+
+    let lexer = Lexer::new(source.inner().as_str());
+    update_stage_state(&process_tree, "Lexical Analysis", ProcessState::Completed);
+
+    // Stage 2: Parsing
+    update_stage_state(&process_tree, "Parsing", ProcessState::Compiling);
+
+    let mut parser = Parser::new(lexer);
+    let parsed = match parser.parse() {
+        Ok(parsed) => {
+            update_stage_state(&process_tree, "Parsing", ProcessState::Completed);
+            parsed
+        }
+        Err(errors) => {
+            update_stage_state(&process_tree, "Parsing", ProcessState::Error);
+            for error in errors {
+                eprintln!(
+                    "{:?}",
+                    miette::miette!(error).with_source_code(source.clone())
+                );
+            }
+            return Err("Parse error".to_string());
+        }
+    };
+
+    // Stage 3: Type Checking
+    update_stage_state(&process_tree, "Type Checking", ProcessState::Compiling);
+
+    let mut type_checker = TypeChecker::new();
+    let type_checked = match type_checker.check(&parsed) {
+        Ok(typed_statement) => {
+            update_stage_state(&process_tree, "Type Checking", ProcessState::Completed);
+            typed_statement
+        }
+        Err(errors) => {
+            update_stage_state(&process_tree, "Type Checking", ProcessState::Error);
+            for error in errors {
+                eprintln!(
+                    "{:?}",
+                    miette::miette!(error).with_source_code(source.clone())
+                );
+            }
+            return Err("Type check error".to_string());
+        }
+    };
+
+    // Stage 4: Code Generation
+    update_stage_state(&process_tree, "Code Generation", ProcessState::Compiling);
+
+    let mut compiler = Compiler::new();
+    let compiled = compiler.compile(&type_checked);
+    update_stage_state(&process_tree, "Code Generation", ProcessState::Completed);
+
+    // Stage 5: Execution
+    update_stage_state(&process_tree, "Execution", ProcessState::Compiling);
+
+    let runner = Runner::new();
+    let ran = runner.run(compiled).unwrap();
+    update_stage_state(&process_tree, "Execution", ProcessState::Completed);
+
+    Ok(ran)
 }
