@@ -1,7 +1,6 @@
 use clap_file::LockedInput;
 use miette::{NamedSource, SourceCode};
 
-use crate::tui::{start_animated_display, Process, ProcessState};
 use std::time::SystemTime;
 use std::{
     io::{BufRead, Read},

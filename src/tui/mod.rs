@@ -234,18 +234,6 @@ pub fn draw_process_tree_animated(process: &Process) {
     ANIMATION_FRAME.fetch_add(1, Ordering::Relaxed);
 }
 
-pub fn start_animated_display(process: Process) {
-    // Clear screen once at the start and hide cursor
-    print!("\x1b[2J\x1b[H\x1b[?25l");
-    use std::io::{self, Write};
-    io::stdout().flush().unwrap();
-
-    loop {
-        draw_process_tree_animated(&process);
-        thread::sleep(Duration::from_millis(250));
-    }
-}
-
 // Helper function to check if a process and all its descendants are in waiting state
 fn is_process_and_children_waiting(process: &Process) -> bool {
     if !matches!(process.state, ProcessState::Waiting) {
