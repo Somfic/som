@@ -7,25 +7,16 @@ static ANIMATION_FRAME: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Debug, Clone)]
 pub enum ProcessState {
-    Compiling,
+    Running,
     Waiting,
     Error,
     Completed,
 }
 
 impl ProcessState {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            ProcessState::Compiling => "compiling",
-            ProcessState::Waiting => "waiting",
-            ProcessState::Error => "error",
-            ProcessState::Completed => "completed",
-        }
-    }
-
     pub fn apply_bright_color(&self, text: &str) -> String {
         match self {
-            ProcessState::Compiling => text.bright_blue().to_string(),
+            ProcessState::Running => text.bright_blue().to_string(),
             ProcessState::Waiting => text.bright_black().to_string(),
             ProcessState::Error => text.bright_red().to_string(),
             ProcessState::Completed => text.bright_green().to_string(),
@@ -36,6 +27,7 @@ impl ProcessState {
 pub struct Process {
     pub name: String,
     pub state: ProcessState,
+    pub note: Option<String>,
     pub started_at: SystemTime,
     pub completed_at: Option<SystemTime>,
     pub children: Vec<Process>,
@@ -59,22 +51,32 @@ pub fn draw_process_tree(process: &Process) {
     }
 
     // Draw root process at the bottom without tree connector
-    let elapsed_time =
-        format_elapsed_time(process.started_at, process.completed_at, &process.state);
-    if elapsed_time.is_empty() {
-        println!(
-            "◦ {} {}\x1b[K",
-            format_process_name(&process.name, &process.state),
-            format_state(&process.state)
-        );
+    let elapsed_time = format_elapsed_time(
+        process.started_at,
+        process.completed_at,
+        &process.state,
+        None,
+    );
+    let elapsed_time = if elapsed_time.is_empty() {
+        String::new()
     } else {
-        println!(
-            "◦ {} {} ◦ {}\x1b[K",
-            format_process_name(&process.name, &process.state),
-            format_state(&process.state),
-            elapsed_time
-        );
-    }
+        format!(" ◦ {}", elapsed_time).bright_black().to_string()
+    };
+
+    let note_text = process
+        .note
+        .as_ref()
+        .map(|n| format!(" {}", n.bright_black().italic()))
+        .unwrap_or_default();
+
+    println!(
+        "  {} {} {}{}{}\x1b[K",
+        "◦".bright_black(),
+        format_process_name(&process.name, &process.state),
+        format_state(&process.state),
+        note_text,
+        elapsed_time
+    );
 }
 
 fn draw_process_tree_with_prefix(process: &Process, prefix: String, is_last: bool) {
@@ -106,42 +108,50 @@ fn draw_process_tree_with_prefix(process: &Process, prefix: String, is_last: boo
     } else {
         "├─◦ ".bright_black().to_string()
     };
-    let elapsed_time =
-        format_elapsed_time(process.started_at, process.completed_at, &process.state);
-    if elapsed_time.is_empty() {
-        println!(
-            "{}{}{} {}\x1b[K",
-            prefix,
-            connector,
-            format_process_name(&process.name, &process.state),
-            format_state(&process.state)
-        );
+
+    let elapsed_time = format_elapsed_time(
+        process.started_at,
+        process.completed_at,
+        &process.state,
+        Some(10),
+    );
+    let elapsed_time = if elapsed_time.is_empty() {
+        String::new()
     } else {
-        println!(
-            "{}{}{} {} ◦ {}\x1b[K",
-            prefix,
-            connector,
-            format_process_name(&process.name, &process.state),
-            format_state(&process.state),
-            elapsed_time
-        );
-    }
+        format!(" ◦ {}", elapsed_time).bright_black().to_string()
+    };
+
+    let note_text = process
+        .note
+        .as_ref()
+        .map(|n| format!("{}", n.bright_black().italic()))
+        .unwrap_or_default();
+
+    println!(
+        "  {}{}{} {}{}{}\x1b[K",
+        prefix,
+        connector,
+        format_process_name(&process.name, &process.state),
+        format_state(&process.state),
+        note_text,
+        elapsed_time
+    );
 }
 
-fn format_process_name(name: &str, state: &ProcessState) -> String {
+pub fn format_process_name(name: &str, state: &ProcessState) -> String {
     match state {
-        ProcessState::Compiling => state.apply_bright_color(name),
+        ProcessState::Running => state.apply_bright_color(name),
         ProcessState::Waiting => state.apply_bright_color(name),
         ProcessState::Error => state.apply_bright_color(name),
         ProcessState::Completed => state.apply_bright_color(name),
     }
 }
 
-fn format_state(state: &ProcessState) -> String {
+pub fn format_state(state: &ProcessState) -> String {
     let frame = ANIMATION_FRAME.load(Ordering::Relaxed);
 
     match state {
-        ProcessState::Compiling => {
+        ProcessState::Running => {
             let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
             let spinner = spinner_chars[frame as usize % spinner_chars.len()];
             let text = format!("{} ", spinner);
@@ -154,20 +164,21 @@ fn format_state(state: &ProcessState) -> String {
             state.apply_bright_color(&text)
         }
         ProcessState::Error => {
-            let text = format!("❌");
+            let text = format!("×");
             state.apply_bright_color(&text)
         }
         ProcessState::Completed => {
-            let text = format!("✔");
+            let text = format!("✓");
             state.apply_bright_color(&text)
         }
     }
 }
 
-fn format_elapsed_time(
+pub fn format_elapsed_time(
     started_at: SystemTime,
     completed_at: Option<SystemTime>,
     state: &ProcessState,
+    threshold: Option<u64>,
 ) -> String {
     let end_time = match state {
         ProcessState::Completed | ProcessState::Error => {
@@ -181,23 +192,27 @@ fn format_elapsed_time(
         .unwrap_or(Duration::from_secs(0));
 
     let seconds = elapsed.as_secs();
+    let milliseconds = elapsed.subsec_millis();
 
     // Only show elapsed time if it's been longer than 10 seconds
-    if seconds <= 10 {
+    if threshold.is_some() && seconds < threshold.unwrap() as u64 {
         return String::new();
     }
 
     if seconds < 60 {
-        format!("{}s", seconds)
+        format!("{}.{:1}s", seconds, milliseconds)
     } else if seconds < 3600 {
         let minutes = seconds / 60;
         let remaining_seconds = seconds % 60;
-        format!("{}m {}s", minutes, remaining_seconds)
+        format!("{}m {}.{:1}s", minutes, remaining_seconds, milliseconds)
     } else {
         let hours = seconds / 3600;
         let remaining_minutes = (seconds % 3600) / 60;
         let remaining_seconds = seconds % 60;
-        format!("{}h {}m {}s", hours, remaining_minutes, remaining_seconds)
+        format!(
+            "{}h {}m {}.{:1}s",
+            hours, remaining_minutes, remaining_seconds, milliseconds
+        )
     }
 }
 

@@ -1,18 +1,16 @@
 use clap_file::LockedInput;
 use miette::{NamedSource, SourceCode};
 
-use crate::{
-    prelude::*,
-    tui::{start_animated_display, Process, ProcessState},
-};
+use crate::tui::{start_animated_display, Process, ProcessState};
 use std::time::SystemTime;
 use std::{
     io::{BufRead, Read},
     path::{Path, PathBuf},
 };
 
+mod cli;
 mod compiler;
-mod compiler_example;
+mod errors;
 mod expressions;
 mod lexer;
 mod parser;
@@ -37,16 +35,11 @@ struct Cli {
 enum Commands {
     /// Run a source file
     Run {
-        file: clap_file::Input,
+        source: clap_file::Input,
         /// Disable process tree visualization and show raw output
         #[arg(long)]
         raw: bool,
     },
-    ProcessTree,
-    /// Display a realistic compiler simulation demo
-    CompilerDemo,
-    /// Display a failed compilation example demo
-    CompilerFailed,
 }
 
 fn main() {
@@ -65,7 +58,10 @@ fn main() {
     let cli = <Cli as clap::Parser>::parse();
 
     match cli.commands {
-        Commands::Run { mut file, raw } => {
+        Commands::Run {
+            source: mut file,
+            raw,
+        } => {
             let mut content = String::new();
             file.read_to_string(&mut content)
                 .expect("Failed to read input");
@@ -79,70 +75,13 @@ fn main() {
 
             let result = if raw {
                 // Use raw output without process tree
-                run(source)
+                cli::run(source)
             } else {
                 // Use process tree visualization by default
-                run_with_process_tree(source)
+                cli::run_with_process_tree(source)
             };
 
             println!("Result: {:?}", result);
-        }
-        Commands::ProcessTree => {
-            let now = SystemTime::now();
-            let process = Process {
-                name: "root".to_string(),
-                state: ProcessState::Compiling,
-                started_at: now - std::time::Duration::from_secs(120),
-                completed_at: None,
-                children: vec![
-                    Process {
-                        name: "child1".to_string(),
-                        state: ProcessState::Compiling,
-                        started_at: now - std::time::Duration::from_secs(60),
-                        completed_at: None,
-                        children: vec![
-                            Process {
-                                name: "grandchild1".to_string(),
-                                state: ProcessState::Waiting,
-                                started_at: now - std::time::Duration::from_secs(10),
-                                completed_at: None,
-                                children: vec![],
-                            },
-                            Process {
-                                name: "grandchild2".to_string(),
-                                state: ProcessState::Error,
-                                started_at: now - std::time::Duration::from_secs(30),
-                                completed_at: Some(now - std::time::Duration::from_secs(25)),
-                                children: vec![Process {
-                                    name: "great_grandchild".to_string(),
-                                    state: ProcessState::Waiting,
-                                    started_at: now - std::time::Duration::from_secs(5),
-                                    completed_at: None,
-                                    children: vec![],
-                                }],
-                            },
-                        ],
-                    },
-                    Process {
-                        name: "child2".to_string(),
-                        state: ProcessState::Completed,
-                        started_at: now - std::time::Duration::from_secs(30),
-                        completed_at: Some(now - std::time::Duration::from_secs(20)),
-                        children: vec![],
-                    },
-                ],
-            };
-            start_animated_display(process);
-        }
-        Commands::CompilerDemo => {
-            println!("🔨 Starting realistic compiler simulation...");
-            println!("This shows how library dependencies compile in a realistic order.\n");
-            compiler_example::run_compiler_simulation();
-        }
-        Commands::CompilerFailed => {
-            println!("❌ Showing failed compilation example...");
-            println!("This demonstrates how errors propagate through dependency trees.\n");
-            compiler_example::run_failed_compilation_example();
         }
     }
 }
