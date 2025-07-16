@@ -127,9 +127,16 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
                     // Clear screen and print stored error messages immediately
                     //print!("\x1B[2J\x1B[H"); // Clear screen and move cursor to top
 
+                    eprintln!("");
+
+                    // Print miette errors with proper formatting
+                    for error_report in error_reports {
+                        eprintln!("{:?}", error_report);
+                    }
+
                     // Print that the compilation failed with x errors
                     eprintln!(
-                        "\n  {} compilation {} with {} {}\n",
+                        "  {} compilation {} with {} {}\n",
                         format_state(&ProcessState::Error),
                         format_process_name("failed", &ProcessState::Error).bright_green(),
                         error_reports.len(),
@@ -139,11 +146,6 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
                             "errors"
                         }
                     );
-
-                    // Print miette errors with proper formatting
-                    for error_report in error_reports {
-                        eprintln!("{:?}", error_report);
-                    }
 
                     std::process::exit(1);
                 }
