@@ -116,7 +116,16 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
                     {
                         let mut tree = process_tree.lock().unwrap();
                         tree.state = ProcessState::Error;
-                        tree.note = format!("{} errors", error_reports.len()).into();
+                        tree.note = format!(
+                            "{} {}",
+                            error_reports.len(),
+                            if error_reports.len() == 1 {
+                                "error"
+                            } else {
+                                "errors"
+                            }
+                        )
+                        .into();
                         tree.completed_at = Some(SystemTime::now());
                     }
 

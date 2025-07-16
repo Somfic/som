@@ -7,10 +7,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::highlighter::SomHighlighter;
+
 mod cli;
 mod compiler;
 mod errors;
 mod expressions;
+mod highlighter;
 mod lexer;
 mod parser;
 mod prelude;
@@ -48,7 +51,8 @@ fn main() {
                 .terminal_links(true)
                 .unicode(true)
                 .with_cause_chain()
-                .context_lines(2)
+                .context_lines(1)
+                // .with_syntax_highlighting(SomHighlighter {})
                 .build(),
         )
     }))
