@@ -4,8 +4,8 @@ use std::time::{Duration, SystemTime};
 
 use colored::Colorize;
 
-use crate::prelude::*;
 use crate::tui::{format_elapsed_time, format_process_name, format_state, Process, ProcessState};
+use crate::{prelude::*, tui};
 
 /// Run compilation without process tree visualization
 pub fn run(source: miette::NamedSource<String>) -> i64 {
@@ -102,12 +102,11 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
                     crate::tui::draw_process_tree_animated(&tree);
 
                     // Print that the compilation completed
-                    eprintln!(
-                        "\n  {} compilation {}\n",
-                        format_state(&ProcessState::Completed),
-                        format_process_name("completed succesfully", &ProcessState::Completed)
-                            .bright_green()
-                    );
+                    tui::print_success(format!(
+                        "compilation {} with return value {}",
+                        format_process_name("succeeded", &ProcessState::Completed).bright_green(),
+                        return_value
+                    ));
 
                     return return_value;
                 }
@@ -144,9 +143,8 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
                     }
 
                     // Print that the compilation failed with x errors
-                    eprintln!(
-                        "  {} compilation {} with {} {}",
-                        format_state(&ProcessState::Error),
+                    tui::print_error(format!(
+                        "compilation {} with {} {}",
                         format_process_name("failed", &ProcessState::Error).bright_green(),
                         error_reports.len(),
                         if error_reports.len() == 1 {
@@ -154,7 +152,7 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
                         } else {
                             "errors"
                         }
-                    );
+                    ));
 
                     std::process::exit(1);
                 }

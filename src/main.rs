@@ -1,5 +1,6 @@
 use clap_file::LockedInput;
 use miette::{NamedSource, SourceCode};
+use owo_colors::OwoColorize;
 
 use std::time::SystemTime;
 use std::{
@@ -30,7 +31,7 @@ mod tests;
 #[command(version, about, long_about = None)]
 struct Cli {
     #[arg(default_value = "main.som")]
-    source: clap_file::Input,
+    source: PathBuf,
 }
 
 fn main() {
@@ -48,21 +49,38 @@ fn main() {
     .unwrap();
 
     let mut cli = <Cli as clap::Parser>::parse();
+    let mut source = cli.source;
 
+    if source.is_dir() {
+        source = source.join("main.som");
+    }
+
+    // check if file exists
+    if !source.exists() {
+        tui::print_error(format!("Source file `{}` does not exist", source.display()));
+        std::process::exit(1);
+    }
+
+    // read the source file
     let mut content = String::new();
-    cli.source
-        .read_to_string(&mut content)
-        .expect("Failed to read input");
+    if let Err(e) =
+        std::fs::File::open(&source).and_then(|mut file| file.read_to_string(&mut content))
+    {
+        tui::print_error(format!(
+            "Error reading source file '{}': {}",
+            source.display(),
+            e
+        ));
+        std::process::exit(1);
+    }
 
-    let name: String = cli
-        .source
-        .path()
-        .map(|p: &Path| p.display().to_string())
-        .unwrap_or_else(|| "<stdin>".to_string());
+    let name: String = source
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("main")
+        .to_string();
 
-    let source = miette::NamedSource::new(name, content);
-
-    let result = cli::run_with_process_tree(source);
+    let result = cli::run_with_process_tree(NamedSource::new(name, content));
 
     println!("Result: {:?}", result);
 }
