@@ -1,0 +1,26 @@
+use std::sync::{Arc, Mutex};
+
+// A thread-safe struct to store compilation result
+pub struct CompiledCode {
+    // This is unsafe to share between threads, but we'll ensure it's only accessed
+    // from the main thread after compilation completes
+    pub code: Option<*const u8>,
+}
+
+// We need to implement Send and Sync manually since raw pointers don't have them
+unsafe impl Send for CompiledCode {}
+unsafe impl Sync for CompiledCode {}
+
+impl CompiledCode {
+    pub fn new() -> Self {
+        Self { code: None }
+    }
+
+    pub fn set_code(&mut self, code: *const u8) {
+        self.code = Some(code);
+    }
+}
+
+// A global to store the result of compilation
+pub static COMPILED_CODE: once_cell::sync::Lazy<Arc<Mutex<CompiledCode>>> =
+    once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(CompiledCode::new())));

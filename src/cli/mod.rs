@@ -10,8 +10,11 @@ use std::sync::mpsc::channel;
 use crate::tui::{format_process_name, Process, ProcessState};
 use crate::{prelude::*, tui};
 
+mod compilation_result;
+
 /// Run compilation without process tree visualization
 pub fn run(source: miette::NamedSource<String>) -> i64 {
+    // Compilation phase
     let lexer = Lexer::new(source.inner().as_str());
 
     let mut parser = Parser::new(lexer);
@@ -45,14 +48,23 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
     let mut compiler = Compiler::new();
     let compiled = compiler.compile(&type_checked);
 
+    // Execution phase (separate from compilation)
     let runner = Runner::new();
-    let ran = runner.run(compiled).unwrap();
+    let return_value = runner.run(compiled).unwrap();
 
-    ran
+    return_value
 }
 
 /// Run compilation with process tree visualization
 pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64> {
+    use compilation_result::COMPILED_CODE;
+
+    // Reset the compiled code storage
+    {
+        let mut code_storage = COMPILED_CODE.lock().unwrap();
+        code_storage.code = None;
+    }
+
     let now = SystemTime::now();
 
     // Create the process tree for compilation stages
@@ -89,8 +101,7 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
         let compilation_guard = compilation_result.lock().unwrap();
         if let Some(result) = compilation_guard.as_ref() {
             match result {
-                Ok(value) => {
-                    let return_value = *value;
+                Ok(_) => {
                     drop(compilation_guard); // Release the lock
 
                     // Update main process to completed
@@ -101,18 +112,37 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
                         tree.completed_at = Some(SystemTime::now());
                     }
 
-                    let tree = process_tree.lock().unwrap();
-                    crate::tui::draw_process_tree_animated(&tree);
+                    // Final draw of the process tree
+                    {
+                        let tree = process_tree.lock().unwrap();
+                        crate::tui::draw_process_tree_animated(&tree);
+                    }
 
                     eprintln!("");
 
                     // Print that the compilation completed
                     tui::print_success(format!(
-                        "compilation {} with return value {}",
-                        format_process_name("succeeded", &ProcessState::Completed).bright_green(),
-                        return_value
+                        "compilation {}",
+                        format_process_name("succeeded", &ProcessState::Completed).bright_green()
                     ));
 
+                    eprintln!("");
+
+                    // Retrieve the compiled code from global storage
+                    let code_ptr = {
+                        let code_storage = COMPILED_CODE.lock().unwrap();
+                        match code_storage.code {
+                            Some(ptr) => ptr,
+                            None => {
+                                tui::print_error("No compiled code available!".to_string());
+                                return None;
+                            }
+                        }
+                    };
+
+                    // Execute the compiled code
+                    let runner = Runner::new();
+                    let return_value = runner.run(code_ptr).unwrap();
                     return Some(return_value);
                 }
                 Err(error_reports) => {
@@ -134,11 +164,10 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
                     }
 
                     // Show error state for a moment
-                    let tree = process_tree.lock().unwrap();
-                    crate::tui::draw_process_tree_animated(&tree);
-
-                    // Clear screen and print stored error messages immediately
-                    //print!("\x1B[2J\x1B[H"); // Clear screen and move cursor to top
+                    {
+                        let tree = process_tree.lock().unwrap();
+                        crate::tui::draw_process_tree_animated(&tree);
+                    }
 
                     eprintln!("");
 
@@ -159,6 +188,8 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
                         }
                     ));
 
+                    eprintln!("");
+
                     return None;
                 }
             }
@@ -172,10 +203,13 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
 }
 
 /// Run compilation stages with process tree updates
+/// Instead of returning the raw pointer, we store it in a global and return success/failure
 fn run_compilation_stages(
     source: miette::NamedSource<String>,
     process_tree: Arc<Mutex<Process>>,
-) -> std::result::Result<i64, Vec<miette::Report>> {
+) -> std::result::Result<(), Vec<miette::Report>> {
+    use compilation_result::COMPILED_CODE;
+
     fn update_stage_note(tree: &Arc<Mutex<Process>>, stage_name: &str) {
         let mut tree = tree.lock().unwrap();
         tree.note = Some(stage_name.to_string());
@@ -224,13 +258,14 @@ fn run_compilation_stages(
     let mut compiler = Compiler::new();
     let compiled = compiler.compile(&type_checked);
 
-    // Stage 5: execution
-    update_stage_note(&process_tree, "execution");
+    // Store the compiled code in our global storage
+    {
+        let mut code_storage = COMPILED_CODE.lock().unwrap();
+        code_storage.set_code(compiled);
+    }
 
-    let runner = Runner::new();
-    let ran = runner.run(compiled).unwrap();
-
-    Ok(ran)
+    // Return success
+    Ok(())
 }
 
 /// Run compilation in watch mode, recompiling when files change
