@@ -1,14 +1,6 @@
-use clap_file::LockedInput;
-use miette::{NamedSource, SourceCode};
-use owo_colors::OwoColorize;
+use miette::NamedSource;
 
-use std::time::SystemTime;
-use std::{
-    io::{BufRead, Read},
-    path::{Path, PathBuf},
-};
-
-use crate::highlighter::SomHighlighter;
+use std::{io::Read, path::PathBuf};
 
 mod cli;
 mod compiler;
@@ -32,6 +24,10 @@ mod tests;
 struct Cli {
     #[arg(default_value = "main.som")]
     source: PathBuf,
+
+    /// Watch for file changes and recompile automatically
+    #[arg(long, short)]
+    watch: bool,
 }
 
 fn main() {
@@ -48,7 +44,7 @@ fn main() {
     }))
     .unwrap();
 
-    let mut cli = <Cli as clap::Parser>::parse();
+    let cli = <Cli as clap::Parser>::parse();
     let mut source = cli.source;
 
     if source.is_dir() {
@@ -61,6 +57,16 @@ fn main() {
         std::process::exit(1);
     }
 
+    if cli.watch {
+        // Run in watch mode
+        cli::run_watch_mode(source);
+    } else {
+        // Run once
+        run_once(source);
+    }
+}
+
+fn run_once(source: PathBuf) {
     // read the source file
     let mut content = String::new();
     if let Err(e) =
@@ -81,6 +87,4 @@ fn main() {
         .to_string();
 
     let result = cli::run_with_process_tree(NamedSource::new(name, content));
-
-    println!("Result: {:?}", result);
 }

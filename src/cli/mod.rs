@@ -1,10 +1,13 @@
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
 use colored::Colorize;
+use notify::{RecursiveMode, Watcher};
+use std::sync::mpsc::channel;
 
-use crate::tui::{format_elapsed_time, format_process_name, format_state, Process, ProcessState};
+use crate::tui::{format_process_name, Process, ProcessState};
 use crate::{prelude::*, tui};
 
 /// Run compilation without process tree visualization
@@ -49,7 +52,7 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
 }
 
 /// Run compilation with process tree visualization
-pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
+pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64> {
     let now = SystemTime::now();
 
     // Create the process tree for compilation stages
@@ -101,6 +104,8 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
                     let tree = process_tree.lock().unwrap();
                     crate::tui::draw_process_tree_animated(&tree);
 
+                    eprintln!("");
+
                     // Print that the compilation completed
                     tui::print_success(format!(
                         "compilation {} with return value {}",
@@ -108,7 +113,7 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
                         return_value
                     ));
 
-                    return return_value;
+                    return Some(return_value);
                 }
                 Err(error_reports) => {
                     // Update main process to error
@@ -154,7 +159,7 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> i64 {
                         }
                     ));
 
-                    std::process::exit(1);
+                    return None;
                 }
             }
         } else {
@@ -226,4 +231,105 @@ fn run_compilation_stages(
     let ran = runner.run(compiled).unwrap();
 
     Ok(ran)
+}
+
+/// Run compilation in watch mode, recompiling when files change
+pub fn run_watch_mode(source_path: PathBuf) {
+    use miette::NamedSource;
+    use std::io::Read;
+
+    // Print initial message
+    tui::print_success("Starting watch mode...".to_string());
+
+    // Create a channel for file system events
+    let (tx, rx) = channel();
+
+    // Create a watcher
+    let mut watcher =
+        match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            match res {
+                Ok(event) => {
+                    // We're interested in write events to .som files
+                    if event.kind.is_modify() {
+                        for path in event.paths {
+                            if path.extension().map_or(false, |ext| ext == "som") {
+                                if let Err(e) = tx.send(()) {
+                                    eprintln!("Error sending watch event: {}", e);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(e) => eprintln!("Watch error: {:?}", e),
+            }
+        }) {
+            Ok(watcher) => watcher,
+            Err(e) => {
+                tui::print_error(format!("Failed to create file watcher: {}", e));
+                std::process::exit(1);
+            }
+        };
+
+    // Watch the directory containing the source file
+    let watch_dir = source_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."));
+    if let Err(e) = watcher.watch(watch_dir, RecursiveMode::NonRecursive) {
+        tui::print_error(format!("Failed to watch directory: {}", e));
+        std::process::exit(1);
+    }
+
+    // Function to compile once
+    let compile_once = || {
+        // Read the source file
+        let mut content = String::new();
+        if let Err(e) =
+            std::fs::File::open(&source_path).and_then(|mut file| file.read_to_string(&mut content))
+        {
+            tui::print_error(format!(
+                "Error reading source file '{}': {}",
+                source_path.display(),
+                e
+            ));
+            return;
+        }
+
+        let name: String = source_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("main")
+            .to_string();
+
+        let source = NamedSource::new(name, content);
+
+        // Clear screen before recompiling
+        print!("\x1B[2J\x1B[H");
+
+        // Run compilation (this will handle errors internally)
+        run_with_process_tree(source);
+    };
+
+    // Initial compilation
+    compile_once();
+
+    // Watch for changes
+    loop {
+        match rx.recv() {
+            Ok(()) => {
+                // Debounce: wait a bit to avoid multiple rapid events
+                thread::sleep(Duration::from_millis(50));
+
+                // Drain any additional events that might have accumulated
+                while rx.try_recv().is_ok() {}
+
+                println!("\nFile changed, recompiling...");
+                compile_once();
+            }
+            Err(e) => {
+                tui::print_error(format!("Watch channel error: {}", e));
+                break;
+            }
+        }
+    }
 }
