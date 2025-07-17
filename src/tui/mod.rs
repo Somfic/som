@@ -5,6 +5,22 @@ use std::time::{Duration, SystemTime};
 
 static ANIMATION_FRAME: AtomicU32 = AtomicU32::new(0);
 
+pub fn print_error(message: impl Into<String>) {
+    eprintln!(
+        "  {} {}",
+        format_state(&ProcessState::Error),
+        message.into()
+    );
+}
+
+pub fn print_success(message: impl Into<String>) {
+    println!(
+        "  {} {}",
+        format_state(&ProcessState::Completed),
+        message.into()
+    );
+}
+
 #[derive(Debug, Clone)]
 pub enum ProcessState {
     Running,
