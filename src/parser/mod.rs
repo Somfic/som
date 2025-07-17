@@ -35,7 +35,7 @@ impl<'source> Parser<'source> {
 
         let main_function = ExpressionValue::Function(FunctionExpression {
             parameters: Vec::new(),
-            explicit_return_type: Some(Type::new(span, TypeValue::I64)),
+            explicit_return_type: None,
             span: body.span,
             body: Box::new(body),
         })
