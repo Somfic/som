@@ -29,19 +29,8 @@ mod tests;
 #[derive(clap::Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
-    #[command(subcommand)]
-    commands: Commands,
-}
-
-#[derive(clap::Subcommand)]
-enum Commands {
-    /// Run a source file
-    Run {
-        source: clap_file::Input,
-        /// Disable process tree visualization and show raw output
-        #[arg(long)]
-        raw: bool,
-    },
+    #[arg(default_value = "main.som")]
+    source: clap_file::Input,
 }
 
 fn main() {
@@ -58,33 +47,22 @@ fn main() {
     }))
     .unwrap();
 
-    let cli = <Cli as clap::Parser>::parse();
+    let mut cli = <Cli as clap::Parser>::parse();
 
-    match cli.commands {
-        Commands::Run {
-            source: mut file,
-            raw,
-        } => {
-            let mut content = String::new();
-            file.read_to_string(&mut content)
-                .expect("Failed to read input");
+    let mut content = String::new();
+    cli.source
+        .read_to_string(&mut content)
+        .expect("Failed to read input");
 
-            let name: String = file
-                .path()
-                .map(|p: &Path| p.display().to_string())
-                .unwrap_or_else(|| "<stdin>".to_string());
+    let name: String = cli
+        .source
+        .path()
+        .map(|p: &Path| p.display().to_string())
+        .unwrap_or_else(|| "<stdin>".to_string());
 
-            let source = miette::NamedSource::new(name, content);
+    let source = miette::NamedSource::new(name, content);
 
-            let result = if raw {
-                // Use raw output without process tree
-                cli::run(source)
-            } else {
-                // Use process tree visualization by default
-                cli::run_with_process_tree(source)
-            };
+    let result = cli::run_with_process_tree(source);
 
-            println!("Result: {:?}", result);
-        }
-    }
+    println!("Result: {:?}", result);
 }
