@@ -1000,6 +1000,7 @@ dependencies = [
  "miette",
  "notify",
  "nucleo-matcher",
+ "once_cell",
  "owo-colors",
  "pretty_assertions",
  "proc-macro2",
