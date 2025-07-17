@@ -57,7 +57,7 @@ fn main() {
 
     // check if file exists
     if !source.exists() {
-        tui::print_error(format!("Source file `{}` does not exist", source.display()));
+        tui::print_error(format!("source file `{}` does not exist", source.display()));
         std::process::exit(1);
     }
 
@@ -67,7 +67,7 @@ fn main() {
         std::fs::File::open(&source).and_then(|mut file| file.read_to_string(&mut content))
     {
         tui::print_error(format!(
-            "Error reading source file '{}': {}",
+            "error reading source file '{}': {}",
             source.display(),
             e
         ));
