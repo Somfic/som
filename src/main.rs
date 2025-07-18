@@ -2,6 +2,8 @@ use miette::NamedSource;
 
 use std::{io::Read, path::PathBuf};
 
+use crate::highlighter::SomHighlighter;
+
 mod cli;
 mod compiler;
 mod errors;
@@ -38,7 +40,7 @@ fn main() {
                 .unicode(true)
                 .with_cause_chain()
                 .context_lines(1)
-                // .with_syntax_highlighting(SomHighlighter {})
+                .with_syntax_highlighting(SomHighlighter {})
                 .build(),
         )
     }))
