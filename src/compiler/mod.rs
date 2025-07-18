@@ -43,7 +43,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self, statement: &TypedStatement) -> *const u8 {
+    pub fn compile(&mut self, statement: &TypedStatement) -> Result<*const u8> {
         let mut env = Environment::new(self.declarations.clone());
 
         let main_func_id = match &statement.value {
@@ -51,13 +51,29 @@ impl Compiler {
                 TypedExpressionValue::Function(_) => {
                     expressions::function::compile(self, &declaration.value, &mut env)
                 }
-                _ => panic!("expected a function declaration"),
+                _ => {
+                    return Err(Error::Compiler(CompilerError::CodeGenerationFailed {
+                        span: statement.span,
+                        help: "Expected a function declaration".to_string(),
+                    }));
+                }
             },
-            _ => panic!("expected a declaration statement"),
+            _ => {
+                return Err(Error::Compiler(CompilerError::CodeGenerationFailed {
+                    span: statement.span,
+                    help: "Expected a declaration statement".to_string(),
+                }));
+            }
         };
 
-        self.codebase.finalize_definitions().unwrap();
-        self.codebase.get_finalized_function(main_func_id)
+        // Handle finalization errors
+        self.codebase.finalize_definitions().map_err(|e| {
+            Error::Compiler(CompilerError::FinalizationFailed {
+                help: format!("Failed to finalize function: {}", e),
+            })
+        })?;
+        
+        Ok(self.codebase.get_finalized_function(main_func_id))
     }
 
     pub fn compile_statement(

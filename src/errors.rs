@@ -93,6 +93,10 @@ pub enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     TypeChecker(#[from] TypeCheckerError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Compiler(#[from] CompilerError),
 }
 
 #[derive(Clone, Error, Debug, miette::Diagnostic)]
@@ -189,6 +193,36 @@ pub enum ParserError {
     ExpectedType {
         #[label("expected a type here")]
         token: Token,
+        #[help]
+        help: String,
+    },
+}
+
+#[derive(Clone, Error, Debug, miette::Diagnostic)]
+pub enum CompilerError {
+    #[error("code generation failed")]
+    #[diagnostic()]
+    CodeGenerationFailed {
+        #[label("failed to generate code for this expression")]
+        span: Span,
+
+        #[help]
+        help: String,
+    },
+
+    #[error("unimplemented feature")]
+    #[diagnostic()]
+    Unimplemented {
+        #[label("this feature is not yet implemented")]
+        span: Span,
+
+        #[help]
+        help: String,
+    },
+
+    #[error("function finalization failed")]
+    #[diagnostic()]
+    FinalizationFailed {
         #[help]
         help: String,
     },
