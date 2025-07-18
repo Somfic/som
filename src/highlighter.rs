@@ -19,9 +19,12 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
         let tokenizer = Lexer::new(line);
         let tokens: Vec<_> = tokenizer.into_iter().collect();
 
-        // If there are any errors in tokenizing, just return the plain text
+        // If there are any errors in tokenizing, just return the plain text with a color that's visible on dark backgrounds
         if tokens.iter().any(|t| t.is_err()) {
-            return vec![Style::new().remove_all_effects().white().style(line)];
+            return vec![Style::new()
+                .remove_all_effects()
+                .fg_rgb::<210, 219, 245>()
+                .style(line)];
         }
 
         // Process tokens into styled segments
@@ -37,13 +40,13 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                 if start > current_pos {
                     let gap = &line[current_pos..start];
                     if !gap.is_empty() {
-                        sections.push(Style::new().fg_rgb::<220, 220, 220>().style(gap));
+                        sections.push(Style::new().fg_rgb::<210, 219, 245>().style(gap));
                     }
                 }
 
-                // Style the current token
+                // Style the current token using optimized Catppuccin Mocha palette for dark backgrounds
                 let style = match token.kind {
-                    // Keywords - vibrant purple (slightly brighter)
+                    // Keywords - Mauve (slightly brightened for better contrast)
                     TokenKind::If
                     | TokenKind::Else
                     | TokenKind::Let
@@ -57,34 +60,34 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                     | TokenKind::For
                     | TokenKind::Use
                     | TokenKind::Mod
-                    | TokenKind::Return => Style::new().fg_rgb::<198, 120, 221>().bold(),
+                    | TokenKind::Return => Style::new().fg_rgb::<205, 169, 250>().bold(),
 
-                    // Identifiers - soft blue (more gentle than before)
-                    TokenKind::Identifier => Style::new().fg_rgb::<156, 220, 254>(),
+                    // Identifiers - Lavender (slightly brightened)
+                    TokenKind::Identifier => Style::new().fg_rgb::<188, 197, 255>(),
 
-                    // Strings - warm green
+                    // Strings - Green (optimized for dark background)
                     TokenKind::String | TokenKind::Character => {
-                        Style::new().fg_rgb::<169, 220, 118>().italic()
+                        Style::new().fg_rgb::<171, 233, 164>().italic()
                     }
 
-                    // Numbers - warm orange
+                    // Numbers - Peach (optimized for visibility)
                     TokenKind::I32 | TokenKind::I64 | TokenKind::Decimal => {
-                        Style::new().fg_rgb::<255, 169, 77>()
+                        Style::new().fg_rgb::<250, 183, 142>()
                     }
 
-                    // Booleans - bright blue
-                    TokenKind::Boolean => Style::new().fg_rgb::<79, 193, 255>().bold(),
+                    // Booleans - Sky (slightly saturated for better visibility)
+                    TokenKind::Boolean => Style::new().fg_rgb::<140, 224, 240>().bold(),
 
-                    // Types - cyan/teal (distinctive from identifiers)
+                    // Types - Teal (brightened slightly for better contrast)
                     TokenKind::I32Type
                     | TokenKind::I64Type
                     | TokenKind::DecimalType
                     | TokenKind::BooleanType
                     | TokenKind::UnitType
                     | TokenKind::StringType
-                    | TokenKind::CharacterType => Style::new().fg_rgb::<78, 201, 176>().italic(),
+                    | TokenKind::CharacterType => Style::new().fg_rgb::<156, 235, 220>().italic(),
 
-                    // Operators and punctuation - light gray with slight brightness
+                    // Operators - Subtext0 (brightened for better visibility)
                     TokenKind::Equal
                     | TokenKind::LessThan
                     | TokenKind::GreaterThan
@@ -97,15 +100,15 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
                     | TokenKind::And
                     | TokenKind::Pipe
                     | TokenKind::Caret
-                    | TokenKind::Or => Style::new().fg_rgb::<220, 220, 220>(),
+                    | TokenKind::Or => Style::new().fg_rgb::<200, 208, 237>(),
 
-                    // Punctuation - slightly dimmer than operators
+                    // Punctuation - Overlay1 (brightened slightly for better readability)
                     TokenKind::Semicolon | TokenKind::Comma => {
-                        Style::new().fg_rgb::<200, 200, 200>()
+                        Style::new().fg_rgb::<140, 145, 170>()
                     }
 
-                    // Everything else - soft white/gray for readability
-                    _ => Style::new().fg_rgb::<220, 220, 220>(),
+                    // Everything else - Text (optimized for dark background)
+                    _ => Style::new().fg_rgb::<210, 219, 245>(),
                 };
 
                 // Get the actual text from the line rather than token.original
@@ -122,7 +125,7 @@ impl miette::highlighters::HighlighterState for SomHighlighterState {
         if current_pos < line.len() {
             let remaining = &line[current_pos..];
             if !remaining.is_empty() {
-                sections.push(Style::new().fg_rgb::<220, 220, 220>().style(remaining));
+                sections.push(Style::new().fg_rgb::<210, 219, 245>().style(remaining));
             }
         }
 
