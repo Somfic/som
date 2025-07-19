@@ -50,7 +50,8 @@ impl Compiler {
             StatementValue::VariableDeclaration(declaration) => match &declaration.value.value {
                 TypedExpressionValue::Function(func) => {
                     let return_type = func.body.type_.value.clone();
-                    let func_id = expressions::function::compile(self, &declaration.value, &mut env);
+                    let func_id =
+                        expressions::function::compile(self, &declaration.value, &mut env);
                     (func_id, return_type)
                 }
                 _ => {
@@ -75,7 +76,10 @@ impl Compiler {
             })
         })?;
 
-        Ok((self.codebase.get_finalized_function(main_func_id), return_type))
+        Ok((
+            self.codebase.get_finalized_function(main_func_id),
+            return_type,
+        ))
     }
 
     pub fn compile_statement(
