@@ -1,10 +1,12 @@
 use std::sync::{Arc, Mutex};
+use crate::prelude::TypeValue;
 
 // A thread-safe struct to store compilation result
 pub struct CompiledCode {
     // This is unsafe to share between threads, but we'll ensure it's only accessed
     // from the main thread after compilation completes
     pub code: Option<*const u8>,
+    pub return_type: Option<TypeValue>,
 }
 
 // We need to implement Send and Sync manually since raw pointers don't have them
@@ -13,11 +15,15 @@ unsafe impl Sync for CompiledCode {}
 
 impl CompiledCode {
     pub fn new() -> Self {
-        Self { code: None }
+        Self { 
+            code: None,
+            return_type: None,
+        }
     }
 
-    pub fn set_code(&mut self, code: *const u8) {
+    pub fn set_code(&mut self, code: *const u8, return_type: TypeValue) {
         self.code = Some(code);
+        self.return_type = Some(return_type);
     }
 }
 

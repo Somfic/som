@@ -26,12 +26,16 @@ pub fn type_check(
 
     let value = type_checker.check_expression(&value.operand, env);
 
-    // TODO: we should suppot both i32 and i64 for negation
-    type_checker.expect_type_value(
-        &value.type_,
-        &TypeValue::I32,
-        "negation can only be applied to i32 or i64 types",
-    );
+    // Check that the operand is a numeric type that supports negation
+    let is_numeric = |type_value: &TypeValue| matches!(type_value, TypeValue::I32 | TypeValue::I64);
+    
+    if !is_numeric(&value.type_.value) {
+        type_checker.add_error(type_checker_unexpected_type_value(
+            "numeric type (i32 or i64)",
+            &value.type_,
+            "negation can only be applied to numeric types",
+        ));
+    }
 
     TypedExpression {
         type_: Type::new(&value, value.type_.value.clone()),
