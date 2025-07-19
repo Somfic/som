@@ -3,6 +3,14 @@ use crate::prelude::*;
 mod arithmetic;
 mod literals;
 mod variables;
+mod functions;
+mod conditionals;
+mod blocks;
+mod types;
+mod precedence;
+mod extended_literals;
+mod edge_cases;
+mod integration;
 
 #[test]
 fn test_error_handling() {
