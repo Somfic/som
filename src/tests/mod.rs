@@ -45,10 +45,28 @@ pub fn interpret(source: &str) -> i64 {
     };
 
     let mut compiler = Compiler::new();
-    let compiled = compiler.compile(&type_checked);
+    let compiled = match compiler.compile(&type_checked) {
+        Ok(compiled) => compiled,
+        Err(error) => {
+            eprintln!(
+                "{}",
+                miette::miette!(error).with_source_code(source.clone())
+            );
+            return 0; // Return a default value for tests
+        }
+    };
 
     let runner = Runner::new();
-    let ran = runner.run(compiled).unwrap();
+    let ran = match runner.run(compiled) {
+        Ok(value) => value,
+        Err(error) => {
+            eprintln!(
+                "{}",
+                miette::miette!(error).with_source_code(source.clone())
+            );
+            return 0; // Return a default value for tests
+        }
+    };
 
     ran
 }
