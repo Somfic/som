@@ -87,7 +87,6 @@ pub fn compile(
             env.declare_function(&declaration.identifier, func_id);
         }
         _ => {
-            compiler.compile_expression(&declaration.value, body, env);
             let var = env.declare_variable(
                 &declaration.identifier,
                 body,

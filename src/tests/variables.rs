@@ -16,6 +16,6 @@ fn declaration() {
 fn assignment() {
     assert_eq!(5, interpret("let a = 1; a = 5; a"));
     assert_eq!(10, interpret("let a = 1; a = 5; a + 5"));
-    assert_eq!(2, interpret("let a = 1; let b = 1; b = 2; a + b"));
-    assert_eq!(3, interpret("let a = 1; let b = 2; b = 3; a + b"));
+    assert_eq!(3, interpret("let a = 1; let b = 1; b = 2; a + b"));
+    assert_eq!(4, interpret("let a = 1; let b = 2; b = 3; a + b"));
 }
