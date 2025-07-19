@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use cranelift::prelude::*;
+use cranelift::{codegen::timing::unreachable_code, prelude::*};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::Module;
 pub use environment::Environment;
@@ -95,6 +95,7 @@ impl Compiler {
             StatementValue::TypeDeclaration(_) => {
                 statements::type_declaration::compile(self, statement, body, env)
             }
+            StatementValue::Import(_) => statements::import::compile(self, statement, body, env),
         }
     }
 
@@ -166,10 +167,7 @@ impl Compiler {
             TypedExpressionValue::Group(_) => {
                 expressions::group::compile(self, expression, body, env)
             }
-            _ => todo!(
-                "compilation for expression type {:?} not implemented",
-                expression.value
-            ),
+            TypedExpressionValue::Function(_) => unreachable!(),
         }
     }
 }

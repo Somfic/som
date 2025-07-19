@@ -173,5 +173,6 @@ impl Default for Lookup {
             crate::expressions::assignment::parse,
         )
         .add_expression_handler(TokenKind::Minus, expressions::unary::negative::parse)
+        .add_statement_handler(TokenKind::Use, statements::import::parse)
     }
 }

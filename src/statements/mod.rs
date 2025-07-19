@@ -4,6 +4,7 @@ pub type Statement = GenericStatement<Expression>;
 pub type TypedStatement = GenericStatement<TypedExpression>;
 
 pub mod extern_declaration;
+pub mod import;
 pub mod type_declaration;
 pub mod variable_declaration;
 
@@ -19,6 +20,7 @@ pub enum StatementValue<Expression> {
     VariableDeclaration(VariableDeclarationStatement<Expression>),
     ExternDeclaration(ExternDeclarationStatement),
     TypeDeclaration(TypeDeclarationStatement),
+    Import(ImportStatement),
 }
 
 impl StatementValue<Expression> {

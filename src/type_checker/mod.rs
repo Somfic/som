@@ -46,6 +46,7 @@ impl TypeChecker {
             StatementValue::TypeDeclaration(_) => {
                 statements::type_declaration::type_check(self, statement, env)
             }
+            StatementValue::Import(_) => statements::import::type_check(self, statement, env),
         }
     }
 
