@@ -85,7 +85,7 @@ fn keywords() {
 fn punctuation() {
     let input = ".,;:()[]{}<>!@#$%^&*+=";
     let tokens = tokenize(input);
- 
+
     assert_eq!(tokens.len(), 22);
     assert_eq!(tokens[0].kind, TokenKind::Dot);
     assert_eq!(tokens[1].kind, TokenKind::Comma);
@@ -159,7 +159,7 @@ fn multi_line_comments_with_newlines() {
     assert_eq!(tokens[4].kind, TokenKind::Semicolon);
 }
 
-#[test] 
+#[test]
 fn comments_only() {
     let input = "// Just a comment\n/* And another comment */";
     let tokens = tokenize(input);

@@ -46,12 +46,12 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
     };
 
     let mut compiler = Compiler::new();
-    
+
     // Catch panics from the compiler
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         compiler.compile(&type_checked)
     }));
-    
+
     // Handle the result, including any panics
     let compiled = match compiled {
         Ok(Ok(compiled)) => compiled, // Successful compilation
@@ -62,7 +62,7 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
                 miette::miette!(error).with_source_code(source.clone())
             );
             std::process::exit(1);
-        },
+        }
         Err(panic) => {
             // Panic occurred during compilation
             let panic_message = if let Some(msg) = panic.downcast_ref::<String>() {
@@ -72,12 +72,12 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
             } else {
                 "Unknown compilation error".to_string()
             };
-            
+
             let error = Error::Compiler(CompilerError::CodeGenerationFailed {
                 span: type_checked.span,
                 help: format!("Code generation failed: {}", panic_message),
             });
-            
+
             eprintln!(
                 "{:?}",
                 miette::miette!(error).with_source_code(source.clone())
@@ -294,12 +294,12 @@ fn run_compilation_stages(
     update_stage_note(&process_tree, "code generation");
 
     let mut compiler = Compiler::new();
-    
+
     // Catch panics from the compiler
     let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         compiler.compile(&type_checked)
     }));
-    
+
     // Handle the result, including any panics
     let compiled = match compiled {
         Ok(Ok(compiled)) => compiled, // Successful compilation
@@ -307,7 +307,7 @@ fn run_compilation_stages(
             // Regular error
             let report = miette::miette!(error).with_source_code(source.clone());
             return Err(vec![report]);
-        },
+        }
         Err(panic) => {
             // Panic occurred during compilation
             let panic_message = if let Some(msg) = panic.downcast_ref::<String>() {
@@ -317,12 +317,12 @@ fn run_compilation_stages(
             } else {
                 "Unknown compilation error".to_string()
             };
-            
+
             let error = Error::Compiler(CompilerError::CodeGenerationFailed {
                 span: type_checked.span,
                 help: format!("Code generation failed: {}", panic_message),
             });
-            
+
             let report = miette::miette!(error).with_source_code(source.clone());
             return Err(vec![report]);
         }

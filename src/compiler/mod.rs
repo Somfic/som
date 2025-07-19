@@ -72,7 +72,7 @@ impl Compiler {
                 help: format!("Failed to finalize function: {}", e),
             })
         })?;
-        
+
         Ok(self.codebase.get_finalized_function(main_func_id))
     }
 
