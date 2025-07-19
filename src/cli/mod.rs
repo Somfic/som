@@ -94,11 +94,11 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
     };
 
     // Stage 4: Code generation - catch panics
-    let compiled = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let (compiled, return_type) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut compiler = Compiler::new();
         compiler.compile(&type_checked)
     })) {
-        Ok(Ok(compiled)) => compiled, // Successful compilation
+        Ok(Ok(result)) => result, // Successful compilation
         Ok(Err(error)) => {
             // Regular error
             eprintln!(
@@ -133,7 +133,7 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
     // Stage 5: Execution - catch panics
     let return_value = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let runner = Runner::new();
-        runner.run(compiled)
+        runner.run(compiled, &return_type)
     })) {
         Ok(Ok(return_value)) => return_value,
         Ok(Err(error)) => {
@@ -157,6 +157,7 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
     {
         let mut code_storage = COMPILED_CODE.lock().unwrap();
         code_storage.code = None;
+        code_storage.return_type = None;
     }
 
     let now = SystemTime::now();
@@ -223,11 +224,11 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
                     eprintln!("");
 
                     // Retrieve the compiled code from global storage
-                    let code_ptr = {
+                    let (code_ptr, return_type) = {
                         let code_storage = COMPILED_CODE.lock().unwrap();
-                        match code_storage.code {
-                            Some(ptr) => ptr,
-                            None => {
+                        match (&code_storage.code, &code_storage.return_type) {
+                            (Some(ptr), Some(rt)) => (*ptr, rt.clone()),
+                            _ => {
                                 tui::print_error("No compiled code available!".to_string());
                                 return None;
                             }
@@ -238,7 +239,7 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
                     let return_value =
                         match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                             let runner = Runner::new();
-                            runner.run(code_ptr)
+                            runner.run(code_ptr, &return_type)
                         })) {
                             Ok(Ok(return_value)) => return_value,
                             Ok(Err(error)) => {
@@ -413,11 +414,11 @@ fn run_compilation_stages(
     // Stage 4: Code generation - catch panics
     update_stage_note(&process_tree, "code generation");
 
-    let compiled = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let (compiled, return_type) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut compiler = Compiler::new();
         compiler.compile(&type_checked)
     })) {
-        Ok(Ok(compiled)) => compiled, // Successful compilation
+        Ok(Ok(result)) => result, // Successful compilation
         Ok(Err(error)) => {
             // Regular error
             let report = miette::miette!(error).with_source_code(source.clone());
@@ -446,7 +447,7 @@ fn run_compilation_stages(
     // Store the compiled code in our global storage
     {
         let mut code_storage = COMPILED_CODE.lock().unwrap();
-        code_storage.set_code(compiled);
+        code_storage.set_code(compiled, return_type);
     }
 
     // Return success

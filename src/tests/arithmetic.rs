@@ -23,7 +23,7 @@ fn subtraction() {
     assert_eq!(0, interpret("1i64 - 1i64"));
     assert_eq!(1, interpret("2 - 1"));
     assert_eq!(-1, interpret("1 - 2"));
-    assert_eq!(100, interpret("202 - 101"));
+    assert_eq!(101, interpret("202 - 101"));
 }
 
 #[test]
@@ -58,8 +58,8 @@ fn grouping() {
     assert_eq!(4, interpret("2 * (2)"));
     assert_eq!(4, interpret("(2 * 2) + 0"));
     assert_eq!(4, interpret("0 + (2 * 2)"));
-    assert_eq!(6, interpret("(2 + 2) * 3"));
-    assert_eq!(6, interpret("2 * (2 + 3)"));
-    assert_eq!(6, interpret("(2 + 3) * 2"));
+    assert_eq!(12, interpret("(2 + 2) * 3"));
+    assert_eq!(10, interpret("2 * (2 + 3)"));
+    assert_eq!(10, interpret("(2 + 3) * 2"));
     assert_eq!(15, interpret("(2 + 3) * (4 - 1)"));
 }

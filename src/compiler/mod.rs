@@ -43,13 +43,15 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self, statement: &TypedStatement) -> Result<*const u8> {
+    pub fn compile(&mut self, statement: &TypedStatement) -> Result<(*const u8, TypeValue)> {
         let mut env = Environment::new(self.declarations.clone());
 
-        let main_func_id = match &statement.value {
+        let (main_func_id, return_type) = match &statement.value {
             StatementValue::VariableDeclaration(declaration) => match &declaration.value.value {
-                TypedExpressionValue::Function(_) => {
-                    expressions::function::compile(self, &declaration.value, &mut env)
+                TypedExpressionValue::Function(func) => {
+                    let return_type = func.body.type_.value.clone();
+                    let func_id = expressions::function::compile(self, &declaration.value, &mut env);
+                    (func_id, return_type)
                 }
                 _ => {
                     return Err(Error::Compiler(CompilerError::CodeGenerationFailed {
@@ -73,7 +75,7 @@ impl Compiler {
             })
         })?;
 
-        Ok(self.codebase.get_finalized_function(main_func_id))
+        Ok((self.codebase.get_finalized_function(main_func_id), return_type))
     }
 
     pub fn compile_statement(

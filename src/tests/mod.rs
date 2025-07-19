@@ -45,8 +45,8 @@ pub fn interpret(source: &str) -> i64 {
     };
 
     let mut compiler = Compiler::new();
-    let compiled = match compiler.compile(&type_checked) {
-        Ok(compiled) => compiled,
+    let (compiled, return_type) = match compiler.compile(&type_checked) {
+        Ok(result) => result,
         Err(error) => {
             eprintln!(
                 "{}",
@@ -57,7 +57,7 @@ pub fn interpret(source: &str) -> i64 {
     };
 
     let runner = Runner::new();
-    let ran = match runner.run(compiled) {
+    let ran = match runner.run(compiled, &return_type) {
         Ok(value) => value,
         Err(error) => {
             eprintln!(
