@@ -13,7 +13,7 @@ fn test_error_handling() {
 
 pub fn interpret(source: &str) -> i64 {
     let source = miette::NamedSource::new("test", source.to_string());
-    
+
     let lexer = Lexer::new(source.inner().as_str());
 
     let mut parser = Parser::new(lexer);

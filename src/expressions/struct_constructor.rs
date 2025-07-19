@@ -142,14 +142,18 @@ fn check_fields(
             .iter()
             .any(|field| field.identifier.name == argument.identifier.name);
         if !field_found {
-            let field_names: Vec<String> = fields.iter()
+            let field_names: Vec<String> = fields
+                .iter()
                 .map(|f| f.identifier.name.to_string())
                 .collect();
-            
+
             let closest_match = closest_match(field_names, argument.identifier.name.to_string());
-            
+
             let help_message = if let Some(suggestion) = closest_match {
-                format!("field `{}` not found in struct, did you mean `{}`?", argument.identifier.name, suggestion)
+                format!(
+                    "field `{}` not found in struct, did you mean `{}`?",
+                    argument.identifier.name, suggestion
+                )
             } else {
                 format!("field `{}` not found in struct", argument.identifier.name)
             };

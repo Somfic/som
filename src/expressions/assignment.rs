@@ -42,15 +42,13 @@ pub fn type_check(
     let value = type_checker.check_expression(&assignment.value, env);
 
     // Check that the variable exists in the environment
-    let variable_type = env
-        .get(&assignment.identifier)
-        .ok_or_else(|| {
-            declaration_not_found(
-                &assignment.identifier,
-                format!("variable `{}` not found", assignment.identifier.name),
-                env,
-            )
-        });
+    let variable_type = env.get(&assignment.identifier).ok_or_else(|| {
+        declaration_not_found(
+            &assignment.identifier,
+            format!("variable `{}` not found", assignment.identifier.name),
+            env,
+        )
+    });
 
     match variable_type {
         Ok(var_type) => {
@@ -90,7 +88,7 @@ pub fn compile(
     };
 
     let value = compiler.compile_expression(&assignment.value, body, env);
-    
+
     // Get the variable from the environment
     if let Some(var) = env.get_variable(assignment.identifier.name.as_ref()) {
         body.def_var(var, value);
