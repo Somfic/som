@@ -15,6 +15,7 @@ pub use crate::lexer::Identifier;
 pub use crate::parser::lookup::{BindingPower, Lookup};
 pub use crate::runner::Runner;
 pub use crate::statements::extern_declaration::ExternDeclarationStatement;
+pub use crate::statements::import::ImportStatement;
 pub use crate::statements::type_declaration::TypeDeclarationStatement;
 pub use crate::statements::variable_declaration::VariableDeclarationStatement;
 pub use crate::statements::GenericStatement;

@@ -14,13 +14,50 @@ mod compilation_result;
 
 /// Run compilation without process tree visualization
 pub fn run(source: miette::NamedSource<String>) -> i64 {
-    // Compilation phase
-    let lexer = Lexer::new(source.inner().as_str());
+    // Helper function to handle panics and convert them to errors
+    fn handle_panic(
+        panic: Box<dyn std::any::Any + Send>,
+        stage: &str,
+        source: &miette::NamedSource<String>,
+    ) {
+        let panic_message = if let Some(msg) = panic.downcast_ref::<String>() {
+            msg.clone()
+        } else if let Some(msg) = panic.downcast_ref::<&str>() {
+            msg.to_string()
+        } else {
+            format!("Unknown {} error", stage)
+        };
 
-    let mut parser = Parser::new(lexer);
-    let parsed = match parser.parse() {
-        Ok(parsed) => parsed,
-        Err(errors) => {
+        let error = Error::Compiler(CompilerError::CodeGenerationFailed {
+            span: Span::default(),
+            help: format!("{} failed: {}", stage, panic_message),
+        });
+
+        eprintln!(
+            "{:?}",
+            miette::miette!(error).with_source_code(source.clone())
+        );
+        std::process::exit(1);
+    }
+
+    // Stage 1: Lexing - catch panics
+    let lexer = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        Lexer::new(source.inner().as_str())
+    })) {
+        Ok(lexer) => lexer,
+        Err(panic) => {
+            handle_panic(panic, "Lexing", &source);
+            unreachable!()
+        }
+    };
+
+    // Stage 2: Parsing - catch panics
+    let parsed = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut parser = Parser::new(lexer);
+        parser.parse()
+    })) {
+        Ok(Ok(parsed)) => parsed,
+        Ok(Err(errors)) => {
             for error in errors {
                 eprintln!(
                     "{:?}",
@@ -29,12 +66,19 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
             }
             std::process::exit(1);
         }
+        Err(panic) => {
+            handle_panic(panic, "Parsing", &source);
+            unreachable!()
+        }
     };
 
-    let mut type_checker = TypeChecker::new();
-    let type_checked = match type_checker.check(&parsed) {
-        Ok(typed_statement) => typed_statement,
-        Err(errors) => {
+    // Stage 3: Type checking - catch panics
+    let type_checked = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut type_checker = TypeChecker::new();
+        type_checker.check(&parsed)
+    })) {
+        Ok(Ok(typed_statement)) => typed_statement,
+        Ok(Err(errors)) => {
             for error in errors {
                 eprintln!(
                     "{:?}",
@@ -43,17 +87,17 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
             }
             std::process::exit(1);
         }
+        Err(panic) => {
+            handle_panic(panic, "Type checking", &source);
+            unreachable!()
+        }
     };
 
-    let mut compiler = Compiler::new();
-
-    // Catch panics from the compiler
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    // Stage 4: Code generation - catch panics
+    let compiled = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut compiler = Compiler::new();
         compiler.compile(&type_checked)
-    }));
-
-    // Handle the result, including any panics
-    let compiled = match compiled {
+    })) {
         Ok(Ok(compiled)) => compiled, // Successful compilation
         Ok(Err(error)) => {
             // Regular error
@@ -86,9 +130,21 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
         }
     };
 
-    // Execution phase (separate from compilation)
-    let runner = Runner::new();
-    let return_value = runner.run(compiled).unwrap();
+    // Stage 5: Execution - catch panics
+    let return_value = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let runner = Runner::new();
+        runner.run(compiled)
+    })) {
+        Ok(Ok(return_value)) => return_value,
+        Ok(Err(error)) => {
+            eprintln!("Runtime error: {:?}", error);
+            std::process::exit(1);
+        }
+        Err(panic) => {
+            handle_panic(panic, "Execution", &source);
+            unreachable!()
+        }
+    };
 
     return_value
 }
@@ -178,9 +234,33 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
                         }
                     };
 
-                    // Execute the compiled code
-                    let runner = Runner::new();
-                    let return_value = runner.run(code_ptr).unwrap();
+                    // Execute the compiled code - catch panics
+                    let return_value =
+                        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            let runner = Runner::new();
+                            runner.run(code_ptr)
+                        })) {
+                            Ok(Ok(return_value)) => return_value,
+                            Ok(Err(error)) => {
+                                tui::print_error(format!("Runtime error: {:?}", error));
+                                return None;
+                            }
+                            Err(panic) => {
+                                let panic_message =
+                                    if let Some(msg) = panic.downcast_ref::<String>() {
+                                        msg.clone()
+                                    } else if let Some(msg) = panic.downcast_ref::<&str>() {
+                                        msg.to_string()
+                                    } else {
+                                        "Unknown runtime error".to_string()
+                                    };
+                                tui::print_error(format!(
+                                    "Runtime execution failed: {}",
+                                    panic_message
+                                ));
+                                return None;
+                            }
+                        };
                     return Some(return_value);
                 }
                 Err(error_reports) => {
@@ -253,18 +333,50 @@ fn run_compilation_stages(
         tree.note = Some(stage_name.to_string());
     }
 
-    // Stage 1: Lexing
+    // Helper function to handle panics and convert them to error reports
+    fn handle_panic(
+        panic: Box<dyn std::any::Any + Send>,
+        stage: &str,
+        source: &miette::NamedSource<String>,
+    ) -> Vec<miette::Report> {
+        let panic_message = if let Some(msg) = panic.downcast_ref::<String>() {
+            msg.clone()
+        } else if let Some(msg) = panic.downcast_ref::<&str>() {
+            msg.to_string()
+        } else {
+            format!("Unknown {} error", stage)
+        };
+
+        let error = Error::Compiler(CompilerError::CodeGenerationFailed {
+            span: Span::default(),
+            help: format!("{} failed: {}", stage, panic_message),
+        });
+
+        let report = miette::miette!(error).with_source_code(source.clone());
+        vec![report]
+    }
+
+    // Stage 1: Lexing - catch panics
     update_stage_note(&process_tree, "lexing");
 
-    let lexer = Lexer::new(source.inner().as_str());
+    let lexer = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        Lexer::new(source.inner().as_str())
+    })) {
+        Ok(lexer) => lexer,
+        Err(panic) => {
+            return Err(handle_panic(panic, "Lexing", &source));
+        }
+    };
 
-    // Stage 2: parsing
+    // Stage 2: Parsing - catch panics
     update_stage_note(&process_tree, "parsing");
 
-    let mut parser = Parser::new(lexer);
-    let parsed = match parser.parse() {
-        Ok(parsed) => parsed,
-        Err(errors) => {
+    let parsed = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut parser = Parser::new(lexer);
+        parser.parse()
+    })) {
+        Ok(Ok(parsed)) => parsed,
+        Ok(Err(errors)) => {
             let mut error_messages = Vec::new();
             for error in errors {
                 let report = miette::miette!(error).with_source_code(source.clone());
@@ -272,15 +384,20 @@ fn run_compilation_stages(
             }
             return Err(error_messages);
         }
+        Err(panic) => {
+            return Err(handle_panic(panic, "Parsing", &source));
+        }
     };
 
-    // Stage 3: type checking
+    // Stage 3: Type checking - catch panics
     update_stage_note(&process_tree, "type checking");
 
-    let mut type_checker = TypeChecker::new();
-    let type_checked = match type_checker.check(&parsed) {
-        Ok(typed_statement) => typed_statement,
-        Err(errors) => {
+    let type_checked = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut type_checker = TypeChecker::new();
+        type_checker.check(&parsed)
+    })) {
+        Ok(Ok(typed_statement)) => typed_statement,
+        Ok(Err(errors)) => {
             let mut error_messages = Vec::new();
             for error in errors {
                 let report = miette::miette!(error).with_source_code(source.clone());
@@ -288,20 +405,18 @@ fn run_compilation_stages(
             }
             return Err(error_messages);
         }
+        Err(panic) => {
+            return Err(handle_panic(panic, "Type checking", &source));
+        }
     };
 
-    // Stage 4: code generation
+    // Stage 4: Code generation - catch panics
     update_stage_note(&process_tree, "code generation");
 
-    let mut compiler = Compiler::new();
-
-    // Catch panics from the compiler
-    let compiled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let compiled = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut compiler = Compiler::new();
         compiler.compile(&type_checked)
-    }));
-
-    // Handle the result, including any panics
-    let compiled = match compiled {
+    })) {
         Ok(Ok(compiled)) => compiled, // Successful compilation
         Ok(Err(error)) => {
             // Regular error
@@ -387,32 +502,47 @@ pub fn run_watch_mode(source_path: PathBuf) {
 
     // Function to compile once
     let compile_once = || {
-        // Read the source file
-        let mut content = String::new();
-        if let Err(e) =
-            std::fs::File::open(&source_path).and_then(|mut file| file.read_to_string(&mut content))
-        {
-            tui::print_error(format!(
-                "Error reading source file '{}': {}",
-                source_path.display(),
-                e
-            ));
-            return;
+        // Catch panics during file reading and compilation
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // Read the source file
+            let mut content = String::new();
+            if let Err(e) = std::fs::File::open(&source_path)
+                .and_then(|mut file| file.read_to_string(&mut content))
+            {
+                tui::print_error(format!(
+                    "Error reading source file '{}': {}",
+                    source_path.display(),
+                    e
+                ));
+                return;
+            }
+
+            let name: String = source_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("main")
+                .to_string();
+
+            let source = NamedSource::new(name, content);
+
+            // Clear screen before recompiling
+            print!("\x1B[2J\x1B[H");
+
+            // Run compilation (this will handle errors internally)
+            run_with_process_tree(source);
+        }));
+
+        // Handle any panics that occurred during compilation
+        if let Err(panic) = result {
+            let panic_message = if let Some(msg) = panic.downcast_ref::<String>() {
+                msg.clone()
+            } else if let Some(msg) = panic.downcast_ref::<&str>() {
+                msg.to_string()
+            } else {
+                "Unknown error during compilation".to_string()
+            };
+            tui::print_error(format!("Compilation process failed: {}", panic_message));
         }
-
-        let name: String = source_path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("main")
-            .to_string();
-
-        let source = NamedSource::new(name, content);
-
-        // Clear screen before recompiling
-        print!("\x1B[2J\x1B[H");
-
-        // Run compilation (this will handle errors internally)
-        run_with_process_tree(source);
     };
 
     // Initial compilation
