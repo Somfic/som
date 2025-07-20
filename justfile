@@ -1,5 +1,5 @@
 # Run tests and generate coverage report for VS Code Coverage Gutters
-coverage:
+cover:
     #!/usr/bin/env bash
     set -euo pipefail
     
@@ -11,11 +11,11 @@ coverage:
     cargo llvm-cov --lcov --output-path lcov.info
 
 # Generate and display coverage summary in terminal
-coverage-summary:
+cover-summary:
     cargo llvm-cov --summary-only
 
 # Generate HTML coverage report for detailed browsing
-coverage-html:
+cover-html:
     #!/usr/bin/env bash
     set -euo pipefail
     
