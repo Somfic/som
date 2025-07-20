@@ -39,8 +39,6 @@ fn unary_precedence() {
     assert_eq!(-3, interpret("-1 - 2"));        // (-1) - 2 = -3
     assert_eq!(1, interpret("-1 + 2"));         // (-1) + 2 = 1
     assert_eq!(-2, interpret("-1 * 2"));        // (-1) * 2 = -2
-    assert_eq!(4, interpret("2 * -2"));         // 2 * (-2) = -4... wait, this should be -4
-    // Let me fix this:
     assert_eq!(-4, interpret("2 * -2"));        // 2 * (-2) = -4
 }
 
@@ -58,8 +56,7 @@ fn nested_grouping() {
     assert_eq!(50, interpret("((2 + 3) * (4 + 6))"));     // (5 * 10) = 50
     assert_eq!(14, interpret("(2 + (3 * 4))"));           // (2 + 12) = 14
     assert_eq!(20, interpret("((2 + 3) * 4)"));           // (5 * 4) = 20
-    assert_eq!(23, interpret("(2 * (3 + 4)) + (5 * (1 + 1))")); // (2 * 7) + (5 * 2) = 14 + 10 = 24
-    // Let me recalculate: (2 * 7) + (5 * 2) = 14 + 10 = 24
+    // Fixed: Should be (2 * 7) + (5 * 2) = 14 + 10 = 24
     assert_eq!(24, interpret("(2 * (3 + 4)) + (5 * (1 + 1))"));
 }
 
@@ -73,6 +70,6 @@ fn precedence_with_variables() {
 #[test]
 fn precedence_in_conditionals() {
     // Test that precedence works correctly in conditional expressions
-    assert_eq!(7, interpret("1 + 2 if true else 3 * 4"));    // Should be (1 + 2) if true else (3 * 4)
+    assert_eq!(3, interpret("1 + 2 if true else 3 * 4"));    // Should be (1 + 2) if true else (3 * 4)
     assert_eq!(12, interpret("1 + 2 if false else 3 * 4"));  // Should be (1 + 2) if false else (3 * 4)
 }

@@ -7,6 +7,7 @@ use crate::prelude::*;
 use crate::types::struct_::Field;
 
 pub mod boolean;
+pub mod function;
 pub mod integer;
 pub mod string;
 pub mod struct_;
