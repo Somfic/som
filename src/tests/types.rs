@@ -80,9 +80,9 @@ fn mixed_integer_types() {
     // Test that int and long are properly handled
     assert_eq!(5, interpret("let small = 5; small"));
     assert_eq!(5, interpret("let big = 5; big"));
-    // TODO: Test explicit type annotations when type system is fixed
-    // BUG: Type annotations cause "mismatching types" errors
-    // assert_eq!(5, interpret("let small ~ int = 5; small"));
+    // Test explicit type annotations
+    assert_eq!(5, interpret("let small ~ int = 5; small"));
+    // TODO: Fix type coercion - literals inferred as int can't be assigned to long
     // assert_eq!(5, interpret("let big ~ long = 5; big"));
 }
 
@@ -90,10 +90,9 @@ fn mixed_integer_types() {
 fn type_in_conditionals() {
     assert_eq!(10, interpret("let result = 5 if false else 10; result"));
     assert_eq!(1, interpret("let flag = true if true else false; flag"));
-    // TODO: Test explicit type annotations when type system is fixed
-    // BUG: Explicit type annotations cause issues
-    // assert_eq!(10, interpret("let result ~ int = 5 if false else 10; result"));
-    // assert_eq!(1, interpret("let flag ~ bool = true if true else false; flag"));
+    // Test explicit type annotations
+    assert_eq!(10, interpret("let result ~ int = 5 if false else 10; result"));
+    assert_eq!(1, interpret("let flag ~ bool = true if true else false; flag"));
 }
 
 #[test]
@@ -103,17 +102,15 @@ fn type_in_blocks() {
         interpret("let value = { let temp = 10; temp + 5 }; value")
     );
     assert_eq!(0, interpret("let flag = { false }; flag"));
-    // TODO: Test explicit type annotations when type system is fixed
-    // BUG: Explicit type annotations cause issues
-    // assert_eq!(15, interpret("let value ~ int = { let temp = 10; temp + 5 }; value"));
-    // assert_eq!(0, interpret("let flag ~ bool = { false }; flag"));
+    // Test explicit type annotations
+    assert_eq!(15, interpret("let value ~ int = { let temp = 10; temp + 5 }; value"));
+    assert_eq!(0, interpret("let flag ~ bool = { false }; flag"));
 }
 
 #[test]
 fn complex_type_scenarios() {
-    // TODO: This test fails with "expected type" error - complex type annotation issue
-    // BUG: Complex type annotations not working properly
-    // assert_eq!(30, interpret("let compute ~ fn(int) -> int = fn(x ~ int) -> int { x * 2 }; let result ~ int = compute(15); result"));
+    // Test complex type annotations with function types
+    assert_eq!(30, interpret("let compute ~ fn(int) -> int = fn(x ~ int) -> int { x * 2 }; let result ~ int = compute(15); result"));
 
     // Simplified test without explicit type annotations
     assert_eq!(
