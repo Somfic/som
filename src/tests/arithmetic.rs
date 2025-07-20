@@ -3,24 +3,24 @@ use crate::tests::interpret;
 #[test]
 fn negative() {
     assert_eq!(-1, interpret("-1"));
-    assert_eq!(-1, interpret("-1i32"));
-    assert_eq!(-1, interpret("-1i64"));
+    assert_eq!(-1, interpret("-1i"));
+    assert_eq!(-1, interpret("-1l"));
     assert_eq!(1, interpret("-(-1)"));
 }
 
 #[test]
 fn addition() {
     assert_eq!(2, interpret("1 + 1"));
-    assert_eq!(2, interpret("1i32 + 1i32"));
-    assert_eq!(2, interpret("1i64 + 1i64"));
+    assert_eq!(2, interpret("1i + 1i"));
+    assert_eq!(2, interpret("1l+ 1l"));
     assert_eq!(10, interpret("1 + 2 + 3 + 4"));
 }
 
 #[test]
 fn subtraction() {
     assert_eq!(0, interpret("1 - 1"));
-    assert_eq!(0, interpret("1i32 - 1i32"));
-    assert_eq!(0, interpret("1i64 - 1i64"));
+    assert_eq!(0, interpret("1i - 1i"));
+    assert_eq!(0, interpret("1l - 1l"));
     assert_eq!(1, interpret("2 - 1"));
     assert_eq!(-1, interpret("1 - 2"));
     assert_eq!(101, interpret("202 - 101"));
@@ -29,8 +29,8 @@ fn subtraction() {
 #[test]
 fn multiplication() {
     assert_eq!(1, interpret("1 * 1"));
-    assert_eq!(1, interpret("1i32 * 1i32"));
-    assert_eq!(1, interpret("1i64 * 1i64"));
+    assert_eq!(1, interpret("1i * 1i"));
+    assert_eq!(1, interpret("1l * 1l"));
     assert_eq!(2, interpret("1 * 2"));
     assert_eq!(2, interpret("2 * 1"));
     assert_eq!(6, interpret("2 * 3"));
@@ -40,8 +40,8 @@ fn multiplication() {
 #[test]
 fn division() {
     assert_eq!(1, interpret("1 / 1"));
-    assert_eq!(1, interpret("1i32 / 1i32"));
-    assert_eq!(1, interpret("1i64 / 1i64"));
+    assert_eq!(1, interpret("1i / 1i"));
+    assert_eq!(1, interpret("1l / 1l"));
     assert_eq!(2, interpret("4 / 2"));
     assert_eq!(2, interpret("2 / 1"));
     assert_eq!(3, interpret("6 / 2"));

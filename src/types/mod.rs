@@ -144,8 +144,8 @@ impl Display for TypeValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TypeValue::Never => write!(f, "never"),
-            TypeValue::I32 => write!(f, "i32"),
-            TypeValue::I64 => write!(f, "i64"),
+            TypeValue::I32 => write!(f, "int"),
+            TypeValue::I64 => write!(f, "long"),
             TypeValue::Boolean => write!(f, "bool"),
             TypeValue::String => write!(f, "string"),
             TypeValue::Unit => write!(f, "nothing"),

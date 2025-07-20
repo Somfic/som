@@ -16,7 +16,7 @@ fn undeclared_variable_error() {
 #[test]
 fn type_mismatch_errors() {
     // Test type mismatches
-    assert!(interpret_error("let x ~ i32 = true;").is_err());
+    assert!(interpret_error("let x ~ int = true;").is_err());
     assert!(interpret_error("let flag ~ bool = 42;").is_err());
     assert!(interpret_error("true + 5").is_err());
     assert!(interpret_error("false * 2").is_err());
@@ -25,9 +25,9 @@ fn type_mismatch_errors() {
 #[test]
 fn function_call_errors() {
     // Test function call with wrong number of arguments
-    assert!(interpret_error("let f = fn(x ~ i32) -> i32 { x }; f();").is_err());
-    assert!(interpret_error("let f = fn(x ~ i32) -> i32 { x }; f(1, 2);").is_err());
-    
+    assert!(interpret_error("let f = fn(x ~ int) -> int { x }; f();").is_err());
+    assert!(interpret_error("let f = fn(x ~ int) -> int { x }; f(1, 2);").is_err());
+
     // Test calling non-function
     assert!(interpret_error("let x = 5; x();").is_err());
 }

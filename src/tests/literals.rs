@@ -3,19 +3,19 @@ use crate::tests::interpret;
 #[test]
 fn int_32() {
     assert_eq!(1, interpret("1"));
-    assert_eq!(1, interpret("1i32"));
+    assert_eq!(1, interpret("1i"));
     assert_eq!(-1, interpret("-1"));
-    assert_eq!(-1, interpret("-1i32"));
+    assert_eq!(-1, interpret("-1i"));
     assert_eq!(2000, interpret("2000"));
-    assert_eq!(2000, interpret("2000i32"));
+    assert_eq!(2000, interpret("2000i"));
 }
 
 #[test]
 fn int_64() {
-    assert_eq!(1, interpret("1i64"));
-    assert_eq!(-1, interpret("-1i64"));
-    assert_eq!(2000, interpret("2000i64"));
-    assert_eq!(2000, interpret("2000i64"));
+    assert_eq!(1, interpret("1l"));
+    assert_eq!(-1, interpret("-1l"));
+    assert_eq!(2000, interpret("2000l"));
+    assert_eq!(2000, interpret("2000l"));
 }
 
 #[test]
