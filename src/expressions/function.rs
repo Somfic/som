@@ -1,9 +1,10 @@
-use crate::prelude::*;
+use crate::{compiler::Environment, prelude::*};
 use cranelift::{
     codegen::ir::{Function, UserFuncName},
     prelude::{AbiParam, FunctionBuilderContext, Signature},
 };
 use cranelift_module::{FuncId, Linkage, Module};
+use std::collections::HashMap;
 use std::hash::Hash;
 
 #[derive(Debug, Clone)]
@@ -142,6 +143,8 @@ pub fn type_check(
         _ => unreachable!(),
     };
 
+    // TODO: should functions take in their own environment?
+    //let env = &mut TypeEnvironment::new();
     let env = &mut env.block();
 
     for parameter in &value.parameters {

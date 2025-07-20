@@ -205,9 +205,9 @@ impl TypeValue {
             TypeValue::Boolean => CompilerType::I8,
             TypeValue::String => CompilerType::I64, // String pointer
             TypeValue::Unit => CompilerType::I8,
-            TypeValue::Function(_function) => todo!(),
+            TypeValue::Function(_function) => CompilerType::I64, // Function pointer
             TypeValue::Never => CompilerType::I8,
-            TypeValue::Struct(struct_type) => {
+            TypeValue::Struct(_struct_type) => {
                 // Use pointer type for struct references
                 CompilerType::I64 // 64-bit pointer
             }
