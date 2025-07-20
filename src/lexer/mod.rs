@@ -195,8 +195,8 @@ impl Iterator for Lexer<'_> {
                     "enum" => Ok((TokenKind::Enum, TokenValue::None)),
                     "trait" => Ok((TokenKind::Trait, TokenValue::None)),
                     "bool" => Ok((TokenKind::BooleanType, TokenValue::None)),
-                    "i32" => Ok((TokenKind::I32Type, TokenValue::None)),
-                    "i64" => Ok((TokenKind::I64Type, TokenValue::None)),
+                    "int" => Ok((TokenKind::I32Type, TokenValue::None)),
+                    "long" => Ok((TokenKind::I64Type, TokenValue::None)),
                     "dec" => Ok((TokenKind::DecimalType, TokenValue::None)),
                     "str" => Ok((TokenKind::StringType, TokenValue::None)),
                     "char" => Ok((TokenKind::CharacterType, TokenValue::None)),
@@ -252,8 +252,8 @@ impl Iterator for Lexer<'_> {
                             (TokenKind::I32, TokenValue::I32(number_str.parse().unwrap()))
                         }
                     }
-                    "i32" => (TokenKind::I32, TokenValue::I32(number_str.parse().unwrap())),
-                    "i64" => (TokenKind::I64, TokenValue::I64(number_str.parse().unwrap())),
+                    "i" => (TokenKind::I32, TokenValue::I32(number_str.parse().unwrap())),
+                    "l" => (TokenKind::I64, TokenValue::I64(number_str.parse().unwrap())),
                     other => {
                         return Some(Err(lexer_improper_number(
                             &number_str,

@@ -4,11 +4,11 @@ use crate::tests::interpret;
 fn function_definition_and_call() {
     assert_eq!(
         5,
-        interpret("let add = fn(a ~ i32, b ~ i32) -> i32 { a + b }; add(2, 3)")
+        interpret("let add = fn(a ~ int, b ~ int) -> int { a + b }; add(2, 3)")
     );
     assert_eq!(
         10,
-        interpret("let multiply = fn(x ~ i32, y ~ i32) -> i32 { x * y }; multiply(2, 5)")
+        interpret("let multiply = fn(x ~ int, y ~ int) -> int { x * y }; multiply(2, 5)")
     );
 }
 
@@ -16,7 +16,7 @@ fn function_definition_and_call() {
 fn function_with_no_parameters() {
     assert_eq!(
         42,
-        interpret("let get_answer = fn() -> i32 { 42 }; get_answer()")
+        interpret("let get_answer = fn() -> int { 42 }; get_answer()")
     );
     assert_eq!(
         1,
@@ -28,7 +28,7 @@ fn function_with_no_parameters() {
 fn function_returning_function_result() {
     assert_eq!(
         6,
-        interpret("let add = fn(a ~ i32, b ~ i32) -> i32 { a + b }; let double = fn(x ~ i32) -> i32 { add(x, x) }; double(3)")
+        interpret("let add = fn(a ~ int, b ~ int) -> int { a + b }; let double = fn(x ~ int) -> int { add(x, x) }; double(3)")
     );
 }
 
@@ -36,12 +36,12 @@ fn function_returning_function_result() {
 fn function_with_complex_body() {
     // BUG: This test fails with "unexpected token" error - complex syntax issue
     // TODO: Fix parser to handle complex function bodies
-    // assert_eq!(15, interpret("let sum_to_n = fn(n ~ i32) -> i32 { let sum = 0; let i = 1; { sum = sum + i; i = i + 1; } if i <= n else sum }; sum_to_n(5)"));
+    // assert_eq!(15, interpret("let sum_to_n = fn(n ~ int) -> int { let sum = 0; let i = 1; { sum = sum + i; i = i + 1; } if i <= n else sum }; sum_to_n(5)"));
 
     // Simplified test that works
     assert_eq!(
         10,
-        interpret("let double = fn(x ~ i32) -> i32 { let temp = x * 2; temp }; double(5)")
+        interpret("let double = fn(x ~ int) -> int { let temp = x * 2; temp }; double(5)")
     );
 }
 
@@ -63,7 +63,7 @@ fn function_with_boolean_parameters() {
 fn function_variable_declaration() {
     assert_eq!(
         100,
-        interpret("let square = fn(x ~ i32) -> i32 { x * x }; let result = square(10); result")
+        interpret("let square = fn(x ~ int) -> int { x * x }; let result = square(10); result")
     );
 }
 
@@ -71,11 +71,11 @@ fn function_variable_declaration() {
 fn nested_function_calls() {
     assert_eq!(
         8,
-        interpret("let add = fn(a ~ i32, b ~ i32) -> i32 { a + b }; add(add(2, 3), 3)")
+        interpret("let add = fn(a ~ int, b ~ int) -> int { a + b }; add(add(2, 3), 3)")
     );
     assert_eq!(
         27,
-        interpret("let triple = fn(x ~ i32) -> i32 { x * 3 }; triple(triple(3))")
+        interpret("let triple = fn(x ~ int) -> int { x * 3 }; triple(triple(3))")
     );
 }
 

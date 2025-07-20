@@ -67,7 +67,7 @@ fn block_with_assignment() {
 fn block_returning_function() {
     assert_eq!(
         25,
-        interpret("{ let square = fn(x ~ i32) -> i32 { x * x }; square(5) }")
+        interpret("{ let square = fn(x ~ int) -> int { x * x }; square(5) }")
     );
 }
 
