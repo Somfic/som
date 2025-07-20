@@ -91,8 +91,14 @@ fn type_in_conditionals() {
     assert_eq!(10, interpret("let result = 5 if false else 10; result"));
     assert_eq!(1, interpret("let flag = true if true else false; flag"));
     // Test explicit type annotations
-    assert_eq!(10, interpret("let result ~ int = 5 if false else 10; result"));
-    assert_eq!(1, interpret("let flag ~ bool = true if true else false; flag"));
+    assert_eq!(
+        10,
+        interpret("let result ~ int = 5 if false else 10; result")
+    );
+    assert_eq!(
+        1,
+        interpret("let flag ~ bool = true if true else false; flag")
+    );
 }
 
 #[test]
@@ -103,7 +109,10 @@ fn type_in_blocks() {
     );
     assert_eq!(0, interpret("let flag = { false }; flag"));
     // Test explicit type annotations
-    assert_eq!(15, interpret("let value ~ int = { let temp = 10; temp + 5 }; value"));
+    assert_eq!(
+        15,
+        interpret("let value ~ int = { let temp = 10; temp + 5 }; value")
+    );
     assert_eq!(0, interpret("let flag ~ bool = { false }; flag"));
 }
 
