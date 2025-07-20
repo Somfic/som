@@ -104,3 +104,169 @@ fn edge_case_empty_expressions() {
     assert_eq!(0, interpret("false"));
     assert_eq!(42, interpret("42"));
 }
+
+#[test]
+fn edge_case_whitespace_variations() {
+    // Test expressions with unusual but valid whitespace
+    assert_eq!(3, interpret("1+2"));                    // No spaces
+    assert_eq!(3, interpret("1  +  2"));                // Multiple spaces
+    assert_eq!(3, interpret("1\t+\t2"));                // Tabs
+    assert_eq!(3, interpret("1\n+\n2"));                // Newlines
+    assert_eq!(3, interpret("  1  +  2  "));            // Leading/trailing spaces
+    
+    // Whitespace in more complex expressions
+    assert_eq!(10, interpret(" ( 2 + 3 ) * 2 "));
+    assert_eq!(5, interpret("{\n  let x = 5;\n  x\n}"));
+}
+
+#[test]
+fn edge_case_operator_combinations() {
+    // Test all combinations of basic operators
+    assert_eq!(7, interpret("1 + 2 * 3"));          // Addition and multiplication
+    assert_eq!(9, interpret("(1 + 2) * 3"));        // Grouping changes precedence
+    assert_eq!(5, interpret("2 * 3 - 1"));          // Multiplication and subtraction
+    assert_eq!(4, interpret("2 * (3 - 1)"));        // Grouping changes precedence
+    assert_eq!(3, interpret("6 / 2 + 1"));          // Division and addition
+    assert_eq!(2, interpret("6 / (2 + 1)"));        // Grouping changes precedence
+    assert_eq!(1, interpret("3 - 6 / 3"));          // Subtraction and division
+    assert_eq!(-1, interpret("(3 - 6) / 3"));       // Grouping changes precedence
+}
+
+#[test]
+fn edge_case_unary_combinations() {
+    // Test unary minus in various contexts
+    assert_eq!(-1, interpret("-1"));
+    assert_eq!(1, interpret("-(-1)"));
+    assert_eq!(-4, interpret("-(2 + 2)"));
+    assert_eq!(4, interpret("-(-(2 + 2))"));
+    
+    // Unary with binary operations
+    assert_eq!(-4, interpret("2 * -2"));
+    assert_eq!(4, interpret("-2 * -2"));
+    assert_eq!(-1, interpret("3 + -4"));
+    assert_eq!(7, interpret("3 - -4"));
+    assert_eq!(-2, interpret("-6 / 3"));
+    assert_eq!(2, interpret("-6 / -3"));
+}
+
+#[test]
+fn edge_case_boolean_edge_conditions() {
+    // Boolean edge cases
+    assert_eq!(1, interpret("true"));
+    assert_eq!(0, interpret("false"));
+    
+    // Booleans in conditionals with edge cases
+    assert_eq!(1, interpret("true if true else false"));
+    assert_eq!(0, interpret("false if true else true"));
+    assert_eq!(0, interpret("true if false else false"));
+    assert_eq!(1, interpret("false if false else true"));
+}
+
+#[test]
+fn edge_case_variable_edge_scenarios() {
+    // Single character variable names
+    assert_eq!(5, interpret("let a = 5; a"));
+    assert_eq!(10, interpret("let x = 5; let y = 5; x + y"));
+    
+    // Variables with underscores
+    assert_eq!(7, interpret("let _x = 7; _x"));
+    assert_eq!(15, interpret("let my_var = 15; my_var"));
+    
+    // Variable reassignment edge cases
+    assert_eq!(0, interpret("let x = 5; x = 0; x"));
+    assert_eq!(-5, interpret("let y = 5; y = -5; y"));
+}
+
+#[test]
+fn edge_case_function_edge_scenarios() {
+    // Functions with minimal bodies
+    assert_eq!(0, interpret("let f = fn() -> int { 0 }; f()"));
+    assert_eq!(1, interpret("let f = fn() -> bool { true }; f()"));
+    
+    // Functions that return their input unchanged
+    assert_eq!(42, interpret("let id = fn(x ~ int) -> int { x }; id(42)"));
+    assert_eq!(1, interpret("let bool_id = fn(b ~ bool) -> bool { b }; bool_id(true)"));
+    
+    // Functions with edge case calculations
+    assert_eq!(0, interpret("let zero = fn(x ~ int) -> int { x * 0 }; zero(999)"));
+    assert_eq!(1, interpret("let one = fn(x ~ int) -> int { x / x }; one(5)"));
+}
+
+#[test]
+fn edge_case_block_scenarios() {
+    // Minimal blocks
+    assert_eq!(1, interpret("{ 1 }"));
+    assert_eq!(0, interpret("{ false }"));
+    
+    // Blocks with single statements
+    assert_eq!(5, interpret("{ let x = 5; x }"));
+    
+    // Empty-ish blocks (with just a value)
+    assert_eq!(42, interpret("{ 42 }"));
+    assert_eq!(1, interpret("{ true }"));
+}
+
+#[test]
+fn edge_case_conditional_scenarios() {
+    // Conditionals with constant conditions
+    assert_eq!(1, interpret("1 if true else 0"));
+    assert_eq!(0, interpret("1 if false else 0"));
+    
+    // Conditionals where both branches are the same
+    assert_eq!(5, interpret("5 if true else 5"));
+    assert_eq!(5, interpret("5 if false else 5"));
+    
+    // Conditionals with zero values
+    assert_eq!(0, interpret("0 if true else 1"));
+    assert_eq!(1, interpret("0 if false else 1"));
+    assert_eq!(0, interpret("1 if true else 0"));
+    assert_eq!(0, interpret("1 if false else 0"));
+}
+
+#[test]
+fn edge_case_deeply_nested_structures() {
+    // Deeply nested parentheses
+    assert_eq!(5, interpret("((((5))))"));
+    assert_eq!(1, interpret("((((true))))"));
+    
+    // Deeply nested blocks
+    assert_eq!(10, interpret("{ { { let x = 10; x } } }"));
+    
+    // Deeply nested function calls
+    assert_eq!(8, interpret("let add1 = fn(x ~ int) -> int { x + 1 }; add1(add1(add1(5)))"));
+}
+
+#[test]
+fn edge_case_large_numbers() {
+    // Test reasonably large numbers (within safe integer range)
+    assert_eq!(1000, interpret("1000"));
+    assert_eq!(10000, interpret("10000"));
+    assert_eq!(100000, interpret("100000"));
+    
+    // Large number operations
+    assert_eq!(2000, interpret("1000 + 1000"));
+    assert_eq!(1000000, interpret("1000 * 1000"));
+    assert_eq!(1, interpret("1000 / 1000"));
+    assert_eq!(0, interpret("1000 - 1000"));
+}
+
+#[test]
+fn edge_case_expression_boundaries() {
+    // Expressions at the boundary of complexity
+    let complex_expr = "((1 + 2) * (3 + 4)) + ((5 - 2) * (7 - 1))";
+    assert_eq!(39, interpret(complex_expr));  // (3 * 7) + (3 * 6) = 21 + 18 = 39
+    
+    // Long chain of operations
+    assert_eq!(0, interpret("1 - 1 + 1 - 1 + 1 - 1"));
+    assert_eq!(1, interpret("1 * 1 * 1 * 1 * 1 * 1"));
+}
+
+#[test]
+fn edge_case_type_boundaries() {
+    // Test type system boundaries
+    assert_eq!(1, interpret("let x ~ int = 1; x"));
+    assert_eq!(0, interpret("let flag ~ bool = false; flag"));
+    
+    // Functions with explicit types
+    assert_eq!(5, interpret("let f ~ fn(int) -> int = fn(x ~ int) -> int { x }; f(5)"));
+}

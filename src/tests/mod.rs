@@ -2,13 +2,22 @@ use crate::prelude::*;
 
 pub mod arithmetic;
 pub mod blocks;
+pub mod boundary_tests;
+pub mod comprehensive_arithmetic;
+pub mod comprehensive_functions;
+pub mod comprehensive_integration;
+pub mod comprehensive_variables;
 pub mod conditionals;
 pub mod edge_cases;
+pub mod error_handling;
 pub mod extended_literals;
 pub mod functions;
 pub mod integration;
 pub mod literals;
+pub mod performance_tests;
 pub mod precedence;
+pub mod regression_tests;
+pub mod test_helpers;
 pub mod types;
 pub mod variables;
 

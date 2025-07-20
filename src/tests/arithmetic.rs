@@ -12,7 +12,7 @@ fn negative() {
 fn addition() {
     assert_eq!(2, interpret("1 + 1"));
     assert_eq!(2, interpret("1i + 1i"));
-    assert_eq!(2, interpret("1l+ 1l"));
+    assert_eq!(2, interpret("1l + 1l"));
     assert_eq!(10, interpret("1 + 2 + 3 + 4"));
 }
 
