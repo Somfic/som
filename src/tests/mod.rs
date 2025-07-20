@@ -1,16 +1,16 @@
 use crate::prelude::*;
 
-mod arithmetic;
-mod literals;
-mod variables;
-mod functions;
-mod conditionals;
-mod blocks;
-mod types;
-mod precedence;
-mod extended_literals;
-mod edge_cases;
-mod integration;
+pub mod arithmetic;
+pub mod blocks;
+pub mod conditionals;
+pub mod edge_cases;
+pub mod extended_literals;
+pub mod functions;
+pub mod integration;
+pub mod literals;
+pub mod precedence;
+pub mod types;
+pub mod variables;
 
 #[test]
 fn test_error_handling() {

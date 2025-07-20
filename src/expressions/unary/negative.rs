@@ -3,7 +3,7 @@ use crate::prelude::*;
 pub fn parse(parser: &mut Parser) -> Result<Expression> {
     let token = parser.expect(TokenKind::Minus, "expected a negation")?;
 
-    let value = parser.parse_expression(BindingPower::Additive)?;
+    let value = parser.parse_expression(BindingPower::Unary)?;
 
     let span = token.span + value.span;
 
