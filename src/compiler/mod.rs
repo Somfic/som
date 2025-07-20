@@ -173,7 +173,7 @@ impl Compiler {
             TypedExpressionValue::Group(_) => {
                 expressions::group::compile(self, expression, body, env)
             }
-            TypedExpressionValue::Function(_) => unreachable!(),
+            TypedExpressionValue::Function(_) => todo!(),
         }
     }
 }
