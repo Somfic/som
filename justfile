@@ -19,4 +19,4 @@ coverage-html:
     #!/usr/bin/env bash
     set -euo pipefail
     
-    cargo llvm-cov --html --output-dir coverage-html
+    cargo llvm-cov --html --output-dir coverage-html 
