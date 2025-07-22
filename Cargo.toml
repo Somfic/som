@@ -11,7 +11,7 @@ rust-version = "1.83.0"
 miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
 owo-colors = "4.2.2"
 pretty_assertions = "1.4.1"
-cranelift = "0.121.1"
+cranelift = "0.121.2"
 cranelift-module = "0.121.1"
 cranelift-jit = "0.121.2"
 cranelift-native = "0.121.2"
