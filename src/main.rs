@@ -89,4 +89,9 @@ fn run_once(source: PathBuf) {
         .to_string();
 
     let result = cli::run_with_process_tree(NamedSource::new(name, content));
+    
+    // Print the execution result if successful
+    if let Some(value) = result {
+        println!("\n⚡ Result: {}", value);
+    }
 }

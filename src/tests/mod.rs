@@ -3,6 +3,7 @@ use crate::prelude::*;
 pub mod arithmetic;
 pub mod blocks;
 pub mod boundary_tests;
+pub mod closures;
 pub mod comprehensive_arithmetic;
 pub mod comprehensive_functions;
 pub mod comprehensive_integration;

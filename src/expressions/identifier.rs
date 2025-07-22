@@ -45,8 +45,9 @@ pub fn compile(
         _ => unreachable!(),
     };
 
+    // Try to get the variable with declaration for closure support
     let var = env
-        .get_variable(identifier)
+        .get_variable_with_declaration(identifier.name.to_string(), body)
         .unwrap_or_else(|| panic!("variable {identifier} not found in environment"));
 
     body.use_var(var)

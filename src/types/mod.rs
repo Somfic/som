@@ -81,7 +81,7 @@ fn align_to(value: usize, alignment: usize) -> usize {
     (value + alignment - 1) & !(alignment - 1)
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Type {
     pub value: TypeValue,
     pub span: Span,
@@ -96,18 +96,6 @@ impl From<Type> for miette::SourceSpan {
 impl From<&Type> for miette::SourceSpan {
     fn from(ty: &Type) -> Self {
         ty.span.into()
-    }
-}
-
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
-    }
-}
-
-impl Hash for Type {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.value.hash(state);
     }
 }
 
@@ -262,7 +250,7 @@ impl From<&TypeValue> for String {
     }
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct FunctionType {
     pub parameters: Vec<Parameter>,
     pub return_type: Box<Type>,
@@ -281,33 +269,8 @@ impl From<&FunctionType> for miette::SourceSpan {
     }
 }
 
-impl PartialEq for FunctionType {
-    fn eq(&self, other: &Self) -> bool {
-        self.parameters == other.parameters && self.return_type == other.return_type
-    }
-}
-
-impl Hash for FunctionType {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.parameters.hash(state);
-        self.return_type.hash(state);
-    }
-}
-
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub struct StructType {
     pub fields: Vec<Field>,
     pub span: Span,
-}
-
-impl PartialEq for StructType {
-    fn eq(&self, other: &Self) -> bool {
-        self.fields == other.fields
-    }
-}
-
-impl Hash for StructType {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.fields.hash(state);
-    }
 }

@@ -173,7 +173,15 @@ impl Compiler {
             TypedExpressionValue::Group(_) => {
                 expressions::group::compile(self, expression, body, env)
             }
-            TypedExpressionValue::Function(_) => todo!(),
+            TypedExpressionValue::Function(_) => {
+                // Compile function expression and return a function pointer
+                let func_id = expressions::function::compile(self, expression, env);
+                
+                // Get the function address as a value
+                let func_ref = self.codebase.declare_func_in_func(func_id, body.func);
+                let func_addr = body.ins().func_addr(self.isa.pointer_type(), func_ref);
+                func_addr
+            }
         }
     }
 }

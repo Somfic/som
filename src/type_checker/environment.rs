@@ -26,6 +26,14 @@ impl<'env> Environment<'env> {
         }
     }
 
+    pub fn function(&'env self) -> Self {
+        Environment {
+            parent: Some(self),
+            declarations: HashMap::new(),
+            type_declarations: HashMap::new(),
+        }
+    }
+
     pub fn get(&self, identifier: &Identifier) -> Option<Type> {
         if let Some(type_) = self.declarations.get(identifier) {
             return Some(type_.clone());
