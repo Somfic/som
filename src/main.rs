@@ -92,6 +92,6 @@ fn run_once(source: PathBuf) {
     
     // Print the execution result if successful
     if let Some(value) = result {
-        println!("\n⚡ Result: {}", value);
+        println!("  ⚡ Result: {}", value);
     }
 }
