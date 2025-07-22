@@ -85,7 +85,5 @@ fn block_with_conditionals() {
         10,
         interpret("{ let condition = false; 5 if condition else 10 }")
     );
-    // TODO: Fix type system for conditional expressions in blocks
-    // BUG: The original test fails with "mismatching types"
-    // assert_eq!(5, interpret("{ let x = true; x if x else 0; 5 }"));
+    assert_eq!(5, interpret("{ let x = true; 5 if x else 0; 5 }"));
 }
