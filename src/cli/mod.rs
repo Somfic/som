@@ -94,41 +94,42 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
     };
 
     // Stage 4: Code generation - catch panics
-    let (compiled, return_type) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut compiler = Compiler::new();
-        compiler.compile(&type_checked)
-    })) {
-        Ok(Ok(result)) => result, // Successful compilation
-        Ok(Err(error)) => {
-            // Regular error
-            eprintln!(
-                "{:?}",
-                miette::miette!(error).with_source_code(source.clone())
-            );
-            std::process::exit(1);
-        }
-        Err(panic) => {
-            // Panic occurred during compilation
-            let panic_message = if let Some(msg) = panic.downcast_ref::<String>() {
-                msg.clone()
-            } else if let Some(msg) = panic.downcast_ref::<&str>() {
-                msg.to_string()
-            } else {
-                "Unknown compilation error".to_string()
-            };
+    let (compiled, return_type) =
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut compiler = Compiler::new();
+            compiler.compile(&type_checked)
+        })) {
+            Ok(Ok(result)) => result, // Successful compilation
+            Ok(Err(error)) => {
+                // Regular error
+                eprintln!(
+                    "{:?}",
+                    miette::miette!(error).with_source_code(source.clone())
+                );
+                std::process::exit(1);
+            }
+            Err(panic) => {
+                // Panic occurred during compilation
+                let panic_message = if let Some(msg) = panic.downcast_ref::<String>() {
+                    msg.clone()
+                } else if let Some(msg) = panic.downcast_ref::<&str>() {
+                    msg.to_string()
+                } else {
+                    "Unknown compilation error".to_string()
+                };
 
-            let error = Error::Compiler(CompilerError::CodeGenerationFailed {
-                span: type_checked.span,
-                help: format!("Code generation failed: {}", panic_message),
-            });
+                let error = Error::Compiler(CompilerError::CodeGenerationFailed {
+                    span: type_checked.span,
+                    help: format!("Code generation failed: {}", panic_message),
+                });
 
-            eprintln!(
-                "{:?}",
-                miette::miette!(error).with_source_code(source.clone())
-            );
-            std::process::exit(1);
-        }
-    };
+                eprintln!(
+                    "{:?}",
+                    miette::miette!(error).with_source_code(source.clone())
+                );
+                std::process::exit(1);
+            }
+        };
 
     // Stage 5: Execution - catch panics
     let return_value = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -262,6 +263,9 @@ pub fn run_with_process_tree(source: miette::NamedSource<String>) -> Option<i64>
                                 return None;
                             }
                         };
+
+                    println!("  ⚡ Result: {}", return_value);
+
                     return Some(return_value);
                 }
                 Err(error_reports) => {
@@ -414,35 +418,36 @@ fn run_compilation_stages(
     // Stage 4: Code generation - catch panics
     update_stage_note(&process_tree, "code generation");
 
-    let (compiled, return_type) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut compiler = Compiler::new();
-        compiler.compile(&type_checked)
-    })) {
-        Ok(Ok(result)) => result, // Successful compilation
-        Ok(Err(error)) => {
-            // Regular error
-            let report = miette::miette!(error).with_source_code(source.clone());
-            return Err(vec![report]);
-        }
-        Err(panic) => {
-            // Panic occurred during compilation
-            let panic_message = if let Some(msg) = panic.downcast_ref::<String>() {
-                msg.clone()
-            } else if let Some(msg) = panic.downcast_ref::<&str>() {
-                msg.to_string()
-            } else {
-                "Unknown compilation error".to_string()
-            };
+    let (compiled, return_type) =
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let mut compiler = Compiler::new();
+            compiler.compile(&type_checked)
+        })) {
+            Ok(Ok(result)) => result, // Successful compilation
+            Ok(Err(error)) => {
+                // Regular error
+                let report = miette::miette!(error).with_source_code(source.clone());
+                return Err(vec![report]);
+            }
+            Err(panic) => {
+                // Panic occurred during compilation
+                let panic_message = if let Some(msg) = panic.downcast_ref::<String>() {
+                    msg.clone()
+                } else if let Some(msg) = panic.downcast_ref::<&str>() {
+                    msg.to_string()
+                } else {
+                    "Unknown compilation error".to_string()
+                };
 
-            let error = Error::Compiler(CompilerError::CodeGenerationFailed {
-                span: type_checked.span,
-                help: format!("Code generation failed: {}", panic_message),
-            });
+                let error = Error::Compiler(CompilerError::CodeGenerationFailed {
+                    span: type_checked.span,
+                    help: format!("Code generation failed: {}", panic_message),
+                });
 
-            let report = miette::miette!(error).with_source_code(source.clone());
-            return Err(vec![report]);
-        }
-    };
+                let report = miette::miette!(error).with_source_code(source.clone());
+                return Err(vec![report]);
+            }
+        };
 
     // Store the compiled code in our global storage
     {
