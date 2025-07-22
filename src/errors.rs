@@ -19,7 +19,7 @@ use crate::types::Type;
 pub type Result<T> = std::result::Result<T, Error>;
 pub type Results<T> = std::result::Result<T, Vec<Error>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span(pub miette::SourceSpan);
 
 impl Default for Span {
