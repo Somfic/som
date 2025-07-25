@@ -13,7 +13,7 @@ owo-colors = "4.2.2"
 pretty_assertions = "1.4.1"
 cranelift = "0.121.2"
 cranelift-module = "0.121.1"
-cranelift-jit = "0.121.2"
+cranelift-jit = "0.122.0"
 cranelift-native = "0.121.2"
 memmap2 = "0.9.7"
 clap = { version = "4.5.41", features = ["derive"] }
