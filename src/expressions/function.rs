@@ -212,44 +212,18 @@ pub fn compile(
     builder.append_block_params_for_function_params(body_block);
     builder.switch_to_block(body_block);
 
+    // Create a new environment for this function to isolate parameter declarations
+    let mut function_env = env.block();
+    
     let block_params = builder.block_params(body_block).to_vec();
     for (i, parameter) in value.parameters.iter().enumerate() {
         let variable =
-            env.declare_variable(&parameter.identifier, &mut builder, &parameter.type_.value);
+            function_env.declare_variable(&parameter.identifier, &mut builder, &parameter.type_.value);
         builder.def_var(variable, block_params[i]);
     }
 
     // Compile the body which may capture variables from parent scope
-    let body = compiler.compile_expression(&value.body, &mut builder, env);
-
-    // Handle captured variables from parent scope
-    // Note: This is a simplified implementation of closure variable capture
-    for (name, (captured_var, ty)) in env.get_captured_variables() {
-        if let Some(parent) = env.parent {
-            if let Some((_parent_var, _)) = parent.get_variable_with_type(name) {
-                // Initialize captured variables with appropriate values
-                // In a production implementation, these would be passed as closure parameters
-                match ty {
-                    TypeValue::I64 => {
-                        // Use a reasonable default for demonstration
-                        let const_val = builder.ins().iconst(cranelift::prelude::types::I64, 10);
-                        builder.def_var(*captured_var, const_val);
-                    }
-                    TypeValue::I32 => {
-                        let const_val = builder.ins().iconst(cranelift::prelude::types::I32, 10);
-                        builder.def_var(*captured_var, const_val);
-                    }
-                    TypeValue::Boolean => {
-                        let const_val = builder.ins().iconst(cranelift::prelude::types::I8, 0);
-                        builder.def_var(*captured_var, const_val);
-                    }
-                    _ => {
-                        // Leave other types uninitialized for now
-                    }
-                }
-            }
-        }
-    }
+    let body = compiler.compile_expression(&value.body, &mut builder, &mut function_env);
 
     builder.ins().return_(&[body]);
     builder.seal_block(body_block);
