@@ -27,7 +27,6 @@ fn regression_arithmetic_calculation_bug() {
     assert_eq!(24, interpret("(2 * (3 + 4)) + (5 * (1 + 1))"));
     
     // Additional complex arithmetic tests to prevent similar issues
-    assert_eq!(50, interpret("(3 * (2 + 3)) + (5 * (3 + 2))"));  // (3 * 5) + (5 * 5) = 15 + 25 = 40... let me recalculate
     assert_eq!(40, interpret("(3 * (2 + 3)) + (5 * (3 + 2))"));  // (3 * 5) + (5 * 5) = 15 + 25 = 40
     assert_eq!(42, interpret("(1 * (5 + 2)) + (7 * (4 + 1))"));  // (1 * 7) + (7 * 5) = 7 + 35 = 42
 }
@@ -40,7 +39,6 @@ fn regression_conditional_precedence_bug() {
     
     // Additional conditional precedence tests
     assert_eq!(12, interpret("1 + 2 if false else 3 * 4"));  // Should be 3 * 4 = 12
-    assert_eq!(8, interpret("2 * 3 if true else 4 + 5"));    // Should be 2 * 3 = 6... wait, this doesn't look right
     assert_eq!(6, interpret("2 * 3 if true else 4 + 5"));    // Should be 2 * 3 = 6
     assert_eq!(9, interpret("2 * 3 if false else 4 + 5"));   // Should be 4 + 5 = 9
 }
@@ -88,16 +86,21 @@ fn regression_complex_function_syntax_bug() {
 
 #[test]
 fn regression_nested_scoping_variable_bug() {
-    // Variable scoping in nested functions now works with basic closure support
-    // Functions can access variables from outer scopes through closure capture
+    // Variable scoping works correctly for local variables
+    // 
+    // LIMITATION: Closure capture is not fully implemented
+    // Functions that reference variables from outer scopes have architectural limitations
+    // due to how Cranelift variables are scoped to specific function builders.
     
-    // This works (no closure needed)
+    // Local variable scoping works correctly
     assert_eq!(15, interpret("let outer = 10; let inner = 5; outer + inner"));
     
-    // Basic closure support works (without function calls):
-    // Note: This test represents the current closure capability
-    // More complex closure scenarios with function calls need additional work
-    // assert_eq!(15, interpret("let outer = 10; let f = fn(x ~ int) -> int { x + outer }; f(5)"));
+    // Closure capture requires architectural changes:
+    // - Closure conversion (transform closures to functions with captured vars as parameters)
+    // - Closure objects (store captured values in objects)
+    // - Global variable approach (store captured values in global memory)
+    // 
+    // Current limitation: assert_eq!(15, interpret("let outer = 10; let f = fn(x ~ int) -> int { x + outer }; f(5)"));
 }
 
 #[test]
@@ -123,7 +126,6 @@ fn regression_prevent_arithmetic_regressions() {
     assert_eq!(4, interpret("(-2) * (-2)"));
     
     // Complex expressions
-    assert_eq!(42, interpret("((2 + 3) * 4) + (6 / 3) * 10"));  // (5 * 4) + (2 * 10) = 20 + 20 = 40... let me recalculate
     assert_eq!(40, interpret("((2 + 3) * 4) + (6 / 3) * 10"));  // (5 * 4) + (2 * 10) = 20 + 20 = 40
 }
 
@@ -144,7 +146,7 @@ fn regression_prevent_function_regressions() {
     // Nested function calls
     assert_eq!(14, interpret("let double = fn(x ~ int) -> int { x * 2 }; let add = fn(a ~ int, b ~ int) -> int { a + b }; add(double(3), double(4))"));
     
-    // Functions with type annotations
+    // Functions with type annotations  
     assert_eq!(15, interpret("let multiply ~ fn(int, int) -> int = fn(x ~ int, y ~ int) -> int { x * y }; multiply(3, 5)"));
 }
 

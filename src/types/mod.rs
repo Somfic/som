@@ -82,10 +82,17 @@ fn align_to(value: usize, alignment: usize) -> usize {
     (value + alignment - 1) & !(alignment - 1)
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, Eq)]
 pub struct Type {
     pub value: TypeValue,
     pub span: Span,
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare only the semantic content, ignore spans
+        self.value == other.value
+    }
 }
 
 impl From<Type> for miette::SourceSpan {
@@ -251,11 +258,18 @@ impl From<&TypeValue> for String {
     }
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+#[derive(Debug, Clone, Eq, Hash)]
 pub struct FunctionType {
     pub parameters: Vec<Parameter>,
     pub return_type: Box<Type>,
     pub span: Span,
+}
+
+impl PartialEq for FunctionType {
+    fn eq(&self, other: &Self) -> bool {
+        // Compare only the semantic parts, ignore spans
+        self.parameters == other.parameters && self.return_type == other.return_type
+    }
 }
 
 impl From<FunctionType> for miette::SourceSpan {

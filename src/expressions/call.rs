@@ -58,7 +58,29 @@ pub fn type_check(
             );
         }
         _ => {
-            panic!("not a function: {}", callee.type_);
+            // Add error for trying to call a non-function
+            type_checker.add_error(Error::TypeChecker(TypeCheckerError::TypeMismatch {
+                help: format!("cannot call {} as a function", callee.type_),
+                labels: vec![miette::LabeledSpan::new(
+                    Some(format!("this is {} but expected a function", callee.type_)),
+                    callee.span.offset(),
+                    callee.span.length(),
+                )],
+            }));
+            
+            // Return a call expression with Never type to prevent cascading errors
+            return expression.with_value_type(
+                TypedExpressionValue::Call(CallExpression {
+                    callee: Box::new(callee),
+                    arguments: value
+                        .arguments
+                        .iter()
+                        .map(|argument| type_checker.check_expression(argument, env))
+                        .collect(),
+                    last_argument_offset: value.last_argument_offset,
+                }),
+                TypeValue::Never.with_span(expression.span),
+            );
         }
     };
 
