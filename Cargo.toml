@@ -20,7 +20,7 @@ clap = { version = "4.5.45", features = ["derive"] }
 syn = "2.0.104"
 quote = "1.0.40"
 proc-macro2 = "1.0.97"
-thiserror = "2.0.12"
+thiserror = "2.0.14"
 nucleo-matcher = "0.3.1"
 libc = "0.2.175"
 clap-file = "0.2.0"
