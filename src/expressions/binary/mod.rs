@@ -1,5 +1,6 @@
 pub mod add;
 pub mod divide;
+pub mod less_than;
 pub mod multiply;
 pub mod subtract;
 
@@ -16,4 +17,5 @@ pub enum BinaryOperator {
     Subtract,
     Multiply,
     Divide,
+    LessThan,
 }

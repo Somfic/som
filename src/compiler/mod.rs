@@ -149,6 +149,9 @@ impl Compiler {
                 BinaryOperator::Divide => {
                     expressions::binary::divide::compile(self, expression, body, env)
                 }
+                BinaryOperator::LessThan => {
+                    expressions::binary::less_than::compile(self, expression, body, env)
+                }
             },
             TypedExpressionValue::Identifier(_) => {
                 expressions::identifier::compile(self, expression, body, env)

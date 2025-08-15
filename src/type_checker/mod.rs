@@ -88,6 +88,9 @@ impl TypeChecker {
                 BinaryOperator::Divide => {
                     expressions::binary::divide::type_check(self, expression, env)
                 }
+                BinaryOperator::LessThan => {
+                    expressions::binary::less_than::type_check(self, expression, env)
+                }
             },
             ExpressionValue::Group(_) => expressions::group::type_check(self, expression, env),
             ExpressionValue::Block(_) => expressions::block::type_check(self, expression, env),

@@ -175,5 +175,10 @@ impl Default for Lookup {
         )
         .add_expression_handler(TokenKind::Minus, expressions::unary::negative::parse)
         .add_statement_handler(TokenKind::Use, statements::import::parse)
+        .add_left_expression_handler(
+            TokenKind::LessThan,
+            BindingPower::Relational,
+            crate::expressions::binary::less_than::parse,
+        )
     }
 }
