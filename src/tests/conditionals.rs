@@ -102,20 +102,14 @@ fn conditional_with_function_calls() {
 fn conditional_with_blocks() {
     assert_eq!(5, interpret("{ 5 } if true else { 10 }"));
     assert_eq!(10, interpret("{ 5 } if false else { 10 }"));
-    assert_eq!(
-        15,
-        interpret("{ let x = 5; x + 10 } if true else { 0 }")
-    );
+    assert_eq!(15, interpret("{ let x = 5; x + 10 } if true else { 0 }"));
 }
 
 #[test]
 fn conditional_complex_conditions() {
     assert_eq!(1, interpret("let x = 5; 1 if x < 10 else 0"));
     assert_eq!(0, interpret("let x = 15; 1 if x < 10 else 0"));
-    assert_eq!(
-        100,
-        interpret("let a = 3; let b = 7; 100 if a < b else 50")
-    );
+    assert_eq!(100, interpret("let a = 3; let b = 7; 100 if a < b else 50"));
 }
 
 #[test]

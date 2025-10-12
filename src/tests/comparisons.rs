@@ -352,7 +352,16 @@ fn comparison_chaining_in_conditionals() {
 #[test]
 fn comparison_with_variables() {
     // Note: Comparisons return i64 (1 or 0), not bool
-    assert_eq!(1, interpret("let x = 5; let y = 10; let result = x < y; result"));
-    assert_eq!(0, interpret("let x = 10; let y = 5; let result = x < y; result"));
-    assert_eq!(1, interpret("let a = 5; let b = 5; let result = a == b; result"));
+    assert_eq!(
+        1,
+        interpret("let x = 5; let y = 10; let result = x < y; result")
+    );
+    assert_eq!(
+        0,
+        interpret("let x = 10; let y = 5; let result = x < y; result")
+    );
+    assert_eq!(
+        1,
+        interpret("let a = 5; let b = 5; let result = a == b; result")
+    );
 }
