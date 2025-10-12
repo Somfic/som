@@ -7,7 +7,6 @@ use std::{cell::Cell, collections::HashMap, rc::Rc};
 pub struct Environment<'env> {
     pub parent: Option<&'env Environment<'env>>,
     pub declarations: HashMap<String, DeclarationValue>,
-    next_variable: Rc<Cell<usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,7 +25,6 @@ impl<'env> Environment<'env> {
     pub fn new(declarations: HashMap<String, DeclarationValue>) -> Self {
         Self {
             parent: None,
-            next_variable: Rc::new(Cell::new(0)),
             declarations,
         }
     }
@@ -34,7 +32,6 @@ impl<'env> Environment<'env> {
     pub fn block(&'env self) -> Self {
         Environment {
             parent: Some(self),
-            next_variable: self.next_variable.clone(),
             declarations: HashMap::new(),
         }
     }
@@ -66,13 +63,11 @@ impl<'env> Environment<'env> {
         builder: &mut FunctionBuilder,
         ty: &TypeValue,
     ) -> cranelift::prelude::Variable {
-        let var = cranelift::prelude::Variable::new(self.next_variable.get());
-        self.next_variable.set(self.next_variable.get() + 1);
+        let var = builder.declare_var(ty.to_ir());
         self.declarations.insert(
             identifier.into(),
             DeclarationValue::Variable(var, ty.clone()),
         );
-        builder.declare_var(var, ty.to_ir());
         var
     }
 
