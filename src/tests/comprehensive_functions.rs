@@ -37,7 +37,7 @@ fn test_function_parameter_types() {
 
     // Functions with mixed parameter types
     assert_eq!(
-        15,
+        30,
         interpret("let f = fn(x ~ int, flag ~ bool) -> int { x * 2 if flag else x }; f(15, true)")
     );
     assert_eq!(
@@ -79,7 +79,7 @@ fn test_function_body_complexity() {
     );
 
     // Functions with nested expressions
-    assert_eq!(42, interpret("let complex = fn(x ~ int, y ~ int) -> int { (x + y) * (x - y) + x * y }; complex(7, 1)"));
+    assert_eq!(55, interpret("let complex = fn(x ~ int, y ~ int) -> int { (x + y) * (x - y) + x * y }; complex(7, 1)"));
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn test_function_calls_with_expressions() {
         )
     );
     assert_eq!(
-        42,
+        49,
         interpret("let calc = fn(x ~ int) -> int { x * x }; let val = 6; calc(val + 1)")
     );
 

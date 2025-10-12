@@ -21,7 +21,7 @@ fn integration_calculator_simulation() {
     let program = r#"
         let add = fn(a ~ int, b ~ int) -> int { a + b };
         let subtract = fn(a ~ int, b ~ int) -> int { a - b };
-        let multiply = fn(a ~ int, b ~ int) -> int { x * y };
+        let multiply = fn(a ~ int, b ~ int) -> int { a * b };
         let divide = fn(a ~ int, b ~ int) -> int { a / b };
         
         let num1 = 20;
@@ -207,7 +207,7 @@ fn integration_error_propagation() {
         invalid_call
     "#;
     assert!(expect_error(invalid_program));
-    
+
     let another_invalid = r#"
         let func1 = fn(x ~ int) -> int { x + 1 };
         let func2 = fn(y ~ int) -> int { func1(y) + undefined_var };

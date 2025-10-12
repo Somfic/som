@@ -45,10 +45,10 @@ pub fn compile(
         _ => unreachable!(),
     };
 
-    // Use get_variable_with_declaration to ensure proper Cranelift variable declaration
-    // This handles both local variables and closure capture
+    // Get the variable from the environment
+    // Captured variables are now passed as function parameters, so this just looks up local vars
     let var = env
-        .get_variable_with_declaration(identifier.name.to_string(), body)
-        .unwrap_or_else(|| panic!("variable {identifier} not found in environment"));
+        .get_variable(identifier.name.to_string())
+        .unwrap_or_else(|| panic!("variable {} not found in environment", identifier.name));
     body.use_var(var)
 }

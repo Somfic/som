@@ -24,13 +24,11 @@ fn test_closure_with_local_variables() {
 }
 
 #[test]
-fn test_closure_capture_hardcoded_behavior() {
-    // Current implementation behavior: all captured variables return hardcoded value 10
-    // regardless of their actual value in the outer scope
-    assert_eq!(10, interpret_strict("let x = 42; let f = fn() -> int { x }; f()"));
-    assert_eq!(10, interpret_strict("let x = 1000; let f = fn() -> int { x }; f()"));
-    assert_eq!(10, interpret_strict("let x = -5; let f = fn() -> int { x }; f()"));
-    assert_eq!(10, interpret_strict("let x = 0; let f = fn() -> int { x }; f()"));
+fn test_closure_capture_correct_behavior() {
+    assert_eq!(42, interpret_strict("let x = 42; let f = fn() -> int { x }; f()"));
+    assert_eq!(1000, interpret_strict("let x = 1000; let f = fn() -> int { x }; f()"));
+    assert_eq!(-5, interpret_strict("let x = -5; let f = fn() -> int { x }; f()"));
+    assert_eq!(0, interpret_strict("let x = 0; let f = fn() -> int { x }; f()"));
 }
 
 #[test]

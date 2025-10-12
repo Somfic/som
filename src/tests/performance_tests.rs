@@ -6,15 +6,18 @@ use crate::tests::test_helpers::expect_error;
 #[test]
 fn performance_large_arithmetic_chains() {
     // Test very long arithmetic expressions
-    let long_addition = (0..100).map(|i| i.to_string()).collect::<Vec<_>>().join(" + ");
+    let long_addition = (0..100)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join(" + ");
     let expected = (0..100).sum::<i32>() as i64;
     assert_eq!(expected, interpret(&long_addition));
-    
+
     // Test long multiplication chain of small numbers
     assert_eq!(1024, interpret("2 * 2 * 2 * 2 * 2 * 2 * 2 * 2 * 2 * 2"));
-    
-    // Test long subtraction chain
-    assert_eq!(-45, interpret("10 - 1 - 2 - 3 - 4 - 5 - 6 - 7 - 8 - 9"));
+
+    // Test long subtraction chain: 10-1=9, 9-2=7, 7-3=4, 4-4=0, 0-5=-5, -5-6=-11, -11-7=-18, -18-8=-26, -26-9=-35
+    assert_eq!(-35, interpret("10 - 1 - 2 - 3 - 4 - 5 - 6 - 7 - 8 - 9"));
 }
 
 #[test]
@@ -26,7 +29,7 @@ fn performance_deeply_nested_parentheses() {
         expr = format!("({})", expr);
     }
     assert_eq!(1, interpret(&expr));
-    
+
     // Test nested arithmetic
     let nested_expr = "((((1 + 2) * 3) + 4) * 5)";
     assert_eq!(65, interpret(nested_expr)); // ((3 * 3) + 4) * 5 = (9 + 4) * 5 = 13 * 5 = 65
@@ -131,7 +134,7 @@ fn performance_memory_intensive_operations() {
         
         result1 + result2 + result3
     "#;
-    
+
     // For base = 1: 1000 -> 1500 -> 3000 -> 2000 -> 200 -> 450 -> 1350 -> 850 -> 170 -> 270
     // For base = 2: 2000 -> 2500 -> 5000 -> 4000 -> 400 -> 650 -> 1950 -> 1450 -> 290 -> 390
     // For base = 3: 3000 -> 3500 -> 7000 -> 6000 -> 600 -> 850 -> 2550 -> 2050 -> 410 -> 510
@@ -142,30 +145,32 @@ fn performance_memory_intensive_operations() {
 #[test]
 fn stress_test_error_conditions() {
     // Test that error handling works correctly under stress
-    
+
     // Deeply nested errors
     assert!(expect_error("{ { { { undefined_var } } } }"));
-    
+
     // Errors in complex expressions
-    assert!(expect_error("let f = fn(x ~ int) -> int { x + y }; f(5)"));  // undefined y
-    
+    assert!(expect_error("let f = fn(x ~ int) -> int { x + y }; f(5)")); // undefined y
+
     // Multiple error sources
     assert!(expect_error("unknown1 + unknown2 * unknown3"));
-    
+
     // Errors in function chains
-    assert!(expect_error("let f = fn(x ~ int) -> int { x }; let g = fn(y ~ int) -> int { f(undefined) }; g(1)"));
+    assert!(expect_error(
+        "let f = fn(x ~ int) -> int { x }; let g = fn(y ~ int) -> int { f(undefined) }; g(1)"
+    ));
 }
 
 #[test]
 fn stress_test_boundary_arithmetic() {
     // Test arithmetic at boundaries
-    assert_eq!(2147483647, interpret("2147483647"));  // Max i32 if supported
+    assert_eq!(2147483647, interpret("2147483647")); // Max i32 if supported
     assert_eq!(-2147483648, interpret("-2147483648")); // Min i32 if supported
-    
+
     // Large multiplications that stay within bounds
     assert_eq!(1000000, interpret("1000 * 1000"));
     assert_eq!(10000, interpret("100 * 100"));
-    
+
     // Division with large numbers
     assert_eq!(1000, interpret("1000000 / 1000"));
     assert_eq!(100, interpret("10000 / 100"));

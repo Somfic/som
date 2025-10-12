@@ -24,12 +24,24 @@ mod tests;
 #[derive(clap::Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
+    #[command(subcommand)]
+    command: Option<Commands>,
+
     #[arg(default_value = "main.som")]
     source: PathBuf,
 
     /// Watch for file changes and recompile automatically
     #[arg(long, short)]
     watch: bool,
+}
+
+#[derive(clap::Subcommand)]
+enum Commands {
+    /// Evaluate a piece of code directly
+    Eval {
+        /// The code to evaluate
+        code: String,
+    },
 }
 
 fn main() {
@@ -47,6 +59,13 @@ fn main() {
     .unwrap();
 
     let cli = <Cli as clap::Parser>::parse();
+
+    // Handle eval subcommand
+    if let Some(Commands::Eval { code }) = cli.command {
+        run_eval(code);
+        return;
+    }
+
     let mut source = cli.source;
 
     if source.is_dir() {
@@ -89,9 +108,14 @@ fn run_once(source: PathBuf) {
         .to_string();
 
     let result = cli::run_with_process_tree(NamedSource::new(name, content));
-    
+
     // Print the execution result if successful
     if let Some(value) = result {
         println!("  ⚡ Result: {}", value);
     }
+}
+
+fn run_eval(code: String) {
+    let source = NamedSource::new("<eval>", code);
+    cli::run_with_process_tree(source);
 }

@@ -83,8 +83,15 @@ pub fn compile(
 
     match &declaration.value.value {
         TypedExpressionValue::Function(_) => {
-            let func_id = expressions::function::compile(compiler, &declaration.value, env);
-            env.declare_function(&declaration.identifier, func_id);
+            let (func_id, captured_vars) = expressions::function::compile(compiler, &declaration.value, env);
+
+            // If the function captures variables, store it as a closure
+            // Otherwise store it as a plain function (ZST)
+            if captured_vars.is_empty() {
+                env.declare_function(&declaration.identifier, func_id);
+            } else {
+                env.declare_closure(&declaration.identifier, func_id, captured_vars);
+            }
         }
         _ => {
             let var = env.declare_variable(

@@ -51,7 +51,7 @@ impl Compiler {
             StatementValue::VariableDeclaration(declaration) => match &declaration.value.value {
                 TypedExpressionValue::Function(func) => {
                     let return_type = func.body.type_.value.clone();
-                    let func_id =
+                    let (func_id, _captured_vars) =
                         expressions::function::compile(self, &declaration.value, &mut env);
                     (func_id, return_type)
                 }
@@ -152,6 +152,15 @@ impl Compiler {
                 BinaryOperator::LessThan => {
                     expressions::binary::less_than::compile(self, expression, body, env)
                 }
+                BinaryOperator::GreaterThan => {
+                    expressions::binary::greater_than::compile(self, expression, body, env)
+                }
+                BinaryOperator::GreaterThanOrEqual => {
+                    expressions::binary::greater_than_or_equal::compile(self, expression, body, env)
+                }
+                BinaryOperator::Equals => {
+                    expressions::binary::equals::compile(self, expression, body, env)
+                }
             },
             TypedExpressionValue::Identifier(_) => {
                 expressions::identifier::compile(self, expression, body, env)
@@ -179,7 +188,8 @@ impl Compiler {
             }
             TypedExpressionValue::Function(_) => {
                 // Compile function expression and return a function pointer
-                let func_id = expressions::function::compile(self, expression, env);
+                let (func_id, _captured_vars) =
+                    expressions::function::compile(self, expression, env);
 
                 // Get the function address as a value
                 let func_ref = self.codebase.declare_func_in_func(func_id, body.func);

@@ -97,6 +97,10 @@ pub enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Compiler(#[from] CompilerError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Runner(#[from] RunnerError),
 }
 
 #[derive(Clone, Error, Debug, miette::Diagnostic)]
@@ -223,6 +227,23 @@ pub enum CompilerError {
     #[error("function finalization failed")]
     #[diagnostic()]
     FinalizationFailed {
+        #[help]
+        help: String,
+    },
+}
+
+#[derive(Clone, Error, Debug, miette::Diagnostic)]
+pub enum RunnerError {
+    #[error("runtime trap occurred")]
+    #[diagnostic()]
+    RuntimeTrap {
+        #[help]
+        help: String,
+    },
+
+    #[error("runtime error")]
+    #[diagnostic()]
+    RuntimeError {
         #[help]
         help: String,
     },

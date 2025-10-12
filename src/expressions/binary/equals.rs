@@ -1,3 +1,5 @@
+use cranelift::prelude::IntCC;
+
 use crate::prelude::*;
 
 pub fn parse(
@@ -5,7 +7,7 @@ pub fn parse(
     left: Expression,
     binding_power: BindingPower,
 ) -> Result<Expression> {
-    parser.expect(TokenKind::Slash, "expected a division operator")?;
+    parser.expect(TokenKind::Equality, "expected an equality operator")?;
 
     let right = parser.parse_expression(binding_power)?;
 
@@ -13,7 +15,7 @@ pub fn parse(
 
     Ok(ExpressionValue::Binary(BinaryExpression {
         left: Box::new(left),
-        operator: BinaryOperator::Divide,
+        operator: BinaryOperator::Equals,
         right: Box::new(right),
     })
     .with_span(span))
@@ -39,7 +41,7 @@ pub fn type_check(
         type_checker.add_error(type_checker_unexpected_type_value(
             "numeric type (i32 or i64)",
             &left.type_,
-            "only numeric types can be divided",
+            "only numeric types can be compared",
         ));
     }
 
@@ -47,21 +49,21 @@ pub fn type_check(
         type_checker.add_error(type_checker_unexpected_type_value(
             "numeric type (i32 or i64)",
             &right.type_,
-            "only numeric types can be divided",
+            "only numeric types can be compared",
         ));
     }
 
-    let ty = type_checker.expect_same_type(
+    type_checker.expect_same_type(
         vec![&left.type_, &right.type_],
-        "both sides of the division must be of the same type",
+        "both sides of the comparison must be of the same type",
     );
 
     let value = TypedExpressionValue::Binary(BinaryExpression {
         left: Box::new(left),
-        operator: BinaryOperator::Divide,
+        operator: BinaryOperator::Equals,
         right: Box::new(right),
     });
-    let type_ = Type::new(expression, ty);
+    let type_ = Type::new(expression, TypeValue::Boolean);
 
     expression.with_value_type(value, type_)
 }
@@ -80,8 +82,6 @@ pub fn compile(
     let left = compiler.compile_expression(&value.left, body, env);
     let right = compiler.compile_expression(&value.right, body, env);
 
-    // Note: Division by zero causes undefined behavior in sdiv.
-    // Proper handling would require platform-specific signal handlers
-    // which are complex to implement portably.
-    body.ins().sdiv(left, right)
+    body.ins().icmp(IntCC::Equal, left, right)
 }
+

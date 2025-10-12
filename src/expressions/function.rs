@@ -68,17 +68,9 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
 
     let (parameters, parameters_span) = parse_parameters(parser)?;
 
-    // Optional return type
-    let explicit_return_type = if parser.peek().is_some_and(|token| {
-        token
-            .as_ref()
-            .is_ok_and(|token| token.kind == TokenKind::Arrow)
-    }) {
-        parser.expect(TokenKind::Arrow, "expected return type")?;
-        Some(parser.parse_type(BindingPower::None)?)
-    } else {
-        None
-    };
+    // Return type is mandatory
+    parser.expect(TokenKind::Arrow, "expected an arrow (->) followed by a return type")?;
+    let explicit_return_type = Some(parser.parse_type(BindingPower::None)?);
 
     let body = parser.parse_expression(BindingPower::None)?;
 
@@ -179,13 +171,29 @@ pub fn compile(
     compiler: &mut Compiler,
     expression: &TypedExpression,
     env: &mut CompileEnvironment,
-) -> FuncId {
+) -> (FuncId, Vec<(String, cranelift::prelude::Variable, TypeValue)>) {
     let value = match &expression.value {
         TypedExpressionValue::Function(value) => value,
         _ => unreachable!(),
     };
 
+    // Analyze what variables this function captures
+    use crate::compiler::capture::CaptureAnalyzer;
+    use crate::type_checker::Environment as TypeEnvironment;
+
+    // We need a type environment to do capture analysis
+    // For now, we'll identify captures by checking what variables are used in the body
+    // that aren't parameters or locally declared
+    let captured_vars = analyze_captures(&value, env);
+
     let mut signature = Signature::new(compiler.isa.default_call_conv());
+
+    // Add captured variables as leading parameters
+    for (_name, _var, ty) in &captured_vars {
+        signature.params.push(AbiParam::new(ty.to_ir()));
+    }
+
+    // Add regular parameters
     for parameter in &value.parameters {
         signature
             .params
@@ -214,15 +222,26 @@ pub fn compile(
 
     // Create a new environment for this function to isolate parameter declarations
     let mut function_env = env.block();
-    
+
     let block_params = builder.block_params(body_block).to_vec();
-    for (i, parameter) in value.parameters.iter().enumerate() {
-        let variable =
-            function_env.declare_variable(&parameter.identifier, &mut builder, &parameter.type_.value);
-        builder.def_var(variable, block_params[i]);
+    let mut param_index = 0;
+
+    // Bind captured variables first
+    for (name, _var, ty) in &captured_vars {
+        let variable = function_env.declare_variable(name, &mut builder, ty);
+        builder.def_var(variable, block_params[param_index]);
+        param_index += 1;
     }
 
-    // Compile the body which may capture variables from parent scope
+    // Then bind regular parameters
+    for parameter in value.parameters.iter() {
+        let variable =
+            function_env.declare_variable(&parameter.identifier, &mut builder, &parameter.type_.value);
+        builder.def_var(variable, block_params[param_index]);
+        param_index += 1;
+    }
+
+    // Compile the body - captured variables are now available as local variables
     let body = compiler.compile_expression(&value.body, &mut builder, &mut function_env);
 
     builder.ins().return_(&[body]);
@@ -233,5 +252,94 @@ pub fn compile(
         println!("{:#?}", error);
     };
 
-    func_id
+    (func_id, captured_vars)
+}
+
+/// Analyze what variables a function captures from its environment
+fn analyze_captures(
+    function: &FunctionExpression<TypedExpression>,
+    env: &CompileEnvironment,
+) -> Vec<(String, cranelift::prelude::Variable, TypeValue)> {
+    let mut captured = Vec::new();
+    let mut local_vars = std::collections::HashSet::new();
+
+    // Add parameters to local variables
+    for param in &function.parameters {
+        local_vars.insert(param.identifier.name.to_string());
+    }
+
+    // Find all identifiers used in the function body
+    collect_captures_from_expr(&function.body, &mut captured, &local_vars, env);
+
+    captured
+}
+
+fn collect_captures_from_expr(
+    expr: &TypedExpression,
+    captured: &mut Vec<(String, cranelift::prelude::Variable, TypeValue)>,
+    local_vars: &std::collections::HashSet<String>,
+    env: &CompileEnvironment,
+) {
+    match &expr.value {
+        TypedExpressionValue::Identifier(identifier) => {
+            let name = identifier.name.to_string();
+            // If it's not a local variable and we haven't already captured it
+            if !local_vars.contains(&name)
+                && !captured.iter().any(|(n, _, _)| n == &name) {
+                // Try to get it from the environment
+                if let Some((var, ty)) = env.get_variable_with_type(&name) {
+                    captured.push((name, var, ty.clone()));
+                }
+            }
+        }
+        TypedExpressionValue::Block(block) => {
+            let mut block_locals = local_vars.clone();
+            for stmt in &block.statements {
+                if let StatementValue::VariableDeclaration(decl) = &stmt.value {
+                    block_locals.insert(decl.identifier.name.to_string());
+                    collect_captures_from_expr(&decl.value, captured, &block_locals, env);
+                }
+            }
+            collect_captures_from_expr(&block.result, captured, &block_locals, env);
+        }
+        TypedExpressionValue::Binary(binary) => {
+            collect_captures_from_expr(&binary.left, captured, local_vars, env);
+            collect_captures_from_expr(&binary.right, captured, local_vars, env);
+        }
+        TypedExpressionValue::Unary(unary) => {
+            collect_captures_from_expr(&unary.operand, captured, local_vars, env);
+        }
+        TypedExpressionValue::Call(call) => {
+            collect_captures_from_expr(&call.callee, captured, local_vars, env);
+            for arg in &call.arguments {
+                collect_captures_from_expr(arg, captured, local_vars, env);
+            }
+        }
+        TypedExpressionValue::Conditional(cond) => {
+            collect_captures_from_expr(&cond.condition, captured, local_vars, env);
+            collect_captures_from_expr(&cond.truthy, captured, local_vars, env);
+            collect_captures_from_expr(&cond.falsy, captured, local_vars, env);
+        }
+        TypedExpressionValue::Function(_) => {
+            // Nested functions would need their own analysis
+            // For now, skip them
+        }
+        TypedExpressionValue::Group(group) => {
+            collect_captures_from_expr(&group.expression, captured, local_vars, env);
+        }
+        TypedExpressionValue::Assignment(assignment) => {
+            collect_captures_from_expr(&assignment.value, captured, local_vars, env);
+        }
+        TypedExpressionValue::FieldAccess(field) => {
+            collect_captures_from_expr(&field.object, captured, local_vars, env);
+        }
+        TypedExpressionValue::StructConstructor(strukt) => {
+            for arg in &strukt.arguments {
+                collect_captures_from_expr(&arg.value, captured, local_vars, env);
+            }
+        }
+        TypedExpressionValue::Primary(_) => {
+            // Literals don't capture anything
+        }
+    }
 }

@@ -91,6 +91,15 @@ impl TypeChecker {
                 BinaryOperator::LessThan => {
                     expressions::binary::less_than::type_check(self, expression, env)
                 }
+                BinaryOperator::GreaterThan => {
+                    expressions::binary::greater_than::type_check(self, expression, env)
+                }
+                BinaryOperator::GreaterThanOrEqual => {
+                    expressions::binary::greater_than_or_equal::type_check(self, expression, env)
+                }
+                BinaryOperator::Equals => {
+                    expressions::binary::equals::type_check(self, expression, env)
+                }
             },
             ExpressionValue::Group(_) => expressions::group::type_check(self, expression, env),
             ExpressionValue::Block(_) => expressions::block::type_check(self, expression, env),

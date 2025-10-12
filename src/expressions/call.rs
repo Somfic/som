@@ -166,6 +166,15 @@ pub fn compile(
         _ => unreachable!(),
     };
 
+    // Helper to extract identifier from callee expression
+    fn get_callee_identifier(expr: &TypedExpression) -> Option<&Identifier> {
+        match &expr.value {
+            TypedExpressionValue::Identifier(id) => Some(id),
+            TypedExpressionValue::Group(group) => get_callee_identifier(&group.expression),
+            _ => None,
+        }
+    }
+
     fn get_func_id(
         compiler: &mut Compiler,
         expression: &TypedExpression,
@@ -173,7 +182,8 @@ pub fn compile(
     ) -> FuncId {
         match &expression.value {
             TypedExpressionValue::Function(_) => {
-                expressions::function::compile(compiler, expression, env)
+                let (func_id, _captured_vars) = expressions::function::compile(compiler, expression, env);
+                func_id
             }
             TypedExpressionValue::Group(group) => get_func_id(compiler, &group.expression, env),
             TypedExpressionValue::Identifier(identifier) => env.get_function(identifier).unwrap(),
@@ -182,14 +192,31 @@ pub fn compile(
     }
 
     let func_id = get_func_id(compiler, &value.callee, env);
-
     let func_ref = compiler.codebase.declare_func_in_func(func_id, body.func);
 
-    let arg_values = value
+    // Compile regular arguments
+    let mut arg_values: Vec<cranelift::prelude::Value> = value
         .arguments
         .iter()
         .map(|arg| compiler.compile_expression(arg, body, env))
-        .collect::<Vec<_>>();
+        .collect();
+
+    // Check if this is a closure call - if so, prepend captured values
+    if let Some(identifier) = get_callee_identifier(&value.callee) {
+        if let Some((_, captured_vars)) = env.get_closure(identifier.name.to_string()) {
+            // Prepend captured values to argument list
+            let mut closure_args = Vec::new();
+
+            for (_name, var, _ty) in captured_vars {
+                let captured_value = body.use_var(var);
+                closure_args.push(captured_value);
+            }
+
+            // Prepend captured arguments before regular arguments
+            closure_args.extend(arg_values);
+            arg_values = closure_args;
+        }
+    }
 
     let call = body.ins().call(func_ref, &arg_values);
 

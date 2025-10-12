@@ -180,5 +180,20 @@ impl Default for Lookup {
             BindingPower::Relational,
             crate::expressions::binary::less_than::parse,
         )
+        .add_left_expression_handler(
+            TokenKind::GreaterThan,
+            BindingPower::Relational,
+            crate::expressions::binary::greater_than::parse,
+        )
+        .add_left_expression_handler(
+            TokenKind::GreaterThanOrEqual,
+            BindingPower::Relational,
+            crate::expressions::binary::greater_than_or_equal::parse,
+        )
+        .add_left_expression_handler(
+            TokenKind::Equality,
+            BindingPower::Relational,
+            crate::expressions::binary::equals::parse,
+        )
     }
 }

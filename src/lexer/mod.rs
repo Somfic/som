@@ -249,12 +249,40 @@ impl Iterator for Lexer<'_> {
                                 TokenValue::Decimal(number_str.parse().unwrap()),
                             )
                         } else {
-                            (TokenKind::I32, TokenValue::I32(number_str.parse().unwrap()))
+                            // Try to parse as i32 first, fall back to i64 if it doesn't fit
+                            match number_str.parse::<i32>() {
+                                Ok(value) => (TokenKind::I32, TokenValue::I32(value)),
+                                Err(_) => match number_str.parse::<i64>() {
+                                    Ok(value) => (TokenKind::I64, TokenValue::I64(value)),
+                                    Err(_) => {
+                                        return Some(Err(lexer_improper_number(
+                                            &number_str,
+                                            (self.byte_offset - number_str.len(), number_str.len()),
+                                        )))
+                                    }
+                                },
+                            }
                         }
                     }
-                    "i" => (TokenKind::I32, TokenValue::I32(number_str.parse().unwrap())),
-                    "l" => (TokenKind::I64, TokenValue::I64(number_str.parse().unwrap())),
-                    other => {
+                    "i" => match number_str.parse::<i32>() {
+                        Ok(value) => (TokenKind::I32, TokenValue::I32(value)),
+                        Err(_) => {
+                            return Some(Err(lexer_improper_number(
+                                &number_str,
+                                (self.byte_offset - number_str.len(), number_str.len()),
+                            )))
+                        }
+                    },
+                    "l" => match number_str.parse::<i64>() {
+                        Ok(value) => (TokenKind::I64, TokenValue::I64(value)),
+                        Err(_) => {
+                            return Some(Err(lexer_improper_number(
+                                &number_str,
+                                (self.byte_offset - number_str.len(), number_str.len()),
+                            )))
+                        }
+                    },
+                    _other => {
                         return Some(Err(lexer_improper_number(
                             &number_str,
                             (self.byte_offset - number_str.len(), number_str.len()),

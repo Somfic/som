@@ -1,5 +1,8 @@
 pub mod add;
 pub mod divide;
+pub mod equals;
+pub mod greater_than;
+pub mod greater_than_or_equal;
 pub mod less_than;
 pub mod multiply;
 pub mod subtract;
@@ -18,4 +21,7 @@ pub enum BinaryOperator {
     Multiply,
     Divide,
     LessThan,
+    GreaterThan,
+    GreaterThanOrEqual,
+    Equals,
 }

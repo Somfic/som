@@ -47,7 +47,7 @@ fn test_comprehensive_subtraction() {
     assert_eq!(0, interpret("let x = 4; x - x"));
     
     // Mixed addition and subtraction
-    assert_eq!(6, interpret("10 - 3 + 2 - 1"));
+    assert_eq!(8, interpret("10 - 3 + 2 - 1"));
     assert_eq!(4, interpret("1 + 5 - 2"));
 }
 
