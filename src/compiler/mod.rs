@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use cranelift::{codegen::timing::unreachable_code, prelude::*};
+use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::Module;
 pub use environment::Environment;
@@ -19,7 +19,7 @@ pub mod external;
 pub struct Compiler {
     pub isa: Arc<dyn isa::TargetIsa>,
     pub codebase: JITModule,
-    declarations: HashMap<String, DeclarationValue>,
+    pub declarations: HashMap<String, DeclarationValue>,
 }
 
 impl Compiler {
@@ -42,6 +42,11 @@ impl Compiler {
             codebase,
             declarations,
         }
+    }
+
+    /// Add imported declarations to the compiler environment
+    pub fn add_declarations(&mut self, declarations: HashMap<String, DeclarationValue>) {
+        self.declarations.extend(declarations);
     }
 
     pub fn compile(&mut self, statement: &TypedStatement) -> Result<(*const u8, TypeValue)> {

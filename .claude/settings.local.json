@@ -8,7 +8,15 @@
       "Bash(xargs cat:*)",
       "Bash(cargo build:*)",
       "Bash(for test in test_function_body_complex test_functions_with_type_annotations test_malformed_function_definitions test_operator_precedence_errors test_edge_case_conditional_scenarios test_edge_case_operator_combinations)",
-      "Bash(do echo \"=== $test ===\" cargo test $test)"
+      "Bash(do echo \"=== $test ===\" cargo test $test)",
+      "Read(//private/tmp/som_test/**)",
+      "Bash(/Users/lucas/som/target/debug/som eval -)",
+      "Bash(/Users/lucas/som/target/debug/som test_string.som)",
+      "Bash(/Users/lucas/som/target/debug/som main.som)",
+      "Bash(cat:*)",
+      "Bash(./target/debug/som:*)",
+      "Bash(../target/debug/som:*)",
+      "Bash(python3:*)"
     ],
     "deny": []
   }

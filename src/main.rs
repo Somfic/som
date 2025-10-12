@@ -10,6 +10,8 @@ mod errors;
 mod expressions;
 mod highlighter;
 mod lexer;
+mod module;
+mod multi_source;
 mod parser;
 mod prelude;
 mod runner;
@@ -107,7 +109,7 @@ fn run_once(source: PathBuf) {
         .unwrap_or("main")
         .to_string();
 
-    let result = cli::run_with_process_tree(NamedSource::new(name, content));
+    let result = cli::run_with_process_tree(NamedSource::new(name, content), Some(source.clone()));
 
     // Print the execution result if successful
     if let Some(value) = result {
@@ -117,5 +119,5 @@ fn run_once(source: PathBuf) {
 
 fn run_eval(code: String) {
     let source = NamedSource::new("<eval>", code);
-    cli::run_with_process_tree(source);
+    cli::run_with_process_tree(source, None);
 }

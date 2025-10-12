@@ -27,6 +27,29 @@ impl TypeChecker {
         }
     }
 
+    /// Check a statement with pre-populated declarations from imports
+    pub fn check_with_imports(
+        &mut self,
+        statement: &Statement,
+        imported_declarations: &[(String, Type)],
+    ) -> Results<TypedStatement> {
+        let mut env = Environment::new();
+
+        // Populate environment with imported declarations
+        for (name, type_) in imported_declarations {
+            let identifier = Identifier::new(name.as_str(), type_.span);
+            env.declare(&identifier, type_);
+        }
+
+        let typed_statement = self.check_statement(statement, &mut env);
+
+        if !self.errors.borrow().is_empty() {
+            Err(self.errors.borrow().clone())
+        } else {
+            Ok(typed_statement)
+        }
+    }
+
     pub fn check_statement(
         &mut self,
         statement: &Statement,

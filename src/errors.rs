@@ -101,6 +101,10 @@ pub enum Error {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Runner(#[from] RunnerError),
+
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Module(crate::module::ModuleError),
 }
 
 #[derive(Clone, Error, Debug, miette::Diagnostic)]
@@ -274,10 +278,7 @@ pub enum TypeCheckerError {
     #[error("missing parameter")]
     #[diagnostic()]
     MissingParameter {
-        #[label("this parameter")]
-        parameter: Parameter,
-
-        #[label("expected parameter")]
+        #[label("missing argument for this call")]
         argument: (usize, usize),
 
         #[help]
@@ -423,18 +424,14 @@ pub fn type_checker_unexpected_type(
     expected_span: impl Into<Span>,
     _help: impl Into<String>,
 ) -> Error {
-    let expected_span = expected_span.into();
+    let _expected_span = expected_span.into();
 
     Error::TypeChecker(TypeCheckerError::TypeMismatch {
         help: format!("expected {expected} but found {actual}, {}", _help.into()),
         labels: vec![
+            // Only show the actual (argument) span to avoid cross-file span issues
             LabeledSpan::new(
-                Some(format!("expected {expected}")),
-                expected_span.offset(),
-                expected_span.length(),
-            ),
-            LabeledSpan::new(
-                Some(format!("passed {actual}")),
+                Some(format!("passed {actual}, expected {expected}")),
                 actual.span.offset(),
                 actual.span.length(),
             ),

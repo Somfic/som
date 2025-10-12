@@ -195,5 +195,6 @@ impl Default for Lookup {
             BindingPower::Relational,
             crate::expressions::binary::equals::parse,
         )
+        .add_type_handler(TokenKind::UnitType, crate::types::unit::parse)
     }
 }

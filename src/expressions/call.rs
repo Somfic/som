@@ -122,11 +122,10 @@ fn check_arguments(
         for parameter in &parameters[arguments.len()..] {
             type_checker.add_error(Error::TypeChecker(TypeCheckerError::MissingParameter {
                 help: format!(
-                    "supply a value for `{}` ({})",
+                    "missing argument for parameter `{}` of type `{}`",
                     parameter.identifier, parameter.type_
                 ),
                 argument: (missing_argument_offset, 0),
-                parameter: parameter.clone(),
             }));
         }
     }

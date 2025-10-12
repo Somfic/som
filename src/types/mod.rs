@@ -11,6 +11,7 @@ pub mod closure;
 pub mod function;
 pub mod integer;
 pub mod string;
+pub mod unit;
 pub mod struct_;
 
 /// Struct layout information for memory allocation
@@ -183,7 +184,6 @@ impl From<&Type> for Span {
 pub enum TypeValue {
     /// This type is only ever used internally by the type checker to indicate that a value is undetermined or invalid.
     Never,
-    /// This type is only ever used internally by the type checker to indicate that a value does not have a type. For example the type of an expression block with only statements and no last expression.
     Unit,
     I32,
     I64,

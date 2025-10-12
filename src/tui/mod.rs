@@ -40,6 +40,7 @@ impl ProcessState {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Process {
     pub name: String,
     pub state: ProcessState,
@@ -51,13 +52,12 @@ pub struct Process {
 
 pub fn draw_process_tree(process: &Process) {
     // Draw children with tree structure first (in reverse order)
-    // Filter out completed children and waiting subtrees to reduce clutter
+    // Filter out waiting subtrees to reduce clutter
     let active_children: Vec<&Process> = process
         .children
         .iter()
         .filter(|child| {
-            !matches!(child.state, ProcessState::Completed)
-                && !is_process_and_children_waiting(child)
+            !is_process_and_children_waiting(child)
         })
         .collect();
 
@@ -97,13 +97,12 @@ pub fn draw_process_tree(process: &Process) {
 
 fn draw_process_tree_with_prefix(process: &Process, prefix: String, is_last: bool) {
     // Draw children first (in reverse order)
-    // Filter out completed children and waiting subtrees to reduce clutter
+    // Filter out waiting subtrees to reduce clutter
     let active_children: Vec<&Process> = process
         .children
         .iter()
         .filter(|child| {
-            !matches!(child.state, ProcessState::Completed)
-                && !is_process_and_children_waiting(child)
+            !is_process_and_children_waiting(child)
         })
         .collect();
 
@@ -137,11 +136,16 @@ fn draw_process_tree_with_prefix(process: &Process, prefix: String, is_last: boo
         format!(" ◦ {}", elapsed_time).bright_black().to_string()
     };
 
-    let note_text = process
-        .note
-        .as_ref()
-        .map(|n| format!("{}", n.bright_black().italic()))
-        .unwrap_or_default();
+    // Only show note text if the process is not completed
+    let note_text = if matches!(process.state, ProcessState::Completed) {
+        String::new()
+    } else {
+        process
+            .note
+            .as_ref()
+            .map(|n| format!("{}", n.bright_black().italic()))
+            .unwrap_or_default()
+    };
 
     println!(
         "  {}{}{} {}{}{}\x1b[K",
