@@ -3,7 +3,7 @@
 > An idiot admires complexity, a genius admires simplicity.
 
 ```rust
-let fib = fn(n ~ int){
+let fib = fn(n ~ int) {
     n if n < 2 else fib(n - 1) + fib(n - 2)
 }
 
@@ -23,3 +23,20 @@ type Color = Red
 
 let print_color = fn(color ~ Color) print(color)
 ```
+
+## TODO
+
+- `<=` (less than or equal) operator
+- `!=` (not equal) operator
+- Boolean equality comparison (type system limitation)
+- Recursion (multiple TODOs in test files)
+- Division by zero handling (platform-specific signal handlers needed)
+- Extended literals (hex, octal, binary)
+- Loops (while, for)
+- Type coercion between integer types
+- String operations (lexer tests exist, but no integration tests)
+- Pattern matching
+- Enums and algebraic data types
+- Structs
+- Modules and imports
+- Error recovery

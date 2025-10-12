@@ -183,10 +183,6 @@ pub fn compile(
         _ => unreachable!(),
     };
 
-    // Analyze what variables this function captures
-    use crate::compiler::capture::CaptureAnalyzer;
-    use crate::type_checker::Environment as TypeEnvironment;
-
     // We need a type environment to do capture analysis
     // For now, we'll identify captures by checking what variables are used in the body
     // that aren't parameters or locally declared
