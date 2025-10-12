@@ -16,7 +16,10 @@ pub enum DeclarationValue {
     Function(FuncId),
     /// A closure: function ID + captured values
     /// The Vec stores the cranelift Variables that hold the captured values
-    Closure(FuncId, Vec<(String, cranelift::prelude::Variable, TypeValue)>),
+    Closure(
+        FuncId,
+        Vec<(String, cranelift::prelude::Variable, TypeValue)>,
+    ),
 }
 
 impl<'env> Environment<'env> {
@@ -65,8 +68,10 @@ impl<'env> Environment<'env> {
     ) -> cranelift::prelude::Variable {
         let var = cranelift::prelude::Variable::new(self.next_variable.get());
         self.next_variable.set(self.next_variable.get() + 1);
-        self.declarations
-            .insert(identifier.into(), DeclarationValue::Variable(var, ty.clone()));
+        self.declarations.insert(
+            identifier.into(),
+            DeclarationValue::Variable(var, ty.clone()),
+        );
         builder.declare_var(var, ty.to_ir());
         var
     }
@@ -86,9 +91,11 @@ impl<'env> Environment<'env> {
         }
     }
 
-
     /// Get a variable and its type from this environment or parent scopes
-    pub fn get_variable_with_type(&self, identifier: &str) -> Option<(cranelift::prelude::Variable, &TypeValue)> {
+    pub fn get_variable_with_type(
+        &self,
+        identifier: &str,
+    ) -> Option<(cranelift::prelude::Variable, &TypeValue)> {
         if let Some(DeclarationValue::Variable(var, ty)) = self.declarations.get(identifier) {
             Some((*var, ty))
         } else if let Some(parent) = self.parent {
@@ -116,7 +123,13 @@ impl<'env> Environment<'env> {
     }
 
     /// Get closure information (function ID + captured variables)
-    pub fn get_closure(&self, identifier: impl Into<String>) -> Option<(FuncId, Vec<(String, cranelift::prelude::Variable, TypeValue)>)> {
+    pub fn get_closure(
+        &self,
+        identifier: impl Into<String>,
+    ) -> Option<(
+        FuncId,
+        Vec<(String, cranelift::prelude::Variable, TypeValue)>,
+    )> {
         let name = identifier.into();
         match self.declarations.get(&name) {
             Some(DeclarationValue::Closure(func_id, captured)) => {

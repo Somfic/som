@@ -40,7 +40,7 @@ fn integration_complex_conditionals() {
     assert_eq!(10, interpret(simple_program));
 }
 
-#[test] 
+#[test]
 fn integration_nested_scopes() {
     // BUG: This test exposes a variable scoping bug in nested functions
     // Error: "variable var0 is used but its type has not been declared"
@@ -51,7 +51,7 @@ fn integration_nested_scopes() {
         outer + inner
     "#;
     assert_eq!(15, interpret(simple_program));
-    
+
     // TODO: Re-enable when scoping bug is fixed
     // let program = r#"
     //     let outer = 5;

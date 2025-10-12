@@ -84,4 +84,3 @@ pub fn compile(
 
     body.ins().icmp(IntCC::Equal, left, right)
 }
-

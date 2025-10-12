@@ -7,7 +7,10 @@ pub fn parse(
     left: Expression,
     binding_power: BindingPower,
 ) -> Result<Expression> {
-    parser.expect(TokenKind::GreaterThanOrEqual, "expected a greater than or equal operator")?;
+    parser.expect(
+        TokenKind::GreaterThanOrEqual,
+        "expected a greater than or equal operator",
+    )?;
 
     let right = parser.parse_expression(binding_power)?;
 
@@ -82,5 +85,6 @@ pub fn compile(
     let left = compiler.compile_expression(&value.left, body, env);
     let right = compiler.compile_expression(&value.right, body, env);
 
-    body.ins().icmp(IntCC::SignedGreaterThanOrEqual, left, right)
+    body.ins()
+        .icmp(IntCC::SignedGreaterThanOrEqual, left, right)
 }

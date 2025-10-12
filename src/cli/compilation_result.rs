@@ -1,5 +1,5 @@
-use std::sync::{Arc, Mutex};
 use crate::prelude::TypeValue;
+use std::sync::{Arc, Mutex};
 
 // A thread-safe struct to store compilation result
 pub struct CompiledCode {
@@ -15,7 +15,7 @@ unsafe impl Sync for CompiledCode {}
 
 impl CompiledCode {
     pub fn new() -> Self {
-        Self { 
+        Self {
             code: None,
             return_type: None,
         }

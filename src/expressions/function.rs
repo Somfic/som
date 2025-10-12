@@ -69,7 +69,10 @@ pub fn parse(parser: &mut Parser) -> Result<Expression> {
     let (parameters, parameters_span) = parse_parameters(parser)?;
 
     // Return type is mandatory
-    parser.expect(TokenKind::Arrow, "expected an arrow (->) followed by a return type")?;
+    parser.expect(
+        TokenKind::Arrow,
+        "expected an arrow (->) followed by a return type",
+    )?;
     let explicit_return_type = Some(parser.parse_type(BindingPower::None)?);
 
     let body = parser.parse_expression(BindingPower::None)?;
@@ -171,7 +174,10 @@ pub fn compile(
     compiler: &mut Compiler,
     expression: &TypedExpression,
     env: &mut CompileEnvironment,
-) -> (FuncId, Vec<(String, cranelift::prelude::Variable, TypeValue)>) {
+) -> (
+    FuncId,
+    Vec<(String, cranelift::prelude::Variable, TypeValue)>,
+) {
     let value = match &expression.value {
         TypedExpressionValue::Function(value) => value,
         _ => unreachable!(),
@@ -235,8 +241,11 @@ pub fn compile(
 
     // Then bind regular parameters
     for parameter in value.parameters.iter() {
-        let variable =
-            function_env.declare_variable(&parameter.identifier, &mut builder, &parameter.type_.value);
+        let variable = function_env.declare_variable(
+            &parameter.identifier,
+            &mut builder,
+            &parameter.type_.value,
+        );
         builder.def_var(variable, block_params[param_index]);
         param_index += 1;
     }
@@ -284,8 +293,7 @@ fn collect_captures_from_expr(
         TypedExpressionValue::Identifier(identifier) => {
             let name = identifier.name.to_string();
             // If it's not a local variable and we haven't already captured it
-            if !local_vars.contains(&name)
-                && !captured.iter().any(|(n, _, _)| n == &name) {
+            if !local_vars.contains(&name) && !captured.iter().any(|(n, _, _)| n == &name) {
                 // Try to get it from the environment
                 if let Some((var, ty)) = env.get_variable_with_type(&name) {
                     captured.push((name, var, ty.clone()));

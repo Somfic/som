@@ -3,8 +3,8 @@ use crate::{
     prelude::*,
     statements::{self, variable_declaration::VariableDeclarationStatement},
 };
-use std::{cell::RefCell, rc::Rc};
 use std::collections::HashMap;
+use std::{cell::RefCell, rc::Rc};
 
 pub mod lookup;
 

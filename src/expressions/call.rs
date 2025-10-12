@@ -67,7 +67,7 @@ pub fn type_check(
                     callee.span.length(),
                 )],
             }));
-            
+
             // Return a call expression with Never type to prevent cascading errors
             return expression.with_value_type(
                 TypedExpressionValue::Call(CallExpression {
@@ -182,7 +182,8 @@ pub fn compile(
     ) -> FuncId {
         match &expression.value {
             TypedExpressionValue::Function(_) => {
-                let (func_id, _captured_vars) = expressions::function::compile(compiler, expression, env);
+                let (func_id, _captured_vars) =
+                    expressions::function::compile(compiler, expression, env);
                 func_id
             }
             TypedExpressionValue::Group(group) => get_func_id(compiler, &group.expression, env),

@@ -83,7 +83,8 @@ pub fn compile(
 
     match &declaration.value.value {
         TypedExpressionValue::Function(_) => {
-            let (func_id, captured_vars) = expressions::function::compile(compiler, &declaration.value, env);
+            let (func_id, captured_vars) =
+                expressions::function::compile(compiler, &declaration.value, env);
 
             // If the function captures variables, store it as a closure
             // Otherwise store it as a plain function (ZST)

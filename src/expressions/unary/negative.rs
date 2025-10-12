@@ -28,7 +28,7 @@ pub fn type_check(
 
     // Check that the operand is a numeric type that supports negation
     let is_numeric = |type_value: &TypeValue| matches!(type_value, TypeValue::I32 | TypeValue::I64);
-    
+
     if !is_numeric(&value.type_.value) {
         type_checker.add_error(type_checker_unexpected_type_value(
             "numeric type (i32 or i64)",
