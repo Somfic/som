@@ -7,3 +7,4 @@
 *.profdata
 lcov.info
 coverage-html/
+/.direnv

@@ -35,6 +35,16 @@
             bat
           ];
 
+          shellHook = ''
+            export PATH="$HOME/.cargo/bin:$PATH"
+
+            # Install committer if not already installed
+            if ! command -v committer &> /dev/null; then
+              echo "Installing committer..."
+              cargo install committer
+            fi
+          '';
+
           RUST_BACKTRACE = "1";
           RUST_LOG = "debug";
         };
