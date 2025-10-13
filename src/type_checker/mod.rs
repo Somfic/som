@@ -1,4 +1,4 @@
-use crate::{expressions, prelude::*, statements};
+use crate::{expressions::{self, function::FunctionExpression}, prelude::*, statements};
 pub use environment::Environment;
 use std::cell::RefCell;
 
@@ -282,5 +282,67 @@ impl TypeChecker {
 
     pub fn add_error(&self, error: Error) {
         self.errors.borrow_mut().push(error);
+    }
+
+    /// Type-check a function expression with knowledge of its name (for recursion)
+    pub fn check_function_with_name(
+        &mut self,
+        expression: &Expression,
+        env: &mut Environment,
+        name: &Identifier,
+    ) -> TypedExpression {
+        let func_expr = match &expression.value {
+            ExpressionValue::Function(f) => f,
+            _ => unreachable!("check_function_with_name called on non-function"),
+        };
+
+        // Infer the function type from its signature
+        if let Some(explicit_return_type) = &func_expr.explicit_return_type {
+            let function_type = TypeValue::Function(FunctionType {
+                parameters: func_expr.parameters.clone(),
+                return_type: Box::new(explicit_return_type.clone()),
+                span: func_expr.span,
+            })
+            .with_span(func_expr.span);
+
+            // Create function environment with the function's own name declared
+            let mut function_env = env.function();
+
+            // Add the function itself to the environment for recursion
+            function_env.declare(name, &function_type);
+
+            // Add parameters
+            for parameter in &func_expr.parameters {
+                function_env.declare(&parameter.identifier, &parameter.type_);
+            }
+
+            // Type-check the body
+            let body = self.check_expression(&func_expr.body, &mut function_env);
+
+            // Create the final function type
+            let final_type = TypeValue::Function(FunctionType {
+                parameters: func_expr.parameters.clone(),
+                return_type: Box::new(body.type_.clone()),
+                span: func_expr.span,
+            });
+
+            // Check that body matches declared return type
+            self.expect_same_type(
+                vec![&body.type_, explicit_return_type],
+                "the function's body should match its explicit return type",
+            );
+
+            let value = TypedExpressionValue::Function(FunctionExpression {
+                parameters: func_expr.parameters.clone(),
+                body: Box::new(body),
+                explicit_return_type: func_expr.explicit_return_type.clone(),
+                span: func_expr.span,
+            });
+
+            expression.with_value_type(value, final_type.with_span(expression.span))
+        } else {
+            // Fall back to regular function type checking if no explicit return type
+            self.check_expression(expression, env)
+        }
     }
 }

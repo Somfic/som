@@ -19,6 +19,7 @@ pub mod literals;
 pub mod loops;
 pub mod performance_tests;
 pub mod precedence;
+pub mod recursion;
 pub mod regression_tests;
 pub mod test_helpers;
 pub mod types;

@@ -260,6 +260,109 @@ pub fn compile(
     (func_id, captured_vars)
 }
 
+/// Compile a function with an optional name (for recursion support)
+pub fn compile_with_name(
+    compiler: &mut Compiler,
+    expression: &TypedExpression,
+    env: &mut CompileEnvironment,
+    name: Option<&Identifier>,
+) -> (
+    FuncId,
+    Vec<(String, cranelift::prelude::Variable, TypeValue)>,
+) {
+    let value = match &expression.value {
+        TypedExpressionValue::Function(value) => value,
+        _ => unreachable!(),
+    };
+
+    // Analyze captures first
+    let captured_vars = analyze_captures(&value, env);
+
+    // Create signature
+    let mut signature = Signature::new(compiler.isa.default_call_conv());
+
+    // Add captured variables as leading parameters
+    for (_name, _var, ty) in &captured_vars {
+        signature.params.push(AbiParam::new(ty.to_ir()));
+    }
+
+    // Add regular parameters
+    for parameter in &value.parameters {
+        signature
+            .params
+            .push(AbiParam::new(parameter.type_.value.to_ir()));
+    }
+
+    signature
+        .returns
+        .push(AbiParam::new(value.body.type_.value.to_ir()));
+
+    // Create function ID early
+    let func_id = compiler
+        .codebase
+        .declare_anonymous_function(&signature)
+        .unwrap();
+
+    // If this is a named function, pre-register it for recursion
+    let _guard = if let Some(name) = name {
+        if captured_vars.is_empty() {
+            env.declare_function(name, func_id);
+        }
+        Some(())  // Guard to ensure we don't accidentally remove it
+    } else {
+        None
+    };
+
+    // Now compile the function body (which can now call itself recursively)
+    let mut context = compiler.codebase.make_context();
+    context.func = Function::new();
+    context.func.signature = signature;
+
+    let mut function_context = FunctionBuilderContext::new();
+    let mut builder = FunctionBuilder::new(&mut context.func, &mut function_context);
+
+    let body_block = builder.create_block();
+    builder.append_block_params_for_function_params(body_block);
+    builder.switch_to_block(body_block);
+
+    // Create a new environment for this function to isolate parameter declarations
+    let mut function_env = env.block();
+
+    let block_params = builder.block_params(body_block).to_vec();
+    let mut param_index = 0;
+
+    // Bind captured variables first
+    for (name, _var, ty) in &captured_vars {
+        let variable = function_env.declare_variable(name, &mut builder, ty);
+        builder.def_var(variable, block_params[param_index]);
+        param_index += 1;
+    }
+
+    // Then bind regular parameters
+    for parameter in value.parameters.iter() {
+        let variable = function_env.declare_variable(
+            &parameter.identifier,
+            &mut builder,
+            &parameter.type_.value,
+        );
+        builder.def_var(variable, block_params[param_index]);
+        param_index += 1;
+    }
+
+    // Compile the body - captured variables are now available as local variables
+    let body = compiler.compile_expression(&value.body, &mut builder, &mut function_env);
+
+    builder.ins().return_(&[body]);
+    builder.seal_block(body_block);
+    builder.finalize();
+
+    if let Err(error) = compiler.codebase.define_function(func_id, &mut context) {
+        println!("{:#?}", error);
+    };
+
+    (func_id, captured_vars)
+}
+
 /// Analyze what variables a function captures from its environment
 fn analyze_captures(
     function: &FunctionExpression<TypedExpression>,

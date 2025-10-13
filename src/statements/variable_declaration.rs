@@ -49,7 +49,12 @@ pub fn type_check(
         _ => unreachable!(),
     };
 
-    let value = type_checker.check_expression(&declaration.value, env);
+    // Special case for function declarations - pass the function name for recursion
+    let value = if let ExpressionValue::Function(_) = &declaration.value.value {
+        type_checker.check_function_with_name(&declaration.value, env, &declaration.identifier)
+    } else {
+        type_checker.check_expression(&declaration.value, env)
+    };
 
     if let Some(explicit_type) = &declaration.explicit_type {
         type_checker.expect_same_type(
@@ -84,7 +89,7 @@ pub fn compile(
     match &declaration.value.value {
         TypedExpressionValue::Function(_) => {
             let (func_id, captured_vars) =
-                expressions::function::compile(compiler, &declaration.value, env);
+                expressions::function::compile_with_name(compiler, &declaration.value, env, Some(&declaration.identifier));
 
             // If the function captures variables, store it as a closure
             // Otherwise store it as a plain function (ZST)

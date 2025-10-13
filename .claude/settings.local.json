@@ -17,7 +17,8 @@
       "Bash(./target/debug/som:*)",
       "Bash(../target/debug/som:*)",
       "Bash(python3:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(timeout 3 cargo run --quiet -- eval \"let countdown = fn(n ~ int) -> int { n }; countdown(5)\")"
     ],
     "deny": []
   }
