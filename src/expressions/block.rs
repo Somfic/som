@@ -123,6 +123,7 @@ pub fn compile(
     block: &BlockExpression<TypedExpression>,
     body: &mut FunctionBuilder,
     env: &mut CompileEnvironment,
+    tail_ctx: crate::compiler::TailContext,
 ) -> CompileValue {
     let mut env = env.block();
 
@@ -130,5 +131,6 @@ pub fn compile(
         compiler.compile_statement(statement, body, &mut env);
     }
 
-    compiler.compile_expression(&block.result, body, &mut env)
+    // The final expression is in tail position if the block is
+    compiler.compile_expression_with_tail(&block.result, body, &mut env, tail_ctx)
 }

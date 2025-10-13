@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use cranelift::prelude::*;
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::Module;
+use cranelift_module::{FuncId, Module};
 pub use environment::Environment;
 
 use crate::{
@@ -15,6 +15,18 @@ use crate::{
 pub mod capture;
 pub mod environment;
 pub mod external;
+
+/// Context for tracking tail call positions during compilation
+#[derive(Clone, Copy)]
+pub enum TailContext {
+    /// We're in tail position within the given function
+    InTail {
+        func_id: FuncId,
+        loop_start: Block,
+    },
+    /// We're not in tail position
+    NotInTail,
+}
 
 pub struct Compiler {
     pub isa: Arc<dyn isa::TargetIsa>,
@@ -106,11 +118,23 @@ impl Compiler {
         }
     }
 
+    /// Compile an expression without tail call context (non-tail position)
     pub fn compile_expression(
         &mut self,
         expression: &TypedExpression,
         body: &mut FunctionBuilder,
         env: &mut CompileEnvironment,
+    ) -> CompileValue {
+        self.compile_expression_with_tail(expression, body, env, TailContext::NotInTail)
+    }
+
+    /// Compile an expression with tail call context
+    pub fn compile_expression_with_tail(
+        &mut self,
+        expression: &TypedExpression,
+        body: &mut FunctionBuilder,
+        env: &mut CompileEnvironment,
+        tail_ctx: TailContext,
     ) -> CompileValue {
         match &expression.value {
             TypedExpressionValue::Primary(primary) => match primary {
@@ -169,13 +193,13 @@ impl Compiler {
                 expressions::identifier::compile(self, expression, body, env)
             }
             TypedExpressionValue::Block(block) => {
-                expressions::block::compile(self, block, body, env)
+                expressions::block::compile(self, block, body, env, tail_ctx)
             }
             TypedExpressionValue::Call(_) => {
-                expressions::call::compile(self, expression, body, env)
+                expressions::call::compile(self, expression, body, env, tail_ctx)
             }
             TypedExpressionValue::Conditional(_) => {
-                expressions::conditional::compile(self, expression, body, env)
+                expressions::conditional::compile(self, expression, body, env, tail_ctx)
             }
             TypedExpressionValue::StructConstructor(_) => {
                 expressions::struct_constructor::compile(self, expression, body, env)

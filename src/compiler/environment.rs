@@ -7,6 +7,8 @@ use std::{cell::Cell, collections::HashMap, rc::Rc};
 pub struct Environment<'env> {
     pub parent: Option<&'env Environment<'env>>,
     pub declarations: HashMap<String, DeclarationValue>,
+    /// Parameter variables for tail call optimization
+    pub tail_call_params: Option<Vec<cranelift::prelude::Variable>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,6 +28,7 @@ impl<'env> Environment<'env> {
         Self {
             parent: None,
             declarations,
+            tail_call_params: None,
         }
     }
 
@@ -33,6 +36,23 @@ impl<'env> Environment<'env> {
         Environment {
             parent: Some(self),
             declarations: HashMap::new(),
+            tail_call_params: None,
+        }
+    }
+
+    /// Store parameter variables for tail call optimization
+    pub fn set_tail_call_params(&mut self, params: Vec<cranelift::prelude::Variable>) {
+        self.tail_call_params = Some(params);
+    }
+
+    /// Get parameter variables for tail call optimization
+    pub fn get_tail_call_params(&self) -> Option<&Vec<cranelift::prelude::Variable>> {
+        if let Some(ref params) = self.tail_call_params {
+            Some(params)
+        } else if let Some(parent) = self.parent {
+            parent.get_tail_call_params()
+        } else {
+            None
         }
     }
 

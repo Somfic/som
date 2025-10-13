@@ -74,6 +74,7 @@ pub fn compile(
     expression: &TypedExpression,
     body: &mut FunctionBuilder,
     env: &mut CompileEnvironment,
+    tail_ctx: crate::compiler::TailContext,
 ) -> CompileValue {
     let value = match &expression.value {
         TypedExpressionValue::Conditional(value) => value,
@@ -91,16 +92,22 @@ pub fn compile(
     body.ins()
         .brif(condition_val, truthy_block, &[], falsy_block, &[]);
 
-    // truthy
+    // truthy - both branches are in tail position if conditional is
     body.switch_to_block(truthy_block);
-    let truthy_val = compiler.compile_expression(&value.truthy, body, env);
-    body.ins().jump(merge_block, &[BlockArg::Value(truthy_val)]);
+    let is_truthy_tail_call = matches!(&value.truthy.value, TypedExpressionValue::Call(_)) && matches!(tail_ctx, crate::compiler::TailContext::InTail { .. });
+    let truthy_val = compiler.compile_expression_with_tail(&value.truthy, body, env, tail_ctx);
+    if !is_truthy_tail_call {
+        body.ins().jump(merge_block, &[BlockArg::Value(truthy_val)]);
+    }
     body.seal_block(truthy_block);
 
-    // falsy
+    // falsy - both branches are in tail position if conditional is
     body.switch_to_block(falsy_block);
-    let falsy_val = compiler.compile_expression(&value.falsy, body, env);
-    body.ins().jump(merge_block, &[BlockArg::Value(falsy_val)]);
+    let is_falsy_tail_call = matches!(&value.falsy.value, TypedExpressionValue::Call(_)) && matches!(tail_ctx, crate::compiler::TailContext::InTail { .. });
+    let falsy_val = compiler.compile_expression_with_tail(&value.falsy, body, env, tail_ctx);
+    if !is_falsy_tail_call {
+        body.ins().jump(merge_block, &[BlockArg::Value(falsy_val)]);
+    }
     body.seal_block(falsy_block);
 
     // merge

@@ -1,6 +1,6 @@
 use crate::prelude::*;
 use cranelift::{
-    codegen::ir::Function,
+    codegen::ir::{BlockArg, Function},
     prelude::{AbiParam, FunctionBuilderContext, Signature},
 };
 use cranelift_module::{FuncId, Module};
@@ -321,39 +321,89 @@ pub fn compile_with_name(
     let mut function_context = FunctionBuilderContext::new();
     let mut builder = FunctionBuilder::new(&mut context.func, &mut function_context);
 
-    let body_block = builder.create_block();
-    builder.append_block_params_for_function_params(body_block);
-    builder.switch_to_block(body_block);
+    // Create entry block with parameters
+    let entry_block = builder.create_block();
+    builder.append_block_params_for_function_params(entry_block);
+    builder.switch_to_block(entry_block);
+
+    // Create loop block for tail call optimization with parameters
+    let loop_start = builder.create_block();
+
+    // Add block parameters to loop_start for regular parameters (not captured variables)
+    // Captured variables don't change during recursion, so they don't need block parameters
+    for parameter in value.parameters.iter() {
+        builder.append_block_param(loop_start, parameter.type_.value.to_ir());
+    }
+
+    // Collect entry block parameters
+    let entry_params = builder.block_params(entry_block).to_vec();
+
+    // Jump to loop start, passing only the regular parameters (skip captured vars)
+    let regular_param_start = captured_vars.len();
+    let regular_params: Vec<BlockArg> = entry_params[regular_param_start..]
+        .iter()
+        .map(|v| BlockArg::Value(*v))
+        .collect();
+    builder.ins().jump(loop_start, &regular_params);
+    builder.seal_block(entry_block);
+
+    // Switch to loop block for function body
+    builder.switch_to_block(loop_start);
 
     // Create a new environment for this function to isolate parameter declarations
     let mut function_env = env.block();
 
-    let block_params = builder.block_params(body_block).to_vec();
+    // Bind captured variables from entry block parameters (they don't change)
     let mut param_index = 0;
-
-    // Bind captured variables first
     for (name, _var, ty) in &captured_vars {
         let variable = function_env.declare_variable(name, &mut builder, ty);
-        builder.def_var(variable, block_params[param_index]);
+        builder.def_var(variable, entry_params[param_index]);
         param_index += 1;
     }
 
-    // Then bind regular parameters
-    for parameter in value.parameters.iter() {
+    // Then bind regular parameters from loop_start block parameters
+    // Store parameter variables for potential tail call updates
+    let mut param_vars = Vec::new();
+    let loop_params = builder.block_params(loop_start).to_vec();
+    for (i, parameter) in value.parameters.iter().enumerate() {
         let variable = function_env.declare_variable(
             &parameter.identifier,
             &mut builder,
             &parameter.type_.value,
         );
-        builder.def_var(variable, block_params[param_index]);
-        param_index += 1;
+        builder.def_var(variable, loop_params[i]);
+        param_vars.push(variable);
     }
 
-    // Compile the body - captured variables are now available as local variables
-    let body = compiler.compile_expression(&value.body, &mut builder, &mut function_env);
+    // Store parameter variables in environment for tail calls
+    function_env.set_tail_call_params(param_vars);
 
-    builder.ins().return_(&[body]);
-    builder.seal_block(body_block);
+    // Compile the body with tail call context
+    let tail_ctx = crate::compiler::TailContext::InTail { func_id, loop_start };
+    let body = compiler.compile_expression_with_tail(&value.body, &mut builder, &mut function_env, tail_ctx);
+
+    // Check if body could potentially end with a tail call
+    // These expression types can contain tail calls in tail position
+    let might_have_tail_call = matches!(
+        &value.body.value,
+        TypedExpressionValue::Call(_) |
+        TypedExpressionValue::Block(_) |
+        TypedExpressionValue::Conditional(_) |
+        TypedExpressionValue::Group(_)
+    );
+
+    // Try to add return - if it fails because block is filled, that's ok (tail call happened)
+    if might_have_tail_call {
+        // Use catch_unwind to gracefully handle the case where block is already filled
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            builder.ins().return_(&[body]);
+        }));
+        // Ignore the error - it just means a tail call terminated the block
+    } else {
+        // No tail call possible, always add return
+        builder.ins().return_(&[body]);
+    }
+    builder.seal_block(loop_start);
     builder.finalize();
 
     if let Err(error) = compiler.codebase.define_function(func_id, &mut context) {

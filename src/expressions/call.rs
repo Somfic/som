@@ -1,3 +1,4 @@
+use cranelift::codegen::ir::BlockArg;
 use cranelift_module::{FuncId, Module};
 
 use crate::expressions;
@@ -159,6 +160,7 @@ pub fn compile(
     expression: &TypedExpression,
     body: &mut FunctionBuilder<'_>,
     env: &mut crate::compiler::Environment<'_>,
+    tail_ctx: crate::compiler::TailContext,
 ) -> CompileValue {
     let value = match &expression.value {
         TypedExpressionValue::Call(value) => value,
@@ -192,6 +194,33 @@ pub fn compile(
     }
 
     let func_id = get_func_id(compiler, &value.callee, env);
+
+    // Check if this is a tail call to the same function
+    if let crate::compiler::TailContext::InTail { func_id: current_func, loop_start } = tail_ctx {
+        if func_id == current_func {
+            // This is a self-tail-call! Update parameters and jump instead of calling
+
+            // Compile arguments to temporary values (can't update params while reading them)
+            let arg_values: Vec<cranelift::prelude::Value> = value
+                .arguments
+                .iter()
+                .map(|arg| compiler.compile_expression(arg, body, env))
+                .collect();
+
+            // Jump back to loop start with new argument values
+            // Create a dummy value before the jump (won't be used but needed for type system)
+            let dummy = body.ins().iconst(cranelift::prelude::types::I64, 0);
+
+            // Jump back to loop start, passing new argument values as block parameters
+            let block_args: Vec<BlockArg> = arg_values.iter().map(|v| BlockArg::Value(*v)).collect();
+            body.ins().jump(loop_start, &block_args);
+
+            // Return the dummy value (unreachable, but satisfies type system)
+            return dummy;
+        }
+    }
+
+    // Not a tail call, do normal function call
     let func_ref = compiler.codebase.declare_func_in_func(func_id, body.func);
 
     // Compile regular arguments
