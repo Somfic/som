@@ -199,6 +199,9 @@ impl Compiler {
                 let func_addr = body.ins().func_addr(self.isa.pointer_type(), func_ref);
                 func_addr
             }
+            TypedExpressionValue::WhileLoop(_) => {
+                expressions::while_loop::compile(self, expression, body, env)
+            }
         }
     }
 }

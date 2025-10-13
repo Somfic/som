@@ -145,6 +145,9 @@ impl TypeChecker {
             ExpressionValue::Assignment(_) => {
                 expressions::assignment::type_check(self, expression, env)
             }
+            ExpressionValue::WhileLoop(_) => {
+                expressions::while_loop::type_check(self, expression, env)
+            }
         }
     }
 

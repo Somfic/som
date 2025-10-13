@@ -16,7 +16,8 @@
       "Bash(cat:*)",
       "Bash(./target/debug/som:*)",
       "Bash(../target/debug/som:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "WebSearch"
     ],
     "deny": []
   }

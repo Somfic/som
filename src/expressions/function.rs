@@ -342,6 +342,10 @@ fn collect_captures_from_expr(
                 collect_captures_from_expr(&arg.value, captured, local_vars, env);
             }
         }
+        TypedExpressionValue::WhileLoop(while_loop) => {
+            collect_captures_from_expr(&while_loop.condition, captured, local_vars, env);
+            collect_captures_from_expr(&while_loop.body, captured, local_vars, env);
+        }
         TypedExpressionValue::Primary(_) => {
             // Literals don't capture anything
         }

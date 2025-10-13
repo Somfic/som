@@ -119,6 +119,10 @@ impl<'env> CaptureAnalyzer<'env> {
             TypedExpressionValue::Group(group_expr) => {
                 self.analyze_expression(&group_expr.expression, analysis);
             }
+            TypedExpressionValue::WhileLoop(while_expr) => {
+                self.analyze_expression(&while_expr.condition, analysis);
+                self.analyze_expression(&while_expr.body, analysis);
+            }
             // Literals don't capture anything
             TypedExpressionValue::Primary(_) => {}
         }

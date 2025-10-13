@@ -16,6 +16,7 @@ pub mod extended_literals;
 pub mod functions;
 pub mod integration;
 pub mod literals;
+pub mod loops;
 pub mod performance_tests;
 pub mod precedence;
 pub mod regression_tests;

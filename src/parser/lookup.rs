@@ -196,5 +196,6 @@ impl Default for Lookup {
             crate::expressions::binary::equals::parse,
         )
         .add_type_handler(TokenKind::UnitType, crate::types::unit::parse)
+        .add_expression_handler(TokenKind::While, crate::expressions::while_loop::parse)
     }
 }

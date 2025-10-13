@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{expressions::while_loop::WhileLoopExpression, prelude::*};
 use assignment::AssignmentExpression;
 use binary::BinaryExpression;
 use block::BlockExpression;
@@ -19,6 +19,7 @@ pub mod identifier;
 pub mod primary;
 pub mod struct_constructor;
 pub mod unary;
+pub mod while_loop;
 
 #[derive(Debug, Clone)]
 pub struct Expression {
@@ -101,8 +102,9 @@ pub enum GenericExpressionValue<Expression> {
     Call(CallExpression<Expression>),
     Conditional(ConditionalExpression<Expression>),
     StructConstructor(StructConstructorExpression<Expression>),
-    FieldAccess(field_access::FieldAccessExpression<Expression>),
+    FieldAccess(FieldAccessExpression<Expression>),
     Assignment(AssignmentExpression<Expression>),
+    WhileLoop(WhileLoopExpression<Expression>),
 }
 
 impl GenericExpressionValue<Expression> {
