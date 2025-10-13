@@ -44,11 +44,6 @@ impl Compiler {
         }
     }
 
-    /// Add imported declarations to the compiler environment
-    pub fn add_declarations(&mut self, declarations: HashMap<String, DeclarationValue>) {
-        self.declarations.extend(declarations);
-    }
-
     pub fn compile(&mut self, statement: &TypedStatement) -> Result<(*const u8, TypeValue)> {
         let mut env = Environment::new(self.declarations.clone());
 
@@ -139,7 +134,10 @@ impl Compiler {
                 UnaryOperator::Negative => {
                     expressions::unary::negative::compile(self, expression, body, env)
                 }
-                op => todo!("Unary operator {:?} not implemented", op),
+                UnaryOperator::Negate => {
+                    todo!()
+                    // expressions::unary::negate::compile(self, expression, body, env)
+                }
             },
             TypedExpressionValue::Binary(binary) => match binary.operator {
                 BinaryOperator::Add => {

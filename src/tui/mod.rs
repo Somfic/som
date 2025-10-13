@@ -1,6 +1,5 @@
 use colored::*;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::thread;
 use std::time::{Duration, SystemTime};
 
 static ANIMATION_FRAME: AtomicU32 = AtomicU32::new(0);

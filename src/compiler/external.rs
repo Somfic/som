@@ -39,7 +39,6 @@ fn get_extern_declarations() -> Vec<LibCCall> {
             address: libc::write as *const u8,
             signature: |module| {
                 let mut sig = module.make_signature();
-                let ptr_t = module.isa().pointer_type();
                 sig.params.push(i32());
                 sig.params.push(i64());
                 sig.params.push(i64());
