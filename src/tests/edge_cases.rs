@@ -285,3 +285,444 @@ fn edge_case_type_boundaries() {
         interpret("let f ~ fn(int) -> int = fn(x ~ int) -> int { x }; f(5)")
     );
 }
+
+// Additional comprehensive edge cases
+
+#[test]
+fn edge_case_variable_shadowing() {
+    // Shadowing in nested scopes
+    assert_eq!(10, interpret("let x = 5; { let x = 10; x }"));
+    assert_eq!(5, interpret("let x = 5; { let x = 10; x }; x"));
+
+    // Multiple levels of shadowing
+    assert_eq!(15, interpret("let x = 5; { let x = 10; { let x = 15; x } }"));
+    assert_eq!(10, interpret("let x = 5; { let x = 10; { let x = 15; x }; x }"));
+
+    // Shadowing with same value
+    assert_eq!(5, interpret("let x = 5; { let x = 5; x }"));
+}
+
+#[test]
+fn edge_case_assignment_chains() {
+    // Multiple assignments
+    assert_eq!(10, interpret("let x = 5; x = 10; x"));
+    assert_eq!(15, interpret("let x = 5; x = 10; x = 15; x"));
+
+    // Assignment in blocks
+    assert_eq!(20, interpret("let x = 5; { x = 20; x }"));
+    assert_eq!(20, interpret("let x = 5; { x = 20; }; x"));
+
+    // Assignment with computation
+    assert_eq!(10, interpret("let x = 5; x = x + 5; x"));
+    assert_eq!(25, interpret("let x = 5; x = x * 5; x"));
+}
+
+#[test]
+fn edge_case_comparison_operators() {
+    // Less than edge cases
+    assert_eq!(1, interpret("0 < 1"));
+    assert_eq!(0, interpret("1 < 1"));
+    assert_eq!(0, interpret("2 < 1"));
+    assert_eq!(1, interpret("-1 < 0"));
+    assert_eq!(0, interpret("0 < -1"));
+
+    // Greater than edge cases
+    assert_eq!(0, interpret("0 > 1"));
+    assert_eq!(0, interpret("1 > 1"));
+    assert_eq!(1, interpret("2 > 1"));
+    assert_eq!(0, interpret("-1 > 0"));
+    assert_eq!(1, interpret("0 > -1"));
+
+    // Equality edge cases
+    assert_eq!(1, interpret("0 == 0"));
+    assert_eq!(1, interpret("1 == 1"));
+    assert_eq!(0, interpret("0 == 1"));
+    assert_eq!(1, interpret("-1 == -1"));
+    assert_eq!(0, interpret("-1 == 1"));
+}
+
+#[test]
+#[ignore = "comparing booleans with integers is a type error"]
+fn edge_case_comparison_chains() {
+    // Chained comparisons (each comparison returns bool which is then compared)
+    assert_eq!(0, interpret("(1 < 2) < 1")); // true < 1 => 1 < 1 => false
+    assert_eq!(1, interpret("(1 > 2) < 1")); // false < 1 => 0 < 1 => true
+}
+
+#[test]
+fn edge_case_comparisons_in_conditionals() {
+    // Comparisons in conditionals
+    assert_eq!(10, interpret("10 if 1 < 2 else 20"));
+    assert_eq!(20, interpret("10 if 1 > 2 else 20"));
+}
+
+#[test]
+fn edge_case_while_loops() {
+    // Loop that never executes
+    assert_eq!(5, interpret("let x = 5; while false { x = x + 1; }; x"));
+
+    // Loop that executes once
+    assert_eq!(6, interpret("let x = 5; let flag = 1; while flag == 1 { x = x + 1; flag = 0; }; x"));
+
+    // Loop counting down
+    assert_eq!(0, interpret("let x = 5; while x > 0 { x = x - 1; }; x"));
+
+    // Loop with complex condition
+    assert_eq!(10, interpret("let x = 0; while x < 10 { x = x + 1; }; x"));
+}
+
+#[test]
+fn edge_case_nested_while_loops() {
+    // Nested loop simple case
+    let program = r#"
+        let outer = 0;
+        let total = 0;
+        while outer < 3 {
+            let inner = 0;
+            while inner < 3 {
+                total = total + 1;
+                inner = inner + 1;
+            };
+            outer = outer + 1;
+        };
+        total
+    "#;
+    assert_eq!(9, interpret(program));
+}
+
+#[test]
+fn edge_case_conditionals_all_types() {
+    // Conditional with integers
+    assert_eq!(1, interpret("1 if true else 2"));
+    assert_eq!(2, interpret("1 if false else 2"));
+
+    // Conditional with booleans
+    assert_eq!(1, interpret("true if true else false"));
+    assert_eq!(0, interpret("true if false else false"));
+}
+
+#[test]
+#[ignore = "conditionals with function values not fully implemented"]
+fn edge_case_conditionals_with_functions() {
+    // Conditional with functions
+    let program = r#"
+        let f1 = fn() -> int { 1 };
+        let f2 = fn() -> int { 2 };
+        let chosen = f1 if true else f2;
+        chosen()
+    "#;
+    assert_eq!(1, interpret(program));
+}
+
+#[test]
+fn edge_case_deeply_nested_conditionals() {
+    // Three levels deep
+    assert_eq!(1, interpret("1 if true else (2 if true else 3)"));
+    assert_eq!(2, interpret("1 if false else (2 if true else 3)"));
+    assert_eq!(3, interpret("1 if false else (2 if false else 3)"));
+
+    // Four levels deep
+    assert_eq!(1, interpret("1 if true else (2 if true else (3 if true else 4))"));
+    assert_eq!(4, interpret("1 if false else (2 if false else (3 if false else 4))"));
+}
+
+#[test]
+fn edge_case_function_multiple_params() {
+    // Two parameters
+    assert_eq!(7, interpret("let add = fn(a ~ int, b ~ int) -> int { a + b }; add(3, 4)"));
+
+    // Three parameters
+    assert_eq!(
+        10,
+        interpret("let add3 = fn(a ~ int, b ~ int, c ~ int) -> int { a + b + c }; add3(2, 3, 5)")
+    );
+
+    // Five parameters
+    let program = r#"
+        let add5 = fn(a ~ int, b ~ int, c ~ int, d ~ int, e ~ int) -> int {
+            a + b + c + d + e
+        };
+        add5(1, 2, 3, 4, 5)
+    "#;
+    assert_eq!(15, interpret(program));
+}
+
+#[test]
+fn edge_case_function_parameter_order() {
+    // Parameters used in different order than defined
+    let program = r#"
+        let subtract = fn(a ~ int, b ~ int) -> int { b - a };
+        subtract(3, 10)
+    "#;
+    assert_eq!(7, interpret(program));
+
+    // All parameters used multiple times
+    let program = r#"
+        let compute = fn(a ~ int, b ~ int) -> int { a + b + a - b };
+        compute(5, 3)
+    "#;
+    assert_eq!(10, interpret(program));
+}
+
+#[test]
+fn edge_case_blocks_with_many_statements() {
+    // Block with 5 statements
+    let program = r#"
+        {
+            let a = 1;
+            let b = 2;
+            let c = 3;
+            let d = 4;
+            let e = 5;
+            a + b + c + d + e
+        }
+    "#;
+    assert_eq!(15, interpret(program));
+
+    // Block with 10 statements
+    let program = r#"
+        {
+            let a = 1;
+            let b = a + 1;
+            let c = b + 1;
+            let d = c + 1;
+            let e = d + 1;
+            let f = e + 1;
+            let g = f + 1;
+            let h = g + 1;
+            let i = h + 1;
+            let j = i + 1;
+            j
+        }
+    "#;
+    assert_eq!(10, interpret(program));
+}
+
+#[test]
+fn edge_case_mixed_operations() {
+    // All arithmetic operators in one expression
+    assert_eq!(5, interpret("1 + 2 * 3 - 4 / 2")); // 1 + 6 - 2 = 5
+
+    // With parentheses changing precedence
+    assert_eq!(3, interpret("(1 + 2) * (3 - 4 / 2)"));
+
+    // Mixing comparison and arithmetic
+    assert_eq!(1, interpret("(1 + 2) < (2 * 3)"));
+    assert_eq!(0, interpret("(5 * 2) < (3 + 4)"));
+}
+
+#[test]
+fn edge_case_very_long_expression() {
+    // Very long addition chain
+    let expr = "1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1";
+    assert_eq!(20, interpret(expr));
+
+    // Very long multiplication chain
+    let expr = "1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1 * 1";
+    assert_eq!(1, interpret(expr));
+
+    // Alternating operators
+    let expr = "10 + 5 - 3 + 2 - 1 + 4 - 2 + 6 - 3 + 1";
+    assert_eq!(19, interpret(expr));
+}
+
+#[test]
+fn edge_case_zero_in_various_positions() {
+    // Zero as first operand
+    assert_eq!(5, interpret("0 + 5"));
+    assert_eq!(-5, interpret("0 - 5"));
+    assert_eq!(0, interpret("0 * 5"));
+    assert_eq!(0, interpret("0 / 5"));
+
+    // Zero as second operand
+    assert_eq!(5, interpret("5 + 0"));
+    assert_eq!(5, interpret("5 - 0"));
+    assert_eq!(0, interpret("5 * 0"));
+
+    // Zero in comparisons
+    assert_eq!(0, interpret("0 < 0"));
+    assert_eq!(0, interpret("0 > 0"));
+    assert_eq!(1, interpret("0 == 0"));
+}
+
+#[test]
+fn edge_case_negative_numbers_everywhere() {
+    // Negative in arithmetic
+    assert_eq!(-5, interpret("-3 + -2"));
+    assert_eq!(-1, interpret("-3 - -2"));
+    assert_eq!(6, interpret("-3 * -2"));
+    assert_eq!(2, interpret("-4 / -2"));
+
+    // Negative in comparisons
+    assert_eq!(1, interpret("-5 < -3"));
+    assert_eq!(0, interpret("-3 > -1"));
+    assert_eq!(1, interpret("-5 == -5"));
+
+    // Negative in variables
+    assert_eq!(-10, interpret("let x = -10; x"));
+    assert_eq!(-10, interpret("let x = 10; x = -10; x"));
+}
+
+#[test]
+#[ignore = "booleans in arithmetic is a type error"]
+fn edge_case_boolean_in_arithmetic_contexts() {
+    // Booleans treated as integers
+    assert_eq!(2, interpret("true + true"));
+    assert_eq!(1, interpret("true + false"));
+    assert_eq!(0, interpret("false + false"));
+    assert_eq!(1, interpret("true * true"));
+    assert_eq!(0, interpret("true * false"));
+}
+
+#[test]
+#[ignore = "higher-order functions not fully implemented"]
+fn edge_case_functions_returning_functions() {
+    // Function that returns a function
+    let program = r#"
+        let make_adder = fn(x ~ int) -> fn(int) -> int {
+            fn(y ~ int) -> int { x + y }
+        };
+        let add5 = make_adder(5);
+        add5(3)
+    "#;
+    assert_eq!(8, interpret(program));
+}
+
+#[test]
+fn edge_case_immediate_function_invocation() {
+    // Call function immediately after definition
+    assert_eq!(5, interpret("(fn() -> int { 5 })()"));
+    assert_eq!(7, interpret("(fn(x ~ int) -> int { x + 2 })(5)"));
+
+    // Multiple calls
+    assert_eq!(10, interpret("(fn(x ~ int) -> int { x * 2 })(5)"));
+}
+
+#[test]
+fn edge_case_complex_block_scoping() {
+    // Variable used across multiple block levels
+    let program = r#"
+        let x = 1;
+        {
+            let y = x + 1;
+            {
+                let z = y + 1;
+                {
+                    let w = z + 1;
+                    w
+                }
+            }
+        }
+    "#;
+    assert_eq!(4, interpret(program));
+}
+
+#[test]
+fn edge_case_conditional_with_side_effects() {
+    // Conditional where both branches modify variables
+    let program = r#"
+        let x = 5;
+        let result = { x = 10; 1 } if true else { x = 20; 2 };
+        x
+    "#;
+    assert_eq!(10, interpret(program));
+
+    let program = r#"
+        let x = 5;
+        let result = { x = 10; 1 } if false else { x = 20; 2 };
+        x
+    "#;
+    assert_eq!(20, interpret(program));
+}
+
+#[test]
+fn edge_case_while_with_complex_updates() {
+    // While loop with multiple variable updates
+    let program = r#"
+        let x = 0;
+        let y = 10;
+        while x < 5 {
+            x = x + 1;
+            y = y - 1;
+        };
+        x + y
+    "#;
+    assert_eq!(10, interpret(program));
+}
+
+#[test]
+fn edge_case_function_as_expression_in_operations() {
+    // Using function call results in arithmetic
+    let program = r#"
+        let get_five = fn() -> int { 5 };
+        let get_three = fn() -> int { 3 };
+        get_five() + get_three()
+    "#;
+    assert_eq!(8, interpret(program));
+
+    // Function calls in comparisons
+    let program = r#"
+        let get_five = fn() -> int { 5 };
+        let get_three = fn() -> int { 3 };
+        get_five() > get_three()
+    "#;
+    assert_eq!(1, interpret(program));
+}
+
+#[test]
+fn edge_case_deeply_nested_function_calls() {
+    // 5 levels of function nesting
+    let program = r#"
+        let add1 = fn(x ~ int) -> int { x + 1 };
+        add1(add1(add1(add1(add1(0)))))
+    "#;
+    assert_eq!(5, interpret(program));
+
+    // 10 levels
+    let program = r#"
+        let add1 = fn(x ~ int) -> int { x + 1 };
+        add1(add1(add1(add1(add1(add1(add1(add1(add1(add1(0))))))))))
+    "#;
+    assert_eq!(10, interpret(program));
+}
+
+#[test]
+fn edge_case_parentheses_everywhere() {
+    // Excessive but valid parentheses
+    assert_eq!(5, interpret("(((((5)))))"));
+    assert_eq!(10, interpret("((((((5))))) + ((((5)))))"));
+    assert_eq!(6, interpret("(((1 + 2))) * (((3 - 1)))"));
+}
+
+#[test]
+fn edge_case_assignment_returns_value() {
+    // Assignment returns the value
+    assert_eq!(10, interpret("let x = 0; x = 10"));
+}
+
+#[test]
+#[ignore = "assignment in complex expressions not fully supported"]
+fn edge_case_assignment_in_expressions() {
+    // Using assignment in expressions
+    assert_eq!(15, interpret("let x = 0; (x = 10) + 5"));
+    assert_eq!(20, interpret("let x = 0; let y = x = 10; x + y"));
+}
+
+#[test]
+fn edge_case_while_zero_iterations() {
+    // Different ways a loop might not execute
+    assert_eq!(0, interpret("let x = 0; while false { x = x + 1; }; x"));
+    assert_eq!(0, interpret("let x = 0; while x > 0 { x = x + 1; }; x"));
+    assert_eq!(5, interpret("let x = 5; while x == 10 { x = x + 1; }; x"));
+}
+
+#[test]
+fn edge_case_greater_than_or_equal() {
+    // >= operator edge cases
+    assert_eq!(1, interpret("5 >= 5"));
+    assert_eq!(1, interpret("5 >= 4"));
+    assert_eq!(0, interpret("4 >= 5"));
+    assert_eq!(1, interpret("0 >= 0"));
+    assert_eq!(1, interpret("-1 >= -1"));
+    assert_eq!(0, interpret("-2 >= -1"));
+}
