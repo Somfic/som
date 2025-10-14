@@ -94,18 +94,31 @@ pub fn compile(
 
     // truthy - both branches are in tail position if conditional is
     body.switch_to_block(truthy_block);
-    let is_truthy_tail_call = matches!(&value.truthy.value, TypedExpressionValue::Call(_)) && matches!(tail_ctx, crate::compiler::TailContext::InTail { .. });
     let truthy_val = compiler.compile_expression_with_tail(&value.truthy, body, env, tail_ctx);
-    if !is_truthy_tail_call {
+
+    // Try to add jump to merge block. If this fails because the block is already filled
+    // (due to a self-tail-call optimization), catch the panic and continue.
+    let might_be_tail_call = matches!(tail_ctx, crate::compiler::TailContext::InTail { .. });
+    if might_be_tail_call {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            body.ins().jump(merge_block, &[BlockArg::Value(truthy_val)]);
+        }));
+    } else {
         body.ins().jump(merge_block, &[BlockArg::Value(truthy_val)]);
     }
     body.seal_block(truthy_block);
 
     // falsy - both branches are in tail position if conditional is
     body.switch_to_block(falsy_block);
-    let is_falsy_tail_call = matches!(&value.falsy.value, TypedExpressionValue::Call(_)) && matches!(tail_ctx, crate::compiler::TailContext::InTail { .. });
     let falsy_val = compiler.compile_expression_with_tail(&value.falsy, body, env, tail_ctx);
-    if !is_falsy_tail_call {
+
+    // Try to add jump to merge block. If this fails because the block is already filled
+    // (due to a self-tail-call optimization), catch the panic and continue.
+    if might_be_tail_call {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            body.ins().jump(merge_block, &[BlockArg::Value(falsy_val)]);
+        }));
+    } else {
         body.ins().jump(merge_block, &[BlockArg::Value(falsy_val)]);
     }
     body.seal_block(falsy_block);
