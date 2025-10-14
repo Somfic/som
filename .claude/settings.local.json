@@ -20,7 +20,10 @@
       "WebSearch",
       "Bash(timeout 3 cargo run --quiet -- eval \"let countdown = fn(n ~ int) -> int { n }; countdown(5)\")",
       "Bash(RUST_BACKTRACE=1 ./target/debug/som eval \"let countdown = fn(n ~ int) -> int { countdown(n - 1) }; countdown(5)\")",
-      "Bash(export RUST_BACKTRACE=1)"
+      "Bash(export RUST_BACKTRACE=1)",
+      "Bash(cargo --version)",
+      "Bash(rustc --version)",
+      "Bash(cargo bench:*)"
     ],
     "deny": []
   }

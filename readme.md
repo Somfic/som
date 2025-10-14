@@ -24,6 +24,30 @@ type Color = Red
 let print_color = fn(color ~ Color) print(color)
 ```
 
+## Performance Benchmarking
+
+Som includes comprehensive benchmarks to track compilation and execution performance:
+
+```bash
+# Run all benchmarks
+cargo bench
+
+# Run specific benchmark suite
+cargo bench --bench compilation_bench
+cargo bench --bench execution_bench
+
+# Or use the helper script
+./scripts/bench.sh all
+./scripts/bench.sh compilation
+
+# Save baseline and compare
+./scripts/bench.sh save main
+# ... make changes ...
+./scripts/bench.sh compare main
+```
+
+See [BENCHMARKING.md](BENCHMARKING.md) for detailed documentation.
+
 ## TODO
 
 - `<=` (less than or equal) operator
