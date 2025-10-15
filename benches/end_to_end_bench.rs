@@ -8,13 +8,19 @@ fn full_pipeline(source: &str) -> Result<i64, String> {
     let parsed = parser.parse().map_err(|e| format!("{:?}", e))?;
 
     let mut type_checker = TypeChecker::new();
-    let type_checked = type_checker.check(&parsed).map_err(|e| format!("{:?}", e))?;
+    let type_checked = type_checker
+        .check(&parsed)
+        .map_err(|e| format!("{:?}", e))?;
 
     let mut compiler = Compiler::new();
-    let (compiled, return_type) = compiler.compile(&type_checked).map_err(|e| format!("{:?}", e))?;
+    let (compiled, return_type) = compiler
+        .compile(&type_checked)
+        .map_err(|e| format!("{:?}", e))?;
 
     let runner = Runner::new();
-    runner.run(compiled, &return_type).map_err(|e| format!("{:?}", e))
+    runner
+        .run(compiled, &return_type)
+        .map_err(|e| format!("{:?}", e))
 }
 
 /// Benchmark realistic programs end-to-end
@@ -67,9 +73,7 @@ fn bench_realistic_programs(c: &mut Criterion) {
         b.iter(|| full_pipeline(black_box(fibonacci)))
     });
 
-    group.bench_function("gcd", |b| {
-        b.iter(|| full_pipeline(black_box(gcd)))
-    });
+    group.bench_function("gcd", |b| b.iter(|| full_pipeline(black_box(gcd))));
 
     group.bench_function("ackermann", |b| {
         b.iter(|| full_pipeline(black_box(ackermann)))
@@ -113,9 +117,11 @@ fn bench_recursion_depths(c: &mut Criterion) {
             n
         );
 
-        group.bench_with_input(BenchmarkId::new("simple_recursive", n), &program, |b, prog| {
-            b.iter(|| full_pipeline(black_box(prog)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("simple_recursive", n),
+            &program,
+            |b, prog| b.iter(|| full_pipeline(black_box(prog))),
+        );
     }
 
     group.finish();
@@ -163,17 +169,11 @@ fn bench_program_complexity(c: &mut Criterion) {
         process(7)
     "#;
 
-    group.bench_function("small", |b| {
-        b.iter(|| full_pipeline(black_box(small)))
-    });
+    group.bench_function("small", |b| b.iter(|| full_pipeline(black_box(small))));
 
-    group.bench_function("medium", |b| {
-        b.iter(|| full_pipeline(black_box(medium)))
-    });
+    group.bench_function("medium", |b| b.iter(|| full_pipeline(black_box(medium))));
 
-    group.bench_function("large", |b| {
-        b.iter(|| full_pipeline(black_box(large)))
-    });
+    group.bench_function("large", |b| b.iter(|| full_pipeline(black_box(large))));
 
     group.finish();
 }
@@ -199,9 +199,11 @@ fn bench_loop_programs(c: &mut Criterion) {
             iterations
         );
 
-        group.bench_with_input(BenchmarkId::new("sum_loop", iterations), &program, |b, prog| {
-            b.iter(|| full_pipeline(black_box(prog)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("sum_loop", iterations),
+            &program,
+            |b, prog| b.iter(|| full_pipeline(black_box(prog))),
+        );
     }
 
     // Nested loops
@@ -269,17 +271,11 @@ fn bench_classic_algorithms(c: &mut Criterion) {
         triangle(100)
     "#;
 
-    group.bench_function("gcd", |b| {
-        b.iter(|| full_pipeline(black_box(gcd)))
-    });
+    group.bench_function("gcd", |b| b.iter(|| full_pipeline(black_box(gcd))));
 
-    group.bench_function("power", |b| {
-        b.iter(|| full_pipeline(black_box(power)))
-    });
+    group.bench_function("power", |b| b.iter(|| full_pipeline(black_box(power))));
 
-    group.bench_function("collatz", |b| {
-        b.iter(|| full_pipeline(black_box(collatz)))
-    });
+    group.bench_function("collatz", |b| b.iter(|| full_pipeline(black_box(collatz))));
 
     group.bench_function("triangle", |b| {
         b.iter(|| full_pipeline(black_box(triangle)))

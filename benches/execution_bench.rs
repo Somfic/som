@@ -8,13 +8,19 @@ fn execute_source(source: &str) -> Result<i64, String> {
     let parsed = parser.parse().map_err(|e| format!("{:?}", e))?;
 
     let mut type_checker = TypeChecker::new();
-    let type_checked = type_checker.check(&parsed).map_err(|e| format!("{:?}", e))?;
+    let type_checked = type_checker
+        .check(&parsed)
+        .map_err(|e| format!("{:?}", e))?;
 
     let mut compiler = Compiler::new();
-    let (compiled, return_type) = compiler.compile(&type_checked).map_err(|e| format!("{:?}", e))?;
+    let (compiled, return_type) = compiler
+        .compile(&type_checked)
+        .map_err(|e| format!("{:?}", e))?;
 
     let runner = Runner::new();
-    runner.run(compiled, &return_type).map_err(|e| format!("{:?}", e))
+    runner
+        .run(compiled, &return_type)
+        .map_err(|e| format!("{:?}", e))
 }
 
 /// Benchmark basic arithmetic operations
@@ -178,9 +184,11 @@ fn bench_while_loops(c: &mut Criterion) {
             iterations
         );
 
-        group.bench_with_input(BenchmarkId::new("sum_loop", iterations), &program, |b, prog| {
-            b.iter(|| execute_source(black_box(prog)))
-        });
+        group.bench_with_input(
+            BenchmarkId::new("sum_loop", iterations),
+            &program,
+            |b, prog| b.iter(|| execute_source(black_box(prog))),
+        );
     }
 
     group.finish();
@@ -255,17 +263,13 @@ fn bench_complex_programs(c: &mut Criterion) {
         collatz(27)
     "#;
 
-    group.bench_function("gcd", |b| {
-        b.iter(|| execute_source(black_box(gcd)))
-    });
+    group.bench_function("gcd", |b| b.iter(|| execute_source(black_box(gcd))));
 
     group.bench_function("ackermann", |b| {
         b.iter(|| execute_source(black_box(ackermann)))
     });
 
-    group.bench_function("collatz", |b| {
-        b.iter(|| execute_source(black_box(collatz)))
-    });
+    group.bench_function("collatz", |b| b.iter(|| execute_source(black_box(collatz))));
 
     group.finish();
 }

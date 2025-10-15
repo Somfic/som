@@ -1,4 +1,8 @@
-use crate::{expressions::{self, function::FunctionExpression}, prelude::*, statements};
+use crate::{
+    expressions::{self, function::FunctionExpression},
+    prelude::*,
+    statements,
+};
 pub use environment::Environment;
 use std::cell::RefCell;
 

@@ -21,7 +21,8 @@ pub fn parse(parser: &mut Parser) -> Result<Statement> {
     Ok(StatementValue::Import(ImportStatement {
         path,
         path_span: string_token.span,
-    }).with_span(span))
+    })
+    .with_span(span))
 }
 
 pub fn type_check(

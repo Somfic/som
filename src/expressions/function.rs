@@ -308,7 +308,7 @@ pub fn compile_with_name(
         if captured_vars.is_empty() {
             env.declare_function(name, func_id);
         }
-        Some(())  // Guard to ensure we don't accidentally remove it
+        Some(()) // Guard to ensure we don't accidentally remove it
     } else {
         None
     };
@@ -379,17 +379,25 @@ pub fn compile_with_name(
     function_env.set_tail_call_params(param_vars);
 
     // Compile the body with tail call context
-    let tail_ctx = crate::compiler::TailContext::InTail { func_id, loop_start };
-    let body = compiler.compile_expression_with_tail(&value.body, &mut builder, &mut function_env, tail_ctx);
+    let tail_ctx = crate::compiler::TailContext::InTail {
+        func_id,
+        loop_start,
+    };
+    let body = compiler.compile_expression_with_tail(
+        &value.body,
+        &mut builder,
+        &mut function_env,
+        tail_ctx,
+    );
 
     // Check if body could potentially end with a tail call
     // These expression types can contain tail calls in tail position
     let might_have_tail_call = matches!(
         &value.body.value,
-        TypedExpressionValue::Call(_) |
-        TypedExpressionValue::Block(_) |
-        TypedExpressionValue::Conditional(_) |
-        TypedExpressionValue::Group(_)
+        TypedExpressionValue::Call(_)
+            | TypedExpressionValue::Block(_)
+            | TypedExpressionValue::Conditional(_)
+            | TypedExpressionValue::Group(_)
     );
 
     // Try to add return - if it fails because block is filled, that's ok (tail call happened)

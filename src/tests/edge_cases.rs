@@ -295,8 +295,14 @@ fn edge_case_variable_shadowing() {
     assert_eq!(5, interpret("let x = 5; { let x = 10; x }; x"));
 
     // Multiple levels of shadowing
-    assert_eq!(15, interpret("let x = 5; { let x = 10; { let x = 15; x } }"));
-    assert_eq!(10, interpret("let x = 5; { let x = 10; { let x = 15; x }; x }"));
+    assert_eq!(
+        15,
+        interpret("let x = 5; { let x = 10; { let x = 15; x } }")
+    );
+    assert_eq!(
+        10,
+        interpret("let x = 5; { let x = 10; { let x = 15; x }; x }")
+    );
 
     // Shadowing with same value
     assert_eq!(5, interpret("let x = 5; { let x = 5; x }"));
@@ -362,7 +368,10 @@ fn edge_case_while_loops() {
     assert_eq!(5, interpret("let x = 5; while false { x = x + 1; }; x"));
 
     // Loop that executes once
-    assert_eq!(6, interpret("let x = 5; let flag = 1; while flag == 1 { x = x + 1; flag = 0; }; x"));
+    assert_eq!(
+        6,
+        interpret("let x = 5; let flag = 1; while flag == 1 { x = x + 1; flag = 0; }; x")
+    );
 
     // Loop counting down
     assert_eq!(0, interpret("let x = 5; while x > 0 { x = x - 1; }; x"));
@@ -422,14 +431,23 @@ fn edge_case_deeply_nested_conditionals() {
     assert_eq!(3, interpret("1 if false else (2 if false else 3)"));
 
     // Four levels deep
-    assert_eq!(1, interpret("1 if true else (2 if true else (3 if true else 4))"));
-    assert_eq!(4, interpret("1 if false else (2 if false else (3 if false else 4))"));
+    assert_eq!(
+        1,
+        interpret("1 if true else (2 if true else (3 if true else 4))")
+    );
+    assert_eq!(
+        4,
+        interpret("1 if false else (2 if false else (3 if false else 4))")
+    );
 }
 
 #[test]
 fn edge_case_function_multiple_params() {
     // Two parameters
-    assert_eq!(7, interpret("let add = fn(a ~ int, b ~ int) -> int { a + b }; add(3, 4)"));
+    assert_eq!(
+        7,
+        interpret("let add = fn(a ~ int, b ~ int) -> int { a + b }; add(3, 4)")
+    );
 
     // Three parameters
     assert_eq!(

@@ -8,10 +8,14 @@ fn compile_source(source: &str) -> Result<(), String> {
     let parsed = parser.parse().map_err(|e| format!("{:?}", e))?;
 
     let mut type_checker = TypeChecker::new();
-    let type_checked = type_checker.check(&parsed).map_err(|e| format!("{:?}", e))?;
+    let type_checked = type_checker
+        .check(&parsed)
+        .map_err(|e| format!("{:?}", e))?;
 
     let mut compiler = Compiler::new();
-    compiler.compile(&type_checked).map_err(|e| format!("{:?}", e))?;
+    compiler
+        .compile(&type_checked)
+        .map_err(|e| format!("{:?}", e))?;
 
     Ok(())
 }
@@ -23,7 +27,10 @@ fn bench_small_programs(c: &mut Criterion) {
     let programs = vec![
         ("arithmetic", "1 + 2 * 3"),
         ("variable", "let x = 42; x"),
-        ("simple_function", "let f = fn(x ~ int) -> int { x + 1 }; f(5)"),
+        (
+            "simple_function",
+            "let f = fn(x ~ int) -> int { x + 1 }; f(5)",
+        ),
         ("conditional", "let x = 10; 42 if x > 5 else 0"),
     ];
 

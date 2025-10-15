@@ -20,10 +20,7 @@ pub mod external;
 #[derive(Clone, Copy)]
 pub enum TailContext {
     /// We're in tail position within the given function
-    InTail {
-        func_id: FuncId,
-        loop_start: Block,
-    },
+    InTail { func_id: FuncId, loop_start: Block },
     /// We're not in tail position
     NotInTail,
 }

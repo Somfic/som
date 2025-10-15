@@ -40,7 +40,10 @@ impl SourceCode for MultiSource {
                     let column = offset - line_start;
 
                     // Find the line containing this position for context
-                    let line_end = source[offset..].find('\n').map(|pos| offset + pos).unwrap_or(source.len());
+                    let line_end = source[offset..]
+                        .find('\n')
+                        .map(|pos| offset + pos)
+                        .unwrap_or(source.len());
                     let line_text = &source[line_start..line_end];
 
                     return Ok(Box::new(MietteSpanContents::new(

@@ -152,7 +152,10 @@ pub fn run(source: miette::NamedSource<String>) -> i64 {
 }
 
 /// Run compilation with process tree visualization
-pub fn run_with_process_tree(source: miette::NamedSource<String>, source_path: Option<PathBuf>) -> Option<i64> {
+pub fn run_with_process_tree(
+    source: miette::NamedSource<String>,
+    source_path: Option<PathBuf>,
+) -> Option<i64> {
     use compilation_result::COMPILED_CODE;
 
     // Reset the compiled code storage
@@ -334,8 +337,8 @@ fn run_compilation_stages(
     source_path: Option<PathBuf>,
     process_tree: Arc<Mutex<Process>>,
 ) -> std::result::Result<(), Vec<miette::Report>> {
-    use compilation_result::COMPILED_CODE;
     use crate::module::ModuleLoader;
+    use compilation_result::COMPILED_CODE;
 
     fn update_stage_note(tree: &Arc<Mutex<Process>>, stage_name: &str) {
         let mut tree = tree.lock().unwrap();
@@ -374,26 +377,35 @@ fn run_compilation_stages(
     } else {
         let temp_file_path = std::env::temp_dir().join(format!("{}.som", source.name()));
         std::fs::write(&temp_file_path, source.inner()).map_err(|e| {
-            vec![miette::miette!(Error::Compiler(CompilerError::CodeGenerationFailed {
-                span: Span::default(),
-                help: format!("Failed to write temporary file: {}", e),
-            })).with_source_code(source.clone())]
+            vec![
+                miette::miette!(Error::Compiler(CompilerError::CodeGenerationFailed {
+                    span: Span::default(),
+                    help: format!("Failed to write temporary file: {}", e),
+                }))
+                .with_source_code(source.clone()),
+            ]
         })?;
         temp_file_path
     };
 
     let mut module_loader = ModuleLoader::new();
     match module_loader.load_module(&file_path) {
-        Ok(()) => {},
+        Ok(()) => {}
         Err(error) => {
             // Check if this is a ModuleError with source information
             let report = if let Error::Module(ref module_error) = error {
                 match module_error {
-                    crate::module::ModuleError::ParseError { path, source: module_source, .. } => {
-                        let module_name = path.file_stem()
+                    crate::module::ModuleError::ParseError {
+                        path,
+                        source: module_source,
+                        ..
+                    } => {
+                        let module_name = path
+                            .file_stem()
                             .and_then(|s| s.to_str())
                             .unwrap_or("unknown");
-                        let named_source = miette::NamedSource::new(module_name, module_source.clone());
+                        let named_source =
+                            miette::NamedSource::new(module_name, module_source.clone());
                         miette::miette!(error).with_source_code(named_source)
                     }
                 }
@@ -452,13 +464,22 @@ fn run_compilation_stages(
         // Process imports and add them as children
         let parent_dir = module.path.parent().unwrap_or(Path::new("."));
         for import_path_str in &module.imports {
-            if let Ok(resolved_path) = module_loader.canonicalize_path(&parent_dir.join(import_path_str)) {
+            if let Ok(resolved_path) =
+                module_loader.canonicalize_path(&parent_dir.join(import_path_str))
+            {
                 if let Some(imported_module) = module_loader.get_module(&resolved_path) {
                     // Recursively build the imported module's tree
-                    build_module_tree(imported_module, module_loader, module_processes, main_module_path);
+                    build_module_tree(
+                        imported_module,
+                        module_loader,
+                        module_processes,
+                        main_module_path,
+                    );
 
                     // Add the imported module's process as a child
-                    if let Some((imported_process, _)) = module_processes.get(&resolved_path).cloned() {
+                    if let Some((imported_process, _)) =
+                        module_processes.get(&resolved_path).cloned()
+                    {
                         process.children.push(imported_process);
                     }
                 }
@@ -471,9 +492,16 @@ fn run_compilation_stages(
     // Build tree starting from modules directly imported by main
     for import_path_str in &main_module.imports {
         let parent_dir = main_module.path.parent().unwrap_or(Path::new("."));
-        if let Ok(resolved_path) = module_loader.canonicalize_path(&parent_dir.join(import_path_str)) {
+        if let Ok(resolved_path) =
+            module_loader.canonicalize_path(&parent_dir.join(import_path_str))
+        {
             if let Some(imported_module) = module_loader.get_module(&resolved_path) {
-                build_module_tree(imported_module, &module_loader, &mut module_processes, &main_module_path);
+                build_module_tree(
+                    imported_module,
+                    &module_loader,
+                    &mut module_processes,
+                    &main_module_path,
+                );
             }
         }
     }
@@ -481,7 +509,9 @@ fn run_compilation_stages(
     // Add top-level imported modules to the main process tree
     for import_path_str in &main_module.imports {
         let parent_dir = main_module.path.parent().unwrap_or(Path::new("."));
-        if let Ok(resolved_path) = module_loader.canonicalize_path(&parent_dir.join(import_path_str)) {
+        if let Ok(resolved_path) =
+            module_loader.canonicalize_path(&parent_dir.join(import_path_str))
+        {
             if let Some((process, _)) = module_processes.get(&resolved_path).cloned() {
                 let mut tree = process_tree.lock().unwrap();
                 tree.children.push(process);
@@ -497,10 +527,11 @@ fn run_compilation_stages(
 
         for import_path_str in &module.imports {
             // Resolve the import path
-            let resolved_path = match module_loader.canonicalize_path(&parent_dir.join(import_path_str)) {
-                Ok(p) => p,
-                Err(_) => continue,
-            };
+            let resolved_path =
+                match module_loader.canonicalize_path(&parent_dir.join(import_path_str)) {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
 
             // Get the types from the imported module (which was already type-checked)
             if let Some(types_map) = module_types.get(&resolved_path) {
@@ -538,7 +569,7 @@ fn run_compilation_stages(
                             StatementValue::VariableDeclaration(var) => {
                                 this_module_types.insert(
                                     var.identifier.name.to_string(),
-                                    var.value.type_.clone()
+                                    var.value.type_.clone(),
                                 );
                             }
                             StatementValue::ExternDeclaration(ext) => {
@@ -546,7 +577,8 @@ fn run_compilation_stages(
                                     parameters: ext.signature.parameters.clone(),
                                     return_type: Box::new(ext.signature.return_type.clone()),
                                     span: ext.signature.span,
-                                }).with_span(ext.identifier.span);
+                                })
+                                .with_span(ext.identifier.span);
                                 this_module_types.insert(ext.identifier.name.to_string(), type_);
                             }
                             _ => {}
@@ -614,10 +646,19 @@ fn run_compilation_stages(
 
         let parent_dir = module.path.parent().unwrap_or(Path::new("."));
         for import_path_str in &module.imports {
-            if let Ok(resolved_path) = module_loader.canonicalize_path(&parent_dir.join(import_path_str)) {
+            if let Ok(resolved_path) =
+                module_loader.canonicalize_path(&parent_dir.join(import_path_str))
+            {
                 if let Some(imported_module) = module_loader.get_module(&resolved_path) {
-                    build_codegen_tree(imported_module, module_loader, module_processes, main_module_path);
-                    if let Some((imported_process, _)) = module_processes.get(&resolved_path).cloned() {
+                    build_codegen_tree(
+                        imported_module,
+                        module_loader,
+                        module_processes,
+                        main_module_path,
+                    );
+                    if let Some((imported_process, _)) =
+                        module_processes.get(&resolved_path).cloned()
+                    {
                         process.children.push(imported_process);
                     }
                 }
@@ -630,9 +671,16 @@ fn run_compilation_stages(
     // Build tree for code generation
     for import_path_str in &main_module.imports {
         let parent_dir = main_module.path.parent().unwrap_or(Path::new("."));
-        if let Ok(resolved_path) = module_loader.canonicalize_path(&parent_dir.join(import_path_str)) {
+        if let Ok(resolved_path) =
+            module_loader.canonicalize_path(&parent_dir.join(import_path_str))
+        {
             if let Some(imported_module) = module_loader.get_module(&resolved_path) {
-                build_codegen_tree(imported_module, &module_loader, &mut module_processes, &main_module_path);
+                build_codegen_tree(
+                    imported_module,
+                    &module_loader,
+                    &mut module_processes,
+                    &main_module_path,
+                );
             }
         }
     }
@@ -640,7 +688,9 @@ fn run_compilation_stages(
     // Add top-level imported modules to the main process tree
     for import_path_str in &main_module.imports {
         let parent_dir = main_module.path.parent().unwrap_or(Path::new("."));
-        if let Ok(resolved_path) = module_loader.canonicalize_path(&parent_dir.join(import_path_str)) {
+        if let Ok(resolved_path) =
+            module_loader.canonicalize_path(&parent_dir.join(import_path_str))
+        {
             if let Some((process, _)) = module_processes.get(&resolved_path).cloned() {
                 let mut tree = process_tree.lock().unwrap();
                 tree.children.push(process);
@@ -652,48 +702,52 @@ fn run_compilation_stages(
     let main_module = module_loader.get_module(&file_path).unwrap();
     let main_typed = typed_modules.get(&main_module.path).unwrap();
 
-    let (compiled, return_type) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut compiler = Compiler::new();
+    let (compiled, return_type) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+        || {
+            let mut compiler = Compiler::new();
 
-        // Compile all dependencies first (all modules except the main one)
-        for module in &modules {
-            if module.path == main_module.path {
-                continue; // Skip main module for now
-            }
+            // Compile all dependencies first (all modules except the main one)
+            for module in &modules {
+                if module.path == main_module.path {
+                    continue; // Skip main module for now
+                }
 
-            let typed_module = typed_modules.get(&module.path).unwrap();
+                let typed_module = typed_modules.get(&module.path).unwrap();
 
-            // Compile each declaration in the module
-            if let StatementValue::VariableDeclaration(var_decl) = &typed_module.value {
-                if let TypedExpressionValue::Function(func) = &var_decl.value.value {
-                    if let TypedExpressionValue::Block(block) = &func.body.value {
-                        for stmt in &block.statements {
-                            if let StatementValue::VariableDeclaration(decl) = &stmt.value {
-                                if let TypedExpressionValue::Function(_) = &decl.value.value {
-                                    // Create environment for this function with all current declarations
-                                    let mut func_env = crate::compiler::Environment::new(compiler.declarations.clone());
+                // Compile each declaration in the module
+                if let StatementValue::VariableDeclaration(var_decl) = &typed_module.value {
+                    if let TypedExpressionValue::Function(func) = &var_decl.value.value {
+                        if let TypedExpressionValue::Block(block) = &func.body.value {
+                            for stmt in &block.statements {
+                                if let StatementValue::VariableDeclaration(decl) = &stmt.value {
+                                    if let TypedExpressionValue::Function(_) = &decl.value.value {
+                                        // Create environment for this function with all current declarations
+                                        let mut func_env = crate::compiler::Environment::new(
+                                            compiler.declarations.clone(),
+                                        );
 
-                                    // This is a function declaration - compile it
-                                    let (func_id, _) = crate::expressions::function::compile(
-                                        &mut compiler,
-                                        &decl.value,
-                                        &mut func_env,
-                                    );
-                                    compiler.declarations.insert(
+                                        // This is a function declaration - compile it
+                                        let (func_id, _) = crate::expressions::function::compile(
+                                            &mut compiler,
+                                            &decl.value,
+                                            &mut func_env,
+                                        );
+                                        compiler.declarations.insert(
                                         decl.identifier.name.to_string(),
                                         crate::compiler::environment::DeclarationValue::Function(func_id),
                                     );
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Now compile the main module
-        compiler.compile(main_typed)
-    })) {
+            // Now compile the main module
+            compiler.compile(main_typed)
+        },
+    )) {
         Ok(Ok(result)) => {
             // Mark all modules as compiled (recursively)
             {
@@ -709,7 +763,7 @@ fn run_compilation_stages(
                 mark_all_completed_recursive(&mut tree.children);
             }
             result
-        },
+        }
         Ok(Err(error)) => {
             let report = miette::miette!(error).with_source_code(source.clone());
             return Err(vec![report]);

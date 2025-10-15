@@ -55,9 +55,7 @@ pub fn draw_process_tree(process: &Process) {
     let active_children: Vec<&Process> = process
         .children
         .iter()
-        .filter(|child| {
-            !is_process_and_children_waiting(child)
-        })
+        .filter(|child| !is_process_and_children_waiting(child))
         .collect();
 
     for (i, child) in active_children.iter().enumerate().rev() {
@@ -100,9 +98,7 @@ fn draw_process_tree_with_prefix(process: &Process, prefix: String, is_last: boo
     let active_children: Vec<&Process> = process
         .children
         .iter()
-        .filter(|child| {
-            !is_process_and_children_waiting(child)
-        })
+        .filter(|child| !is_process_and_children_waiting(child))
         .collect();
 
     for (i, child) in active_children.iter().enumerate().rev() {

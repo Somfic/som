@@ -196,7 +196,11 @@ pub fn compile(
     let func_id = get_func_id(compiler, &value.callee, env);
 
     // Check if this is a tail call to the same function
-    if let crate::compiler::TailContext::InTail { func_id: current_func, loop_start } = tail_ctx {
+    if let crate::compiler::TailContext::InTail {
+        func_id: current_func,
+        loop_start,
+    } = tail_ctx
+    {
         if func_id == current_func {
             // This is a self-tail-call! Update parameters and jump instead of calling
 
@@ -212,7 +216,8 @@ pub fn compile(
             let dummy = body.ins().iconst(cranelift::prelude::types::I64, 0);
 
             // Jump back to loop start, passing new argument values as block parameters
-            let block_args: Vec<BlockArg> = arg_values.iter().map(|v| BlockArg::Value(*v)).collect();
+            let block_args: Vec<BlockArg> =
+                arg_values.iter().map(|v| BlockArg::Value(*v)).collect();
             body.ins().jump(loop_start, &block_args);
 
             // Return the dummy value (unreachable, but satisfies type system)

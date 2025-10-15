@@ -11,8 +11,8 @@ pub mod closure;
 pub mod function;
 pub mod integer;
 pub mod string;
-pub mod unit;
 pub mod struct_;
+pub mod unit;
 
 /// Struct layout information for memory allocation
 #[derive(Debug, Clone, PartialEq, Eq)]
