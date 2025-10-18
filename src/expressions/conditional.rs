@@ -74,7 +74,6 @@ pub fn compile(
     expression: &TypedExpression,
     body: &mut FunctionBuilder,
     env: &mut CompileEnvironment,
-    tail_ctx: crate::compiler::TailContext,
 ) -> CompileValue {
     let value = match &expression.value {
         TypedExpressionValue::Conditional(value) => value,
@@ -92,38 +91,19 @@ pub fn compile(
     body.ins()
         .brif(condition_val, truthy_block, &[], falsy_block, &[]);
 
-    // truthy - both branches are in tail position if conditional is
+    // Compile truthy branch
     body.switch_to_block(truthy_block);
-    let truthy_val = compiler.compile_expression_with_tail(&value.truthy, body, env, tail_ctx);
-
-    // Try to add jump to merge block. If this fails because the block is already filled
-    // (due to a self-tail-call optimization), catch the panic and continue.
-    let might_be_tail_call = matches!(tail_ctx, crate::compiler::TailContext::InTail { .. });
-    if might_be_tail_call {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            body.ins().jump(merge_block, &[BlockArg::Value(truthy_val)]);
-        }));
-    } else {
-        body.ins().jump(merge_block, &[BlockArg::Value(truthy_val)]);
-    }
+    let truthy_val = compiler.compile_expression(&value.truthy, body, env);
+    body.ins().jump(merge_block, &[BlockArg::Value(truthy_val)]);
     body.seal_block(truthy_block);
 
-    // falsy - both branches are in tail position if conditional is
+    // Compile falsy branch
     body.switch_to_block(falsy_block);
-    let falsy_val = compiler.compile_expression_with_tail(&value.falsy, body, env, tail_ctx);
-
-    // Try to add jump to merge block. If this fails because the block is already filled
-    // (due to a self-tail-call optimization), catch the panic and continue.
-    if might_be_tail_call {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            body.ins().jump(merge_block, &[BlockArg::Value(falsy_val)]);
-        }));
-    } else {
-        body.ins().jump(merge_block, &[BlockArg::Value(falsy_val)]);
-    }
+    let falsy_val = compiler.compile_expression(&value.falsy, body, env);
+    body.ins().jump(merge_block, &[BlockArg::Value(falsy_val)]);
     body.seal_block(falsy_block);
 
-    // merge
+    // Merge
     body.switch_to_block(merge_block);
     body.seal_block(merge_block);
     body.block_params(merge_block)[0]

@@ -2,7 +2,7 @@ use cranelift::prelude::EntityRef;
 use cranelift_module::FuncId;
 
 use crate::prelude::*;
-use std::{cell::Cell, collections::HashMap, rc::Rc};
+use std::collections::HashMap;
 
 pub struct Environment<'env> {
     pub parent: Option<&'env Environment<'env>>,

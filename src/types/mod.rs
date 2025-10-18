@@ -1,18 +1,13 @@
-use std::collections::{HashMap, HashSet};
-use std::fmt::{format, write, Display};
+use std::fmt::Display;
 use std::hash::Hash;
 
 use crate::expressions::function::Parameter;
 use crate::prelude::*;
 use crate::types::struct_::Field;
 
-pub mod boolean;
-pub mod closure;
 pub mod function;
-pub mod integer;
-pub mod string;
+pub mod primitives;
 pub mod struct_;
-pub mod unit;
 
 /// Struct layout information for memory allocation
 #[derive(Debug, Clone, PartialEq, Eq)]

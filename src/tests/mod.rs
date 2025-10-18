@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{lowering::Lowering, prelude::*};
 
 pub mod arithmetic;
 pub mod blocks;
@@ -65,8 +65,12 @@ pub fn interpret(source: &str) -> i64 {
         }
     };
 
-    let mut compiler = Compiler::new();
-    let (compiled, return_type) = match compiler.compile(&type_checked) {
+    let mut lowering = Lowering::new();
+    let lowered = lowering.lower(type_checked);
+    let metadata = lowering.metadata;
+
+    let mut compiler = Compiler::new(metadata);
+    let (compiled, return_type) = match compiler.compile(&lowered) {
         Ok(result) => result,
         Err(error) => {
             eprintln!(

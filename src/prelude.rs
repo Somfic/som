@@ -1,5 +1,4 @@
 pub use crate::compiler::Compiler;
-pub use crate::expressions::assignment::AssignmentExpression;
 pub use crate::expressions::binary::BinaryExpression;
 pub use crate::expressions::binary::BinaryOperator;
 pub use crate::expressions::conditional::ConditionalExpression;

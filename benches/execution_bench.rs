@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use som::{Compiler, Lexer, Parser, Runner, TypeChecker};
+use som::{lowering::Lowering, Compiler, Lexer, Parser, Runner, TypeChecker};
 
 /// Helper function to compile and execute som source code
 fn execute_source(source: &str) -> Result<i64, String> {
@@ -12,9 +12,13 @@ fn execute_source(source: &str) -> Result<i64, String> {
         .check(&parsed)
         .map_err(|e| format!("{:?}", e))?;
 
-    let mut compiler = Compiler::new();
+    let mut lowering = Lowering::new();
+    let lowered = lowering.lower(type_checked);
+    let metadata = lowering.metadata;
+
+    let mut compiler = Compiler::new(metadata);
     let (compiled, return_type) = compiler
-        .compile(&type_checked)
+        .compile(&lowered)
         .map_err(|e| format!("{:?}", e))?;
 
     let runner = Runner::new();

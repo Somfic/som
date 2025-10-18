@@ -10,7 +10,6 @@ use std::fmt::Display;
 use std::ops::Sub;
 use thiserror::Error;
 
-use crate::expressions::function::Parameter;
 use crate::expressions::TypedExpression;
 use crate::lexer::{Identifier, Token, TokenKind};
 use crate::type_checker::Environment as TypeEnvironment;

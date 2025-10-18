@@ -1,10 +1,9 @@
 use crate::{
     expressions::{self, function::FunctionExpression},
     prelude::*,
-    statements::{self, variable_declaration::VariableDeclarationStatement},
+    statements::variable_declaration::VariableDeclarationStatement,
 };
-use std::collections::HashMap;
-use std::{cell::RefCell, rc::Rc};
+use std::cell::RefCell;
 
 pub mod lookup;
 

@@ -145,10 +145,10 @@ impl Default for Lookup {
             TokenKind::Let,
             crate::statements::variable_declaration::parse,
         )
-        .add_type_handler(TokenKind::I32Type, crate::types::integer::parse_i32)
-        .add_type_handler(TokenKind::I64Type, crate::types::integer::parse_i64)
-        .add_type_handler(TokenKind::BooleanType, crate::types::boolean::parse)
-        .add_type_handler(TokenKind::StringType, crate::types::string::parse)
+        .add_type_handler(TokenKind::I32Type, crate::types::primitives::parse_i32)
+        .add_type_handler(TokenKind::I64Type, crate::types::primitives::parse_i64)
+        .add_type_handler(TokenKind::BooleanType, crate::types::primitives::parse_boolean)
+        .add_type_handler(TokenKind::StringType, crate::types::primitives::parse_string)
         .add_type_handler(TokenKind::Function, crate::types::function::parse)
         .add_left_expression_handler(
             TokenKind::If,
@@ -195,7 +195,7 @@ impl Default for Lookup {
             BindingPower::Relational,
             crate::expressions::binary::equals::parse,
         )
-        .add_type_handler(TokenKind::UnitType, crate::types::unit::parse)
+        .add_type_handler(TokenKind::UnitType, crate::types::primitives::parse_unit)
         .add_expression_handler(TokenKind::While, crate::expressions::while_loop::parse)
     }
 }

@@ -1,4 +1,4 @@
-use crate::{compiler, expressions::TypedExpressionValue, prelude::*};
+use crate::{expressions::TypedExpressionValue, prelude::*};
 
 pub fn parse(
     parser: &mut Parser,

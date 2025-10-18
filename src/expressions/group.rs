@@ -1,4 +1,4 @@
-use cranelift::prelude::{FunctionBuilder, InstBuilder};
+use cranelift::prelude::FunctionBuilder;
 
 use crate::prelude::*;
 

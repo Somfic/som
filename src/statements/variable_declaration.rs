@@ -1,4 +1,4 @@
-use crate::{expressions, prelude::*};
+use crate::{expressions, lowering, prelude::*};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VariableDeclarationStatement<Expression> {
@@ -88,12 +88,28 @@ pub fn compile(
 
     match &declaration.value.value {
         TypedExpressionValue::Function(_) => {
-            let (func_id, captured_vars) = expressions::function::compile_with_name(
-                compiler,
-                &declaration.value,
-                env,
-                Some(&declaration.identifier),
-            );
+            // Check if this function is marked as tail-recursive in metadata
+            let is_tail_recursive = compiler
+                .metadata
+                .is_tail_recursive(&declaration.identifier.name);
+
+            let (func_id, captured_vars) = if is_tail_recursive {
+                // Use tail-call optimized compilation
+                lowering::tail_calls::compile_tail_recursive_function(
+                    compiler,
+                    &declaration.value,
+                    env,
+                    &declaration.identifier,
+                )
+            } else {
+                // Use regular compilation (with name for recursion support)
+                expressions::function::compile_with_optional_name(
+                    compiler,
+                    &declaration.value,
+                    env,
+                    Some(&declaration.identifier),
+                )
+            };
 
             // If the function captures variables, store it as a closure
             // Otherwise store it as a plain function (ZST)

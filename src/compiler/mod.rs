@@ -1,38 +1,30 @@
 use std::{collections::HashMap, sync::Arc};
 
 use cranelift::prelude::*;
-use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{FuncId, Module};
+use cranelift_jit::JITModule;
+use cranelift_module::Module;
 pub use environment::Environment;
 
 use crate::{
     compiler::environment::DeclarationValue,
     expressions,
+    lowering::LoweringMetadata,
     prelude::*,
     statements::{self},
 };
 
-pub mod capture;
 pub mod environment;
 pub mod external;
-
-/// Context for tracking tail call positions during compilation
-#[derive(Clone, Copy)]
-pub enum TailContext {
-    /// We're in tail position within the given function
-    InTail { func_id: FuncId, loop_start: Block },
-    /// We're not in tail position
-    NotInTail,
-}
 
 pub struct Compiler {
     pub isa: Arc<dyn isa::TargetIsa>,
     pub codebase: JITModule,
     pub declarations: HashMap<String, DeclarationValue>,
+    pub metadata: LoweringMetadata,
 }
 
 impl Compiler {
-    pub fn new() -> Self {
+    pub fn new(metadata: LoweringMetadata) -> Self {
         let mut flag_builder = settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
         flag_builder.set("is_pic", "false").unwrap();
@@ -50,6 +42,7 @@ impl Compiler {
             isa,
             codebase,
             declarations,
+            metadata,
         }
     }
 
@@ -115,23 +108,12 @@ impl Compiler {
         }
     }
 
-    /// Compile an expression without tail call context (non-tail position)
+    /// Compile an expression
     pub fn compile_expression(
         &mut self,
         expression: &TypedExpression,
         body: &mut FunctionBuilder,
         env: &mut CompileEnvironment,
-    ) -> CompileValue {
-        self.compile_expression_with_tail(expression, body, env, TailContext::NotInTail)
-    }
-
-    /// Compile an expression with tail call context
-    pub fn compile_expression_with_tail(
-        &mut self,
-        expression: &TypedExpression,
-        body: &mut FunctionBuilder,
-        env: &mut CompileEnvironment,
-        tail_ctx: TailContext,
     ) -> CompileValue {
         match &expression.value {
             TypedExpressionValue::Primary(primary) => match primary {
@@ -190,13 +172,13 @@ impl Compiler {
                 expressions::identifier::compile(self, expression, body, env)
             }
             TypedExpressionValue::Block(block) => {
-                expressions::block::compile(self, block, body, env, tail_ctx)
+                expressions::block::compile(self, block, body, env)
             }
             TypedExpressionValue::Call(_) => {
-                expressions::call::compile(self, expression, body, env, tail_ctx)
+                expressions::call::compile(self, expression, body, env)
             }
             TypedExpressionValue::Conditional(_) => {
-                expressions::conditional::compile(self, expression, body, env, tail_ctx)
+                expressions::conditional::compile(self, expression, body, env)
             }
             TypedExpressionValue::StructConstructor(_) => {
                 expressions::struct_constructor::compile(self, expression, body, env)

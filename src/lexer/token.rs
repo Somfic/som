@@ -1,4 +1,3 @@
-use miette::SourceSpan;
 
 use crate::prelude::*;
 use std::fmt::{Debug, Display};

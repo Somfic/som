@@ -123,23 +123,6 @@ jobs:
           cargo fmt --all -- --check
           cargo check
 
-      # - name: Install cargo check tools
-      #   run: |
-      #     cargo install --locked cargo-deny || true
-      #     cargo install --locked cargo-outdated || true
-      #     cargo install --locked cargo-udeps || true
-      #     cargo install --locked cargo-audit || true
-      #     cargo install --locked cargo-pants || true
-
-      # - name: Check
-      #   run: |
-      #     cargo deny check -c config/cargo-deny.toml
-      #     cargo outdated
-      #     cargo udeps
-      #     rm -rf ~/.cargo/advisory-db
-      #     cargo audit
-      #     cargo pants
-
       - name: Install committer
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         run: cargo install --locked committer || true

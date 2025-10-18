@@ -4,6 +4,7 @@ pub mod compiler;
 pub mod errors;
 pub mod expressions;
 pub mod lexer;
+pub mod lowering;
 pub mod module;
 pub mod parser;
 pub mod prelude;

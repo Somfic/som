@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use som::{Compiler, Lexer, Parser, TypeChecker};
+use som::{lowering::Lowering, Compiler, Lexer, Parser, TypeChecker};
 
-/// Helper function to compile som source code through parse + typecheck + compile
+/// Helper function to compile som source code through parse + typecheck + lower + compile
 fn compile_source(source: &str) -> Result<(), String> {
     let lexer = Lexer::new(source);
     let mut parser = Parser::new(lexer);
@@ -12,9 +12,13 @@ fn compile_source(source: &str) -> Result<(), String> {
         .check(&parsed)
         .map_err(|e| format!("{:?}", e))?;
 
-    let mut compiler = Compiler::new();
+    let mut lowering = Lowering::new();
+    let lowered = lowering.lower(type_checked);
+    let metadata = lowering.metadata;
+
+    let mut compiler = Compiler::new(metadata);
     compiler
-        .compile(&type_checked)
+        .compile(&lowered)
         .map_err(|e| format!("{:?}", e))?;
 
     Ok(())

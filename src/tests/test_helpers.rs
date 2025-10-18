@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::{lowering::Lowering, prelude::*};
 
 /// Test helper for error conditions
 /// Returns true if compilation fails at any stage (lexer, parser, type checker, compiler, or runner)
@@ -19,8 +19,12 @@ pub fn expect_error(source: &str) -> bool {
         Err(_) => return true, // Type checker error occurred
     };
 
-    let mut compiler = Compiler::new();
-    let (compiled, return_type) = match compiler.compile(&type_checked) {
+    let mut lowering = Lowering::new();
+    let lowered = lowering.lower(type_checked);
+    let metadata = lowering.metadata;
+
+    let mut compiler = Compiler::new(metadata);
+    let (compiled, return_type) = match compiler.compile(&lowered) {
         Ok(result) => result,
         Err(_) => return true, // Compiler error occurred
     };
@@ -51,8 +55,12 @@ pub fn get_error_type(source: &str) -> Option<String> {
         Err(_) => return Some("TypeCheckerError".to_string()),
     };
 
-    let mut compiler = Compiler::new();
-    let (compiled, return_type) = match compiler.compile(&type_checked) {
+    let mut lowering = Lowering::new();
+    let lowered = lowering.lower(type_checked);
+    let metadata = lowering.metadata;
+
+    let mut compiler = Compiler::new(metadata);
+    let (compiled, return_type) = match compiler.compile(&lowered) {
         Ok(result) => result,
         Err(_) => return Some("CompilerError".to_string()),
     };
@@ -78,9 +86,13 @@ pub fn interpret_strict(source: &str) -> i64 {
         .check(&parsed)
         .expect("Type checker should succeed");
 
-    let mut compiler = Compiler::new();
+    let mut lowering = Lowering::new();
+    let lowered = lowering.lower(type_checked);
+    let metadata = lowering.metadata;
+
+    let mut compiler = Compiler::new(metadata);
     let (compiled, return_type) = compiler
-        .compile(&type_checked)
+        .compile(&lowered)
         .expect("Compiler should succeed");
 
     let runner = Runner::new();

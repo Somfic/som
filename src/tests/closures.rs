@@ -1,4 +1,4 @@
-use crate::tests::test_helpers::{expect_error, interpret_strict};
+use crate::tests::test_helpers::interpret_strict;
 
 #[test]
 fn test_simple_addition() {
