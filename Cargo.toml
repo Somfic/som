@@ -18,7 +18,7 @@ cranelift-native = "0.125.1"
 memmap2 = "0.9.9"
 clap = { version = "4.5.51", features = ["derive"] }
 syn = "2.0.108"
-quote = "1.0.41"
+quote = "1.0.42"
 proc-macro2 = "1.0.103"
 thiserror = "2.0.17"
 nucleo-matcher = "0.3.1"
