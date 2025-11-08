@@ -37,6 +37,7 @@ impl From<Token> for Span {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenValue {
     None,
+    Error(Box<str>),
     Boolean(bool),
     I32(i32),
     I64(i64),
@@ -50,6 +51,7 @@ impl Display for TokenValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenValue::None => write!(f, "nothing"),
+            TokenValue::Error(msg) => write!(f, "{msg}"),
             TokenValue::Boolean(value) => write!(f, "{value}"),
             TokenValue::I32(value) => write!(f, "{value}"),
             TokenValue::I64(value) => write!(f, "{value}"),
@@ -63,18 +65,8 @@ impl Display for TokenValue {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum TokenKind {
-    /// A token that should be ignored. This is used for whitespace, comments, etc.
-    Ignore,
-
-    /// A single-line comment; `// comment`.
-    SingleLineComment,
-    /// A multi-line comment; `/* comment */`.
-    MultiLineComment,
-
-    /// The opening of an indentation level.
-    IndentationOpen,
-    /// The closing of an indentation level.
-    IndentationClose,
+    /// A lexer error token containing an error message.
+    Error,
 
     /// An opening parenthesis; `(`.
     ParenOpen,
@@ -223,11 +215,7 @@ pub enum TokenKind {
 impl Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TokenKind::Ignore => write!(f, ""),
-            TokenKind::SingleLineComment => write!(f, "a single-line comment"),
-            TokenKind::MultiLineComment => write!(f, "a multi-line comment"),
-            TokenKind::IndentationOpen => write!(f, "opening indentation level"),
-            TokenKind::IndentationClose => write!(f, "closing indentation level"),
+            TokenKind::Error => write!(f, "an error"),
             TokenKind::ParenOpen => write!(f, "`(`"),
             TokenKind::ParenClose => write!(f, "`)`"),
             TokenKind::CurlyOpen => write!(f, "`{{`"),
