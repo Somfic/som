@@ -2,32 +2,43 @@ use crate::lexer::{self, Token, TokenKind, TokenValue};
 use crate::parser::{Parse, Parser};
 use crate::{Error, Result};
 
-pub struct Parsing;
+#[derive(Debug)]
+pub struct ParsePhase;
 
 pub trait PhaseInfo {
-    type TypeInfo;
+    type TypeInfo: std::fmt::Debug;
 }
 
-impl PhaseInfo for Parsing {
+impl PhaseInfo for ParsePhase {
     type TypeInfo = (); // No type info during parsing
 }
 
 #[derive(Debug)]
-pub struct AstExpression<Phase: PhaseInfo = Parsing> {
-    pub kind: Expr,
+pub struct Expression<Phase: PhaseInfo = ParsePhase> {
+    pub expr: Expr<Phase>,
     pub span: lexer::Span,
     pub ty: Phase::TypeInfo,
 }
 
 #[derive(Debug)]
-pub enum Expr {
+pub enum Expr<Phase: PhaseInfo> {
     Primary(Primary),
-    Unary(Unary),
-    Binary(Binary),
+    Unary(Unary<Phase>),
+    Binary(Binary<Phase>),
 }
 
-impl Parse for Binary {
-    type Params = Expr; // Takes the LHS as a parameter
+impl Parse for Expression<ParsePhase> {
+    type Params = u8;
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let (expr, span) = input.parse_with_span()?;
+
+        Ok(Expression { expr, span, ty: () })
+    }
+}
+
+impl Parse for Binary<ParsePhase> {
+    type Params = Expression<ParsePhase>; // Takes the LHS as a parameter
 
     fn parse(input: &mut Parser, lhs: Self::Params) -> Result<Self> {
         let op_token = input.lexer.next().unwrap()?; // consume operator
@@ -36,7 +47,7 @@ impl Parse for Binary {
             Error::ParserError(format!("expected binary operator, found {}", op_token.kind))
         })?;
 
-        let rhs = input.parse_with::<Expr>(r_bp)?;
+        let rhs = input.parse_with::<Expression<ParsePhase>>(r_bp)?;
 
         let binary = match op_token.kind {
             TokenKind::Plus => Binary::Add(Box::new(lhs), Box::new(rhs)),
@@ -52,29 +63,50 @@ impl Parse for Binary {
     }
 }
 
-impl Parse for Expr {
+impl Parse for Expr<ParsePhase> {
     type Params = u8;
 
     fn parse(input: &mut Parser, min_bp: Self::Params) -> Result<Self> {
         let mut lhs = match input.peek_expect()?.kind {
-            TokenKind::Minus | TokenKind::Bang => Expr::Unary(input.parse()?),
-            _ => Expr::Primary(input.parse()?),
+            TokenKind::Minus | TokenKind::Bang => {
+                let (inner, span) = input.parse_with_span()?;
+                Expression {
+                    expr: Expr::Unary(inner),
+                    span,
+                    ty: (),
+                }
+            }
+            _ => {
+                let (inner, span) = input.parse_with_span()?;
+                Expression {
+                    expr: Expr::Primary(inner),
+                    span,
+                    ty: (),
+                }
+            }
         };
 
-        while let Some(token) = input.peek() {
+        while let Ok(token) = input.next() {
             lhs = match token.kind {
                 TokenKind::Minus | TokenKind::Plus => {
                     let (l_bp, _) = infix_binding_power(&token.kind).unwrap();
                     if l_bp < min_bp {
                         break;
                     }
-                    Expr::Binary(input.parse_with(lhs)?)
+                    let (expr, span) = input.parse_with_span_with(0)?;
+                    let rhs = Expression { expr, span, ty: () };
+
+                    Expression {
+                        span: &rhs.span + &lhs.span,
+                        expr: Expr::Binary(Binary::Add(Box::new(lhs), Box::new(rhs))),
+                        ty: (),
+                    }
                 }
                 _ => break,
             }
         }
 
-        Ok(lhs)
+        Ok(lhs.expr)
     }
 }
 
@@ -115,16 +147,16 @@ pub enum Primary {
 }
 
 #[derive(Debug)]
-pub enum Unary {
-    Negate(Box<Expr>),
+pub enum Unary<Phase: PhaseInfo> {
+    Negate(Box<Expression<Phase>>),
 }
 
 #[derive(Debug)]
-pub enum Binary {
-    Add(Box<Expr>, Box<Expr>),
+pub enum Binary<Phase: PhaseInfo> {
+    Add(Box<Expression<Phase>>, Box<Expression<Phase>>),
 }
 
-impl Parse for Unary {
+impl Parse for Unary<ParsePhase> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {

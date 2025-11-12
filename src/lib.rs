@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 pub mod ast;
 mod lexer;
@@ -24,10 +24,10 @@ impl<'input> Source<'input> {
     }
 
     /// Get a source identifier for error messages
-    pub fn identifier(&self) -> &str {
+    pub fn identifier(&self) -> Arc<str> {
         match self {
-            Source::Raw(_) => "<input>",
-            Source::File(path, _) => path.to_str().unwrap_or("<unknown>"),
+            Source::Raw(_) => "<input>".into(),
+            Source::File(path, _) => path.to_str().unwrap_or("<unknown>").into(),
         }
     }
 }

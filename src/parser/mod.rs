@@ -1,4 +1,4 @@
-use crate::lexer::{Lexer, Token, TokenKind};
+use crate::lexer::{Lexer, Span, Token, TokenKind};
 use crate::{Error, Result, Source};
 
 pub trait Parse: Sized {
@@ -22,7 +22,7 @@ impl<'input> Parser<'input> {
     where
         T::Params: Default,
     {
-        T::parse(self, Default::default())
+        self.parse_with(Default::default())
     }
 
     pub fn parse_with<T: Parse>(&mut self, params: T::Params) -> Result<T> {
@@ -33,14 +33,7 @@ impl<'input> Parser<'input> {
     where
         T::Params: Default,
     {
-        let checkpoint = self.lexer.cursor.clone();
-        match self.parse() {
-            Ok(value) => Some(value),
-            Err(_) => {
-                self.lexer.cursor = checkpoint;
-                None
-            }
-        }
+        self.try_parse_with(Default::default())
     }
 
     pub(crate) fn try_parse_with<T: Parse>(&mut self, params: T::Params) -> Option<T> {
@@ -85,5 +78,29 @@ impl<'input> Parser<'input> {
         self.lexer
             .next()
             .ok_or_else(|| Error::ParserError("unexpected end of input".into()))?
+    }
+
+    pub(crate) fn parse_with_span<T: Parse>(&mut self) -> Result<(T, Span)>
+    where
+        T::Params: Default,
+    {
+        self.parse_with_span_with(Default::default())
+    }
+
+    pub(crate) fn parse_with_span_with<T: Parse>(
+        &mut self,
+        params: T::Params,
+    ) -> Result<(T, Span)> {
+        let start = self.lexer.cursor.clone();
+        let source_name = self.lexer.source.identifier();
+        let source_content = self.lexer.source_content.clone();
+
+        let inner = T::parse(self, params)?;
+
+        let end = self.lexer.cursor.clone();
+
+        let span = start - end;
+
+        Ok((inner, span))
     }
 }

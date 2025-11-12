@@ -19,6 +19,8 @@ pub struct Cursor {
     byte_offset: usize,
     line: usize,
     col: usize,
+    pub source_name: Arc<str>,
+    pub source_content: Arc<str>,
 }
 
 pub struct Lexer<'input> {
@@ -26,14 +28,15 @@ pub struct Lexer<'input> {
     pub remainder: &'input str,
     pub cursor: Cursor,
     pub peeked: Option<Token>,
-    current: Option<Result<Token>>,
+    pub current: Option<Result<Token>>,
     /// Shared reference to the source content for spans
-    source_content: Arc<str>,
+    pub source_content: Arc<str>,
 }
 
 impl<'input> Lexer<'input> {
     pub fn new(source: Source<'input>) -> Lexer<'input> {
         let source_content: Arc<str> = Arc::from(source.get());
+        let source_name: Arc<str> = Arc::from(source.identifier());
         Lexer {
             remainder: source.get(),
             source,
@@ -41,6 +44,8 @@ impl<'input> Lexer<'input> {
                 byte_offset: 0,
                 line: 1,
                 col: 1,
+                source_name: source_name.clone(),
+                source_content: source_content.clone(),
             },
             peeked: None,
             current: None,
