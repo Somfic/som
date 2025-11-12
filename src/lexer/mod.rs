@@ -3,7 +3,6 @@ mod span;
 mod tests;
 mod token;
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use span::Span;
@@ -13,30 +12,10 @@ pub use token::TokenKind;
 pub use token::TokenValue;
 
 use crate::Result;
+use crate::Source;
 
-pub enum Source<'input> {
-    Raw(&'input str),
-    File(PathBuf, &'input str),
-}
-
-impl<'input> Source<'input> {
-    pub fn get(&self) -> &'input str {
-        match self {
-            Source::Raw(source) => source,
-            Source::File(_, source) => source,
-        }
-    }
-
-    /// Get a source identifier for error messages
-    pub fn identifier(&self) -> &str {
-        match self {
-            Source::Raw(_) => "<input>",
-            Source::File(path, _) => path.to_str().unwrap_or("<unknown>"),
-        }
-    }
-}
-
-struct Cursor {
+#[derive(Clone)]
+pub struct Cursor {
     byte_offset: usize,
     line: usize,
     col: usize,
@@ -572,7 +551,7 @@ impl Iterator for Lexer<'_> {
             '&' => self.parse_compound_operator(TokenKind::Ampersand, TokenKind::And, '&'),
             '|' => self.parse_compound_operator(TokenKind::Pipe, TokenKind::Or, '|'),
             '=' => self.parse_compound_operator(TokenKind::Equal, TokenKind::Equality, '='),
-            '!' => self.parse_compound_operator(TokenKind::Not, TokenKind::Inequality, '='),
+            '!' => self.parse_compound_operator(TokenKind::Bang, TokenKind::Inequality, '='),
             '<' => {
                 self.parse_compound_operator(TokenKind::LessThan, TokenKind::LessThanOrEqual, '=')
             }

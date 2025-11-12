@@ -45,7 +45,6 @@ impl Span {
         }
     }
 
-    /// Create a span from a single position (for zero-length spans)
     pub fn at(
         line: usize,
         col: usize,
@@ -65,14 +64,12 @@ impl Span {
         }
     }
 
-    /// Get the line from the source that contains this span
     pub fn get_line(&self) -> Option<&str> {
         self.source_content
             .lines()
             .nth(self.start_line.saturating_sub(1))
     }
 
-    /// Get the text content of this span
     pub fn get_text(&self) -> &str {
         let end = (self.start_offset + self.length).min(self.source_content.len());
         &self.source_content[self.start_offset..end]

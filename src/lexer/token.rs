@@ -104,7 +104,7 @@ pub enum TokenKind {
     /// An equals sign; `=`.
     Equal,
     /// A negation sign; `!`.
-    Not,
+    Bang,
     /// A less-than sign; `<`.
     LessThan,
     /// A greater-than sign; `>`.
@@ -209,7 +209,7 @@ pub enum TokenKind {
     /// The character type; `char`.
     CharacterType,
     /// The end of the file; `EOF`.
-    EOF,
+    Eof,
 }
 
 impl Display for TokenKind {
@@ -231,7 +231,7 @@ impl Display for TokenKind {
             TokenKind::Slash => write!(f, "`/`"),
             TokenKind::Star => write!(f, "`*`"),
             TokenKind::Equal => write!(f, "`=`"),
-            TokenKind::Not => write!(f, "`!`"),
+            TokenKind::Bang => write!(f, "`!`"),
             TokenKind::LessThan => write!(f, "`<`"),
             TokenKind::GreaterThan => write!(f, "`>`"),
             TokenKind::LessThanOrEqual => write!(f, "`<=`"),
@@ -278,7 +278,7 @@ impl Display for TokenKind {
             TokenKind::DecimalType => write!(f, "a decimal type"),
             TokenKind::StringType => write!(f, "a string type"),
             TokenKind::CharacterType => write!(f, "a character type"),
-            TokenKind::EOF => write!(f, "the end of the file"),
+            TokenKind::Eof => write!(f, "the end of the file"),
             TokenKind::Ampersand => write!(f, "`&`"),
         }
     }

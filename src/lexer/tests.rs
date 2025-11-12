@@ -1,3 +1,4 @@
+use crate::Source;
 
 use super::*;
 
@@ -36,7 +37,7 @@ fn test_operators() {
     assert_eq!(tokens[3].kind, TokenKind::Slash);
     assert_eq!(tokens[4].kind, TokenKind::Percent);
     assert_eq!(tokens[5].kind, TokenKind::Equal);
-    assert_eq!(tokens[6].kind, TokenKind::Not);
+    assert_eq!(tokens[6].kind, TokenKind::Bang);
     assert_eq!(tokens[7].kind, TokenKind::LessThan);
     assert_eq!(tokens[8].kind, TokenKind::GreaterThan);
     assert_eq!(tokens[9].kind, TokenKind::LessThanOrEqual);
@@ -128,9 +129,9 @@ fn test_large_integer_becomes_i64() {
 
 #[test]
 fn test_decimal() {
-    let token = lex_one("3.14");
+    let token = lex_one("3.33");
     assert_eq!(token.kind, TokenKind::Decimal);
-    assert_eq!(token.value, TokenValue::Decimal(3.14));
+    assert_eq!(token.value, TokenValue::Decimal(3.33));
 
     let token = lex_one("0.5");
     assert_eq!(token.kind, TokenKind::Decimal);
@@ -362,7 +363,7 @@ fn test_peek_and_current() {
 fn test_complex_expression() {
     let tokens = lex("fn add(x: int, y: int) -> int { return x + y; }");
 
-    let expected = vec![
+    let expected = [
         TokenKind::Function,
         TokenKind::Identifier,
         TokenKind::ParenOpen,
