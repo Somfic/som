@@ -6,3 +6,8 @@ license = "MIT"
 authors = ["Somfic"]
 description = "The 'som' programming language"
 rust-version = "1.89.0"
+
+[dependencies]
+nerd-font-symbols = "0.3.0"
+owo-colors = "4.2.3"
+thiserror = "2.0.17"

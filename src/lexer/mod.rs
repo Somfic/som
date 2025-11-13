@@ -9,6 +9,7 @@ pub use token::Token;
 pub use token::TokenKind;
 pub use token::TokenValue;
 
+use crate::span::Position;
 use crate::Result;
 use crate::Source;
 use crate::Span;
@@ -16,8 +17,7 @@ use crate::Span;
 #[derive(Clone)]
 pub struct Cursor {
     pub byte_offset: usize,
-    pub line: usize,
-    pub col: usize,
+    pub position: Position,
     pub source: Arc<Source>,
 }
 
@@ -40,8 +40,7 @@ impl Lexer {
             source: source.clone(),
             cursor: Cursor {
                 byte_offset: 0,
-                line: 1,
-                col: 1,
+                position: Position { line: 1, col: 1 },
                 source: source.clone(),
             },
             peeked: None,
@@ -75,10 +74,10 @@ impl Lexer {
         self.cursor.byte_offset += c.len_utf8();
 
         if c == '\n' {
-            self.cursor.line += 1;
-            self.cursor.col = 1;
+            self.cursor.position.line += 1;
+            self.cursor.position.col = 1;
         } else {
-            self.cursor.col += 1;
+            self.cursor.position.col += 1;
         }
     }
 
@@ -88,8 +87,8 @@ impl Lexer {
 
     /// Create a span from start position to current cursor position
     fn make_span(&self, start_line: usize, start_col: usize, start_offset: usize) -> Span {
-        let end_line = self.cursor.line;
-        let end_col = self.cursor.col - 1;
+        let end_line = self.cursor.position.line;
+        let end_col = self.cursor.position.col - 1;
         let length = self.cursor.byte_offset - start_offset;
 
         Span::new(
@@ -313,8 +312,8 @@ impl Lexer {
     /// Parse an identifier or keyword
     fn parse_identifier(&mut self, first_char: char) -> (TokenKind, TokenValue, usize, usize) {
         let start_offset = self.cursor.byte_offset - first_char.len_utf8();
-        let start_line = self.cursor.line;
-        let start_col = self.cursor.col - 1; // We already consumed first_char
+        let start_line = self.cursor.position.line;
+        let start_col = self.cursor.position.col - 1; // We already consumed first_char
 
         let mut ident = String::new();
         ident.push(first_char);
@@ -473,8 +472,8 @@ impl Iterator for Lexer {
                     continue; // Skip this comment and try again
                 } else if next_char == Some('*') {
                     // Multi-line comment
-                    let start_line = self.cursor.line;
-                    let start_col = self.cursor.col;
+                    let start_line = self.cursor.position.line;
+                    let start_col = self.cursor.position.col;
                     let start_offset = self.cursor.byte_offset;
 
                     self.consume_char('/');
@@ -515,8 +514,8 @@ impl Iterator for Lexer {
 
         // Record start position
         let start_offset = self.cursor.byte_offset;
-        let start_line = self.cursor.line;
-        let start_col = self.cursor.col;
+        let start_line = self.cursor.position.line;
+        let start_col = self.cursor.position.col;
 
         // Get next character
         let c = self.peek_char()?;

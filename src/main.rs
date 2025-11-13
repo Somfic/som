@@ -1,9 +1,15 @@
-use som::{ast::Expression, Parser, Source};
+use som::{ast::Expression, Diagnostic, Parser, Source};
 
-fn main() -> Result<(), String> {
-    let source = Source::from_raw("true+true");
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{}", e);
+    }
+}
+
+fn run() -> Result<(), Diagnostic> {
+    let source = Source::from_raw("true+truee");
     let mut parser = Parser::new(source);
-    let code: Expression<_> = parser.parse().map_err(|e| format!("{:?}", e))?;
+    let code: Expression<_> = parser.parse()?;
 
     println!("{:?}", code);
     Ok(())

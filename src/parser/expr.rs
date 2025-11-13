@@ -30,10 +30,12 @@ impl Parse for Binary<ParsePhase> {
         let binary = match op_token.kind {
             TokenKind::Plus => Binary::Add(Box::new(lhs), Box::new(rhs)),
             _ => {
-                return Err(Error::ParserError(format!(
+                return Error::ParserError(format!(
                     "unexpected binary operator: {}",
                     op_token.kind
-                )))
+                ))
+                .to_diagnostic()
+                .to_err();
             }
         };
 
@@ -98,10 +100,10 @@ impl Parse for Primary {
                 value: TokenValue::Boolean(b),
                 ..
             } => Ok(Primary::Boolean(b)),
-            token => Err(crate::Error::ParserError(format!(
-                "expected literal, found {}",
-                token.kind
-            ))),
+            token => Error::ParserError(format!("expected literal, found {}", token.kind))
+                .to_diagnostic()
+                .with_label(token.span.label("expected this to be a literal"))
+                .to_err(),
         }
     }
 }
@@ -110,14 +112,16 @@ impl Parse for Unary<ParsePhase> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
-        match input.next()?.kind {
+        let token = input.next()?;
+
+        match token.kind {
             TokenKind::Minus => {
                 todo!()
             }
-            _ => Err(Error::ParserError(format!(
-                "expected unary, got {}",
-                input.peek_expect()?.kind
-            ))),
+            _ => Error::ParserError(format!("expected unary, got {}", input.peek_expect()?.kind))
+                .to_diagnostic()
+                .with_label(token.span.label("expected this to be a unary operator"))
+                .to_err(),
         }
     }
 }

@@ -26,6 +26,18 @@ impl Debug for Span {
     }
 }
 
+impl From<&Cursor> for Span {
+    fn from(cursor: &Cursor) -> Self {
+        Span {
+            start: cursor.position,
+            end: cursor.position,
+            start_offset: cursor.byte_offset,
+            length: 0,
+            source: cursor.source.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Position {
     pub line: usize,
@@ -103,12 +115,12 @@ impl Sub for Cursor {
 
         Span {
             start: Position {
-                line: start.line,
-                col: start.col,
+                line: start.position.line,
+                col: start.position.col,
             },
             end: Position {
-                line: end.line,
-                col: end.col,
+                line: end.position.line,
+                col: end.position.col,
             },
             start_offset: start.byte_offset,
             length: end.byte_offset - start.byte_offset,

@@ -9,8 +9,10 @@ mod parser;
 pub use parser::Parser;
 mod span;
 pub use span::Span;
+mod diagnostics;
+pub use diagnostics::*;
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Diagnostic>;
 
 pub trait Phase {
     type TypeInfo: std::fmt::Debug;
@@ -45,10 +47,4 @@ impl Source {
             .map_err(|e| Error::LexicalError(format!("Failed to read file {:?}: {}", file, e)))?;
         Ok(Source::File(file, Arc::from(content)))
     }
-}
-
-#[derive(Debug)]
-pub enum Error {
-    LexicalError(String),
-    ParserError(String),
 }

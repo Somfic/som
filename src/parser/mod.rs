@@ -63,13 +63,12 @@ impl Parser {
                 return self.lexer.next().unwrap();
             }
 
-            return Err(Error::ParserError(format!(
-                "expected {}, found {}",
-                token, next.kind
-            )));
+            return Error::ParserError(format!("expected {}, found {}", token, next.kind))
+                .to_diagnostic()
+                .to_err();
         }
 
-        Err(Error::ParserError("unexpected end of input".into()))
+        Err(Error::ParserError("unexpected end of input".into()).into())
     }
 
     pub(crate) fn peek(&mut self) -> Option<&Token> {
@@ -79,7 +78,9 @@ impl Parser {
     pub(crate) fn peek_expect(&mut self) -> Result<&Token> {
         match self.lexer.peek() {
             Some(token) => Ok(token),
-            None => Err(Error::ParserError("unexpected end of file".into())),
+            None => Error::ParserError("unexpected end of file".into())
+                .to_diagnostic()
+                .to_err(),
         }
     }
 
