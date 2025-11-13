@@ -1,4 +1,7 @@
-use som::{ast::Expression, Diagnostic, Parser, Source};
+use som::{
+    ast::{Expression, Pseudo},
+    Diagnostic, Parser, Source,
+};
 
 fn main() {
     if let Err(e) = run() {
@@ -7,10 +10,10 @@ fn main() {
 }
 
 fn run() -> Result<(), Diagnostic> {
-    let source = Source::from_raw("1+1+1");
+    let source = Source::from_raw("1 * 1 + 1 * 1");
     let mut parser = Parser::new(source);
     let code: Expression<_> = parser.parse()?;
 
-    println!("{:?}", code);
+    println!("{}", code.pseudo());
     Ok(())
 }

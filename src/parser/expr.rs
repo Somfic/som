@@ -8,8 +8,8 @@ use crate::{
 impl Parse for Expression<ParsePhase> {
     type Params = u8;
 
-    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
-        let (expr, span) = input.parse_with_span()?;
+    fn parse(input: &mut Parser, min_bp: Self::Params) -> Result<Self> {
+        let (expr, span) = input.parse_with_span_with::<Expr<ParsePhase>>(min_bp)?;
 
         Ok(Expression { expr, span, ty: () })
     }
@@ -28,7 +28,7 @@ impl Parse for Binary<ParsePhase> {
                 .to_err();
         };
 
-        let rhs = input.parse_with::<Expression<ParsePhase>>(r_bp)?;
+        let rhs = input.parse_with(r_bp)?;
 
         match op.kind {
             TokenKind::Plus => Ok(Binary::Add(Box::new(lhs), Box::new(rhs))),
