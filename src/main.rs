@@ -7,7 +7,7 @@ fn main() {
 }
 
 fn run() -> Result<(), Diagnostic> {
-    let source = Source::from_raw("true+truee");
+    let source = Source::from_raw("1+1+1");
     let mut parser = Parser::new(source);
     let code: Expression<_> = parser.parse()?;
 

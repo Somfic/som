@@ -1,13 +1,16 @@
 use crate::lexer::{Lexer, Token, TokenKind};
-use crate::{Error, Phase, Result, Source, Span};
+use crate::{ParserError, Phase, Result, Source, Span};
 
 mod expr;
+pub mod lookup;
+
+use lookup::Lookup;
 
 #[derive(Debug)]
 pub struct ParsePhase;
 
 impl Phase for ParsePhase {
-    type TypeInfo = (); // No type info during parsing
+    type TypeInfo = ();
 }
 
 pub trait Parse: Sized {
@@ -18,12 +21,14 @@ pub trait Parse: Sized {
 
 pub struct Parser {
     pub(crate) lexer: Lexer,
+    pub(crate) lookup: Lookup,
 }
 
 impl Parser {
     pub fn new(source: Source) -> Self {
         Self {
             lexer: Lexer::new(source),
+            lookup: Lookup::default(),
         }
     }
 
@@ -56,30 +61,44 @@ impl Parser {
         }
     }
 
-    pub(crate) fn expect(&mut self, token: TokenKind) -> Result<Token> {
+    pub(crate) fn expect(
+        &mut self,
+        token: TokenKind,
+        expect: impl Into<String>,
+        error: ParserError,
+    ) -> Result<Token> {
         let next = self.lexer.peek();
+
         if let Some(next) = next {
             if next.kind == token {
                 return self.lexer.next().unwrap();
             }
 
-            return Error::ParserError(format!("expected {}, found {}", token, next.kind))
+            return error
                 .to_diagnostic()
+                .with_label(
+                    next.span
+                        .clone()
+                        .label(&format!("expected {} here", expect.into())),
+                )
                 .to_err();
         }
 
-        Err(Error::ParserError("unexpected end of input".into()).into())
+        Err(ParserError::UnexpectedEndOfInput.to_diagnostic().into())
     }
 
     pub(crate) fn peek(&mut self) -> Option<&Token> {
         self.lexer.peek()
     }
 
-    pub(crate) fn peek_expect(&mut self) -> Result<&Token> {
+    pub(crate) fn peek_expect(&mut self, expect: impl Into<String>) -> Result<&Token> {
+        let cursor = self.lexer.cursor.clone();
+
         match self.lexer.peek() {
             Some(token) => Ok(token),
-            None => Error::ParserError("unexpected end of file".into())
+            None => ParserError::UnexpectedEndOfInput
                 .to_diagnostic()
+                .with_label(cursor.label(format!("expected {} here", expect.into())))
                 .to_err(),
         }
     }
@@ -87,7 +106,7 @@ impl Parser {
     pub(crate) fn next(&mut self) -> Result<Token> {
         self.lexer
             .next()
-            .ok_or_else(|| Error::ParserError("unexpected end of input".into()))?
+            .ok_or(ParserError::UnexpectedEndOfInput.to_diagnostic())?
     }
 
     pub(crate) fn parse_with_span<T: Parse>(&mut self) -> Result<(T, Span)>
@@ -113,12 +132,4 @@ impl Parser {
 
         Ok((inner, span))
     }
-}
-
-pub(crate) fn infix_binding_power(kind: &TokenKind) -> Option<(u8, u8)> {
-    Some(match kind {
-        TokenKind::Plus | TokenKind::Minus => (9, 10),
-        TokenKind::Star | TokenKind::Slash => (11, 12),
-        _ => return None,
-    })
 }

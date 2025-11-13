@@ -42,9 +42,13 @@ impl Source {
         Source::Raw(source.into())
     }
 
-    pub fn from_file(file: PathBuf) -> Result<Self> {
-        let content = std::fs::read_to_string(&file)
-            .map_err(|e| Error::LexicalError(format!("Failed to read file {:?}: {}", file, e)))?;
+    pub fn from_file(file: impl Into<PathBuf>) -> Result<Self> {
+        let file = file.into();
+        let content = std::fs::read_to_string(&file).map_err(|e| {
+            LexicalError::IoError(e)
+                .to_diagnostic()
+                .with_hint(format!("could not read file '{}'", file.display()))
+        })?;
         Ok(Source::File(file, Arc::from(content)))
     }
 }

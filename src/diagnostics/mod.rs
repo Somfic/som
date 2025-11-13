@@ -6,15 +6,45 @@ use crate::{lexer::Cursor, Span};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("{0}")]
-    LexicalError(String),
-    #[error("{0}")]
-    ParserError(String),
+    #[error(transparent)]
+    LexicalError(LexicalError),
+    #[error(transparent)]
+    ParserError(ParserError),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum LexicalError {
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ParserError {
+    #[error("invalid primary expression")]
+    InvalidPrimaryExpression,
+    #[error("invalid unary expression")]
+    InvalidUnaryExpression,
+    #[error("invalid binary operator")]
+    InvalidBinaryOperator,
+    #[error("unexpected end of input")]
+    UnexpectedEndOfInput,
 }
 
 impl Error {
     pub fn to_diagnostic(self) -> Diagnostic {
         Diagnostic::from(self)
+    }
+}
+
+impl ParserError {
+    pub fn to_diagnostic(self) -> Diagnostic {
+        Diagnostic::from(Error::ParserError(self))
+    }
+}
+
+impl LexicalError {
+    pub fn to_diagnostic(self) -> Diagnostic {
+        Diagnostic::from(Error::LexicalError(self))
     }
 }
 
@@ -37,7 +67,7 @@ impl From<Error> for Diagnostic {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
     pub trace: Vec<String>, // todo: find better type for this
@@ -57,6 +87,11 @@ impl Diagnostic {
         self
     }
 
+    pub fn with_cause<E: ThisError + 'static>(mut self, cause: E) -> Self {
+        self.trace.push(cause.to_string());
+        self
+    }
+
     pub fn to_err<T>(self) -> Result<T, Self> {
         Err(self)
     }
@@ -66,6 +101,7 @@ impl Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{}: {}", self.severity, self.message)?;
         for label in &self.labels {
+            writeln!(f)?;
             writeln!(
                 f,
                 "{}",
@@ -80,13 +116,11 @@ impl Display for Diagnostic {
 
             write!(f, "{}", " ".repeat(label.span.start.col.saturating_sub(1)))?;
 
-            writeln!(f, "{}^", "^".repeat(label.span.length.max(1)))?;
-
             writeln!(
                 f,
-                " --> {}: {}",
-                label.span.source.identifier(),
-                label.message
+                "{} {}",
+                "~".repeat(label.span.length.max(1)).bright_black(),
+                label.message.bright_red()
             )?;
         }
         for hint in &self.hints {
@@ -99,7 +133,7 @@ impl Display for Diagnostic {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Severity {
     Error,
     Warning,
@@ -116,7 +150,7 @@ impl Display for Severity {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Label {
     pub message: String,
     pub span: Span,
@@ -132,7 +166,7 @@ impl Span {
 }
 
 impl Cursor {
-    pub fn label(self, message: impl Into<String>) -> Label {
+    pub fn label(&self, message: impl Into<String>) -> Label {
         let span = Span {
             start: self.position,
             end: self.position,
