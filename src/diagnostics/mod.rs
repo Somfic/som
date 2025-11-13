@@ -28,6 +28,10 @@ pub enum ParserError {
     InvalidBinaryOperator,
     #[error("unexpected end of input")]
     UnexpectedEndOfInput,
+    #[error("expected '(' to start a group")]
+    ExpectedOpenParenthesis,
+    #[error("expected ')' to end a group")]
+    ExpectedCloseParenthesis,
 }
 
 impl Error {

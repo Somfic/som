@@ -27,7 +27,6 @@ pub struct Lexer {
     pub cursor: Cursor,
     pub peeked: Option<Token>,
     pub current: Option<Result<Token>>,
-    /// Shared reference to the source content for spans
     pub source_content: Arc<str>,
 }
 

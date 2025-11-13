@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Binary, Expr, Expression, Primary, Unary},
+    ast::{Binary, Expr, Expression, Group, Primary, Unary},
     lexer::{Token, TokenKind, TokenValue},
     parser::{Parse, ParsePhase},
     Parser, ParserError, Result,
@@ -160,5 +160,29 @@ impl Parse for Unary<ParsePhase> {
                 .with_label(token.span.label("expected this to be a unary operator"))
                 .to_err(),
         }
+    }
+}
+
+impl Parse for Group<ParsePhase> {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        input.expect(
+            TokenKind::ParenOpen,
+            "'(' to start a grouped expression",
+            ParserError::ExpectedOpenParenthesis,
+        )?;
+
+        let expr = input.parse_with::<Expression<ParsePhase>>(0)?;
+
+        input.expect(
+            TokenKind::ParenClose,
+            "')' to end a grouped expression",
+            ParserError::ExpectedCloseParenthesis,
+        )?;
+
+        Ok(Group {
+            expr: Box::new(expr),
+        })
     }
 }

@@ -84,7 +84,14 @@ impl Parser {
                 .to_err();
         }
 
-        Err(ParserError::UnexpectedEndOfInput.to_diagnostic().into())
+        Err(ParserError::UnexpectedEndOfInput
+            .to_diagnostic()
+            .with_label(
+                self.lexer
+                    .cursor
+                    .label(format!("expected {} here", expect.into())),
+            )
+            .into())
     }
 
     pub(crate) fn peek(&mut self) -> Option<&Token> {

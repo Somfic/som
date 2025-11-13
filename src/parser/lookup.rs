@@ -100,6 +100,7 @@ impl Default for Lookup {
         .add_expression(TokenKind::String, Expr::Primary)
         .add_expression(TokenKind::Character, Expr::Primary)
         .add_expression(TokenKind::Identifier, Expr::Primary)
+        .add_expression(TokenKind::ParenOpen, Expr::Group)
         .add_lefthand_expression(TokenKind::Plus, (9, 10), Expr::Binary)
         .add_lefthand_expression(TokenKind::Minus, (9, 10), Expr::Binary)
         .add_lefthand_expression(TokenKind::Star, (11, 12), Expr::Binary)

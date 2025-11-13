@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Binary, Expr, Expression, Primary, Unary},
+    ast::{Binary, Expr, Expression, Group, Primary, Unary},
     Phase,
 };
 
@@ -19,6 +19,7 @@ impl<P: Phase> Pseudo for Expr<P> {
             Expr::Primary(p) => p.pseudo(),
             Expr::Unary(u) => u.pseudo(),
             Expr::Binary(b) => b.pseudo(),
+            Expr::Group(g) => g.pseudo(),
         }
     }
 }
@@ -53,5 +54,11 @@ impl<P: Phase> Pseudo for Binary<P> {
             Binary::Multiply(lhs, rhs) => format!("({} * {})", lhs.pseudo(), rhs.pseudo()),
             Binary::Divide(lhs, rhs) => format!("({} / {})", lhs.pseudo(), rhs.pseudo()),
         }
+    }
+}
+
+impl<P: Phase> Pseudo for Group<P> {
+    fn pseudo(&self) -> String {
+        format!("({})", self.expr.pseudo())
     }
 }
