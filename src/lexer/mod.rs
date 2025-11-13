@@ -36,7 +36,7 @@ impl Lexer {
         let source = source.into();
 
         Lexer {
-            remainder: "".to_owned(),
+            remainder: source.content().to_string(),
             source: source.clone(),
             cursor: Cursor {
                 byte_offset: 0,
