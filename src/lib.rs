@@ -7,28 +7,43 @@ pub mod ast;
 mod lexer;
 mod parser;
 pub use parser::Parser;
+mod span;
+pub use span::Span;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub enum Source<'input> {
-    Raw(&'input str),
-    File(PathBuf, &'input str),
+pub trait Phase {
+    type TypeInfo: std::fmt::Debug;
 }
 
-impl<'input> Source<'input> {
-    pub fn get(&self) -> &'input str {
+pub enum Source {
+    Raw(Arc<str>),
+    File(PathBuf, Arc<str>),
+}
+
+impl Source {
+    pub fn content(&self) -> Arc<str> {
         match self {
-            Source::Raw(source) => source,
-            Source::File(_, source) => source,
+            Source::Raw(source) => source.clone(),
+            Source::File(_, source) => source.clone(),
         }
     }
 
-    /// Get a source identifier for error messages
     pub fn identifier(&self) -> Arc<str> {
         match self {
             Source::Raw(_) => "<input>".into(),
             Source::File(path, _) => path.to_str().unwrap_or("<unknown>").into(),
         }
+    }
+
+    pub fn from_raw(source: impl Into<Arc<str>>) -> Self {
+        Source::Raw(source.into())
+    }
+
+    pub fn from_file(file: PathBuf) -> Result<Self> {
+        let content = std::fs::read_to_string(&file)
+            .map_err(|e| Error::LexicalError(format!("Failed to read file {:?}: {}", file, e)))?;
+        Ok(Source::File(file, Arc::from(content)))
     }
 }
 

@@ -1,5 +1,14 @@
-use crate::lexer::{Lexer, Span, Token, TokenKind};
-use crate::{Error, Result, Source};
+use crate::lexer::{Lexer, Token, TokenKind};
+use crate::{Error, Phase, Result, Source, Span};
+
+mod expr;
+
+#[derive(Debug)]
+pub struct ParsePhase;
+
+impl Phase for ParsePhase {
+    type TypeInfo = (); // No type info during parsing
+}
 
 pub trait Parse: Sized {
     type Params;
@@ -7,12 +16,12 @@ pub trait Parse: Sized {
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self>;
 }
 
-pub struct Parser<'input> {
-    pub(crate) lexer: Lexer<'input>,
+pub struct Parser {
+    pub(crate) lexer: Lexer,
 }
 
-impl<'input> Parser<'input> {
-    pub fn new(source: Source<'input>) -> Self {
+impl Parser {
+    pub fn new(source: Source) -> Self {
         Self {
             lexer: Lexer::new(source),
         }
@@ -103,4 +112,12 @@ impl<'input> Parser<'input> {
 
         Ok((inner, span))
     }
+}
+
+pub(crate) fn infix_binding_power(kind: &TokenKind) -> Option<(u8, u8)> {
+    Some(match kind {
+        TokenKind::Plus | TokenKind::Minus => (9, 10),
+        TokenKind::Star | TokenKind::Slash => (11, 12),
+        _ => return None,
+    })
 }

@@ -2,7 +2,7 @@ use std::fmt::{Debug, Display};
 
 use crate::lexer::Span;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub value: TokenValue,
@@ -16,6 +16,12 @@ impl Display for Token {
             TokenValue::None => write!(f, "{}", self.kind),
             value => write!(f, "`{}` ({})", value, self.kind),
         }
+    }
+}
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.value == other.value
     }
 }
 
@@ -284,7 +290,7 @@ impl Display for TokenKind {
     }
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone)]
 pub struct Identifier {
     pub name: Box<str>,
     pub span: Span,

@@ -1,11 +1,9 @@
-mod span;
 #[cfg(test)]
 mod tests;
 mod token;
 
 use std::sync::Arc;
 
-pub use span::Span;
 pub use token::Identifier;
 pub use token::Token;
 pub use token::TokenKind;
@@ -13,19 +11,19 @@ pub use token::TokenValue;
 
 use crate::Result;
 use crate::Source;
+use crate::Span;
 
 #[derive(Clone)]
 pub struct Cursor {
-    byte_offset: usize,
-    line: usize,
-    col: usize,
-    pub source_name: Arc<str>,
-    pub source_content: Arc<str>,
+    pub byte_offset: usize,
+    pub line: usize,
+    pub col: usize,
+    pub source: Arc<Source>,
 }
 
-pub struct Lexer<'input> {
-    pub source: Source<'input>,
-    pub remainder: &'input str,
+pub struct Lexer {
+    pub source: Arc<Source>,
+    pub remainder: String,
     pub cursor: Cursor,
     pub peeked: Option<Token>,
     pub current: Option<Result<Token>>,
@@ -33,24 +31,27 @@ pub struct Lexer<'input> {
     pub source_content: Arc<str>,
 }
 
-impl<'input> Lexer<'input> {
-    pub fn new(source: Source<'input>) -> Lexer<'input> {
-        let source_content: Arc<str> = Arc::from(source.get());
-        let source_name: Arc<str> = Arc::from(source.identifier());
+impl Lexer {
+    pub fn new(source: impl Into<Arc<Source>>) -> Lexer {
+        let source = source.into();
+
         Lexer {
-            remainder: source.get(),
-            source,
+            remainder: "".to_owned(),
+            source: source.clone(),
             cursor: Cursor {
                 byte_offset: 0,
                 line: 1,
                 col: 1,
-                source_name: source_name.clone(),
-                source_content: source_content.clone(),
+                source: source.clone(),
             },
             peeked: None,
             current: None,
-            source_content,
+            source_content: source.content(),
         }
+    }
+
+    pub fn remainder(&self) -> &str {
+        &self.source_content[self.cursor.byte_offset..]
     }
 
     pub fn peek(&mut self) -> Option<&Token> {
@@ -69,9 +70,8 @@ impl<'input> Lexer<'input> {
         self.current.as_ref().and_then(|r| r.as_ref().ok())
     }
 
-    /// Consume a single character and update position tracking
     fn consume_char(&mut self, c: char) {
-        self.remainder = &self.remainder[c.len_utf8()..];
+        self.remainder = self.remainder[c.len_utf8()..].to_owned();
         self.cursor.byte_offset += c.len_utf8();
 
         if c == '\n' {
@@ -82,7 +82,6 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    /// Peek at the next character without consuming it
     fn peek_char(&self) -> Option<char> {
         self.remainder.chars().next()
     }
@@ -100,8 +99,7 @@ impl<'input> Lexer<'input> {
             end_col,
             start_offset,
             length,
-            self.source.identifier(),
-            Arc::clone(&self.source_content),
+            self.source.clone(),
         )
     }
 
@@ -443,7 +441,7 @@ impl<'input> Lexer<'input> {
     }
 }
 
-impl Iterator for Lexer<'_> {
+impl Iterator for Lexer {
     type Item = Result<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -496,7 +494,8 @@ impl Iterator for Lexer<'_> {
                     if !found_end {
                         // Return error token for unterminated comment
                         let span = self.make_span(start_line, start_col, start_offset);
-                        let original = &self.source.get()[start_offset..self.cursor.byte_offset];
+                        let original =
+                            &self.source.content()[start_offset..self.cursor.byte_offset];
                         let token = Token {
                             kind: TokenKind::Error,
                             value: TokenValue::Error("unterminated block comment".into()),
@@ -577,7 +576,7 @@ impl Iterator for Lexer<'_> {
                 let (kind, value, id_start, id_len) = self.parse_identifier(c);
                 // For identifiers, we need to return early to use the correct span
                 let span = self.make_span(start_line, start_col, start_offset);
-                let original = &self.source.get()[id_start..id_start + id_len];
+                let original = &self.source.content()[id_start..id_start + id_len];
                 let token = Token {
                     kind,
                     value,
@@ -600,7 +599,7 @@ impl Iterator for Lexer<'_> {
 
         // Create token with span
         let span = self.make_span(start_line, start_col, start_offset);
-        let original = &self.source.get()[start_offset..self.cursor.byte_offset];
+        let original = &self.source.content()[start_offset..self.cursor.byte_offset];
 
         let token = Token {
             kind,

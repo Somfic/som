@@ -3,7 +3,7 @@ use crate::Source;
 use super::*;
 
 fn lex(input: &str) -> Vec<Token> {
-    let source = Source::Raw(input);
+    let source = Source::from_raw(input);
     let lexer = Lexer::new(source);
     lexer.filter_map(|r| r.ok()).collect()
 }
@@ -267,22 +267,22 @@ fn test_span_positions() {
     let tokens = lex(input);
 
     // "let" at position 1:1
-    assert_eq!(tokens[0].span.start_line, 1);
-    assert_eq!(tokens[0].span.start_col, 1);
-    assert_eq!(tokens[0].span.end_line, 1);
-    assert_eq!(tokens[0].span.end_col, 3);
+    assert_eq!(tokens[0].span.start.line, 1);
+    assert_eq!(tokens[0].span.start.col, 1);
+    assert_eq!(tokens[0].span.end.line, 1);
+    assert_eq!(tokens[0].span.end.col, 3);
 
     // "x" at position 1:5
-    assert_eq!(tokens[1].span.start_line, 1);
-    assert_eq!(tokens[1].span.start_col, 5);
+    assert_eq!(tokens[1].span.start.line, 1);
+    assert_eq!(tokens[1].span.start.col, 5);
 
     // "=" at position 1:7
-    assert_eq!(tokens[2].span.start_line, 1);
-    assert_eq!(tokens[2].span.start_col, 7);
+    assert_eq!(tokens[2].span.start.line, 1);
+    assert_eq!(tokens[2].span.start.col, 7);
 
     // "42" at position 1:9
-    assert_eq!(tokens[3].span.start_line, 1);
-    assert_eq!(tokens[3].span.start_col, 9);
+    assert_eq!(tokens[3].span.start.line, 1);
+    assert_eq!(tokens[3].span.start.col, 9);
 }
 
 #[test]
@@ -290,24 +290,24 @@ fn test_span_multiline() {
     let input = "let\nx\n=\n42";
     let tokens = lex(input);
 
-    assert_eq!(tokens[0].span.start_line, 1);
-    assert_eq!(tokens[1].span.start_line, 2);
-    assert_eq!(tokens[2].span.start_line, 3);
-    assert_eq!(tokens[3].span.start_line, 4);
+    assert_eq!(tokens[0].span.start.line, 1);
+    assert_eq!(tokens[1].span.start.line, 2);
+    assert_eq!(tokens[2].span.start.line, 3);
+    assert_eq!(tokens[3].span.start.line, 4);
 }
 
 #[test]
 fn test_span_source_name() {
     let input = "foo";
     let tokens = lex(input);
-    assert_eq!(tokens[0].span.source_name.as_ref(), "<input>");
+    assert_eq!(tokens[0].span.source.identifier().as_ref(), "<input>");
 }
 
 #[test]
 fn test_span_get_text() {
     let input = "hello";
     let token = lex_one(input);
-    assert_eq!(token.span.get_text(), "hello");
+    assert_eq!(token.span.get_text(), "hello".into());
 }
 
 #[test]
@@ -316,10 +316,10 @@ fn test_span_get_line() {
     let tokens = lex(input);
 
     // First token should get first line
-    assert_eq!(tokens[0].span.get_line(), Some("let x = 42"));
+    assert_eq!(tokens[0].span.get_line(), Some("let x = 42".into()));
 
     // Token on second line
-    assert_eq!(tokens[4].span.get_line(), Some("let y = 10"));
+    assert_eq!(tokens[4].span.get_line(), Some("let y = 10".into()));
 }
 
 #[test]
@@ -336,7 +336,7 @@ fn test_original_text_preserved() {
 #[test]
 fn test_peek_and_current() {
     let input = "x y z";
-    let source = Source::Raw(input);
+    let source = Source::from_raw(input);
     let mut lexer = Lexer::new(source);
 
     // Peek at first token
