@@ -27,22 +27,10 @@ impl TypeCheck for Expr<ParsePhase> {
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, super::Type)> {
         match self {
-            Expr::Primary(p) => {
-                let (primary, ty) = p.type_check(ctx)?;
-                Ok((Expr::Primary(primary), ty))
-            }
-            Expr::Unary(u) => {
-                let (unary, ty) = u.type_check(ctx)?;
-                Ok((Expr::Unary(unary), ty))
-            }
-            Expr::Binary(b) => {
-                let (binary, ty) = b.type_check(ctx)?;
-                Ok((Expr::Binary(binary), ty))
-            }
-            Expr::Group(g) => {
-                let (group, ty) = g.type_check(ctx)?;
-                Ok((Expr::Group(group), ty))
-            }
+            Expr::Primary(p) => p.type_check(ctx).map(|(v, t)| (Expr::Primary(v), t)),
+            Expr::Unary(u) => u.type_check(ctx).map(|(v, t)| (Expr::Unary(v), t)),
+            Expr::Binary(b) => b.type_check(ctx).map(|(v, t)| (Expr::Binary(v), t)),
+            Expr::Group(g) => g.type_check(ctx).map(|(v, t)| (Expr::Group(v), t)),
         }
     }
 }
@@ -70,10 +58,9 @@ impl TypeCheck for Unary<ParsePhase> {
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
         match self {
-            Unary::Negate(expr) => {
-                let (expr, ty) = expr.type_check(ctx)?;
-                Ok((Unary::Negate(Box::new(expr)), ty))
-            }
+            Unary::Negate(expr) => expr
+                .type_check(ctx)
+                .map(|(v, t)| (Unary::Negate(Box::new(v)), t)),
         }
     }
 }
@@ -101,13 +88,8 @@ impl TypeCheck for Group<ParsePhase> {
     type Output = Group<TypeCheckPhase>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
-        let (expression, ty) = self.expr.type_check(ctx)?;
-
-        Ok((
-            Group {
-                expr: Box::new(expression),
-            },
-            ty,
-        ))
+        self.expr
+            .type_check(ctx)
+            .map(|(v, t)| (Group { expr: Box::new(v) }, t))
     }
 }
