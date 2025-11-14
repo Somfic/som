@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Binary, Expr, Expression, Group, Primary, Unary},
+    ast::{Binary, BinaryOperation, Expr, Expression, Group, Primary, Unary},
     lexer::{Token, TokenKind, TokenValue},
     parser::{Parse, ParsePhase},
     Parser, ParserError, Result,
@@ -30,15 +30,16 @@ impl Parse for Binary<ParsePhase> {
 
         let rhs = input.parse_with(r_bp)?;
 
-        match op.kind {
-            TokenKind::Plus => Ok(Binary::Add(Box::new(lhs), Box::new(rhs))),
-            TokenKind::Minus => Ok(Binary::Subtract(Box::new(lhs), Box::new(rhs))),
-            TokenKind::Star => Ok(Binary::Multiply(Box::new(lhs), Box::new(rhs))),
-            TokenKind::Slash => Ok(Binary::Divide(Box::new(lhs), Box::new(rhs))),
-            _ => ParserError::InvalidBinaryOperator
-                .to_diagnostic()
-                .with_label(op.span.label("expected a binary operator"))
-                .with_hint(format!(
+        let operation = match op.kind {
+            TokenKind::Plus => BinaryOperation::Add,
+            TokenKind::Minus => BinaryOperation::Subtract,
+            TokenKind::Star => BinaryOperation::Multiply,
+            TokenKind::Slash => BinaryOperation::Divide,
+            _ => {
+                return ParserError::InvalidBinaryOperator
+                    .to_diagnostic()
+                    .with_label(op.span.label("expected a binary operator"))
+                    .with_hint(format!(
                     "{} cannot be used as a binary operator. only {}, {}, {} and {} are supported",
                     op.kind,
                     TokenKind::Plus,
@@ -46,8 +47,15 @@ impl Parse for Binary<ParsePhase> {
                     TokenKind::Star,
                     TokenKind::Slash
                 ))
-                .to_err(),
-        }
+                    .to_err()
+            }
+        };
+
+        Ok(Binary {
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+            op: operation,
+        })
     }
 }
 

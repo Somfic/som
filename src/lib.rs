@@ -11,6 +11,8 @@ mod span;
 pub use span::Span;
 mod diagnostics;
 pub use diagnostics::*;
+mod type_check;
+pub use type_check::*;
 
 pub type Result<T> = std::result::Result<T, Diagnostic>;
 

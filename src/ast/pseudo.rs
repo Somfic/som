@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Binary, Expr, Expression, Group, Primary, Unary},
+    ast::{Binary, BinaryOperation, Expr, Expression, Group, Primary, Unary},
     Phase,
 };
 
@@ -48,11 +48,14 @@ impl<P: Phase> Pseudo for Unary<P> {
 
 impl<P: Phase> Pseudo for Binary<P> {
     fn pseudo(&self) -> String {
-        match self {
-            Binary::Add(lhs, rhs) => format!("({} + {})", lhs.pseudo(), rhs.pseudo()),
-            Binary::Subtract(lhs, rhs) => format!("({} - {})", lhs.pseudo(), rhs.pseudo()),
-            Binary::Multiply(lhs, rhs) => format!("({} * {})", lhs.pseudo(), rhs.pseudo()),
-            Binary::Divide(lhs, rhs) => format!("({} / {})", lhs.pseudo(), rhs.pseudo()),
+        let lhs = self.lhs.pseudo();
+        let rhs = self.rhs.pseudo();
+
+        match self.op {
+            BinaryOperation::Add => format!("({} + {})", lhs, rhs),
+            BinaryOperation::Subtract => format!("({} - {})", lhs, rhs),
+            BinaryOperation::Multiply => format!("({} * {})", lhs, rhs),
+            BinaryOperation::Divide => format!("({} / {})", lhs, rhs),
         }
     }
 }

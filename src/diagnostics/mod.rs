@@ -10,6 +10,8 @@ pub enum Error {
     LexicalError(LexicalError),
     #[error(transparent)]
     ParserError(ParserError),
+    #[error(transparent)]
+    TypeCheckError(TypeCheckError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -34,6 +36,9 @@ pub enum ParserError {
     ExpectedCloseParenthesis,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum TypeCheckError {}
+
 impl Error {
     pub fn to_diagnostic(self) -> Diagnostic {
         Diagnostic::from(self)
@@ -49,6 +54,12 @@ impl ParserError {
 impl LexicalError {
     pub fn to_diagnostic(self) -> Diagnostic {
         Diagnostic::from(Error::LexicalError(self))
+    }
+}
+
+impl TypeCheckError {
+    pub fn to_diagnostic(self) -> Diagnostic {
+        Diagnostic::from(Error::TypeCheckError(self))
     }
 }
 

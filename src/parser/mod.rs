@@ -79,19 +79,19 @@ impl Parser {
                 .with_label(
                     next.span
                         .clone()
-                        .label(&format!("expected {} here", expect.into())),
+                        .label(format!("expected {} here", expect.into())),
                 )
                 .to_err();
         }
 
-        Err(ParserError::UnexpectedEndOfInput
+        ParserError::UnexpectedEndOfInput
             .to_diagnostic()
             .with_label(
                 self.lexer
                     .cursor
                     .label(format!("expected {} here", expect.into())),
             )
-            .into())
+            .to_err()
     }
 
     pub(crate) fn peek(&mut self) -> Option<&Token> {

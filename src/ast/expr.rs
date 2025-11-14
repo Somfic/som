@@ -32,11 +32,18 @@ pub enum Unary<P: Phase> {
 }
 
 #[derive(Debug)]
-pub enum Binary<P: Phase> {
-    Add(Box<Expression<P>>, Box<Expression<P>>),
-    Subtract(Box<Expression<P>>, Box<Expression<P>>),
-    Multiply(Box<Expression<P>>, Box<Expression<P>>),
-    Divide(Box<Expression<P>>, Box<Expression<P>>),
+pub struct Binary<P: Phase> {
+    pub lhs: Box<Expression<P>>,
+    pub rhs: Box<Expression<P>>,
+    pub op: BinaryOperation,
+}
+
+#[derive(Debug)]
+pub enum BinaryOperation {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
 }
 
 #[derive(Debug)]
