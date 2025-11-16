@@ -33,9 +33,12 @@ impl TypeCheck for Primary<Untyped> {
             PrimaryKind::Decimal(_) => TypeKind::Decimal.with_span(&self.span),
             PrimaryKind::String(_) => TypeKind::String.with_span(&self.span),
             PrimaryKind::Character(_) => TypeKind::Character.with_span(&self.span),
-            PrimaryKind::Identifier(i) => {
-                ctx.get_variable(i.name.clone())?.kind.with_span(&self.span)
-            }
+            PrimaryKind::Identifier(i) => match ctx.get_variable(i.name.clone()) {
+                Ok(ty) => Ok(ty.kind.with_span(&self.span)),
+                Err(err) => err
+                    .with_label(self.span.label("could not be found"))
+                    .to_err(),
+            }?,
         };
 
         Ok(Primary {
@@ -70,7 +73,16 @@ impl TypeCheck for Binary<Untyped> {
         let lhs = self.lhs.type_check(ctx)?;
         let rhs = self.rhs.type_check(ctx)?;
 
-        expect_type(lhs.ty(), rhs.ty(), display)?;
+        expect_type(
+            lhs.ty(),
+            rhs.ty(),
+            format!(
+                "{} requires both sides to be of the same type, but {} and {} do not match",
+                display,
+                lhs.ty(),
+                rhs.ty()
+            ),
+        )?;
 
         let ty = match self.op {
             BinaryOperation::Add
@@ -169,14 +181,11 @@ impl TypeCheck for Ternary<Untyped> {
 
 fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
     if a != b {
-        return Err(TypeCheckError::TypeMismatch {
-            a: b.clone(),
-            b: a.clone(),
-        }
-        .to_diagnostic()
-        .with_label(a.span.label(format!("{}", a)))
-        .with_label(b.span.label(format!("{}", b)))
-        .with_hint(hint.into()));
+        return Err(TypeCheckError::TypeMismatch
+            .to_diagnostic()
+            .with_label(a.span.label(format!("{}", a)))
+            .with_label(b.span.label(format!("{}", b)))
+            .with_hint(hint.into()));
     }
 
     Ok(())
@@ -184,17 +193,15 @@ fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
 
 fn expect_type_kind(actual: &Type, expected: &TypeKind, hint: impl Into<String>) -> Result<()> {
     if actual.kind != *expected {
-        return Err(TypeCheckError::ExpectedType {
-            expected: expected.clone(),
-            actual: actual.clone(),
-        }
-        .to_diagnostic()
-        .with_label(
-            actual
-                .span
-                .label(format!("{}, expected {}", actual, expected)),
-        )
-        .with_hint(hint.into()));
+        return TypeCheckError::ExpectedType
+            .to_diagnostic()
+            .with_label(
+                actual
+                    .span
+                    .label(format!("{}, expected {}", actual, expected)),
+            )
+            .with_hint(hint.into())
+            .to_err();
     }
     Ok(())
 }

@@ -127,7 +127,7 @@ impl TypeCheckContext {
         self.variables
             .get(&name)
             .cloned()
-            .ok_or_else(|| TypeCheckError::UndefinedVariable(name.clone()).to_diagnostic())
+            .ok_or_else(|| TypeCheckError::UndefinedVariable.to_diagnostic())
     }
 
     pub fn declare_variable(&mut self, name: impl Into<String>, ty: Type) {

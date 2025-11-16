@@ -8,7 +8,7 @@ fn main() {
 }
 
 fn run() -> Result<(), Diagnostic> {
-    let source = Source::from_raw("1 if 30  else 0");
+    let source = Source::from_raw("a");
 
     let mut parser = Parser::new(source);
     let code = parser.parse::<Expression<_>>()?;

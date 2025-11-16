@@ -67,18 +67,18 @@ pub enum ParserError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum TypeCheckError {
-    #[error("undefined variable '{0}'")]
-    UndefinedVariable(String),
-    #[error("type mismatch: {a} and {b} do not match")]
-    TypeMismatch { a: Type, b: Type },
-    #[error("type mismatch: expected {expected}, found {actual}")]
-    ExpectedType { expected: TypeKind, actual: Type },
+    #[error("undefined variable")]
+    UndefinedVariable,
+    #[error("type mismatch")]
+    TypeMismatch,
+    #[error("unexpected type")]
+    ExpectedType,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmitError {
-    #[error("undefined variable '{0}'")]
-    UndefinedVariable(String),
+    #[error("undefined variable")]
+    UndefinedVariable,
     #[error(transparent)]
     ModuleError(#[from] ModuleError),
 }

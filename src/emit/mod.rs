@@ -120,7 +120,7 @@ impl<'a> EmitContext<'a> {
         self.variables
             .get(name)
             .copied()
-            .ok_or_else(|| EmitError::UndefinedVariable(name.to_string()).to_diagnostic())
+            .ok_or_else(|| EmitError::UndefinedVariable.to_diagnostic())
     }
 
     pub fn create_block(&mut self, name: Option<String>) -> Block {
