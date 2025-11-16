@@ -1,4 +1,4 @@
-use crate::{ast::Expression, lexer::Identifier, Phase};
+use crate::{ast::Expression, lexer::Identifier, Phase, Span};
 use std::fmt::Display;
 
 #[derive(Debug)]
@@ -6,6 +6,16 @@ pub enum Statement<P: Phase> {
     Expression(Expression<P>),
     Scope(Scope<P>),
     Declaration(Declaration<P>),
+}
+
+impl<P: Phase> Statement<P> {
+    pub fn span(&self) -> &Span {
+        match self {
+            Statement::Expression(e) => &e.span(),
+            Statement::Scope(s) => &s.span,
+            Statement::Declaration(d) => &d.span,
+        }
+    }
 }
 
 impl<P: Phase> Display for Statement<P> {
@@ -21,10 +31,12 @@ impl<P: Phase> Display for Statement<P> {
 #[derive(Debug)]
 pub struct Scope<P: Phase> {
     pub statements: Vec<Statement<P>>,
+    pub span: Span,
 }
 
 #[derive(Debug)]
 pub struct Declaration<P: Phase> {
     pub name: Identifier,
     pub value: Box<Expression<P>>,
+    pub span: Span,
 }

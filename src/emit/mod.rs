@@ -1,7 +1,4 @@
-use crate::{
-    ast::{Expression, Lambda},
-    EmitError, Result, Typed,
-};
+use crate::{ast::Expression, EmitError, Result, Typed};
 use cranelift::{
     codegen::ir::UserFuncName,
     jit::{JITBuilder, JITModule},
@@ -18,7 +15,7 @@ pub trait Emit {
     type Output;
 
     fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
-        Ok(()) // default: do nothing
+        Ok(())
     }
 
     fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output>;
@@ -49,7 +46,6 @@ impl Emitter {
     pub fn compile(&mut self, expression: &Expression<Typed>) -> Result<*const u8> {
         let mut lambda_registry = LambdaRegistry::new();
 
-        // Declare phase - collect all lambdas
         {
             let mut module_ctx =
                 ModuleContext::new(self.isa.clone(), &mut self.module, &mut lambda_registry);
@@ -68,7 +64,7 @@ impl Emitter {
             &mut lambda_registry,
             |func_ctx| {
                 let value = expression.emit(func_ctx)?;
-                // Only extend if the value is not already i64
+                // cast if the value is not already i64
                 let value_type = func_ctx.builder.func.dfg.value_type(value);
                 let value = if value_type != types::I64 {
                     func_ctx.builder.ins().sextend(types::I64, value)
@@ -82,6 +78,7 @@ impl Emitter {
         self.module
             .finalize_definitions()
             .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
+
         Ok(self.module.get_finalized_function(main_id))
     }
 
@@ -119,7 +116,6 @@ impl Emitter {
             func_ctx.builder.seal_all_blocks();
         }
 
-        // Define the function
         self.module
             .define_function(func_id, &mut cranelift_ctx)
             .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
@@ -156,6 +152,7 @@ pub struct FunctionContext<'a, 'b> {
     pub lambda_registry: &'b mut LambdaRegistry,
     pub variables: HashMap<String, Variable>,
     pub blocks: HashMap<String, Block>,
+    pub self_referencing_lambdas: HashMap<String, usize>, // name -> lambda_id
 }
 
 impl<'a, 'b> FunctionContext<'a, 'b> {
@@ -170,6 +167,7 @@ impl<'a, 'b> FunctionContext<'a, 'b> {
             lambda_registry,
             variables: HashMap::new(),
             blocks: HashMap::new(),
+            self_referencing_lambdas: HashMap::new(),
         }
     }
 

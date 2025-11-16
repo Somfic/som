@@ -11,8 +11,11 @@ fn run() -> Result<(), Diagnostic> {
     let source = Source::from_raw(
         "
     {
-        let a = fn(a ~ int, b ~ int) ~ int { a + b }; 
-        a - 1
+        let fib = fn(n ~ int) -> int {
+            n if n < 2 else fib(n - 1) + fib(n - 2)
+        };
+
+        fib(18)
     }",
     );
 

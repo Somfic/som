@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Declaration, Scope, Statement},
+    ast::{Declaration, Expression, Scope, Statement},
     Result, TypeCheck, TypeCheckContext, Typed, Untyped,
 };
 
@@ -20,6 +20,7 @@ impl TypeCheck for Scope<Untyped> {
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
         Ok(Scope {
+            span: self.span,
             statements: self
                 .statements
                 .into_iter()
@@ -33,11 +34,19 @@ impl TypeCheck for Declaration<Untyped> {
     type Output = Declaration<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
-        let value = self.value.type_check(ctx)?;
+        // if we're declaring a function, allow recursion by declaring it before type checking the value
+        let value = if let Expression::Lambda(ref lambda) = *self.value {
+            let ty = lambda.infer_type(ctx)?;
+            ctx.declare_variable(self.name.clone(), ty);
+            self.value.type_check(ctx)?
+        } else {
+            self.value.type_check(ctx)?
+        };
 
         ctx.declare_variable(self.name.clone(), value.ty().clone());
 
         Ok(Declaration {
+            span: self.span,
             name: self.name,
             value: Box::new(value),
         })

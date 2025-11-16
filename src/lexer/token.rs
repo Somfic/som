@@ -1,4 +1,4 @@
-use cranelift::prelude::{Value, Variable};
+use cranelift::prelude::{types, InstBuilder, Value, Variable};
 
 use crate::{lexer::Span, Emit, FunctionContext, ModuleContext, Parse, ParserError, Result};
 use std::fmt::{Debug, Display};
@@ -328,7 +328,19 @@ impl Emit for Identifier {
     }
 
     fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
-        Ok(ctx.builder.use_var(ctx.get_variable(&self.name)?))
+        // Check if this identifier refers to a self-referencing lambda
+        if let Some(&lambda_id) = ctx.self_referencing_lambdas.get(&*self.name) {
+            // This is a recursive call - emit function address
+            let (func_id, _) = ctx
+                .lambda_registry
+                .get(lambda_id)
+                .ok_or_else(|| crate::EmitError::UndefinedFunction.to_diagnostic())?;
+            let reference = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);
+            Ok(ctx.builder.ins().func_addr(types::I64, reference))
+        } else {
+            // Regular variable lookup
+            Ok(ctx.builder.use_var(ctx.get_variable(&self.name)?))
+        }
     }
 }
 

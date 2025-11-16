@@ -91,7 +91,9 @@ impl TypeCheck for Binary<Untyped> {
             BinaryOperation::Add
             | BinaryOperation::Subtract
             | BinaryOperation::Multiply
-            | BinaryOperation::Divide => lhs.ty().clone(),
+            | BinaryOperation::Divide => {
+                lhs.ty().kind.clone().with_span(&(lhs.span() + rhs.span()))
+            }
             BinaryOperation::LessThan
             | BinaryOperation::LessThanOrEqual
             | BinaryOperation::GreaterThan
@@ -173,7 +175,7 @@ impl TypeCheck for Ternary<Untyped> {
         )?;
 
         Ok(Ternary {
-            ty: TypeKind::Boolean.with_span(&self.span),
+            ty: truthy.ty().clone(),
             span: self.span,
             condition: Box::new(condition),
             truthy: Box::new(truthy),
@@ -186,8 +188,7 @@ impl TypeCheck for Lambda<Untyped> {
     type Output = Lambda<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
-        // Create new scope for lambda body with parameters
-        let mut lambda_ctx = TypeCheckContext::new();
+        let mut lambda_ctx = ctx.new_child_context();
         for param in &self.parameters {
             lambda_ctx.declare_variable(param.name.name.to_string(), param.ty.clone());
         }
@@ -212,6 +213,22 @@ impl TypeCheck for Lambda<Untyped> {
             span: self.span,
             body: Box::new(body),
         })
+    }
+}
+
+impl Lambda<Untyped> {
+    pub fn infer_type(&self, ctx: &mut TypeCheckContext) -> Result<Type> {
+        let parameter_types: Vec<_> = self.parameters.iter().map(|p| p.ty.clone()).collect();
+        let returns = self
+            .explicit_return_ty
+            .clone()
+            .unwrap_or_else(|| TypeKind::Unit.with_span(&self.span));
+
+        Ok(TypeKind::Function {
+            parameters: parameter_types,
+            returns: Box::new(returns),
+        }
+        .with_span(&self.span))
     }
 }
 

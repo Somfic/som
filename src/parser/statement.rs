@@ -46,7 +46,7 @@ impl Parse for Scope<Untyped> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
-        input.expect(
+        let open = input.expect(
             TokenKind::CurlyOpen,
             "start of scope",
             ParserError::ExpectedScopeStart,
@@ -62,13 +62,16 @@ impl Parse for Scope<Untyped> {
             statements.push(input.parse::<Statement<_>>()?);
         }
 
-        input.expect(
+        let close = input.expect(
             TokenKind::CurlyClose,
             "end of scope",
             ParserError::ExpectedScopeEnd,
         )?;
 
-        Ok(Scope { statements })
+        Ok(Scope {
+            statements,
+            span: open.span + close.span,
+        })
     }
 }
 
@@ -76,7 +79,7 @@ impl Parse for Declaration<Untyped> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
-        input.expect(
+        let open = input.expect(
             TokenKind::Let,
             "a variable",
             ParserError::ExpectedDeclaration,
@@ -90,6 +93,7 @@ impl Parse for Declaration<Untyped> {
 
         Ok(Declaration {
             name,
+            span: open.span + value.span().clone(),
             value: Box::new(value),
         })
     }

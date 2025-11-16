@@ -237,12 +237,10 @@ impl Emit for Lambda<Typed> {
             .lambda_registry
             .get(self.id)
             .ok_or_else(|| EmitError::UndefinedFunction.to_diagnostic())?
-            .clone(); // Clone both to avoid borrow issues
+            .clone();
 
-        // Compile the lambda body right now!
-        self.compile_body(ctx.module, ctx.lambda_registry, func_id, sig)?;
+        self.compile_body(ctx.module, ctx.lambda_registry, func_id, sig, None)?;
 
-        // Return function address
         let reference = ctx.module.declare_func_in_func(func_id, ctx.builder.func);
         let address = ctx.builder.ins().func_addr(types::I64, reference);
 
@@ -251,12 +249,13 @@ impl Emit for Lambda<Typed> {
 }
 
 impl Lambda<Typed> {
-    fn compile_body(
+    pub fn compile_body(
         &self,
         module: &mut dyn Module,
         registry: &mut LambdaRegistry,
         func_id: FuncId,
         sig: Signature,
+        self_name: Option<String>,
     ) -> Result<()> {
         use cranelift::codegen::ir::UserFuncName;
         use cranelift::prelude::FunctionBuilderContext;
@@ -282,6 +281,11 @@ impl Lambda<Typed> {
 
         let mut func_ctx = FunctionContext::new(&mut builder, module, registry);
 
+        // if this lambda is self-referencing, register its name
+        if let Some(name) = self_name {
+            func_ctx.self_referencing_lambdas.insert(name, self.id);
+        }
+
         for (param, &cranelift_param) in self.parameters.iter().zip(&param_values) {
             let var = func_ctx.declare_variable(param.name.name.to_string(), param.ty.kind.clone());
             func_ctx.builder.def_var(var, cranelift_param);
@@ -294,6 +298,7 @@ impl Lambda<Typed> {
         module
             .define_function(func_id, &mut cranelift_ctx)
             .map_err(|e| EmitError::ModuleError(e).to_diagnostic())?;
+
         module.clear_context(&mut cranelift_ctx);
 
         Ok(())

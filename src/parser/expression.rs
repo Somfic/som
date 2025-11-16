@@ -243,6 +243,7 @@ impl Parse for Block<Untyped> {
                 Statement::Expression(e) => expression = Some(e),
                 s => ParserError::InvalidReturningExpression
                     .to_diagnostic()
+                    .with_label(s.span().label("this statement"))
                     .with_hint(format!("{} cannot be used as a value", s))
                     .to_err()?,
             }
@@ -339,7 +340,7 @@ impl Parse for Lambda<Untyped> {
         )?;
 
         let explicit_return_ty = if let Some(Token {
-            kind: TokenKind::Tilde,
+            kind: TokenKind::Arrow,
             ..
         }) = input.peek()
         {
