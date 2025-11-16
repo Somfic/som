@@ -74,10 +74,7 @@ impl TypeCheckWithType for Primary {
             Primary::Decimal(_) => Type::Decimal,
             Primary::String(_) => Type::String,
             Primary::Character(_) => Type::Character,
-            Primary::Identifier(i) => match ctx.get_variable(i.name.clone()) {
-                Ok(t) => t,
-                Err(e) => return Err(e), // todo: add span
-            },
+            Primary::Identifier(i) => ctx.get_variable(i.name.clone())?, // todo: label
         };
 
         Ok((self, ty))

@@ -244,8 +244,8 @@ impl Parse for Block<Untyped> {
         )?;
 
         Ok(Block {
-            statements: statements,
-            expression: expression.map(|e| Box::new(e)),
+            statements,
+            expression: expression.map(Box::new),
         })
     }
 }

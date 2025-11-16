@@ -1,6 +1,6 @@
 use crate::{
     ast::{Declaration, Expression, Scope, Statement},
-    lexer::{Identifier, TokenKind},
+    lexer::TokenKind,
     Parse, Parser, ParserError, Result, Untyped,
 };
 

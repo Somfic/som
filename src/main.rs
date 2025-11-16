@@ -1,7 +1,4 @@
-use som::{
-    ast::{Expression, Pseudo, Statement},
-    Diagnostic, Emitter, Parser, Source, Typer,
-};
+use som::{ast::Expression, Diagnostic, Emitter, Parser, Source, Typer};
 use target_lexicon::Triple;
 
 fn main() {

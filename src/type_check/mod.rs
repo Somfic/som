@@ -2,11 +2,7 @@ use std::collections::HashMap;
 
 use cranelift::prelude::types;
 
-use crate::{
-    ast::{Expression, Statement},
-    parser::Untyped,
-    Phase, Result, TypeCheckError,
-};
+use crate::{ast::Expression, parser::Untyped, Phase, Result, TypeCheckError};
 
 mod expression;
 mod statement;
@@ -59,9 +55,9 @@ pub enum Type {
     Character,
 }
 
-impl Into<cranelift::prelude::Type> for Type {
-    fn into(self) -> cranelift::prelude::Type {
-        match self {
+impl From<Type> for cranelift::prelude::Type {
+    fn from(val: Type) -> Self {
+        match val {
             Type::Unit => types::I8,
             Type::Boolean => types::I8,
             Type::I32 => types::I32,

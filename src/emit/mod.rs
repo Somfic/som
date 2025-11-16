@@ -3,10 +3,7 @@ use cranelift::{
     codegen::ir::UserFuncName,
     jit::{JITBuilder, JITModule},
     module::{self, Linkage, Module},
-    prelude::{
-        settings::{builder, Flags},
-        *,
-    },
+    prelude::{settings::Flags, *},
 };
 use std::{collections::HashMap, sync::Arc};
 use target_lexicon::Triple;

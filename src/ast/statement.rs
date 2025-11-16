@@ -1,6 +1,5 @@
-use std::fmt::{write, Display};
-
 use crate::{ast::Expression, lexer::Identifier, Phase};
+use std::fmt::Display;
 
 #[derive(Debug)]
 pub enum Statement<P: Phase> {

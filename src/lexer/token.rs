@@ -297,9 +297,9 @@ pub struct Identifier {
     pub span: Span,
 }
 
-impl Into<String> for Identifier {
-    fn into(self) -> String {
-        self.name.to_string()
+impl From<Identifier> for String {
+    fn from(val: Identifier) -> Self {
+        val.name.to_string()
     }
 }
 

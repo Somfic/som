@@ -1,6 +1,5 @@
-use std::fmt::{write, Display};
-
 use crate::{ast::Statement, lexer::Identifier, Phase, Span};
+use std::fmt::Display;
 
 #[derive(Debug)]
 pub struct Expression<P: Phase> {

@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Block, Declaration, Scope, Statement},
+    ast::{Declaration, Scope, Statement},
     Result, TypeCheck, TypeCheckContext, Typed, Untyped,
 };
 
