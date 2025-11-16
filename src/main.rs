@@ -8,14 +8,15 @@ fn main() {
 }
 
 fn run() -> Result<(), Diagnostic> {
-    let source = Source::from_raw("{ let a = 1; a }");
+    let source = Source::from_raw("{ let a = 1 if true else 0; a }");
 
     let mut parser = Parser::new(source);
-    let mut typer = Typer::new();
-    let mut emitter = Emitter::new(Triple::host());
-
     let code = parser.parse::<Expression<_>>()?;
+
+    let mut typer = Typer::new();
     let code = typer.check(code)?;
+
+    let mut emitter = Emitter::new(Triple::host());
     let code = emitter.compile(&code)?;
 
     let result = (unsafe { std::mem::transmute::<*const u8, fn() -> i64>(code) })();

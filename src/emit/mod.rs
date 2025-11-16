@@ -69,9 +69,9 @@ impl Emitter {
 
             emit_context.builder.ins().return_(&[value]);
             emit_context.builder.seal_all_blocks();
+        }
 
-            drop(emit_context);
-        };
+        println!("{}", ctx.func);
 
         self.module
             .define_function(main_function, &mut ctx)

@@ -1,5 +1,7 @@
 use crate::{
-    ast::{Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Pseudo, Unary},
+    ast::{
+        Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Pseudo, Ternary, Unary,
+    },
     Phase,
 };
 
@@ -17,6 +19,7 @@ impl<P: Phase> Pseudo for Expr<P> {
             Expr::Binary(b) => b.pseudo(),
             Expr::Group(g) => g.pseudo(),
             Expr::Block(b) => b.pseudo(),
+            Expr::Ternary(t) => t.pseudo(),
         }
     }
 }
@@ -66,5 +69,16 @@ impl<P: Phase> Pseudo for Group<P> {
 impl<P: Phase> Pseudo for Block<P> {
     fn pseudo(&self) -> String {
         todo!()
+    }
+}
+
+impl<P: Phase> Pseudo for Ternary<P> {
+    fn pseudo(&self) -> String {
+        format!(
+            "({} ? {} : {})",
+            self.condition.pseudo(),
+            self.truthy.pseudo(),
+            self.falsy.pseudo()
+        )
     }
 }

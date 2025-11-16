@@ -1,8 +1,11 @@
-use cranelift::prelude::{types, InstBuilder, Value};
+use cranelift::{
+    codegen::ir::BlockArg,
+    prelude::{types, InstBuilder, Value},
+};
 
 use crate::{
-    ast::{Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Unary},
-    Emit, EmitContext, Result, Typed,
+    ast::{Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Ternary, Unary},
+    Emit, EmitContext, Result, Type, Typed,
 };
 
 impl Emit for Expression<Typed> {
@@ -23,6 +26,7 @@ impl Emit for Expr<Typed> {
             Expr::Binary(b) => b.emit(ctx),
             Expr::Group(g) => g.emit(ctx),
             Expr::Block(b) => b.emit(ctx),
+            Expr::Ternary(t) => t.emit(ctx),
         }
     }
 }
@@ -32,9 +36,12 @@ impl Emit for Primary {
 
     fn emit(&self, ctx: &mut EmitContext) -> Result<Self::Output> {
         Ok(match self {
-            Primary::Boolean(b) => ctx.builder.ins().iconst(types::I8, if *b { 1 } else { 0 }),
-            Primary::I32(i) => ctx.builder.ins().iconst(types::I32, *i as i64),
-            Primary::I64(i) => ctx.builder.ins().iconst(types::I32, *i),
+            Primary::Boolean(b) => ctx
+                .builder
+                .ins()
+                .iconst(Type::Boolean.into(), if *b { 1 } else { 0 }),
+            Primary::I32(i) => ctx.builder.ins().iconst(Type::I32.into(), *i as i64),
+            Primary::I64(i) => ctx.builder.ins().iconst(Type::I64.into(), *i),
             Primary::Decimal(d) => ctx.builder.ins().f64const(*d),
             Primary::String(s) => unimplemented!("string emit"),
             Primary::Character(c) => unimplemented!("character emit"),
@@ -92,5 +99,44 @@ impl Emit for Block<Typed> {
             Some(expression) => expression.emit(ctx),
             None => Ok(ctx.builder.ins().iconst(types::I8, 0)),
         }
+    }
+}
+
+impl Emit for Ternary<Typed> {
+    type Output = Value;
+
+    fn emit(&self, ctx: &mut EmitContext) -> Result<Self::Output> {
+        let condition = self.condition.emit(ctx)?;
+
+        let truthy_block = ctx.builder.create_block();
+        let falsy_block = ctx.builder.create_block();
+        let merge_block = ctx.builder.create_block();
+
+        ctx.builder
+            .append_block_param(merge_block, self.truthy.ty.clone().into());
+
+        ctx.builder
+            .ins()
+            .brif(condition, truthy_block, &[], falsy_block, &[]);
+
+        // truthy
+        ctx.builder.switch_to_block(truthy_block);
+        let value = self.truthy.emit(ctx)?;
+        ctx.builder
+            .ins()
+            .jump(merge_block, &[BlockArg::Value(value)]);
+
+        // falsy
+        ctx.builder.switch_to_block(falsy_block);
+        let value = self.falsy.emit(ctx)?;
+        ctx.builder
+            .ins()
+            .jump(merge_block, &[BlockArg::Value(value)]);
+
+        // merge
+        ctx.builder.switch_to_block(merge_block);
+        let value = ctx.builder.block_params(merge_block)[0];
+
+        Ok(value)
     }
 }

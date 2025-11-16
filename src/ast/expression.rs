@@ -21,6 +21,7 @@ pub enum Expr<P: Phase> {
     Binary(Binary<P>),
     Group(Group<P>),
     Block(Block<P>),
+    Ternary(Ternary<P>),
 }
 
 impl<P: Phase> Display for Expr<P> {
@@ -31,6 +32,7 @@ impl<P: Phase> Display for Expr<P> {
             Expr::Binary(binary) => write!(f, "{}", binary),
             Expr::Group(group) => write!(f, "{}", group.expr),
             Expr::Block(block) => write!(f, "a block"),
+            Expr::Ternary(ternary) => write!(f, "a ternary"),
         }
     }
 }
@@ -108,4 +110,17 @@ pub struct Group<P: Phase> {
 pub struct Block<P: Phase> {
     pub statements: Vec<Statement<P>>,
     pub expression: Option<Box<Expression<P>>>,
+}
+
+#[derive(Debug)]
+pub struct Ternary<P: Phase> {
+    pub condition: Box<Expression<P>>,
+    pub truthy: Box<Expression<P>>,
+    pub falsy: Box<Expression<P>>,
+}
+
+impl<P: Phase> Display for Ternary<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "a ternary expression")
+    }
 }

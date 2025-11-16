@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use cranelift::prelude::types;
 
@@ -44,7 +44,7 @@ pub trait TypeCheckWithType: Sized {
     fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Unit,
     Boolean,
@@ -53,6 +53,20 @@ pub enum Type {
     Decimal,
     String,
     Character,
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Unit => write!(f, "a unit type"),
+            Type::Boolean => write!(f, "a boolean"),
+            Type::I32 => write!(f, "a 32-bit integer"),
+            Type::I64 => write!(f, "a 64-bit integer"),
+            Type::Decimal => write!(f, "a decimal"),
+            Type::String => write!(f, "a string"),
+            Type::Character => write!(f, "a character"),
+        }
+    }
 }
 
 impl From<Type> for cranelift::prelude::Type {

@@ -1,5 +1,7 @@
 use crate::{
-    ast::{Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Statement, Unary},
+    ast::{
+        Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Statement, Ternary, Unary,
+    },
     lexer::{Token, TokenKind, TokenValue},
     parser::{Parse, Untyped},
     Parser, ParserError, Result,
@@ -246,6 +248,30 @@ impl Parse for Block<Untyped> {
         Ok(Block {
             statements,
             expression: expression.map(Box::new),
+        })
+    }
+}
+
+impl Parse for Ternary<Untyped> {
+    type Params = Expression<Untyped>;
+
+    fn parse(input: &mut Parser, truthy: Self::Params) -> Result<Self> {
+        input.expect(TokenKind::If, "a condition", ParserError::ExpectedCondition)?;
+
+        let condition = input.parse()?;
+
+        input.expect(
+            TokenKind::Else,
+            "a falsy branch",
+            ParserError::ExpectedElseBranch,
+        )?;
+
+        let falsy = input.parse()?;
+
+        Ok(Ternary {
+            condition: Box::new(condition),
+            truthy: Box::new(truthy),
+            falsy: Box::new(falsy),
         })
     }
 }

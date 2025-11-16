@@ -1,8 +1,8 @@
 use crate::{
-    ast::{Binary, Block, Expr, Expression, Group, Primary, Unary},
+    ast::{Binary, Block, Expr, Expression, Group, Primary, Ternary, Unary},
     parser::Untyped,
     type_check::{Type, TypeCheckContext, Typed},
-    Result, TypeCheck, TypeCheckWithType,
+    Result, TypeCheck, TypeCheckError, TypeCheckWithType,
 };
 
 impl TypeCheck for Expression<Untyped> {
@@ -59,6 +59,9 @@ impl TypeCheckWithType for Expr<Untyped> {
             Expr::Block(g) => g
                 .type_check_with_type(ctx)
                 .map(|(v, t)| (Expr::Block(v), t)),
+            Expr::Ternary(t) => t
+                .type_check_with_type(ctx)
+                .map(|(v, ty)| (Expr::Ternary(v), ty)),
         }
     }
 }
@@ -148,4 +151,41 @@ impl TypeCheckWithType for Block<Untyped> {
             ty,
         ))
     }
+}
+
+impl TypeCheckWithType for Ternary<Untyped> {
+    type Output = Ternary<Typed>;
+
+    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
+        let (condition, cond_ty) = self.condition.type_check_with_type(ctx)?;
+        let (truthy, truthy_ty) = self.truthy.type_check_with_type(ctx)?;
+        let (falsy, falsy_ty) = self.falsy.type_check_with_type(ctx)?;
+
+        expect_type(&cond_ty, &Type::Boolean, "condition of ternary")?;
+        expect_type(&truthy_ty, &falsy_ty, "branches of ternary")?;
+
+        // todo: type check condition is boolean, truthy and falsy have same type
+        Ok((
+            Ternary {
+                condition: Box::new(condition),
+                truthy: Box::new(truthy),
+                falsy: Box::new(falsy),
+            },
+            truthy_ty,
+        ))
+    }
+}
+
+fn expect_type(actual: &Type, expected: &Type, in_context: &str) -> Result<()> {
+    if actual != expected {
+        return Err(
+            TypeCheckError::TypeMismatch {
+                expected: expected.clone(),
+                actual: actual.clone(),
+                context: in_context.to_string(),
+            }
+            .to_diagnostic(), // todo: labels
+        );
+    }
+    Ok(())
 }

@@ -3,7 +3,7 @@ use std::{error::Error as ThisError, fmt::Display};
 use cranelift::module::ModuleError;
 use owo_colors::OwoColorize;
 
-use crate::{lexer::Cursor, Span};
+use crate::{lexer::Cursor, Span, Type};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -59,12 +59,22 @@ pub enum ParserError {
     ExpectedIdentifier,
     #[error("expected a value")]
     ExpectedValue,
+    #[error("expected a condition")]
+    ExpectedCondition,
+    #[error("expected an else branch")]
+    ExpectedElseBranch,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum TypeCheckError {
     #[error("undefined variable '{0}'")]
     UndefinedVariable(String),
+    #[error("type mismatch: expected {expected}, found {actual} in {context}")]
+    TypeMismatch {
+        expected: Type,
+        actual: Type,
+        context: String,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
