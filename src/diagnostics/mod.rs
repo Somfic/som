@@ -25,6 +25,10 @@ pub enum LexicalError {
 
 #[derive(Debug, thiserror::Error)]
 pub enum ParserError {
+    #[error("expected an expression")]
+    ExpectedExpression,
+    #[error("expected a statement")]
+    ExpectedStatement,
     #[error("invalid primary expression")]
     InvalidPrimaryExpression,
     #[error("invalid unary expression")]
@@ -34,9 +38,21 @@ pub enum ParserError {
     #[error("unexpected end of input")]
     UnexpectedEndOfInput,
     #[error("expected '(' to start a group")]
-    ExpectedOpenParenthesis,
+    ExpectedGroupStart,
     #[error("expected ')' to end a group")]
-    ExpectedCloseParenthesis,
+    ExpectedGroupEnd,
+    #[error("expected '{{' to start a scope")]
+    ExpectedScopeStart,
+    #[error("expected '}}' to end a scope")]
+    ExpectedScopeEnd,
+    #[error("expected a semicolon")]
+    ExpectedSemicolon,
+    #[error("expected '{{' to start a block")]
+    ExpectedBlockStart,
+    #[error("expected '}}' to end a block")]
+    ExpectedBlockEnd,
+    #[error("invalid returning expression")]
+    InvalidReturningExpression,
 }
 
 #[derive(Debug, thiserror::Error)]

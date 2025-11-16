@@ -11,7 +11,8 @@ use cranelift::{
 use std::{collections::HashMap, sync::Arc};
 use target_lexicon::Triple;
 
-mod expr;
+mod expression;
+mod statement;
 
 pub trait Emit {
     type Output;

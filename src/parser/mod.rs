@@ -1,8 +1,9 @@
 use crate::lexer::{Lexer, Token, TokenKind};
 use crate::{ParserError, Phase, Result, Source, Span};
 
-mod expr;
+mod expression;
 pub mod lookup;
+mod statement;
 
 use lookup::Lookup;
 
@@ -76,11 +77,11 @@ impl Parser {
 
             return error
                 .to_diagnostic()
-                .with_label(
-                    next.span
-                        .clone()
-                        .label(format!("expected {} here", expect.into())),
-                )
+                .with_label(next.span.clone().label(format!(
+                    "expected {} here for {}",
+                    token,
+                    expect.into()
+                )))
                 .to_err();
         }
 

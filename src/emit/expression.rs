@@ -1,7 +1,7 @@
 use cranelift::prelude::{types, InstBuilder, Value};
 
 use crate::{
-    ast::{Binary, BinaryOperation, Expr, Expression, Group, Primary, Unary},
+    ast::{Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Unary},
     Emit, EmitContext, Result, Typed,
 };
 
@@ -22,6 +22,7 @@ impl Emit for Expr<Typed> {
             Expr::Unary(u) => u.emit(ctx),
             Expr::Binary(b) => b.emit(ctx),
             Expr::Group(g) => g.emit(ctx),
+            Expr::Block(b) => b.emit(ctx),
         }
     }
 }
@@ -76,5 +77,20 @@ impl Emit for Group<Typed> {
 
     fn emit(&self, ctx: &mut EmitContext) -> Result<Self::Output> {
         self.expr.emit(ctx)
+    }
+}
+
+impl Emit for Block<Typed> {
+    type Output = Value;
+
+    fn emit(&self, ctx: &mut EmitContext) -> Result<Self::Output> {
+        for statement in &self.statements {
+            statement.emit(ctx)?;
+        }
+
+        match &self.expression {
+            Some(expression) => expression.emit(ctx),
+            None => Ok(ctx.builder.ins().iconst(types::I8, 0)),
+        }
     }
 }

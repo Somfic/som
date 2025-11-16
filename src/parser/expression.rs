@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Binary, BinaryOperation, Expr, Expression, Group, Primary, Unary},
+    ast::{Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Statement, Unary},
     lexer::{Token, TokenKind, TokenValue},
     parser::{Parse, Untyped},
     Parser, ParserError, Result,
@@ -63,24 +63,23 @@ impl Parse for Expr<Untyped> {
     type Params = u8;
 
     fn parse(input: &mut Parser, min_bp: Self::Params) -> Result<Self> {
-        let peek = input.peek_expect("an expression")?;
-        let peek_kind = peek.kind.clone();
-        let peek_span = peek.span.clone();
+        let peek = input.peek_expect("an expression")?.clone();
 
-        let Some(prefix) = input.lookup.expression_lookup.get(&peek_kind).cloned() else {
-            return ParserError::InvalidPrimaryExpression
+        let Some(parse_function) = input.lookup.expression_lookup.get(&peek.kind).cloned() else {
+            return ParserError::ExpectedExpression
                 .to_diagnostic()
-                .with_label(peek_span.label("expected an expression"))
+                .with_label(peek.span.clone().label("expected this to be an expression"))
+                .with_hint(format!("{} cannot be parsed as an expression", peek))
                 .to_err();
         };
 
-        let mut lhs = prefix(input)?;
+        let mut lhs = parse_function(input)?;
 
         loop {
             let Some(token) = input.peek() else { break };
             let token_kind = token.kind.clone();
 
-            let Some(infix) = input
+            let Some(lefthand_parse_function) = input
                 .lookup
                 .lefthand_expression_lookup
                 .get(&token_kind)
@@ -97,7 +96,7 @@ impl Parse for Expr<Untyped> {
                 break;
             }
 
-            lhs = infix(input, lhs)?;
+            lhs = lefthand_parse_function(input, lhs)?;
         }
 
         Ok(lhs.expr)
@@ -178,7 +177,7 @@ impl Parse for Group<Untyped> {
         input.expect(
             TokenKind::ParenOpen,
             "'(' to start a grouped expression",
-            ParserError::ExpectedOpenParenthesis,
+            ParserError::ExpectedGroupStart,
         )?;
 
         let expr = input.parse_with::<Expression<Untyped>>(0)?;
@@ -186,11 +185,67 @@ impl Parse for Group<Untyped> {
         input.expect(
             TokenKind::ParenClose,
             "')' to end a grouped expression",
-            ParserError::ExpectedCloseParenthesis,
+            ParserError::ExpectedGroupEnd,
         )?;
 
         Ok(Group {
             expr: Box::new(expr),
+        })
+    }
+}
+
+impl Parse for Block<Untyped> {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        input.expect(
+            TokenKind::CurlyOpen,
+            "start of block",
+            ParserError::ExpectedBlockStart,
+        )?;
+
+        let mut statements = vec![];
+        let mut expression = None;
+
+        while let Some(token) = input.peek() {
+            if token.kind == TokenKind::CurlyClose {
+                break;
+            }
+
+            // parse statement without parsing the semicolon
+
+            let statement = input.parse_with::<Statement<_>>(false)?;
+
+            // if the statement had a closing semicolon, consume it and try to parse the next statement
+            if let Some(Token {
+                kind: TokenKind::Semicolon,
+                ..
+            }) = input.peek()
+            {
+                input.next()?;
+                statements.push(statement);
+                continue;
+            }
+
+            // there was no semicolon, this is the returning expression
+            match statement {
+                Statement::Expression(e) => expression = Some(e),
+                s => ParserError::InvalidReturningExpression
+                    .to_diagnostic()
+                    .with_hint(format!("{} cannot be used as a value", s))
+                    .to_err()?,
+            }
+        }
+
+        input.expect(
+            TokenKind::CurlyClose,
+            "end of block",
+            ParserError::ExpectedBlockEnd,
+        )?;
+
+        Ok(Block {
+            statements: statements,
+            expression: expression.map(|e| Box::new(e)),
         })
     }
 }

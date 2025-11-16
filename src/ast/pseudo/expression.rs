@@ -1,11 +1,7 @@
 use crate::{
-    ast::{Binary, BinaryOperation, Expr, Expression, Group, Primary, Unary},
+    ast::{Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Pseudo, Unary},
     Phase,
 };
-
-pub trait Pseudo {
-    fn pseudo(&self) -> String;
-}
 
 impl<P: Phase> Pseudo for Expression<P> {
     fn pseudo(&self) -> String {
@@ -20,6 +16,7 @@ impl<P: Phase> Pseudo for Expr<P> {
             Expr::Unary(u) => u.pseudo(),
             Expr::Binary(b) => b.pseudo(),
             Expr::Group(g) => g.pseudo(),
+            Expr::Block(b) => b.pseudo(),
         }
     }
 }
@@ -63,5 +60,11 @@ impl<P: Phase> Pseudo for Binary<P> {
 impl<P: Phase> Pseudo for Group<P> {
     fn pseudo(&self) -> String {
         format!("({})", self.expr.pseudo())
+    }
+}
+
+impl<P: Phase> Pseudo for Block<P> {
+    fn pseudo(&self) -> String {
+        todo!()
     }
 }

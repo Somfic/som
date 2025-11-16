@@ -1,6 +1,11 @@
-use crate::{ast::Expression, parser::Untyped, Phase, Result};
+use crate::{
+    ast::{Expression, Statement},
+    parser::Untyped,
+    Phase, Result,
+};
 
-mod expr;
+mod expression;
+mod statement;
 
 #[derive(Debug)]
 pub struct Typed;
@@ -16,21 +21,32 @@ impl Typer {
         Self {}
     }
 
+    // pub fn check(&mut self, expression: Expression<Untyped>) -> Result<Expression<Typed>> {
+    //     expression
+    //         .type_check(&mut TypeCheckContext {})
+    //         .map(|(e, _)| e)
+    // }
+
     pub fn check(&mut self, expression: Expression<Untyped>) -> Result<Expression<Typed>> {
-        expression
-            .type_check(&mut TypeCheckContext {})
-            .map(|(e, _)| e)
+        expression.type_check(&mut TypeCheckContext {})
     }
 }
 
 pub trait TypeCheck: Sized {
     type Output;
 
-    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)>;
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output>;
+}
+
+pub trait TypeCheckWithType: Sized {
+    type Output;
+
+    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)>;
 }
 
 #[derive(Debug, Clone)]
 pub enum Type {
+    Unit,
     Boolean,
     I32,
     I64,
