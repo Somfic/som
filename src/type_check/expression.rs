@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
-        Ternary, Unary,
+        Pseudo, Ternary, Unary,
     },
     parser::Untyped,
     type_check::{Type, TypeCheckContext, Typed},
@@ -273,8 +273,8 @@ fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
     if a != b {
         return Err(TypeCheckError::TypeMismatch
             .to_diagnostic()
-            .with_label(a.span.label(format!("{}", a)))
-            .with_label(b.span.label(format!("{}", b)))
+            .with_label(a.span.label(format!("{}", a.pseudo())))
+            .with_label(b.span.label(format!("{}", b.pseudo())))
             .with_hint(hint.into()));
     }
 

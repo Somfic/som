@@ -2,7 +2,11 @@ use std::{collections::HashMap, fmt::Display};
 
 use cranelift::prelude::types;
 
-use crate::{ast::Expression, parser::Untyped, Phase, Result, Span, TypeCheckError};
+use crate::{
+    ast::{Expression, Pseudo},
+    parser::Untyped,
+    Phase, Result, Span, TypeCheckError,
+};
 
 mod expression;
 mod statement;
@@ -94,14 +98,49 @@ impl Display for TypeKind {
                 parameters: params,
                 returns,
             } => {
-                write!(f, "fn(")?;
+                write!(f, "(")?;
                 for (i, param) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", param)?;
+                    write!(f, "{}", param.pseudo())?;
                 }
-                write!(f, ") -> {}", returns)
+                write!(f, ") -> {}", returns.pseudo())
+            }
+        }
+    }
+}
+
+impl Pseudo for Type {
+    fn pseudo(&self) -> String {
+        format!("{}", self.kind.pseudo())
+    }
+}
+
+impl Pseudo for TypeKind {
+    fn pseudo(&self) -> String {
+        match self {
+            TypeKind::Unit => "unit".to_string(),
+            TypeKind::Boolean => "bool".to_string(),
+            TypeKind::I32 => "i32".to_string(),
+            TypeKind::I64 => "i64".to_string(),
+            TypeKind::Decimal => "decimal".to_string(),
+            TypeKind::String => "string".to_string(),
+            TypeKind::Character => "char".to_string(),
+            TypeKind::Function {
+                parameters: params,
+                returns,
+            } => {
+                let mut s = String::from("fn(");
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(", ");
+                    }
+                    s.push_str(&param.pseudo());
+                }
+                s.push_str(") -> ");
+                s.push_str(&returns.pseudo());
+                s
             }
         }
     }
