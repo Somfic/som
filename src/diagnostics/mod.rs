@@ -3,7 +3,7 @@ use std::{error::Error as ThisError, fmt::Display};
 use cranelift::module::ModuleError;
 use owo_colors::OwoColorize;
 
-use crate::{lexer::Cursor, Span, Type};
+use crate::{lexer::Cursor, Span, Type, TypeKind};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -69,12 +69,10 @@ pub enum ParserError {
 pub enum TypeCheckError {
     #[error("undefined variable '{0}'")]
     UndefinedVariable(String),
-    #[error("type mismatch: expected {expected}, found {actual} in {context}")]
-    TypeMismatch {
-        expected: Type,
-        actual: Type,
-        context: String,
-    },
+    #[error("type mismatch: {a} and {b} do not match")]
+    TypeMismatch { a: Type, b: Type },
+    #[error("type mismatch: expected {expected}, found {actual}")]
+    ExpectedType { expected: TypeKind, actual: Type },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -224,10 +222,10 @@ pub struct Label {
 }
 
 impl Span {
-    pub fn label(self, message: impl Into<String>) -> Label {
+    pub fn label(&self, message: impl Into<String>) -> Label {
         Label {
             message: message.into(),
-            span: self,
+            span: self.clone(),
         }
     }
 }

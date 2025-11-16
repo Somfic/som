@@ -1,6 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Statement, Ternary, Unary,
+        Binary, BinaryOperation, Block, Expression, Group, Primary, PrimaryKind, Statement,
+        Ternary, Unary,
     },
     lexer::{Token, TokenKind, TokenValue},
     parser::{Parse, Untyped},
@@ -8,60 +9,6 @@ use crate::{
 };
 
 impl Parse for Expression<Untyped> {
-    type Params = u8;
-
-    fn parse(input: &mut Parser, min_bp: Self::Params) -> Result<Self> {
-        let (expr, span) = input.parse_with_span_with::<Expr<Untyped>>(min_bp)?;
-
-        Ok(Expression { expr, span, ty: () })
-    }
-}
-
-impl Parse for Binary<Untyped> {
-    type Params = Expression<Untyped>;
-
-    fn parse(input: &mut Parser, lhs: Self::Params) -> Result<Self> {
-        let op = input.next()?;
-
-        let Some(&(_, r_bp)) = input.lookup.binding_power_lookup.get(&op.kind) else {
-            return ParserError::InvalidBinaryOperator
-                .to_diagnostic()
-                .with_label(op.span.label("expected a binary operator"))
-                .to_err();
-        };
-
-        let rhs = input.parse_with(r_bp)?;
-
-        let operation = match op.kind {
-            TokenKind::Plus => BinaryOperation::Add,
-            TokenKind::Minus => BinaryOperation::Subtract,
-            TokenKind::Star => BinaryOperation::Multiply,
-            TokenKind::Slash => BinaryOperation::Divide,
-            _ => {
-                return ParserError::InvalidBinaryOperator
-                    .to_diagnostic()
-                    .with_label(op.span.label("expected a binary operator"))
-                    .with_hint(format!(
-                    "{} cannot be used as a binary operator. only {}, {}, {} and {} are supported",
-                    op.kind,
-                    TokenKind::Plus,
-                    TokenKind::Minus,
-                    TokenKind::Star,
-                    TokenKind::Slash
-                ))
-                    .to_err()
-            }
-        };
-
-        Ok(Binary {
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-            op: operation,
-        })
-    }
-}
-
-impl Parse for Expr<Untyped> {
     type Params = u8;
 
     fn parse(input: &mut Parser, min_bp: Self::Params) -> Result<Self> {
@@ -101,56 +48,116 @@ impl Parse for Expr<Untyped> {
             lhs = lefthand_parse_function(input, lhs)?;
         }
 
-        Ok(lhs.expr)
+        Ok(lhs)
     }
 }
 
-impl Parse for Primary {
+impl Parse for Binary<Untyped> {
+    type Params = Expression<Untyped>;
+
+    fn parse(input: &mut Parser, lhs: Self::Params) -> Result<Self> {
+        let op = input.next()?;
+
+        let Some(&(_, r_bp)) = input.lookup.binding_power_lookup.get(&op.kind) else {
+            return ParserError::InvalidBinaryOperator
+                .to_diagnostic()
+                .with_label(op.span.label("expected a binary operator"))
+                .to_err();
+        };
+
+        let rhs = input.parse_with::<Expression<_>>(r_bp)?;
+
+        let operation = match op.kind {
+            TokenKind::Plus => BinaryOperation::Add,
+            TokenKind::Minus => BinaryOperation::Subtract,
+            TokenKind::Star => BinaryOperation::Multiply,
+            TokenKind::Slash => BinaryOperation::Divide,
+            TokenKind::LessThan => BinaryOperation::LessThan,
+            TokenKind::LessThanOrEqual => BinaryOperation::LessThanOrEqual,
+            TokenKind::GreaterThan => BinaryOperation::GreaterThan,
+            TokenKind::GreaterThanOrEqual => BinaryOperation::GreaterThanOrEqual,
+            TokenKind::Equality => BinaryOperation::Equality,
+            TokenKind::Inequality => BinaryOperation::Inequality,
+            _ => {
+                return ParserError::InvalidBinaryOperator
+                    .to_diagnostic()
+                    .with_label(op.span.label("expected a binary operator"))
+                    .with_hint(format!(
+                    "{} cannot be used as a binary operator. only {}, {}, {} and {} are supported",
+                    op.kind,
+                    TokenKind::Plus,
+                    TokenKind::Minus,
+                    TokenKind::Star,
+                    TokenKind::Slash
+                ))
+                    .to_err()
+            }
+        };
+
+        Ok(Binary {
+            span: lhs.span() + rhs.span(),
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+            op: operation,
+            ty: (),
+        })
+    }
+}
+
+impl Parse for Primary<Untyped> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
-        match input.next()? {
+        let token = input.next()?;
+
+        let kind = match &token {
             Token {
                 kind: TokenKind::Boolean,
                 value: TokenValue::Boolean(b),
                 ..
-            } => Ok(Primary::Boolean(b)),
+            } => PrimaryKind::Boolean(*b),
             Token {
                 kind: TokenKind::I32,
                 value: TokenValue::I32(i),
                 ..
-            } => Ok(Primary::I32(i)),
+            } => PrimaryKind::I32(*i),
             Token {
                 kind: TokenKind::I64,
                 value: TokenValue::I64(i),
                 ..
-            } => Ok(Primary::I64(i)),
+            } => PrimaryKind::I64(*i),
             Token {
                 kind: TokenKind::Decimal,
                 value: TokenValue::Decimal(d),
                 ..
-            } => Ok(Primary::Decimal(d)),
+            } => PrimaryKind::Decimal(*d),
             Token {
                 kind: TokenKind::String,
                 value: TokenValue::String(s),
                 ..
-            } => Ok(Primary::String(s)),
+            } => PrimaryKind::String(s.clone()),
             Token {
                 kind: TokenKind::Character,
                 value: TokenValue::Character(c),
                 ..
-            } => Ok(Primary::Character(c)),
+            } => PrimaryKind::Character(*c),
             Token {
                 kind: TokenKind::Identifier,
-                value: TokenValue::Identifier(id),
+                value: TokenValue::Identifier(ident),
                 ..
-            } => Ok(Primary::Identifier(id)),
+            } => PrimaryKind::Identifier(ident.clone()),
             token => ParserError::InvalidPrimaryExpression
                 .to_diagnostic()
                 .with_label(token.span.label("expected a primary"))
                 .with_hint(format!("{} cannot be parsed as a primary", token.kind))
-                .to_err(),
-        }
+                .to_err()?,
+        };
+
+        Ok(Primary {
+            kind,
+            span: token.span,
+            ty: (),
+        })
     }
 }
 
@@ -176,7 +183,7 @@ impl Parse for Group<Untyped> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
-        input.expect(
+        let open = input.expect(
             TokenKind::ParenOpen,
             "'(' to start a grouped expression",
             ParserError::ExpectedGroupStart,
@@ -184,7 +191,7 @@ impl Parse for Group<Untyped> {
 
         let expr = input.parse_with::<Expression<Untyped>>(0)?;
 
-        input.expect(
+        let close = input.expect(
             TokenKind::ParenClose,
             "')' to end a grouped expression",
             ParserError::ExpectedGroupEnd,
@@ -192,6 +199,8 @@ impl Parse for Group<Untyped> {
 
         Ok(Group {
             expr: Box::new(expr),
+            span: open.span + close.span,
+            ty: (),
         })
     }
 }
@@ -200,7 +209,7 @@ impl Parse for Block<Untyped> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
-        input.expect(
+        let open = input.expect(
             TokenKind::CurlyOpen,
             "start of block",
             ParserError::ExpectedBlockStart,
@@ -239,7 +248,7 @@ impl Parse for Block<Untyped> {
             }
         }
 
-        input.expect(
+        let close = input.expect(
             TokenKind::CurlyClose,
             "end of block",
             ParserError::ExpectedBlockEnd,
@@ -248,6 +257,8 @@ impl Parse for Block<Untyped> {
         Ok(Block {
             statements,
             expression: expression.map(Box::new),
+            span: open.span + close.span,
+            ty: (),
         })
     }
 }
@@ -266,12 +277,14 @@ impl Parse for Ternary<Untyped> {
             ParserError::ExpectedElseBranch,
         )?;
 
-        let falsy = input.parse()?;
+        let falsy = input.parse::<Expression<_>>()?;
 
         Ok(Ternary {
+            span: truthy.span() + falsy.span(),
             condition: Box::new(condition),
             truthy: Box::new(truthy),
             falsy: Box::new(falsy),
+            ty: (),
         })
     }
 }

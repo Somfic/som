@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt::Display};
 
 use cranelift::prelude::types;
 
-use crate::{ast::Expression, parser::Untyped, Phase, Result, TypeCheckError};
+use crate::{ast::Expression, parser::Untyped, Phase, Result, Span, TypeCheckError};
 
 mod expression;
 mod statement;
@@ -38,14 +38,29 @@ pub trait TypeCheck: Sized {
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output>;
 }
 
-pub trait TypeCheckWithType: Sized {
-    type Output;
+#[derive(Debug, Clone)]
+pub struct Type {
+    pub kind: TypeKind,
+    pub span: Span,
+}
 
-    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)>;
+impl TypeKind {
+    pub fn with_span(self, span: &Span) -> Type {
+        Type {
+            kind: self,
+            span: span.clone(),
+        }
+    }
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Type {
+pub enum TypeKind {
     Unit,
     Boolean,
     I32,
@@ -57,28 +72,40 @@ pub enum Type {
 
 impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.kind)
+    }
+}
+
+impl Display for TypeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Unit => write!(f, "a unit type"),
-            Type::Boolean => write!(f, "a boolean"),
-            Type::I32 => write!(f, "a 32-bit integer"),
-            Type::I64 => write!(f, "a 64-bit integer"),
-            Type::Decimal => write!(f, "a decimal"),
-            Type::String => write!(f, "a string"),
-            Type::Character => write!(f, "a character"),
+            TypeKind::Unit => write!(f, "a unit type"),
+            TypeKind::Boolean => write!(f, "a boolean"),
+            TypeKind::I32 => write!(f, "a 32-bit integer"),
+            TypeKind::I64 => write!(f, "a 64-bit integer"),
+            TypeKind::Decimal => write!(f, "a decimal"),
+            TypeKind::String => write!(f, "a string"),
+            TypeKind::Character => write!(f, "a character"),
         }
     }
 }
 
 impl From<Type> for cranelift::prelude::Type {
-    fn from(val: Type) -> Self {
+    fn from(value: Type) -> Self {
+        value.kind.into()
+    }
+}
+
+impl From<TypeKind> for cranelift::prelude::Type {
+    fn from(val: TypeKind) -> Self {
         match val {
-            Type::Unit => types::I8,
-            Type::Boolean => types::I8,
-            Type::I32 => types::I32,
-            Type::I64 => types::I64,
-            Type::Decimal => types::F64,
-            Type::String => todo!(),
-            Type::Character => todo!(),
+            TypeKind::Unit => types::I8,
+            TypeKind::Boolean => types::I8,
+            TypeKind::I32 => types::I32,
+            TypeKind::I64 => types::I64,
+            TypeKind::Decimal => types::F64,
+            TypeKind::String => todo!(),
+            TypeKind::Character => todo!(),
         }
     }
 }

@@ -1,47 +1,42 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Expr, Expression, Group, Primary, Pseudo, Ternary, Unary,
+        Binary, BinaryOperation, Block, Expression, Group, Primary, PrimaryKind, Pseudo, Ternary,
+        Unary, UnaryOperation,
     },
     Phase,
 };
 
 impl<P: Phase> Pseudo for Expression<P> {
     fn pseudo(&self) -> String {
-        self.expr.pseudo()
-    }
-}
-
-impl<P: Phase> Pseudo for Expr<P> {
-    fn pseudo(&self) -> String {
         match self {
-            Expr::Primary(p) => p.pseudo(),
-            Expr::Unary(u) => u.pseudo(),
-            Expr::Binary(b) => b.pseudo(),
-            Expr::Group(g) => g.pseudo(),
-            Expr::Block(b) => b.pseudo(),
-            Expr::Ternary(t) => t.pseudo(),
+            Expression::Primary(p) => p.pseudo(),
+            Expression::Unary(u) => u.pseudo(),
+            Expression::Binary(b) => b.pseudo(),
+            Expression::Group(g) => g.pseudo(),
+            Expression::Block(b) => b.pseudo(),
+            Expression::Ternary(t) => t.pseudo(),
         }
     }
 }
 
-impl Pseudo for Primary {
+impl<P: Phase> Pseudo for Primary<P> {
     fn pseudo(&self) -> String {
-        match self {
-            Primary::Boolean(b) => b.to_string(),
-            Primary::I32(i) => i.to_string(),
-            Primary::I64(i) => format!("{}i64", i),
-            Primary::Decimal(d) => d.to_string(),
-            Primary::String(s) => format!("\"{}\"", s),
-            Primary::Character(c) => format!("'{}'", c),
-            Primary::Identifier(id) => id.name.to_string(),
+        match &self.kind {
+            PrimaryKind::Boolean(b) => b.to_string(),
+            PrimaryKind::I32(i) => i.to_string(),
+            PrimaryKind::I64(i) => format!("{}i64", i),
+            PrimaryKind::Decimal(d) => d.to_string(),
+            PrimaryKind::String(s) => format!("\"{}\"", s),
+            PrimaryKind::Character(c) => format!("'{}'", c),
+            PrimaryKind::Identifier(id) => id.name.to_string(),
         }
     }
 }
 
 impl<P: Phase> Pseudo for Unary<P> {
     fn pseudo(&self) -> String {
-        match self {
-            Unary::Negate(expr) => format!("(-{})", expr.pseudo()),
+        match &self.op {
+            UnaryOperation::Negate => format!("(-{})", self.value.pseudo()),
         }
     }
 }
@@ -52,10 +47,16 @@ impl<P: Phase> Pseudo for Binary<P> {
         let rhs = self.rhs.pseudo();
 
         match self.op {
-            BinaryOperation::Add => format!("({} + {})", lhs, rhs),
-            BinaryOperation::Subtract => format!("({} - {})", lhs, rhs),
-            BinaryOperation::Multiply => format!("({} * {})", lhs, rhs),
-            BinaryOperation::Divide => format!("({} / {})", lhs, rhs),
+            BinaryOperation::Add => format!("{} + {}", lhs, rhs),
+            BinaryOperation::Subtract => format!("{} - {}", lhs, rhs),
+            BinaryOperation::Multiply => format!("{} * {}", lhs, rhs),
+            BinaryOperation::Divide => format!("{} / {}", lhs, rhs),
+            BinaryOperation::LessThan => format!("{} < {}", lhs, rhs),
+            BinaryOperation::LessThanOrEqual => format!("{} <= {}", lhs, rhs),
+            BinaryOperation::GreaterThan => format!("{} > {}", lhs, rhs),
+            BinaryOperation::GreaterThanOrEqual => format!("{} >= {}", lhs, rhs),
+            BinaryOperation::Equality => format!("{} == {}", lhs, rhs),
+            BinaryOperation::Inequality => format!("{} != {}", lhs, rhs),
         }
     }
 }

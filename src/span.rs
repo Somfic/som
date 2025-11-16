@@ -83,6 +83,14 @@ impl Span {
     }
 }
 
+impl Add for Span {
+    type Output = Span;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        &self + &rhs
+    }
+}
+
 impl Add for &Span {
     type Output = Span;
 

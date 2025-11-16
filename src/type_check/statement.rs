@@ -35,7 +35,7 @@ impl TypeCheck for Declaration<Untyped> {
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
         let value = self.value.type_check(ctx)?;
 
-        ctx.declare_variable(self.name.clone(), value.ty.clone());
+        ctx.declare_variable(self.name.clone(), value.ty().clone());
 
         Ok(Declaration {
             name: self.name,

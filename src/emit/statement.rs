@@ -40,7 +40,7 @@ impl Emit for Declaration<Typed> {
 
     fn emit(&self, ctx: &mut super::EmitContext) -> Result<Self::Output> {
         let value = self.value.emit(ctx)?;
-        let var = ctx.declare_variable(self.name.clone(), self.value.ty.clone());
+        let var = ctx.declare_variable(self.name.clone(), self.value.ty().clone());
         ctx.builder.def_var(var, value);
 
         Ok(())

@@ -1,191 +1,200 @@
 use crate::{
-    ast::{Binary, Block, Expr, Expression, Group, Primary, Ternary, Unary},
+    ast::{
+        Binary, BinaryOperation, Block, Expression, Group, Primary, PrimaryKind, Ternary, Unary,
+    },
     parser::Untyped,
     type_check::{Type, TypeCheckContext, Typed},
-    Result, TypeCheck, TypeCheckError, TypeCheckWithType,
+    Result, TypeCheck, TypeCheckError, TypeKind,
 };
 
 impl TypeCheck for Expression<Untyped> {
     type Output = Expression<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
-        let (expr, ty) = self.expr.type_check_with_type(ctx)?;
+        match self {
+            Expression::Primary(p) => p.type_check(ctx).map(Expression::Primary),
+            Expression::Unary(u) => u.type_check(ctx).map(Expression::Unary),
+            Expression::Binary(b) => b.type_check(ctx).map(Expression::Binary),
+            Expression::Group(g) => g.type_check(ctx).map(Expression::Group),
+            Expression::Block(b) => b.type_check(ctx).map(Expression::Block),
+            Expression::Ternary(t) => t.type_check(ctx).map(Expression::Ternary),
+        }
+    }
+}
 
-        Ok(Expression {
-            expr,
-            span: self.span.clone(),
-            ty: ty.clone(),
+impl TypeCheck for Primary<Untyped> {
+    type Output = Primary<Typed>;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let ty = match &self.kind {
+            PrimaryKind::Boolean(_) => TypeKind::Boolean.with_span(&self.span),
+            PrimaryKind::I32(_) => TypeKind::I32.with_span(&self.span),
+            PrimaryKind::I64(_) => TypeKind::I64.with_span(&self.span),
+            PrimaryKind::Decimal(_) => TypeKind::Decimal.with_span(&self.span),
+            PrimaryKind::String(_) => TypeKind::String.with_span(&self.span),
+            PrimaryKind::Character(_) => TypeKind::Character.with_span(&self.span),
+            PrimaryKind::Identifier(i) => {
+                ctx.get_variable(i.name.clone())?.kind.with_span(&self.span)
+            }
+        };
+
+        Ok(Primary {
+            ty,
+            kind: self.kind,
+            span: self.span,
         })
     }
 }
 
-impl TypeCheckWithType for Expression<Untyped> {
-    type Output = Expression<Typed>;
-
-    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
-        let (expr, ty) = self.expr.type_check_with_type(ctx)?;
-
-        Ok((
-            Expression {
-                expr,
-                span: self.span.clone(),
-                ty: ty.clone(),
-            },
-            ty,
-        ))
-    }
-}
-
-impl TypeCheckWithType for Expr<Untyped> {
-    type Output = Expr<Typed>;
-
-    fn type_check_with_type(
-        self,
-        ctx: &mut TypeCheckContext,
-    ) -> Result<(Self::Output, super::Type)> {
-        match self {
-            Expr::Primary(p) => p
-                .type_check_with_type(ctx)
-                .map(|(v, t)| (Expr::Primary(v), t)),
-            Expr::Unary(u) => u
-                .type_check_with_type(ctx)
-                .map(|(v, t)| (Expr::Unary(v), t)),
-            Expr::Binary(b) => b
-                .type_check_with_type(ctx)
-                .map(|(v, t)| (Expr::Binary(v), t)),
-            Expr::Group(g) => g
-                .type_check_with_type(ctx)
-                .map(|(v, t)| (Expr::Group(v), t)),
-            Expr::Block(g) => g
-                .type_check_with_type(ctx)
-                .map(|(v, t)| (Expr::Block(v), t)),
-            Expr::Ternary(t) => t
-                .type_check_with_type(ctx)
-                .map(|(v, ty)| (Expr::Ternary(v), ty)),
-        }
-    }
-}
-
-impl TypeCheckWithType for Primary {
-    type Output = Primary;
-
-    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
-        let ty = match &self {
-            Primary::Boolean(_) => Type::Boolean,
-            Primary::I32(_) => Type::I32,
-            Primary::I64(_) => Type::I64,
-            Primary::Decimal(_) => Type::Decimal,
-            Primary::String(_) => Type::String,
-            Primary::Character(_) => Type::Character,
-            Primary::Identifier(i) => ctx.get_variable(i.name.clone())?, // todo: label
-        };
-
-        Ok((self, ty))
-    }
-}
-
-impl TypeCheckWithType for Unary<Untyped> {
+impl TypeCheck for Unary<Untyped> {
     type Output = Unary<Typed>;
 
-    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
-        match self {
-            Unary::Negate(expr) => expr
-                .type_check_with_type(ctx)
-                .map(|(v, t)| (Unary::Negate(Box::new(v)), t)),
-        }
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let value = self.value.type_check(ctx)?;
+        let ty = value.ty().clone();
+
+        Ok(Unary {
+            op: self.op,
+            value: Box::new(value),
+            span: self.span,
+            ty,
+        })
     }
 }
 
-impl TypeCheckWithType for Binary<Untyped> {
+impl TypeCheck for Binary<Untyped> {
     type Output = Binary<Typed>;
 
-    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
-        let (lhs, lhs_ty) = self.lhs.type_check_with_type(ctx)?;
-        let (rhs, rhs_ty) = self.rhs.type_check_with_type(ctx)?;
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let display = self.to_string();
+        let lhs = self.lhs.type_check(ctx)?;
+        let rhs = self.rhs.type_check(ctx)?;
 
-        // todo: type check
-        Ok((
-            Binary {
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
-                op: self.op,
-            },
-            lhs_ty,
-        ))
+        expect_type(lhs.ty(), rhs.ty(), display)?;
+
+        let ty = match self.op {
+            BinaryOperation::Add
+            | BinaryOperation::Subtract
+            | BinaryOperation::Multiply
+            | BinaryOperation::Divide => lhs.ty().clone(),
+            BinaryOperation::LessThan
+            | BinaryOperation::LessThanOrEqual
+            | BinaryOperation::GreaterThan
+            | BinaryOperation::GreaterThanOrEqual
+            | BinaryOperation::Equality
+            | BinaryOperation::Inequality => {
+                TypeKind::Boolean.with_span(&(lhs.span() + rhs.span()))
+            }
+        };
+
+        Ok(Binary {
+            span: lhs.span() + rhs.span(),
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+            op: self.op,
+            ty,
+        })
     }
 }
 
-impl TypeCheckWithType for Group<Untyped> {
+impl TypeCheck for Group<Untyped> {
     type Output = Group<Typed>;
 
-    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
-        self.expr
-            .type_check_with_type(ctx)
-            .map(|(v, t)| (Group { expr: Box::new(v) }, t))
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        self.expr.type_check(ctx).map(|v| Group {
+            ty: v.ty().clone(),
+            expr: Box::new(v),
+            span: self.span,
+        })
     }
 }
 
-impl TypeCheckWithType for Block<Untyped> {
+impl TypeCheck for Block<Untyped> {
     type Output = Block<Typed>;
 
-    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
         let statements = self
             .statements
             .into_iter()
             .map(|s| s.type_check(ctx))
             .collect::<Result<Vec<_>>>()?;
 
-        let (expression, ty) = match self.expression {
-            Some(e) => {
-                let (expr, ty) = e.type_check_with_type(ctx)?;
-                (Some(Box::new(expr)), ty)
-            }
-            None => (None, Type::Unit),
+        let expression = match self.expression {
+            Some(e) => Some(Box::new(e.type_check(ctx)?)),
+            None => None,
         };
 
-        Ok((
-            Block {
-                statements,
-                expression,
-            },
+        let ty = match &expression {
+            Some(e) => e.ty().clone(),
+            None => TypeKind::Unit.with_span(&self.span),
+        };
+
+        Ok(Block {
+            statements,
+            expression,
+            span: self.span,
             ty,
-        ))
+        })
     }
 }
 
-impl TypeCheckWithType for Ternary<Untyped> {
+impl TypeCheck for Ternary<Untyped> {
     type Output = Ternary<Typed>;
 
-    fn type_check_with_type(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
-        let (condition, cond_ty) = self.condition.type_check_with_type(ctx)?;
-        let (truthy, truthy_ty) = self.truthy.type_check_with_type(ctx)?;
-        let (falsy, falsy_ty) = self.falsy.type_check_with_type(ctx)?;
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let condition = self.condition.type_check(ctx)?;
+        let truthy = self.truthy.type_check(ctx)?;
+        let falsy = self.falsy.type_check(ctx)?;
 
-        expect_type(&cond_ty, &Type::Boolean, "condition of ternary")?;
-        expect_type(&truthy_ty, &falsy_ty, "branches of ternary")?;
+        expect_type_kind(
+            condition.ty(),
+            &TypeKind::Boolean,
+            "the condition of a ternary must be a boolean",
+        )?;
+        expect_type(
+            truthy.ty(),
+            falsy.ty(),
+            "the two branches of a ternary must be the same",
+        )?;
 
-        // todo: type check condition is boolean, truthy and falsy have same type
-        Ok((
-            Ternary {
-                condition: Box::new(condition),
-                truthy: Box::new(truthy),
-                falsy: Box::new(falsy),
-            },
-            truthy_ty,
-        ))
+        Ok(Ternary {
+            ty: TypeKind::Boolean.with_span(&self.span),
+            span: self.span,
+            condition: Box::new(condition),
+            truthy: Box::new(truthy),
+            falsy: Box::new(falsy),
+        })
     }
 }
 
-fn expect_type(actual: &Type, expected: &Type, in_context: &str) -> Result<()> {
-    if actual != expected {
-        return Err(
-            TypeCheckError::TypeMismatch {
-                expected: expected.clone(),
-                actual: actual.clone(),
-                context: in_context.to_string(),
-            }
-            .to_diagnostic(), // todo: labels
-        );
+fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
+    if a != b {
+        return Err(TypeCheckError::TypeMismatch {
+            a: b.clone(),
+            b: a.clone(),
+        }
+        .to_diagnostic()
+        .with_label(a.span.label(format!("{}", a)))
+        .with_label(b.span.label(format!("{}", b)))
+        .with_hint(hint.into()));
+    }
+
+    Ok(())
+}
+
+fn expect_type_kind(actual: &Type, expected: &TypeKind, hint: impl Into<String>) -> Result<()> {
+    if actual.kind != *expected {
+        return Err(TypeCheckError::ExpectedType {
+            expected: expected.clone(),
+            actual: actual.clone(),
+        }
+        .to_diagnostic()
+        .with_label(
+            actual
+                .span
+                .label(format!("{}, expected {}", actual, expected)),
+        )
+        .with_hint(hint.into()));
     }
     Ok(())
 }
