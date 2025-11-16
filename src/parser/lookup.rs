@@ -1,89 +1,111 @@
-use crate::{expressions, prelude::*, statements, types};
+use crate::{
+    ast::{Expr, Expression, Statement},
+    lexer::TokenKind,
+    parser::{Parse, Parser, Untyped},
+    Result,
+};
+use std::{collections::HashMap, rc::Rc};
 
-use std::collections::HashMap;
-
-#[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
-pub enum BindingPower {
-    None = 0,
-    Comma = 1,
-    Assignment = 2,
-    Declaration = 3,
-    Logical = 4,
-    Relational = 5,
-    Additive = 6,
-    Multiplicative = 7,
-    Unary = 8,
-    Call = 9,
-    Member = 10,
-    Primary = 11,
-}
-
-pub type TypeHandler = fn(&mut Parser) -> Result<Type>;
-pub type LeftTypeHandler = fn(&mut Parser, Type, BindingPower) -> Result<Type>;
-pub type StatementHandler = fn(&mut Parser) -> Result<Statement>;
-pub type ExpressionHandler = fn(&mut Parser) -> Result<Expression>;
-pub type LeftExpressionHandler = fn(&mut Parser, Expression, BindingPower) -> Result<Expression>;
+pub type ExpressionParser = Rc<dyn Fn(&mut Parser) -> Result<Expression<Untyped>>>;
+pub type LefthandExpressionParser =
+    Rc<dyn Fn(&mut Parser, Expression<Untyped>) -> Result<Expression<Untyped>>>;
+pub type StatementParser = Rc<dyn Fn(&mut Parser) -> Result<Statement<Untyped>>>;
 
 pub struct Lookup {
-    pub statement_lookup: HashMap<TokenKind, StatementHandler>,
-    pub expression_lookup: HashMap<TokenKind, ExpressionHandler>,
-    pub left_expression_lookup: HashMap<TokenKind, LeftExpressionHandler>,
-    pub type_lookup: HashMap<TokenKind, TypeHandler>,
-    pub left_type_lookup: HashMap<TokenKind, LeftTypeHandler>,
-    pub binding_power_lookup: HashMap<TokenKind, BindingPower>,
+    pub statement_lookup: HashMap<TokenKind, StatementParser>,
+    pub expression_lookup: HashMap<TokenKind, ExpressionParser>,
+    pub lefthand_expression_lookup: HashMap<TokenKind, LefthandExpressionParser>,
+    pub binding_power_lookup: HashMap<TokenKind, (u8, u8)>,
 }
 
 impl Lookup {
-    pub fn add_statement_handler(mut self, token: TokenKind, handler: StatementHandler) -> Self {
-        if self.statement_lookup.contains_key(&token) {
-            panic!("Token already has a statement handler");
-        }
-
-        self.statement_lookup.insert(token, handler);
-        self
-    }
-
-    pub fn add_expression_handler(mut self, token: TokenKind, handler: ExpressionHandler) -> Self {
+    pub fn add_expression<T, E>(mut self, token: TokenKind, expression_type: E) -> Self
+    where
+        T: Parse<Params = ()> + 'static,
+        E: Fn(T) -> Expr<Untyped> + 'static,
+    {
         if self.expression_lookup.contains_key(&token) {
-            panic!("Token already has an expression handler");
+            panic!("Token {:?} already has a prefix handler", token);
         }
 
-        self.expression_lookup.insert(token, handler);
+        self.expression_lookup
+            .insert(token, wrap_expression(expression_type));
         self
     }
 
-    pub fn add_left_expression_handler(
+    pub fn add_lefthand_expression<T, E>(
         mut self,
         token: TokenKind,
-        binding_power: BindingPower,
-        handler: LeftExpressionHandler,
-    ) -> Self {
-        if self.binding_power_lookup.contains_key(&token) {
-            panic!("Token already has a binding power");
+        binding_power: (u8, u8),
+        expression_type: E,
+    ) -> Self
+    where
+        T: Parse<Params = Expression<Untyped>> + 'static,
+        E: Fn(T) -> Expr<Untyped> + 'static,
+    {
+        if self.lefthand_expression_lookup.contains_key(&token) {
+            panic!("Token {:?} already has an infix handler", token);
         }
 
-        self.left_expression_lookup.insert(token.clone(), handler);
+        self.lefthand_expression_lookup
+            .insert(token.clone(), wrap_lefthand_expression(expression_type));
         self.binding_power_lookup.insert(token, binding_power);
         self
     }
 
-    pub fn add_type_handler(mut self, token: TokenKind, handler: TypeHandler) -> Self {
-        if self.type_lookup.contains_key(&token) {
-            panic!("Token already has a type handler");
+    pub fn add_statement<T, E>(mut self, token: TokenKind, statement_type: E) -> Self
+    where
+        T: Parse<Params = ()> + 'static,
+        E: Fn(T) -> Statement<Untyped> + 'static,
+    {
+        if self.statement_lookup.contains_key(&token) {
+            panic!("Token {:?} already has a prefix handler", token);
         }
 
-        self.type_lookup.insert(token, handler);
+        self.statement_lookup
+            .insert(token, wrap_statement(statement_type));
         self
     }
+}
 
-    pub fn add_left_type_handler(mut self, token: TokenKind, handler: LeftTypeHandler) -> Self {
-        if self.left_type_lookup.contains_key(&token) {
-            panic!("Token already has a left type handler");
-        }
+fn wrap_expression<T, E>(expression: E) -> ExpressionParser
+where
+    T: Parse<Params = ()> + 'static,
+    E: Fn(T) -> Expr<Untyped> + 'static,
+{
+    Rc::new(move |input: &mut Parser| {
+        let (inner, span) = input.parse_with_span::<T>()?;
+        Ok(Expression {
+            expr: expression(inner),
+            span,
+            ty: (),
+        })
+    })
+}
 
-        self.left_type_lookup.insert(token, handler);
-        self
-    }
+fn wrap_lefthand_expression<T, E>(expression: E) -> LefthandExpressionParser
+where
+    T: Parse<Params = Expression<Untyped>> + 'static,
+    E: Fn(T) -> Expr<Untyped> + 'static,
+{
+    Rc::new(move |input: &mut Parser, lhs: Expression<Untyped>| {
+        let start_span = lhs.span.clone();
+        let (inner, span) = input.parse_with_span_with::<T>(lhs)?;
+
+        Ok(Expression {
+            expr: expression(inner),
+            span: &start_span + &span,
+            ty: (),
+        })
+    })
+}
+
+fn wrap_statement<T, S>(statement: S) -> StatementParser
+where
+    T: Parse<Params = ()> + 'static,
+    S: Fn(T) -> Statement<Untyped> + 'static,
+{
+    Rc::new(move |input: &mut Parser| Ok(statement(input.parse::<T>()?)))
 }
 
 impl Default for Lookup {
@@ -91,111 +113,26 @@ impl Default for Lookup {
         Lookup {
             statement_lookup: HashMap::new(),
             expression_lookup: HashMap::new(),
-            left_expression_lookup: HashMap::new(),
+            lefthand_expression_lookup: HashMap::new(),
             binding_power_lookup: HashMap::new(),
-            type_lookup: HashMap::new(),
-            left_type_lookup: HashMap::new(),
         }
-        .add_expression_handler(TokenKind::ParenOpen, crate::expressions::group::parse)
-        .add_expression_handler(TokenKind::CurlyOpen, crate::expressions::block::parse)
-        .add_expression_handler(TokenKind::Identifier, crate::expressions::identifier::parse)
-        .add_expression_handler(TokenKind::Function, crate::expressions::function::parse)
-        .add_expression_handler(
-            TokenKind::I32,
-            crate::expressions::primary::integer::parse_i32,
-        )
-        .add_expression_handler(
-            TokenKind::I64,
-            crate::expressions::primary::integer::parse_i64,
-        )
-        .add_expression_handler(
-            TokenKind::Boolean,
-            crate::expressions::primary::boolean::parse,
-        )
-        .add_expression_handler(
-            TokenKind::String,
-            crate::expressions::primary::string::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::Plus,
-            BindingPower::Additive,
-            crate::expressions::binary::add::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::Minus,
-            BindingPower::Additive,
-            crate::expressions::binary::subtract::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::Star,
-            BindingPower::Multiplicative,
-            crate::expressions::binary::multiply::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::Slash,
-            BindingPower::Multiplicative,
-            crate::expressions::binary::divide::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::ParenOpen,
-            BindingPower::Call,
-            crate::expressions::call::parse,
-        )
-        .add_statement_handler(
-            TokenKind::Let,
-            crate::statements::variable_declaration::parse,
-        )
-        .add_type_handler(TokenKind::I32Type, crate::types::primitives::parse_i32)
-        .add_type_handler(TokenKind::I64Type, crate::types::primitives::parse_i64)
-        .add_type_handler(TokenKind::BooleanType, crate::types::primitives::parse_boolean)
-        .add_type_handler(TokenKind::StringType, crate::types::primitives::parse_string)
-        .add_type_handler(TokenKind::Function, crate::types::function::parse)
-        .add_left_expression_handler(
-            TokenKind::If,
-            BindingPower::Logical,
-            crate::expressions::conditional::parse,
-        )
-        .add_statement_handler(TokenKind::Extern, statements::extern_declaration::parse)
-        .add_statement_handler(TokenKind::Type, statements::type_declaration::parse)
-        .add_type_handler(TokenKind::CurlyOpen, types::struct_::parse)
-        .add_left_expression_handler(
-            TokenKind::CurlyOpen,
-            BindingPower::Declaration,
-            crate::expressions::struct_constructor::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::Dot,
-            BindingPower::Member,
-            crate::expressions::field_access::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::Equal,
-            BindingPower::Assignment,
-            crate::expressions::assignment::parse,
-        )
-        .add_expression_handler(TokenKind::Minus, expressions::unary::negative::parse)
-        .add_statement_handler(TokenKind::Use, statements::import::parse)
-        .add_left_expression_handler(
-            TokenKind::LessThan,
-            BindingPower::Relational,
-            crate::expressions::binary::less_than::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::GreaterThan,
-            BindingPower::Relational,
-            crate::expressions::binary::greater_than::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::GreaterThanOrEqual,
-            BindingPower::Relational,
-            crate::expressions::binary::greater_than_or_equal::parse,
-        )
-        .add_left_expression_handler(
-            TokenKind::Equality,
-            BindingPower::Relational,
-            crate::expressions::binary::equals::parse,
-        )
-        .add_type_handler(TokenKind::UnitType, crate::types::primitives::parse_unit)
-        .add_expression_handler(TokenKind::While, crate::expressions::while_loop::parse)
+        .add_expression(TokenKind::Minus, Expr::Unary)
+        .add_expression(TokenKind::Bang, Expr::Unary)
+        .add_expression(TokenKind::Boolean, Expr::Primary)
+        .add_expression(TokenKind::I32, Expr::Primary)
+        .add_expression(TokenKind::I64, Expr::Primary)
+        .add_expression(TokenKind::Decimal, Expr::Primary)
+        .add_expression(TokenKind::String, Expr::Primary)
+        .add_expression(TokenKind::Character, Expr::Primary)
+        .add_expression(TokenKind::Identifier, Expr::Primary)
+        .add_expression(TokenKind::ParenOpen, Expr::Group)
+        .add_lefthand_expression(TokenKind::Plus, (9, 10), Expr::Binary)
+        .add_lefthand_expression(TokenKind::Minus, (9, 10), Expr::Binary)
+        .add_lefthand_expression(TokenKind::Star, (11, 12), Expr::Binary)
+        .add_lefthand_expression(TokenKind::Slash, (11, 12), Expr::Binary)
+        .add_statement(TokenKind::CurlyOpen, Statement::Scope)
+        .add_expression(TokenKind::CurlyOpen, Expr::Block)
+        .add_statement(TokenKind::Let, Statement::Declaration)
+        .add_lefthand_expression(TokenKind::If, (1, 2), Expr::Ternary)
     }
 }
