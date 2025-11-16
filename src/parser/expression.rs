@@ -1,11 +1,11 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Expression, Group, Primary, PrimaryKind, Statement,
-        Ternary, Unary,
+        Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Parameter, Primary,
+        PrimaryKind, Statement, Ternary, Unary,
     },
-    lexer::{Token, TokenKind, TokenValue},
-    parser::{Parse, Untyped},
-    Parser, ParserError, Result,
+    lexer::{Identifier, Token, TokenKind, TokenValue},
+    parser::{lookup::Precedence, Parse, Untyped},
+    Parser, ParserError, Result, Type,
 };
 
 impl Parse for Expression<Untyped> {
@@ -284,6 +284,126 @@ impl Parse for Ternary<Untyped> {
             condition: Box::new(condition),
             truthy: Box::new(truthy),
             falsy: Box::new(falsy),
+            ty: (),
+        })
+    }
+}
+
+impl Parse for Lambda<Untyped> {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let fn_token = input.expect(
+            TokenKind::Function,
+            "a function",
+            ParserError::ExpectedFunction,
+        )?;
+
+        input.expect(
+            TokenKind::ParenOpen,
+            "a list of parameters",
+            ParserError::ExpectedParameterList,
+        )?;
+
+        let mut parameters = vec![];
+        while let Some(token) = input.peek() {
+            if token.kind == TokenKind::ParenClose {
+                break;
+            }
+
+            let name = input.parse::<Identifier>()?;
+            input.expect(
+                TokenKind::Tilde,
+                "'~' before parameter type",
+                ParserError::ExpectedTypeAnnotation,
+            )?;
+            let ty = input.parse::<Type>()?;
+
+            parameters.push(Parameter { name, ty });
+
+            if let Some(Token {
+                kind: TokenKind::Comma,
+                ..
+            }) = input.peek()
+            {
+                input.next()?;
+            } else {
+                break;
+            }
+        }
+
+        input.expect(
+            TokenKind::ParenClose,
+            "the end of the parameters",
+            ParserError::ExpectedParameterListEnd,
+        )?;
+
+        let explicit_return_ty = if let Some(Token {
+            kind: TokenKind::Tilde,
+            ..
+        }) = input.peek()
+        {
+            input.next()?;
+            Some(input.parse::<Type>()?)
+        } else {
+            None
+        };
+
+        let body = input.parse_with::<Expression<_>>(Precedence::Calling.as_u8())?;
+        let span = fn_token.span + body.span().clone();
+
+        Ok(Lambda {
+            id: input.next_lambda_id(),
+            parameters,
+            explicit_return_ty,
+            body: Box::new(body),
+            span,
+            ty: (),
+        })
+    }
+}
+
+impl Parse for Call<Untyped> {
+    type Params = Expression<Untyped>;
+
+    fn parse(input: &mut Parser, callee: Self::Params) -> Result<Self> {
+        input.expect(
+            TokenKind::ParenOpen,
+            "a list of arguments",
+            ParserError::ExpectedArgumentList,
+        )?;
+
+        let mut arguments = vec![];
+        while let Some(token) = input.peek() {
+            if token.kind == TokenKind::ParenClose {
+                break;
+            }
+
+            arguments.push(input.parse_with::<Expression<_>>(0)?);
+
+            if let Some(Token {
+                kind: TokenKind::Comma,
+                ..
+            }) = input.peek()
+            {
+                input.next()?;
+            } else {
+                break;
+            }
+        }
+
+        let close = input.expect(
+            TokenKind::ParenClose,
+            "the end of the arguments",
+            ParserError::ExpectedArgumentListEnd,
+        )?;
+
+        let span = callee.span().clone() + close.span;
+
+        Ok(Call {
+            callee: Box::new(callee),
+            arguments,
+            span,
             ty: (),
         })
     }

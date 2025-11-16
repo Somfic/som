@@ -1,6 +1,6 @@
 use cranelift::prelude::{Value, Variable};
 
-use crate::{lexer::Span, Emit, Parse, ParserError, Result};
+use crate::{lexer::Span, Emit, FunctionContext, ModuleContext, Parse, ParserError, Result};
 use std::fmt::{Debug, Display};
 
 #[derive(Clone)]
@@ -323,7 +323,11 @@ impl Parse for Identifier {
 impl Emit for Identifier {
     type Output = Value;
 
-    fn emit(&self, ctx: &mut crate::EmitContext) -> Result<Self::Output> {
+    fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
+        Ok(())
+    }
+
+    fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
         Ok(ctx.builder.use_var(ctx.get_variable(&self.name)?))
     }
 }

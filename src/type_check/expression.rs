@@ -1,6 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Expression, Group, Primary, PrimaryKind, Ternary, Unary,
+        Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
+        Ternary, Unary,
     },
     parser::Untyped,
     type_check::{Type, TypeCheckContext, Typed},
@@ -18,6 +19,8 @@ impl TypeCheck for Expression<Untyped> {
             Expression::Group(g) => g.type_check(ctx).map(Expression::Group),
             Expression::Block(b) => b.type_check(ctx).map(Expression::Block),
             Expression::Ternary(t) => t.type_check(ctx).map(Expression::Ternary),
+            Expression::Lambda(l) => l.type_check(ctx).map(Expression::Lambda),
+            Expression::Call(c) => c.type_check(ctx).map(Expression::Call),
         }
     }
 }
@@ -175,6 +178,93 @@ impl TypeCheck for Ternary<Untyped> {
             condition: Box::new(condition),
             truthy: Box::new(truthy),
             falsy: Box::new(falsy),
+        })
+    }
+}
+
+impl TypeCheck for Lambda<Untyped> {
+    type Output = Lambda<Typed>;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        // Create new scope for lambda body with parameters
+        let mut lambda_ctx = TypeCheckContext::new();
+        for param in &self.parameters {
+            lambda_ctx.declare_variable(param.name.name.to_string(), param.ty.clone());
+        }
+
+        let body = self.body.type_check(&mut lambda_ctx)?;
+
+        if let Some(return_ty) = &self.explicit_return_ty {
+            expect_type(return_ty, body.ty(), format!("{} was provided as the function's return type, but the function actually returns {}, which does not match", return_ty, body.ty()))?;
+        }
+
+        let parameter_types: Vec<_> = self.parameters.iter().map(|p| p.ty.clone()).collect();
+
+        Ok(Lambda {
+            id: self.id,
+            parameters: self.parameters,
+            explicit_return_ty: self.explicit_return_ty,
+            ty: TypeKind::Function {
+                parameters: parameter_types,
+                returns: Box::new(body.ty().clone()),
+            }
+            .with_span(&self.span),
+            span: self.span,
+            body: Box::new(body),
+        })
+    }
+}
+
+impl TypeCheck for Call<Untyped> {
+    type Output = Call<Typed>;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let callee = self.callee.type_check(ctx)?;
+
+        let (parameter_types, return_type) = match &callee.ty().kind {
+            TypeKind::Function {
+                parameters,
+                returns,
+            } => (parameters, returns),
+            _ => {
+                return TypeCheckError::NotAFunction
+                    .to_diagnostic()
+                    .with_label(callee.span().label("not a function"))
+                    .with_hint(format!(
+                        "{} is not a function and thus cannot be called",
+                        callee.ty()
+                    ))
+                    .to_err();
+            }
+        };
+
+        if self.arguments.len() != parameter_types.len() {
+            return TypeCheckError::ArgumentCountMismatch
+                .to_diagnostic()
+                .with_label(self.span.label(format!(
+                    "expected {} arguments, got {}",
+                    parameter_types.len(),
+                    self.arguments.len()
+                )))
+                .to_err();
+        }
+
+        let arguments: Vec<_> = self
+            .arguments
+            .into_iter()
+            .zip(parameter_types.iter())
+            .map(|(arg, expected_ty)| {
+                let arg = arg.type_check(ctx)?;
+                expect_type(arg.ty(), expected_ty, format!("argument type mismatch"))?;
+                Ok(arg)
+            })
+            .collect::<Result<_>>()?;
+
+        Ok(Call {
+            ty: (**return_type).clone(),
+            callee: Box::new(callee),
+            arguments,
+            span: self.span.clone(),
         })
     }
 }

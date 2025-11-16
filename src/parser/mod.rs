@@ -1,9 +1,12 @@
+use std::cell::Cell;
+
 use crate::lexer::{Lexer, Token, TokenKind};
 use crate::{ParserError, Phase, Result, Source, Span};
 
 mod expression;
 pub mod lookup;
 mod statement;
+mod type_parser;
 
 use lookup::Lookup;
 
@@ -23,6 +26,7 @@ pub trait Parse: Sized {
 pub struct Parser {
     pub(crate) lexer: Lexer,
     pub(crate) lookup: Lookup,
+    next_lambda_id: std::cell::Cell<usize>,
 }
 
 impl Parser {
@@ -30,7 +34,14 @@ impl Parser {
         Self {
             lexer: Lexer::new(source),
             lookup: Lookup::default(),
+            next_lambda_id: Cell::new(0),
         }
+    }
+
+    pub fn next_lambda_id(&self) -> usize {
+        let id = self.next_lambda_id.get();
+        self.next_lambda_id.set(id + 1);
+        id
     }
 
     pub fn parse<T: Parse>(&mut self) -> Result<T>

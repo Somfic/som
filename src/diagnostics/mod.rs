@@ -63,6 +63,20 @@ pub enum ParserError {
     ExpectedCondition,
     #[error("expected an else branch")]
     ExpectedElseBranch,
+    #[error("expected a function")]
+    ExpectedFunction,
+    #[error("expected a parameter list")]
+    ExpectedParameterList,
+    #[error("expected ')' to end parameter list")]
+    ExpectedParameterListEnd,
+    #[error("expected a type annotation")]
+    ExpectedTypeAnnotation,
+    #[error("expected an argument list")]
+    ExpectedArgumentList,
+    #[error("expected ')' to end argument list")]
+    ExpectedArgumentListEnd,
+    #[error("expected a type")]
+    ExpectedType,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -73,6 +87,10 @@ pub enum TypeCheckError {
     TypeMismatch,
     #[error("unexpected type")]
     ExpectedType,
+    #[error("not a function")]
+    NotAFunction,
+    #[error("argument mismatch")]
+    ArgumentCountMismatch,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -81,6 +99,8 @@ pub enum EmitError {
     UndefinedVariable,
     #[error(transparent)]
     ModuleError(#[from] ModuleError),
+    #[error("undefined function")]
+    UndefinedFunction,
 }
 
 impl Error {

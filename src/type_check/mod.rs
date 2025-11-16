@@ -59,7 +59,7 @@ impl PartialEq for Type {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TypeKind {
     Unit,
     Boolean,
@@ -68,6 +68,10 @@ pub enum TypeKind {
     Decimal,
     String,
     Character,
+    Function {
+        parameters: Vec<Type>,
+        returns: Box<Type>,
+    },
 }
 
 impl Display for Type {
@@ -86,6 +90,19 @@ impl Display for TypeKind {
             TypeKind::Decimal => write!(f, "a decimal"),
             TypeKind::String => write!(f, "a string"),
             TypeKind::Character => write!(f, "a character"),
+            TypeKind::Function {
+                parameters: params,
+                returns,
+            } => {
+                write!(f, "fn(")?;
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", param)?;
+                }
+                write!(f, ") -> {}", returns)
+            }
         }
     }
 }
@@ -106,6 +123,7 @@ impl From<TypeKind> for cranelift::prelude::Type {
             TypeKind::Decimal => types::F64,
             TypeKind::String => todo!(),
             TypeKind::Character => todo!(),
+            TypeKind::Function { .. } => types::I64, // a pointer
         }
     }
 }

@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Expression, Group, Primary, PrimaryKind, Pseudo, Ternary,
-        Unary, UnaryOperation,
+        Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
+        Pseudo, Ternary, Unary, UnaryOperation,
     },
     Phase,
 };
@@ -15,6 +15,8 @@ impl<P: Phase> Pseudo for Expression<P> {
             Expression::Group(g) => g.pseudo(),
             Expression::Block(b) => b.pseudo(),
             Expression::Ternary(t) => t.pseudo(),
+            Expression::Lambda(l) => l.pseudo(),
+            Expression::Call(c) => c.pseudo(),
         }
     }
 }
@@ -81,5 +83,31 @@ impl<P: Phase> Pseudo for Ternary<P> {
             self.truthy.pseudo(),
             self.falsy.pseudo()
         )
+    }
+}
+
+impl<P: Phase> Pseudo for Lambda<P> {
+    fn pseudo(&self) -> String {
+        let params = self
+            .parameters
+            .iter()
+            .map(|param| param.name.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!("(({}) -> {})", params, self.body.pseudo())
+    }
+}
+
+impl<P: Phase> Pseudo for Call<P> {
+    fn pseudo(&self) -> String {
+        let args = self
+            .arguments
+            .iter()
+            .map(|arg| arg.pseudo())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!("{}({})", self.callee.pseudo(), args)
     }
 }

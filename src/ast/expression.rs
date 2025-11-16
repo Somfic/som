@@ -1,5 +1,5 @@
 use crate::{ast::Statement, lexer::Identifier, Phase, Span, Type};
-use std::fmt::Display;
+use std::fmt::{write, Display};
 
 #[derive(Debug)]
 pub enum Expression<P: Phase> {
@@ -9,6 +9,8 @@ pub enum Expression<P: Phase> {
     Group(Group<P>),
     Block(Block<P>),
     Ternary(Ternary<P>),
+    Lambda(Lambda<P>),
+    Call(Call<P>),
 }
 
 impl<P: Phase> Expression<P> {
@@ -20,6 +22,8 @@ impl<P: Phase> Expression<P> {
             Expression::Group(g) => &g.span,
             Expression::Block(b) => &b.span,
             Expression::Ternary(t) => &t.span,
+            Expression::Lambda(l) => &l.span,
+            Expression::Call(c) => &c.span,
         }
     }
 
@@ -31,6 +35,8 @@ impl<P: Phase> Expression<P> {
             Expression::Group(g) => &g.ty,
             Expression::Block(b) => &b.ty,
             Expression::Ternary(t) => &t.ty,
+            Expression::Lambda(l) => &l.ty,
+            Expression::Call(c) => &c.ty,
         }
     }
 }
@@ -38,12 +44,14 @@ impl<P: Phase> Expression<P> {
 impl<P: Phase> Display for Expression<P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::Primary(primary) => write!(f, "{}", primary),
-            Expression::Unary(unary) => write!(f, "{}", unary),
-            Expression::Binary(binary) => write!(f, "{}", binary),
-            Expression::Group(group) => write!(f, "{}", group.expr),
-            Expression::Block(block) => write!(f, "a block"),
-            Expression::Ternary(ternary) => write!(f, "a ternary"),
+            Expression::Primary(p) => write!(f, "{}", p),
+            Expression::Unary(u) => write!(f, "{}", u),
+            Expression::Binary(b) => write!(f, "{}", b),
+            Expression::Group(g) => write!(f, "{}", g.expr),
+            Expression::Block(b) => write!(f, "a block"),
+            Expression::Ternary(t) => write!(f, "a ternary"),
+            Expression::Lambda(l) => write!(f, "a lambda"),
+            Expression::Call(c) => write!(f, "a function call"),
         }
     }
 }
@@ -169,4 +177,28 @@ impl<P: Phase> Display for Ternary<P> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "a ternary expression")
     }
+}
+
+#[derive(Debug)]
+pub struct Lambda<P: Phase> {
+    pub id: usize,
+    pub parameters: Vec<Parameter>,
+    pub explicit_return_ty: Option<Type>,
+    pub body: Box<Expression<P>>,
+    pub span: Span,
+    pub ty: P::TypeInfo,
+}
+
+#[derive(Clone, Debug)]
+pub struct Parameter {
+    pub name: Identifier,
+    pub ty: Type,
+}
+
+#[derive(Debug)]
+pub struct Call<P: Phase> {
+    pub callee: Box<Expression<P>>,
+    pub arguments: Vec<Expression<P>>,
+    pub span: Span,
+    pub ty: P::TypeInfo,
 }

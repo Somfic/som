@@ -168,21 +168,28 @@ impl Default for Lookup {
             Precedence::Ternary.left(),
             Expression::Ternary,
         )
+        .add_lefthand_expression(
+            TokenKind::ParenOpen,
+            Precedence::Calling.left(),
+            Expression::Call,
+        )
+        .add_expression(TokenKind::Function, Expression::Lambda)
     }
 }
 
 #[repr(u8)]
 #[derive(Copy, Clone)]
-enum Precedence {
+pub enum Precedence {
     Ternary,
     Equality,
     Comparison,
     Additive,
     Multiplicative,
+    Calling,
 }
 
 impl Precedence {
-    fn as_u8(&self) -> u8 {
+    pub fn as_u8(&self) -> u8 {
         (*self as u8 + 1) * 2
     }
 

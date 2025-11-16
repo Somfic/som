@@ -8,7 +8,13 @@ fn main() {
 }
 
 fn run() -> Result<(), Diagnostic> {
-    let source = Source::from_raw("a");
+    let source = Source::from_raw(
+        "
+    {
+        let a = fn(a ~ int, b ~ int) ~ int { a + b }; 
+        a - 1
+    }",
+    );
 
     let mut parser = Parser::new(source);
     let code = parser.parse::<Expression<_>>()?;

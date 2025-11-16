@@ -1,8 +1,11 @@
-use crate::{ast::Expression, EmitError, Result, Typed};
+use crate::{
+    ast::{Expression, Lambda},
+    EmitError, Result, Typed,
+};
 use cranelift::{
     codegen::ir::UserFuncName,
     jit::{JITBuilder, JITModule},
-    module::{self, Linkage, Module},
+    module::{self, FuncId, Linkage, Module},
     prelude::{settings::Flags, *},
 };
 use std::{collections::HashMap, sync::Arc};
@@ -14,7 +17,11 @@ mod statement;
 pub trait Emit {
     type Output;
 
-    fn emit(&self, ctx: &mut EmitContext) -> Result<Self::Output>;
+    fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
+        Ok(()) // default: do nothing
+    }
+
+    fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output>;
 }
 
 pub struct Emitter {
@@ -40,67 +47,127 @@ impl Emitter {
     }
 
     pub fn compile(&mut self, expression: &Expression<Typed>) -> Result<*const u8> {
-        // wrap the expression in the main function
-        let mut sig = Signature::new(self.isa.default_call_conv());
-        sig.params = vec![];
-        sig.returns = vec![AbiParam::new(types::I64)];
+        let mut lambda_registry = LambdaRegistry::new();
 
-        let main_function = self
+        // Declare phase - collect all lambdas
+        {
+            let mut module_ctx =
+                ModuleContext::new(self.isa.clone(), &mut self.module, &mut lambda_registry);
+            expression.declare(&mut module_ctx)?;
+        }
+
+        // wrap the expression in the main function
+        let mut main_signature = Signature::new(self.isa.default_call_conv());
+        main_signature.params = vec![];
+        main_signature.returns = vec![AbiParam::new(types::I64)];
+
+        let main_id = self.compile_function(
+            "main",
+            main_signature,
+            Linkage::Export,
+            &mut lambda_registry,
+            |func_ctx| {
+                let value = expression.emit(func_ctx)?;
+                // Only extend if the value is not already i64
+                let value_type = func_ctx.builder.func.dfg.value_type(value);
+                let value = if value_type != types::I64 {
+                    func_ctx.builder.ins().sextend(types::I64, value)
+                } else {
+                    value
+                };
+                Ok(value)
+            },
+        )?;
+
+        self.module
+            .finalize_definitions()
+            .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
+        Ok(self.module.get_finalized_function(main_id))
+    }
+
+    fn compile_function<F>(
+        &mut self,
+        name: &str,
+        sig: Signature,
+        linkage: Linkage,
+        lambda_registry: &mut LambdaRegistry,
+        emit_body: F,
+    ) -> Result<FuncId>
+    where
+        F: FnOnce(&mut FunctionContext) -> Result<Value>,
+    {
+        let func_id = self
             .module
-            .declare_function("main", Linkage::Export, &sig)
+            .declare_function(name, linkage, &sig)
             .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
 
-        let mut ctx = self.module.make_context();
-        ctx.func.signature = sig;
-        ctx.func.name = UserFuncName::user(0, main_function.as_u32());
+        let mut cranelift_ctx = self.module.make_context();
+        cranelift_ctx.func.signature = sig;
+        cranelift_ctx.func.name = UserFuncName::user(0, func_id.as_u32());
 
         let mut builder_context = FunctionBuilderContext::new();
-        let mut builder = FunctionBuilder::new(&mut ctx.func, &mut builder_context);
+        let mut builder = FunctionBuilder::new(&mut cranelift_ctx.func, &mut builder_context);
 
         let entry_block = builder.create_block();
         builder.switch_to_block(entry_block);
 
         {
-            let mut emit_context = EmitContext::new(&mut builder, &mut self.module);
-            let value = expression.emit(&mut emit_context)?;
-
-            // cast to i64
-            let value = emit_context.builder.ins().sextend(types::I64, value);
-
-            emit_context.builder.ins().return_(&[value]);
-            emit_context.builder.seal_all_blocks();
+            let mut func_ctx =
+                FunctionContext::new(&mut builder, &mut self.module, lambda_registry);
+            let return_value = emit_body(&mut func_ctx)?;
+            func_ctx.builder.ins().return_(&[return_value]);
+            func_ctx.builder.seal_all_blocks();
         }
 
-        println!("{}", ctx.func);
-
+        // Define the function
         self.module
-            .define_function(main_function, &mut ctx)
+            .define_function(func_id, &mut cranelift_ctx)
             .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
 
-        self.module.clear_context(&mut ctx);
+        self.module.clear_context(&mut cranelift_ctx);
 
-        self.module
-            .finalize_definitions()
-            .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
-
-        let main_function_code = self.module.get_finalized_function(main_function);
-
-        Ok(main_function_code)
+        Ok(func_id)
     }
 }
 
-pub struct EmitContext<'a> {
-    pub builder: &'a mut FunctionBuilder<'a>,
+pub struct ModuleContext<'a> {
+    pub isa: Arc<dyn isa::TargetIsa>,
     pub module: &'a mut dyn Module,
+    pub lambda_registry: &'a mut LambdaRegistry,
+}
+
+impl<'a> ModuleContext<'a> {
+    fn new(
+        isa: Arc<dyn isa::TargetIsa>,
+        module: &'a mut JITModule,
+        lambda_registry: &'a mut LambdaRegistry,
+    ) -> Self {
+        Self {
+            isa,
+            module,
+            lambda_registry,
+        }
+    }
+}
+
+pub struct FunctionContext<'a, 'b> {
+    pub builder: &'b mut FunctionBuilder<'a>,
+    pub module: &'b mut dyn Module,
+    pub lambda_registry: &'b mut LambdaRegistry,
     pub variables: HashMap<String, Variable>,
     pub blocks: HashMap<String, Block>,
 }
 
-impl<'a> EmitContext<'a> {
-    pub fn new(builder: &'a mut FunctionBuilder<'a>, module: &'a mut dyn Module) -> Self {
+impl<'a, 'b> FunctionContext<'a, 'b> {
+    fn new(
+        builder: &'b mut FunctionBuilder<'a>,
+        module: &'b mut dyn Module,
+        lambda_registry: &'b mut LambdaRegistry,
+    ) -> Self {
         Self {
             builder,
             module,
+            lambda_registry,
             variables: HashMap::new(),
             blocks: HashMap::new(),
         }
@@ -133,5 +200,25 @@ impl<'a> EmitContext<'a> {
 
     pub fn emit<T: Emit>(&mut self, node: &T) -> Result<T::Output> {
         node.emit(self)
+    }
+}
+
+pub struct LambdaRegistry {
+    lambdas: HashMap<usize, (FuncId, Signature)>,
+}
+
+impl LambdaRegistry {
+    pub fn new() -> Self {
+        Self {
+            lambdas: HashMap::new(),
+        }
+    }
+
+    pub fn register(&mut self, lambda_id: usize, func_id: FuncId, signature: Signature) {
+        self.lambdas.insert(lambda_id, (func_id, signature));
+    }
+
+    pub fn get(&self, lambda_id: usize) -> Option<&(FuncId, Signature)> {
+        self.lambdas.get(&lambda_id)
     }
 }
