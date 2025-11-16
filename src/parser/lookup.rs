@@ -1,14 +1,14 @@
 use crate::{
     ast::{Expr, Expression},
     lexer::TokenKind,
-    parser::{Parse, ParsePhase, Parser},
+    parser::{Parse, Parser, Untyped},
     Result,
 };
 use std::{collections::HashMap, rc::Rc};
 
-pub type PrefixParselet = Rc<dyn Fn(&mut Parser) -> Result<Expression<ParsePhase>>>;
+pub type PrefixParselet = Rc<dyn Fn(&mut Parser) -> Result<Expression<Untyped>>>;
 pub type InfixParselet =
-    Rc<dyn Fn(&mut Parser, Expression<ParsePhase>) -> Result<Expression<ParsePhase>>>;
+    Rc<dyn Fn(&mut Parser, Expression<Untyped>) -> Result<Expression<Untyped>>>;
 
 pub struct Lookup {
     pub expression_lookup: HashMap<TokenKind, PrefixParselet>,
@@ -20,7 +20,7 @@ impl Lookup {
     pub fn add_expression<T, E>(mut self, token: TokenKind, expr_type: E) -> Self
     where
         T: Parse<Params = ()> + 'static,
-        E: Fn(T) -> Expr<ParsePhase> + 'static,
+        E: Fn(T) -> Expr<Untyped> + 'static,
     {
         if self.expression_lookup.contains_key(&token) {
             panic!("Token {:?} already has a prefix handler", token);
@@ -38,8 +38,8 @@ impl Lookup {
         expr: E,
     ) -> Self
     where
-        T: Parse<Params = Expression<ParsePhase>> + 'static,
-        E: Fn(T) -> Expr<ParsePhase> + 'static,
+        T: Parse<Params = Expression<Untyped>> + 'static,
+        E: Fn(T) -> Expr<Untyped> + 'static,
     {
         if self.lefthand_expression_lookup.contains_key(&token) {
             panic!("Token {:?} already has an infix handler", token);
@@ -55,7 +55,7 @@ impl Lookup {
 fn wrap_expression<T, E>(expr: E) -> PrefixParselet
 where
     T: Parse<Params = ()> + 'static,
-    E: Fn(T) -> Expr<ParsePhase> + 'static,
+    E: Fn(T) -> Expr<Untyped> + 'static,
 {
     Rc::new(move |input: &mut Parser| {
         let (inner, span) = input.parse_with_span::<T>()?;
@@ -69,10 +69,10 @@ where
 
 fn wrap_lefthand_expression<T, E>(expr: E) -> InfixParselet
 where
-    T: Parse<Params = Expression<ParsePhase>> + 'static,
-    E: Fn(T) -> Expr<ParsePhase> + 'static,
+    T: Parse<Params = Expression<Untyped>> + 'static,
+    E: Fn(T) -> Expr<Untyped> + 'static,
 {
-    Rc::new(move |input: &mut Parser, lhs: Expression<ParsePhase>| {
+    Rc::new(move |input: &mut Parser, lhs: Expression<Untyped>| {
         let start_span = lhs.span.clone();
         let (inner, span) = input.parse_with_span_with::<T>(lhs)?;
 

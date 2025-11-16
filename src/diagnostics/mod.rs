@@ -1,5 +1,6 @@
 use std::{error::Error as ThisError, fmt::Display};
 
+use cranelift::module::ModuleError;
 use owo_colors::OwoColorize;
 
 use crate::{lexer::Cursor, Span};
@@ -12,6 +13,8 @@ pub enum Error {
     ParserError(ParserError),
     #[error(transparent)]
     TypeCheckError(TypeCheckError),
+    #[error(transparent)]
+    EmitError(EmitError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -39,6 +42,14 @@ pub enum ParserError {
 #[derive(Debug, thiserror::Error)]
 pub enum TypeCheckError {}
 
+#[derive(Debug, thiserror::Error)]
+pub enum EmitError {
+    #[error("undefined variable '{0}'")]
+    UndefinedVariable(String),
+    #[error(transparent)]
+    ModuleError(#[from] ModuleError),
+}
+
 impl Error {
     pub fn to_diagnostic(self) -> Diagnostic {
         Diagnostic::from(self)
@@ -60,6 +71,12 @@ impl LexicalError {
 impl TypeCheckError {
     pub fn to_diagnostic(self) -> Diagnostic {
         Diagnostic::from(Error::TypeCheckError(self))
+    }
+}
+
+impl EmitError {
+    pub fn to_diagnostic(self) -> Diagnostic {
+        Diagnostic::from(Error::EmitError(self))
     }
 }
 

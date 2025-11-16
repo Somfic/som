@@ -1,8 +1,5 @@
-use som::{
-    ast::{Expression, Pseudo},
-    Diagnostic, Parser, Source,
-};
-use som::{TypeCheck, TypeCheckContext};
+use som::{ast::Expression, Diagnostic, Emitter, Parser, Source, Typer, Untyped};
+use target_lexicon::Triple;
 
 fn main() {
     if let Err(e) = run() {
@@ -11,14 +8,19 @@ fn main() {
 }
 
 fn run() -> Result<(), Diagnostic> {
-    let source = Source::from_raw("1 * 1 + 1 * 1");
+    let source = Source::from_raw("1 + 1");
+
     let mut parser = Parser::new(source);
-    let untyped: Expression<_> = parser.parse()?;
-    println!("{}", untyped.pseudo());
+    let mut typer = Typer::new();
+    let mut emitter = Emitter::new(Triple::host());
 
-    let typed = untyped.type_check(&mut TypeCheckContext {})?;
+    let expression = parser.parse::<Expression<Untyped>>()?;
+    let expression = typer.check(expression)?;
+    let code = emitter.compile(&expression)?;
 
-    println!("{:?}", typed.0.ty);
+    let result = (unsafe { std::mem::transmute::<*const u8, fn() -> i64>(code) })();
+
+    println!("{:?}", result);
 
     Ok(())
 }

@@ -1,22 +1,22 @@
 use crate::{
     ast::{Binary, BinaryOperation, Expr, Expression, Group, Primary, Unary},
     lexer::{Token, TokenKind, TokenValue},
-    parser::{Parse, ParsePhase},
+    parser::{Parse, Untyped},
     Parser, ParserError, Result,
 };
 
-impl Parse for Expression<ParsePhase> {
+impl Parse for Expression<Untyped> {
     type Params = u8;
 
     fn parse(input: &mut Parser, min_bp: Self::Params) -> Result<Self> {
-        let (expr, span) = input.parse_with_span_with::<Expr<ParsePhase>>(min_bp)?;
+        let (expr, span) = input.parse_with_span_with::<Expr<Untyped>>(min_bp)?;
 
         Ok(Expression { expr, span, ty: () })
     }
 }
 
-impl Parse for Binary<ParsePhase> {
-    type Params = Expression<ParsePhase>;
+impl Parse for Binary<Untyped> {
+    type Params = Expression<Untyped>;
 
     fn parse(input: &mut Parser, lhs: Self::Params) -> Result<Self> {
         let op = input.next()?;
@@ -59,7 +59,7 @@ impl Parse for Binary<ParsePhase> {
     }
 }
 
-impl Parse for Expr<ParsePhase> {
+impl Parse for Expr<Untyped> {
     type Params = u8;
 
     fn parse(input: &mut Parser, min_bp: Self::Params) -> Result<Self> {
@@ -153,7 +153,7 @@ impl Parse for Primary {
     }
 }
 
-impl Parse for Unary<ParsePhase> {
+impl Parse for Unary<Untyped> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
@@ -171,7 +171,7 @@ impl Parse for Unary<ParsePhase> {
     }
 }
 
-impl Parse for Group<ParsePhase> {
+impl Parse for Group<Untyped> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
@@ -181,7 +181,7 @@ impl Parse for Group<ParsePhase> {
             ParserError::ExpectedOpenParenthesis,
         )?;
 
-        let expr = input.parse_with::<Expression<ParsePhase>>(0)?;
+        let expr = input.parse_with::<Expression<Untyped>>(0)?;
 
         input.expect(
             TokenKind::ParenClose,

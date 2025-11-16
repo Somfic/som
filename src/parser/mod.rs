@@ -7,9 +7,9 @@ pub mod lookup;
 use lookup::Lookup;
 
 #[derive(Debug)]
-pub struct ParsePhase;
+pub struct Untyped;
 
-impl Phase for ParsePhase {
+impl Phase for Untyped {
     type TypeInfo = ();
 }
 

@@ -1,12 +1,12 @@
 use crate::{
     ast::{Binary, Expr, Expression, Group, Primary, Unary},
-    parser::ParsePhase,
+    parser::Untyped,
     type_check::{Type, TypeCheck, TypeCheckContext},
-    Result, TypeCheckPhase,
+    Result, Typed,
 };
 
-impl TypeCheck for Expression<ParsePhase> {
-    type Output = Expression<TypeCheckPhase>;
+impl TypeCheck for Expression<Untyped> {
+    type Output = Expression<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, super::Type)> {
         let (expr, ty) = self.expr.type_check(ctx)?;
@@ -14,7 +14,7 @@ impl TypeCheck for Expression<ParsePhase> {
         Ok((
             Expression {
                 expr,
-                span: self.span,
+                span: self.span.clone(),
                 ty: ty.clone(),
             },
             ty,
@@ -22,8 +22,8 @@ impl TypeCheck for Expression<ParsePhase> {
     }
 }
 
-impl TypeCheck for Expr<ParsePhase> {
-    type Output = Expr<TypeCheckPhase>;
+impl TypeCheck for Expr<Untyped> {
+    type Output = Expr<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, super::Type)> {
         match self {
@@ -53,8 +53,8 @@ impl TypeCheck for Primary {
     }
 }
 
-impl TypeCheck for Unary<ParsePhase> {
-    type Output = Unary<TypeCheckPhase>;
+impl TypeCheck for Unary<Untyped> {
+    type Output = Unary<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
         match self {
@@ -65,8 +65,8 @@ impl TypeCheck for Unary<ParsePhase> {
     }
 }
 
-impl TypeCheck for Binary<ParsePhase> {
-    type Output = Binary<TypeCheckPhase>;
+impl TypeCheck for Binary<Untyped> {
+    type Output = Binary<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
         let (lhs, lhs_ty) = self.lhs.type_check(ctx)?;
@@ -84,8 +84,8 @@ impl TypeCheck for Binary<ParsePhase> {
     }
 }
 
-impl TypeCheck for Group<ParsePhase> {
-    type Output = Group<TypeCheckPhase>;
+impl TypeCheck for Group<Untyped> {
+    type Output = Group<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<(Self::Output, Type)> {
         self.expr

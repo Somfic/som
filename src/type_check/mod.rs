@@ -1,12 +1,26 @@
-use crate::{ast::Expression, parser::ParsePhase, Phase, Result};
+use crate::{ast::Expression, parser::Untyped, Phase, Result};
 
 mod expr;
 
 #[derive(Debug)]
-pub struct TypeCheckPhase;
+pub struct Typed;
 
-impl Phase for TypeCheckPhase {
+impl Phase for Typed {
     type TypeInfo = Type;
+}
+
+pub struct Typer {}
+
+impl Typer {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn check(&mut self, expression: Expression<Untyped>) -> Result<Expression<Typed>> {
+        expression
+            .type_check(&mut TypeCheckContext {})
+            .map(|(e, _)| e)
+    }
 }
 
 pub trait TypeCheck: Sized {
