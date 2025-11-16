@@ -1,6 +1,6 @@
 use crate::{
-    ast::{Expression, Scope, Statement},
-    lexer::TokenKind,
+    ast::{Declaration, Expression, Scope, Statement},
+    lexer::{Identifier, TokenKind},
     Parse, Parser, ParserError, Result, Untyped,
 };
 
@@ -69,5 +69,28 @@ impl Parse for Scope<Untyped> {
         )?;
 
         Ok(Scope { statements })
+    }
+}
+
+impl Parse for Declaration<Untyped> {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        input.expect(
+            TokenKind::Let,
+            "a variable",
+            ParserError::ExpectedDeclaration,
+        )?;
+
+        let name = input.parse()?;
+
+        input.expect(TokenKind::Equal, "a value", ParserError::ExpectedValue)?;
+
+        let value = input.parse::<Expression<_>>()?;
+
+        Ok(Declaration {
+            name,
+            value: Box::new(value),
+        })
     }
 }

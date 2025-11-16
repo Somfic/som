@@ -11,7 +11,7 @@ fn main() {
 }
 
 fn run() -> Result<(), Diagnostic> {
-    let source = Source::from_raw("{ 1 + 1; 1 + 2; }");
+    let source = Source::from_raw("{ let a = 1; a }");
 
     let mut parser = Parser::new(source);
     let mut typer = Typer::new();

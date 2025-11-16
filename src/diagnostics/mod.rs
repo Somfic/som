@@ -53,10 +53,19 @@ pub enum ParserError {
     ExpectedBlockEnd,
     #[error("invalid returning expression")]
     InvalidReturningExpression,
+    #[error("expected a declaration")]
+    ExpectedDeclaration,
+    #[error("expected an identifier")]
+    ExpectedIdentifier,
+    #[error("expected a value")]
+    ExpectedValue,
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum TypeCheckError {}
+pub enum TypeCheckError {
+    #[error("undefined variable '{0}'")]
+    UndefinedVariable(String),
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmitError {

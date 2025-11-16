@@ -38,7 +38,7 @@ impl Emit for Primary {
             Primary::Decimal(d) => ctx.builder.ins().f64const(*d),
             Primary::String(s) => unimplemented!("string emit"),
             Primary::Character(c) => unimplemented!("character emit"),
-            Primary::Identifier(ident) => unimplemented!("identifier emit"),
+            Primary::Identifier(ident) => ident.emit(ctx)?,
         })
     }
 }

@@ -132,5 +132,6 @@ impl Default for Lookup {
         .add_lefthand_expression(TokenKind::Slash, (11, 12), Expr::Binary)
         .add_statement(TokenKind::CurlyOpen, Statement::Scope)
         .add_expression(TokenKind::CurlyOpen, Expr::Block)
+        .add_statement(TokenKind::Let, Statement::Declaration)
     }
 }

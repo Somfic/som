@@ -109,10 +109,14 @@ impl<'a> EmitContext<'a> {
         }
     }
 
-    pub fn declare_variable(&mut self, name: String, ty: Type) -> Variable {
-        let var = self.builder.declare_var(ty);
-        self.variables.insert(name, var);
+    pub fn declare_variable(&mut self, name: impl Into<String>, ty: impl Into<Type>) -> Variable {
+        let var = self.builder.declare_var(ty.into());
+        self.variables.insert(name.into(), var);
         var
+    }
+
+    pub fn has_variable(&self, name: &str) -> Option<&Variable> {
+        self.variables.get(name)
     }
 
     pub fn get_variable(&self, name: &str) -> Result<Variable> {

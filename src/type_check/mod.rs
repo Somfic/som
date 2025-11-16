@@ -1,7 +1,11 @@
+use std::collections::HashMap;
+
+use cranelift::prelude::types;
+
 use crate::{
     ast::{Expression, Statement},
     parser::Untyped,
-    Phase, Result,
+    Phase, Result, TypeCheckError,
 };
 
 mod expression;
@@ -28,7 +32,7 @@ impl Typer {
     // }
 
     pub fn check(&mut self, expression: Expression<Untyped>) -> Result<Expression<Typed>> {
-        expression.type_check(&mut TypeCheckContext {})
+        expression.type_check(&mut TypeCheckContext::new())
     }
 }
 
@@ -55,4 +59,41 @@ pub enum Type {
     Character,
 }
 
-pub struct TypeCheckContext {}
+impl Into<cranelift::prelude::Type> for Type {
+    fn into(self) -> cranelift::prelude::Type {
+        match self {
+            Type::Unit => types::I8,
+            Type::Boolean => types::I8,
+            Type::I32 => types::I32,
+            Type::I64 => types::I64,
+            Type::Decimal => types::F64,
+            Type::String => todo!(),
+            Type::Character => todo!(),
+        }
+    }
+}
+
+pub struct TypeCheckContext {
+    variables: HashMap<String, Type>,
+}
+
+impl TypeCheckContext {
+    pub fn new() -> Self {
+        Self {
+            variables: HashMap::new(),
+        }
+    }
+
+    pub fn get_variable(&self, name: impl Into<String>) -> Result<Type> {
+        let name = name.into();
+
+        self.variables
+            .get(&name)
+            .cloned()
+            .ok_or_else(|| TypeCheckError::UndefinedVariable(name.clone()).to_diagnostic())
+    }
+
+    pub fn declare_variable(&mut self, name: impl Into<String>, ty: Type) {
+        self.variables.insert(name.into(), ty);
+    }
+}

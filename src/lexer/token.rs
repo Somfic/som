@@ -1,6 +1,7 @@
-use std::fmt::{Debug, Display};
+use cranelift::prelude::{Value, Variable};
 
-use crate::lexer::Span;
+use crate::{lexer::Span, Emit, Parse, ParserError, Result};
+use std::fmt::{Debug, Display};
 
 #[derive(Clone)]
 pub struct Token {
@@ -296,18 +297,43 @@ pub struct Identifier {
     pub span: Span,
 }
 
+impl Into<String> for Identifier {
+    fn into(self) -> String {
+        self.name.to_string()
+    }
+}
+
+impl Parse for Identifier {
+    type Params = ();
+
+    fn parse(input: &mut crate::Parser, params: Self::Params) -> Result<Self> {
+        let name = input.expect(
+            TokenKind::Identifier,
+            "variable name",
+            ParserError::ExpectedIdentifier,
+        )?;
+
+        match name.value {
+            crate::lexer::TokenValue::Identifier(ident) => Ok(ident),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Emit for Identifier {
+    type Output = Value;
+
+    fn emit(&self, ctx: &mut crate::EmitContext) -> Result<Self::Output> {
+        Ok(ctx.builder.use_var(ctx.get_variable(&self.name)?))
+    }
+}
+
 impl Identifier {
     pub fn new(name: impl Into<Box<str>>, span: Span) -> Self {
         Self {
             name: name.into(),
             span,
         }
-    }
-}
-
-impl From<Identifier> for String {
-    fn from(value: Identifier) -> Self {
-        value.name.into()
     }
 }
 

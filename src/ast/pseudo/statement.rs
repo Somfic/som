@@ -8,6 +8,7 @@ impl<P: Phase> Pseudo for Statement<P> {
         match self {
             Statement::Expression(e) => format!("{};", e.pseudo()),
             Statement::Scope(s) => format!("{{{}}}", s.pseudo()),
+            Statement::Declaration(_) => format!("a variable declaration"),
         }
     }
 }
