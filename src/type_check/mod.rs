@@ -43,12 +43,7 @@ pub trait TypeCheck: Sized {
 }
 
 #[derive(Debug, Clone)]
-pub enum Type {
-    pub kind: TypeKind,
-    pub span: Span,
-}
-
-pub struct Primitive {
+pub struct Type {
     pub kind: TypeKind,
     pub span: Span,
 }
