@@ -1,35 +1,40 @@
 use crate::{
     ast::{Expression, Statement},
     lexer::TokenKind,
-    parser::{expression, Parse, Parser, Untyped},
-    Result,
+    parser::{Parse, Parser, Untyped},
+    Result, Type,
 };
+
 use std::{collections::HashMap, rc::Rc};
 
 pub type ExpressionParser = Rc<dyn Fn(&mut Parser) -> Result<Expression<Untyped>>>;
 pub type LefthandExpressionParser =
     Rc<dyn Fn(&mut Parser, Expression<Untyped>) -> Result<Expression<Untyped>>>;
 pub type StatementParser = Rc<dyn Fn(&mut Parser) -> Result<Statement<Untyped>>>;
+pub type TypeParser = Rc<dyn Fn(&mut Parser) -> Result<Type>>;
 
 pub struct Lookup {
     pub statement_lookup: HashMap<TokenKind, StatementParser>,
     pub expression_lookup: HashMap<TokenKind, ExpressionParser>,
     pub lefthand_expression_lookup: HashMap<TokenKind, LefthandExpressionParser>,
+    pub type_lookup: HashMap<TokenKind, TypeParser>,
     pub binding_power_lookup: HashMap<TokenKind, (u8, u8)>,
 }
 
 impl Lookup {
-    pub fn add_expression<T, E>(mut self, token: TokenKind, expression_type: E) -> Self
+    pub fn add_expression<T, E>(mut self, token: TokenKind, expression: E) -> Self
     where
         T: Parse<Params = ()> + 'static,
         E: Fn(T) -> Expression<Untyped> + 'static,
     {
         if self.expression_lookup.contains_key(&token) {
-            panic!("Token {:?} already has a prefix handler", token);
+            panic!("Token {:?} already has an expression parser", token);
         }
 
-        self.expression_lookup
-            .insert(token, wrap_expression(expression_type));
+        self.expression_lookup.insert(
+            token,
+            Rc::new(move |input: &mut Parser| Ok(expression(input.parse::<T>()?))),
+        );
         self
     }
 
@@ -37,59 +42,55 @@ impl Lookup {
         mut self,
         token: TokenKind,
         binding_power: (u8, u8),
-        expression_type: E,
+        expression: E,
     ) -> Self
     where
         T: Parse<Params = Expression<Untyped>> + 'static,
         E: Fn(T) -> Expression<Untyped> + 'static,
     {
         if self.lefthand_expression_lookup.contains_key(&token) {
-            panic!("Token {:?} already has an infix handler", token);
+            panic!("Token {:?} already has a lefthand expression parser", token);
         }
 
-        self.lefthand_expression_lookup
-            .insert(token.clone(), wrap_lefthand_expression(expression_type));
+        self.lefthand_expression_lookup.insert(
+            token.clone(),
+            Rc::new(move |input: &mut Parser, lhs| Ok(expression(input.parse_with::<T>(lhs)?))),
+        );
         self.binding_power_lookup.insert(token, binding_power);
         self
     }
 
-    pub fn add_statement<T, E>(mut self, token: TokenKind, statement_type: E) -> Self
+    pub fn add_statement<T, E>(mut self, token: TokenKind, statement: E) -> Self
     where
         T: Parse<Params = ()> + 'static,
         E: Fn(T) -> Statement<Untyped> + 'static,
     {
         if self.statement_lookup.contains_key(&token) {
-            panic!("Token {:?} already has a prefix handler", token);
+            panic!("Token {:?} already has a statement parser", token);
         }
 
-        self.statement_lookup
-            .insert(token, wrap_statement(statement_type));
+        self.statement_lookup.insert(
+            token,
+            Rc::new(move |input: &mut Parser| Ok(statement(input.parse::<T>()?))),
+        );
         self
     }
-}
 
-fn wrap_expression<T, E>(expression: E) -> ExpressionParser
-where
-    T: Parse<Params = ()> + 'static,
-    E: Fn(T) -> Expression<Untyped> + 'static,
-{
-    Rc::new(move |input: &mut Parser| Ok(expression(input.parse::<T>()?)))
-}
+    pub fn add_type<T, E>(mut self, token: TokenKind, ty: E) -> Self
+    where
+        T: Parse<Params = ()> + 'static,
+        E: Fn(T) -> Type + 'static,
+    {
+        if self.type_lookup.contains_key(&token) {
+            panic!("Token {:?} already has a type parser", token);
+        }
 
-fn wrap_lefthand_expression<T, E>(expression: E) -> LefthandExpressionParser
-where
-    T: Parse<Params = Expression<Untyped>> + 'static,
-    E: Fn(T) -> Expression<Untyped> + 'static,
-{
-    Rc::new(move |input: &mut Parser, lhs| Ok(expression(input.parse_with::<T>(lhs)?)))
-}
-
-fn wrap_statement<T, S>(statement: S) -> StatementParser
-where
-    T: Parse<Params = ()> + 'static,
-    S: Fn(T) -> Statement<Untyped> + 'static,
-{
-    Rc::new(move |input: &mut Parser| Ok(statement(input.parse::<T>()?)))
+        self.type_lookup.insert(
+            token,
+            Rc::new(move |input: &mut Parser| Ok(ty(input.parse::<T>()?))),
+        );
+        self
+    }
 }
 
 impl Default for Lookup {
@@ -98,6 +99,7 @@ impl Default for Lookup {
             statement_lookup: HashMap::new(),
             expression_lookup: HashMap::new(),
             lefthand_expression_lookup: HashMap::new(),
+            type_lookup: HashMap::new(),
             binding_power_lookup: HashMap::new(),
         }
         .add_expression(TokenKind::Minus, Expression::Unary)
@@ -174,6 +176,7 @@ impl Default for Lookup {
             Expression::Call,
         )
         .add_expression(TokenKind::Function, Expression::Lambda)
+        .add_type(TokenKind::I32Type, Type::Primary)
     }
 }
 
