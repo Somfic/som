@@ -81,6 +81,8 @@ pub enum ParserError {
     ExpectedArgumentListEnd,
     #[error("expected a type")]
     ExpectedType,
+    #[error("expected a type definition")]
+    ExpectedTypeDefinition,
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -11,6 +11,8 @@ fn run() -> Result<(), Diagnostic> {
     let source = Source::from_raw(
         "
     {
+        type Color = { r ~ int, g ~ int, b ~ int }; 
+
         let fib = fn(n ~ int) -> int {
             n if n < 2 else fib(n - 1) + fib(n - 2)
         };

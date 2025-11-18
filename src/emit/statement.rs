@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Declaration, Scope, Statement},
+    ast::{Declaration, Scope, Statement, TypeDefinition},
     Emit, FunctionContext, ModuleContext, Result, Typed,
 };
 use cranelift::prelude::{types, InstBuilder};
@@ -12,17 +12,17 @@ impl Emit for Statement<Typed> {
             Statement::Expression(expression) => expression.declare(ctx),
             Statement::Scope(scope) => scope.declare(ctx),
             Statement::Declaration(declaration) => declaration.declare(ctx),
+            Statement::TypeDefinition(type_definition) => type_definition.declare(ctx),
         }
     }
 
     fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
         match self {
-            Statement::Expression(e) => e.emit(ctx).map(|_| ())?,
-            Statement::Scope(s) => s.emit(ctx)?,
-            Statement::Declaration(d) => d.emit(ctx)?,
-        };
-
-        Ok(())
+            Statement::Expression(e) => e.emit(ctx).map(|_| ()),
+            Statement::Scope(s) => s.emit(ctx),
+            Statement::Declaration(d) => d.emit(ctx),
+            Statement::TypeDefinition(type_definition) => type_definition.emit(ctx),
+        }
     }
 }
 
@@ -85,6 +85,18 @@ impl Emit for Declaration<Typed> {
         let var = ctx.declare_variable(self.name.clone(), self.value.ty().clone());
         ctx.builder.def_var(var, value);
 
+        Ok(())
+    }
+}
+
+impl Emit for TypeDefinition {
+    type Output = ();
+
+    fn declare(&self, _ctx: &mut ModuleContext) -> Result<()> {
+        Ok(())
+    }
+
+    fn emit(&self, _ctx: &mut FunctionContext) -> Result<Self::Output> {
         Ok(())
     }
 }

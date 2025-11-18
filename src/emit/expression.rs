@@ -7,7 +7,7 @@ use cranelift::{
 use crate::{
     ast::{
         Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
-        Ternary, TypeKind, Unary, UnaryOperation,
+        Ternary, Type, Unary, UnaryOperation,
     },
     emit::LambdaRegistry,
     Emit, EmitError, FunctionContext, ModuleContext, Result, Typed,
@@ -52,12 +52,9 @@ impl Emit for Primary<Typed> {
 
     fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
         Ok(match &self.kind {
-            PrimaryKind::Boolean(b) => ctx
-                .builder
-                .ins()
-                .iconst(TypeKind::Boolean.into(), if *b { 1 } else { 0 }),
-            PrimaryKind::I32(i) => ctx.builder.ins().iconst(TypeKind::I32.into(), *i as i64),
-            PrimaryKind::I64(i) => ctx.builder.ins().iconst(TypeKind::I64.into(), *i),
+            PrimaryKind::Boolean(b) => ctx.builder.ins().iconst(types::I8, if *b { 1 } else { 0 }),
+            PrimaryKind::I32(i) => ctx.builder.ins().iconst(types::I32, *i as i64),
+            PrimaryKind::I64(i) => ctx.builder.ins().iconst(types::I64, *i),
             PrimaryKind::Decimal(d) => ctx.builder.ins().f64const(*d),
             PrimaryKind::String(s) => unimplemented!("string emit"),
             PrimaryKind::Character(c) => unimplemented!("character emit"),
@@ -216,10 +213,10 @@ impl Emit for Lambda<Typed> {
 
         let mut sig = Signature::new(ctx.isa.default_call_conv());
         for param in &self.parameters {
-            sig.params.push(AbiParam::new(param.ty.kind.clone().into()));
+            sig.params.push(AbiParam::new(param.ty.clone().into()));
         }
-        if let TypeKind::Function { returns, .. } = &self.ty.kind {
-            sig.returns.push(AbiParam::new(returns.kind.clone().into()));
+        if let Type::Function(f) = &self.ty {
+            sig.returns.push(AbiParam::new((*f.returns).clone().into()));
         }
 
         let func_id = ctx
@@ -270,7 +267,7 @@ impl Lambda<Typed> {
         let entry_block = builder.create_block();
 
         for param in &self.parameters {
-            builder.append_block_param(entry_block, param.ty.kind.clone().into());
+            builder.append_block_param(entry_block, param.ty.clone().into());
         }
 
         builder.switch_to_block(entry_block);
@@ -287,7 +284,7 @@ impl Lambda<Typed> {
         }
 
         for (param, &cranelift_param) in self.parameters.iter().zip(&param_values) {
-            let var = func_ctx.declare_variable(param.name.name.to_string(), param.ty.kind.clone());
+            let var = func_ctx.declare_variable(param.name.name.to_string(), param.ty.clone());
             func_ctx.builder.def_var(var, cranelift_param);
         }
 
@@ -326,23 +323,20 @@ impl Emit for Call<Typed> {
             .collect::<Result<_>>()?;
 
         let mut signature = Signature::new(ctx.builder.func.signature.call_conv);
-        let (parameter_types, return_type) = match &self.callee.ty().kind {
-            TypeKind::Function {
-                parameters,
-                returns,
-            } => (parameters, returns),
+        let (parameter_types, return_type) = match self.callee.ty() {
+            Type::Function(f) => (&f.parameters, &f.returns),
             _ => unreachable!(),
         };
 
         for parameter_type in parameter_types {
             signature
                 .params
-                .push(AbiParam::new(parameter_type.kind.clone().into()));
+                .push(AbiParam::new(parameter_type.clone().into()));
         }
 
         signature
             .returns
-            .push(AbiParam::new(return_type.kind.clone().into()));
+            .push(AbiParam::new((**return_type).clone().into()));
 
         let sig_ref = ctx.builder.import_signature(signature);
 

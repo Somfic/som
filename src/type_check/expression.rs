@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
-        Pseudo, Ternary, Type, TypeKind, Unary,
+        Pseudo, Ternary, Type, Unary,
     },
     parser::Untyped,
     type_check::{TypeCheckContext, Typed},
@@ -30,14 +30,14 @@ impl TypeCheck for Primary<Untyped> {
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
         let ty = match &self.kind {
-            PrimaryKind::Boolean(_) => TypeKind::Boolean.with_span(&self.span),
-            PrimaryKind::I32(_) => TypeKind::I32.with_span(&self.span),
-            PrimaryKind::I64(_) => TypeKind::I64.with_span(&self.span),
-            PrimaryKind::Decimal(_) => TypeKind::Decimal.with_span(&self.span),
-            PrimaryKind::String(_) => TypeKind::String.with_span(&self.span),
-            PrimaryKind::Character(_) => TypeKind::Character.with_span(&self.span),
+            PrimaryKind::Boolean(_) => Type::boolean(self.span.clone()),
+            PrimaryKind::I32(_) => Type::i32(self.span.clone()),
+            PrimaryKind::I64(_) => Type::i64(self.span.clone()),
+            PrimaryKind::Decimal(_) => Type::decimal(self.span.clone()),
+            PrimaryKind::String(_) => Type::string(self.span.clone()),
+            PrimaryKind::Character(_) => Type::character(self.span.clone()),
             PrimaryKind::Identifier(i) => match ctx.get_variable(i.name.clone()) {
-                Ok(ty) => Ok(ty.kind.with_span(&self.span)),
+                Ok(ty) => Ok(ty.with_span(&self.span)),
                 Err(err) => err
                     .with_label(self.span.label("could not be found"))
                     .to_err(),
@@ -92,7 +92,7 @@ impl TypeCheck for Binary<Untyped> {
             | BinaryOperation::Subtract
             | BinaryOperation::Multiply
             | BinaryOperation::Divide => {
-                lhs.ty().kind.clone().with_span(&(lhs.span() + rhs.span()))
+                lhs.ty().with_span(&(lhs.span() + rhs.span()))
             }
             BinaryOperation::LessThan
             | BinaryOperation::LessThanOrEqual
@@ -100,7 +100,7 @@ impl TypeCheck for Binary<Untyped> {
             | BinaryOperation::GreaterThanOrEqual
             | BinaryOperation::Equality
             | BinaryOperation::Inequality => {
-                TypeKind::Boolean.with_span(&(lhs.span() + rhs.span()))
+                Type::boolean(lhs.span() + rhs.span())
             }
         };
 
@@ -143,7 +143,7 @@ impl TypeCheck for Block<Untyped> {
 
         let ty = match &expression {
             Some(e) => e.ty().clone(),
-            None => TypeKind::Unit.with_span(&self.span),
+            None => Type::unit(self.span.clone()),
         };
 
         Ok(Block {
@@ -163,9 +163,8 @@ impl TypeCheck for Ternary<Untyped> {
         let truthy = self.truthy.type_check(ctx)?;
         let falsy = self.falsy.type_check(ctx)?;
 
-        expect_type_kind(
+        expect_boolean(
             condition.ty(),
-            &TypeKind::Boolean,
             "the condition of a ternary must be a boolean",
         )?;
         expect_type(
@@ -205,11 +204,11 @@ impl TypeCheck for Lambda<Untyped> {
             id: self.id,
             parameters: self.parameters,
             explicit_return_ty: self.explicit_return_ty,
-            ty: TypeKind::Function {
-                parameters: parameter_types,
-                returns: Box::new(body.ty().clone()),
-            }
-            .with_span(&self.span),
+            ty: Type::function(
+                parameter_types,
+                Box::new(body.ty().clone()),
+                self.span.clone(),
+            ),
             span: self.span,
             body: Box::new(body),
         })
@@ -222,13 +221,13 @@ impl Lambda<Untyped> {
         let returns = self
             .explicit_return_ty
             .clone()
-            .unwrap_or_else(|| TypeKind::Unit.with_span(&self.span));
+            .unwrap_or_else(|| Type::unit(self.span.clone()));
 
-        Ok(TypeKind::Function {
-            parameters: parameter_types,
-            returns: Box::new(returns),
-        }
-        .with_span(&self.span))
+        Ok(Type::function(
+            parameter_types,
+            Box::new(returns),
+            self.span.clone(),
+        ))
     }
 }
 
@@ -238,11 +237,8 @@ impl TypeCheck for Call<Untyped> {
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
         let callee = self.callee.type_check(ctx)?;
 
-        let (parameter_types, return_type) = match &callee.ty().kind {
-            TypeKind::Function {
-                parameters,
-                returns,
-            } => (parameters, returns),
+        let (parameter_types, return_type) = match callee.ty() {
+            Type::Function(f) => (&f.parameters, &f.returns),
             _ => {
                 return TypeCheckError::NotAFunction
                     .to_diagnostic()
@@ -290,22 +286,22 @@ fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
     if a != b {
         return Err(TypeCheckError::TypeMismatch
             .to_diagnostic()
-            .with_label(a.span.label(format!("{}", a.pseudo())))
-            .with_label(b.span.label(format!("{}", b.pseudo())))
+            .with_label(a.span().label(format!("{}", a.pseudo())))
+            .with_label(b.span().label(format!("{}", b.pseudo())))
             .with_hint(hint.into()));
     }
 
     Ok(())
 }
 
-fn expect_type_kind(actual: &Type, expected: &TypeKind, hint: impl Into<String>) -> Result<()> {
-    if actual.kind != *expected {
+fn expect_boolean(actual: &Type, hint: impl Into<String>) -> Result<()> {
+    if !matches!(actual, Type::Boolean(_)) {
         return TypeCheckError::ExpectedType
             .to_diagnostic()
             .with_label(
                 actual
-                    .span
-                    .label(format!("{}, expected {}", actual, expected)),
+                    .span()
+                    .label(format!("{}, expected a boolean", actual)),
             )
             .with_hint(hint.into())
             .to_err();
