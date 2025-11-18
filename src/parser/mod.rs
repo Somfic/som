@@ -6,7 +6,7 @@ use crate::{ParserError, Phase, Result, Source, Span};
 mod expression;
 pub mod lookup;
 mod statement;
-mod type_parser;
+mod typing;
 
 use lookup::Lookup;
 

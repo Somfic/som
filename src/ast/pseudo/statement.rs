@@ -9,6 +9,13 @@ impl<P: Phase> Pseudo for Statement<P> {
             Statement::Expression(e) => format!("{};", e.pseudo()),
             Statement::Scope(s) => format!("{{{}}}", s.pseudo()),
             Statement::Declaration(_) => format!("a variable declaration"),
+            Statement::TypeDefinition(type_definition) => {
+                format!(
+                    "type {} = {};",
+                    type_definition.name,
+                    type_definition.ty.pseudo()
+                )
+            }
         }
     }
 }

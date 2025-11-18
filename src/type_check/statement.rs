@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Declaration, Expression, Scope, Statement},
+    ast::{Declaration, Expression, Scope, Statement, TypeDefinition},
     Result, TypeCheck, TypeCheckContext, Typed, Untyped,
 };
 
@@ -11,6 +11,7 @@ impl TypeCheck for Statement<Untyped> {
             Statement::Expression(e) => Statement::Expression(e.type_check(ctx)?),
             Statement::Scope(s) => Statement::Scope(s.type_check(ctx)?),
             Statement::Declaration(d) => Statement::Declaration(d.type_check(ctx)?),
+            Statement::TypeDefinition(t) => Statement::TypeDefinition(t.type_check(ctx)?),
         })
     }
 }
@@ -50,5 +51,15 @@ impl TypeCheck for Declaration<Untyped> {
             name: self.name,
             value: Box::new(value),
         })
+    }
+}
+
+impl TypeCheck for TypeDefinition {
+    type Output = TypeDefinition;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        // todo: register the type definition in the context
+
+        Ok(self)
     }
 }

@@ -3,7 +3,7 @@ use std::{error::Error as ThisError, fmt::Display};
 use cranelift::{module::ModuleError, object::object};
 use owo_colors::OwoColorize;
 
-use crate::{lexer::Cursor, Span, Type, TypeKind};
+use crate::{lexer::Cursor, Span};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -81,6 +81,8 @@ pub enum ParserError {
     ExpectedArgumentListEnd,
     #[error("expected a type")]
     ExpectedType,
+    #[error("expected a type definition")]
+    ExpectedTypeDefinition,
 }
 
 #[derive(Debug, thiserror::Error)]

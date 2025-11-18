@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Declaration, Expression, Scope, Statement},
+    ast::{Declaration, Expression, Scope, Statement, Type, TypeDefinition},
     lexer::TokenKind,
     Parse, Parser, ParserError, Result, Untyped,
 };
@@ -95,6 +95,30 @@ impl Parse for Declaration<Untyped> {
             name,
             span: open.span + value.span().clone(),
             value: Box::new(value),
+        })
+    }
+}
+
+impl Parse for TypeDefinition {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let open = input.expect(
+            TokenKind::Type,
+            "a type definition",
+            ParserError::ExpectedTypeDefinition,
+        )?;
+
+        let name = input.parse()?;
+
+        input.expect(TokenKind::Equal, "a type", ParserError::ExpectedType)?;
+
+        let ty = input.parse::<Type>()?;
+
+        Ok(TypeDefinition {
+            span: open.span + ty.span().clone(),
+            ty,
+            name,
         })
     }
 }

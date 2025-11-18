@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Expression, Statement},
+    ast::{Expression, Statement, Type},
     lexer::TokenKind,
     parser::{expression, Parse, Parser, Untyped},
     Result,
@@ -10,12 +10,14 @@ pub type ExpressionParser = Rc<dyn Fn(&mut Parser) -> Result<Expression<Untyped>
 pub type LefthandExpressionParser =
     Rc<dyn Fn(&mut Parser, Expression<Untyped>) -> Result<Expression<Untyped>>>;
 pub type StatementParser = Rc<dyn Fn(&mut Parser) -> Result<Statement<Untyped>>>;
+pub type TypeParser = Rc<dyn Fn(&mut Parser) -> Result<Type>>;
 
 pub struct Lookup {
     pub statement_lookup: HashMap<TokenKind, StatementParser>,
     pub expression_lookup: HashMap<TokenKind, ExpressionParser>,
     pub lefthand_expression_lookup: HashMap<TokenKind, LefthandExpressionParser>,
     pub binding_power_lookup: HashMap<TokenKind, (u8, u8)>,
+    pub type_lookup: HashMap<TokenKind, TypeParser>,
 }
 
 impl Lookup {
@@ -66,6 +68,19 @@ impl Lookup {
             .insert(token, wrap_statement(statement_type));
         self
     }
+
+    pub fn add_type<T, E>(mut self, token: TokenKind, type_type: E) -> Self
+    where
+        T: Parse<Params = ()> + 'static,
+        E: Fn(T) -> Type + 'static,
+    {
+        if self.type_lookup.contains_key(&token) {
+            panic!("Token {:?} already has a type handler", token);
+        }
+
+        self.type_lookup.insert(token, wrap_type(type_type));
+        self
+    }
 }
 
 fn wrap_expression<T, E>(expression: E) -> ExpressionParser
@@ -92,6 +107,14 @@ where
     Rc::new(move |input: &mut Parser| Ok(statement(input.parse::<T>()?)))
 }
 
+fn wrap_type<T, S>(ty: S) -> TypeParser
+where
+    T: Parse<Params = ()> + 'static,
+    S: Fn(T) -> Type + 'static,
+{
+    Rc::new(move |input: &mut Parser| Ok(ty(input.parse::<T>()?)))
+}
+
 impl Default for Lookup {
     fn default() -> Self {
         Lookup {
@@ -99,6 +122,7 @@ impl Default for Lookup {
             expression_lookup: HashMap::new(),
             lefthand_expression_lookup: HashMap::new(),
             binding_power_lookup: HashMap::new(),
+            type_lookup: HashMap::new(),
         }
         .add_expression(TokenKind::Minus, Expression::Unary)
         .add_expression(TokenKind::Bang, Expression::Unary)
@@ -174,6 +198,9 @@ impl Default for Lookup {
             Expression::Call,
         )
         .add_expression(TokenKind::Function, Expression::Lambda)
+        .add_statement(TokenKind::Type, Statement::TypeDefinition)
+        // TODO: Add struct type parser
+        // .add_type(TokenKind::CurlyOpen, Type::Struct)
     }
 }
 
