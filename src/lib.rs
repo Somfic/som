@@ -7,14 +7,18 @@ pub mod ast;
 mod lexer;
 mod parser;
 pub use parser::*;
+mod linker;
 mod span;
+pub use linker::*;
 pub use span::Span;
 mod diagnostics;
 pub use diagnostics::*;
 mod type_check;
 pub use type_check::*;
 mod emit;
+mod runner;
 pub use emit::*;
+pub use runner::*;
 
 pub type Result<T> = std::result::Result<T, Diagnostic>;
 

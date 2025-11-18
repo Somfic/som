@@ -1,11 +1,11 @@
 use crate::{ast::Expression, EmitError, Result, Typed};
 use cranelift::{
     codegen::ir::UserFuncName,
-    jit::{JITBuilder, JITModule},
     module::{self, FuncId, Linkage, Module},
+    object::{ObjectBuilder, ObjectModule},
     prelude::{settings::Flags, *},
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
 use target_lexicon::Triple;
 
 mod expression;
@@ -23,11 +23,11 @@ pub trait Emit {
 
 pub struct Emitter {
     pub isa: Arc<dyn isa::TargetIsa>,
-    module: JITModule, // todo: switch to ObjectModule
+    module_builder: ObjectBuilder,
 }
 
 impl Emitter {
-    pub fn new(triple: Triple) -> Self {
+    pub fn new(triple: Triple) -> Result<Self> {
         let mut flag_builder = settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
         flag_builder.set("is_pic", "false").unwrap();
@@ -37,20 +37,36 @@ impl Emitter {
             .finish(Flags::new(flag_builder))
             .unwrap();
 
-        let module_builder = JITBuilder::with_isa(isa.clone(), module::default_libcall_names());
-        let module = JITModule::new(module_builder);
+        let module_builder =
+            ObjectBuilder::new(isa.clone(), "main", module::default_libcall_names())
+                .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
 
-        Self { isa, module }
+        Ok(Self {
+            isa,
+            module_builder,
+        })
     }
 
-    pub fn compile(&mut self, expression: &Expression<Typed>) -> Result<*const u8> {
+    fn new_module(&self, name: impl Into<String>) -> Result<ObjectModule> {
+        Ok(ObjectModule::new(
+            ObjectBuilder::new(
+                self.isa.clone(),
+                name.into(),
+                module::default_libcall_names(),
+            )
+            .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?,
+        ))
+    }
+
+    pub fn compile(&mut self, expression: &Expression<Typed>) -> Result<PathBuf> {
         let mut lambda_registry = LambdaRegistry::new();
 
-        {
-            let mut module_ctx =
-                ModuleContext::new(self.isa.clone(), &mut self.module, &mut lambda_registry);
-            expression.declare(&mut module_ctx)?;
-        }
+        let mut module = self.new_module("main")?;
+
+        let mut module_context =
+            ModuleContext::new(self.isa.clone(), &mut module, &mut lambda_registry);
+
+        expression.declare(&mut module_context)?;
 
         // wrap the expression in the main function
         let mut main_signature = Signature::new(self.isa.default_call_conv());
@@ -61,7 +77,7 @@ impl Emitter {
             "main",
             main_signature,
             Linkage::Export,
-            &mut lambda_registry,
+            &mut module_context,
             |func_ctx| {
                 let value = expression.emit(func_ctx)?;
                 // cast if the value is not already i64
@@ -75,11 +91,25 @@ impl Emitter {
             },
         )?;
 
-        self.module
-            .finalize_definitions()
-            .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
+        let bytes = module
+            .finish()
+            .emit()
+            .map_err(|err| EmitError::WriteError(err).to_diagnostic());
 
-        Ok(self.module.get_finalized_function(main_id))
+        fs::create_dir_all("build").map_err(|err| {
+            EmitError::IoError(err)
+                .to_diagnostic()
+                .with_hint("could not create build directory")
+        })?;
+
+        let output_path = PathBuf::from("build/main.o");
+        fs::write(&output_path, bytes?).map_err(|err| {
+            EmitError::IoError(err)
+                .to_diagnostic()
+                .with_hint("could not write output object file")
+        })?;
+
+        Ok(output_path)
     }
 
     fn compile_function<F>(
@@ -87,18 +117,18 @@ impl Emitter {
         name: &str,
         sig: Signature,
         linkage: Linkage,
-        lambda_registry: &mut LambdaRegistry,
+        module_context: &mut ModuleContext,
         emit_body: F,
     ) -> Result<FuncId>
     where
         F: FnOnce(&mut FunctionContext) -> Result<Value>,
     {
-        let func_id = self
+        let func_id = module_context
             .module
             .declare_function(name, linkage, &sig)
             .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
 
-        let mut cranelift_ctx = self.module.make_context();
+        let mut cranelift_ctx = module_context.module.make_context();
         cranelift_ctx.func.signature = sig;
         cranelift_ctx.func.name = UserFuncName::user(0, func_id.as_u32());
 
@@ -109,18 +139,22 @@ impl Emitter {
         builder.switch_to_block(entry_block);
 
         {
-            let mut func_ctx =
-                FunctionContext::new(&mut builder, &mut self.module, lambda_registry);
+            let mut func_ctx = FunctionContext::new(
+                &mut builder,
+                &mut module_context.module,
+                module_context.lambda_registry,
+            );
             let return_value = emit_body(&mut func_ctx)?;
             func_ctx.builder.ins().return_(&[return_value]);
             func_ctx.builder.seal_all_blocks();
         }
 
-        self.module
+        module_context
+            .module
             .define_function(func_id, &mut cranelift_ctx)
             .map_err(|err| EmitError::ModuleError(err).to_diagnostic())?;
 
-        self.module.clear_context(&mut cranelift_ctx);
+        module_context.module.clear_context(&mut cranelift_ctx);
 
         Ok(func_id)
     }
@@ -135,7 +169,7 @@ pub struct ModuleContext<'a> {
 impl<'a> ModuleContext<'a> {
     fn new(
         isa: Arc<dyn isa::TargetIsa>,
-        module: &'a mut JITModule,
+        module: &'a mut ObjectModule,
         lambda_registry: &'a mut LambdaRegistry,
     ) -> Self {
         Self {

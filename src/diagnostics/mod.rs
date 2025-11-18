@@ -1,6 +1,6 @@
 use std::{error::Error as ThisError, fmt::Display};
 
-use cranelift::module::ModuleError;
+use cranelift::{module::ModuleError, object::object};
 use owo_colors::OwoColorize;
 
 use crate::{lexer::Cursor, Span, Type, TypeKind};
@@ -15,6 +15,10 @@ pub enum Error {
     TypeCheckError(TypeCheckError),
     #[error(transparent)]
     EmitError(EmitError),
+    #[error(transparent)]
+    LinkerError(LinkerError),
+    #[error(transparent)]
+    RunnerError(RunnerError),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -99,8 +103,28 @@ pub enum EmitError {
     UndefinedVariable,
     #[error(transparent)]
     ModuleError(#[from] ModuleError),
+    #[error(transparent)]
+    WriteError(#[from] object::write::Error),
     #[error("undefined function")]
     UndefinedFunction,
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum LinkerError {
+    #[error("could not find a c linker on the system")]
+    NoLinkerFound,
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+    #[error("failed to link executable")]
+    FailedToLink,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RunnerError {
+    #[error("failed to execute the program")]
+    ExecutionFailed,
 }
 
 impl Error {
@@ -130,6 +154,18 @@ impl TypeCheckError {
 impl EmitError {
     pub fn to_diagnostic(self) -> Diagnostic {
         Diagnostic::from(Error::EmitError(self))
+    }
+}
+
+impl LinkerError {
+    pub fn to_diagnostic(self) -> Diagnostic {
+        Diagnostic::from(Error::LinkerError(self))
+    }
+}
+
+impl RunnerError {
+    pub fn to_diagnostic(self) -> Diagnostic {
+        Diagnostic::from(Error::RunnerError(self))
     }
 }
 
