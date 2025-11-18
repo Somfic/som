@@ -1,7 +1,8 @@
 use crate::{
+    ast::{Type, TypeKind},
     lexer::TokenKind,
     parser::{Parse, Parser},
-    ParserError, Result, Type, TypeKind,
+    ParserError, Result,
 };
 
 impl Parse for Type {

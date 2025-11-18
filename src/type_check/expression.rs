@@ -1,11 +1,11 @@
 use crate::{
     ast::{
         Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
-        Pseudo, Ternary, Unary,
+        Pseudo, Ternary, Type, TypeKind, Unary,
     },
     parser::Untyped,
-    type_check::{Type, TypeCheckContext, Typed},
-    Result, TypeCheck, TypeCheckError, TypeKind,
+    type_check::{TypeCheckContext, Typed},
+    Result, TypeCheck, TypeCheckError,
 };
 
 impl TypeCheck for Expression<Untyped> {

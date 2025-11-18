@@ -7,10 +7,10 @@ use cranelift::{
 use crate::{
     ast::{
         Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
-        Ternary, Unary, UnaryOperation,
+        Ternary, TypeKind, Unary, UnaryOperation,
     },
     emit::LambdaRegistry,
-    Emit, EmitError, FunctionContext, ModuleContext, Result, TypeKind, Typed,
+    Emit, EmitError, FunctionContext, ModuleContext, Result, Typed,
 };
 
 impl Emit for Expression<Typed> {

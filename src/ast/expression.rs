@@ -1,4 +1,8 @@
-use crate::{ast::Statement, lexer::Identifier, Phase, Span, Type};
+use crate::{
+    ast::{Statement, Type},
+    lexer::Identifier,
+    Phase, Span,
+};
 use std::fmt::{write, Display};
 
 #[derive(Debug)]

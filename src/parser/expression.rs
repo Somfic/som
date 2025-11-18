@@ -1,11 +1,11 @@
 use crate::{
     ast::{
         Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Parameter, Primary,
-        PrimaryKind, Statement, Ternary, Unary,
+        PrimaryKind, Statement, Ternary, Type, Unary,
     },
     lexer::{Identifier, Token, TokenKind, TokenValue},
     parser::{lookup::Precedence, Parse, Untyped},
-    Parser, ParserError, Result, Type,
+    Parser, ParserError, Result,
 };
 
 impl Parse for Expression<Untyped> {
