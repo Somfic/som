@@ -1,8 +1,9 @@
+use cranelift::prelude::{types, InstBuilder, Value, Variable};
 
-use crate::prelude::*;
+use crate::{lexer::Span, Emit, FunctionContext, ModuleContext, Parse, ParserError, Result};
 use std::fmt::{Debug, Display};
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub struct Token {
     pub kind: TokenKind,
     pub value: TokenValue,
@@ -16,6 +17,12 @@ impl Display for Token {
             TokenValue::None => write!(f, "{}", self.kind),
             value => write!(f, "`{}` ({})", value, self.kind),
         }
+    }
+}
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.value == other.value
     }
 }
 
@@ -34,15 +41,10 @@ impl From<Token> for Span {
     }
 }
 
-impl From<Token> for miette::SourceSpan {
-    fn from(token: Token) -> Self {
-        token.span.0
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenValue {
     None,
+    Error(Box<str>),
     Boolean(bool),
     I32(i32),
     I64(i64),
@@ -56,6 +58,7 @@ impl Display for TokenValue {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenValue::None => write!(f, "nothing"),
+            TokenValue::Error(msg) => write!(f, "{msg}"),
             TokenValue::Boolean(value) => write!(f, "{value}"),
             TokenValue::I32(value) => write!(f, "{value}"),
             TokenValue::I64(value) => write!(f, "{value}"),
@@ -69,18 +72,8 @@ impl Display for TokenValue {
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum TokenKind {
-    /// A token that should be ignored. This is used for whitespace, comments, etc.
-    Ignore,
-
-    /// A single-line comment; `// comment`.
-    SingleLineComment,
-    /// A multi-line comment; `/* comment */`.
-    MultiLineComment,
-
-    /// The opening of an indentation level.
-    IndentationOpen,
-    /// The closing of an indentation level.
-    IndentationClose,
+    /// A lexer error token containing an error message.
+    Error,
 
     /// An opening parenthesis; `(`.
     ParenOpen,
@@ -118,7 +111,7 @@ pub enum TokenKind {
     /// An equals sign; `=`.
     Equal,
     /// A negation sign; `!`.
-    Not,
+    Bang,
     /// A less-than sign; `<`.
     LessThan,
     /// A greater-than sign; `>`.
@@ -223,17 +216,13 @@ pub enum TokenKind {
     /// The character type; `char`.
     CharacterType,
     /// The end of the file; `EOF`.
-    EOF,
+    Eof,
 }
 
 impl Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TokenKind::Ignore => write!(f, ""),
-            TokenKind::SingleLineComment => write!(f, "a single-line comment"),
-            TokenKind::MultiLineComment => write!(f, "a multi-line comment"),
-            TokenKind::IndentationOpen => write!(f, "opening indentation level"),
-            TokenKind::IndentationClose => write!(f, "closing indentation level"),
+            TokenKind::Error => write!(f, "an error"),
             TokenKind::ParenOpen => write!(f, "`(`"),
             TokenKind::ParenClose => write!(f, "`)`"),
             TokenKind::CurlyOpen => write!(f, "`{{`"),
@@ -249,7 +238,7 @@ impl Display for TokenKind {
             TokenKind::Slash => write!(f, "`/`"),
             TokenKind::Star => write!(f, "`*`"),
             TokenKind::Equal => write!(f, "`=`"),
-            TokenKind::Not => write!(f, "`!`"),
+            TokenKind::Bang => write!(f, "`!`"),
             TokenKind::LessThan => write!(f, "`<`"),
             TokenKind::GreaterThan => write!(f, "`>`"),
             TokenKind::LessThanOrEqual => write!(f, "`<=`"),
@@ -296,16 +285,63 @@ impl Display for TokenKind {
             TokenKind::DecimalType => write!(f, "a decimal type"),
             TokenKind::StringType => write!(f, "a string type"),
             TokenKind::CharacterType => write!(f, "a character type"),
-            TokenKind::EOF => write!(f, "the end of the file"),
+            TokenKind::Eof => write!(f, "the end of the file"),
             TokenKind::Ampersand => write!(f, "`&`"),
         }
     }
 }
 
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone)]
 pub struct Identifier {
     pub name: Box<str>,
     pub span: Span,
+}
+
+impl From<Identifier> for String {
+    fn from(val: Identifier) -> Self {
+        val.name.to_string()
+    }
+}
+
+impl Parse for Identifier {
+    type Params = ();
+
+    fn parse(input: &mut crate::Parser, params: Self::Params) -> Result<Self> {
+        let name = input.expect(
+            TokenKind::Identifier,
+            "variable name",
+            ParserError::ExpectedIdentifier,
+        )?;
+
+        match name.value {
+            crate::lexer::TokenValue::Identifier(ident) => Ok(ident),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Emit for Identifier {
+    type Output = Value;
+
+    fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
+        Ok(())
+    }
+
+    fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
+        // Check if this identifier refers to a self-referencing lambda
+        if let Some(&lambda_id) = ctx.self_referencing_lambdas.get(&*self.name) {
+            // This is a recursive call - emit function address
+            let (func_id, _) = ctx
+                .lambda_registry
+                .get(lambda_id)
+                .ok_or_else(|| crate::EmitError::UndefinedFunction.to_diagnostic())?;
+            let reference = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);
+            Ok(ctx.builder.ins().func_addr(types::I64, reference))
+        } else {
+            // Regular variable lookup
+            Ok(ctx.builder.use_var(ctx.get_variable(&self.name)?))
+        }
+    }
 }
 
 impl Identifier {
@@ -314,12 +350,6 @@ impl Identifier {
             name: name.into(),
             span,
         }
-    }
-}
-
-impl From<Identifier> for String {
-    fn from(value: Identifier) -> Self {
-        value.name.into()
     }
 }
 
@@ -337,7 +367,7 @@ impl From<Identifier> for Span {
 
 impl From<&Identifier> for Span {
     fn from(identifier: &Identifier) -> Self {
-        identifier.span
+        identifier.span.clone()
     }
 }
 
@@ -355,6 +385,6 @@ impl PartialEq for Identifier {
 
 impl Display for Identifier {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "`{}`", self.name)
     }
 }

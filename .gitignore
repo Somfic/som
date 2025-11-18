@@ -9,3 +9,5 @@ lcov.info
 coverage-html/
 /.direnv
 /.claude
+/.vscode
+/build

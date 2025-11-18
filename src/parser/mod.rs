@@ -1,257 +1,154 @@
-use crate::{
-    expressions::{self, function::FunctionExpression},
-    prelude::*,
-    statements::variable_declaration::VariableDeclarationStatement,
-};
-use std::cell::RefCell;
+use std::cell::Cell;
 
+use crate::lexer::{Lexer, Token, TokenKind};
+use crate::{ParserError, Phase, Result, Source, Span};
+
+mod expression;
 pub mod lookup;
+mod statement;
+mod type_parser;
 
-pub struct Parser<'source> {
-    pub errors: RefCell<Vec<Error>>,
-    pub lexer: Lexer<'source>,
-    lookup: Lookup,
+use lookup::Lookup;
+
+#[derive(Debug)]
+pub struct Untyped;
+
+impl Phase for Untyped {
+    type TypeInfo = ();
 }
 
-impl<'source> Parser<'source> {
-    pub fn new(lexer: Lexer<'source>) -> Self {
+pub trait Parse: Sized {
+    type Params;
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self>;
+}
+
+pub struct Parser {
+    pub(crate) lexer: Lexer,
+    pub(crate) lookup: Lookup,
+    next_lambda_id: std::cell::Cell<usize>,
+}
+
+impl Parser {
+    pub fn new(source: Source) -> Self {
         Self {
-            errors: RefCell::new(Vec::new()),
-            lexer,
+            lexer: Lexer::new(source),
             lookup: Lookup::default(),
+            next_lambda_id: Cell::new(0),
         }
     }
 
-    pub fn parse(&mut self) -> Results<Statement> {
-        let body = match expressions::block::parse_inner(self, TokenKind::EOF) {
-            Ok(body) => body,
-            Err(e) => {
-                self.errors.borrow_mut().push(e);
-                return Err(self.errors.borrow().clone());
+    pub fn next_lambda_id(&self) -> usize {
+        let id = self.next_lambda_id.get();
+        self.next_lambda_id.set(id + 1);
+        id
+    }
+
+    pub fn parse<T: Parse>(&mut self) -> Result<T>
+    where
+        T::Params: Default,
+    {
+        self.parse_with(Default::default())
+    }
+
+    pub fn parse_with<T: Parse>(&mut self, params: T::Params) -> Result<T> {
+        T::parse(self, params)
+    }
+
+    pub(crate) fn try_parse<T: Parse>(&mut self) -> Option<T>
+    where
+        T::Params: Default,
+    {
+        self.try_parse_with(Default::default())
+    }
+
+    pub(crate) fn try_parse_with<T: Parse>(&mut self, params: T::Params) -> Option<T> {
+        let checkpoint = self.lexer.cursor.clone();
+        match self.parse_with(params) {
+            Ok(value) => Some(value),
+            Err(_) => {
+                self.lexer.cursor = checkpoint;
+                None
             }
-        };
-
-        let span = body.span;
-
-        let main_function = ExpressionValue::Function(FunctionExpression {
-            parameters: Vec::new(),
-            explicit_return_type: None,
-            span: body.span,
-            body: Box::new(body),
-        })
-        .with_span(span);
-
-        let main_function = StatementValue::VariableDeclaration(VariableDeclarationStatement {
-            identifier: Identifier::new("main", span),
-            explicit_type: None,
-            value: Box::new(main_function),
-        })
-        .with_span(span);
-
-        Ok(main_function)
-    }
-
-    pub fn expect(&mut self, expected: TokenKind, help: impl Into<String>) -> Result<Token> {
-        match self.lexer.next() {
-            Some(Ok(token)) if expected == token.kind => Ok(token),
-            Some(Ok(token)) => Err(parser_unexpected_token(help, &token, &expected)),
-            Some(Err(e)) => Err(e),
-            None => Err(parser_unexpected_end_of_file(
-                (self.lexer.byte_offset - 1, 0),
-                format!("{}", expected),
-            )),
         }
     }
 
-    pub fn current(&mut self) -> Option<Result<Token>> {
-        self.lexer.current()
+    pub(crate) fn expect(
+        &mut self,
+        token: TokenKind,
+        expect: impl Into<String>,
+        error: ParserError,
+    ) -> Result<Token> {
+        let next = self.lexer.peek();
+
+        if let Some(next) = next {
+            if next.kind == token {
+                return self.lexer.next().unwrap();
+            }
+
+            return error
+                .to_diagnostic()
+                .with_label(next.span.clone().label(format!(
+                    "expected {} here for {}",
+                    token,
+                    expect.into()
+                )))
+                .to_err();
+        }
+
+        ParserError::UnexpectedEndOfInput
+            .to_diagnostic()
+            .with_label(
+                self.lexer
+                    .cursor
+                    .label(format!("expected {} here", expect.into())),
+            )
+            .to_err()
     }
 
-    pub fn peek(&mut self) -> Option<&Result<Token>> {
+    pub(crate) fn peek(&mut self) -> Option<&Token> {
         self.lexer.peek()
     }
 
-    pub fn next(&mut self) -> Option<Result<Token>> {
-        self.lexer.next()
-    }
+    pub(crate) fn peek_expect(&mut self, expect: impl Into<String>) -> Result<&Token> {
+        let cursor = self.lexer.cursor.clone();
 
-    pub fn parse_statement(&mut self, require_semicolon: bool) -> Result<Statement> {
-        let token = match self.lexer.peek().as_ref() {
-            Some(Ok(token)) => token,
-            Some(Err(_)) => return Err(self.lexer.next().unwrap().unwrap_err()),
-            None => {
-                return Err(parser_unexpected_end_of_file(
-                    (self.lexer.byte_offset, 0),
-                    "a statement",
-                ));
-            }
-        };
-
-        let statement = match self.lookup.statement_lookup.get(&token.kind) {
-            Some(handler) => handler(self)?,
-            None => {
-                let expression = self.parse_expression(BindingPower::None)?;
-
-                Statement {
-                    value: StatementValue::Expression(expression.clone()),
-                    span: expression.span,
-                }
-            }
-        };
-
-        if require_semicolon {
-            self.expect(TokenKind::Semicolon, "expected a closing semicolon")?;
+        match self.lexer.peek() {
+            Some(token) => Ok(token),
+            None => ParserError::UnexpectedEndOfInput
+                .to_diagnostic()
+                .with_label(cursor.label(format!("expected {} here", expect.into())))
+                .to_err(),
         }
-
-        Ok(statement)
     }
 
-    pub fn parse_expression(&mut self, bp: BindingPower) -> Result<Expression> {
-        let token = match self.lexer.peek().as_ref() {
-            Some(Ok(token)) => token,
-            Some(Err(_)) => return Err(self.lexer.next().unwrap().unwrap_err()),
-            None => {
-                return Err(parser_unexpected_end_of_file(
-                    (self.lexer.byte_offset, 0),
-                    "an expression",
-                ));
-            }
-        };
-
-        let handler = self
-            .lookup
-            .expression_lookup
-            .get(&token.kind)
-            .ok_or(parser_expected_expression(token))?;
-
-        let mut lhs = handler(self)?;
-
-        let mut next_token = self.lexer.peek();
-
-        while let Some(token) = next_token {
-            let token = match token {
-                Ok(token) => token,
-                Err(_) => return Err(self.lexer.next().unwrap().unwrap_err()),
-            };
-
-            let token_binding_power = {
-                let binding_power_lookup = self.lookup.binding_power_lookup.clone();
-                *binding_power_lookup
-                    .get(&token.kind)
-                    .unwrap_or(&BindingPower::None)
-            };
-
-            if bp >= token_binding_power {
-                break;
-            }
-
-            let handler = match self.lookup.left_expression_lookup.get(&token.kind) {
-                Some(handler) => handler,
-                None => break,
-            };
-
-            lhs = handler(self, lhs, token_binding_power)?;
-
-            next_token = self.lexer.peek();
-        }
-
-        Ok(lhs)
+    pub(crate) fn next(&mut self) -> Result<Token> {
+        self.lexer
+            .next()
+            .ok_or(ParserError::UnexpectedEndOfInput.to_diagnostic())?
     }
 
-    pub fn parse_type(&mut self, bp: BindingPower) -> Result<Type> {
-        let token = match self.lexer.peek().as_ref() {
-            Some(Ok(token)) => token,
-            Some(Err(_)) => return Err(self.lexer.next().unwrap().unwrap_err()),
-            None => {
-                return Err(parser_unexpected_end_of_file(
-                    (self.lexer.byte_offset, 0),
-                    "a type",
-                ));
-            }
-        };
-
-        let handler = self
-            .lookup
-            .type_lookup
-            .get(&token.kind)
-            .ok_or(parser_expected_type(token))?;
-
-        let mut lhs = handler(self)?;
-
-        let mut next_token = self.lexer.peek();
-
-        while let Some(token) = next_token {
-            let token = match token {
-                Ok(token) => token,
-                Err(_) => return Err(self.lexer.next().unwrap().unwrap_err()),
-            };
-
-            let token_binding_power = {
-                let binding_power_lookup = self.lookup.binding_power_lookup.clone();
-                *binding_power_lookup
-                    .get(&token.kind)
-                    .unwrap_or(&BindingPower::None)
-            };
-
-            if bp >= token_binding_power {
-                break;
-            }
-
-            let handler = match self.lookup.left_type_lookup.get(&token.kind) {
-                Some(handler) => handler,
-                None => break,
-            };
-
-            lhs = handler(self, lhs, token_binding_power)?;
-
-            next_token = self.lexer.peek();
-        }
-
-        Ok(lhs)
+    pub(crate) fn parse_with_span<T: Parse>(&mut self) -> Result<(T, Span)>
+    where
+        T::Params: Default,
+    {
+        self.parse_with_span_with(Default::default())
     }
 
-    pub fn expect_identifier(&mut self) -> Result<Identifier> {
-        let token = self.expect(TokenKind::Identifier, "expected an identifier")?;
-
-        let value = match token.value {
-            TokenValue::Identifier(value) => value,
-            _ => unreachable!(),
-        };
-
-        Ok(value)
-    }
-
-    pub fn expect_list<T>(
+    pub(crate) fn parse_with_span_with<T: Parse>(
         &mut self,
-        open: TokenKind,
-        parse: fn(&mut Self) -> Result<T>,
-        divider: TokenKind,
-        close: TokenKind,
-    ) -> Result<(Vec<T>, Span)> {
-        let start = self.expect(open, "expected a list")?;
-        let mut list = vec![];
+        params: T::Params,
+    ) -> Result<(T, Span)> {
+        let start = self.lexer.cursor.clone();
+        let source_name = self.lexer.source.identifier();
+        let source_content = self.lexer.source_content.clone();
 
-        loop {
-            if self
-                .peek()
-                .is_some_and(|token| token.as_ref().is_ok_and(|token| token.kind == close))
-            {
-                break;
-            }
+        let inner = T::parse(self, params)?;
 
-            if !list.is_empty() {
-                self.expect(divider.clone(), "expected a comma between arguments")?;
-            }
+        let end = self.lexer.cursor.clone();
 
-            let value = parse(self)?;
+        let span = start - end;
 
-            list.push(value);
-        }
-
-        let end = self.expect(close, "expected a list")?;
-
-        let span = start.span + end.span;
-
-        Ok((list, span))
+        Ok((inner, span))
     }
 }

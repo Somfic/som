@@ -1,123 +1,40 @@
-use miette::NamedSource;
-
-use std::{io::Read, path::PathBuf};
-
-use crate::highlighter::SomHighlighter;
-
-mod cli;
-mod compiler;
-mod errors;
-mod expressions;
-mod highlighter;
-mod lexer;
-mod lowering;
-mod module;
-mod parser;
-mod prelude;
-mod runner;
-mod statements;
-mod tui;
-mod type_checker;
-mod types;
-
-#[cfg(test)]
-mod tests;
-
-#[derive(clap::Parser)]
-#[command(version, about, long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Option<Commands>,
-
-    #[arg(default_value = "main.som")]
-    source: PathBuf,
-
-    /// Watch for file changes and recompile automatically
-    #[arg(long, short)]
-    watch: bool,
-}
-
-#[derive(clap::Subcommand)]
-enum Commands {
-    /// Evaluate a piece of code directly
-    Eval {
-        /// The code to evaluate
-        code: String,
-    },
-}
+use som::{ast::Expression, Diagnostic, Emitter, Linker, Parser, Runner, Source, Typer};
+use target_lexicon::Triple;
 
 fn main() {
-    miette::set_hook(Box::new(|_| {
-        Box::new(
-            miette::MietteHandlerOpts::new()
-                .terminal_links(true)
-                .unicode(true)
-                .with_cause_chain()
-                .context_lines(1)
-                .with_syntax_highlighting(SomHighlighter {})
-                .build(),
-        )
-    }))
-    .unwrap();
-
-    let cli = <Cli as clap::Parser>::parse();
-
-    // Handle eval subcommand
-    if let Some(Commands::Eval { code }) = cli.command {
-        run_eval(code);
-        return;
-    }
-
-    let mut source = cli.source;
-
-    if source.is_dir() {
-        source = source.join("main.som");
-    }
-
-    // check if file exists
-    if !source.exists() {
-        tui::print_error(format!("source file `{}` does not exist", source.display()));
-        std::process::exit(1);
-    }
-
-    if cli.watch {
-        // Run in watch mode
-        cli::run_watch_mode(source);
-    } else {
-        // Run once
-        run_once(source);
+    if let Err(e) = run() {
+        eprintln!("{}", e);
     }
 }
 
-fn run_once(source: PathBuf) {
-    // read the source file
-    let mut content = String::new();
-    if let Err(e) =
-        std::fs::File::open(&source).and_then(|mut file| file.read_to_string(&mut content))
+fn run() -> Result<(), Diagnostic> {
+    let source = Source::from_raw(
+        "
     {
-        tui::print_error(format!(
-            "error reading source file '{}': {}",
-            source.display(),
-            e
-        ));
-        std::process::exit(1);
-    }
+        let fib = fn(n ~ int) -> int {
+            n if n < 2 else fib(n - 1) + fib(n - 2)
+        };
 
-    let name: String = source
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("main")
-        .to_string();
+        fib(10)
+    }",
+    );
 
-    let result = cli::run_with_process_tree(NamedSource::new(name, content), Some(source.clone()));
+    let mut parser = Parser::new(source);
+    let code = parser.parse::<Expression<_>>()?;
 
-    // Print the execution result if successful
-    if let Some(value) = result {
-        println!("  ⚡ Result: {}", value);
-    }
-}
+    let mut typer = Typer::new();
+    let code = typer.check(code)?;
 
-fn run_eval(code: String) {
-    let source = NamedSource::new("<eval>", code);
-    cli::run_with_process_tree(source, None);
+    let mut emitter = Emitter::new(Triple::host())?;
+    let module = emitter.compile(&code)?;
+
+    let linker = Linker::new("build/som");
+    let executable = linker.link_modules(vec![module])?;
+
+    let runner = Runner::new(&executable);
+    let result = runner.run()?;
+
+    println!("{}", result);
+
+    Ok(())
 }
