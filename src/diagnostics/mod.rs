@@ -85,6 +85,8 @@ pub enum ParserError {
     ExpectedTypeDefinition,
     #[error("expected a field")]
     ExpectedField,
+    #[error("expected a struct")]
+    ExpectedStruct,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -99,6 +101,8 @@ pub enum TypeCheckError {
     NotAFunction,
     #[error("argument mismatch")]
     ArgumentCountMismatch,
+    #[error("undefined type")]
+    UndefinedType,
 }
 
 #[derive(Debug, thiserror::Error)]

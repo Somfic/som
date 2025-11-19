@@ -15,6 +15,7 @@ pub enum Expression<P: Phase> {
     Ternary(Ternary<P>),
     Lambda(Lambda<P>),
     Call(Call<P>),
+    Construction(Construction<P>),
 }
 
 impl<P: Phase> Expression<P> {
@@ -28,6 +29,7 @@ impl<P: Phase> Expression<P> {
             Expression::Ternary(t) => &t.span,
             Expression::Lambda(l) => &l.span,
             Expression::Call(c) => &c.span,
+            Expression::Construction(c) => &c.span,
         }
     }
 
@@ -41,6 +43,7 @@ impl<P: Phase> Expression<P> {
             Expression::Ternary(t) => &t.ty,
             Expression::Lambda(l) => &l.ty,
             Expression::Call(c) => &c.ty,
+            Expression::Construction(c) => &c.ty,
         }
     }
 }
@@ -56,6 +59,7 @@ impl<P: Phase> Display for Expression<P> {
             Expression::Ternary(t) => write!(f, "a ternary"),
             Expression::Lambda(l) => write!(f, "a lambda"),
             Expression::Call(c) => write!(f, "a function call"),
+            Expression::Construction(c) => write!(f, "a construction"),
         }
     }
 }
@@ -205,4 +209,12 @@ pub struct Call<P: Phase> {
     pub arguments: Vec<Expression<P>>,
     pub span: Span,
     pub ty: P::TypeInfo,
+}
+
+#[derive(Debug)]
+pub struct Construction<P: Phase> {
+    pub ty: P::TypeInfo,
+    pub struct_ty: Identifier,
+    pub fields: Vec<(Identifier, Expression<P>)>,
+    pub span: Span,
 }

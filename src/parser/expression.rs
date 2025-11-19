@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Parameter, Primary,
-        PrimaryKind, Statement, Ternary, Type, Unary,
+        Binary, BinaryOperation, Block, Call, Construction, Expression, Group, Lambda, Parameter,
+        Primary, PrimaryKind, Statement, Ternary, Type, Unary,
     },
     lexer::{Identifier, Token, TokenKind, TokenValue},
     parser::{lookup::Precedence, Parse, Untyped},
@@ -404,6 +404,77 @@ impl Parse for Call<Untyped> {
         Ok(Call {
             callee: Box::new(callee),
             arguments,
+            span,
+            ty: (),
+        })
+    }
+}
+
+impl Parse for Construction<Untyped> {
+    type Params = Expression<Untyped>;
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let type_ident = match params {
+            Expression::Primary(Primary {
+                kind: PrimaryKind::Identifier(ident),
+                ..
+            }) => ident,
+            _ => {
+                return ParserError::ExpectedStruct
+                    .to_diagnostic()
+                    .with_label(params.span().label("expected a struct here"))
+                    .with_hint("only structs can be constructed")
+                    .to_err();
+            }
+        };
+
+        input.expect(
+            TokenKind::CurlyOpen,
+            "a list of fields",
+            ParserError::ExpectedArgumentList,
+        )?;
+
+        let mut fields = vec![];
+
+        while let Some(token) = input.peek() {
+            if token.kind == TokenKind::CurlyClose {
+                break;
+            }
+
+            let field_name = input.parse()?;
+
+            input.expect(
+                TokenKind::Colon,
+                "':' between field name and value",
+                ParserError::ExpectedExpression,
+            )?;
+
+            let field_value = input.parse_with(0)?;
+
+            fields.push((field_name, field_value));
+
+            if let Some(Token {
+                kind: TokenKind::Comma,
+                ..
+            }) = input.peek()
+            {
+                input.next()?;
+            } else {
+                break;
+            }
+        }
+
+        let close = input.expect(
+            TokenKind::CurlyClose,
+            "the end of the fields",
+            ParserError::ExpectedArgumentListEnd,
+        )?;
+
+        let span = type_ident.span.clone() + close.span;
+
+        Ok(Construction {
+            struct_ty: type_ident,
+            fields,
             span,
             ty: (),
         })

@@ -13,6 +13,7 @@ fn run() -> Result<(), Diagnostic> {
     {
         type Test = bool;
         type Color = { r ~ int, g ~ int, b ~ int }; 
+        let red = Colorr { r: 255, g: 0, b: 0 };
 
         let fib = fn(n ~ int) -> int {
             n if n < 2 else fib(n - 1) + fib(n - 2)

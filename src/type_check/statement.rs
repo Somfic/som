@@ -58,8 +58,7 @@ impl TypeCheck for TypeDefinition {
     type Output = TypeDefinition;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
-        // todo: register the type definition in the context
-
+        ctx.declare_type(self.name.clone(), self.ty.clone());
         Ok(self)
     }
 }

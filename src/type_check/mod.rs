@@ -42,6 +42,7 @@ pub trait TypeCheck: Sized {
 pub struct TypeCheckContext<'a> {
     parent: Option<&'a TypeCheckContext<'a>>,
     variables: HashMap<String, Type>,
+    types: HashMap<String, Type>,
 }
 
 impl<'a> TypeCheckContext<'a> {
@@ -49,6 +50,7 @@ impl<'a> TypeCheckContext<'a> {
         Self {
             parent: None,
             variables: HashMap::new(),
+            types: HashMap::new(),
         }
     }
 
@@ -69,10 +71,28 @@ impl<'a> TypeCheckContext<'a> {
         self.variables.insert(name.into(), ty);
     }
 
+    pub fn get_type(&self, name: impl Into<String>) -> Result<Type> {
+        let name = name.into();
+
+        self.types
+            .get(&name)
+            .cloned()
+            .or_else(|| {
+                self.parent
+                    .and_then(|parent_ctx| parent_ctx.get_type(name).ok())
+            })
+            .ok_or_else(|| TypeCheckError::UndefinedType.to_diagnostic())
+    }
+
+    pub fn declare_type(&mut self, name: impl Into<String>, ty: Type) {
+        self.types.insert(name.into(), ty);
+    }
+
     fn new_child_context(&self) -> TypeCheckContext<'_> {
         TypeCheckContext {
             parent: Some(self),
             variables: HashMap::new(),
+            types: HashMap::new(),
         }
     }
 }

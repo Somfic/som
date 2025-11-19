@@ -6,8 +6,8 @@ use cranelift::{
 
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
-        Ternary, Type, Unary, UnaryOperation,
+        Binary, BinaryOperation, Block, Call, Construction, Expression, Group, Lambda, Primary,
+        PrimaryKind, Ternary, Type, Unary, UnaryOperation,
     },
     emit::LambdaRegistry,
     Emit, EmitError, FunctionContext, ModuleContext, Result, Typed,
@@ -26,6 +26,7 @@ impl Emit for Expression<Typed> {
             Expression::Ternary(ternary) => ternary.declare(ctx),
             Expression::Lambda(lambda) => lambda.declare(ctx),
             Expression::Call(call) => call.declare(ctx),
+            Expression::Construction(construction) => construction.declare(ctx),
         }
     }
 
@@ -39,6 +40,7 @@ impl Emit for Expression<Typed> {
             Expression::Ternary(t) => t.emit(ctx),
             Expression::Lambda(l) => l.emit(ctx),
             Expression::Call(c) => c.emit(ctx),
+            Expression::Construction(construction) => construction.emit(ctx),
         }
     }
 }
@@ -348,5 +350,17 @@ impl Emit for Call<Typed> {
         let results = ctx.builder.inst_results(call);
 
         Ok(results[0])
+    }
+}
+
+impl Emit for Construction<Typed> {
+    type Output = Value;
+
+    fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
+        unimplemented!("declare for struct construction")
+    }
+
+    fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
+        unimplemented!("emit for struct construction")
     }
 }

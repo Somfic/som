@@ -207,9 +207,11 @@ impl Default for Lookup {
         .add_type(TokenKind::BooleanType, Type::Boolean)
         .add_type(TokenKind::Function, Type::Function)
         .add_type(TokenKind::CurlyOpen, Type::Struct)
-
-        // TODO: Add struct type parser
-        // .add_type(TokenKind::CurlyOpen, Type::Struct)
+        .add_lefthand_expression(
+            TokenKind::CurlyOpen,
+            Precedence::Assignment.left(),
+            Expression::Construction,
+        )
     }
 }
 
@@ -222,6 +224,7 @@ pub enum Precedence {
     Additive,
     Multiplicative,
     Calling,
+    Assignment,
 }
 
 impl Precedence {

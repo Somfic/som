@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
-        Pseudo, Ternary, Type, Unary,
+        Binary, BinaryOperation, Block, Call, Construction, Expression, Group, Lambda, Primary,
+        PrimaryKind, Pseudo, Ternary, Type, Unary,
     },
     parser::Untyped,
     type_check::{TypeCheckContext, Typed},
@@ -21,6 +21,7 @@ impl TypeCheck for Expression<Untyped> {
             Expression::Ternary(t) => t.type_check(ctx).map(Expression::Ternary),
             Expression::Lambda(l) => l.type_check(ctx).map(Expression::Lambda),
             Expression::Call(c) => c.type_check(ctx).map(Expression::Call),
+            Expression::Construction(c) => c.type_check(ctx).map(Expression::Construction),
         }
     }
 }
@@ -91,17 +92,13 @@ impl TypeCheck for Binary<Untyped> {
             BinaryOperation::Add
             | BinaryOperation::Subtract
             | BinaryOperation::Multiply
-            | BinaryOperation::Divide => {
-                lhs.ty().with_span(&(lhs.span() + rhs.span()))
-            }
+            | BinaryOperation::Divide => lhs.ty().with_span(&(lhs.span() + rhs.span())),
             BinaryOperation::LessThan
             | BinaryOperation::LessThanOrEqual
             | BinaryOperation::GreaterThan
             | BinaryOperation::GreaterThanOrEqual
             | BinaryOperation::Equality
-            | BinaryOperation::Inequality => {
-                Type::boolean(lhs.span() + rhs.span())
-            }
+            | BinaryOperation::Inequality => Type::boolean(lhs.span() + rhs.span()),
         };
 
         Ok(Binary {
@@ -282,6 +279,42 @@ impl TypeCheck for Call<Untyped> {
     }
 }
 
+impl TypeCheck for Construction<Untyped> {
+    type Output = Construction<Typed>;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let struct_ty = match ctx.get_type(self.struct_ty.clone()) {
+            Ok(ty) => ty,
+            Err(err) => {
+                return err
+                    .with_label(self.struct_ty.span.label("could not be found"))
+                    .to_err();
+            }
+        };
+
+        expect_struct(
+            &struct_ty,
+            format!(
+                "{} is not a struct and thus cannot be constructed",
+                struct_ty
+            ),
+        )?;
+
+        let mut typed_fields = Vec::new();
+        for (name, expr) in self.fields {
+            let typed_expr = expr.type_check(ctx)?;
+            typed_fields.push((name, typed_expr));
+        }
+
+        Ok(Construction {
+            ty: struct_ty.with_span(&self.span),
+            struct_ty: self.struct_ty,
+            fields: typed_fields,
+            span: self.span,
+        })
+    }
+}
+
 fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
     if a != b {
         return Err(TypeCheckError::TypeMismatch
@@ -302,6 +335,21 @@ fn expect_boolean(actual: &Type, hint: impl Into<String>) -> Result<()> {
                 actual
                     .span()
                     .label(format!("{}, expected a boolean", actual)),
+            )
+            .with_hint(hint.into())
+            .to_err();
+    }
+    Ok(())
+}
+
+fn expect_struct(actual: &Type, hint: impl Into<String>) -> Result<()> {
+    if !matches!(actual, Type::Struct(_)) {
+        return TypeCheckError::ExpectedType
+            .to_diagnostic()
+            .with_label(
+                actual
+                    .span()
+                    .label(format!("{}, expected a struct", actual)),
             )
             .with_hint(hint.into())
             .to_err();

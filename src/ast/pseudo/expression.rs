@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Expression, Group, Lambda, Primary, PrimaryKind,
-        Pseudo, Ternary, Unary, UnaryOperation,
+        Binary, BinaryOperation, Block, Call, Construction, Expression, Group, Lambda, Primary,
+        PrimaryKind, Pseudo, Ternary, Unary, UnaryOperation,
     },
     Phase,
 };
@@ -17,6 +17,7 @@ impl<P: Phase> Pseudo for Expression<P> {
             Expression::Ternary(t) => t.pseudo(),
             Expression::Lambda(l) => l.pseudo(),
             Expression::Call(c) => c.pseudo(),
+            Expression::Construction(c) => c.pseudo(),
         }
     }
 }
@@ -109,5 +110,18 @@ impl<P: Phase> Pseudo for Call<P> {
             .join(", ");
 
         format!("{}({})", self.callee.pseudo(), args)
+    }
+}
+
+impl<P: Phase> Pseudo for Construction<P> {
+    fn pseudo(&self) -> String {
+        let fields = self
+            .fields
+            .iter()
+            .map(|(name, expr)| format!("{}: {}", name.name, expr.pseudo()))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!("{} {{ {} }}", self.struct_ty.name, fields)
     }
 }
