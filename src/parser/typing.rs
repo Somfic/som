@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         BooleanType, CharacterType, DecimalType, FunctionType, I32Type, I64Type, StringType,
-        StructType, Type,
+        StructField, StructType, Type,
     },
     lexer::TokenKind,
     parser::{Parse, Parser},
@@ -112,7 +112,7 @@ impl Parse for StructType {
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
         let open = input.expect(TokenKind::CurlyOpen, "a struct", ParserError::ExpectedType)?;
 
-        let fields = vec![];
+        let mut fields = vec![];
 
         while let Some(token) = input.peek() {
             if token.kind == TokenKind::CurlyClose {
@@ -120,20 +120,28 @@ impl Parse for StructType {
             }
 
             if fields.len() > 0 {
-                input.expect(TokenKind::Comma, "a comma between fields", )
+                input.expect(
+                    TokenKind::Comma,
+                    "a comma between fields",
+                    ParserError::ExpectedField,
+                )?;
             }
 
-            let ident = input.parse_with()?;
+            let name = input.parse()?;
 
-            // there was no semicolon, this is the returning expression
-            match statement {
-                Statement::Expression(e) => expression = Some(e),
-                s => ParserError::InvalidReturningExpression
-                    .to_diagnostic()
-                    .with_label(s.span().label("this statement"))
-                    .with_hint(format!("{} cannot be used as a value", s))
-                    .to_err()?,
-            }
+            input.expect(TokenKind::Tilde, "a type", ParserError::ExpectedType)?;
+
+            let ty = input.parse()?;
+
+            fields.push(StructField { name, ty });
         }
+
+        let close = input.expect(TokenKind::CurlyClose, "a struct", ParserError::ExpectedType)?;
+
+        Ok(StructType {
+            name: None,
+            fields,
+            span: open.span + close.span,
+        })
     }
 }

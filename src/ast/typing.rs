@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use cranelift::prelude::types;
 
-use crate::{ast::Pseudo, Span};
+use crate::{ast::Pseudo, lexer::Identifier, Span};
 
 #[derive(Debug, Clone)]
 pub enum Type {
@@ -61,8 +61,8 @@ pub struct FunctionType {
 
 #[derive(Debug, Clone)]
 pub struct StructType {
-    pub name: String,
-    pub fields: Vec<Field>,
+    pub name: Option<Identifier>,
+    pub fields: Vec<StructField>,
     pub span: Span,
 }
 
@@ -118,7 +118,7 @@ impl Type {
         })
     }
 
-    pub fn struct_type(name: String, fields: Vec<Field>, span: Span) -> Self {
+    pub fn struct_type(name: Option<Identifier>, fields: Vec<StructField>, span: Span) -> Self {
         Type::Struct(StructType { name, fields, span })
     }
 
@@ -132,16 +132,10 @@ impl Type {
             Type::Decimal(_) => Type::decimal(span.clone()),
             Type::String(_) => Type::string(span.clone()),
             Type::Character(_) => Type::character(span.clone()),
-            Type::Function(f) => Type::function(
-                f.parameters.clone(),
-                f.returns.clone(),
-                span.clone(),
-            ),
-            Type::Struct(s) => Type::struct_type(
-                s.name.clone(),
-                s.fields.clone(),
-                span.clone(),
-            ),
+            Type::Function(f) => {
+                Type::function(f.parameters.clone(), f.returns.clone(), span.clone())
+            }
+            Type::Struct(s) => Type::struct_type(s.name.clone(), s.fields.clone(), span.clone()),
         }
     }
 }
@@ -169,8 +163,8 @@ impl PartialEq for Type {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Field {
-    pub name: String,
+pub struct StructField {
+    pub name: Identifier,
     pub ty: Type,
 }
 
@@ -240,7 +234,7 @@ impl Display for FunctionType {
 
 impl Display for StructType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "struct {}", self.name)
+        write!(f, "a struct")
     }
 }
 
@@ -266,7 +260,10 @@ impl Pseudo for Type {
                 s.push_str(&f.returns.pseudo());
                 s
             }
-            Type::Struct(s) => s.name.clone(),
+            Type::Struct(s) => s
+                .name
+                .as_ref()
+                .map_or("struct".to_string(), |name| name.name.to_string()),
         }
     }
 }

@@ -83,6 +83,8 @@ pub enum ParserError {
     ExpectedType,
     #[error("expected a type definition")]
     ExpectedTypeDefinition,
+    #[error("expected a field")]
+    ExpectedField,
 }
 
 #[derive(Debug, thiserror::Error)]

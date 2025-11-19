@@ -1,6 +1,6 @@
 use crate::{
-    ast::{Declaration, Expression, Scope, Statement, Type, TypeDefinition},
-    lexer::TokenKind,
+    ast::{Declaration, Expression, Scope, Statement, StructType, Type, TypeDefinition},
+    lexer::{Identifier, TokenKind},
     Parse, Parser, ParserError, Result, Untyped,
 };
 
@@ -109,11 +109,14 @@ impl Parse for TypeDefinition {
             ParserError::ExpectedTypeDefinition,
         )?;
 
-        let name = input.parse()?;
+        let name = input.parse::<Identifier>()?;
 
         input.expect(TokenKind::Equal, "a type", ParserError::ExpectedType)?;
 
-        let ty = input.parse::<Type>()?;
+        let ty = match input.parse::<Type>()? {
+            Type::Struct(s) => Type::struct_type(Some(name.clone()), s.fields, s.span),
+            ty => ty,
+        };
 
         Ok(TypeDefinition {
             span: open.span + ty.span().clone(),
