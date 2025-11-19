@@ -199,6 +199,15 @@ impl Default for Lookup {
         )
         .add_expression(TokenKind::Function, Expression::Lambda)
         .add_statement(TokenKind::Type, Statement::TypeDefinition)
+        .add_type(TokenKind::I32Type, Type::I32)
+        .add_type(TokenKind::I64Type, Type::I64)
+        .add_type(TokenKind::DecimalType, Type::Decimal)
+        .add_type(TokenKind::StringType, Type::String)
+        .add_type(TokenKind::CharacterType, Type::Character)
+        .add_type(TokenKind::BooleanType, Type::Boolean)
+        .add_type(TokenKind::Function, Type::Function)
+        .add_type(TokenKind::CurlyOpen, Type::Struct)
+
         // TODO: Add struct type parser
         // .add_type(TokenKind::CurlyOpen, Type::Struct)
     }

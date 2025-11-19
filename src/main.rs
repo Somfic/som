@@ -11,6 +11,7 @@ fn run() -> Result<(), Diagnostic> {
     let source = Source::from_raw(
         "
     {
+        type Test = bool;
         type Color = { r ~ int, g ~ int, b ~ int }; 
 
         let fib = fn(n ~ int) -> int {
