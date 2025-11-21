@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        BooleanType, CharacterType, DecimalType, FunctionType, I32Type, I64Type, PointerType,
-        StringType, StructField, StructType, Type,
+        BooleanType, ByteType, CharacterType, DecimalType, FunctionType, I32Type, I64Type,
+        PointerType, StringType, StructField, StructType, Type,
     },
     lexer::TokenKind,
     parser::{Parse, Parser},
@@ -23,6 +23,16 @@ impl Parse for Type {
         };
 
         parse_function(input)
+    }
+}
+
+impl Parse for ByteType {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let token = input.expect(TokenKind::ByteType, "a byte", ParserError::ExpectedType)?;
+
+        Ok(ByteType { span: token.span })
     }
 }
 

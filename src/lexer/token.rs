@@ -205,6 +205,8 @@ pub enum TokenKind {
     UnitType,
     /// The boolean type; `bool`.
     BooleanType,
+    /// The byte type; `byte`.
+    ByteType,
     /// The integer type; `i32`.
     I32Type,
     /// The integer type; `i64`.
@@ -280,6 +282,7 @@ impl Display for TokenKind {
             TokenKind::Trait => write!(f, "`trait`"),
             TokenKind::UnitType => write!(f, "a unit type"),
             TokenKind::BooleanType => write!(f, "a boolean type"),
+            TokenKind::ByteType => write!(f, "a byte type"),
             TokenKind::I32Type => write!(f, "an integer type"),
             TokenKind::I64Type => write!(f, "a long type"),
             TokenKind::DecimalType => write!(f, "a decimal type"),

@@ -11,10 +11,7 @@ fn run() -> Result<(), Diagnostic> {
     let source = Source::from_raw(
         "
     {
-        type Color = { r ~ int, g ~ int, b ~ int }; 
-        let red = Color { r: 1, g: 1, b: 1 };
-
-        red.r + red.g + red.b
+       type String = { ptr ~ *byte, len ~ long };
     }",
     );
 

@@ -341,6 +341,7 @@ impl Lexer {
             "enum" => (TokenKind::Enum, TokenValue::None),
             "trait" => (TokenKind::Trait, TokenValue::None),
             "bool" => (TokenKind::BooleanType, TokenValue::None),
+            "byte" => (TokenKind::ByteType, TokenValue::None),
             "int" => (TokenKind::I32Type, TokenValue::None),
             "long" => (TokenKind::I64Type, TokenValue::None),
             "dec" => (TokenKind::DecimalType, TokenValue::None),

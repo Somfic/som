@@ -199,6 +199,7 @@ impl Default for Lookup {
         )
         .add_expression(TokenKind::Function, Expression::Lambda)
         .add_statement(TokenKind::Type, Statement::TypeDefinition)
+        .add_type(TokenKind::ByteType, Type::Byte)
         .add_type(TokenKind::I32Type, Type::I32)
         .add_type(TokenKind::I64Type, Type::I64)
         .add_type(TokenKind::DecimalType, Type::Decimal)
