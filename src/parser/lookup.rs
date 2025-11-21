@@ -212,6 +212,12 @@ impl Default for Lookup {
             Precedence::Assignment.left(),
             Expression::Construction,
         )
+        .add_lefthand_expression(
+            TokenKind::Dot,
+            Precedence::FieldAccess.left(),
+            Expression::FieldAccess,
+        )
+        .add_type(TokenKind::Star, Type::Pointer)
     }
 }
 
@@ -225,6 +231,7 @@ pub enum Precedence {
     Multiplicative,
     Calling,
     Assignment,
+    FieldAccess,
 }
 
 impl Precedence {

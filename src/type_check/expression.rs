@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Construction, Expression, Group, Lambda, Primary,
-        PrimaryKind, Pseudo, Ternary, Type, Unary,
+        Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess, Group, Lambda,
+        Primary, PrimaryKind, Pseudo, Ternary, Type, Unary,
     },
     parser::Untyped,
     type_check::{TypeCheckContext, Typed},
@@ -22,6 +22,7 @@ impl TypeCheck for Expression<Untyped> {
             Expression::Lambda(l) => l.type_check(ctx).map(Expression::Lambda),
             Expression::Call(c) => c.type_check(ctx).map(Expression::Call),
             Expression::Construction(c) => c.type_check(ctx).map(Expression::Construction),
+            Expression::FieldAccess(f) => f.type_check(ctx).map(Expression::FieldAccess),
         }
     }
 }
@@ -355,4 +356,70 @@ fn expect_struct(actual: &Type, hint: impl Into<String>) -> Result<()> {
             .to_err();
     }
     Ok(())
+}
+
+impl TypeCheck for FieldAccess<Untyped> {
+    type Output = FieldAccess<Typed>;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let object = self.object.type_check(ctx)?;
+
+        let struct_ty = match object.ty() {
+            Type::Struct(s) => s,
+            _ => {
+                return TypeCheckError::ExpectedStruct
+                    .to_diagnostic()
+                    .with_label(object.span().label("not a struct"))
+                    .with_hint(format!(
+                        "{} is not a struct and thus has no fields",
+                        object.ty()
+                    ))
+                    .to_err();
+            }
+        };
+
+        let struct_name = match &struct_ty.name {
+            Some(struct_name) => struct_name,
+            None => {
+                return TypeCheckError::ExpectedStruct
+                    .to_diagnostic()
+                    .with_label(object.span().label("not a struct"))
+                    .with_hint(format!(
+                        "{} is not a struct and thus has no fields",
+                        object.ty()
+                    ))
+                    .to_err();
+            }
+        };
+
+        let field_ty = match struct_ty.fields.iter().find_map(|field| {
+            if field.name == self.field {
+                Some(field.ty.clone())
+            } else {
+                None
+            }
+        }) {
+            Some(ty) => ty,
+            None => {
+                return TypeCheckError::ExpectedField
+                    .to_diagnostic()
+                    .with_label(self.span.label(format!(
+                        "struct '{}' has no field named '{}'",
+                        struct_name, self.field
+                    )))
+                    .with_hint(format!(
+                        "the struct '{}' does not contain a field named '{}'",
+                        struct_name, self.field
+                    ))
+                    .to_err();
+            }
+        };
+
+        Ok(FieldAccess {
+            ty: field_ty.with_span(&self.span),
+            object: Box::new(object),
+            field: self.field,
+            span: self.span,
+        })
+    }
 }

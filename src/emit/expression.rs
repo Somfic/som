@@ -1,13 +1,16 @@
 use cranelift::{
     codegen::ir::BlockArg,
     module::{FuncId, Linkage, Module, ModuleError},
-    prelude::{types, AbiParam, FunctionBuilder, InstBuilder, IntCC, Signature, Value},
+    prelude::{
+        types, AbiParam, FunctionBuilder, InstBuilder, IntCC, MemFlags, Signature, StackSlotData,
+        StackSlotKind, Value,
+    },
 };
 
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Construction, Expression, Group, Lambda, Primary,
-        PrimaryKind, Ternary, Type, Unary, UnaryOperation,
+        Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess, Group, Lambda,
+        Primary, PrimaryKind, Ternary, Type, Unary, UnaryOperation,
     },
     emit::LambdaRegistry,
     Emit, EmitError, FunctionContext, ModuleContext, Result, Typed,
@@ -27,6 +30,7 @@ impl Emit for Expression<Typed> {
             Expression::Lambda(lambda) => lambda.declare(ctx),
             Expression::Call(call) => call.declare(ctx),
             Expression::Construction(construction) => construction.declare(ctx),
+            Expression::FieldAccess(field_access) => field_access.declare(ctx),
         }
     }
 
@@ -41,6 +45,7 @@ impl Emit for Expression<Typed> {
             Expression::Lambda(l) => l.emit(ctx),
             Expression::Call(c) => c.emit(ctx),
             Expression::Construction(construction) => construction.emit(ctx),
+            Expression::FieldAccess(field_access) => field_access.emit(ctx),
         }
     }
 }
@@ -357,10 +362,79 @@ impl Emit for Construction<Typed> {
     type Output = Value;
 
     fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
-        unimplemented!("declare for struct construction")
+        for (_, expr) in &self.fields {
+            expr.declare(ctx)?;
+        }
+        Ok(())
     }
 
     fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
-        unimplemented!("emit for struct construction")
+        let mut offset = 0;
+        let mut offsets = vec![];
+
+        for (field_name, field_value) in &self.fields {
+            let field_ty = field_value.ty();
+            let field_offset = field_ty.size();
+            offsets.push((offset, field_value));
+            offset += field_offset;
+        }
+
+        let total_size = offset;
+
+        let stack_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+            StackSlotKind::ExplicitSlot,
+            total_size,
+            0,
+        ));
+
+        let pointer = ctx.builder.ins().stack_addr(types::I64, stack_slot, 0);
+
+        for (offset, value) in offsets {
+            let value = value.emit(ctx)?;
+
+            ctx.builder
+                .ins()
+                .store(MemFlags::new(), value, pointer, offset as i32);
+        }
+
+        Ok(pointer)
+    }
+}
+
+impl Emit for FieldAccess<Typed> {
+    type Output = Value;
+
+    fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
+        self.object.declare(ctx)?;
+        Ok(())
+    }
+
+    fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
+        let pointer = self.object.emit(ctx)?;
+
+        let Type::Struct(struct_type) = self.object.ty() else {
+            unreachable!("type checker ensures this is a struct")
+        };
+
+        let mut offset = 0;
+        let mut field_type = None;
+
+        for field in &struct_type.fields {
+            if field.name == self.field {
+                field_type = Some(&field.ty);
+                break; // Found it!
+            }
+            offset += field.ty.size(); // Accumulate offset
+        }
+
+        let field_type = field_type.expect("type checker ensures field exists");
+
+        let cranelift_type = field_type.clone().into();
+        let value = ctx
+            .builder
+            .ins()
+            .load(cranelift_type, MemFlags::new(), pointer, offset as i32);
+
+        Ok(value)
     }
 }

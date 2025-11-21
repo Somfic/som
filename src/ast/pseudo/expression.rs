@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Construction, Expression, Group, Lambda, Primary,
-        PrimaryKind, Pseudo, Ternary, Unary, UnaryOperation,
+        Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess, Group, Lambda,
+        Primary, PrimaryKind, Pseudo, Ternary, Unary, UnaryOperation,
     },
     Phase,
 };
@@ -18,6 +18,7 @@ impl<P: Phase> Pseudo for Expression<P> {
             Expression::Lambda(l) => l.pseudo(),
             Expression::Call(c) => c.pseudo(),
             Expression::Construction(c) => c.pseudo(),
+            Expression::FieldAccess(a) => a.pseudo(),
         }
     }
 }
@@ -123,5 +124,11 @@ impl<P: Phase> Pseudo for Construction<P> {
             .join(", ");
 
         format!("{} {{ {} }}", self.struct_ty.name, fields)
+    }
+}
+
+impl<P: Phase> Pseudo for FieldAccess<P> {
+    fn pseudo(&self) -> String {
+        format!("{}.{}", self.object.pseudo(), self.field.name)
     }
 }

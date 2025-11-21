@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Construction, Expression, Group, Lambda, Parameter,
-        Primary, PrimaryKind, Statement, Ternary, Type, Unary,
+        Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess, Group, Lambda,
+        Parameter, Primary, PrimaryKind, Statement, Ternary, Type, Unary,
     },
     lexer::{Identifier, Token, TokenKind, TokenValue},
     parser::{lookup::Precedence, Parse, Untyped},
@@ -475,6 +475,29 @@ impl Parse for Construction<Untyped> {
         Ok(Construction {
             struct_ty: type_ident,
             fields,
+            span,
+            ty: (),
+        })
+    }
+}
+
+impl Parse for FieldAccess<Untyped> {
+    type Params = Expression<Untyped>;
+
+    fn parse(input: &mut Parser, object: Self::Params) -> Result<Self> {
+        input.expect(
+            TokenKind::Dot,
+            "for field access",
+            ParserError::ExpectedFieldAccess,
+        )?;
+
+        let field = input.parse::<Identifier>()?;
+
+        let span = object.span().clone() + field.span.clone();
+
+        Ok(FieldAccess {
+            object: Box::new(object),
+            field,
             span,
             ty: (),
         })

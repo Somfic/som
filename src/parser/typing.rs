@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        BooleanType, CharacterType, DecimalType, FunctionType, I32Type, I64Type, StringType,
-        StructField, StructType, Type,
+        BooleanType, CharacterType, DecimalType, FunctionType, I32Type, I64Type, PointerType,
+        StringType, StructField, StructType, Type,
     },
     lexer::TokenKind,
     parser::{Parse, Parser},
@@ -142,6 +142,22 @@ impl Parse for StructType {
             name: None,
             fields,
             span: open.span + close.span,
+        })
+    }
+}
+
+impl Parse for PointerType {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let star_token =
+            input.expect(TokenKind::Star, "a pointer type", ParserError::ExpectedType)?;
+
+        let pointee_type = input.parse()?;
+
+        Ok(PointerType {
+            pointee: Box::new(pointee_type),
+            span: star_token.span,
         })
     }
 }

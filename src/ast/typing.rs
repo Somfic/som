@@ -8,6 +8,7 @@ use crate::{ast::Pseudo, lexer::Identifier, Span};
 pub enum Type {
     Unit(UnitType),
     Boolean(BooleanType),
+    Byte(ByteType),
     I32(I32Type),
     I64(I64Type),
     Decimal(DecimalType),
@@ -15,6 +16,7 @@ pub enum Type {
     Character(CharacterType),
     Function(FunctionType),
     Struct(StructType),
+    Pointer(PointerType),
 }
 
 #[derive(Debug, Clone)]
@@ -24,6 +26,11 @@ pub struct UnitType {
 
 #[derive(Debug, Clone)]
 pub struct BooleanType {
+    pub span: Span,
+}
+
+#[derive(Debug, Clone)]
+pub struct ByteType {
     pub span: Span,
 }
 
@@ -66,11 +73,18 @@ pub struct StructType {
     pub span: Span,
 }
 
+#[derive(Debug, Clone)]
+pub struct PointerType {
+    pub pointee: Box<Type>,
+    pub span: Span,
+}
+
 impl Type {
     pub fn span(&self) -> &Span {
         match self {
             Type::Unit(t) => &t.span,
             Type::Boolean(t) => &t.span,
+            Type::Byte(t) => &t.span,
             Type::I32(t) => &t.span,
             Type::I64(t) => &t.span,
             Type::Decimal(t) => &t.span,
@@ -78,6 +92,7 @@ impl Type {
             Type::Character(t) => &t.span,
             Type::Function(t) => &t.span,
             Type::Struct(t) => &t.span,
+            Type::Pointer(t) => &t.span,
         }
     }
 
@@ -88,6 +103,10 @@ impl Type {
 
     pub fn boolean(span: Span) -> Self {
         Type::Boolean(BooleanType { span })
+    }
+
+    pub fn byte(span: Span) -> Self {
+        Type::Byte(ByteType { span })
     }
 
     pub fn i32(span: Span) -> Self {
@@ -122,11 +141,16 @@ impl Type {
         Type::Struct(StructType { name, fields, span })
     }
 
+    pub fn pointer(pointee: Box<Type>, span: Span) -> Self {
+        Type::Pointer(PointerType { pointee, span })
+    }
+
     // Clone type with a new span (useful for error messages)
     pub fn with_span(&self, span: &Span) -> Self {
         match self {
             Type::Unit(_) => Type::unit(span.clone()),
             Type::Boolean(_) => Type::boolean(span.clone()),
+            Type::Byte(_) => Type::byte(span.clone()),
             Type::I32(_) => Type::i32(span.clone()),
             Type::I64(_) => Type::i64(span.clone()),
             Type::Decimal(_) => Type::decimal(span.clone()),
@@ -136,6 +160,7 @@ impl Type {
                 Type::function(f.parameters.clone(), f.returns.clone(), span.clone())
             }
             Type::Struct(s) => Type::struct_type(s.name.clone(), s.fields.clone(), span.clone()),
+            Type::Pointer(p) => Type::pointer(p.pointee.clone(), span.clone()),
         }
     }
 }
@@ -157,6 +182,7 @@ impl PartialEq for Type {
                 // Nominal typing: compare names
                 a.name == b.name
             }
+            (Type::Pointer(a), Type::Pointer(b)) => a.pointee == b.pointee,
             _ => false,
         }
     }
@@ -173,6 +199,7 @@ impl Display for Type {
         match self {
             Type::Unit(t) => write!(f, "{}", t),
             Type::Boolean(t) => write!(f, "{}", t),
+            Type::Byte(t) => write!(f, "{}", t),
             Type::I32(t) => write!(f, "{}", t),
             Type::I64(t) => write!(f, "{}", t),
             Type::Decimal(t) => write!(f, "{}", t),
@@ -180,6 +207,7 @@ impl Display for Type {
             Type::Character(t) => write!(f, "{}", t),
             Type::Function(t) => write!(f, "{}", t),
             Type::Struct(t) => write!(f, "{}", t),
+            Type::Pointer(t) => write!(f, "{} pointer", t.pointee),
         }
     }
 }
@@ -193,6 +221,12 @@ impl Display for UnitType {
 impl Display for BooleanType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "a boolean")
+    }
+}
+
+impl Display for ByteType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "a byte")
     }
 }
 
@@ -243,6 +277,7 @@ impl Pseudo for Type {
         match self {
             Type::Unit(_) => "unit".to_string(),
             Type::Boolean(_) => "bool".to_string(),
+            Type::Byte(_) => "byte".to_string(),
             Type::I32(_) => "i32".to_string(),
             Type::I64(_) => "i64".to_string(),
             Type::Decimal(_) => "decimal".to_string(),
@@ -264,6 +299,7 @@ impl Pseudo for Type {
                 .name
                 .as_ref()
                 .map_or("struct".to_string(), |name| name.name.to_string()),
+            Type::Pointer(p) => format!("*{}", p.pointee.pseudo()),
         }
     }
 }
@@ -273,13 +309,33 @@ impl From<Type> for cranelift::prelude::Type {
         match value {
             Type::Unit(_) => types::I8,
             Type::Boolean(_) => types::I8,
+            Type::Byte(_) => types::I8,
             Type::I32(_) => types::I32,
             Type::I64(_) => types::I64,
             Type::Decimal(_) => types::F64,
             Type::String(_) => todo!("string cranelift type"),
             Type::Character(_) => todo!("character cranelift type"),
             Type::Function(_) => types::I64, // pointer
-            Type::Struct(_) => todo!("struct cranelift type"),
+            Type::Struct(_) => types::I64,   // pointer
+            Type::Pointer(_) => types::I64,  // pointer
+        }
+    }
+}
+
+impl Type {
+    pub fn size(&self) -> u32 {
+        match self {
+            Type::Unit(unit_type) => 0,
+            Type::Boolean(boolean_type) => 1,
+            Type::Byte(byte_type) => 1,
+            Type::I32(i32_type) => 4,
+            Type::I64(i64_type) => 8,
+            Type::Decimal(decimal_type) => 8,
+            Type::String(string_type) => todo!(),
+            Type::Character(character_type) => todo!(),
+            Type::Function(function_type) => todo!(),
+            Type::Struct(struct_type) => struct_type.fields.iter().map(|f| f.ty.size()).sum(),
+            Type::Pointer(pointer_type) => 8, // assuming 64-bit pointers
         }
     }
 }

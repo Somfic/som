@@ -87,6 +87,8 @@ pub enum ParserError {
     ExpectedField,
     #[error("expected a struct")]
     ExpectedStruct,
+    #[error("expected a '.' for field access")]
+    ExpectedFieldAccess,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -103,6 +105,10 @@ pub enum TypeCheckError {
     ArgumentCountMismatch,
     #[error("undefined type")]
     UndefinedType,
+    #[error("expected a struct")]
+    ExpectedStruct,
+    #[error("expected a field")]
+    ExpectedField,
 }
 
 #[derive(Debug, thiserror::Error)]

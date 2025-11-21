@@ -16,6 +16,7 @@ pub enum Expression<P: Phase> {
     Lambda(Lambda<P>),
     Call(Call<P>),
     Construction(Construction<P>),
+    FieldAccess(FieldAccess<P>),
 }
 
 impl<P: Phase> Expression<P> {
@@ -30,6 +31,7 @@ impl<P: Phase> Expression<P> {
             Expression::Lambda(l) => &l.span,
             Expression::Call(c) => &c.span,
             Expression::Construction(c) => &c.span,
+            Expression::FieldAccess(f) => &f.span,
         }
     }
 
@@ -44,6 +46,7 @@ impl<P: Phase> Expression<P> {
             Expression::Lambda(l) => &l.ty,
             Expression::Call(c) => &c.ty,
             Expression::Construction(c) => &c.ty,
+            Expression::FieldAccess(f) => &f.ty,
         }
     }
 }
@@ -60,6 +63,7 @@ impl<P: Phase> Display for Expression<P> {
             Expression::Lambda(l) => write!(f, "a lambda"),
             Expression::Call(c) => write!(f, "a function call"),
             Expression::Construction(c) => write!(f, "a construction"),
+            Expression::FieldAccess(a) => write!(f, "a field access"),
         }
     }
 }
@@ -217,4 +221,12 @@ pub struct Construction<P: Phase> {
     pub struct_ty: Identifier,
     pub fields: Vec<(Identifier, Expression<P>)>,
     pub span: Span,
+}
+
+#[derive(Debug)]
+pub struct FieldAccess<P: Phase> {
+    pub object: Box<Expression<P>>,
+    pub field: Identifier,
+    pub span: Span,
+    pub ty: P::TypeInfo,
 }
