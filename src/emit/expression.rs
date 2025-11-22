@@ -9,10 +9,12 @@ use cranelift::{
 
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess, Group, Lambda,
-        Primary, PrimaryKind, Ternary, Type, Unary, UnaryOperation,
+        Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess, Group,
+        I64Type, Lambda, Primary, PrimaryKind, StructField, StructType, Ternary, Type, Unary,
+        UnaryOperation,
     },
     emit::LambdaRegistry,
+    lexer::Identifier,
     Emit, EmitError, FunctionContext, ModuleContext, Result, Typed,
 };
 
@@ -63,7 +65,40 @@ impl Emit for Primary<Typed> {
             PrimaryKind::I32(i) => ctx.builder.ins().iconst(types::I32, *i as i64),
             PrimaryKind::I64(i) => ctx.builder.ins().iconst(types::I64, *i),
             PrimaryKind::Decimal(d) => ctx.builder.ins().f64const(*d),
-            PrimaryKind::String(s) => unimplemented!("string emit"),
+            PrimaryKind::String(s) => {
+                let len = s.len() as u32;
+                let string_bytes = s.as_bytes();
+                let stack_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    len,
+                    0,
+                ));
+                let pointer = ctx.builder.ins().stack_addr(types::I64, stack_slot, 0);
+                for (i, &byte) in string_bytes.iter().enumerate() {
+                    let byte = ctx.builder.ins().iconst(types::I8, byte as i64);
+                    ctx.builder
+                        .ins()
+                        .store(MemFlags::new(), byte, pointer, i as i32);
+                }
+
+                // Create a struct containing ptr and len
+                let struct_size = 16; // 8 bytes for ptr + 8 bytes for len
+                let struct_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    struct_size,
+                    0,
+                ));
+                let struct_pointer = ctx.builder.ins().stack_addr(types::I64, struct_slot, 0);
+                
+                // Store ptr at offset 0
+                ctx.builder.ins().store(MemFlags::new(), pointer, struct_pointer, 0);
+                
+                // Store len at offset 8
+                let len_value = ctx.builder.ins().iconst(types::I64, len as i64);
+                ctx.builder.ins().store(MemFlags::new(), len_value, struct_pointer, 8);
+
+                struct_pointer
+            }
             PrimaryKind::Character(c) => unimplemented!("character emit"),
             PrimaryKind::Identifier(ident) => ident.emit(ctx)?,
         })
