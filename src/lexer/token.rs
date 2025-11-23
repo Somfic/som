@@ -170,6 +170,8 @@ pub enum TokenKind {
     Function,
     /// An extern keyword; `extern`.
     Extern,
+    /// An as keyword; `as`.
+    As,
     /// A return keyword; `return`.
     Return,
 
@@ -255,6 +257,7 @@ impl Display for TokenKind {
             TokenKind::Type => write!(f, "`type`"),
             TokenKind::Function => write!(f, "`fn`"),
             TokenKind::Extern => write!(f, "`extern`"),
+            TokenKind::As => write!(f, "`as`"),
             TokenKind::Return => write!(f, "`return`"),
             TokenKind::Use => write!(f, "`use`"),
             TokenKind::Mod => write!(f, "`mod`"),
@@ -331,6 +334,13 @@ impl Emit for Identifier {
     }
 
     fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
+        if let Some((func_id, _sig)) = ctx.extern_registry.get(&*self.name) {
+            // It's an extern function - get a reference
+            let func_ref = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);
+            let address = ctx.builder.ins().func_addr(types::I64, func_ref);
+            return Ok(address);
+        }
+
         // Check if this identifier refers to a self-referencing lambda
         if let Some(&lambda_id) = ctx.self_referencing_lambdas.get(&*self.name) {
             // This is a recursive call - emit function address

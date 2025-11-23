@@ -16,6 +16,8 @@ impl<P: Phase> Pseudo for Statement<P> {
                     type_definition.ty.pseudo()
                 )
             }
+            Statement::ExternDefinition(extern_definition) => todo!(),
+            Statement::WhileLoop(while_loop) => todo!(),
         }
     }
 }

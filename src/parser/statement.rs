@@ -1,5 +1,8 @@
 use crate::{
-    ast::{Declaration, Expression, Scope, Statement, StructType, Type, TypeDefinition},
+    ast::{
+        Declaration, Expression, ExternDefinition, ExternFunction, Scope, Statement, StructType,
+        Type, TypeDefinition, WhileLoop,
+    },
     lexer::{Identifier, TokenKind},
     Parse, Parser, ParserError, Result, Untyped,
 };
@@ -59,7 +62,7 @@ impl Parse for Scope<Untyped> {
                 break;
             }
 
-            statements.push(input.parse::<Statement<_>>()?);
+            statements.push(input.parse_with::<Statement<_>>(true)?);
         }
 
         let close = input.expect(
@@ -122,6 +125,133 @@ impl Parse for TypeDefinition {
             span: open.span + ty.span().clone(),
             ty,
             name,
+        })
+    }
+}
+
+impl Parse for ExternDefinition {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let start = input.expect(
+            TokenKind::Extern,
+            "an extern definition",
+            ParserError::ExpectedExternDefinition,
+        )?;
+
+        let library = input.parse()?;
+
+        fn parse_extern_function(input: &mut Parser) -> Result<ExternFunction> {
+            let name = input.parse::<Identifier>()?;
+
+            let alias = if let Some(token) = input.peek() {
+                if token.kind == TokenKind::As {
+                    input.expect(
+                        TokenKind::As,
+                        "an alias for the extern function",
+                        ParserError::ExpectedExternFunctionAlias,
+                    )?;
+                    Some(input.parse::<Identifier>()?)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            input.expect(
+                TokenKind::Equal,
+                "an extern function definition",
+                ParserError::ExpectedExternFunctionDefinition,
+            )?;
+
+            let signature = match input.parse::<Type>()? {
+                Type::Function(f) => f,
+                _ => {
+                    return ParserError::ExpectedFunctionType
+                        .to_diagnostic()
+                        .with_label(
+                            input
+                                .lexer
+                                .cursor
+                                .label("expected a function type for extern function"),
+                        )
+                        .to_err()
+                }
+            };
+
+            let symbol = alias
+                .map(|a| a.name)
+                .unwrap_or_else(|| name.name.clone())
+                .to_string();
+
+            Ok(ExternFunction {
+                name,
+                symbol,
+                span: signature.span.clone(),
+                signature,
+            })
+        }
+
+        match input.peek() {
+            Some(token) if token.kind == TokenKind::CurlyOpen => {
+                input.expect(
+                    TokenKind::CurlyOpen,
+                    "start of extern block",
+                    ParserError::ExpectedScopeStart,
+                )?;
+
+                let mut functions = vec![];
+                while let Some(token) = input.peek() {
+                    if token.kind == TokenKind::CurlyClose {
+                        break;
+                    }
+
+                    functions.push(parse_extern_function(input)?);
+                    input.expect(
+                        TokenKind::Semicolon,
+                        "a closing semicolon",
+                        ParserError::ExpectedSemicolon,
+                    )?;
+                }
+                let end = input.expect(
+                    TokenKind::CurlyClose,
+                    "end of extern block",
+                    ParserError::ExpectedScopeEnd,
+                )?;
+                Ok(ExternDefinition {
+                    library,
+                    functions,
+                    span: start.span + end.span,
+                })
+            }
+            _ => {
+                let function = parse_extern_function(input)?;
+
+                Ok(ExternDefinition {
+                    library,
+                    functions: vec![function],
+                    span: start.span,
+                })
+            }
+        }
+    }
+}
+
+impl Parse for WhileLoop<Untyped> {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let open = input.expect(TokenKind::While, "while loop", ParserError::ExpectedWhile)?;
+
+        let condition = input.parse_with(crate::parser::lookup::Precedence::Ternary.as_u8())?;
+
+        let statement = input.parse::<Statement<Untyped>>()?;
+
+        Ok(WhileLoop {
+            span: open.span + statement.span().clone(),
+            condition,
+            statement: Box::new(statement),
         })
     }
 }

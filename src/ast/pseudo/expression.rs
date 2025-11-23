@@ -19,6 +19,7 @@ impl<P: Phase> Pseudo for Expression<P> {
             Expression::Call(c) => c.pseudo(),
             Expression::Construction(c) => c.pseudo(),
             Expression::FieldAccess(a) => a.pseudo(),
+            Expression::Assignment(a) => a.pseudo(),
         }
     }
 }
@@ -130,5 +131,11 @@ impl<P: Phase> Pseudo for Construction<P> {
 impl<P: Phase> Pseudo for FieldAccess<P> {
     fn pseudo(&self) -> String {
         format!("{}.{}", self.object.pseudo(), self.field.name)
+    }
+}
+
+impl<P: Phase> Pseudo for crate::ast::Assignment<P> {
+    fn pseudo(&self) -> String {
+        format!("{} = {}", self.target.pseudo(), self.value.pseudo())
     }
 }

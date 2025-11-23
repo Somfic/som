@@ -210,7 +210,7 @@ impl Default for Lookup {
         .add_type(TokenKind::CurlyOpen, Type::Struct)
         .add_lefthand_expression(
             TokenKind::CurlyOpen,
-            Precedence::Assignment.left(),
+            Precedence::Construction.left(),
             Expression::Construction,
         )
         .add_lefthand_expression(
@@ -219,12 +219,20 @@ impl Default for Lookup {
             Expression::FieldAccess,
         )
         .add_type(TokenKind::Star, Type::Pointer)
+        .add_statement(TokenKind::Extern, Statement::ExternDefinition)
+        .add_statement(TokenKind::While, Statement::WhileLoop)
+        .add_lefthand_expression(
+            TokenKind::Equal,
+            Precedence::Assignment.right(),
+            Expression::Assignment,
+        )
     }
 }
 
 #[repr(u8)]
 #[derive(Copy, Clone)]
 pub enum Precedence {
+    Construction,
     Ternary,
     Equality,
     Comparison,

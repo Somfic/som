@@ -11,7 +11,14 @@ fn run() -> Result<(), Diagnostic> {
     let source = Source::from_raw(
         "
     {
-       type String = { ptr ~ *byte, len ~ long };
+        extern c puts as puts = fn(*byte) -> int;
+
+        let a = 1;
+        while a > 0 {
+            puts(\"Hello, World!\");
+
+            a = a - 1;
+        };
     }",
     );
 
@@ -30,7 +37,7 @@ fn run() -> Result<(), Diagnostic> {
     let runner = Runner::new(&executable);
     let result = runner.run()?;
 
-    println!("{}", result);
+    println!("Process exited with: {}", result);
 
     Ok(())
 }

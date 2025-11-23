@@ -1,6 +1,9 @@
 use crate::{
-    ast::{Declaration, Expression, Scope, Statement, TypeDefinition},
-    Result, TypeCheck, TypeCheckContext, Typed, Untyped,
+    ast::{
+        Declaration, Expression, ExternDefinition, Scope, Statement, Type, TypeDefinition,
+        WhileLoop,
+    },
+    expect_boolean, Result, TypeCheck, TypeCheckContext, Typed, Untyped,
 };
 
 impl TypeCheck for Statement<Untyped> {
@@ -12,6 +15,8 @@ impl TypeCheck for Statement<Untyped> {
             Statement::Scope(s) => Statement::Scope(s.type_check(ctx)?),
             Statement::Declaration(d) => Statement::Declaration(d.type_check(ctx)?),
             Statement::TypeDefinition(t) => Statement::TypeDefinition(t.type_check(ctx)?),
+            Statement::ExternDefinition(e) => Statement::ExternDefinition(e.type_check(ctx)?),
+            Statement::WhileLoop(w) => Statement::WhileLoop(w.type_check(ctx)?),
         })
     }
 }
@@ -60,5 +65,37 @@ impl TypeCheck for TypeDefinition {
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
         ctx.declare_type(self.name.clone(), self.ty.clone());
         Ok(self)
+    }
+}
+
+impl TypeCheck for ExternDefinition {
+    type Output = ExternDefinition;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        for function in &self.functions {
+            ctx.declare_variable(
+                function.name.clone(),
+                Type::Function(function.signature.clone()),
+            );
+        }
+        Ok(self)
+    }
+}
+
+impl TypeCheck for WhileLoop<Untyped> {
+    type Output = WhileLoop<Typed>;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let condition = self.condition.type_check(ctx)?;
+
+        expect_boolean(&condition.ty(), "while loop condition must be a boolean")?;
+
+        let statement = self.statement.type_check(ctx)?;
+
+        Ok(WhileLoop {
+            span: self.span,
+            condition,
+            statement: Box::new(statement),
+        })
     }
 }

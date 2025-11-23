@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Expression, Type},
+    ast::{Expression, Pseudo, Type},
     parser::Untyped,
     Phase, Result, TypeCheckError,
 };
@@ -95,4 +95,53 @@ impl<'a> TypeCheckContext<'a> {
             types: HashMap::new(),
         }
     }
+}
+
+pub fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
+    if a == b {
+        return Ok(());
+    }
+
+    // Allow automatic String → *byte conversion for FFI
+    if matches!(a, Type::String(_))
+        && matches!(b, Type::Pointer(p) if matches!(&*p.pointee, Type::Byte(_)))
+    {
+        return Ok(()); // String can be implicitly converted to *byte
+    }
+
+    Err(TypeCheckError::TypeMismatch
+        .to_diagnostic()
+        .with_label(a.span().label(format!("{}", a.pseudo())))
+        .with_label(b.span().label(format!("{}", b.pseudo())))
+        .with_hint(hint.into()))
+}
+
+pub fn expect_boolean(actual: &Type, hint: impl Into<String>) -> Result<()> {
+    if !matches!(actual, Type::Boolean(_)) {
+        return TypeCheckError::ExpectedType
+            .to_diagnostic()
+            .with_label(
+                actual
+                    .span()
+                    .label(format!("{}, expected a boolean", actual)),
+            )
+            .with_hint(hint.into())
+            .to_err();
+    }
+    Ok(())
+}
+
+pub fn expect_struct(actual: &Type, hint: impl Into<String>) -> Result<()> {
+    if !matches!(actual, Type::Struct(_)) {
+        return TypeCheckError::ExpectedType
+            .to_diagnostic()
+            .with_label(
+                actual
+                    .span()
+                    .label(format!("{}, expected a struct", actual)),
+            )
+            .with_hint(hint.into())
+            .to_err();
+    }
+    Ok(())
 }

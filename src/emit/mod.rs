@@ -30,7 +30,7 @@ impl Emitter {
     pub fn new(triple: Triple) -> Result<Self> {
         let mut flag_builder = settings::builder();
         flag_builder.set("use_colocated_libcalls", "false").unwrap();
-        flag_builder.set("is_pic", "false").unwrap();
+        flag_builder.set("is_pic", "true").unwrap();
 
         let isa = isa::lookup(triple)
             .unwrap()
@@ -60,11 +60,16 @@ impl Emitter {
 
     pub fn compile(&mut self, expression: &Expression<Typed>) -> Result<PathBuf> {
         let mut lambda_registry = LambdaRegistry::new();
+        let mut extern_registry = HashMap::new();
 
         let mut module = self.new_module("main")?;
 
-        let mut module_context =
-            ModuleContext::new(self.isa.clone(), &mut module, &mut lambda_registry);
+        let mut module_context = ModuleContext::new(
+            self.isa.clone(),
+            &mut module,
+            &mut lambda_registry,
+            &mut extern_registry,
+        );
 
         expression.declare(&mut module_context)?;
 
@@ -141,8 +146,9 @@ impl Emitter {
         {
             let mut func_ctx = FunctionContext::new(
                 &mut builder,
-                &mut module_context.module,
+                module_context.module,
                 module_context.lambda_registry,
+                module_context.extern_registry,
             );
             let return_value = emit_body(&mut func_ctx)?;
             func_ctx.builder.ins().return_(&[return_value]);
@@ -164,6 +170,7 @@ pub struct ModuleContext<'a> {
     pub isa: Arc<dyn isa::TargetIsa>,
     pub module: &'a mut dyn Module,
     pub lambda_registry: &'a mut LambdaRegistry,
+    pub extern_registry: &'a mut HashMap<String, (FuncId, Signature)>,
 }
 
 impl<'a> ModuleContext<'a> {
@@ -171,11 +178,13 @@ impl<'a> ModuleContext<'a> {
         isa: Arc<dyn isa::TargetIsa>,
         module: &'a mut ObjectModule,
         lambda_registry: &'a mut LambdaRegistry,
+        extern_registry: &'a mut HashMap<String, (FuncId, Signature)>,
     ) -> Self {
         Self {
             isa,
             module,
             lambda_registry,
+            extern_registry,
         }
     }
 }
@@ -183,7 +192,8 @@ impl<'a> ModuleContext<'a> {
 pub struct FunctionContext<'a, 'b> {
     pub builder: &'b mut FunctionBuilder<'a>,
     pub module: &'b mut dyn Module,
-    pub lambda_registry: &'b mut LambdaRegistry,
+    pub lambda_registry: &'b LambdaRegistry,
+    pub extern_registry: &'b HashMap<String, (FuncId, Signature)>,
     pub variables: HashMap<String, Variable>,
     pub blocks: HashMap<String, Block>,
     pub self_referencing_lambdas: HashMap<String, usize>, // name -> lambda_id
@@ -193,12 +203,14 @@ impl<'a, 'b> FunctionContext<'a, 'b> {
     fn new(
         builder: &'b mut FunctionBuilder<'a>,
         module: &'b mut dyn Module,
-        lambda_registry: &'b mut LambdaRegistry,
+        lambda_registry: &'b LambdaRegistry,
+        extern_registry: &'b HashMap<String, (FuncId, Signature)>,
     ) -> Self {
         Self {
             builder,
             module,
             lambda_registry,
+            extern_registry,
             variables: HashMap::new(),
             blocks: HashMap::new(),
             self_referencing_lambdas: HashMap::new(),

@@ -1,8 +1,9 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess, Group, Lambda,
-        Primary, PrimaryKind, Pseudo, Ternary, Type, Unary,
+        Assignment, Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess,
+        Group, Lambda, Primary, PrimaryKind, Pseudo, Ternary, Type, Unary,
     },
+    expect_boolean, expect_struct, expect_type,
     parser::Untyped,
     type_check::{TypeCheckContext, Typed},
     Result, TypeCheck, TypeCheckError,
@@ -23,6 +24,7 @@ impl TypeCheck for Expression<Untyped> {
             Expression::Call(c) => c.type_check(ctx).map(Expression::Call),
             Expression::Construction(c) => c.type_check(ctx).map(Expression::Construction),
             Expression::FieldAccess(f) => f.type_check(ctx).map(Expression::FieldAccess),
+            Expression::Assignment(a) => a.type_check(ctx).map(Expression::Assignment),
         }
     }
 }
@@ -316,48 +318,6 @@ impl TypeCheck for Construction<Untyped> {
     }
 }
 
-fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
-    if a != b {
-        return Err(TypeCheckError::TypeMismatch
-            .to_diagnostic()
-            .with_label(a.span().label(format!("{}", a.pseudo())))
-            .with_label(b.span().label(format!("{}", b.pseudo())))
-            .with_hint(hint.into()));
-    }
-
-    Ok(())
-}
-
-fn expect_boolean(actual: &Type, hint: impl Into<String>) -> Result<()> {
-    if !matches!(actual, Type::Boolean(_)) {
-        return TypeCheckError::ExpectedType
-            .to_diagnostic()
-            .with_label(
-                actual
-                    .span()
-                    .label(format!("{}, expected a boolean", actual)),
-            )
-            .with_hint(hint.into())
-            .to_err();
-    }
-    Ok(())
-}
-
-fn expect_struct(actual: &Type, hint: impl Into<String>) -> Result<()> {
-    if !matches!(actual, Type::Struct(_)) {
-        return TypeCheckError::ExpectedType
-            .to_diagnostic()
-            .with_label(
-                actual
-                    .span()
-                    .label(format!("{}, expected a struct", actual)),
-            )
-            .with_hint(hint.into())
-            .to_err();
-    }
-    Ok(())
-}
-
 impl TypeCheck for FieldAccess<Untyped> {
     type Output = FieldAccess<Typed>;
 
@@ -419,6 +379,32 @@ impl TypeCheck for FieldAccess<Untyped> {
             ty: field_ty.with_span(&self.span),
             object: Box::new(object),
             field: self.field,
+            span: self.span,
+        })
+    }
+}
+
+impl TypeCheck for Assignment<Untyped> {
+    type Output = Assignment<Typed>;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let target = self.target.type_check(ctx)?;
+        let value = self.value.type_check(ctx)?;
+
+        expect_type(
+            target.ty(),
+            value.ty(),
+            format!(
+                "cannot assign value of type {} to target of type {}",
+                value.ty(),
+                target.ty()
+            ),
+        )?;
+
+        Ok(Assignment {
+            ty: target.ty().clone(),
+            target: Box::new(target),
+            value: Box::new(value),
             span: self.span,
         })
     }

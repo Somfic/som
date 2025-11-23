@@ -112,7 +112,55 @@ impl Parse for FunctionType {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
-        todo!()
+        let start = input.expect(
+            TokenKind::Function,
+            "a function type",
+            ParserError::ExpectedType,
+        )?;
+
+        input.expect(
+            TokenKind::ParenOpen,
+            "a function parameter list",
+            ParserError::ExpectedFunctionType,
+        )?;
+        let mut params = vec![];
+
+        while let Some(token) = input.peek() {
+            if token.kind == TokenKind::ParenClose {
+                break;
+            }
+
+            if !params.is_empty() {
+                input.expect(
+                    TokenKind::Comma,
+                    "a comma between parameters",
+                    ParserError::ExpectedParameter,
+                )?;
+            }
+
+            let param = input.parse()?;
+            params.push(param);
+        }
+
+        input.expect(
+            TokenKind::ParenClose,
+            "a function parameter list",
+            ParserError::ExpectedFunctionType,
+        )?;
+
+        input.expect(
+            TokenKind::Arrow,
+            "a return type",
+            ParserError::ExpectedFunctionType,
+        )?;
+
+        let return_type = input.parse()?;
+
+        Ok(FunctionType {
+            parameters: params,
+            returns: Box::new(return_type),
+            span: start.span,
+        })
     }
 }
 
@@ -129,7 +177,7 @@ impl Parse for StructType {
                 break;
             }
 
-            if fields.len() > 0 {
+            if !fields.is_empty() {
                 input.expect(
                     TokenKind::Comma,
                     "a comma between fields",

@@ -89,6 +89,20 @@ pub enum ParserError {
     ExpectedStruct,
     #[error("expected a '.' for field access")]
     ExpectedFieldAccess,
+    #[error("expected an extern definition")]
+    ExpectedExternDefinition,
+    #[error("expected an extern function alias")]
+    ExpectedExternFunctionAlias,
+    #[error("expected an extern function definition")]
+    ExpectedExternFunctionDefinition,
+    #[error("expected a function type")]
+    ExpectedFunctionType,
+    #[error("expected a parameter")]
+    ExpectedParameter,
+    #[error("expected a while loop")]
+    ExpectedWhile,
+    #[error("expected an assignment")]
+    ExpectedAssignment,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -123,6 +137,8 @@ pub enum EmitError {
     UndefinedFunction,
     #[error(transparent)]
     IoError(#[from] std::io::Error),
+    #[error("invalid assignment target")]
+    InvalidAssignmentTarget,
 }
 
 #[derive(Debug, thiserror::Error)]

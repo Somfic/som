@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess, Group, Lambda,
-        Parameter, Primary, PrimaryKind, Statement, Ternary, Type, Unary,
+        Assignment, Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess,
+        Group, Lambda, Parameter, Primary, PrimaryKind, Statement, Ternary, Type, Unary,
     },
     lexer::{Identifier, Token, TokenKind, TokenValue},
     parser::{lookup::Precedence, Parse, Untyped},
@@ -498,6 +498,29 @@ impl Parse for FieldAccess<Untyped> {
         Ok(FieldAccess {
             object: Box::new(object),
             field,
+            span,
+            ty: (),
+        })
+    }
+}
+
+impl Parse for Assignment<Untyped> {
+    type Params = Expression<Untyped>;
+
+    fn parse(input: &mut Parser, target: Self::Params) -> Result<Self> {
+        input.expect(
+            TokenKind::Equal,
+            "for assignment",
+            ParserError::ExpectedAssignment,
+        )?;
+
+        let value = input.parse_with::<Expression<_>>(0)?;
+
+        let span = target.span().clone() + value.span().clone();
+
+        Ok(Assignment {
+            target: Box::new(target),
+            value: Box::new(value),
             span,
             ty: (),
         })

@@ -17,6 +17,7 @@ pub enum Expression<P: Phase> {
     Call(Call<P>),
     Construction(Construction<P>),
     FieldAccess(FieldAccess<P>),
+    Assignment(Assignment<P>),
 }
 
 impl<P: Phase> Expression<P> {
@@ -32,6 +33,7 @@ impl<P: Phase> Expression<P> {
             Expression::Call(c) => &c.span,
             Expression::Construction(c) => &c.span,
             Expression::FieldAccess(f) => &f.span,
+            Expression::Assignment(a) => &a.span,
         }
     }
 
@@ -47,6 +49,7 @@ impl<P: Phase> Expression<P> {
             Expression::Call(c) => &c.ty,
             Expression::Construction(c) => &c.ty,
             Expression::FieldAccess(f) => &f.ty,
+            Expression::Assignment(a) => &a.ty,
         }
     }
 }
@@ -64,6 +67,7 @@ impl<P: Phase> Display for Expression<P> {
             Expression::Call(c) => write!(f, "a function call"),
             Expression::Construction(c) => write!(f, "a construction"),
             Expression::FieldAccess(a) => write!(f, "a field access"),
+            Expression::Assignment(a) => write!(f, "an assignment"),
         }
     }
 }
@@ -227,6 +231,14 @@ pub struct Construction<P: Phase> {
 pub struct FieldAccess<P: Phase> {
     pub object: Box<Expression<P>>,
     pub field: Identifier,
+    pub span: Span,
+    pub ty: P::TypeInfo,
+}
+
+#[derive(Debug)]
+pub struct Assignment<P: Phase> {
+    pub target: Box<Expression<P>>,
+    pub value: Box<Expression<P>>,
     pub span: Span,
     pub ty: P::TypeInfo,
 }

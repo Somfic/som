@@ -9,9 +9,9 @@ use cranelift::{
 
 use crate::{
     ast::{
-        Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess, Group,
-        I64Type, Lambda, Primary, PrimaryKind, StructField, StructType, Ternary, Type, Unary,
-        UnaryOperation,
+        Assignment, Binary, BinaryOperation, Block, Call, Construction, Expression, FieldAccess,
+        Group, I64Type, Lambda, Primary, PrimaryKind, StructField, StructType, Ternary, Type,
+        Unary, UnaryOperation,
     },
     emit::LambdaRegistry,
     lexer::Identifier,
@@ -33,6 +33,7 @@ impl Emit for Expression<Typed> {
             Expression::Call(call) => call.declare(ctx),
             Expression::Construction(construction) => construction.declare(ctx),
             Expression::FieldAccess(field_access) => field_access.declare(ctx),
+            Expression::Assignment(assignment) => assignment.declare(ctx),
         }
     }
 
@@ -48,6 +49,7 @@ impl Emit for Expression<Typed> {
             Expression::Call(c) => c.emit(ctx),
             Expression::Construction(construction) => construction.emit(ctx),
             Expression::FieldAccess(field_access) => field_access.emit(ctx),
+            Expression::Assignment(assignment) => assignment.emit(ctx),
         }
     }
 }
@@ -66,20 +68,29 @@ impl Emit for Primary<Typed> {
             PrimaryKind::I64(i) => ctx.builder.ins().iconst(types::I64, *i),
             PrimaryKind::Decimal(d) => ctx.builder.ins().f64const(*d),
             PrimaryKind::String(s) => {
+                // Allocate space for string + null terminator
                 let len = s.len() as u32;
                 let string_bytes = s.as_bytes();
                 let stack_slot = ctx.builder.create_sized_stack_slot(StackSlotData::new(
                     StackSlotKind::ExplicitSlot,
-                    len,
+                    len + 1, // +1 for null terminator
                     0,
                 ));
                 let pointer = ctx.builder.ins().stack_addr(types::I64, stack_slot, 0);
+
+                // Store string bytes
                 for (i, &byte) in string_bytes.iter().enumerate() {
                     let byte = ctx.builder.ins().iconst(types::I8, byte as i64);
                     ctx.builder
                         .ins()
                         .store(MemFlags::new(), byte, pointer, i as i32);
                 }
+
+                // Add null terminator
+                let null_byte = ctx.builder.ins().iconst(types::I8, 0);
+                ctx.builder
+                    .ins()
+                    .store(MemFlags::new(), null_byte, pointer, len as i32);
 
                 // Create a struct containing ptr and len
                 let struct_size = 16; // 8 bytes for ptr + 8 bytes for len
@@ -89,13 +100,17 @@ impl Emit for Primary<Typed> {
                     0,
                 ));
                 let struct_pointer = ctx.builder.ins().stack_addr(types::I64, struct_slot, 0);
-                
+
                 // Store ptr at offset 0
-                ctx.builder.ins().store(MemFlags::new(), pointer, struct_pointer, 0);
-                
+                ctx.builder
+                    .ins()
+                    .store(MemFlags::new(), pointer, struct_pointer, 0);
+
                 // Store len at offset 8
                 let len_value = ctx.builder.ins().iconst(types::I64, len as i64);
-                ctx.builder.ins().store(MemFlags::new(), len_value, struct_pointer, 8);
+                ctx.builder
+                    .ins()
+                    .store(MemFlags::new(), len_value, struct_pointer, 8);
 
                 struct_pointer
             }
@@ -291,7 +306,7 @@ impl Lambda<Typed> {
     pub fn compile_body(
         &self,
         module: &mut dyn Module,
-        registry: &mut LambdaRegistry,
+        lambda_registry: &LambdaRegistry,
         func_id: FuncId,
         sig: Signature,
         self_name: Option<String>,
@@ -318,7 +333,9 @@ impl Lambda<Typed> {
             .map(|i| builder.block_params(entry_block)[i])
             .collect();
 
-        let mut func_ctx = FunctionContext::new(&mut builder, module, registry);
+        let extern_registry = std::collections::HashMap::new();
+        let mut func_ctx =
+            FunctionContext::new(&mut builder, module, lambda_registry, &extern_registry);
 
         // if this lambda is self-referencing, register its name
         if let Some(name) = self_name {
@@ -339,7 +356,6 @@ impl Lambda<Typed> {
             .map_err(|e| EmitError::ModuleError(e).to_diagnostic())?;
 
         module.clear_context(&mut cranelift_ctx);
-
         Ok(())
     }
 }
@@ -356,6 +372,43 @@ impl Emit for Call<Typed> {
     }
 
     fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
+        // Check if this is a call to an extern function
+        if let Expression::Primary(Primary {
+            kind: PrimaryKind::Identifier(ident),
+            ..
+        }) = &*self.callee
+        {
+            if let Some((func_id, sig)) = ctx.extern_registry.get(&*ident.name) {
+                // This is an extern function - use direct call
+                let arguments: Vec<Value> = self
+                    .arguments
+                    .iter()
+                    .zip(&sig.params)
+                    .map(|(arg, param)| {
+                        let value = arg.emit(ctx)?;
+
+                        // Check if we need to convert String to *byte
+                        if matches!(arg.ty(), Type::String(_)) && param.value_type == types::I64 {
+                            // Extract pointer from string struct (pointer is at offset 0)
+                            let pointer =
+                                ctx.builder
+                                    .ins()
+                                    .load(types::I64, MemFlags::new(), value, 0);
+                            Ok(pointer)
+                        } else {
+                            Ok(value)
+                        }
+                    })
+                    .collect::<Result<_>>()?;
+
+                let func_ref = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);
+                let call = ctx.builder.ins().call(func_ref, &arguments);
+                let results = ctx.builder.inst_results(call);
+                return Ok(results[0]);
+            }
+        }
+
+        // Regular indirect call for lambdas
         let pointer = self.callee.emit(ctx)?;
 
         let arguments: Vec<Value> = self
@@ -469,6 +522,35 @@ impl Emit for FieldAccess<Typed> {
             .builder
             .ins()
             .load(cranelift_type, MemFlags::new(), pointer, offset as i32);
+
+        Ok(value)
+    }
+}
+
+impl Emit for Assignment<Typed> {
+    type Output = Value;
+
+    fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
+        self.value.declare(ctx)?;
+        Ok(())
+    }
+
+    fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
+        let value = self.value.emit(ctx)?;
+
+        let variable = match &*self.target {
+            Expression::Primary(Primary {
+                kind: PrimaryKind::Identifier(ident),
+                ..
+            }) => ident,
+            _ => return Err(EmitError::InvalidAssignmentTarget.to_diagnostic()),
+        };
+
+        let variable = ctx
+            .get_variable(&variable.name)
+            .or_else(|_| EmitError::UndefinedVariable.to_diagnostic().to_err())?;
+
+        ctx.builder.def_var(variable, value);
 
         Ok(value)
     }

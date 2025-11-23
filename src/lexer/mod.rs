@@ -330,6 +330,7 @@ impl Lexer {
             "if" => (TokenKind::If, TokenValue::None),
             "else" => (TokenKind::Else, TokenValue::None),
             "extern" => (TokenKind::Extern, TokenValue::None),
+            "as" => (TokenKind::As, TokenValue::None),
             "fn" => (TokenKind::Function, TokenValue::None),
             "true" => (TokenKind::Boolean, TokenValue::Boolean(true)),
             "false" => (TokenKind::Boolean, TokenValue::Boolean(false)),
