@@ -74,7 +74,7 @@ fn test_type_keywords() {
     assert_eq!(tokens[0].kind, TokenKind::BooleanType);
     assert_eq!(tokens[1].kind, TokenKind::I32Type);
     assert_eq!(tokens[2].kind, TokenKind::I64Type);
-    assert_eq!(tokens[3].kind, TokenKind::DecimalType);
+    assert_eq!(tokens[3].kind, TokenKind::F64Type);
     assert_eq!(tokens[4].kind, TokenKind::StringType);
     assert_eq!(tokens[5].kind, TokenKind::CharacterType);
     assert_eq!(tokens[6].kind, TokenKind::UnitType);

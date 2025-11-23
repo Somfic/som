@@ -11,7 +11,7 @@ fn run() -> Result<(), Diagnostic> {
     let source = Source::from_raw(
         "
     {
-        extern c puts as puts = fn(*byte) -> int;
+        extern c puts as puts = fn(*byte) -> i32;
 
         let a = 1;
         while a > 0 {

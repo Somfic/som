@@ -202,7 +202,7 @@ impl Default for Lookup {
         .add_type(TokenKind::ByteType, Type::Byte)
         .add_type(TokenKind::I32Type, Type::I32)
         .add_type(TokenKind::I64Type, Type::I64)
-        .add_type(TokenKind::DecimalType, Type::Decimal)
+        .add_type(TokenKind::F64Type, Type::Decimal)
         .add_type(TokenKind::StringType, Type::String)
         .add_type(TokenKind::CharacterType, Type::Character)
         .add_type(TokenKind::BooleanType, Type::Boolean)

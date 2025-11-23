@@ -60,11 +60,7 @@ impl Parse for DecimalType {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
-        let token = input.expect(
-            TokenKind::DecimalType,
-            "a decimal",
-            ParserError::ExpectedType,
-        )?;
+        let token = input.expect(TokenKind::F64Type, "a decimal", ParserError::ExpectedType)?;
 
         Ok(DecimalType { span: token.span })
     }

@@ -213,8 +213,8 @@ pub enum TokenKind {
     I32Type,
     /// The integer type; `i64`.
     I64Type,
-    /// The decimal type; `dec`.
-    DecimalType,
+    /// The decimal type; `f64`.
+    F64Type,
     /// The string type; `str`.
     StringType,
     /// The character type; `char`.
@@ -288,7 +288,7 @@ impl Display for TokenKind {
             TokenKind::ByteType => write!(f, "a byte type"),
             TokenKind::I32Type => write!(f, "an integer type"),
             TokenKind::I64Type => write!(f, "a long type"),
-            TokenKind::DecimalType => write!(f, "a decimal type"),
+            TokenKind::F64Type => write!(f, "a decimal type"),
             TokenKind::StringType => write!(f, "a string type"),
             TokenKind::CharacterType => write!(f, "a character type"),
             TokenKind::Eof => write!(f, "the end of the file"),
