@@ -1,5 +1,6 @@
 use som::{
-    ast::Expression, Diagnostic, Emitter, Linker, Parser, ProgramParser, Runner, Source, Typer,
+    ast::Expression, Diagnostic, Emitter, Linker, ModuleTyper, Parser, ProgramParser, Runner,
+    Source, Typer,
 };
 use target_lexicon::Triple;
 
@@ -10,24 +11,11 @@ fn main() {
 }
 
 fn run() -> Result<(), Diagnostic> {
-    let source = Source::from_raw(
-        "
-    {
-        use std::print;
-
-        extern c puts as puts = fn(*byte) -> i32;
-
-        pub mod let a = 1;
-        while a > 0 {
-            puts(\"Hello, World!\");
-
-            a = a - 1;
-        };
-    }",
-    );
-
-    let mut parser = ProgramParser::new("./sandbox");
+    let parser = ProgramParser::new("./sandbox");
     let program = parser.parse()?;
+
+    let mut checker = ModuleTyper::new();
+    let program = checker.check(program)?;
 
     println!("Parsed program: {:#?}", program);
 

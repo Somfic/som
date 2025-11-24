@@ -256,6 +256,7 @@ impl Default for Lookup {
         .add_declaration(TokenKind::Let, Declaration::ValueDefinition)
         .add_declaration(TokenKind::Type, Declaration::TypeDefinition)
         .add_declaration(TokenKind::Extern, Declaration::ExternDefinition)
+        .add_type(TokenKind::Identifier, Type::Forward)
     }
 }
 

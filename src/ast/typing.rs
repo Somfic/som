@@ -6,6 +6,7 @@ use crate::{ast::Pseudo, lexer::Identifier, Span};
 
 #[derive(Debug, Clone)]
 pub enum Type {
+    Forward(Identifier),
     Unit(UnitType),
     Boolean(BooleanType),
     Byte(ByteType),
@@ -93,6 +94,7 @@ impl Type {
             Type::Function(t) => &t.span,
             Type::Struct(t) => &t.span,
             Type::Pointer(t) => &t.span,
+            Type::Forward(i) => &i.span,
         }
     }
 
@@ -161,6 +163,7 @@ impl Type {
             }
             Type::Struct(s) => Type::struct_type(s.name.clone(), s.fields.clone(), span.clone()),
             Type::Pointer(p) => Type::pointer(p.pointee.clone(), span.clone()),
+            Type::Forward(i) => self.clone(),
         }
     }
 }
@@ -208,6 +211,7 @@ impl Display for Type {
             Type::Function(t) => write!(f, "{}", t),
             Type::Struct(t) => write!(f, "{}", t),
             Type::Pointer(t) => write!(f, "{} pointer", t.pointee),
+            Type::Forward(i) => write!(f, "(forwarded) {}", i),
         }
     }
 }
@@ -300,6 +304,7 @@ impl Pseudo for Type {
                 .as_ref()
                 .map_or("struct".to_string(), |name| name.name.to_string()),
             Type::Pointer(p) => format!("*{}", p.pointee.pseudo()),
+            Type::Forward(i) => format!("{}", i),
         }
     }
 }
@@ -315,9 +320,10 @@ impl From<Type> for cranelift::prelude::Type {
             Type::Decimal(_) => types::F64,
             Type::String(_) => todo!("string cranelift type"),
             Type::Character(_) => todo!("character cranelift type"),
-            Type::Function(_) => types::I64, // pointer
-            Type::Struct(_) => types::I64,   // pointer
-            Type::Pointer(_) => types::I64,  // pointer
+            Type::Function(_) => types::I64,
+            Type::Struct(_) => types::I64,
+            Type::Pointer(_) => types::I64,
+            Type::Forward(i) => unreachable!("forward type"),
         }
     }
 }
@@ -335,7 +341,8 @@ impl Type {
             Type::Character(character_type) => todo!(),
             Type::Function(function_type) => todo!(),
             Type::Struct(struct_type) => struct_type.fields.iter().map(|f| f.ty.size()).sum(),
-            Type::Pointer(pointer_type) => 8, // assuming 64-bit pointers
+            Type::Pointer(pointer_type) => 8,
+            Type::Forward(i) => unreachable!("forward type"),
         }
     }
 }

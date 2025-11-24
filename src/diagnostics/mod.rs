@@ -131,6 +131,8 @@ pub enum TypeCheckError {
     ExpectedStruct,
     #[error("expected a field")]
     ExpectedField,
+    #[error("this type has recursion")]
+    RecursiveType,
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -6,6 +6,9 @@ use crate::{
 use std::collections::HashMap;
 
 mod expression;
+mod module;
+pub use module::*;
+mod file;
 mod statement;
 
 #[derive(Debug)]
