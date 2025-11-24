@@ -1,9 +1,9 @@
 use crate::{
     ast::{
-        Declaration, Expression, ExternDefinition, ExternFunction, Scope, Statement, StructType,
-        Type, TypeDefinition, WhileLoop,
+        Declaration, Expression, ExternDefinition, ExternFunction, Import, Scope, Statement,
+        StructType, Type, TypeDefinition, ValueDefinition, Visibility, WhileLoop,
     },
-    lexer::{Identifier, TokenKind},
+    lexer::{Identifier, Path, TokenKind},
     Parse, Parser, ParserError, Result, Untyped,
 };
 
@@ -78,14 +78,14 @@ impl Parse for Scope<Untyped> {
     }
 }
 
-impl Parse for Declaration<Untyped> {
+impl Parse for ValueDefinition<Untyped> {
     type Params = ();
 
     fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
         let open = input.expect(
             TokenKind::Let,
-            "a variable",
-            ParserError::ExpectedDeclaration,
+            "a value",
+            ParserError::ExpectedValueDefinition,
         )?;
 
         let name = input.parse()?;
@@ -94,7 +94,8 @@ impl Parse for Declaration<Untyped> {
 
         let value = input.parse::<Expression<_>>()?;
 
-        Ok(Declaration {
+        Ok(ValueDefinition {
+            visibility: Visibility::Private,
             name,
             span: open.span + value.span().clone(),
             value: Box::new(value),
@@ -122,6 +123,7 @@ impl Parse for TypeDefinition {
         };
 
         Ok(TypeDefinition {
+            visibility: Visibility::Private,
             span: open.span + ty.span().clone(),
             ty,
             name,
@@ -252,6 +254,25 @@ impl Parse for WhileLoop<Untyped> {
             span: open.span + statement.span().clone(),
             condition,
             statement: Box::new(statement),
+        })
+    }
+}
+
+impl Parse for Import {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let open = input.expect(
+            TokenKind::Use,
+            "import statement",
+            ParserError::ExpectedImport,
+        )?;
+
+        let module = input.parse::<Path>()?;
+
+        Ok(Import {
+            span: open.span + module.span.clone(),
+            module,
         })
     }
 }

@@ -1,5 +1,8 @@
 use crate::{
-    ast::{Declaration, ExternDefinition, Scope, Statement, TypeDefinition, WhileLoop},
+    ast::{
+        Declaration, ExternDefinition, Import, Scope, Statement, TypeDefinition, ValueDefinition,
+        WhileLoop,
+    },
     Emit, EmitError, FunctionContext, ModuleContext, Result, Typed,
 };
 use cranelift::{
@@ -14,10 +17,11 @@ impl Emit for Statement<Typed> {
         match self {
             Statement::Expression(expression) => expression.declare(ctx),
             Statement::Scope(scope) => scope.declare(ctx),
-            Statement::Declaration(declaration) => declaration.declare(ctx),
+            Statement::ValueDefinition(declaration) => declaration.declare(ctx),
             Statement::TypeDefinition(type_definition) => type_definition.declare(ctx),
             Statement::ExternDefinition(extern_definition) => extern_definition.declare(ctx),
             Statement::WhileLoop(while_loop) => while_loop.declare(ctx),
+            Statement::Import(import) => import.declare(ctx),
         }
     }
 
@@ -25,10 +29,11 @@ impl Emit for Statement<Typed> {
         match self {
             Statement::Expression(e) => e.emit(ctx).map(|_| ()),
             Statement::Scope(s) => s.emit(ctx),
-            Statement::Declaration(d) => d.emit(ctx),
+            Statement::ValueDefinition(d) => d.emit(ctx),
             Statement::TypeDefinition(type_definition) => type_definition.emit(ctx),
             Statement::ExternDefinition(extern_definition) => extern_definition.emit(ctx),
             Statement::WhileLoop(while_loop) => while_loop.emit(ctx),
+            Statement::Import(import) => import.emit(ctx),
         }
     }
 }
@@ -53,7 +58,7 @@ impl Emit for Scope<Typed> {
     }
 }
 
-impl Emit for Declaration<Typed> {
+impl Emit for ValueDefinition<Typed> {
     type Output = ();
 
     fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
@@ -161,6 +166,18 @@ impl Emit for WhileLoop<Typed> {
 
         ctx.builder.switch_to_block(after_block);
 
+        Ok(())
+    }
+}
+
+impl Emit for Import {
+    type Output = ();
+
+    fn declare(&self, _ctx: &mut ModuleContext) -> Result<()> {
+        todo!("handle imports at the module level")
+    }
+
+    fn emit(&self, _ctx: &mut FunctionContext) -> Result<Self::Output> {
         Ok(())
     }
 }

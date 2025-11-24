@@ -1,10 +1,14 @@
+mod identifier;
+mod path;
 #[cfg(test)]
 mod tests;
 mod token;
 
+pub use identifier::*;
+pub use path::*;
+
 use std::sync::Arc;
 
-pub use token::Identifier;
 pub use token::Token;
 pub use token::TokenKind;
 pub use token::TokenValue;
@@ -331,6 +335,7 @@ impl Lexer {
             "else" => (TokenKind::Else, TokenValue::None),
             "extern" => (TokenKind::Extern, TokenValue::None),
             "as" => (TokenKind::As, TokenValue::None),
+            "pub" => (TokenKind::Pub, TokenValue::None),
             "fn" => (TokenKind::Function, TokenValue::None),
             "true" => (TokenKind::Boolean, TokenValue::Boolean(true)),
             "false" => (TokenKind::Boolean, TokenValue::Boolean(false)),
@@ -398,7 +403,7 @@ impl Lexer {
             "" => {
                 if number_str.contains('.') {
                     match number_str.parse::<f64>() {
-                        Ok(value) => (TokenKind::Decimal, TokenValue::Decimal(value)),
+                        Ok(value) => (TokenKind::F64, TokenValue::Decimal(value)),
                         Err(_) => (
                             TokenKind::Error,
                             TokenValue::Error(
@@ -533,7 +538,7 @@ impl Iterator for Lexer {
             ';' => (TokenKind::Semicolon, TokenValue::None),
             ',' => (TokenKind::Comma, TokenValue::None),
             '.' => (TokenKind::Dot, TokenValue::None),
-            ':' => (TokenKind::Colon, TokenValue::None),
+            ':' => self.parse_compound_operator(TokenKind::Colon, TokenKind::DoubleColon, ':'),
 
             // Special symbols
             '@' => (TokenKind::At, TokenValue::None),

@@ -130,11 +130,11 @@ fn test_large_integer_becomes_i64() {
 #[test]
 fn test_decimal() {
     let token = lex_one("3.33");
-    assert_eq!(token.kind, TokenKind::Decimal);
+    assert_eq!(token.kind, TokenKind::F64);
     assert_eq!(token.value, TokenValue::Decimal(3.33));
 
     let token = lex_one("0.5");
-    assert_eq!(token.kind, TokenKind::Decimal);
+    assert_eq!(token.kind, TokenKind::F64);
     assert_eq!(token.value, TokenValue::Decimal(0.5));
 }
 

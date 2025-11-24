@@ -1,6 +1,9 @@
 use cranelift::prelude::{types, InstBuilder, Value, Variable};
 
-use crate::{lexer::Span, Emit, FunctionContext, ModuleContext, Parse, ParserError, Result};
+use crate::{
+    lexer::{Identifier, Span},
+    Emit, FunctionContext, ModuleContext, Parse, ParserError, Result,
+};
 use std::fmt::{Debug, Display};
 
 #[derive(Clone)]
@@ -94,6 +97,8 @@ pub enum TokenKind {
     Dot,
     /// A colon; `:`.
     Colon,
+    /// A double colon; `::`.
+    DoubleColon,
     /// A semicolon; `;`.
     Semicolon,
 
@@ -179,6 +184,8 @@ pub enum TokenKind {
     Use,
     /// A mod keyword; `mod`.
     Mod,
+    /// A public keyword; `pub`.
+    Pub,
 
     /// A boolean; `true`, `false`.
     Boolean,
@@ -187,7 +194,7 @@ pub enum TokenKind {
     /// A 64 bit number; `42`, `12`, `-7`.
     I64,
     /// A decimal; `3.14`, `2.718`, `-1.0`.
-    Decimal,
+    F64,
     /// A string; `"foo"`, `"bar"`, `"baz"`.
     String,
     /// A character; `'a'`, `'b'`, `'c'`.
@@ -236,6 +243,7 @@ impl Display for TokenKind {
             TokenKind::Comma => write!(f, "`,`"),
             TokenKind::Dot => write!(f, "`.`"),
             TokenKind::Colon => write!(f, "`:`"),
+            TokenKind::DoubleColon => write!(f, "`::`"),
             TokenKind::Semicolon => write!(f, "`;`"),
             TokenKind::Plus => write!(f, "`+`"),
             TokenKind::Minus => write!(f, "`-`"),
@@ -260,11 +268,12 @@ impl Display for TokenKind {
             TokenKind::As => write!(f, "`as`"),
             TokenKind::Return => write!(f, "`return`"),
             TokenKind::Use => write!(f, "`use`"),
+            TokenKind::Pub => write!(f, "`pub`"),
             TokenKind::Mod => write!(f, "`mod`"),
             TokenKind::Boolean => write!(f, "a boolean"),
             TokenKind::I32 => write!(f, "an integer"),
             TokenKind::I64 => write!(f, "a long"),
-            TokenKind::Decimal => write!(f, "a decimal"),
+            TokenKind::F64 => write!(f, "a decimal"),
             TokenKind::String => write!(f, "a string"),
             TokenKind::Character => write!(f, "a character"),
             TokenKind::Identifier => write!(f, "an identifier"),
@@ -294,110 +303,5 @@ impl Display for TokenKind {
             TokenKind::Eof => write!(f, "the end of the file"),
             TokenKind::Ampersand => write!(f, "`&`"),
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Identifier {
-    pub name: Box<str>,
-    pub span: Span,
-}
-
-impl From<Identifier> for String {
-    fn from(val: Identifier) -> Self {
-        val.name.to_string()
-    }
-}
-
-impl Parse for Identifier {
-    type Params = ();
-
-    fn parse(input: &mut crate::Parser, params: Self::Params) -> Result<Self> {
-        let name = input.expect(
-            TokenKind::Identifier,
-            "variable name",
-            ParserError::ExpectedIdentifier,
-        )?;
-
-        match name.value {
-            crate::lexer::TokenValue::Identifier(ident) => Ok(ident),
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl Emit for Identifier {
-    type Output = Value;
-
-    fn declare(&self, ctx: &mut ModuleContext) -> Result<()> {
-        Ok(())
-    }
-
-    fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
-        if let Some((func_id, _sig)) = ctx.extern_registry.get(&*self.name) {
-            // It's an extern function - get a reference
-            let func_ref = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);
-            let address = ctx.builder.ins().func_addr(types::I64, func_ref);
-            return Ok(address);
-        }
-
-        // Check if this identifier refers to a self-referencing lambda
-        if let Some(&lambda_id) = ctx.self_referencing_lambdas.get(&*self.name) {
-            // This is a recursive call - emit function address
-            let (func_id, _) = ctx
-                .lambda_registry
-                .get(lambda_id)
-                .ok_or_else(|| crate::EmitError::UndefinedFunction.to_diagnostic())?;
-            let reference = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);
-            Ok(ctx.builder.ins().func_addr(types::I64, reference))
-        } else {
-            // Regular variable lookup
-            Ok(ctx.builder.use_var(ctx.get_variable(&self.name)?))
-        }
-    }
-}
-
-impl Identifier {
-    pub fn new(name: impl Into<Box<str>>, span: Span) -> Self {
-        Self {
-            name: name.into(),
-            span,
-        }
-    }
-}
-
-impl From<&Identifier> for String {
-    fn from(value: &Identifier) -> Self {
-        value.name.to_string()
-    }
-}
-
-impl From<Identifier> for Span {
-    fn from(identifier: Identifier) -> Self {
-        identifier.span
-    }
-}
-
-impl From<&Identifier> for Span {
-    fn from(identifier: &Identifier) -> Self {
-        identifier.span.clone()
-    }
-}
-
-impl std::hash::Hash for Identifier {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.name.hash(state);
-    }
-}
-
-impl PartialEq for Identifier {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
-}
-
-impl Display for Identifier {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.name)
     }
 }

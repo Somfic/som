@@ -15,6 +15,18 @@ pub struct Span {
     pub source: Arc<Source>,
 }
 
+impl Span {
+    pub fn empty() -> Self {
+        Span {
+            start: Position { line: 0, col: 0 },
+            end: Position { line: 0, col: 0 },
+            start_offset: 0,
+            length: 0,
+            source: Arc::new(Source::from_raw("")),
+        }
+    }
+}
+
 impl Debug for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Span")

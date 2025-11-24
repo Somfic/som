@@ -1,3 +1,5 @@
+use std::fmt::format;
+
 use crate::{
     ast::{Pseudo, Scope, Statement},
     Phase,
@@ -8,7 +10,7 @@ impl<P: Phase> Pseudo for Statement<P> {
         match self {
             Statement::Expression(e) => format!("{};", e.pseudo()),
             Statement::Scope(s) => format!("{{{}}}", s.pseudo()),
-            Statement::Declaration(_) => format!("a variable declaration"),
+            Statement::ValueDefinition(_) => format!("a variable declaration"),
             Statement::TypeDefinition(type_definition) => {
                 format!(
                     "type {} = {};",
@@ -18,6 +20,7 @@ impl<P: Phase> Pseudo for Statement<P> {
             }
             Statement::ExternDefinition(extern_definition) => todo!(),
             Statement::WhileLoop(while_loop) => todo!(),
+            Statement::Import(import) => format!("use {}", import.module),
         }
     }
 }

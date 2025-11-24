@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Declaration, Expression, ExternDefinition, Scope, Statement, Type, TypeDefinition,
-        WhileLoop,
+        Declaration, Expression, ExternDefinition, Import, Scope, Statement, Type, TypeDefinition,
+        ValueDefinition, WhileLoop,
     },
     expect_boolean, Result, TypeCheck, TypeCheckContext, Typed, Untyped,
 };
@@ -13,10 +13,11 @@ impl TypeCheck for Statement<Untyped> {
         Ok(match self {
             Statement::Expression(e) => Statement::Expression(e.type_check(ctx)?),
             Statement::Scope(s) => Statement::Scope(s.type_check(ctx)?),
-            Statement::Declaration(d) => Statement::Declaration(d.type_check(ctx)?),
+            Statement::ValueDefinition(d) => Statement::ValueDefinition(d.type_check(ctx)?),
             Statement::TypeDefinition(t) => Statement::TypeDefinition(t.type_check(ctx)?),
             Statement::ExternDefinition(e) => Statement::ExternDefinition(e.type_check(ctx)?),
             Statement::WhileLoop(w) => Statement::WhileLoop(w.type_check(ctx)?),
+            Statement::Import(import) => Statement::Import(import.type_check(ctx)?),
         })
     }
 }
@@ -36,8 +37,8 @@ impl TypeCheck for Scope<Untyped> {
     }
 }
 
-impl TypeCheck for Declaration<Untyped> {
-    type Output = Declaration<Typed>;
+impl TypeCheck for ValueDefinition<Untyped> {
+    type Output = ValueDefinition<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
         // if we're declaring a function, allow recursion by declaring it before type checking the value
@@ -51,7 +52,8 @@ impl TypeCheck for Declaration<Untyped> {
 
         ctx.declare_variable(self.name.clone(), value.ty().clone());
 
-        Ok(Declaration {
+        Ok(ValueDefinition {
+            visibility: self.visibility,
             span: self.span,
             name: self.name,
             value: Box::new(value),
@@ -97,5 +99,13 @@ impl TypeCheck for WhileLoop<Untyped> {
             condition,
             statement: Box::new(statement),
         })
+    }
+}
+
+impl TypeCheck for Import {
+    type Output = Import;
+
+    fn type_check(self, _ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        todo!("import public types and values from the module")
     }
 }

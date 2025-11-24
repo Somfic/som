@@ -4,9 +4,12 @@ use crate::lexer::{Lexer, Token, TokenKind};
 use crate::{ParserError, Phase, Result, Source, Span};
 
 mod expression;
+mod file;
 pub mod lookup;
+mod program;
 mod statement;
 mod typing;
+pub use program::*;
 
 use lookup::Lookup;
 

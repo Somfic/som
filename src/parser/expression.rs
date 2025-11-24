@@ -127,7 +127,7 @@ impl Parse for Primary<Untyped> {
                 ..
             } => PrimaryKind::I64(*i),
             Token {
-                kind: TokenKind::Decimal,
+                kind: TokenKind::F64,
                 value: TokenValue::Decimal(d),
                 ..
             } => PrimaryKind::Decimal(*d),

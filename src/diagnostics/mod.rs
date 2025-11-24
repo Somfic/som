@@ -103,6 +103,14 @@ pub enum ParserError {
     ExpectedWhile,
     #[error("expected an assignment")]
     ExpectedAssignment,
+    #[error("invalid visibility modifier")]
+    InvalidVisibilityModifier,
+    #[error("expected an import statement")]
+    ExpectedImport,
+    #[error("expected a value definition")]
+    ExpectedValueDefinition,
+    #[error("expected a path segment")]
+    ExpectedSegment,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -252,10 +260,10 @@ impl Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "{}: {}", self.severity, self.message)?;
         for label in &self.labels {
-            writeln!(f)?;
+            writeln!(f, "| --> {}", label.span.source.identifier())?;
             writeln!(
                 f,
-                "{}",
+                "| {}",
                 label
                     .span
                     .source
@@ -265,7 +273,11 @@ impl Display for Diagnostic {
                     .unwrap_or("")
             )?;
 
-            write!(f, "{}", " ".repeat(label.span.start.col.saturating_sub(1)))?;
+            write!(
+                f,
+                "| {}",
+                " ".repeat(label.span.start.col.saturating_sub(1))
+            )?;
 
             writeln!(
                 f,
@@ -275,10 +287,10 @@ impl Display for Diagnostic {
             )?;
         }
         for hint in &self.hints {
-            writeln!(f, "hint: {}", hint)?;
+            writeln!(f, "= hint: {}", hint)?;
         }
         for trace in &self.trace {
-            writeln!(f, "caused by: {}", trace)?;
+            writeln!(f, "= caused by: {}", trace)?;
         }
         Ok(())
     }

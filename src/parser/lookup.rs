@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Expression, Statement, Type},
+    ast::{Declaration, Expression, Statement, Type},
     lexer::TokenKind,
     parser::{expression, Parse, Parser, Untyped},
     Result,
@@ -10,9 +10,11 @@ pub type ExpressionParser = Rc<dyn Fn(&mut Parser) -> Result<Expression<Untyped>
 pub type LefthandExpressionParser =
     Rc<dyn Fn(&mut Parser, Expression<Untyped>) -> Result<Expression<Untyped>>>;
 pub type StatementParser = Rc<dyn Fn(&mut Parser) -> Result<Statement<Untyped>>>;
+pub type DeclarationParser = Rc<dyn Fn(&mut Parser) -> Result<Declaration<Untyped>>>;
 pub type TypeParser = Rc<dyn Fn(&mut Parser) -> Result<Type>>;
 
 pub struct Lookup {
+    pub declaration_lookup: HashMap<TokenKind, DeclarationParser>,
     pub statement_lookup: HashMap<TokenKind, StatementParser>,
     pub expression_lookup: HashMap<TokenKind, ExpressionParser>,
     pub lefthand_expression_lookup: HashMap<TokenKind, LefthandExpressionParser>,
@@ -61,11 +63,25 @@ impl Lookup {
         E: Fn(T) -> Statement<Untyped> + 'static,
     {
         if self.statement_lookup.contains_key(&token) {
-            panic!("Token {:?} already has a prefix handler", token);
+            panic!("Token {:?} already has a statement handler", token);
         }
 
         self.statement_lookup
             .insert(token, wrap_statement(statement_type));
+        self
+    }
+
+    pub fn add_declaration<T, E>(mut self, token: TokenKind, declaration_type: E) -> Self
+    where
+        T: Parse<Params = ()> + 'static,
+        E: Fn(T) -> Declaration<Untyped> + 'static,
+    {
+        if self.declaration_lookup.contains_key(&token) {
+            panic!("Token {:?} already has a declaration handler", token);
+        }
+
+        self.declaration_lookup
+            .insert(token, wrap_declaration(declaration_type));
         self
     }
 
@@ -107,6 +123,14 @@ where
     Rc::new(move |input: &mut Parser| Ok(statement(input.parse::<T>()?)))
 }
 
+fn wrap_declaration<T, S>(declaration: S) -> DeclarationParser
+where
+    T: Parse<Params = ()> + 'static,
+    S: Fn(T) -> Declaration<Untyped> + 'static,
+{
+    Rc::new(move |input: &mut Parser| Ok(declaration(input.parse::<T>()?)))
+}
+
 fn wrap_type<T, S>(ty: S) -> TypeParser
 where
     T: Parse<Params = ()> + 'static,
@@ -118,6 +142,7 @@ where
 impl Default for Lookup {
     fn default() -> Self {
         Lookup {
+            declaration_lookup: HashMap::new(),
             statement_lookup: HashMap::new(),
             expression_lookup: HashMap::new(),
             lefthand_expression_lookup: HashMap::new(),
@@ -129,7 +154,7 @@ impl Default for Lookup {
         .add_expression(TokenKind::Boolean, Expression::Primary)
         .add_expression(TokenKind::I32, Expression::Primary)
         .add_expression(TokenKind::I64, Expression::Primary)
-        .add_expression(TokenKind::Decimal, Expression::Primary)
+        .add_expression(TokenKind::F64, Expression::Primary)
         .add_expression(TokenKind::String, Expression::Primary)
         .add_expression(TokenKind::Character, Expression::Primary)
         .add_expression(TokenKind::Identifier, Expression::Primary)
@@ -186,7 +211,7 @@ impl Default for Lookup {
         )
         .add_statement(TokenKind::CurlyOpen, Statement::Scope)
         .add_expression(TokenKind::CurlyOpen, Expression::Block)
-        .add_statement(TokenKind::Let, Statement::Declaration)
+        .add_statement(TokenKind::Let, Statement::ValueDefinition)
         .add_lefthand_expression(
             TokenKind::If,
             Precedence::Ternary.left(),
@@ -226,6 +251,11 @@ impl Default for Lookup {
             Precedence::Assignment.right(),
             Expression::Assignment,
         )
+        .add_statement(TokenKind::Use, Statement::Import)
+        .add_declaration(TokenKind::Use, Declaration::Import)
+        .add_declaration(TokenKind::Let, Declaration::ValueDefinition)
+        .add_declaration(TokenKind::Type, Declaration::TypeDefinition)
+        .add_declaration(TokenKind::Extern, Declaration::ExternDefinition)
     }
 }
 
