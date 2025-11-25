@@ -85,6 +85,7 @@ impl Emit for ValueDefinition<Typed> {
                     func_id,
                     sig,
                     Some(self.name.name.to_string()),
+                    ctx.global_functions,
                 )?;
 
                 // Return function address

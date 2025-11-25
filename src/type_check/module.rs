@@ -177,6 +177,7 @@ impl Typer {
             for declaration in &file.declarations {
                 match declaration {
                     Declaration::ValueDefinition(value_def) => {
+                        // Only process module and public variables at module scope
                         if matches!(value_def.visibility, Visibility::Private) {
                             continue;
                         }
@@ -210,7 +211,7 @@ impl Typer {
         let scope = self.registry.get_mut(path).expect("registry");
         for (name, visibility, value_type) in resolved_variables {
             match visibility {
-                Visibility::Private => unreachable!(),
+                Visibility::Private => unreachable!("private variables are file-scoped, not module-scoped"),
                 Visibility::Module => {
                     scope.module_variables.insert(name, value_type);
                 }

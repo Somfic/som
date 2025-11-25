@@ -51,6 +51,7 @@ impl Linker {
                         .arg(sdk_path)
                         .arg("-lSystem"); // Link against system library
                 }
+                // gcc/clang automatically handle C runtime on Linux, no extra flags needed
                 cmd.arg("-o").arg(&self.output).args(modules);
             }
             LinkerFlavor::MsvcLink => {
@@ -74,12 +75,7 @@ impl Linker {
 }
 
 fn find_linker() -> Result<(String, LinkerFlavor)> {
-    // First, try to find rust-lld (bundled with Rust toolchain)
-    if let Some(rust_lld) = find_rust_lld() {
-        return Ok(rust_lld);
-    }
-
-    // Fall back to system linkers
+    // Prefer system compilers (gcc/clang) which handle C runtime automatically
     for compiler in &["cc", "gcc", "clang", "zig cc"] {
         if std::process::Command::new(compiler)
             .arg("--version")
@@ -88,6 +84,11 @@ fn find_linker() -> Result<(String, LinkerFlavor)> {
         {
             return Ok((compiler.to_string(), LinkerFlavor::Unix));
         }
+    }
+
+    // Fall back to rust-lld if no system compiler found
+    if let Some(rust_lld) = find_rust_lld() {
+        return Ok(rust_lld);
     }
 
     Err(LinkerError::NoLinkerFound

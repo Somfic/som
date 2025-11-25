@@ -293,7 +293,7 @@ impl Emit for Lambda<Typed> {
             .ok_or_else(|| EmitError::UndefinedFunction.to_diagnostic())?
             .clone();
 
-        self.compile_body(ctx.module, ctx.lambda_registry, func_id, sig, None)?;
+        self.compile_body(ctx.module, ctx.lambda_registry, func_id, sig, None, ctx.global_functions)?;
 
         let reference = ctx.module.declare_func_in_func(func_id, ctx.builder.func);
         let address = ctx.builder.ins().func_addr(types::I64, reference);
@@ -310,6 +310,7 @@ impl Lambda<Typed> {
         func_id: FuncId,
         sig: Signature,
         self_name: Option<String>,
+        global_functions: &std::collections::HashMap<String, usize>,
     ) -> Result<()> {
         use cranelift::codegen::ir::UserFuncName;
         use cranelift::prelude::FunctionBuilderContext;
@@ -335,7 +336,7 @@ impl Lambda<Typed> {
 
         let extern_registry = std::collections::HashMap::new();
         let mut func_ctx =
-            FunctionContext::new(&mut builder, module, lambda_registry, &extern_registry);
+            FunctionContext::new(&mut builder, module, lambda_registry, &extern_registry, global_functions);
 
         // if this lambda is self-referencing, register its name
         if let Some(name) = self_name {

@@ -1,4 +1,4 @@
-use crate::{ast::Expression, EmitError, Result, Typed};
+use crate::{ast::Expression, EmitError, Module as SomModule, Result, Typed};
 use cranelift::{
     codegen::ir::UserFuncName,
     module::{self, FuncId, Linkage, Module},
@@ -58,7 +58,9 @@ impl Emitter {
         ))
     }
 
-    pub fn compile(&mut self, expression: &Expression<Typed>) -> Result<PathBuf> {
+    pub fn compile(&mut self, modules: &[SomModule<Typed>]) -> Result<PathBuf> {
+        use crate::ast::{Declaration, ValueDefinition};
+
         let mut lambda_registry = LambdaRegistry::new();
         let mut extern_registry = HashMap::new();
 
@@ -71,28 +73,101 @@ impl Emitter {
             &mut extern_registry,
         );
 
-        expression.declare(&mut module_context)?;
+        // First pass: declare all external functions and find main
+        let mut main_function: Option<&ValueDefinition<Typed>> = None;
+        let mut all_functions: Vec<&ValueDefinition<Typed>> = Vec::new();
+        let mut global_functions: HashMap<String, usize> = HashMap::new();
 
-        // wrap the expression in the main function
+        for som_module in modules {
+            for file in &som_module.files {
+                for declaration in &file.declarations {
+                    match declaration {
+                        Declaration::ValueDefinition(value_def) => {
+                            if value_def.name.to_string() == "main" {
+                                main_function = Some(value_def);
+                            }
+                            // Track lambda functions globally by name
+                            if let Expression::Lambda(lambda) = &*value_def.value {
+                                global_functions.insert(value_def.name.to_string(), lambda.id);
+                            }
+                            all_functions.push(value_def);
+                        }
+                        Declaration::ExternDefinition(extern_def) => {
+                            // Declare external functions
+                            extern_def.declare(&mut module_context)?;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        let main_function = main_function.ok_or_else(|| {
+            EmitError::UndefinedVariable
+                .to_diagnostic()
+                .with_hint("no 'main' function found")
+        })?;
+
+        // Second pass: declare all lambdas from all functions
+        for func in &all_functions {
+            func.value.declare(&mut module_context)?;
+        }
+
+        // Third pass: compile all lambdas (this actually generates the function bodies)
+        for func in &all_functions {
+            if let Expression::Lambda(lambda) = &*func.value {
+                let (func_id, sig) = module_context
+                    .lambda_registry
+                    .get(lambda.id)
+                    .ok_or_else(|| EmitError::UndefinedFunction.to_diagnostic())?
+                    .clone();
+                lambda.compile_body(
+                    module_context.module,
+                    module_context.lambda_registry,
+                    func_id,
+                    sig,
+                    Some(func.name.to_string()),
+                    &global_functions,
+                )?;
+            }
+        }
+
+        // Compile the main function wrapper that calls the user's main function
         let mut main_signature = Signature::new(self.isa.default_call_conv());
         main_signature.params = vec![];
         main_signature.returns = vec![AbiParam::new(types::I64)];
+
+        // Get the main lambda's function ID
+        let main_lambda_id = if let Expression::Lambda(lambda) = &*main_function.value {
+            lambda.id
+        } else {
+            return EmitError::UndefinedFunction
+                .to_diagnostic()
+                .with_hint("main must be a function")
+                .to_err();
+        };
+
+        let (main_func_id, _) = module_context
+            .lambda_registry
+            .get(main_lambda_id)
+            .ok_or_else(|| EmitError::UndefinedFunction.to_diagnostic())?
+            .clone();
 
         let main_id = self.compile_function(
             "main",
             main_signature,
             Linkage::Export,
             &mut module_context,
+            &global_functions,
             |func_ctx| {
-                let value = expression.emit(func_ctx)?;
-                // cast if the value is not already i64
-                let value_type = func_ctx.builder.func.dfg.value_type(value);
-                let value = if value_type != types::I64 {
-                    func_ctx.builder.ins().sextend(types::I64, value)
-                } else {
-                    value
-                };
-                Ok(value)
+                // Call the user's main function
+                let main_ref = func_ctx.module.declare_func_in_func(main_func_id, func_ctx.builder.func);
+                let call_inst = func_ctx.builder.ins().call(main_ref, &[]);
+                let results = func_ctx.builder.inst_results(call_inst);
+
+                // The main function returns unit, so just return 0
+                let zero = func_ctx.builder.ins().iconst(types::I64, 0);
+                Ok(zero)
             },
         )?;
 
@@ -123,6 +198,7 @@ impl Emitter {
         sig: Signature,
         linkage: Linkage,
         module_context: &mut ModuleContext,
+        global_functions: &HashMap<String, usize>,
         emit_body: F,
     ) -> Result<FuncId>
     where
@@ -149,6 +225,7 @@ impl Emitter {
                 module_context.module,
                 module_context.lambda_registry,
                 module_context.extern_registry,
+                global_functions,
             );
             let return_value = emit_body(&mut func_ctx)?;
             func_ctx.builder.ins().return_(&[return_value]);
@@ -197,6 +274,7 @@ pub struct FunctionContext<'a, 'b> {
     pub variables: HashMap<String, Variable>,
     pub blocks: HashMap<String, Block>,
     pub self_referencing_lambdas: HashMap<String, usize>, // name -> lambda_id
+    pub global_functions: &'b HashMap<String, usize>, // name -> lambda_id for top-level functions
 }
 
 impl<'a, 'b> FunctionContext<'a, 'b> {
@@ -205,6 +283,7 @@ impl<'a, 'b> FunctionContext<'a, 'b> {
         module: &'b mut dyn Module,
         lambda_registry: &'b LambdaRegistry,
         extern_registry: &'b HashMap<String, (FuncId, Signature)>,
+        global_functions: &'b HashMap<String, usize>,
     ) -> Self {
         Self {
             builder,
@@ -214,6 +293,7 @@ impl<'a, 'b> FunctionContext<'a, 'b> {
             variables: HashMap::new(),
             blocks: HashMap::new(),
             self_referencing_lambdas: HashMap::new(),
+            global_functions,
         }
     }
 

@@ -61,11 +61,22 @@ impl Emit for Identifier {
                 .get(lambda_id)
                 .ok_or_else(|| crate::EmitError::UndefinedFunction.to_diagnostic())?;
             let reference = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);
-            Ok(ctx.builder.ins().func_addr(types::I64, reference))
-        } else {
-            // Regular variable lookup
-            Ok(ctx.builder.use_var(ctx.get_variable(&self.name)?))
+            return Ok(ctx.builder.ins().func_addr(types::I64, reference));
         }
+
+        // Check if this identifier refers to a global function
+        if let Some(&lambda_id) = ctx.global_functions.get(&*self.name) {
+            // This is a top-level function reference - emit function address
+            let (func_id, _) = ctx
+                .lambda_registry
+                .get(lambda_id)
+                .ok_or_else(|| crate::EmitError::UndefinedFunction.to_diagnostic())?;
+            let reference = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);
+            return Ok(ctx.builder.ins().func_addr(types::I64, reference));
+        }
+
+        // Regular variable lookup
+        Ok(ctx.builder.use_var(ctx.get_variable(&self.name)?))
     }
 }
 

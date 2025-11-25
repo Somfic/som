@@ -10,29 +10,22 @@ fn main() {
 }
 
 fn run() -> Result<(), Diagnostic> {
-    let parser = ProgramParser::new("./sandbox");
+    let parser = ProgramParser::new("./example");
     let program = parser.parse()?;
 
     let mut checker = Typer::new();
     let program = checker.check(program)?;
 
-    println!("Parsed program: {:#?}", program);
+    let mut emitter = Emitter::new(Triple::host())?;
+    let module = emitter.compile(&program)?;
 
-    // let mut typer = Typer::new();
-    // let code = typer.check(code)?;
+    let linker = Linker::new("build/som");
+    let executable = linker.link_modules(vec![module])?;
 
-    // let mut emitter = Emitter::new(Triple::host())?;
-    // let module = emitter.compile(&code)?;
+    let runner = Runner::new(&executable);
+    let result = runner.run()?;
 
-    // let linker = Linker::new("build/som");
-    // let executable = linker.link_modules(vec![module])?;
+    println!("Process exited with: {}", result);
 
-    // let runner = Runner::new(&executable);
-    // let result = runner.run()?;
-
-    // println!("Process exited with: {}", result);
-
-    // Ok(())
-
-    todo!();
+    Ok(())
 }
