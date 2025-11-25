@@ -10,6 +10,20 @@ impl<P: Phase> Pseudo for Statement<P> {
         match self {
             Statement::Expression(e) => format!("{};", e.pseudo()),
             Statement::Scope(s) => format!("{{{}}}", s.pseudo()),
+            Statement::FunctionDefinition(function_definition) => {
+                let params = function_definition
+                    .parameters
+                    .iter()
+                    .map(|p| format!("{} ~ {}", p.name, p.ty.pseudo()))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "fn {}({}) -> {} {{ ... }}",
+                    function_definition.name,
+                    params,
+                    function_definition.returns.pseudo()
+                )
+            }
             Statement::ValueDefinition(_) => format!("a variable declaration"),
             Statement::TypeDefinition(type_definition) => {
                 format!(

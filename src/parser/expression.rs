@@ -354,7 +354,7 @@ impl Parse for Lambda<Untyped> {
         let span = fn_token.span + body.span().clone();
 
         Ok(Lambda {
-            id: input.next_lambda_id(),
+            id: input.next_function_id(),
             parameters,
             explicit_return_ty,
             body: Box::new(body),

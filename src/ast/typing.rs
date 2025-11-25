@@ -172,6 +172,7 @@ impl PartialEq for Type {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Type::Unit(_), Type::Unit(_)) => true,
+            (Type::Byte(_), Type::Byte(_)) => true,
             (Type::Boolean(_), Type::Boolean(_)) => true,
             (Type::I32(_), Type::I32(_)) => true,
             (Type::I64(_), Type::I64(_)) => true,

@@ -5,9 +5,9 @@
 ```rust
 let fib = fn(n ~ int) {
     n if n < 2 else fib(n - 1) + fib(n - 2)
-}
+};
 
-fib(10)
+fib(10);
 ```
 
 ```rust
@@ -23,3 +23,5 @@ type Color = Red
 
 let print_color = fn(color ~ Color) print(color)
 ```
+
+## Multi dispatch

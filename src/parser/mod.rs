@@ -29,7 +29,7 @@ pub trait Parse: Sized {
 pub struct Parser {
     pub(crate) lexer: Lexer,
     pub(crate) lookup: Lookup,
-    next_lambda_id: std::cell::Cell<usize>,
+    next_function: Cell<usize>,
 }
 
 impl Parser {
@@ -37,14 +37,28 @@ impl Parser {
         Self {
             lexer: Lexer::new(source),
             lookup: Lookup::default(),
-            next_lambda_id: Cell::new(0),
+            next_function: Cell::new(0),
         }
     }
 
-    pub fn next_lambda_id(&self) -> usize {
-        let id = self.next_lambda_id.get();
-        self.next_lambda_id.set(id + 1);
+    pub fn with_function_counter(source: Source, next_function: &Cell<usize>) -> Self {
+        // Create parser with a copy of the current counter value
+        let start_id = next_function.get();
+        Self {
+            lexer: Lexer::new(source),
+            lookup: Lookup::default(),
+            next_function: Cell::new(start_id),
+        }
+    }
+
+    pub fn next_function_id(&self) -> usize {
+        let id = self.next_function.get();
+        self.next_function.set(id + 1);
         id
+    }
+
+    pub fn get_next_function_id(&self) -> usize {
+        self.next_function.get()
     }
 
     pub fn parse<T: Parse>(&mut self) -> Result<T>

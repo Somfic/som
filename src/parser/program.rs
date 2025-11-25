@@ -1,5 +1,5 @@
 use crate::{ast::File, lexer::Path, Parser, Phase, Result, Source, Untyped};
-use std::{collections::HashMap, path::PathBuf};
+use std::{cell::Cell, collections::HashMap, path::PathBuf};
 
 #[derive(Debug)]
 pub struct Module<P: Phase> {
@@ -19,6 +19,9 @@ impl ProgramParser {
     pub fn parse(&self) -> Result<Vec<Module<Untyped>>> {
         let source_files = find_som_files(&self.root);
 
+        // Shared function ID counter across all files
+        let next_function_id = Cell::new(0);
+
         let mut modules: HashMap<Path, Vec<File<Untyped>>> = HashMap::new();
         for path in source_files {
             let module_path = {
@@ -31,8 +34,11 @@ impl ProgramParser {
             };
 
             let source = Source::from_file(PathBuf::from(&path)).unwrap();
-            let mut parser = Parser::new(source);
+            let mut parser = Parser::with_function_counter(source, &next_function_id);
             let file = parser.parse()?;
+
+            // Update shared counter with the next ID from this parser
+            next_function_id.set(parser.get_next_function_id());
 
             modules.entry(module_path).or_default().push(file);
         }

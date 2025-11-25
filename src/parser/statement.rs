@@ -1,9 +1,9 @@
 use crate::{
     ast::{
-        Declaration, Expression, ExternDefinition, ExternFunction, Import, Scope, Statement,
-        StructType, Type, TypeDefinition, ValueDefinition, Visibility, WhileLoop,
+        Declaration, Expression, ExternDefinition, ExternFunction, FunctionDefinition, Import,
+        Scope, Statement, StructType, Type, TypeDefinition, ValueDefinition, Visibility, WhileLoop,
     },
-    lexer::{Identifier, Path, TokenKind},
+    lexer::{Identifier, Path, Token, TokenKind},
     Parse, Parser, ParserError, Result, Untyped,
 };
 
@@ -273,6 +273,91 @@ impl Parse for Import {
         Ok(Import {
             span: open.span + module.span.clone(),
             module,
+        })
+    }
+}
+
+impl Parse for FunctionDefinition<Untyped> {
+    type Params = ();
+
+    fn parse(input: &mut Parser, params: Self::Params) -> Result<Self> {
+        let open = input.expect(
+            TokenKind::Function,
+            "a function definition",
+            ParserError::ExpectedFunctionDefinition,
+        )?;
+
+        let name = input.parse::<Identifier>()?;
+
+        // Parse parameter list: (param1 ~ Type1, param2 ~ Type2, ...)
+        input.expect(
+            TokenKind::ParenOpen,
+            "a function parameter list",
+            ParserError::ExpectedFunctionType,
+        )?;
+
+        let mut parameters = vec![];
+        while let Some(token) = input.peek() {
+            if token.kind == TokenKind::ParenClose {
+                break;
+            }
+
+            // Parse parameter: name ~ type
+            let param_name = input.parse::<Identifier>()?;
+            input.expect(
+                TokenKind::Tilde,
+                "'~' before parameter type",
+                ParserError::ExpectedTypeAnnotation,
+            )?;
+            let param_ty = input.parse::<Type>()?;
+
+            parameters.push(crate::ast::Parameter {
+                name: param_name,
+                ty: param_ty,
+            });
+
+            if let Some(Token {
+                kind: TokenKind::Comma,
+                ..
+            }) = input.peek()
+            {
+                input.next()?;
+            } else {
+                break;
+            }
+        }
+
+        input.expect(
+            TokenKind::ParenClose,
+            "a function parameter list",
+            ParserError::ExpectedFunctionType,
+        )?;
+
+        // Parse return type: -> Type (optional, defaults to unit)
+        let returns = if input.peek().is_some_and(|t| t.kind == TokenKind::Arrow) {
+            input.expect(
+                TokenKind::Arrow,
+                "a return type",
+                ParserError::ExpectedFunctionType,
+            )?;
+            input.parse()?
+        } else {
+            // Default to unit type if no return type specified
+            Type::Unit(crate::ast::UnitType {
+                span: name.span.clone(),
+            })
+        };
+
+        let body = input.parse::<Expression<Untyped>>()?;
+
+        Ok(FunctionDefinition {
+            id: input.next_function_id(),
+            visibility: Visibility::Private,
+            name,
+            parameters,
+            returns,
+            span: open.span + body.span().clone(),
+            body,
         })
     }
 }

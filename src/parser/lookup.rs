@@ -246,6 +246,7 @@ impl Default for Lookup {
         .add_type(TokenKind::Star, Type::Pointer)
         .add_statement(TokenKind::Extern, Statement::ExternDefinition)
         .add_statement(TokenKind::While, Statement::WhileLoop)
+        .add_statement(TokenKind::Function, Statement::FunctionDefinition)
         .add_lefthand_expression(
             TokenKind::Equal,
             Precedence::Assignment.right(),
@@ -253,7 +254,7 @@ impl Default for Lookup {
         )
         .add_statement(TokenKind::Use, Statement::Import)
         .add_declaration(TokenKind::Use, Declaration::Import)
-        .add_declaration(TokenKind::Let, Declaration::ValueDefinition)
+        .add_declaration(TokenKind::Function, Declaration::FunctionDefinition)
         .add_declaration(TokenKind::Type, Declaration::TypeDefinition)
         .add_declaration(TokenKind::Extern, Declaration::ExternDefinition)
         .add_type(TokenKind::Identifier, Type::Forward)

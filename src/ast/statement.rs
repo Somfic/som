@@ -9,6 +9,7 @@ use std::fmt::{write, Display};
 pub enum Statement<P: Phase> {
     Expression(Expression<P>),
     Scope(Scope<P>),
+    FunctionDefinition(FunctionDefinition<P>),
     ValueDefinition(ValueDefinition<P>),
     TypeDefinition(TypeDefinition),
     ExternDefinition(ExternDefinition),
@@ -21,6 +22,7 @@ impl<P: Phase> Statement<P> {
         match self {
             Statement::Expression(e) => &e.span(),
             Statement::Scope(s) => &s.span,
+            Statement::FunctionDefinition(f) => &f.span,
             Statement::ValueDefinition(d) => &d.span,
             Statement::TypeDefinition(t) => &t.span,
             Statement::ExternDefinition(e) => &e.span,
@@ -35,7 +37,10 @@ impl<P: Phase> Display for Statement<P> {
         match self {
             Statement::Expression(expression) => write!(f, "{} statement", expression),
             Statement::Scope(scope) => write!(f, "a scope"),
-            Statement::ValueDefinition(declaration) => write!(f, "a declaration"),
+            Statement::FunctionDefinition(function_definition) => {
+                write!(f, "a function definition")
+            }
+            Statement::ValueDefinition(definition) => write!(f, "a definition"),
             Statement::TypeDefinition(type_definition) => write!(f, "a type definition"),
             Statement::ExternDefinition(extern_definition) => write!(f, "an extern definition"),
             Statement::WhileLoop(while_loop) => write!(f, "a while loop"),
@@ -51,6 +56,17 @@ pub struct Scope<P: Phase> {
 }
 
 #[derive(Debug)]
+pub struct FunctionDefinition<P: Phase> {
+    pub id: usize,
+    pub visibility: Visibility,
+    pub name: Identifier,
+    pub parameters: Vec<crate::ast::Parameter>,
+    pub returns: Type,
+    pub body: Expression<P>,
+    pub span: Span,
+}
+
+#[derive(Debug)]
 pub struct ValueDefinition<P: Phase> {
     pub visibility: Visibility,
     pub name: Identifier,
@@ -58,8 +74,7 @@ pub struct ValueDefinition<P: Phase> {
     pub span: Span,
 }
 
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Visibility {
     Private,
     Module,

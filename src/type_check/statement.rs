@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Declaration, Expression, ExternDefinition, Import, Scope, Statement, Type, TypeDefinition,
-        ValueDefinition, WhileLoop,
+        Declaration, Expression, ExternDefinition, FunctionDefinition, Import, Scope, Statement,
+        Type, TypeDefinition, ValueDefinition, WhileLoop,
     },
     expect_boolean, Result, TypeCheck, TypeCheckContext, Typed, Untyped,
 };
@@ -13,6 +13,7 @@ impl TypeCheck for Statement<Untyped> {
         Ok(match self {
             Statement::Expression(e) => Statement::Expression(e.type_check(ctx)?),
             Statement::Scope(s) => Statement::Scope(s.type_check(ctx)?),
+            Statement::FunctionDefinition(f) => Statement::FunctionDefinition(f.type_check(ctx)?),
             Statement::ValueDefinition(d) => Statement::ValueDefinition(d.type_check(ctx)?),
             Statement::TypeDefinition(t) => Statement::TypeDefinition(t.type_check(ctx)?),
             Statement::ExternDefinition(e) => Statement::ExternDefinition(e.type_check(ctx)?),
@@ -136,5 +137,55 @@ impl TypeCheck for Import {
         }
 
         Ok(self)
+    }
+}
+
+impl TypeCheck for FunctionDefinition<Untyped> {
+    type Output = FunctionDefinition<Typed>;
+
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        // Resolve parameter types and return type first
+        let resolved_params: Vec<_> = self
+            .parameters
+            .iter()
+            .map(|p| {
+                let resolved_ty = p.ty.clone().type_check(ctx)?;
+                Ok(crate::ast::Parameter {
+                    name: p.name.clone(),
+                    ty: resolved_ty,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        let resolved_returns = self.returns.clone().type_check(ctx)?;
+
+        // Create function type for type declaration with resolved types
+        let function_type = crate::ast::FunctionType {
+            parameters: resolved_params.iter().map(|p| p.ty.clone()).collect(),
+            returns: Box::new(resolved_returns.clone()),
+            span: self.span.clone(),
+        };
+
+        ctx.declare_variable(self.name.clone(), Type::Function(function_type));
+
+        // Create a new child context for the function body
+        let mut func_ctx = ctx.new_child_context();
+
+        // Declare parameters in the function's scope with resolved types
+        for param in &resolved_params {
+            func_ctx.declare_variable(param.name.clone(), param.ty.clone());
+        }
+
+        let body = self.body.type_check(&mut func_ctx)?;
+
+        Ok(FunctionDefinition {
+            id: self.id,
+            visibility: self.visibility,
+            name: self.name,
+            parameters: resolved_params,
+            returns: resolved_returns,
+            span: self.span,
+            body,
+        })
     }
 }

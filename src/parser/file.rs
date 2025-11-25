@@ -62,16 +62,10 @@ impl Parse for Declaration<Untyped> {
                 .to_err(),
         }?;
 
-        let close = input.expect(
-            TokenKind::Semicolon,
-            "a semicolon to close the declaration",
-            ParserError::ExpectedSemicolon,
-        )?;
-
         match delcaration {
-            Declaration::ValueDefinition(mut declaration) => {
-                declaration.visibility = visibility;
-                Ok(Declaration::ValueDefinition(declaration))
+            Declaration::FunctionDefinition(mut function_definition) => {
+                function_definition.visibility = visibility;
+                Ok(Declaration::FunctionDefinition(function_definition))
             }
             Declaration::TypeDefinition(mut type_definition) => {
                 type_definition.visibility = visibility;

@@ -13,7 +13,7 @@ use crate::{
         Group, I64Type, Lambda, Primary, PrimaryKind, StructField, StructType, Ternary, Type,
         Unary, UnaryOperation,
     },
-    emit::LambdaRegistry,
+    emit::FunctionRegistry,
     lexer::Identifier,
     Emit, EmitError, FunctionContext, ModuleContext, Result, Typed,
 };
@@ -281,19 +281,26 @@ impl Emit for Lambda<Typed> {
             .declare_function(&format!("lambda_{}", self.id), Linkage::Local, &sig)
             .map_err(|e| EmitError::ModuleError(e).to_diagnostic())?;
 
-        ctx.lambda_registry.register(self.id, func_id, sig);
+        ctx.function_registry.register(self.id, func_id, sig);
 
         Ok(())
     }
 
     fn emit(&self, ctx: &mut FunctionContext) -> Result<Self::Output> {
         let (func_id, sig) = ctx
-            .lambda_registry
+            .function_registry
             .get(self.id)
             .ok_or_else(|| EmitError::UndefinedFunction.to_diagnostic())?
             .clone();
 
-        self.compile_body(ctx.module, ctx.lambda_registry, func_id, sig, None, ctx.global_functions)?;
+        self.compile_body(
+            ctx.module,
+            ctx.function_registry,
+            func_id,
+            sig,
+            None,
+            ctx.global_functions,
+        )?;
 
         let reference = ctx.module.declare_func_in_func(func_id, ctx.builder.func);
         let address = ctx.builder.ins().func_addr(types::I64, reference);
@@ -306,7 +313,7 @@ impl Lambda<Typed> {
     pub fn compile_body(
         &self,
         module: &mut dyn Module,
-        lambda_registry: &LambdaRegistry,
+        function_registry: &FunctionRegistry,
         func_id: FuncId,
         sig: Signature,
         self_name: Option<String>,
@@ -335,8 +342,13 @@ impl Lambda<Typed> {
             .collect();
 
         let extern_registry = std::collections::HashMap::new();
-        let mut func_ctx =
-            FunctionContext::new(&mut builder, module, lambda_registry, &extern_registry, global_functions);
+        let mut func_ctx = FunctionContext::new(
+            &mut builder,
+            module,
+            function_registry,
+            &extern_registry,
+            global_functions,
+        );
 
         // if this lambda is self-referencing, register its name
         if let Some(name) = self_name {

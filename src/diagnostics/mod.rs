@@ -111,6 +111,8 @@ pub enum ParserError {
     ExpectedValueDefinition,
     #[error("expected a path segment")]
     ExpectedSegment,
+    #[error("expected a function definition")]
+    ExpectedFunctionDefinition,
 }
 
 #[derive(Debug, thiserror::Error)]

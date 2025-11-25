@@ -57,7 +57,7 @@ impl Emit for Identifier {
         if let Some(&lambda_id) = ctx.self_referencing_lambdas.get(&*self.name) {
             // This is a recursive call - emit function address
             let (func_id, _) = ctx
-                .lambda_registry
+                .function_registry
                 .get(lambda_id)
                 .ok_or_else(|| crate::EmitError::UndefinedFunction.to_diagnostic())?;
             let reference = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);
@@ -68,7 +68,7 @@ impl Emit for Identifier {
         if let Some(&lambda_id) = ctx.global_functions.get(&*self.name) {
             // This is a top-level function reference - emit function address
             let (func_id, _) = ctx
-                .lambda_registry
+                .function_registry
                 .get(lambda_id)
                 .ok_or_else(|| crate::EmitError::UndefinedFunction.to_diagnostic())?;
             let reference = ctx.module.declare_func_in_func(*func_id, ctx.builder.func);

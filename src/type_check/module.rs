@@ -103,7 +103,11 @@ impl Typer {
                             continue;
                         }
 
-                        let resolved_type = self.resolve_type_for_definition(&type_definition.ty, &ctx, &type_definition.name.to_string())?;
+                        let resolved_type = self.resolve_type_for_definition(
+                            &type_definition.ty,
+                            &ctx,
+                            &type_definition.name.to_string(),
+                        )?;
                         let name = type_definition.name.to_string();
 
                         resolved_types.push((
@@ -140,7 +144,10 @@ impl Typer {
         }
 
         // Second pass: now that all types are in the registry, resolve any remaining Forwards
-        let scope = self.registry.get(path).expect("to be filled in by first pass");
+        let scope = self
+            .registry
+            .get(path)
+            .expect("to be filled in by first pass");
         let mut ctx = TypeCheckContext::new(&self.registry);
 
         for (name, ty) in &scope.module_types {
@@ -156,7 +163,9 @@ impl Typer {
 
         let scope = self.registry.get_mut(path).expect("registry");
         for (name, fully_resolved) in fully_resolved_types {
-            scope.module_types.insert(name.clone(), fully_resolved.clone());
+            scope
+                .module_types
+                .insert(name.clone(), fully_resolved.clone());
             if scope.public_types.contains_key(&name) {
                 scope.public_types.insert(name, fully_resolved);
             }
@@ -176,31 +185,32 @@ impl Typer {
         for file in &module.files {
             for declaration in &file.declarations {
                 match declaration {
-                    Declaration::ValueDefinition(value_def) => {
-                        // Only process module and public variables at module scope
-                        if matches!(value_def.visibility, Visibility::Private) {
+                    Declaration::FunctionDefinition(function) => {
+                        // Only process module and public functions at module scope
+                        if matches!(function.visibility, Visibility::Private) {
                             continue;
                         }
 
-                        // For now, we only handle functions (lambdas) since we can infer their type
-                        // without full type checking of the body
-                        if let crate::ast::Expression::Lambda(ref lambda) = *value_def.value {
-                            let inferred_type = lambda.infer_type(&mut ctx)?;
-                            // Resolve any Forward types in the function signature
-                            let value_type = self.resolve_type(&inferred_type, &ctx)?;
-                            let name = value_def.name.to_string();
+                        // Infer the function type from the signature
+                        let function_type = crate::ast::FunctionType {
+                            parameters: function.parameters.iter().map(|p| p.ty.clone()).collect(),
+                            returns: Box::new(function.returns.clone()),
+                            span: function.span.clone(),
+                        };
 
-                            resolved_variables.push((
-                                name.clone(),
-                                value_def.visibility.clone(),
-                                value_type.clone(),
-                            ));
+                        let inferred_type = crate::ast::Type::Function(function_type);
+                        // Resolve any Forward types in the function signature
+                        let value_type = self.resolve_type(&inferred_type, &ctx)?;
+                        let name = function.name.to_string();
 
-                            // Add to context so subsequent definitions can reference it
-                            ctx.declare_variable(name, value_type);
-                        }
-                        // Non-lambda values are skipped for now
-                        // They would need full type checking which requires cloning
+                        resolved_variables.push((
+                            name.clone(),
+                            function.visibility.clone(),
+                            value_type.clone(),
+                        ));
+
+                        // Add to context so subsequent definitions can reference it
+                        ctx.declare_variable(name, value_type);
                     }
                     _ => {}
                 }
@@ -211,7 +221,9 @@ impl Typer {
         let scope = self.registry.get_mut(path).expect("registry");
         for (name, visibility, value_type) in resolved_variables {
             match visibility {
-                Visibility::Private => unreachable!("private variables are file-scoped, not module-scoped"),
+                Visibility::Private => {
+                    unreachable!("private variables are file-scoped, not module-scoped")
+                }
                 Visibility::Module => {
                     scope.module_variables.insert(name, value_type);
                 }
@@ -259,7 +271,12 @@ impl Typer {
         self.resolve_type_with_depth(ty, ctx, 0, None)
     }
 
-    fn resolve_type_for_definition(&self, ty: &Type, ctx: &TypeCheckContext, defining_type: &str) -> Result<Type> {
+    fn resolve_type_for_definition(
+        &self,
+        ty: &Type,
+        ctx: &TypeCheckContext,
+        defining_type: &str,
+    ) -> Result<Type> {
         self.resolve_type_with_depth(ty, ctx, 0, Some(defining_type))
     }
 
@@ -280,7 +297,8 @@ impl Typer {
 
         match ty {
             Type::Forward(forward) => {
-                let actual_type = ctx.get_type_with_span(forward.name.to_string(), &forward.span)?;
+                let actual_type =
+                    ctx.get_type_with_span(forward.name.to_string(), &forward.span)?;
 
                 match &actual_type {
                     Type::Forward(_) => {
@@ -327,8 +345,12 @@ impl Typer {
                     .map(|param| self.resolve_type_with_depth(param, ctx, depth + 1, defining_type))
                     .collect::<Result<Vec<_>>>()?;
 
-                let resolved_return =
-                    Box::new(self.resolve_type_with_depth(&f.returns, ctx, depth + 1, defining_type)?);
+                let resolved_return = Box::new(self.resolve_type_with_depth(
+                    &f.returns,
+                    ctx,
+                    depth + 1,
+                    defining_type,
+                )?);
 
                 Ok(Type::Function(FunctionType {
                     parameters: resolved_params,
@@ -338,8 +360,12 @@ impl Typer {
             }
 
             Type::Pointer(p) => {
-                let resolved_pointee =
-                    Box::new(self.resolve_type_with_depth(&p.pointee, ctx, depth + 1, defining_type)?);
+                let resolved_pointee = Box::new(self.resolve_type_with_depth(
+                    &p.pointee,
+                    ctx,
+                    depth + 1,
+                    defining_type,
+                )?);
                 Ok(Type::Pointer(PointerType {
                     pointee: resolved_pointee,
                     span: p.span.clone(),

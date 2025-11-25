@@ -1,12 +1,3 @@
-let main = fn() {
-    let i = 4;
-    while i > 0 {
-        i = i - 1;
-        print("Hello");
-    };
-};
-
-extern c puts = fn(*byte) -> i32;
-let print = fn(text ~ *byte) {
-    puts(text);
-};
+fn main() {
+    test(10);
+}
