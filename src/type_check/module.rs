@@ -162,6 +162,67 @@ impl Typer {
             }
         }
 
+        // Now handle value definitions (variables/functions)
+        let scope = self.registry.get(path).expect("registry");
+        let mut ctx = TypeCheckContext::new(&self.registry);
+
+        // Populate context with all types
+        for (name, ty) in &scope.module_types {
+            ctx.declare_type(name.clone(), ty.clone());
+        }
+
+        let mut resolved_variables = Vec::new();
+
+        for file in &module.files {
+            for declaration in &file.declarations {
+                match declaration {
+                    Declaration::ValueDefinition(value_def) => {
+                        if matches!(value_def.visibility, Visibility::Private) {
+                            continue;
+                        }
+
+                        // For now, we only handle functions (lambdas) since we can infer their type
+                        // without full type checking of the body
+                        if let crate::ast::Expression::Lambda(ref lambda) = *value_def.value {
+                            let inferred_type = lambda.infer_type(&mut ctx)?;
+                            // Resolve any Forward types in the function signature
+                            let value_type = self.resolve_type(&inferred_type, &ctx)?;
+                            let name = value_def.name.to_string();
+
+                            resolved_variables.push((
+                                name.clone(),
+                                value_def.visibility.clone(),
+                                value_type.clone(),
+                            ));
+
+                            // Add to context so subsequent definitions can reference it
+                            ctx.declare_variable(name, value_type);
+                        }
+                        // Non-lambda values are skipped for now
+                        // They would need full type checking which requires cloning
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Update the registry with resolved variables
+        let scope = self.registry.get_mut(path).expect("registry");
+        for (name, visibility, value_type) in resolved_variables {
+            match visibility {
+                Visibility::Private => unreachable!(),
+                Visibility::Module => {
+                    scope.module_variables.insert(name, value_type);
+                }
+                Visibility::Public => {
+                    scope
+                        .public_variables
+                        .insert(name.clone(), value_type.clone());
+                    scope.module_variables.insert(name, value_type);
+                }
+            }
+        }
+
         Ok(())
     }
 
