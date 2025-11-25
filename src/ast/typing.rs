@@ -319,7 +319,7 @@ impl From<Type> for cranelift::prelude::Type {
             Type::I32(_) => types::I32,
             Type::I64(_) => types::I64,
             Type::Decimal(_) => types::F64,
-            Type::String(_) => todo!("string cranelift type"),
+            Type::String(_) => types::I64, // Pointer to fat pointer struct (ptr + len)
             Type::Character(_) => todo!("character cranelift type"),
             Type::Function(_) => types::I64,
             Type::Struct(_) => types::I64,
@@ -338,9 +338,9 @@ impl Type {
             Type::I32(i32_type) => 4,
             Type::I64(i64_type) => 8,
             Type::Decimal(decimal_type) => 8,
-            Type::String(string_type) => todo!(),
+            Type::String(string_type) => 16, // Fat pointer: 8 bytes ptr + 8 bytes len
             Type::Character(character_type) => todo!(),
-            Type::Function(function_type) => todo!(),
+            Type::Function(function_type) => 8, // Function pointers are just pointers
             Type::Struct(struct_type) => struct_type.fields.iter().map(|f| f.ty.size()).sum(),
             Type::Pointer(pointer_type) => 8,
             Type::Forward(i) => unreachable!("forward type"),

@@ -118,13 +118,6 @@ pub fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
         return Ok(());
     }
 
-    // Allow automatic String → *byte conversion for FFI
-    if matches!(a, Type::String(_))
-        && matches!(b, Type::Pointer(p) if matches!(&*p.pointee, Type::Byte(_)))
-    {
-        return Ok(()); // String can be implicitly converted to *byte
-    }
-
     Err(TypeCheckError::TypeMismatch
         .to_diagnostic()
         .with_label(a.span().label(format!("{}", a.pseudo())))
