@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Expression, FunctionType, Type},
+    ast::{Expression, FunctionType, Parameter, Type},
     lexer::{Identifier, Path},
     Phase, Span,
 };
@@ -60,7 +60,7 @@ pub struct FunctionDefinition<P: Phase> {
     pub id: usize,
     pub visibility: Visibility,
     pub name: Identifier,
-    pub parameters: Vec<crate::ast::Parameter>,
+    pub parameters: Vec<Parameter>,
     pub returns: Type,
     pub body: Expression<P>,
     pub span: Span,

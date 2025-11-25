@@ -176,14 +176,14 @@ impl Parse for StructType {
             if !fields.is_empty() {
                 input.expect(
                     TokenKind::Comma,
-                    "a comma between fields",
+                    "a comma between members",
                     ParserError::ExpectedField,
                 )?;
             }
 
             let name = input.parse()?;
 
-            input.expect(TokenKind::Tilde, "a type", ParserError::ExpectedType)?;
+            input.expect(TokenKind::Colon, "a member type", ParserError::ExpectedType)?;
 
             let ty = input.parse()?;
 

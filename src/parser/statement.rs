@@ -1,7 +1,8 @@
 use crate::{
     ast::{
         Declaration, Expression, ExternDefinition, ExternFunction, FunctionDefinition, Import,
-        Scope, Statement, StructType, Type, TypeDefinition, ValueDefinition, Visibility, WhileLoop,
+        Parameter, Scope, Statement, StructType, Type, TypeDefinition, ValueDefinition, Visibility,
+        WhileLoop,
     },
     lexer::{Identifier, Path, Token, TokenKind},
     Parse, Parser, ParserError, Result, Untyped,
@@ -302,18 +303,30 @@ impl Parse for FunctionDefinition<Untyped> {
                 break;
             }
 
+            let is_dispatch = if let Some(Token {
+                kind: TokenKind::On,
+                ..
+            }) = input.peek()
+            {
+                input.next()?;
+                true
+            } else {
+                false
+            };
+
             // Parse parameter: name ~ type
             let param_name = input.parse::<Identifier>()?;
             input.expect(
-                TokenKind::Tilde,
-                "'~' before parameter type",
+                TokenKind::Colon,
+                "a parameter type",
                 ParserError::ExpectedTypeAnnotation,
             )?;
             let param_ty = input.parse::<Type>()?;
 
-            parameters.push(crate::ast::Parameter {
+            parameters.push(Parameter {
                 name: param_name,
                 ty: param_ty,
+                is_dispatch,
             });
 
             if let Some(Token {

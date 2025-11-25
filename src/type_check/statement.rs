@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        Declaration, Expression, ExternDefinition, FunctionDefinition, Import, Scope, Statement,
-        Type, TypeDefinition, ValueDefinition, WhileLoop,
+        Declaration, Expression, ExternDefinition, FunctionDefinition, Import, Parameter, Scope,
+        Statement, Type, TypeDefinition, ValueDefinition, WhileLoop,
     },
     expect_boolean, Result, TypeCheck, TypeCheckContext, Typed, Untyped,
 };
@@ -150,7 +150,8 @@ impl TypeCheck for FunctionDefinition<Untyped> {
             .iter()
             .map(|p| {
                 let resolved_ty = p.ty.clone().type_check(ctx)?;
-                Ok(crate::ast::Parameter {
+                Ok(Parameter {
+                    is_dispatch: p.is_dispatch,
                     name: p.name.clone(),
                     ty: resolved_ty,
                 })
@@ -167,6 +168,17 @@ impl TypeCheck for FunctionDefinition<Untyped> {
         };
 
         ctx.declare_variable(self.name.clone(), Type::Function(function_type));
+
+        let dispatch_params: Vec<_> = resolved_params.iter().filter(|p| p.is_dispatch).collect();
+        if dispatch_params.len() == 1 {
+            // Single dispatch parameter - register it
+            let dispatch_param = dispatch_params[0];
+            ctx.declare_dispatch_function(
+                self.name.to_string(),
+                self.id,
+                dispatch_param.ty.clone(),
+            );
+        }
 
         // Create a new child context for the function body
         let mut func_ctx = ctx.new_child_context();

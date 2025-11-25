@@ -1,0 +1,11 @@
+fn negate(on x: i32) -> i32 {
+      0 - x
+  }
+
+  fn abs(on x: i32) -> i32 {
+      x if x > 0 else 0 - x
+  }
+
+  fn main() -> i32 {
+      1.abs()
+  }

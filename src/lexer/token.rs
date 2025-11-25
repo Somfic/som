@@ -177,6 +177,8 @@ pub enum TokenKind {
     Extern,
     /// An as keyword; `as`.
     As,
+    /// An on keyword; `on`.
+    On,
     /// A return keyword; `return`.
     Return,
 
@@ -266,6 +268,7 @@ impl Display for TokenKind {
             TokenKind::Function => write!(f, "`fn`"),
             TokenKind::Extern => write!(f, "`extern`"),
             TokenKind::As => write!(f, "`as`"),
+            TokenKind::On => write!(f, "`on`"),
             TokenKind::Return => write!(f, "`return`"),
             TokenKind::Use => write!(f, "`use`"),
             TokenKind::Pub => write!(f, "`pub`"),

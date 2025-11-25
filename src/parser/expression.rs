@@ -314,13 +314,17 @@ impl Parse for Lambda<Untyped> {
 
             let name = input.parse::<Identifier>()?;
             input.expect(
-                TokenKind::Tilde,
-                "'~' before parameter type",
+                TokenKind::Colon,
+                "a parameter type",
                 ParserError::ExpectedTypeAnnotation,
             )?;
             let ty = input.parse::<Type>()?;
 
-            parameters.push(Parameter { name, ty });
+            parameters.push(Parameter {
+                name,
+                ty,
+                is_dispatch: false,
+            });
 
             if let Some(Token {
                 kind: TokenKind::Comma,

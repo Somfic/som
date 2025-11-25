@@ -28,8 +28,14 @@ pub trait TypeCheck: Sized {
 pub struct TypeCheckContext<'a> {
     parent: Option<&'a TypeCheckContext<'a>>,
     variables: HashMap<String, Type>,
+    dispatch_functions: HashMap<String, Vec<DispatchImplementation>>,
     types: HashMap<String, Type>,
     registry: &'a HashMap<Path, ModuleScope>,
+}
+
+pub struct DispatchImplementation {
+    pub function_id: usize,
+    pub parameter_type: Type,
 }
 
 impl<'a> TypeCheckContext<'a> {
@@ -38,6 +44,7 @@ impl<'a> TypeCheckContext<'a> {
             parent: None,
             variables: HashMap::new(),
             types: HashMap::new(),
+            dispatch_functions: HashMap::new(),
             registry,
         }
     }
@@ -93,23 +100,77 @@ impl<'a> TypeCheckContext<'a> {
         self.types.insert(name.into(), ty);
     }
 
+    pub fn declare_dispatch_function(
+        &mut self,
+        name: impl Into<String>,
+        function_id: usize,
+        parameter_type: Type,
+    ) {
+        let name = name.into();
+
+        let implementations = self.dispatch_functions.entry(name).or_default();
+
+        implementations.push(DispatchImplementation {
+            function_id,
+            parameter_type,
+        });
+    }
+
+    pub fn get_dispatch_implementations(
+        &self,
+        name: impl Into<String>,
+    ) -> Result<&Vec<DispatchImplementation>> {
+        let name = name.into();
+
+        self.dispatch_functions
+            .get(&name)
+            .or_else(|| {
+                self.parent
+                    .and_then(|parent_ctx| parent_ctx.get_dispatch_implementations(&name).ok())
+            })
+            .ok_or_else(|| TypeCheckError::UndefinedFunction.to_diagnostic())
+    }
+
+    pub fn find_dispatch_implementation(
+        &self,
+        name: impl Into<String>,
+        parameter_type: &Type,
+    ) -> Result<usize> {
+        let name = name.into();
+
+        let implementations = self.get_dispatch_implementations(&name)?;
+
+        for implementation in implementations {
+            if &implementation.parameter_type == parameter_type {
+                return Ok(implementation.function_id);
+            }
+        }
+
+        TypeCheckError::UndefinedFunction
+            .to_diagnostic()
+            .with_hint(format!(
+                "no implementation of '{}' for type '{}'",
+                name, parameter_type
+            ))
+            .to_err()
+    }
+
     fn new_child_context(&self) -> TypeCheckContext<'_> {
         TypeCheckContext {
             parent: Some(self),
             variables: HashMap::new(),
             types: HashMap::new(),
+            dispatch_functions: HashMap::new(),
             registry: self.registry,
         }
     }
 
     pub fn get_module_scope(&self, path: &Path) -> Result<&ModuleScope> {
-        self.registry
-            .get(path)
-            .ok_or_else(|| {
-                TypeCheckError::UndefinedModule
-                    .to_diagnostic()
-                    .with_label(path.span.label(format!("module '{}' not found", path)))
-            })
+        self.registry.get(path).ok_or_else(|| {
+            TypeCheckError::UndefinedModule
+                .to_diagnostic()
+                .with_label(path.span.label(format!("module '{}' not found", path)))
+        })
     }
 }
 

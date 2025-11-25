@@ -208,6 +208,7 @@ pub struct Lambda<P: Phase> {
 #[derive(Clone, Debug)]
 pub struct Parameter {
     pub name: Identifier,
+    pub is_dispatch: bool,
     pub ty: Type,
 }
 

@@ -137,6 +137,8 @@ pub enum TypeCheckError {
     RecursiveType,
     #[error("undefined module")]
     UndefinedModule,
+    #[error("undefined function")]
+    UndefinedFunction,
 }
 
 #[derive(Debug, thiserror::Error)]
