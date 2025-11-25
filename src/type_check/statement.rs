@@ -65,8 +65,14 @@ impl TypeCheck for TypeDefinition {
     type Output = TypeDefinition;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
-        ctx.declare_type(self.name.clone(), self.ty.clone());
-        Ok(self)
+        let resolved_ty = ctx.get_type_with_span(self.name.to_string(), &self.name.span)?;
+
+        Ok(TypeDefinition {
+            name: self.name,
+            visibility: self.visibility,
+            ty: resolved_ty,
+            span: self.span,
+        })
     }
 }
 
@@ -105,7 +111,30 @@ impl TypeCheck for WhileLoop<Untyped> {
 impl TypeCheck for Import {
     type Output = Import;
 
-    fn type_check(self, _ctx: &mut TypeCheckContext) -> Result<Self::Output> {
-        todo!("import public types and values from the module")
+    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        let scope = ctx.get_module_scope(&self.module)?;
+
+        // Collect the types and variables first (cloning them)
+        let types: Vec<(String, Type)> = scope
+            .public_types
+            .iter()
+            .map(|(name, ty)| (name.clone(), ty.clone()))
+            .collect();
+
+        let variables: Vec<(String, Type)> = scope
+            .public_variables
+            .iter()
+            .map(|(name, ty)| (name.clone(), ty.clone()))
+            .collect();
+
+        for (name, ty) in types {
+            ctx.declare_type(name, ty);
+        }
+
+        for (name, ty) in variables {
+            ctx.declare_variable(name, ty);
+        }
+
+        Ok(self)
     }
 }

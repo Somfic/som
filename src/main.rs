@@ -1,6 +1,5 @@
 use som::{
-    ast::Expression, Diagnostic, Emitter, Linker, ModuleTyper, Parser, ProgramParser, Runner,
-    Source, Typer,
+    ast::Expression, Diagnostic, Emitter, Linker, Parser, ProgramParser, Runner, Source, Typer,
 };
 use target_lexicon::Triple;
 
@@ -14,7 +13,7 @@ fn run() -> Result<(), Diagnostic> {
     let parser = ProgramParser::new("./sandbox");
     let program = parser.parse()?;
 
-    let mut checker = ModuleTyper::new();
+    let mut checker = Typer::new();
     let program = checker.check(program)?;
 
     println!("Parsed program: {:#?}", program);

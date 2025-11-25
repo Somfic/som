@@ -59,6 +59,7 @@ pub struct ValueDefinition<P: Phase> {
 }
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub enum Visibility {
     Private,
     Module,

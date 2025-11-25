@@ -133,6 +133,8 @@ pub enum TypeCheckError {
     ExpectedField,
     #[error("this type has recursion")]
     RecursiveType,
+    #[error("undefined module")]
+    UndefinedModule,
 }
 
 #[derive(Debug, thiserror::Error)]

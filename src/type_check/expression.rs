@@ -187,18 +187,31 @@ impl TypeCheck for Lambda<Untyped> {
     type Output = Lambda<Typed>;
 
     fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
+        // Resolve all parameter types first (before creating child context to avoid borrow issues)
+        let resolved_params: Vec<_> = self.parameters.iter()
+            .map(|p| {
+                let resolved_ty = p.ty.clone().type_check(ctx)?;
+                Ok((p.name.name.to_string(), resolved_ty))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
         let mut lambda_ctx = ctx.new_child_context();
-        for param in &self.parameters {
-            lambda_ctx.declare_variable(param.name.name.to_string(), param.ty.clone());
+        for (name, ty) in resolved_params {
+            lambda_ctx.declare_variable(name, ty);
         }
 
         let body = self.body.type_check(&mut lambda_ctx)?;
 
         if let Some(return_ty) = &self.explicit_return_ty {
-            expect_type(return_ty, body.ty(), format!("{} was provided as the function's return type, but the function actually returns {}, which does not match", return_ty, body.ty()))?;
+            // Resolve Forward types in return type using TypeCheck
+            let resolved_return_ty = return_ty.clone().type_check(ctx)?;
+            expect_type(&resolved_return_ty, body.ty(), format!("{} was provided as the function's return type, but the function actually returns {}, which does not match", resolved_return_ty, body.ty()))?;
         }
 
-        let parameter_types: Vec<_> = self.parameters.iter().map(|p| p.ty.clone()).collect();
+        // Resolve Forward types in parameter types for the function signature
+        let parameter_types: Vec<_> = self.parameters.iter().map(|p| {
+            p.ty.clone().type_check(ctx).unwrap_or(p.ty.clone())
+        }).collect();
 
         Ok(Lambda {
             id: self.id,
