@@ -1,7 +1,7 @@
 use ena::unify::InPlaceUnificationTable;
 
 use crate::{
-    Ast, Expr, ExprId, FuncDec, FuncId, Stmt, StmtId, TraitId, Type, TypeValue, TypeVar, TypedAst,
+    Ast, Expr, ExprId, FuncId, Stmt, StmtId, TraitId, Type, TypeValue, TypeVar, TypedAst,
 };
 use std::collections::HashMap;
 
@@ -183,11 +183,20 @@ impl TypeInferencer {
         // Check or infer return type
         let return_ty = match &func.return_type {
             Some(annotated_return) => {
+                // Get the expression ID to report errors on
+                // If body is a block with a value, use that value's ID
+                // Otherwise use the body itself
+                let error_expr_id = match ast.get_expr(&func.body) {
+                    Expr::Block { value: Some(value_expr), .. } => *value_expr,
+                    _ => func.body,
+                };
+
                 // Check body matches annotation
+                // Note: lhs is "expected", rhs is "found" in error messages
                 self.constraints.push(Constraint::Equal {
-                    provenance: Provenance::FunctionCall(func.body),
-                    lhs: body_ty.clone(),
-                    rhs: annotated_return.clone(),
+                    provenance: Provenance::FunctionCall(error_expr_id, func.return_type_id),
+                    lhs: annotated_return.clone(), // expected type
+                    rhs: body_ty.clone(),          // found type
                 });
                 annotated_return.clone()
             }
@@ -256,6 +265,7 @@ impl TypeInferencer {
                         expected: t1.clone(),
                         found: t2.clone(),
                         provenance: Provenance::FunctionArity,
+                        expected_type_id: None,
                     });
                 }
                 for (arg1, arg2) in a1.iter().zip(a2.iter()) {
@@ -268,6 +278,7 @@ impl TypeInferencer {
                 expected: t1,
                 found: t2,
                 provenance: Provenance::Unification,
+                expected_type_id: None,
             }),
         }
     }
@@ -280,9 +291,6 @@ impl TypeInferencer {
         self.unification_table.new_key(TypeValue::Unbound)
     }
 
-    pub fn constraints(&self) -> &[Constraint] {
-        &self.constraints
-    }
 
     fn solve_trait_constraint(
         &mut self,
@@ -323,10 +331,17 @@ impl TypeInferencer {
         for constraint in constraints {
             let result = match &constraint {
                 Constraint::Equal {
-                    provenance: _,
+                    provenance,
                     lhs,
                     rhs,
-                } => self.unify(lhs, rhs),
+                } => {
+                    let mut res = self.unify(lhs, rhs);
+                    // If it's a Mismatch error, add the expected_type_id from provenance
+                    if let Err(TypeError::Mismatch { expected_type_id, .. }) = &mut res {
+                        *expected_type_id = provenance.expected_type_id();
+                    }
+                    res
+                }
 
                 Constraint::Trait {
                     provenance: _,

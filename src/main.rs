@@ -1,94 +1,61 @@
 mod ast;
 pub use ast::*;
 
+mod lexer;
+mod parser;
+mod span;
+
 use crate::type_check::TypeInferencer;
+pub use span::Span;
 mod type_check;
 
 fn main() {
-    let mut ast = Ast::new();
-    let inferencer = TypeInferencer::new();
+    // Parse source code
+    let source = r#"fn main(a: i32) -> i32 {
+    a + 42
+}"#;
 
-    // Build a function: fn add(x: i32, y: i32) { x + y }
-    let param_x = ast.alloc_expr(Expr::Var(Ident {
-        id: 0,
-        value: "x".into(),
-    }));
-    let param_y = ast.alloc_expr(Expr::Var(Ident {
-        id: 1,
-        value: "y".into(),
-    }));
-    let add_body = ast.alloc_expr(Expr::Binary {
-        op: BinOp::LessThan,
-        lhs: param_x,
-        rhs: param_y,
-    });
+    let parser = parser::Parser::new(source);
+    let (green, parse_errors) = parser.parse();
 
-    let add_func = ast.alloc_func(FuncDec {
-        name: Ident {
-            id: 0,
-            value: "add".into(),
-        },
-        parameters: vec![
-            FuncParam {
-                name: Ident {
-                    id: 1,
-                    value: "x".into(),
-                },
-                ty: Some(Type::I32),
-            },
-            FuncParam {
-                name: Ident {
-                    id: 2,
-                    value: "y".into(),
-                },
-                ty: Some(Type::I32),
-            },
-        ],
-        return_type: None,
-        body: add_body,
-    });
+    if !parse_errors.is_empty() {
+        for error in &parse_errors {
+            let formatted = span::format_error(source, error.span, &error.message);
+            println!("{}\n", formatted);
+        }
+    }
 
-    // Build a call: add(5, 10)
-    let five = ast.alloc_expr(Expr::I32(5));
-    let ten = ast.alloc_expr(Expr::I32(10));
-    let call_add = ast.alloc_expr(Expr::Call {
-        func: add_func,
-        args: vec![five, ten],
-    });
-
-    // Build a function that calls add: fn main() { add(5, 10) }
-    let main_func = ast.alloc_func(FuncDec {
-        name: Ident {
-            id: 3,
-            value: "main".into(),
-        },
-        parameters: vec![],
-        return_type: None,
-        body: call_add,
-    });
+    let ast = parser::cst::to_ast(green);
 
     // Type check the entire program
-    println!("Type checking program...");
+    let inferencer = TypeInferencer::new();
     let typed_ast = inferencer.check_program(ast);
 
-    println!("Constraints");
-    for constraint in &typed_ast.constraints {
-        println!("  {:?}", constraint);
-    }
-
-    println!("\nExpression types:");
-    for (expr_id, ty) in &typed_ast.types {
-        println!("  {:?} → {:?}", expr_id, ty);
-    }
-
-    println!("\nCall result type: {:?}", typed_ast.types.get(&call_add));
-
-    if typed_ast.errors.is_empty() {
-        println!("\n✓ No errors!");
-    } else {
-        println!("\n✗ Errors found:");
+    if !typed_ast.errors.is_empty() {
         for (expr_id, error) in &typed_ast.errors {
-            println!("  At {:?}: {:?}", expr_id, error);
+            if let Some(span) = typed_ast.ast.expr_spans.get(expr_id) {
+                // Check if there's a secondary span to show
+                let secondary_spans = match error {
+                    crate::type_check::TypeError::Mismatch { expected_type_id: Some(type_id), .. } => {
+                        if let Some(type_span) = typed_ast.ast.type_spans.get(type_id) {
+                            vec![(*type_span, "expected type defined here")]
+                        } else {
+                            vec![]
+                        }
+                    }
+                    _ => vec![],
+                };
+
+                let formatted = span::format_error_with_secondary(
+                    source,
+                    *span,
+                    &format!("{:?}", error),
+                    &secondary_spans,
+                );
+                println!("{}\n", formatted);
+            } else {
+                println!("  At {:?}: {:?}\n", expr_id, error);
+            }
         }
     }
 }

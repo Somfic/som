@@ -7,6 +7,7 @@ pub use expr::*;
 mod stmt;
 pub use stmt::*;
 
+use crate::span::Span;
 use crate::type_check::{Constraint, TypeError};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -20,6 +21,9 @@ pub struct ImplId(pub u32);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StructId(pub u32);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct TypeId(pub u32);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Ident {
@@ -48,6 +52,15 @@ pub struct Ast {
     pub traits: Vec<TraitDec>,
     // structs: Vec<StructDec>,
     pub impls: Vec<ImplDec>,
+
+    // span tracking
+    pub expr_spans: HashMap<ExprId, Span>,
+    pub stmt_spans: HashMap<StmtId, Span>,
+    pub func_spans: HashMap<FuncId, Span>,
+    pub type_spans: HashMap<TypeId, Span>,
+
+    // type allocation counter
+    next_type_id: u32,
 }
 
 impl Ast {
@@ -70,15 +83,33 @@ impl Ast {
         id
     }
 
+    pub fn alloc_expr_with_span(&mut self, expr: Expr, span: Span) -> ExprId {
+        let id = self.alloc_expr(expr);
+        self.expr_spans.insert(id, span);
+        id
+    }
+
     pub fn alloc_stmt(&mut self, stmt: Stmt) -> StmtId {
         let id = StmtId(self.stmts.len() as u32);
         self.stmts.push(stmt);
         id
     }
 
+    pub fn alloc_stmt_with_span(&mut self, stmt: Stmt, span: Span) -> StmtId {
+        let id = self.alloc_stmt(stmt);
+        self.stmt_spans.insert(id, span);
+        id
+    }
+
     pub fn alloc_func(&mut self, func: FuncDec) -> FuncId {
         let id = FuncId(self.funcs.len() as u32);
         self.funcs.push(func);
+        id
+    }
+
+    pub fn alloc_func_with_span(&mut self, func: FuncDec, span: Span) -> FuncId {
+        let id = self.alloc_func(func);
+        self.func_spans.insert(id, span);
         id
     }
 
@@ -91,6 +122,13 @@ impl Ast {
     pub fn alloc_impl(&mut self, impl_dec: ImplDec) -> ImplId {
         let id = ImplId(self.impls.len() as u32);
         self.impls.push(impl_dec);
+        id
+    }
+
+    pub fn alloc_type_with_span(&mut self, span: Span) -> TypeId {
+        let id = TypeId(self.next_type_id);
+        self.next_type_id += 1;
+        self.type_spans.insert(id, span);
         id
     }
 
@@ -144,6 +182,7 @@ pub struct FuncDec {
     pub name: Ident,
     pub parameters: Vec<FuncParam>,
     pub return_type: Option<Type>,
+    pub return_type_id: Option<TypeId>, // TypeId for the return type annotation (for span tracking)
     pub body: ExprId,
 }
 

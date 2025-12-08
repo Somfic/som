@@ -1,4 +1,4 @@
-use crate::{type_check::Provenance, TraitId, Type, TypeVar};
+use crate::{type_check::Provenance, TraitId, Type, TypeId, TypeVar};
 
 #[derive(Debug)]
 pub enum TypeError {
@@ -6,6 +6,7 @@ pub enum TypeError {
         expected: Type,
         found: Type,
         provenance: Provenance,
+        expected_type_id: Option<TypeId>, // For showing where the expected type was declared
     },
     InfiniteType {
         var: TypeVar,

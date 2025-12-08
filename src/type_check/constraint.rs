@@ -1,4 +1,4 @@
-use crate::{ExprId, TraitId, Type};
+use crate::{ExprId, TraitId, Type, TypeId};
 
 #[derive(Debug, Clone)]
 pub enum Constraint {
@@ -27,7 +27,7 @@ impl Constraint {
 #[derive(Debug, Clone)]
 pub enum Provenance {
     BinaryOp(ExprId),
-    FunctionCall(ExprId),
+    FunctionCall(ExprId, Option<TypeId>), // ExprId of the return value, TypeId of the expected return type annotation
     LetBinding(ExprId),
     Annotation(ExprId),
     Check(ExprId),
@@ -39,13 +39,20 @@ impl Provenance {
     pub fn expr_id(&self) -> ExprId {
         match self {
             Provenance::BinaryOp(id) => *id,
-            Provenance::FunctionCall(id) => *id,
+            Provenance::FunctionCall(id, _) => *id,
             Provenance::LetBinding(id) => *id,
             Provenance::Annotation(id) => *id,
             Provenance::Check(id) => *id,
             Provenance::FunctionArity | Provenance::Unification => {
                 panic!("Provenance {:?} has no expr_id", self)
             }
+        }
+    }
+
+    pub fn expected_type_id(&self) -> Option<TypeId> {
+        match self {
+            Provenance::FunctionCall(_, type_id) => *type_id,
+            _ => None,
         }
     }
 }
