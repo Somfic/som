@@ -1,31 +1,31 @@
-use som::{
-    ast::Expression, Diagnostic, Emitter, Linker, Parser, ProgramParser, Runner, Source, Typer,
-};
-use target_lexicon::Triple;
+mod ast;
+pub use ast::*;
+
+use crate::type_check::TypeInferencer;
+mod type_check;
 
 fn main() {
-    if let Err(e) = run() {
-        eprintln!("{}", e);
+    let mut ast = Ast::new();
+    let mut inferencer = TypeInferencer::new();
+
+    let lhs = ast.alloc_expr(Expr::I32(12));
+    let rhs = ast.alloc_expr(Expr::I32(13));
+    let addition = ast.alloc_expr(Expr::Binary {
+        op: BinOp::Add,
+        lhs,
+        rhs,
+    });
+
+    let result_type = inferencer.infer(&ast, &addition);
+
+    println!("  Constraints:");
+    for (i, constraint) in inferencer.constraints().iter().enumerate() {
+        println!("    [{}] {:?}", i, constraint);
     }
-}
 
-fn run() -> Result<(), Diagnostic> {
-    let parser = ProgramParser::new("./example");
-    let program = parser.parse()?;
+    inferencer.solve(&ast).expect("Failed to solve constraints");
 
-    let mut checker = Typer::new();
-    let program = checker.check(program)?;
+    let final_type = inferencer.normalize(&result_type);
 
-    let mut emitter = Emitter::new(Triple::host())?;
-    let module = emitter.compile(&program)?;
-
-    let linker = Linker::new("build/som");
-    let executable = linker.link_modules(vec![module])?;
-
-    let runner = Runner::new(&executable);
-    let result = runner.run()?;
-
-    println!("Process exited with: {}", result);
-
-    Ok(())
+    println!("  Final type: {:?}", final_type);
 }

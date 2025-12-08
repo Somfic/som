@@ -1,233 +1,193 @@
-use crate::{
-    ast::{Expression, Pseudo, Type},
-    lexer::Path,
-    parser::Untyped,
-    Phase, Result, TypeCheckError,
-};
+use ena::unify::InPlaceUnificationTable;
+
+use crate::{Ast, Expr, ExprId, TraitId, Type, TypeValue, TypeVar};
 use std::collections::HashMap;
 
-mod expression;
-mod module;
-pub use module::*;
-mod file;
-mod statement;
-
-#[derive(Debug)]
-pub struct Typed;
-
-impl Phase for Typed {
-    type TypeInfo = Type;
+#[derive(Debug, Clone)]
+pub enum Constraint {
+    Equal {
+        expr: ExprId,
+        lhs: Type,
+        rhs: Type,
+    },
+    Trait {
+        expr: ExprId,
+        trait_id: TraitId,
+        args: Vec<Type>,
+        output: Type,
+    },
 }
 
-pub trait TypeCheck: Sized {
-    type Output;
-
-    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output>;
+pub struct TypeInferencer {
+    env: HashMap<String, Type>,
+    constraints: Vec<Constraint>,
+    unification_table: InPlaceUnificationTable<TypeVar>,
 }
 
-pub struct TypeCheckContext<'a> {
-    parent: Option<&'a TypeCheckContext<'a>>,
-    variables: HashMap<String, Type>,
-    dispatch_functions: HashMap<String, Vec<DispatchImplementation>>,
-    types: HashMap<String, Type>,
-    registry: &'a HashMap<Path, ModuleScope>,
-}
-
-pub struct DispatchImplementation {
-    pub function_id: usize,
-    pub parameter_type: Type,
-}
-
-impl<'a> TypeCheckContext<'a> {
-    pub fn new(registry: &'a HashMap<Path, ModuleScope>) -> Self {
+impl TypeInferencer {
+    pub fn new() -> Self {
         Self {
-            parent: None,
-            variables: HashMap::new(),
-            types: HashMap::new(),
-            dispatch_functions: HashMap::new(),
-            registry,
+            env: HashMap::new(),
+            constraints: Vec::new(),
+            unification_table: InPlaceUnificationTable::new(),
         }
     }
 
-    pub fn get_variable(&self, name: impl Into<String>) -> Result<Type> {
-        let name = name.into();
+    /// generates contraints
+    pub fn infer(&mut self, ast: &Ast, expr_id: &ExprId) -> Type {
+        let expr = ast.get_expr(expr_id);
 
-        self.variables
-            .get(&name)
-            .cloned()
-            .or_else(|| {
-                self.parent
-                    .and_then(|parent_ctx| parent_ctx.get_variable(name).ok())
-            })
-            .ok_or_else(|| TypeCheckError::UndefinedVariable.to_diagnostic())
+        match expr {
+            Expr::I32(_) => Type::I32,
+            Expr::Var(ident) => self
+                .env
+                .get(&*ident.value)
+                .cloned()
+                .unwrap_or_else(|| self.fresh_type()),
+            Expr::Binary { op, lhs, rhs } => {
+                let lhs_ty = self.infer(ast, lhs);
+                let rhs_ty = self.infer(ast, rhs);
+                let output_ty = self.fresh_type();
+
+                self.constraints.push(Constraint::Trait {
+                    expr: *expr_id,
+                    trait_id: op.trait_id(),
+                    args: vec![lhs_ty, rhs_ty],
+                    output: output_ty.clone(),
+                });
+
+                output_ty
+            }
+        }
     }
 
-    pub fn declare_variable(&mut self, name: impl Into<String>, ty: Type) {
-        self.variables.insert(name.into(), ty);
+    pub fn check(&mut self, ast: &Ast, expr_id: ExprId, expected: Type) {
+        let expr = ast.get_expr(&expr_id);
+
+        #[allow(clippy::match_single_binding)]
+        match expr {
+            _ => {
+                let actual = self.infer(ast, &expr_id);
+                self.constraints.push(Constraint::Equal {
+                    expr: expr_id,
+                    lhs: actual,
+                    rhs: expected,
+                })
+            }
+        }
     }
 
-    pub fn get_type(&self, name: impl Into<String>) -> Result<Type> {
-        let name = name.into();
-
-        self.types
-            .get(&name)
-            .cloned()
-            .or_else(|| {
-                self.parent
-                    .and_then(|parent_ctx| parent_ctx.get_type(name).ok())
-            })
-            .ok_or_else(|| TypeCheckError::UndefinedType.to_diagnostic())
+    /// normalizes a type
+    pub fn normalize(&mut self, ty: &Type) -> Type {
+        match ty {
+            Type::Unknown(var) => match self.unification_table.probe_value(*var) {
+                TypeValue::Bound(ty) => self.normalize(&ty),
+                TypeValue::Unbound => ty.clone(),
+            },
+            Type::Fun { arguments, returns } => Type::Fun {
+                arguments: arguments.iter().map(|t| self.normalize(t)).collect(),
+                returns: Box::new(self.normalize(returns)),
+            },
+            _ => ty.clone(),
+        }
     }
 
-    pub fn get_type_with_span(&self, name: impl Into<String>, span: &crate::Span) -> Result<Type> {
-        let name = name.into();
+    fn unify(&mut self, t1: &Type, t2: &Type) -> Result<(), String> {
+        let t1 = self.normalize(t1);
+        let t2 = self.normalize(t2);
 
-        self.types
-            .get(&name)
-            .cloned()
-            .or_else(|| {
-                self.parent
-                    .and_then(|parent_ctx| parent_ctx.get_type(&name).ok())
-            })
-            .ok_or_else(|| {
-                TypeCheckError::UndefinedType
-                    .to_diagnostic()
-                    .with_label(span.label(format!("type '{}' not found", name)))
-            })
+        match (&t1, &t2) {
+            (Type::I32, Type::I32) | (Type::Bool, Type::Bool) | (Type::Unit, Type::Unit) => Ok(()),
+
+            (Type::Unknown(v1), Type::Unknown(v2)) => {
+                self.unification_table
+                    .unify_var_var(*v1, *v2)
+                    .map_err(|_| "Unification error".to_string())?;
+                Ok(())
+            }
+
+            (Type::Unknown(var), ty) | (ty, Type::Unknown(var)) => {
+                self.unification_table
+                    .unify_var_value(*var, TypeValue::Bound(ty.clone()))
+                    .map_err(|_| "Unification error".to_string())?;
+                Ok(())
+            }
+
+            (
+                Type::Fun {
+                    arguments: a1,
+                    returns: r1,
+                },
+                Type::Fun {
+                    arguments: a2,
+                    returns: r2,
+                },
+            ) => {
+                if a1.len() != a2.len() {
+                    return Err("Function arity mismatch".to_string());
+                }
+                for (arg1, arg2) in a1.iter().zip(a2.iter()) {
+                    self.unify(arg1, arg2)?;
+                }
+                self.unify(r1, r2)
+            }
+
+            _ => Err(format!("Cannot unify {:?} with {:?}", t1, t2)),
+        }
     }
 
-    pub fn declare_type(&mut self, name: impl Into<String>, ty: Type) {
-        self.types.insert(name.into(), ty);
+    fn fresh_type(&mut self) -> Type {
+        Type::Unknown(self.fresh_type_var())
     }
 
-    pub fn declare_dispatch_function(
-        &mut self,
-        name: impl Into<String>,
-        function_id: usize,
-        parameter_type: Type,
-    ) {
-        let name = name.into();
-
-        let implementations = self.dispatch_functions.entry(name).or_default();
-
-        implementations.push(DispatchImplementation {
-            function_id,
-            parameter_type,
-        });
+    fn fresh_type_var(&mut self) -> TypeVar {
+        self.unification_table.new_key(TypeValue::Unbound)
     }
 
-    pub fn get_dispatch_implementations(
-        &self,
-        name: impl Into<String>,
-    ) -> Result<&Vec<DispatchImplementation>> {
-        let name = name.into();
-
-        self.dispatch_functions
-            .get(&name)
-            .or_else(|| {
-                self.parent
-                    .and_then(|parent_ctx| parent_ctx.get_dispatch_implementations(&name).ok())
-            })
-            .ok_or_else(|| TypeCheckError::UndefinedFunction.to_diagnostic())
+    pub fn constraints(&self) -> &[Constraint] {
+        &self.constraints
     }
 
-    pub fn find_dispatch_implementation(
-        &self,
-        name: impl Into<String>,
-        parameter_type: &Type,
-    ) -> Result<usize> {
-        let name = name.into();
+    /// solves contraints
+    pub fn solve(&mut self, ast: &Ast) -> Result<(), String> {
+        let constraints = self.constraints.clone();
 
-        let implementations = self.get_dispatch_implementations(&name)?;
+        for constraint in constraints {
+            match constraint {
+                Constraint::Equal { lhs, rhs, .. } => {
+                    self.unify(&lhs, &rhs)?;
+                }
 
-        for implementation in implementations {
-            if &implementation.parameter_type == parameter_type {
-                return Ok(implementation.function_id);
+                Constraint::Trait {
+                    trait_id,
+                    args,
+                    output,
+                    ..
+                } => {
+                    // Normalize args first
+                    let normalized_args: Vec<Type> =
+                        args.iter().map(|t| self.normalize(t)).collect();
+
+                    // Find trait impl
+                    if normalized_args.len() != 2 {
+                        return Err("Expected 2 args for binary op trait".to_string());
+                    }
+
+                    let impl_def = ast
+                        .find_impl(trait_id, &normalized_args[0], &[normalized_args[1].clone()])
+                        .ok_or_else(|| {
+                            format!(
+                                "No impl for trait {:?} on {:?}",
+                                trait_id, normalized_args[0]
+                            )
+                        })?;
+
+                    // Unify output with impl's output type
+                    self.unify(&output, &impl_def.output_type)?;
+                }
             }
         }
 
-        TypeCheckError::UndefinedFunction
-            .to_diagnostic()
-            .with_hint(format!(
-                "no implementation of '{}' for type '{}'",
-                name, parameter_type
-            ))
-            .to_err()
-    }
-
-    fn new_child_context(&self) -> TypeCheckContext<'_> {
-        TypeCheckContext {
-            parent: Some(self),
-            variables: HashMap::new(),
-            types: HashMap::new(),
-            dispatch_functions: HashMap::new(),
-            registry: self.registry,
-        }
-    }
-
-    pub fn get_module_scope(&self, path: &Path) -> Result<&ModuleScope> {
-        self.registry.get(path).ok_or_else(|| {
-            TypeCheckError::UndefinedModule
-                .to_diagnostic()
-                .with_label(path.span.label(format!("module '{}' not found", path)))
-        })
-    }
-}
-
-pub fn expect_type(a: &Type, b: &Type, hint: impl Into<String>) -> Result<()> {
-    if a == b {
-        return Ok(());
-    }
-
-    Err(TypeCheckError::TypeMismatch
-        .to_diagnostic()
-        .with_label(a.span().label(format!("{}", a.pseudo())))
-        .with_label(b.span().label(format!("{}", b.pseudo())))
-        .with_hint(hint.into()))
-}
-
-pub fn expect_boolean(actual: &Type, hint: impl Into<String>) -> Result<()> {
-    if !matches!(actual, Type::Boolean(_)) {
-        return TypeCheckError::ExpectedType
-            .to_diagnostic()
-            .with_label(
-                actual
-                    .span()
-                    .label(format!("{}, expected a boolean", actual)),
-            )
-            .with_hint(hint.into())
-            .to_err();
-    }
-    Ok(())
-}
-
-pub fn expect_struct(actual: &Type, hint: impl Into<String>) -> Result<()> {
-    if !matches!(actual, Type::Struct(_)) {
-        return TypeCheckError::ExpectedType
-            .to_diagnostic()
-            .with_label(
-                actual
-                    .span()
-                    .label(format!("{}, expected a struct", actual)),
-            )
-            .with_hint(hint.into())
-            .to_err();
-    }
-    Ok(())
-}
-
-// TypeCheck implementation for Type to automatically resolve Forward types
-impl TypeCheck for Type {
-    type Output = Type;
-
-    fn type_check(self, ctx: &mut TypeCheckContext) -> Result<Self::Output> {
-        match self {
-            Type::Forward(forward) => {
-                // Look up the Forward type in the context to get the resolved type
-                ctx.get_type_with_span(forward.name.to_string(), &forward.span)
-            }
-            // All other types are already resolved, just return them
-            other => Ok(other),
-        }
+        Ok(())
     }
 }
