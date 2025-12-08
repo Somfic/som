@@ -1,4 +1,4 @@
-use crate::{Ident, StmtId, TraitId};
+use crate::{FuncId, Ident, StmtId, TraitId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ExprId(pub u32);
@@ -16,6 +16,10 @@ pub enum Expr {
     Block {
         stmts: Vec<StmtId>,
         value: Option<ExprId>,
+    },
+    Call {
+        func: FuncId,
+        args: Vec<ExprId>,
     },
 }
 

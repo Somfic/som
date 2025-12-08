@@ -1,10 +1,13 @@
+use std::collections::HashMap;
+
 use ena::unify::{UnifyKey, UnifyValue};
 
 mod expr;
 pub use expr::*;
+mod stmt;
+pub use stmt::*;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct StmtId(pub u32);
+use crate::type_check::{Constraint, TypeError};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FuncId(pub u32);
@@ -22,6 +25,14 @@ pub struct StructId(pub u32);
 pub struct Ident {
     pub id: u32,
     pub value: Box<str>,
+}
+
+#[derive(Default)]
+pub struct TypedAst {
+    pub ast: Ast,
+    pub types: HashMap<ExprId, Type>,
+    pub errors: HashMap<ExprId, TypeError>,
+    pub constraints: Vec<Constraint>,
 }
 
 #[derive(Default)]
@@ -132,6 +143,7 @@ pub enum DecId {
 pub struct FuncDec {
     pub name: Ident,
     pub parameters: Vec<FuncParam>,
+    pub return_type: Option<Type>,
     pub body: ExprId,
 }
 
@@ -150,15 +162,7 @@ pub struct ImplDec {
 
 pub struct FuncParam {
     pub name: Ident,
-    pub ty: Type,
-}
-
-pub enum Stmt {
-    Let {
-        name: Ident,
-        ty: Option<Type>,
-        value: ExprId,
-    },
+    pub ty: Option<Type>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

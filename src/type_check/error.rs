@@ -19,5 +19,9 @@ pub enum TypeError {
     UnboundVariable {
         name: String,
     },
+    WrongArgCount {
+        expected: usize,
+        found: usize,
+    },
     Internal(String),
 }

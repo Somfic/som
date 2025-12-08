@@ -6,63 +6,88 @@ mod type_check;
 
 fn main() {
     let mut ast = Ast::new();
-    let mut inferencer = TypeInferencer::new();
+    let inferencer = TypeInferencer::new();
 
-    // Build: { let x = 12; let y = 13; x + y }
-
-    // let x = 12
-    let twelve = ast.alloc_expr(Expr::I32(12));
-    let let_x = ast.alloc_stmt(Stmt::Let {
-        name: Ident {
-            id: 0,
-            value: "x".into(),
-        },
-        ty: Some(Type::Bool),
-        value: twelve,
-    });
-
-    // let y = 13
-    let thirteen = ast.alloc_expr(Expr::I32(13));
-    let let_y = ast.alloc_stmt(Stmt::Let {
-        name: Ident {
-            id: 1,
-            value: "y".into(),
-        },
-        ty: None,
-        value: thirteen,
-    });
-
-    // x + y
-    let var_x = ast.alloc_expr(Expr::Var(Ident {
+    // Build a function: fn add(x: i32, y: i32) { x + y }
+    let param_x = ast.alloc_expr(Expr::Var(Ident {
         id: 0,
         value: "x".into(),
     }));
-    let var_y = ast.alloc_expr(Expr::Var(Ident {
+    let param_y = ast.alloc_expr(Expr::Var(Ident {
         id: 1,
         value: "y".into(),
     }));
-    let addition = ast.alloc_expr(Expr::Binary {
-        op: BinOp::Add,
-        lhs: var_x,
-        rhs: var_y,
+    let add_body = ast.alloc_expr(Expr::Binary {
+        op: BinOp::LessThan,
+        lhs: param_x,
+        rhs: param_y,
     });
 
-    // Block
-    let block = ast.alloc_expr(Expr::Block {
-        stmts: vec![let_x, let_y],
-        value: Some(addition),
+    let add_func = ast.alloc_func(FuncDec {
+        name: Ident {
+            id: 0,
+            value: "add".into(),
+        },
+        parameters: vec![
+            FuncParam {
+                name: Ident {
+                    id: 1,
+                    value: "x".into(),
+                },
+                ty: Some(Type::I32),
+            },
+            FuncParam {
+                name: Ident {
+                    id: 2,
+                    value: "y".into(),
+                },
+                ty: Some(Type::I32),
+            },
+        ],
+        return_type: None,
+        body: add_body,
     });
 
-    // Type check using the new API
-    let result = inferencer.type_check(&ast, block);
+    // Build a call: add(5, 10)
+    let five = ast.alloc_expr(Expr::I32(5));
+    let ten = ast.alloc_expr(Expr::I32(10));
+    let call_add = ast.alloc_expr(Expr::Call {
+        func: add_func,
+        args: vec![five, ten],
+    });
 
-    println!("Final type: {:?}", result.final_type);
+    // Build a function that calls add: fn main() { add(5, 10) }
+    let main_func = ast.alloc_func(FuncDec {
+        name: Ident {
+            id: 3,
+            value: "main".into(),
+        },
+        parameters: vec![],
+        return_type: None,
+        body: call_add,
+    });
 
-    if result.errors.is_empty() {
-        println!("✓ No errors!");
+    // Type check the entire program
+    println!("Type checking program...");
+    let typed_ast = inferencer.check_program(ast);
+
+    println!("Constraints");
+    for constraint in &typed_ast.constraints {
+        println!("  {:?}", constraint);
+    }
+
+    println!("\nExpression types:");
+    for (expr_id, ty) in &typed_ast.types {
+        println!("  {:?} → {:?}", expr_id, ty);
+    }
+
+    println!("\nCall result type: {:?}", typed_ast.types.get(&call_add));
+
+    if typed_ast.errors.is_empty() {
+        println!("\n✓ No errors!");
     } else {
         println!("\n✗ Errors found:");
-        for (expr_id, error) in result.errors {
+        for (expr_id, error) in &typed_ast.errors {
             println!("  At {:?}: {:?}", expr_id, error);
         }
     }

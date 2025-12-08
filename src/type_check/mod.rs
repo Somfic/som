@@ -1,6 +1,8 @@
 use ena::unify::InPlaceUnificationTable;
 
-use crate::{Ast, Expr, ExprId, Stmt, StmtId, TraitId, Type, TypeValue, TypeVar};
+use crate::{
+    Ast, Expr, ExprId, FuncDec, FuncId, Stmt, StmtId, TraitId, Type, TypeValue, TypeVar, TypedAst,
+};
 use std::collections::HashMap;
 
 mod error;
@@ -8,16 +10,13 @@ pub use error::*;
 mod constraint;
 pub use constraint::*;
 
-pub struct TypeCheckResult {
-    pub final_type: Type,
-    pub errors: HashMap<ExprId, TypeError>,
-}
-
 pub struct TypeInferencer {
     env: HashMap<String, Type>,
     constraints: Vec<Constraint>,
     unification_table: InPlaceUnificationTable<TypeVar>,
     errors: HashMap<ExprId, TypeError>,
+    func_types: HashMap<FuncId, Type>, // Store inferred function return types
+    expr_types: HashMap<ExprId, Type>, // Track all expression types
 }
 
 impl TypeInferencer {
@@ -27,6 +26,8 @@ impl TypeInferencer {
             constraints: Vec::new(),
             unification_table: InPlaceUnificationTable::new(),
             errors: HashMap::new(),
+            func_types: HashMap::new(),
+            expr_types: HashMap::new(),
         }
     }
 
@@ -34,8 +35,8 @@ impl TypeInferencer {
     pub fn infer(&mut self, ast: &Ast, expr_id: &ExprId) -> Type {
         let expr = ast.get_expr(expr_id);
 
-        match expr {
-            Expr::Hole => self.fresh_type(), // holes don't block inference
+        let ty = match expr {
+            Expr::Hole => self.fresh_type(),
             Expr::I32(_) => Type::I32,
             Expr::Var(ident) => match self.env.get(&*ident.value) {
                 Some(ty) => ty.clone(),
@@ -79,10 +80,55 @@ impl TypeInferencer {
 
                 block_ty
             }
-        }
+            Expr::Call { func, args } => {
+                let func_dec = ast.get_func(func);
+
+                // Check argument count
+                if args.len() != func_dec.parameters.len() {
+                    self.errors.insert(
+                        *expr_id,
+                        TypeError::WrongArgCount {
+                            expected: func_dec.parameters.len(),
+                            found: args.len(),
+                        },
+                    );
+                    return self.fresh_type();
+                }
+
+                // Check each argument against parameter type
+                for (arg_expr, param) in args.iter().zip(&func_dec.parameters) {
+                    match &param.ty {
+                        Some(param_ty) => {
+                            // Check argument against annotated parameter type
+                            self.check_expr(ast, *arg_expr, param_ty.clone());
+                        }
+                        None => {
+                            // Parameter type not annotated, just infer the argument
+                            self.infer(ast, arg_expr);
+                        }
+                    }
+                }
+
+                // Return the function's return type
+                match &func_dec.return_type {
+                    Some(return_ty) => return_ty.clone(),
+                    None => {
+                        // Check if we've inferred this function's type already
+                        self.func_types
+                            .get(func)
+                            .cloned()
+                            .unwrap_or_else(|| self.fresh_type())
+                    }
+                }
+            }
+        };
+
+        // Store the inferred type
+        self.expr_types.insert(*expr_id, ty.clone());
+        ty
     }
 
-    pub fn check(&mut self, ast: &Ast, expr_id: ExprId, expected: Type) {
+    pub fn check_expr(&mut self, ast: &Ast, expr_id: ExprId, expected: Type) {
         let expr = ast.get_expr(&expr_id);
 
         #[allow(clippy::match_single_binding)]
@@ -92,8 +138,10 @@ impl TypeInferencer {
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::Check(expr_id),
                     lhs: actual,
-                    rhs: expected,
-                })
+                    rhs: expected.clone(),
+                });
+                // Store the expected type
+                self.expr_types.insert(expr_id, expected);
             }
         }
     }
@@ -104,7 +152,7 @@ impl TypeInferencer {
         match stmt {
             Stmt::Let { name, ty, value } => match ty {
                 Some(annotated_ty) => {
-                    self.check(ast, *value, annotated_ty.clone());
+                    self.check_expr(ast, *value, annotated_ty.clone());
                     self.env
                         .insert(name.value.to_string(), annotated_ty.clone());
                 }
@@ -114,6 +162,46 @@ impl TypeInferencer {
                 }
             },
         }
+    }
+
+    pub fn check_func_dec(&mut self, ast: &Ast, func_id: FuncId) {
+        let func = ast.get_func(&func_id);
+        let saved_env = self.env.clone();
+
+        // Add parameters to environment
+        for param in &func.parameters {
+            let param_ty = match &param.ty {
+                Some(ty) => ty.clone(),
+                None => self.fresh_type(), // Infer parameter type from usage
+            };
+            self.env.insert(param.name.value.to_string(), param_ty);
+        }
+
+        // Infer body type
+        let body_ty = self.infer(ast, &func.body);
+
+        // Check or infer return type
+        let return_ty = match &func.return_type {
+            Some(annotated_return) => {
+                // Check body matches annotation
+                self.constraints.push(Constraint::Equal {
+                    provenance: Provenance::FunctionCall(func.body),
+                    lhs: body_ty.clone(),
+                    rhs: annotated_return.clone(),
+                });
+                annotated_return.clone()
+            }
+            None => {
+                // Infer return type from body
+                body_ty.clone()
+            }
+        };
+
+        // Store function's return type
+        self.func_types.insert(func_id, return_ty);
+
+        // Restore environment
+        self.env = saved_env;
     }
 
     /// normalizes a type
@@ -205,8 +293,16 @@ impl TypeInferencer {
     ) -> Result<(), TypeError> {
         let normalized_args: Vec<Type> = args.iter().map(|t| self.normalize(t)).collect();
 
-        if normalized_args.len() != 2 {
-            return Err(TypeError::Internal("Expected 2 args".into()));
+        // Skip trait resolution if types are still unknown
+        // This allows inference at call sites with concrete types
+        if normalized_args
+            .iter()
+            .any(|t| matches!(t, Type::Unknown(_)))
+        {
+            // Skip - will be resolved when concrete types flow in
+            return Err(TypeError::Internal(
+                "Trait resolution deferred due to unknown types".into(),
+            ));
         }
 
         let impl_def = ast
@@ -247,16 +343,34 @@ impl TypeInferencer {
         }
     }
 
-    pub fn type_check(&mut self, ast: &Ast, expr_id: ExprId) -> TypeCheckResult {
-        let inferred_type = self.infer(ast, &expr_id);
+    /// Type check an entire program
+    pub fn check_program(mut self, ast: Ast) -> TypedAst {
+        // 1. Check all function declarations
+        let func_ids: Vec<FuncId> = (0..ast.funcs.len()).map(|i| FuncId(i as u32)).collect();
 
-        self.solve(ast);
+        for func_id in func_ids {
+            self.check_func_dec(&ast, func_id);
+        }
 
-        let final_type = self.normalize(&inferred_type);
+        // 2. Solve all constraints
+        self.solve(&ast);
 
-        TypeCheckResult {
-            final_type,
-            errors: std::mem::take(&mut self.errors),
+        // 3. Normalize all stored expression types
+        let types_to_normalize: Vec<(ExprId, Type)> = self
+            .expr_types
+            .iter()
+            .map(|(id, ty)| (*id, ty.clone()))
+            .collect();
+        let mut expr_types = HashMap::new();
+        for (id, ty) in types_to_normalize {
+            expr_types.insert(id, self.normalize(&ty));
+        }
+
+        TypedAst {
+            ast,
+            types: expr_types,
+            errors: self.errors,
+            constraints: self.constraints,
         }
     }
 }
