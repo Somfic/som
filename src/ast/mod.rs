@@ -1,7 +1,7 @@
 use ena::unify::{UnifyKey, UnifyValue};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ExprId(pub u32);
+mod expr;
+pub use expr::*;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StmtId(pub u32);
@@ -161,50 +161,6 @@ pub enum Stmt {
     },
 }
 
-pub enum Expr {
-    I32(i32),
-    Var(Ident),
-    Binary {
-        op: BinOp,
-        lhs: ExprId,
-        rhs: ExprId,
-    },
-    Block {
-        stmts: Vec<StmtId>,
-        value: Option<ExprId>,
-    },
-}
-
-pub enum BinOp {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    LessThan,
-    GreaterThan,
-    Equals,
-    NotEquals,
-    And,
-    Or,
-}
-
-impl BinOp {
-    pub fn trait_id(&self) -> TraitId {
-        match self {
-            BinOp::Add => TRAIT_ADD,
-            BinOp::Subtract => TRAIT_SUB,
-            BinOp::Multiply => TRAIT_MUL,
-            BinOp::Divide => TRAIT_DIV,
-            BinOp::LessThan => TRAIT_LT,
-            BinOp::GreaterThan => TRAIT_GT,
-            BinOp::Equals => TRAIT_EQ,
-            BinOp::NotEquals => TRAIT_NEQ,
-            BinOp::And => TRAIT_AND,
-            BinOp::Or => TRAIT_OR,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeVar(pub u32);
 
@@ -266,14 +222,4 @@ pub enum Type {
     },
 }
 
-pub const TRAIT_ADD: TraitId = TraitId(0);
-pub const TRAIT_SUB: TraitId = TraitId(1);
-pub const TRAIT_MUL: TraitId = TraitId(2);
-pub const TRAIT_DIV: TraitId = TraitId(3);
-pub const TRAIT_EQ: TraitId = TraitId(4);
-pub const TRAIT_NEQ: TraitId = TraitId(5);
-pub const TRAIT_LT: TraitId = TraitId(6);
-pub const TRAIT_GT: TraitId = TraitId(7);
-pub const TRAIT_AND: TraitId = TraitId(8);
-pub const TRAIT_OR: TraitId = TraitId(9);
 const BUILTIN_TRAIT_COUNT: u32 = 100;

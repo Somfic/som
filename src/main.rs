@@ -53,16 +53,17 @@ fn main() {
         value: Some(addition),
     });
 
-    let result_type = inferencer.infer(&ast, &block);
+    // Type check using the new API
+    let result = inferencer.type_check(&ast, block);
 
-    println!("  Constraints:");
-    for (i, constraint) in inferencer.constraints().iter().enumerate() {
-        println!("    [{}] {:?}", i, constraint);
+    println!("Final type: {:?}", result.final_type);
+
+    if result.errors.is_empty() {
+        println!("✓ No errors!");
+    } else {
+        println!("\n✗ Errors found:");
+        for (expr_id, error) in result.errors {
+            println!("  At {:?}: {:?}", expr_id, error);
+        }
     }
-
-    inferencer.solve(&ast).expect("Failed to solve constraints");
-
-    let final_type = inferencer.normalize(&result_type);
-
-    println!("  Final type: {:?}", final_type);
 }
