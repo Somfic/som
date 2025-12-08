@@ -1,6 +1,6 @@
 use ena::unify::InPlaceUnificationTable;
 
-use crate::{Ast, Expr, ExprId, TraitId, Type, TypeValue, TypeVar};
+use crate::{Ast, Expr, ExprId, Stmt, StmtId, TraitId, Type, TypeValue, TypeVar};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
@@ -58,6 +58,22 @@ impl TypeInferencer {
 
                 output_ty
             }
+            Expr::Block { stmts, value } => {
+                let saved_env = self.env.clone();
+
+                for stmt in stmts {
+                    self.check_stmt(ast, *stmt);
+                }
+
+                let block_ty = match value {
+                    Some(ret_expr) => self.infer(ast, ret_expr),
+                    None => Type::Unit, // No return = Unit type
+                };
+
+                self.env = saved_env;
+
+                block_ty
+            }
         }
     }
 
@@ -74,6 +90,24 @@ impl TypeInferencer {
                     rhs: expected,
                 })
             }
+        }
+    }
+
+    fn check_stmt(&mut self, ast: &Ast, stmt_id: StmtId) {
+        let stmt = ast.get_stmt(&stmt_id);
+
+        match stmt {
+            Stmt::Let { name, ty, value } => match ty {
+                Some(annotated_ty) => {
+                    self.check(ast, *value, annotated_ty.clone());
+                    self.env
+                        .insert(name.value.to_string(), annotated_ty.clone());
+                }
+                None => {
+                    let inferred_ty = self.infer(ast, value);
+                    self.env.insert(name.value.to_string(), inferred_ty);
+                }
+            },
         }
     }
 

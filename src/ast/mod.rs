@@ -154,13 +154,25 @@ pub struct FuncParam {
 }
 
 pub enum Stmt {
-    Let { name: Ident, value: ExprId },
+    Let {
+        name: Ident,
+        ty: Option<Type>,
+        value: ExprId,
+    },
 }
 
 pub enum Expr {
     I32(i32),
     Var(Ident),
-    Binary { op: BinOp, lhs: ExprId, rhs: ExprId },
+    Binary {
+        op: BinOp,
+        lhs: ExprId,
+        rhs: ExprId,
+    },
+    Block {
+        stmts: Vec<StmtId>,
+        value: Option<ExprId>,
+    },
 }
 
 pub enum BinOp {
