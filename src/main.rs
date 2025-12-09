@@ -40,24 +40,20 @@ fn main() {
     if !typed_ast.errors.is_empty() {
         for (expr_id, error) in &typed_ast.errors {
             if let Some(span) = typed_ast.ast.expr_spans.get(expr_id) {
-                // Create diagnostic with labels
                 let mut diagnostic = Diagnostic::error(error.to_diagnostic_message())
                     .with_label(Label::primary(span.clone(), "error occurs here"));
 
-                // Check if there's a secondary span to show
-                match error {
-                    crate::type_check::TypeError::Mismatch {
-                        expected_type_id: Some(type_id),
-                        ..
-                    } => {
-                        if let Some(type_span) = typed_ast.ast.type_spans.get(type_id) {
-                            diagnostic = diagnostic.with_label(Label::secondary(
-                                type_span.clone(),
-                                "expected type defined here",
-                            ));
-                        }
+                if let crate::type_check::TypeError::Mismatch {
+                    expected_type_id: Some(type_id),
+                    ..
+                } = error
+                {
+                    if let Some(type_span) = typed_ast.ast.type_spans.get(type_id) {
+                        diagnostic = diagnostic.with_label(Label::secondary(
+                            type_span.clone(),
+                            "expected type defined here",
+                        ));
                     }
-                    _ => {}
                 };
 
                 println!("{}\n", diagnostic);

@@ -8,82 +8,6 @@ use crate::lexer::{lex, TokenKind};
 use crate::span::Source;
 use crate::Span;
 
-// Get terminal width, defaulting to 100 if unavailable
-fn get_terminal_width() -> usize {
-    terminal_size::terminal_size()
-        .map(|(terminal_size::Width(w), _)| w as usize)
-        .unwrap_or(100)
-}
-
-// Strip ANSI escape codes to get visible length
-fn visible_len(s: &str) -> usize {
-    let mut result = 0;
-    let mut chars = s.chars();
-    while let Some(ch) = chars.next() {
-        if ch == '\x1b' {
-            // Skip until we find 'm' (end of ANSI sequence)
-            while let Some(c) = chars.next() {
-                if c == 'm' {
-                    break;
-                }
-            }
-        } else {
-            result += 1;
-        }
-    }
-    result
-}
-
-// Wrap text to fit within a given width, preserving ANSI codes
-fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut current_line = String::new();
-    let mut current_visible = 0;
-    let mut chars = text.chars().peekable();
-    let mut last_ansi = String::new();
-
-    while let Some(ch) = chars.next() {
-        if ch == '\x1b' {
-            // Capture ANSI escape sequence
-            let mut ansi = String::from('\x1b');
-            while let Some(&c) = chars.peek() {
-                ansi.push(c);
-                chars.next();
-                if c == 'm' {
-                    break;
-                }
-            }
-            current_line.push_str(&ansi);
-            last_ansi = ansi;
-        } else if ch == ' ' && current_visible >= max_width {
-            // Word break at space when we're at limit
-            lines.push(current_line);
-            current_line = last_ansi.clone();
-            current_visible = 0;
-        } else {
-            current_line.push(ch);
-            current_visible += 1;
-
-            if current_visible >= max_width && ch != ' ' {
-                // Hard break in middle of word
-                lines.push(current_line);
-                current_line = last_ansi.clone();
-                current_visible = 0;
-            }
-        }
-    }
-
-    if !current_line.is_empty() && visible_len(&current_line) > 0 {
-        lines.push(current_line);
-    }
-
-    if lines.is_empty() {
-        vec![text.to_string()]
-    } else {
-        lines
-    }
-}
-
 // Catppuccin Mocha colors
 #[allow(dead_code)]
 const ROSEWATER: Rgb = Rgb(245, 224, 220);
@@ -240,8 +164,8 @@ fn is_italic(kind: TokenKind) -> bool {
     )
 }
 
-// Syntax highlight a line of source code with optional error highlighting
-fn syntax_highlight_with_highlight(line: &str, highlight_start: Option<usize>, highlight_end: Option<usize>, is_primary: bool) -> String {
+// Syntax highlight a line of source code
+fn syntax_highlight(line: &str) -> String {
     if line.trim().is_empty() {
         return line.to_string();
     }
@@ -250,7 +174,6 @@ fn syntax_highlight_with_highlight(line: &str, highlight_start: Option<usize>, h
     let tokens = lex(source);
 
     let mut result = String::new();
-    let mut current_pos = 0;
 
     for token in tokens {
         if token.kind == TokenKind::Eof {
@@ -258,70 +181,12 @@ fn syntax_highlight_with_highlight(line: &str, highlight_start: Option<usize>, h
         }
 
         let color = token_color(token.kind);
-        let token_len = token.text.len();
-        let token_end = current_pos + token_len;
-
-        if let (Some(hl_start), Some(hl_end)) = (highlight_start, highlight_end) {
-            // Calculate overlap between token and highlight range
-            let overlap_start = hl_start.max(current_pos);
-            let overlap_end = hl_end.min(token_end);
-
-            if overlap_start < overlap_end {
-                // Token has some highlighted portion
-                let before_len = overlap_start.saturating_sub(current_pos);
-                let highlight_len = overlap_end - overlap_start;
-                let after_len = token_end.saturating_sub(overlap_end);
-
-                // Part before highlight
-                if before_len > 0 {
-                    let before_text = &token.text[..before_len];
-                    let colored = if is_italic(token.kind) {
-                        format!("{}", before_text.truecolor(color.0, color.1, color.2).italic())
-                    } else {
-                        format!("{}", before_text.truecolor(color.0, color.1, color.2))
-                    };
-                    result.push_str(&colored);
-                }
-
-                // Highlighted part
-                if highlight_len > 0 {
-                    let hl_text = &token.text[before_len..before_len + highlight_len];
-                    let bg_color = if is_primary { RED } else { BLUE };
-                    result.push_str(&format!("{}",
-                        hl_text.truecolor(0, 0, 0).on_truecolor(bg_color.0, bg_color.1, bg_color.2)
-                    ));
-                }
-
-                // Part after highlight
-                if after_len > 0 {
-                    let after_text = &token.text[before_len + highlight_len..];
-                    let colored = if is_italic(token.kind) {
-                        format!("{}", after_text.truecolor(color.0, color.1, color.2).italic())
-                    } else {
-                        format!("{}", after_text.truecolor(color.0, color.1, color.2))
-                    };
-                    result.push_str(&colored);
-                }
-            } else {
-                // No overlap - normal rendering
-                let colored_text = if is_italic(token.kind) {
-                    format!("{}", token.text.truecolor(color.0, color.1, color.2).italic())
-                } else {
-                    format!("{}", token.text.truecolor(color.0, color.1, color.2))
-                };
-                result.push_str(&colored_text);
-            }
+        let colored_text = if is_italic(token.kind) {
+            format!("{}", token.text.truecolor(color.0, color.1, color.2).italic())
         } else {
-            // No highlight range - normal rendering
-            let colored_text = if is_italic(token.kind) {
-                format!("{}", token.text.truecolor(color.0, color.1, color.2).italic())
-            } else {
-                format!("{}", token.text.truecolor(color.0, color.1, color.2))
-            };
-            result.push_str(&colored_text);
-        }
-
-        current_pos += token_len;
+            format!("{}", token.text.truecolor(color.0, color.1, color.2))
+        };
+        result.push_str(&colored_text);
     }
 
     result
@@ -440,27 +305,6 @@ impl Display for Diagnostic {
             let mut lines_vec: Vec<usize> = lines_to_show.into_iter().collect();
             lines_vec.sort();
 
-            // Calculate the maximum visible line length in this group
-            let max_line_len = lines_vec
-                .iter()
-                .filter_map(|&line_num| {
-                    first_label
-                        .span
-                        .source
-                        .content()
-                        .lines()
-                        .nth(line_num.saturating_sub(1))
-                        .map(|line| line.len())
-                })
-                .max()
-                .unwrap_or(0);
-
-            // Get terminal width and calculate label column
-            let term_width = get_terminal_width();
-            let prefix_width = 11; // "     N │ " is approximately 11 chars
-            let available_width = term_width.saturating_sub(prefix_width);
-            let label_padding = 2; // Minimum padding between code and label
-            let label_column = (max_line_len + label_padding).min(available_width / 2);
 
             // Header with location
             writeln!(
@@ -520,40 +364,9 @@ impl Display for Diagnostic {
                         surface("│")
                     )?;
 
-                    // Check if this line has any labels to highlight
-                    let mut highlight_start = None;
-                    let mut highlight_end = None;
-                    let mut is_primary = false;
-                    for label in &group {
-                        if label.span.start.line == line_num {
-                            let col_start = label.span.start.col.saturating_sub(1);
-                            let col_end = if label.span.start.line == label.span.end.line {
-                                label.span.end.col.saturating_sub(1)
-                            } else {
-                                line_text.len()
-                            };
-                            // Add padding: 1 character on each side
-                            highlight_start = Some(col_start.saturating_sub(1));
-                            highlight_end = Some((col_end + 1).min(line_text.len()));
-                            is_primary = label.is_primary;
-                            break;
-                        }
-                    }
+                    write!(f, "{}", syntax_highlight(line_text))?;
 
-                    write!(f, "{}", syntax_highlight_with_highlight(line_text, highlight_start, highlight_end, is_primary))?;
-
-                    // Track visible length for alignment
-                    let mut visible_len = line_text.len();
-
-                    // Add trailing padding space if needed
-                    if let (Some(_), Some(end)) = (highlight_start, highlight_end) {
-                        if end >= line_text.len() {
-                            // Need to add explicit trailing space with background
-                            let bg_color = if is_primary { RED } else { BLUE };
-                            write!(f, "{}", " ".truecolor(0, 0, 0).on_truecolor(bg_color.0, bg_color.1, bg_color.2))?;
-                            visible_len += 1;
-                        }
-                    }
+                    writeln!(f)?;
 
                     // Collect labels for this line
                     let line_labels: Vec<&Label> = group
@@ -562,51 +375,40 @@ impl Display for Diagnostic {
                         .copied()
                         .collect();
 
+                    // Draw underlines and labels beneath the code
                     if !line_labels.is_empty() {
-                        // Align labels at the calculated column
-                        let padding_needed = label_column.saturating_sub(visible_len);
-                        if padding_needed > 0 {
-                            write!(f, "{}", " ".repeat(padding_needed))?;
-                        }
+                        for label in &line_labels {
+                            let col_start = label.span.start.col.saturating_sub(1);
+                            let col_end = if label.span.start.line == label.span.end.line {
+                                label.span.end.col.saturating_sub(1)
+                            } else {
+                                line_text.len()
+                            };
+                            let width = col_end.saturating_sub(col_start).max(1);
 
-                        // Combine all labels for this line
-                        let combined_label = line_labels
-                            .iter()
-                            .map(|label| {
-                                if label.is_primary {
-                                    red(&label.message).bold().to_string()
-                                } else {
-                                    blue(&label.message).to_string()
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", ");
+                            let color_fn: Box<dyn Fn(&str) -> String> = if label.is_primary {
+                                Box::new(|s: &str| red(s).bold().to_string())
+                            } else {
+                                Box::new(|s: &str| blue(s).to_string())
+                            };
 
-                        // Calculate available width for the label
-                        let current_pos = prefix_width + visible_len + padding_needed;
-                        let available_for_label = term_width.saturating_sub(current_pos + 2);
+                            // Draw the connecting line with label
+                            write!(f, "     {} ", surface("│"))?;
+                            write!(f, "{}", " ".repeat(col_start))?;
 
-                        // Wrap the label if needed
-                        let wrapped_lines = wrap_text(&combined_label, available_for_label);
-
-                        // Write first line
-                        if let Some(first) = wrapped_lines.first() {
-                            write!(f, "  {}", first)?;
-                        }
-
-                        // Write continuation lines with proper indentation
-                        for continuation in wrapped_lines.iter().skip(1) {
+                            // Draw: ╰─── ... ┰─ label message
+                            write!(f, "{}",color_fn("╰"))?;
+                            write!(f, "{}", color_fn(&"─".repeat(width.saturating_sub(1))))?;
+                            if width > 1 {
+                                write!(f, "{}", color_fn("┰"))?;
+                                write!(f, "{}", color_fn("─"))?;
+                            } else {
+                                write!(f, "{}", color_fn("──"))?;
+                            }
+                            write!(f, " {}", color_fn(&label.message))?;
                             writeln!(f)?;
-                            write!(
-                                f,
-                                "{}{}",
-                                " ".repeat(prefix_width + label_column + 2),
-                                continuation
-                            )?;
                         }
                     }
-
-                    writeln!(f)?;
                 }
 
                 prev_line = line_num;
