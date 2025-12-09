@@ -45,7 +45,20 @@ fn convert_func_dec(ast: &mut Ast, node: SyntaxNode) -> FuncId {
                 }
                 Syntax::TypeAnnotation => {
                     if return_type.is_none() {
-                        let type_span = node_span(&child_node);
+                        // Extract span from the Ident token within the TypeAnnotation node
+                        let type_span = child_node
+                            .children_with_tokens()
+                            .find_map(|c| {
+                                if let rowan::NodeOrToken::Token(token) = c {
+                                    if token.kind() == Syntax::Ident {
+                                        let range = token.text_range();
+                                        return Some(Span::new(range.start().into(), range.end().into()));
+                                    }
+                                }
+                                None
+                            })
+                            .unwrap_or_else(|| node_span(&child_node));
+
                         let type_id = ast.alloc_type_with_span(type_span);
                         return_type = Some(convert_type_annotation(ast, child_node));
                         return_type_id = Some(type_id);

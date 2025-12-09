@@ -11,8 +11,8 @@ mod type_check;
 
 fn main() {
     // Parse source code
-    let source = r#"fn main(a: i32) -> i32 {
-    a + 42
+    let source = r#"fn add(x: i32, y: i32) -> bool {
+    x > y
 }"#;
 
     let parser = parser::Parser::new(source);
@@ -36,7 +36,10 @@ fn main() {
             if let Some(span) = typed_ast.ast.expr_spans.get(expr_id) {
                 // Check if there's a secondary span to show
                 let secondary_spans = match error {
-                    crate::type_check::TypeError::Mismatch { expected_type_id: Some(type_id), .. } => {
+                    crate::type_check::TypeError::Mismatch {
+                        expected_type_id: Some(type_id),
+                        ..
+                    } => {
                         if let Some(type_span) = typed_ast.ast.type_spans.get(type_id) {
                             vec![(*type_span, "expected type defined here")]
                         } else {
