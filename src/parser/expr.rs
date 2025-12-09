@@ -1,132 +1,225 @@
-use crate::lexer::Syntax;
-use crate::parser::{union, Parser};
-use std::collections::HashSet;
-use std::ops::ControlFlow;
+use crate::ast::{BinOp, Expr, ExprId, FuncId};
+use crate::lexer::TokenKind;
+use crate::parser::Parser;
+use crate::span::Span;
 
-impl<'a> Parser<'a> {
-    pub(super) fn expr(&mut self, anchor: HashSet<Syntax>) -> ControlFlow<()> {
-        self.binary_expr(anchor, 0)
+impl<'src> Parser<'src> {
+    /// Parse an expression using Pratt parsing
+    pub(super) fn parse_expr(&mut self) -> Option<ExprId> {
+        self.parse_expr_bp(0)
     }
 
-    // Simple left-to-right binary expression parsing
-    fn binary_expr(&mut self, anchor: HashSet<Syntax>, _min_prec: u8) -> ControlFlow<()> {
-        // Save checkpoint BEFORE parsing anything
-        let mut checkpoint = self.builder.checkpoint();
+    /// Pratt parser with binding power
+    fn parse_expr_bp(&mut self, min_bp: u8) -> Option<ExprId> {
+        let start_span = self.peek_span();
 
-        // Parse left side
-        self.call_expr(anchor.clone())?;
+        // Parse prefix/atom
+        let mut lhs = self.parse_atom()?;
 
-        // Parse binary operators (left-to-right, no precedence for now)
-        while precedence(self.input.peek()) > 0 {
+        loop {
+            // Check for postfix operators (function calls)
+            if self.at(TokenKind::LeftParen) {
+                lhs = self.parse_call(lhs, start_span)?;
+                continue;
+            }
+
+            // Check for infix operators
+            let Some(op) = self.peek_binop() else { break };
+            let (l_bp, r_bp) = op.binding_power();
+
+            if l_bp < min_bp {
+                break;
+            }
+
             // Consume operator
-            self.bump();
+            self.advance();
 
-            // Parse right side
-            self.call_expr(anchor.clone())?;
+            // Parse right-hand side
+            let rhs = self.parse_expr_bp(r_bp)?;
 
-            // Wrap everything from checkpoint in binary expression
-            self.builder
-                .start_node_at(checkpoint, Syntax::BinaryExpr.into());
-            self.builder.finish_node();
+            let end_span = self.previous_span();
+            let span = start_span.merge(end_span);
 
-            // Update checkpoint for next iteration (to handle a + b + c)
-            checkpoint = self.builder.checkpoint();
+            lhs = self.ast.alloc_expr_with_span(
+                Expr::Binary { op, lhs, rhs },
+                span,
+            );
         }
 
-        ControlFlow::Continue(())
+        Some(lhs)
     }
 
-    fn call_expr(&mut self, anchor: HashSet<Syntax>) -> ControlFlow<()> {
-        let checkpoint = self.builder.checkpoint();
+    fn parse_atom(&mut self) -> Option<ExprId> {
+        let start_span = self.peek_span();
 
-        self.atom(anchor.clone())?;
-
-        // Check for function call
-        if self.input.at(Syntax::LeftParen) {
-            self.builder
-                .start_node_at(checkpoint, Syntax::CallExpr.into());
-
-            self.bump(); // consume (
-
-            // Parse arguments
-            if !self.input.at(Syntax::RightParen) {
-                loop {
-                    self.expr(union(&anchor, [Syntax::Comma, Syntax::RightParen]))?;
-
-                    if self.eat(Syntax::Comma).is_none() {
-                        break;
-                    }
-                }
+        match self.peek() {
+            TokenKind::Int => {
+                let token = self.peek_token();
+                let value: i32 = token.text.parse().unwrap_or(0);
+                let span = token.span;
+                self.advance();
+                Some(self.ast.alloc_expr_with_span(Expr::I32(value), span))
             }
-
-            self.expect(Syntax::RightParen, anchor);
-
-            self.builder.finish_node();
-        }
-
-        ControlFlow::Continue(())
-    }
-
-    fn atom(&mut self, anchor: HashSet<Syntax>) -> ControlFlow<()> {
-        match self.input.peek() {
-            Syntax::Ident => {
-                self.with(Syntax::VarExpr, |this| {
-                    this.bump();
-                });
-                ControlFlow::Continue(())
+            TokenKind::Ident => {
+                let token = self.peek_token();
+                let text = token.text;
+                let span = token.span;
+                self.advance();
+                let ident = self.make_ident(text);
+                Some(self.ast.alloc_expr_with_span(Expr::Var(ident), span))
             }
-            Syntax::Int => {
-                self.with(Syntax::IntExpr, |this| {
-                    this.bump();
-                });
-                ControlFlow::Continue(())
+            TokenKind::LeftParen => {
+                self.advance(); // consume (
+                let inner = self.parse_expr()?;
+                self.expect(TokenKind::RightParen)?;
+                Some(inner)
             }
-            Syntax::LeftParen => {
-                self.with(Syntax::ParenExpr, |this| {
-                    this.bump();
-                    let _ = this.expr(union(&anchor, [Syntax::RightParen]));
-                    this.expect(Syntax::RightParen, anchor);
-                });
-                ControlFlow::Continue(())
-            }
-            Syntax::LeftBrace => {
-                self.block(anchor);
-                ControlFlow::Continue(())
+            TokenKind::LeftBrace => {
+                self.parse_block()
             }
             _ => {
-                if !self.in_error {
-                    let pos = self.input.current_pos();
-                    let span = crate::span::Span::new(pos as u32, pos as u32);
-                    self.errors.push(crate::parser::error::ParseError::new(
-                        vec![
-                            Syntax::Ident,
-                            Syntax::Int,
-                            Syntax::LeftParen,
-                            Syntax::LeftBrace,
-                        ],
-                        self.input.peek(),
-                        span,
-                    ));
-                    self.in_error = true;
-                }
-                ControlFlow::Break(())
+                self.error(vec![
+                    TokenKind::Int,
+                    TokenKind::Ident,
+                    TokenKind::LeftParen,
+                    TokenKind::LeftBrace,
+                ]);
+                // Return a hole expression for error recovery
+                Some(self.ast.alloc_expr_with_span(Expr::Hole, start_span))
             }
         }
     }
 
-    pub(super) fn expr_stmt(&mut self, anchor: HashSet<Syntax>) {
-        self.with(Syntax::ExprStmt, |this| {
-            let _ = this.expr(anchor);
-        });
+    fn parse_call(&mut self, callee: ExprId, start_span: Span) -> Option<ExprId> {
+        self.expect(TokenKind::LeftParen)?;
+
+        let mut args = Vec::new();
+        if !self.at(TokenKind::RightParen) {
+            loop {
+                if let Some(arg) = self.parse_expr() {
+                    args.push(arg);
+                }
+
+                if !self.eat(TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+
+        self.expect(TokenKind::RightParen)?;
+
+        let end_span = self.previous_span();
+        let span = start_span.merge(end_span);
+
+        // For now, we need to resolve the function name to a FuncId
+        // This is a simplified version - in a real compiler, this would be done
+        // in a name resolution pass
+        let callee_expr = self.ast.get_expr(&callee);
+        let func_id = match callee_expr {
+            Expr::Var(ident) => {
+                // Look up function by name
+                self.find_func_by_name(&ident.value)
+            }
+            _ => None,
+        };
+
+        if let Some(func_id) = func_id {
+            Some(self.ast.alloc_expr_with_span(
+                Expr::Call { func: func_id, args },
+                span,
+            ))
+        } else {
+            // Function not found - emit error and return hole
+            self.errors.push(crate::parser::ParseError::new(
+                vec![],
+                TokenKind::Ident,
+                start_span,
+            ));
+            Some(self.ast.alloc_expr_with_span(Expr::Hole, span))
+        }
+    }
+
+    fn find_func_by_name(&self, name: &str) -> Option<FuncId> {
+        for (idx, func) in self.ast.funcs.iter().enumerate() {
+            if &*func.name.value == name {
+                return Some(FuncId(idx as u32));
+            }
+        }
+        None
+    }
+
+    pub(super) fn parse_block(&mut self) -> Option<ExprId> {
+        let start_span = self.peek_span();
+
+        self.expect(TokenKind::LeftBrace)?;
+
+        let mut stmts = Vec::new();
+        let mut value = None;
+
+        while !self.at(TokenKind::RightBrace) && !self.at_eof() {
+            if self.at(TokenKind::LetKw) {
+                // Let statement
+                if let Some(stmt_id) = self.parse_let_stmt() {
+                    stmts.push(stmt_id);
+                }
+            } else {
+                // Expression (possibly followed by semicolon)
+                if let Some(expr_id) = self.parse_expr() {
+                    if self.eat(TokenKind::Semicolon) {
+                        // Expression statement - discard value
+                        // We could wrap this in a statement type, but for now just continue
+                    } else if self.at(TokenKind::RightBrace) {
+                        // Last expression without semicolon - this is the block's value
+                        value = Some(expr_id);
+                    } else {
+                        // Missing semicolon between statements
+                        self.error(vec![TokenKind::Semicolon, TokenKind::RightBrace]);
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+
+        self.expect(TokenKind::RightBrace)?;
+
+        let end_span = self.previous_span();
+        let span = start_span.merge(end_span);
+
+        Some(self.ast.alloc_expr_with_span(
+            Expr::Block { stmts, value },
+            span,
+        ))
+    }
+
+    fn peek_binop(&self) -> Option<BinOp> {
+        match self.peek() {
+            TokenKind::Plus => Some(BinOp::Add),
+            TokenKind::Minus => Some(BinOp::Subtract),
+            TokenKind::Star => Some(BinOp::Multiply),
+            TokenKind::Slash => Some(BinOp::Divide),
+            TokenKind::EqEq => Some(BinOp::Equals),
+            TokenKind::NotEq => Some(BinOp::NotEquals),
+            TokenKind::Lt => Some(BinOp::LessThan),
+            TokenKind::Gt => Some(BinOp::GreaterThan),
+            TokenKind::LtEq => Some(BinOp::LessThan), // TODO: Add LessThanOrEqual
+            TokenKind::GtEq => Some(BinOp::GreaterThan), // TODO: Add GreaterThanOrEqual
+            _ => None,
+        }
     }
 }
 
-fn precedence(op: Syntax) -> u8 {
-    match op {
-        Syntax::EqEq | Syntax::NotEq => 1,
-        Syntax::Lt | Syntax::Gt | Syntax::LtEq | Syntax::GtEq => 2,
-        Syntax::Plus | Syntax::Minus => 3,
-        Syntax::Star | Syntax::Slash => 4,
-        _ => 0,
+impl BinOp {
+    /// Returns (left binding power, right binding power)
+    fn binding_power(&self) -> (u8, u8) {
+        match self {
+            BinOp::Or => (1, 2),
+            BinOp::And => (3, 4),
+            BinOp::Equals | BinOp::NotEquals => (5, 6),
+            BinOp::LessThan | BinOp::GreaterThan => (7, 8),
+            BinOp::Add | BinOp::Subtract => (9, 10),
+            BinOp::Multiply | BinOp::Divide => (11, 12),
+        }
     }
 }

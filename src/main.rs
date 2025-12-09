@@ -15,8 +15,7 @@ fn main() {
     x > y
 }"#;
 
-    let parser = parser::Parser::new(source);
-    let (green, parse_errors) = parser.parse();
+    let (ast, parse_errors) = parser::parse(source);
 
     if !parse_errors.is_empty() {
         for error in &parse_errors {
@@ -24,8 +23,6 @@ fn main() {
             println!("{}\n", formatted);
         }
     }
-
-    let ast = parser::cst::to_ast(green);
 
     // Type check the entire program
     let inferencer = TypeInferencer::new();

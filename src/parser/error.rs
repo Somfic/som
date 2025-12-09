@@ -1,16 +1,16 @@
-use crate::lexer::Syntax;
+use crate::lexer::TokenKind;
 use crate::span::Span;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParseError {
-    pub expected: Vec<Syntax>,
-    pub found: Syntax,
+    pub expected: Vec<TokenKind>,
+    pub found: TokenKind,
     pub message: String,
     pub span: Span,
 }
 
 impl ParseError {
-    pub fn new(expected: Vec<Syntax>, found: Syntax, span: Span) -> Self {
+    pub fn new(expected: Vec<TokenKind>, found: TokenKind, span: Span) -> Self {
         let expected_str = if expected.is_empty() {
             "nothing".to_string()
         } else if expected.len() == 1 {

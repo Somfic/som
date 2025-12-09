@@ -1,11 +1,11 @@
 use logos::Logos;
+use crate::span::Span;
 
-#[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(u16)]
-pub enum Syntax {
+#[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TokenKind {
     // Keywords
     #[token("fn")]
-    FnKw = 0,
+    FnKw,
     #[token("let")]
     LetKw,
     #[token("if")]
@@ -61,7 +61,7 @@ pub enum Syntax {
     #[token("->")]
     Arrow,
 
-    // Whitespace and comments
+    // Whitespace and comments (skipped during parsing)
     #[regex(r"[ \t\r\n]+")]
     Whitespace,
     #[regex(r"//[^\n]*")]
@@ -69,57 +69,39 @@ pub enum Syntax {
 
     // Special
     Error,
-    EndOfFile,
-
-    // CST nodes (not tokens, but part of Syntax enum for rowan)
-    Root,
-    FuncDec,
-    FuncParam,
-    TypeAnnotation,
-    Block,
-    LetStmt,
-    ExprStmt,
-    BinaryExpr,
-    CallExpr,
-    ParenExpr,
-    VarExpr,
-    IntExpr,
+    Eof,
 }
 
-impl From<Syntax> for rowan::SyntaxKind {
-    fn from(syntax: Syntax) -> Self {
-        Self(syntax as u16)
-    }
+#[derive(Debug, Clone)]
+pub struct Token<'src> {
+    pub kind: TokenKind,
+    pub text: &'src str,
+    pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Lang {}
-
-impl rowan::Language for Lang {
-    type Kind = Syntax;
-
-    fn kind_from_raw(raw: rowan::SyntaxKind) -> Self::Kind {
-        unsafe { std::mem::transmute::<u16, Syntax>(raw.0) }
-    }
-
-    fn kind_to_raw(kind: Self::Kind) -> rowan::SyntaxKind {
-        kind.into()
-    }
-}
-
-pub type SyntaxNode = rowan::SyntaxNode<Lang>;
-
-pub fn lex(input: &str) -> Vec<(Syntax, &str)> {
-    let mut lexer = Syntax::lexer(input);
+pub fn lex(input: &str) -> Vec<Token<'_>> {
+    let mut lexer = TokenKind::lexer(input);
     let mut tokens = Vec::new();
 
-    while let Some(token) = lexer.next() {
-        let token = token.unwrap_or(Syntax::Error);
+    while let Some(result) = lexer.next() {
+        let kind = result.unwrap_or(TokenKind::Error);
+        let span = lexer.span();
         let text = lexer.slice();
-        tokens.push((token, text));
+        tokens.push(Token {
+            kind,
+            text,
+            span: Span::from_range(span),
+        });
     }
 
-    tokens.push((Syntax::EndOfFile, ""));
+    // Add EOF token
+    let eof_pos = input.len() as u32;
+    tokens.push(Token {
+        kind: TokenKind::Eof,
+        text: "",
+        span: Span::new(eof_pos, eof_pos),
+    });
+
     tokens
 }
 
@@ -130,47 +112,51 @@ mod tests {
     #[test]
     fn test_lex_keywords() {
         let tokens = lex("fn let if else");
-        assert_eq!(tokens[0].0, Syntax::FnKw);
-        assert_eq!(tokens[2].0, Syntax::LetKw);
-        assert_eq!(tokens[4].0, Syntax::IfKw);
-        assert_eq!(tokens[6].0, Syntax::ElseKw);
+        let non_ws: Vec<_> = tokens.iter().filter(|t| t.kind != TokenKind::Whitespace).collect();
+        assert_eq!(non_ws[0].kind, TokenKind::FnKw);
+        assert_eq!(non_ws[1].kind, TokenKind::LetKw);
+        assert_eq!(non_ws[2].kind, TokenKind::IfKw);
+        assert_eq!(non_ws[3].kind, TokenKind::ElseKw);
     }
 
     #[test]
     fn test_lex_identifiers() {
         let tokens = lex("foo bar_baz x123");
-        assert_eq!(tokens[0], (Syntax::Ident, "foo"));
-        assert_eq!(tokens[2], (Syntax::Ident, "bar_baz"));
-        assert_eq!(tokens[4], (Syntax::Ident, "x123"));
+        let non_ws: Vec<_> = tokens.iter().filter(|t| t.kind != TokenKind::Whitespace).collect();
+        assert_eq!(non_ws[0].kind, TokenKind::Ident);
+        assert_eq!(non_ws[0].text, "foo");
+        assert_eq!(non_ws[1].kind, TokenKind::Ident);
+        assert_eq!(non_ws[1].text, "bar_baz");
     }
 
     #[test]
     fn test_lex_integers() {
         let tokens = lex("123 456");
-        assert_eq!(tokens[0], (Syntax::Int, "123"));
-        assert_eq!(tokens[2], (Syntax::Int, "456"));
+        let non_ws: Vec<_> = tokens.iter().filter(|t| t.kind != TokenKind::Whitespace).collect();
+        assert_eq!(non_ws[0].kind, TokenKind::Int);
+        assert_eq!(non_ws[0].text, "123");
+        assert_eq!(non_ws[1].kind, TokenKind::Int);
+        assert_eq!(non_ws[1].text, "456");
     }
 
     #[test]
     fn test_lex_operators() {
         let tokens = lex("+ - * / == != < >");
-        assert_eq!(tokens[0].0, Syntax::Plus);
-        assert_eq!(tokens[2].0, Syntax::Minus);
-        assert_eq!(tokens[4].0, Syntax::Star);
-        assert_eq!(tokens[6].0, Syntax::Slash);
-        assert_eq!(tokens[8].0, Syntax::EqEq);
-        assert_eq!(tokens[10].0, Syntax::NotEq);
-        assert_eq!(tokens[12].0, Syntax::Lt);
-        assert_eq!(tokens[14].0, Syntax::Gt);
+        let non_ws: Vec<_> = tokens.iter().filter(|t| t.kind != TokenKind::Whitespace).collect();
+        assert_eq!(non_ws[0].kind, TokenKind::Plus);
+        assert_eq!(non_ws[1].kind, TokenKind::Minus);
+        assert_eq!(non_ws[2].kind, TokenKind::Star);
+        assert_eq!(non_ws[3].kind, TokenKind::Slash);
+        assert_eq!(non_ws[4].kind, TokenKind::EqEq);
+        assert_eq!(non_ws[5].kind, TokenKind::NotEq);
+        assert_eq!(non_ws[6].kind, TokenKind::Lt);
+        assert_eq!(non_ws[7].kind, TokenKind::Gt);
     }
 
     #[test]
-    fn test_lex_function() {
-        let tokens = lex("fn add(x: i32, y: i32) -> i32 { x + y }");
-        assert_eq!(tokens[0].0, Syntax::FnKw);
-        assert_eq!(tokens[2], (Syntax::Ident, "add"));
-        assert_eq!(tokens[3].0, Syntax::LeftParen);
-        assert_eq!(tokens[4], (Syntax::Ident, "x"));
-        assert_eq!(tokens[5].0, Syntax::Colon);
+    fn test_spans() {
+        let tokens = lex("fn add");
+        assert_eq!(tokens[0].span, Span::new(0, 2)); // "fn"
+        assert_eq!(tokens[2].span, Span::new(3, 6)); // "add"
     }
 }

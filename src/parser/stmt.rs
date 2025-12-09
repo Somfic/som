@@ -1,52 +1,37 @@
-use crate::lexer::Syntax;
-use crate::parser::{union, Parser};
-use std::collections::HashSet;
+use crate::ast::{Stmt, StmtId};
+use crate::lexer::TokenKind;
+use crate::parser::Parser;
 
-impl<'a> Parser<'a> {
-    pub(super) fn block(&mut self, anchor: HashSet<Syntax>) {
-        self.with(Syntax::Block, |this| {
-            let anchor = union(&anchor, [Syntax::RightBrace]);
+impl<'src> Parser<'src> {
+    pub(super) fn parse_let_stmt(&mut self) -> Option<StmtId> {
+        let start_span = self.peek_span();
 
-            this.expect(Syntax::LeftBrace, union(&anchor, [Syntax::LetKw]));
+        // let
+        self.expect(TokenKind::LetKw)?;
 
-            while !this.input.at(Syntax::RightBrace) && !this.input.at(Syntax::EndOfFile) {
-                // Try let statement
-                if this.input.at(Syntax::LetKw) {
-                    this.let_stmt(anchor.clone());
-                } else {
-                    // Parse as expression statement
-                    this.expr_stmt(anchor.clone());
+        // name
+        let (name, _) = self.parse_ident()?;
 
-                    // Check if we need a semicolon
-                    // Last expression in block doesn't need semicolon
-                    if !this.input.at(Syntax::RightBrace) && !this.input.at(Syntax::EndOfFile) {
-                        // Not the last expression, expect semicolon
-                        if this.eat(Syntax::Semicolon).is_none() {
-                            break;
-                        }
-                    }
-                }
-            }
+        // Optional type annotation
+        let ty = if self.eat(TokenKind::Colon) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
 
-            this.expect(Syntax::RightBrace, anchor);
-        });
-    }
+        // = value
+        self.expect(TokenKind::Eq)?;
+        let value = self.parse_expr()?;
 
-    fn let_stmt(&mut self, anchor: HashSet<Syntax>) {
-        self.with(Syntax::LetStmt, |this| {
-            let anchor = union(&anchor, [Syntax::Semicolon]);
+        // ;
+        self.expect(TokenKind::Semicolon)?;
 
-            this.expect(Syntax::LetKw, union(&anchor, [Syntax::Ident]));
-            this.expect(Syntax::Ident, union(&anchor, [Syntax::Colon, Syntax::Eq]));
+        let end_span = self.previous_span();
+        let span = start_span.merge(end_span);
 
-            // Optional type annotation
-            if this.eat(Syntax::Colon).is_some() {
-                this.type_annotation(union(&anchor, [Syntax::Eq]));
-            }
-
-            this.expect(Syntax::Eq, anchor.clone());
-            let _ = this.expr(union(&anchor, [Syntax::Semicolon]));
-            this.expect(Syntax::Semicolon, anchor);
-        });
+        Some(self.ast.alloc_stmt_with_span(
+            Stmt::Let { name, ty, value },
+            span,
+        ))
     }
 }

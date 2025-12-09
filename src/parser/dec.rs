@@ -1,76 +1,118 @@
-use crate::lexer::Syntax;
-use crate::parser::{union, Parser};
-use std::collections::HashSet;
+use crate::ast::{DecId, FuncDec, FuncParam, Module, Type};
+use crate::lexer::TokenKind;
+use crate::parser::Parser;
 
-impl<'a> Parser<'a> {
-    pub(super) fn program(&mut self) {
-        self.builder.start_node(Syntax::Root.into());
+impl<'src> Parser<'src> {
+    pub(super) fn parse_program(&mut self) {
+        let mut func_ids = Vec::new();
 
-        // Consume leading whitespace/comments
-        while matches!(self.input.peek(), Syntax::Whitespace | Syntax::Comment) {
-            let (syntax, text) = self.input.advance();
-            self.builder.token(syntax.into(), text);
-        }
-
-        let anchor = HashSet::from([Syntax::EndOfFile]);
-
-        while !self.input.at(Syntax::EndOfFile) {
-            if self.input.at(Syntax::FnKw) {
-                self.func_dec(anchor.clone());
+        while !self.at_eof() {
+            if self.at(TokenKind::FnKw) {
+                if let Some(func_id) = self.parse_func_dec() {
+                    func_ids.push(DecId::Func(func_id));
+                }
             } else {
-                // Unexpected token at top level, recover
-                self.recover_until(anchor.clone(), vec![Syntax::FnKw]);
+                // Unexpected token at top level
+                self.error(vec![TokenKind::FnKw]);
+                self.advance(); // Skip to recover
             }
         }
 
-        self.builder.finish_node();
+        self.ast.mods.push(Module {
+            name: "main".into(),
+            decs: func_ids,
+        });
     }
 
-    pub(super) fn func_dec(&mut self, anchor: HashSet<Syntax>) {
-        self.with(Syntax::FuncDec, |this| {
-            let anchor = union(&anchor, [Syntax::LeftParen, Syntax::LeftBrace]);
+    fn parse_func_dec(&mut self) -> Option<crate::ast::FuncId> {
+        let start_span = self.peek_span();
 
-            this.expect(Syntax::FnKw, union(&anchor, [Syntax::Ident]));
-            this.expect(Syntax::Ident, union(&anchor, [Syntax::LeftParen]));
+        // fn
+        self.expect(TokenKind::FnKw)?;
 
-            // Parameters
-            this.expect(
-                Syntax::LeftParen,
-                union(&anchor, [Syntax::RightParen, Syntax::Ident]),
-            );
+        // name
+        let (name, _) = self.parse_ident()?;
 
-            if !this.input.at(Syntax::RightParen) {
-                loop {
-                    this.func_param(union(&anchor, [Syntax::Comma, Syntax::RightParen]));
+        // (params)
+        self.expect(TokenKind::LeftParen)?;
 
-                    if this.eat(Syntax::Comma).is_none() {
-                        break;
-                    }
+        let mut parameters = Vec::new();
+        if !self.at(TokenKind::RightParen) {
+            loop {
+                if let Some(param) = self.parse_func_param() {
+                    parameters.push(param);
+                }
+
+                if !self.eat(TokenKind::Comma) {
+                    break;
                 }
             }
+        }
 
-            this.expect(
-                Syntax::RightParen,
-                union(&anchor, [Syntax::Arrow, Syntax::LeftBrace]),
-            );
+        self.expect(TokenKind::RightParen)?;
 
-            // Optional return type
-            if this.eat(Syntax::Arrow).is_some() {
-                this.type_annotation(union(&anchor, [Syntax::LeftBrace]));
-            }
+        // Optional return type
+        let (return_type, return_type_id) = if self.eat(TokenKind::Arrow) {
+            let type_span = self.peek_span();
+            let ty = self.parse_type()?;
+            let type_id = self.ast.alloc_type_with_span(type_span);
+            (Some(ty), Some(type_id))
+        } else {
+            (None, None)
+        };
 
-            // Body
-            this.block(anchor);
-        });
+        // Body (block expression)
+        let body = self.parse_block()?;
+
+        let end_span = self.previous_span();
+        let span = start_span.merge(end_span);
+
+        let func = FuncDec {
+            name,
+            parameters,
+            return_type,
+            return_type_id,
+            body,
+        };
+
+        Some(self.ast.alloc_func_with_span(func, span))
     }
 
-    fn func_param(&mut self, anchor: HashSet<Syntax>) {
-        self.with(Syntax::FuncParam, |this| {
-            this.expect(Syntax::Ident, union(&anchor, [Syntax::Colon]));
+    fn parse_func_param(&mut self) -> Option<FuncParam> {
+        let (name, _) = self.parse_ident()?;
 
-            if this.eat(Syntax::Colon).is_some() {
-                this.type_annotation(anchor);
+        let ty = if self.eat(TokenKind::Colon) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        Some(FuncParam { name, ty })
+    }
+
+    pub(super) fn parse_type(&mut self) -> Option<Type> {
+        if self.at(TokenKind::Ident) {
+            let token = self.peek_token();
+            let text = token.text;
+            self.advance();
+
+            match text {
+                "i32" => Some(Type::I32),
+                "bool" => Some(Type::Bool),
+                "unit" => Some(Type::Unit),
+                _ => {
+                    // Unknown type - could add custom types later
+                    self.errors.push(crate::parser::ParseError::new(
+                        vec![],
+                        TokenKind::Ident,
+                        self.previous_span(),
+                    ));
+                    None
+                }
             }
-        });
+        } else {
+            self.error(vec![TokenKind::Ident]);
+            None
+        }
     }
 }
