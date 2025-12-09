@@ -7,7 +7,7 @@ impl<'src> Parser<'src> {
         let start_span = self.peek_span();
 
         // let
-        self.expect(TokenKind::LetKw)?;
+        self.expect(TokenKind::Let)?;
 
         // name
         let (name, _) = self.parse_ident()?;
@@ -20,18 +20,18 @@ impl<'src> Parser<'src> {
         };
 
         // = value
-        self.expect(TokenKind::Eq)?;
+        self.expect(TokenKind::Equals)?;
         let value = self.parse_expr()?;
 
         // ;
         self.expect(TokenKind::Semicolon)?;
 
         let end_span = self.previous_span();
-        let span = start_span.merge(end_span);
+        let span = start_span.merge(&end_span);
 
-        Some(self.ast.alloc_stmt_with_span(
-            Stmt::Let { name, ty, value },
-            span,
-        ))
+        Some(
+            self.ast
+                .alloc_stmt_with_span(Stmt::Let { name, ty, value }, span),
+        )
     }
 }

@@ -7,13 +7,13 @@ impl<'src> Parser<'src> {
         let mut func_ids = Vec::new();
 
         while !self.at_eof() {
-            if self.at(TokenKind::FnKw) {
+            if self.at(TokenKind::Fn) {
                 if let Some(func_id) = self.parse_func_dec() {
                     func_ids.push(DecId::Func(func_id));
                 }
             } else {
                 // Unexpected token at top level
-                self.error(vec![TokenKind::FnKw]);
+                self.error(vec![TokenKind::Fn]);
                 self.advance(); // Skip to recover
             }
         }
@@ -28,16 +28,16 @@ impl<'src> Parser<'src> {
         let start_span = self.peek_span();
 
         // fn
-        self.expect(TokenKind::FnKw)?;
+        self.expect(TokenKind::Fn)?;
 
         // name
         let (name, _) = self.parse_ident()?;
 
         // (params)
-        self.expect(TokenKind::LeftParen)?;
+        self.expect(TokenKind::OpenParen)?;
 
         let mut parameters = Vec::new();
-        if !self.at(TokenKind::RightParen) {
+        if !self.at(TokenKind::CloseParen) {
             loop {
                 if let Some(param) = self.parse_func_param() {
                     parameters.push(param);
@@ -49,7 +49,7 @@ impl<'src> Parser<'src> {
             }
         }
 
-        self.expect(TokenKind::RightParen)?;
+        self.expect(TokenKind::CloseParen)?;
 
         // Optional return type
         let (return_type, return_type_id) = if self.eat(TokenKind::Arrow) {
@@ -65,7 +65,7 @@ impl<'src> Parser<'src> {
         let body = self.parse_block()?;
 
         let end_span = self.previous_span();
-        let span = start_span.merge(end_span);
+        let span = start_span.merge(&end_span);
 
         let func = FuncDec {
             name,
@@ -91,28 +91,38 @@ impl<'src> Parser<'src> {
     }
 
     pub(super) fn parse_type(&mut self) -> Option<Type> {
-        if self.at(TokenKind::Ident) {
-            let token = self.peek_token();
-            let text = token.text;
-            self.advance();
+        let kind = self.peek();
+        match kind {
+            TokenKind::I32 => {
+                self.advance();
+                Some(Type::I32)
+            }
+            TokenKind::Bool => {
+                self.advance();
+                Some(Type::Bool)
+            }
+            TokenKind::Ident => {
+                let token = self.peek_token();
+                let text = token.text;
+                self.advance();
 
-            match text {
-                "i32" => Some(Type::I32),
-                "bool" => Some(Type::Bool),
-                "unit" => Some(Type::Unit),
-                _ => {
-                    // Unknown type - could add custom types later
-                    self.errors.push(crate::parser::ParseError::new(
-                        vec![],
-                        TokenKind::Ident,
-                        self.previous_span(),
-                    ));
-                    None
+                match text {
+                    "unit" => Some(Type::Unit),
+                    _ => {
+                        // Unknown type - could add custom types later
+                        self.errors.push(crate::parser::ParseError::new(
+                            vec![],
+                            TokenKind::Ident,
+                            self.previous_span(),
+                        ));
+                        None
+                    }
                 }
             }
-        } else {
-            self.error(vec![TokenKind::Ident]);
-            None
+            _ => {
+                self.error(vec![TokenKind::I32, TokenKind::Bool, TokenKind::Ident]);
+                None
+            }
         }
     }
 }

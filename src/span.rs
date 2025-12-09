@@ -1,175 +1,195 @@
-use std::ops::Range;
+use std::{
+    fmt::Debug,
+    ops::Range,
+    path::PathBuf,
+    sync::Arc,
+};
+
+/// Represents a source of code
+#[derive(Clone)]
+pub enum Source {
+    /// Raw source code without a file path
+    Raw(Arc<str>),
+    /// Source code from a file
+    File(PathBuf, Arc<str>),
+}
+
+impl Source {
+    pub fn content(&self) -> &str {
+        match self {
+            Source::Raw(source) => source,
+            Source::File(_, source) => source,
+        }
+    }
+
+    pub fn identifier(&self) -> &str {
+        match self {
+            Source::Raw(_) => "<input>",
+            Source::File(path, _) => path.to_str().unwrap_or("<unknown>"),
+        }
+    }
+
+    pub fn from_raw(source: impl Into<Arc<str>>) -> Self {
+        Source::Raw(source.into())
+    }
+
+    pub fn from_file(file: impl Into<PathBuf>) -> std::io::Result<Self> {
+        let file = file.into();
+        let content = std::fs::read_to_string(&file)?;
+        Ok(Source::File(file, Arc::from(content)))
+    }
+}
+
+/// Represents a position in source code (line and column)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Position {
+    /// Line number (1-indexed)
+    pub line: usize,
+    /// Column number (1-indexed)
+    pub col: usize,
+}
+
+impl Position {
+    pub fn new(line: usize, col: usize) -> Self {
+        Self { line, col }
+    }
+}
 
 /// Represents a location in source code
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone)]
 pub struct Span {
-    /// Byte offset from start of source
-    pub start: u32,
-    /// Byte offset from start of source (exclusive end)
-    pub end: u32,
+    pub start: Position,
+    pub end: Position,
+    pub start_offset: usize,
+    pub length: usize,
+    pub source: Arc<Source>,
+}
+
+impl Debug for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Span")
+            .field("start", &self.start)
+            .field("end", &self.end)
+            .field("start_offset", &self.start_offset)
+            .field("length", &self.length)
+            .finish()
+    }
 }
 
 impl Span {
-    pub fn new(start: u32, end: u32) -> Self {
-        Self { start, end }
-    }
-
-    pub fn from_range(range: Range<usize>) -> Self {
+    pub fn new(
+        start_line: usize,
+        start_col: usize,
+        end_line: usize,
+        end_col: usize,
+        start_offset: usize,
+        length: usize,
+        source: Arc<Source>,
+    ) -> Self {
         Self {
-            start: range.start as u32,
-            end: range.end as u32,
+            start: Position {
+                line: start_line,
+                col: start_col,
+            },
+            end: Position {
+                line: end_line,
+                col: end_col,
+            },
+            start_offset,
+            length,
+            source,
         }
     }
 
-    pub fn len(&self) -> u32 {
-        self.end - self.start
-    }
+    /// Create a span from a byte range in source code
+    pub fn from_range(range: Range<usize>, source: Arc<Source>) -> Self {
+        let start_offset = range.start;
+        let length = range.end - range.start;
 
-    pub fn is_empty(&self) -> bool {
-        self.start == self.end
-    }
+        // Calculate line and column for start position
+        let (start_line, start_col) = Self::calculate_position(source.content(), start_offset);
+        let (end_line, end_col) = Self::calculate_position(source.content(), range.end);
 
-    /// Combine two spans into one that covers both
-    pub fn merge(self, other: Span) -> Span {
-        Span {
-            start: self.start.min(other.start),
-            end: self.end.max(other.end),
+        Self {
+            start: Position {
+                line: start_line,
+                col: start_col,
+            },
+            end: Position {
+                line: end_line,
+                col: end_col,
+            },
+            start_offset,
+            length,
+            source,
         }
     }
 
-    /// Get the text covered by this span from source
-    pub fn text<'a>(&self, source: &'a str) -> &'a str {
-        &source[self.start as usize..self.end as usize]
-    }
-
-    /// Calculate line and column numbers (0-indexed)
-    pub fn position(&self, source: &str) -> Position {
-        let mut line = 0;
-        let mut col = 0;
-        let mut line_start = 0;
+    /// Calculate line and column (1-indexed) for a byte offset
+    fn calculate_position(source: &str, offset: usize) -> (usize, usize) {
+        let mut line = 1;
+        let mut col = 1;
 
         for (i, ch) in source.chars().enumerate() {
-            if i >= self.start as usize {
+            if i >= offset {
                 break;
             }
             if ch == '\n' {
                 line += 1;
-                col = 0;
-                line_start = i + 1;
+                col = 1;
             } else {
                 col += 1;
             }
         }
 
-        Position {
-            line,
-            col,
-            line_start: line_start as u32,
-        }
+        (line, col)
     }
 
     /// Get the line containing this span
-    pub fn get_line<'a>(&self, source: &'a str) -> &'a str {
-        let pos = self.position(source);
-        let line_start = pos.line_start as usize;
-
-        // Find end of line
-        let line_end = source[line_start..]
-            .find('\n')
-            .map(|i| line_start + i)
-            .unwrap_or(source.len());
-
-        &source[line_start..line_end]
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Position {
-    /// Line number (0-indexed)
-    pub line: usize,
-    /// Column number (0-indexed)
-    pub col: usize,
-    /// Byte offset of the start of this line
-    pub line_start: u32,
-}
-
-impl Position {
-    /// Convert to 1-indexed for display
-    pub fn display(&self) -> (usize, usize) {
-        (self.line + 1, self.col + 1)
-    }
-}
-
-/// Format a span with source context for error reporting
-pub fn format_error(source: &str, span: Span, message: &str) -> String {
-    format_error_with_secondary(source, span, message, &[])
-}
-
-/// Format a span with source context and secondary spans for error reporting
-pub fn format_error_with_secondary(
-    source: &str,
-    primary_span: Span,
-    message: &str,
-    secondary_spans: &[(Span, &str)],
-) -> String {
-    let mut result = String::new();
-
-    // Primary span
-    let pos = primary_span.position(source);
-    let (line_num, col_num) = pos.display();
-    let line_text = primary_span.get_line(source);
-
-    result.push_str(&format!("error at {}:{}\n", line_num, col_num));
-    result.push_str(&format!("  | {}\n", line_text));
-    result.push_str("  | ");
-
-    // Add underline for primary span
-    let col_in_line = primary_span.start - pos.line_start;
-    for _ in 0..col_in_line {
-        result.push(' ');
+    pub fn get_line(&self) -> Option<Arc<str>> {
+        self.source
+            .content()
+            .lines()
+            .nth(self.start.line.saturating_sub(1))
+            .map(|s| s.into())
     }
 
-    // Calculate how many carets to show (only on the first line)
-    let line_end = pos.line_start + line_text.len() as u32;
-    let caret_end = primary_span.end.min(line_end);
-    let caret_count = (caret_end - primary_span.start).max(1);
-
-    for _ in 0..caret_count {
-        result.push('^');
+    /// Get the text covered by this span
+    pub fn get_text(&self) -> Arc<str> {
+        let end = (self.start_offset + self.length).min(self.source.content().len());
+        (&self.source.content()[self.start_offset..end]).into()
     }
-    result.push('\n');
 
-    // Show secondary spans
-    for (secondary_span, label) in secondary_spans {
-        let sec_pos = secondary_span.position(source);
-        let (sec_line_num, sec_col_num) = sec_pos.display();
-        let sec_line_text = secondary_span.get_line(source);
-
-        result.push_str(&format!("  | \n"));
-        result.push_str(&format!("  = note: {}\n", label));
-        result.push_str(&format!("  | at {}:{}\n", sec_line_num, sec_col_num));
-        result.push_str(&format!("  | {}\n", sec_line_text));
-        result.push_str("  | ");
-
-        // Add underline for secondary span
-        let sec_col_in_line = secondary_span.start - sec_pos.line_start;
-        for _ in 0..sec_col_in_line {
-            result.push(' ');
+    /// Create an empty span at the start of a source
+    pub fn empty(source: Arc<Source>) -> Self {
+        Span {
+            start: Position { line: 1, col: 1 },
+            end: Position { line: 1, col: 1 },
+            start_offset: 0,
+            length: 0,
+            source,
         }
-
-        let sec_line_end = sec_pos.line_start + sec_line_text.len() as u32;
-        let sec_caret_end = secondary_span.end.min(sec_line_end);
-        let sec_caret_count = (sec_caret_end - secondary_span.start).max(1);
-
-        for _ in 0..sec_caret_count {
-            result.push('^');
-        }
-        result.push('\n');
     }
 
-    result.push_str(&format!("  = {}", message));
+    /// Merge two spans into one that covers both
+    pub fn merge(&self, other: &Span) -> Span {
+        let (first, second) = if self.start_offset <= other.start_offset {
+            (self, other)
+        } else {
+            (other, self)
+        };
 
-    result
+        let end_offset = (second.start_offset + second.length).max(first.start_offset + first.length);
+        let length = end_offset - first.start_offset;
+
+        Span {
+            start: first.start,
+            end: second.end,
+            start_offset: first.start_offset,
+            length,
+            source: first.source.clone(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -177,28 +197,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_span_position() {
-        let source = "line 1\nline 2\nline 3";
-        let span = Span::new(7, 13); // "line 2"
-        let pos = span.position(source);
-        assert_eq!(pos.line, 1);
-        assert_eq!(pos.col, 0);
+    fn test_span_from_range() {
+        let source = Arc::new(Source::from_raw("line 1\nline 2\nline 3"));
+        let span = Span::from_range(7..13, source); // "line 2"
+        assert_eq!(span.start.line, 2);
+        assert_eq!(span.start.col, 1);
+        assert_eq!(span.end.line, 2);
+        assert_eq!(span.end.col, 7);
     }
 
     #[test]
     fn test_span_text() {
-        let source = "hello world";
-        let span = Span::new(0, 5);
-        assert_eq!(span.text(source), "hello");
+        let source = Arc::new(Source::from_raw("hello world"));
+        let span = Span::from_range(0..5, source);
+        assert_eq!(span.get_text().as_ref(), "hello");
     }
 
     #[test]
-    fn test_format_error() {
-        let source = "fn add(x: i32, y: i32) {\n    x + y\n}";
-        let span = Span::new(29, 30); // The 'x' in the body
-        let formatted = format_error(source, span, "variable not found");
-        assert!(formatted.contains("error at 2:5"));
-        assert!(formatted.contains("x + y"));
-        assert!(formatted.contains("^"));
+    fn test_get_line() {
+        let source = Arc::new(Source::from_raw("line 1\nline 2\nline 3"));
+        let span = Span::from_range(7..13, source);
+        assert_eq!(span.get_line().unwrap().as_ref(), "line 2");
     }
 }

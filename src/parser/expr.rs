@@ -18,8 +18,8 @@ impl<'src> Parser<'src> {
 
         loop {
             // Check for postfix operators (function calls)
-            if self.at(TokenKind::LeftParen) {
-                lhs = self.parse_call(lhs, start_span)?;
+            if self.at(TokenKind::OpenParen) {
+                lhs = self.parse_call(lhs, start_span.clone())?;
                 continue;
             }
 
@@ -38,12 +38,11 @@ impl<'src> Parser<'src> {
             let rhs = self.parse_expr_bp(r_bp)?;
 
             let end_span = self.previous_span();
-            let span = start_span.merge(end_span);
+            let span = start_span.merge(&end_span);
 
-            lhs = self.ast.alloc_expr_with_span(
-                Expr::Binary { op, lhs, rhs },
-                span,
-            );
+            lhs = self
+                .ast
+                .alloc_expr_with_span(Expr::Binary { op, lhs, rhs }, span);
         }
 
         Some(lhs)
@@ -56,33 +55,31 @@ impl<'src> Parser<'src> {
             TokenKind::Int => {
                 let token = self.peek_token();
                 let value: i32 = token.text.parse().unwrap_or(0);
-                let span = token.span;
+                let span = token.span.clone();
                 self.advance();
                 Some(self.ast.alloc_expr_with_span(Expr::I32(value), span))
             }
             TokenKind::Ident => {
                 let token = self.peek_token();
                 let text = token.text;
-                let span = token.span;
+                let span = token.span.clone();
                 self.advance();
                 let ident = self.make_ident(text);
                 Some(self.ast.alloc_expr_with_span(Expr::Var(ident), span))
             }
-            TokenKind::LeftParen => {
+            TokenKind::OpenParen => {
                 self.advance(); // consume (
                 let inner = self.parse_expr()?;
-                self.expect(TokenKind::RightParen)?;
+                self.expect(TokenKind::CloseParen)?;
                 Some(inner)
             }
-            TokenKind::LeftBrace => {
-                self.parse_block()
-            }
+            TokenKind::OpenBrace => self.parse_block(),
             _ => {
                 self.error(vec![
                     TokenKind::Int,
                     TokenKind::Ident,
-                    TokenKind::LeftParen,
-                    TokenKind::LeftBrace,
+                    TokenKind::OpenParen,
+                    TokenKind::OpenBrace,
                 ]);
                 // Return a hole expression for error recovery
                 Some(self.ast.alloc_expr_with_span(Expr::Hole, start_span))
@@ -91,10 +88,10 @@ impl<'src> Parser<'src> {
     }
 
     fn parse_call(&mut self, callee: ExprId, start_span: Span) -> Option<ExprId> {
-        self.expect(TokenKind::LeftParen)?;
+        self.expect(TokenKind::OpenParen)?;
 
         let mut args = Vec::new();
-        if !self.at(TokenKind::RightParen) {
+        if !self.at(TokenKind::CloseParen) {
             loop {
                 if let Some(arg) = self.parse_expr() {
                     args.push(arg);
@@ -106,10 +103,10 @@ impl<'src> Parser<'src> {
             }
         }
 
-        self.expect(TokenKind::RightParen)?;
+        self.expect(TokenKind::CloseParen)?;
 
         let end_span = self.previous_span();
-        let span = start_span.merge(end_span);
+        let span = start_span.merge(&end_span);
 
         // For now, we need to resolve the function name to a FuncId
         // This is a simplified version - in a real compiler, this would be done
@@ -125,7 +122,10 @@ impl<'src> Parser<'src> {
 
         if let Some(func_id) = func_id {
             Some(self.ast.alloc_expr_with_span(
-                Expr::Call { func: func_id, args },
+                Expr::Call {
+                    func: func_id,
+                    args,
+                },
                 span,
             ))
         } else {
@@ -151,13 +151,13 @@ impl<'src> Parser<'src> {
     pub(super) fn parse_block(&mut self) -> Option<ExprId> {
         let start_span = self.peek_span();
 
-        self.expect(TokenKind::LeftBrace)?;
+        self.expect(TokenKind::OpenBrace)?;
 
         let mut stmts = Vec::new();
         let mut value = None;
 
-        while !self.at(TokenKind::RightBrace) && !self.at_eof() {
-            if self.at(TokenKind::LetKw) {
+        while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            if self.at(TokenKind::Let) {
                 // Let statement
                 if let Some(stmt_id) = self.parse_let_stmt() {
                     stmts.push(stmt_id);
@@ -168,12 +168,12 @@ impl<'src> Parser<'src> {
                     if self.eat(TokenKind::Semicolon) {
                         // Expression statement - discard value
                         // We could wrap this in a statement type, but for now just continue
-                    } else if self.at(TokenKind::RightBrace) {
+                    } else if self.at(TokenKind::CloseBrace) {
                         // Last expression without semicolon - this is the block's value
                         value = Some(expr_id);
                     } else {
                         // Missing semicolon between statements
-                        self.error(vec![TokenKind::Semicolon, TokenKind::RightBrace]);
+                        self.error(vec![TokenKind::Semicolon, TokenKind::CloseBrace]);
                         break;
                     }
                 } else {
@@ -182,15 +182,15 @@ impl<'src> Parser<'src> {
             }
         }
 
-        self.expect(TokenKind::RightBrace)?;
+        self.expect(TokenKind::CloseBrace)?;
 
         let end_span = self.previous_span();
-        let span = start_span.merge(end_span);
+        let span = start_span.merge(&end_span);
 
-        Some(self.ast.alloc_expr_with_span(
-            Expr::Block { stmts, value },
-            span,
-        ))
+        Some(
+            self.ast
+                .alloc_expr_with_span(Expr::Block { stmts, value }, span),
+        )
     }
 
     fn peek_binop(&self) -> Option<BinOp> {
@@ -199,12 +199,12 @@ impl<'src> Parser<'src> {
             TokenKind::Minus => Some(BinOp::Subtract),
             TokenKind::Star => Some(BinOp::Multiply),
             TokenKind::Slash => Some(BinOp::Divide),
-            TokenKind::EqEq => Some(BinOp::Equals),
-            TokenKind::NotEq => Some(BinOp::NotEquals),
-            TokenKind::Lt => Some(BinOp::LessThan),
-            TokenKind::Gt => Some(BinOp::GreaterThan),
-            TokenKind::LtEq => Some(BinOp::LessThan), // TODO: Add LessThanOrEqual
-            TokenKind::GtEq => Some(BinOp::GreaterThan), // TODO: Add GreaterThanOrEqual
+            TokenKind::DoubleEquals => Some(BinOp::Equals),
+            TokenKind::NotEquals => Some(BinOp::NotEquals),
+            TokenKind::LessThan => Some(BinOp::LessThan),
+            TokenKind::GreaterThan => Some(BinOp::GreaterThan),
+            TokenKind::LessThanOrEqual => Some(BinOp::LessThan), // TODO: Add LessThanOrEqual
+            TokenKind::GreaterThanOnEqual => Some(BinOp::GreaterThan), // TODO: Add GreaterThanOrEqual
             _ => None,
         }
     }

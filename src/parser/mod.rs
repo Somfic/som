@@ -1,6 +1,7 @@
 use crate::ast::{Ast, Ident};
 use crate::lexer::{lex, Token, TokenKind};
-use crate::span::Span;
+use crate::span::{Span, Source};
+use std::sync::Arc;
 
 mod error;
 pub use error::*;
@@ -40,18 +41,21 @@ impl<'src> Parser<'src> {
     }
 
     fn peek_token(&self) -> &Token<'src> {
-        self.tokens.get(self.pos).unwrap_or_else(|| self.tokens.last().unwrap())
+        self.tokens
+            .get(self.pos)
+            .unwrap_or_else(|| self.tokens.last().unwrap())
     }
 
     fn peek_span(&self) -> Span {
-        self.peek_token().span
+        self.peek_token().span.clone()
     }
 
     fn previous_span(&self) -> Span {
         if self.pos > 0 {
-            self.tokens[self.pos - 1].span
+            self.tokens[self.pos - 1].span.clone()
         } else {
-            Span::new(0, 0)
+            // Return an empty span at the start of the source
+            Span::empty(self.tokens[0].span.source.clone())
         }
     }
 
@@ -101,6 +105,18 @@ impl<'src> Parser<'src> {
         let span = self.peek_span();
         let found = self.peek();
         self.errors.push(ParseError::new(expected, found, span));
+        self.synchronize();
+    }
+
+    // Skip tokens until we reach a synchronization point
+    fn synchronize(&mut self) {
+        while !self.at_eof() {
+            // Stop at statement/declaration boundaries
+            match self.peek() {
+                TokenKind::Fn | TokenKind::Let | TokenKind::CloseBrace => return,
+                _ => self.advance(),
+            }
+        }
     }
 
     // Helpers
@@ -117,7 +133,7 @@ impl<'src> Parser<'src> {
     fn parse_ident(&mut self) -> Option<(Ident, Span)> {
         if self.at(TokenKind::Ident) {
             let token = self.peek_token();
-            let span = token.span;
+            let span = token.span.clone();
             let text = token.text.to_owned();
             self.advance();
             Some((self.make_ident(&text), span))
@@ -129,7 +145,7 @@ impl<'src> Parser<'src> {
 }
 
 /// Parse source code into an AST
-pub fn parse(source: &str) -> (Ast, Vec<ParseError>) {
+pub fn parse(source: Arc<Source>) -> (Ast, Vec<ParseError>) {
     let tokens = lex(source);
     let mut parser = Parser::new(tokens);
     parser.skip_trivia(); // Skip leading whitespace
@@ -142,7 +158,7 @@ mod tests {
 
     #[test]
     fn test_parse_simple_function() {
-        let source = "fn add(x: i32, y: i32) -> i32 { x + y }";
+        let source = Arc::new(Source::from_raw("fn add(x: i32, y: i32) -> i32 { x + y }"));
         let (ast, errors) = parse(source);
         assert!(errors.is_empty(), "Errors: {:?}", errors);
         assert_eq!(ast.funcs.len(), 1);
@@ -150,14 +166,14 @@ mod tests {
 
     #[test]
     fn test_parse_function_with_let() {
-        let source = "fn test() { let x: i32 = 5; x }";
+        let source = Arc::new(Source::from_raw("fn test() { let x: i32 = 5; x }"));
         let (ast, errors) = parse(source);
         assert!(errors.is_empty(), "Errors: {:?}", errors);
     }
 
     #[test]
     fn test_parse_binary_expr() {
-        let source = "fn test() { 1 + 2 * 3 }";
+        let source = Arc::new(Source::from_raw("fn test() { 1 + 2 * 3 }"));
         let (ast, errors) = parse(source);
         assert!(errors.is_empty(), "Errors: {:?}", errors);
     }
@@ -165,7 +181,7 @@ mod tests {
     #[test]
     fn test_parse_function_call() {
         // Define add before test, so it's available for name resolution
-        let source = "fn add(a: i32, b: i32) -> i32 { a + b } fn test() { add(1, 2) }";
+        let source = Arc::new(Source::from_raw("fn add(a: i32, b: i32) -> i32 { a + b } fn test() { add(1, 2) }"));
         let (ast, errors) = parse(source);
         assert!(errors.is_empty(), "Errors: {:?}", errors);
         assert_eq!(ast.funcs.len(), 2);

@@ -1,17 +1,54 @@
+use crate::span::{Span, Source};
 use logos::Logos;
-use crate::span::Span;
+use std::sync::Arc;
 
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {
     // Keywords
     #[token("fn")]
-    FnKw,
+    Fn,
     #[token("let")]
-    LetKw,
+    Let,
     #[token("if")]
-    IfKw,
+    If,
     #[token("else")]
-    ElseKw,
+    Else,
+
+    // Built-in types
+    #[token("i8")]
+    I8,
+    #[token("i16")]
+    I16,
+    #[token("i32")]
+    I32,
+    #[token("i64")]
+    I64,
+    #[token("i128")]
+    I128,
+    #[token("isize")]
+    ISize,
+    #[token("u8")]
+    U8,
+    #[token("u16")]
+    U16,
+    #[token("u32")]
+    U32,
+    #[token("u64")]
+    U64,
+    #[token("u128")]
+    U128,
+    #[token("usize")]
+    USize,
+    #[token("f32")]
+    F32,
+    #[token("f64")]
+    F64,
+    #[token("bool")]
+    Bool,
+    #[token("char")]
+    Char,
+    #[token("str")]
+    Str,
 
     // Literals and identifiers
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
@@ -29,29 +66,29 @@ pub enum TokenKind {
     #[token("/")]
     Slash,
     #[token("=")]
-    Eq,
+    Equals,
     #[token("==")]
-    EqEq,
+    DoubleEquals,
     #[token("!=")]
-    NotEq,
+    NotEquals,
     #[token("<")]
-    Lt,
+    LessThan,
     #[token(">")]
-    Gt,
+    GreaterThan,
     #[token("<=")]
-    LtEq,
+    LessThanOrEqual,
     #[token(">=")]
-    GtEq,
+    GreaterThanOnEqual,
 
     // Delimiters
     #[token("(")]
-    LeftParen,
+    OpenParen,
     #[token(")")]
-    RightParen,
+    CloseParen,
     #[token("{")]
-    LeftBrace,
+    OpenBrace,
     #[token("}")]
-    RightBrace,
+    CloseBrace,
     #[token(",")]
     Comma,
     #[token(";")]
@@ -60,6 +97,8 @@ pub enum TokenKind {
     Colon,
     #[token("->")]
     Arrow,
+    #[token("=>")]
+    FatArrow,
 
     // Whitespace and comments (skipped during parsing)
     #[regex(r"[ \t\r\n]+")]
@@ -79,27 +118,28 @@ pub struct Token<'src> {
     pub span: Span,
 }
 
-pub fn lex(input: &str) -> Vec<Token<'_>> {
+pub fn lex(source: Arc<Source>) -> Vec<Token<'static>> {
+    let input = source.content();
     let mut lexer = TokenKind::lexer(input);
     let mut tokens = Vec::new();
 
     while let Some(result) = lexer.next() {
         let kind = result.unwrap_or(TokenKind::Error);
-        let span = lexer.span();
+        let span_range = lexer.span();
         let text = lexer.slice();
         tokens.push(Token {
             kind,
-            text,
-            span: Span::from_range(span),
+            text: Box::leak(text.to_string().into_boxed_str()),
+            span: Span::from_range(span_range, source.clone()),
         });
     }
 
     // Add EOF token
-    let eof_pos = input.len() as u32;
+    let eof_pos = input.len();
     tokens.push(Token {
         kind: TokenKind::Eof,
         text: "",
-        span: Span::new(eof_pos, eof_pos),
+        span: Span::from_range(eof_pos..eof_pos, source),
     });
 
     tokens
@@ -111,18 +151,26 @@ mod tests {
 
     #[test]
     fn test_lex_keywords() {
-        let tokens = lex("fn let if else");
-        let non_ws: Vec<_> = tokens.iter().filter(|t| t.kind != TokenKind::Whitespace).collect();
-        assert_eq!(non_ws[0].kind, TokenKind::FnKw);
-        assert_eq!(non_ws[1].kind, TokenKind::LetKw);
-        assert_eq!(non_ws[2].kind, TokenKind::IfKw);
-        assert_eq!(non_ws[3].kind, TokenKind::ElseKw);
+        let source = Arc::new(Source::from_raw("fn let if else"));
+        let tokens = lex(source);
+        let non_ws: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.kind != TokenKind::Whitespace)
+            .collect();
+        assert_eq!(non_ws[0].kind, TokenKind::Fn);
+        assert_eq!(non_ws[1].kind, TokenKind::Let);
+        assert_eq!(non_ws[2].kind, TokenKind::If);
+        assert_eq!(non_ws[3].kind, TokenKind::Else);
     }
 
     #[test]
     fn test_lex_identifiers() {
-        let tokens = lex("foo bar_baz x123");
-        let non_ws: Vec<_> = tokens.iter().filter(|t| t.kind != TokenKind::Whitespace).collect();
+        let source = Arc::new(Source::from_raw("foo bar_baz x123"));
+        let tokens = lex(source);
+        let non_ws: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.kind != TokenKind::Whitespace)
+            .collect();
         assert_eq!(non_ws[0].kind, TokenKind::Ident);
         assert_eq!(non_ws[0].text, "foo");
         assert_eq!(non_ws[1].kind, TokenKind::Ident);
@@ -131,8 +179,12 @@ mod tests {
 
     #[test]
     fn test_lex_integers() {
-        let tokens = lex("123 456");
-        let non_ws: Vec<_> = tokens.iter().filter(|t| t.kind != TokenKind::Whitespace).collect();
+        let source = Arc::new(Source::from_raw("123 456"));
+        let tokens = lex(source);
+        let non_ws: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.kind != TokenKind::Whitespace)
+            .collect();
         assert_eq!(non_ws[0].kind, TokenKind::Int);
         assert_eq!(non_ws[0].text, "123");
         assert_eq!(non_ws[1].kind, TokenKind::Int);
@@ -141,22 +193,29 @@ mod tests {
 
     #[test]
     fn test_lex_operators() {
-        let tokens = lex("+ - * / == != < >");
-        let non_ws: Vec<_> = tokens.iter().filter(|t| t.kind != TokenKind::Whitespace).collect();
+        let source = Arc::new(Source::from_raw("+ - * / == != < >"));
+        let tokens = lex(source);
+        let non_ws: Vec<_> = tokens
+            .iter()
+            .filter(|t| t.kind != TokenKind::Whitespace)
+            .collect();
         assert_eq!(non_ws[0].kind, TokenKind::Plus);
         assert_eq!(non_ws[1].kind, TokenKind::Minus);
         assert_eq!(non_ws[2].kind, TokenKind::Star);
         assert_eq!(non_ws[3].kind, TokenKind::Slash);
-        assert_eq!(non_ws[4].kind, TokenKind::EqEq);
-        assert_eq!(non_ws[5].kind, TokenKind::NotEq);
-        assert_eq!(non_ws[6].kind, TokenKind::Lt);
-        assert_eq!(non_ws[7].kind, TokenKind::Gt);
+        assert_eq!(non_ws[4].kind, TokenKind::DoubleEquals);
+        assert_eq!(non_ws[5].kind, TokenKind::NotEquals);
+        assert_eq!(non_ws[6].kind, TokenKind::LessThan);
+        assert_eq!(non_ws[7].kind, TokenKind::GreaterThan);
     }
 
     #[test]
     fn test_spans() {
-        let tokens = lex("fn add");
-        assert_eq!(tokens[0].span, Span::new(0, 2)); // "fn"
-        assert_eq!(tokens[2].span, Span::new(3, 6)); // "add"
+        let source = Arc::new(Source::from_raw("fn add"));
+        let tokens = lex(source.clone());
+        assert_eq!(tokens[0].span.start_offset, 0);
+        assert_eq!(tokens[0].span.length, 2); // "fn"
+        assert_eq!(tokens[2].span.start_offset, 3);
+        assert_eq!(tokens[2].span.length, 3); // "add"
     }
 }

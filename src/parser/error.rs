@@ -1,7 +1,8 @@
 use crate::lexer::TokenKind;
 use crate::span::Span;
+use crate::diagnostics::{Diagnostic, Severity};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct ParseError {
     pub expected: Vec<TokenKind>,
     pub found: TokenKind,
@@ -34,5 +35,11 @@ impl ParseError {
             message,
             span,
         }
+    }
+
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        use crate::diagnostics::Label;
+        Diagnostic::new(Severity::Error, &self.message)
+            .with_label(Label::primary(self.span.clone(), "here"))
     }
 }

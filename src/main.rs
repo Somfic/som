@@ -1,26 +1,35 @@
 mod ast;
 pub use ast::*;
 
+mod diagnostics;
 mod lexer;
 mod parser;
 mod span;
 
 use crate::type_check::TypeInferencer;
-pub use span::Span;
+pub use diagnostics::{Diagnostic, Label, Severity};
+pub use span::{Position, Source, Span};
 mod type_check;
+
+use std::sync::Arc;
 
 fn main() {
     // Parse source code
-    let source = r#"fn add(x: i32, y: i32) -> bool {
-    x > y
-}"#;
+    let source_text = r#"
 
-    let (ast, parse_errors) = parser::parse(source);
+    fn add(x: i32, y: i32) -> bool {
+        x + y + 1
+    }
+
+    "#;
+
+    let source = Arc::new(Source::from_raw(source_text));
+    let (ast, parse_errors) = parser::parse(source.clone());
 
     if !parse_errors.is_empty() {
         for error in &parse_errors {
-            let formatted = span::format_error(source, error.span, &error.message);
-            println!("{}\n", formatted);
+            let diagnostic = error.to_diagnostic();
+            println!("{}\n", diagnostic);
         }
     }
 
@@ -31,28 +40,27 @@ fn main() {
     if !typed_ast.errors.is_empty() {
         for (expr_id, error) in &typed_ast.errors {
             if let Some(span) = typed_ast.ast.expr_spans.get(expr_id) {
+                // Create diagnostic with labels
+                let mut diagnostic = Diagnostic::error(error.to_diagnostic_message())
+                    .with_label(Label::primary(span.clone(), "error occurs here"));
+
                 // Check if there's a secondary span to show
-                let secondary_spans = match error {
+                match error {
                     crate::type_check::TypeError::Mismatch {
                         expected_type_id: Some(type_id),
                         ..
                     } => {
                         if let Some(type_span) = typed_ast.ast.type_spans.get(type_id) {
-                            vec![(*type_span, "expected type defined here")]
-                        } else {
-                            vec![]
+                            diagnostic = diagnostic.with_label(Label::secondary(
+                                type_span.clone(),
+                                "expected type defined here",
+                            ));
                         }
                     }
-                    _ => vec![],
+                    _ => {}
                 };
 
-                let formatted = span::format_error_with_secondary(
-                    source,
-                    *span,
-                    &format!("{:?}", error),
-                    &secondary_spans,
-                );
-                println!("{}\n", formatted);
+                println!("{}\n", diagnostic);
             } else {
                 println!("  At {:?}: {:?}\n", expr_id, error);
             }
