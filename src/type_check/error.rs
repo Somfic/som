@@ -30,20 +30,32 @@ pub enum TypeError {
 impl TypeError {
     pub fn to_diagnostic_message(&self) -> String {
         match self {
-            TypeError::Mismatch { expected, found, .. } => {
-                format!("Type mismatch: expected {:?}, found {:?}", expected, found)
+            TypeError::Mismatch {
+                expected, found, ..
+            } => {
+                format!("Type mismatch: expected {}, found {}", expected, found)
             }
             TypeError::InfiniteType { var, ty } => {
                 format!("Infinite type: {:?} = {:?}", var, ty)
             }
-            TypeError::MissingImpl { trait_id, self_type, arg_types } => {
-                format!("Missing implementation for trait {:?} on {:?} with args {:?}", trait_id, self_type, arg_types)
+            TypeError::MissingImpl {
+                trait_id,
+                self_type,
+                arg_types,
+            } => {
+                format!(
+                    "Missing implementation for trait {:?} on {:?} with args {:?}",
+                    trait_id, self_type, arg_types
+                )
             }
             TypeError::UnboundVariable { name } => {
                 format!("Unbound variable: {}", name)
             }
             TypeError::WrongArgCount { expected, found } => {
-                format!("Wrong argument count: expected {}, found {}", expected, found)
+                format!(
+                    "Wrong argument count: expected {}, found {}",
+                    expected, found
+                )
             }
             TypeError::Internal(msg) => {
                 format!("Internal error: {}", msg)

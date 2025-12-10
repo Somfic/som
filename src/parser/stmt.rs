@@ -9,6 +9,9 @@ impl<'src> Parser<'src> {
         // let
         self.expect(TokenKind::Let)?;
 
+        // optional mut
+        let mutable = self.eat(TokenKind::Mut);
+
         // name
         let (name, _) = self.parse_ident()?;
 
@@ -29,9 +32,14 @@ impl<'src> Parser<'src> {
         let end_span = self.previous_span();
         let span = start_span.merge(&end_span);
 
-        Some(
-            self.ast
-                .alloc_stmt_with_span(Stmt::Let { name, ty, value }, span),
-        )
+        Some(self.ast.alloc_stmt_with_span(
+            Stmt::Let {
+                name,
+                mutable,
+                ty,
+                value,
+            },
+            span,
+        ))
     }
 }

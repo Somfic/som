@@ -33,6 +33,7 @@ pub enum Provenance {
     Check(ExprId),
     FunctionArity,
     Unification,
+    Deref(ExprId),
 }
 
 impl Provenance {
@@ -46,6 +47,7 @@ impl Provenance {
             Provenance::FunctionArity | Provenance::Unification => {
                 panic!("Provenance {:?} has no expr_id", self)
             }
+            Provenance::Deref(id) => *id,
         }
     }
 

@@ -1,7 +1,8 @@
 use ena::unify::InPlaceUnificationTable;
 
 use crate::{
-    Ast, Expr, ExprId, FuncId, Stmt, StmtId, TraitId, Type, TypeValue, TypeVar, TypedAst,
+    Ast, Expr, ExprId, FuncId, Lifetime, LifetimeValue, LifetimeVar, Stmt, StmtId, TraitId, Type,
+    TypeValue, TypeVar, TypedAst,
 };
 use std::collections::HashMap;
 
@@ -14,6 +15,7 @@ pub struct TypeInferencer {
     env: HashMap<String, Type>,
     constraints: Vec<Constraint>,
     unification_table: InPlaceUnificationTable<TypeVar>,
+    lifetime_unification_table: InPlaceUnificationTable<LifetimeVar>,
     errors: HashMap<ExprId, TypeError>,
     func_types: HashMap<FuncId, Type>, // Store inferred function return types
     expr_types: HashMap<ExprId, Type>, // Track all expression types
@@ -25,6 +27,7 @@ impl TypeInferencer {
             env: HashMap::new(),
             constraints: Vec::new(),
             unification_table: InPlaceUnificationTable::new(),
+            lifetime_unification_table: InPlaceUnificationTable::new(),
             errors: HashMap::new(),
             func_types: HashMap::new(),
             expr_types: HashMap::new(),
@@ -121,6 +124,50 @@ impl TypeInferencer {
                     }
                 }
             }
+            Expr::Borrow { mutable, expr } => {
+                let inner = self.infer(ast, expr);
+                Type::Reference {
+                    mutable: *mutable,
+                    lifetime: self.fresh_lifetime(),
+                    to: Box::new(inner),
+                }
+            }
+            Expr::Deref { expr } => {
+                let expr_ty = self.infer(ast, expr);
+
+                // Try to extract inner type directly if it's a known reference
+                match &self.normalize(&expr_ty) {
+                    Type::Reference { to, .. } => {
+                        // It's already a reference type, extract the inner type
+                        *to.clone()
+                    }
+                    Type::Unknown(_) => {
+                        // It's a type variable, create a constraint
+                        let inner_ty = self.fresh_type();
+                        let lifetime = self.fresh_lifetime();
+
+                        self.constraints.push(Constraint::Equal {
+                            provenance: Provenance::Deref(*expr_id),
+                            lhs: expr_ty,
+                            rhs: Type::Reference {
+                                mutable: false, // Will match either mut or immut
+                                lifetime,
+                                to: Box::new(inner_ty.clone()),
+                            },
+                        });
+
+                        inner_ty
+                    }
+                    _ => {
+                        // Not a reference - error!
+                        self.errors.insert(
+                            *expr_id,
+                            TypeError::Internal("Cannot dereference non-reference type".into()),
+                        );
+                        self.fresh_type()
+                    }
+                }
+            }
         };
 
         // Store the inferred type
@@ -150,7 +197,12 @@ impl TypeInferencer {
         let stmt = ast.get_stmt(&stmt_id);
 
         match stmt {
-            Stmt::Let { name, ty, value } => match ty {
+            Stmt::Let {
+                name,
+                mutable: _,
+                ty,
+                value,
+            } => match ty {
                 Some(annotated_ty) => {
                     self.check_expr(ast, *value, annotated_ty.clone());
                     self.env
@@ -187,7 +239,10 @@ impl TypeInferencer {
                 // If body is a block with a value, use that value's ID
                 // Otherwise use the body itself
                 let error_expr_id = match ast.get_expr(&func.body) {
-                    Expr::Block { value: Some(value_expr), .. } => *value_expr,
+                    Expr::Block {
+                        value: Some(value_expr),
+                        ..
+                    } => *value_expr,
                     _ => func.body,
                 };
 
@@ -224,7 +279,26 @@ impl TypeInferencer {
                 arguments: arguments.iter().map(|t| self.normalize(t)).collect(),
                 returns: Box::new(self.normalize(returns)),
             },
+            Type::Reference {
+                lifetime,
+                mutable,
+                to,
+            } => Type::Reference {
+                lifetime: self.normalize_lifetime(lifetime),
+                mutable: *mutable,
+                to: Box::new(self.normalize(to)),
+            },
             _ => ty.clone(),
+        }
+    }
+
+    fn normalize_lifetime(&mut self, lt: &Lifetime) -> Lifetime {
+        match lt {
+            Lifetime::Unknown(var) => match self.lifetime_unification_table.probe_value(*var) {
+                LifetimeValue::Bound(ty) => self.normalize_lifetime(&ty),
+                LifetimeValue::Unbound => lt.clone(),
+            },
+            _ => lt.clone(),
         }
     }
 
@@ -274,6 +348,31 @@ impl TypeInferencer {
                 self.unify(r1, r2)
             }
 
+            (
+                Type::Reference {
+                    lifetime: l1,
+                    mutable: m1,
+                    to: t1,
+                },
+                Type::Reference {
+                    lifetime: l2,
+                    mutable: m2,
+                    to: t2,
+                },
+            ) => {
+                if m1 != m2 {
+                    return Err(TypeError::Mismatch {
+                        expected: *t1.clone(),
+                        found: *t2.clone(),
+                        provenance: Provenance::Unification,
+                        expected_type_id: None,
+                    });
+                }
+
+                self.unify_lifetime(l1, l2)?;
+                self.unify(t1, t2)
+            }
+
             _ => Err(TypeError::Mismatch {
                 expected: t1,
                 found: t2,
@@ -281,6 +380,37 @@ impl TypeInferencer {
                 expected_type_id: None,
             }),
         }
+    }
+
+    fn unify_lifetime(&mut self, l1: &Lifetime, l2: &Lifetime) -> Result<(), TypeError> {
+        let l1 = self.normalize_lifetime(l1);
+        let l2 = self.normalize_lifetime(l2);
+
+        match (&l1, &l2) {
+            (Lifetime::Unknown(v1), Lifetime::Unknown(v2)) => self
+                .lifetime_unification_table
+                .unify_var_var(*v1, *v2)
+                .map_err(|_| TypeError::Internal("Infinite lifetime".into())),
+
+            (Lifetime::Unknown(var), lt) | (lt, Lifetime::Unknown(var)) => self
+                .lifetime_unification_table
+                .unify_var_value(*var, LifetimeValue::Bound(lt.clone()))
+                .map_err(|_| TypeError::Internal("Infinite lifetime".into())),
+
+            (Lifetime::Named(n1), Lifetime::Named(n2)) if n1 == n2 => Ok(()),
+
+            (Lifetime::Unspecified, _) | (_, Lifetime::Unspecified) => Ok(()),
+
+            (Lifetime::Static, Lifetime::Static) => Ok(()),
+
+            _ => Err(TypeError::Internal(
+                "Cannot unify different concrete lifetimes".into(),
+            )),
+        }
+    }
+
+    fn fresh_lifetime(&mut self) -> Lifetime {
+        Lifetime::Unknown(self.fresh_lifetime_var())
     }
 
     fn fresh_type(&mut self) -> Type {
@@ -291,6 +421,10 @@ impl TypeInferencer {
         self.unification_table.new_key(TypeValue::Unbound)
     }
 
+    fn fresh_lifetime_var(&mut self) -> LifetimeVar {
+        self.lifetime_unification_table
+            .new_key(LifetimeValue::Unbound)
+    }
 
     fn solve_trait_constraint(
         &mut self,
@@ -337,7 +471,10 @@ impl TypeInferencer {
                 } => {
                     let mut res = self.unify(lhs, rhs);
                     // If it's a Mismatch error, add the expected_type_id from provenance
-                    if let Err(TypeError::Mismatch { expected_type_id, .. }) = &mut res {
+                    if let Err(TypeError::Mismatch {
+                        expected_type_id, ..
+                    }) = &mut res
+                    {
                         *expected_type_id = provenance.expected_type_id();
                     }
                     res

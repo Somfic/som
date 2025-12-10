@@ -1,4 +1,4 @@
-use crate::span::{Span, Source};
+use crate::span::{Source, Span};
 use logos::Logos;
 use std::sync::Arc;
 
@@ -13,6 +13,8 @@ pub enum TokenKind {
     If,
     #[token("else")]
     Else,
+    #[token("mut")]
+    Mut,
 
     // Built-in types
     #[token("i8")]
@@ -99,6 +101,13 @@ pub enum TokenKind {
     Arrow,
     #[token("=>")]
     FatArrow,
+    #[token("&")]
+    Ampersand,
+
+    #[token("'")]
+    SingleQuote,
+    #[token("\"")]
+    DoubleQuote,
 
     // Whitespace and comments (skipped during parsing)
     #[regex(r"[ \t\r\n]+")]

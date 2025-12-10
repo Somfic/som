@@ -1,6 +1,7 @@
 use crate::ast::{DecId, FuncDec, FuncParam, Module, Type};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
+use crate::Lifetime;
 
 impl<'src> Parser<'src> {
     pub(super) fn parse_program(&mut self) {
@@ -101,23 +102,35 @@ impl<'src> Parser<'src> {
                 self.advance();
                 Some(Type::Bool)
             }
+            TokenKind::Ampersand => {
+                self.advance(); // consume &
+                let mutable = self.eat(TokenKind::Mut);
+
+                let lifetime = if self.eat(TokenKind::SingleQuote) {
+                    let (name, _) = self.parse_ident()?;
+                    Lifetime::Named(name.value)
+                } else {
+                    Lifetime::Unspecified
+                };
+
+                let inner_type = self.parse_type()?;
+                Some(Type::Reference {
+                    mutable,
+                    lifetime,
+                    to: Box::new(inner_type),
+                })
+            }
             TokenKind::Ident => {
-                let token = self.peek_token();
-                let text = token.text;
                 self.advance();
 
-                match text {
-                    "unit" => Some(Type::Unit),
-                    _ => {
-                        // Unknown type - could add custom types later
-                        self.errors.push(crate::parser::ParseError::new(
-                            vec![],
-                            TokenKind::Ident,
-                            self.previous_span(),
-                        ));
-                        None
-                    }
-                }
+                // Unknown type - could add custom types later
+                self.errors.push(crate::parser::ParseError::new(
+                    vec![],
+                    TokenKind::Ident,
+                    self.previous_span(),
+                ));
+
+                None
             }
             _ => {
                 self.error(vec![TokenKind::I32, TokenKind::Bool, TokenKind::Ident]);

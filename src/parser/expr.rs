@@ -74,12 +74,32 @@ impl<'src> Parser<'src> {
                 Some(inner)
             }
             TokenKind::OpenBrace => self.parse_block(),
+            TokenKind::Ampersand => {
+                self.advance(); // consume &
+                let mutable = self.eat(TokenKind::Mut);
+                let expr = self.parse_expr_bp(15)?;
+                let end_span = self.previous_span();
+                let span = start_span.merge(&end_span);
+                Some(
+                    self.ast
+                        .alloc_expr_with_span(Expr::Borrow { mutable, expr }, span),
+                )
+            }
+            TokenKind::Star => {
+                self.advance(); // consume *
+                let expr = self.parse_expr_bp(15)?;
+                let end_span = self.previous_span();
+                let span = start_span.merge(&end_span);
+                Some(self.ast.alloc_expr_with_span(Expr::Deref { expr }, span))
+            }
             _ => {
                 self.error(vec![
                     TokenKind::Int,
                     TokenKind::Ident,
                     TokenKind::OpenParen,
                     TokenKind::OpenBrace,
+                    TokenKind::Ampersand,
+                    TokenKind::Star,
                 ]);
                 // Return a hole expression for error recovery
                 Some(self.ast.alloc_expr_with_span(Expr::Hole, start_span))

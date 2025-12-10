@@ -96,7 +96,7 @@ fn surface(text: impl std::fmt::Display) -> String {
 fn token_color(kind: TokenKind) -> Rgb {
     match kind {
         // Keywords: mauve
-        TokenKind::Fn | TokenKind::Let | TokenKind::If | TokenKind::Else => MAUVE,
+        TokenKind::Fn | TokenKind::Let | TokenKind::If | TokenKind::Else | TokenKind::Mut => MAUVE,
 
         // Built-in types: yellow
         TokenKind::I8
@@ -127,6 +127,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         TokenKind::Plus
         | TokenKind::Minus
         | TokenKind::Star
+        | TokenKind::Ampersand
         | TokenKind::Slash
         | TokenKind::Equals
         | TokenKind::DoubleEquals
@@ -145,7 +146,9 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Colon
         | TokenKind::Semicolon
         | TokenKind::Arrow
-        | TokenKind::FatArrow => SUBTEXT0,
+        | TokenKind::FatArrow
+        | TokenKind::SingleQuote
+        | TokenKind::DoubleQuote => SUBTEXT0,
 
         // Comments: surface2
         TokenKind::Comment => SURFACE2,
@@ -182,7 +185,10 @@ fn syntax_highlight(line: &str) -> String {
 
         let color = token_color(token.kind);
         let colored_text = if is_italic(token.kind) {
-            format!("{}", token.text.truecolor(color.0, color.1, color.2).italic())
+            format!(
+                "{}",
+                token.text.truecolor(color.0, color.1, color.2).italic()
+            )
         } else {
             format!("{}", token.text.truecolor(color.0, color.1, color.2))
         };
@@ -191,7 +197,6 @@ fn syntax_highlight(line: &str) -> String {
 
     result
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
@@ -305,17 +310,6 @@ impl Display for Diagnostic {
             let mut lines_vec: Vec<usize> = lines_to_show.into_iter().collect();
             lines_vec.sort();
 
-
-            // Header with location
-            writeln!(
-                f,
-                "  {} {}:{}:{}",
-                blue("-->"),
-                first_label.span.source.identifier(),
-                first_label.span.start.line,
-                first_label.span.start.col
-            )?;
-
             writeln!(f, "     {}", surface("│"))?;
 
             // Display lines with gaps indicated by dots
@@ -357,12 +351,7 @@ impl Display for Diagnostic {
                         }
                     };
 
-                    write!(
-                        f,
-                        "{} {} ",
-                        line_color,
-                        surface("│")
-                    )?;
+                    write!(f, "{} {} ", line_color, surface("│"))?;
 
                     write!(f, "{}", syntax_highlight(line_text))?;
 
@@ -396,15 +385,9 @@ impl Display for Diagnostic {
                             write!(f, "     {} ", surface("│"))?;
                             write!(f, "{}", " ".repeat(col_start))?;
 
-                            // Draw: ╰─── ... ┰─ label message
-                            write!(f, "{}",color_fn("╰"))?;
-                            write!(f, "{}", color_fn(&"─".repeat(width.saturating_sub(1))))?;
-                            if width > 1 {
-                                write!(f, "{}", color_fn("┰"))?;
-                                write!(f, "{}", color_fn("─"))?;
-                            } else {
-                                write!(f, "{}", color_fn("──"))?;
-                            }
+                            let c = if label.is_primary { '━' } else { '─' };
+                            write!(f, "{}", color_fn(&c.to_string().repeat(width)))?;
+
                             write!(f, " {}", color_fn(&label.message))?;
                             writeln!(f)?;
                         }

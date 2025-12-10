@@ -6,6 +6,7 @@ pub struct StmtId(pub u32);
 pub enum Stmt {
     Let {
         name: Ident,
+        mutable: bool,
         ty: Option<Type>,
         value: ExprId,
     },

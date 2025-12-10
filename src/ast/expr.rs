@@ -21,6 +21,13 @@ pub enum Expr {
         func: FuncId,
         args: Vec<ExprId>,
     },
+    Borrow {
+        mutable: bool,
+        expr: ExprId,
+    },
+    Deref {
+        expr: ExprId,
+    },
 }
 
 pub enum BinOp {

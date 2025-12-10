@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::Display;
 
 use ena::unify::{UnifyKey, UnifyValue};
 
@@ -253,16 +254,123 @@ impl UnifyValue for TypeValue {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LifetimeVar(pub u32);
+
+impl UnifyKey for LifetimeVar {
+    type Value = LifetimeValue;
+
+    fn index(&self) -> u32 {
+        self.0
+    }
+
+    fn from_index(u: u32) -> Self {
+        LifetimeVar(u)
+    }
+
+    fn tag() -> &'static str {
+        "LifetimeVar"
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LifetimeValue {
+    Bound(Lifetime),
+    Unbound,
+}
+
+impl UnifyValue for LifetimeValue {
+    type Error = ();
+
+    fn unify_values(a: &Self, b: &Self) -> Result<Self, Self::Error> {
+        match (a, b) {
+            // Both unbound - stay unbound
+            (LifetimeValue::Unbound, LifetimeValue::Unbound) => Ok(LifetimeValue::Unbound),
+
+            // One bound, one unbound - take the bound one
+            (LifetimeValue::Bound(lt), LifetimeValue::Unbound)
+            | (LifetimeValue::Unbound, LifetimeValue::Bound(lt)) => {
+                Ok(LifetimeValue::Bound(lt.clone()))
+            }
+
+            // Both bound - must be identical
+            (LifetimeValue::Bound(l1), LifetimeValue::Bound(l2)) => {
+                if l1 == l2 {
+                    Ok(LifetimeValue::Bound(l1.clone()))
+                } else {
+                    Err(()) // Lifetime mismatch
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Lifetime {
+    Unknown(LifetimeVar),
+    Unspecified,
+    Named(Box<str>),
+    Static,
+}
+
+impl Display for Lifetime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Lifetime::Unknown(var) => write!(f, "'{}", var.0),
+            Lifetime::Unspecified => write!(f, "'_"),
+            Lifetime::Named(name) => write!(f, "'{}", name),
+            Lifetime::Static => write!(f, "'static"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Unit,
     Unknown(TypeVar),
+    Reference {
+        mutable: bool,
+        lifetime: Lifetime,
+        to: Box<Type>,
+    },
     Bool,
     I32,
     Fun {
         arguments: Vec<Type>,
         returns: Box<Type>,
     },
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Unit => write!(f, "()"),
+            Type::Unknown(var) => write!(f, "T{}", var.0),
+            Type::Reference {
+                mutable,
+                lifetime,
+                to,
+            } => {
+                let lifetime = if let Lifetime::Unspecified = lifetime {
+                    ""
+                } else {
+                    &format!("{} ", lifetime)
+                };
+
+                if *mutable {
+                    write!(f, "&mut{}{}", lifetime, to)
+                } else {
+                    write!(f, "&{}{}", lifetime, to)
+                }
+            }
+            Type::Bool => write!(f, "bool"),
+            Type::I32 => write!(f, "i32"),
+            Type::Fun { arguments, returns } => {
+                let args: Vec<String> = arguments.iter().map(|arg| format!("{}", arg)).collect();
+                write!(f, "fn({}) -> {}", args.join(", "), returns)
+            }
+        }
+    }
 }
 
 const BUILTIN_TRAIT_COUNT: u32 = 100;

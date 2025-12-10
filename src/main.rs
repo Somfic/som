@@ -17,8 +17,13 @@ fn main() {
     // Parse source code
     let source_text = r#"
 
-    fn add(x: i32, y: i32) -> bool {
-        x + y + 1
+    fn main() {
+        let x: &i32 = 10;
+        let y = 20;
+    }
+
+    fn add(x: &i32, y: i32) -> bool {
+        *x + y + 1
     }
 
     "#;
