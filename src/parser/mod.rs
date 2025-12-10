@@ -1,6 +1,6 @@
 use crate::ast::{Ast, Ident};
 use crate::lexer::{lex, Token, TokenKind};
-use crate::span::{Span, Source};
+use crate::span::{Source, Span};
 use std::sync::Arc;
 
 mod error;
@@ -181,7 +181,9 @@ mod tests {
     #[test]
     fn test_parse_function_call() {
         // Define add before test, so it's available for name resolution
-        let source = Arc::new(Source::from_raw("fn add(a: i32, b: i32) -> i32 { a + b } fn test() { add(1, 2) }"));
+        let source = Arc::new(Source::from_raw(
+            "fn add(a: i32, b: i32) -> i32 { a + b } fn test() { add(1, 2) }",
+        ));
         let (ast, errors) = parse(source);
         assert!(errors.is_empty(), "Errors: {:?}", errors);
         assert_eq!(ast.funcs.len(), 2);

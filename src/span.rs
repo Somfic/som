@@ -1,9 +1,4 @@
-use std::{
-    fmt::Debug,
-    ops::Range,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{fmt::Debug, ops::Range, path::PathBuf, sync::Arc};
 
 /// Represents a source of code
 #[derive(Clone)]
@@ -179,7 +174,8 @@ impl Span {
             (other, self)
         };
 
-        let end_offset = (second.start_offset + second.length).max(first.start_offset + first.length);
+        let end_offset =
+            (second.start_offset + second.length).max(first.start_offset + first.length);
         let length = end_offset - first.start_offset;
 
         Span {

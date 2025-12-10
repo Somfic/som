@@ -1,6 +1,6 @@
+use crate::diagnostics::{Diagnostic, Severity};
 use crate::lexer::TokenKind;
 use crate::span::Span;
-use crate::diagnostics::{Diagnostic, Severity};
 
 #[derive(Debug, Clone)]
 pub struct ParseError {
