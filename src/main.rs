@@ -1,15 +1,16 @@
 mod ast;
 pub use ast::*;
 
+mod borrow_check;
 mod diagnostics;
 mod lexer;
 mod parser;
 mod span;
+mod type_check;
 
 use crate::type_check::TypeInferencer;
 pub use diagnostics::{Diagnostic, Label, Severity};
 pub use span::{Position, Source, Span};
-mod type_check;
 
 use std::sync::Arc;
 
@@ -25,7 +26,7 @@ fn main() {
     fn add(x: &i32, y: i32) -> bool {
         *x + y + 1
     }
-
+F
     "#;
 
     let source = Arc::new(Source::from_raw(source_text));
