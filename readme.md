@@ -3,7 +3,7 @@
 > An idiot admires complexity, a genius admires simplicity.
 
 ```rust
-let fib = fn(n ~ int) {
+let fib = fn(n: int) {
     n if n < 2 else fib(n - 1) + fib(n - 2)
 };
 
@@ -13,7 +13,7 @@ fib(10);
 ```rust
 type Option<T> = Some(T) | None
 
-type Rgb = { r ~ int, g ~ int, b ~ int }
+type Rgb = { r: int, g: int, b: int }
 
 type Color = Red 
            | Green 
@@ -21,7 +21,37 @@ type Color = Red
            | Hex(string) 
            | Rgb(Rgb)
 
-let print_color = fn(color ~ Color) print(color)
+let print_color = fn(color: Color) print(color)
 ```
 
-## Multi dispatch
+## Fragments
+
+Fragments are reusable fields for structs and enum members.
+
+```rust
+frag VesselFragment {
+    name: string,
+    capacity: int,
+}
+
+enum Vessel {
+    Ship(...VesselFragment, crew: int),
+    Boat(...VesselFragment),
+    Train(...VesselFragment, cars: int),
+}
+
+
+let ship = Vessel::Ship {
+    name: "Black Pearl",
+    capacity: 500,
+    crew: 100,
+};
+
+let name = ship.name; // Common fields are accessible directly
+
+let crew = when ship {
+    Vessel::Ship { crew } => crew, // Specific field accessed via pattern matching
+    _ => 0,
+};
+```
+
