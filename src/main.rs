@@ -19,7 +19,7 @@ fn main() {
     let source_text = r#"
 
     fn main() {
-       let x = 10;
+       let x = "hello";
        let r = &x;
        r + 1
     }

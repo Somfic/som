@@ -57,6 +57,12 @@ pub enum TokenKind {
     Ident,
     #[regex(r"[0-9]+")]
     Int,
+    #[regex(r#""([^"\\]|\\.)*""#)]
+    Text,
+    #[regex(r"true")]
+    True,
+    #[regex(r"false")]
+    False,
 
     // Operators
     #[token("+")]

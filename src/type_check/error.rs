@@ -1,4 +1,4 @@
-use crate::{type_check::Provenance, TraitId, Type, TypeId, TypeVar};
+use crate::{TraitId, Type, TypeId, TypeVar, type_check::Provenance};
 
 #[derive(Debug)]
 pub enum TypeError {

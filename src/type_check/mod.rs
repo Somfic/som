@@ -41,6 +41,12 @@ impl TypeInferencer {
         let ty = match expr {
             Expr::Hole => self.fresh_type(),
             Expr::I32(_) => Type::I32,
+            Expr::Bool(_) => Type::Bool,
+            Expr::String(_) => Type::Reference {
+                mutable: false,
+                lifetime: Lifetime::Static,
+                to: Box::new(Type::Str),
+            },
             Expr::Var(ident) => match self.env.get(&*ident.value) {
                 Some(ty) => ty.clone(),
                 None => {
@@ -724,6 +730,47 @@ mod tests {
             }
             fn bar() -> i32 {
                 1 + 2
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_infer_string_literal() {
+        let typed_ast = check(
+            r#"
+            fn test() -> &'static str {
+                "hello world"
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_string_literal_type_mismatch() {
+        let typed_ast = check(
+            r#"
+            fn test() -> i32 {
+                "hello"
+            }
+            "#,
+        );
+        assert!(has_type_error(&typed_ast, |e| {
+            matches!(e, TypeError::Mismatch { .. })
+        }));
+    }
+
+    #[test]
+    fn test_infer_bool_true_false() {
+        let typed_ast = check(
+            r#"
+            fn test_true() -> bool {
+                true
+            }
+            fn test_false() -> bool {
+                false
             }
             "#,
         );

@@ -1,7 +1,7 @@
+use crate::Lifetime;
 use crate::ast::{DecId, FuncDec, FuncParam, Module, Type};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
-use crate::Lifetime;
 
 impl<'src> Parser<'src> {
     pub(super) fn parse_program(&mut self) {

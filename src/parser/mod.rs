@@ -1,5 +1,5 @@
 use crate::ast::{Ast, Ident};
-use crate::lexer::{lex, Token, TokenKind};
+use crate::lexer::{Token, TokenKind, lex};
 use crate::span::{Source, Span};
 use std::sync::Arc;
 

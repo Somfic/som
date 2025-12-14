@@ -281,7 +281,7 @@ impl<'a> BorrowChecker<'a> {
         let expr = self.typed_ast.ast.get_expr(&expr_id);
 
         match expr {
-            Expr::Hole | Expr::I32(_) => {
+            Expr::Hole | Expr::I32(_) | Expr::Bool(_) | Expr::String(_) => {
                 // Literals - nothing to check
             }
             Expr::Var(name) => {
@@ -309,7 +309,13 @@ impl<'a> BorrowChecker<'a> {
                     }
 
                     // 'static references never dangle
-                    if matches!(ty, Some(Type::Reference { lifetime: Lifetime::Static, .. })) {
+                    if matches!(
+                        ty,
+                        Some(Type::Reference {
+                            lifetime: Lifetime::Static,
+                            ..
+                        })
+                    ) {
                         self.pop_scope();
                         return;
                     }
@@ -729,6 +735,63 @@ mod tests {
             "#,
         );
         // 'static references never dangle
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_string_literal_no_dangling() {
+        let errors = check(
+            r#"
+            fn test() -> &str {
+                "hello"
+            }
+            "#,
+        );
+        // String literals are &'static str, never dangle
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_string_literal_in_block() {
+        let errors = check(
+            r#"
+            fn test() -> &str {
+                let s = {
+                    "world"
+                };
+                s
+            }
+            "#,
+        );
+        // String literals propagate their 'static origin through blocks
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_string_literal_assigned_to_variable() {
+        let errors = check(
+            r#"
+            fn test() -> &str {
+                let s = "hello";
+                s
+            }
+            "#,
+        );
+        // String literals propagate 'static through variable bindings
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_bool_literals() {
+        let errors = check(
+            r#"
+            fn test() {
+                let t = true;
+                let f = false;
+            }
+            "#,
+        );
+        // Bool literals are Copy, no borrow issues
         assert!(errors.is_empty());
     }
 }

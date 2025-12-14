@@ -391,13 +391,14 @@ impl Display for Lifetime {
 pub enum Type {
     Unit,
     Unknown(TypeVar),
+    I32,
+    Bool,
+    Str,
     Reference {
         mutable: bool,
         lifetime: Lifetime,
         to: Box<Type>,
     },
-    Bool,
-    I32,
     Fun {
         arguments: Vec<Type>,
         returns: Box<Type>,
@@ -409,6 +410,9 @@ impl Display for Type {
         match self {
             Type::Unit => write!(f, "()"),
             Type::Unknown(var) => write!(f, "T{}", var.0),
+            Type::Bool => write!(f, "bool"),
+            Type::I32 => write!(f, "i32"),
+            Type::Str => write!(f, "str"),
             Type::Reference {
                 mutable,
                 lifetime,
@@ -426,8 +430,6 @@ impl Display for Type {
                     write!(f, "&{}{}", lifetime, to)
                 }
             }
-            Type::Bool => write!(f, "bool"),
-            Type::I32 => write!(f, "i32"),
             Type::Fun { arguments, returns } => {
                 let args: Vec<String> = arguments.iter().map(|arg| format!("{}", arg)).collect();
                 write!(f, "fn({}) -> {}", args.join(", "), returns)

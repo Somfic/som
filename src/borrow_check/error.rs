@@ -50,8 +50,7 @@ impl BorrowError {
                 }
 
                 if let Some(move_span) = typed_ast.ast.expr_spans.get(moved_at) {
-                    diag =
-                        diag.with_label(Label::secondary(move_span.clone(), "value moved here"));
+                    diag = diag.with_label(Label::secondary(move_span.clone(), "value moved here"));
                 }
 
                 diag.with_hint(format!(
@@ -91,7 +90,11 @@ impl BorrowError {
                     format!(
                         "cannot borrow `{}` as mutable because it is already borrowed as {}",
                         name,
-                        if *existing_mut { "mutable" } else { "immutable" }
+                        if *existing_mut {
+                            "mutable"
+                        } else {
+                            "immutable"
+                        }
                     )
                 } else {
                     format!(

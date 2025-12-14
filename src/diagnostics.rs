@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use owo_colors::{OwoColorize, Rgb};
 
-use crate::lexer::{lex, TokenKind};
-use crate::span::Source;
 use crate::Span;
+use crate::lexer::{TokenKind, lex};
+use crate::span::Source;
 
 // Catppuccin Mocha colors
 #[allow(dead_code)]
@@ -118,7 +118,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Str => YELLOW,
 
         // Literals: peach
-        TokenKind::Int => PEACH,
+        TokenKind::Int | TokenKind::Text | TokenKind::True | TokenKind::False => PEACH,
 
         // Identifiers: text
         TokenKind::Ident => TEXT,

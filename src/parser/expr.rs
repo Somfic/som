@@ -67,6 +67,30 @@ impl<'src> Parser<'src> {
                 let ident = self.make_ident(text);
                 Some(self.ast.alloc_expr_with_span(Expr::Var(ident), span))
             }
+            TokenKind::True => {
+                let token = self.peek_token();
+                let span = token.span.clone();
+                self.advance();
+                Some(self.ast.alloc_expr_with_span(Expr::Bool(true), span))
+            }
+            TokenKind::False => {
+                let token = self.peek_token();
+                let span = token.span.clone();
+                self.advance();
+                Some(self.ast.alloc_expr_with_span(Expr::Bool(false), span))
+            }
+            TokenKind::Text => {
+                let token = self.peek_token();
+                let text = token.text;
+                let span = token.span.clone();
+                self.advance();
+                // Remove surrounding quotes
+                let unquoted = &text[1..text.len() - 1];
+                Some(
+                    self.ast
+                        .alloc_expr_with_span(Expr::String(unquoted.into()), span),
+                )
+            }
             TokenKind::OpenParen => {
                 self.advance(); // consume (
                 let inner = self.parse_expr()?;
