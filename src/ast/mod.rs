@@ -75,6 +75,69 @@ impl Ast {
             output_type: Type::I32,
         });
 
+        ast.alloc_impl(ImplDec {
+            trait_id: TRAIT_SUB,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::I32,
+        });
+
+        ast.alloc_impl(ImplDec {
+            trait_id: TRAIT_MUL,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::I32,
+        });
+
+        ast.alloc_impl(ImplDec {
+            trait_id: TRAIT_DIV,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::I32, // TODO: f32?
+        });
+
+        ast.alloc_impl(ImplDec {
+            trait_id: TRAIT_LT,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::Bool,
+        });
+
+        ast.alloc_impl(ImplDec {
+            trait_id: TRAIT_GT,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::Bool,
+        });
+
+        ast.alloc_impl(ImplDec {
+            trait_id: TRAIT_LT_EQ,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::Bool,
+        });
+
+        ast.alloc_impl(ImplDec {
+            trait_id: TRAIT_GT_EQ,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::Bool,
+        });
+
+        ast.alloc_impl(ImplDec {
+            trait_id: TRAIT_EQ,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::Bool,
+        });
+
+        ast.alloc_impl(ImplDec {
+            trait_id: TRAIT_NEQ,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::Bool,
+        });
+
         ast
     }
 

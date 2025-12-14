@@ -108,7 +108,11 @@ impl<'src> Parser<'src> {
 
                 let lifetime = if self.eat(TokenKind::SingleQuote) {
                     let (name, _) = self.parse_ident()?;
-                    Lifetime::Named(name.value)
+                    if &*name.value == "static" {
+                        Lifetime::Static
+                    } else {
+                        Lifetime::Named(name.value)
+                    }
                 } else {
                     Lifetime::Unspecified
                 };

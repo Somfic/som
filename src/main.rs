@@ -19,9 +19,9 @@ fn main() {
     let source_text = r#"
 
     fn main() {
-        let mut x = 10;
-        let y = x;
-        let z = x;
+       let x = 10;
+       let r = &x;
+       r + 1
     }
 
     "#;
@@ -50,13 +50,12 @@ fn main() {
                     expected_type_id: Some(type_id),
                     ..
                 } = error
+                    && let Some(type_span) = typed_ast.ast.type_spans.get(type_id)
                 {
-                    if let Some(type_span) = typed_ast.ast.type_spans.get(type_id) {
-                        diagnostic = diagnostic.with_label(Label::secondary(
-                            type_span.clone(),
-                            "expected type defined here",
-                        ));
-                    }
+                    diagnostic = diagnostic.with_label(Label::secondary(
+                        type_span.clone(),
+                        "expected type defined here",
+                    ));
                 };
 
                 println!("{}\n", diagnostic);

@@ -51,8 +51,10 @@ pub const TRAIT_EQ: TraitId = TraitId(4);
 pub const TRAIT_NEQ: TraitId = TraitId(5);
 pub const TRAIT_LT: TraitId = TraitId(6);
 pub const TRAIT_GT: TraitId = TraitId(7);
-pub const TRAIT_AND: TraitId = TraitId(8);
-pub const TRAIT_OR: TraitId = TraitId(9);
+pub const TRAIT_LT_EQ: TraitId = TraitId(8);
+pub const TRAIT_GT_EQ: TraitId = TraitId(9);
+pub const TRAIT_AND: TraitId = TraitId(10);
+pub const TRAIT_OR: TraitId = TraitId(11);
 impl BinOp {
     pub fn trait_id(&self) -> TraitId {
         match self {

@@ -3,7 +3,7 @@ use std::{collections::HashMap, hash::Hash};
 
 pub use error::*;
 
-use crate::{Expr, ExprId, Stmt, StmtId, Type, TypedAst};
+use crate::{Expr, ExprId, Lifetime, Stmt, StmtId, Type, TypedAst};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct PlaceId(u32);
@@ -24,8 +24,13 @@ pub enum State {
     MutBorrowed { loan: LoanId },
 }
 
+#[derive(Clone)]
 pub enum ReferenceOrigin {
-    Local { at: PlaceId, scope_depth: u32 },
+    Local {
+        at: PlaceId,
+        scope_depth: u32,
+        borrow_expr: ExprId,
+    },
     Parameter,
     Static,
 }
@@ -38,16 +43,17 @@ pub struct Loan {
 }
 
 pub struct BorrowChecker<'a> {
-    typed_ast: &'a TypedAst,                       // The input AST with types
-    places: Vec<Place>,                            // All places
-    name_to_place: HashMap<String, PlaceId>,       // Lookup by name
-    place_states: HashMap<PlaceId, State>,         // Current state
-    ref_origins: HashMap<ExprId, ReferenceOrigin>, // Where refs point
-    loans: Vec<Loan>,                              // All loans created
-    scope_depth: u32,                              // Current nesting level
-    errors: Vec<BorrowError>,                      // Collected errors
-    next_place: u32,                               // ID counter
-    next_loan: u32,                                // ID counter
+    typed_ast: &'a TypedAst,                          // The input AST with types
+    places: Vec<Place>,                               // All places
+    name_to_place: HashMap<String, PlaceId>,          // Lookup by name
+    place_states: HashMap<PlaceId, State>,            // Current state
+    ref_origins: HashMap<ExprId, ReferenceOrigin>,    // Where refs point
+    place_origins: HashMap<PlaceId, ReferenceOrigin>, // Where place refs point
+    loans: Vec<Loan>,                                 // All loans created
+    scope_depth: u32,                                 // Current nesting level
+    errors: Vec<BorrowError>,                         // Collected errors
+    next_place: u32,                                  // ID counter
+    next_loan: u32,                                   // ID counter
 }
 
 impl<'a> BorrowChecker<'a> {
@@ -58,6 +64,7 @@ impl<'a> BorrowChecker<'a> {
             name_to_place: HashMap::new(),
             place_states: HashMap::new(),
             ref_origins: HashMap::new(),
+            place_origins: HashMap::new(),
             loans: vec![],
             scope_depth: 0,
             errors: vec![],
@@ -73,6 +80,7 @@ impl<'a> BorrowChecker<'a> {
             self.name_to_place = HashMap::new();
             self.place_states = HashMap::new();
             self.ref_origins = HashMap::new();
+            self.place_origins = HashMap::new();
             self.loans = vec![];
             self.scope_depth = 0;
             self.next_place = 0;
@@ -125,11 +133,11 @@ impl<'a> BorrowChecker<'a> {
 
     fn check_move(&mut self, expr_id: ExprId) {
         // copy types are just copied, no need to check moves
-        if let Some(ty) = self.typed_ast.types.get(&expr_id) {
-            if self.is_copy(ty) {
-                self.check_expr(expr_id);
-                return;
-            }
+        if let Some(ty) = self.typed_ast.types.get(&expr_id)
+            && self.is_copy(ty)
+        {
+            self.check_expr(expr_id);
+            return;
         }
 
         let expr = self.typed_ast.ast.get_expr(&expr_id);
@@ -205,6 +213,7 @@ impl<'a> BorrowChecker<'a> {
             ReferenceOrigin::Local {
                 at: place_id,
                 scope_depth: place.scope_depth,
+                borrow_expr,
             }
         };
         self.ref_origins.insert(borrow_expr, origin);
@@ -269,7 +278,7 @@ impl<'a> BorrowChecker<'a> {
     }
 
     fn check_expr(&mut self, expr_id: ExprId) {
-        let expr = self.typed_ast.ast.get_expr(&expr_id).clone();
+        let expr = self.typed_ast.ast.get_expr(&expr_id);
 
         match expr {
             Expr::Hole | Expr::I32(_) => {
@@ -291,7 +300,51 @@ impl<'a> BorrowChecker<'a> {
 
                 if let Some(val) = value {
                     self.check_expr(*val);
-                    // TODO: check_return for dangling refs
+                    let ty = self.typed_ast.types.get(val);
+
+                    // Only check for dangling if return type is a reference
+                    if !matches!(ty, Some(Type::Reference { .. })) {
+                        self.pop_scope();
+                        return;
+                    }
+
+                    // 'static references never dangle
+                    if matches!(ty, Some(Type::Reference { lifetime: Lifetime::Static, .. })) {
+                        self.pop_scope();
+                        return;
+                    }
+
+                    // Try to find origin: first from direct borrow, then from variable
+                    let origin = self.ref_origins.get(val).cloned().or_else(|| {
+                        // If val is a variable, look up its place's origin
+                        let val_expr = self.typed_ast.ast.get_expr(val);
+                        if let Expr::Var(name) = val_expr {
+                            let place_id = self.name_to_place.get(&*name.value)?;
+                            self.place_origins.get(place_id).cloned()
+                        } else {
+                            None
+                        }
+                    });
+
+                    // Propagate origin from return value to the block expression
+                    if let Some(ref origin) = origin {
+                        self.ref_origins.insert(expr_id, origin.clone());
+                    }
+
+                    if let Some(ReferenceOrigin::Local {
+                        at,
+                        scope_depth,
+                        borrow_expr,
+                    }) = origin
+                        && scope_depth == self.scope_depth
+                    {
+                        let place = &self.places[at.0 as usize];
+                        self.errors.push(BorrowError::DanglingReference {
+                            name: place.name.clone(),
+                            borrow_expr,
+                            return_expr: *val,
+                        });
+                    }
                 }
 
                 self.pop_scope();
@@ -311,7 +364,7 @@ impl<'a> BorrowChecker<'a> {
     }
 
     fn check_stmt(&mut self, stmt_id: StmtId) {
-        let stmt = self.typed_ast.ast.get_stmt(&stmt_id).clone();
+        let stmt = self.typed_ast.ast.get_stmt(&stmt_id);
 
         match stmt {
             Stmt::Let { name, value, .. } => {
@@ -319,7 +372,12 @@ impl<'a> BorrowChecker<'a> {
                 self.check_move(*value);
 
                 // create a place for the new binding
-                self.fresh_place(&*name.value);
+                let place_id = self.fresh_place(&*name.value);
+
+                // propagate reference origin if the value is a reference
+                if let Some(origin) = self.ref_origins.get(value).cloned() {
+                    self.place_origins.insert(place_id, origin);
+                }
             }
         }
     }
@@ -409,5 +467,268 @@ impl<'a> BorrowChecker<'a> {
             ty,
             Type::Unit | Type::Bool | Type::I32 | Type::Reference { .. }
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Source, parser, type_check::TypeInferencer};
+    use std::sync::Arc;
+
+    fn check(source: &str) -> Vec<BorrowError> {
+        let source = Arc::new(Source::from_raw(source));
+        let (ast, _) = parser::parse(source);
+        let inferencer = TypeInferencer::new();
+        let typed_ast = inferencer.check_program(ast);
+        let mut checker = BorrowChecker::new(&typed_ast);
+        checker.check_program()
+    }
+
+    fn has_error<F: Fn(&BorrowError) -> bool>(errors: &[BorrowError], predicate: F) -> bool {
+        errors.iter().any(predicate)
+    }
+
+    #[test]
+    fn test_use_after_move() {
+        let errors = check(
+            r#"
+            fn test() {
+                let x = 10;
+                let y = x;
+                let z = x;
+            }
+            "#,
+        );
+        // i32 is Copy, so no error expected
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_conflicting_borrow_mut_then_immut() {
+        let errors = check(
+            r#"
+            fn test() {
+                let x = 10;
+                let r = &mut x;
+                let s = &x;
+            }
+            "#,
+        );
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::ConflictingBorrow { .. }
+        )));
+    }
+
+    #[test]
+    fn test_conflicting_borrow_immut_then_mut() {
+        let errors = check(
+            r#"
+            fn test() {
+                let x = 10;
+                let r = &x;
+                let s = &mut x;
+            }
+            "#,
+        );
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::ConflictingBorrow { .. }
+        )));
+    }
+
+    #[test]
+    fn test_multiple_immutable_borrows_ok() {
+        let errors = check(
+            r#"
+            fn test() {
+                let x = 10;
+                let r = &x;
+                let s = &x;
+            }
+            "#,
+        );
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_dangling_reference_direct() {
+        let errors = check(
+            r#"
+            fn test() -> &i32 {
+                let x = 10;
+                &x
+            }
+            "#,
+        );
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::DanglingReference { .. }
+        )));
+    }
+
+    #[test]
+    fn test_dangling_reference_through_variable() {
+        let errors = check(
+            r#"
+            fn test() -> &i32 {
+                let x = 10;
+                let r = &x;
+                r
+            }
+            "#,
+        );
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::DanglingReference { .. }
+        )));
+    }
+
+    #[test]
+    fn test_parameter_reference_ok() {
+        let errors = check(
+            r#"
+            fn test(x: &i32) -> &i32 {
+                x
+            }
+            "#,
+        );
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_borrow_parameter_ok() {
+        let errors = check(
+            r#"
+            fn test(x: i32) -> &i32 {
+                &x
+            }
+            "#,
+        );
+        // x is a parameter at scope 0, so &x should be ok to return
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_borrow_expires_after_scope() {
+        let errors = check(
+            r#"
+            fn test() {
+                let x = 10;
+                {
+                    let r = &mut x;
+                }
+                let s = &mut x;
+            }
+            "#,
+        );
+        // First borrow expires when inner block ends, second borrow is ok
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_use_while_mut_borrowed() {
+        let errors = check(
+            r#"
+            fn test() {
+                let x = 10;
+                let r = &mut x;
+                let y = x + 1;
+            }
+            "#,
+        );
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::UseWhileMutBorrowed { .. }
+        )));
+    }
+
+    #[test]
+    fn test_nested_block_dangling() {
+        let errors = check(
+            r#"
+            fn test() -> &i32 {
+                let r = {
+                    let x = 10;
+                    &x
+                };
+                r
+            }
+            "#,
+        );
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::DanglingReference { .. }
+        )));
+    }
+
+    #[test]
+    fn test_outer_scope_reference_ok() {
+        let errors = check(
+            r#"
+            fn test() -> &i32 {
+                let x = 10;
+                let r = {
+                    &x
+                };
+                r
+            }
+            "#,
+        );
+        // x is in outer scope, so returning &x from inner block is ok
+        // But returning from function is still dangling!
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::DanglingReference { .. }
+        )));
+    }
+
+    #[test]
+    fn test_double_mut_borrow() {
+        let errors = check(
+            r#"
+            fn test() {
+                let x = 10;
+                let r = &mut x;
+                let s = &mut x;
+            }
+            "#,
+        );
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::ConflictingBorrow { .. }
+        )));
+    }
+
+    #[test]
+    fn test_reborrow_after_scope() {
+        let errors = check(
+            r#"
+            fn test() {
+                let x = 10;
+                {
+                    let r = &x;
+                    let s = &x;
+                }
+                let t = &mut x;
+            }
+            "#,
+        );
+        // Immutable borrows expire, mutable borrow is ok
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_static_lifetime_ok() {
+        let errors = check(
+            r#"
+            fn test(x: &'static i32) -> &'static i32 {
+                x
+            }
+            "#,
+        );
+        // 'static references never dangle
+        assert!(errors.is_empty());
     }
 }
