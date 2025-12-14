@@ -8,7 +8,7 @@ mod parser;
 mod span;
 mod type_check;
 
-use crate::type_check::TypeInferencer;
+use crate::{borrow_check::BorrowChecker, type_check::TypeInferencer};
 pub use diagnostics::{Diagnostic, Label, Severity};
 pub use span::{Position, Source, Span};
 
@@ -19,14 +19,11 @@ fn main() {
     let source_text = r#"
 
     fn main() {
-        let x: &i32 = 10;
-        let y = 20;
+        let mut x = 10;
+        let y = x;
+        let z = x;
     }
 
-    fn add(x: &i32, y: i32) -> bool {
-        *x + y + 1
-    }
-F
     "#;
 
     let source = Arc::new(Source::from_raw(source_text));
@@ -67,5 +64,13 @@ F
                 println!("  At {:?}: {:?}\n", expr_id, error);
             }
         }
+    }
+
+    let mut borrow_checker = BorrowChecker::new(&typed_ast);
+    let errors = borrow_checker.check_program();
+
+    for error in &errors {
+        let diagnostic = error.to_diagnostic(&typed_ast);
+        println!("{}\n", diagnostic);
     }
 }

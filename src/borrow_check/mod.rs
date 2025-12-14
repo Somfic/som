@@ -1,5 +1,5 @@
 mod error;
-use std::collections::HashMap;
+use std::{collections::HashMap, hash::Hash};
 
 pub use error::*;
 
@@ -64,6 +64,28 @@ impl<'a> BorrowChecker<'a> {
             next_place: 0,
             next_loan: 0,
         }
+    }
+
+    pub fn check_program(&mut self) -> Vec<BorrowError> {
+        for func in &self.typed_ast.ast.funcs {
+            // reset state
+            self.places = vec![];
+            self.name_to_place = HashMap::new();
+            self.place_states = HashMap::new();
+            self.ref_origins = HashMap::new();
+            self.loans = vec![];
+            self.scope_depth = 0;
+            self.next_place = 0;
+            self.next_loan = 0;
+
+            for param in &func.parameters {
+                self.fresh_place(param.name.value.to_string());
+            }
+
+            self.check_expr(func.body);
+        }
+
+        self.errors.clone()
     }
 
     /// checks if a variable can be read
