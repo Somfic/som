@@ -22,6 +22,13 @@ impl Constraint {
             Constraint::Trait { provenance, .. } => provenance.expr_id(),
         }
     }
+
+    pub fn provenance(&self) -> &Provenance {
+        match self {
+            Constraint::Equal { provenance, .. } => provenance,
+            Constraint::Trait { provenance, .. } => provenance,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

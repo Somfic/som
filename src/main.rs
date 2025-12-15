@@ -36,8 +36,8 @@ fn main() {
     let inferencer = TypeInferencer::new();
     let typed_ast = inferencer.check_program(ast);
 
-    for (expr_id, error) in &typed_ast.errors {
-        let diagnostic = error.to_diagnostic(&typed_ast, expr_id);
+    for error in &typed_ast.errors {
+        let diagnostic = error.to_diagnostic(&typed_ast.ast);
         println!("{}\n", diagnostic);
     }
 

@@ -1,8 +1,8 @@
 use ena::unify::InPlaceUnificationTable;
 
 use crate::{
-    Ast, Expr, ExprId, FuncId, Lifetime, LifetimeValue, LifetimeVar, Stmt, StmtId, TraitId, Type,
-    TypeValue, TypeVar, TypedAst,
+    Ast, Expr, ExprId, FuncId, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, StmtId, TraitId,
+    Type, TypeValue, TypeVar, TypedAst,
 };
 use std::collections::HashMap;
 
@@ -11,12 +11,24 @@ pub use error::*;
 mod constraint;
 pub use constraint::*;
 
+/// Error type used internally by unify (without span info)
+enum UnifyError {
+    InfiniteType { var: TypeVar, ty: Type },
+    Mismatch { expected: Type, found: Type },
+    MissingImpl {
+        trait_id: TraitId,
+        self_type: Type,
+        arg_types: Vec<Type>,
+    },
+    Internal(String),
+}
+
 pub struct TypeInferencer {
     env: HashMap<String, Type>,
     constraints: Vec<Constraint>,
     unification_table: InPlaceUnificationTable<TypeVar>,
     lifetime_unification_table: InPlaceUnificationTable<LifetimeVar>,
-    errors: HashMap<ExprId, TypeError>,
+    errors: Vec<TypeError>,
     func_types: HashMap<FuncId, Type>, // Store inferred function return types
     expr_types: HashMap<ExprId, Type>, // Track all expression types
 }
@@ -28,7 +40,7 @@ impl TypeInferencer {
             constraints: Vec::new(),
             unification_table: InPlaceUnificationTable::new(),
             lifetime_unification_table: InPlaceUnificationTable::new(),
-            errors: HashMap::new(),
+            errors: Vec::new(),
             func_types: HashMap::new(),
             expr_types: HashMap::new(),
         }
@@ -50,12 +62,10 @@ impl TypeInferencer {
             Expr::Var(ident) => match self.env.get(&*ident.value) {
                 Some(ty) => ty.clone(),
                 None => {
-                    self.errors.insert(
-                        *expr_id,
-                        TypeError::UnboundVariable {
-                            name: ident.value.to_string(),
-                        },
-                    );
+                    self.errors.push(TypeError::UnboundVariable {
+                        span: ast.get_expr_span(expr_id).clone(),
+                        name: ident.value.to_string(),
+                    });
                     self.fresh_type()
                 }
             },
@@ -97,13 +107,11 @@ impl TypeInferencer {
 
                 // Check argument count
                 if args.len() != func.parameters.len() {
-                    self.errors.insert(
-                        *expr_id,
-                        TypeError::WrongArgCount {
-                            expected: func.parameters.len(),
-                            found: args.len(),
-                        },
-                    );
+                    self.errors.push(TypeError::WrongArgCount {
+                        span: ast.get_expr_span(expr_id).clone(),
+                        expected: func.parameters.len(),
+                        found: args.len(),
+                    });
                     return self.fresh_type();
                 }
 
@@ -177,10 +185,10 @@ impl TypeInferencer {
                     }
                     _ => {
                         // Not a reference - error!
-                        self.errors.insert(
-                            *expr_id,
-                            TypeError::Internal("Cannot dereference non-reference type".into()),
-                        );
+                        self.errors.push(TypeError::Internal {
+                            span: ast.get_expr_span(expr_id).clone(),
+                            message: "cannot dereference non-reference type".into(),
+                        });
                         self.fresh_type()
                     }
                 }
@@ -246,9 +254,17 @@ impl TypeInferencer {
 
         // parameters
         for param in &func.parameters {
-            let param_ty = match &param.ty {
-                Some(ty) => self.resolve_type(ty, &generics, todo!()),
-                None => self.fresh_type(),
+            let param_ty = match (&param.ty, &param.type_id) {
+                (Some(ty), Some(type_id)) => {
+                    let span = ast.get_type_span(type_id);
+                    self.resolve_type(ty, &generics, span)
+                }
+                (Some(ty), None) => {
+                    // No type_id available, use function body span as fallback
+                    let span = ast.get_expr_span(&func.body);
+                    self.resolve_type(ty, &generics, span)
+                }
+                _ => self.fresh_type(),
             };
             self.env.insert(param.name.value.to_string(), param_ty);
         }
@@ -326,7 +342,7 @@ impl TypeInferencer {
         }
     }
 
-    fn unify(&mut self, t1: &Type, t2: &Type) -> Result<(), TypeError> {
+    fn unify(&mut self, t1: &Type, t2: &Type) -> Result<(), UnifyError> {
         let t1 = self.normalize(t1);
         let t2 = self.normalize(t2);
 
@@ -336,13 +352,13 @@ impl TypeInferencer {
             (Type::Unknown(v1), Type::Unknown(v2)) => self
                 .unification_table
                 .unify_var_var(*v1, *v2)
-                .map_err(|_| TypeError::InfiniteType { var: *v1, ty: t2 }),
+                .map_err(|_| UnifyError::InfiniteType { var: *v1, ty: t2 }),
 
             (Type::Unknown(var), ty) | (ty, Type::Unknown(var)) => {
                 // TODO: occurs check here
                 self.unification_table
                     .unify_var_value(*var, TypeValue::Bound(ty.clone()))
-                    .map_err(|_| TypeError::InfiniteType {
+                    .map_err(|_| UnifyError::InfiniteType {
                         var: *var,
                         ty: ty.clone(),
                     })
@@ -359,11 +375,9 @@ impl TypeInferencer {
                 },
             ) => {
                 if a1.len() != a2.len() {
-                    return Err(TypeError::Mismatch {
+                    return Err(UnifyError::Mismatch {
                         expected: t1.clone(),
                         found: t2.clone(),
-                        provenance: Provenance::FunctionArity,
-                        expected_type_id: None,
                     });
                 }
                 for (arg1, arg2) in a1.iter().zip(a2.iter()) {
@@ -385,11 +399,9 @@ impl TypeInferencer {
                 },
             ) => {
                 if m1 != m2 {
-                    return Err(TypeError::Mismatch {
+                    return Err(UnifyError::Mismatch {
                         expected: *t1.clone(),
                         found: *t2.clone(),
-                        provenance: Provenance::Unification,
-                        expected_type_id: None,
                     });
                 }
 
@@ -397,16 +409,14 @@ impl TypeInferencer {
                 self.unify(t1, t2)
             }
 
-            _ => Err(TypeError::Mismatch {
+            _ => Err(UnifyError::Mismatch {
                 expected: t1,
                 found: t2,
-                provenance: Provenance::Unification,
-                expected_type_id: None,
             }),
         }
     }
 
-    fn unify_lifetime(&mut self, l1: &Lifetime, l2: &Lifetime) -> Result<(), TypeError> {
+    fn unify_lifetime(&mut self, l1: &Lifetime, l2: &Lifetime) -> Result<(), UnifyError> {
         let l1 = self.normalize_lifetime(l1);
         let l2 = self.normalize_lifetime(l2);
 
@@ -414,12 +424,12 @@ impl TypeInferencer {
             (Lifetime::Unknown(v1), Lifetime::Unknown(v2)) => self
                 .lifetime_unification_table
                 .unify_var_var(*v1, *v2)
-                .map_err(|_| TypeError::Internal("Infinite lifetime".into())),
+                .map_err(|_| UnifyError::Internal("infinite lifetime".into())),
 
             (Lifetime::Unknown(var), lt) | (lt, Lifetime::Unknown(var)) => self
                 .lifetime_unification_table
                 .unify_var_value(*var, LifetimeValue::Bound(lt.clone()))
-                .map_err(|_| TypeError::Internal("Infinite lifetime".into())),
+                .map_err(|_| UnifyError::Internal("infinite lifetime".into())),
 
             (Lifetime::Named(n1), Lifetime::Named(n2)) if n1 == n2 => Ok(()),
 
@@ -427,8 +437,8 @@ impl TypeInferencer {
 
             (Lifetime::Static, Lifetime::Static) => Ok(()),
 
-            _ => Err(TypeError::Internal(
-                "Cannot unify different concrete lifetimes".into(),
+            _ => Err(UnifyError::Internal(
+                "cannot unify different concrete lifetimes".into(),
             )),
         }
     }
@@ -456,7 +466,7 @@ impl TypeInferencer {
         trait_id: TraitId,
         args: &[Type],
         output: &Type,
-    ) -> Result<(), TypeError> {
+    ) -> Result<(), UnifyError> {
         let normalized_args: Vec<Type> = args.iter().map(|t| self.normalize(t)).collect();
 
         // Skip trait resolution if types are still unknown
@@ -466,14 +476,14 @@ impl TypeInferencer {
             .any(|t| matches!(t, Type::Unknown(_)))
         {
             // Skip - will be resolved when concrete types flow in
-            return Err(TypeError::Internal(
-                "Trait resolution deferred due to unknown types".into(),
+            return Err(UnifyError::Internal(
+                "trait resolution deferred due to unknown types".into(),
             ));
         }
 
         let impl_def = ast
             .find_impl(trait_id, &normalized_args[0], &[normalized_args[1].clone()])
-            .ok_or_else(|| TypeError::MissingImpl {
+            .ok_or_else(|| UnifyError::MissingImpl {
                 trait_id,
                 self_type: normalized_args[0].clone(),
                 arg_types: vec![normalized_args[1].clone()],
@@ -487,34 +497,48 @@ impl TypeInferencer {
         let constraints = self.constraints.clone();
 
         for constraint in constraints {
-            let result = match &constraint {
-                Constraint::Equal {
-                    provenance,
-                    lhs,
-                    rhs,
-                } => {
-                    let mut res = self.unify(lhs, rhs);
-                    // If it's a Mismatch error, add the expected_type_id from provenance
-                    if let Err(TypeError::Mismatch {
-                        expected_type_id, ..
-                    }) = &mut res
-                    {
-                        *expected_type_id = provenance.expected_type_id();
-                    }
-                    res
-                }
-
+            let result: Result<(), UnifyError> = match &constraint {
+                Constraint::Equal { lhs, rhs, .. } => self.unify(lhs, rhs),
                 Constraint::Trait {
-                    provenance: _,
                     trait_id,
                     args,
                     output,
+                    ..
                 } => self.solve_trait_constraint(ast, *trait_id, args, output),
             };
 
-            if let Err(error) = result {
+            if let Err(unify_error) = result {
+                // Skip internal "deferred" errors
+                if matches!(&unify_error, UnifyError::Internal(msg) if msg.contains("deferred")) {
+                    continue;
+                }
+
                 let expr_id = constraint.expr_id();
-                self.errors.insert(expr_id, error);
+                let span = ast.get_expr_span(&expr_id).clone();
+                let provenance = constraint.provenance().clone();
+
+                let type_error = match unify_error {
+                    UnifyError::InfiniteType { var, ty } => TypeError::InfiniteType { span, var, ty },
+                    UnifyError::Mismatch { expected, found } => TypeError::Mismatch {
+                        span,
+                        expected,
+                        found,
+                        provenance,
+                    },
+                    UnifyError::MissingImpl {
+                        trait_id,
+                        self_type,
+                        arg_types,
+                    } => TypeError::MissingImpl {
+                        span,
+                        trait_id,
+                        self_type,
+                        arg_types,
+                    },
+                    UnifyError::Internal(message) => TypeError::Internal { span, message },
+                };
+
+                self.errors.push(type_error);
             }
         }
     }
@@ -554,23 +578,19 @@ impl TypeInferencer {
         &mut self,
         ty: &Type,
         generics: &HashMap<String, TypeVar>,
-        expr_id: ExprId,
+        span: &Span,
     ) -> Type {
         match ty {
-            Type::Named(name) => {
-                match generics.get(name.as_ref()) {
-                    Some(&tv) => Type::Unknown(tv),
-                    None => {
-                        self.errors.insert(
-                            expr_id,
-                            TypeError::UnknownType {
-                                name: name.to_string(),
-                            },
-                        );
-                        self.fresh_type() // return fresh var to continue checking
-                    }
+            Type::Named(name) => match generics.get(name.as_ref()) {
+                Some(&tv) => Type::Unknown(tv),
+                None => {
+                    self.errors.push(TypeError::UnknownType {
+                        span: span.clone(),
+                        name: name.to_string(),
+                    });
+                    self.fresh_type() // return fresh var to continue checking
                 }
-            }
+            },
             Type::Reference {
                 mutable,
                 lifetime,
@@ -578,7 +598,7 @@ impl TypeInferencer {
             } => Type::Reference {
                 mutable: *mutable,
                 lifetime: lifetime.clone(),
-                to: Box::new(self.resolve_type(to, generics, expr_id)),
+                to: Box::new(self.resolve_type(to, generics, span)),
             },
             _ => ty.clone(),
         }
@@ -599,7 +619,7 @@ mod tests {
     }
 
     fn has_type_error<F: Fn(&TypeError) -> bool>(typed_ast: &TypedAst, predicate: F) -> bool {
-        typed_ast.errors.values().any(|e| predicate(e))
+        typed_ast.errors.iter().any(|e| predicate(e))
     }
 
     #[test]

@@ -25,7 +25,7 @@ pub struct Ident {
 pub struct TypedAst {
     pub ast: Ast,
     pub types: HashMap<ExprId, Type>,
-    pub errors: HashMap<ExprId, TypeError>,
+    pub errors: Vec<TypeError>,
     pub constraints: Vec<Constraint>,
 }
 

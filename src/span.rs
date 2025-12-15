@@ -1,7 +1,7 @@
 use std::{fmt::Debug, ops::Range, path::PathBuf, sync::Arc};
 
 /// Represents a source of code
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Source {
     /// Raw source code without a file path
     Raw(Arc<str>),
@@ -51,7 +51,7 @@ impl Position {
 }
 
 /// Represents a location in source code
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Span {
     pub start: Position,
     pub end: Position,
