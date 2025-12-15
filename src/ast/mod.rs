@@ -29,6 +29,12 @@ pub struct TypedAst {
     pub constraints: Vec<Constraint>,
 }
 
+impl TypedAst {
+    pub fn get_expr_ty(&self, expr: &ExprId) -> &Type {
+        self.types.get(expr).unwrap()
+    }
+}
+
 #[derive(Default)]
 pub struct Ast {
     pub mods: Vec<Module>,
