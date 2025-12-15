@@ -118,7 +118,7 @@ pub enum TokenKind {
     // Whitespace and comments (skipped during parsing)
     #[regex(r"[ \t\r\n]+")]
     Whitespace,
-    #[regex(r"//[^\n]*")]
+    #[regex(r"//[^\n]*", allow_greedy = true)]
     Comment,
 
     // Special
