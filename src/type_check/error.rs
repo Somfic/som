@@ -1,3 +1,7 @@
+use crate::ast::{
+    TRAIT_ADD, TRAIT_DIV, TRAIT_EQ, TRAIT_GT, TRAIT_GT_EQ, TRAIT_LT, TRAIT_LT_EQ, TRAIT_MUL,
+    TRAIT_NEQ, TRAIT_SUB,
+};
 use crate::diagnostics::{Diagnostic, Label};
 use crate::span::Span;
 use crate::{Ast, TraitId, Type, TypeVar, type_check::Provenance};
@@ -114,25 +118,100 @@ impl TypeError {
                 self_type,
                 arg_types,
             } => {
-                let mut diag = Diagnostic::error(format!(
-                    "no implementation of trait {:?} for type `{}`",
-                    trait_id, self_type
-                ))
-                .with_label(Label::primary(
-                    span.clone(),
-                    format!("trait not implemented for `{}`", self_type),
-                ));
+                // Generate natural error messages for binary operators
+                let rhs = arg_types.first();
+                let (msg, label) = match (*trait_id, rhs) {
+                    (TRAIT_ADD, Some(rhs)) => (
+                        format!("cannot add `{}` and `{}`", self_type, rhs),
+                        format!("no implementation for `{} + {}`", self_type, rhs),
+                    ),
+                    (TRAIT_SUB, Some(rhs)) => (
+                        format!("cannot subtract `{}` from `{}`", rhs, self_type),
+                        format!("no implementation for `{} - {}`", self_type, rhs),
+                    ),
+                    (TRAIT_MUL, Some(rhs)) => (
+                        format!("cannot multiply `{}` and `{}`", self_type, rhs),
+                        format!("no implementation for `{} * {}`", self_type, rhs),
+                    ),
+                    (TRAIT_DIV, Some(rhs)) => (
+                        format!("cannot divide `{}` by `{}`", self_type, rhs),
+                        format!("no implementation for `{} / {}`", self_type, rhs),
+                    ),
+                    (TRAIT_EQ, Some(rhs)) => (
+                        format!("cannot compare `{}` and `{}` for equality", self_type, rhs),
+                        format!("no implementation for `{} == {}`", self_type, rhs),
+                    ),
+                    (TRAIT_NEQ, Some(rhs)) => (
+                        format!(
+                            "cannot compare `{}` and `{}` for inequality",
+                            self_type, rhs
+                        ),
+                        format!("no implementation for `{} != {}`", self_type, rhs),
+                    ),
+                    (TRAIT_LT, Some(rhs)) => (
+                        format!("cannot compare `{}` < `{}`", self_type, rhs),
+                        format!("no implementation for `{} < {}`", self_type, rhs),
+                    ),
+                    (TRAIT_GT, Some(rhs)) => (
+                        format!("cannot compare `{}` > `{}`", self_type, rhs),
+                        format!("no implementation for `{} > {}`", self_type, rhs),
+                    ),
+                    (TRAIT_LT_EQ, Some(rhs)) => (
+                        format!("cannot compare `{}` <= `{}`", self_type, rhs),
+                        format!("no implementation for `{} <= {}`", self_type, rhs),
+                    ),
+                    (TRAIT_GT_EQ, Some(rhs)) => (
+                        format!("cannot compare `{}` >= `{}`", self_type, rhs),
+                        format!("no implementation for `{} >= {}`", self_type, rhs),
+                    ),
+                    _ => (
+                        format!(
+                            "no implementation of `{}` for type `{}`",
+                            trait_id, self_type
+                        ),
+                        format!("`{}` not implemented for `{}`", trait_id, self_type),
+                    ),
+                };
 
-                if !arg_types.is_empty() {
-                    let args_str = arg_types
-                        .iter()
-                        .map(|t| format!("`{}`", t))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    diag = diag.with_hint(format!("required with argument types: {}", args_str));
+                let diag = Diagnostic::error(msg).with_label(Label::primary(span.clone(), label));
+
+                // Add help note for implementing the trait
+                let help = match (*trait_id, rhs) {
+                    (TRAIT_ADD, Some(rhs)) => Some(format!(
+                        "consider implementing `Add<{}>` for `{}`",
+                        rhs, self_type
+                    )),
+                    (TRAIT_SUB, Some(rhs)) => Some(format!(
+                        "consider implementing `Sub<{}>` for `{}`",
+                        rhs, self_type
+                    )),
+                    (TRAIT_MUL, Some(rhs)) => Some(format!(
+                        "consider implementing `Mul<{}>` for `{}`",
+                        rhs, self_type
+                    )),
+                    (TRAIT_DIV, Some(rhs)) => Some(format!(
+                        "consider implementing `Div<{}>` for `{}`",
+                        rhs, self_type
+                    )),
+                    (TRAIT_EQ, Some(rhs)) => Some(format!(
+                        "consider implementing `Eq<{}>` for `{}`",
+                        rhs, self_type
+                    )),
+                    (TRAIT_NEQ, Some(rhs)) => Some(format!(
+                        "consider implementing `NotEq<{}>` for `{}`",
+                        rhs, self_type
+                    )),
+                    (TRAIT_LT | TRAIT_GT | TRAIT_LT_EQ | TRAIT_GT_EQ, Some(rhs)) => Some(format!(
+                        "consider implementing `Ord<{}>` for `{}`",
+                        rhs, self_type
+                    )),
+                    _ => None,
+                };
+
+                match help {
+                    Some(h) => diag.with_hint(h),
+                    None => diag,
                 }
-
-                diag
             }
             TypeError::UnboundVariable { span, name } => {
                 Diagnostic::error(format!("cannot find value `{}` in this scope", name))

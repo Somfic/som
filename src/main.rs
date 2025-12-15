@@ -16,11 +16,12 @@ use std::sync::Arc;
 
 fn main() {
     let source_text = r#"
+    
+
+    fn identity<T>(x: T) -> T { x }
 
     fn main() {
-       let x = "hello";
-       let r = &x;
-       r + 1
+       identity(1) + false;
     }
 
     "#;
@@ -35,7 +36,6 @@ fn main() {
 
     let inferencer = TypeInferencer::new();
     let typed_ast = inferencer.check_program(ast);
-
     for error in &typed_ast.errors {
         let diagnostic = error.to_diagnostic(&typed_ast.ast);
         println!("{}\n", diagnostic);

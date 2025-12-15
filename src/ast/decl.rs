@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::{ExprId, Ident, Type, TypeId};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -5,6 +7,27 @@ pub struct FuncId(pub u32);
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TraitId(pub u32);
+
+impl Display for TraitId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self.0 {
+            0 => "Add",
+            1 => "Sub",
+            2 => "Mul",
+            3 => "Div",
+            4 => "Eq",
+            5 => "NotEq",
+            6 => "Lt",
+            7 => "Gt",
+            8 => "LtEq",
+            9 => "GtEq",
+            10 => "And",
+            11 => "Or",
+            _ => return write!(f, "Trait({})", self.0),
+        };
+        write!(f, "{}", name)
+    }
+}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImplId(pub u32);

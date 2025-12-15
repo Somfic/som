@@ -10,4 +10,7 @@ pub enum Stmt {
         ty: Option<Type>,
         value: ExprId,
     },
+    Expr {
+        expr: ExprId,
+    },
 }

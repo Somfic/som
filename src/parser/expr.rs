@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, Expr, ExprId, FuncId};
+use crate::ast::{BinOp, Expr, ExprId, FuncId, Stmt};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
 use crate::span::Span;
@@ -210,8 +210,9 @@ impl<'src> Parser<'src> {
                 // Expression (possibly followed by semicolon)
                 if let Some(expr_id) = self.parse_expr() {
                     if self.eat(TokenKind::Semicolon) {
-                        // Expression statement - discard value
-                        // We could wrap this in a statement type, but for now just continue
+                        // Expression statement
+                        let stmt_id = self.ast.alloc_stmt(Stmt::Expr { expr: expr_id });
+                        stmts.push(stmt_id);
                     } else if self.at(TokenKind::CloseBrace) {
                         // Last expression without semicolon - this is the block's value
                         value = Some(expr_id);

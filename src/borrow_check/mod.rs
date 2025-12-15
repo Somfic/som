@@ -385,6 +385,9 @@ impl<'a> BorrowChecker<'a> {
                     self.place_origins.insert(place_id, origin);
                 }
             }
+            Stmt::Expr { expr } => {
+                self.check_expr(*expr);
+            }
         }
     }
 

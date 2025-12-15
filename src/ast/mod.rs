@@ -238,7 +238,9 @@ impl Ast {
     }
 
     pub fn try_get_type_span(&self, id: &TypeId) -> Option<&Span> {
-        self.type_spans.get(id).map(|span_id| self.get_span(span_id))
+        self.type_spans
+            .get(id)
+            .map(|span_id| self.get_span(span_id))
     }
 
     pub fn find_impl(

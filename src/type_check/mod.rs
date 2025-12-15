@@ -13,8 +13,14 @@ pub use constraint::*;
 
 /// Error type used internally by unify (without span info)
 enum UnifyError {
-    InfiniteType { var: TypeVar, ty: Type },
-    Mismatch { expected: Type, found: Type },
+    InfiniteType {
+        var: TypeVar,
+        ty: Type,
+    },
+    Mismatch {
+        expected: Type,
+        found: Type,
+    },
     MissingImpl {
         trait_id: TraitId,
         self_type: Type,
@@ -115,11 +121,22 @@ impl TypeInferencer {
                     return self.fresh_type();
                 }
 
+                // Instantiate fresh type vars for this call site
+                let mut call_generics: HashMap<String, TypeVar> = HashMap::new();
+                for type_param in &func.type_parameters {
+                    let tv = self.fresh_type_var();
+                    call_generics.insert(type_param.name.value.to_string(), tv);
+                }
+
+                let call_span = ast.get_expr_span(expr_id);
+
                 // Check each argument against parameter type
                 for (arg_expr, param) in args.iter().zip(&func.parameters) {
                     match &param.ty {
                         Some(param_ty) => {
-                            // Check argument against annotated parameter type with FuncArg provenance
+                            // Resolve generic types for this call site
+                            let resolved_ty =
+                                self.resolve_type(param_ty, &call_generics, call_span);
                             let actual = self.infer(ast, arg_expr);
                             self.constraints.push(Constraint::Equal {
                                 provenance: Provenance::FuncArg {
@@ -127,7 +144,7 @@ impl TypeInferencer {
                                     param_type_id: param.type_id,
                                 },
                                 lhs: actual,
-                                rhs: param_ty.clone(),
+                                rhs: resolved_ty,
                             });
                         }
                         None => {
@@ -137,9 +154,9 @@ impl TypeInferencer {
                     }
                 }
 
-                // Return the function's return type
+                // Return the function's return type (resolved for this call site)
                 match &func.return_type {
-                    Some(return_ty) => return_ty.clone(),
+                    Some(return_ty) => self.resolve_type(return_ty, &call_generics, call_span),
                     None => {
                         // Check if we've inferred this function's type already
                         self.func_types
@@ -238,6 +255,9 @@ impl TypeInferencer {
                     self.env.insert(name.value.to_string(), inferred_ty);
                 }
             },
+            Stmt::Expr { expr } => {
+                self.infer(ast, expr);
+            }
         }
     }
 
@@ -518,7 +538,9 @@ impl TypeInferencer {
                 let provenance = constraint.provenance().clone();
 
                 let type_error = match unify_error {
-                    UnifyError::InfiniteType { var, ty } => TypeError::InfiniteType { span, var, ty },
+                    UnifyError::InfiniteType { var, ty } => {
+                        TypeError::InfiniteType { span, var, ty }
+                    }
                     UnifyError::Mismatch { expected, found } => TypeError::Mismatch {
                         span,
                         expected,
@@ -847,5 +869,58 @@ mod tests {
             "#,
         );
         assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_generic_identity() {
+        let typed_ast = check(
+            r#"
+            fn identity<T>(x: T) -> T { x }
+            fn main() -> i32 {
+                identity(42)
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_generic_multiple_type_params() {
+        let typed_ast = check(
+            r#"
+            fn first<T, U>(x: T, y: U) -> T { x }
+            fn main() -> i32 {
+                first(1, true)
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_generic_type_mismatch() {
+        let typed_ast = check(
+            r#"
+            fn identity<T>(x: T) -> T { x }
+            fn main() {
+                identity(1) + false
+            }
+            "#,
+        );
+        assert!(has_type_error(&typed_ast, |e| {
+            matches!(e, TypeError::MissingImpl { .. })
+        }));
+    }
+
+    #[test]
+    fn test_unknown_type_error() {
+        let typed_ast = check(
+            r#"
+            fn bad(x: Foo) -> Foo { x }
+            "#,
+        );
+        assert!(has_type_error(&typed_ast, |e| {
+            matches!(e, TypeError::UnknownType { .. })
+        }));
     }
 }
