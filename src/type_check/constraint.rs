@@ -28,6 +28,10 @@ impl Constraint {
 pub enum Provenance {
     BinaryOp(ExprId),
     FunctionCall(ExprId, Option<TypeId>), // ExprId of the return value, TypeId of the expected return type annotation
+    FuncArg {
+        arg_expr: ExprId,
+        param_type_id: Option<TypeId>,
+    },
     LetBinding(ExprId),
     Annotation(ExprId),
     Check(ExprId),
@@ -41,6 +45,7 @@ impl Provenance {
         match self {
             Provenance::BinaryOp(id) => *id,
             Provenance::FunctionCall(id, _) => *id,
+            Provenance::FuncArg { arg_expr, .. } => *arg_expr,
             Provenance::LetBinding(id) => *id,
             Provenance::Annotation(id) => *id,
             Provenance::Check(id) => *id,
@@ -54,6 +59,7 @@ impl Provenance {
     pub fn expected_type_id(&self) -> Option<TypeId> {
         match self {
             Provenance::FunctionCall(_, type_id) => *type_id,
+            Provenance::FuncArg { param_type_id, .. } => *param_type_id,
             _ => None,
         }
     }

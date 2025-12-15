@@ -42,16 +42,14 @@ impl BorrowError {
             } => {
                 let mut diag = Diagnostic::error(format!("use of moved value: `{}`", name));
 
-                if let Some(use_span) = typed_ast.ast.expr_spans.get(use_expr) {
-                    diag = diag.with_label(Label::primary(
-                        use_span.clone(),
-                        "value used here after move",
-                    ));
-                }
+                let use_span = typed_ast.ast.get_expr_span(use_expr);
+                diag = diag.with_label(Label::primary(
+                    use_span.clone(),
+                    "value used here after move",
+                ));
 
-                if let Some(move_span) = typed_ast.ast.expr_spans.get(moved_at) {
-                    diag = diag.with_label(Label::secondary(move_span.clone(), "value moved here"));
-                }
+                let move_span = typed_ast.ast.get_expr_span(moved_at);
+                diag = diag.with_label(Label::secondary(move_span.clone(), "value moved here"));
 
                 diag.with_hint(format!(
                     "consider using `&{}` to borrow instead of moving",
@@ -67,14 +65,11 @@ impl BorrowError {
                 let mut diag =
                     Diagnostic::error(format!("cannot move `{}` because it is borrowed", name));
 
-                if let Some(move_span) = typed_ast.ast.expr_spans.get(move_expr) {
-                    diag = diag.with_label(Label::primary(move_span.clone(), "move occurs here"));
-                }
+                let move_span = typed_ast.ast.get_expr_span(move_expr);
+                diag = diag.with_label(Label::primary(move_span.clone(), "move occurs here"));
 
-                if let Some(borrow_span) = typed_ast.ast.expr_spans.get(borrow_expr) {
-                    diag = diag
-                        .with_label(Label::secondary(borrow_span.clone(), "borrow occurs here"));
-                }
+                let borrow_span = typed_ast.ast.get_expr_span(borrow_expr);
+                diag = diag.with_label(Label::secondary(borrow_span.clone(), "borrow occurs here"));
 
                 diag
             }
@@ -105,27 +100,26 @@ impl BorrowError {
 
                 let mut diag = Diagnostic::error(msg);
 
-                if let Some(new_span) = typed_ast.ast.expr_spans.get(new_expr) {
-                    diag = diag.with_label(Label::primary(
-                        new_span.clone(),
-                        if *new_mut {
-                            "mutable borrow occurs here"
-                        } else {
-                            "immutable borrow occurs here"
-                        },
-                    ));
-                }
+                let new_span = typed_ast.ast.get_expr_span(new_expr);
 
-                if let Some(existing_span) = typed_ast.ast.expr_spans.get(existing_expr) {
-                    diag = diag.with_label(Label::secondary(
-                        existing_span.clone(),
-                        if *existing_mut {
-                            "mutable borrow occurs here"
-                        } else {
-                            "immutable borrow occurs here"
-                        },
-                    ));
-                }
+                diag = diag.with_label(Label::primary(
+                    new_span.clone(),
+                    if *new_mut {
+                        "mutable borrow occurs here"
+                    } else {
+                        "immutable borrow occurs here"
+                    },
+                ));
+
+                let existing_span = typed_ast.ast.get_expr_span(existing_expr);
+                diag = diag.with_label(Label::secondary(
+                    existing_span.clone(),
+                    if *existing_mut {
+                        "mutable borrow occurs here"
+                    } else {
+                        "immutable borrow occurs here"
+                    },
+                ));
 
                 diag
             }
@@ -140,16 +134,14 @@ impl BorrowError {
                     name
                 ));
 
-                if let Some(use_span) = typed_ast.ast.expr_spans.get(use_expr) {
-                    diag = diag.with_label(Label::primary(use_span.clone(), "use occurs here"));
-                }
+                let use_span = typed_ast.ast.get_expr_span(use_expr);
+                diag = diag.with_label(Label::primary(use_span.clone(), "use occurs here"));
 
-                if let Some(borrow_span) = typed_ast.ast.expr_spans.get(borrow_expr) {
-                    diag = diag.with_label(Label::secondary(
-                        borrow_span.clone(),
-                        "mutable borrow occurs here",
-                    ));
-                }
+                let borrow_span = typed_ast.ast.get_expr_span(borrow_expr);
+                diag = diag.with_label(Label::secondary(
+                    borrow_span.clone(),
+                    "mutable borrow occurs here",
+                ));
 
                 diag
             }
@@ -164,19 +156,17 @@ impl BorrowError {
                     name
                 ));
 
-                if let Some(return_span) = typed_ast.ast.expr_spans.get(return_expr) {
-                    diag = diag.with_label(Label::primary(
-                        return_span.clone(),
-                        "returns a reference to a local variable",
-                    ));
-                }
+                let return_span = typed_ast.ast.get_expr_span(return_expr);
+                diag = diag.with_label(Label::primary(
+                    return_span.clone(),
+                    "returns a reference to a local variable",
+                ));
 
-                if let Some(borrow_span) = typed_ast.ast.expr_spans.get(borrow_expr) {
-                    diag = diag.with_label(Label::secondary(
-                        borrow_span.clone(),
-                        format!("`{}` is borrowed here", name),
-                    ));
-                }
+                let borrow_span = typed_ast.ast.get_expr_span(borrow_expr);
+                diag = diag.with_label(Label::secondary(
+                    borrow_span.clone(),
+                    format!("`{}` is borrowed here", name),
+                ));
 
                 diag.with_hint(format!(
                     "`{}` will be dropped when the function returns",

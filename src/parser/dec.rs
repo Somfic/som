@@ -1,7 +1,7 @@
-use crate::Lifetime;
-use crate::ast::{DecId, FuncDec, FuncParam, Module, Type};
+use crate::ast::{Decl, Func, FuncParam, Module, Type};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
+use crate::{FuncTypeParam, Lifetime};
 
 impl<'src> Parser<'src> {
     pub(super) fn parse_program(&mut self) {
@@ -10,7 +10,7 @@ impl<'src> Parser<'src> {
         while !self.at_eof() {
             if self.at(TokenKind::Fn) {
                 if let Some(func_id) = self.parse_func_dec() {
-                    func_ids.push(DecId::Func(func_id));
+                    func_ids.push(Decl::Func(func_id));
                 }
             } else {
                 // Unexpected token at top level
@@ -34,7 +34,21 @@ impl<'src> Parser<'src> {
         // name
         let (name, _) = self.parse_ident()?;
 
-        // (params)
+        // type parameters
+        let mut type_parameters = vec![];
+        if self.eat(TokenKind::LessThan) {
+            loop {
+                let (param_name, _) = self.parse_ident()?;
+                type_parameters.push(FuncTypeParam { name: param_name });
+
+                if !self.eat(TokenKind::Comma) {
+                    break;
+                }
+            }
+            self.expect(TokenKind::GreaterThan)?;
+        }
+
+        // parameters
         self.expect(TokenKind::OpenParen)?;
 
         let mut parameters = Vec::new();
@@ -68,8 +82,9 @@ impl<'src> Parser<'src> {
         let end_span = self.previous_span();
         let span = start_span.merge(&end_span);
 
-        let func = FuncDec {
+        let func = Func {
             name,
+            type_parameters,
             parameters,
             return_type,
             return_type_id,
@@ -82,64 +97,15 @@ impl<'src> Parser<'src> {
     fn parse_func_param(&mut self) -> Option<FuncParam> {
         let (name, _) = self.parse_ident()?;
 
-        let ty = if self.eat(TokenKind::Colon) {
-            Some(self.parse_type()?)
+        let (ty, type_id) = if self.eat(TokenKind::Colon) {
+            let type_span = self.peek_span();
+            let parsed_ty = self.parse_type()?;
+            let tid = self.ast.alloc_type_with_span(type_span);
+            (Some(parsed_ty), Some(tid))
         } else {
-            None
+            (None, None)
         };
 
-        Some(FuncParam { name, ty })
-    }
-
-    pub(super) fn parse_type(&mut self) -> Option<Type> {
-        let kind = self.peek();
-        match kind {
-            TokenKind::I32 => {
-                self.advance();
-                Some(Type::I32)
-            }
-            TokenKind::Bool => {
-                self.advance();
-                Some(Type::Bool)
-            }
-            TokenKind::Ampersand => {
-                self.advance(); // consume &
-                let mutable = self.eat(TokenKind::Mut);
-
-                let lifetime = if self.eat(TokenKind::SingleQuote) {
-                    let (name, _) = self.parse_ident()?;
-                    if &*name.value == "static" {
-                        Lifetime::Static
-                    } else {
-                        Lifetime::Named(name.value)
-                    }
-                } else {
-                    Lifetime::Unspecified
-                };
-
-                let inner_type = self.parse_type()?;
-                Some(Type::Reference {
-                    mutable,
-                    lifetime,
-                    to: Box::new(inner_type),
-                })
-            }
-            TokenKind::Ident => {
-                self.advance();
-
-                // Unknown type - could add custom types later
-                self.errors.push(crate::parser::ParseError::new(
-                    vec![],
-                    TokenKind::Ident,
-                    self.previous_span(),
-                ));
-
-                None
-            }
-            _ => {
-                self.error(vec![TokenKind::I32, TokenKind::Bool, TokenKind::Ident]);
-                None
-            }
-        }
+        Some(FuncParam { name, ty, type_id })
     }
 }

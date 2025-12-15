@@ -89,15 +89,18 @@ impl TypeInferencer {
 
                 block_ty
             }
-            Expr::Call { func, args } => {
-                let func_dec = ast.get_func(func);
+            Expr::Call {
+                func: func_id,
+                args,
+            } => {
+                let func = ast.get_func(func_id);
 
                 // Check argument count
-                if args.len() != func_dec.parameters.len() {
+                if args.len() != func.parameters.len() {
                     self.errors.insert(
                         *expr_id,
                         TypeError::WrongArgCount {
-                            expected: func_dec.parameters.len(),
+                            expected: func.parameters.len(),
                             found: args.len(),
                         },
                     );
@@ -105,11 +108,19 @@ impl TypeInferencer {
                 }
 
                 // Check each argument against parameter type
-                for (arg_expr, param) in args.iter().zip(&func_dec.parameters) {
+                for (arg_expr, param) in args.iter().zip(&func.parameters) {
                     match &param.ty {
                         Some(param_ty) => {
-                            // Check argument against annotated parameter type
-                            self.check_expr(ast, *arg_expr, param_ty.clone());
+                            // Check argument against annotated parameter type with FuncArg provenance
+                            let actual = self.infer(ast, arg_expr);
+                            self.constraints.push(Constraint::Equal {
+                                provenance: Provenance::FuncArg {
+                                    arg_expr: *arg_expr,
+                                    param_type_id: param.type_id,
+                                },
+                                lhs: actual,
+                                rhs: param_ty.clone(),
+                            });
                         }
                         None => {
                             // Parameter type not annotated, just infer the argument
@@ -119,12 +130,12 @@ impl TypeInferencer {
                 }
 
                 // Return the function's return type
-                match &func_dec.return_type {
+                match &func.return_type {
                     Some(return_ty) => return_ty.clone(),
                     None => {
                         // Check if we've inferred this function's type already
                         self.func_types
-                            .get(func)
+                            .get(func_id)
                             .cloned()
                             .unwrap_or_else(|| self.fresh_type())
                     }
@@ -222,15 +233,22 @@ impl TypeInferencer {
         }
     }
 
-    pub fn check_func_dec(&mut self, ast: &Ast, func_id: FuncId) {
+    pub fn check_func(&mut self, ast: &Ast, func_id: FuncId) {
         let func = ast.get_func(&func_id);
         let saved_env = self.env.clone();
 
-        // Add parameters to environment
+        // type parameters
+        let mut generics: HashMap<String, TypeVar> = HashMap::new();
+        for type_param in &func.type_parameters {
+            let type_var = self.fresh_type_var();
+            generics.insert(type_param.name.value.to_string(), type_var);
+        }
+
+        // parameters
         for param in &func.parameters {
             let param_ty = match &param.ty {
-                Some(ty) => ty.clone(),
-                None => self.fresh_type(), // Infer parameter type from usage
+                Some(ty) => self.resolve_type(ty, &generics, todo!()),
+                None => self.fresh_type(),
             };
             self.env.insert(param.name.value.to_string(), param_ty);
         }
@@ -507,7 +525,7 @@ impl TypeInferencer {
         let func_ids: Vec<FuncId> = (0..ast.funcs.len()).map(|i| FuncId(i as u32)).collect();
 
         for func_id in func_ids {
-            self.check_func_dec(&ast, func_id);
+            self.check_func(&ast, func_id);
         }
 
         // 2. Solve all constraints
@@ -529,6 +547,40 @@ impl TypeInferencer {
             types: expr_types,
             errors: self.errors,
             constraints: self.constraints,
+        }
+    }
+
+    fn resolve_type(
+        &mut self,
+        ty: &Type,
+        generics: &HashMap<String, TypeVar>,
+        expr_id: ExprId,
+    ) -> Type {
+        match ty {
+            Type::Named(name) => {
+                match generics.get(name.as_ref()) {
+                    Some(&tv) => Type::Unknown(tv),
+                    None => {
+                        self.errors.insert(
+                            expr_id,
+                            TypeError::UnknownType {
+                                name: name.to_string(),
+                            },
+                        );
+                        self.fresh_type() // return fresh var to continue checking
+                    }
+                }
+            }
+            Type::Reference {
+                mutable,
+                lifetime,
+                to,
+            } => Type::Reference {
+                mutable: *mutable,
+                lifetime: lifetime.clone(),
+                to: Box::new(self.resolve_type(to, generics, expr_id)),
+            },
+            _ => ty.clone(),
         }
     }
 }

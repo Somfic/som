@@ -9,6 +9,7 @@ pub use error::*;
 mod dec;
 mod expr;
 mod stmt;
+mod ty;
 
 pub struct Parser<'src> {
     tokens: Vec<Token<'src>>,
