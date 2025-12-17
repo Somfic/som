@@ -24,12 +24,12 @@ use std::sync::Arc;
 fn main() {
     let source_text = r#"
 
+    fn one() -> i32 {
+        one()
+    }
+
     fn main() -> i32 {
-        let a = 1;
-        let b = 1;
-        let a = 0;
-        a + b + a + false + 1 + true;
-        1 + true;
+        one()
     }
 
     "#;

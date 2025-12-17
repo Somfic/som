@@ -43,6 +43,7 @@ pub struct Codegen<'ast> {
     isa: Arc<dyn isa::TargetIsa>,
     typed_ast: &'ast TypedAst,
     module: ObjectModule,
+    func_ids: Vec<cranelift::module::FuncId>,
 }
 
 impl<'ast> Codegen<'ast> {
@@ -65,21 +66,44 @@ impl<'ast> Codegen<'ast> {
             typed_ast,
             isa,
             module,
+            func_ids: vec![],
         })
     }
 
     pub fn compile(mut self) -> Result<ObjectProduct> {
-        let main_function = self
-            .typed_ast
-            .ast
-            .funcs
-            .iter()
-            .find(|f| f.name.value == "main".into())
-            .ok_or_else(|| CodegenError::NoMainFunction.to_diagnostic())?;
+        for func in &self.typed_ast.ast.funcs {
+            self.dec_func(func)?;
+        }
 
-        self.gen_func(main_function)?;
+        for func in &self.typed_ast.ast.funcs {
+            self.gen_func(func)?;
+        }
 
         Ok(self.module.finish())
+    }
+
+    fn dec_func(&mut self, func: &Func) -> Result<()> {
+        let sig = self.build_signature(func);
+        let linkage = if func.name.value == "main".into() {
+            Linkage::Export
+        } else {
+            Linkage::Local
+        };
+
+        let func_id = self
+            .module
+            .declare_function(&func.name.value, linkage, &sig)
+            .map_err(|e| {
+                CodegenError::ModuleError(format!(
+                    "failed to declare function {}: {}",
+                    func.name.value, e
+                ))
+                .to_diagnostic()
+            })?;
+
+        self.func_ids.push(func_id);
+
+        Ok(())
     }
 
     fn gen_func(&mut self, func: &Func) -> Result<()> {
@@ -129,7 +153,7 @@ impl<'ast> Codegen<'ast> {
         Ok(())
     }
 
-    fn gen_expr(&self, func: &mut FuncCtx, expr_id: ExprId) -> Value {
+    fn gen_expr(&mut self, func: &mut FuncCtx, expr_id: ExprId) -> Value {
         let expr = self.typed_ast.ast.get_expr(&expr_id);
 
         match expr {
@@ -180,13 +204,29 @@ impl<'ast> Codegen<'ast> {
                     None => todo!(),
                 }
             }
-            Expr::Call { func, args } => todo!(),
+            Expr::Call {
+                func: func_id,
+                args,
+            } => {
+                let callee_func_id = self.func_ids[func_id.0 as usize];
+
+                let callee_func_ref = self
+                    .module
+                    .declare_func_in_func(callee_func_id, func.body.func);
+
+                let arguments: Vec<Value> =
+                    args.iter().map(|arg| self.gen_expr(func, *arg)).collect();
+
+                let call = func.body.ins().call(callee_func_ref, &arguments);
+
+                func.body.inst_results(call)[0]
+            }
             Expr::Borrow { mutable, expr } => todo!(),
             Expr::Deref { expr } => todo!(),
         }
     }
 
-    fn gen_stmt(&self, func: &mut FuncCtx, stmt_id: StmtId) {
+    fn gen_stmt(&mut self, func: &mut FuncCtx, stmt_id: StmtId) {
         let stmt = self.typed_ast.ast.get_stmt(&stmt_id);
 
         match stmt {
@@ -204,6 +244,22 @@ impl<'ast> Codegen<'ast> {
         }
 
         // todo
+    }
+
+    fn build_signature(&self, func: &Func) -> Signature {
+        let mut sig = Signature::new(self.isa.default_call_conv());
+
+        sig.params = func
+            .parameters
+            .iter()
+            .filter_map(|p| p.ty.as_ref().map(|ty| AbiParam::new(to_type(ty))))
+            .collect();
+
+        if let Some(ret_ty) = &func.return_type {
+            sig.returns = vec![AbiParam::new(to_type(ret_ty))];
+        }
+
+        sig
     }
 }
 
