@@ -49,8 +49,6 @@ pub struct BorrowChecker<'a> {
     loans: Arena<Loan>,                              // All loans created
     scope_depth: u32,                                // Current nesting level
     errors: Vec<BorrowError>,                        // Collected errors
-    next_place: u32,                                 // ID counter
-    next_loan: u32,                                  // ID counter
 }
 
 impl<'a> BorrowChecker<'a> {
@@ -65,8 +63,6 @@ impl<'a> BorrowChecker<'a> {
             loans: Arena::new(),
             scope_depth: 0,
             errors: vec![],
-            next_place: 0,
-            next_loan: 0,
         }
     }
 
@@ -80,8 +76,6 @@ impl<'a> BorrowChecker<'a> {
             self.place_origins = HashMap::new();
             self.loans = Arena::new();
             self.scope_depth = 0;
-            self.next_place = 0;
-            self.next_loan = 0;
 
             for param in &func.parameters {
                 self.fresh_place(param.name.value.to_string());
@@ -404,19 +398,15 @@ impl<'a> BorrowChecker<'a> {
         id
     }
 
-    fn fresh_loan(&mut self, at: PlaceId, mutable: bool, expr: Id<Expr>) -> LoanId {
-        let loan_id = LoanId(self.next_loan);
-        self.next_loan += 1;
-
+    fn fresh_loan(&mut self, at: Id<Place>, mutable: bool, expr: Id<Expr>) -> Id<Loan> {
         let loan = Loan {
             at,
             expr,
             mutable,
             scope_depth: self.scope_depth,
         };
-        self.loans.push(loan);
 
-        loan_id
+        self.loans.alloc(loan)
     }
 
     fn push_scope(&mut self) {
@@ -430,11 +420,12 @@ impl<'a> BorrowChecker<'a> {
             .iter()
             .enumerate()
             .filter(|(_, loan)| loan.scope_depth == self.scope_depth)
-            .map(|(idx, _)| LoanId(idx as u32));
+            .map(|(idx, _)| Id::new(idx));
 
         // process expiring loans
         for loan_id in loans {
-            let place_id = self.loans[loan_id.0 as usize].at;
+            let loan = self.loans.get(&loan_id);
+            let place_id = loan.at;
 
             if let Some(state) = self.place_states.get_mut(&place_id) {
                 match state {
