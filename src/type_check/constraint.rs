@@ -1,4 +1,4 @@
-use crate::{ExprId, TraitId, Type, TypeId};
+use crate::{Expr, Trait, Type, arena::Id};
 
 #[derive(Debug, Clone)]
 pub enum Constraint {
@@ -9,14 +9,14 @@ pub enum Constraint {
     },
     Trait {
         provenance: Provenance,
-        trait_id: TraitId,
+        trait_id: Id<Trait>,
         args: Vec<Type>,
         output: Type,
     },
 }
 
 impl Constraint {
-    pub fn expr_id(&self) -> ExprId {
+    pub fn expr_id(&self) -> Id<Expr> {
         match self {
             Constraint::Equal { provenance, .. } => provenance.expr_id(),
             Constraint::Trait { provenance, .. } => provenance.expr_id(),
@@ -33,22 +33,22 @@ impl Constraint {
 
 #[derive(Debug, Clone)]
 pub enum Provenance {
-    BinaryOp(ExprId),
-    FunctionCall(ExprId, Option<TypeId>), // ExprId of the return value, TypeId of the expected return type annotation
+    BinaryOp(Id<Expr>),
+    FunctionCall(Id<Expr>, Option<Id<Type>>), // ExprId of the return value, TypeId of the expected return type annotation
     FuncArg {
-        arg_expr: ExprId,
-        param_type_id: Option<TypeId>,
+        arg_expr: Id<Expr>,
+        param_type_id: Option<Id<Type>>,
     },
-    LetBinding(ExprId),
-    Annotation(ExprId),
-    Check(ExprId),
+    LetBinding(Id<Expr>),
+    Annotation(Id<Expr>),
+    Check(Id<Expr>),
     FunctionArity,
     Unification,
-    Deref(ExprId),
+    Deref(Id<Expr>),
 }
 
 impl Provenance {
-    pub fn expr_id(&self) -> ExprId {
+    pub fn expr_id(&self) -> Id<Expr> {
         match self {
             Provenance::BinaryOp(id) => *id,
             Provenance::FunctionCall(id, _) => *id,
@@ -63,7 +63,7 @@ impl Provenance {
         }
     }
 
-    pub fn expected_type_id(&self) -> Option<TypeId> {
+    pub fn expected_type_id(&self) -> Option<Id<Type>> {
         match self {
             Provenance::FunctionCall(_, type_id) => *type_id,
             Provenance::FuncArg { param_type_id, .. } => *param_type_id,

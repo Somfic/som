@@ -1,8 +1,8 @@
 use ena::unify::InPlaceUnificationTable;
 
 use crate::{
-    Ast, Expr, ExprId, FuncId, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, StmtId, TraitId,
-    Type, TypeValue, TypeVar, TypedAst,
+    Ast, Expr, Func, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, Trait, Type, TypeValue,
+    TypeVar, TypedAst, arena::Id,
 };
 use std::collections::HashMap;
 
@@ -22,7 +22,7 @@ enum UnifyError {
         found: Type,
     },
     MissingImpl {
-        trait_id: TraitId,
+        trait_id: Id<Trait>,
         self_type: Type,
         arg_types: Vec<Type>,
     },
@@ -35,8 +35,8 @@ pub struct TypeInferencer {
     unification_table: InPlaceUnificationTable<TypeVar>,
     lifetime_unification_table: InPlaceUnificationTable<LifetimeVar>,
     errors: Vec<TypeError>,
-    func_types: HashMap<FuncId, Type>, // Store inferred function return types
-    expr_types: HashMap<ExprId, Type>, // Track all expression types
+    func_types: HashMap<Id<Func>, Type>, // Store inferred function return types
+    expr_types: HashMap<Id<Expr>, Type>, // Track all expression types
 }
 
 impl TypeInferencer {
@@ -53,8 +53,8 @@ impl TypeInferencer {
     }
 
     /// generates contraints
-    pub fn infer(&mut self, ast: &Ast, expr_id: &ExprId) -> Type {
-        let expr = ast.get_expr(expr_id);
+    pub fn infer(&mut self, ast: &Ast, expr_id: &Id<Expr>) -> Type {
+        let expr = ast.exprs.get(expr_id);
 
         let ty = match expr {
             Expr::Hole => self.fresh_type(),
@@ -105,11 +105,20 @@ impl TypeInferencer {
 
                 block_ty
             }
-            Expr::Call {
-                func: func_id,
-                args,
-            } => {
-                let func = ast.get_func(func_id);
+            Expr::Call { name, args } => {
+                // Resolve function name to FuncId
+                let func_id = match ast.find_func_by_name(&name.value) {
+                    Some(id) => id,
+                    None => {
+                        self.errors.push(TypeError::UnknownFunction {
+                            span: ast.get_expr_span(expr_id).clone(),
+                            name: name.value.to_string(),
+                        });
+                        return self.fresh_type();
+                    }
+                };
+
+                let func = ast.funcs.get(&func_id);
 
                 // Check argument count
                 if args.len() != func.parameters.len() {
@@ -160,7 +169,7 @@ impl TypeInferencer {
                     None => {
                         // Check if we've inferred this function's type already
                         self.func_types
-                            .get(func_id)
+                            .get(&func_id)
                             .cloned()
                             .unwrap_or_else(|| self.fresh_type())
                     }
@@ -217,8 +226,8 @@ impl TypeInferencer {
         ty
     }
 
-    pub fn check_expr(&mut self, ast: &Ast, expr_id: ExprId, expected: Type) {
-        let expr = ast.get_expr(&expr_id);
+    pub fn check_expr(&mut self, ast: &Ast, expr_id: Id<Expr>, expected: Type) {
+        let expr = ast.exprs.get(&expr_id);
 
         #[allow(clippy::match_single_binding)]
         match expr {
@@ -235,8 +244,8 @@ impl TypeInferencer {
         }
     }
 
-    fn check_stmt(&mut self, ast: &Ast, stmt_id: StmtId) {
-        let stmt = ast.get_stmt(&stmt_id);
+    fn check_stmt(&mut self, ast: &Ast, stmt_id: Id<Stmt>) {
+        let stmt = ast.stmts.get(&stmt_id);
 
         match stmt {
             Stmt::Let {
@@ -261,8 +270,8 @@ impl TypeInferencer {
         }
     }
 
-    pub fn check_func(&mut self, ast: &Ast, func_id: FuncId) {
-        let func = ast.get_func(&func_id);
+    pub fn check_func(&mut self, ast: &Ast, func_id: Id<Func>) {
+        let func = ast.funcs.get(&func_id);
         let saved_env = self.env.clone();
 
         // type parameters
@@ -298,7 +307,7 @@ impl TypeInferencer {
                 // Get the expression ID to report errors on
                 // If body is a block with a value, use that value's ID
                 // Otherwise use the body itself
-                let error_expr_id = match ast.get_expr(&func.body) {
+                let error_expr_id = match ast.exprs.get(&func.body) {
                     Expr::Block {
                         value: Some(value_expr),
                         ..
@@ -483,7 +492,7 @@ impl TypeInferencer {
     fn solve_trait_constraint(
         &mut self,
         ast: &Ast,
-        trait_id: TraitId,
+        trait_id: Id<Trait>,
         args: &[Type],
         output: &Type,
     ) -> Result<(), UnifyError> {
@@ -568,7 +577,7 @@ impl TypeInferencer {
     /// Type check an entire program
     pub fn check_program(mut self, ast: Ast) -> TypedAst {
         // 1. Check all function declarations
-        let func_ids: Vec<FuncId> = (0..ast.funcs.len()).map(|i| FuncId(i as u32)).collect();
+        let func_ids: Vec<Id<Func>> = (0..ast.funcs.len()).map(|i| Id::new(i)).collect();
 
         for func_id in func_ids {
             self.check_func(&ast, func_id);
@@ -578,7 +587,7 @@ impl TypeInferencer {
         self.solve(&ast);
 
         // 3. Normalize all stored expression types
-        let types_to_normalize: Vec<(ExprId, Type)> = self
+        let types_to_normalize: Vec<(Id<Expr>, Type)> = self
             .expr_types
             .iter()
             .map(|(id, ty)| (*id, ty.clone()))

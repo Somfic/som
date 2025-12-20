@@ -8,7 +8,7 @@ use cranelift::{
 };
 use target_lexicon::Triple;
 
-use crate::{BinOp, Diagnostic, Expr, ExprId, Func, Stmt, StmtId, Type, TypedAst};
+use crate::{BinOp, Diagnostic, Expr, Func, Stmt, Type, TypedAst, arena::Id};
 
 type Result<T> = std::result::Result<T, Diagnostic>;
 
@@ -153,8 +153,8 @@ impl<'ast> Codegen<'ast> {
         Ok(())
     }
 
-    fn gen_expr(&mut self, func: &mut FuncCtx, expr_id: ExprId) -> Value {
-        let expr = self.typed_ast.ast.get_expr(&expr_id);
+    fn gen_expr(&mut self, func: &mut FuncCtx, expr_id: Id<Expr>) -> Value {
+        let expr = self.typed_ast.ast.exprs.get(&expr_id);
 
         match expr {
             Expr::Hole => unreachable!("parser should have thrown an error"),
@@ -204,11 +204,15 @@ impl<'ast> Codegen<'ast> {
                     None => todo!(),
                 }
             }
-            Expr::Call {
-                func: func_id,
-                args,
-            } => {
-                let callee_func_id = self.func_ids[func_id.0 as usize];
+            Expr::Call { name, args } => {
+                // Resolve function name to FuncId (type checker already verified it exists)
+                let func_id = self
+                    .typed_ast
+                    .ast
+                    .find_func_by_name(&name.value)
+                    .expect("type checker should have caught unknown function");
+
+                let callee_func_id = self.func_ids[func_id.id];
 
                 let callee_func_ref = self
                     .module
@@ -226,8 +230,8 @@ impl<'ast> Codegen<'ast> {
         }
     }
 
-    fn gen_stmt(&mut self, func: &mut FuncCtx, stmt_id: StmtId) {
-        let stmt = self.typed_ast.ast.get_stmt(&stmt_id);
+    fn gen_stmt(&mut self, func: &mut FuncCtx, stmt_id: Id<Stmt>) {
+        let stmt = self.typed_ast.ast.stmts.get(&stmt_id);
 
         match stmt {
             Stmt::Let { name, value, .. } => {

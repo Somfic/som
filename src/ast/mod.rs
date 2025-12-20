@@ -9,11 +9,9 @@ pub use decl::*;
 mod ty;
 pub use ty::*;
 
+use crate::arena::{Arena, Id};
 use crate::span::Span;
 use crate::type_check::{Constraint, TypeError};
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct SpanId(u32);
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Ident {
@@ -24,13 +22,13 @@ pub struct Ident {
 #[derive(Default)]
 pub struct TypedAst {
     pub ast: Ast,
-    pub types: HashMap<ExprId, Type>,
+    pub types: HashMap<Id<Expr>, Type>,
     pub errors: Vec<TypeError>,
     pub constraints: Vec<Constraint>,
 }
 
 impl TypedAst {
-    pub fn get_expr_ty(&self, expr: &ExprId) -> &Type {
+    pub fn get_expr_ty(&self, expr: &Id<Expr>) -> &Type {
         self.types.get(expr).unwrap()
     }
 }
@@ -39,92 +37,92 @@ impl TypedAst {
 pub struct Ast {
     pub mods: Vec<Module>,
 
-    pub exprs: Vec<Expr>,
-    expr_spans: HashMap<ExprId, SpanId>,
+    pub exprs: Arena<Expr>,
+    expr_spans: HashMap<Id<Expr>, Id<Span>>,
 
-    pub stmts: Vec<Stmt>,
-    stmt_spans: HashMap<StmtId, SpanId>,
+    pub stmts: Arena<Stmt>,
+    stmt_spans: HashMap<Id<Stmt>, Id<Span>>,
 
-    pub funcs: Vec<Func>,
-    func_spans: HashMap<FuncId, SpanId>,
+    pub funcs: Arena<Func>,
+    func_spans: HashMap<Id<Func>, Id<Span>>,
 
-    pub traits: Vec<Trait>,
-    pub impls: Vec<Impl>,
+    pub traits: Arena<Trait>,
+    pub impls: Arena<Impl>,
 
-    type_spans: HashMap<TypeId, SpanId>,
-    pub spans: Vec<Span>,
+    type_spans: HashMap<Id<Type>, Id<Span>>,
+    pub spans: Arena<Span>,
 
-    next_type_id: u32,
+    next_type_id: usize,
 }
 
 impl Ast {
     pub fn new() -> Self {
         let mut ast = Self::default();
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_ADD,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
             output_type: Type::I32,
         });
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_SUB,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
             output_type: Type::I32,
         });
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_MUL,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
             output_type: Type::I32,
         });
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_DIV,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
             output_type: Type::I32, // TODO: f32?
         });
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_LT,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
             output_type: Type::Bool,
         });
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_GT,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
             output_type: Type::Bool,
         });
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_LT_EQ,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
             output_type: Type::Bool,
         });
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_GT_EQ,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
             output_type: Type::Bool,
         });
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_EQ,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
             output_type: Type::Bool,
         });
 
-        ast.alloc_impl(Impl {
+        ast.impls.alloc(Impl {
             trait_id: TRAIT_NEQ,
             self_type: Type::I32,
             arg_types: vec![Type::I32],
@@ -134,124 +132,72 @@ impl Ast {
         ast
     }
 
-    pub fn alloc_expr(&mut self, expr: Expr) -> ExprId {
-        let id = ExprId(self.exprs.len() as u32);
-        self.exprs.push(expr);
-        id
-    }
-
-    pub fn alloc_expr_with_span(&mut self, expr: Expr, span: Span) -> ExprId {
-        let id = self.alloc_expr(expr);
-        let span_id = self.alloc_span(span);
+    pub fn alloc_expr_with_span(&mut self, expr: Expr, span: Span) -> Id<Expr> {
+        let id = self.exprs.alloc(expr);
+        let span_id = self.spans.alloc(span);
         self.expr_spans.insert(id, span_id);
         id
     }
 
-    pub fn alloc_stmt(&mut self, stmt: Stmt) -> StmtId {
-        let id = StmtId(self.stmts.len() as u32);
-        self.stmts.push(stmt);
-        id
-    }
-
-    pub fn alloc_stmt_with_span(&mut self, stmt: Stmt, span: Span) -> StmtId {
-        let id = self.alloc_stmt(stmt);
-        let span_id = self.alloc_span(span);
+    pub fn alloc_stmt_with_span(&mut self, stmt: Stmt, span: Span) -> Id<Stmt> {
+        let id = self.stmts.alloc(stmt);
+        let span_id = self.spans.alloc(span);
         self.stmt_spans.insert(id, span_id);
         id
     }
 
-    pub fn alloc_func(&mut self, func: Func) -> FuncId {
-        let id = FuncId(self.funcs.len() as u32);
-        self.funcs.push(func);
-        id
-    }
-
-    pub fn alloc_func_with_span(&mut self, func: Func, span: Span) -> FuncId {
-        let id = self.alloc_func(func);
-        let span_id = self.alloc_span(span);
+    pub fn alloc_func_with_span(&mut self, func: Func, span: Span) -> Id<Func> {
+        let id = self.funcs.alloc(func);
+        let span_id = self.spans.alloc(span);
         self.func_spans.insert(id, span_id);
         id
     }
 
-    pub fn alloc_trait(&mut self, r#trait: Trait) -> TraitId {
-        let id = TraitId(BUILTIN_TRAIT_COUNT + self.traits.len() as u32);
-        self.traits.push(r#trait);
-        id
-    }
-
-    pub fn alloc_impl(&mut self, r#impl: Impl) -> ImplId {
-        let id = ImplId(self.impls.len() as u32);
-        self.impls.push(r#impl);
-        id
-    }
-
-    pub fn alloc_type_with_span(&mut self, span: Span) -> TypeId {
-        let id = TypeId(self.next_type_id);
+    pub fn alloc_type_with_span(&mut self, span: Span) -> Id<Type> {
+        let id = Id::<Type>::new(self.next_type_id);
         self.next_type_id += 1;
-        let span_id = self.alloc_span(span);
+        let span_id = self.spans.alloc(span);
         self.type_spans.insert(id, span_id);
         id
     }
 
-    pub fn alloc_span(&mut self, span: Span) -> SpanId {
-        let id = SpanId(self.spans.len() as u32);
-        self.spans.push(span);
-        id
+    pub fn find_func_by_name(&self, name: &str) -> Option<Id<Func>> {
+        self.funcs
+            .iter()
+            .enumerate()
+            .find(|(_, f)| &*f.name.value == name)
+            .map(|(idx, _)| Id::new(idx))
     }
 
-    pub fn get_expr(&self, id: &ExprId) -> &Expr {
-        self.exprs.get(id.0 as usize).unwrap()
-    }
-
-    pub fn get_stmt(&self, id: &StmtId) -> &Stmt {
-        self.stmts.get(id.0 as usize).unwrap()
-    }
-
-    pub fn get_func(&self, id: &FuncId) -> &Func {
-        self.funcs.get(id.0 as usize).unwrap()
-    }
-
-    pub fn get_trait(&self, id: &TraitId) -> &Trait {
-        self.traits.get(id.0 as usize).unwrap()
-    }
-
-    pub fn get_impl(&self, id: &ImplId) -> &Impl {
-        self.impls.get(id.0 as usize).unwrap()
-    }
-
-    pub fn get_span(&self, id: &SpanId) -> &Span {
-        self.spans.get(id.0 as usize).unwrap()
-    }
-
-    pub fn get_expr_span(&self, id: &ExprId) -> &Span {
+    pub fn get_expr_span(&self, id: &Id<Expr>) -> &Span {
         let span_id = self.expr_spans.get(id).unwrap();
-        self.get_span(span_id)
+        self.spans.get(span_id)
     }
 
-    pub fn get_stmt_span(&self, id: &StmtId) -> &Span {
+    pub fn get_stmt_span(&self, id: &Id<Stmt>) -> &Span {
         let span_id = self.stmt_spans.get(id).unwrap();
-        self.get_span(span_id)
+        self.spans.get(span_id)
     }
 
-    pub fn get_func_span(&self, id: &FuncId) -> &Span {
+    pub fn get_func_span(&self, id: &Id<Func>) -> &Span {
         let span_id = self.func_spans.get(id).unwrap();
-        self.get_span(span_id)
+        self.spans.get(span_id)
     }
 
-    pub fn get_type_span(&self, id: &TypeId) -> &Span {
+    pub fn get_type_span(&self, id: &Id<Type>) -> &Span {
         let span_id = self.type_spans.get(id).unwrap();
-        self.get_span(span_id)
+        self.spans.get(span_id)
     }
 
-    pub fn try_get_type_span(&self, id: &TypeId) -> Option<&Span> {
+    pub fn try_get_type_span(&self, id: &Id<Type>) -> Option<&Span> {
         self.type_spans
             .get(id)
-            .map(|span_id| self.get_span(span_id))
+            .map(|span_id| self.spans.get(span_id))
     }
 
     pub fn find_impl(
         &self,
-        trait_id: TraitId,
+        trait_id: Id<Trait>,
         self_type: &Type,
         arg_types: &[Type],
     ) -> Option<&Impl> {

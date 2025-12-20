@@ -1,9 +1,10 @@
-use crate::ast::{Stmt, StmtId};
+use crate::arena::Id;
+use crate::ast::Stmt;
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
 
 impl<'src> Parser<'src> {
-    pub(super) fn parse_let_stmt(&mut self) -> Option<StmtId> {
+    pub(super) fn parse_let_stmt(&mut self) -> Option<Id<Stmt>> {
         let start_span = self.peek_span();
 
         // let

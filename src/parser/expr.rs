@@ -1,16 +1,17 @@
-use crate::ast::{BinOp, Expr, ExprId, FuncId, Stmt};
+use crate::arena::Id;
+use crate::ast::{BinOp, Expr, Stmt};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
 use crate::span::Span;
 
 impl<'src> Parser<'src> {
     /// Parse an expression using Pratt parsing
-    pub(super) fn parse_expr(&mut self) -> Option<ExprId> {
+    pub(super) fn parse_expr(&mut self) -> Option<Id<Expr>> {
         self.parse_expr_bp(0)
     }
 
     /// Pratt parser with binding power
-    fn parse_expr_bp(&mut self, min_bp: u8) -> Option<ExprId> {
+    fn parse_expr_bp(&mut self, min_bp: u8) -> Option<Id<Expr>> {
         let start_span = self.peek_span();
 
         // Parse prefix/atom
@@ -48,7 +49,7 @@ impl<'src> Parser<'src> {
         Some(lhs)
     }
 
-    fn parse_atom(&mut self) -> Option<ExprId> {
+    fn parse_atom(&mut self) -> Option<Id<Expr>> {
         let start_span = self.peek_span();
 
         match self.peek() {
@@ -131,7 +132,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn parse_call(&mut self, callee: ExprId, start_span: Span) -> Option<ExprId> {
+    fn parse_call(&mut self, callee: Id<Expr>, start_span: Span) -> Option<Id<Expr>> {
         self.expect(TokenKind::OpenParen)?;
 
         let mut args = Vec::new();
@@ -152,47 +153,27 @@ impl<'src> Parser<'src> {
         let end_span = self.previous_span();
         let span = start_span.merge(&end_span);
 
-        // For now, we need to resolve the function name to a FuncId
-        // This is a simplified version - in a real compiler, this would be done
-        // in a name resolution pass
-        let callee_expr = self.ast.get_expr(&callee);
-        let func_id = match callee_expr {
-            Expr::Var(ident) => {
-                // Look up function by name
-                self.find_func_by_name(&ident.value)
-            }
-            _ => None,
-        };
-
-        if let Some(func_id) = func_id {
-            Some(self.ast.alloc_expr_with_span(
+        // Store function name, resolve to FuncId in type checker
+        let callee_expr = self.ast.exprs.get(&callee);
+        match callee_expr {
+            Expr::Var(ident) => Some(self.ast.alloc_expr_with_span(
                 Expr::Call {
-                    func: func_id,
+                    name: ident.clone(),
                     args,
                 },
                 span,
-            ))
-        } else {
-            // Function not found - emit error and return hole
-            self.errors.push(crate::parser::ParseError::new(
-                vec![],
-                TokenKind::Ident,
-                start_span,
-            ));
-            Some(self.ast.alloc_expr_with_span(Expr::Hole, span))
-        }
-    }
-
-    fn find_func_by_name(&self, name: &str) -> Option<FuncId> {
-        for (idx, func) in self.ast.funcs.iter().enumerate() {
-            if &*func.name.value == name {
-                return Some(FuncId(idx as u32));
+            )),
+            _ => {
+                self.errors.push(crate::parser::ParseError::with_message(
+                    "expected function name".into(),
+                    start_span,
+                ));
+                Some(self.ast.alloc_expr_with_span(Expr::Hole, span))
             }
         }
-        None
     }
 
-    pub(super) fn parse_block(&mut self) -> Option<ExprId> {
+    pub(super) fn parse_block(&mut self) -> Option<Id<Expr>> {
         let start_span = self.peek_span();
 
         self.expect(TokenKind::OpenBrace)?;
@@ -211,7 +192,7 @@ impl<'src> Parser<'src> {
                 if let Some(expr_id) = self.parse_expr() {
                     if self.eat(TokenKind::Semicolon) {
                         // Expression statement
-                        let stmt_id = self.ast.alloc_stmt(Stmt::Expr { expr: expr_id });
+                        let stmt_id = self.ast.stmts.alloc(Stmt::Expr { expr: expr_id });
                         stmts.push(stmt_id);
                     } else if self.at(TokenKind::CloseBrace) {
                         // Last expression without semicolon - this is the block's value

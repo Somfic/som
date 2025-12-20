@@ -3,13 +3,10 @@ use std::{collections::HashMap, hash::Hash};
 
 pub use error::*;
 
-use crate::{Expr, ExprId, Lifetime, Stmt, StmtId, Type, TypedAst};
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct PlaceId(u32);
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LoanId(u32);
+use crate::{
+    Expr, Lifetime, Stmt, Type, TypedAst,
+    arena::{Arena, Id},
+};
 
 pub struct Place {
     name: String,
@@ -19,53 +16,53 @@ pub struct Place {
 #[derive(Clone)]
 pub enum State {
     Owned,
-    Moved { to: ExprId },
-    Borrowed { loans: Vec<LoanId> },
-    MutBorrowed { loan: LoanId },
+    Moved { to: Id<Expr> },
+    Borrowed { loans: Vec<Id<Loan>> },
+    MutBorrowed { loan: Id<Loan> },
 }
 
 #[derive(Clone)]
 pub enum ReferenceOrigin {
     Local {
-        at: PlaceId,
+        at: Id<Place>,
         scope_depth: u32,
-        borrow_expr: ExprId,
+        borrow_expr: Id<Expr>,
     },
     Parameter,
     Static,
 }
 
 pub struct Loan {
-    at: PlaceId,
+    at: Id<Place>,
     mutable: bool,
-    expr: ExprId,
+    expr: Id<Expr>,
     scope_depth: u32,
 }
 
 pub struct BorrowChecker<'a> {
-    typed_ast: &'a TypedAst,                          // The input AST with types
-    places: Vec<Place>,                               // All places
-    name_to_place: HashMap<String, PlaceId>,          // Lookup by name
-    place_states: HashMap<PlaceId, State>,            // Current state
-    ref_origins: HashMap<ExprId, ReferenceOrigin>,    // Where refs point
-    place_origins: HashMap<PlaceId, ReferenceOrigin>, // Where place refs point
-    loans: Vec<Loan>,                                 // All loans created
-    scope_depth: u32,                                 // Current nesting level
-    errors: Vec<BorrowError>,                         // Collected errors
-    next_place: u32,                                  // ID counter
-    next_loan: u32,                                   // ID counter
+    typed_ast: &'a TypedAst,                         // The input AST with types
+    places: Arena<Place>,                            // All places
+    name_to_place: HashMap<String, Id<Place>>,       // Lookup by name
+    place_states: HashMap<Id<Place>, State>,         // Current state
+    ref_origins: HashMap<Id<Expr>, ReferenceOrigin>, // Where refs point
+    place_origins: HashMap<Id<Place>, ReferenceOrigin>, // Where place refs point
+    loans: Arena<Loan>,                              // All loans created
+    scope_depth: u32,                                // Current nesting level
+    errors: Vec<BorrowError>,                        // Collected errors
+    next_place: u32,                                 // ID counter
+    next_loan: u32,                                  // ID counter
 }
 
 impl<'a> BorrowChecker<'a> {
     pub fn new(typed_ast: &'a TypedAst) -> Self {
         Self {
             typed_ast,
-            places: vec![],
+            places: Arena::new(),
             name_to_place: HashMap::new(),
             place_states: HashMap::new(),
             ref_origins: HashMap::new(),
             place_origins: HashMap::new(),
-            loans: vec![],
+            loans: Arena::new(),
             scope_depth: 0,
             errors: vec![],
             next_place: 0,
@@ -76,12 +73,12 @@ impl<'a> BorrowChecker<'a> {
     pub fn check_program(&mut self) -> Vec<BorrowError> {
         for func in &self.typed_ast.ast.funcs {
             // reset state
-            self.places = vec![];
+            self.places = Arena::new();
             self.name_to_place = HashMap::new();
             self.place_states = HashMap::new();
             self.ref_origins = HashMap::new();
             self.place_origins = HashMap::new();
-            self.loans = vec![];
+            self.loans = Arena::new();
             self.scope_depth = 0;
             self.next_place = 0;
             self.next_loan = 0;
@@ -97,7 +94,7 @@ impl<'a> BorrowChecker<'a> {
     }
 
     /// checks if a variable can be read
-    fn check_read(&mut self, name: impl Into<String>, expr_id: ExprId) {
+    fn check_read(&mut self, name: impl Into<String>, expr_id: Id<Expr>) {
         let name = name.into();
 
         let place_id = match self.name_to_place.get(&name) {
@@ -119,7 +116,7 @@ impl<'a> BorrowChecker<'a> {
             },
             State::Borrowed { .. } => return,
             State::MutBorrowed { loan } => {
-                let loan = &self.loans[loan.0 as usize];
+                let loan = self.loans.get(loan);
                 BorrowError::UseWhileMutBorrowed {
                     name,
                     use_expr: expr_id,
@@ -131,7 +128,7 @@ impl<'a> BorrowChecker<'a> {
         self.errors.push(error);
     }
 
-    fn check_move(&mut self, expr_id: ExprId) {
+    fn check_move(&mut self, expr_id: Id<Expr>) {
         // copy types are just copied, no need to check moves
         if let Some(ty) = self.typed_ast.types.get(&expr_id)
             && self.is_copy(ty)
@@ -140,7 +137,7 @@ impl<'a> BorrowChecker<'a> {
             return;
         }
 
-        let expr = self.typed_ast.ast.get_expr(&expr_id);
+        let expr = self.typed_ast.ast.exprs.get(&expr_id);
 
         // for non-variables, just check the expression
         let Expr::Var(name) = expr else {
@@ -169,7 +166,7 @@ impl<'a> BorrowChecker<'a> {
             State::Moved { .. } => { /* already reported */ }
             State::Borrowed { loans } => {
                 // report error
-                let loan = &self.loans[loans[0].0 as usize];
+                let loan = self.loans.get(&loans[0]);
                 self.errors.push(BorrowError::MoveWhileBorrowed {
                     name: name.value.to_string(),
                     move_expr: expr_id,
@@ -178,7 +175,7 @@ impl<'a> BorrowChecker<'a> {
             }
             State::MutBorrowed { loan } => {
                 // report error
-                let loan_data = &self.loans[loan.0 as usize];
+                let loan_data = self.loans.get(&loan);
                 self.errors.push(BorrowError::MoveWhileBorrowed {
                     name: name.value.to_string(),
                     move_expr: expr_id,
@@ -188,8 +185,8 @@ impl<'a> BorrowChecker<'a> {
         }
     }
 
-    fn check_borrow(&mut self, mutable: bool, inner_expr: ExprId, borrow_expr: ExprId) {
-        let inner = self.typed_ast.ast.get_expr(&inner_expr);
+    fn check_borrow(&mut self, mutable: bool, inner_expr: Id<Expr>, borrow_expr: Id<Expr>) {
+        let inner = self.typed_ast.ast.exprs.get(&inner_expr);
 
         // for non-variables, check the expression
         let Expr::Var(name) = inner else {
@@ -206,7 +203,7 @@ impl<'a> BorrowChecker<'a> {
         };
 
         // record origin for dangling reference checks
-        let place = &self.places[place_id.0 as usize];
+        let place = self.places.get(&place_id);
         let origin = if place.scope_depth == 0 {
             ReferenceOrigin::Parameter
         } else {
@@ -230,7 +227,7 @@ impl<'a> BorrowChecker<'a> {
             }
             State::MutBorrowed { loan } => {
                 // already borrowed
-                let existing = &self.loans[loan.0 as usize];
+                let existing = self.loans.get(&loan);
                 self.errors.push(BorrowError::ConflictingBorrow {
                     name: name.value.to_string(),
                     new_expr: borrow_expr,
@@ -242,7 +239,7 @@ impl<'a> BorrowChecker<'a> {
             State::Borrowed { ref loans } => {
                 if mutable {
                     // can't borrow mutably while immutably borrowed
-                    let existing = &self.loans[loans[0].0 as usize];
+                    let existing = self.loans.get(&loans[0]);
                     self.errors.push(BorrowError::ConflictingBorrow {
                         name: name.value.to_string(),
                         new_expr: borrow_expr,
@@ -277,8 +274,8 @@ impl<'a> BorrowChecker<'a> {
         }
     }
 
-    fn check_expr(&mut self, expr_id: ExprId) {
-        let expr = self.typed_ast.ast.get_expr(&expr_id);
+    fn check_expr(&mut self, expr_id: Id<Expr>) {
+        let expr = self.typed_ast.ast.exprs.get(&expr_id);
 
         match expr {
             Expr::Hole | Expr::I32(_) | Expr::Bool(_) | Expr::String(_) => {
@@ -323,7 +320,7 @@ impl<'a> BorrowChecker<'a> {
                     // Try to find origin: first from direct borrow, then from variable
                     let origin = self.ref_origins.get(val).cloned().or_else(|| {
                         // If val is a variable, look up its place's origin
-                        let val_expr = self.typed_ast.ast.get_expr(val);
+                        let val_expr = self.typed_ast.ast.exprs.get(val);
                         if let Expr::Var(name) = val_expr {
                             let place_id = self.name_to_place.get(&*name.value)?;
                             self.place_origins.get(place_id).cloned()
@@ -344,7 +341,7 @@ impl<'a> BorrowChecker<'a> {
                     }) = origin
                         && scope_depth == self.scope_depth
                     {
-                        let place = &self.places[at.0 as usize];
+                        let place = self.places.get(&at);
                         self.errors.push(BorrowError::DanglingReference {
                             name: place.name.clone(),
                             borrow_expr,
@@ -369,8 +366,8 @@ impl<'a> BorrowChecker<'a> {
         }
     }
 
-    fn check_stmt(&mut self, stmt_id: StmtId) {
-        let stmt = self.typed_ast.ast.get_stmt(&stmt_id);
+    fn check_stmt(&mut self, stmt_id: Id<Stmt>) {
+        let stmt = self.typed_ast.ast.stmts.get(&stmt_id);
 
         match stmt {
             Stmt::Let { name, value, .. } => {
@@ -391,24 +388,23 @@ impl<'a> BorrowChecker<'a> {
         }
     }
 
-    fn fresh_place(&mut self, name: impl Into<String>) -> PlaceId {
-        let place_id = PlaceId(self.next_place);
-        self.next_place += 1;
-
+    fn fresh_place(&mut self, name: impl Into<String>) -> Id<Place> {
+        let name = name.into();
         let place = Place {
-            name: name.into(),
+            name: name.clone(),
             scope_depth: self.scope_depth,
         };
 
-        self.name_to_place.insert(place.name.clone(), place_id);
+        let id = self.places.alloc(place);
 
-        self.places.push(place);
-        self.place_states.insert(place_id, State::Owned);
+        self.name_to_place.insert(name, id);
 
-        place_id
+        self.place_states.insert(id, State::Owned);
+
+        id
     }
 
-    fn fresh_loan(&mut self, at: PlaceId, mutable: bool, expr: ExprId) -> LoanId {
+    fn fresh_loan(&mut self, at: PlaceId, mutable: bool, expr: Id<Expr>) -> LoanId {
         let loan_id = LoanId(self.next_loan);
         self.next_loan += 1;
 

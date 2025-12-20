@@ -2,9 +2,6 @@ use std::fmt::Display;
 
 use ena::unify::{UnifyKey, UnifyValue};
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TypeId(pub u32);
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Unit,

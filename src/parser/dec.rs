@@ -1,3 +1,4 @@
+use crate::arena::Id;
 use crate::ast::{Decl, Func, FuncParam, Module, Type};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
@@ -25,7 +26,7 @@ impl<'src> Parser<'src> {
         });
     }
 
-    fn parse_func_dec(&mut self) -> Option<crate::ast::FuncId> {
+    fn parse_func_dec(&mut self) -> Option<Id<Func>> {
         let start_span = self.peek_span();
 
         // fn

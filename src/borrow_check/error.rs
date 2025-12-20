@@ -1,34 +1,35 @@
+use crate::arena::Id;
 use crate::diagnostics::{Diagnostic, Label};
-use crate::{ExprId, TypedAst};
+use crate::{Expr, TypedAst};
 
 #[derive(Debug, Clone)]
 pub enum BorrowError {
     UseAfterMove {
         name: String,
-        use_expr: ExprId,
-        moved_at: ExprId,
+        use_expr: Id<Expr>,
+        moved_at: Id<Expr>,
     },
     MoveWhileBorrowed {
         name: String,
-        move_expr: ExprId,
-        borrow_expr: ExprId,
+        move_expr: Id<Expr>,
+        borrow_expr: Id<Expr>,
     },
     ConflictingBorrow {
         name: String,
-        new_expr: ExprId,
+        new_expr: Id<Expr>,
         new_mut: bool,
-        existing_expr: ExprId,
+        existing_expr: Id<Expr>,
         existing_mut: bool,
     },
     UseWhileMutBorrowed {
         name: String,
-        use_expr: ExprId,
-        borrow_expr: ExprId,
+        use_expr: Id<Expr>,
+        borrow_expr: Id<Expr>,
     },
     DanglingReference {
         name: String,
-        borrow_expr: ExprId,
-        return_expr: ExprId,
+        borrow_expr: Id<Expr>,
+        return_expr: Id<Expr>,
     },
 }
 

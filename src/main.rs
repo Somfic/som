@@ -2,6 +2,7 @@ mod ast;
 pub use ast::*;
 use target_lexicon::Triple;
 
+mod arena;
 mod borrow_check;
 mod code_gen;
 mod diagnostics;
@@ -24,12 +25,12 @@ use std::sync::Arc;
 fn main() {
     let source_text = r#"
 
-    fn one() -> i32 {
-        one()
+    fn main() -> i32 {
+        foo()
     }
 
-    fn main() -> i32 {
-        one()
+    fn foo() -> i32 {
+        42
     }
 
     "#;

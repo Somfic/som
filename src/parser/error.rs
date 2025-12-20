@@ -11,6 +11,15 @@ pub struct ParseError {
 }
 
 impl ParseError {
+    pub fn with_message(message: String, span: Span) -> Self {
+        Self {
+            expected: vec![],
+            found: TokenKind::Eof,
+            message,
+            span,
+        }
+    }
+
     pub fn new(expected: Vec<TokenKind>, found: TokenKind, span: Span) -> Self {
         let expected_str = if expected.is_empty() {
             "nothing".to_string()

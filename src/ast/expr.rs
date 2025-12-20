@@ -1,7 +1,4 @@
-use crate::{FuncId, Ident, StmtId, TraitId};
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ExprId(pub u32);
+use crate::{Ident, Stmt, Trait, arena::Id};
 
 pub enum Expr {
     /// hole caused by invalid/error code
@@ -12,23 +9,23 @@ pub enum Expr {
     Var(Ident),
     Binary {
         op: BinOp,
-        lhs: ExprId,
-        rhs: ExprId,
+        lhs: Id<Expr>,
+        rhs: Id<Expr>,
     },
     Block {
-        stmts: Vec<StmtId>,
-        value: Option<ExprId>,
+        stmts: Vec<Id<Stmt>>,
+        value: Option<Id<Expr>>,
     },
     Call {
-        func: FuncId,
-        args: Vec<ExprId>,
+        name: Ident,
+        args: Vec<Id<Expr>>,
     },
     Borrow {
         mutable: bool,
-        expr: ExprId,
+        expr: Id<Expr>,
     },
     Deref {
-        expr: ExprId,
+        expr: Id<Expr>,
     },
 }
 
@@ -45,20 +42,21 @@ pub enum BinOp {
     Or,
 }
 
-pub const TRAIT_ADD: TraitId = TraitId(0);
-pub const TRAIT_SUB: TraitId = TraitId(1);
-pub const TRAIT_MUL: TraitId = TraitId(2);
-pub const TRAIT_DIV: TraitId = TraitId(3);
-pub const TRAIT_EQ: TraitId = TraitId(4);
-pub const TRAIT_NEQ: TraitId = TraitId(5);
-pub const TRAIT_LT: TraitId = TraitId(6);
-pub const TRAIT_GT: TraitId = TraitId(7);
-pub const TRAIT_LT_EQ: TraitId = TraitId(8);
-pub const TRAIT_GT_EQ: TraitId = TraitId(9);
-pub const TRAIT_AND: TraitId = TraitId(10);
-pub const TRAIT_OR: TraitId = TraitId(11);
+pub const TRAIT_ADD: Id<Trait> = Id::<Trait>::new(0);
+pub const TRAIT_SUB: Id<Trait> = Id::<Trait>::new(1);
+pub const TRAIT_MUL: Id<Trait> = Id::<Trait>::new(2);
+pub const TRAIT_DIV: Id<Trait> = Id::<Trait>::new(3);
+pub const TRAIT_EQ: Id<Trait> = Id::<Trait>::new(4);
+pub const TRAIT_NEQ: Id<Trait> = Id::<Trait>::new(5);
+pub const TRAIT_LT: Id<Trait> = Id::<Trait>::new(6);
+pub const TRAIT_GT: Id<Trait> = Id::<Trait>::new(7);
+pub const TRAIT_LT_EQ: Id<Trait> = Id::<Trait>::new(8);
+pub const TRAIT_GT_EQ: Id<Trait> = Id::<Trait>::new(9);
+pub const TRAIT_AND: Id<Trait> = Id::<Trait>::new(10);
+pub const TRAIT_OR: Id<Trait> = Id::<Trait>::new(11);
+
 impl BinOp {
-    pub fn trait_id(&self) -> TraitId {
+    pub fn trait_id(&self) -> Id<Trait> {
         match self {
             BinOp::Add => TRAIT_ADD,
             BinOp::Subtract => TRAIT_SUB,

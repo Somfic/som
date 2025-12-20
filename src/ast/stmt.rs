@@ -1,16 +1,13 @@
-use crate::{ExprId, Ident, Type};
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct StmtId(pub u32);
+use crate::{Expr, Ident, Type, arena::Id};
 
 pub enum Stmt {
     Let {
         name: Ident,
         mutable: bool,
         ty: Option<Type>,
-        value: ExprId,
+        value: Id<Expr>,
     },
     Expr {
-        expr: ExprId,
+        expr: Id<Expr>,
     },
 }
