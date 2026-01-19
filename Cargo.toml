@@ -8,7 +8,7 @@ description = "The 'som' programming language"
 rust-version = "1.89.0"
 
 [dependencies]
-cranelift = { version = "0.126.1", features = ["module", "object"] }
+cranelift = { version = "0.127.0", features = ["module", "object"] }
 ena = "0.14.3"
 logos = "0.16.0"
 nerd-font-symbols = "0.3.0"
