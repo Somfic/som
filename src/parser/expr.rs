@@ -229,8 +229,8 @@ impl<'src> Parser<'src> {
             TokenKind::NotEquals => Some(BinOp::NotEquals),
             TokenKind::LessThan => Some(BinOp::LessThan),
             TokenKind::GreaterThan => Some(BinOp::GreaterThan),
-            TokenKind::LessThanOrEqual => Some(BinOp::LessThan), // TODO: Add LessThanOrEqual
-            TokenKind::GreaterThanOnEqual => Some(BinOp::GreaterThan), // TODO: Add GreaterThanOrEqual
+            TokenKind::LessThanOrEqual => Some(BinOp::LessThanOrEqual),
+            TokenKind::GreaterThanOnEqual => Some(BinOp::GreaterThanOrEqual),
             _ => None,
         }
     }
@@ -243,7 +243,7 @@ impl BinOp {
             BinOp::Or => (1, 2),
             BinOp::And => (3, 4),
             BinOp::Equals | BinOp::NotEquals => (5, 6),
-            BinOp::LessThan | BinOp::GreaterThan => (7, 8),
+            BinOp::LessThan | BinOp::GreaterThan | BinOp::LessThanOrEqual | BinOp::GreaterThanOrEqual => (7, 8),
             BinOp::Add | BinOp::Subtract => (9, 10),
             BinOp::Multiply | BinOp::Divide => (11, 12),
         }

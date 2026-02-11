@@ -187,6 +187,16 @@ impl<'ast> Codegen<'ast> {
                             .ins()
                             .icmp(IntCC::SignedGreaterThan, lhs_val, rhs_val)
                     }
+                    BinOp::LessThanOrEqual => {
+                        func.body
+                            .ins()
+                            .icmp(IntCC::SignedLessThanOrEqual, lhs_val, rhs_val)
+                    }
+                    BinOp::GreaterThanOrEqual => {
+                        func.body
+                            .ins()
+                            .icmp(IntCC::SignedGreaterThanOrEqual, lhs_val, rhs_val)
+                    }
                     BinOp::Equals => func.body.ins().icmp(IntCC::Equal, lhs_val, rhs_val),
                     BinOp::NotEquals => func.body.ins().icmp(IntCC::NotEqual, lhs_val, rhs_val),
                     // Boolean ops
