@@ -1,7 +1,7 @@
 use ena::unify::InPlaceUnificationTable;
 
 use crate::{
-    Ast, Expr, ExternFunc, Func, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, Trait, Type,
+    Ast, Expr, Func, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, Trait, Type,
     TypeValue, TypeVar, TypedAst, arena::Id, scope::ScopedEnvironment,
 };
 use std::collections::HashMap;
@@ -106,39 +106,9 @@ impl TypeInferencer {
                 block_ty
             }
             Expr::Call { name, args } => {
-                // First check if function is in env (includes extern functions)
-                if let Some(func_ty) = self.env.get(&name.value).cloned() {
-                    if let Type::Fun { arguments, returns } = func_ty {
-                        // Check argument count
-                        if args.len() != arguments.len() {
-                            self.errors.push(TypeError::WrongArgCount {
-                                span: ast.get_expr_span(expr_id).clone(),
-                                expected: arguments.len(),
-                                found: args.len(),
-                            });
-                            return self.fresh_type();
-                        }
-
-                        // Check each argument against parameter type
-                        for (arg_expr, param_ty) in args.iter().zip(&arguments) {
-                            let actual = self.infer(ast, arg_expr);
-                            self.constraints.push(Constraint::Equal {
-                                provenance: Provenance::FuncArg {
-                                    arg_expr: *arg_expr,
-                                    param_type_id: None,
-                                },
-                                lhs: actual,
-                                rhs: param_ty.clone(),
-                            });
-                        }
-
-                        return *returns;
-                    }
-                }
-
-                // Fall back to regular function lookup
-                let func_id = match ast.find_func_by_name(&name.value) {
-                    Some(id) => id,
+                // Look up function in unified registry
+                let entry = match ast.func_registry.get(&*name.value) {
+                    Some(entry) => entry.clone(),
                     None => {
                         self.errors.push(TypeError::UnknownFunction {
                             span: ast.get_expr_span(expr_id).clone(),
@@ -148,62 +118,46 @@ impl TypeInferencer {
                     }
                 };
 
-                let func = ast.funcs.get(&func_id);
-
                 // Check argument count
-                if args.len() != func.parameters.len() {
+                if args.len() != entry.signature.params.len() {
                     self.errors.push(TypeError::WrongArgCount {
                         span: ast.get_expr_span(expr_id).clone(),
-                        expected: func.parameters.len(),
+                        expected: entry.signature.params.len(),
                         found: args.len(),
                     });
                     return self.fresh_type();
                 }
 
-                // Instantiate fresh type vars for this call site
-                let mut call_generics: HashMap<String, TypeVar> = HashMap::new();
-                for type_param in &func.type_parameters {
-                    let tv = self.fresh_type_var();
-                    call_generics.insert(type_param.name.value.to_string(), tv);
-                }
+                // For regular functions, handle generics
+                let call_generics: HashMap<String, TypeVar> = match &entry.kind {
+                    crate::FuncKind::Regular(func_id) => {
+                        let func = ast.funcs.get(func_id);
+                        func.type_parameters
+                            .iter()
+                            .map(|tp| (tp.name.value.to_string(), self.fresh_type_var()))
+                            .collect()
+                    }
+                    crate::FuncKind::Extern(_) => HashMap::new(),
+                };
 
                 let call_span = ast.get_expr_span(expr_id);
 
                 // Check each argument against parameter type
-                for (arg_expr, param) in args.iter().zip(&func.parameters) {
-                    match &param.ty {
-                        Some(param_ty) => {
-                            // Resolve generic types for this call site
-                            let resolved_ty =
-                                self.resolve_type(param_ty, &call_generics, call_span);
-                            let actual = self.infer(ast, arg_expr);
-                            self.constraints.push(Constraint::Equal {
-                                provenance: Provenance::FuncArg {
-                                    arg_expr: *arg_expr,
-                                    param_type_id: param.type_id,
-                                },
-                                lhs: actual,
-                                rhs: resolved_ty,
-                            });
-                        }
-                        None => {
-                            // Parameter type not annotated, just infer the argument
-                            self.infer(ast, arg_expr);
-                        }
-                    }
+                for (arg_expr, param_ty) in args.iter().zip(&entry.signature.params) {
+                    let resolved_ty = self.resolve_type(param_ty, &call_generics, call_span);
+                    let actual = self.infer(ast, arg_expr);
+                    self.constraints.push(Constraint::Equal {
+                        provenance: Provenance::FuncArg {
+                            arg_expr: *arg_expr,
+                            param_type_id: None,
+                        },
+                        lhs: actual,
+                        rhs: resolved_ty,
+                    });
                 }
 
-                // Return the function's return type (resolved for this call site)
-                match &func.return_type {
-                    Some(return_ty) => self.resolve_type(return_ty, &call_generics, call_span),
-                    None => {
-                        // Check if we've inferred this function's type already
-                        self.func_types
-                            .get(&func_id)
-                            .cloned()
-                            .unwrap_or_else(|| self.fresh_type())
-                    }
-                }
+                // Return the function's return type
+                self.resolve_type(&entry.signature.return_type, &call_generics, call_span)
             }
             Expr::Borrow { mutable, expr } => {
                 let inner = self.infer(ast, expr);
@@ -632,36 +586,8 @@ impl TypeInferencer {
 
     /// Type check an entire program
     pub fn check_program(mut self, ast: Ast) -> TypedAst {
-        let extern_func_ids: Vec<Id<ExternFunc>> =
-            (0..ast.extern_funcs.len()).map(|i| Id::new(i)).collect();
+        // Check all regular functions (extern funcs have no bodies to check)
         let func_ids: Vec<Id<Func>> = (0..ast.funcs.len()).map(|i| Id::new(i)).collect();
-
-        for extern_func_id in extern_func_ids {
-            let external_func = ast.extern_funcs.get(&extern_func_id);
-
-            let arguments = external_func
-                .parameters
-                .iter()
-                .map(|p| match &p.ty {
-                    Some(ty) => ty.clone(),
-                    None => self.fresh_type(),
-                })
-                .collect();
-
-            let return_ty = match &external_func.return_type {
-                Some(ty) => ty.clone(),
-                None => self.fresh_type(),
-            };
-
-            self.env.insert(
-                external_func.name.value.clone(),
-                Type::Fun {
-                    arguments: arguments,
-                    returns: Box::new(return_ty),
-                },
-            );
-        }
-
         for func_id in func_ids {
             self.check_func(&ast, func_id);
         }

@@ -1,5 +1,5 @@
 use crate::{
-    BinOp, Diagnostic, Expr, ExternFunc, Func, Stmt, Type, TypedAst, arena::Id,
+    BinOp, Diagnostic, Expr, Func, Stmt, Type, TypedAst, arena::Id,
     scope::ScopedEnvironment,
 };
 use cranelift::{
@@ -45,8 +45,8 @@ pub struct Codegen<'ast> {
     isa: Arc<dyn isa::TargetIsa>,
     typed_ast: &'ast TypedAst,
     module: ObjectModule,
-    func_ids: Vec<cranelift::module::FuncId>,
-    extern_func_ids: HashMap<String, cranelift::module::FuncId>,
+    /// Unified map of all callable functions by name
+    func_ids: HashMap<String, cranelift::module::FuncId>,
 }
 
 impl<'ast> Codegen<'ast> {
@@ -69,71 +69,48 @@ impl<'ast> Codegen<'ast> {
             typed_ast,
             isa,
             module,
-            func_ids: vec![],
-            extern_func_ids: HashMap::new(),
+            func_ids: HashMap::new(),
         })
     }
 
     pub fn compile(mut self) -> Result<ObjectProduct> {
-        for func in &self.typed_ast.ast.funcs {
-            self.dec_func(func)?;
+        // Declare all functions using the unified registry
+        for (name, entry) in &self.typed_ast.ast.func_registry {
+            let linkage = match &entry.kind {
+                crate::FuncKind::Regular(_) => {
+                    if name == "main" {
+                        Linkage::Export
+                    } else {
+                        Linkage::Local
+                    }
+                }
+                crate::FuncKind::Extern(_) => Linkage::Import,
+            };
+
+            let sig = self.build_signature_from_entry(entry);
+            let func_id = self
+                .module
+                .declare_function(name, linkage, &sig)
+                .map_err(|e| {
+                    CodegenError::ModuleError(format!("failed to declare function {}: {}", name, e))
+                        .to_diagnostic()
+                })?;
+
+            self.func_ids.insert(name.clone(), func_id);
         }
 
-        for extern_func in &self.typed_ast.ast.extern_funcs {
-            self.dec_extern_func(extern_func)?;
-        }
-
-        for func in &self.typed_ast.ast.funcs {
-            self.gen_func(func)?;
+        // Generate bodies for regular functions only
+        for (name, entry) in &self.typed_ast.ast.func_registry {
+            if let crate::FuncKind::Regular(func_id) = &entry.kind {
+                let func = self.typed_ast.ast.funcs.get(func_id);
+                self.gen_func(func, name)?;
+            }
         }
 
         Ok(self.module.finish())
     }
 
-    fn dec_func(&mut self, func: &Func) -> Result<()> {
-        let sig = self.build_signature(func);
-        let linkage = if func.name.value == "main".into() {
-            Linkage::Export
-        } else {
-            Linkage::Local
-        };
-
-        let func_id = self
-            .module
-            .declare_function(&func.name.value, linkage, &sig)
-            .map_err(|e| {
-                CodegenError::ModuleError(format!(
-                    "failed to declare function {}: {}",
-                    func.name.value, e
-                ))
-                .to_diagnostic()
-            })?;
-
-        self.func_ids.push(func_id);
-
-        Ok(())
-    }
-
-    fn dec_extern_func(&mut self, func: &ExternFunc) -> Result<()> {
-        let sig = self.build_extern_signature(func);
-        let func_id = self
-            .module
-            .declare_function(&func.name.value, Linkage::Import, &sig)
-            .map_err(|e| {
-                CodegenError::ModuleError(format!(
-                    "failed to declare extern function {}: {}",
-                    func.name.value, e
-                ))
-                .to_diagnostic()
-            })?;
-
-        self.extern_func_ids
-            .insert(func.name.value.to_string(), func_id);
-
-        Ok(())
-    }
-
-    fn gen_func(&mut self, func: &Func) -> Result<()> {
+    fn gen_func(&mut self, func: &Func, name: &str) -> Result<()> {
         let return_type = func
             .return_type
             .as_ref()
@@ -177,10 +154,8 @@ impl<'ast> Codegen<'ast> {
         // Print Cranelift IR
         println!("{}", ctx.func);
 
-        let func_id = self
-            .module
-            .declare_function(&func.name.value, Linkage::Export, &sig)
-            .map_err(|e| CodegenError::ModuleError(e.to_string()).to_diagnostic())?;
+        // Use the already-declared func_id from compile()
+        let func_id = *self.func_ids.get(name).expect("function should be declared");
         self.module
             .define_function(func_id, &mut ctx)
             .map_err(|e| CodegenError::ModuleError(e.to_string()).to_diagnostic())?;
@@ -274,19 +249,11 @@ impl<'ast> Codegen<'ast> {
                 result
             }
             Expr::Call { name, args } => {
-                // Check extern functions first (matches type checker order)
-                let callee_func_id =
-                    if let Some(&id) = self.extern_func_ids.get(&*name.value) {
-                        id
-                    } else {
-                        // Fall back to regular function lookup
-                        let func_id = self
-                            .typed_ast
-                            .ast
-                            .find_func_by_name(&name.value)
-                            .expect("type checker should have caught unknown function");
-                        self.func_ids[func_id.id]
-                    };
+                // Look up in unified func_ids map
+                let callee_func_id = *self
+                    .func_ids
+                    .get(&*name.value)
+                    .expect("type checker should have caught unknown function");
 
                 let callee_func_ref = self
                     .module
@@ -360,33 +327,18 @@ impl<'ast> Codegen<'ast> {
         // todo
     }
 
-    fn build_signature(&self, func: &Func) -> Signature {
+    fn build_signature_from_entry(&self, entry: &crate::FuncEntry) -> Signature {
         let mut sig = Signature::new(self.isa.default_call_conv());
 
-        sig.params = func
-            .parameters
+        sig.params = entry
+            .signature
+            .params
             .iter()
-            .filter_map(|p| p.ty.as_ref().map(|ty| AbiParam::new(to_type(ty))))
+            .map(|ty| AbiParam::new(to_type(ty)))
             .collect();
 
-        if let Some(ret_ty) = &func.return_type {
-            sig.returns = vec![AbiParam::new(to_type(ret_ty))];
-        }
-
-        sig
-    }
-
-    fn build_extern_signature(&self, func: &ExternFunc) -> Signature {
-        let mut sig = Signature::new(self.isa.default_call_conv());
-
-        sig.params = func
-            .parameters
-            .iter()
-            .filter_map(|p| p.ty.as_ref().map(|ty| AbiParam::new(to_type(ty))))
-            .collect();
-
-        if let Some(ret_ty) = &func.return_type {
-            sig.returns = vec![AbiParam::new(to_type(ret_ty))];
+        if entry.signature.return_type != Type::Unit {
+            sig.returns = vec![AbiParam::new(to_type(&entry.signature.return_type))];
         }
 
         sig

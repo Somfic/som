@@ -13,6 +13,27 @@ use crate::arena::{Arena, Id};
 use crate::span::Span;
 use crate::type_check::{Constraint, TypeError};
 
+/// Function signature - what you need to call any function
+#[derive(Clone, Debug)]
+pub struct FuncSignature {
+    pub params: Vec<Type>,
+    pub return_type: Type,
+}
+
+/// Distinguishes regular functions from external imports
+#[derive(Clone, Debug)]
+pub enum FuncKind {
+    Regular(Id<Func>),
+    Extern(Id<ExternFunc>),
+}
+
+/// Entry in the unified function registry
+#[derive(Clone, Debug)]
+pub struct FuncEntry {
+    pub signature: FuncSignature,
+    pub kind: FuncKind,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Ident {
     pub id: u32,
@@ -56,6 +77,9 @@ pub struct Ast {
     pub spans: Arena<Span>,
 
     next_type_id: usize,
+
+    /// Unified function registry - all callable functions by name
+    pub func_registry: HashMap<String, FuncEntry>,
 }
 
 impl Ast {
@@ -150,16 +174,54 @@ impl Ast {
     }
 
     pub fn alloc_func_with_span(&mut self, func: Func, span: Span) -> Id<Func> {
+        let name = func.name.value.to_string();
+        let signature = FuncSignature {
+            params: func
+                .parameters
+                .iter()
+                .map(|p| p.ty.clone().unwrap_or(Type::Unit))
+                .collect(),
+            return_type: func.return_type.clone().unwrap_or(Type::Unit),
+        };
+
         let id = self.funcs.alloc(func);
         let span_id = self.spans.alloc(span);
         self.func_spans.insert(id, span_id);
+
+        self.func_registry.insert(
+            name,
+            FuncEntry {
+                signature,
+                kind: FuncKind::Regular(id),
+            },
+        );
+
         id
     }
 
     pub fn alloc_extern_func_with_span(&mut self, func: ExternFunc, span: Span) -> Id<ExternFunc> {
+        let name = func.name.value.to_string();
+        let signature = FuncSignature {
+            params: func
+                .parameters
+                .iter()
+                .map(|p| p.ty.clone().unwrap_or(Type::Unit))
+                .collect(),
+            return_type: func.return_type.clone().unwrap_or(Type::Unit),
+        };
+
         let id = self.extern_funcs.alloc(func);
         let span_id = self.spans.alloc(span);
         self.extern_func_spans.insert(id, span_id);
+
+        self.func_registry.insert(
+            name,
+            FuncEntry {
+                signature,
+                kind: FuncKind::Extern(id),
+            },
+        );
+
         id
     }
 

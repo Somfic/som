@@ -17,18 +17,25 @@ enum LinkerFlavor {
 
 enum LinkerError {
     NoLinkerFound,
-    FailedToLink,
+    FailedToLink { stderr: String },
     IoError(std::io::Error),
 }
 
 impl LinkerError {
     fn to_diagnostic(self) -> Diagnostic {
-        let message = match &self {
-            LinkerError::NoLinkerFound => "no linker found".to_string(),
-            LinkerError::FailedToLink => "failed to link".to_string(),
-            LinkerError::IoError(e) => format!("io error: {}", e),
-        };
-        Diagnostic::error(message)
+        match self {
+            LinkerError::NoLinkerFound => Diagnostic::error("no linker found"),
+            LinkerError::FailedToLink { stderr } => {
+                let mut diag = Diagnostic::error("failed to link");
+                for line in stderr.lines() {
+                    if !line.is_empty() {
+                        diag = diag.with_trace(line);
+                    }
+                }
+                diag
+            }
+            LinkerError::IoError(e) => Diagnostic::error(format!("io error: {}", e)),
+        }
     }
 }
 
@@ -108,12 +115,13 @@ impl Linker {
             }
         }
 
-        let status = cmd
-            .status()
+        let output = cmd
+            .output()
             .map_err(|err| LinkerError::IoError(err).to_diagnostic())?;
 
-        if !status.success() {
-            return Err(LinkerError::FailedToLink.to_diagnostic());
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(LinkerError::FailedToLink { stderr }.to_diagnostic());
         }
 
         // Return absolute path so runner can find it

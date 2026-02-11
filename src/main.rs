@@ -28,10 +28,11 @@ fn main() {
 
     extern {
        fn puts(s: &str) -> i32;
+       fn add(a: i32, b: i32) -> i32;
     }
 
     fn main() -> i32 {
-        puts("Hello world!");
+        puts("Hello, world!");
         0
     }
 
