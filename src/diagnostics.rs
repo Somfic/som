@@ -100,6 +100,9 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Let
         | TokenKind::If
         | TokenKind::Else
+        | TokenKind::Loop
+        | TokenKind::While
+        | TokenKind::For
         | TokenKind::Mut => MAUVE,
         TokenKind::I8
         | TokenKind::I16
@@ -128,6 +131,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Equals
         | TokenKind::DoubleEquals
         | TokenKind::NotEquals
+        | TokenKind::Bang
         | TokenKind::LessThan
         | TokenKind::GreaterThan
         | TokenKind::LessThanOrEqual

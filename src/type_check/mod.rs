@@ -203,6 +203,17 @@ impl TypeInferencer {
                     }
                 }
             }
+            Expr::Not { expr } => {
+                // Operand must be boolean
+                let expr_ty = self.infer(ast, expr);
+                self.constraints.push(Constraint::Equal {
+                    provenance: Provenance::Not(*expr),
+                    lhs: expr_ty,
+                    rhs: Type::Bool,
+                });
+                // Result is boolean
+                Type::Bool
+            }
             Expr::Conditional {
                 condition,
                 truthy,
@@ -274,6 +285,18 @@ impl TypeInferencer {
             },
             Stmt::Expr { expr } => {
                 self.infer(ast, expr);
+            }
+            Stmt::Loop { body } => {
+                for stmt in body {
+                    self.check_stmt(ast, *stmt);
+                }
+            }
+            Stmt::While { condition, body } => {
+                // Check that condition is bool
+                self.check_expr(ast, *condition, Type::Bool);
+                for stmt in body {
+                    self.check_stmt(ast, *stmt);
+                }
             }
         }
     }

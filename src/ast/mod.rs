@@ -294,4 +294,27 @@ pub struct Module {
     pub decs: Vec<Decl>,
 }
 
+impl Ast {
+    /// Collect all library names from extern blocks and whether libc is needed
+    /// Returns (libraries, needs_libc) where needs_libc is true if there's an
+    /// extern block without a specified library (implying libc/system library)
+    pub fn get_extern_libraries(&self) -> (Vec<String>, bool) {
+        let mut libraries = Vec::new();
+        let mut needs_libc = false;
+
+        for module in &self.mods {
+            for decl in &module.decs {
+                if let Decl::ExternBlock(block) = decl {
+                    match &block.library {
+                        Some(lib) => libraries.push(lib.clone()),
+                        None => needs_libc = true,
+                    }
+                }
+            }
+        }
+
+        (libraries, needs_libc)
+    }
+}
+
 const BUILTIN_TRAIT_COUNT: u32 = 100;

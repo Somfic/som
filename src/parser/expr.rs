@@ -126,6 +126,13 @@ impl<'src> Parser<'src> {
                 let span = start_span.merge(&end_span);
                 Some(self.ast.alloc_expr_with_span(Expr::Deref { expr }, span))
             }
+            TokenKind::Bang => {
+                self.advance(); // consume !
+                let expr = self.parse_expr_bp(15)?;
+                let end_span = self.previous_span();
+                let span = start_span.merge(&end_span);
+                Some(self.ast.alloc_expr_with_span(Expr::Not { expr }, span))
+            }
             _ => {
                 self.error(vec![
                     TokenKind::Int,
@@ -134,6 +141,7 @@ impl<'src> Parser<'src> {
                     TokenKind::OpenBrace,
                     TokenKind::Ampersand,
                     TokenKind::Star,
+                    TokenKind::Bang,
                 ]);
                 // Return a hole expression for error recovery
                 Some(self.ast.alloc_expr_with_span(Expr::Hole, start_span))
@@ -213,6 +221,16 @@ impl<'src> Parser<'src> {
             if self.at(TokenKind::Let) {
                 // Let statement
                 if let Some(stmt_id) = self.parse_let_stmt() {
+                    stmts.push(stmt_id);
+                }
+            } else if self.at(TokenKind::Loop) {
+                // Loop statement
+                if let Some(stmt_id) = self.parse_loop() {
+                    stmts.push(stmt_id);
+                }
+            } else if self.at(TokenKind::While) {
+                // While statement
+                if let Some(stmt_id) = self.parse_while() {
                     stmts.push(stmt_id);
                 }
             } else {

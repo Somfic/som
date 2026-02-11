@@ -27,6 +27,9 @@ pub enum Expr {
     Deref {
         expr: Id<Expr>,
     },
+    Not {
+        expr: Id<Expr>,
+    },
     Conditional {
         condition: Id<Expr>,
         truthy: Id<Expr>,

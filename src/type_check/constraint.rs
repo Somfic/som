@@ -46,6 +46,7 @@ pub enum Provenance {
     Unification,
     Deref(Id<Expr>),
     Conditional(Id<Expr>),
+    Not(Id<Expr>),
 }
 
 impl Provenance {
@@ -62,6 +63,7 @@ impl Provenance {
             }
             Provenance::Deref(id) => *id,
             Provenance::Conditional(id) => *id,
+            Provenance::Not(id) => *id,
         }
     }
 

@@ -8,6 +8,9 @@ type Result<T> = std::result::Result<T, Diagnostic>;
 
 pub struct Linker {
     pub output: String,
+    pub libraries: Vec<String>,
+    pub library_paths: Vec<String>,
+    pub needs_libc: bool,
 }
 
 enum LinkerFlavor {
@@ -43,7 +46,21 @@ impl Linker {
     pub fn new(output: impl Into<String>) -> Self {
         Self {
             output: output.into(),
+            libraries: Vec::new(),
+            library_paths: Vec::new(),
+            needs_libc: false,
         }
+    }
+
+    pub fn with_libraries(mut self, libraries: Vec<String>, needs_libc: bool) -> Self {
+        self.libraries = libraries;
+        self.needs_libc = needs_libc;
+        self
+    }
+
+    pub fn with_library_paths(mut self, paths: Vec<String>) -> Self {
+        self.library_paths = paths;
+        self
     }
 
     /// Link an ObjectProduct directly into an executable
@@ -102,16 +119,45 @@ impl Linker {
                         .arg("11.0") // Minimum macOS version
                         .arg("11.0") // SDK version
                         .arg("-syslibroot")
-                        .arg(sdk_path)
-                        .arg("-lSystem"); // Link against system library
+                        .arg(sdk_path);
+
+                    // Only link system library if needed (extern block without library name)
+                    if self.needs_libc {
+                        cmd.arg("-lSystem");
+                    }
                 }
                 cmd.arg("-o").arg(&self.output).args(modules);
+
+                // Add library search paths
+                for path in &self.library_paths {
+                    cmd.arg(format!("-L{}", path));
+                }
+
+                // Add library flags
+                for lib in &self.libraries {
+                    if lib.ends_with(".a") || lib.ends_with(".so") || lib.ends_with(".dylib") {
+                        // Full path to library file
+                        cmd.arg(lib);
+                    } else {
+                        // Library name: -l<name>
+                        cmd.arg(format!("-l{}", lib));
+                    }
+                }
             }
             LinkerFlavor::MsvcLink => {
                 cmd.arg(format!("/OUT:{}", self.output))
                     .arg("/ENTRY:main")
                     .arg("/SUBSYSTEM:CONSOLE")
                     .args(modules);
+
+                // Add library flags for MSVC
+                for lib in &self.libraries {
+                    if lib.ends_with(".lib") {
+                        cmd.arg(lib);
+                    } else {
+                        cmd.arg(format!("{}.lib", lib));
+                    }
+                }
             }
         }
 

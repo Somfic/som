@@ -25,14 +25,27 @@ use std::sync::Arc;
 
 fn main() {
     let source_text = r#"
-
-    extern {
-       fn puts(s: &str) -> i32;
-       fn add(a: i32, b: i32) -> i32;
+    extern "raylib" {
+        fn InitWindow(width: i32, height: i32, title: &str);
+        fn SetTargetFPS(fps: i32);
+        fn WindowShouldClose() -> bool;
+        fn BeginDrawing();
+        fn EndDrawing();
+        fn CloseWindow();
     }
+  
 
     fn main() -> i32 {
-        puts("Hello, world!");
+        InitWindow(800, 600, "Hello, world!");
+        SetTargetFPS(60);
+
+        while !WindowShouldClose() {
+            BeginDrawing();
+            EndDrawing();
+        }
+
+        CloseWindow();
+
         0
     }
 
@@ -81,7 +94,18 @@ fn main() {
         }
     };
 
-    let linker = Linker::new("som");
+    let (libraries, needs_libc) = typed_ast.ast.get_extern_libraries();
+
+    // Add common library search paths (Homebrew)
+    let library_paths = if cfg!(target_arch = "aarch64") {
+        vec!["/opt/homebrew/lib".to_string()]
+    } else {
+        vec!["/usr/local/lib".to_string()]
+    };
+
+    let linker = Linker::new("som")
+        .with_libraries(libraries, needs_libc)
+        .with_library_paths(library_paths);
     let executable = match linker.link_object(product) {
         Ok(exe) => exe,
         Err(diagnostic) => {

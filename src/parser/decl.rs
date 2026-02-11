@@ -119,7 +119,8 @@ impl<'src> Parser<'src> {
 
         let library = if self.at(TokenKind::Text) {
             let token = self.peek_token();
-            let value = token.text.to_string();
+            // Strip surrounding quotes from the string literal
+            let value = token.text.trim_matches('"').to_string();
             self.advance(); // consume the library string
             Some(value)
         } else {

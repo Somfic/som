@@ -356,6 +356,9 @@ impl<'a> BorrowChecker<'a> {
             Expr::Deref { expr } => {
                 self.check_expr(*expr);
             }
+            Expr::Not { expr } => {
+                self.check_expr(*expr);
+            }
             Expr::Conditional {
                 condition,
                 truthy,
@@ -417,6 +420,17 @@ impl<'a> BorrowChecker<'a> {
             }
             Stmt::Expr { expr } => {
                 self.check_expr(*expr);
+            }
+            Stmt::Loop { body } => {
+                for stmt in body {
+                    self.check_stmt(*stmt);
+                }
+            }
+            Stmt::While { condition, body } => {
+                self.check_expr(*condition);
+                for stmt in body {
+                    self.check_stmt(*stmt);
+                }
             }
         }
     }

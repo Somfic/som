@@ -264,10 +264,22 @@ impl<'ast> Codegen<'ast> {
 
                 let call = func.body.ins().call(callee_func_ref, &arguments);
 
-                func.body.inst_results(call)[0]
+                let results = func.body.inst_results(call);
+                if results.is_empty() {
+                    // Void function - return dummy value (unit type)
+                    func.body.ins().iconst(types::I32, 0)
+                } else {
+                    results[0]
+                }
             }
             Expr::Borrow { mutable, expr } => todo!(),
             Expr::Deref { expr } => todo!(),
+            Expr::Not { expr } => {
+                let val = self.gen_expr(func, *expr);
+                // Boolean NOT: XOR with 1
+                let one = func.body.ins().iconst(types::I8, 1);
+                func.body.ins().bxor(val, one)
+            }
             Expr::Conditional {
                 condition,
                 truthy,
@@ -322,9 +334,62 @@ impl<'ast> Codegen<'ast> {
             Stmt::Expr { expr } => {
                 let _ = self.gen_expr(func, *expr);
             }
-        }
+            Stmt::Loop { body } => {
+                // Create loop header block
+                let loop_block = func.body.create_block();
 
-        // todo
+                // Jump into loop
+                func.body.ins().jump(loop_block, &[]);
+
+                // Switch to loop block
+                func.body.switch_to_block(loop_block);
+
+                // Generate body statements
+                for stmt in body {
+                    self.gen_stmt(func, *stmt);
+                }
+
+                // Jump back to loop header (infinite loop)
+                func.body.ins().jump(loop_block, &[]);
+                func.body.seal_block(loop_block);
+
+                // Create exit block (unreachable without break, but needed for well-formed IR)
+                let exit_block = func.body.create_block();
+                func.body.switch_to_block(exit_block);
+                func.body.seal_block(exit_block);
+            }
+            Stmt::While { condition, body } => {
+                // Create blocks for while loop
+                let header_block = func.body.create_block();
+                let body_block = func.body.create_block();
+                let exit_block = func.body.create_block();
+
+                // Jump to header
+                func.body.ins().jump(header_block, &[]);
+
+                // Header block: evaluate condition and branch
+                func.body.switch_to_block(header_block);
+                let condition_val = self.gen_expr(func, *condition);
+                func.body
+                    .ins()
+                    .brif(condition_val, body_block, &[], exit_block, &[]);
+
+                // Body block: execute statements and jump back to header
+                func.body.switch_to_block(body_block);
+                func.body.seal_block(body_block);
+                for stmt in body {
+                    self.gen_stmt(func, *stmt);
+                }
+                func.body.ins().jump(header_block, &[]);
+
+                // Seal header after body (since body jumps back to it)
+                func.body.seal_block(header_block);
+
+                // Exit block: continue after loop
+                func.body.switch_to_block(exit_block);
+                func.body.seal_block(exit_block);
+            }
+        }
     }
 
     fn build_signature_from_entry(&self, entry: &crate::FuncEntry) -> Signature {

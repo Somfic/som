@@ -81,6 +81,8 @@ pub enum TokenKind {
     DoubleEquals,
     #[token("!=")]
     NotEquals,
+    #[token("!")]
+    Bang,
     #[token("<")]
     LessThan,
     #[token(">")]
@@ -122,6 +124,14 @@ pub enum TokenKind {
     Whitespace,
     #[regex(r"//[^\n]*", allow_greedy = true)]
     Comment,
+
+    // Loops
+    #[token("loop")]
+    Loop,
+    #[token("while")]
+    While,
+    #[token("for")]
+    For,
 
     // Special
     Error,

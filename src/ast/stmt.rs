@@ -10,4 +10,11 @@ pub enum Stmt {
     Expr {
         expr: Id<Expr>,
     },
+    Loop {
+        body: Vec<Id<Stmt>>,
+    },
+    While {
+        condition: Id<Expr>,
+        body: Vec<Id<Stmt>>,
+    },
 }
