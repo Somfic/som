@@ -3,6 +3,7 @@ pub use ast::*;
 use target_lexicon::Triple;
 
 mod arena;
+mod scope;
 mod borrow_check;
 mod code_gen;
 mod diagnostics;
@@ -26,11 +27,17 @@ fn main() {
     let source_text = r#"
 
     fn main() -> i32 {
-        foo()
+        let a = 12;
+        let b = a;
+        foo(b)
     }
 
-    fn foo() -> i32 {
-        42
+    fn foo(x: i32) -> i32 {
+        { 
+            let x = 1; 
+        };
+
+        x
     }
 
     "#;

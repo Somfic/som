@@ -1,12 +1,11 @@
 mod error;
-use std::{collections::HashMap, hash::Hash};
-
-pub use error::*;
-
 use crate::{
     Expr, Lifetime, Stmt, Type, TypedAst,
     arena::{Arena, Id},
+    scope::ScopedEnvironment,
 };
+pub use error::*;
+use std::collections::HashMap;
 
 pub struct Place {
     name: String,
@@ -42,7 +41,7 @@ pub struct Loan {
 pub struct BorrowChecker<'a> {
     typed_ast: &'a TypedAst,                         // The input AST with types
     places: Arena<Place>,                            // All places
-    name_to_place: HashMap<String, Id<Place>>,       // Lookup by name
+    name_to_place: ScopedEnvironment<Id<Place>>,     // Lookup by name
     place_states: HashMap<Id<Place>, State>,         // Current state
     ref_origins: HashMap<Id<Expr>, ReferenceOrigin>, // Where refs point
     place_origins: HashMap<Id<Place>, ReferenceOrigin>, // Where place refs point
@@ -56,7 +55,7 @@ impl<'a> BorrowChecker<'a> {
         Self {
             typed_ast,
             places: Arena::new(),
-            name_to_place: HashMap::new(),
+            name_to_place: ScopedEnvironment::new(),
             place_states: HashMap::new(),
             ref_origins: HashMap::new(),
             place_origins: HashMap::new(),
@@ -70,7 +69,7 @@ impl<'a> BorrowChecker<'a> {
         for func in &self.typed_ast.ast.funcs {
             // reset state
             self.places = Arena::new();
-            self.name_to_place = HashMap::new();
+            self.name_to_place = ScopedEnvironment::new();
             self.place_states = HashMap::new();
             self.ref_origins = HashMap::new();
             self.place_origins = HashMap::new();
@@ -411,6 +410,7 @@ impl<'a> BorrowChecker<'a> {
 
     fn push_scope(&mut self) {
         self.scope_depth += 1;
+        self.name_to_place.enter_scope();
     }
 
     fn pop_scope(&mut self) {
@@ -443,17 +443,7 @@ impl<'a> BorrowChecker<'a> {
             }
         }
 
-        // remove locals
-        let names_to_remove = self
-            .places
-            .iter()
-            .filter(|p| p.scope_depth == self.scope_depth)
-            .map(|p| p.name.clone());
-
-        // remove names
-        for name in names_to_remove {
-            self.name_to_place.remove(&name);
-        }
+        self.name_to_place.leave_scope();
 
         self.scope_depth -= 1;
     }

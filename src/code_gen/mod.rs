@@ -1,14 +1,14 @@
-use std::{collections::HashMap, sync::Arc};
-
+use crate::{
+    BinOp, Diagnostic, Expr, Func, Stmt, Type, TypedAst, arena::Id, scope::ScopedEnvironment,
+};
 use cranelift::{
     codegen::ir::Function,
     module::*,
     object::*,
     prelude::{settings::Flags, *},
 };
+use std::sync::Arc;
 use target_lexicon::Triple;
-
-use crate::{BinOp, Diagnostic, Expr, Func, Stmt, Type, TypedAst, arena::Id};
 
 type Result<T> = std::result::Result<T, Diagnostic>;
 
@@ -140,7 +140,7 @@ impl<'ast> Codegen<'ast> {
                 let param_value = block_params[i];
                 let var = func_ctx.body.declare_var(to_type(ty));
                 func_ctx.body.def_var(var, param_value);
-                func_ctx.variables.insert(param.name.value.to_string(), var);
+                func_ctx.env.insert(param.name.value.to_string(), var);
             }
         }
 
@@ -174,9 +174,11 @@ impl<'ast> Codegen<'ast> {
                 .ins()
                 .iconst(to_type(&Type::Bool), if *v { 1 } else { 0 }),
             Expr::String(_) => todo!(),
-            Expr::Var(ident) => func
-                .body
-                .use_var(*func.variables.get(&*ident.value).unwrap()),
+            Expr::Var(ident) => {
+                let var = func.env.get(&ident.value).expect("variable not found");
+
+                func.body.use_var(*var)
+            }
             Expr::Binary { op, lhs, rhs } => {
                 let lhs_val = self.gen_expr(func, *lhs);
                 let rhs_val = self.gen_expr(func, *rhs);
@@ -215,14 +217,19 @@ impl<'ast> Codegen<'ast> {
                 }
             }
             Expr::Block { stmts, value } => {
+                func.env.enter_scope();
+
                 for stmt in stmts {
                     self.gen_stmt(func, *stmt);
                 }
 
-                match value {
+                let result = match value {
                     Some(expr_id) => self.gen_expr(func, *expr_id),
-                    None => todo!(),
-                }
+                    None => func.body.ins().iconst(to_type(&Type::Unit), 0), // TODO: unit shouldn't be a real value
+                };
+
+                func.env.leave_scope();
+                result
             }
             Expr::Call { name, args } => {
                 // Resolve function name to FuncId (type checker already verified it exists)
@@ -260,7 +267,7 @@ impl<'ast> Codegen<'ast> {
                     .body
                     .declare_var(to_type(self.typed_ast.get_expr_ty(value)));
                 func.body.def_var(var, val);
-                func.variables.insert(name.value.to_string(), var);
+                func.env.insert(name.value.clone(), var);
             }
             Stmt::Expr { expr } => {
                 let _ = self.gen_expr(func, *expr);
@@ -304,14 +311,14 @@ pub fn to_type(ty: &Type) -> cranelift::prelude::Type {
 
 struct FuncCtx<'a> {
     body: FunctionBuilder<'a>,
-    variables: HashMap<String, Variable>,
+    env: ScopedEnvironment<Variable>,
 }
 
 impl<'a> FuncCtx<'a> {
     fn new(func: &'a mut Function, func_builder_ctx: &'a mut FunctionBuilderContext) -> Self {
         Self {
             body: FunctionBuilder::new(func, func_builder_ctx),
-            variables: HashMap::new(),
+            env: ScopedEnvironment::new(),
         }
     }
 

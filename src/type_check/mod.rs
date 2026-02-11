@@ -2,7 +2,7 @@ use ena::unify::InPlaceUnificationTable;
 
 use crate::{
     Ast, Expr, Func, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, Trait, Type, TypeValue,
-    TypeVar, TypedAst, arena::Id,
+    TypeVar, TypedAst, arena::Id, scope::ScopedEnvironment,
 };
 use std::collections::HashMap;
 
@@ -30,7 +30,7 @@ enum UnifyError {
 }
 
 pub struct TypeInferencer {
-    env: HashMap<String, Type>,
+    env: ScopedEnvironment<Type>,
     constraints: Vec<Constraint>,
     unification_table: InPlaceUnificationTable<TypeVar>,
     lifetime_unification_table: InPlaceUnificationTable<LifetimeVar>,
@@ -42,7 +42,7 @@ pub struct TypeInferencer {
 impl TypeInferencer {
     pub fn new() -> Self {
         Self {
-            env: HashMap::new(),
+            env: ScopedEnvironment::new(),
             constraints: Vec::new(),
             unification_table: InPlaceUnificationTable::new(),
             lifetime_unification_table: InPlaceUnificationTable::new(),
@@ -65,7 +65,7 @@ impl TypeInferencer {
                 lifetime: Lifetime::Static,
                 to: Box::new(Type::Str),
             },
-            Expr::Var(ident) => match self.env.get(&*ident.value) {
+            Expr::Var(ident) => match self.env.get(&ident.value) {
                 Some(ty) => ty.clone(),
                 None => {
                     self.errors.push(TypeError::UnboundVariable {
@@ -90,7 +90,7 @@ impl TypeInferencer {
                 output_ty
             }
             Expr::Block { stmts, value } => {
-                let saved_env = self.env.clone();
+                self.env.enter_scope();
 
                 for stmt in stmts {
                     self.check_stmt(ast, *stmt);
@@ -101,7 +101,7 @@ impl TypeInferencer {
                     None => Type::Unit,
                 };
 
-                self.env = saved_env;
+                self.env.leave_scope();
 
                 block_ty
             }
@@ -272,7 +272,7 @@ impl TypeInferencer {
 
     pub fn check_func(&mut self, ast: &Ast, func_id: Id<Func>) {
         let func = ast.funcs.get(&func_id);
-        let saved_env = self.env.clone();
+        self.env.enter_scope();
 
         // type parameters
         let mut generics: HashMap<String, TypeVar> = HashMap::new();
@@ -333,8 +333,7 @@ impl TypeInferencer {
         // Store function's return type
         self.func_types.insert(func_id, return_ty);
 
-        // Restore environment
-        self.env = saved_env;
+        self.env.leave_scope();
     }
 
     /// normalizes a type
