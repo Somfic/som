@@ -119,10 +119,14 @@ impl<'src> Parser<'src> {
 
         let library = if self.at(TokenKind::Text) {
             let token = self.peek_token();
+            let span = token.span.clone();
             // Strip surrounding quotes from the string literal
             let value = token.text.trim_matches('"').to_string();
             self.advance(); // consume the library string
-            Some(value)
+
+            // Resolve relative paths against the source file's directory
+            let resolved = self.resolve_library_path(&value, &span);
+            Some(resolved)
         } else {
             None
         };

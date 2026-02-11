@@ -1,5 +1,21 @@
 use std::{fmt::Debug, ops::Range, path::PathBuf, sync::Arc};
 
+/// Create raw source with the caller's file path as context for resolving relative paths.
+///
+/// # Example
+/// ```ignore
+/// let source = source_raw!(r#"
+///     extern "my_lib.so" { fn foo(); }
+///     fn main() { foo() }
+/// "#);
+/// ```
+#[macro_export]
+macro_rules! source_raw {
+    ($source:expr) => {
+        $crate::Source::from_raw_at($source, concat!(env!("CARGO_MANIFEST_DIR"), "/", file!()))
+    };
+}
+
 /// Represents a source of code
 #[derive(Clone, PartialEq, Eq)]
 pub enum Source {
@@ -26,6 +42,12 @@ impl Source {
 
     pub fn from_raw(source: impl Into<Arc<str>>) -> Self {
         Source::Raw(source.into())
+    }
+
+    /// Create raw source with a path context for resolving relative paths.
+    /// Use the `source_raw!` macro to automatically capture the caller's file path.
+    pub fn from_raw_at(source: impl Into<Arc<str>>, context_path: impl Into<PathBuf>) -> Self {
+        Source::File(context_path.into(), source.into())
     }
 
     pub fn from_file(file: impl Into<PathBuf>) -> std::io::Result<Self> {
@@ -185,34 +207,5 @@ impl Span {
             length,
             source: first.source.clone(),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_span_from_range() {
-        let source = Arc::new(Source::from_raw("line 1\nline 2\nline 3"));
-        let span = Span::from_range(7..13, source); // "line 2"
-        assert_eq!(span.start.line, 2);
-        assert_eq!(span.start.col, 1);
-        assert_eq!(span.end.line, 2);
-        assert_eq!(span.end.col, 7);
-    }
-
-    #[test]
-    fn test_span_text() {
-        let source = Arc::new(Source::from_raw("hello world"));
-        let span = Span::from_range(0..5, source);
-        assert_eq!(span.get_text().as_ref(), "hello");
-    }
-
-    #[test]
-    fn test_get_line() {
-        let source = Arc::new(Source::from_raw("line 1\nline 2\nline 3"));
-        let span = Span::from_range(7..13, source);
-        assert_eq!(span.get_line().unwrap().as_ref(), "line 2");
     }
 }

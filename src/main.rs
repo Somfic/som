@@ -1,31 +1,13 @@
-mod ast;
-pub use ast::*;
-use target_lexicon::Triple;
-
-mod arena;
-mod borrow_check;
-mod code_gen;
-mod diagnostics;
-mod lexer;
-mod linker;
-mod parser;
-mod runner;
-mod scope;
-mod span;
-mod type_check;
-
-use crate::{
-    borrow_check::BorrowChecker, code_gen::Codegen, linker::Linker, runner::Runner,
-    type_check::TypeInferencer,
+use som::{
+    BorrowChecker, Codegen, Diagnostic, Linker, Runner, Source, TypeInferencer, parser,
 };
-pub use diagnostics::{Diagnostic, Label, Severity};
-pub use span::{Position, Source, Span};
+use target_lexicon::Triple;
 
 use std::sync::Arc;
 
 fn main() {
     let source_text = r#"
-    extern "raylib" {
+    extern "raylibb" {
         fn InitWindow(width: i32, height: i32, title: &str);
         fn SetTargetFPS(fps: i32);
         fn WindowShouldClose() -> bool;
@@ -33,7 +15,7 @@ fn main() {
         fn EndDrawing();
         fn CloseWindow();
     }
-  
+
 
     fn main() -> i32 {
         InitWindow(800, 600, "Hello, world!");

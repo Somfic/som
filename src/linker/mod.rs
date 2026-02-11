@@ -135,8 +135,8 @@ impl Linker {
 
                 // Add library flags
                 for lib in &self.libraries {
-                    if lib.ends_with(".a") || lib.ends_with(".so") || lib.ends_with(".dylib") {
-                        // Full path to library file
+                    if is_library_file(lib) {
+                        // Full path to library/object file
                         cmd.arg(lib);
                     } else {
                         // Library name: -l<name>
@@ -150,9 +150,14 @@ impl Linker {
                     .arg("/SUBSYSTEM:CONSOLE")
                     .args(modules);
 
+                // Add library search paths for MSVC
+                for path in &self.library_paths {
+                    cmd.arg(format!("/LIBPATH:{}", path));
+                }
+
                 // Add library flags for MSVC
                 for lib in &self.libraries {
-                    if lib.ends_with(".lib") {
+                    if is_library_file(lib) {
                         cmd.arg(lib);
                     } else {
                         cmd.arg(format!("{}.lib", lib));
@@ -270,4 +275,15 @@ fn find_rust_lld() -> Option<(String, LinkerFlavor)> {
     }
 
     None
+}
+
+/// Check if this is a direct library/object file path (vs a library name)
+fn is_library_file(lib: &str) -> bool {
+    lib.ends_with(".a")      // static library (Unix)
+        || lib.ends_with(".o")    // object file (Unix)
+        || lib.ends_with(".so")   // shared library (Linux)
+        || lib.ends_with(".dylib") // dynamic library (macOS)
+        || lib.ends_with(".lib")  // static/import library (Windows)
+        || lib.ends_with(".obj")  // object file (Windows)
+        || lib.ends_with(".dll")  // dynamic library (Windows)
 }
