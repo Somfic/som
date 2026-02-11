@@ -955,4 +955,130 @@ mod tests {
             matches!(e, TypeError::UnknownType { .. })
         }));
     }
+
+    #[test]
+    fn test_conditional_basic() {
+        let typed_ast = check(
+            r#"
+            fn test() -> i32 {
+                1 if true else 2
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_with_variable_condition() {
+        let typed_ast = check(
+            r#"
+            fn test(b: bool) -> i32 {
+                10 if b else 20
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_bool_result() {
+        let typed_ast = check(
+            r#"
+            fn test(a: bool, b: bool) -> bool {
+                a if b else false
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_branch_type_mismatch() {
+        let typed_ast = check(
+            r#"
+            fn test() -> i32 {
+                1 if true else false
+            }
+            "#,
+        );
+        assert!(has_type_error(&typed_ast, |e| {
+            matches!(e, TypeError::Mismatch { .. })
+        }));
+    }
+
+    #[test]
+    fn test_conditional_condition_not_bool() {
+        let typed_ast = check(
+            r#"
+            fn test() -> i32 {
+                1 if 42 else 2
+            }
+            "#,
+        );
+        assert!(has_type_error(&typed_ast, |e| {
+            matches!(e, TypeError::Mismatch { .. })
+        }));
+    }
+
+    #[test]
+    fn test_conditional_nested() {
+        let typed_ast = check(
+            r#"
+            fn test(a: bool, b: bool) -> i32 {
+                1 if a else (2 if b else 3)
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_in_let_binding() {
+        let typed_ast = check(
+            r#"
+            fn test(b: bool) -> i32 {
+                let x = 5 if b else 10;
+                x
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_with_arithmetic() {
+        let typed_ast = check(
+            r#"
+            fn test(b: bool) -> i32 {
+                (1 + 2) if b else (3 * 4)
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_type_inference_from_annotation() {
+        let typed_ast = check(
+            r#"
+            fn test(b: bool) -> i32 {
+                let x: i32 = 1 if b else 2;
+                x
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_with_comparison_condition() {
+        let typed_ast = check(
+            r#"
+            fn test(x: i32) -> i32 {
+                1 if x > 0 else 2
+            }
+            "#,
+        );
+        assert!(typed_ast.errors.is_empty());
+    }
 }

@@ -25,7 +25,12 @@ impl<'src> Parser<'src> {
             }
 
             if self.at(TokenKind::If) {
+                let if_bp = 1;  // if has very low binding power
+                if if_bp < min_bp {
+                    break;
+                }
                 lhs = self.parse_conditional(lhs, start_span.clone())?;
+                continue;
             }
 
             // Check for infix operators

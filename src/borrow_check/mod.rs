@@ -364,6 +364,37 @@ impl<'a> BorrowChecker<'a> {
                 self.check_expr(*condition);
                 self.check_expr(*truthy);
                 self.check_expr(*falsy);
+
+                let truthy_origin = self.ref_origins.get(truthy).cloned();
+                let falsy_origin = self.ref_origins.get(falsy).cloned();
+
+                let origin = match (&truthy_origin, &falsy_origin) {
+                    (Some(t), Some(f)) => {
+                        // Pick the one with higher scope_depth (more local = more dangerous)
+                        let t_depth = match t {
+                            ReferenceOrigin::Local { scope_depth, .. } => *scope_depth,
+                            ReferenceOrigin::Parameter => 0,
+                            ReferenceOrigin::Static => 0,
+                        };
+                        let f_depth = match f {
+                            ReferenceOrigin::Local { scope_depth, .. } => *scope_depth,
+                            ReferenceOrigin::Parameter => 0,
+                            ReferenceOrigin::Static => 0,
+                        };
+                        if t_depth >= f_depth {
+                            truthy_origin
+                        } else {
+                            falsy_origin
+                        }
+                    }
+                    (Some(_), None) => truthy_origin,
+                    (None, Some(_)) => falsy_origin,
+                    (None, None) => None,
+                };
+
+                if let Some(origin) = origin {
+                    self.ref_origins.insert(expr_id, origin);
+                }
             }
         }
     }
@@ -781,6 +812,115 @@ mod tests {
             "#,
         );
         // Bool literals are Copy, no borrow issues
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_no_borrow_issues() {
+        let errors = check(
+            r#"
+            fn test(b: bool) -> i32 {
+                let x = 10;
+                x if b else 20
+            }
+            "#,
+        );
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_borrow_in_branch() {
+        let errors = check(
+            r#"
+            fn test(b: bool) {
+                let x = 10;
+                let r = &x if b else &x;
+            }
+            "#,
+        );
+        // Both branches borrow x immutably - should be fine
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_dangling_reference() {
+        let errors = check(
+            r#"
+            fn test(b: bool) -> &i32 {
+                let x = 10;
+                &x if b else &x
+            }
+            "#,
+        );
+        // Returns reference to local - should be dangling
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::DanglingReference { .. }
+        )));
+    }
+
+    #[test]
+    fn test_conditional_copy_in_branch() {
+        let errors = check(
+            r#"
+            fn test(b: bool) {
+                let x = 10;
+                let y = x if b else 20;
+                let z = x;
+            }
+            "#,
+        );
+        // i32 is Copy, so this should be fine
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_with_mut_borrow_no_conflict() {
+        let errors = check(
+            r#"
+            fn test(b: bool) {
+                let x = 10;
+                let r = &mut x;
+                let y = 1 if b else 2;
+            }
+            "#,
+        );
+        // No conflict - y doesn't use x
+        assert!(errors.is_empty());
+    }
+
+    #[test]
+    fn test_conditional_use_while_borrowed() {
+        let errors = check(
+            r#"
+            fn test(b: bool) {
+                let x = 10;
+                let r = &mut x;
+                let y = x if b else 2;
+            }
+            "#,
+        );
+        // x is used while mutably borrowed
+        assert!(has_error(&errors, |e| matches!(
+            e,
+            BorrowError::UseWhileMutBorrowed { .. }
+        )));
+    }
+
+    #[test]
+    fn test_conditional_borrow_expires_before_use() {
+        let errors = check(
+            r#"
+            fn test(b: bool) -> i32 {
+                let x = 10;
+                {
+                    let r = &mut x;
+                };
+                x if b else 20
+            }
+            "#,
+        );
+        // Borrow expires, so using x is fine
         assert!(errors.is_empty());
     }
 }

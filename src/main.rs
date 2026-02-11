@@ -33,7 +33,7 @@ fn main() {
     }
 
     fn foo(x: i32) -> i32 {
-        1 if false else 0
+        if true 1 else 0
     }
 
     "#;
