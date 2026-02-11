@@ -254,6 +254,42 @@ impl<'ast> Codegen<'ast> {
             }
             Expr::Borrow { mutable, expr } => todo!(),
             Expr::Deref { expr } => todo!(),
+            Expr::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => {
+                let condition_val = self.gen_expr(func, *condition);
+
+                let truthy_block = func.body.create_block();
+                let falsy_block = func.body.create_block();
+                let merge_block = func.body.create_block();
+
+                func.body
+                    .ins()
+                    .brif(condition_val, truthy_block, &[], falsy_block, &[]);
+
+                // truthy
+                func.body.switch_to_block(truthy_block);
+                let truthy_val = self.gen_expr(func, *truthy);
+                func.body.ins().jump(merge_block, &[truthy_val.into()]);
+                func.body.seal_block(truthy_block);
+
+                // falsy
+                func.body.switch_to_block(falsy_block);
+                let falsy_val = self.gen_expr(func, *falsy);
+                func.body.ins().jump(merge_block, &[falsy_val.into()]);
+                func.body.seal_block(falsy_block);
+
+                // Merge block
+                let result_type = self.typed_ast.get_expr_ty(&expr_id);
+                func.body.switch_to_block(merge_block);
+                let phi = func
+                    .body
+                    .append_block_param(merge_block, to_type(result_type));
+                func.body.seal_block(merge_block);
+                phi
+            }
         }
     }
 

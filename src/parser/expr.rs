@@ -24,6 +24,10 @@ impl<'src> Parser<'src> {
                 continue;
             }
 
+            if self.at(TokenKind::If) {
+                lhs = self.parse_conditional(lhs, start_span.clone())?;
+            }
+
             // Check for infix operators
             let Some(op) = self.peek_binop() else { break };
             let (l_bp, r_bp) = op.binding_power();
@@ -130,6 +134,25 @@ impl<'src> Parser<'src> {
                 Some(self.ast.alloc_expr_with_span(Expr::Hole, start_span))
             }
         }
+    }
+
+    fn parse_conditional(&mut self, truthy: Id<Expr>, start_span: Span) -> Option<Id<Expr>> {
+        self.expect(TokenKind::If)?;
+
+        let condition = self.parse_expr()?;
+        self.expect(TokenKind::Else);
+        let falsy = self.parse_expr()?;
+
+        let span = start_span.merge(&self.previous_span());
+
+        Some(self.ast.alloc_expr_with_span(
+            Expr::Conditional {
+                condition,
+                truthy,
+                falsy,
+            },
+            span,
+        ))
     }
 
     fn parse_call(&mut self, callee: Id<Expr>, start_span: Span) -> Option<Id<Expr>> {
@@ -243,7 +266,10 @@ impl BinOp {
             BinOp::Or => (1, 2),
             BinOp::And => (3, 4),
             BinOp::Equals | BinOp::NotEquals => (5, 6),
-            BinOp::LessThan | BinOp::GreaterThan | BinOp::LessThanOrEqual | BinOp::GreaterThanOrEqual => (7, 8),
+            BinOp::LessThan
+            | BinOp::GreaterThan
+            | BinOp::LessThanOrEqual
+            | BinOp::GreaterThanOrEqual => (7, 8),
             BinOp::Add | BinOp::Subtract => (9, 10),
             BinOp::Multiply | BinOp::Divide => (11, 12),
         }

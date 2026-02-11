@@ -45,6 +45,7 @@ pub enum Provenance {
     FunctionArity,
     Unification,
     Deref(Id<Expr>),
+    Conditional(Id<Expr>),
 }
 
 impl Provenance {
@@ -60,6 +61,7 @@ impl Provenance {
                 panic!("Provenance {:?} has no expr_id", self)
             }
             Provenance::Deref(id) => *id,
+            Provenance::Conditional(id) => *id,
         }
     }
 

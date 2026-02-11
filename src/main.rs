@@ -3,7 +3,6 @@ pub use ast::*;
 use target_lexicon::Triple;
 
 mod arena;
-mod scope;
 mod borrow_check;
 mod code_gen;
 mod diagnostics;
@@ -11,6 +10,7 @@ mod lexer;
 mod linker;
 mod parser;
 mod runner;
+mod scope;
 mod span;
 mod type_check;
 
@@ -33,11 +33,7 @@ fn main() {
     }
 
     fn foo(x: i32) -> i32 {
-        { 
-            let x = 1; 
-        };
-
-        x
+        1 if false else 0
     }
 
     "#;

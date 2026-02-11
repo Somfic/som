@@ -27,6 +27,11 @@ pub enum Expr {
     Deref {
         expr: Id<Expr>,
     },
+    Conditional {
+        condition: Id<Expr>,
+        truthy: Id<Expr>,
+        falsy: Id<Expr>,
+    },
 }
 
 pub enum BinOp {

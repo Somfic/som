@@ -356,6 +356,15 @@ impl<'a> BorrowChecker<'a> {
             Expr::Deref { expr } => {
                 self.check_expr(*expr);
             }
+            Expr::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => {
+                self.check_expr(*condition);
+                self.check_expr(*truthy);
+                self.check_expr(*falsy);
+            }
         }
     }
 

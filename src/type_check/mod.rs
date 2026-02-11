@@ -219,6 +219,30 @@ impl TypeInferencer {
                     }
                 }
             }
+            Expr::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => {
+                // make sure condition is a boolean
+                let condition_ty = self.infer(ast, condition);
+                self.constraints.push(Constraint::Equal {
+                    provenance: Provenance::Conditional(*condition),
+                    lhs: condition_ty,
+                    rhs: Type::Bool,
+                });
+
+                // make sure truthy and falsy are the same
+                let truthy_ty = self.infer(ast, truthy);
+                let falsy_ty = self.infer(ast, falsy);
+                self.constraints.push(Constraint::Equal {
+                    provenance: Provenance::Conditional(*falsy),
+                    lhs: truthy_ty.clone(),
+                    rhs: falsy_ty,
+                });
+
+                truthy_ty
+            }
         };
 
         // Store the inferred type
