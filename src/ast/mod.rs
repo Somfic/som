@@ -46,6 +46,9 @@ pub struct Ast {
     pub funcs: Arena<Func>,
     func_spans: HashMap<Id<Func>, Id<Span>>,
 
+    pub extern_funcs: Arena<ExternFunc>,
+    extern_func_spans: HashMap<Id<ExternFunc>, Id<Span>>,
+
     pub traits: Arena<Trait>,
     pub impls: Arena<Impl>,
 
@@ -153,6 +156,13 @@ impl Ast {
         id
     }
 
+    pub fn alloc_extern_func_with_span(&mut self, func: ExternFunc, span: Span) -> Id<ExternFunc> {
+        let id = self.extern_funcs.alloc(func);
+        let span_id = self.spans.alloc(span);
+        self.extern_func_spans.insert(id, span_id);
+        id
+    }
+
     pub fn alloc_type_with_span(&mut self, span: Span) -> Id<Type> {
         let id = Id::<Type>::new(self.next_type_id);
         self.next_type_id += 1;
@@ -163,6 +173,14 @@ impl Ast {
 
     pub fn find_func_by_name(&self, name: &str) -> Option<Id<Func>> {
         self.funcs
+            .iter()
+            .enumerate()
+            .find(|(_, f)| &*f.name.value == name)
+            .map(|(idx, _)| Id::new(idx))
+    }
+
+    pub fn find_extern_func_by_name(&self, name: &str) -> Option<Id<ExternFunc>> {
+        self.extern_funcs
             .iter()
             .enumerate()
             .find(|(_, f)| &*f.name.value == name)

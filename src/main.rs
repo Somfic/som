@@ -26,8 +26,13 @@ use std::sync::Arc;
 fn main() {
     let source_text = r#"
 
-    fn main() -> &'static str {
-        "hello"
+    extern {
+       fn puts(s: &str) -> i32;
+    }
+
+    fn main() -> i32 {
+        puts("Hello world!");
+        0
     }
 
     "#;

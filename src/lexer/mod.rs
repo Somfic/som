@@ -7,6 +7,8 @@ pub enum TokenKind {
     // Keywords
     #[token("fn")]
     Fn,
+    #[token("extern")]
+    Extern,
     #[token("let")]
     Let,
     #[token("if")]

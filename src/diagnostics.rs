@@ -95,10 +95,12 @@ fn surface(text: impl std::fmt::Display) -> String {
 // Map token kinds to colors
 fn token_color(kind: TokenKind) -> Rgb {
     match kind {
-        // Keywords: mauve
-        TokenKind::Fn | TokenKind::Let | TokenKind::If | TokenKind::Else | TokenKind::Mut => MAUVE,
-
-        // Built-in types: yellow
+        TokenKind::Fn
+        | TokenKind::Extern
+        | TokenKind::Let
+        | TokenKind::If
+        | TokenKind::Else
+        | TokenKind::Mut => MAUVE,
         TokenKind::I8
         | TokenKind::I16
         | TokenKind::I32
@@ -116,14 +118,8 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Bool
         | TokenKind::Char
         | TokenKind::Str => YELLOW,
-
-        // Literals: peach
         TokenKind::Int | TokenKind::Text | TokenKind::True | TokenKind::False => PEACH,
-
-        // Identifiers: text
         TokenKind::Ident => TEXT,
-
-        // Operators: sky
         TokenKind::Plus
         | TokenKind::Minus
         | TokenKind::Star
@@ -136,8 +132,6 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::GreaterThan
         | TokenKind::LessThanOrEqual
         | TokenKind::GreaterThanOnEqual => SKY,
-
-        // Delimiters: text
         TokenKind::OpenParen
         | TokenKind::CloseParen
         | TokenKind::OpenBrace
@@ -149,11 +143,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::FatArrow
         | TokenKind::SingleQuote
         | TokenKind::DoubleQuote => SUBTEXT0,
-
-        // Comments: surface2
         TokenKind::Comment => SURFACE2,
-
-        // Default: text
         TokenKind::Whitespace | TokenKind::Eof | TokenKind::Error => TEXT,
     }
 }
@@ -162,7 +152,7 @@ fn token_color(kind: TokenKind) -> Rgb {
 fn is_italic(kind: TokenKind) -> bool {
     matches!(
         kind,
-        TokenKind::Fn | TokenKind::Let | TokenKind::If | TokenKind::Else | // Keywords
+        TokenKind::Fn | TokenKind::Let | TokenKind::If | TokenKind::Else | TokenKind::Mut | TokenKind::Extern | // Keywords
         TokenKind::Comment // Comments
     )
 }

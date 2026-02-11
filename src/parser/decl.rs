@@ -2,27 +2,31 @@ use crate::arena::Id;
 use crate::ast::{Decl, Func, FuncParam, Module, Type};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
-use crate::{FuncTypeParam, Lifetime};
+use crate::{ExternBlock, ExternFunc, FuncTypeParam, Lifetime};
 
 impl<'src> Parser<'src> {
     pub(super) fn parse_program(&mut self) {
-        let mut func_ids = Vec::new();
+        let mut declarations = Vec::new();
 
         while !self.at_eof() {
             if self.at(TokenKind::Fn) {
                 if let Some(func_id) = self.parse_func_dec() {
-                    func_ids.push(Decl::Func(func_id));
+                    declarations.push(Decl::Func(func_id));
+                }
+            } else if self.at(TokenKind::Extern) {
+                if let Some(extern_block) = self.parse_extern_block() {
+                    declarations.push(Decl::ExternBlock(extern_block));
                 }
             } else {
                 // Unexpected token at top level
-                self.error(vec![TokenKind::Fn]);
+                self.error(vec![TokenKind::Fn, TokenKind::Extern]);
                 self.advance(); // Skip to recover
             }
         }
 
         self.ast.mods.push(Module {
             name: "main".into(),
-            decs: func_ids,
+            decs: declarations,
         });
     }
 
@@ -108,5 +112,87 @@ impl<'src> Parser<'src> {
         };
 
         Some(FuncParam { name, ty, type_id })
+    }
+
+    fn parse_extern_block(&mut self) -> Option<ExternBlock> {
+        self.expect(TokenKind::Extern)?;
+
+        let library = if self.at(TokenKind::Text) {
+            let token = self.peek_token();
+            let value = token.text;
+            Some(value.to_string())
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::OpenBrace)?;
+
+        let mut functions = Vec::new();
+        while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            if let Some(func) = self.parse_extern_func() {
+                functions.push(
+                    self.ast
+                        .alloc_extern_func_with_span(func, self.previous_span()),
+                );
+            } else {
+                // Skip to next semicolon to recover
+                while !self.at(TokenKind::Semicolon)
+                    && !self.at(TokenKind::CloseBrace)
+                    && !self.at_eof()
+                {
+                    self.advance();
+                }
+                self.eat(TokenKind::Semicolon); // Skip the semicolon if we stopped at one
+            }
+        }
+
+        self.expect(TokenKind::CloseBrace)?;
+
+        Some(ExternBlock { library, functions })
+    }
+
+    fn parse_extern_func(&mut self) -> Option<ExternFunc> {
+        let start_span = self.peek_span();
+
+        self.expect(TokenKind::Fn)?;
+
+        // name
+        let (name, _) = self.parse_ident()?;
+
+        // parameters
+        self.expect(TokenKind::OpenParen)?;
+
+        let mut parameters = Vec::new();
+        if !self.at(TokenKind::CloseParen) {
+            loop {
+                if let Some(param) = self.parse_func_param() {
+                    parameters.push(param);
+                }
+
+                if !self.eat(TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+
+        self.expect(TokenKind::CloseParen)?;
+
+        // Optional return type
+        let return_type = if self.eat(TokenKind::Arrow) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::Semicolon)?;
+
+        let end_span = self.previous_span();
+        let span = start_span.merge(&end_span);
+
+        Some(ExternFunc {
+            name,
+            parameters,
+            return_type,
+        })
     }
 }

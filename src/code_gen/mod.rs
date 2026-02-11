@@ -1,5 +1,6 @@
 use crate::{
-    BinOp, Diagnostic, Expr, Func, Stmt, Type, TypedAst, arena::Id, scope::ScopedEnvironment,
+    BinOp, Diagnostic, Expr, ExternFunc, Func, Stmt, Type, TypedAst, arena::Id,
+    scope::ScopedEnvironment,
 };
 use cranelift::{
     codegen::ir::Function,
@@ -7,6 +8,7 @@ use cranelift::{
     object::*,
     prelude::{settings::Flags, *},
 };
+use std::collections::HashMap;
 use std::sync::Arc;
 use target_lexicon::Triple;
 
@@ -44,6 +46,7 @@ pub struct Codegen<'ast> {
     typed_ast: &'ast TypedAst,
     module: ObjectModule,
     func_ids: Vec<cranelift::module::FuncId>,
+    extern_func_ids: HashMap<String, cranelift::module::FuncId>,
 }
 
 impl<'ast> Codegen<'ast> {
@@ -67,12 +70,17 @@ impl<'ast> Codegen<'ast> {
             isa,
             module,
             func_ids: vec![],
+            extern_func_ids: HashMap::new(),
         })
     }
 
     pub fn compile(mut self) -> Result<ObjectProduct> {
         for func in &self.typed_ast.ast.funcs {
             self.dec_func(func)?;
+        }
+
+        for extern_func in &self.typed_ast.ast.extern_funcs {
+            self.dec_extern_func(extern_func)?;
         }
 
         for func in &self.typed_ast.ast.funcs {
@@ -102,6 +110,25 @@ impl<'ast> Codegen<'ast> {
             })?;
 
         self.func_ids.push(func_id);
+
+        Ok(())
+    }
+
+    fn dec_extern_func(&mut self, func: &ExternFunc) -> Result<()> {
+        let sig = self.build_extern_signature(func);
+        let func_id = self
+            .module
+            .declare_function(&func.name.value, Linkage::Import, &sig)
+            .map_err(|e| {
+                CodegenError::ModuleError(format!(
+                    "failed to declare extern function {}: {}",
+                    func.name.value, e
+                ))
+                .to_diagnostic()
+            })?;
+
+        self.extern_func_ids
+            .insert(func.name.value.to_string(), func_id);
 
         Ok(())
     }
@@ -247,14 +274,19 @@ impl<'ast> Codegen<'ast> {
                 result
             }
             Expr::Call { name, args } => {
-                // Resolve function name to FuncId (type checker already verified it exists)
-                let func_id = self
-                    .typed_ast
-                    .ast
-                    .find_func_by_name(&name.value)
-                    .expect("type checker should have caught unknown function");
-
-                let callee_func_id = self.func_ids[func_id.id];
+                // Check extern functions first (matches type checker order)
+                let callee_func_id =
+                    if let Some(&id) = self.extern_func_ids.get(&*name.value) {
+                        id
+                    } else {
+                        // Fall back to regular function lookup
+                        let func_id = self
+                            .typed_ast
+                            .ast
+                            .find_func_by_name(&name.value)
+                            .expect("type checker should have caught unknown function");
+                        self.func_ids[func_id.id]
+                    };
 
                 let callee_func_ref = self
                     .module
@@ -329,6 +361,22 @@ impl<'ast> Codegen<'ast> {
     }
 
     fn build_signature(&self, func: &Func) -> Signature {
+        let mut sig = Signature::new(self.isa.default_call_conv());
+
+        sig.params = func
+            .parameters
+            .iter()
+            .filter_map(|p| p.ty.as_ref().map(|ty| AbiParam::new(to_type(ty))))
+            .collect();
+
+        if let Some(ret_ty) = &func.return_type {
+            sig.returns = vec![AbiParam::new(to_type(ret_ty))];
+        }
+
+        sig
+    }
+
+    fn build_extern_signature(&self, func: &ExternFunc) -> Signature {
         let mut sig = Signature::new(self.isa.default_call_conv());
 
         sig.params = func

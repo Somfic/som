@@ -6,7 +6,7 @@ use std::sync::Arc;
 mod error;
 pub use error::*;
 
-mod dec;
+mod decl;
 mod expr;
 mod stmt;
 mod ty;

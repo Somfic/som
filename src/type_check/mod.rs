@@ -1,8 +1,8 @@
 use ena::unify::InPlaceUnificationTable;
 
 use crate::{
-    Ast, Expr, Func, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, Trait, Type, TypeValue,
-    TypeVar, TypedAst, arena::Id, scope::ScopedEnvironment,
+    Ast, Expr, ExternFunc, Func, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, Trait, Type,
+    TypeValue, TypeVar, TypedAst, arena::Id, scope::ScopedEnvironment,
 };
 use std::collections::HashMap;
 
@@ -106,7 +106,37 @@ impl TypeInferencer {
                 block_ty
             }
             Expr::Call { name, args } => {
-                // Resolve function name to FuncId
+                // First check if function is in env (includes extern functions)
+                if let Some(func_ty) = self.env.get(&name.value).cloned() {
+                    if let Type::Fun { arguments, returns } = func_ty {
+                        // Check argument count
+                        if args.len() != arguments.len() {
+                            self.errors.push(TypeError::WrongArgCount {
+                                span: ast.get_expr_span(expr_id).clone(),
+                                expected: arguments.len(),
+                                found: args.len(),
+                            });
+                            return self.fresh_type();
+                        }
+
+                        // Check each argument against parameter type
+                        for (arg_expr, param_ty) in args.iter().zip(&arguments) {
+                            let actual = self.infer(ast, arg_expr);
+                            self.constraints.push(Constraint::Equal {
+                                provenance: Provenance::FuncArg {
+                                    arg_expr: *arg_expr,
+                                    param_type_id: None,
+                                },
+                                lhs: actual,
+                                rhs: param_ty.clone(),
+                            });
+                        }
+
+                        return *returns;
+                    }
+                }
+
+                // Fall back to regular function lookup
                 let func_id = match ast.find_func_by_name(&name.value) {
                     Some(id) => id,
                     None => {
@@ -399,7 +429,10 @@ impl TypeInferencer {
         let t2 = self.normalize(t2);
 
         match (&t1, &t2) {
-            (Type::I32, Type::I32) | (Type::Bool, Type::Bool) | (Type::Unit, Type::Unit) | (Type::Str, Type::Str) => Ok(()),
+            (Type::I32, Type::I32)
+            | (Type::Bool, Type::Bool)
+            | (Type::Unit, Type::Unit)
+            | (Type::Str, Type::Str) => Ok(()),
 
             (Type::Unknown(v1), Type::Unknown(v2)) => self
                 .unification_table
@@ -599,17 +632,43 @@ impl TypeInferencer {
 
     /// Type check an entire program
     pub fn check_program(mut self, ast: Ast) -> TypedAst {
-        // 1. Check all function declarations
+        let extern_func_ids: Vec<Id<ExternFunc>> =
+            (0..ast.extern_funcs.len()).map(|i| Id::new(i)).collect();
         let func_ids: Vec<Id<Func>> = (0..ast.funcs.len()).map(|i| Id::new(i)).collect();
+
+        for extern_func_id in extern_func_ids {
+            let external_func = ast.extern_funcs.get(&extern_func_id);
+
+            let arguments = external_func
+                .parameters
+                .iter()
+                .map(|p| match &p.ty {
+                    Some(ty) => ty.clone(),
+                    None => self.fresh_type(),
+                })
+                .collect();
+
+            let return_ty = match &external_func.return_type {
+                Some(ty) => ty.clone(),
+                None => self.fresh_type(),
+            };
+
+            self.env.insert(
+                external_func.name.value.clone(),
+                Type::Fun {
+                    arguments: arguments,
+                    returns: Box::new(return_ty),
+                },
+            );
+        }
 
         for func_id in func_ids {
             self.check_func(&ast, func_id);
         }
 
-        // 2. Solve all constraints
         self.solve(&ast);
 
-        // 3. Normalize all stored expression types
+        // normalize all stored expression types
         let types_to_normalize: Vec<(Id<Expr>, Type)> = self
             .expr_types
             .iter()

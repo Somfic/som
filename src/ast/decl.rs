@@ -4,6 +4,12 @@ pub enum Decl {
     Func(Id<Func>),
     Trait(Id<Trait>),
     Impl(Id<Impl>),
+    ExternBlock(ExternBlock),
+}
+
+pub struct ExternBlock {
+    pub library: Option<String>,
+    pub functions: Vec<Id<ExternFunc>>,
 }
 
 pub struct Func {
@@ -13,6 +19,12 @@ pub struct Func {
     pub return_type: Option<Type>,
     pub return_type_id: Option<Id<Type>>, // TypeId for the return type annotation (for span tracking)
     pub body: Id<Expr>,
+}
+
+pub struct ExternFunc {
+    pub name: Ident,
+    pub parameters: Vec<FuncParam>,
+    pub return_type: Option<Type>,
 }
 
 pub struct Trait {
