@@ -134,6 +134,16 @@ impl<'ast> Codegen<'ast> {
         func_ctx.body.switch_to_block(entry_block);
         func_ctx.body.seal_block(entry_block);
 
+        let block_params: Vec<Value> = func_ctx.body.block_params(entry_block).to_vec();
+        for (i, param) in func.parameters.iter().enumerate() {
+            if let Some(ty) = &param.ty {
+                let param_value = block_params[i];
+                let var = func_ctx.body.declare_var(to_type(ty));
+                func_ctx.body.def_var(var, param_value);
+                func_ctx.variables.insert(param.name.value.to_string(), var);
+            }
+        }
+
         let return_value = self.gen_expr(&mut func_ctx, func.body);
         func_ctx.body.ins().return_(&[return_value]);
 
