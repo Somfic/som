@@ -173,7 +173,22 @@ impl<'ast> Codegen<'ast> {
                 .body
                 .ins()
                 .iconst(to_type(&Type::Bool), if *v { 1 } else { 0 }),
-            Expr::String(_) => todo!(),
+            Expr::String(v) => {
+                let data = self
+                    .module
+                    .declare_data(&format!("str_{}", v), Linkage::Local, false, false)
+                    .unwrap();
+
+                let mut data_description = DataDescription::new();
+                let mut bytes = v.as_bytes().to_vec();
+                bytes.push(0); // null terminator for C strings
+
+                data_description.define(bytes.into_boxed_slice());
+                self.module.define_data(data, &data_description).unwrap();
+
+                let value = self.module.declare_data_in_func(data, func.body.func);
+                func.body.ins().global_value(to_type(&Type::Str), value)
+            }
             Expr::Var(ident) => {
                 let var = func.env.get(&ident.value).expect("variable not found");
 

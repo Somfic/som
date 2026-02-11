@@ -12,6 +12,10 @@ impl<'src> Parser<'src> {
                 self.advance();
                 Some(Type::Bool)
             }
+            TokenKind::Str => {
+                self.advance();
+                Some(Type::Str)
+            }
             TokenKind::Ampersand => {
                 self.advance(); // consume &
                 let mutable = self.eat(TokenKind::Mut);
@@ -39,7 +43,7 @@ impl<'src> Parser<'src> {
                 Some(Type::Named(name.value))
             }
             _ => {
-                self.error(vec![TokenKind::I32, TokenKind::Bool, TokenKind::Ident]);
+                self.error(vec![TokenKind::I32, TokenKind::Bool, TokenKind::Str, TokenKind::Ident]);
                 None
             }
         }

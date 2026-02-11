@@ -399,7 +399,7 @@ impl TypeInferencer {
         let t2 = self.normalize(t2);
 
         match (&t1, &t2) {
-            (Type::I32, Type::I32) | (Type::Bool, Type::Bool) | (Type::Unit, Type::Unit) => Ok(()),
+            (Type::I32, Type::I32) | (Type::Bool, Type::Bool) | (Type::Unit, Type::Unit) | (Type::Str, Type::Str) => Ok(()),
 
             (Type::Unknown(v1), Type::Unknown(v2)) => self
                 .unification_table

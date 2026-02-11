@@ -26,14 +26,8 @@ use std::sync::Arc;
 fn main() {
     let source_text = r#"
 
-    fn main() -> i32 {
-        let a = 12;
-        let b = a;
-        foo(b)
-    }
-
-    fn foo(x: i32) -> i32 {
-        if true 1 else 0
+    fn main() -> &'static str {
+        "hello"
     }
 
     "#;
