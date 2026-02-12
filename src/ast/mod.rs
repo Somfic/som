@@ -259,6 +259,14 @@ impl Ast {
             .map(|(idx, _)| Id::new(idx))
     }
 
+    pub fn find_struct_by_name(&self, name: &str) -> Option<Id<Struct>> {
+        self.structs
+            .iter()
+            .enumerate()
+            .find(|(_, s)| &*s.name.value == name)
+            .map(|(idx, _)| Id::new(idx))
+    }
+
     pub fn get_expr_span(&self, id: &Id<Expr>) -> &Span {
         let span_id = self.expr_spans.get(id).unwrap();
         self.spans.get(span_id)

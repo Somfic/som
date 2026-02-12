@@ -1,6 +1,4 @@
-use som::{
-    BorrowChecker, Codegen, Diagnostic, Linker, Runner, Source, TypeInferencer, parser,
-};
+use som::{BorrowChecker, Codegen, Diagnostic, Linker, Runner, Source, TypeInferencer, parser};
 use target_lexicon::Triple;
 
 use std::sync::Arc;
@@ -16,8 +14,14 @@ fn main() {
         fn CloseWindow();
     }
 
+    struct Vec2 {
+        x: f32,
+        y: f32,
+    }
 
     fn main() -> i32 {
+        let position = Vec2 { x: 0.0, y: 0.0 };
+
         InitWindow(800, 600, "Hello, world!");
         SetTargetFPS(60);
 

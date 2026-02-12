@@ -56,6 +56,49 @@ pub struct Struct {
     pub fields: Vec<StructField>,
 }
 
+impl Struct {
+    pub fn compute_layout(&self) -> StructLayout {
+        fn align_to(offset: usize, alignment: usize) -> usize {
+            if alignment == 0 {
+                return offset; // Avoid division by zero
+            }
+
+            let remainder = offset % alignment;
+            if remainder == 0 {
+                offset
+            } else {
+                offset + (alignment - remainder)
+            }
+        }
+
+        let mut offset = 0;
+        let mut field_offsets = Vec::new();
+        let mut max_alignment = 1;
+
+        for field in &self.fields {
+            let alignment = field.ty.alignment();
+            max_alignment = max_alignment.max(alignment);
+            offset = align_to(offset, alignment);
+            field_offsets.push(offset);
+            offset += field.ty.size();
+        }
+
+        let size = align_to(offset, max_alignment);
+
+        StructLayout {
+            field_offsets,
+            size,
+            alignment: max_alignment as u8,
+        }
+    }
+}
+
+pub struct StructLayout {
+    pub field_offsets: Vec<usize>,
+    pub size: usize,
+    pub alignment: u8,
+}
+
 pub struct StructField {
     pub name: Ident,
     pub ty: Type,

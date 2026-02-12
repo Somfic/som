@@ -122,7 +122,11 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Bool
         | TokenKind::Char
         | TokenKind::Str => YELLOW,
-        TokenKind::Int | TokenKind::Text | TokenKind::True | TokenKind::False => PEACH,
+        TokenKind::Int
+        | TokenKind::Float
+        | TokenKind::Text
+        | TokenKind::True
+        | TokenKind::False => PEACH,
         TokenKind::Ident => TEXT,
         TokenKind::Plus
         | TokenKind::Minus

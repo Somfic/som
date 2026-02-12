@@ -1,5 +1,5 @@
 use crate::{
-    Expr, Stmt,
+    Expr, Ident,
     arena::Id,
     lexer::TokenKind,
     parser::{Parser, RecoveryLevel, StmtOrExpr, grammar::Grammar},
@@ -19,7 +19,7 @@ impl<'src> Parser<'src> {
         let mut lhs = self.parse_prefix_or_atom()?;
 
         loop {
-            // Check for postfix operators (function calls)
+            // Check for postfix operators
             if self.at(TokenKind::OpenParen) {
                 let postfix_bp = Grammar::POSTFIX * 2;
                 if postfix_bp < min_bp {
@@ -105,6 +105,12 @@ impl<'src> Parser<'src> {
                 Some(self.builder.alloc_expr(Expr::I32(value), start))
             }
 
+            TokenKind::Float => {
+                let value: f32 = self.peek_token().text.parse().unwrap_or(0.0);
+                self.advance();
+                Some(self.builder.alloc_expr(Expr::F32(value), start))
+            }
+
             TokenKind::True => {
                 self.advance();
                 Some(self.builder.alloc_expr(Expr::Bool(true), start))
@@ -127,8 +133,13 @@ impl<'src> Parser<'src> {
             }
 
             TokenKind::Ident => {
-                let name = self.parse_ident()?;
-                Some(self.builder.alloc_expr(Expr::Var(name), start))
+                // Check if this is a constructor: `Name { ... }`
+                if self.peek_next() == TokenKind::OpenBrace {
+                    self.parse_constructor()
+                } else {
+                    let name = self.parse_ident()?;
+                    Some(self.builder.alloc_expr(Expr::Var(name), start))
+                }
             }
 
             TokenKind::OpenParen => {
@@ -236,127 +247,41 @@ impl<'src> Parser<'src> {
         Some(self.builder.alloc_expr(Expr::Block { stmts, value }, span))
     }
 
-    /// Parse either a statement or an expression
-    pub fn parse_stmt_or_expr(&mut self) -> StmtOrExpr {
-        // Statement keywords take precedence
-        match self.peek() {
-            TokenKind::Let => match self.parse_let_stmt() {
-                Some(stmt) => StmtOrExpr::Stmt(stmt),
-                None => StmtOrExpr::Error,
-            },
-            TokenKind::Loop => match self.parse_loop() {
-                Some(stmt) => StmtOrExpr::Stmt(stmt),
-                None => StmtOrExpr::Error,
-            },
-            TokenKind::While => match self.parse_while() {
-                Some(stmt) => StmtOrExpr::Stmt(stmt),
-                None => StmtOrExpr::Error,
-            },
-            _ => {
-                // Try expression
-                match self.parse_expr() {
-                    Some(expr) => {
-                        if self.eat(TokenKind::Semicolon) {
-                            let span = self.builder.get_expr_span(&expr);
-                            let stmt = self.builder.alloc_stmt(Stmt::Expr { expr }, span);
-                            StmtOrExpr::Stmt(stmt)
-                        } else {
-                            StmtOrExpr::Expr(expr)
-                        }
-                    }
-                    None => StmtOrExpr::Error,
+    pub fn parse_constructor(&mut self) -> Option<Id<Expr>> {
+        let start = self.current_span();
+
+        let struct_name = self.parse_ident()?;
+
+        self.expect(TokenKind::OpenBrace)?;
+        let mut fields = Vec::new();
+
+        if !self.at(TokenKind::CloseBrace) {
+            fields.push(self.parse_constructor_field()?);
+
+            while self.eat(TokenKind::Comma) {
+                if self.at(TokenKind::CloseBrace) {
+                    break; // Trailing comma
                 }
+                fields.push(self.parse_constructor_field()?);
             }
         }
-    }
 
-    // --- Statement parsing (will be moved to stmt.rs) ---
-
-    fn parse_let_stmt(&mut self) -> Option<Id<Stmt>> {
-        let start = self.current_span();
-        self.expect(TokenKind::Let)?;
-
-        let mutable = self.eat(TokenKind::Mut);
-        let name = self.parse_ident()?;
-
-        let ty = if self.eat(TokenKind::Colon) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
-
-        self.expect(TokenKind::Equals)?;
-        let value = self.parse_expr()?;
-        self.expect(TokenKind::Semicolon)?;
+        self.expect(TokenKind::CloseBrace)?;
 
         let span = start.merge(&self.previous_span());
-        Some(self.builder.alloc_stmt(
-            Stmt::Let {
-                name,
-                mutable,
-                ty,
-                value,
+        Some(self.builder.alloc_expr(
+            Expr::Constructor {
+                struct_name,
+                fields,
             },
             span,
         ))
     }
 
-    fn parse_loop(&mut self) -> Option<Id<Stmt>> {
-        let start = self.current_span();
-        self.expect(TokenKind::Loop)?;
-        self.expect(TokenKind::OpenBrace)?;
-
-        let body = self.parse_stmt_list()?;
-
-        self.expect(TokenKind::CloseBrace)?;
-
-        let span = start.merge(&self.previous_span());
-        Some(self.builder.alloc_stmt(Stmt::Loop { body }, span))
-    }
-
-    fn parse_while(&mut self) -> Option<Id<Stmt>> {
-        let start = self.current_span();
-        self.expect(TokenKind::While)?;
-
-        let condition = self.parse_expr()?;
-        self.expect(TokenKind::OpenBrace)?;
-
-        let body = self.parse_stmt_list()?;
-
-        self.expect(TokenKind::CloseBrace)?;
-
-        let span = start.merge(&self.previous_span());
-        Some(
-            self.builder
-                .alloc_stmt(Stmt::While { condition, body }, span),
-        )
-    }
-
-    /// Parse a list of statements (for loop/while bodies)
-    fn parse_stmt_list(&mut self) -> Option<Vec<Id<Stmt>>> {
-        let mut stmts = Vec::new();
-
-        while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
-            match self.parse_stmt_or_expr() {
-                StmtOrExpr::Stmt(stmt) => stmts.push(stmt),
-                StmtOrExpr::Expr(expr) => {
-                    // Expression without semicolon at end of loop body
-                    if self.at(TokenKind::CloseBrace) {
-                        // Wrap as expression statement
-                        let span = self.builder.get_expr_span(&expr);
-                        let stmt = self.builder.alloc_stmt(Stmt::Expr { expr }, span);
-                        stmts.push(stmt);
-                    } else {
-                        self.error("expected `;` or `}`".into());
-                        break;
-                    }
-                }
-                StmtOrExpr::Error => {
-                    self.recover(RecoveryLevel::Statement);
-                }
-            }
-        }
-
-        Some(stmts)
+    fn parse_constructor_field(&mut self) -> Option<(Ident, Id<Expr>)> {
+        let name = self.parse_ident()?;
+        self.expect(TokenKind::Colon)?;
+        let value = self.parse_expr()?;
+        Some((name, value))
     }
 }

@@ -47,6 +47,7 @@ pub enum Provenance {
     Deref(Id<Expr>),
     Conditional(Id<Expr>),
     Not(Id<Expr>),
+    ConstructorField(Id<Expr>),
 }
 
 impl Provenance {
@@ -64,6 +65,7 @@ impl Provenance {
             Provenance::Deref(id) => *id,
             Provenance::Conditional(id) => *id,
             Provenance::Not(id) => *id,
+            Provenance::ConstructorField(id) => *id,
         }
     }
 

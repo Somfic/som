@@ -11,9 +11,10 @@ mod builder;
 mod decl;
 mod expr;
 mod grammar;
+mod stmt;
 mod ty;
 
-pub use grammar::{Grammar, OpInfo, Association};
+pub use grammar::{Association, Grammar, OpInfo};
 
 /// Parse error with location information
 #[derive(Debug, Clone)]
@@ -87,6 +88,19 @@ impl<'src> Parser<'src> {
 
     pub fn at_eof(&self) -> bool {
         self.at(TokenKind::Eof)
+    }
+
+    /// Peek at the next non-trivia token (one ahead of current)
+    pub fn peek_next(&self) -> TokenKind {
+        let mut pos = self.pos + 1;
+        while pos < self.tokens.len() {
+            let kind = self.tokens[pos].kind;
+            if !matches!(kind, TokenKind::Whitespace | TokenKind::Comment) {
+                return kind;
+            }
+            pos += 1;
+        }
+        TokenKind::Eof
     }
 
     pub fn current_span(&self) -> Span {
@@ -174,11 +188,9 @@ impl<'src> Parser<'src> {
                 TokenKind::If,
                 TokenKind::Fn,
             ],
-            RecoveryLevel::Declaration => &[
-                TokenKind::Fn,
-                TokenKind::Extern,
-                TokenKind::CloseBrace,
-            ],
+            RecoveryLevel::Declaration => {
+                &[TokenKind::Fn, TokenKind::Extern, TokenKind::CloseBrace]
+            }
         };
 
         while !self.at_eof() {

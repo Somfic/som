@@ -48,8 +48,12 @@ impl Runner {
                 // Windows: prepend to PATH
                 let current_path = std::env::var_os("PATH").unwrap_or_default();
                 let new_path = std::env::join_paths(
-                    paths.iter().copied().chain(std::iter::once(current_path.as_os_str()))
-                ).unwrap_or_default();
+                    paths
+                        .iter()
+                        .copied()
+                        .chain(std::iter::once(current_path.as_os_str())),
+                )
+                .unwrap_or_default();
                 cmd.env("PATH", new_path);
             } else if cfg!(target_os = "macos") {
                 cmd.env("DYLD_LIBRARY_PATH", joined);

@@ -1,8 +1,4 @@
-use crate::{
-    Lifetime, Type,
-    lexer::TokenKind,
-    parser::Parser,
-};
+use crate::{Lifetime, Type, lexer::TokenKind, parser::Parser};
 
 impl<'src> Parser<'src> {
     /// Parse a type annotation
@@ -111,21 +107,34 @@ impl<'src> Parser<'src> {
             }
 
             // Other integer types (map to I32 for now, can be expanded)
-            TokenKind::I8 | TokenKind::I16 | TokenKind::I64 | TokenKind::I128 | TokenKind::ISize => {
+            TokenKind::I8
+            | TokenKind::I16
+            | TokenKind::I64
+            | TokenKind::I128
+            | TokenKind::ISize => {
                 let text = self.peek_token().text;
                 self.advance();
                 Some(Type::Named(text.into()))
             }
 
             // Unsigned integer types
-            TokenKind::U8 | TokenKind::U16 | TokenKind::U32 | TokenKind::U64 | TokenKind::U128 | TokenKind::USize => {
+            TokenKind::U8
+            | TokenKind::U16
+            | TokenKind::U32
+            | TokenKind::U64
+            | TokenKind::U128
+            | TokenKind::USize => {
                 let text = self.peek_token().text;
                 self.advance();
                 Some(Type::Named(text.into()))
             }
 
             // Float types
-            TokenKind::F32 | TokenKind::F64 => {
+            TokenKind::F32 => {
+                self.advance();
+                Some(Type::F32)
+            }
+            TokenKind::F64 => {
                 let text = self.peek_token().text;
                 self.advance();
                 Some(Type::Named(text.into()))

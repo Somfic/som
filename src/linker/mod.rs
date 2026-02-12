@@ -285,5 +285,5 @@ fn is_library_file(lib: &str) -> bool {
         || lib.ends_with(".dylib") // dynamic library (macOS)
         || lib.ends_with(".lib")  // static/import library (Windows)
         || lib.ends_with(".obj")  // object file (Windows)
-        || lib.ends_with(".dll")  // dynamic library (Windows)
+        || lib.ends_with(".dll") // dynamic library (Windows)
 }

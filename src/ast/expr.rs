@@ -4,6 +4,7 @@ pub enum Expr {
     /// hole caused by invalid/error code
     Hole,
     I32(i32),
+    F32(f32),
     Bool(bool),
     String(Box<str>),
     Var(Ident),
@@ -34,6 +35,10 @@ pub enum Expr {
         condition: Id<Expr>,
         truthy: Id<Expr>,
         falsy: Id<Expr>,
+    },
+    Constructor {
+        struct_name: Ident,
+        fields: Vec<(Ident, Id<Expr>)>,
     },
 }
 

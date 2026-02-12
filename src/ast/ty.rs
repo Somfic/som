@@ -8,6 +8,7 @@ pub enum Type {
     Unknown(TypeVar),
     Named(Box<str>),
     I32,
+    F32,
     Bool,
     Str,
     Reference {
@@ -19,6 +20,41 @@ pub enum Type {
         arguments: Vec<Type>,
         returns: Box<Type>,
     },
+}
+
+impl Type {
+    pub fn is_copy(&self) -> bool {
+        matches!(
+            self,
+            Type::Unit | Type::Bool | Type::I32 | Type::F32 | Type::Reference { .. }
+        )
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            Type::Unit => 0,
+            Type::Bool => 1,
+            Type::I32 | Type::F32 => 4,
+            Type::Str => std::mem::size_of::<&str>(),
+            Type::Reference { .. } => std::mem::size_of::<&()>(),
+            Type::Unknown(_) | Type::Named(_) | Type::Fun { .. } => {
+                panic!("Size of unknown/named/fun type is not known at compile time")
+            }
+        }
+    }
+
+    pub fn alignment(&self) -> usize {
+        match self {
+            Type::Unit => 1,
+            Type::Bool => 1,
+            Type::I32 | Type::F32 => 4,
+            Type::Str => std::mem::align_of::<&str>(),
+            Type::Reference { .. } => std::mem::align_of::<&()>(),
+            Type::Unknown(_) | Type::Named(_) | Type::Fun { .. } => {
+                panic!("Alignment of unknown/named/fun type is not known at compile time")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +184,7 @@ impl Display for Type {
             Type::Named(name) => write!(f, "{}", name),
             Type::Bool => write!(f, "bool"),
             Type::I32 => write!(f, "i32"),
+            Type::F32 => write!(f, "f32"),
             Type::Str => write!(f, "str"),
             Type::Reference {
                 mutable,

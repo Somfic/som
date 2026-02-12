@@ -1,9 +1,8 @@
 use crate::{
-    BinOp, Diagnostic, Expr, Func, Stmt, Type, TypedAst, arena::Id,
-    scope::ScopedEnvironment,
+    BinOp, Diagnostic, Expr, Func, Stmt, Type, TypedAst, arena::Id, scope::ScopedEnvironment,
 };
 use cranelift::{
-    codegen::ir::Function,
+    codegen::ir::{Function, layout},
     module::*,
     object::*,
     prelude::{settings::Flags, *},
@@ -155,7 +154,10 @@ impl<'ast> Codegen<'ast> {
         println!("{}", ctx.func);
 
         // Use the already-declared func_id from compile()
-        let func_id = *self.func_ids.get(name).expect("function should be declared");
+        let func_id = *self
+            .func_ids
+            .get(name)
+            .expect("function should be declared");
         self.module
             .define_function(func_id, &mut ctx)
             .map_err(|e| CodegenError::ModuleError(e.to_string()).to_diagnostic())?;
@@ -171,6 +173,7 @@ impl<'ast> Codegen<'ast> {
         match expr {
             Expr::Hole => unreachable!("parser should have thrown an error"),
             Expr::I32(v) => func.body.ins().iconst(to_type(&Type::I32), *v as i64),
+            Expr::F32(v) => func.body.ins().f32const(*v),
             Expr::Bool(v) => func
                 .body
                 .ins()
@@ -316,6 +319,35 @@ impl<'ast> Codegen<'ast> {
                 func.body.seal_block(merge_block);
                 phi
             }
+            Expr::Constructor {
+                struct_name,
+                fields,
+            } => {
+                let struct_id = self
+                    .typed_ast
+                    .ast
+                    .find_struct_by_name(&struct_name.value)
+                    .unwrap();
+
+                let struct_type = self.typed_ast.ast.structs.get(&struct_id);
+                let layout = struct_type.compute_layout();
+
+                let slot = func.body.create_sized_stack_slot(StackSlotData::new(
+                    StackSlotKind::ExplicitSlot,
+                    layout.size as u32,
+                    layout.alignment,
+                ));
+
+                let base = func.body.ins().stack_addr(types::I64, slot, 0);
+
+                for (i, (_, expr_id)) in fields.iter().enumerate() {
+                    let value = self.gen_expr(func, *expr_id);
+                    let offset = *layout.field_offsets.get(i).unwrap() as i32;
+                    func.body.ins().store(MemFlags::new(), value, base, offset);
+                }
+
+                base
+            }
         }
     }
 
@@ -418,6 +450,7 @@ pub fn to_type(ty: &Type) -> cranelift::prelude::Type {
         Type::Unknown(..) => unreachable!("inferred during type inference"),
         Type::Named(..) => POINTER,
         Type::I32 => types::I32,
+        Type::F32 => types::F32,
         Type::Bool => types::I8,
         Type::Str => POINTER,
         Type::Reference { .. } => POINTER,

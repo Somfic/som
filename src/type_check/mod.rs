@@ -1,8 +1,8 @@
 use ena::unify::InPlaceUnificationTable;
 
 use crate::{
-    Ast, Expr, Func, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, Trait, Type,
-    TypeValue, TypeVar, TypedAst, arena::Id, scope::ScopedEnvironment,
+    Ast, Expr, Func, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, Trait, Type, TypeValue,
+    TypeVar, TypedAst, arena::Id, scope::ScopedEnvironment,
 };
 use std::collections::HashMap;
 
@@ -59,6 +59,7 @@ impl TypeInferencer {
         let ty = match expr {
             Expr::Hole => self.fresh_type(),
             Expr::I32(_) => Type::I32,
+            Expr::F32(_) => Type::F32,
             Expr::Bool(_) => Type::Bool,
             Expr::String(_) => Type::Reference {
                 mutable: false,
@@ -238,6 +239,67 @@ impl TypeInferencer {
 
                 truthy_ty
             }
+            Expr::Constructor {
+                struct_name,
+                fields,
+            } => {
+                // Look up the struct definition
+                let struct_id = match ast.find_struct_by_name(&struct_name.value) {
+                    Some(id) => id,
+                    None => {
+                        self.errors.push(TypeError::UnknownStruct {
+                            span: ast.get_expr_span(expr_id).clone(),
+                            name: struct_name.value.to_string(),
+                        });
+                        return self.fresh_type();
+                    }
+                };
+
+                let struct_def = ast.structs.get(&struct_id);
+                let struct_name_str = struct_def.name.value.to_string();
+
+                // Build a map of provided fields
+                let mut provided_fields: HashMap<&str, &Id<Expr>> = HashMap::new();
+                for (field_name, field_expr) in fields {
+                    provided_fields.insert(&field_name.value, field_expr);
+                }
+
+                // Check each expected field
+                for struct_field in &struct_def.fields {
+                    let field_name = &struct_field.name.value;
+                    match provided_fields.remove(field_name.as_ref()) {
+                        Some(field_expr) => {
+                            // Type check the field value against expected type
+                            let actual_ty = self.infer(ast, field_expr);
+                            self.constraints.push(Constraint::Equal {
+                                provenance: Provenance::ConstructorField(*field_expr),
+                                lhs: actual_ty,
+                                rhs: struct_field.ty.clone(),
+                            });
+                        }
+                        None => {
+                            // Missing field
+                            self.errors.push(TypeError::MissingField {
+                                span: ast.get_expr_span(expr_id).clone(),
+                                struct_name: struct_name_str.clone(),
+                                field_name: field_name.to_string(),
+                            });
+                        }
+                    }
+                }
+
+                // Check for unknown fields (fields provided but not in struct)
+                for (unknown_field, field_expr) in provided_fields {
+                    self.errors.push(TypeError::UnknownField {
+                        span: ast.get_expr_span(field_expr).clone(),
+                        struct_name: struct_name_str.clone(),
+                        field_name: unknown_field.to_string(),
+                    });
+                }
+
+                // The type of a constructor is the struct type
+                Type::Named(struct_name.value.clone())
+            }
         };
 
         // Store the inferred type
@@ -407,6 +469,7 @@ impl TypeInferencer {
 
         match (&t1, &t2) {
             (Type::I32, Type::I32)
+            | (Type::F32, Type::F32)
             | (Type::Bool, Type::Bool)
             | (Type::Unit, Type::Unit)
             | (Type::Str, Type::Str) => Ok(()),
@@ -469,6 +532,17 @@ impl TypeInferencer {
 
                 self.unify_lifetime(l1, l2)?;
                 self.unify(t1, t2)
+            }
+
+            (Type::Named(n1), Type::Named(n2)) => {
+                if n1 == n2 {
+                    Ok(())
+                } else {
+                    Err(UnifyError::Mismatch {
+                        expected: t1,
+                        found: t2,
+                    })
+                }
             }
 
             _ => Err(UnifyError::Mismatch {
@@ -666,4 +740,3 @@ impl TypeInferencer {
         }
     }
 }
-

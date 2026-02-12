@@ -48,6 +48,20 @@ pub enum TypeError {
         span: Span,
         name: String,
     },
+    UnknownStruct {
+        span: Span,
+        name: String,
+    },
+    MissingField {
+        span: Span,
+        struct_name: String,
+        field_name: String,
+    },
+    UnknownField {
+        span: Span,
+        struct_name: String,
+        field_name: String,
+    },
 }
 
 impl TypeError {
@@ -168,6 +182,28 @@ impl TypeError {
                 Diagnostic::error(format!("cannot find function `{}`", name))
                     .with_label(Label::primary(span.clone(), "unknown function"))
             }
+            TypeError::UnknownStruct { span, name } => {
+                Diagnostic::error(format!("cannot find struct `{}`", name))
+                    .with_label(Label::primary(span.clone(), "unknown struct"))
+            }
+            TypeError::MissingField {
+                span,
+                struct_name,
+                field_name,
+            } => Diagnostic::error(format!(
+                "missing field `{}` in initializer of `{}`",
+                field_name, struct_name
+            ))
+            .with_label(Label::primary(span.clone(), format!("missing `{}`", field_name))),
+            TypeError::UnknownField {
+                span,
+                struct_name,
+                field_name,
+            } => Diagnostic::error(format!(
+                "struct `{}` has no field named `{}`",
+                struct_name, field_name
+            ))
+            .with_label(Label::primary(span.clone(), "unknown field")),
         }
     }
 }

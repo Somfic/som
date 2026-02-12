@@ -124,7 +124,7 @@ impl<'a> BorrowChecker<'a> {
     fn check_move(&mut self, expr_id: Id<Expr>) {
         // copy types are just copied, no need to check moves
         if let Some(ty) = self.typed_ast.types.get(&expr_id)
-            && self.is_copy(ty)
+            && ty.is_copy()
         {
             self.check_expr(expr_id);
             return;
@@ -271,7 +271,7 @@ impl<'a> BorrowChecker<'a> {
         let expr = self.typed_ast.ast.exprs.get(&expr_id);
 
         match expr {
-            Expr::Hole | Expr::I32(_) | Expr::Bool(_) | Expr::String(_) => {
+            Expr::Hole | Expr::I32(_) | Expr::F32(_) | Expr::Bool(_) | Expr::String(_) => {
                 // Literals - nothing to check
             }
             Expr::Var(name) => {
@@ -399,6 +399,12 @@ impl<'a> BorrowChecker<'a> {
                     self.ref_origins.insert(expr_id, origin);
                 }
             }
+            Expr::Constructor { fields, .. } => {
+                // Each field value is moved into the struct
+                for (_, value) in fields {
+                    self.check_move(*value);
+                }
+            }
         }
     }
 
@@ -500,12 +506,5 @@ impl<'a> BorrowChecker<'a> {
         self.name_to_place.leave_scope();
 
         self.scope_depth -= 1;
-    }
-
-    fn is_copy(&self, ty: &Type) -> bool {
-        matches!(
-            ty,
-            Type::Unit | Type::Bool | Type::I32 | Type::Reference { .. }
-        )
     }
 }
