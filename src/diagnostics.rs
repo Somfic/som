@@ -103,6 +103,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Loop
         | TokenKind::While
         | TokenKind::For
+        | TokenKind::Struct
         | TokenKind::Mut => MAUVE,
         TokenKind::I8
         | TokenKind::I16

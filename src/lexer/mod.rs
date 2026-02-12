@@ -9,6 +9,8 @@ pub enum TokenKind {
     Fn,
     #[token("extern")]
     Extern,
+    #[token("struct")]
+    Struct,
     #[token("let")]
     Let,
     #[token("if")]

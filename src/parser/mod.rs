@@ -31,7 +31,7 @@ impl ParseError {
 }
 
 /// Recovery strategy levels
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RecoveryLevel {
     /// Sync at expression boundaries: ), ], }, ;, ,
     Expression,
@@ -185,6 +185,11 @@ impl<'src> Parser<'src> {
             if sync_tokens.contains(&self.peek()) {
                 // For semicolons, consume them as part of recovery
                 if self.at(TokenKind::Semicolon) {
+                    self.advance();
+                }
+                // For close braces at declaration level, consume to avoid infinite loop
+                // (parse_program doesn't handle stray close braces)
+                if level == RecoveryLevel::Declaration && self.at(TokenKind::CloseBrace) {
                     self.advance();
                 }
                 self.in_recovery = false;

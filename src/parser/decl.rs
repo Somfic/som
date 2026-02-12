@@ -1,13 +1,14 @@
 use crate::{
-    ExternBlock, ExternFunc, Func, FuncParam, FuncTypeParam,
+    ExternBlock, ExternFunc, Func, FuncParam, FuncTypeParam, Struct, StructField,
+    arena::Id,
     lexer::TokenKind,
     parser::{Parser, RecoveryLevel},
 };
 
 impl<'src> Parser<'src> {
-    /// Parse the entire program (entry point)
     pub fn parse_program(&mut self) {
         while !self.at_eof() {
+            // declarations
             match self.peek() {
                 TokenKind::Fn => {
                     if let Some(func_id) = self.parse_function() {
@@ -23,16 +24,63 @@ impl<'src> Parser<'src> {
                         self.recover(RecoveryLevel::Declaration);
                     }
                 }
+                TokenKind::Struct => {
+                    if let Some(struct_id) = self.parse_struct() {
+                        self.builder.add_struct(struct_id);
+                    } else {
+                        self.recover(RecoveryLevel::Declaration);
+                    }
+                }
                 _ => {
-                    self.error(format!("expected `fn` or `extern`, found {:?}", self.peek()));
+                    self.error(format!(
+                        "expected `fn`, `extern`, or `struct`, found {:?}",
+                        self.peek()
+                    ));
                     self.recover(RecoveryLevel::Declaration);
                 }
             }
         }
     }
 
+    fn parse_struct(&mut self) -> Option<Id<Struct>> {
+        let start = self.current_span();
+        self.expect(TokenKind::Struct)?;
+
+        let name = self.parse_ident()?;
+
+        self.expect(TokenKind::OpenBrace)?;
+
+        let mut fields = Vec::new();
+        if !self.at(TokenKind::CloseBrace) {
+            fields.push(self.parse_struct_field()?);
+
+            while self.eat(TokenKind::Comma) {
+                if self.at(TokenKind::CloseBrace) {
+                    break; // Trailing comma
+                }
+                fields.push(self.parse_struct_field()?);
+            }
+        }
+
+        self.expect(TokenKind::CloseBrace)?;
+
+        let span = start.merge(&self.previous_span());
+        Some(self.builder.alloc_struct(Struct { name, fields }, span))
+    }
+
+    fn parse_struct_field(&mut self) -> Option<StructField> {
+        let name = self.parse_ident()?;
+
+        self.expect(TokenKind::Colon)?;
+        let ty_span = self.current_span();
+        let ty = self.parse_type()?;
+        let type_id = self.builder.alloc_type_span(ty_span);
+
+        Some(StructField { name, ty, type_id })
+    }
+
     /// Parse a function declaration: `fn name<T>(params) -> RetType { body }`
-    fn parse_function(&mut self) -> Option<crate::arena::Id<Func>> {
+    fn parse_function(&mut self) -> Option<Id<Func>> {
         let start = self.current_span();
         self.expect(TokenKind::Fn)?;
 
@@ -169,7 +217,7 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse an extern function declaration: `fn name(params) -> RetType;`
-    fn parse_extern_func(&mut self) -> Option<crate::arena::Id<ExternFunc>> {
+    fn parse_extern_func(&mut self) -> Option<Id<ExternFunc>> {
         let start = self.current_span();
         self.expect(TokenKind::Fn)?;
 

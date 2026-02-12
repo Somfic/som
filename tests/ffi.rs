@@ -7,7 +7,7 @@ use som::source_raw;
 fn identity() {
     let source = source_raw!(
         r#"
-    extern "test_ffi.so" {
+    extern "tests/test_ffi.so" {
         fn identity(x: i32) -> i32;
     }
 

@@ -4,7 +4,7 @@
 //! ensuring tests focus on the specific phase being tested.
 
 use som::borrow_check::BorrowError;
-use som::lexer::{lex, Token, TokenKind};
+use som::lexer::{Token, TokenKind, lex};
 use som::parser::{self, ParseError};
 use som::type_check::TypeError;
 use som::{BorrowChecker, Codegen, Diagnostic, Linker, Runner, Source, TypeInferencer, TypedAst};

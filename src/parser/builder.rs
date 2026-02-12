@@ -1,5 +1,5 @@
 use crate::{
-    Ast, Decl, Expr, ExternBlock, ExternFunc, Func, Ident, Module, Span, Stmt, Type,
+    Ast, Decl, Expr, ExternBlock, ExternFunc, Func, Ident, Module, Span, Stmt, Struct, Type,
     arena::Id,
 };
 
@@ -36,7 +36,9 @@ impl AstBuilder {
 
     /// Pop and return the span start
     pub fn pop_span(&mut self) -> Span {
-        self.span_stack.pop().expect("mismatched start_span/pop_span")
+        self.span_stack
+            .pop()
+            .expect("mismatched start_span/pop_span")
     }
 
     // --- Identifier creation ---
@@ -97,6 +99,11 @@ impl AstBuilder {
         self.ast.alloc_func_with_span(func, span)
     }
 
+    // --- Struct allocation ---
+    pub fn alloc_struct(&mut self, strukt: Struct, span: Span) -> Id<Struct> {
+        self.ast.alloc_struct_with_span(strukt, span)
+    }
+
     // --- Extern function allocation ---
 
     /// Allocate an extern function with an explicit span
@@ -123,6 +130,11 @@ impl AstBuilder {
             });
         }
         self.ast.mods.last_mut().unwrap().decs.push(decl);
+    }
+
+    /// Add a struct declaration
+    pub fn add_struct(&mut self, struct_id: Id<Struct>) {
+        self.add_decl(Decl::Struct(struct_id));
     }
 
     /// Add a function declaration

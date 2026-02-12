@@ -64,6 +64,9 @@ pub struct Ast {
     pub stmts: Arena<Stmt>,
     stmt_spans: HashMap<Id<Stmt>, Id<Span>>,
 
+    pub structs: Arena<Struct>,
+    struct_spans: HashMap<Id<Struct>, Id<Span>>,
+
     pub funcs: Arena<Func>,
     func_spans: HashMap<Id<Func>, Id<Span>>,
 
@@ -222,6 +225,13 @@ impl Ast {
             },
         );
 
+        id
+    }
+
+    pub fn alloc_struct_with_span(&mut self, strukt: Struct, span: Span) -> Id<Struct> {
+        let id = self.structs.alloc(strukt);
+        let span_id = self.spans.alloc(span);
+        self.struct_spans.insert(id, span_id);
         id
     }
 

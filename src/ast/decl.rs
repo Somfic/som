@@ -1,6 +1,7 @@
 use crate::{Expr, Ident, Type, arena::Id};
 
 pub enum Decl {
+    Struct(Id<Struct>),
     Func(Id<Func>),
     Trait(Id<Trait>),
     Impl(Id<Impl>),
@@ -48,4 +49,15 @@ pub struct FuncParam {
 
 pub struct FuncTypeParam {
     pub name: Ident,
+}
+
+pub struct Struct {
+    pub name: Ident,
+    pub fields: Vec<StructField>,
+}
+
+pub struct StructField {
+    pub name: Ident,
+    pub ty: Type,
+    pub type_id: Id<Type>,
 }
