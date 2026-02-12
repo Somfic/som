@@ -1,15 +1,12 @@
-use som::lexer::{lex, TokenKind};
-use som::Source;
-use std::sync::Arc;
+mod common;
+
+use common::{filter_whitespace, test_lex};
+use som::lexer::TokenKind;
 
 #[test]
 fn test_lex_keywords() {
-    let source = Arc::new(Source::from_raw("fn let if else"));
-    let tokens = lex(source);
-    let non_ws: Vec<_> = tokens
-        .iter()
-        .filter(|t| t.kind != TokenKind::Whitespace)
-        .collect();
+    let tokens = test_lex("fn let if else");
+    let non_ws = filter_whitespace(&tokens);
     assert_eq!(non_ws[0].kind, TokenKind::Fn);
     assert_eq!(non_ws[1].kind, TokenKind::Let);
     assert_eq!(non_ws[2].kind, TokenKind::If);
@@ -18,12 +15,8 @@ fn test_lex_keywords() {
 
 #[test]
 fn test_lex_identifiers() {
-    let source = Arc::new(Source::from_raw("foo bar_baz x123"));
-    let tokens = lex(source);
-    let non_ws: Vec<_> = tokens
-        .iter()
-        .filter(|t| t.kind != TokenKind::Whitespace)
-        .collect();
+    let tokens = test_lex("foo bar_baz x123");
+    let non_ws = filter_whitespace(&tokens);
     assert_eq!(non_ws[0].kind, TokenKind::Ident);
     assert_eq!(non_ws[0].text, "foo");
     assert_eq!(non_ws[1].kind, TokenKind::Ident);
@@ -32,12 +25,8 @@ fn test_lex_identifiers() {
 
 #[test]
 fn test_lex_integers() {
-    let source = Arc::new(Source::from_raw("123 456"));
-    let tokens = lex(source);
-    let non_ws: Vec<_> = tokens
-        .iter()
-        .filter(|t| t.kind != TokenKind::Whitespace)
-        .collect();
+    let tokens = test_lex("123 456");
+    let non_ws = filter_whitespace(&tokens);
     assert_eq!(non_ws[0].kind, TokenKind::Int);
     assert_eq!(non_ws[0].text, "123");
     assert_eq!(non_ws[1].kind, TokenKind::Int);
@@ -46,12 +35,8 @@ fn test_lex_integers() {
 
 #[test]
 fn test_lex_operators() {
-    let source = Arc::new(Source::from_raw("+ - * / == != < >"));
-    let tokens = lex(source);
-    let non_ws: Vec<_> = tokens
-        .iter()
-        .filter(|t| t.kind != TokenKind::Whitespace)
-        .collect();
+    let tokens = test_lex("+ - * / == != < >");
+    let non_ws = filter_whitespace(&tokens);
     assert_eq!(non_ws[0].kind, TokenKind::Plus);
     assert_eq!(non_ws[1].kind, TokenKind::Minus);
     assert_eq!(non_ws[2].kind, TokenKind::Star);
@@ -64,8 +49,7 @@ fn test_lex_operators() {
 
 #[test]
 fn test_spans() {
-    let source = Arc::new(Source::from_raw("fn add"));
-    let tokens = lex(source.clone());
+    let tokens = test_lex("fn add");
     assert_eq!(tokens[0].span.start_offset, 0);
     assert_eq!(tokens[0].span.length, 2); // "fn"
     assert_eq!(tokens[2].span.start_offset, 3);

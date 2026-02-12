@@ -1,21 +1,11 @@
+mod common;
+
+use common::{has_type_error, test_type_check};
 use som::type_check::TypeError;
-use som::{parser, Source, TypeInferencer, TypedAst};
-use std::sync::Arc;
-
-fn check(source: &str) -> TypedAst {
-    let source = Arc::new(Source::from_raw(source));
-    let (ast, _) = parser::parse(source);
-    let inferencer = TypeInferencer::new();
-    inferencer.check_program(ast)
-}
-
-fn has_type_error<F: Fn(&TypeError) -> bool>(typed_ast: &TypedAst, predicate: F) -> bool {
-    typed_ast.errors.iter().any(|e| predicate(e))
-}
 
 #[test]
 fn test_infer_i32_literal() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> i32 {
             42
@@ -27,7 +17,7 @@ fn test_infer_i32_literal() {
 
 #[test]
 fn test_infer_binary_add() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> i32 {
             1 + 2
@@ -39,7 +29,7 @@ fn test_infer_binary_add() {
 
 #[test]
 fn test_infer_let_binding() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> i32 {
             let x = 10;
@@ -52,7 +42,7 @@ fn test_infer_let_binding() {
 
 #[test]
 fn test_infer_reference_type() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> &i32 {
             let x = 10;
@@ -65,7 +55,7 @@ fn test_infer_reference_type() {
 
 #[test]
 fn test_type_mismatch_return() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> bool {
             42
@@ -79,7 +69,7 @@ fn test_type_mismatch_return() {
 
 #[test]
 fn test_unbound_variable() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> i32 {
             x
@@ -93,7 +83,7 @@ fn test_unbound_variable() {
 
 #[test]
 fn test_infer_deref() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test(x: &i32) -> i32 {
             *x
@@ -105,7 +95,7 @@ fn test_infer_deref() {
 
 #[test]
 fn test_infer_mut_reference() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> &mut i32 {
             let x = 10;
@@ -118,7 +108,7 @@ fn test_infer_mut_reference() {
 
 #[test]
 fn test_infer_function_param_types() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn add(x: i32, y: i32) -> i32 {
             x + y
@@ -130,7 +120,7 @@ fn test_infer_function_param_types() {
 
 #[test]
 fn test_infer_nested_blocks() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> i32 {
             let x = {
@@ -146,7 +136,7 @@ fn test_infer_nested_blocks() {
 
 #[test]
 fn test_infer_comparison() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> bool {
             1 < 2
@@ -158,7 +148,7 @@ fn test_infer_comparison() {
 
 #[test]
 fn test_type_annotation_mismatch() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() {
             let x: bool = 42;
@@ -172,7 +162,7 @@ fn test_type_annotation_mismatch() {
 
 #[test]
 fn test_infer_bool_literal() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> bool {
             true
@@ -186,7 +176,7 @@ fn test_infer_bool_literal() {
 
 #[test]
 fn test_multiple_functions() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn foo() -> i32 {
             42
@@ -201,7 +191,7 @@ fn test_multiple_functions() {
 
 #[test]
 fn test_infer_string_literal() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> &'static str {
             "hello world"
@@ -213,7 +203,7 @@ fn test_infer_string_literal() {
 
 #[test]
 fn test_string_literal_type_mismatch() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> i32 {
             "hello"
@@ -227,7 +217,7 @@ fn test_string_literal_type_mismatch() {
 
 #[test]
 fn test_infer_bool_true_false() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test_true() -> bool {
             true
@@ -242,7 +232,7 @@ fn test_infer_bool_true_false() {
 
 #[test]
 fn test_generic_identity() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn identity<T>(x: T) -> T { x }
         fn main() -> i32 {
@@ -255,7 +245,7 @@ fn test_generic_identity() {
 
 #[test]
 fn test_generic_multiple_type_params() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn first<T, U>(x: T, y: U) -> T { x }
         fn main() -> i32 {
@@ -268,7 +258,7 @@ fn test_generic_multiple_type_params() {
 
 #[test]
 fn test_generic_type_mismatch() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn identity<T>(x: T) -> T { x }
         fn main() {
@@ -283,7 +273,7 @@ fn test_generic_type_mismatch() {
 
 #[test]
 fn test_unknown_type_error() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn bad(x: Foo) -> Foo { x }
         "#,
@@ -295,7 +285,7 @@ fn test_unknown_type_error() {
 
 #[test]
 fn test_conditional_basic() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> i32 {
             1 if true else 2
@@ -307,7 +297,7 @@ fn test_conditional_basic() {
 
 #[test]
 fn test_conditional_with_variable_condition() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test(b: bool) -> i32 {
             10 if b else 20
@@ -319,7 +309,7 @@ fn test_conditional_with_variable_condition() {
 
 #[test]
 fn test_conditional_bool_result() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test(a: bool, b: bool) -> bool {
             a if b else false
@@ -331,7 +321,7 @@ fn test_conditional_bool_result() {
 
 #[test]
 fn test_conditional_branch_type_mismatch() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> i32 {
             1 if true else false
@@ -345,7 +335,7 @@ fn test_conditional_branch_type_mismatch() {
 
 #[test]
 fn test_conditional_condition_not_bool() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test() -> i32 {
             1 if 42 else 2
@@ -359,7 +349,7 @@ fn test_conditional_condition_not_bool() {
 
 #[test]
 fn test_conditional_nested() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test(a: bool, b: bool) -> i32 {
             1 if a else (2 if b else 3)
@@ -371,7 +361,7 @@ fn test_conditional_nested() {
 
 #[test]
 fn test_conditional_in_let_binding() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test(b: bool) -> i32 {
             let x = 5 if b else 10;
@@ -384,7 +374,7 @@ fn test_conditional_in_let_binding() {
 
 #[test]
 fn test_conditional_with_arithmetic() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test(b: bool) -> i32 {
             (1 + 2) if b else (3 * 4)
@@ -396,7 +386,7 @@ fn test_conditional_with_arithmetic() {
 
 #[test]
 fn test_conditional_type_inference_from_annotation() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test(b: bool) -> i32 {
             let x: i32 = 1 if b else 2;
@@ -409,7 +399,7 @@ fn test_conditional_type_inference_from_annotation() {
 
 #[test]
 fn test_conditional_with_comparison_condition() {
-    let typed_ast = check(
+    let typed_ast = test_type_check(
         r#"
         fn test(x: i32) -> i32 {
             1 if x > 0 else 2

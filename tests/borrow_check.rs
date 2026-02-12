@@ -1,23 +1,11 @@
+mod common;
+
+use common::{has_borrow_error, test_borrow_check};
 use som::borrow_check::BorrowError;
-use som::{BorrowChecker, Source, TypeInferencer, parser};
-use std::sync::Arc;
-
-fn check(source: &str) -> Vec<BorrowError> {
-    let source = Arc::new(Source::from_raw(source));
-    let (ast, _) = parser::parse(source);
-    let inferencer = TypeInferencer::new();
-    let typed_ast = inferencer.check_program(ast);
-    let mut checker = BorrowChecker::new(&typed_ast);
-    checker.check_program()
-}
-
-fn has_error<F: Fn(&BorrowError) -> bool>(errors: &[BorrowError], predicate: F) -> bool {
-    errors.iter().any(predicate)
-}
 
 #[test]
 fn test_use_after_move() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() {
             let x = 10;
@@ -32,7 +20,7 @@ fn test_use_after_move() {
 
 #[test]
 fn test_conflicting_borrow_mut_then_immut() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() {
             let x = 10;
@@ -41,7 +29,7 @@ fn test_conflicting_borrow_mut_then_immut() {
         }
         "#,
     );
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::ConflictingBorrow { .. }
     )));
@@ -49,7 +37,7 @@ fn test_conflicting_borrow_mut_then_immut() {
 
 #[test]
 fn test_conflicting_borrow_immut_then_mut() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() {
             let x = 10;
@@ -58,7 +46,7 @@ fn test_conflicting_borrow_immut_then_mut() {
         }
         "#,
     );
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::ConflictingBorrow { .. }
     )));
@@ -66,7 +54,7 @@ fn test_conflicting_borrow_immut_then_mut() {
 
 #[test]
 fn test_multiple_immutable_borrows_ok() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() {
             let x = 10;
@@ -80,7 +68,7 @@ fn test_multiple_immutable_borrows_ok() {
 
 #[test]
 fn test_dangling_reference_direct() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() -> &i32 {
             let x = 10;
@@ -88,7 +76,7 @@ fn test_dangling_reference_direct() {
         }
         "#,
     );
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::DanglingReference { .. }
     )));
@@ -96,7 +84,7 @@ fn test_dangling_reference_direct() {
 
 #[test]
 fn test_dangling_reference_through_variable() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() -> &i32 {
             let x = 10;
@@ -105,7 +93,7 @@ fn test_dangling_reference_through_variable() {
         }
         "#,
     );
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::DanglingReference { .. }
     )));
@@ -113,7 +101,7 @@ fn test_dangling_reference_through_variable() {
 
 #[test]
 fn test_parameter_reference_ok() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(x: &i32) -> &i32 {
             x
@@ -125,7 +113,7 @@ fn test_parameter_reference_ok() {
 
 #[test]
 fn test_borrow_parameter_ok() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(x: i32) -> &i32 {
             &x
@@ -138,13 +126,13 @@ fn test_borrow_parameter_ok() {
 
 #[test]
 fn test_borrow_expires_after_scope() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() {
             let x = 10;
             {
                 let r = &mut x;
-            }
+            };
             let s = &mut x;
         }
         "#,
@@ -155,7 +143,7 @@ fn test_borrow_expires_after_scope() {
 
 #[test]
 fn test_use_while_mut_borrowed() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() {
             let x = 10;
@@ -164,7 +152,7 @@ fn test_use_while_mut_borrowed() {
         }
         "#,
     );
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::UseWhileMutBorrowed { .. }
     )));
@@ -172,7 +160,7 @@ fn test_use_while_mut_borrowed() {
 
 #[test]
 fn test_nested_block_dangling() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() -> &i32 {
             let r = {
@@ -183,7 +171,7 @@ fn test_nested_block_dangling() {
         }
         "#,
     );
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::DanglingReference { .. }
     )));
@@ -191,7 +179,7 @@ fn test_nested_block_dangling() {
 
 #[test]
 fn test_outer_scope_reference_ok() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() -> &i32 {
             let x = 10;
@@ -204,7 +192,7 @@ fn test_outer_scope_reference_ok() {
     );
     // x is in outer scope, so returning &x from inner block is ok
     // But returning from function is still dangling!
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::DanglingReference { .. }
     )));
@@ -212,7 +200,7 @@ fn test_outer_scope_reference_ok() {
 
 #[test]
 fn test_double_mut_borrow() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() {
             let x = 10;
@@ -221,7 +209,7 @@ fn test_double_mut_borrow() {
         }
         "#,
     );
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::ConflictingBorrow { .. }
     )));
@@ -229,14 +217,14 @@ fn test_double_mut_borrow() {
 
 #[test]
 fn test_reborrow_after_scope() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() {
             let x = 10;
             {
                 let r = &x;
                 let s = &x;
-            }
+            };
             let t = &mut x;
         }
         "#,
@@ -247,7 +235,7 @@ fn test_reborrow_after_scope() {
 
 #[test]
 fn test_static_lifetime_ok() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(x: &'static i32) -> &'static i32 {
             x
@@ -260,7 +248,7 @@ fn test_static_lifetime_ok() {
 
 #[test]
 fn test_string_literal_no_dangling() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() -> &str {
             "hello"
@@ -273,7 +261,7 @@ fn test_string_literal_no_dangling() {
 
 #[test]
 fn test_string_literal_in_block() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() -> &str {
             let s = {
@@ -289,7 +277,7 @@ fn test_string_literal_in_block() {
 
 #[test]
 fn test_string_literal_assigned_to_variable() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() -> &str {
             let s = "hello";
@@ -303,7 +291,7 @@ fn test_string_literal_assigned_to_variable() {
 
 #[test]
 fn test_bool_literals() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test() {
             let t = true;
@@ -317,7 +305,7 @@ fn test_bool_literals() {
 
 #[test]
 fn test_conditional_no_borrow_issues() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(b: bool) -> i32 {
             let x = 10;
@@ -330,7 +318,7 @@ fn test_conditional_no_borrow_issues() {
 
 #[test]
 fn test_conditional_borrow_in_branch() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(b: bool) {
             let x = 10;
@@ -344,7 +332,7 @@ fn test_conditional_borrow_in_branch() {
 
 #[test]
 fn test_conditional_dangling_reference() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(b: bool) -> &i32 {
             let x = 10;
@@ -353,7 +341,7 @@ fn test_conditional_dangling_reference() {
         "#,
     );
     // Returns reference to local - should be dangling
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::DanglingReference { .. }
     )));
@@ -361,7 +349,7 @@ fn test_conditional_dangling_reference() {
 
 #[test]
 fn test_conditional_copy_in_branch() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(b: bool) {
             let x = 10;
@@ -376,7 +364,7 @@ fn test_conditional_copy_in_branch() {
 
 #[test]
 fn test_conditional_with_mut_borrow_no_conflict() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(b: bool) {
             let x = 10;
@@ -391,7 +379,7 @@ fn test_conditional_with_mut_borrow_no_conflict() {
 
 #[test]
 fn test_conditional_use_while_borrowed() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(b: bool) {
             let x = 10;
@@ -401,7 +389,7 @@ fn test_conditional_use_while_borrowed() {
         "#,
     );
     // x is used while mutably borrowed
-    assert!(has_error(&errors, |e| matches!(
+    assert!(has_borrow_error(&errors, |e| matches!(
         e,
         BorrowError::UseWhileMutBorrowed { .. }
     )));
@@ -409,7 +397,7 @@ fn test_conditional_use_while_borrowed() {
 
 #[test]
 fn test_conditional_borrow_expires_before_use() {
-    let errors = check(
+    let errors = test_borrow_check(
         r#"
         fn test(b: bool) -> i32 {
             let x = 10;
