@@ -90,7 +90,7 @@ pub enum TokenKind {
     #[token("<=")]
     LessThanOrEqual,
     #[token(">=")]
-    GreaterThanOnEqual,
+    GreaterThanOrEqual,
 
     // Delimiters
     #[token("(")]

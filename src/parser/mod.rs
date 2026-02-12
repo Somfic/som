@@ -1,23 +1,60 @@
-use crate::ast::{Ast, Ident};
-use crate::lexer::{Token, TokenKind, lex};
-use crate::span::{Source, Span};
-use std::path::Path;
 use std::sync::Arc;
 
-mod error;
-pub use error::*;
+use crate::{
+    Ast, Ident, Source, Span, Stmt,
+    arena::Id,
+    lexer::{Token, TokenKind, lex},
+    parser::builder::AstBuilder,
+};
 
+mod builder;
 mod decl;
 mod expr;
-mod stmt;
+mod grammar;
 mod ty;
 
+pub use grammar::{Grammar, OpInfo, Association};
+
+/// Parse error with location information
+#[derive(Debug, Clone)]
+pub struct ParseError {
+    pub message: String,
+    pub span: Span,
+}
+
+impl ParseError {
+    pub fn to_diagnostic(&self) -> crate::diagnostics::Diagnostic {
+        use crate::diagnostics::{Diagnostic, Label, Severity};
+        Diagnostic::new(Severity::Error, &self.message)
+            .with_label(Label::primary(self.span.clone(), "here"))
+    }
+}
+
+/// Recovery strategy levels
+#[derive(Clone, Copy, Debug)]
+pub enum RecoveryLevel {
+    /// Sync at expression boundaries: ), ], }, ;, ,
+    Expression,
+    /// Sync at statement boundaries: ;, }, let, loop, while, if
+    Statement,
+    /// Sync at declaration boundaries: fn, struct, enum, extern
+    Declaration,
+}
+
+/// Result of parsing something that could be a statement or trailing expression
+pub enum StmtOrExpr {
+    Stmt(Id<Stmt>),
+    Expr(crate::arena::Id<crate::Expr>),
+    Error,
+}
+
+/// Main parser struct
 pub struct Parser<'src> {
     tokens: Vec<Token<'src>>,
     pos: usize,
-    ast: Ast,
+    pub builder: AstBuilder,
     errors: Vec<ParseError>,
-    next_ident_id: u32,
+    in_recovery: bool,
 }
 
 impl<'src> Parser<'src> {
@@ -25,55 +62,47 @@ impl<'src> Parser<'src> {
         Self {
             tokens,
             pos: 0,
-            ast: Ast::new(),
+            builder: AstBuilder::new(),
             errors: Vec::new(),
-            next_ident_id: 0,
+            in_recovery: false,
         }
     }
 
-    pub fn parse(mut self) -> (Ast, Vec<ParseError>) {
-        self.parse_program();
-        (self.ast, self.errors)
-    }
+    // --- Token inspection ---
 
-    // Token manipulation
-
-    fn peek(&self) -> TokenKind {
-        self.peek_token().kind
-    }
-
-    fn peek_token(&self) -> &Token<'src> {
+    pub fn peek(&self) -> TokenKind {
         self.tokens
             .get(self.pos)
-            .unwrap_or_else(|| self.tokens.last().unwrap())
+            .map(|t| t.kind)
+            .unwrap_or(TokenKind::Eof)
     }
 
-    fn peek_span(&self) -> Span {
-        self.peek_token().span.clone()
+    pub fn peek_token(&self) -> &Token<'src> {
+        &self.tokens[self.pos]
     }
 
-    fn previous_span(&self) -> Span {
-        if self.pos > 0 {
-            self.tokens[self.pos - 1].span.clone()
-        } else {
-            // Return an empty span at the start of the source
-            Span::empty(self.tokens[0].span.source.clone())
-        }
-    }
-
-    fn at(&self, kind: TokenKind) -> bool {
+    pub fn at(&self, kind: TokenKind) -> bool {
         self.peek() == kind
     }
 
-    fn at_eof(&self) -> bool {
+    pub fn at_eof(&self) -> bool {
         self.at(TokenKind::Eof)
     }
 
-    fn advance(&mut self) {
+    pub fn current_span(&self) -> Span {
+        self.peek_token().span.clone()
+    }
+
+    pub fn previous_span(&self) -> Span {
+        self.tokens[self.pos.saturating_sub(1)].span.clone()
+    }
+
+    // --- Token consumption ---
+
+    pub fn advance(&mut self) {
         if !self.at_eof() {
             self.pos += 1;
         }
-        // Skip whitespace and comments
         self.skip_trivia();
     }
 
@@ -83,104 +112,150 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn eat(&mut self, kind: TokenKind) -> bool {
+    pub fn eat(&mut self, kind: TokenKind) -> bool {
         if self.at(kind) {
             self.advance();
+            self.in_recovery = false;
             true
         } else {
             false
         }
     }
 
-    fn expect(&mut self, kind: TokenKind) -> Option<Span> {
+    pub fn expect(&mut self, kind: TokenKind) -> Option<Span> {
         if self.at(kind) {
-            let span = self.peek_span();
+            let span = self.current_span();
             self.advance();
+            self.in_recovery = false;
             Some(span)
         } else {
-            self.error(vec![kind]);
+            self.error_expected(&[kind]);
             None
         }
     }
 
-    fn error(&mut self, expected: Vec<TokenKind>) {
-        let span = self.peek_span();
-        let found = self.peek();
-        self.errors.push(ParseError::new(expected, found, span));
-        self.synchronize();
+    // --- Error handling ---
+
+    pub fn error(&mut self, message: String) {
+        if !self.in_recovery {
+            self.errors.push(ParseError {
+                message,
+                span: self.current_span(),
+            });
+        }
+        self.in_recovery = true;
     }
 
-    // Skip tokens until we reach a synchronization point
-    fn synchronize(&mut self) {
+    pub fn error_expected(&mut self, expected: &[TokenKind]) {
+        let msg = if expected.len() == 1 {
+            format!("expected {:?}, found {:?}", expected[0], self.peek())
+        } else {
+            format!("expected one of {:?}, found {:?}", expected, self.peek())
+        };
+        self.error(msg);
+    }
+
+    // --- Error recovery ---
+
+    pub fn recover(&mut self, level: RecoveryLevel) {
+        let sync_tokens: &[TokenKind] = match level {
+            RecoveryLevel::Expression => &[
+                TokenKind::Semicolon,
+                TokenKind::Comma,
+                TokenKind::CloseParen,
+                TokenKind::CloseBrace,
+            ],
+            RecoveryLevel::Statement => &[
+                TokenKind::Semicolon,
+                TokenKind::CloseBrace,
+                TokenKind::Let,
+                TokenKind::Loop,
+                TokenKind::While,
+                TokenKind::If,
+                TokenKind::Fn,
+            ],
+            RecoveryLevel::Declaration => &[
+                TokenKind::Fn,
+                TokenKind::Extern,
+                TokenKind::CloseBrace,
+            ],
+        };
+
         while !self.at_eof() {
-            // Stop at statement/declaration boundaries
+            if sync_tokens.contains(&self.peek()) {
+                // For semicolons, consume them as part of recovery
+                if self.at(TokenKind::Semicolon) {
+                    self.advance();
+                }
+                self.in_recovery = false;
+                return;
+            }
+
+            // Skip balanced delimiters
             match self.peek() {
-                TokenKind::Fn | TokenKind::Let | TokenKind::CloseBrace => return,
+                TokenKind::OpenBrace => {
+                    self.skip_balanced(TokenKind::OpenBrace, TokenKind::CloseBrace);
+                }
+                TokenKind::OpenParen => {
+                    self.skip_balanced(TokenKind::OpenParen, TokenKind::CloseParen);
+                }
                 _ => self.advance(),
             }
         }
     }
 
-    // Helpers
+    fn skip_balanced(&mut self, open: TokenKind, close: TokenKind) {
+        assert!(self.at(open));
+        let mut depth = 0;
 
-    fn make_ident(&mut self, text: &str) -> Ident {
-        let id = self.next_ident_id;
-        self.next_ident_id += 1;
-        Ident {
-            id,
-            value: text.into(),
+        loop {
+            if self.at(open) {
+                depth += 1;
+            } else if self.at(close) {
+                depth -= 1;
+                if depth == 0 {
+                    self.advance();
+                    return;
+                }
+            } else if self.at_eof() {
+                return;
+            }
+            self.advance();
         }
     }
 
-    fn parse_ident(&mut self) -> Option<(Ident, Span)> {
+    // --- Identifier parsing ---
+
+    pub fn parse_ident(&mut self) -> Option<Ident> {
         if self.at(TokenKind::Ident) {
-            let token = self.peek_token();
-            let span = token.span.clone();
-            let text = token.text.to_owned();
+            let text = self.peek_token().text;
             self.advance();
-            Some((self.make_ident(&text), span))
+            Some(self.builder.make_ident(text))
         } else {
-            self.error(vec![TokenKind::Ident]);
+            self.error_expected(&[TokenKind::Ident]);
             None
         }
     }
 
-    /// Resolve a library path relative to the source file's directory.
-    /// Returns an absolute path if possible for proper runtime library loading.
-    fn resolve_library_path(&self, lib_path: &str, span: &Span) -> String {
-        let path = Path::new(lib_path);
+    // --- Finalization ---
 
-        // If the path is already absolute, return as-is
-        if path.is_absolute() {
-            return lib_path.to_string();
-        }
-
-        // Try to get the source file's directory
-        if let Source::File(source_path, _) = span.source.as_ref() {
-            // First, try to get an absolute path for the source file
-            let absolute_source = source_path
-                .canonicalize()
-                .unwrap_or_else(|_| source_path.clone());
-
-            if let Some(source_dir) = absolute_source.parent() {
-                let resolved = source_dir.join(path);
-                // Try to canonicalize the resolved path (requires file to exist)
-                if let Ok(canonical) = resolved.canonicalize() {
-                    return canonical.to_string_lossy().to_string();
-                }
-                return resolved.to_string_lossy().to_string();
-            }
-        }
-
-        // Fallback: return the original path
-        lib_path.to_string()
+    pub fn finish(self) -> (Ast, Vec<ParseError>) {
+        (self.builder.into_ast(), self.errors)
     }
 }
+
+// --- Public API ---
 
 /// Parse source code into an AST
 pub fn parse(source: Arc<Source>) -> (Ast, Vec<ParseError>) {
     let tokens = lex(source);
     let mut parser = Parser::new(tokens);
-    parser.skip_trivia(); // Skip leading whitespace
-    parser.parse()
+
+    // Skip initial trivia
+    parser.skip_trivia();
+
+    // Parse the program
+    parser.parse_program();
+
+    parser.finish()
 }

@@ -1,112 +1,130 @@
-use crate::arena::Id;
-use crate::ast::{Decl, Func, FuncParam, Module};
-use crate::lexer::TokenKind;
-use crate::parser::Parser;
-use crate::{ExternBlock, ExternFunc, FuncTypeParam};
+use crate::{
+    ExternBlock, ExternFunc, Func, FuncParam, FuncTypeParam,
+    lexer::TokenKind,
+    parser::{Parser, RecoveryLevel},
+};
 
 impl<'src> Parser<'src> {
-    pub(super) fn parse_program(&mut self) {
-        let mut declarations = Vec::new();
-
+    /// Parse the entire program (entry point)
+    pub fn parse_program(&mut self) {
         while !self.at_eof() {
-            if self.at(TokenKind::Fn) {
-                if let Some(func_id) = self.parse_func_dec() {
-                    declarations.push(Decl::Func(func_id));
+            match self.peek() {
+                TokenKind::Fn => {
+                    if let Some(func_id) = self.parse_function() {
+                        self.builder.add_func(func_id);
+                    } else {
+                        self.recover(RecoveryLevel::Declaration);
+                    }
                 }
-            } else if self.at(TokenKind::Extern) {
-                if let Some(extern_block) = self.parse_extern_block() {
-                    declarations.push(Decl::ExternBlock(extern_block));
+                TokenKind::Extern => {
+                    if let Some(block) = self.parse_extern_block() {
+                        self.builder.add_extern_block(block);
+                    } else {
+                        self.recover(RecoveryLevel::Declaration);
+                    }
                 }
-            } else {
-                // Unexpected token at top level
-                self.error(vec![TokenKind::Fn, TokenKind::Extern]);
-                self.advance(); // Skip to recover
+                _ => {
+                    self.error(format!("expected `fn` or `extern`, found {:?}", self.peek()));
+                    self.recover(RecoveryLevel::Declaration);
+                }
             }
         }
-
-        self.ast.mods.push(Module {
-            name: "main".into(),
-            decs: declarations,
-        });
     }
 
-    fn parse_func_dec(&mut self) -> Option<Id<Func>> {
-        let start_span = self.peek_span();
-
-        // fn
+    /// Parse a function declaration: `fn name<T>(params) -> RetType { body }`
+    fn parse_function(&mut self) -> Option<crate::arena::Id<Func>> {
+        let start = self.current_span();
         self.expect(TokenKind::Fn)?;
 
-        // name
-        let (name, _) = self.parse_ident()?;
+        let name = self.parse_ident()?;
 
-        // type parameters
-        let mut type_parameters = vec![];
-        if self.eat(TokenKind::LessThan) {
-            loop {
-                let (param_name, _) = self.parse_ident()?;
-                type_parameters.push(FuncTypeParam { name: param_name });
+        // Parse optional type parameters: <T, U>
+        let type_parameters = if self.eat(TokenKind::LessThan) {
+            self.parse_type_params()?
+        } else {
+            Vec::new()
+        };
 
-                if !self.eat(TokenKind::Comma) {
-                    break;
-                }
-            }
-            self.expect(TokenKind::GreaterThan)?;
-        }
-
-        // parameters
+        // Parse parameters: (x: i32, y: bool)
         self.expect(TokenKind::OpenParen)?;
-
-        let mut parameters = Vec::new();
-        if !self.at(TokenKind::CloseParen) {
-            loop {
-                if let Some(param) = self.parse_func_param() {
-                    parameters.push(param);
-                }
-
-                if !self.eat(TokenKind::Comma) {
-                    break;
-                }
-            }
-        }
-
+        let parameters = self.parse_func_params()?;
         self.expect(TokenKind::CloseParen)?;
 
-        // Optional return type
+        // Parse optional return type: -> i32
         let (return_type, return_type_id) = if self.eat(TokenKind::Arrow) {
-            let type_span = self.peek_span();
+            let ty_span = self.current_span();
             let ty = self.parse_type()?;
-            let type_id = self.ast.alloc_type_with_span(type_span);
-            (Some(ty), Some(type_id))
+            let ty_id = self.builder.alloc_type_span(ty_span);
+            (Some(ty), Some(ty_id))
         } else {
             (None, None)
         };
 
-        // Body (block expression)
+        // Parse body
         let body = self.parse_block()?;
 
-        let end_span = self.previous_span();
-        let span = start_span.merge(&end_span);
-
-        let func = Func {
-            name,
-            type_parameters,
-            parameters,
-            return_type,
-            return_type_id,
-            body,
-        };
-
-        Some(self.ast.alloc_func_with_span(func, span))
+        let span = start.merge(&self.previous_span());
+        Some(self.builder.alloc_func(
+            Func {
+                name,
+                type_parameters,
+                parameters,
+                return_type,
+                return_type_id,
+                body,
+            },
+            span,
+        ))
     }
 
+    /// Parse type parameters: T, U, V
+    fn parse_type_params(&mut self) -> Option<Vec<FuncTypeParam>> {
+        let mut params = Vec::new();
+
+        if !self.at(TokenKind::GreaterThan) {
+            let name = self.parse_ident()?;
+            params.push(FuncTypeParam { name });
+
+            while self.eat(TokenKind::Comma) {
+                if self.at(TokenKind::GreaterThan) {
+                    break; // Trailing comma
+                }
+                let name = self.parse_ident()?;
+                params.push(FuncTypeParam { name });
+            }
+        }
+
+        self.expect(TokenKind::GreaterThan)?;
+        Some(params)
+    }
+
+    /// Parse function parameters: x: i32, y: bool
+    fn parse_func_params(&mut self) -> Option<Vec<FuncParam>> {
+        let mut params = Vec::new();
+
+        if !self.at(TokenKind::CloseParen) {
+            params.push(self.parse_func_param()?);
+
+            while self.eat(TokenKind::Comma) {
+                if self.at(TokenKind::CloseParen) {
+                    break; // Trailing comma
+                }
+                params.push(self.parse_func_param()?);
+            }
+        }
+
+        Some(params)
+    }
+
+    /// Parse a single function parameter: name: Type
     fn parse_func_param(&mut self) -> Option<FuncParam> {
-        let (name, _) = self.parse_ident()?;
+        let name = self.parse_ident()?;
 
         let (ty, type_id) = if self.eat(TokenKind::Colon) {
-            let type_span = self.peek_span();
-            let parsed_ty = self.parse_type()?;
-            let tid = self.ast.alloc_type_with_span(type_span);
-            (Some(parsed_ty), Some(tid))
+            let ty_span = self.current_span();
+            let ty = self.parse_type()?;
+            let ty_id = self.builder.alloc_type_span(ty_span);
+            (Some(ty), Some(ty_id))
         } else {
             (None, None)
         };
@@ -114,19 +132,17 @@ impl<'src> Parser<'src> {
         Some(FuncParam { name, ty, type_id })
     }
 
+    /// Parse an extern block: `extern "lib" { fn foo(); }`
     fn parse_extern_block(&mut self) -> Option<ExternBlock> {
         self.expect(TokenKind::Extern)?;
 
+        // Parse optional library name: "SDL2"
         let library = if self.at(TokenKind::Text) {
-            let token = self.peek_token();
-            let span = token.span.clone();
-            // Strip surrounding quotes from the string literal
-            let value = token.text.trim_matches('"').to_string();
-            self.advance(); // consume the library string
-
-            // Resolve relative paths against the source file's directory
-            let resolved = self.resolve_library_path(&value, &span);
-            Some(resolved)
+            let text = self.peek_token().text;
+            // Remove surrounding quotes
+            let unquoted = &text[1..text.len() - 1];
+            self.advance();
+            Some(unquoted.to_string())
         } else {
             None
         };
@@ -135,20 +151,15 @@ impl<'src> Parser<'src> {
 
         let mut functions = Vec::new();
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
-            if let Some(func) = self.parse_extern_func() {
-                functions.push(
-                    self.ast
-                        .alloc_extern_func_with_span(func, self.previous_span()),
-                );
-            } else {
-                // Skip to next semicolon to recover
-                while !self.at(TokenKind::Semicolon)
-                    && !self.at(TokenKind::CloseBrace)
-                    && !self.at_eof()
-                {
-                    self.advance();
+            if self.at(TokenKind::Fn) {
+                if let Some(func) = self.parse_extern_func() {
+                    functions.push(func);
+                } else {
+                    self.recover(RecoveryLevel::Declaration);
                 }
-                self.eat(TokenKind::Semicolon); // Skip the semicolon if we stopped at one
+            } else {
+                self.error("expected `fn` in extern block".into());
+                self.recover(RecoveryLevel::Declaration);
             }
         }
 
@@ -157,33 +168,19 @@ impl<'src> Parser<'src> {
         Some(ExternBlock { library, functions })
     }
 
-    fn parse_extern_func(&mut self) -> Option<ExternFunc> {
-        let start_span = self.peek_span();
-
+    /// Parse an extern function declaration: `fn name(params) -> RetType;`
+    fn parse_extern_func(&mut self) -> Option<crate::arena::Id<ExternFunc>> {
+        let start = self.current_span();
         self.expect(TokenKind::Fn)?;
 
-        // name
-        let (name, _) = self.parse_ident()?;
+        let name = self.parse_ident()?;
 
-        // parameters
+        // Parse parameters
         self.expect(TokenKind::OpenParen)?;
-
-        let mut parameters = Vec::new();
-        if !self.at(TokenKind::CloseParen) {
-            loop {
-                if let Some(param) = self.parse_func_param() {
-                    parameters.push(param);
-                }
-
-                if !self.eat(TokenKind::Comma) {
-                    break;
-                }
-            }
-        }
-
+        let parameters = self.parse_extern_func_params()?;
         self.expect(TokenKind::CloseParen)?;
 
-        // Optional return type
+        // Parse optional return type
         let return_type = if self.eat(TokenKind::Arrow) {
             Some(self.parse_type()?)
         } else {
@@ -192,13 +189,46 @@ impl<'src> Parser<'src> {
 
         self.expect(TokenKind::Semicolon)?;
 
-        let end_span = self.previous_span();
-        let span = start_span.merge(&end_span);
+        let span = start.merge(&self.previous_span());
+        Some(self.builder.alloc_extern_func(
+            ExternFunc {
+                name,
+                parameters,
+                return_type,
+            },
+            span,
+        ))
+    }
 
-        Some(ExternFunc {
+    /// Parse extern function parameters (no type_id needed)
+    fn parse_extern_func_params(&mut self) -> Option<Vec<FuncParam>> {
+        let mut params = Vec::new();
+
+        if !self.at(TokenKind::CloseParen) {
+            params.push(self.parse_extern_func_param()?);
+
+            while self.eat(TokenKind::Comma) {
+                if self.at(TokenKind::CloseParen) {
+                    break;
+                }
+                params.push(self.parse_extern_func_param()?);
+            }
+        }
+
+        Some(params)
+    }
+
+    /// Parse an extern function parameter
+    fn parse_extern_func_param(&mut self) -> Option<FuncParam> {
+        let name = self.parse_ident()?;
+
+        self.expect(TokenKind::Colon)?;
+        let ty = self.parse_type()?;
+
+        Some(FuncParam {
             name,
-            parameters,
-            return_type,
+            ty: Some(ty),
+            type_id: None,
         })
     }
 }
