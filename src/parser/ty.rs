@@ -117,9 +117,14 @@ impl<'src> Parser<'src> {
                 Some(Type::Named(text.into()))
             }
 
-            // Unsigned integer types
-            TokenKind::U8
-            | TokenKind::U16
+            // u8 is a built-in type
+            TokenKind::U8 => {
+                self.advance();
+                Some(Type::U8)
+            }
+
+            // Other unsigned integer types (not yet fully supported)
+            TokenKind::U16
             | TokenKind::U32
             | TokenKind::U64
             | TokenKind::U128

@@ -3,8 +3,8 @@
 
 typedef struct
 {
-    float x;
-    float y;
+    uint32_t x;
+    uint32_t y;
 } Vec2;
 typedef struct
 {
@@ -20,7 +20,7 @@ int32_t identity(int32_t x)
 }
 
 // Return struct by value
-Vec2 make_vec2(float x, float y)
+Vec2 make_vec2(uint32_t x, uint32_t y)
 {
     return (Vec2){x, y};
 }
@@ -28,7 +28,19 @@ Vec2 make_vec2(float x, float y)
 // Accept struct by value
 void print_vec2(Vec2 v)
 {
-    printf("Vec2(%f, %f)\n", v.x, v.y);
+    printf("Vec2(%u, %u)\n", v.x, v.y);
+}
+
+// Assert Vec2 values, returns 1 if correct, 0 if wrong
+int32_t assert_vec2(Vec2 v, uint32_t expected_x, uint32_t expected_y)
+{
+    if (v.x == expected_x && v.y == expected_y)
+    {
+        return 1;
+    }
+    printf("assert_vec2 failed: expected (%u, %u), got (%u, %u)\n",
+           expected_x, expected_y, v.x, v.y);
+    return 0;
 }
 
 // Accept struct by value, return struct by value
@@ -40,7 +52,7 @@ Vec2 add_vec2(Vec2 a, Vec2 b)
 // Small struct (fits in one register on most ABIs)
 void print_color(Color c)
 {
-    printf("Color(%d, %d, %d, %d)\n", c.r, c.g, c.b, c.a);
+    printf("Color(%u, %u, %u, %u)\n", c.r, c.g, c.b, c.a);
 }
 
 // Bigger struct (likely passed on stack)

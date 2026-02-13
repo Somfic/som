@@ -37,6 +37,7 @@ pub struct TypeInferencer {
     errors: Vec<TypeError>,
     func_types: HashMap<Id<Func>, Type>, // Store inferred function return types
     expr_types: HashMap<Id<Expr>, Type>, // Track all expression types
+    integer_type_vars: std::collections::HashSet<TypeVar>, // Type vars constrained to integers
 }
 
 impl TypeInferencer {
@@ -49,6 +50,7 @@ impl TypeInferencer {
             errors: Vec::new(),
             func_types: HashMap::new(),
             expr_types: HashMap::new(),
+            integer_type_vars: std::collections::HashSet::new(),
         }
     }
 
@@ -58,7 +60,7 @@ impl TypeInferencer {
 
         let ty = match expr {
             Expr::Hole => self.fresh_type(),
-            Expr::I32(_) => Type::I32,
+            Expr::I32(_) => self.fresh_integer_type(), // Polymorphic over integer types only
             Expr::F32(_) => Type::F32,
             Expr::Bool(_) => Type::Bool,
             Expr::String(_) => Type::Reference {
@@ -145,7 +147,7 @@ impl TypeInferencer {
 
                 // Check each argument against parameter type
                 for (arg_expr, param_ty) in args.iter().zip(&entry.signature.params) {
-                    let resolved_ty = self.resolve_type(param_ty, &call_generics, call_span);
+                    let resolved_ty = self.resolve_type(param_ty, &call_generics, call_span, ast);
                     let actual = self.infer(ast, arg_expr);
                     self.constraints.push(Constraint::Equal {
                         provenance: Provenance::FuncArg {
@@ -158,7 +160,7 @@ impl TypeInferencer {
                 }
 
                 // Return the function's return type
-                self.resolve_type(&entry.signature.return_type, &call_generics, call_span)
+                self.resolve_type(&entry.signature.return_type, &call_generics, call_span, ast)
             }
             Expr::Borrow { mutable, expr } => {
                 let inner = self.infer(ast, expr);
@@ -300,6 +302,54 @@ impl TypeInferencer {
                 // The type of a constructor is the struct type
                 Type::Named(struct_name.value.clone())
             }
+            Expr::FieldAccess { object, field } => {
+                // Infer the type of the object being accessed
+                let obj_ty = self.infer(ast, object);
+                let obj_ty = self.normalize(&obj_ty);
+
+                match &obj_ty {
+                    Type::Named(struct_name) => {
+                        // Look up the struct definition
+                        let struct_id = match ast.find_struct_by_name(struct_name) {
+                            Some(id) => id,
+                            None => {
+                                self.errors.push(TypeError::UnknownStruct {
+                                    span: ast.get_expr_span(expr_id).clone(),
+                                    name: struct_name.to_string(),
+                                });
+                                return self.fresh_type();
+                            }
+                        };
+
+                        let struct_def = ast.structs.get(&struct_id);
+
+                        // Find the field
+                        let field_def = struct_def
+                            .fields
+                            .iter()
+                            .find(|f| f.name.value == field.value);
+
+                        match field_def {
+                            Some(f) => f.ty.clone(),
+                            None => {
+                                self.errors.push(TypeError::UnknownField {
+                                    span: ast.get_expr_span(expr_id).clone(),
+                                    struct_name: struct_name.to_string(),
+                                    field_name: field.value.to_string(),
+                                });
+                                self.fresh_type()
+                            }
+                        }
+                    }
+                    _ => {
+                        self.errors.push(TypeError::Internal {
+                            span: ast.get_expr_span(expr_id).clone(),
+                            message: format!("cannot access field on non-struct type `{}`", obj_ty),
+                        });
+                        self.fresh_type()
+                    }
+                }
+            }
         };
 
         // Store the inferred type
@@ -379,12 +429,12 @@ impl TypeInferencer {
             let param_ty = match (&param.ty, &param.type_id) {
                 (Some(ty), Some(type_id)) => {
                     let span = ast.get_type_span(type_id);
-                    self.resolve_type(ty, &generics, span)
+                    self.resolve_type(ty, &generics, span, ast)
                 }
                 (Some(ty), None) => {
                     // No type_id available, use function body span as fallback
                     let span = ast.get_expr_span(&func.body);
-                    self.resolve_type(ty, &generics, span)
+                    self.resolve_type(ty, &generics, span, ast)
                 }
                 _ => self.fresh_type(),
             };
@@ -469,17 +519,31 @@ impl TypeInferencer {
 
         match (&t1, &t2) {
             (Type::I32, Type::I32)
+            | (Type::U8, Type::U8)
             | (Type::F32, Type::F32)
             | (Type::Bool, Type::Bool)
             | (Type::Unit, Type::Unit)
             | (Type::Str, Type::Str) => Ok(()),
 
-            (Type::Unknown(v1), Type::Unknown(v2)) => self
-                .unification_table
-                .unify_var_var(*v1, *v2)
-                .map_err(|_| UnifyError::InfiniteType { var: *v1, ty: t2 }),
+            (Type::Unknown(v1), Type::Unknown(v2)) => {
+                // Propagate integer constraint: if either is integer-constrained, both are
+                if self.integer_type_vars.contains(v1) || self.integer_type_vars.contains(v2) {
+                    self.integer_type_vars.insert(*v1);
+                    self.integer_type_vars.insert(*v2);
+                }
+                self.unification_table
+                    .unify_var_var(*v1, *v2)
+                    .map_err(|_| UnifyError::InfiniteType { var: *v1, ty: t2 })
+            }
 
             (Type::Unknown(var), ty) | (ty, Type::Unknown(var)) => {
+                // Check integer type constraint
+                if self.integer_type_vars.contains(var) && !Self::is_integer_type(ty) {
+                    return Err(UnifyError::Mismatch {
+                        expected: Type::I32, // Report as expecting i32
+                        found: ty.clone(),
+                    });
+                }
                 // TODO: occurs check here
                 self.unification_table
                     .unify_var_value(*var, TypeValue::Bound(ty.clone()))
@@ -591,6 +655,18 @@ impl TypeInferencer {
         self.unification_table.new_key(TypeValue::Unbound)
     }
 
+    /// Create a fresh type variable constrained to integer types (i32, u8, etc.)
+    fn fresh_integer_type(&mut self) -> Type {
+        let var = self.fresh_type_var();
+        self.integer_type_vars.insert(var);
+        Type::Unknown(var)
+    }
+
+    /// Check if a type is a valid integer type
+    fn is_integer_type(ty: &Type) -> bool {
+        matches!(ty, Type::I32 | Type::U8)
+    }
+
     fn fresh_lifetime_var(&mut self) -> LifetimeVar {
         self.lifetime_unification_table
             .new_key(LifetimeValue::Unbound)
@@ -603,19 +679,8 @@ impl TypeInferencer {
         args: &[Type],
         output: &Type,
     ) -> Result<(), UnifyError> {
-        let normalized_args: Vec<Type> = args.iter().map(|t| self.normalize(t)).collect();
-
-        // Skip trait resolution if types are still unknown
-        // This allows inference at call sites with concrete types
-        if normalized_args
-            .iter()
-            .any(|t| matches!(t, Type::Unknown(_)))
-        {
-            // Skip - will be resolved when concrete types flow in
-            return Err(UnifyError::Internal(
-                "trait resolution deferred due to unknown types".into(),
-            ));
-        }
+        // Use normalize_with_default to resolve unbound type vars to i32
+        let normalized_args: Vec<Type> = args.iter().map(|t| self.normalize_with_default(t)).collect();
 
         let impl_def = ast
             .find_impl(trait_id, &normalized_args[0], &[normalized_args[1].clone()])
@@ -691,7 +756,7 @@ impl TypeInferencer {
 
         self.solve(&ast);
 
-        // normalize all stored expression types
+        // normalize all stored expression types, defaulting unbound type vars to i32
         let types_to_normalize: Vec<(Id<Expr>, Type)> = self
             .expr_types
             .iter()
@@ -699,7 +764,7 @@ impl TypeInferencer {
             .collect();
         let mut expr_types = HashMap::new();
         for (id, ty) in types_to_normalize {
-            expr_types.insert(id, self.normalize(&ty));
+            expr_types.insert(id, self.normalize_with_default(&ty));
         }
 
         TypedAst {
@@ -710,23 +775,54 @@ impl TypeInferencer {
         }
     }
 
+    /// Normalize a type, defaulting unbound type variables to i32
+    fn normalize_with_default(&mut self, ty: &Type) -> Type {
+        match ty {
+            Type::Unknown(var) => match self.unification_table.probe_value(*var) {
+                TypeValue::Bound(ty) => self.normalize_with_default(&ty),
+                TypeValue::Unbound => Type::I32, // Default unbound type vars to i32
+            },
+            Type::Fun { arguments, returns } => Type::Fun {
+                arguments: arguments.iter().map(|t| self.normalize_with_default(t)).collect(),
+                returns: Box::new(self.normalize_with_default(returns)),
+            },
+            Type::Reference {
+                lifetime,
+                mutable,
+                to,
+            } => Type::Reference {
+                lifetime: self.normalize_lifetime(lifetime),
+                mutable: *mutable,
+                to: Box::new(self.normalize_with_default(to)),
+            },
+            _ => ty.clone(),
+        }
+    }
+
     fn resolve_type(
         &mut self,
         ty: &Type,
         generics: &HashMap<String, TypeVar>,
         span: &Span,
+        ast: &Ast,
     ) -> Type {
         match ty {
-            Type::Named(name) => match generics.get(name.as_ref()) {
-                Some(&tv) => Type::Unknown(tv),
-                None => {
-                    self.errors.push(TypeError::UnknownType {
-                        span: span.clone(),
-                        name: name.to_string(),
-                    });
-                    self.fresh_type() // return fresh var to continue checking
+            Type::Named(name) => {
+                // First check if it's a generic type parameter
+                if let Some(&tv) = generics.get(name.as_ref()) {
+                    return Type::Unknown(tv);
                 }
-            },
+                // Then check if it's a known struct
+                if ast.find_struct_by_name(name).is_some() {
+                    return ty.clone();
+                }
+                // Unknown type
+                self.errors.push(TypeError::UnknownType {
+                    span: span.clone(),
+                    name: name.to_string(),
+                });
+                self.fresh_type() // return fresh var to continue checking
+            }
             Type::Reference {
                 mutable,
                 lifetime,
@@ -734,7 +830,7 @@ impl TypeInferencer {
             } => Type::Reference {
                 mutable: *mutable,
                 lifetime: lifetime.clone(),
-                to: Box::new(self.resolve_type(to, generics, span)),
+                to: Box::new(self.resolve_type(to, generics, span, ast)),
             },
             _ => ty.clone(),
         }

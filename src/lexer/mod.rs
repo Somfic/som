@@ -117,6 +117,8 @@ pub enum TokenKind {
     FatArrow,
     #[token("&")]
     Ampersand,
+    #[token(".")]
+    Dot,
 
     #[token("'")]
     SingleQuote,

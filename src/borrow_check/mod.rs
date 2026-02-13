@@ -405,6 +405,10 @@ impl<'a> BorrowChecker<'a> {
                     self.check_move(*value);
                 }
             }
+            Expr::FieldAccess { object, .. } => {
+                // Check the object expression (field access doesn't move)
+                self.check_expr(*object);
+            }
         }
     }
 

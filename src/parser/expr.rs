@@ -19,7 +19,20 @@ impl<'src> Parser<'src> {
         let mut lhs = self.parse_prefix_or_atom()?;
 
         loop {
-            // Check for postfix operators
+            // Check for field access (highest precedence postfix)
+            if self.at(TokenKind::Dot) {
+                let postfix_bp = Grammar::POSTFIX * 2;
+                if postfix_bp < min_bp {
+                    break;
+                }
+                self.advance(); // consume '.'
+                let field = self.parse_ident()?;
+                let span = start.merge(&self.previous_span());
+                lhs = self.builder.alloc_expr(Expr::FieldAccess { object: lhs, field }, span);
+                continue;
+            }
+
+            // Check for function call
             if self.at(TokenKind::OpenParen) {
                 let postfix_bp = Grammar::POSTFIX * 2;
                 if postfix_bp < min_bp {

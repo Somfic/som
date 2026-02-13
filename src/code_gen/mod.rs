@@ -172,7 +172,11 @@ impl<'ast> Codegen<'ast> {
 
         match expr {
             Expr::Hole => unreachable!("parser should have thrown an error"),
-            Expr::I32(v) => func.body.ins().iconst(to_type(&Type::I32), *v as i64),
+            Expr::I32(v) => {
+                // Use the inferred type (could be i32, u8, etc.)
+                let ty = self.typed_ast.get_expr_ty(&expr_id);
+                func.body.ins().iconst(to_type(ty), *v as i64)
+            }
             Expr::F32(v) => func.body.ins().f32const(*v),
             Expr::Bool(v) => func
                 .body
@@ -262,17 +266,79 @@ impl<'ast> Codegen<'ast> {
                     .module
                     .declare_func_in_func(callee_func_id, func.body.func);
 
-                let arguments: Vec<Value> =
-                    args.iter().map(|arg| self.gen_expr(func, *arg)).collect();
+                // Generate arguments, handling struct types specially
+                let arguments: Vec<Value> = args
+                    .iter()
+                    .map(|arg| {
+                        let val = self.gen_expr(func, *arg);
+                        let arg_ty = self.typed_ast.get_expr_ty(arg);
+
+                        // For struct arguments, we have a pointer but need to pass by value
+                        // Load the packed struct value from the pointer
+                        if let Type::Named(struct_name) = arg_ty {
+                            let struct_id = self
+                                .typed_ast
+                                .ast
+                                .find_struct_by_name(struct_name)
+                                .unwrap();
+                            let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                            let layout = struct_def.compute_layout();
+
+                            // For small structs (≤8 bytes), load as i64
+                            // For larger structs (9-16 bytes), would need two loads
+                            if layout.size <= 8 {
+                                func.body.ins().load(types::I64, MemFlags::new(), val, 0)
+                            } else {
+                                // TODO: handle larger structs properly
+                                val
+                            }
+                        } else {
+                            val
+                        }
+                    })
+                    .collect();
 
                 let call = func.body.ins().call(callee_func_ref, &arguments);
 
-                let results = func.body.inst_results(call);
+                // Copy results to break the borrow on func.body
+                let results: Vec<Value> = func.body.inst_results(call).to_vec();
                 if results.is_empty() {
                     // Void function - return dummy value (unit type)
                     func.body.ins().iconst(types::I32, 0)
                 } else {
-                    results[0]
+                    // Check if return type is a struct
+                    let return_ty = self.typed_ast.get_expr_ty(&expr_id);
+                    if let Type::Named(struct_name) = return_ty {
+                        // Struct returned in register(s) - spill to stack
+                        let struct_id = self
+                            .typed_ast
+                            .ast
+                            .find_struct_by_name(struct_name)
+                            .unwrap();
+                        let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                        let layout = struct_def.compute_layout();
+
+                        // Create stack slot for the struct
+                        let slot = func.body.create_sized_stack_slot(StackSlotData::new(
+                            StackSlotKind::ExplicitSlot,
+                            layout.size as u32,
+                            layout.alignment,
+                        ));
+
+                        let base = func.body.ins().stack_addr(types::I64, slot, 0);
+
+                        // Store the returned value(s) to the stack
+                        // For structs ≤8 bytes: one i64 register
+                        // For structs 9-16 bytes: two i64 registers
+                        func.body.ins().store(MemFlags::new(), results[0], base, 0);
+                        if results.len() > 1 {
+                            func.body.ins().store(MemFlags::new(), results[1], base, 8);
+                        }
+
+                        base
+                    } else {
+                        results[0]
+                    }
                 }
             }
             Expr::Borrow { mutable, expr } => todo!(),
@@ -347,6 +413,40 @@ impl<'ast> Codegen<'ast> {
                 }
 
                 base
+            }
+            Expr::FieldAccess { object, field } => {
+                // Get the base address of the struct
+                let base = self.gen_expr(func, *object);
+
+                // Look up the struct type from the object's type
+                let obj_ty = self.typed_ast.get_expr_ty(object);
+                let Type::Named(struct_name) = obj_ty else {
+                    panic!("field access on non-struct type")
+                };
+
+                let struct_id = self
+                    .typed_ast
+                    .ast
+                    .find_struct_by_name(struct_name)
+                    .unwrap();
+
+                let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                let layout = struct_def.compute_layout();
+
+                // Find the field index and its type
+                let field_idx = struct_def
+                    .fields
+                    .iter()
+                    .position(|f| f.name.value == field.value)
+                    .expect("field not found");
+
+                let field_ty = &struct_def.fields[field_idx].ty;
+                let offset = layout.field_offsets[field_idx] as i32;
+
+                // Load the field value from memory
+                func.body
+                    .ins()
+                    .load(to_type(field_ty), MemFlags::new(), base, offset)
             }
         }
     }
@@ -450,6 +550,7 @@ pub fn to_type(ty: &Type) -> cranelift::prelude::Type {
         Type::Unknown(..) => unreachable!("inferred during type inference"),
         Type::Named(..) => POINTER,
         Type::I32 => types::I32,
+        Type::U8 => types::I8,
         Type::F32 => types::F32,
         Type::Bool => types::I8,
         Type::Str => POINTER,

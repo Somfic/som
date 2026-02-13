@@ -40,6 +40,10 @@ pub enum Expr {
         struct_name: Ident,
         fields: Vec<(Ident, Id<Expr>)>,
     },
+    FieldAccess {
+        object: Id<Expr>,
+        field: Ident,
+    },
 }
 
 pub enum BinOp {

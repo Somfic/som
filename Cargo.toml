@@ -16,3 +16,4 @@ owo-colors = "4.2.3"
 target-lexicon = "0.13.4"
 terminal_size = "0.4"
 thiserror = "2.0.18"
+uuid = { version = "1.20.0", features = ["v4"] }
