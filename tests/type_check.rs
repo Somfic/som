@@ -408,3 +408,107 @@ fn test_conditional_with_comparison_condition() {
     );
     assert!(typed_ast.errors.is_empty());
 }
+
+// ============================================================================
+// Pointer type tests
+// ============================================================================
+
+#[test]
+fn test_pointer_type_annotation() {
+    let typed_ast = test_type_check(
+        r#"
+        extern {
+            fn malloc(size: i32) -> *;
+        }
+        fn test() {
+            let p: * = malloc(100);
+        }
+        "#,
+    );
+    assert!(typed_ast.errors.is_empty());
+}
+
+#[test]
+fn test_pointer_type_return() {
+    let typed_ast = test_type_check(
+        r#"
+        extern {
+            fn malloc(size: i32) -> *;
+        }
+        fn alloc() -> * {
+            malloc(64)
+        }
+        "#,
+    );
+    assert!(typed_ast.errors.is_empty());
+}
+
+#[test]
+fn test_pointer_type_parameter() {
+    let typed_ast = test_type_check(
+        r#"
+        extern {
+            fn free(p: *);
+            fn malloc(size: i32) -> *;
+        }
+        fn test() {
+            let p: * = malloc(100);
+            free(p);
+        }
+        "#,
+    );
+    assert!(typed_ast.errors.is_empty());
+}
+
+#[test]
+fn test_pointer_type_mismatch_with_i32() {
+    let typed_ast = test_type_check(
+        r#"
+        extern {
+            fn malloc(size: i32) -> *;
+        }
+        fn test() -> i32 {
+            malloc(100)
+        }
+        "#,
+    );
+    assert!(has_type_error(&typed_ast, |e| {
+        matches!(e, TypeError::Mismatch { .. })
+    }));
+}
+
+#[test]
+fn test_pointer_type_mismatch_with_reference() {
+    let typed_ast = test_type_check(
+        r#"
+        extern {
+            fn malloc(size: i32) -> *;
+        }
+        fn test() -> &i32 {
+            malloc(100)
+        }
+        "#,
+    );
+    assert!(has_type_error(&typed_ast, |e| {
+        matches!(e, TypeError::Mismatch { .. })
+    }));
+}
+
+#[test]
+fn test_pointer_passed_to_wrong_param_type() {
+    let typed_ast = test_type_check(
+        r#"
+        extern {
+            fn malloc(size: i32) -> *;
+        }
+        fn takes_int(x: i32) {}
+        fn test() {
+            let p: * = malloc(100);
+            takes_int(p);
+        }
+        "#,
+    );
+    assert!(has_type_error(&typed_ast, |e| {
+        matches!(e, TypeError::Mismatch { .. })
+    }));
+}

@@ -246,8 +246,13 @@ impl Ast {
         id
     }
 
-    pub fn alloc_extern_func_with_span(&mut self, func: ExternFunc, span: Span) -> Id<ExternFunc> {
-        let name = func.name.value.to_string();
+    pub fn alloc_extern_func_with_span(
+        &mut self,
+        func: ExternFunc,
+        span: Span,
+        module_name: Option<&str>,
+    ) -> Id<ExternFunc> {
+        let func_name = func.name.value.to_string();
         let signature = FuncSignature {
             params: func
                 .parameters
@@ -261,8 +266,13 @@ impl Ast {
         let span_id = self.spans.alloc(span);
         self.extern_func_spans.insert(id, span_id);
 
+        let registry_key = match module_name {
+            Some(module) => format!("{}::{}", module, func_name),
+            None => func_name,
+        };
+
         self.func_registry.insert(
-            name,
+            registry_key,
             FuncEntry {
                 signature,
                 kind: FuncKind::Extern(id),

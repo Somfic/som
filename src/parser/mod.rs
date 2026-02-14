@@ -171,9 +171,17 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
     pub fn error_expected(&mut self, expected: &[TokenKind]) {
         let msg = if expected.len() == 1 {
-            format!("expected {:?}, found {:?}", expected[0], self.peek())
+            format!("expected {}, found {}", expected[0], self.peek())
         } else {
-            format!("expected one of {:?}, found {:?}", expected, self.peek())
+            format!(
+                "expected one of {}, found {}",
+                expected
+                    .iter()
+                    .map(|k| k.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                self.peek()
+            )
         };
         self.error(msg);
     }

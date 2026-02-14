@@ -46,6 +46,8 @@ pub struct Codegen<'ast> {
     module: ObjectModule,
     /// Unified map of all callable functions by name
     func_ids: HashMap<String, cranelift::module::FuncId>,
+    /// Current module being compiled (for unqualified function lookups)
+    current_module: Option<String>,
 }
 
 impl<'ast> Codegen<'ast> {
@@ -69,6 +71,7 @@ impl<'ast> Codegen<'ast> {
             isa,
             module,
             func_ids: HashMap::new(),
+            current_module: None,
         })
     }
 
@@ -86,8 +89,14 @@ impl<'ast> Codegen<'ast> {
                 crate::FuncKind::Extern(_) => Linkage::Import,
             };
 
-            let symbol_name = if name == "main" || name.ends_with("::main") {
+            // For extern functions, use just the function name (not qualified)
+            // For main, export as "main"
+            // For other functions, use the full qualified name
+            let symbol_name: &str = if name == "main" || name.ends_with("::main") {
                 "main"
+            } else if matches!(entry.kind, crate::FuncKind::Extern(_)) {
+                // Extract just the function name for extern imports
+                name.rsplit("::").next().unwrap_or(name)
             } else {
                 name
             };
@@ -116,6 +125,13 @@ impl<'ast> Codegen<'ast> {
     }
 
     fn gen_func(&mut self, func: &Func, name: &str) -> Result<()> {
+        // Extract module name from qualified function name (e.g., "std::println" -> "std")
+        self.current_module = if let Some(pos) = name.rfind("::") {
+            Some(name[..pos].to_string())
+        } else {
+            None
+        };
+
         let return_type = func.return_type.as_ref().unwrap();
 
         let mut ctx = self.module.make_context();
@@ -262,10 +278,21 @@ impl<'ast> Codegen<'ast> {
                 result
             }
             Expr::Call { name, args } => {
-                // Look up in unified func_ids map
+                // Look up in unified func_ids map, trying qualified name if unqualified fails
+                let registry_key = name.to_string();
                 let callee_func_id = *self
                     .func_ids
-                    .get(&*name.to_string())
+                    .get(&registry_key)
+                    .or_else(|| {
+                        // Try with current module prefix for unqualified calls
+                        match (&self.current_module, name.is_qualified()) {
+                            (Some(module), false) => {
+                                let qualified = format!("{}::{}", module, registry_key);
+                                self.func_ids.get(&qualified)
+                            }
+                            _ => None,
+                        }
+                    })
                     .expect("type checker should have caught unknown function");
 
                 let callee_func_ref = self
@@ -589,6 +616,7 @@ pub fn to_type(ty: &Type) -> cranelift::prelude::Type {
         Type::Str => POINTER,
         Type::Reference { .. } => POINTER,
         Type::Fun { .. } => POINTER,
+        Type::Pointer => POINTER,
     }
 }
 

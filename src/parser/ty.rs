@@ -145,6 +145,11 @@ impl<'src> Parser<'src, '_> {
                 Some(Type::Named(text.into()))
             }
 
+            TokenKind::Star => {
+                self.advance();
+                Some(Type::Pointer)
+            }
+
             // Char type
             TokenKind::Char => {
                 let text = self.peek_token().text;

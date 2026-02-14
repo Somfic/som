@@ -93,11 +93,11 @@ fn test_use_qualified_path() {
     project.add_file(
         "main.som",
         r#"
-        use std;
-        fn main() { std::print(); }
+        use utils;
+        fn main() { utils::print(); }
         "#,
     );
-    project.add_file("std/io.som", "fn print() {}");
+    project.add_file("utils/io.som", "fn print() {}");
 
     let ast = project.load().expect("should load successfully");
     assert_eq!(ast.mods.len(), 2);
@@ -271,4 +271,146 @@ fn test_non_som_files_ignored() {
 
     let ast = project.load().expect("should ignore non-.som files");
     assert_eq!(ast.funcs.len(), 1);
+}
+
+// ============================================================================
+// Bundled std module tests
+// ============================================================================
+
+#[test]
+fn test_bundled_std_loads() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use std;
+        fn main() {}
+        "#,
+    );
+
+    let ast = project.load().expect("should load bundled std");
+    // Should have at least 2 modules: main project + std
+    assert!(ast.mods.len() >= 2);
+}
+
+#[test]
+fn test_bundled_std_println() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use std;
+        fn main() {
+            std::println("hello");
+        }
+        "#,
+    );
+
+    let ast = project.load().expect("should load successfully");
+    // Check that std::println is in the registry
+    assert!(ast.func_registry.contains_key("std::println"));
+}
+
+#[test]
+fn test_bundled_std_malloc_free() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use std;
+        fn main() {
+            let p: * = std::malloc(100);
+            std::free(p);
+        }
+        "#,
+    );
+
+    let ast = project.load().expect("should load successfully");
+    assert!(ast.func_registry.contains_key("std::malloc"));
+    assert!(ast.func_registry.contains_key("std::free"));
+}
+
+#[test]
+fn test_bundled_std_exit() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use std;
+        fn main() {
+            std::exit(0);
+        }
+        "#,
+    );
+
+    let ast = project.load().expect("should load successfully");
+    assert!(ast.func_registry.contains_key("std::exit"));
+}
+
+#[test]
+fn test_bundled_std_overrides_local() {
+    // Bundled std should take precedence over local std folder
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use std;
+        fn main() {
+            std::println("test");
+        }
+        "#,
+    );
+    // Create a local std with different content
+    project.add_file("std/io.som", "fn local_only() {}");
+
+    let ast = project.load().expect("should load successfully");
+    // Should have bundled std::println, not local
+    assert!(ast.func_registry.contains_key("std::println"));
+    // Should NOT have local_only since bundled std takes precedence
+    assert!(!ast.func_registry.contains_key("std::local_only"));
+}
+
+#[test]
+fn test_extern_functions_have_qualified_names() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use std;
+        fn main() {}
+        "#,
+    );
+
+    let ast = project.load().expect("should load successfully");
+    // Extern functions should be registered with qualified names
+    assert!(ast.func_registry.contains_key("std::puts"));
+    assert!(ast.func_registry.contains_key("std::malloc"));
+    assert!(ast.func_registry.contains_key("std::free"));
+    assert!(ast.func_registry.contains_key("std::exit"));
+}
+
+#[test]
+fn test_module_internal_calls_work() {
+    // Functions within a module should be able to call each other unqualified
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use mymod;
+        fn main() {
+            mymod::outer();
+        }
+        "#,
+    );
+    project.add_file(
+        "mymod/lib.som",
+        r#"
+        fn inner() -> i32 { 42 }
+        fn outer() -> i32 { inner() }
+        "#,
+    );
+
+    let ast = project.load().expect("should load successfully");
+    assert!(ast.func_registry.contains_key("mymod::inner"));
+    assert!(ast.func_registry.contains_key("mymod::outer"));
 }

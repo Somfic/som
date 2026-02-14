@@ -886,7 +886,7 @@ fn expect_recover(&mut self, kind: TokenKind) -> bool {
         self.advance();
         true
     } else {
-        self.error(format!("expected {:?}", kind));
+        self.error(format!("expected {}", kind));
         self.synchronize();
         false
     }

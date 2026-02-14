@@ -21,6 +21,7 @@ pub enum Type {
         arguments: Vec<Type>,
         returns: Box<Type>,
     },
+    Pointer, // raw pointer, used for FFI - no lifetime or mutability
 }
 
 impl Type {
@@ -34,6 +35,7 @@ impl Type {
     pub fn size(&self) -> usize {
         match self {
             Type::Unit => 0,
+            Type::Pointer => std::mem::size_of::<*const ()>(),
             Type::Bool | Type::U8 => 1,
             Type::I32 | Type::F32 => 4,
             Type::Str => std::mem::size_of::<&str>(),
@@ -47,6 +49,7 @@ impl Type {
     pub fn alignment(&self) -> usize {
         match self {
             Type::Unit => 1,
+            Type::Pointer => std::mem::align_of::<*const ()>(),
             Type::Bool | Type::U8 => 1,
             Type::I32 | Type::F32 => 4,
             Type::Str => std::mem::align_of::<&str>(),
@@ -181,6 +184,7 @@ impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Unit => write!(f, "()"),
+            Type::Pointer => write!(f, "*"),
             Type::Unknown(var) => write!(f, "T{}", var.0),
             Type::Named(name) => write!(f, "{}", name),
             Type::Bool => write!(f, "bool"),

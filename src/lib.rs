@@ -12,6 +12,7 @@ pub mod parser;
 mod runner;
 mod scope;
 mod span;
+mod std;
 pub mod type_check;
 
 pub use borrow_check::BorrowChecker;
@@ -21,4 +22,5 @@ pub use linker::Linker;
 pub use program::{ProgramError, ProgramLoader};
 pub use runner::Runner;
 pub use span::{Position, Source, Span};
+pub use std::{get_bundled_module, BundledFile, BundledModule};
 pub use type_check::TypeInferencer;

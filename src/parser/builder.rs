@@ -139,7 +139,9 @@ impl AstBuilder {
 
     /// Allocate an extern function with an explicit span
     pub fn alloc_extern_func(&mut self, func: ExternFunc, span: Span) -> Id<ExternFunc> {
-        self.ast.alloc_extern_func_with_span(func, span)
+        let module_name = self.current_module_name().map(|s| s.to_string());
+        self.ast
+            .alloc_extern_func_with_span(func, span, module_name.as_deref())
     }
 
     // --- Type span tracking ---

@@ -2,7 +2,7 @@ use crate::span::{Source, Span};
 use logos::Logos;
 use std::sync::Arc;
 
-#[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Logos, logos_display::Debug, logos_display::Display, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {
     // Keywords
     #[token("fn")]

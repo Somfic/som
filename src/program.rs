@@ -3,6 +3,7 @@ use std::{collections::HashSet, fs, io, path::PathBuf, sync::Arc};
 use crate::{
     Ast, Decl, Diagnostic, Label, Source,
     parser::{self, AstBuilder, ParseError},
+    std::get_bundled_module,
 };
 
 #[derive(Debug)]
@@ -109,6 +110,58 @@ impl ProgramLoader {
         self.load_module_impl(name, folder, Some(span));
     }
 
+    /// Try to load a bundled module. Returns true if found and loaded.
+    fn try_load_bundled_module(&mut self, name: &str) -> bool {
+        let Some(bundled) = get_bundled_module(name) else {
+            return false;
+        };
+
+        // Process each bundled file
+        for file in bundled.files {
+            // Create Source from embedded string with synthetic path
+            let synthetic_path = format!("<{}>/{}",name, file.name);
+            let source = Source::from_raw_at(file.content, &synthetic_path);
+            let source = Arc::new(source);
+
+            let module_path = PathBuf::from(&synthetic_path);
+            let parse_errors =
+                parser::parse_module(source, &mut self.builder, name, module_path);
+
+            if !parse_errors.is_empty() {
+                self.errors.push(ProgramError::Parse(parse_errors));
+            }
+
+            // Process dependencies from bundled module
+            let deps: Vec<(String, PathBuf, crate::Span)> = {
+                let module = self.builder.ast.mods.last().unwrap();
+                module
+                    .decs
+                    .iter()
+                    .filter_map(|decl| {
+                        if let Decl::Use(use_id) = decl {
+                            let use_stmt = self.builder.ast.uses.get(use_id);
+                            // Dependencies from bundled modules resolve from project root
+                            let subfolder = self.root.join(use_stmt.path.to_string());
+                            Some((
+                                use_stmt.path.to_string(),
+                                subfolder,
+                                use_stmt.path_span.clone(),
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            };
+
+            for (dep_name, dep_path, span) in deps {
+                self.load_module_with_span(dep_name, &dep_path, span);
+            }
+        }
+
+        true
+    }
+
     fn load_module_impl(
         &mut self,
         name: impl Into<String>,
@@ -128,6 +181,13 @@ impl ProgramLoader {
 
         // mark as being loaded
         self.loading.insert(name.clone());
+
+        // Try bundled modules first
+        if self.try_load_bundled_module(&name) {
+            self.loading.remove(&name);
+            self.loaded.insert(name);
+            return;
+        }
 
         let files = match self.discover_files(folder) {
             Ok(files) => files,

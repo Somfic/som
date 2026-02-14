@@ -1,0 +1,4 @@
+extern {
+    fn malloc(size: i32) -> *;
+    fn free(p: *);
+}

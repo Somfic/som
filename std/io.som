@@ -2,6 +2,6 @@ extern {
     fn puts(s: &str);
 }
 
-fn print(text: &str) {
+fn println(text: &str) {
     puts(text);
 }

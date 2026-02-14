@@ -1,0 +1,10 @@
+use std;
+
+fn main() {
+    std::println("Hello from bundled std!");
+    while true {
+   let p: * = std::malloc(1000000000);
+    }
+ 
+
+}

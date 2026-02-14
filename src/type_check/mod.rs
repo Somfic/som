@@ -38,6 +38,7 @@ pub struct TypeInferencer {
     func_types: HashMap<Id<Func>, Type>, // Store inferred function return types
     expr_types: HashMap<Id<Expr>, Type>, // Track all expression types
     integer_type_vars: std::collections::HashSet<TypeVar>, // Type vars constrained to integers
+    current_module: Option<String>, // Track current module for unqualified lookups
 }
 
 impl TypeInferencer {
@@ -51,6 +52,7 @@ impl TypeInferencer {
             func_types: HashMap::new(),
             expr_types: HashMap::new(),
             integer_type_vars: std::collections::HashSet::new(),
+            current_module: None,
         }
     }
 
@@ -119,14 +121,26 @@ impl TypeInferencer {
             Expr::Call { name, args } => {
                 let registry_key = name.to_string();
 
+                // Try direct lookup first, then try with current module prefix
                 let entry = match ast.func_registry.get(&registry_key) {
                     Some(entry) => entry.clone(),
                     None => {
-                        self.errors.push(TypeError::UnknownFunction {
-                            span: ast.get_expr_span(expr_id).clone(),
-                            name: name.to_string(),
-                        });
-                        return self.fresh_type();
+                        // If unqualified and we have a current module, try qualified lookup
+                        let qualified_key = match (&self.current_module, name.is_qualified()) {
+                            (Some(module), false) => Some(format!("{}::{}", module, registry_key)),
+                            _ => None,
+                        };
+
+                        match qualified_key.and_then(|k| ast.func_registry.get(&k)) {
+                            Some(entry) => entry.clone(),
+                            None => {
+                                self.errors.push(TypeError::UnknownFunction {
+                                    span: ast.get_expr_span(expr_id).clone(),
+                                    name: name.to_string(),
+                                });
+                                return self.fresh_type();
+                            }
+                        }
                     }
                 };
 
@@ -554,7 +568,8 @@ impl TypeInferencer {
             | (Type::F32, Type::F32)
             | (Type::Bool, Type::Bool)
             | (Type::Unit, Type::Unit)
-            | (Type::Str, Type::Str) => Ok(()),
+            | (Type::Str, Type::Str)
+            | (Type::Pointer, Type::Pointer) => Ok(()),
 
             (Type::Unknown(v1), Type::Unknown(v2)) => {
                 // Propagate integer constraint: if either is integer-constrained, both are
@@ -782,11 +797,23 @@ impl TypeInferencer {
 
     /// Type check an entire program
     pub fn check_program(mut self, mut ast: Ast) -> TypedAst {
-        // Check all regular functions (extern funcs have no bodies to check)
-        let func_ids: Vec<Id<Func>> = (0..ast.funcs.len()).map(|i| Id::new(i)).collect();
-        for func_id in func_ids {
-            self.check_func(&ast, func_id);
+        // Check all regular functions, tracking current module for unqualified lookups
+        for module in &ast.mods {
+            // Set current module (skip empty module names from standalone parsing)
+            self.current_module = if module.name.is_empty() {
+                None
+            } else {
+                Some(module.name.to_string())
+            };
+
+            // Check functions declared in this module
+            for decl in &module.decs {
+                if let crate::Decl::Func(func_id) = decl {
+                    self.check_func(&ast, *func_id);
+                }
+            }
         }
+        self.current_module = None;
 
         self.solve(&ast);
 
