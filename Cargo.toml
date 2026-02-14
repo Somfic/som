@@ -9,7 +9,7 @@ rust-version = "1.89.0"
 
 [dependencies]
 cranelift = { version = "0.127.3", features = ["module", "object"] }
-ena = "0.14.3"
+ena = "0.14.4"
 logos = "0.16.1"
 logos-display = "0.1.3"
 nerd-font-symbols = "0.3.0"
