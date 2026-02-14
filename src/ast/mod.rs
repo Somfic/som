@@ -13,21 +13,18 @@ use crate::arena::{Arena, Id};
 use crate::span::Span;
 use crate::type_check::{Constraint, TypeError};
 
-/// Function signature - what you need to call any function
 #[derive(Clone, Debug)]
 pub struct FuncSignature {
     pub params: Vec<Type>,
     pub return_type: Type,
 }
 
-/// Distinguishes regular functions from external imports
 #[derive(Clone, Debug)]
 pub enum FuncKind {
     Regular(Id<Func>),
     Extern(Id<ExternFunc>),
 }
 
-/// Entry in the unified function registry
 #[derive(Clone, Debug)]
 pub struct FuncEntry {
     pub signature: FuncSignature,
@@ -81,7 +78,6 @@ pub struct Ast {
 
     next_type_id: usize,
 
-    /// Unified function registry - all callable functions by name
     pub func_registry: HashMap<String, FuncEntry>,
 }
 
@@ -313,9 +309,6 @@ pub struct Module {
 }
 
 impl Ast {
-    /// Collect all library names from extern blocks and whether libc is needed
-    /// Returns (libraries, needs_libc) where needs_libc is true if there's an
-    /// extern block without a specified library (implying libc/system library)
     pub fn get_extern_libraries(&self) -> (Vec<String>, bool) {
         let mut libraries = Vec::new();
         let mut needs_libc = false;

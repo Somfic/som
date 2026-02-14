@@ -88,19 +88,19 @@ impl UnifyValue for TypeValue {
 
     fn unify_values(a: &Self, b: &Self) -> Result<Self, Self::Error> {
         match (a, b) {
-            // Both unbound - stay unbound
+            // both unbound - stay unbound
             (TypeValue::Unbound, TypeValue::Unbound) => Ok(TypeValue::Unbound),
 
-            // One bound, one unbound - take the bound one
+            // one bound, one unbound - take the bound one
             (TypeValue::Bound(ty), TypeValue::Unbound)
             | (TypeValue::Unbound, TypeValue::Bound(ty)) => Ok(TypeValue::Bound(ty.clone())),
 
-            // Both bound - must be identical
+            // both bound - must be identical
             (TypeValue::Bound(t1), TypeValue::Bound(t2)) => {
                 if t1 == t2 {
                     Ok(TypeValue::Bound(t1.clone()))
                 } else {
-                    Err(()) // Type mismatch
+                    Err(()) // type mismatch
                 }
             }
         }
@@ -137,21 +137,21 @@ impl UnifyValue for LifetimeValue {
 
     fn unify_values(a: &Self, b: &Self) -> Result<Self, Self::Error> {
         match (a, b) {
-            // Both unbound - stay unbound
+            // both unbound - stay unbound
             (LifetimeValue::Unbound, LifetimeValue::Unbound) => Ok(LifetimeValue::Unbound),
 
-            // One bound, one unbound - take the bound one
+            // one bound, one unbound - take the bound one
             (LifetimeValue::Bound(lt), LifetimeValue::Unbound)
             | (LifetimeValue::Unbound, LifetimeValue::Bound(lt)) => {
                 Ok(LifetimeValue::Bound(lt.clone()))
             }
 
-            // Both bound - must be identical
+            // both bound - must be identical
             (LifetimeValue::Bound(l1), LifetimeValue::Bound(l2)) => {
                 if l1 == l2 {
                     Ok(LifetimeValue::Bound(l1.clone()))
                 } else {
-                    Err(()) // Lifetime mismatch
+                    Err(()) // lifetime mismatch
                 }
             }
         }

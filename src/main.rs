@@ -7,22 +7,14 @@ fn main() {
     let source_text = r#"
     extern {
         fn printf(s: &str, num: i32) -> i32;
-        fn puts(s: &str) -> i32;
-        fn abort();
-    }
-
-    fn assert(condition: bool, message: &str) {
-        if !condition {
-            puts("Assertion failed");
-            abort();
-        }
     }
 
     fn main() {
-        printf("Hello, world! The answer is %d", 42);
-        assert(false, "This is a test assertion");
+        let a = 1 + 1 + 1;
+        let b = 2 + 2 + 2;
+        let c = a + b;
+        printf("The result is: %d\n", c);
     }
- 
     "#;
 
     let mut diagnostics: Vec<Diagnostic> = vec![];
