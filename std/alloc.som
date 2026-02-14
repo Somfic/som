@@ -1,0 +1,26 @@
+extern {
+    fn malloc(size: i32) -> *;
+    fn free(p: *);
+    fn realloc(p: *, size: i32) -> *;
+}
+
+struct Allocation {
+    ptr: *,
+    size: i32,
+}
+
+fn alloc(size: i32) -> Allocation {
+    Allocation {
+        ptr: malloc(size),
+        size: size,
+    }
+}
+
+fn dealloc(allocation: &Allocation) {
+    free(allocation.ptr);
+}
+
+fn realloc(allocation: &mut Allocation, new_size: i32) {
+    allocation.ptr = realloc(allocation.ptr, new_size);
+    allocation.size = new_size;
+}

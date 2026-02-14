@@ -44,6 +44,10 @@ pub enum Expr {
         object: Id<Expr>,
         field: Ident,
     },
+    Assignment {
+        target: Id<Expr>,
+        value: Id<Expr>,
+    },
 }
 
 pub enum BinOp {

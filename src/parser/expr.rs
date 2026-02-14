@@ -54,6 +54,25 @@ impl<'src> Parser<'src, '_> {
                 continue;
             }
 
+            // Check for assignment
+            if self.at(TokenKind::Equals) {
+                let assign_bp = Grammar::ASSIGNMENT;
+                if assign_bp < min_bp {
+                    break;
+                }
+                self.advance(); // consume '='
+                let rhs = self.parse_expr_bp(assign_bp)?;
+                let span = start.merge(&self.previous_span());
+                lhs = self.builder.alloc_expr(
+                    Expr::Assignment {
+                        target: lhs,
+                        value: rhs,
+                    },
+                    span,
+                );
+                continue;
+            }
+
             // Check for infix operators
             let Some((op, info)) = Grammar::infix_op(self.peek()) else {
                 break;

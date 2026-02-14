@@ -33,6 +33,7 @@
             ripgrep
             fd
             bat
+            raylib
           ];
 
           shellHook = ''

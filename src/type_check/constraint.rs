@@ -4,8 +4,8 @@ use crate::{Expr, Trait, Type, arena::Id};
 pub enum Constraint {
     Equal {
         provenance: Provenance,
-        lhs: Type,
-        rhs: Type,
+        expected: Type,
+        actual: Type,
     },
     Trait {
         provenance: Provenance,
@@ -48,6 +48,7 @@ pub enum Provenance {
     Conditional(Id<Expr>),
     Not(Id<Expr>),
     ConstructorField(Id<Expr>),
+    Assignment(Id<Expr>),
 }
 
 impl Provenance {
@@ -66,6 +67,7 @@ impl Provenance {
             Provenance::Conditional(id) => *id,
             Provenance::Not(id) => *id,
             Provenance::ConstructorField(id) => *id,
+            Provenance::Assignment(id) => *id,
         }
     }
 

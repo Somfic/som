@@ -368,8 +368,38 @@ impl<'ast> Codegen<'ast> {
                     }
                 }
             }
-            Expr::Borrow { mutable, expr } => todo!(),
-            Expr::Deref { expr } => todo!(),
+            Expr::Borrow { mutable: _, expr } => {
+                // Get the type of the expression being borrowed
+                let inner_ty = self.typed_ast.get_expr_ty(expr);
+
+                match inner_ty {
+                    // For struct types, the value is already a pointer to stack memory
+                    Type::Named(_) => self.gen_expr(func, *expr),
+                    // For primitives, spill to stack and return address
+                    _ => {
+                        let val = self.gen_expr(func, *expr);
+                        let ty = to_type(inner_ty);
+                        let slot = func.body.create_sized_stack_slot(StackSlotData::new(
+                            StackSlotKind::ExplicitSlot,
+                            ty.bytes(),
+                            ty.bytes() as u8,
+                        ));
+                        let addr = func.body.ins().stack_addr(types::I64, slot, 0);
+                        func.body.ins().store(MemFlags::new(), val, addr, 0);
+                        addr
+                    }
+                }
+            }
+            Expr::Deref { expr } => {
+                // Get the pointer value
+                let ptr = self.gen_expr(func, *expr);
+                // Get the type we're dereferencing to
+                let result_ty = self.typed_ast.get_expr_ty(&expr_id);
+                // Load the value from the pointer
+                func.body
+                    .ins()
+                    .load(to_type(result_ty), MemFlags::new(), ptr, 0)
+            }
             Expr::Not { expr } => {
                 let val = self.gen_expr(func, *expr);
                 // Boolean NOT: XOR with 1
@@ -447,8 +477,13 @@ impl<'ast> Codegen<'ast> {
 
                 // Look up the struct type from the object's type
                 let obj_ty = self.typed_ast.get_expr_ty(object);
-                let Type::Named(struct_name) = obj_ty else {
-                    panic!("field access on non-struct type")
+                let struct_name = match obj_ty {
+                    Type::Named(name) => name,
+                    Type::Reference { to, .. } => match to.as_ref() {
+                        Type::Named(name) => name,
+                        _ => panic!("field access on non-struct type"),
+                    },
+                    _ => panic!("field access on non-struct type"),
                 };
 
                 let struct_id = self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
@@ -470,6 +505,27 @@ impl<'ast> Codegen<'ast> {
                 func.body
                     .ins()
                     .load(to_type(field_ty), MemFlags::new(), base, offset)
+            }
+            Expr::Assignment { target, value } => {
+                // Generate the value to be assigned
+                let value_val = self.gen_expr(func, *value);
+
+                // Look up the target variable
+                let target_expr = self.typed_ast.ast.exprs.get(target);
+                let var_name = match target_expr {
+                    Expr::Var(ident) => ident.name().to_string(),
+                    _ => panic!("assignment target must be a variable"),
+                };
+
+                let var = func
+                    .env
+                    .get(&var_name)
+                    .expect("assignment target variable not found");
+
+                // Store the value into the variable
+                func.body.def_var(*var, value_val);
+
+                value_val
             }
         }
     }

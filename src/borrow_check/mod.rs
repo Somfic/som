@@ -409,6 +409,24 @@ impl<'a> BorrowChecker<'a> {
                 // Check the object expression (field access doesn't move)
                 self.check_expr(*object);
             }
+            Expr::Assignment { target, value } => {
+                // Check the value first (RHS is evaluated before LHS)
+                self.check_move(*value);
+
+                // Check the target (which must be a variable or field access)
+                let target_expr = self.typed_ast.ast.exprs.get(target);
+                match target_expr {
+                    Expr::Var(_) => {
+                        self.check_move(*target);
+                    }
+                    Expr::FieldAccess { object, .. } => {
+                        self.check_expr(*object);
+                    }
+                    _ => {
+                        // Invalid assignment target, but that should be caught by type checking
+                    }
+                }
+            }
         }
     }
 

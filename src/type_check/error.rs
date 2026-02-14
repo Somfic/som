@@ -77,7 +77,10 @@ impl TypeError {
                     "type mismatch: expected `{}`, found `{}`",
                     expected, found
                 ))
-                .with_label(Label::primary(span.clone(), format!("found `{}`", found)));
+                .with_label(Label::primary(
+                    span.clone(),
+                    format!("expected `{}`", expected),
+                ));
 
                 // Add provenance-based secondary label
                 match provenance {

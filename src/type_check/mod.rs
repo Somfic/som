@@ -38,7 +38,7 @@ pub struct TypeInferencer {
     func_types: HashMap<Id<Func>, Type>, // Store inferred function return types
     expr_types: HashMap<Id<Expr>, Type>, // Track all expression types
     integer_type_vars: std::collections::HashSet<TypeVar>, // Type vars constrained to integers
-    current_module: Option<String>, // Track current module for unqualified lookups
+    current_module: Option<String>,      // Track current module for unqualified lookups
 }
 
 impl TypeInferencer {
@@ -62,7 +62,7 @@ impl TypeInferencer {
 
         let ty = match expr {
             Expr::Hole => self.fresh_type(),
-            Expr::I32(_) => self.fresh_integer_type(), // Polymorphic over integer types only
+            Expr::I32(_) => self.fresh_integer_type(),
             Expr::F32(_) => Type::F32,
             Expr::Bool(_) => Type::Bool,
             Expr::String(_) => Type::Reference {
@@ -134,6 +134,9 @@ impl TypeInferencer {
                         match qualified_key.and_then(|k| ast.func_registry.get(&k)) {
                             Some(entry) => entry.clone(),
                             None => {
+                                for arg in args {
+                                    self.infer(ast, arg);
+                                }
                                 self.errors.push(TypeError::UnknownFunction {
                                     span: ast.get_expr_span(expr_id).clone(),
                                     name: name.to_string(),
@@ -177,8 +180,8 @@ impl TypeInferencer {
                             arg_expr: *arg_expr,
                             param_type_id: None,
                         },
-                        lhs: actual,
-                        rhs: resolved_ty,
+                        expected: resolved_ty,
+                        actual: actual,
                     });
                 }
 
@@ -209,8 +212,8 @@ impl TypeInferencer {
 
                         self.constraints.push(Constraint::Equal {
                             provenance: Provenance::Deref(*expr_id),
-                            lhs: expr_ty,
-                            rhs: Type::Reference {
+                            expected: expr_ty,
+                            actual: Type::Reference {
                                 mutable: false, // Will match either mut or immut
                                 lifetime,
                                 to: Box::new(inner_ty.clone()),
@@ -234,8 +237,8 @@ impl TypeInferencer {
                 let expr_ty = self.infer(ast, expr);
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::Not(*expr),
-                    lhs: expr_ty,
-                    rhs: Type::Bool,
+                    expected: expr_ty,
+                    actual: Type::Bool,
                 });
                 // Result is boolean
                 Type::Bool
@@ -249,8 +252,8 @@ impl TypeInferencer {
                 let condition_ty = self.infer(ast, condition);
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::Conditional(*condition),
-                    lhs: condition_ty,
-                    rhs: Type::Bool,
+                    expected: condition_ty,
+                    actual: Type::Bool,
                 });
 
                 // make sure truthy and falsy are the same
@@ -258,8 +261,8 @@ impl TypeInferencer {
                 let falsy_ty = self.infer(ast, falsy);
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::Conditional(*falsy),
-                    lhs: truthy_ty.clone(),
-                    rhs: falsy_ty,
+                    expected: truthy_ty.clone(),
+                    actual: falsy_ty,
                 });
 
                 truthy_ty
@@ -304,8 +307,8 @@ impl TypeInferencer {
                             let actual_ty = self.infer(ast, field_expr);
                             self.constraints.push(Constraint::Equal {
                                 provenance: Provenance::ConstructorField(*field_expr),
-                                lhs: actual_ty,
-                                rhs: struct_field.ty.clone(),
+                                expected: actual_ty,
+                                actual: struct_field.ty.clone(),
                             });
                         }
                         None => {
@@ -336,48 +339,74 @@ impl TypeInferencer {
                 let obj_ty = self.infer(ast, object);
                 let obj_ty = self.normalize(&obj_ty);
 
-                match &obj_ty {
-                    Type::Named(struct_name) => {
-                        // Look up the struct definition
-                        let struct_id = match ast.find_struct_by_name(struct_name) {
-                            Some(id) => id,
-                            None => {
-                                self.errors.push(TypeError::UnknownStruct {
-                                    span: ast.get_expr_span(expr_id).clone(),
-                                    name: struct_name.to_string(),
-                                });
-                                return self.fresh_type();
-                            }
-                        };
-
-                        let struct_def = ast.structs.get(&struct_id);
-
-                        // Find the field
-                        let field_def = struct_def
-                            .fields
-                            .iter()
-                            .find(|f| f.name.value == field.value);
-
-                        match field_def {
-                            Some(f) => f.ty.clone(),
-                            None => {
-                                self.errors.push(TypeError::UnknownField {
-                                    span: ast.get_expr_span(expr_id).clone(),
-                                    struct_name: struct_name.to_string(),
-                                    field_name: field.value.to_string(),
-                                });
-                                self.fresh_type()
-                            }
+                let struct_name = match &obj_ty {
+                    Type::Named(name) => name,
+                    Type::Reference { to, .. } => match to.as_ref() {
+                        Type::Named(name) => name,
+                        _ => {
+                            self.errors.push(TypeError::UnknownStruct {
+                                span: ast.get_expr_span(expr_id).clone(),
+                                name: "<unknown>".to_string(),
+                            });
+                            return self.fresh_type();
                         }
-                    }
+                    },
                     _ => {
-                        self.errors.push(TypeError::Internal {
+                        self.errors.push(TypeError::UnknownStruct {
                             span: ast.get_expr_span(expr_id).clone(),
-                            message: format!("cannot access field on non-struct type `{}`", obj_ty),
+                            name: "<unknown>".to_string(),
+                        });
+                        return self.fresh_type();
+                    }
+                };
+
+                let struct_id = match ast.find_struct_by_name(struct_name) {
+                    Some(id) => id,
+                    None => {
+                        self.errors.push(TypeError::UnknownStruct {
+                            span: ast.get_expr_span(expr_id).clone(),
+                            name: struct_name.to_string(),
+                        });
+                        return self.fresh_type();
+                    }
+                };
+
+                let struct_def = ast.structs.get(&struct_id);
+
+                // Find the field
+                let field_def = struct_def
+                    .fields
+                    .iter()
+                    .find(|f| f.name.value == field.value);
+
+                match field_def {
+                    Some(f) => f.ty.clone(),
+                    None => {
+                        self.errors.push(TypeError::UnknownField {
+                            span: ast.get_expr_span(expr_id).clone(),
+                            struct_name: struct_name.to_string(),
+                            field_name: field.value.to_string(),
                         });
                         self.fresh_type()
                     }
                 }
+            }
+            Expr::Assignment { target, value } => {
+                // Infer the type of the target
+                let target_ty = self.infer(ast, target);
+
+                // Infer the type of the value
+                let value_ty = self.infer(ast, value);
+
+                // The target and value must have the same type
+                self.constraints.push(Constraint::Equal {
+                    provenance: Provenance::Assignment(*expr_id),
+                    expected: target_ty.clone(),
+                    actual: value_ty.clone(),
+                });
+
+                // The type of an assignment is the type of the value
+                value_ty
             }
         };
 
@@ -395,8 +424,8 @@ impl TypeInferencer {
                 let actual = self.infer(ast, &expr_id);
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::Check(expr_id),
-                    lhs: actual,
-                    rhs: expected.clone(),
+                    expected: actual,
+                    actual: expected.clone(),
                 });
                 // Store the expected type
                 self.expr_types.insert(expr_id, expected);
@@ -507,8 +536,8 @@ impl TypeInferencer {
                 // Note: lhs is "expected", rhs is "found" in error messages
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::FunctionCall(error_expr_id, func.return_type_id),
-                    lhs: annotated_return.clone(), // expected type
-                    rhs: body_ty.clone(),          // found type
+                    expected: annotated_return.clone(), // expected type
+                    actual: body_ty.clone(),            // found type
                 });
                 annotated_return.clone()
             }
@@ -558,11 +587,11 @@ impl TypeInferencer {
         }
     }
 
-    fn unify(&mut self, t1: &Type, t2: &Type) -> Result<(), UnifyError> {
-        let t1 = self.normalize(t1);
-        let t2 = self.normalize(t2);
+    fn unify(&mut self, expected: &Type, actual: &Type) -> Result<(), UnifyError> {
+        let expected = self.normalize(expected);
+        let actual = self.normalize(actual);
 
-        match (&t1, &t2) {
+        match (&expected, &actual) {
             (Type::I32, Type::I32)
             | (Type::U8, Type::U8)
             | (Type::F32, Type::F32)
@@ -571,31 +600,36 @@ impl TypeInferencer {
             | (Type::Str, Type::Str)
             | (Type::Pointer, Type::Pointer) => Ok(()),
 
-            (Type::Unknown(v1), Type::Unknown(v2)) => {
+            (Type::Unknown(expected_var), Type::Unknown(actual_var)) => {
                 // Propagate integer constraint: if either is integer-constrained, both are
-                if self.integer_type_vars.contains(v1) || self.integer_type_vars.contains(v2) {
-                    self.integer_type_vars.insert(*v1);
-                    self.integer_type_vars.insert(*v2);
+                if self.integer_type_vars.contains(expected_var)
+                    || self.integer_type_vars.contains(actual_var)
+                {
+                    self.integer_type_vars.insert(*expected_var);
+                    self.integer_type_vars.insert(*actual_var);
                 }
                 self.unification_table
-                    .unify_var_var(*v1, *v2)
-                    .map_err(|_| UnifyError::InfiniteType { var: *v1, ty: t2 })
+                    .unify_var_var(*expected_var, *actual_var)
+                    .map_err(|_| UnifyError::InfiniteType {
+                        var: *expected_var,
+                        ty: actual,
+                    })
             }
 
-            (Type::Unknown(var), ty) | (ty, Type::Unknown(var)) => {
+            (Type::Unknown(expected_var), actual) | (actual, Type::Unknown(expected_var)) => {
                 // Check integer type constraint
-                if self.integer_type_vars.contains(var) && !Self::is_integer_type(ty) {
+                if self.integer_type_vars.contains(expected_var) && !Self::is_integer_type(actual) {
                     return Err(UnifyError::Mismatch {
                         expected: Type::I32, // Report as expecting i32
-                        found: ty.clone(),
+                        found: actual.clone(),
                     });
                 }
                 // TODO: occurs check here
                 self.unification_table
-                    .unify_var_value(*var, TypeValue::Bound(ty.clone()))
+                    .unify_var_value(*expected_var, TypeValue::Bound(actual.clone()))
                     .map_err(|_| UnifyError::InfiniteType {
-                        var: *var,
-                        ty: ty.clone(),
+                        var: *expected_var,
+                        ty: actual.clone(),
                     })
             }
 
@@ -611,8 +645,8 @@ impl TypeInferencer {
             ) => {
                 if a1.len() != a2.len() {
                     return Err(UnifyError::Mismatch {
-                        expected: t1.clone(),
-                        found: t2.clone(),
+                        expected: expected.clone(),
+                        found: actual.clone(),
                     });
                 }
                 for (arg1, arg2) in a1.iter().zip(a2.iter()) {
@@ -649,15 +683,15 @@ impl TypeInferencer {
                     Ok(())
                 } else {
                     Err(UnifyError::Mismatch {
-                        expected: t1,
-                        found: t2,
+                        expected,
+                        found: actual,
                     })
                 }
             }
 
             _ => Err(UnifyError::Mismatch {
-                expected: t1,
-                found: t2,
+                expected,
+                found: actual,
             }),
         }
     }
@@ -748,7 +782,11 @@ impl TypeInferencer {
 
         for constraint in constraints {
             let result: Result<(), UnifyError> = match &constraint {
-                Constraint::Equal { lhs, rhs, .. } => self.unify(lhs, rhs),
+                Constraint::Equal {
+                    expected: lhs,
+                    actual: rhs,
+                    ..
+                } => self.unify(lhs, rhs),
                 Constraint::Trait {
                     trait_id,
                     args,

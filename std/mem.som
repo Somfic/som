@@ -1,4 +1,7 @@
 extern {
     fn malloc(size: i32) -> *;
     fn free(p: *);
+    fn realloc(p: *, size: i32) -> *;
+    fn memcpy(dest: *, src: *, n: i32) -> *;
+    fn memset(s: *, c: i32, n: i32) -> *;
 }

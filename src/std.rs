@@ -12,6 +12,10 @@ pub const BUNDLED_MODULES: &[BundledModule] = &[BundledModule {
     name: "std",
     files: &[
         BundledFile {
+            name: "alloc.som",
+            content: include_str!("../std/alloc.som"),
+        },
+        BundledFile {
             name: "io.som",
             content: include_str!("../std/io.som"),
         },
