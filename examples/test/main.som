@@ -1,0 +1,6 @@
+// TODO: error if std folder doesnt exist
+use setd;
+
+fn main() {
+    std::print("Hello, world!");
+}

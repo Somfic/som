@@ -1,0 +1,7 @@
+extern {
+    fn puts(s: &str);
+}
+
+fn print(text: &str) {
+    puts(text);
+}

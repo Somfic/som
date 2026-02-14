@@ -116,20 +116,15 @@ impl TypeInferencer {
 
                 block_ty
             }
-            Expr::Call { name: path, args } => {
-                let ident = if path.is_qualified() {
-                    todo!("qualified path resolution");
-                } else {
-                    path.name()
-                };
+            Expr::Call { name, args } => {
+                let registry_key = name.to_string();
 
-                // Look up function in unified registry
-                let entry = match ast.func_registry.get(ident.value.as_ref()) {
+                let entry = match ast.func_registry.get(&registry_key) {
                     Some(entry) => entry.clone(),
                     None => {
                         self.errors.push(TypeError::UnknownFunction {
                             span: ast.get_expr_span(expr_id).clone(),
-                            name: ident.value.to_string(),
+                            name: name.to_string(),
                         });
                         return self.fresh_type();
                     }

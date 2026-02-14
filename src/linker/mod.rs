@@ -93,35 +93,8 @@ impl Linker {
 
         match flavor {
             LinkerFlavor::Unix => {
-                // On macOS, we need to specify the architecture and platform version
+                // On macOS, clang handles SDK/platform automatically
                 if cfg!(target_os = "macos") {
-                    let arch = if cfg!(target_arch = "aarch64") {
-                        "arm64"
-                    } else {
-                        "x86_64"
-                    };
-
-                    // Get SDK path
-                    let sdk_path = Command::new("xcrun")
-                        .arg("--show-sdk-path")
-                        .output()
-                        .ok()
-                        .and_then(|output| String::from_utf8(output.stdout).ok())
-                        .map(|s| s.trim().to_string())
-                        .unwrap_or_else(|| {
-                            "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk".to_string()
-                        });
-
-                    cmd.arg("-arch")
-                        .arg(arch)
-                        .arg("-platform_version")
-                        .arg("macos")
-                        .arg("11.0") // Minimum macOS version
-                        .arg("11.0") // SDK version
-                        .arg("-syslibroot")
-                        .arg(sdk_path);
-
-                    // Only link system library if needed (extern block without library name)
                     if self.needs_libc {
                         cmd.arg("-lSystem");
                     }

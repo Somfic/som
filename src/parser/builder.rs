@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::{
     Ast, Decl, Expr, ExternBlock, ExternFunc, Func, Ident, Module, Span, Stmt, Struct, Type, Use,
     arena::Id,
@@ -22,6 +24,23 @@ impl AstBuilder {
         }
     }
 
+    pub fn start_module(&mut self, name: impl Into<Box<str>>, path: PathBuf) {
+        self.clear_span_stack();
+        self.ast.mods.push(Module {
+            name: name.into(),
+            path,
+            decs: Vec::new(),
+        });
+    }
+
+    pub fn finish(self) -> Ast {
+        self.ast
+    }
+
+    fn current_module_name(&self) -> Option<&str> {
+        self.ast.mods.last().map(|m| m.name.as_ref()).filter(|n| !n.is_empty())
+    }
+
     // --- Span tracking ---
 
     /// Start tracking a span - call at the beginning of a construct
@@ -39,6 +58,10 @@ impl AstBuilder {
         self.span_stack
             .pop()
             .expect("mismatched start_span/pop_span")
+    }
+
+    pub fn clear_span_stack(&mut self) {
+        self.span_stack.clear();
     }
 
     // --- Identifier creation ---
@@ -89,14 +112,18 @@ impl AstBuilder {
 
     /// Allocate a function with an explicit span
     pub fn alloc_func(&mut self, func: Func, span: Span) -> Id<Func> {
-        self.ast.alloc_func_with_span(func, span)
+        let module_name = self.current_module_name().map(|s| s.to_string());
+        self.ast
+            .alloc_func_with_span(func, span, module_name.as_deref())
     }
 
     /// Complete a span from the stack and allocate a function
     pub fn finish_func(&mut self, func: Func, end_span: Span) -> Id<Func> {
         let start = self.pop_span();
         let span = start.merge(&end_span);
-        self.ast.alloc_func_with_span(func, span)
+        let module_name = self.current_module_name().map(|s| s.to_string());
+        self.ast
+            .alloc_func_with_span(func, span, module_name.as_deref())
     }
 
     // --- Struct allocation ---
@@ -126,13 +153,6 @@ impl AstBuilder {
 
     /// Add a declaration to the current module
     pub fn add_decl(&mut self, decl: Decl) {
-        // Ensure we have at least one module
-        if self.ast.mods.is_empty() {
-            self.ast.mods.push(Module {
-                name: "main".into(),
-                decs: Vec::new(),
-            });
-        }
         self.ast.mods.last_mut().unwrap().decs.push(decl);
     }
 

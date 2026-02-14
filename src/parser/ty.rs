@@ -1,6 +1,6 @@
 use crate::{Lifetime, Type, lexer::TokenKind, parser::Parser};
 
-impl<'src> Parser<'src> {
+impl<'src> Parser<'src, '_> {
     /// Parse a type annotation
     pub fn parse_type(&mut self) -> Option<Type> {
         // Check for reference type: &T or &mut T or &'a T

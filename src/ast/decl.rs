@@ -16,6 +16,7 @@ pub struct ExternBlock {
 
 pub struct Use {
     pub path: Path,
+    pub path_span: crate::Span,
 }
 
 pub struct Func {

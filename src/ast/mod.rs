@@ -210,8 +210,13 @@ impl Ast {
         id
     }
 
-    pub fn alloc_func_with_span(&mut self, func: Func, span: Span) -> Id<Func> {
-        let name = func.name.value.to_string();
+    pub fn alloc_func_with_span(
+        &mut self,
+        func: Func,
+        span: Span,
+        module_name: Option<&str>,
+    ) -> Id<Func> {
+        let func_name = func.name.value.to_string();
         let signature = FuncSignature {
             params: func
                 .parameters
@@ -225,8 +230,13 @@ impl Ast {
         let span_id = self.spans.alloc(span);
         self.func_spans.insert(id, span_id);
 
+        let registry_key = match module_name {
+            Some(module) => format!("{}::{}", module, func_name),
+            None => func_name,
+        };
+
         self.func_registry.insert(
-            name,
+            registry_key,
             FuncEntry {
                 signature,
                 kind: FuncKind::Regular(id),
@@ -284,6 +294,31 @@ impl Ast {
         id
     }
 
+    pub fn find_func_by_path(&self, path: &Path) -> Option<Id<Func>> {
+        if path.is_qualified() {
+            // get module name (e.g., "std" from "std::print")
+            let module_name = path.qualifier()[0].value.as_ref();
+            let func_name = path.name().value.as_ref();
+
+            // find the module
+            let module = self.mods.iter().find(|m| &*m.name == module_name)?;
+
+            // search only in that module's declarations
+            for decl in &module.decs {
+                if let Decl::Func(func_id) = decl {
+                    let func = self.funcs.get(func_id);
+                    if &*func.name.value == func_name {
+                        return Some(*func_id);
+                    }
+                }
+            }
+            None
+        } else {
+            // unqualified: search globally (existing behavior)
+            self.find_func_by_name(path.name().value.as_ref())
+        }
+    }
+
     pub fn find_func_by_name(&self, name: &str) -> Option<Id<Func>> {
         self.funcs
             .iter()
@@ -325,6 +360,11 @@ impl Ast {
 
     pub fn get_type_span(&self, id: &Id<Type>) -> &Span {
         let span_id = self.type_spans.get(id).unwrap();
+        self.spans.get(span_id)
+    }
+
+    pub fn get_use_span(&self, id: &Id<Use>) -> &Span {
+        let span_id = self.uses_spans.get(id).unwrap();
         self.spans.get(span_id)
     }
 

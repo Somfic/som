@@ -5,7 +5,7 @@ use crate::{
     parser::{Parser, RecoveryLevel, StmtOrExpr, grammar::Grammar},
 };
 
-impl<'src> Parser<'src> {
+impl<'src> Parser<'src, '_> {
     /// Parse an expression
     pub fn parse_expr(&mut self) -> Option<Id<Expr>> {
         self.parse_expr_bp(0)

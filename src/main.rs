@@ -1,32 +1,37 @@
-use som::{BorrowChecker, Codegen, Diagnostic, Linker, Runner, Source, TypeInferencer, parser};
+use som::{
+    BorrowChecker, Codegen, Diagnostic, Linker, ProgramLoader, Runner, Source, TypeInferencer,
+    parser,
+};
 use target_lexicon::Triple;
 
 use std::sync::Arc;
 
 fn main() {
-    let source_text = r#"
-    use your_mom;
-
-    extern {
-        fn printf(s: &str, num: i32) -> i32;
+    let args = std::env::args().collect::<Vec<_>>();
+    if args.len() != 2 {
+        eprintln!("Usage: som <source_file.som>");
+        std::process::exit(1);
     }
 
-    fn main() {
-        let a = 1 + 1 + 1;
-        let b = 2 + 2 + 2;
-        let c = a + b;
-        printf("The result is: %d\n", c);
+    let source_dir = std::path::Path::new(&args[1]);
+    if !source_dir.exists() {
+        eprintln!("Error: file {:?} does not exist", source_dir);
+        std::process::exit(1);
     }
-    "#;
 
-    let mut diagnostics: Vec<Diagnostic> = vec![];
+    let mut diagnostics = Vec::new();
 
-    let source = Arc::new(Source::from_raw(source_text));
-    let (ast, parse_errors) = parser::parse(source.clone());
-
-    for error in &parse_errors {
-        diagnostics.push(error.to_diagnostic());
-    }
+    let loader = ProgramLoader::new(source_dir.to_path_buf());
+    let ast = match loader.load_project() {
+        Ok(ast) => ast,
+        Err(errors) => {
+            for error in errors {
+                // need to implement Display or to_diagnostic for ProgramError
+                eprintln!("{}", error.to_diagnostic());
+            }
+            std::process::exit(1);
+        }
+    };
 
     let inferencer = TypeInferencer::new();
     let typed_ast = inferencer.check_program(ast);

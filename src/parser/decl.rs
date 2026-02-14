@@ -5,7 +5,7 @@ use crate::{
     parser::{Parser, RecoveryLevel},
 };
 
-impl<'src> Parser<'src> {
+impl<'src> Parser<'src, '_> {
     pub fn parse_program(&mut self) {
         while !self.at_eof() {
             // declarations
@@ -53,15 +53,15 @@ impl<'src> Parser<'src> {
         let start = self.current_span();
         self.expect(TokenKind::Use);
 
-        let path = self.parse_separated(TokenKind::DoubleColon, TokenKind::Semicolon, |p| {
-            p.parse_ident()
-        })?;
+        let path_start = self.current_span();
+        let path = self.parse_path()?;
+        let path_span = path_start.merge(&self.previous_span());
 
         self.expect(TokenKind::Semicolon);
 
         let span = start.merge(&self.previous_span());
 
-        Some(self.builder.alloc_use(Use { path }, span))
+        Some(self.builder.alloc_use(Use { path, path_span }, span))
     }
 
     fn parse_struct(&mut self) -> Option<Id<Struct>> {

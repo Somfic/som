@@ -11,6 +11,7 @@ use som::{BorrowChecker, Codegen, Diagnostic, Linker, Runner, Source, TypeInfere
 use std::path::Path;
 use std::sync::Arc;
 use target_lexicon::Triple;
+use tempfile::NamedTempFile;
 
 /// Result of lexing - just the tokens, no errors possible at this phase
 pub fn test_lex(source: &str) -> Vec<Token> {
@@ -142,9 +143,9 @@ pub fn compile_and_run(source: Source) -> i32 {
         .map(|p| p.to_path_buf())
         .collect();
 
-    let temp_file_name = format!("test_ffi_{}", uuid::Uuid::new_v4());
+    let temp_file_name = NamedTempFile::new().unwrap();
 
-    let linker = Linker::new(temp_file_name)
+    let linker = Linker::new(temp_file_name.path().to_str().unwrap())
         .with_libraries(libraries, needs_libc)
         .with_library_paths(library_paths);
     let executable = linker

@@ -194,7 +194,10 @@ impl TypeError {
                 "missing field `{}` in initializer of `{}`",
                 field_name, struct_name
             ))
-            .with_label(Label::primary(span.clone(), format!("missing `{}`", field_name))),
+            .with_label(Label::primary(
+                span.clone(),
+                format!("missing `{}`", field_name),
+            )),
             TypeError::UnknownField {
                 span,
                 struct_name,

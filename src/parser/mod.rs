@@ -4,7 +4,6 @@ use crate::{
     Ast, Ident, Path, Source, Span, Stmt,
     arena::Id,
     lexer::{Token, TokenKind, lex},
-    parser::builder::AstBuilder,
 };
 
 mod builder;
@@ -14,6 +13,7 @@ mod grammar;
 mod stmt;
 mod ty;
 
+pub use builder::AstBuilder;
 pub use grammar::{Association, Grammar, OpInfo};
 
 /// Parse error with location information
@@ -50,20 +50,20 @@ pub enum StmtOrExpr {
 }
 
 /// Main parser struct
-pub struct Parser<'src> {
+pub struct Parser<'src, 'ast> {
     tokens: Vec<Token<'src>>,
     pos: usize,
-    pub builder: AstBuilder,
+    pub builder: &'ast mut AstBuilder,
     errors: Vec<ParseError>,
     in_recovery: bool,
 }
 
-impl<'src> Parser<'src> {
-    pub fn new(tokens: Vec<Token<'src>>) -> Self {
+impl<'src, 'ast> Parser<'src, 'ast> {
+    pub fn new(tokens: Vec<Token<'src>>, builder: &'ast mut AstBuilder) -> Self {
         Self {
             tokens,
             pos: 0,
-            builder: AstBuilder::new(),
+            builder,
             errors: Vec::new(),
             in_recovery: false,
         }
@@ -250,8 +250,6 @@ impl<'src> Parser<'src> {
         }
     }
 
-    // --- Identifier parsing ---
-
     pub fn parse_ident(&mut self) -> Option<Ident> {
         if self.at(TokenKind::Ident) {
             let text = self.peek_token().text;
@@ -308,24 +306,41 @@ impl<'src> Parser<'src> {
         Some(items)
     }
 
-    // --- Finalization ---
-
-    pub fn finish(self) -> (Ast, Vec<ParseError>) {
-        (self.builder.into_ast(), self.errors)
+    pub fn finish(self) -> Vec<ParseError> {
+        self.errors
     }
 }
 
-// --- Public API ---
-
-/// Parse source code into an AST
 pub fn parse(source: Arc<Source>) -> (Ast, Vec<ParseError>) {
     let tokens = lex(source);
-    let mut parser = Parser::new(tokens);
+    let mut builder = AstBuilder::new();
 
-    // Skip initial trivia
+    // Create a default module for standalone parsing (empty name = no prefix)
+    builder.start_module("", std::path::PathBuf::new());
+
+    let mut parser = Parser::new(tokens, &mut builder);
+
     parser.skip_trivia();
+    parser.parse_program();
 
-    // Parse the program
+    let errors = parser.finish();
+    let ast = builder.finish();
+
+    (ast, errors)
+}
+
+pub fn parse_module(
+    source: Arc<Source>,
+    builder: &mut AstBuilder,
+    module_name: &str,
+    module_path: std::path::PathBuf,
+) -> Vec<ParseError> {
+    builder.start_module(module_name, module_path);
+
+    let tokens = lex(source);
+    let mut parser = Parser::new(tokens, builder);
+
+    parser.skip_trivia();
     parser.parse_program();
 
     parser.finish()

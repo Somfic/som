@@ -77,7 +77,7 @@ impl<'ast> Codegen<'ast> {
         for (name, entry) in &self.typed_ast.ast.func_registry {
             let linkage = match &entry.kind {
                 crate::FuncKind::Regular(_) => {
-                    if name == "main" {
+                    if name == "main" || name.ends_with("::main") {
                         Linkage::Export
                     } else {
                         Linkage::Local
@@ -86,10 +86,16 @@ impl<'ast> Codegen<'ast> {
                 crate::FuncKind::Extern(_) => Linkage::Import,
             };
 
+            let symbol_name = if name == "main" || name.ends_with("::main") {
+                "main"
+            } else {
+                name
+            };
+
             let sig = self.build_signature_from_entry(entry);
             let func_id = self
                 .module
-                .declare_function(name, linkage, &sig)
+                .declare_function(symbol_name, linkage, &sig)
                 .map_err(|e| {
                     CodegenError::ModuleError(format!("failed to declare function {}: {}", name, e))
                         .to_diagnostic()
@@ -259,7 +265,7 @@ impl<'ast> Codegen<'ast> {
                 // Look up in unified func_ids map
                 let callee_func_id = *self
                     .func_ids
-                    .get(&*name.name().to_string())
+                    .get(&*name.to_string())
                     .expect("type checker should have caught unknown function");
 
                 let callee_func_ref = self
