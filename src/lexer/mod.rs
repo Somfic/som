@@ -19,6 +19,8 @@ pub enum TokenKind {
     Else,
     #[token("mut")]
     Mut,
+    #[token("use")]
+    Use,
 
     // Built-in types
     #[token("i8")]
@@ -111,6 +113,8 @@ pub enum TokenKind {
     Semicolon,
     #[token(":")]
     Colon,
+    #[token("::")]
+    DoubleColon,
     #[token("->")]
     Arrow,
     #[token("=>")]

@@ -140,7 +140,7 @@ impl<'ast> Codegen<'ast> {
                 let param_value = block_params[i];
                 let var = func_ctx.body.declare_var(to_type(ty));
                 func_ctx.body.def_var(var, param_value);
-                func_ctx.env.insert(param.name.value.to_string(), var);
+                func_ctx.env.insert(param.name.to_string(), var);
             }
         }
 
@@ -196,7 +196,10 @@ impl<'ast> Codegen<'ast> {
                 func.body.ins().global_value(to_type(&Type::Str), value)
             }
             Expr::Var(ident) => {
-                let var = func.env.get(&ident.value).expect("variable not found");
+                let var = func
+                    .env
+                    .get(&ident.name().to_string())
+                    .expect("variable not found");
 
                 func.body.use_var(*var)
             }
@@ -256,7 +259,7 @@ impl<'ast> Codegen<'ast> {
                 // Look up in unified func_ids map
                 let callee_func_id = *self
                     .func_ids
-                    .get(&*name.value)
+                    .get(&*name.name().to_string())
                     .expect("type checker should have caught unknown function");
 
                 let callee_func_ref = self
@@ -383,7 +386,7 @@ impl<'ast> Codegen<'ast> {
                 let struct_id = self
                     .typed_ast
                     .ast
-                    .find_struct_by_name(&struct_name.value)
+                    .find_struct_by_name(&struct_name.name().to_string())
                     .unwrap();
 
                 let struct_type = self.typed_ast.ast.structs.get(&struct_id);

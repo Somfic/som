@@ -7,6 +7,7 @@ mod code_gen;
 pub mod diagnostics;
 pub mod lexer;
 mod linker;
+mod module;
 pub mod parser;
 mod runner;
 mod scope;

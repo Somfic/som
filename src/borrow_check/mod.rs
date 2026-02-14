@@ -133,16 +133,16 @@ impl<'a> BorrowChecker<'a> {
         let expr = self.typed_ast.ast.exprs.get(&expr_id);
 
         // for non-variables, just check the expression
-        let Expr::Var(name) = expr else {
+        let Expr::Var(path) = expr else {
             self.check_expr(expr_id);
             return;
         };
 
         // check if readable
-        self.check_read(name.value.clone(), expr_id);
+        self.check_read(path.name().value.clone(), expr_id);
 
         // find the place and state
-        let Some(&place_id) = self.name_to_place.get(&*name.value) else {
+        let Some(&place_id) = self.name_to_place.get(&*path.name().value) else {
             return;
         };
         let Some(state) = self.place_states.get(&place_id).cloned() else {
@@ -161,7 +161,7 @@ impl<'a> BorrowChecker<'a> {
                 // report error
                 let loan = self.loans.get(&loans[0]);
                 self.errors.push(BorrowError::MoveWhileBorrowed {
-                    name: name.value.to_string(),
+                    name: path.name().value.to_string(),
                     move_expr: expr_id,
                     borrow_expr: loan.expr,
                 });
@@ -170,7 +170,7 @@ impl<'a> BorrowChecker<'a> {
                 // report error
                 let loan_data = self.loans.get(&loan);
                 self.errors.push(BorrowError::MoveWhileBorrowed {
-                    name: name.value.to_string(),
+                    name: path.name().value.to_string(),
                     move_expr: expr_id,
                     borrow_expr: loan_data.expr,
                 });
@@ -188,7 +188,7 @@ impl<'a> BorrowChecker<'a> {
         };
 
         // find the place and state
-        let Some(&place_id) = self.name_to_place.get(&*name.value) else {
+        let Some(&place_id) = self.name_to_place.get(&*name.name().to_string()) else {
             return;
         };
         let Some(state) = self.place_states.get(&place_id).cloned() else {
@@ -213,7 +213,7 @@ impl<'a> BorrowChecker<'a> {
             State::Moved { to } => {
                 // used after already moved
                 self.errors.push(BorrowError::UseAfterMove {
-                    name: name.value.to_string(),
+                    name: name.name().to_string(),
                     use_expr: borrow_expr,
                     moved_at: to,
                 });
@@ -222,7 +222,7 @@ impl<'a> BorrowChecker<'a> {
                 // already borrowed
                 let existing = self.loans.get(&loan);
                 self.errors.push(BorrowError::ConflictingBorrow {
-                    name: name.value.to_string(),
+                    name: name.name().to_string(),
                     new_expr: borrow_expr,
                     new_mut: mutable,
                     existing_expr: existing.expr,
@@ -234,7 +234,7 @@ impl<'a> BorrowChecker<'a> {
                     // can't borrow mutably while immutably borrowed
                     let existing = self.loans.get(&loans[0]);
                     self.errors.push(BorrowError::ConflictingBorrow {
-                        name: name.value.to_string(),
+                        name: name.name().to_string(),
                         new_expr: borrow_expr,
                         new_mut: true,
                         existing_expr: existing.expr,
@@ -275,7 +275,7 @@ impl<'a> BorrowChecker<'a> {
                 // Literals - nothing to check
             }
             Expr::Var(name) => {
-                self.check_read(&*name.value, expr_id);
+                self.check_read(&*name.name().to_string(), expr_id);
             }
             Expr::Binary { lhs, rhs, .. } => {
                 self.check_expr(*lhs);
@@ -315,7 +315,7 @@ impl<'a> BorrowChecker<'a> {
                         // If val is a variable, look up its place's origin
                         let val_expr = self.typed_ast.ast.exprs.get(val);
                         if let Expr::Var(name) = val_expr {
-                            let place_id = self.name_to_place.get(&*name.value)?;
+                            let place_id = self.name_to_place.get(&*name.name().to_string())?;
                             self.place_origins.get(place_id).cloned()
                         } else {
                             None

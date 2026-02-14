@@ -1,4 +1,4 @@
-use crate::{Ident, Stmt, Trait, arena::Id};
+use crate::{Ident, Path, Stmt, Trait, arena::Id};
 
 pub enum Expr {
     /// hole caused by invalid/error code
@@ -7,7 +7,7 @@ pub enum Expr {
     F32(f32),
     Bool(bool),
     String(Box<str>),
-    Var(Ident),
+    Var(Path),
     Binary {
         op: BinOp,
         lhs: Id<Expr>,
@@ -18,7 +18,7 @@ pub enum Expr {
         value: Option<Id<Expr>>,
     },
     Call {
-        name: Ident,
+        name: Path,
         args: Vec<Id<Expr>>,
     },
     Borrow {
@@ -37,7 +37,7 @@ pub enum Expr {
         falsy: Id<Expr>,
     },
     Constructor {
-        struct_name: Ident,
+        struct_name: Path,
         fields: Vec<(Ident, Id<Expr>)>,
     },
     FieldAccess {

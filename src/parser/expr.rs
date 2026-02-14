@@ -28,7 +28,9 @@ impl<'src> Parser<'src> {
                 self.advance(); // consume '.'
                 let field = self.parse_ident()?;
                 let span = start.merge(&self.previous_span());
-                lhs = self.builder.alloc_expr(Expr::FieldAccess { object: lhs, field }, span);
+                lhs = self
+                    .builder
+                    .alloc_expr(Expr::FieldAccess { object: lhs, field }, span);
                 continue;
             }
 
@@ -156,7 +158,7 @@ impl<'src> Parser<'src> {
                 if is_constructor {
                     self.parse_constructor()
                 } else {
-                    let name = self.parse_ident()?;
+                    let name = self.parse_path()?;
                     Some(self.builder.alloc_expr(Expr::Var(name), start))
                 }
             }
@@ -271,7 +273,7 @@ impl<'src> Parser<'src> {
     pub fn parse_constructor(&mut self) -> Option<Id<Expr>> {
         let start = self.current_span();
 
-        let struct_name = self.parse_ident()?;
+        let struct_name = self.parse_path()?;
 
         self.expect(TokenKind::OpenBrace)?;
         let mut fields = Vec::new();

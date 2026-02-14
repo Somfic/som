@@ -1,5 +1,5 @@
 use crate::{
-    ExternBlock, ExternFunc, Func, FuncParam, FuncTypeParam, Struct, StructField,
+    ExternBlock, ExternFunc, Func, FuncParam, FuncTypeParam, Struct, StructField, Use,
     arena::Id,
     lexer::TokenKind,
     parser::{Parser, RecoveryLevel},
@@ -31,15 +31,37 @@ impl<'src> Parser<'src> {
                         self.recover(RecoveryLevel::Declaration);
                     }
                 }
+                TokenKind::Use => {
+                    if let Some(use_id) = self.parse_use() {
+                        self.builder.add_use(use_id);
+                    } else {
+                        self.recover(RecoveryLevel::Declaration);
+                    }
+                }
                 _ => {
                     self.error(format!(
-                        "expected `fn`, `extern`, or `struct`, found {:?}",
+                        "expected `fn`, `extern`, `use`, or `struct`, found {:?}",
                         self.peek()
                     ));
                     self.recover(RecoveryLevel::Declaration);
                 }
             }
         }
+    }
+
+    fn parse_use(&mut self) -> Option<Id<Use>> {
+        let start = self.current_span();
+        self.expect(TokenKind::Use);
+
+        let path = self.parse_separated(TokenKind::DoubleColon, TokenKind::Semicolon, |p| {
+            p.parse_ident()
+        })?;
+
+        self.expect(TokenKind::Semicolon);
+
+        let span = start.merge(&self.previous_span());
+
+        Some(self.builder.alloc_use(Use { path }, span))
     }
 
     fn parse_struct(&mut self) -> Option<Id<Struct>> {
@@ -50,17 +72,9 @@ impl<'src> Parser<'src> {
 
         self.expect(TokenKind::OpenBrace)?;
 
-        let mut fields = Vec::new();
-        if !self.at(TokenKind::CloseBrace) {
-            fields.push(self.parse_struct_field()?);
-
-            while self.eat(TokenKind::Comma) {
-                if self.at(TokenKind::CloseBrace) {
-                    break; // Trailing comma
-                }
-                fields.push(self.parse_struct_field()?);
-            }
-        }
+        let fields = self.parse_separated(TokenKind::Comma, TokenKind::CloseBrace, |p| {
+            p.parse_struct_field()
+        })?;
 
         self.expect(TokenKind::CloseBrace)?;
 

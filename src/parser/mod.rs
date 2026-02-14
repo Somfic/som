@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    Ast, Ident, Source, Span, Stmt,
+    Ast, Ident, Path, Source, Span, Stmt,
     arena::Id,
     lexer::{Token, TokenKind, lex},
     parser::builder::AstBuilder,
@@ -261,6 +261,51 @@ impl<'src> Parser<'src> {
             self.error_expected(&[TokenKind::Ident]);
             None
         }
+    }
+
+    pub fn parse_path(&mut self) -> Option<Path> {
+        let path = self.parse_separated_while(TokenKind::DoubleColon, |p| p.parse_ident())?;
+        Some(Path(path))
+    }
+
+    pub fn parse_separated<T>(
+        &mut self,
+        separator: TokenKind,
+        terminator: TokenKind, // e.g., CloseParen
+        mut parse_item: impl FnMut(&mut Self) -> Option<T>,
+    ) -> Option<Vec<T>> {
+        let mut items = vec![];
+
+        while !self.at(terminator) {
+            if items.len() > 0 {
+                self.expect(separator)?;
+                if self.at(terminator) {
+                    break; // trailing separator                           
+                }
+            }
+
+            items.push(parse_item(self)?);
+        }
+
+        Some(items)
+    }
+
+    pub fn parse_separated_while<T>(
+        &mut self,
+        separator: TokenKind,
+        mut parse_item: impl FnMut(&mut Self) -> Option<T>,
+    ) -> Option<Vec<T>> {
+        let mut items = vec![];
+
+        loop {
+            items.push(parse_item(self)?);
+
+            if !self.eat(separator) {
+                break;
+            }
+        }
+
+        Some(items)
     }
 
     // --- Finalization ---

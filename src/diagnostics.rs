@@ -104,6 +104,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::While
         | TokenKind::For
         | TokenKind::Struct
+        | TokenKind::Use
         | TokenKind::Mut => MAUVE,
         TokenKind::I8
         | TokenKind::I16
@@ -148,6 +149,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Comma
         | TokenKind::Colon
         | TokenKind::Semicolon
+        | TokenKind::DoubleColon
         | TokenKind::Arrow
         | TokenKind::FatArrow
         | TokenKind::SingleQuote

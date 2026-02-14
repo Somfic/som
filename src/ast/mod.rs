@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::fmt::Display;
+use std::path::PathBuf;
 
 mod expr;
 pub use expr::*;
@@ -37,6 +39,39 @@ pub struct Ident {
     pub value: Box<str>,
 }
 
+impl Display for Ident {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Path(pub Vec<Ident>);
+
+impl Path {
+    pub fn name(&self) -> &Ident {
+        self.0.last().unwrap()
+    }
+    pub fn qualifier(&self) -> &[Ident] {
+        &self.0[..self.0.len() - 1]
+    }
+    pub fn is_qualified(&self) -> bool {
+        self.0.len() > 1
+    }
+}
+
+impl Display for Path {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let path_str = self
+            .0
+            .iter()
+            .map(|ident| ident.value.as_ref())
+            .collect::<Vec<_>>()
+            .join("::");
+        write!(f, "{}", path_str)
+    }
+}
+
 #[derive(Default)]
 pub struct TypedAst {
     pub ast: Ast,
@@ -63,6 +98,9 @@ pub struct Ast {
 
     pub structs: Arena<Struct>,
     struct_spans: HashMap<Id<Struct>, Id<Span>>,
+
+    pub uses: Arena<Use>,
+    uses_spans: HashMap<Id<Use>, Id<Span>>,
 
     pub funcs: Arena<Func>,
     func_spans: HashMap<Id<Func>, Id<Span>>,
@@ -224,10 +262,17 @@ impl Ast {
         id
     }
 
-    pub fn alloc_struct_with_span(&mut self, strukt: Struct, span: Span) -> Id<Struct> {
-        let id = self.structs.alloc(strukt);
+    pub fn alloc_struct_with_span(&mut self, struct_decl: Struct, span: Span) -> Id<Struct> {
+        let id = self.structs.alloc(struct_decl);
         let span_id = self.spans.alloc(span);
         self.struct_spans.insert(id, span_id);
+        id
+    }
+
+    pub fn alloc_use_with_span(&mut self, use_decl: Use, span: Span) -> Id<Use> {
+        let id = self.uses.alloc(use_decl);
+        let span_id = self.spans.alloc(span);
+        self.uses_spans.insert(id, span_id);
         id
     }
 
@@ -305,7 +350,17 @@ impl Ast {
 
 pub struct Module {
     pub name: Box<str>,
+    pub path: PathBuf,
     pub decs: Vec<Decl>,
+}
+
+impl Module {
+    pub fn uses<'ast>(&self, ast: &'ast Ast) -> impl Iterator<Item = &'ast Use> {
+        self.decs.iter().filter_map(|d| match d {
+            Decl::Use(id) => Some(ast.uses.get(id)),
+            _ => None,
+        })
+    }
 }
 
 impl Ast {

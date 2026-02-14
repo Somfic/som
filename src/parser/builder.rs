@@ -1,5 +1,5 @@
 use crate::{
-    Ast, Decl, Expr, ExternBlock, ExternFunc, Func, Ident, Module, Span, Stmt, Struct, Type,
+    Ast, Decl, Expr, ExternBlock, ExternFunc, Func, Ident, Module, Span, Stmt, Struct, Type, Use,
     arena::Id,
 };
 
@@ -100,8 +100,12 @@ impl AstBuilder {
     }
 
     // --- Struct allocation ---
-    pub fn alloc_struct(&mut self, strukt: Struct, span: Span) -> Id<Struct> {
-        self.ast.alloc_struct_with_span(strukt, span)
+    pub fn alloc_struct(&mut self, struct_decl: Struct, span: Span) -> Id<Struct> {
+        self.ast.alloc_struct_with_span(struct_decl, span)
+    }
+
+    pub fn alloc_use(&mut self, use_decl: Use, span: Span) -> Id<Use> {
+        self.ast.alloc_use_with_span(use_decl, span)
     }
 
     // --- Extern function allocation ---
@@ -135,6 +139,11 @@ impl AstBuilder {
     /// Add a struct declaration
     pub fn add_struct(&mut self, struct_id: Id<Struct>) {
         self.add_decl(Decl::Struct(struct_id));
+    }
+
+    /// Add an use declaration
+    pub fn add_use(&mut self, use_id: Id<Use>) {
+        self.add_decl(Decl::Use(use_id));
     }
 
     /// Add a function declaration

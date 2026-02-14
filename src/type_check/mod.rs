@@ -68,16 +68,24 @@ impl TypeInferencer {
                 lifetime: Lifetime::Static,
                 to: Box::new(Type::Str),
             },
-            Expr::Var(ident) => match self.env.get(&ident.value) {
-                Some(ty) => ty.clone(),
-                None => {
-                    self.errors.push(TypeError::UnboundVariable {
-                        span: ast.get_expr_span(expr_id).clone(),
-                        name: ident.value.to_string(),
-                    });
-                    self.fresh_type()
+            Expr::Var(path) => {
+                let ident = if path.is_qualified() {
+                    todo!("qualified path resolution");
+                } else {
+                    path.name()
+                };
+
+                match self.env.get(&ident.value) {
+                    Some(ty) => ty.clone(),
+                    None => {
+                        self.errors.push(TypeError::UnboundVariable {
+                            span: ast.get_expr_span(expr_id).clone(),
+                            name: ident.value.to_string(),
+                        });
+                        self.fresh_type()
+                    }
                 }
-            },
+            }
             Expr::Binary { op, lhs, rhs } => {
                 let lhs_ty = self.infer(ast, lhs);
                 let rhs_ty = self.infer(ast, rhs);
@@ -108,14 +116,20 @@ impl TypeInferencer {
 
                 block_ty
             }
-            Expr::Call { name, args } => {
+            Expr::Call { name: path, args } => {
+                let ident = if path.is_qualified() {
+                    todo!("qualified path resolution");
+                } else {
+                    path.name()
+                };
+
                 // Look up function in unified registry
-                let entry = match ast.func_registry.get(&*name.value) {
+                let entry = match ast.func_registry.get(ident.value.as_ref()) {
                     Some(entry) => entry.clone(),
                     None => {
                         self.errors.push(TypeError::UnknownFunction {
                             span: ast.get_expr_span(expr_id).clone(),
-                            name: name.value.to_string(),
+                            name: ident.value.to_string(),
                         });
                         return self.fresh_type();
                     }
@@ -245,13 +259,19 @@ impl TypeInferencer {
                 struct_name,
                 fields,
             } => {
+                let ident = if struct_name.is_qualified() {
+                    todo!("qualified path resolution");
+                } else {
+                    struct_name.name()
+                };
+
                 // Look up the struct definition
-                let struct_id = match ast.find_struct_by_name(&struct_name.value) {
+                let struct_id = match ast.find_struct_by_name(&ident.value) {
                     Some(id) => id,
                     None => {
                         self.errors.push(TypeError::UnknownStruct {
                             span: ast.get_expr_span(expr_id).clone(),
-                            name: struct_name.value.to_string(),
+                            name: ident.value.to_string(),
                         });
                         return self.fresh_type();
                     }
@@ -300,7 +320,7 @@ impl TypeInferencer {
                 }
 
                 // The type of a constructor is the struct type
-                Type::Named(struct_name.value.clone())
+                Type::Named(struct_name_str.into())
             }
             Expr::FieldAccess { object, field } => {
                 // Infer the type of the object being accessed

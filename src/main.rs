@@ -5,6 +5,8 @@ use std::sync::Arc;
 
 fn main() {
     let source_text = r#"
+    use your_mom;
+
     extern {
         fn printf(s: &str, num: i32) -> i32;
     }

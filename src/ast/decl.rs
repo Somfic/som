@@ -1,4 +1,4 @@
-use crate::{Expr, Ident, Type, arena::Id};
+use crate::{Expr, Ident, Path, Type, arena::Id};
 
 pub enum Decl {
     Struct(Id<Struct>),
@@ -6,11 +6,16 @@ pub enum Decl {
     Trait(Id<Trait>),
     Impl(Id<Impl>),
     ExternBlock(ExternBlock),
+    Use(Id<Use>),
 }
 
 pub struct ExternBlock {
     pub library: Option<String>,
     pub functions: Vec<Id<ExternFunc>>,
+}
+
+pub struct Use {
+    pub path: Path,
 }
 
 pub struct Func {
