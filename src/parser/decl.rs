@@ -86,8 +86,9 @@ impl<'src> Parser<'src, '_> {
         let name = self.parse_ident()?;
 
         self.expect(TokenKind::Colon)?;
-        let ty_span = self.current_span();
+        let ty_start = self.current_span();
         let ty = self.parse_type()?;
+        let ty_span = ty_start.merge(&self.previous_span());
         let type_id = self.builder.alloc_type_span(ty_span);
 
         Some(StructField { name, ty, type_id })
@@ -114,8 +115,9 @@ impl<'src> Parser<'src, '_> {
 
         // Parse optional return type: -> i32
         let (return_type, return_type_id) = if self.eat(TokenKind::Arrow) {
-            let ty_span = self.current_span();
+            let ty_start = self.current_span();
             let ty = self.parse_type()?;
+            let ty_span = ty_start.merge(&self.previous_span());
             let ty_id = self.builder.alloc_type_span(ty_span);
             (Some(ty), Some(ty_id))
         } else {
@@ -183,8 +185,9 @@ impl<'src> Parser<'src, '_> {
         let name = self.parse_ident()?;
 
         let (ty, type_id) = if self.eat(TokenKind::Colon) {
-            let ty_span = self.current_span();
+            let ty_start = self.current_span();
             let ty = self.parse_type()?;
+            let ty_span = ty_start.merge(&self.previous_span());
             let ty_id = self.builder.alloc_type_span(ty_span);
             (Some(ty), Some(ty_id))
         } else {

@@ -171,14 +171,26 @@ impl TypeInferencer {
 
                 let call_span = ast.get_expr_span(expr_id);
 
+                // Collect param type IDs from function definition
+                let param_type_ids: Vec<Option<Id<Type>>> = match &entry.kind {
+                    crate::FuncKind::Regular(func_id) => {
+                        let func = ast.funcs.get(func_id);
+                        func.parameters.iter().map(|p| p.type_id).collect()
+                    }
+                    crate::FuncKind::Extern(extern_id) => {
+                        let func = ast.extern_funcs.get(extern_id);
+                        func.parameters.iter().map(|p| p.type_id).collect()
+                    }
+                };
+
                 // Check each argument against parameter type
-                for (arg_expr, param_ty) in args.iter().zip(&entry.signature.params) {
+                for (i, (arg_expr, param_ty)) in args.iter().zip(&entry.signature.params).enumerate() {
                     let resolved_ty = self.resolve_type(param_ty, &call_generics, call_span, ast);
                     let actual = self.infer(ast, arg_expr);
                     self.constraints.push(Constraint::Equal {
                         provenance: Provenance::FuncArg {
                             arg_expr: *arg_expr,
-                            param_type_id: None,
+                            param_type_id: param_type_ids.get(i).copied().flatten(),
                         },
                         expected: resolved_ty,
                         actual: actual,
@@ -323,11 +335,17 @@ impl TypeInferencer {
                 }
 
                 // Check for unknown fields (fields provided but not in struct)
+                let known_fields: Vec<String> = struct_def
+                    .fields
+                    .iter()
+                    .map(|f| f.name.value.to_string())
+                    .collect();
                 for (unknown_field, field_expr) in provided_fields {
                     self.errors.push(TypeError::UnknownField {
                         span: ast.get_expr_span(field_expr).clone(),
                         struct_name: struct_name_str.clone(),
                         field_name: unknown_field.to_string(),
+                        available_fields: known_fields.clone(),
                     });
                 }
 
@@ -382,10 +400,16 @@ impl TypeInferencer {
                 match field_def {
                     Some(f) => f.ty.clone(),
                     None => {
+                        let available_fields: Vec<String> = struct_def
+                            .fields
+                            .iter()
+                            .map(|f| f.name.value.to_string())
+                            .collect();
                         self.errors.push(TypeError::UnknownField {
                             span: ast.get_expr_span(expr_id).clone(),
                             struct_name: struct_name.to_string(),
                             field_name: field.value.to_string(),
+                            available_fields,
                         });
                         self.fresh_type()
                     }

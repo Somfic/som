@@ -180,6 +180,38 @@ impl Display for Lifetime {
     }
 }
 
+impl Type {
+    pub fn plain_language(&self) -> String {
+        match self {
+            Type::Unit => "nothing".into(),
+            Type::Unknown(_) => format!("an unknown type"),
+            Type::Named(a) => a.to_string(),
+            Type::I32 => "a 32-bit integer".into(),
+            Type::U8 => "an 8-bit unsigned integer".into(),
+            Type::F32 => "a 32-bit floating point number".into(),
+            Type::Bool => "a boolean".into(),
+            Type::Str => "a string slice".into(),
+            Type::Reference {
+                mutable,
+                lifetime: _,
+                to,
+            } => {
+                let mutability = if *mutable { "mutable " } else { "" };
+                format!("a {}reference to {}", mutability, to.plain_language())
+            }
+            Type::Fun { arguments, returns } => {
+                let args: Vec<String> = arguments.iter().map(|arg| arg.plain_language()).collect();
+                format!(
+                    "a function taking {} and returning {}",
+                    args.join(", "),
+                    returns.plain_language()
+                )
+            }
+            Type::Pointer => "a raw pointer".into(),
+        }
+    }
+}
+
 impl Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -2,6 +2,7 @@ use std::{collections::HashSet, fs, io, path::PathBuf, sync::Arc};
 
 use crate::{
     Ast, Decl, Diagnostic, Label, Source,
+    diagnostics::Highlight,
     parser::{self, AstBuilder, ParseError},
     std::get_bundled_module,
 };
@@ -23,7 +24,7 @@ impl ProgramError {
         match self {
             ProgramError::Io(err) => Diagnostic::error(format!("I/O error: {}", err)),
             ProgramError::Parse(errors) => {
-                let mut diag = Diagnostic::error("Failed to parse module");
+                let mut diag = Diagnostic::error("failed to parse module");
                 for error in errors {
                     diag =
                         diag.with_label(Label::primary(error.span.clone(), error.message.clone()));
@@ -31,16 +32,16 @@ impl ProgramError {
                 diag
             }
             ProgramError::CircularDependency(module) => Diagnostic::error(format!(
-                "Circular dependency detected while loading module `{}`",
-                module
+                "circular dependency detected while loading module {}",
+                module.as_module()
             )),
             ProgramError::ModuleNotFound { name, path, span } => {
-                let diag = Diagnostic::error(format!("module `{}` could not be found", name));
+                let diag = Diagnostic::error(format!("module {} could not be found", name.as_module()));
                 match span {
                     Some(s) => diag
                         .with_label(Label::primary(s.clone(), "unknown module"))
-                        .with_hint(format!("cannot find source code in `{}`", path.display())),
-                    None => diag.with_hint(format!("expected at `{}`", path.display())),
+                        .with_hint(format!("cannot find source code in {}", path.display())),
+                    None => diag.with_hint(format!("expected at {}", path.display())),
                 }
             }
         }

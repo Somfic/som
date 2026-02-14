@@ -1,5 +1,5 @@
 use crate::arena::Id;
-use crate::diagnostics::{Diagnostic, Label};
+use crate::diagnostics::{Diagnostic, Highlight, Label};
 use crate::{Expr, TypedAst};
 
 #[derive(Debug, Clone)]
@@ -41,7 +41,7 @@ impl BorrowError {
                 use_expr,
                 moved_at,
             } => {
-                let mut diag = Diagnostic::error(format!("use of moved value: `{}`", name));
+                let mut diag = Diagnostic::error(format!("use of moved value: {}", name.as_var()));
 
                 let use_span = typed_ast.ast.get_expr_span(use_expr);
                 diag = diag.with_label(Label::primary(
@@ -53,8 +53,8 @@ impl BorrowError {
                 diag = diag.with_label(Label::secondary(move_span.clone(), "value moved here"));
 
                 diag.with_hint(format!(
-                    "consider using `&{}` to borrow instead of moving",
-                    name
+                    "consider using &{} to borrow instead of moving",
+                    name.as_var()
                 ))
             }
 
@@ -64,7 +64,7 @@ impl BorrowError {
                 borrow_expr,
             } => {
                 let mut diag =
-                    Diagnostic::error(format!("cannot move `{}` because it is borrowed", name));
+                    Diagnostic::error(format!("cannot move {} because it is borrowed", name.as_var()));
 
                 let move_span = typed_ast.ast.get_expr_span(move_expr);
                 diag = diag.with_label(Label::primary(move_span.clone(), "move occurs here"));
@@ -84,8 +84,8 @@ impl BorrowError {
             } => {
                 let msg = if *new_mut {
                     format!(
-                        "cannot borrow `{}` as mutable because it is already borrowed as {}",
-                        name,
+                        "cannot borrow {} as mutable because it is already borrowed as {}",
+                        name.as_var(),
                         if *existing_mut {
                             "mutable"
                         } else {
@@ -94,8 +94,8 @@ impl BorrowError {
                     )
                 } else {
                     format!(
-                        "cannot borrow `{}` as immutable because it is already borrowed as mutable",
-                        name
+                        "cannot borrow {} as immutable because it is already borrowed as mutable",
+                        name.as_var()
                     )
                 };
 
@@ -131,8 +131,8 @@ impl BorrowError {
                 borrow_expr,
             } => {
                 let mut diag = Diagnostic::error(format!(
-                    "cannot use `{}` because it is mutably borrowed",
-                    name
+                    "cannot use {} because it is mutably borrowed",
+                    name.as_var()
                 ));
 
                 let use_span = typed_ast.ast.get_expr_span(use_expr);
@@ -153,8 +153,8 @@ impl BorrowError {
                 return_expr,
             } => {
                 let mut diag = Diagnostic::error(format!(
-                    "cannot return reference to local variable `{}`",
-                    name
+                    "cannot return reference to local variable {}",
+                    name.as_var()
                 ));
 
                 let return_span = typed_ast.ast.get_expr_span(return_expr);
@@ -166,12 +166,12 @@ impl BorrowError {
                 let borrow_span = typed_ast.ast.get_expr_span(borrow_expr);
                 diag = diag.with_label(Label::secondary(
                     borrow_span.clone(),
-                    format!("`{}` is borrowed here", name),
+                    format!("{} is borrowed here", name.as_var()),
                 ));
 
                 diag.with_hint(format!(
-                    "`{}` will be dropped when the function returns",
-                    name
+                    "{} will be dropped when the function returns",
+                    name.as_var()
                 ))
             }
         }

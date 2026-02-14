@@ -17,7 +17,7 @@ pub mod type_check;
 
 pub use borrow_check::BorrowChecker;
 pub use code_gen::Codegen;
-pub use diagnostics::{Diagnostic, Label, Severity};
+pub use diagnostics::{Diagnostic, Highlight, Label, Related, Severity};
 pub use linker::Linker;
 pub use program::{ProgramError, ProgramLoader};
 pub use runner::Runner;

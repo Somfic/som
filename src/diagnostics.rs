@@ -53,27 +53,8 @@ const MANTLE: Rgb = Rgb(24, 24, 37);
 const CRUST: Rgb = Rgb(17, 17, 27);
 
 // Helper functions for applying colors
-fn red(text: impl std::fmt::Display) -> String {
-    format!("{}", text.to_string().truecolor(RED.0, RED.1, RED.2))
-}
-
-fn blue(text: impl std::fmt::Display) -> String {
-    format!("{}", text.to_string().truecolor(BLUE.0, BLUE.1, BLUE.2))
-}
-
-fn yellow(text: impl std::fmt::Display) -> String {
-    format!(
-        "{}",
-        text.to_string().truecolor(YELLOW.0, YELLOW.1, YELLOW.2)
-    )
-}
-
 fn teal(text: impl std::fmt::Display) -> String {
     format!("{}", text.to_string().truecolor(TEAL.0, TEAL.1, TEAL.2))
-}
-
-fn text(text_str: impl std::fmt::Display) -> String {
-    format!("{}", text_str.to_string().truecolor(TEXT.0, TEXT.1, TEXT.2))
 }
 
 fn subtext(text: impl std::fmt::Display) -> String {
@@ -81,6 +62,7 @@ fn subtext(text: impl std::fmt::Display) -> String {
         "{}",
         text.to_string()
             .truecolor(SUBTEXT0.0, SUBTEXT0.1, SUBTEXT0.2)
+            .italic()
     )
 }
 
@@ -91,6 +73,83 @@ fn surface(text: impl std::fmt::Display) -> String {
             .truecolor(SURFACE2.0, SURFACE2.1, SURFACE2.2)
     )
 }
+
+/// Levenshtein edit distance between two strings.
+pub fn edit_distance(a: &str, b: &str) -> usize {
+    let a_len = a.len();
+    let b_len = b.len();
+    let mut matrix = vec![vec![0usize; b_len + 1]; a_len + 1];
+
+    for i in 0..=a_len {
+        matrix[i][0] = i;
+    }
+    for j in 0..=b_len {
+        matrix[0][j] = j;
+    }
+
+    for (i, ca) in a.chars().enumerate() {
+        for (j, cb) in b.chars().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            matrix[i + 1][j + 1] = (matrix[i][j + 1] + 1)
+                .min(matrix[i + 1][j] + 1)
+                .min(matrix[i][j] + cost);
+        }
+    }
+
+    matrix[a_len][b_len]
+}
+
+/// Find the closest match from a list of candidates using edit distance.
+/// Returns `None` if no candidate is close enough (distance must be <= max_dist).
+pub fn closest_match<'a>(
+    target: &str,
+    candidates: &'a [String],
+    max_dist: usize,
+) -> Option<&'a str> {
+    candidates
+        .iter()
+        .map(|c| (c.as_str(), edit_distance(target, c)))
+        .filter(|(_, d)| *d <= max_dist)
+        .min_by_key(|(_, d)| *d)
+        .map(|(c, _)| c)
+}
+
+pub trait Highlight: Display {
+    fn as_type(&self) -> String {
+        format!(
+            "{}",
+            self.to_string().truecolor(YELLOW.0, YELLOW.1, YELLOW.2)
+        )
+    }
+    fn as_var(&self) -> String {
+        format!(
+            "{}",
+            self.to_string().truecolor(TEXT.0, TEXT.1, TEXT.2).bold()
+        )
+    }
+    fn as_func(&self) -> String {
+        format!("{}", self.to_string().truecolor(BLUE.0, BLUE.1, BLUE.2))
+    }
+    fn as_struct(&self) -> String {
+        format!("{}", self.to_string().truecolor(PEACH.0, PEACH.1, PEACH.2))
+    }
+    fn as_field(&self) -> String {
+        format!("{}", self.to_string().truecolor(TEAL.0, TEAL.1, TEAL.2))
+    }
+    fn as_keyword(&self) -> String {
+        format!(
+            "{}",
+            self.to_string()
+                .truecolor(MAUVE.0, MAUVE.1, MAUVE.2)
+                .italic()
+        )
+    }
+    fn as_module(&self) -> String {
+        format!("{}", self.to_string().truecolor(GREEN.0, GREEN.1, GREEN.2))
+    }
+}
+
+impl<T: Display> Highlight for T {}
 
 // Map token kinds to colors
 fn token_color(kind: TokenKind) -> Rgb {
@@ -201,12 +260,33 @@ fn syntax_highlight(line: &str) -> String {
 }
 
 #[derive(Debug, Clone)]
+pub struct Related {
+    pub message: String,
+    pub labels: Vec<Label>,
+}
+
+impl Related {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            labels: vec![],
+        }
+    }
+
+    pub fn with_label(mut self, label: impl Into<Label>) -> Self {
+        self.labels.push(label.into());
+        self
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
     pub trace: Vec<String>,
     pub message: String,
     pub hints: Vec<String>,
     pub labels: Vec<Label>,
+    pub related: Vec<Related>,
 }
 
 impl Diagnostic {
@@ -217,6 +297,7 @@ impl Diagnostic {
             message: message.into(),
             hints: vec![],
             labels: vec![],
+            related: vec![],
         }
     }
 
@@ -247,167 +328,222 @@ impl Diagnostic {
         self
     }
 
+    pub fn with_related(mut self, related: Related) -> Self {
+        self.related.push(related);
+        self
+    }
+
     pub fn to_err<T>(self) -> Result<T, Self> {
         Err(self)
     }
 }
 
-impl Display for Diagnostic {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "{}: {}", self.severity, text(&self.message))?;
+/// The gutter prefix: 4 chars for line number + space + pipe + space = "     │ "
+const GUTTER: &str = "     ";
 
-        // Group labels by source
-        let mut label_groups: Vec<Vec<&Label>> = Vec::new();
+/// Render a group of labels from the same source file.
+fn fmt_label_group(
+    f: &mut std::fmt::Formatter<'_>,
+    group: &[&Label],
+    severity: &Severity,
+) -> std::fmt::Result {
+    if group.is_empty() {
+        return Ok(());
+    }
 
-        for label in &self.labels {
-            // Try to find a group this label belongs to (same source)
-            let mut added = false;
-            for group in &mut label_groups {
-                if let Some(first) = group.first() {
-                    let same_source = std::ptr::eq(
-                        first.span.source.as_ref() as *const _,
-                        label.span.source.as_ref() as *const _,
-                    );
+    let first_label = group[0];
 
-                    if same_source {
-                        group.push(label);
-                        added = true;
-                        break;
+    // Collect all lines that have labels
+    let mut label_lines: Vec<usize> = group.iter().map(|l| l.span.start.line).collect();
+    label_lines.sort();
+    label_lines.dedup();
+
+    // Add context lines (1 above and below for each label line)
+    let context_lines = 1;
+    let mut lines_to_show = HashSet::new();
+    let total_lines = first_label.span.source.content().lines().count();
+
+    for &line in &label_lines {
+        let start = line.saturating_sub(context_lines).max(1);
+        let end = (line + context_lines).min(total_lines);
+        for l in start..=end {
+            lines_to_show.insert(l);
+        }
+    }
+
+    let mut lines_vec: Vec<usize> = lines_to_show.into_iter().collect();
+    lines_vec.sort();
+
+    // Display lines with gaps indicated by dots
+    let mut prev_line = 0;
+    for &line_num in &lines_vec {
+        // Show dots if there's a gap
+        if prev_line > 0 && line_num > prev_line + 1 {
+            writeln!(f, "{}{}", GUTTER, surface("┆"))?;
+        }
+
+        if let Some(line_text) = first_label
+            .span
+            .source
+            .content()
+            .lines()
+            .nth(line_num.saturating_sub(1))
+        {
+            // Determine line number color based on labels
+            let line_color = {
+                let mut has_primary = false;
+                let mut has_secondary = false;
+
+                for label in group {
+                    if label.span.start.line == line_num {
+                        if label.is_primary {
+                            has_primary = true;
+                        } else {
+                            has_secondary = true;
+                        }
                     }
                 }
-            }
 
-            if !added {
-                label_groups.push(vec![label]);
+                let sc = severity.color();
+                if has_primary {
+                    format!(
+                        "{}",
+                        format!("{:>4}", line_num).truecolor(sc.0, sc.1, sc.2)
+                    )
+                } else if has_secondary {
+                    format!(
+                        "{}",
+                        format!("{:>4}", line_num).truecolor(sc.0, sc.1, sc.2)
+                    )
+                } else {
+                    subtext(format!("{:>4}", line_num))
+                }
+            };
+
+            writeln!(
+                f,
+                "{} {} {}",
+                line_color,
+                surface("│"),
+                syntax_highlight(line_text)
+            )?;
+
+            // Collect labels for this line
+            let line_labels: Vec<&&Label> = group
+                .iter()
+                .filter(|label| label.span.start.line == line_num)
+                .collect();
+
+            // Draw underlines and labels beneath the code
+            for label in &line_labels {
+                let col_start = label.span.start.col.saturating_sub(1);
+                let col_end = if label.span.start.line == label.span.end.line {
+                    label.span.end.col.saturating_sub(1)
+                } else {
+                    line_text.len()
+                };
+                let width = col_end.saturating_sub(col_start).max(1);
+
+                let sc = severity.color();
+                let color_fn: Box<dyn Fn(&str) -> String> = if label.is_primary {
+                    Box::new(move |s: &str| {
+                        format!("{}", s.truecolor(sc.0, sc.1, sc.2).bold())
+                    })
+                } else {
+                    Box::new(move |s: &str| format!("{}", s.truecolor(sc.0, sc.1, sc.2)))
+                };
+
+                let c = if label.is_primary { '━' } else { '─' };
+                let underline_text = format!(
+                    "{}{} {}",
+                    " ".repeat(col_start),
+                    color_fn(&c.to_string().repeat(width)),
+                    &label.message
+                );
+                writeln!(f, "{}{} {}", GUTTER, surface("│"), underline_text)?;
             }
         }
 
-        // Display each group
-        for group in label_groups {
-            if group.is_empty() {
-                continue;
-            }
+        prev_line = line_num;
+    }
 
-            // Get the range of lines to display
-            let first_label = group[0];
+    // Show file location at the bottom right
+    let first_primary = group.iter().find(|l| l.is_primary).unwrap_or(&&first_label);
+    let location = format!(
+        "{}:{}:{}",
+        first_primary.span.source.identifier(),
+        first_primary.span.start.line,
+        first_primary.span.start.col,
+    );
 
-            // Collect all lines that have labels
-            let mut label_lines: Vec<usize> = group.iter().map(|l| l.span.start.line).collect();
-            label_lines.sort();
-            label_lines.dedup();
+    let dash_count = 65usize.saturating_sub(location.len());
+    writeln!(
+        f,
+        "{}{}{}",
+        GUTTER,
+        surface(&" ".repeat(dash_count)),
+        subtext(&location),
+    )?;
 
-            // Add context lines (1 above and below for each label line)
-            let context_lines = 1;
-            let mut lines_to_show = HashSet::new();
-            let total_lines = first_label.span.source.content().lines().count();
+    Ok(())
+}
 
-            for &line in &label_lines {
-                let start = line.saturating_sub(context_lines).max(1);
-                let end = (line + context_lines).min(total_lines);
-                for l in start..=end {
-                    lines_to_show.insert(l);
+/// Group labels by source file, returning groups of labels from the same source.
+fn group_labels_by_source<'a>(labels: &'a [Label]) -> Vec<Vec<&'a Label>> {
+    let mut groups: Vec<Vec<&'a Label>> = Vec::new();
+
+    for label in labels {
+        let mut added = false;
+        for group in &mut groups {
+            if let Some(first) = group.first() {
+                let same_source = std::ptr::eq(
+                    first.span.source.as_ref() as *const _,
+                    label.span.source.as_ref() as *const _,
+                );
+
+                if same_source {
+                    group.push(label);
+                    added = true;
+                    break;
                 }
             }
+        }
 
-            let mut lines_vec: Vec<usize> = lines_to_show.into_iter().collect();
-            lines_vec.sort();
+        if !added {
+            groups.push(vec![label]);
+        }
+    }
 
-            writeln!(f, "     {}", surface("│"))?;
+    groups
+}
 
-            // Display lines with gaps indicated by dots
-            let mut prev_line = 0;
-            for &line_num in &lines_vec {
-                // Show dots if there's a gap
-                if prev_line > 0 && line_num > prev_line + 1 {
-                    writeln!(f, "     {}", surface("┆"))?;
-                }
+impl Display for Diagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}: {}", self.severity, &self.message)?;
+        writeln!(f)?;
 
-                if let Some(line_text) = first_label
-                    .span
-                    .source
-                    .content()
-                    .lines()
-                    .nth(line_num.saturating_sub(1))
-                {
-                    // Determine line number color based on labels
-                    let line_color = {
-                        let mut has_primary = false;
-                        let mut has_secondary = false;
+        for group in group_labels_by_source(&self.labels) {
+            fmt_label_group(f, &group, &self.severity)?;
+        }
 
-                        for label in &group {
-                            if label.span.start.line == line_num {
-                                if label.is_primary {
-                                    has_primary = true;
-                                } else {
-                                    has_secondary = true;
-                                }
-                            }
-                        }
-
-                        if has_primary {
-                            red(format!("{:>4}", line_num))
-                        } else if has_secondary {
-                            blue(format!("{:>4}", line_num))
-                        } else {
-                            subtext(format!("{:>4}", line_num))
-                        }
-                    };
-
-                    write!(f, "{} {} ", line_color, surface("│"))?;
-
-                    write!(f, "{}", syntax_highlight(line_text))?;
-
-                    writeln!(f)?;
-
-                    // Collect labels for this line
-                    let line_labels: Vec<&Label> = group
-                        .iter()
-                        .filter(|label| label.span.start.line == line_num)
-                        .copied()
-                        .collect();
-
-                    // Draw underlines and labels beneath the code
-                    if !line_labels.is_empty() {
-                        for label in &line_labels {
-                            let col_start = label.span.start.col.saturating_sub(1);
-                            let col_end = if label.span.start.line == label.span.end.line {
-                                label.span.end.col.saturating_sub(1)
-                            } else {
-                                line_text.len()
-                            };
-                            let width = col_end.saturating_sub(col_start).max(1);
-
-                            let color_fn: Box<dyn Fn(&str) -> String> = if label.is_primary {
-                                Box::new(|s: &str| red(s).bold().to_string())
-                            } else {
-                                Box::new(|s: &str| blue(s).to_string())
-                            };
-
-                            // Draw the connecting line with label
-                            write!(f, "     {} ", surface("│"))?;
-                            write!(f, "{}", " ".repeat(col_start))?;
-
-                            let c = if label.is_primary { '━' } else { '─' };
-                            write!(f, "{}", color_fn(&c.to_string().repeat(width)))?;
-
-                            write!(f, " {}", color_fn(&label.message))?;
-                            writeln!(f)?;
-                        }
-                    }
-                }
-
-                prev_line = line_num;
+        for related in &self.related {
+            writeln!(f)?;
+            writeln!(f, "{}  {}", GUTTER, &related.message)?;
+            for group in group_labels_by_source(&related.labels) {
+                fmt_label_group(f, &group, &self.severity)?;
             }
+        }
 
-            writeln!(f, "     {}", surface("│"))?;
+        if !self.hints.is_empty() || !self.trace.is_empty() {
+            writeln!(f)?;
         }
 
         for hint in &self.hints {
-            writeln!(f, "{} {}", teal("= hint:"), text(hint))?;
+            writeln!(f, "{}{} {}", GUTTER, teal("? hint:"), hint)?;
         }
 
         for trace in &self.trace {
-            writeln!(f, "{} {}", subtext("= caused by:"), text(trace))?;
+            writeln!(f, "{}{} {}", GUTTER, subtext("! caused by:"), trace)?;
         }
 
         Ok(())
@@ -421,13 +557,30 @@ pub enum Severity {
     Note,
 }
 
+impl Severity {
+    fn color(&self) -> Rgb {
+        match self {
+            Severity::Error => RED,
+            Severity::Warning => YELLOW,
+            Severity::Note => BLUE,
+        }
+    }
+}
+
 impl Display for Severity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Severity::Error => write!(f, "{}", red("error").bold()),
-            Severity::Warning => write!(f, "{}", yellow("warning").bold()),
-            Severity::Note => write!(f, "{}", blue("note").bold()),
-        }
+        let c = self.color();
+        write!(
+            f,
+            "{}",
+            match self {
+                Severity::Error => "error",
+                Severity::Warning => "warning",
+                Severity::Note => "note",
+            }
+            .truecolor(c.0, c.1, c.2)
+            .bold()
+        )
     }
 }
 

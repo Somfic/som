@@ -2,6 +2,6 @@ use std;
 
 fn main() {
     let a = std::alloc(42);
-    std::println(std::format("{}", a.size));
-    std::dealloc(a);
+    std::println(a.ptr);
+    std::dealloc(&a);
 }

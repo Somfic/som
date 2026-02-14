@@ -4,7 +4,7 @@ use crate::ast::{
     TRAIT_ADD, TRAIT_DIV, TRAIT_EQ, TRAIT_GT, TRAIT_GT_EQ, TRAIT_LT, TRAIT_LT_EQ, TRAIT_MUL,
     TRAIT_NEQ, TRAIT_SUB,
 };
-use crate::diagnostics::{Diagnostic, Label};
+use crate::diagnostics::{Diagnostic, Highlight, Label, Related, closest_match};
 use crate::span::Span;
 use crate::{Ast, Type, TypeVar, type_check::Provenance};
 
@@ -61,6 +61,7 @@ pub enum TypeError {
         span: Span,
         struct_name: String,
         field_name: String,
+        available_fields: Vec<String>,
     },
 }
 
@@ -74,52 +75,159 @@ impl TypeError {
                 provenance,
             } => {
                 let mut diag = Diagnostic::error(format!(
-                    "type mismatch: expected `{}`, found `{}`",
-                    expected, found
+                    "type mismatch: expected {}, found {}",
+                    expected.as_type(),
+                    found.as_type()
                 ))
                 .with_label(Label::primary(
                     span.clone(),
-                    format!("expected `{}`", expected),
+                    format!("expected {}", expected.as_type()),
+                ))
+                .with_hint(format!(
+                    "found {} where {} was expected",
+                    found.plain_language().as_type(),
+                    expected.plain_language().as_type()
                 ));
 
-                // Add provenance-based secondary label
+                // Add provenance-based related section
                 match provenance {
                     Provenance::FuncArg {
                         param_type_id: Some(tid),
                         ..
                     } => {
                         if let Some(type_span) = ast.try_get_type_span(tid) {
-                            diag = diag.with_label(Label::secondary(
-                                type_span.clone(),
-                                format!("expected `{}` due to parameter type", expected),
-                            ));
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} due to parameter type:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(
+                                    type_span.clone(),
+                                    format!("{} defined here", expected.as_type()),
+                                )),
+                            );
+                        }
+                    }
+                    Provenance::FunctionCall(_, Some(tid)) => {
+                        if let Some(type_span) = ast.try_get_type_span(tid) {
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} due to return type:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(
+                                    type_span.clone(),
+                                    format!("{} defined here", expected.as_type()),
+                                )),
+                            );
                         }
                     }
                     Provenance::BinaryOp(op_expr) => {
                         let op_span = ast.get_expr_span(op_expr);
                         if op_span != span {
-                            diag = diag.with_label(Label::secondary(
-                                op_span.clone(),
-                                format!("expected `{}` due to this operator", expected),
-                            ));
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} due to this operator:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(op_span.clone(), "operator here")),
+                            );
                         }
                     }
                     Provenance::LetBinding(let_expr) => {
                         let let_span = ast.get_expr_span(let_expr);
                         if let_span != span {
-                            diag = diag.with_label(Label::secondary(
-                                let_span.clone(),
-                                format!("expected `{}` due to let binding", expected),
-                            ));
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} due to let binding:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(let_span.clone(), "binding here")),
+                            );
+                        }
+                    }
+                    Provenance::Annotation(ann_expr) => {
+                        let ann_span = ast.get_expr_span(ann_expr);
+                        if ann_span != span {
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} due to type annotation:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(ann_span.clone(), "annotation here")),
+                            );
                         }
                     }
                     Provenance::Deref(deref_expr) => {
                         let deref_span = ast.get_expr_span(deref_expr);
                         if deref_span != span {
-                            diag = diag.with_label(Label::secondary(
-                                deref_span.clone(),
-                                format!("expected `{}` due to dereference", expected),
-                            ));
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} due to dereference:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(
+                                    deref_span.clone(),
+                                    "dereference here",
+                                )),
+                            );
+                        }
+                    }
+                    Provenance::Conditional(cond_expr) => {
+                        let cond_span = ast.get_expr_span(cond_expr);
+                        if cond_span != span {
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} because branches must have the same type:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(
+                                    cond_span.clone(),
+                                    "branches diverge here",
+                                )),
+                            );
+                        }
+                    }
+                    Provenance::ConstructorField(field_expr) => {
+                        let field_span = ast.get_expr_span(field_expr);
+                        if field_span != span {
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} due to field type:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(
+                                    field_span.clone(),
+                                    "field defined here",
+                                )),
+                            );
+                        }
+                    }
+                    Provenance::Assignment(target_expr) => {
+                        let target_span = ast.get_expr_span(target_expr);
+                        if target_span != span {
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} due to assignment target:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(
+                                    target_span.clone(),
+                                    "target defined here",
+                                )),
+                            );
+                        }
+                    }
+                    Provenance::Not(not_expr) => {
+                        let not_span = ast.get_expr_span(not_expr);
+                        if not_span != span {
+                            diag = diag.with_related(
+                                Related::new(format!(
+                                    "expected {} due to negation:",
+                                    expected.as_type()
+                                ))
+                                .with_label(Label::secondary(not_span.clone(), "negation here")),
+                            );
                         }
                     }
                     _ => {}
@@ -141,14 +249,15 @@ impl TypeError {
                 self_type,
                 arg_types,
             } => Diagnostic::error(format!(
-                "no implementation of `{}` for type `{}`",
-                trait_id, self_type
+                "no implementation of {} for type {}",
+                trait_id.as_type(),
+                self_type.as_type()
             ))
             .with_label(Label::primary(span.clone(), "trait not implemented")),
             TypeError::UnboundVariable { span, name } => {
-                Diagnostic::error(format!("cannot find value `{}` in this scope", name))
+                Diagnostic::error(format!("cannot find value {} in this scope", name.as_var()))
                     .with_label(Label::primary(span.clone(), "not found in this scope"))
-                    .with_hint(format!("did you mean to declare `{}`?", name))
+                    .with_hint(format!("did you mean to declare {}?", name.as_var()))
             }
             TypeError::WrongArgCount {
                 span,
@@ -177,16 +286,16 @@ impl TypeError {
                     .with_label(Label::primary(span.clone(), "internal error occurred here"))
             }
             TypeError::UnknownType { span, name } => {
-                Diagnostic::error(format!("cannot find type `{}` in this scope", name))
+                Diagnostic::error(format!("cannot find type {} in this scope", name.as_type()))
                     .with_label(Label::primary(span.clone(), "unknown type"))
-                    .with_hint(format!("did you mean to declare type `{}`?", name))
+                    .with_hint(format!("did you mean to declare type {}?", name.as_type()))
             }
             TypeError::UnknownFunction { span, name } => {
-                Diagnostic::error(format!("cannot find function `{}`", name))
+                Diagnostic::error(format!("cannot find function {}", name.as_func()))
                     .with_label(Label::primary(span.clone(), "unknown function"))
             }
             TypeError::UnknownStruct { span, name } => {
-                Diagnostic::error(format!("cannot find struct `{}`", name))
+                Diagnostic::error(format!("cannot find struct {}", name.as_struct()))
                     .with_label(Label::primary(span.clone(), "unknown struct"))
             }
             TypeError::MissingField {
@@ -194,22 +303,35 @@ impl TypeError {
                 struct_name,
                 field_name,
             } => Diagnostic::error(format!(
-                "missing field `{}` in initializer of `{}`",
-                field_name, struct_name
+                "missing field {} in initializer of {}",
+                field_name.as_field(),
+                struct_name.as_struct()
             ))
             .with_label(Label::primary(
                 span.clone(),
-                format!("missing `{}`", field_name),
+                format!("missing {}", field_name.as_field()),
             )),
             TypeError::UnknownField {
                 span,
                 struct_name,
                 field_name,
-            } => Diagnostic::error(format!(
-                "struct `{}` has no field named `{}`",
-                struct_name, field_name
-            ))
-            .with_label(Label::primary(span.clone(), "unknown field")),
+                available_fields,
+            } => {
+                let max_dist = (field_name.len() / 2).max(2);
+                let diag = Diagnostic::error(format!(
+                    "struct {} has no field named {}",
+                    struct_name.as_struct(),
+                    field_name.as_field()
+                ))
+                .with_label(Label::primary(span.clone(), "unknown field"));
+
+                match closest_match(field_name, available_fields, max_dist) {
+                    Some(suggestion) => {
+                        diag.with_hint(format!("did you mean {}?", suggestion.as_field()))
+                    }
+                    None => diag,
+                }
+            }
         }
     }
 }
