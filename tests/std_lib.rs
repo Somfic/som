@@ -45,7 +45,8 @@ fn compile_and_run_project(files: &[(&str, &str)]) -> i32 {
     };
 
     let temp_file = NamedTempFile::new().unwrap();
-    let linker = Linker::new(temp_file.path().to_str().unwrap())
+    let temp_path = temp_file.into_temp_path();
+    let linker = Linker::new(temp_path.to_str().unwrap())
         .with_libraries(libraries, needs_libc)
         .with_library_paths(library_paths);
 

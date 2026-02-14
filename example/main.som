@@ -1,7 +1,8 @@
 use std;
 
-fn main() {
-    let a = std::alloc(42);
-    std::println(a.ptr);
-    std::dealloc(&a);
+fn main() -> i32 {
+    let s = std::string_from_str("hello");
+    let len = s.len;
+    std::string_free(s);
+    len
 }

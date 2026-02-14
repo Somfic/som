@@ -193,6 +193,14 @@ impl Ast {
             output_type: Type::Bool,
         });
 
+        // pointer arthimetic (for raw pointers only, not references)
+        ast.impls.alloc(Impl {
+            trait_id: TRAIT_ADD,
+            self_type: Type::Pointer,
+            arg_types: vec![Type::I32],
+            output_type: Type::Pointer,
+        });
+
         ast
     }
 

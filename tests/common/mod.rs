@@ -143,9 +143,10 @@ pub fn compile_and_run(source: Source) -> i32 {
         .map(|p| p.to_path_buf())
         .collect();
 
-    let temp_file_name = NamedTempFile::new().unwrap();
+    let temp_file = NamedTempFile::new().unwrap();
+    let temp_path = temp_file.into_temp_path();
 
-    let linker = Linker::new(temp_file_name.path().to_str().unwrap())
+    let linker = Linker::new(temp_path.to_str().unwrap())
         .with_libraries(libraries, needs_libc)
         .with_library_paths(library_paths);
     let executable = linker

@@ -1,0 +1,56 @@
+extern {
+    fn malloc(size: i32) -> *;
+    fn realloc(p: *, size: i32) -> *;
+    fn free(p: *);
+    fn memcpy(dest: *, src: &str, n: i32) -> *;
+    fn memset(dest: *, c: i32, n: i32) -> *;
+    fn strlen(s: &str) -> i32;
+}                                                                                               
+                                                                                                
+struct String {                                                                                 
+    ptr: *,                                                                                     
+    len: i32,                                                                                   
+    cap: i32,                                                                                   
+}                                                                                               
+                                                                                                
+fn string_new() -> String {                                                                     
+    let ptr = malloc(1);                                                                        
+    memset(ptr, 0, 1);                                                                          
+    String { ptr: ptr, len: 0, cap: 1 }                                                         
+}                                                                                               
+                                                                                                
+fn string_with_capacity(capacity: i32) -> String {                                              
+    let cap = capacity + 1;                                                                     
+    let ptr = malloc(cap);                                                                      
+    memset(ptr, 0, 1);                                                                          
+    String { ptr: ptr, len: 0, cap: cap }                                                       
+}                                                                                               
+                                                                                                
+fn string_from_str(s: &str) -> String {                                                         
+    let len = strlen(s);                                                                        
+    let cap = len + 1;                                                                          
+    let ptr = malloc(cap);                                                                      
+    memcpy(ptr, s, cap);                                                                        
+    String { ptr: ptr, len: len, cap: cap }                                                     
+}                                                                                               
+                                                                                                
+fn string_free(s: String) {                                                                     
+    free(s.ptr);                                                                                
+}                      
+
+fn string_len(s: &String) -> i32 {                                                              
+    s.len                                                                                       
+}                                                                                               
+                                                                                                
+fn string_capacity(s: &String) -> i32 {                                                         
+    s.cap - 1                                                                                   
+}                                                                                               
+                                                                                                
+fn string_is_empty(s: &String) -> bool {                                                        
+    s.len == 0                                                                                  
+}                                                                                               
+                                                                                                
+fn string_as_ptr(s: &String) -> * {
+    s.ptr
+}                                                                                               
+                

@@ -28,7 +28,7 @@ impl Type {
     pub fn is_copy(&self) -> bool {
         matches!(
             self,
-            Type::Unit | Type::Bool | Type::I32 | Type::U8 | Type::F32 | Type::Reference { .. }
+            Type::Unit | Type::Bool | Type::I32 | Type::U8 | Type::F32 | Type::Pointer | Type::Reference { .. }
         )
     }
 

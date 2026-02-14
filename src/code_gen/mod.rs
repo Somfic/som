@@ -138,12 +138,45 @@ impl<'ast> Codegen<'ast> {
 
         // function signature
         let mut sig = Signature::new(self.isa.default_call_conv());
-        sig.params = func
-            .parameters
-            .iter()
-            .filter_map(|p| p.ty.as_ref().map(|ty| AbiParam::new(to_type(ty))))
-            .collect();
-        sig.returns = vec![AbiParam::new(to_type(return_type))];
+
+        // Generate params, expanding structs larger than 8 bytes into multiple registers
+        for param in &func.parameters {
+            if let Some(ty) = &param.ty {
+                if let Type::Named(struct_name) = ty {
+                    let struct_id = self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
+                    let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                    let layout = struct_def.compute_layout();
+
+                    if layout.size <= 8 {
+                        sig.params.push(AbiParam::new(types::I64));
+                    } else if layout.size <= 16 {
+                        sig.params.push(AbiParam::new(types::I64));
+                        sig.params.push(AbiParam::new(types::I64));
+                    } else {
+                        panic!("structs larger than 16 bytes not yet supported");
+                    }
+                } else {
+                    sig.params.push(AbiParam::new(to_type(ty)));
+                }
+            }
+        }
+
+        // For struct returns, determine how many registers we need
+        if let Type::Named(struct_name) = return_type {
+            let struct_id = self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
+            let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+            let layout = struct_def.compute_layout();
+
+            if layout.size <= 8 {
+                sig.returns = vec![AbiParam::new(types::I64)];
+            } else if layout.size <= 16 {
+                sig.returns = vec![AbiParam::new(types::I64), AbiParam::new(types::I64)];
+            } else {
+                panic!("structs larger than 16 bytes not yet supported");
+            }
+        } else {
+            sig.returns = vec![AbiParam::new(to_type(return_type))];
+        }
         ctx.func.signature = sig.clone();
 
         let mut func_builder_ctx = FunctionBuilderContext::new();
@@ -157,17 +190,74 @@ impl<'ast> Codegen<'ast> {
         func_ctx.body.seal_block(entry_block);
 
         let block_params: Vec<Value> = func_ctx.body.block_params(entry_block).to_vec();
-        for (i, param) in func.parameters.iter().enumerate() {
+        let mut param_idx = 0;
+        for param in func.parameters.iter() {
             if let Some(ty) = &param.ty {
-                let param_value = block_params[i];
+                // For struct parameters, spill from register(s) to stack
+                let final_value = if let Type::Named(struct_name) = ty {
+                    let struct_id = self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
+                    let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                    let layout = struct_def.compute_layout();
+
+                    // Create stack slot and store the register value(s)
+                    let slot = func_ctx.body.create_sized_stack_slot(StackSlotData::new(
+                        StackSlotKind::ExplicitSlot,
+                        layout.size as u32,
+                        layout.alignment,
+                    ));
+                    let base = func_ctx.body.ins().stack_addr(types::I64, slot, 0);
+
+                    if layout.size <= 8 {
+                        func_ctx.body.ins().store(MemFlags::new(), block_params[param_idx], base, 0);
+                        param_idx += 1;
+                    } else if layout.size <= 16 {
+                        func_ctx.body.ins().store(MemFlags::new(), block_params[param_idx], base, 0);
+                        func_ctx.body.ins().store(MemFlags::new(), block_params[param_idx + 1], base, 8);
+                        param_idx += 2;
+                    } else {
+                        panic!("structs larger than 16 bytes not yet supported");
+                    }
+
+                    base // Return stack address as the "value"
+                } else {
+                    let val = block_params[param_idx];
+                    param_idx += 1;
+                    val
+                };
+
                 let var = func_ctx.body.declare_var(to_type(ty));
-                func_ctx.body.def_var(var, param_value);
+                func_ctx.body.def_var(var, final_value);
                 func_ctx.env.insert(param.name.to_string(), var);
             }
         }
 
         let return_value = self.gen_expr(&mut func_ctx, func.body);
-        func_ctx.body.ins().return_(&[return_value]);
+
+        // For struct returns, load the struct from stack into register(s)
+        if let Type::Named(struct_name) = return_type {
+            let struct_id = self
+                .typed_ast
+                .ast
+                .find_struct_by_name(struct_name)
+                .unwrap();
+            let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+            let layout = struct_def.compute_layout();
+
+            // return_value is a pointer to the struct on stack
+            // Load the packed struct value to return in register(s)
+            if layout.size <= 8 {
+                let val = func_ctx.body.ins().load(types::I64, MemFlags::new(), return_value, 0);
+                func_ctx.body.ins().return_(&[val]);
+            } else if layout.size <= 16 {
+                let val1 = func_ctx.body.ins().load(types::I64, MemFlags::new(), return_value, 0);
+                let val2 = func_ctx.body.ins().load(types::I64, MemFlags::new(), return_value, 8);
+                func_ctx.body.ins().return_(&[val1, val2]);
+            } else {
+                panic!("structs larger than 16 bytes not yet supported");
+            }
+        } else {
+            func_ctx.body.ins().return_(&[return_value]);
+        }
 
         // Print Cranelift IR
         println!("{}", ctx.func);
@@ -300,33 +390,31 @@ impl<'ast> Codegen<'ast> {
                     .declare_func_in_func(callee_func_id, func.body.func);
 
                 // Generate arguments, handling struct types specially
-                let arguments: Vec<Value> = args
-                    .iter()
-                    .map(|arg| {
-                        let val = self.gen_expr(func, *arg);
-                        let arg_ty = self.typed_ast.get_expr_ty(arg);
+                let mut arguments: Vec<Value> = Vec::new();
+                for arg in args.iter() {
+                    let val = self.gen_expr(func, *arg);
+                    let arg_ty = self.typed_ast.get_expr_ty(arg);
 
-                        // For struct arguments, we have a pointer but need to pass by value
-                        // Load the packed struct value from the pointer
-                        if let Type::Named(struct_name) = arg_ty {
-                            let struct_id =
-                                self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
-                            let struct_def = self.typed_ast.ast.structs.get(&struct_id);
-                            let layout = struct_def.compute_layout();
+                    // For struct arguments, we have a pointer but need to pass by value
+                    // Load the packed struct value from the pointer
+                    if let Type::Named(struct_name) = arg_ty {
+                        let struct_id =
+                            self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
+                        let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                        let layout = struct_def.compute_layout();
 
-                            // For small structs (≤8 bytes), load as i64
-                            // For larger structs (9-16 bytes), would need two loads
-                            if layout.size <= 8 {
-                                func.body.ins().load(types::I64, MemFlags::new(), val, 0)
-                            } else {
-                                // TODO: handle larger structs properly
-                                val
-                            }
+                        if layout.size <= 8 {
+                            arguments.push(func.body.ins().load(types::I64, MemFlags::new(), val, 0));
+                        } else if layout.size <= 16 {
+                            arguments.push(func.body.ins().load(types::I64, MemFlags::new(), val, 0));
+                            arguments.push(func.body.ins().load(types::I64, MemFlags::new(), val, 8));
                         } else {
-                            val
+                            panic!("structs larger than 16 bytes not yet supported");
                         }
-                    })
-                    .collect();
+                    } else {
+                        arguments.push(val);
+                    }
+                }
 
                 let call = func.body.ins().call(callee_func_ref, &arguments);
 
@@ -643,15 +731,43 @@ impl<'ast> Codegen<'ast> {
     fn build_signature_from_entry(&self, entry: &crate::FuncEntry) -> Signature {
         let mut sig = Signature::new(self.isa.default_call_conv());
 
-        sig.params = entry
-            .signature
-            .params
-            .iter()
-            .map(|ty| AbiParam::new(to_type(ty)))
-            .collect();
+        // Generate params, expanding structs larger than 8 bytes into multiple registers
+        for ty in &entry.signature.params {
+            if let Type::Named(struct_name) = ty {
+                let struct_id = self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
+                let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                let layout = struct_def.compute_layout();
+
+                if layout.size <= 8 {
+                    sig.params.push(AbiParam::new(types::I64));
+                } else if layout.size <= 16 {
+                    sig.params.push(AbiParam::new(types::I64));
+                    sig.params.push(AbiParam::new(types::I64));
+                } else {
+                    panic!("structs larger than 16 bytes not yet supported");
+                }
+            } else {
+                sig.params.push(AbiParam::new(to_type(ty)));
+            }
+        }
 
         if entry.signature.return_type != Type::Unit {
-            sig.returns = vec![AbiParam::new(to_type(&entry.signature.return_type))];
+            // For struct returns, determine how many registers we need
+            if let Type::Named(struct_name) = &entry.signature.return_type {
+                let struct_id = self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
+                let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                let layout = struct_def.compute_layout();
+
+                if layout.size <= 8 {
+                    sig.returns = vec![AbiParam::new(types::I64)];
+                } else if layout.size <= 16 {
+                    sig.returns = vec![AbiParam::new(types::I64), AbiParam::new(types::I64)];
+                } else {
+                    panic!("structs larger than 16 bytes not yet supported");
+                }
+            } else {
+                sig.returns = vec![AbiParam::new(to_type(&entry.signature.return_type))];
+            }
         }
 
         sig

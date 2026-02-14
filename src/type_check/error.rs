@@ -75,7 +75,7 @@ impl TypeError {
                 provenance,
             } => {
                 let mut diag = Diagnostic::error(format!(
-                    "type mismatch: expected {}, found {}",
+                    "type mismatch: expected {} but found {}",
                     expected.as_type(),
                     found.as_type()
                 ))

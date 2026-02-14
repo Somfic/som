@@ -406,15 +406,9 @@ fn fmt_label_group(
 
                 let sc = severity.color();
                 if has_primary {
-                    format!(
-                        "{}",
-                        format!("{:>4}", line_num).truecolor(sc.0, sc.1, sc.2)
-                    )
+                    format!("{}", format!("{:>4}", line_num).truecolor(sc.0, sc.1, sc.2))
                 } else if has_secondary {
-                    format!(
-                        "{}",
-                        format!("{:>4}", line_num).truecolor(sc.0, sc.1, sc.2)
-                    )
+                    format!("{}", format!("{:>4}", line_num).truecolor(sc.0, sc.1, sc.2))
                 } else {
                     subtext(format!("{:>4}", line_num))
                 }
@@ -446,9 +440,7 @@ fn fmt_label_group(
 
                 let sc = severity.color();
                 let color_fn: Box<dyn Fn(&str) -> String> = if label.is_primary {
-                    Box::new(move |s: &str| {
-                        format!("{}", s.truecolor(sc.0, sc.1, sc.2).bold())
-                    })
+                    Box::new(move |s: &str| format!("{}", s.truecolor(sc.0, sc.1, sc.2).bold()))
                 } else {
                     Box::new(move |s: &str| format!("{}", s.truecolor(sc.0, sc.1, sc.2)))
                 };
@@ -539,11 +531,11 @@ impl Display for Diagnostic {
         }
 
         for hint in &self.hints {
-            writeln!(f, "{}{} {}", GUTTER, teal("? hint:"), hint)?;
+            writeln!(f, "{}{} {}", GUTTER, teal("?"), hint)?;
         }
 
         for trace in &self.trace {
-            writeln!(f, "{}{} {}", GUTTER, subtext("! caused by:"), trace)?;
+            writeln!(f, "{}{} {}", GUTTER, subtext("!"), trace)?;
         }
 
         Ok(())

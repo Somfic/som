@@ -27,6 +27,10 @@ pub const BUNDLED_MODULES: &[BundledModule] = &[BundledModule {
             name: "process.som",
             content: include_str!("../std/process.som"),
         },
+        BundledFile {
+            name: "string.som",
+            content: include_str!("../std/string.som"),
+        },
     ],
 }];
 
