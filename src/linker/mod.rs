@@ -125,6 +125,9 @@ impl Linker {
                     if self.needs_libc {
                         cmd.arg("-lSystem");
                     }
+                } else if self.needs_libc {
+                    // Linux: link libc
+                    cmd.arg("-lc");
                 }
                 cmd.arg("-o").arg(&self.output).args(modules);
 
@@ -186,12 +189,7 @@ impl Linker {
 }
 
 fn find_linker() -> Result<(String, LinkerFlavor)> {
-    // First, try to find rust-lld (bundled with Rust toolchain)
-    if let Some(rust_lld) = find_rust_lld() {
-        return Ok(rust_lld);
-    }
-
-    // Fall back to system linkers
+    // Prefer system C compilers (they know library paths)
     for compiler in &["cc", "gcc", "clang", "zig cc"] {
         if std::process::Command::new(compiler)
             .arg("--version")
@@ -199,6 +197,22 @@ fn find_linker() -> Result<(String, LinkerFlavor)> {
             .is_ok()
         {
             return Ok((compiler.to_string(), LinkerFlavor::Unix));
+        }
+    }
+
+    // On Windows, try MSVC linkers
+    if cfg!(target_os = "windows") {
+        // Try rust-lld first (bundled with Rust)
+        if let Some(rust_lld) = find_rust_lld() {
+            return Ok(rust_lld);
+        }
+        // Try system MSVC link.exe
+        if std::process::Command::new("link.exe")
+            .arg("/?")
+            .output()
+            .is_ok()
+        {
+            return Ok(("link.exe".to_string(), LinkerFlavor::MsvcLink));
         }
     }
 

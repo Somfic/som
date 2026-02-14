@@ -146,8 +146,14 @@ impl<'src> Parser<'src> {
             }
 
             TokenKind::Ident => {
-                // Check if this is a constructor: `Name { ... }`
-                if self.peek_next() == TokenKind::OpenBrace {
+                // Check if this is a constructor: `Name { field: value, ... }`
+                // We need to distinguish from `name { statements }` (variable followed by block)
+                // Constructor pattern: Ident { Ident : ... } or Ident { }
+                let is_constructor = self.peek_next() == TokenKind::OpenBrace
+                    && (self.peek_nth(2) == TokenKind::CloseBrace
+                        || (self.peek_nth(2) == TokenKind::Ident
+                            && self.peek_nth(3) == TokenKind::Colon));
+                if is_constructor {
                     self.parse_constructor()
                 } else {
                     let name = self.parse_ident()?;
@@ -173,6 +179,8 @@ impl<'src> Parser<'src> {
     }
 
     /// Parse a conditional expression: `value if condition else other`
+    // TODO: Add linter warning when both branches are blocks (side-effects only).
+    //       In that case, prefer statement form: `if condition { } else { }`
     fn parse_conditional(&mut self, truthy: Id<Expr>, start: crate::Span) -> Option<Id<Expr>> {
         self.expect(TokenKind::If)?;
 

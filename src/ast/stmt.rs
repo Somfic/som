@@ -17,4 +17,9 @@ pub enum Stmt {
         condition: Id<Expr>,
         body: Vec<Id<Stmt>>,
     },
+    Condition {
+        condition: Id<Expr>,
+        then_body: Vec<Id<Stmt>>,
+        else_body: Option<Vec<Id<Stmt>>>,
+    },
 }

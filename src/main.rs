@@ -5,41 +5,24 @@ use std::sync::Arc;
 
 fn main() {
     let source_text = r#"
-    extern "raylib" {
-        fn InitWindow(width: i32, height: i32, title: &str);
-        fn SetTargetFPS(fps: i32);
-        fn WindowShouldClose() -> bool;
-        fn BeginDrawing();
-        fn EndDrawing();
-        fn CloseWindow();
-        fn ClearBackground(color: Color);
-        fn DrawCircle(x: i32, y: i32, radius: f32, color: Color);
-        fn DrawRectangle(x: i32, y: i32, width: i32, height: i32, color: Color);
+    extern {
+        fn printf(s: &str, num: i32) -> i32;
+        fn puts(s: &str) -> i32;
+        fn abort();
     }
 
-    struct Color {
-        r: u8,
-        g: u8,
-        b: u8,
-        a: u8,
+    fn assert(condition: bool, message: &str) {
+        if !condition {
+            puts("Assertion failed");
+            abort();
+        }
     }
 
-    fn main() -> i32 {
-        InitWindow(800, 600, "Hello, world!");
-        SetTargetFPS(60);
-
-        while !WindowShouldClose() {
-          BeginDrawing();
-          ClearBackground(Color { r: 30, g: 30, b: 30, a: 255 });
-          DrawCircle(400, 300, 100.0, Color { r: 255, g: 100, b: 100, a: 255 });
-          EndDrawing();
-      }
-
-        CloseWindow();
-
-        0
+    fn main() {
+        printf("Hello, world! The answer is %d", 42);
+        assert(false, "This is a test assertion");
     }
-
+ 
     "#;
 
     let mut diagnostics: Vec<Diagnostic> = vec![];

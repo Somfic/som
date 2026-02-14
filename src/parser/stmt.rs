@@ -22,6 +22,10 @@ impl<'src> Parser<'src> {
                 Some(stmt) => StmtOrExpr::Stmt(stmt),
                 None => StmtOrExpr::Error,
             },
+            TokenKind::If => match self.parse_if_stmt() {
+                Some(stmt) => StmtOrExpr::Stmt(stmt),
+                None => StmtOrExpr::Error,
+            },
             _ => {
                 // Try expression
                 match self.parse_expr() {
@@ -98,6 +102,43 @@ impl<'src> Parser<'src> {
             self.builder
                 .alloc_stmt(Stmt::While { condition, body }, span),
         )
+    }
+
+    fn parse_if_stmt(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        self.expect(TokenKind::If)?;
+
+        let condition = self.parse_expr()?;
+        self.expect(TokenKind::OpenBrace)?;
+
+        let then_body = self.parse_stmt_list()?;
+
+        self.expect(TokenKind::CloseBrace)?;
+
+        let else_body = if self.eat(TokenKind::Else) {
+            if self.at(TokenKind::If) {
+                // else if - parse as a single If statement in a vec
+                let else_if = self.parse_if_stmt()?;
+                Some(vec![else_if])
+            } else {
+                self.expect(TokenKind::OpenBrace)?;
+                let body = self.parse_stmt_list()?;
+                self.expect(TokenKind::CloseBrace)?;
+                Some(body)
+            }
+        } else {
+            None
+        };
+
+        let span = start.merge(&self.previous_span());
+        Some(self.builder.alloc_stmt(
+            Stmt::Condition {
+                condition,
+                then_body,
+                else_body,
+            },
+            span,
+        ))
     }
 
     /// Parse a list of statements (for loop/while bodies)

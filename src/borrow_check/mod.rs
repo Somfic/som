@@ -442,6 +442,21 @@ impl<'a> BorrowChecker<'a> {
                     self.check_stmt(*stmt);
                 }
             }
+            Stmt::Condition {
+                condition,
+                then_body,
+                else_body,
+            } => {
+                self.check_expr(*condition);
+                for stmt in then_body {
+                    self.check_stmt(*stmt);
+                }
+                if let Some(else_stmts) = else_body {
+                    for stmt in else_stmts {
+                        self.check_stmt(*stmt);
+                    }
+                }
+            }
         }
     }
 

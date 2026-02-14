@@ -92,11 +92,20 @@ impl<'src> Parser<'src> {
 
     /// Peek at the next non-trivia token (one ahead of current)
     pub fn peek_next(&self) -> TokenKind {
-        let mut pos = self.pos + 1;
+        self.peek_nth(1)
+    }
+
+    /// Peek at the nth non-trivia token ahead (0 = current, 1 = next, etc.)
+    pub fn peek_nth(&self, n: usize) -> TokenKind {
+        let mut pos = self.pos;
+        let mut count = 0;
         while pos < self.tokens.len() {
             let kind = self.tokens[pos].kind;
             if !matches!(kind, TokenKind::Whitespace | TokenKind::Comment) {
-                return kind;
+                if count == n {
+                    return kind;
+                }
+                count += 1;
             }
             pos += 1;
         }

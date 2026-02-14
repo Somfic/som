@@ -110,10 +110,7 @@ impl<'ast> Codegen<'ast> {
     }
 
     fn gen_func(&mut self, func: &Func, name: &str) -> Result<()> {
-        let return_type = func
-            .return_type
-            .as_ref()
-            .ok_or_else(|| CodegenError::NoReturnType.to_diagnostic())?;
+        let return_type = func.return_type.as_ref().unwrap();
 
         let mut ctx = self.module.make_context();
 
@@ -276,11 +273,8 @@ impl<'ast> Codegen<'ast> {
                         // For struct arguments, we have a pointer but need to pass by value
                         // Load the packed struct value from the pointer
                         if let Type::Named(struct_name) = arg_ty {
-                            let struct_id = self
-                                .typed_ast
-                                .ast
-                                .find_struct_by_name(struct_name)
-                                .unwrap();
+                            let struct_id =
+                                self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
                             let struct_def = self.typed_ast.ast.structs.get(&struct_id);
                             let layout = struct_def.compute_layout();
 
@@ -310,11 +304,8 @@ impl<'ast> Codegen<'ast> {
                     let return_ty = self.typed_ast.get_expr_ty(&expr_id);
                     if let Type::Named(struct_name) = return_ty {
                         // Struct returned in register(s) - spill to stack
-                        let struct_id = self
-                            .typed_ast
-                            .ast
-                            .find_struct_by_name(struct_name)
-                            .unwrap();
+                        let struct_id =
+                            self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
                         let struct_def = self.typed_ast.ast.structs.get(&struct_id);
                         let layout = struct_def.compute_layout();
 
@@ -424,11 +415,7 @@ impl<'ast> Codegen<'ast> {
                     panic!("field access on non-struct type")
                 };
 
-                let struct_id = self
-                    .typed_ast
-                    .ast
-                    .find_struct_by_name(struct_name)
-                    .unwrap();
+                let struct_id = self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
 
                 let struct_def = self.typed_ast.ast.structs.get(&struct_id);
                 let layout = struct_def.compute_layout();
@@ -520,6 +507,43 @@ impl<'ast> Codegen<'ast> {
                 // Exit block: continue after loop
                 func.body.switch_to_block(exit_block);
                 func.body.seal_block(exit_block);
+            }
+            Stmt::Condition {
+                condition,
+                then_body,
+                else_body,
+            } => {
+                let then_block = func.body.create_block();
+                let else_block = func.body.create_block();
+                let merge_block = func.body.create_block();
+
+                // Evaluate condition and branch
+                let condition_val = self.gen_expr(func, *condition);
+                func.body
+                    .ins()
+                    .brif(condition_val, then_block, &[], else_block, &[]);
+
+                // Then block
+                func.body.switch_to_block(then_block);
+                func.body.seal_block(then_block);
+                for stmt in then_body {
+                    self.gen_stmt(func, *stmt);
+                }
+                func.body.ins().jump(merge_block, &[]);
+
+                // Else block
+                func.body.switch_to_block(else_block);
+                func.body.seal_block(else_block);
+                if let Some(else_stmts) = else_body {
+                    for stmt in else_stmts {
+                        self.gen_stmt(func, *stmt);
+                    }
+                }
+                func.body.ins().jump(merge_block, &[]);
+
+                // Merge block
+                func.body.switch_to_block(merge_block);
+                func.body.seal_block(merge_block);
             }
         }
     }

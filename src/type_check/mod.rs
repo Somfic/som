@@ -410,6 +410,22 @@ impl TypeInferencer {
                     self.check_stmt(ast, *stmt);
                 }
             }
+            Stmt::Condition {
+                condition,
+                then_body,
+                else_body,
+            } => {
+                // Check that condition is bool
+                self.check_expr(ast, *condition, Type::Bool);
+                for stmt in then_body {
+                    self.check_stmt(ast, *stmt);
+                }
+                if let Some(else_stmts) = else_body {
+                    for stmt in else_stmts {
+                        self.check_stmt(ast, *stmt);
+                    }
+                }
+            }
         }
     }
 
@@ -680,7 +696,10 @@ impl TypeInferencer {
         output: &Type,
     ) -> Result<(), UnifyError> {
         // Use normalize_with_default to resolve unbound type vars to i32
-        let normalized_args: Vec<Type> = args.iter().map(|t| self.normalize_with_default(t)).collect();
+        let normalized_args: Vec<Type> = args
+            .iter()
+            .map(|t| self.normalize_with_default(t))
+            .collect();
 
         let impl_def = ast
             .find_impl(trait_id, &normalized_args[0], &[normalized_args[1].clone()])
@@ -747,7 +766,7 @@ impl TypeInferencer {
     }
 
     /// Type check an entire program
-    pub fn check_program(mut self, ast: Ast) -> TypedAst {
+    pub fn check_program(mut self, mut ast: Ast) -> TypedAst {
         // Check all regular functions (extern funcs have no bodies to check)
         let func_ids: Vec<Id<Func>> = (0..ast.funcs.len()).map(|i| Id::new(i)).collect();
         for func_id in func_ids {
@@ -767,6 +786,19 @@ impl TypeInferencer {
             expr_types.insert(id, self.normalize_with_default(&ty));
         }
 
+        // Apply inferred return types to functions that don't have explicit annotations
+        let func_types_to_apply: Vec<_> = self
+            .func_types
+            .iter()
+            .map(|(id, ty)| (*id, ty.clone()))
+            .collect();
+        for (func_id, return_ty) in func_types_to_apply {
+            let func = ast.funcs.get_mut(&func_id);
+            if func.return_type.is_none() {
+                func.return_type = Some(self.normalize_with_default(&return_ty));
+            }
+        }
+
         TypedAst {
             ast,
             types: expr_types,
@@ -783,7 +815,10 @@ impl TypeInferencer {
                 TypeValue::Unbound => Type::I32, // Default unbound type vars to i32
             },
             Type::Fun { arguments, returns } => Type::Fun {
-                arguments: arguments.iter().map(|t| self.normalize_with_default(t)).collect(),
+                arguments: arguments
+                    .iter()
+                    .map(|t| self.normalize_with_default(t))
+                    .collect(),
                 returns: Box::new(self.normalize_with_default(returns)),
             },
             Type::Reference {

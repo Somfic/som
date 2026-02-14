@@ -77,6 +77,10 @@ impl<T> Arena<T> {
         self.items.get(id.id).unwrap()
     }
 
+    pub fn get_mut(&mut self, id: &Id<T>) -> &mut T {
+        self.items.get_mut(id.id).unwrap()
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.items.iter()
     }
