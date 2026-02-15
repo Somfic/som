@@ -45,8 +45,9 @@ fn strip_ansi(s: &str) -> String {
     result
 }
 
-/// Convert a Som Diagnostic to a single LSP diagnostic on the primary label
-pub fn som_diagnostic_to_lsp(diag: &SomDiagnostic) -> Option<(String, lsp_types::Diagnostic)> {
+/// Convert a Som Diagnostic to LSP diagnostics on the primary label.
+/// Returns the main diagnostic plus separate HINT diagnostics for the label and hints.
+pub fn som_diagnostic_to_lsp(diag: &SomDiagnostic) -> Option<(String, Vec<lsp_types::Diagnostic>)> {
     let severity = severity_to_lsp(&diag.severity);
 
     // Find the primary label, or fall back to the first label
@@ -58,20 +59,12 @@ pub fn som_diagnostic_to_lsp(diag: &SomDiagnostic) -> Option<(String, lsp_types:
 
     let file = primary.span.source.identifier().to_string();
     let range = span_to_range(&primary.span);
+    let message = strip_ansi(&diag.message);
 
-    let mut message = strip_ansi(&diag.message);
-
-    if !diag.hints.is_empty() {
-        for hint in &diag.hints {
-            message.push_str(&format!("\n{}", strip_ansi(hint)));
-        }
-    }
-
-    // Attach secondary labels as related information
+    // Attach all labels as related information
     let related: Vec<DiagnosticRelatedInformation> = diag
         .labels
         .iter()
-        .filter(|l| !std::ptr::eq(*l, primary))
         .filter(|l| !l.message.is_empty())
         .filter_map(|l| {
             let uri = Url::from_file_path(l.span.source.identifier()).ok()?;
@@ -85,7 +78,7 @@ pub fn som_diagnostic_to_lsp(diag: &SomDiagnostic) -> Option<(String, lsp_types:
         })
         .collect();
 
-    let lsp_diag = lsp_types::Diagnostic {
+    let mut diagnostics = vec![lsp_types::Diagnostic {
         range,
         severity: Some(severity),
         message,
@@ -96,9 +89,20 @@ pub fn som_diagnostic_to_lsp(diag: &SomDiagnostic) -> Option<(String, lsp_types:
             Some(related)
         },
         ..Default::default()
-    };
+    }];
 
-    Some((file, lsp_diag))
+    // Emit each hint as a separate information diagnostic
+    for hint in &diag.hints {
+        diagnostics.push(lsp_types::Diagnostic {
+            range,
+            severity: Some(DiagnosticSeverity::INFORMATION),
+            message: strip_ansi(hint),
+            source: Some("som".to_string()),
+            ..Default::default()
+        });
+    }
+
+    Some((file, diagnostics))
 }
 
 /// Convert an LSP position to a byte offset in source text

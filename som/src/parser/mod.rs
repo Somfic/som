@@ -25,9 +25,8 @@ pub struct ParseError {
 
 impl ParseError {
     pub fn to_diagnostic(&self) -> crate::diagnostics::Diagnostic {
-        use crate::diagnostics::{Diagnostic, Label, Severity};
-        Diagnostic::new(Severity::Error, &self.message)
-            .with_label(Label::primary(self.span.clone(), "here"))
+        use crate::diagnostics::{Diagnostic, Label};
+        Diagnostic::error(&self.message).with_label(Label::primary(self.span.clone(), "here"))
     }
 }
 

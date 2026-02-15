@@ -1,11 +1,11 @@
 use std;
 
-extern {
-    fn puts();
-}
-
 fn main() {
     let a = 12;
-    puts(1);
+    let b = true;
+    b = identity(a);
 }
-    
+
+fn identity(a: bool) -> bool {
+    a
+}

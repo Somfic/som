@@ -4,7 +4,7 @@ use crate::ast::{
     TRAIT_ADD, TRAIT_DIV, TRAIT_EQ, TRAIT_GT, TRAIT_GT_EQ, TRAIT_LT, TRAIT_LT_EQ, TRAIT_MUL,
     TRAIT_NEQ, TRAIT_SUB,
 };
-use crate::diagnostics::{Diagnostic, Highlight, Label, Related, closest_match};
+use crate::diagnostics::{Diagnostic, Highlight, Label, closest_match};
 use crate::span::Span;
 use crate::{Ast, Type, TypeVar, type_check::Provenance};
 
@@ -89,145 +89,89 @@ impl TypeError {
                     expected.plain_language().as_type()
                 ));
 
-                // Add provenance-based related section
+                // Add provenance-based secondary label
                 match provenance {
                     Provenance::FuncArg {
                         param_type_id: Some(tid),
                         ..
                     } => {
                         if let Some(type_span) = ast.try_get_type_span(tid) {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} due to parameter type:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(
-                                    type_span.clone(),
-                                    format!("{} defined here", expected.as_type()),
-                                )),
-                            );
+                            diag = diag.with_label(Label::secondary(
+                                type_span.clone(),
+                                format!("{} defined here", expected.as_type()),
+                            ));
                         }
                     }
                     Provenance::FunctionCall(_, Some(tid)) => {
                         if let Some(type_span) = ast.try_get_type_span(tid) {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} due to return type:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(
-                                    type_span.clone(),
-                                    format!("{} defined here", expected.as_type()),
-                                )),
-                            );
+                            diag = diag.with_label(Label::secondary(
+                                type_span.clone(),
+                                format!("{} defined here", expected.as_type()),
+                            ));
                         }
                     }
                     Provenance::BinaryOp(op_expr) => {
                         let op_span = ast.get_expr_span(op_expr);
                         if op_span != span {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} due to this operator:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(op_span.clone(), "operator here")),
-                            );
+                            diag =
+                                diag.with_label(Label::secondary(op_span.clone(), "operator here"));
                         }
                     }
                     Provenance::LetBinding(let_expr) => {
                         let let_span = ast.get_expr_span(let_expr);
                         if let_span != span {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} due to let binding:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(let_span.clone(), "binding here")),
-                            );
+                            diag =
+                                diag.with_label(Label::secondary(let_span.clone(), "binding here"));
                         }
                     }
                     Provenance::Annotation(ann_expr) => {
                         let ann_span = ast.get_expr_span(ann_expr);
                         if ann_span != span {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} due to type annotation:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(ann_span.clone(), "annotation here")),
-                            );
+                            diag = diag
+                                .with_label(Label::secondary(ann_span.clone(), "annotation here"));
                         }
                     }
                     Provenance::Deref(deref_expr) => {
                         let deref_span = ast.get_expr_span(deref_expr);
                         if deref_span != span {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} due to dereference:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(
-                                    deref_span.clone(),
-                                    "dereference here",
-                                )),
-                            );
+                            diag = diag.with_label(Label::secondary(
+                                deref_span.clone(),
+                                "dereference here",
+                            ));
                         }
                     }
                     Provenance::Conditional(cond_expr) => {
                         let cond_span = ast.get_expr_span(cond_expr);
                         if cond_span != span {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} because branches must have the same type:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(
-                                    cond_span.clone(),
-                                    "branches diverge here",
-                                )),
-                            );
+                            diag = diag.with_label(Label::secondary(
+                                cond_span.clone(),
+                                "branches diverge here",
+                            ));
                         }
                     }
                     Provenance::ConstructorField(field_expr) => {
                         let field_span = ast.get_expr_span(field_expr);
                         if field_span != span {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} due to field type:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(
-                                    field_span.clone(),
-                                    "field defined here",
-                                )),
-                            );
+                            diag = diag.with_label(Label::secondary(
+                                field_span.clone(),
+                                "field defined here",
+                            ));
                         }
                     }
                     Provenance::Assignment(target_expr) => {
                         let target_span = ast.get_expr_span(target_expr);
                         if target_span != span {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} due to assignment target:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(
-                                    target_span.clone(),
-                                    "target defined here",
-                                )),
-                            );
+                            diag = diag.with_label(Label::secondary(
+                                target_span.clone(),
+                                "target defined here",
+                            ));
                         }
                     }
                     Provenance::Not(not_expr) => {
                         let not_span = ast.get_expr_span(not_expr);
                         if not_span != span {
-                            diag = diag.with_related(
-                                Related::new(format!(
-                                    "expected {} due to negation:",
-                                    expected.as_type()
-                                ))
-                                .with_label(Label::secondary(not_span.clone(), "negation here")),
-                            );
+                            diag = diag
+                                .with_label(Label::secondary(not_span.clone(), "negation here"));
                         }
                     }
                     _ => {}

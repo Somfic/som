@@ -8,10 +8,11 @@ use tower_lsp::lsp_types;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
+use som::arena::Id;
 use som::lexer::{TokenKind, lex};
 use som::{
-    BorrowChecker, Diagnostic as SomDiagnostic, Expr, ProgramLoader, Source, Span, TypeInferencer,
-    TypedAst,
+    Ast, BorrowChecker, Decl, Diagnostic as SomDiagnostic, Expr, FuncKind, FuncParam,
+    ProgramLoader, Source, Span, Stmt, Type, TypeInferencer, TypedAst,
 };
 
 use crate::convert;
@@ -26,7 +27,7 @@ pub struct AnalysisResult {
 pub struct SomLanguageServer {
     pub client: Client,
     pub root: RwLock<Option<PathBuf>>,
-    pub analysis: RwLock<Option<AnalysisResult>>,
+    pub analyses: RwLock<HashMap<PathBuf, AnalysisResult>>,
 }
 
 impl SomLanguageServer {
@@ -34,35 +35,58 @@ impl SomLanguageServer {
         Self {
             client,
             root: RwLock::new(None),
-            analysis: RwLock::new(None),
+            analyses: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Extract the project root directory from a file URI
+    fn file_root(uri: &Url) -> Option<PathBuf> {
+        let path = uri.to_file_path().ok()?;
+        Some(path.parent()?.to_path_buf())
+    }
+
+    /// Find the analysis that contains a given file path.
+    /// Tries the file's parent directory first (fast path), then searches all analyses.
+    fn find_analysis_for_file<'a>(
+        analyses: &'a HashMap<PathBuf, AnalysisResult>,
+        file_path: &str,
+    ) -> Option<&'a AnalysisResult> {
+        if let Some(parent) = std::path::Path::new(file_path).parent() {
+            if let Some(analysis) = analyses.get(parent) {
+                return Some(analysis);
+            }
+        }
+        analyses.values().find(|analysis| {
+            AstIndex::find_module_for_file(&analysis.typed_ast.ast, file_path).is_some()
+        })
     }
 
     /// Run the full compiler pipeline and publish diagnostics
     async fn analyze(&self, uri: &Url) {
-        let file_path = match uri.to_file_path() {
-            Ok(path) => path,
-            Err(_) => return,
+        let root = match Self::file_root(uri) {
+            Some(r) => r,
+            None => return,
         };
 
-        let root = file_path.parent().unwrap_or(&file_path).to_path_buf();
-
         self.client
-            .log_message(MessageType::INFO, format!("analyzing with root: {}", root.display()))
+            .log_message(
+                MessageType::INFO,
+                format!("analyzing with root: {}", root.display()),
+            )
             .await;
 
         let mut all_diagnostics: Vec<SomDiagnostic> = Vec::new();
 
         // Phase 1: Load and parse
-        let loader = ProgramLoader::new(root);
+        let loader = ProgramLoader::new(root.clone());
         let ast = match loader.load_project() {
             Ok(ast) => ast,
             Err(errors) => {
                 let mut lsp_diags: HashMap<String, Vec<lsp_types::Diagnostic>> = HashMap::new();
                 for error in &errors {
                     let diag = error.to_diagnostic();
-                    if let Some((file, lsp_diag)) = convert::som_diagnostic_to_lsp(&diag) {
-                        lsp_diags.entry(file).or_default().push(lsp_diag);
+                    if let Some((file, diags)) = convert::som_diagnostic_to_lsp(&diag) {
+                        lsp_diags.entry(file).or_default().extend(diags);
                     }
                 }
 
@@ -72,7 +96,7 @@ impl SomLanguageServer {
                     }
                 }
 
-                *self.analysis.write().await = None;
+                self.analyses.write().await.remove(&root);
                 return;
             }
         };
@@ -100,8 +124,8 @@ impl SomLanguageServer {
         }
 
         for diag in &all_diagnostics {
-            if let Some((file, lsp_diag)) = convert::som_diagnostic_to_lsp(diag) {
-                lsp_diags.entry(file).or_default().push(lsp_diag);
+            if let Some((file, diags)) = convert::som_diagnostic_to_lsp(diag) {
+                lsp_diags.entry(file).or_default().extend(diags);
             }
         }
 
@@ -114,10 +138,13 @@ impl SomLanguageServer {
         }
 
         // Store the analysis for hover/definition
-        *self.analysis.write().await = Some(AnalysisResult {
-            typed_ast,
-            diagnostics: all_diagnostics,
-        });
+        self.analyses.write().await.insert(
+            root,
+            AnalysisResult {
+                typed_ast,
+                diagnostics: all_diagnostics,
+            },
+        );
     }
 }
 
@@ -144,6 +171,15 @@ impl LanguageServer for SomLanguageServer {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 definition_provider: Some(OneOf::Left(true)),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                completion_provider: Some(CompletionOptions {
+                    trigger_characters: Some(vec![".".to_string()]),
+                    ..Default::default()
+                }),
+                inlay_hint_provider: Some(OneOf::Left(true)),
+                signature_help_provider: Some(SignatureHelpOptions {
+                    trigger_characters: Some(vec!["(".to_string(), ",".to_string()]),
+                    ..Default::default()
+                }),
                 semantic_tokens_provider: Some(
                     SemanticTokensServerCapabilities::SemanticTokensOptions(
                         SemanticTokensOptions {
@@ -197,17 +233,17 @@ impl LanguageServer for SomLanguageServer {
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        let analysis = self.analysis.read().await;
-        let Some(analysis) = analysis.as_ref() else {
-            return Ok(None);
-        };
-
         let uri = &params.text_document_position_params.text_document.uri;
         let position = &params.text_document_position_params.position;
 
         let file_path = match uri.to_file_path() {
             Ok(p) => p.to_string_lossy().to_string(),
             Err(_) => return Ok(None),
+        };
+
+        let analyses = self.analyses.read().await;
+        let Some(analysis) = Self::find_analysis_for_file(&analyses, &file_path) else {
+            return Ok(None);
         };
 
         // Read the source to convert position to byte offset
@@ -229,47 +265,94 @@ impl LanguageServer for SomLanguageServer {
         };
 
         // Get type info for the node
+        let ast = &analysis.typed_ast.ast;
         let hover_text = match node {
             NodeRef::Expr(expr_id) => {
-                let expr = analysis.typed_ast.ast.exprs.get(expr_id);
-                match analysis.typed_ast.types.get(expr_id) {
-                    Some(ty) => {
+                let expr = ast.exprs.get(expr_id);
+                match expr {
+                    // Function call -> show the function's full signature
+                    Expr::Call { name, .. } => {
+                        let func_name = name.name().value.as_ref();
+                        if let Some(func_id) = ast.find_func_by_path(name) {
+                            let func = ast.funcs.get(&func_id);
+                            format!(
+                                "```som\n{}\n```",
+                                format_func_signature(
+                                    func_name,
+                                    &func.parameters,
+                                    &func.return_type
+                                )
+                            )
+                        } else if let Some(efunc_id) = ast.find_extern_func_by_name(func_name) {
+                            let efunc = ast.extern_funcs.get(&efunc_id);
+                            format!(
+                                "```som\nextern {}\n```",
+                                format_func_signature(
+                                    func_name,
+                                    &efunc.parameters,
+                                    &efunc.return_type
+                                )
+                            )
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+                    // Variable reference -> try function signature first, fall back to type
+                    Expr::Var(path) => {
+                        let name = path.name().value.as_ref();
+                        if let Some(func_id) = ast.find_func_by_path(path) {
+                            let func = ast.funcs.get(&func_id);
+                            format!(
+                                "```som\n{}\n```",
+                                format_func_signature(name, &func.parameters, &func.return_type)
+                            )
+                        } else if let Some(efunc_id) = ast.find_extern_func_by_name(name) {
+                            let efunc = ast.extern_funcs.get(&efunc_id);
+                            format!(
+                                "```som\nextern {}\n```",
+                                format_func_signature(name, &efunc.parameters, &efunc.return_type)
+                            )
+                        } else if let Some(struct_id) = ast.find_struct_by_name(name) {
+                            let s = ast.structs.get(&struct_id);
+                            let fields: Vec<String> = s
+                                .fields
+                                .iter()
+                                .map(|f| format!("    {}: {}", f.name, f.ty))
+                                .collect();
+                            format!(
+                                "```som\nstruct {} {{\n{}\n}}\n```",
+                                s.name,
+                                fields.join(",\n")
+                            )
+                        } else {
+                            let Some(ty) = analysis.typed_ast.types.get(expr_id) else {
+                                return Ok(None);
+                            };
+                            format!("```som\n{}: {}\n```", path, ty)
+                        }
+                    }
+                    // Other expressions -> show type
+                    _ => {
+                        let Some(ty) = analysis.typed_ast.types.get(expr_id) else {
+                            return Ok(None);
+                        };
                         let expr_desc = match expr {
-                            Expr::Var(path) => format!("{}", path),
-                            Expr::Call { name, .. } => format!("{}(...)", name),
-                            Expr::FieldAccess { field, .. } => {
-                                format!(".{}", field)
-                            }
+                            Expr::FieldAccess { field, .. } => format!(".{}", field),
                             _ => "expression".to_string(),
                         };
                         format!("```som\n{}: {}\n```", expr_desc, ty)
                     }
-                    None => return Ok(None),
                 }
             }
             NodeRef::Func(func_id) => {
-                let func = analysis.typed_ast.ast.funcs.get(func_id);
-                let params: Vec<String> = func
-                    .parameters
-                    .iter()
-                    .map(|p| match &p.ty {
-                        Some(ty) => format!("{}: {}", p.name, ty),
-                        None => format!("{}", p.name),
-                    })
-                    .collect();
-                let ret = match &func.return_type {
-                    Some(ty) => format!(" -> {}", ty),
-                    None => String::new(),
-                };
+                let func = ast.funcs.get(func_id);
                 format!(
-                    "```som\nfn {}({}){}\n```",
-                    func.name,
-                    params.join(", "),
-                    ret
+                    "```som\n{}\n```",
+                    format_func_signature(&func.name.value, &func.parameters, &func.return_type)
                 )
             }
             NodeRef::Struct(struct_id) => {
-                let s = analysis.typed_ast.ast.structs.get(struct_id);
+                let s = ast.structs.get(struct_id);
                 let fields: Vec<String> = s
                     .fields
                     .iter()
@@ -282,24 +365,10 @@ impl LanguageServer for SomLanguageServer {
                 )
             }
             NodeRef::ExternFunc(efunc_id) => {
-                let efunc = analysis.typed_ast.ast.extern_funcs.get(efunc_id);
-                let params: Vec<String> = efunc
-                    .parameters
-                    .iter()
-                    .map(|p| match &p.ty {
-                        Some(ty) => format!("{}: {}", p.name, ty),
-                        None => format!("{}", p.name),
-                    })
-                    .collect();
-                let ret = match &efunc.return_type {
-                    Some(ty) => format!(" -> {}", ty),
-                    None => String::new(),
-                };
+                let efunc = ast.extern_funcs.get(efunc_id);
                 format!(
-                    "```som\nextern fn {}({}){}\n```",
-                    efunc.name,
-                    params.join(", "),
-                    ret
+                    "```som\nextern {}\n```",
+                    format_func_signature(&efunc.name.value, &efunc.parameters, &efunc.return_type)
                 )
             }
             _ => return Ok(None),
@@ -318,17 +387,17 @@ impl LanguageServer for SomLanguageServer {
         &self,
         params: GotoDefinitionParams,
     ) -> Result<Option<GotoDefinitionResponse>> {
-        let analysis = self.analysis.read().await;
-        let Some(analysis) = analysis.as_ref() else {
-            return Ok(None);
-        };
-
         let uri = &params.text_document_position_params.text_document.uri;
         let position = &params.text_document_position_params.position;
 
         let file_path = match uri.to_file_path() {
             Ok(p) => p.to_string_lossy().to_string(),
             Err(_) => return Ok(None),
+        };
+
+        let analyses = self.analyses.read().await;
+        let Some(analysis) = Self::find_analysis_for_file(&analyses, &file_path) else {
+            return Ok(None);
         };
 
         let source_text = match std::fs::read_to_string(&file_path) {
@@ -419,15 +488,15 @@ impl LanguageServer for SomLanguageServer {
         &self,
         params: DocumentSymbolParams,
     ) -> Result<Option<DocumentSymbolResponse>> {
-        let analysis = self.analysis.read().await;
-        let Some(analysis) = analysis.as_ref() else {
-            return Ok(None);
-        };
-
         let uri = &params.text_document.uri;
         let file_path = match uri.to_file_path() {
             Ok(p) => p.to_string_lossy().to_string(),
             Err(_) => return Ok(None),
+        };
+
+        let analyses = self.analyses.read().await;
+        let Some(analysis) = Self::find_analysis_for_file(&analyses, &file_path) else {
+            return Ok(None);
         };
 
         // Find the module for this file
@@ -552,13 +621,21 @@ impl LanguageServer for SomLanguageServer {
         let mut prev_line: u32 = 0;
         let mut prev_start: u32 = 0;
 
-        for token in &tokens {
-            if matches!(
-                token.kind,
-                TokenKind::Whitespace | TokenKind::Eof | TokenKind::Error
-            ) {
-                continue;
-            }
+        // Pre-filter to non-whitespace tokens for lookahead, keeping original indices
+        let visible: Vec<usize> = tokens
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| {
+                !matches!(
+                    t.kind,
+                    TokenKind::Whitespace | TokenKind::Eof | TokenKind::Error
+                )
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        for (vi, &ti) in visible.iter().enumerate() {
+            let token = &tokens[ti];
 
             let token_type = match token.kind {
                 // Keywords
@@ -574,8 +651,21 @@ impl LanguageServer for SomLanguageServer {
                 | TokenKind::While
                 | TokenKind::For => 0, // KEYWORD
 
-                // Identifiers
-                TokenKind::Ident => 1, // VARIABLE
+                // Identifiers — look ahead to distinguish calls from variables
+                TokenKind::Ident => {
+                    let next_kind = visible.get(vi + 1).map(|&ni| tokens[ni].kind);
+                    if next_kind == Some(TokenKind::OpenParen) {
+                        7 // FUNCTION
+                    } else if token
+                        .span
+                        .get_text()
+                        .starts_with(|c: char| c.is_uppercase())
+                    {
+                        8 // STRUCT
+                    } else {
+                        1 // VARIABLE
+                    }
+                }
 
                 // Numbers
                 TokenKind::Int | TokenKind::Float => 2, // NUMBER
@@ -608,10 +698,22 @@ impl LanguageServer for SomLanguageServer {
                 // Comments
                 TokenKind::Comment => 5, // COMMENT
 
+                // Star — pointer type after `:` or `->`, otherwise operator
+                TokenKind::Star => {
+                    let prev_kind = vi
+                        .checked_sub(1)
+                        .and_then(|pi| visible.get(pi))
+                        .map(|&ni| tokens[ni].kind);
+                    if matches!(prev_kind, Some(TokenKind::Colon | TokenKind::Arrow)) {
+                        4 // TYPE
+                    } else {
+                        6 // OPERATOR
+                    }
+                }
+
                 // Operators
                 TokenKind::Plus
                 | TokenKind::Minus
-                | TokenKind::Star
                 | TokenKind::Slash
                 | TokenKind::Equals
                 | TokenKind::DoubleEquals
@@ -654,4 +756,354 @@ impl LanguageServer for SomLanguageServer {
             data: semantic_tokens,
         })))
     }
+
+    async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+        let uri = &params.text_document_position.text_document.uri;
+        let position = &params.text_document_position.position;
+
+        let file_path = match uri.to_file_path() {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => return Ok(None),
+        };
+
+        let analyses = self.analyses.read().await;
+        let Some(analysis) = Self::find_analysis_for_file(&analyses, &file_path) else {
+            return Ok(None);
+        };
+
+        let source_text = match std::fs::read_to_string(&file_path) {
+            Ok(s) => s,
+            Err(_) => return Ok(None),
+        };
+
+        let offset = match convert::position_to_offset(&source_text, position) {
+            Some(o) => o,
+            None => return Ok(None),
+        };
+
+        let ast = &analysis.typed_ast.ast;
+        let mut items = Vec::new();
+
+        // Check if we're after a dot (field access completion)
+        let after_dot = offset > 0 && source_text.as_bytes().get(offset - 1) == Some(&b'.');
+
+        if after_dot {
+            // Find the expression before the dot using AstIndex
+            let index = AstIndex::build(ast);
+            if let Some(NodeRef::Expr(expr_id)) = index.find_at(&file_path, offset - 2) {
+                if let Some(ty) = analysis.typed_ast.types.get(expr_id) {
+                    if let Type::Named(name) = ty {
+                        if let Some(struct_id) = ast.find_struct_by_name(name.as_ref()) {
+                            let s = ast.structs.get(&struct_id);
+                            for field in &s.fields {
+                                items.push(CompletionItem {
+                                    label: field.name.value.to_string(),
+                                    kind: Some(CompletionItemKind::FIELD),
+                                    detail: Some(format!("{}", field.ty)),
+                                    ..Default::default()
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Functions
+            for (name, entry) in &ast.func_registry {
+                let label = name.split("::").last().unwrap_or(name).to_string();
+                let detail = match &entry.kind {
+                    FuncKind::Regular(func_id) => {
+                        let func = ast.funcs.get(func_id);
+                        format_func_signature(&label, &func.parameters, &func.return_type)
+                    }
+                    FuncKind::Extern(efunc_id) => {
+                        let efunc = ast.extern_funcs.get(efunc_id);
+                        format_func_signature(&label, &efunc.parameters, &efunc.return_type)
+                    }
+                };
+
+                items.push(CompletionItem {
+                    label,
+                    kind: Some(CompletionItemKind::FUNCTION),
+                    detail: Some(detail),
+                    ..Default::default()
+                });
+            }
+
+            // Structs
+            for s in ast.structs.iter() {
+                items.push(CompletionItem {
+                    label: s.name.value.to_string(),
+                    kind: Some(CompletionItemKind::STRUCT),
+                    ..Default::default()
+                });
+            }
+
+            // Keywords
+            for kw in [
+                "fn", "let", "mut", "if", "else", "struct", "extern", "loop", "while", "for",
+                "use", "true", "false",
+            ] {
+                items.push(CompletionItem {
+                    label: kw.to_string(),
+                    kind: Some(CompletionItemKind::KEYWORD),
+                    ..Default::default()
+                });
+            }
+        }
+
+        Ok(Some(CompletionResponse::Array(items)))
+    }
+
+    async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
+        let uri = &params.text_document.uri;
+        let file_path = match uri.to_file_path() {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => return Ok(None),
+        };
+
+        let analyses = self.analyses.read().await;
+        let Some(analysis) = Self::find_analysis_for_file(&analyses, &file_path) else {
+            return Ok(None);
+        };
+
+        let ast = &analysis.typed_ast.ast;
+        let module = match AstIndex::find_module_for_file(ast, &file_path) {
+            Some(m) => m,
+            None => return Ok(None),
+        };
+
+        let mut hints = Vec::new();
+
+        for decl in &module.decs {
+            if let Decl::Func(func_id) = decl {
+                let func = ast.funcs.get(func_id);
+                collect_let_hints(ast, &analysis.typed_ast, &func.body, &mut hints);
+            }
+        }
+
+        Ok(Some(hints))
+    }
+
+    async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
+        let uri = &params.text_document_position_params.text_document.uri;
+        let position = &params.text_document_position_params.position;
+
+        let file_path = match uri.to_file_path() {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => return Ok(None),
+        };
+
+        let analyses = self.analyses.read().await;
+        let Some(analysis) = Self::find_analysis_for_file(&analyses, &file_path) else {
+            return Ok(None);
+        };
+
+        let source_text = match std::fs::read_to_string(&file_path) {
+            Ok(s) => s,
+            Err(_) => return Ok(None),
+        };
+
+        let offset = match convert::position_to_offset(&source_text, position) {
+            Some(o) => o,
+            None => return Ok(None),
+        };
+
+        let ast = &analysis.typed_ast.ast;
+
+        // Find the Call expression containing the cursor
+        let call_expr_id = match find_containing_call(ast, &file_path, offset) {
+            Some(id) => id,
+            None => return Ok(None),
+        };
+
+        let Expr::Call { name, .. } = ast.exprs.get(&call_expr_id) else {
+            return Ok(None);
+        };
+
+        let func_name = name.name().value.as_ref();
+
+        let (label, parameters) = if let Some(func_id) = ast.find_func_by_path(name) {
+            let func = ast.funcs.get(&func_id);
+            build_signature_info(func_name, &func.parameters, &func.return_type)
+        } else if let Some(efunc_id) = ast.find_extern_func_by_name(func_name) {
+            let efunc = ast.extern_funcs.get(&efunc_id);
+            build_signature_info(func_name, &efunc.parameters, &efunc.return_type)
+        } else {
+            return Ok(None);
+        };
+
+        // Determine active parameter by counting commas between ( and cursor
+        let call_span = ast.get_expr_span(&call_expr_id);
+        let call_end = call_span.start_offset + call_span.length;
+        let slice_end = offset.min(call_end);
+        let call_text_before_cursor = &source_text[call_span.start_offset..slice_end];
+        let active_parameter = if let Some(paren_pos) = call_text_before_cursor.find('(') {
+            let after_paren = &call_text_before_cursor[paren_pos + 1..];
+            after_paren.chars().filter(|c| *c == ',').count() as u32
+        } else {
+            0
+        };
+
+        Ok(Some(SignatureHelp {
+            signatures: vec![SignatureInformation {
+                label,
+                documentation: None,
+                parameters: Some(parameters),
+                active_parameter: Some(active_parameter),
+            }],
+            active_signature: Some(0),
+            active_parameter: Some(active_parameter),
+        }))
+    }
+}
+
+/// Format a function signature string for display
+fn format_func_signature(name: &str, params: &[FuncParam], return_type: &Option<Type>) -> String {
+    let params_str: Vec<String> = params
+        .iter()
+        .map(|p| match &p.ty {
+            Some(ty) => format!("{}: {}", p.name, ty),
+            None => format!("{}", p.name),
+        })
+        .collect();
+    let ret = match return_type {
+        Some(ty) => format!(" -> {}", ty),
+        None => String::new(),
+    };
+    format!("fn {}({}){}", name, params_str.join(", "), ret)
+}
+
+/// Build signature information for signature help
+fn build_signature_info(
+    name: &str,
+    params: &[FuncParam],
+    return_type: &Option<Type>,
+) -> (String, Vec<ParameterInformation>) {
+    let label = format_func_signature(name, params, return_type);
+
+    let parameters = params
+        .iter()
+        .map(|p| {
+            let param_label = match &p.ty {
+                Some(ty) => format!("{}: {}", p.name, ty),
+                None => format!("{}", p.name),
+            };
+            ParameterInformation {
+                label: ParameterLabel::Simple(param_label),
+                documentation: None,
+            }
+        })
+        .collect();
+
+    (label, parameters)
+}
+
+/// Walk a block expression to collect inlay hints for let bindings
+fn collect_let_hints(
+    ast: &Ast,
+    typed_ast: &TypedAst,
+    expr_id: &Id<Expr>,
+    hints: &mut Vec<InlayHint>,
+) {
+    if let Expr::Block { stmts, .. } = ast.exprs.get(expr_id) {
+        for stmt_id in stmts {
+            collect_stmt_hints(ast, typed_ast, stmt_id, hints);
+        }
+    }
+}
+
+/// Recursively collect inlay hints from statements
+fn collect_stmt_hints(
+    ast: &Ast,
+    typed_ast: &TypedAst,
+    stmt_id: &Id<Stmt>,
+    hints: &mut Vec<InlayHint>,
+) {
+    let stmt = ast.stmts.get(stmt_id);
+    match stmt {
+        Stmt::Let {
+            name,
+            ty: None,
+            value,
+            ..
+        } => {
+            if let Some(inferred_ty) = typed_ast.types.get(value) {
+                if matches!(inferred_ty, Type::Unit | Type::Unknown(_)) {
+                    return;
+                }
+
+                let stmt_span = ast.get_stmt_span(stmt_id);
+                let stmt_text = stmt_span.get_text();
+                let name_str = name.value.as_ref();
+
+                if let Some(name_offset) = stmt_text.find(name_str) {
+                    let hint_col = stmt_span.start.col + name_offset + name_str.len();
+                    let position = lsp_types::Position::new(
+                        (stmt_span.start.line - 1) as u32,
+                        (hint_col - 1) as u32,
+                    );
+
+                    hints.push(InlayHint {
+                        position,
+                        label: InlayHintLabel::String(format!(": {}", inferred_ty)),
+                        kind: Some(InlayHintKind::TYPE),
+                        text_edits: None,
+                        tooltip: None,
+                        padding_left: None,
+                        padding_right: None,
+                        data: None,
+                    });
+                }
+            }
+        }
+        Stmt::Loop { body } => {
+            for s in body {
+                collect_stmt_hints(ast, typed_ast, s, hints);
+            }
+        }
+        Stmt::While { body, .. } => {
+            for s in body {
+                collect_stmt_hints(ast, typed_ast, s, hints);
+            }
+        }
+        Stmt::Condition {
+            then_body,
+            else_body,
+            ..
+        } => {
+            for s in then_body {
+                collect_stmt_hints(ast, typed_ast, s, hints);
+            }
+            if let Some(else_stmts) = else_body {
+                for s in else_stmts {
+                    collect_stmt_hints(ast, typed_ast, s, hints);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Find the smallest Call expression containing the given offset
+fn find_containing_call(ast: &Ast, file_path: &str, offset: usize) -> Option<Id<Expr>> {
+    let mut best: Option<(usize, Id<Expr>)> = None;
+
+    for (expr_id, expr) in ast.exprs.iter_with_ids() {
+        if !matches!(expr, Expr::Call { .. }) {
+            continue;
+        }
+        let span = ast.get_expr_span(&expr_id);
+        if span.source.identifier() != file_path {
+            continue;
+        }
+        let end = span.start_offset + span.length;
+        if offset >= span.start_offset && offset <= end {
+            if best.is_none() || span.length < best.unwrap().0 {
+                best = Some((span.length, expr_id));
+            }
+        }
+    }
+
+    best.map(|(_, id)| id)
 }

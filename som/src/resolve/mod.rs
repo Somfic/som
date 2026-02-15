@@ -21,7 +21,7 @@ pub enum DefKind {
     },
     /// Function parameter
     Parameter {
-        func: DefId,   // Which function owns this
+        func: DefId, // Which function owns this
         index: usize,
     },
     /// Local variable from let binding
@@ -44,10 +44,7 @@ pub enum RibKind {
     /// Function scope
     /// - Blocks outer locals (unless can_capture is true)
     /// - Allows outer functions
-    Function {
-        def_id: DefId,
-        can_capture: bool,
-    },
+    Function { def_id: DefId, can_capture: bool },
     /// Block scope (transparent)
     Block,
 }
@@ -293,13 +290,20 @@ impl NameResolver {
                 self.resolve_expr(*expr, ast, current_func);
             }
 
-            Expr::Conditional { condition, truthy, falsy } => {
+            Expr::Conditional {
+                condition,
+                truthy,
+                falsy,
+            } => {
                 self.resolve_expr(*condition, ast, current_func);
                 self.resolve_expr(*truthy, ast, current_func);
                 self.resolve_expr(*falsy, ast, current_func);
             }
 
-            Expr::Constructor { struct_name: _, fields } => {
+            Expr::Constructor {
+                struct_name: _,
+                fields,
+            } => {
                 for (_, field_expr) in fields {
                     self.resolve_expr(*field_expr, ast, current_func);
                 }
@@ -355,7 +359,11 @@ impl NameResolver {
                 self.pop_rib();
             }
 
-            Stmt::Condition { condition, then_body, else_body } => {
+            Stmt::Condition {
+                condition,
+                then_body,
+                else_body,
+            } => {
                 self.resolve_expr(*condition, ast, current_func);
 
                 self.push_rib(RibKind::Block);
@@ -376,7 +384,12 @@ impl NameResolver {
     }
 
     /// Resolve a name to a DefId
-    fn resolve_name(&self, name: &str, is_function_call: bool, span: &Span) -> Result<DefId, ResolveError> {
+    fn resolve_name(
+        &self,
+        name: &str,
+        is_function_call: bool,
+        span: &Span,
+    ) -> Result<DefId, ResolveError> {
         // Search ribs from innermost to outermost
         for rib in self.ribs.iter().rev() {
             if let Some(&def_id) = rib.bindings.get(name) {
@@ -384,7 +397,10 @@ impl NameResolver {
             }
 
             // Function rib blocks access to outer locals (but not outer functions)
-            if let RibKind::Function { can_capture: false, .. } = rib.kind {
+            if let RibKind::Function {
+                can_capture: false, ..
+            } = rib.kind
+            {
                 if !is_function_call {
                     continue;
                 }

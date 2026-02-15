@@ -34,70 +34,55 @@ impl AstIndex {
         for (expr_id, _) in ast.exprs.iter_with_ids() {
             let span = ast.get_expr_span(&expr_id);
             let file = span.source.identifier().to_string();
-            entries_by_file
-                .entry(file)
-                .or_default()
-                .push(IndexEntry {
-                    start_offset: span.start_offset,
-                    end_offset: span.start_offset + span.length,
-                    node: NodeRef::Expr(expr_id),
-                });
+            entries_by_file.entry(file).or_default().push(IndexEntry {
+                start_offset: span.start_offset,
+                end_offset: span.start_offset + span.length,
+                node: NodeRef::Expr(expr_id),
+            });
         }
 
         // Index all statements
         for (stmt_id, _) in ast.stmts.iter_with_ids() {
             let span = ast.get_stmt_span(&stmt_id);
             let file = span.source.identifier().to_string();
-            entries_by_file
-                .entry(file)
-                .or_default()
-                .push(IndexEntry {
-                    start_offset: span.start_offset,
-                    end_offset: span.start_offset + span.length,
-                    node: NodeRef::Stmt(stmt_id),
-                });
+            entries_by_file.entry(file).or_default().push(IndexEntry {
+                start_offset: span.start_offset,
+                end_offset: span.start_offset + span.length,
+                node: NodeRef::Stmt(stmt_id),
+            });
         }
 
         // Index all functions
         for (func_id, _) in ast.funcs.iter_with_ids() {
             let span = ast.get_func_span(&func_id);
             let file = span.source.identifier().to_string();
-            entries_by_file
-                .entry(file)
-                .or_default()
-                .push(IndexEntry {
-                    start_offset: span.start_offset,
-                    end_offset: span.start_offset + span.length,
-                    node: NodeRef::Func(func_id),
-                });
+            entries_by_file.entry(file).or_default().push(IndexEntry {
+                start_offset: span.start_offset,
+                end_offset: span.start_offset + span.length,
+                node: NodeRef::Func(func_id),
+            });
         }
 
         // Index all extern functions
         for (efunc_id, _) in ast.extern_funcs.iter_with_ids() {
             let span = ast.get_extern_func_span(&efunc_id);
             let file = span.source.identifier().to_string();
-            entries_by_file
-                .entry(file)
-                .or_default()
-                .push(IndexEntry {
-                    start_offset: span.start_offset,
-                    end_offset: span.start_offset + span.length,
-                    node: NodeRef::ExternFunc(efunc_id),
-                });
+            entries_by_file.entry(file).or_default().push(IndexEntry {
+                start_offset: span.start_offset,
+                end_offset: span.start_offset + span.length,
+                node: NodeRef::ExternFunc(efunc_id),
+            });
         }
 
         // Index all structs
         for (struct_id, _) in ast.structs.iter_with_ids() {
             let span = ast.get_struct_span(&struct_id);
             let file = span.source.identifier().to_string();
-            entries_by_file
-                .entry(file)
-                .or_default()
-                .push(IndexEntry {
-                    start_offset: span.start_offset,
-                    end_offset: span.start_offset + span.length,
-                    node: NodeRef::Struct(struct_id),
-                });
+            entries_by_file.entry(file).or_default().push(IndexEntry {
+                start_offset: span.start_offset,
+                end_offset: span.start_offset + span.length,
+                node: NodeRef::Struct(struct_id),
+            });
         }
 
         // Sort each file's entries by span size (smallest first) for innermost-first lookup

@@ -160,10 +160,7 @@ impl Parser<'_> {
                 // Remove surrounding quotes
                 let unquoted: Box<str> = text[1..text.len() - 1].into();
                 self.advance();
-                Some(
-                    self.builder
-                        .alloc_expr(Expr::String(unquoted), start),
-                )
+                Some(self.builder.alloc_expr(Expr::String(unquoted), start))
             }
 
             TokenKind::Ident => {

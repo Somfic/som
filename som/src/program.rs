@@ -77,7 +77,7 @@ impl ProgramLoader {
             .to_string();
 
         let root = self.root.clone();
-        self.load_module(program_name, &root);
+        self.load_module_from_disk(program_name, &root);
 
         if !self.errors.is_empty() {
             return Err(self.errors);
@@ -99,8 +99,11 @@ impl ProgramLoader {
         Ok(files)
     }
 
-    fn load_module(&mut self, name: impl Into<String>, folder: &std::path::Path) {
-        self.load_module_impl(name, folder, None);
+    /// Load a module from the filesystem only, skipping bundled modules.
+    /// Used for the root module in `load_project` so that on-disk files are
+    /// always preferred when the user is directly editing them.
+    fn load_module_from_disk(&mut self, name: impl Into<String>, folder: &std::path::Path) {
+        self.load_module_impl(name, folder, None, false);
     }
 
     fn load_module_with_span(
@@ -109,7 +112,7 @@ impl ProgramLoader {
         folder: &std::path::Path,
         span: crate::Span,
     ) {
-        self.load_module_impl(name, folder, Some(span));
+        self.load_module_impl(name, folder, Some(span), true);
     }
 
     /// Try to load a bundled module. Returns true if found and loaded.
@@ -168,6 +171,7 @@ impl ProgramLoader {
         name: impl Into<String>,
         folder: &std::path::Path,
         span: Option<crate::Span>,
+        try_bundled: bool,
     ) {
         let name = name.into();
 
@@ -183,8 +187,8 @@ impl ProgramLoader {
         // mark as being loaded
         self.loading.insert(name.clone());
 
-        // Try bundled modules first
-        if self.try_load_bundled_module(&name) {
+        // Try bundled modules first (unless loading from disk)
+        if try_bundled && self.try_load_bundled_module(&name) {
             self.loading.remove(&name);
             self.loaded.insert(name);
             return;

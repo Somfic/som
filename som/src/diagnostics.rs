@@ -260,44 +260,22 @@ fn syntax_highlight(line: &str) -> String {
 }
 
 #[derive(Debug, Clone)]
-pub struct Related {
-    pub message: String,
-    pub labels: Vec<Label>,
-}
-
-impl Related {
-    pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            labels: vec![],
-        }
-    }
-
-    pub fn with_label(mut self, label: impl Into<Label>) -> Self {
-        self.labels.push(label.into());
-        self
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
     pub trace: Vec<String>,
     pub message: String,
     pub hints: Vec<String>,
     pub labels: Vec<Label>,
-    pub related: Vec<Related>,
 }
 
 impl Diagnostic {
-    pub fn new(severity: Severity, message: impl Into<String>) -> Self {
+    fn new(severity: Severity, message: impl Into<String>) -> Self {
         Self {
             severity,
             trace: vec![],
             message: message.into(),
             hints: vec![],
             labels: vec![],
-            related: vec![],
         }
     }
 
@@ -325,11 +303,6 @@ impl Diagnostic {
 
     pub fn with_trace(mut self, trace: impl Into<String>) -> Self {
         self.trace.push(trace.into());
-        self
-    }
-
-    pub fn with_related(mut self, related: Related) -> Self {
-        self.related.push(related);
         self
     }
 
@@ -516,14 +489,6 @@ impl Display for Diagnostic {
 
         for group in group_labels_by_source(&self.labels) {
             fmt_label_group(f, &group, &self.severity)?;
-        }
-
-        for related in &self.related {
-            writeln!(f)?;
-            writeln!(f, "{}  {}", GUTTER, &related.message)?;
-            for group in group_labels_by_source(&related.labels) {
-                fmt_label_group(f, &group, &self.severity)?;
-            }
         }
 
         if !self.hints.is_empty() || !self.trace.is_empty() {
