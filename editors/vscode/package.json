@@ -68,6 +68,13 @@
         }
       }
     ],
+    "commands": [
+      {
+        "command": "som.run",
+        "title": "Som: Run",
+        "icon": "$(play)"
+      }
+    ],
     "configuration": {
       "title": "Som",
       "properties": {
@@ -75,6 +82,11 @@
           "type": "string",
           "default": "som-lsp",
           "description": "Path to the som-lsp binary"
+        },
+        "som.compiler.path": {
+          "type": "string",
+          "default": "som",
+          "description": "Path to the som compiler binary"
         }
       }
     }

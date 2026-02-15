@@ -76,7 +76,13 @@ fn main() {
         vec!["/usr/local/lib".to_string()]
     };
 
-    let linker = Linker::new("som")
+    let output_name = source_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("out");
+    // TODO: output to current directory instead of temp, but avoid colliding with directories
+    let output_path = std::env::temp_dir().join(output_name);
+    let linker = Linker::new(output_path.to_string_lossy())
         .with_libraries(libraries, needs_libc)
         .with_library_paths(library_paths);
     let executable = match linker.link_object(product) {

@@ -11,8 +11,8 @@ use tower_lsp::{Client, LanguageServer};
 use som::arena::Id;
 use som::lexer::{TokenKind, lex};
 use som::{
-    Ast, BorrowChecker, Decl, Diagnostic as SomDiagnostic, Expr, FuncKind, FuncParam,
-    ProgramLoader, Source, Span, Stmt, Type, TypeInferencer, TypedAst,
+    Ast, BorrowChecker, Decl, DefId, Definition, Diagnostic as SomDiagnostic, Expr, FuncKind,
+    FuncParam, NameResolver, ProgramLoader, Source, Span, Stmt, Type, TypeInferencer, TypedAst,
 };
 
 use crate::convert;
@@ -22,6 +22,8 @@ use crate::index::{AstIndex, NodeRef};
 pub struct AnalysisResult {
     pub typed_ast: TypedAst,
     pub diagnostics: Vec<SomDiagnostic>,
+    pub var_resolutions: HashMap<Id<Expr>, DefId>,
+    pub definitions: Vec<Definition>,
 }
 
 pub struct SomLanguageServer {
@@ -101,9 +103,17 @@ impl SomLanguageServer {
             }
         };
 
-        // Phase 2: Type check
+        // Phase 2: Name resolution
+        let resolved = NameResolver::resolve(ast);
+        for error in &resolved.errors {
+            all_diagnostics.push(error.to_diagnostic());
+        }
+        let var_resolutions = resolved.var_resolutions;
+        let definitions = resolved.definitions;
+
+        // Phase 3: Type check
         let inferencer = TypeInferencer::new();
-        let typed_ast = inferencer.check_program(ast);
+        let typed_ast = inferencer.check_program(resolved.ast);
         for error in &typed_ast.errors {
             all_diagnostics.push(error.to_diagnostic(&typed_ast.ast));
         }
@@ -143,6 +153,8 @@ impl SomLanguageServer {
             AnalysisResult {
                 typed_ast,
                 diagnostics: all_diagnostics,
+                var_resolutions,
+                definitions,
             },
         );
     }
@@ -416,24 +428,52 @@ impl LanguageServer for SomLanguageServer {
             None => return Ok(None),
         };
 
-        let target_span: Option<&Span> = match node {
+        let span_to_location = |span: &Span| -> Option<Location> {
+            let target_file = span.source.identifier();
+            let uri = Url::from_file_path(target_file).ok()?;
+            let range = convert::span_to_range(span);
+            Some(Location { uri, range })
+        };
+
+        let target: Option<Location> = match node {
             NodeRef::Expr(expr_id) => {
                 let expr = analysis.typed_ast.ast.exprs.get(expr_id);
                 match expr {
-                    // Variable reference -> find the function it refers to
+                    // Variable reference -> find definition
                     Expr::Var(path) => {
                         let name = &*path.name().value;
-                        // Try to find as function first
-                        if let Some(func_id) = analysis.typed_ast.ast.find_func_by_name(name) {
-                            Some(analysis.typed_ast.ast.get_func_span(&func_id))
+                        // Try resolved variable (local/parameter) first
+                        if let Some(def_id) = analysis.var_resolutions.get(expr_id) {
+                            if let Some(def) = analysis.definitions.get(def_id.0 as usize) {
+                                // Find the variable name within the statement span
+                                // so the cursor lands on the name, not `let`.
+                                let span_text = def.span.get_text();
+                                let name_offset = span_text.find(&*def.name).unwrap_or(0);
+                                let name_start = Span::from_range(
+                                    (def.span.start_offset + name_offset)
+                                        ..(def.span.start_offset + name_offset + def.name.len()),
+                                    def.span.source.clone(),
+                                );
+                                let uri = Url::from_file_path(def.span.source.identifier()).ok();
+                                uri.map(|u| Location {
+                                    uri: u,
+                                    range: convert::span_to_range(&name_start),
+                                })
+                            } else {
+                                None
+                            }
+                        // Then try top-level definitions
+                        } else if let Some(func_id) = analysis.typed_ast.ast.find_func_by_name(name)
+                        {
+                            span_to_location(analysis.typed_ast.ast.get_func_span(&func_id))
                         } else if let Some(efunc_id) =
                             analysis.typed_ast.ast.find_extern_func_by_name(name)
                         {
-                            Some(analysis.typed_ast.ast.get_extern_func_span(&efunc_id))
+                            span_to_location(analysis.typed_ast.ast.get_extern_func_span(&efunc_id))
                         } else if let Some(struct_id) =
                             analysis.typed_ast.ast.find_struct_by_name(name)
                         {
-                            Some(analysis.typed_ast.ast.get_struct_span(&struct_id))
+                            span_to_location(analysis.typed_ast.ast.get_struct_span(&struct_id))
                         } else {
                             None
                         }
@@ -442,11 +482,11 @@ impl LanguageServer for SomLanguageServer {
                     Expr::Call { name, .. } => {
                         let func_name = &*name.name().value;
                         if let Some(func_id) = analysis.typed_ast.ast.find_func_by_path(name) {
-                            Some(analysis.typed_ast.ast.get_func_span(&func_id))
+                            span_to_location(analysis.typed_ast.ast.get_func_span(&func_id))
                         } else if let Some(efunc_id) =
                             analysis.typed_ast.ast.find_extern_func_by_name(func_name)
                         {
-                            Some(analysis.typed_ast.ast.get_extern_func_span(&efunc_id))
+                            span_to_location(analysis.typed_ast.ast.get_extern_func_span(&efunc_id))
                         } else {
                             None
                         }
@@ -455,7 +495,7 @@ impl LanguageServer for SomLanguageServer {
                     Expr::Constructor { struct_name, .. } => {
                         let name = &*struct_name.name().value;
                         if let Some(struct_id) = analysis.typed_ast.ast.find_struct_by_name(name) {
-                            Some(analysis.typed_ast.ast.get_struct_span(&struct_id))
+                            span_to_location(analysis.typed_ast.ast.get_struct_span(&struct_id))
                         } else {
                             None
                         }
@@ -466,20 +506,8 @@ impl LanguageServer for SomLanguageServer {
             _ => None,
         };
 
-        match target_span {
-            Some(span) => {
-                let target_file = span.source.identifier();
-                let target_uri = match Url::from_file_path(target_file) {
-                    Ok(u) => u,
-                    Err(_) => return Ok(None),
-                };
-
-                let range = convert::span_to_range(span);
-                Ok(Some(GotoDefinitionResponse::Scalar(Location {
-                    uri: target_uri,
-                    range,
-                })))
-            }
+        match target {
+            Some(location) => Ok(Some(GotoDefinitionResponse::Scalar(location))),
             None => Ok(None),
         }
     }
