@@ -26,8 +26,9 @@ export function activate(context: vscode.ExtensionContext) {
   client.start();
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("som.run", (uri?: vscode.Uri) => {
-      const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
+    vscode.commands.registerCommand("som.run", (arg?: vscode.Uri | string) => {
+      const fileUri = (typeof arg === "string" ? vscode.Uri.parse(arg) : arg)
+        ?? vscode.window.activeTextEditor?.document.uri;
       if (!fileUri) {
         vscode.window.showErrorMessage("No active Som file to run.");
         return;
