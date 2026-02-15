@@ -103,7 +103,8 @@ impl<'ast> Codegen<'ast> {
 
     fn gen_func(&mut self, func: &Func, name: &str) -> Result<()> {
         // Extract module name from qualified function name (e.g., "std::println" -> "std")
-        self.current_module = if let Some(pos) = name.rfind("::") {
+        // For methods like "std::String::len", we want "std" not "std::String"
+        self.current_module = if let Some(pos) = name.find("::") {
             Some(name[..pos].to_string())
         } else {
             None
@@ -371,10 +372,7 @@ impl<'ast> Codegen<'ast> {
                     .func_ids
                     .get(&registry_key)
                     .or_else(|| {
-                        if name.is_qualified() {
-                            return None;
-                        }
-                        // Try with current module prefix for unqualified calls
+                        // Try with current module prefix
                         if let Some(module) = &self.current_module {
                             let qualified = format!("{}::{}", module, registry_key);
                             if let Some(id) = self.func_ids.get(&qualified) {
@@ -615,6 +613,148 @@ impl<'ast> Codegen<'ast> {
                 func.body
                     .ins()
                     .load(to_type(field_ty), MemFlags::new(), base, offset)
+            }
+            Expr::MethodCall {
+                object,
+                method,
+                args,
+            } => {
+                // Determine struct name from the object's type
+                let obj_ty = self.typed_ast.get_expr_ty(object);
+                let struct_name = match obj_ty {
+                    Type::Named(name) => name.as_ref(),
+                    Type::Reference { to, .. } => match to.as_ref() {
+                        Type::Named(name) => name.as_ref(),
+                        _ => panic!("method call on non-struct type"),
+                    },
+                    _ => panic!("method call on non-struct type"),
+                };
+
+                // Look up StructName::method in func_ids
+                let method_key = format!("{}::{}", struct_name, method.value);
+                let callee_func_id = *self
+                    .func_ids
+                    .get(&method_key)
+                    .or_else(|| {
+                        if let Some(module) = &self.current_module {
+                            let qualified = format!("{}::{}", module, method_key);
+                            if let Some(id) = self.func_ids.get(&qualified) {
+                                return Some(id);
+                            }
+                            for imported in self.typed_ast.ast.use_modules(module) {
+                                let qualified = format!("{}::{}", imported, method_key);
+                                if let Some(id) = self.func_ids.get(&qualified) {
+                                    return Some(id);
+                                }
+                            }
+                        }
+                        None
+                    })
+                    .expect("type checker should have caught unknown method");
+
+                let callee_func_ref = self
+                    .module
+                    .declare_func_in_func(callee_func_id, func.body.func);
+
+                // Generate arguments: object (self) first, then remaining args
+                let mut arguments: Vec<Value> = Vec::new();
+
+                // Generate self argument (the object)
+                let self_val = self.gen_expr(func, *object);
+                if let Type::Named(sn) = obj_ty {
+                    let struct_id = self.typed_ast.ast.find_struct_by_name(sn).unwrap();
+                    let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                    let layout = struct_def.compute_layout();
+                    if layout.size <= 8 {
+                        arguments.push(func.body.ins().load(
+                            types::I64,
+                            MemFlags::new(),
+                            self_val,
+                            0,
+                        ));
+                    } else if layout.size <= 16 {
+                        arguments.push(func.body.ins().load(
+                            types::I64,
+                            MemFlags::new(),
+                            self_val,
+                            0,
+                        ));
+                        arguments.push(func.body.ins().load(
+                            types::I64,
+                            MemFlags::new(),
+                            self_val,
+                            8,
+                        ));
+                    } else {
+                        panic!("structs larger than 16 bytes not yet supported");
+                    }
+                } else {
+                    arguments.push(self_val);
+                }
+
+                // Generate remaining arguments
+                for arg in args.iter() {
+                    let val = self.gen_expr(func, *arg);
+                    let arg_ty = self.typed_ast.get_expr_ty(arg);
+
+                    if let Type::Named(sn) = arg_ty {
+                        let struct_id = self.typed_ast.ast.find_struct_by_name(sn).unwrap();
+                        let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                        let layout = struct_def.compute_layout();
+                        if layout.size <= 8 {
+                            arguments.push(func.body.ins().load(
+                                types::I64,
+                                MemFlags::new(),
+                                val,
+                                0,
+                            ));
+                        } else if layout.size <= 16 {
+                            arguments.push(func.body.ins().load(
+                                types::I64,
+                                MemFlags::new(),
+                                val,
+                                0,
+                            ));
+                            arguments.push(func.body.ins().load(
+                                types::I64,
+                                MemFlags::new(),
+                                val,
+                                8,
+                            ));
+                        } else {
+                            panic!("structs larger than 16 bytes not yet supported");
+                        }
+                    } else {
+                        arguments.push(val);
+                    }
+                }
+
+                let call = func.body.ins().call(callee_func_ref, &arguments);
+                let results: Vec<Value> = func.body.inst_results(call).to_vec();
+
+                if results.is_empty() {
+                    func.body.ins().iconst(types::I32, 0)
+                } else {
+                    let return_ty = self.typed_ast.get_expr_ty(&expr_id);
+                    if let Type::Named(sn) = return_ty {
+                        let struct_id = self.typed_ast.ast.find_struct_by_name(sn).unwrap();
+                        let struct_def = self.typed_ast.ast.structs.get(&struct_id);
+                        let layout = struct_def.compute_layout();
+                        let slot = func.body.create_sized_stack_slot(StackSlotData::new(
+                            StackSlotKind::ExplicitSlot,
+                            layout.size as u32,
+                            layout.alignment,
+                        ));
+                        let base = func.body.ins().stack_addr(types::I64, slot, 0);
+                        func.body.ins().store(MemFlags::new(), results[0], base, 0);
+                        if results.len() > 1 {
+                            func.body.ins().store(MemFlags::new(), results[1], base, 8);
+                        }
+                        base
+                    } else {
+                        results[0]
+                    }
+                }
             }
             Expr::Assignment { target, value } => {
                 // Generate the value to be assigned

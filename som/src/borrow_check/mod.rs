@@ -409,6 +409,12 @@ impl<'a> BorrowChecker<'a> {
                 // Check the object expression (field access doesn't move)
                 self.check_expr(*object);
             }
+            Expr::MethodCall { object, args, .. } => {
+                self.check_move(*object);
+                for arg in args {
+                    self.check_move(*arg);
+                }
+            }
             Expr::Assignment { target, value } => {
                 // Check the value first (RHS is evaluated before LHS)
                 self.check_move(*value);

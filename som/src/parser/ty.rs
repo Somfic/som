@@ -19,7 +19,7 @@ impl Parser<'_> {
 
     /// Parse a reference type: &T, &mut T, &'a T, &'a mut T
     fn parse_reference_type(&mut self) -> Option<Type> {
-        self.expect_closing(TokenKind::Ampersand, "a reference type")?;
+        self.expect(TokenKind::Ampersand, "a reference type")?;
 
         // Parse optional lifetime: 'a
         let lifetime = if self.at(TokenKind::SingleQuote) {
@@ -43,7 +43,7 @@ impl Parser<'_> {
 
     /// Parse a lifetime: 'a, 'static
     fn parse_lifetime(&mut self) -> Option<Lifetime> {
-        self.expect_closing(TokenKind::SingleQuote, "a lifetime")?;
+        self.expect(TokenKind::SingleQuote, "a lifetime")?;
 
         if self.at(TokenKind::Ident) {
             let text = self.peek_token().text.clone();
@@ -62,8 +62,8 @@ impl Parser<'_> {
 
     /// Parse a function type: fn(A, B) -> C
     fn parse_fn_type(&mut self) -> Option<Type> {
-        self.expect_closing(TokenKind::Fn, "a function type")?;
-        self.expect_closing(TokenKind::OpenParen, "function parameters")?;
+        self.expect(TokenKind::Fn, "a function type")?;
+        self.expect(TokenKind::OpenParen, "function parameters")?;
 
         let mut arguments = Vec::new();
         if !self.at(TokenKind::CloseParen) {
@@ -77,7 +77,7 @@ impl Parser<'_> {
             }
         }
 
-        self.expect_closing(
+        self.expect(
             TokenKind::CloseParen,
             "closing parenthesis for function parameters",
         )?;
@@ -176,7 +176,7 @@ impl Parser<'_> {
                 } else {
                     // (Type) - parenthesized type
                     let inner = self.parse_type()?;
-                    self.expect_closing(TokenKind::CloseParen, "closing parenthesis for type")?;
+                    self.expect(TokenKind::CloseParen, "closing parenthesis for type")?;
                     Some(inner)
                 }
             }

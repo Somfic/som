@@ -141,7 +141,7 @@ impl<'ast> Parser<'ast> {
         }
     }
 
-    pub fn expect_closing(&mut self, kind: TokenKind, expected: impl Into<String>) -> Option<Span> {
+    pub fn expect(&mut self, kind: TokenKind, expected: impl Into<String>) -> Option<Span> {
         if self.at(kind) {
             let span = self.current_span();
             self.advance();
@@ -291,7 +291,7 @@ impl<'ast> Parser<'ast> {
 
         while !self.at(terminator) {
             if items.len() > 0 {
-                self.expect_closing(separator, expected.clone())?;
+                self.expect(separator, expected.clone())?;
                 if self.at(terminator) {
                     break; // trailing separator                           
                 }

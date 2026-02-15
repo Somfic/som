@@ -313,6 +313,13 @@ impl NameResolver {
                 self.resolve_expr(*object, ast, current_func);
             }
 
+            Expr::MethodCall { object, args, .. } => {
+                self.resolve_expr(*object, ast, current_func);
+                for arg in args {
+                    self.resolve_expr(*arg, ast, current_func);
+                }
+            }
+
             Expr::Assignment { target, value } => {
                 self.resolve_expr(*target, ast, current_func);
                 self.resolve_expr(*value, ast, current_func);

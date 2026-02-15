@@ -1,5 +1,6 @@
 use crate::{
-    Expr, ExternBlock, ExternFunc, Func, FuncParam, FuncTypeParam, Struct, StructField, Use,
+    Expr, ExternBlock, ExternFunc, Func, FuncParam, FuncTypeParam, Impl, ImplBlock, Struct,
+    StructField, Use,
     arena::Id,
     lexer::TokenKind,
     parser::{Parser, RecoveryLevel, StmtOrExpr},
@@ -9,7 +10,7 @@ impl Parser<'_> {
     fn is_declaration(&self) -> bool {
         matches!(
             self.peek(),
-            TokenKind::Fn | TokenKind::Extern | TokenKind::Struct | TokenKind::Use
+            TokenKind::Fn | TokenKind::Extern | TokenKind::Struct | TokenKind::Use | TokenKind::Impl
         )
     }
 
@@ -39,6 +40,13 @@ impl Parser<'_> {
             TokenKind::Use => {
                 if let Some(use_id) = self.parse_use() {
                     self.builder.add_use(use_id);
+                } else {
+                    self.recover(RecoveryLevel::Declaration);
+                }
+            }
+            TokenKind::Impl => {
+                if let Some(impl_block) = self.parse_impl_block() {
+                    self.builder.add_impl_block(impl_block);
                 } else {
                     self.recover(RecoveryLevel::Declaration);
                 }
@@ -108,15 +116,41 @@ impl Parser<'_> {
         self.builder.add_func(func_id);
     }
 
+    fn parse_impl_block(&mut self) -> Option<ImplBlock> {
+        self.expect(TokenKind::Impl, "an impl block")?;
+
+        let name = self.parse_ident("a struct name")?;
+
+        self.expect(TokenKind::OpenBrace, "an impl block")?;
+
+        let mut methods = Vec::new();
+        while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            if self.at(TokenKind::Fn) {
+                if let Some(func_id) = self.parse_function() {
+                    methods.push(func_id);
+                } else {
+                    self.recover(RecoveryLevel::Declaration);
+                }
+            } else {
+                self.error_missing("expected method declaration", "a method declaration");
+                self.recover(RecoveryLevel::Declaration);
+            }
+        }
+
+        self.expect(TokenKind::CloseBrace, "a closing brace after impl block")?;
+
+        Some(ImplBlock { name, methods })
+    }
+
     fn parse_use(&mut self) -> Option<Id<Use>> {
         let start = self.current_span();
-        self.expect_closing(TokenKind::Use, "a use statement");
+        self.expect(TokenKind::Use, "a use statement");
 
         let path_start = self.current_span();
         let path = self.parse_path("an import path")?;
         let path_span = path_start.merge(&self.previous_span());
 
-        self.expect_closing(TokenKind::Semicolon, "a semicolon after the use statement")?;
+        self.expect(TokenKind::Semicolon, "a semicolon after the use statement")?;
 
         let span = start.merge(&self.previous_span());
 
@@ -125,11 +159,11 @@ impl Parser<'_> {
 
     fn parse_struct(&mut self) -> Option<Id<Struct>> {
         let start = self.current_span();
-        self.expect_closing(TokenKind::Struct, "a struct declaration")?;
+        self.expect(TokenKind::Struct, "a struct declaration")?;
 
         let name = self.parse_ident("a struct name")?;
 
-        self.expect_closing(TokenKind::OpenBrace, "a list of struct fields")?;
+        self.expect(TokenKind::OpenBrace, "a list of struct fields")?;
 
         let fields = self.parse_separated(
             TokenKind::Comma,
@@ -138,7 +172,7 @@ impl Parser<'_> {
             "a struct field",
         )?;
 
-        self.expect_closing(TokenKind::CloseBrace, "a closing brace after struct fields")?;
+        self.expect(TokenKind::CloseBrace, "a closing brace after struct fields")?;
 
         let span = start.merge(&self.previous_span());
         Some(self.builder.alloc_struct(Struct { name, fields }, span))
@@ -147,7 +181,7 @@ impl Parser<'_> {
     fn parse_struct_field(&mut self) -> Option<StructField> {
         let name = self.parse_ident("a struct field name")?;
 
-        self.expect_closing(TokenKind::Colon, "a struct field type")?;
+        self.expect(TokenKind::Colon, "a struct field type")?;
         let ty_start = self.current_span();
         let ty = self.parse_type()?;
         let ty_span = ty_start.merge(&self.previous_span());
@@ -159,7 +193,7 @@ impl Parser<'_> {
     /// Parse a function declaration: `fn name<T>(params) -> RetType { body }`
     fn parse_function(&mut self) -> Option<Id<Func>> {
         let start = self.current_span();
-        self.expect_closing(TokenKind::Fn, "a function declaration")?;
+        self.expect(TokenKind::Fn, "a function declaration")?;
 
         let name = self.parse_ident("a function name")?;
 
@@ -171,9 +205,9 @@ impl Parser<'_> {
         };
 
         // Parse parameters: (x: i32, y: bool)
-        self.expect_closing(TokenKind::OpenParen, "a list of function parameters")?;
+        self.expect(TokenKind::OpenParen, "a list of function parameters")?;
         let parameters = self.parse_func_params()?;
-        self.expect_closing(
+        self.expect(
             TokenKind::CloseParen,
             "a closing parenthesis after function parameters",
         )?;
@@ -223,7 +257,7 @@ impl Parser<'_> {
             }
         }
 
-        self.expect_closing(
+        self.expect(
             TokenKind::GreaterThan,
             "a closing angle bracket for type parameters",
         )?;
@@ -267,7 +301,7 @@ impl Parser<'_> {
 
     /// Parse an extern block: `extern "lib" { fn foo(); }`
     fn parse_extern_block(&mut self) -> Option<ExternBlock> {
-        self.expect_closing(TokenKind::Extern, "an extern block")?;
+        self.expect(TokenKind::Extern, "an extern block")?;
 
         // Parse optional library name: "SDL2"
         let library = if self.at(TokenKind::Text) {
@@ -281,7 +315,7 @@ impl Parser<'_> {
             None
         };
 
-        self.expect_closing(
+        self.expect(
             TokenKind::OpenBrace,
             "a list of extern function declarations",
         )?;
@@ -303,7 +337,7 @@ impl Parser<'_> {
             }
         }
 
-        self.expect_closing(TokenKind::CloseBrace, "a closing brace after extern block")?;
+        self.expect(TokenKind::CloseBrace, "a closing brace after extern block")?;
 
         Some(ExternBlock { library, functions })
     }
@@ -311,14 +345,14 @@ impl Parser<'_> {
     /// Parse an extern function declaration: `fn name(params) -> RetType;`
     fn parse_extern_func(&mut self) -> Option<Id<ExternFunc>> {
         let start = self.current_span();
-        self.expect_closing(TokenKind::Fn, "an function declaration")?;
+        self.expect(TokenKind::Fn, "an function declaration")?;
 
         let name = self.parse_ident("a function name")?;
 
         // Parse parameters
-        self.expect_closing(TokenKind::OpenParen, "a list of function parameters")?;
+        self.expect(TokenKind::OpenParen, "a list of function parameters")?;
         let parameters = self.parse_extern_func_params()?;
-        self.expect_closing(
+        self.expect(
             TokenKind::CloseParen,
             "a closing parenthesis after function parameters",
         )?;
@@ -330,7 +364,7 @@ impl Parser<'_> {
             None
         };
 
-        self.expect_closing(
+        self.expect(
             TokenKind::Semicolon,
             "a semicolon after extern function declaration",
         )?;
@@ -368,7 +402,7 @@ impl Parser<'_> {
     fn parse_extern_func_param(&mut self) -> Option<FuncParam> {
         let name = self.parse_ident("a function parameter name")?;
 
-        self.expect_closing(TokenKind::Colon, "a colon after function parameter name")?;
+        self.expect(TokenKind::Colon, "a colon after function parameter name")?;
         let ty = self.parse_type()?;
 
         Some(FuncParam {

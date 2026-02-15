@@ -19,18 +19,47 @@ impl Parser<'_> {
         let mut lhs = self.parse_prefix_or_atom()?;
 
         loop {
-            // Check for field access (highest precedence postfix)
+            // Check for field access or method call (highest precedence postfix)
             if self.at(TokenKind::Dot) {
                 let postfix_bp = Grammar::POSTFIX * 2;
                 if postfix_bp < min_bp {
                     break;
                 }
                 self.advance(); // consume '.'
-                let field = self.parse_ident("a field name")?;
-                let span = start.merge(&self.previous_span());
-                lhs = self
-                    .builder
-                    .alloc_expr(Expr::FieldAccess { object: lhs, field }, span);
+                let field = self.parse_ident("a field or method name")?;
+
+                // If followed by '(', this is a method call
+                if self.at(TokenKind::OpenParen) {
+                    self.advance(); // consume '('
+                    let mut args = Vec::new();
+                    if !self.at(TokenKind::CloseParen) {
+                        args.push(self.parse_expr()?);
+                        while self.eat(TokenKind::Comma) {
+                            if self.at(TokenKind::CloseParen) {
+                                break;
+                            }
+                            args.push(self.parse_expr()?);
+                        }
+                    }
+                    self.expect(
+                        TokenKind::CloseParen,
+                        "closing parenthesis after method arguments",
+                    )?;
+                    let span = start.merge(&self.previous_span());
+                    lhs = self.builder.alloc_expr(
+                        Expr::MethodCall {
+                            object: lhs,
+                            method: field,
+                            args,
+                        },
+                        span,
+                    );
+                } else {
+                    let span = start.merge(&self.previous_span());
+                    lhs = self
+                        .builder
+                        .alloc_expr(Expr::FieldAccess { object: lhs, field }, span);
+                }
                 continue;
             }
 
@@ -182,7 +211,7 @@ impl Parser<'_> {
             TokenKind::OpenParen => {
                 self.advance();
                 let inner = self.parse_expr()?;
-                self.expect_closing(TokenKind::CloseParen, "closing parenthesis")?;
+                self.expect(TokenKind::CloseParen, "closing parenthesis")?;
                 Some(inner)
             }
 
@@ -200,10 +229,10 @@ impl Parser<'_> {
     // TODO: Add linter warning when both branches are blocks (side-effects only).
     //       In that case, prefer statement form: `if condition { } else { }`
     fn parse_conditional(&mut self, truthy: Id<Expr>, start: crate::Span) -> Option<Id<Expr>> {
-        self.expect_closing(TokenKind::If, "a condition")?;
+        self.expect(TokenKind::If, "a condition")?;
 
         let condition = self.parse_expr()?;
-        self.expect_closing(TokenKind::Else, "an else branch")?;
+        self.expect(TokenKind::Else, "an else branch")?;
         let falsy = self.parse_expr()?;
 
         let span = start.merge(&self.previous_span());
@@ -219,7 +248,7 @@ impl Parser<'_> {
 
     /// Parse a function call
     fn parse_call(&mut self, callee: Id<Expr>, start: crate::Span) -> Option<Id<Expr>> {
-        self.expect_closing(TokenKind::OpenParen, "a list of function arguments")?;
+        self.expect(TokenKind::OpenParen, "a list of function arguments")?;
 
         let mut args = Vec::new();
         if !self.at(TokenKind::CloseParen) {
@@ -233,7 +262,7 @@ impl Parser<'_> {
             }
         }
 
-        self.expect_closing(
+        self.expect(
             TokenKind::CloseParen,
             "closing parenthesis after function arguments",
         )?;
@@ -260,7 +289,7 @@ impl Parser<'_> {
     /// Parse a block expression: `{ stmts; value }`
     pub fn parse_block(&mut self) -> Option<Id<Expr>> {
         let start = self.current_span();
-        self.expect_closing(
+        self.expect(
             TokenKind::OpenBrace,
             "an opening brace for the expression block",
         )?;
@@ -286,7 +315,7 @@ impl Parser<'_> {
             }
         }
 
-        self.expect_closing(
+        self.expect(
             TokenKind::CloseBrace,
             "a closing brace after the expression block",
         )?;
@@ -300,7 +329,7 @@ impl Parser<'_> {
 
         let struct_name = self.parse_path("a constructor name")?;
 
-        self.expect_closing(TokenKind::OpenBrace, "constructor fields")?;
+        self.expect(TokenKind::OpenBrace, "constructor fields")?;
         let mut fields = Vec::new();
 
         if !self.at(TokenKind::CloseBrace) {
@@ -314,7 +343,7 @@ impl Parser<'_> {
             }
         }
 
-        self.expect_closing(
+        self.expect(
             TokenKind::CloseBrace,
             "a closing brace after constructor fields",
         )?;
@@ -331,7 +360,7 @@ impl Parser<'_> {
 
     fn parse_constructor_field(&mut self) -> Option<(Ident, Id<Expr>)> {
         let name = self.parse_ident("a constructor field name")?;
-        self.expect_closing(TokenKind::Colon, "a constructor field value")?;
+        self.expect(TokenKind::Colon, "a constructor field value")?;
         let value = self.parse_expr()?;
         Some((name, value))
     }

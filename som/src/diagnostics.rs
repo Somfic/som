@@ -164,7 +164,8 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::For
         | TokenKind::Struct
         | TokenKind::Use
-        | TokenKind::Mut => MAUVE,
+        | TokenKind::Mut
+        | TokenKind::Impl => MAUVE,
         TokenKind::I8
         | TokenKind::I16
         | TokenKind::I32

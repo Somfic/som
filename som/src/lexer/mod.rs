@@ -11,6 +11,8 @@ pub enum TokenKind {
     Extern,
     #[token("struct")]
     Struct,
+    #[token("impl")]
+    Impl,
     #[token("let")]
     Let,
     #[token("if")]
@@ -155,6 +157,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Fn => write!(f, "fn"),
             TokenKind::Extern => write!(f, "extern"),
             TokenKind::Struct => write!(f, "struct"),
+            TokenKind::Impl => write!(f, "impl"),
             TokenKind::Let => write!(f, "let"),
             TokenKind::If => write!(f, "if"),
             TokenKind::Else => write!(f, "else"),

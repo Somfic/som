@@ -48,6 +48,11 @@ pub enum Expr {
         target: Id<Expr>,
         value: Id<Expr>,
     },
+    MethodCall {
+        object: Id<Expr>,
+        method: Ident,
+        args: Vec<Id<Expr>>,
+    },
 }
 
 pub enum BinOp {

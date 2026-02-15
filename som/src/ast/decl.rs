@@ -5,8 +5,14 @@ pub enum Decl {
     Func(Id<Func>),
     Trait(Id<Trait>),
     Impl(Id<Impl>),
+    ImplBlock(ImplBlock),
     ExternBlock(ExternBlock),
     Use(Id<Use>),
+}
+
+pub struct ImplBlock {
+    pub name: Ident,
+    pub methods: Vec<Id<Func>>,
 }
 
 pub struct ExternBlock {

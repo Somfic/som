@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 use crate::{
-    Ast, Decl, Expr, ExternBlock, ExternFunc, Func, Ident, Module, Span, Stmt, Struct, Type, Use,
+    Ast, Decl, Expr, ExternBlock, ExternFunc, Func, Ident, ImplBlock, Module, Span, Stmt, Struct,
+    Type, Use,
     arena::Id,
 };
 
@@ -180,6 +181,40 @@ impl AstBuilder {
     /// Add an extern block declaration
     pub fn add_extern_block(&mut self, block: ExternBlock) {
         self.add_decl(Decl::ExternBlock(block));
+    }
+
+    /// Add an impl block, re-registering methods under `StructName::method_name`
+    pub fn add_impl_block(&mut self, block: ImplBlock) {
+        let struct_name = block.name.value.to_string();
+        let module_name = self.current_module_name().map(|s| s.to_string());
+
+        for &func_id in &block.methods {
+            let func = self.ast.funcs.get(&func_id);
+            let bare_name = func.name.value.to_string();
+
+            // Remove the old registry entry (bare name or module::name)
+            let old_key = match &module_name {
+                Some(module) => format!("{}::{}", module, bare_name),
+                None => bare_name.clone(),
+            };
+            let entry = self.ast.func_registry.remove(&old_key);
+
+            // Re-register as StructName::method_name (and module::StructName::method_name)
+            if let Some(entry) = entry {
+                let method_key = format!("{}::{}", struct_name, bare_name);
+                match &module_name {
+                    Some(module) => {
+                        let qualified = format!("{}::{}", module, method_key);
+                        self.ast.func_registry.insert(qualified, entry);
+                    }
+                    None => {
+                        self.ast.func_registry.insert(method_key, entry);
+                    }
+                }
+            }
+        }
+
+        self.add_decl(Decl::ImplBlock(block));
     }
 
     // --- Finalization ---

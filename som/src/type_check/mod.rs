@@ -138,7 +138,7 @@ impl TypeInferencer {
                 // then try imported module prefixes
                 let entry = match ast.func_registry.get(&registry_key) {
                     Some(entry) => entry.clone(),
-                    None if !name.is_qualified() => {
+                    None => {
                         // Try current module first
                         let mut found = None;
                         if let Some(ref module) = self.current_module {
@@ -179,20 +179,6 @@ impl TypeInferencer {
                                 return self.fresh_type();
                             }
                         }
-                    }
-                    None => {
-                        for arg in args {
-                            self.infer(ast, arg);
-                        }
-                        let func_name = name.name().value.to_string();
-                        self.errors.push(TypeError::UnknownFunction {
-                            span: ast.get_expr_span(expr_id).clone(),
-                            available_functions: self.function_candidates(ast, &func_name),
-                            module_suggestions: self
-                                .module_suggestions_for_function(ast, &func_name),
-                            name: name.to_string(),
-                        });
-                        return self.fresh_type();
                     }
                 };
 
@@ -475,6 +461,151 @@ impl TypeInferencer {
                         self.fresh_type()
                     }
                 }
+            }
+            Expr::MethodCall {
+                object,
+                method,
+                args,
+            } => {
+                // Infer object type to determine the struct name
+                let obj_ty = self.infer(ast, object);
+                let obj_ty_normalized = self.normalize(&obj_ty);
+
+                let struct_name = match &obj_ty_normalized {
+                    Type::Named(name) => name.clone(),
+                    Type::Reference { to, .. } => match to.as_ref() {
+                        Type::Named(name) => name.clone(),
+                        _ => {
+                            self.errors.push(TypeError::Internal {
+                                span: ast.get_expr_span(expr_id).clone(),
+                                message: "method call on non-struct type".into(),
+                            });
+                            return self.fresh_type();
+                        }
+                    },
+                    _ => {
+                        self.errors.push(TypeError::Internal {
+                            span: ast.get_expr_span(expr_id).clone(),
+                            message: "method call on non-struct type".into(),
+                        });
+                        return self.fresh_type();
+                    }
+                };
+
+                // Look up StructName::method in func_registry
+                let method_key = format!("{}::{}", struct_name, method.value);
+                let entry = match ast.func_registry.get(&method_key) {
+                    Some(entry) => entry.clone(),
+                    None => {
+                        // Try with current module prefix
+                        let mut found = None;
+                        if let Some(ref module) = self.current_module {
+                            let key = format!("{}::{}", module, method_key);
+                            if let Some(entry) = ast.func_registry.get(&key) {
+                                found = Some(entry.clone());
+                            }
+                        }
+                        // Try imported modules
+                        if found.is_none() {
+                            let use_mods = self
+                                .current_module
+                                .as_ref()
+                                .map(|m| ast.use_modules(m))
+                                .unwrap_or_default();
+                            for imported in use_mods {
+                                let key = format!("{}::{}", imported, method_key);
+                                if let Some(entry) = ast.func_registry.get(&key) {
+                                    found = Some(entry.clone());
+                                    break;
+                                }
+                            }
+                        }
+                        match found {
+                            Some(entry) => entry,
+                            None => {
+                                for arg in args {
+                                    self.infer(ast, arg);
+                                }
+                                self.errors.push(TypeError::UnknownFunction {
+                                    span: ast.get_expr_span(expr_id).clone(),
+                                    available_functions: vec![],
+                                    module_suggestions: vec![],
+                                    name: method_key,
+                                });
+                                return self.fresh_type();
+                            }
+                        }
+                    }
+                };
+
+                // Check argument count: method params include self, so expected = params.len() - 1
+                let expected_args = entry.signature.params.len().saturating_sub(1);
+                if args.len() != expected_args {
+                    self.errors.push(TypeError::WrongArgCount {
+                        span: ast.get_expr_span(expr_id).clone(),
+                        expected: expected_args,
+                        found: args.len(),
+                    });
+                    return self.fresh_type();
+                }
+
+                // Handle generics
+                let call_generics: HashMap<String, TypeVar> = match &entry.kind {
+                    crate::FuncKind::Regular(func_id) => {
+                        let func = ast.funcs.get(func_id);
+                        func.type_parameters
+                            .iter()
+                            .map(|tp| (tp.name.value.to_string(), self.fresh_type_var()))
+                            .collect()
+                    }
+                    crate::FuncKind::Extern(_) => HashMap::new(),
+                };
+
+                let call_span = ast.get_expr_span(expr_id);
+
+                // Constrain self parameter (first param) to match object type
+                if let Some(self_param_ty) = entry.signature.params.first() {
+                    let resolved_self = self.resolve_type(self_param_ty, &call_generics, call_span, ast);
+                    self.constraints.push(Constraint::Equal {
+                        provenance: Provenance::FuncArg {
+                            arg_expr: *object,
+                            param_type_id: None,
+                        },
+                        expected: resolved_self,
+                        actual: obj_ty,
+                    });
+                }
+
+                // Collect param type IDs from function definition
+                let param_type_ids: Vec<Option<Id<Type>>> = match &entry.kind {
+                    crate::FuncKind::Regular(func_id) => {
+                        let func = ast.funcs.get(func_id);
+                        func.parameters.iter().map(|p| p.type_id).collect()
+                    }
+                    crate::FuncKind::Extern(extern_id) => {
+                        let func = ast.extern_funcs.get(extern_id);
+                        func.parameters.iter().map(|p| p.type_id).collect()
+                    }
+                };
+
+                // Constrain remaining args against remaining params (skip self)
+                for (i, (arg_expr, param_ty)) in
+                    args.iter().zip(entry.signature.params.iter().skip(1)).enumerate()
+                {
+                    let resolved_ty = self.resolve_type(param_ty, &call_generics, call_span, ast);
+                    let actual = self.infer(ast, arg_expr);
+                    self.constraints.push(Constraint::Equal {
+                        provenance: Provenance::FuncArg {
+                            arg_expr: *arg_expr,
+                            param_type_id: param_type_ids.get(i + 1).copied().flatten(),
+                        },
+                        expected: resolved_ty,
+                        actual,
+                    });
+                }
+
+                // Return the function's return type
+                self.resolve_type(&entry.signature.return_type, &call_generics, call_span, ast)
             }
             Expr::Assignment { target, value } => {
                 // Infer the type of the target
@@ -931,8 +1062,16 @@ impl TypeInferencer {
 
             // Check functions declared in this module
             for decl in &module.decs {
-                if let crate::Decl::Func(func_id) = decl {
-                    self.check_func(&ast, *func_id);
+                match decl {
+                    crate::Decl::Func(func_id) => {
+                        self.check_func(&ast, *func_id);
+                    }
+                    crate::Decl::ImplBlock(block) => {
+                        for &method_id in &block.methods {
+                            self.check_func(&ast, method_id);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }

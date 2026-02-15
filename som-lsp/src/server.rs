@@ -735,6 +735,7 @@ impl LanguageServer for SomLanguageServer {
                 TokenKind::Fn
                 | TokenKind::Extern
                 | TokenKind::Struct
+                | TokenKind::Impl
                 | TokenKind::Let
                 | TokenKind::If
                 | TokenKind::Else
