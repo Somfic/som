@@ -63,8 +63,10 @@ impl BorrowError {
                 move_expr,
                 borrow_expr,
             } => {
-                let mut diag =
-                    Diagnostic::error(format!("cannot move {} because it is borrowed", name.as_var()));
+                let mut diag = Diagnostic::error(format!(
+                    "cannot move {} because it is borrowed",
+                    name.as_var()
+                ));
 
                 let move_span = typed_ast.ast.get_expr_span(move_expr);
                 diag = diag.with_label(Label::primary(move_span.clone(), "move occurs here"));

@@ -38,7 +38,11 @@ impl AstBuilder {
     }
 
     fn current_module_name(&self) -> Option<&str> {
-        self.ast.mods.last().map(|m| m.name.as_ref()).filter(|n| !n.is_empty())
+        self.ast
+            .mods
+            .last()
+            .map(|m| m.name.as_ref())
+            .filter(|n| !n.is_empty())
     }
 
     // --- Span tracking ---

@@ -36,7 +36,8 @@ impl ProgramError {
                 module.as_module()
             )),
             ProgramError::ModuleNotFound { name, path, span } => {
-                let diag = Diagnostic::error(format!("module {} could not be found", name.as_module()));
+                let diag =
+                    Diagnostic::error(format!("module {} could not be found", name.as_module()));
                 match span {
                     Some(s) => diag
                         .with_label(Label::primary(s.clone(), "unknown module"))
@@ -120,13 +121,12 @@ impl ProgramLoader {
         // Process each bundled file
         for file in bundled.files {
             // Create Source from embedded string with synthetic path
-            let synthetic_path = format!("<{}>/{}",name, file.name);
+            let synthetic_path = format!("<{}>/{}", name, file.name);
             let source = Source::from_raw_at(file.content, &synthetic_path);
             let source = Arc::new(source);
 
             let module_path = PathBuf::from(&synthetic_path);
-            let parse_errors =
-                parser::parse_module(source, &mut self.builder, name, module_path);
+            let parse_errors = parser::parse_module(source, &mut self.builder, name, module_path);
 
             if !parse_errors.is_empty() {
                 self.errors.push(ProgramError::Parse(parse_errors));

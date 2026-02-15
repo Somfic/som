@@ -259,7 +259,10 @@ fn test_module_loaded_only_once() {
 
     // shared should only be loaded once despite being used 3 times
     let shared_count = ast.mods.iter().filter(|m| &*m.name == "shared").count();
-    assert_eq!(shared_count, 1, "shared module should be loaded exactly once");
+    assert_eq!(
+        shared_count, 1,
+        "shared module should be loaded exactly once"
+    );
 }
 
 #[test]

@@ -208,11 +208,26 @@ impl<'ast> Codegen<'ast> {
                     let base = func_ctx.body.ins().stack_addr(types::I64, slot, 0);
 
                     if layout.size <= 8 {
-                        func_ctx.body.ins().store(MemFlags::new(), block_params[param_idx], base, 0);
+                        func_ctx.body.ins().store(
+                            MemFlags::new(),
+                            block_params[param_idx],
+                            base,
+                            0,
+                        );
                         param_idx += 1;
                     } else if layout.size <= 16 {
-                        func_ctx.body.ins().store(MemFlags::new(), block_params[param_idx], base, 0);
-                        func_ctx.body.ins().store(MemFlags::new(), block_params[param_idx + 1], base, 8);
+                        func_ctx.body.ins().store(
+                            MemFlags::new(),
+                            block_params[param_idx],
+                            base,
+                            0,
+                        );
+                        func_ctx.body.ins().store(
+                            MemFlags::new(),
+                            block_params[param_idx + 1],
+                            base,
+                            8,
+                        );
                         param_idx += 2;
                     } else {
                         panic!("structs larger than 16 bytes not yet supported");
@@ -235,22 +250,27 @@ impl<'ast> Codegen<'ast> {
 
         // For struct returns, load the struct from stack into register(s)
         if let Type::Named(struct_name) = return_type {
-            let struct_id = self
-                .typed_ast
-                .ast
-                .find_struct_by_name(struct_name)
-                .unwrap();
+            let struct_id = self.typed_ast.ast.find_struct_by_name(struct_name).unwrap();
             let struct_def = self.typed_ast.ast.structs.get(&struct_id);
             let layout = struct_def.compute_layout();
 
             // return_value is a pointer to the struct on stack
             // Load the packed struct value to return in register(s)
             if layout.size <= 8 {
-                let val = func_ctx.body.ins().load(types::I64, MemFlags::new(), return_value, 0);
+                let val = func_ctx
+                    .body
+                    .ins()
+                    .load(types::I64, MemFlags::new(), return_value, 0);
                 func_ctx.body.ins().return_(&[val]);
             } else if layout.size <= 16 {
-                let val1 = func_ctx.body.ins().load(types::I64, MemFlags::new(), return_value, 0);
-                let val2 = func_ctx.body.ins().load(types::I64, MemFlags::new(), return_value, 8);
+                let val1 = func_ctx
+                    .body
+                    .ins()
+                    .load(types::I64, MemFlags::new(), return_value, 0);
+                let val2 = func_ctx
+                    .body
+                    .ins()
+                    .load(types::I64, MemFlags::new(), return_value, 8);
                 func_ctx.body.ins().return_(&[val1, val2]);
             } else {
                 panic!("structs larger than 16 bytes not yet supported");
@@ -404,10 +424,25 @@ impl<'ast> Codegen<'ast> {
                         let layout = struct_def.compute_layout();
 
                         if layout.size <= 8 {
-                            arguments.push(func.body.ins().load(types::I64, MemFlags::new(), val, 0));
+                            arguments.push(func.body.ins().load(
+                                types::I64,
+                                MemFlags::new(),
+                                val,
+                                0,
+                            ));
                         } else if layout.size <= 16 {
-                            arguments.push(func.body.ins().load(types::I64, MemFlags::new(), val, 0));
-                            arguments.push(func.body.ins().load(types::I64, MemFlags::new(), val, 8));
+                            arguments.push(func.body.ins().load(
+                                types::I64,
+                                MemFlags::new(),
+                                val,
+                                0,
+                            ));
+                            arguments.push(func.body.ins().load(
+                                types::I64,
+                                MemFlags::new(),
+                                val,
+                                8,
+                            ));
                         } else {
                             panic!("structs larger than 16 bytes not yet supported");
                         }

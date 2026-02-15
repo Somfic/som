@@ -1,8 +1,6 @@
 //! End-to-end tests for the bundled standard library.
 
-use som::{
-    BorrowChecker, Codegen, Linker, ProgramLoader, Runner, TypeInferencer,
-};
+use som::{BorrowChecker, Codegen, Linker, ProgramLoader, Runner, TypeInferencer};
 use std::fs;
 use target_lexicon::Triple;
 use tempfile::{NamedTempFile, TempDir};

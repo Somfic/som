@@ -184,7 +184,9 @@ impl TypeInferencer {
                 };
 
                 // Check each argument against parameter type
-                for (i, (arg_expr, param_ty)) in args.iter().zip(&entry.signature.params).enumerate() {
+                for (i, (arg_expr, param_ty)) in
+                    args.iter().zip(&entry.signature.params).enumerate()
+                {
                     let resolved_ty = self.resolve_type(param_ty, &call_generics, call_span, ast);
                     let actual = self.infer(ast, arg_expr);
                     self.constraints.push(Constraint::Equal {
