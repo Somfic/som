@@ -26,7 +26,7 @@ impl Parser<'_> {
                     break;
                 }
                 self.advance(); // consume '.'
-                let field = self.parse_ident()?;
+                let field = self.parse_ident("a field name")?;
                 let span = start.merge(&self.previous_span());
                 lhs = self
                     .builder
@@ -174,7 +174,7 @@ impl Parser<'_> {
                 if is_constructor {
                     self.parse_constructor()
                 } else {
-                    let name = self.parse_path()?;
+                    let name = self.parse_path("an identifier or constructor name")?;
                     Some(self.builder.alloc_expr(Expr::Var(name), start))
                 }
             }
@@ -182,14 +182,14 @@ impl Parser<'_> {
             TokenKind::OpenParen => {
                 self.advance();
                 let inner = self.parse_expr()?;
-                self.expect(TokenKind::CloseParen)?;
+                self.expect_closing(TokenKind::CloseParen, "closing parenthesis")?;
                 Some(inner)
             }
 
             TokenKind::OpenBrace => self.parse_block(),
 
             _ => {
-                self.error("expected expression".into());
+                self.error_missing("expected expression", "an expression");
                 // Return a hole expression for error recovery
                 Some(self.builder.alloc_hole(start))
             }
@@ -200,10 +200,10 @@ impl Parser<'_> {
     // TODO: Add linter warning when both branches are blocks (side-effects only).
     //       In that case, prefer statement form: `if condition { } else { }`
     fn parse_conditional(&mut self, truthy: Id<Expr>, start: crate::Span) -> Option<Id<Expr>> {
-        self.expect(TokenKind::If)?;
+        self.expect_closing(TokenKind::If, "a condition")?;
 
         let condition = self.parse_expr()?;
-        self.expect(TokenKind::Else)?;
+        self.expect_closing(TokenKind::Else, "an else branch")?;
         let falsy = self.parse_expr()?;
 
         let span = start.merge(&self.previous_span());
@@ -219,7 +219,7 @@ impl Parser<'_> {
 
     /// Parse a function call
     fn parse_call(&mut self, callee: Id<Expr>, start: crate::Span) -> Option<Id<Expr>> {
-        self.expect(TokenKind::OpenParen)?;
+        self.expect_closing(TokenKind::OpenParen, "a list of function arguments")?;
 
         let mut args = Vec::new();
         if !self.at(TokenKind::CloseParen) {
@@ -233,7 +233,10 @@ impl Parser<'_> {
             }
         }
 
-        self.expect(TokenKind::CloseParen)?;
+        self.expect_closing(
+            TokenKind::CloseParen,
+            "closing parenthesis after function arguments",
+        )?;
 
         let span = start.merge(&self.previous_span());
 
@@ -248,7 +251,7 @@ impl Parser<'_> {
                 span,
             )),
             _ => {
-                self.error("expected function name".into());
+                self.error_missing("expected function name", "a function name");
                 Some(self.builder.alloc_hole(span))
             }
         }
@@ -257,7 +260,10 @@ impl Parser<'_> {
     /// Parse a block expression: `{ stmts; value }`
     pub fn parse_block(&mut self) -> Option<Id<Expr>> {
         let start = self.current_span();
-        self.expect(TokenKind::OpenBrace)?;
+        self.expect_closing(
+            TokenKind::OpenBrace,
+            "an opening brace for the expression block",
+        )?;
 
         let mut stmts = Vec::new();
         let mut value = None;
@@ -270,7 +276,7 @@ impl Parser<'_> {
                         // Last expression without semicolon - this is the block's value
                         value = Some(expr);
                     } else {
-                        self.error("expected `;` or `}`".into());
+                        self.error_missing("expected `;` or `}`", "a semicolon or closing brace");
                         break;
                     }
                 }
@@ -280,7 +286,10 @@ impl Parser<'_> {
             }
         }
 
-        self.expect(TokenKind::CloseBrace)?;
+        self.expect_closing(
+            TokenKind::CloseBrace,
+            "a closing brace after the expression block",
+        )?;
 
         let span = start.merge(&self.previous_span());
         Some(self.builder.alloc_expr(Expr::Block { stmts, value }, span))
@@ -289,9 +298,9 @@ impl Parser<'_> {
     pub fn parse_constructor(&mut self) -> Option<Id<Expr>> {
         let start = self.current_span();
 
-        let struct_name = self.parse_path()?;
+        let struct_name = self.parse_path("a constructor name")?;
 
-        self.expect(TokenKind::OpenBrace)?;
+        self.expect_closing(TokenKind::OpenBrace, "constructor fields")?;
         let mut fields = Vec::new();
 
         if !self.at(TokenKind::CloseBrace) {
@@ -305,7 +314,10 @@ impl Parser<'_> {
             }
         }
 
-        self.expect(TokenKind::CloseBrace)?;
+        self.expect_closing(
+            TokenKind::CloseBrace,
+            "a closing brace after constructor fields",
+        )?;
 
         let span = start.merge(&self.previous_span());
         Some(self.builder.alloc_expr(
@@ -318,8 +330,8 @@ impl Parser<'_> {
     }
 
     fn parse_constructor_field(&mut self) -> Option<(Ident, Id<Expr>)> {
-        let name = self.parse_ident()?;
-        self.expect(TokenKind::Colon)?;
+        let name = self.parse_ident("a constructor field name")?;
+        self.expect_closing(TokenKind::Colon, "a constructor field value")?;
         let value = self.parse_expr()?;
         Some((name, value))
     }

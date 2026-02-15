@@ -78,7 +78,7 @@ impl Parser<'_> {
                     if self.at_eof() {
                         value = Some(expr);
                     } else {
-                        self.error("expected `;`".into());
+                        self.error_missing("expected ;", "a semicolon after the expression");
                         break;
                     }
                 }
@@ -110,13 +110,13 @@ impl Parser<'_> {
 
     fn parse_use(&mut self) -> Option<Id<Use>> {
         let start = self.current_span();
-        self.expect(TokenKind::Use);
+        self.expect_closing(TokenKind::Use, "a use statement");
 
         let path_start = self.current_span();
-        let path = self.parse_path()?;
+        let path = self.parse_path("an import path")?;
         let path_span = path_start.merge(&self.previous_span());
 
-        self.expect(TokenKind::Semicolon);
+        self.expect_closing(TokenKind::Semicolon, "a semicolon after the use statement")?;
 
         let span = start.merge(&self.previous_span());
 
@@ -125,26 +125,29 @@ impl Parser<'_> {
 
     fn parse_struct(&mut self) -> Option<Id<Struct>> {
         let start = self.current_span();
-        self.expect(TokenKind::Struct)?;
+        self.expect_closing(TokenKind::Struct, "a struct declaration")?;
 
-        let name = self.parse_ident()?;
+        let name = self.parse_ident("a struct name")?;
 
-        self.expect(TokenKind::OpenBrace)?;
+        self.expect_closing(TokenKind::OpenBrace, "a list of struct fields")?;
 
-        let fields = self.parse_separated(TokenKind::Comma, TokenKind::CloseBrace, |p| {
-            p.parse_struct_field()
-        })?;
+        let fields = self.parse_separated(
+            TokenKind::Comma,
+            TokenKind::CloseBrace,
+            |p| p.parse_struct_field(),
+            "a struct field",
+        )?;
 
-        self.expect(TokenKind::CloseBrace)?;
+        self.expect_closing(TokenKind::CloseBrace, "a closing brace after struct fields")?;
 
         let span = start.merge(&self.previous_span());
         Some(self.builder.alloc_struct(Struct { name, fields }, span))
     }
 
     fn parse_struct_field(&mut self) -> Option<StructField> {
-        let name = self.parse_ident()?;
+        let name = self.parse_ident("a struct field name")?;
 
-        self.expect(TokenKind::Colon)?;
+        self.expect_closing(TokenKind::Colon, "a struct field type")?;
         let ty_start = self.current_span();
         let ty = self.parse_type()?;
         let ty_span = ty_start.merge(&self.previous_span());
@@ -156,9 +159,9 @@ impl Parser<'_> {
     /// Parse a function declaration: `fn name<T>(params) -> RetType { body }`
     fn parse_function(&mut self) -> Option<Id<Func>> {
         let start = self.current_span();
-        self.expect(TokenKind::Fn)?;
+        self.expect_closing(TokenKind::Fn, "a function declaration")?;
 
-        let name = self.parse_ident()?;
+        let name = self.parse_ident("a function name")?;
 
         // Parse optional type parameters: <T, U>
         let type_parameters = if self.eat(TokenKind::LessThan) {
@@ -168,9 +171,12 @@ impl Parser<'_> {
         };
 
         // Parse parameters: (x: i32, y: bool)
-        self.expect(TokenKind::OpenParen)?;
+        self.expect_closing(TokenKind::OpenParen, "a list of function parameters")?;
         let parameters = self.parse_func_params()?;
-        self.expect(TokenKind::CloseParen)?;
+        self.expect_closing(
+            TokenKind::CloseParen,
+            "a closing parenthesis after function parameters",
+        )?;
 
         // Parse optional return type: -> i32
         let (return_type, return_type_id) = if self.eat(TokenKind::Arrow) {
@@ -205,19 +211,22 @@ impl Parser<'_> {
         let mut params = Vec::new();
 
         if !self.at(TokenKind::GreaterThan) {
-            let name = self.parse_ident()?;
+            let name = self.parse_ident("a type parameter name")?;
             params.push(FuncTypeParam { name });
 
             while self.eat(TokenKind::Comma) {
                 if self.at(TokenKind::GreaterThan) {
                     break; // Trailing comma
                 }
-                let name = self.parse_ident()?;
+                let name = self.parse_ident("a type parameter name")?;
                 params.push(FuncTypeParam { name });
             }
         }
 
-        self.expect(TokenKind::GreaterThan)?;
+        self.expect_closing(
+            TokenKind::GreaterThan,
+            "a closing angle bracket for type parameters",
+        )?;
         Some(params)
     }
 
@@ -241,7 +250,7 @@ impl Parser<'_> {
 
     /// Parse a single function parameter: name: Type
     fn parse_func_param(&mut self) -> Option<FuncParam> {
-        let name = self.parse_ident()?;
+        let name = self.parse_ident("a function parameter name")?;
 
         let (ty, type_id) = if self.eat(TokenKind::Colon) {
             let ty_start = self.current_span();
@@ -258,7 +267,7 @@ impl Parser<'_> {
 
     /// Parse an extern block: `extern "lib" { fn foo(); }`
     fn parse_extern_block(&mut self) -> Option<ExternBlock> {
-        self.expect(TokenKind::Extern)?;
+        self.expect_closing(TokenKind::Extern, "an extern block")?;
 
         // Parse optional library name: "SDL2"
         let library = if self.at(TokenKind::Text) {
@@ -272,7 +281,10 @@ impl Parser<'_> {
             None
         };
 
-        self.expect(TokenKind::OpenBrace)?;
+        self.expect_closing(
+            TokenKind::OpenBrace,
+            "a list of extern function declarations",
+        )?;
 
         let mut functions = Vec::new();
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
@@ -283,12 +295,15 @@ impl Parser<'_> {
                     self.recover(RecoveryLevel::Declaration);
                 }
             } else {
-                self.error("expected `fn` in extern block".into());
+                self.error_missing(
+                    "expected extern function declaration",
+                    "an extern function declaration",
+                );
                 self.recover(RecoveryLevel::Declaration);
             }
         }
 
-        self.expect(TokenKind::CloseBrace)?;
+        self.expect_closing(TokenKind::CloseBrace, "a closing brace after extern block")?;
 
         Some(ExternBlock { library, functions })
     }
@@ -296,14 +311,17 @@ impl Parser<'_> {
     /// Parse an extern function declaration: `fn name(params) -> RetType;`
     fn parse_extern_func(&mut self) -> Option<Id<ExternFunc>> {
         let start = self.current_span();
-        self.expect(TokenKind::Fn)?;
+        self.expect_closing(TokenKind::Fn, "an function declaration")?;
 
-        let name = self.parse_ident()?;
+        let name = self.parse_ident("a function name")?;
 
         // Parse parameters
-        self.expect(TokenKind::OpenParen)?;
+        self.expect_closing(TokenKind::OpenParen, "a list of function parameters")?;
         let parameters = self.parse_extern_func_params()?;
-        self.expect(TokenKind::CloseParen)?;
+        self.expect_closing(
+            TokenKind::CloseParen,
+            "a closing parenthesis after function parameters",
+        )?;
 
         // Parse optional return type
         let return_type = if self.eat(TokenKind::Arrow) {
@@ -312,7 +330,10 @@ impl Parser<'_> {
             None
         };
 
-        self.expect(TokenKind::Semicolon)?;
+        self.expect_closing(
+            TokenKind::Semicolon,
+            "a semicolon after extern function declaration",
+        )?;
 
         let span = start.merge(&self.previous_span());
         Some(self.builder.alloc_extern_func(
@@ -345,9 +366,9 @@ impl Parser<'_> {
 
     /// Parse an extern function parameter
     fn parse_extern_func_param(&mut self) -> Option<FuncParam> {
-        let name = self.parse_ident()?;
+        let name = self.parse_ident("a function parameter name")?;
 
-        self.expect(TokenKind::Colon)?;
+        self.expect_closing(TokenKind::Colon, "a colon after function parameter name")?;
         let ty = self.parse_type()?;
 
         Some(FuncParam {

@@ -104,7 +104,16 @@ impl<'ast> Parser<'ast> {
     }
 
     pub fn previous_span(&self) -> Span {
-        self.tokens[self.pos.saturating_sub(1)].span.clone()
+        let mut pos = self.pos.saturating_sub(1);
+        while pos > 0
+            && matches!(
+                self.tokens[pos].kind,
+                TokenKind::Whitespace | TokenKind::Comment
+            )
+        {
+            pos -= 1;
+        }
+        self.tokens[pos].span.clone()
     }
 
     // --- Token consumption ---
@@ -132,31 +141,40 @@ impl<'ast> Parser<'ast> {
         }
     }
 
-    pub fn expect(&mut self, kind: TokenKind) -> Option<Span> {
+    pub fn expect_closing(&mut self, kind: TokenKind, expected: impl Into<String>) -> Option<Span> {
         if self.at(kind) {
             let span = self.current_span();
             self.advance();
             self.in_recovery = false;
             Some(span)
         } else {
-            self.error_expected(&[kind]);
+            if !self.in_recovery {
+                self.errors.push(ParseError {
+                    message: format!("missing {kind}"),
+                    hint: format!("expected {}", expected.into()),
+                    span: self.previous_span().after(),
+                });
+            }
+            self.in_recovery = true;
             None
         }
     }
 
     // --- Error handling ---
 
-    pub fn error(&mut self, message: String) {
+    pub fn error_missing(&mut self, message: impl Into<String>, expected: impl Into<String>) {
         if !self.in_recovery {
             self.errors.push(ParseError {
-                message,
-                span: self.current_span(),
+                message: message.into(),
+                hint: format!("expected {}", expected.into()),
+                span: self.previous_span().after(),
             });
         }
         self.in_recovery = true;
     }
 
-    pub fn error_expected(&mut self, expected: &[TokenKind]) {
+    pub fn error_expected(&mut self, expected: &[TokenKind], expected_desc: impl Into<String>) {
+        let expected_desc = expected_desc.into();
         let msg = if expected.len() == 1 {
             format!("expected {}, found {}", expected[0], self.peek())
         } else {
@@ -170,7 +188,7 @@ impl<'ast> Parser<'ast> {
                 self.peek()
             )
         };
-        self.error(msg);
+        self.error_missing(msg, expected_desc);
     }
 
     // --- Error recovery ---
@@ -192,9 +210,7 @@ impl<'ast> Parser<'ast> {
                 TokenKind::If,
                 TokenKind::Fn,
             ],
-            RecoveryLevel::Declaration => {
-                &[TokenKind::Fn, TokenKind::Extern, TokenKind::CloseBrace]
-            }
+            RecoveryLevel::Declaration => &[TokenKind::Fn, TokenKind::Extern, TokenKind::Struct],
         };
 
         while !self.at_eof() {
@@ -245,19 +261,21 @@ impl<'ast> Parser<'ast> {
         }
     }
 
-    pub fn parse_ident(&mut self) -> Option<Ident> {
+    pub fn parse_ident(&mut self, expected: impl Into<String>) -> Option<Ident> {
         if self.at(TokenKind::Ident) {
             let text = self.peek_token().text.clone();
             self.advance();
             Some(self.builder.make_ident(&text))
         } else {
-            self.error_expected(&[TokenKind::Ident]);
+            self.error_expected(&[TokenKind::Ident], expected);
             None
         }
     }
 
-    pub fn parse_path(&mut self) -> Option<Path> {
-        let path = self.parse_separated_while(TokenKind::DoubleColon, |p| p.parse_ident())?;
+    pub fn parse_path(&mut self, expected: impl Into<String>) -> Option<Path> {
+        let expected = expected.into();
+        let path = self
+            .parse_separated_while(TokenKind::DoubleColon, |p| p.parse_ident(expected.clone()))?;
         Some(Path(path))
     }
 
@@ -266,12 +284,14 @@ impl<'ast> Parser<'ast> {
         separator: TokenKind,
         terminator: TokenKind, // e.g., CloseParen
         mut parse_item: impl FnMut(&mut Self) -> Option<T>,
+        expected: impl Into<String>,
     ) -> Option<Vec<T>> {
+        let expected = expected.into();
         let mut items = vec![];
 
         while !self.at(terminator) {
             if items.len() > 0 {
-                self.expect(separator)?;
+                self.expect_closing(separator, expected.clone())?;
                 if self.at(terminator) {
                     break; // trailing separator                           
                 }

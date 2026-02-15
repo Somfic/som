@@ -8,11 +8,11 @@ extern {
 }                                                                                               
                                                                                                 
 struct String {                                                                                 
-    ptr: *,                                                                                     
-    len: i32,                                                                                   
+    ptr: *,
+    len: i32,
     cap: i32,                                                                                   
 }                                                                                               
-                                                                                                
+
 fn string_new() -> String {                                                                     
     let ptr = malloc(1);                                                                        
     memset(ptr, 0, 1);                                                                          
@@ -47,7 +47,7 @@ fn string_capacity(s: &String) -> i32 {
 }                                                                                               
                                                                                                 
 fn string_is_empty(s: &String) -> bool {                                                        
-    s.len == 0                                                                                  
+    (s.len == 0)
 }                                                                                               
                                                                                                 
 fn string_as_ptr(s: &String) -> * {

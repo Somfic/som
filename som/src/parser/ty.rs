@@ -19,7 +19,7 @@ impl Parser<'_> {
 
     /// Parse a reference type: &T, &mut T, &'a T, &'a mut T
     fn parse_reference_type(&mut self) -> Option<Type> {
-        self.expect(TokenKind::Ampersand)?;
+        self.expect_closing(TokenKind::Ampersand, "a reference type")?;
 
         // Parse optional lifetime: 'a
         let lifetime = if self.at(TokenKind::SingleQuote) {
@@ -43,7 +43,7 @@ impl Parser<'_> {
 
     /// Parse a lifetime: 'a, 'static
     fn parse_lifetime(&mut self) -> Option<Lifetime> {
-        self.expect(TokenKind::SingleQuote)?;
+        self.expect_closing(TokenKind::SingleQuote, "a lifetime")?;
 
         if self.at(TokenKind::Ident) {
             let text = self.peek_token().text.clone();
@@ -55,15 +55,15 @@ impl Parser<'_> {
                 Some(Lifetime::Named(text))
             }
         } else {
-            self.error("expected lifetime name".into());
+            self.error_missing("expected lifetime name", "a lifetime identifier");
             None
         }
     }
 
     /// Parse a function type: fn(A, B) -> C
     fn parse_fn_type(&mut self) -> Option<Type> {
-        self.expect(TokenKind::Fn)?;
-        self.expect(TokenKind::OpenParen)?;
+        self.expect_closing(TokenKind::Fn, "a function type")?;
+        self.expect_closing(TokenKind::OpenParen, "function parameters")?;
 
         let mut arguments = Vec::new();
         if !self.at(TokenKind::CloseParen) {
@@ -77,7 +77,10 @@ impl Parser<'_> {
             }
         }
 
-        self.expect(TokenKind::CloseParen)?;
+        self.expect_closing(
+            TokenKind::CloseParen,
+            "closing parenthesis for function parameters",
+        )?;
 
         // Parse return type (required for fn types, defaults to Unit)
         let returns = if self.eat(TokenKind::Arrow) {
@@ -173,20 +176,23 @@ impl Parser<'_> {
                 } else {
                     // (Type) - parenthesized type
                     let inner = self.parse_type()?;
-                    self.expect(TokenKind::CloseParen)?;
+                    self.expect_closing(TokenKind::CloseParen, "closing parenthesis for type")?;
                     Some(inner)
                 }
             }
 
             _ => {
-                self.error_expected(&[
-                    TokenKind::I32,
-                    TokenKind::Bool,
-                    TokenKind::Str,
-                    TokenKind::Ident,
-                    TokenKind::Ampersand,
-                    TokenKind::Fn,
-                ]);
+                self.error_expected(
+                    &[
+                        TokenKind::I32,
+                        TokenKind::Bool,
+                        TokenKind::Str,
+                        TokenKind::Ident,
+                        TokenKind::Ampersand,
+                        TokenKind::Fn,
+                    ],
+                    "a type",
+                );
                 None
             }
         }

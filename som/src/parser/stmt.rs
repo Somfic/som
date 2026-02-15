@@ -46,10 +46,10 @@ impl Parser<'_> {
 
     fn parse_let_stmt(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
-        self.expect(TokenKind::Let)?;
+        self.expect_closing(TokenKind::Let, "a variable declaration")?;
 
         let mutable = self.eat(TokenKind::Mut);
-        let name = self.parse_ident()?;
+        let name = self.parse_ident("a variable name")?;
 
         let ty = if self.eat(TokenKind::Colon) {
             Some(self.parse_type()?)
@@ -57,9 +57,18 @@ impl Parser<'_> {
             None
         };
 
-        self.expect(TokenKind::Equals)?;
-        let value = self.parse_expr()?;
-        self.expect(TokenKind::Semicolon)?;
+        self.expect_closing(TokenKind::Equals, "a variable value")?;
+        let value = match self.parse_expr() {
+            Some(expr) => expr,
+            None => {
+                self.error_missing("missing expression", "an expression after `=`");
+                return None;
+            }
+        };
+        self.expect_closing(
+            TokenKind::Semicolon,
+            "a semicolon at the end of the variable declaration",
+        )?;
 
         let span = start.merge(&self.previous_span());
         Some(self.builder.alloc_stmt(
@@ -75,12 +84,12 @@ impl Parser<'_> {
 
     fn parse_loop(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
-        self.expect(TokenKind::Loop)?;
-        self.expect(TokenKind::OpenBrace)?;
+        self.expect_closing(TokenKind::Loop, "a loop statement")?;
+        self.expect_closing(TokenKind::OpenBrace, "an opening brace for the loop body")?;
 
         let body = self.parse_stmt_list()?;
 
-        self.expect(TokenKind::CloseBrace)?;
+        self.expect_closing(TokenKind::CloseBrace, "a closing brace for the loop body")?;
 
         let span = start.merge(&self.previous_span());
         Some(self.builder.alloc_stmt(Stmt::Loop { body }, span))
@@ -88,14 +97,14 @@ impl Parser<'_> {
 
     fn parse_while(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
-        self.expect(TokenKind::While)?;
+        self.expect_closing(TokenKind::While, "a while statement")?;
 
         let condition = self.parse_expr()?;
-        self.expect(TokenKind::OpenBrace)?;
+        self.expect_closing(TokenKind::OpenBrace, "an opening brace for the while body")?;
 
         let body = self.parse_stmt_list()?;
 
-        self.expect(TokenKind::CloseBrace)?;
+        self.expect_closing(TokenKind::CloseBrace, "a closing brace for the while body")?;
 
         let span = start.merge(&self.previous_span());
         Some(
@@ -106,14 +115,14 @@ impl Parser<'_> {
 
     fn parse_if_stmt(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
-        self.expect(TokenKind::If)?;
+        self.expect_closing(TokenKind::If, "an if statement")?;
 
         let condition = self.parse_expr()?;
-        self.expect(TokenKind::OpenBrace)?;
+        self.expect_closing(TokenKind::OpenBrace, "an opening brace for the if body")?;
 
         let then_body = self.parse_stmt_list()?;
 
-        self.expect(TokenKind::CloseBrace)?;
+        self.expect_closing(TokenKind::CloseBrace, "a closing brace for the if body")?;
 
         let else_body = if self.eat(TokenKind::Else) {
             if self.at(TokenKind::If) {
@@ -121,9 +130,9 @@ impl Parser<'_> {
                 let else_if = self.parse_if_stmt()?;
                 Some(vec![else_if])
             } else {
-                self.expect(TokenKind::OpenBrace)?;
+                self.expect_closing(TokenKind::OpenBrace, "an opening brace for the else body")?;
                 let body = self.parse_stmt_list()?;
-                self.expect(TokenKind::CloseBrace)?;
+                self.expect_closing(TokenKind::CloseBrace, "a closing brace for the else body")?;
                 Some(body)
             }
         } else {
@@ -156,7 +165,7 @@ impl Parser<'_> {
                         let stmt = self.builder.alloc_stmt(Stmt::Expr { expr }, span);
                         stmts.push(stmt);
                     } else {
-                        self.error("expected `;` or `}`".into());
+                        self.error_missing("expected `;` or `}`", "a semicolon or closing brace");
                         break;
                     }
                 }

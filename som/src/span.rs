@@ -208,4 +208,15 @@ impl Span {
             source: first.source.clone(),
         }
     }
+
+    /// Create a zero-width span pointing right after this span
+    pub fn after(&self) -> Span {
+        Span {
+            start: self.end,
+            end: self.end,
+            start_offset: self.start_offset + self.length,
+            length: 0,
+            source: self.source.clone(),
+        }
+    }
 }
