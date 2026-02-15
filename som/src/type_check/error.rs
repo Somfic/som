@@ -43,14 +43,20 @@ pub enum TypeError {
     UnknownType {
         span: Span,
         name: String,
+        available_types: Vec<String>,
+        module_suggestions: Vec<String>,
     },
     UnknownFunction {
         span: Span,
         name: String,
+        available_functions: Vec<String>,
+        module_suggestions: Vec<String>,
     },
     UnknownStruct {
         span: Span,
         name: String,
+        available_structs: Vec<String>,
+        module_suggestions: Vec<String>,
     },
     MissingField {
         span: Span,
@@ -229,18 +235,73 @@ impl TypeError {
                 Diagnostic::error(format!("internal compiler error: {}", message))
                     .with_label(Label::primary(span.clone(), "internal error occurred here"))
             }
-            TypeError::UnknownType { span, name } => {
-                Diagnostic::error(format!("cannot find type {} in this scope", name.as_type()))
-                    .with_label(Label::primary(span.clone(), "unknown type"))
-                    .with_hint(format!("did you mean to declare type {}?", name.as_type()))
+            TypeError::UnknownType {
+                span,
+                name,
+                available_types,
+                module_suggestions,
+            } => {
+                let max_dist = (name.len() / 2).max(2);
+                let mut diag = Diagnostic::error(format!("cannot find type {}", name.as_type()))
+                    .with_label(Label::primary(span.clone(), "unknown type"));
+
+                if let Some(suggestion) = closest_match(name, available_types, max_dist) {
+                    diag = diag.with_hint(format!("did you mean {}?", suggestion.as_type()));
+                }
+                for module in module_suggestions {
+                    diag = diag.with_hint(format!(
+                        "a type with this name exists in module {}. try `use {};`",
+                        module.as_module(),
+                        module
+                    ));
+                }
+                diag
             }
-            TypeError::UnknownFunction { span, name } => {
-                Diagnostic::error(format!("cannot find function {}", name.as_func()))
-                    .with_label(Label::primary(span.clone(), "unknown function"))
+            TypeError::UnknownFunction {
+                span,
+                name,
+                available_functions,
+                module_suggestions,
+            } => {
+                let max_dist = (name.len() / 2).max(2);
+                let mut diag =
+                    Diagnostic::error(format!("cannot find function {}", name.as_func()))
+                        .with_label(Label::primary(span.clone(), "unknown function"));
+
+                if let Some(suggestion) = closest_match(name, available_functions, max_dist) {
+                    diag = diag.with_hint(format!("did you mean {}?", suggestion.as_func()));
+                }
+                for module in module_suggestions {
+                    diag = diag.with_hint(format!(
+                        "a function with this name exists in module {}. try `use {};`",
+                        module.as_module(),
+                        module
+                    ));
+                }
+                diag
             }
-            TypeError::UnknownStruct { span, name } => {
-                Diagnostic::error(format!("cannot find struct {}", name.as_struct()))
-                    .with_label(Label::primary(span.clone(), "unknown struct"))
+            TypeError::UnknownStruct {
+                span,
+                name,
+                available_structs,
+                module_suggestions,
+            } => {
+                let max_dist = (name.len() / 2).max(2);
+                let mut diag =
+                    Diagnostic::error(format!("cannot find struct {}", name.as_struct()))
+                        .with_label(Label::primary(span.clone(), "unknown struct"));
+
+                if let Some(suggestion) = closest_match(name, available_structs, max_dist) {
+                    diag = diag.with_hint(format!("did you mean {}?", suggestion.as_struct()));
+                }
+                for module in module_suggestions {
+                    diag = diag.with_hint(format!(
+                        "a struct with this name exists in module {}. try `use {};`",
+                        module.as_module(),
+                        module
+                    ));
+                }
+                diag
             }
             TypeError::MissingField {
                 span,

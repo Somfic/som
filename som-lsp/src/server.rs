@@ -118,7 +118,7 @@ impl SomLanguageServer {
         let definitions = resolved.definitions;
 
         // Phase 3: Type check
-        let inferencer = TypeInferencer::new();
+        let inferencer = TypeInferencer::new().with_name_resolution();
         let typed_ast = inferencer.check_program(resolved.ast);
         for error in &typed_ast.errors {
             all_diagnostics.push(error.to_diagnostic(&typed_ast.ast));

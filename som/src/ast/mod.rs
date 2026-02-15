@@ -422,6 +422,11 @@ pub struct Module {
     pub decs: Vec<Decl>,
 }
 
+pub enum MemberKind {
+    Function,
+    Struct,
+}
+
 impl Module {
     pub fn uses<'ast>(&self, ast: &'ast Ast) -> impl Iterator<Item = &'ast Use> {
         self.decs.iter().filter_map(|d| match d {
@@ -429,9 +434,51 @@ impl Module {
             _ => None,
         })
     }
+
+    pub fn exported_members<'ast>(&self, ast: &'ast Ast) -> Vec<(&'ast str, MemberKind)> {
+        let mut members = Vec::new();
+        for decl in &self.decs {
+            match decl {
+                Decl::Func(id) => {
+                    let func = ast.funcs.get(id);
+                    members.push((func.name.value.as_ref(), MemberKind::Function));
+                }
+                Decl::Struct(id) => {
+                    let s = ast.structs.get(id);
+                    members.push((s.name.value.as_ref(), MemberKind::Struct));
+                }
+                Decl::ExternBlock(block) => {
+                    for func_id in &block.functions {
+                        let func = ast.extern_funcs.get(func_id);
+                        members.push((func.name.value.as_ref(), MemberKind::Function));
+                    }
+                }
+                _ => {}
+            }
+        }
+        members
+    }
 }
 
 impl Ast {
+    /// Get the module names imported via `use` by the given module.
+    pub fn use_modules(&self, module_name: &str) -> Vec<String> {
+        let mut modules = Vec::new();
+        for module in &self.mods {
+            if &*module.name == module_name {
+                for use_decl in module.uses(self) {
+                    if let Some(first) = use_decl.path.0.first() {
+                        let name = first.value.to_string();
+                        if !modules.contains(&name) {
+                            modules.push(name);
+                        }
+                    }
+                }
+            }
+        }
+        modules
+    }
+
     pub fn get_extern_libraries(&self) -> (Vec<String>, bool) {
         let mut libraries = Vec::new();
         let mut needs_libc = false;

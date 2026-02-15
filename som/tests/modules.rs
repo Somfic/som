@@ -1,4 +1,4 @@
-use som::{LoadErrors, ProgramError, ProgramLoader};
+use som::{LoadErrors, ProgramError, ProgramLoader, TypeInferencer};
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
@@ -417,4 +417,31 @@ fn test_module_internal_calls_work() {
     let ast = project.load().expect("should load successfully");
     assert!(ast.func_registry.contains_key("mymod::inner"));
     assert!(ast.func_registry.contains_key("mymod::outer"));
+}
+
+// ============================================================================
+// Unqualified access to imported module functions
+// ============================================================================
+
+#[test]
+fn test_use_std_println_unqualified() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use std;
+        fn main() {
+            println("Hello");
+        }
+        "#,
+    );
+
+    let ast = project.load().expect("should load successfully");
+    let inferencer = TypeInferencer::new();
+    let typed_ast = inferencer.check_program(ast);
+    assert!(
+        typed_ast.errors.is_empty(),
+        "expected no type errors when calling println with `use std;`, got: {:?}",
+        typed_ast.errors
+    );
 }

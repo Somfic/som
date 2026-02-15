@@ -1,10 +1,12 @@
 use ena::unify::InPlaceUnificationTable;
 
+use crate::diagnostics::edit_distance;
+use crate::r#std::BUNDLED_MODULES;
 use crate::{
     Ast, Expr, Func, Lifetime, LifetimeValue, LifetimeVar, Span, Stmt, Trait, Type, TypeValue,
-    TypeVar, TypedAst, arena::Id, scope::ScopedEnvironment,
+    TypeVar, TypedAst, arena::Id, ast::MemberKind, scope::ScopedEnvironment,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 mod error;
 pub use error::*;
@@ -39,6 +41,8 @@ pub struct TypeInferencer {
     expr_types: HashMap<Id<Expr>, Type>, // Track all expression types
     integer_type_vars: std::collections::HashSet<TypeVar>, // Type vars constrained to integers
     current_module: Option<String>,      // Track current module for unqualified lookups
+    /// When true, suppress UnboundVariable errors (the resolve pass already reported them)
+    suppress_unbound_variables: bool,
 }
 
 impl TypeInferencer {
@@ -53,7 +57,14 @@ impl TypeInferencer {
             expr_types: HashMap::new(),
             integer_type_vars: std::collections::HashSet::new(),
             current_module: None,
+            suppress_unbound_variables: false,
         }
+    }
+
+    /// Suppress UnboundVariable errors. Use when the resolve pass already reports them.
+    pub fn with_name_resolution(mut self) -> Self {
+        self.suppress_unbound_variables = true;
+        self
     }
 
     /// generates contraints
@@ -80,10 +91,12 @@ impl TypeInferencer {
                 match self.env.get(&ident.value) {
                     Some(ty) => ty.clone(),
                     None => {
-                        self.errors.push(TypeError::UnboundVariable {
-                            span: ast.get_expr_span(expr_id).clone(),
-                            name: ident.value.to_string(),
-                        });
+                        if !self.suppress_unbound_variables {
+                            self.errors.push(TypeError::UnboundVariable {
+                                span: ast.get_expr_span(expr_id).clone(),
+                                name: ident.value.to_string(),
+                            });
+                        }
                         self.fresh_type()
                     }
                 }
@@ -121,29 +134,65 @@ impl TypeInferencer {
             Expr::Call { name, args } => {
                 let registry_key = name.to_string();
 
-                // Try direct lookup first, then try with current module prefix
+                // Try direct lookup first, then try with current module prefix,
+                // then try imported module prefixes
                 let entry = match ast.func_registry.get(&registry_key) {
                     Some(entry) => entry.clone(),
-                    None => {
-                        // If unqualified and we have a current module, try qualified lookup
-                        let qualified_key = match (&self.current_module, name.is_qualified()) {
-                            (Some(module), false) => Some(format!("{}::{}", module, registry_key)),
-                            _ => None,
-                        };
-
-                        match qualified_key.and_then(|k| ast.func_registry.get(&k)) {
-                            Some(entry) => entry.clone(),
+                    None if !name.is_qualified() => {
+                        // Try current module first
+                        let mut found = None;
+                        if let Some(ref module) = self.current_module {
+                            let key = format!("{}::{}", module, registry_key);
+                            if let Some(entry) = ast.func_registry.get(&key) {
+                                found = Some(entry.clone());
+                            }
+                        }
+                        // Then try imported modules
+                        if found.is_none() {
+                            let use_mods = self
+                                .current_module
+                                .as_ref()
+                                .map(|m| ast.use_modules(m))
+                                .unwrap_or_default();
+                            for imported in use_mods {
+                                let key = format!("{}::{}", imported, registry_key);
+                                if let Some(entry) = ast.func_registry.get(&key) {
+                                    found = Some(entry.clone());
+                                    break;
+                                }
+                            }
+                        }
+                        match found {
+                            Some(entry) => entry,
                             None => {
                                 for arg in args {
                                     self.infer(ast, arg);
                                 }
+                                let func_name = name.name().value.to_string();
                                 self.errors.push(TypeError::UnknownFunction {
                                     span: ast.get_expr_span(expr_id).clone(),
+                                    available_functions: self.function_candidates(ast, &func_name),
+                                    module_suggestions: self
+                                        .module_suggestions_for_function(ast, &func_name),
                                     name: name.to_string(),
                                 });
                                 return self.fresh_type();
                             }
                         }
+                    }
+                    None => {
+                        for arg in args {
+                            self.infer(ast, arg);
+                        }
+                        let func_name = name.name().value.to_string();
+                        self.errors.push(TypeError::UnknownFunction {
+                            span: ast.get_expr_span(expr_id).clone(),
+                            available_functions: self.function_candidates(ast, &func_name),
+                            module_suggestions: self
+                                .module_suggestions_for_function(ast, &func_name),
+                            name: name.to_string(),
+                        });
+                        return self.fresh_type();
                     }
                 };
 
@@ -295,9 +344,12 @@ impl TypeInferencer {
                 let struct_id = match ast.find_struct_by_name(&ident.value) {
                     Some(id) => id,
                     None => {
+                        let sname = ident.value.to_string();
                         self.errors.push(TypeError::UnknownStruct {
                             span: ast.get_expr_span(expr_id).clone(),
-                            name: ident.value.to_string(),
+                            available_structs: self.struct_candidates(ast),
+                            module_suggestions: self.module_suggestions_for_struct(ast, &sname),
+                            name: sname,
                         });
                         return self.fresh_type();
                     }
@@ -367,6 +419,8 @@ impl TypeInferencer {
                             self.errors.push(TypeError::UnknownStruct {
                                 span: ast.get_expr_span(expr_id).clone(),
                                 name: "<unknown>".to_string(),
+                                available_structs: vec![],
+                                module_suggestions: vec![],
                             });
                             return self.fresh_type();
                         }
@@ -375,6 +429,8 @@ impl TypeInferencer {
                         self.errors.push(TypeError::UnknownStruct {
                             span: ast.get_expr_span(expr_id).clone(),
                             name: "<unknown>".to_string(),
+                            available_structs: vec![],
+                            module_suggestions: vec![],
                         });
                         return self.fresh_type();
                     }
@@ -385,6 +441,9 @@ impl TypeInferencer {
                     None => {
                         self.errors.push(TypeError::UnknownStruct {
                             span: ast.get_expr_span(expr_id).clone(),
+                            available_structs: self.struct_candidates(ast),
+                            module_suggestions: self
+                                .module_suggestions_for_struct(ast, struct_name),
                             name: struct_name.to_string(),
                         });
                         return self.fresh_type();
@@ -940,6 +999,152 @@ impl TypeInferencer {
         }
     }
 
+    /// Returns the set of module names imported by the current module (including itself).
+    fn imported_modules(&self, ast: &Ast) -> HashSet<String> {
+        let mut imported = HashSet::new();
+        if let Some(ref current) = self.current_module {
+            imported.insert(current.clone());
+            for name in ast.use_modules(current) {
+                imported.insert(name);
+            }
+        }
+        imported
+    }
+
+    /// Collect candidate function names for "did you mean?" suggestions.
+    /// Returns unqualified names so `closest_match` in the rendering works correctly.
+    fn function_candidates(&self, ast: &Ast, name: &str) -> Vec<String> {
+        let max_dist = (name.len() / 2).max(2);
+        let loaded_module_names: HashSet<&str> = ast.mods.iter().map(|m| &*m.name).collect();
+        let mut candidates = Vec::new();
+
+        // Scan the func registry (loaded modules)
+        for (key, _) in &ast.func_registry {
+            let unqualified = key.rsplit("::").next().unwrap_or(key);
+            let dist = edit_distance(name, unqualified);
+            if dist <= max_dist && dist > 0 && !candidates.contains(&unqualified.to_string()) {
+                candidates.push(unqualified.to_string());
+            }
+        }
+
+        // Scan unloaded bundled modules
+        for bundled in BUNDLED_MODULES {
+            if loaded_module_names.contains(bundled.name) {
+                continue;
+            }
+            let (functions, _) = bundled.exported_names();
+            for func_name in functions {
+                let dist = edit_distance(name, func_name);
+                if dist <= max_dist && dist > 0 && !candidates.contains(&func_name.to_string()) {
+                    candidates.push(func_name.to_string());
+                }
+            }
+        }
+
+        candidates
+    }
+
+    /// Collect candidate struct/type names for "did you mean?" suggestions.
+    fn struct_candidates(&self, ast: &Ast) -> Vec<String> {
+        let loaded_module_names: HashSet<&str> = ast.mods.iter().map(|m| &*m.name).collect();
+        let mut candidates: Vec<String> = ast
+            .structs
+            .iter()
+            .map(|s| s.name.value.to_string())
+            .collect();
+
+        // Also scan unloaded bundled modules
+        for bundled in BUNDLED_MODULES {
+            if loaded_module_names.contains(bundled.name) {
+                continue;
+            }
+            let (_, structs) = bundled.exported_names();
+            for s in structs {
+                let name = s.to_string();
+                if !candidates.contains(&name) {
+                    candidates.push(name);
+                }
+            }
+        }
+
+        candidates
+    }
+
+    /// Find non-imported modules that export a function matching the given name (exact or fuzzy).
+    fn module_suggestions_for_function(&self, ast: &Ast, name: &str) -> Vec<String> {
+        let max_dist = (name.len() / 2).max(2);
+        let imported = self.imported_modules(ast);
+        let loaded_module_names: HashSet<&str> = ast.mods.iter().map(|m| &*m.name).collect();
+        let mut suggestions = Vec::new();
+
+        // Check loaded modules
+        for module in &ast.mods {
+            if module.name.is_empty() || imported.contains(&*module.name) {
+                continue;
+            }
+            for (member_name, kind) in module.exported_members(ast) {
+                if matches!(kind, MemberKind::Function)
+                    && edit_distance(name, member_name) <= max_dist
+                {
+                    suggestions.push(module.name.to_string());
+                    break;
+                }
+            }
+        }
+
+        // Check unloaded bundled modules
+        for bundled in BUNDLED_MODULES {
+            if imported.contains(bundled.name) || loaded_module_names.contains(bundled.name) {
+                continue;
+            }
+            let (functions, _) = bundled.exported_names();
+            if functions
+                .iter()
+                .any(|&f| edit_distance(name, f) <= max_dist)
+            {
+                suggestions.push(bundled.name.to_string());
+            }
+        }
+
+        suggestions
+    }
+
+    /// Find non-imported modules that export a struct matching the given name (exact or fuzzy).
+    fn module_suggestions_for_struct(&self, ast: &Ast, name: &str) -> Vec<String> {
+        let max_dist = (name.len() / 2).max(2);
+        let imported = self.imported_modules(ast);
+        let loaded_module_names: HashSet<&str> = ast.mods.iter().map(|m| &*m.name).collect();
+        let mut suggestions = Vec::new();
+
+        // Check loaded modules
+        for module in &ast.mods {
+            if module.name.is_empty() || imported.contains(&*module.name) {
+                continue;
+            }
+            for (member_name, kind) in module.exported_members(ast) {
+                if matches!(kind, MemberKind::Struct)
+                    && edit_distance(name, member_name) <= max_dist
+                {
+                    suggestions.push(module.name.to_string());
+                    break;
+                }
+            }
+        }
+
+        // Check unloaded bundled modules
+        for bundled in BUNDLED_MODULES {
+            if imported.contains(bundled.name) || loaded_module_names.contains(bundled.name) {
+                continue;
+            }
+            let (_, structs) = bundled.exported_names();
+            if structs.iter().any(|&s| edit_distance(name, s) <= max_dist) {
+                suggestions.push(bundled.name.to_string());
+            }
+        }
+
+        suggestions
+    }
+
     fn resolve_type(
         &mut self,
         ty: &Type,
@@ -960,6 +1165,8 @@ impl TypeInferencer {
                 // Unknown type
                 self.errors.push(TypeError::UnknownType {
                     span: span.clone(),
+                    available_types: self.struct_candidates(ast),
+                    module_suggestions: self.module_suggestions_for_struct(ast, name),
                     name: name.to_string(),
                 });
                 self.fresh_type() // return fresh var to continue checking

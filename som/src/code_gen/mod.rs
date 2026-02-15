@@ -371,14 +371,24 @@ impl<'ast> Codegen<'ast> {
                     .func_ids
                     .get(&registry_key)
                     .or_else(|| {
-                        // Try with current module prefix for unqualified calls
-                        match (&self.current_module, name.is_qualified()) {
-                            (Some(module), false) => {
-                                let qualified = format!("{}::{}", module, registry_key);
-                                self.func_ids.get(&qualified)
-                            }
-                            _ => None,
+                        if name.is_qualified() {
+                            return None;
                         }
+                        // Try with current module prefix for unqualified calls
+                        if let Some(module) = &self.current_module {
+                            let qualified = format!("{}::{}", module, registry_key);
+                            if let Some(id) = self.func_ids.get(&qualified) {
+                                return Some(id);
+                            }
+                            // Try imported modules
+                            for imported in self.typed_ast.ast.use_modules(module) {
+                                let qualified = format!("{}::{}", imported, registry_key);
+                                if let Some(id) = self.func_ids.get(&qualified) {
+                                    return Some(id);
+                                }
+                            }
+                        }
+                        None
                     })
                     .expect("type checker should have caught unknown function");
 
