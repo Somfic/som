@@ -1,8 +1,11 @@
+mod error;
+
 use std::{fs::File, io::Write, path::PathBuf, process::Command};
 
 use cranelift::object::ObjectProduct;
 
 use crate::diagnostics::Diagnostic;
+use error::LinkerError;
 
 type Result<T> = std::result::Result<T, Diagnostic>;
 
@@ -16,30 +19,6 @@ pub struct Linker {
 enum LinkerFlavor {
     Unix,     // gcc, clang, ld.lld, ld64.lld
     MsvcLink, // lld-link, link.exe
-}
-
-enum LinkerError {
-    NoLinkerFound,
-    FailedToLink { stderr: String },
-    IoError(std::io::Error),
-}
-
-impl LinkerError {
-    fn to_diagnostic(self) -> Diagnostic {
-        match self {
-            LinkerError::NoLinkerFound => Diagnostic::error("no linker found"),
-            LinkerError::FailedToLink { stderr } => {
-                let mut diag = Diagnostic::error("failed to link");
-                for line in stderr.lines() {
-                    if !line.is_empty() {
-                        diag = diag.with_trace(line);
-                    }
-                }
-                diag
-            }
-            LinkerError::IoError(e) => Diagnostic::error(format!("io error: {}", e)),
-        }
-    }
 }
 
 impl Linker {

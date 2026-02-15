@@ -9,30 +9,6 @@ import {
 
 let client: LanguageClient | undefined;
 
-const MAIN_FN_REGEX = /^\s*fn\s+main\s*\(/;
-const COMMENT_REGEX = /^\s*\/\//;
-
-class SomCodeLensProvider implements vscode.CodeLensProvider {
-  provideCodeLenses(document: vscode.TextDocument): vscode.CodeLens[] {
-    const lenses: vscode.CodeLens[] = [];
-    for (let i = 0; i < document.lineCount; i++) {
-      const line = document.lineAt(i).text;
-      if (COMMENT_REGEX.test(line)) continue;
-      if (MAIN_FN_REGEX.test(line)) {
-        const range = new vscode.Range(i, 0, i, line.length);
-        lenses.push(
-          new vscode.CodeLens(range, {
-            title: "$(play) Run",
-            command: "som.run",
-            arguments: [document.uri],
-          })
-        );
-      }
-    }
-    return lenses;
-  }
-}
-
 export function activate(context: vscode.ExtensionContext) {
   const config = vscode.workspace.getConfiguration("som");
   const serverPath = config.get<string>("lsp.path", "som-lsp");
@@ -48,13 +24,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   client = new LanguageClient("som", "Som Language Server", serverOptions, clientOptions);
   client.start();
-
-  context.subscriptions.push(
-    vscode.languages.registerCodeLensProvider(
-      { language: "som" },
-      new SomCodeLensProvider()
-    )
-  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("som.run", (uri?: vscode.Uri) => {

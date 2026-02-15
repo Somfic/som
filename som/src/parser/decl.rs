@@ -1,52 +1,111 @@
 use crate::{
-    ExternBlock, ExternFunc, Func, FuncParam, FuncTypeParam, Struct, StructField, Use,
+    Expr, ExternBlock, ExternFunc, Func, FuncParam, FuncTypeParam, Struct, StructField, Use,
     arena::Id,
     lexer::TokenKind,
-    parser::{Parser, RecoveryLevel},
+    parser::{Parser, RecoveryLevel, StmtOrExpr},
 };
 
 impl Parser<'_> {
-    pub fn parse_program(&mut self) {
-        while !self.at_eof() {
-            // declarations
-            match self.peek() {
-                TokenKind::Fn => {
-                    if let Some(func_id) = self.parse_function() {
-                        self.builder.add_func(func_id);
-                    } else {
-                        self.recover(RecoveryLevel::Declaration);
-                    }
-                }
-                TokenKind::Extern => {
-                    if let Some(block) = self.parse_extern_block() {
-                        self.builder.add_extern_block(block);
-                    } else {
-                        self.recover(RecoveryLevel::Declaration);
-                    }
-                }
-                TokenKind::Struct => {
-                    if let Some(struct_id) = self.parse_struct() {
-                        self.builder.add_struct(struct_id);
-                    } else {
-                        self.recover(RecoveryLevel::Declaration);
-                    }
-                }
-                TokenKind::Use => {
-                    if let Some(use_id) = self.parse_use() {
-                        self.builder.add_use(use_id);
-                    } else {
-                        self.recover(RecoveryLevel::Declaration);
-                    }
-                }
-                _ => {
-                    self.error(format!(
-                        "expected `fn`, `extern`, `use`, or `struct`, found {:?}",
-                        self.peek()
-                    ));
+    fn is_declaration(&self) -> bool {
+        matches!(
+            self.peek(),
+            TokenKind::Fn | TokenKind::Extern | TokenKind::Struct | TokenKind::Use
+        )
+    }
+
+    fn parse_declaration(&mut self) {
+        match self.peek() {
+            TokenKind::Fn => {
+                if let Some(func_id) = self.parse_function() {
+                    self.builder.add_func(func_id);
+                } else {
                     self.recover(RecoveryLevel::Declaration);
                 }
             }
+            TokenKind::Extern => {
+                if let Some(block) = self.parse_extern_block() {
+                    self.builder.add_extern_block(block);
+                } else {
+                    self.recover(RecoveryLevel::Declaration);
+                }
+            }
+            TokenKind::Struct => {
+                if let Some(struct_id) = self.parse_struct() {
+                    self.builder.add_struct(struct_id);
+                } else {
+                    self.recover(RecoveryLevel::Declaration);
+                }
+            }
+            TokenKind::Use => {
+                if let Some(use_id) = self.parse_use() {
+                    self.builder.add_use(use_id);
+                } else {
+                    self.recover(RecoveryLevel::Declaration);
+                }
+            }
+            _ => unreachable!("caller checks is_declaration"),
         }
+    }
+
+    pub fn parse_program(&mut self) {
+        // Parse leading declarations
+        while !self.at_eof() && self.is_declaration() {
+            self.parse_declaration();
+        }
+
+        // If there's remaining code, treat it as the body of an implicit main function
+        if !self.at_eof() {
+            self.parse_implicit_main();
+        }
+    }
+
+    /// Parse remaining top-level statements as an implicit `fn main() -> i32 { ... }`
+    fn parse_implicit_main(&mut self) {
+        let start = self.current_span();
+        let mut stmts = Vec::new();
+        let mut value = None;
+
+        while !self.at_eof() {
+            // Allow interleaved declarations inside implicit main
+            if self.is_declaration() {
+                self.parse_declaration();
+                continue;
+            }
+
+            match self.parse_stmt_or_expr() {
+                StmtOrExpr::Stmt(stmt) => stmts.push(stmt),
+                StmtOrExpr::Expr(expr) => {
+                    if self.at_eof() {
+                        value = Some(expr);
+                    } else {
+                        self.error("expected `;`".into());
+                        break;
+                    }
+                }
+                StmtOrExpr::Error => {
+                    self.recover(RecoveryLevel::Statement);
+                }
+            }
+        }
+
+        let span = start.merge(&self.previous_span());
+        let body = self
+            .builder
+            .alloc_expr(Expr::Block { stmts, value }, span.clone());
+
+        let name = self.builder.make_ident("main");
+        let func_id = self.builder.alloc_func(
+            Func {
+                name,
+                type_parameters: Vec::new(),
+                parameters: Vec::new(),
+                return_type: None,
+                return_type_id: None,
+                body,
+            },
+            span,
+        );
+        self.builder.add_func(func_id);
     }
 
     fn parse_use(&mut self) -> Option<Id<Use>> {

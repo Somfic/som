@@ -25,8 +25,10 @@ fn main() {
     let ast = match loader.load_project() {
         Ok(ast) => ast,
         Err(errors) => {
-            for error in errors {
-                // need to implement Display or to_diagnostic for ProgramError
+            for error in &errors.parse {
+                eprintln!("{}", error.to_diagnostic());
+            }
+            for error in &errors.program {
                 eprintln!("{}", error.to_diagnostic());
             }
             std::process::exit(1);

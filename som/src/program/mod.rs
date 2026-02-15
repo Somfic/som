@@ -1,53 +1,16 @@
+mod error;
+
 use std::{collections::HashSet, fs, io, path::PathBuf, sync::Arc};
 
 use crate::{
-    Ast, Decl, Diagnostic, Label, Source,
-    diagnostics::Highlight,
-    parser::{self, AstBuilder, ParseError},
+    Ast, Decl, Source,
+    parser::{self, AstBuilder},
     std::get_bundled_module,
 };
 
-#[derive(Debug)]
-pub enum ProgramError {
-    Io(io::Error),
-    Parse(Vec<ParseError>),
-    CircularDependency(String),
-    ModuleNotFound {
-        name: String,
-        path: PathBuf,
-        span: Option<crate::Span>,
-    },
-}
+use crate::parser::ParseError;
 
-impl ProgramError {
-    pub fn to_diagnostic(&self) -> Diagnostic {
-        match self {
-            ProgramError::Io(err) => Diagnostic::error(format!("I/O error: {}", err)),
-            ProgramError::Parse(errors) => {
-                let mut diag = Diagnostic::error("failed to parse module");
-                for error in errors {
-                    diag =
-                        diag.with_label(Label::primary(error.span.clone(), error.message.clone()));
-                }
-                diag
-            }
-            ProgramError::CircularDependency(module) => Diagnostic::error(format!(
-                "circular dependency detected while loading module {}",
-                module.as_module()
-            )),
-            ProgramError::ModuleNotFound { name, path, span } => {
-                let diag =
-                    Diagnostic::error(format!("module {} could not be found", name.as_module()));
-                match span {
-                    Some(s) => diag
-                        .with_label(Label::primary(s.clone(), "unknown module"))
-                        .with_hint(format!("cannot find source code in {}", path.display())),
-                    None => diag.with_hint(format!("expected at {}", path.display())),
-                }
-            }
-        }
-    }
-}
+pub use error::{LoadErrors, ProgramError};
 
 pub struct ProgramLoader {
     root: PathBuf,
@@ -55,6 +18,7 @@ pub struct ProgramLoader {
     loaded: HashSet<String>,
     loading: HashSet<String>,
     errors: Vec<ProgramError>,
+    parse_errors: Vec<ParseError>,
 }
 
 impl ProgramLoader {
@@ -65,10 +29,11 @@ impl ProgramLoader {
             loaded: HashSet::new(),
             loading: HashSet::new(),
             errors: Vec::new(),
+            parse_errors: Vec::new(),
         }
     }
 
-    pub fn load_project(mut self) -> Result<Ast, Vec<ProgramError>> {
+    pub fn load_project(mut self) -> Result<Ast, LoadErrors> {
         let program_name = self
             .root
             .file_name()
@@ -79,8 +44,11 @@ impl ProgramLoader {
         let root = self.root.clone();
         self.load_module_from_disk(program_name, &root);
 
-        if !self.errors.is_empty() {
-            return Err(self.errors);
+        if !self.errors.is_empty() || !self.parse_errors.is_empty() {
+            return Err(LoadErrors {
+                program: self.errors,
+                parse: self.parse_errors,
+            });
         }
 
         Ok(self.builder.finish())
@@ -132,7 +100,7 @@ impl ProgramLoader {
             let parse_errors = parser::parse_module(source, &mut self.builder, name, module_path);
 
             if !parse_errors.is_empty() {
-                self.errors.push(ProgramError::Parse(parse_errors));
+                self.parse_errors.extend(parse_errors);
             }
 
             // Process dependencies from bundled module
@@ -223,7 +191,7 @@ impl ProgramLoader {
             let parse_errors = parser::parse_module(source, &mut self.builder, &name, file.clone());
 
             if !parse_errors.is_empty() {
-                self.errors.push(ProgramError::Parse(parse_errors));
+                self.parse_errors.extend(parse_errors);
             }
 
             let deps: Vec<(String, PathBuf, crate::Span)> = {

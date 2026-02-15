@@ -1,13 +1,3 @@
 use std;
 
-fn main() {
-    std::malloc(12);
-
-    let a = 12;
-    let b = true;
-    b = identity(false);
-}
-
-fn identity(a: bool) -> bool {
-    a
-}
+12;

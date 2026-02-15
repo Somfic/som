@@ -1,3 +1,5 @@
+mod error;
+
 use crate::{
     BinOp, Diagnostic, Expr, Func, Stmt, Type, TypedAst, arena::Id, scope::ScopedEnvironment,
 };
@@ -11,34 +13,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use target_lexicon::Triple;
 
+use error::CodegenError;
+
 type Result<T> = std::result::Result<T, Diagnostic>;
-
-enum CodegenError {
-    NoMainFunction,
-    NoReturnType,
-    UnsupportedTarget(String),
-    ModuleError(String),
-}
-
-impl CodegenError {
-    fn to_diagnostic(self) -> Diagnostic {
-        match self {
-            CodegenError::NoMainFunction => {
-                Diagnostic::error("no `main` function found".to_string())
-                    .with_hint("add a `main` function as the entry point")
-            }
-            CodegenError::NoReturnType => {
-                Diagnostic::error("`main` function must have a return type".to_string())
-            }
-            CodegenError::UnsupportedTarget(target) => {
-                Diagnostic::error(format!("unsupported target: {}", target))
-            }
-            CodegenError::ModuleError(msg) => {
-                Diagnostic::error(format!("code generation failed: {}", msg))
-            }
-        }
-    }
-}
 
 pub struct Codegen<'ast> {
     isa: Arc<dyn isa::TargetIsa>,

@@ -1,4 +1,4 @@
-use som::{ProgramError, ProgramLoader};
+use som::{LoadErrors, ProgramError, ProgramLoader};
 use std::fs;
 use std::path::Path;
 use tempfile::TempDir;
@@ -23,7 +23,7 @@ impl TestProject {
         fs::write(full_path, content).unwrap();
     }
 
-    fn load(&self) -> Result<som::Ast, Vec<ProgramError>> {
+    fn load(&self) -> Result<som::Ast, LoadErrors> {
         let loader = ProgramLoader::new(self.dir.path().to_path_buf());
         loader.load_project()
     }
@@ -139,8 +139,9 @@ fn test_missing_module_error() {
     match project.load() {
         Ok(_) => panic!("should fail with missing module"),
         Err(errors) => {
-            assert_eq!(errors.len(), 1);
-            match &errors[0] {
+            assert!(errors.parse.is_empty());
+            assert_eq!(errors.program.len(), 1);
+            match &errors.program[0] {
                 ProgramError::ModuleNotFound { name, .. } => {
                     assert_eq!(name, "nonexistent");
                 }

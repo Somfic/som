@@ -85,7 +85,13 @@ impl SomLanguageServer {
             Ok(ast) => ast,
             Err(errors) => {
                 let mut lsp_diags: HashMap<String, Vec<lsp_types::Diagnostic>> = HashMap::new();
-                for error in &errors {
+                for error in &errors.parse {
+                    let diag = error.to_diagnostic();
+                    if let Some((file, diags)) = convert::som_diagnostic_to_lsp(&diag) {
+                        lsp_diags.entry(file).or_default().extend(diags);
+                    }
+                }
+                for error in &errors.program {
                     let diag = error.to_diagnostic();
                     if let Some((file, diags)) = convert::som_diagnostic_to_lsp(&diag) {
                         lsp_diags.entry(file).or_default().extend(diags);
@@ -186,6 +192,9 @@ impl LanguageServer for SomLanguageServer {
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![".".to_string()]),
                     ..Default::default()
+                }),
+                code_lens_provider: Some(CodeLensOptions {
+                    resolve_provider: Some(false),
                 }),
                 inlay_hint_provider: Some(OneOf::Left(true)),
                 signature_help_provider: Some(SignatureHelpOptions {
@@ -621,6 +630,62 @@ impl LanguageServer for SomLanguageServer {
         }
 
         Ok(Some(DocumentSymbolResponse::Nested(symbols)))
+    }
+
+    async fn code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
+        let uri = &params.text_document.uri;
+        let file_path = match uri.to_file_path() {
+            Ok(p) => p.to_string_lossy().to_string(),
+            Err(_) => return Ok(None),
+        };
+
+        let analyses = self.analyses.read().await;
+        let Some(analysis) = Self::find_analysis_for_file(&analyses, &file_path) else {
+            return Ok(None);
+        };
+
+        let ast = &analysis.typed_ast.ast;
+
+        // Find the main function (explicit or implicit)
+        let main_func_id = ast.find_func_by_name("main");
+        let main_func_id = main_func_id.or_else(|| {
+            // Check with module-qualified name
+            ast.func_registry
+                .iter()
+                .find(|(name, _)| *name == "main" || name.ends_with("::main"))
+                .and_then(|(_, entry)| match &entry.kind {
+                    FuncKind::Regular(id) => Some(*id),
+                    _ => None,
+                })
+        });
+
+        let Some(func_id) = main_func_id else {
+            return Ok(None);
+        };
+
+        let span = ast.get_func_span(&func_id);
+
+        // Only show codelens for files in this project
+        if span.source.identifier() != file_path {
+            return Ok(None);
+        }
+
+        let range = convert::span_to_range(span);
+        // Place the lens on the first line of main's span
+        let lens_range = Range {
+            start: range.start,
+            end: lsp_types::Position::new(range.start.line, range.start.character),
+        };
+
+        Ok(Some(vec![CodeLens {
+            range: lens_range,
+            command: Some(Command {
+                title: "$(play) Run".to_string(),
+                command: "som.run".to_string(),
+                arguments: Some(vec![serde_json::Value::String(uri.to_string())]),
+            }),
+            data: None,
+        }]))
     }
 
     async fn semantic_tokens_full(

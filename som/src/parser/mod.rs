@@ -8,27 +8,15 @@ use crate::{
 
 mod builder;
 mod decl;
+mod error;
 mod expr;
 mod grammar;
 mod stmt;
 mod ty;
 
 pub use builder::AstBuilder;
+pub use error::ParseError;
 pub use grammar::{Association, Grammar, OpInfo};
-
-/// Parse error with location information
-#[derive(Debug, Clone)]
-pub struct ParseError {
-    pub message: String,
-    pub span: Span,
-}
-
-impl ParseError {
-    pub fn to_diagnostic(&self) -> crate::diagnostics::Diagnostic {
-        use crate::diagnostics::{Diagnostic, Label};
-        Diagnostic::error(&self.message).with_label(Label::primary(self.span.clone(), "here"))
-    }
-}
 
 /// Recovery strategy levels
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

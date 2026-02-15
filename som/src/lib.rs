@@ -20,7 +20,7 @@ pub use borrow_check::BorrowChecker;
 pub use code_gen::Codegen;
 pub use diagnostics::{Diagnostic, Highlight, Label, Severity};
 pub use linker::Linker;
-pub use program::{ProgramError, ProgramLoader};
+pub use program::{LoadErrors, ProgramError, ProgramLoader};
 pub use resolve::{DefId, DefKind, Definition, NameResolver, ResolvedAst};
 pub use runner::Runner;
 pub use span::{Position, Source, Span};
