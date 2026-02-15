@@ -1,6 +1,6 @@
 use crate::{Lifetime, Type, lexer::TokenKind, parser::Parser};
 
-impl<'src> Parser<'src, '_> {
+impl Parser<'_> {
     /// Parse a type annotation
     pub fn parse_type(&mut self) -> Option<Type> {
         // Check for reference type: &T or &mut T or &'a T
@@ -46,13 +46,13 @@ impl<'src> Parser<'src, '_> {
         self.expect(TokenKind::SingleQuote)?;
 
         if self.at(TokenKind::Ident) {
-            let text = self.peek_token().text;
+            let text = self.peek_token().text.clone();
             self.advance();
 
-            if text == "static" {
+            if &*text == "static" {
                 Some(Lifetime::Static)
             } else {
-                Some(Lifetime::Named(text.into()))
+                Some(Lifetime::Named(text))
             }
         } else {
             self.error("expected lifetime name".into());
@@ -112,9 +112,9 @@ impl<'src> Parser<'src, '_> {
             | TokenKind::I64
             | TokenKind::I128
             | TokenKind::ISize => {
-                let text = self.peek_token().text;
+                let text = self.peek_token().text.clone();
                 self.advance();
-                Some(Type::Named(text.into()))
+                Some(Type::Named(text))
             }
 
             // u8 is a built-in type
@@ -129,9 +129,9 @@ impl<'src> Parser<'src, '_> {
             | TokenKind::U64
             | TokenKind::U128
             | TokenKind::USize => {
-                let text = self.peek_token().text;
+                let text = self.peek_token().text.clone();
                 self.advance();
-                Some(Type::Named(text.into()))
+                Some(Type::Named(text))
             }
 
             // Float types
@@ -140,9 +140,9 @@ impl<'src> Parser<'src, '_> {
                 Some(Type::F32)
             }
             TokenKind::F64 => {
-                let text = self.peek_token().text;
+                let text = self.peek_token().text.clone();
                 self.advance();
-                Some(Type::Named(text.into()))
+                Some(Type::Named(text))
             }
 
             TokenKind::Star => {
@@ -152,16 +152,16 @@ impl<'src> Parser<'src, '_> {
 
             // Char type
             TokenKind::Char => {
-                let text = self.peek_token().text;
+                let text = self.peek_token().text.clone();
                 self.advance();
-                Some(Type::Named(text.into()))
+                Some(Type::Named(text))
             }
 
             // Named/user-defined type
             TokenKind::Ident => {
-                let text = self.peek_token().text;
+                let text = self.peek_token().text.clone();
                 self.advance();
-                Some(Type::Named(text.into()))
+                Some(Type::Named(text))
             }
 
             // Parenthesized type or unit

@@ -5,7 +5,7 @@ use crate::{
     parser::{Parser, RecoveryLevel, StmtOrExpr, grammar::Grammar},
 };
 
-impl<'src> Parser<'src, '_> {
+impl Parser<'_> {
     /// Parse an expression
     pub fn parse_expr(&mut self) -> Option<Id<Expr>> {
         self.parse_expr_bp(0)
@@ -156,13 +156,13 @@ impl<'src> Parser<'src, '_> {
             }
 
             TokenKind::Text => {
-                let text = self.peek_token().text;
+                let text = self.peek_token().text.clone();
                 // Remove surrounding quotes
-                let unquoted = &text[1..text.len() - 1];
+                let unquoted: Box<str> = text[1..text.len() - 1].into();
                 self.advance();
                 Some(
                     self.builder
-                        .alloc_expr(Expr::String(unquoted.into()), start),
+                        .alloc_expr(Expr::String(unquoted), start),
                 )
             }
 

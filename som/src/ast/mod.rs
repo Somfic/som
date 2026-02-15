@@ -386,6 +386,16 @@ impl Ast {
         self.spans.get(span_id)
     }
 
+    pub fn get_struct_span(&self, id: &Id<Struct>) -> &Span {
+        let span_id = self.struct_spans.get(id).unwrap();
+        self.spans.get(span_id)
+    }
+
+    pub fn get_extern_func_span(&self, id: &Id<ExternFunc>) -> &Span {
+        let span_id = self.extern_func_spans.get(id).unwrap();
+        self.spans.get(span_id)
+    }
+
     pub fn try_get_type_span(&self, id: &Id<Type>) -> Option<&Span> {
         self.type_spans
             .get(id)

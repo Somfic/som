@@ -18,9 +18,9 @@ fn test_lex_identifiers() {
     let tokens = test_lex("foo bar_baz x123");
     let non_ws = filter_whitespace(&tokens);
     assert_eq!(non_ws[0].kind, TokenKind::Ident);
-    assert_eq!(non_ws[0].text, "foo");
+    assert_eq!(&*non_ws[0].text, "foo");
     assert_eq!(non_ws[1].kind, TokenKind::Ident);
-    assert_eq!(non_ws[1].text, "bar_baz");
+    assert_eq!(&*non_ws[1].text, "bar_baz");
 }
 
 #[test]
@@ -28,9 +28,9 @@ fn test_lex_integers() {
     let tokens = test_lex("123 456");
     let non_ws = filter_whitespace(&tokens);
     assert_eq!(non_ws[0].kind, TokenKind::Int);
-    assert_eq!(non_ws[0].text, "123");
+    assert_eq!(&*non_ws[0].text, "123");
     assert_eq!(non_ws[1].kind, TokenKind::Int);
-    assert_eq!(non_ws[1].text, "456");
+    assert_eq!(&*non_ws[1].text, "456");
 }
 
 #[test]

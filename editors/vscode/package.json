@@ -1,0 +1,92 @@
+{
+  "name": "som",
+  "displayName": "Som",
+  "description": "Language support for Som",
+  "version": "0.1.0",
+  "publisher": "somfic",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:som"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "som",
+        "extensions": [
+          ".som"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "som",
+        "scopeName": "source.som",
+        "path": "./syntaxes/som.tmLanguage.json"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "som",
+        "scopes": {
+          "keyword": [
+            "keyword.control.som"
+          ],
+          "variable": [
+            "variable.other.som"
+          ],
+          "number": [
+            "constant.numeric.som"
+          ],
+          "string": [
+            "string.quoted.double.som"
+          ],
+          "type": [
+            "entity.name.type.som"
+          ],
+          "comment": [
+            "comment.line.double-slash.som"
+          ],
+          "operator": [
+            "keyword.operator.som"
+          ],
+          "function": [
+            "entity.name.function.som"
+          ],
+          "struct": [
+            "entity.name.type.struct.som"
+          ],
+          "parameter": [
+            "variable.parameter.som"
+          ]
+        }
+      }
+    ],
+    "configuration": {
+      "title": "Som",
+      "properties": {
+        "som.lsp.path": {
+          "type": "string",
+          "default": "som-lsp",
+          "description": "Path to the som-lsp binary"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0"
+  }
+}

@@ -50,16 +50,16 @@ pub enum StmtOrExpr {
 }
 
 /// Main parser struct
-pub struct Parser<'src, 'ast> {
-    tokens: Vec<Token<'src>>,
+pub struct Parser<'ast> {
+    tokens: Vec<Token>,
     pos: usize,
     pub builder: &'ast mut AstBuilder,
     errors: Vec<ParseError>,
     in_recovery: bool,
 }
 
-impl<'src, 'ast> Parser<'src, 'ast> {
-    pub fn new(tokens: Vec<Token<'src>>, builder: &'ast mut AstBuilder) -> Self {
+impl<'ast> Parser<'ast> {
+    pub fn new(tokens: Vec<Token>, builder: &'ast mut AstBuilder) -> Self {
         Self {
             tokens,
             pos: 0,
@@ -78,7 +78,7 @@ impl<'src, 'ast> Parser<'src, 'ast> {
             .unwrap_or(TokenKind::Eof)
     }
 
-    pub fn peek_token(&self) -> &Token<'src> {
+    pub fn peek_token(&self) -> &Token {
         &self.tokens[self.pos]
     }
 
@@ -260,9 +260,9 @@ impl<'src, 'ast> Parser<'src, 'ast> {
 
     pub fn parse_ident(&mut self) -> Option<Ident> {
         if self.at(TokenKind::Ident) {
-            let text = self.peek_token().text;
+            let text = self.peek_token().text.clone();
             self.advance();
-            Some(self.builder.make_ident(text))
+            Some(self.builder.make_ident(&text))
         } else {
             self.error_expected(&[TokenKind::Ident]);
             None

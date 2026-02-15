@@ -1,8 +1,6 @@
 /target
 /.history
 /sandbox
-
-# Coverage files
 *.profraw
 *.profdata
 lcov.info

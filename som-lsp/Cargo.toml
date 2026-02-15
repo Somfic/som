@@ -1,0 +1,11 @@
+[package]
+name = "som-lsp"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.90.0"
+
+[dependencies]
+som = { path = "../som" }
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"

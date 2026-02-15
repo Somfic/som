@@ -1,8 +1,11 @@
 use std;
 
-fn main() -> i32 {
-    let s = std::string_from_str("hello");
-    let len = s.len;
-    std::string_free(s);
-    len
+extern {
+    fn puts();
 }
+
+fn main() {
+    let a = 12;
+    puts(1);
+}
+    

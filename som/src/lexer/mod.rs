@@ -149,13 +149,13 @@ pub enum TokenKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct Token<'src> {
+pub struct Token {
     pub kind: TokenKind,
-    pub text: &'src str,
+    pub text: Box<str>,
     pub span: Span,
 }
 
-pub fn lex(source: Arc<Source>) -> Vec<Token<'static>> {
+pub fn lex(source: Arc<Source>) -> Vec<Token> {
     let input = source.content();
     let mut lexer = TokenKind::lexer(input);
     let mut tokens = Vec::new();
@@ -166,7 +166,7 @@ pub fn lex(source: Arc<Source>) -> Vec<Token<'static>> {
         let text = lexer.slice();
         tokens.push(Token {
             kind,
-            text: Box::leak(text.to_string().into_boxed_str()),
+            text: text.into(),
             span: Span::from_range(span_range, source.clone()),
         });
     }
@@ -175,7 +175,7 @@ pub fn lex(source: Arc<Source>) -> Vec<Token<'static>> {
     let eof_pos = input.len();
     tokens.push(Token {
         kind: TokenKind::Eof,
-        text: "",
+        text: "".into(),
         span: Span::from_range(eof_pos..eof_pos, source),
     });
 

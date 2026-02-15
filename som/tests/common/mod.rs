@@ -20,7 +20,7 @@ pub fn test_lex(source: &str) -> Vec<Token> {
 }
 
 /// Filters whitespace tokens for easier assertions
-pub fn filter_whitespace<'a>(tokens: &'a [Token<'a>]) -> Vec<&'a Token<'a>> {
+pub fn filter_whitespace(tokens: &[Token]) -> Vec<&Token> {
     tokens
         .iter()
         .filter(|t| t.kind != TokenKind::Whitespace)

@@ -5,7 +5,7 @@ use crate::{
     parser::{Parser, RecoveryLevel},
 };
 
-impl<'src> Parser<'src, '_> {
+impl Parser<'_> {
     pub fn parse_program(&mut self) {
         while !self.at_eof() {
             // declarations
@@ -203,11 +203,12 @@ impl<'src> Parser<'src, '_> {
 
         // Parse optional library name: "SDL2"
         let library = if self.at(TokenKind::Text) {
-            let text = self.peek_token().text;
+            let text = self.peek_token().text.clone();
             // Remove surrounding quotes
             let unquoted = &text[1..text.len() - 1];
+            let lib = unquoted.to_string();
             self.advance();
-            Some(unquoted.to_string())
+            Some(lib)
         } else {
             None
         };

@@ -5,7 +5,7 @@ use crate::{
     parser::{Parser, RecoveryLevel, StmtOrExpr},
 };
 
-impl<'src> Parser<'src, '_> {
+impl Parser<'_> {
     /// Parse either a statement or an expression
     pub fn parse_stmt_or_expr(&mut self) -> StmtOrExpr {
         // Statement keywords take precedence

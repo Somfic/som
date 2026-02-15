@@ -1,4 +1,4 @@
-use crate::{Ast, Expr, Func, Span, Stmt, arena::Id};
+use crate::{Ast, Expr, Func, Path, Span, Stmt, arena::Id};
 use std::collections::HashMap;
 
 mod error;
@@ -229,31 +229,34 @@ impl NameResolver {
         self.pop_rib();
     }
 
+    /// Try to resolve a path's last segment as a variable
+    fn resolve_path_as_var(&mut self, path: &Path, expr_id: Id<Expr>, ast: &Ast) {
+        let name = path.name();
+        let span = ast.get_expr_span(&expr_id).clone();
+        match self.resolve_name(&name.value, false, &span) {
+            Ok(def_id) => {
+                self.var_resolutions.insert(expr_id, def_id);
+            }
+            Err(err) => {
+                self.errors.push(err);
+                self.var_resolutions.insert(expr_id, ERROR_DEF);
+            }
+        }
+    }
+
     /// Resolve an expression
     fn resolve_expr(&mut self, expr_id: Id<Expr>, ast: &Ast, current_func: Option<Id<Func>>) {
         match ast.exprs.get(&expr_id) {
-            Expr::Hole | Expr::I32(_) | Expr::Bool(_) | Expr::String(_) => {
+            Expr::Hole | Expr::I32(_) | Expr::F32(_) | Expr::Bool(_) | Expr::String(_) => {
                 // Nothing to resolve
             }
 
-            Expr::Var(ident) => {
-                let span = ast.get_expr_span(&expr_id).clone();
-                match self.resolve_name(&ident.value, false, &span) {
-                    Ok(def_id) => {
-                        self.var_resolutions.insert(expr_id, def_id);
-                    }
-                    Err(err) => {
-                        self.errors.push(err);
-                        self.var_resolutions.insert(expr_id, ERROR_DEF);
-                    }
-                }
+            Expr::Var(path) => {
+                self.resolve_path_as_var(path, expr_id, ast);
             }
 
-            Expr::Call { callee, args } => {
-                // Resolve callee expression (could be Var, FieldAccess, etc.)
-                self.resolve_expr(*callee, ast, current_func);
-
-                // Resolve arguments
+            Expr::Call { name: _, args } => {
+                // name is a Path - function resolution happens at type-check time
                 for arg in args {
                     self.resolve_expr(*arg, ast, current_func);
                 }
@@ -285,6 +288,31 @@ impl NameResolver {
             Expr::Deref { expr } => {
                 self.resolve_expr(*expr, ast, current_func);
             }
+
+            Expr::Not { expr } => {
+                self.resolve_expr(*expr, ast, current_func);
+            }
+
+            Expr::Conditional { condition, truthy, falsy } => {
+                self.resolve_expr(*condition, ast, current_func);
+                self.resolve_expr(*truthy, ast, current_func);
+                self.resolve_expr(*falsy, ast, current_func);
+            }
+
+            Expr::Constructor { struct_name: _, fields } => {
+                for (_, field_expr) in fields {
+                    self.resolve_expr(*field_expr, ast, current_func);
+                }
+            }
+
+            Expr::FieldAccess { object, .. } => {
+                self.resolve_expr(*object, ast, current_func);
+            }
+
+            Expr::Assignment { target, value } => {
+                self.resolve_expr(*target, ast, current_func);
+                self.resolve_expr(*value, ast, current_func);
+            }
         }
     }
 
@@ -309,34 +337,55 @@ impl NameResolver {
             Stmt::Expr { expr } => {
                 self.resolve_expr(*expr, ast, current_func);
             }
+
+            Stmt::Loop { body } => {
+                self.push_rib(RibKind::Block);
+                for stmt in body {
+                    self.resolve_stmt(*stmt, ast, current_func);
+                }
+                self.pop_rib();
+            }
+
+            Stmt::While { condition, body } => {
+                self.resolve_expr(*condition, ast, current_func);
+                self.push_rib(RibKind::Block);
+                for stmt in body {
+                    self.resolve_stmt(*stmt, ast, current_func);
+                }
+                self.pop_rib();
+            }
+
+            Stmt::Condition { condition, then_body, else_body } => {
+                self.resolve_expr(*condition, ast, current_func);
+
+                self.push_rib(RibKind::Block);
+                for stmt in then_body {
+                    self.resolve_stmt(*stmt, ast, current_func);
+                }
+                self.pop_rib();
+
+                if let Some(else_stmts) = else_body {
+                    self.push_rib(RibKind::Block);
+                    for stmt in else_stmts {
+                        self.resolve_stmt(*stmt, ast, current_func);
+                    }
+                    self.pop_rib();
+                }
+            }
         }
     }
 
     /// Resolve a name to a DefId
-    ///
-    /// # Arguments
-    /// * `name` - The identifier to resolve
-    /// * `is_function_call` - True if this is resolving a function name for a call
-    /// * `span` - Span for error reporting
     fn resolve_name(&self, name: &str, is_function_call: bool, span: &Span) -> Result<DefId, ResolveError> {
         // Search ribs from innermost to outermost
         for rib in self.ribs.iter().rev() {
             if let Some(&def_id) = rib.bindings.get(name) {
-                // Check if this is a function or variable
-                let def = &self.definitions[def_id.0 as usize];
-                let is_function = matches!(def.kind, DefKind::Function { .. });
-
-                // If we found a function, always allow it (functions are never blocked)
-                // If we found a variable/parameter, check capture rules
                 return Ok(def_id);
             }
 
             // Function rib blocks access to outer locals (but not outer functions)
             if let RibKind::Function { can_capture: false, .. } = rib.kind {
                 if !is_function_call {
-                    // Non-capturing function trying to access outer variable
-                    // Stop searching for local variables
-                    // But continue searching for functions at module level
                     continue;
                 }
             }
