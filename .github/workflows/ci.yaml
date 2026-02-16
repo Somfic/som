@@ -167,6 +167,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Set version
+        shell: bash
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          for toml in compiler/Cargo.toml cli/Cargo.toml lsp/Cargo.toml; do
+            sed -i.bak "s/^version = \".*\"/version = \"${VERSION}\"/" "$toml"
+            rm -f "${toml}.bak"
+          done
+
       - name: Build
         run: cargo build --release
 
