@@ -1020,6 +1020,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "som-cli"
+version = "0.1.0"
+dependencies = [
+ "som",
+]
+
+[[package]]
 name = "som-lsp"
 version = "0.1.0"
 dependencies = [

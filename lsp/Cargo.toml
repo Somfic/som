@@ -7,8 +7,12 @@ authors = ["Somfic"]
 description = "som language server"
 rust-version = "1.90.0"
 
+[[bin]]
+name = "somlsp"
+path = "src/main.rs"
+
 [dependencies]
-som = { path = "../som" }
+som = { path = "../compiler" }
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"

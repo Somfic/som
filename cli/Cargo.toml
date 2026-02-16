@@ -1,0 +1,15 @@
+[package]
+name = "som-cli"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Somfic"]
+description = "som command line interface"
+rust-version = "1.90.0"
+
+[[bin]]
+name = "som"
+path = "src/main.rs"
+
+[dependencies]
+som = { path = "../compiler" }

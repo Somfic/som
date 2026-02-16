@@ -13,23 +13,23 @@ pub const BUNDLED_MODULES: &[BundledModule] = &[BundledModule {
     files: &[
         BundledFile {
             name: "alloc.som",
-            content: include_str!("../std/alloc.som"),
+            content: include_str!("../../std/alloc.som"),
         },
         BundledFile {
             name: "io.som",
-            content: include_str!("../std/io.som"),
+            content: include_str!("../../std/io.som"),
         },
         BundledFile {
             name: "mem.som",
-            content: include_str!("../std/mem.som"),
+            content: include_str!("../../std/mem.som"),
         },
         BundledFile {
             name: "process.som",
-            content: include_str!("../std/process.som"),
+            content: include_str!("../../std/process.som"),
         },
         BundledFile {
             name: "string.som",
-            content: include_str!("../std/string.som"),
+            content: include_str!("../../std/string.som"),
         },
     ],
 }];
