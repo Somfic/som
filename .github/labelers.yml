@@ -1,0 +1,63 @@
+lexer:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/lexer/**
+
+parser:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/parser/**
+
+ast:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/ast/**
+
+type-checker:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/type_check/**
+
+borrow-checker:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/borrow_check/**
+
+resolver:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/resolve/**
+
+codegen:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/code_gen/**
+
+linker:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/linker/**
+
+runner:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/runner/**
+
+program:
+  - changed-files:
+      - any-glob-to-any-file: compiler/src/program/**
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file: cli/**
+
+lsp:
+  - changed-files:
+      - any-glob-to-any-file: lsp/**
+
+stdlib:
+  - changed-files:
+      - any-glob-to-any-file: std/**
+
+editor:
+  - changed-files:
+      - any-glob-to-any-file: editors/**
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: .github/**
+
+docs:
+  - changed-files:
+      - any-glob-to-any-file: docs/**

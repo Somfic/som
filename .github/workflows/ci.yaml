@@ -10,6 +10,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  label:
+    name: label
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
   lint:
     name: lint
     runs-on: ubuntu-latest
@@ -153,6 +165,11 @@ jobs:
 
           echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
           echo "should_release=true" >> "$GITHUB_OUTPUT"
+
+          echo "## Version: ${NEW_VERSION}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Bump:** ${BUMP}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo -e "$CHANGELOG" >> "$GITHUB_STEP_SUMMARY"
 
           # Use delimiter for multiline output
           EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
