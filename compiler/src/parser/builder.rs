@@ -2,8 +2,7 @@ use std::path::PathBuf;
 
 use crate::{
     Ast, Decl, Expr, ExternBlock, ExternFunc, Func, Ident, ImplBlock, Module, Span, Stmt, Struct,
-    Type, Use,
-    arena::Id,
+    Type, Use, arena::Id,
 };
 
 /// Builder that handles all AST allocation and span tracking.

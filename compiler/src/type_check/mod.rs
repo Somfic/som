@@ -565,7 +565,8 @@ impl TypeInferencer {
 
                 // Constrain self parameter (first param) to match object type
                 if let Some(self_param_ty) = entry.signature.params.first() {
-                    let resolved_self = self.resolve_type(self_param_ty, &call_generics, call_span, ast);
+                    let resolved_self =
+                        self.resolve_type(self_param_ty, &call_generics, call_span, ast);
                     self.constraints.push(Constraint::Equal {
                         provenance: Provenance::FuncArg {
                             arg_expr: *object,
@@ -589,8 +590,10 @@ impl TypeInferencer {
                 };
 
                 // Constrain remaining args against remaining params (skip self)
-                for (i, (arg_expr, param_ty)) in
-                    args.iter().zip(entry.signature.params.iter().skip(1)).enumerate()
+                for (i, (arg_expr, param_ty)) in args
+                    .iter()
+                    .zip(entry.signature.params.iter().skip(1))
+                    .enumerate()
                 {
                     let resolved_ty = self.resolve_type(param_ty, &call_generics, call_span, ast);
                     let actual = self.infer(ast, arg_expr);

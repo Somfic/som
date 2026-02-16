@@ -354,7 +354,11 @@ fn parse_impl_block() {
     "#,
     );
 
-    assert!(errors.is_empty(), "should parse without errors: {:?}", errors);
+    assert!(
+        errors.is_empty(),
+        "should parse without errors: {:?}",
+        errors
+    );
     assert!(
         ast.func_registry.contains_key("Point::sum"),
         "method should be registered as Point::sum, got: {:?}",
@@ -375,5 +379,9 @@ fn parse_method_call() {
     "#,
     );
 
-    assert!(errors.is_empty(), "should parse without errors: {:?}", errors);
+    assert!(
+        errors.is_empty(),
+        "should parse without errors: {:?}",
+        errors
+    );
 }

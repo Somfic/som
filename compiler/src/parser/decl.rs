@@ -10,7 +10,11 @@ impl Parser<'_> {
     fn is_declaration(&self) -> bool {
         matches!(
             self.peek(),
-            TokenKind::Fn | TokenKind::Extern | TokenKind::Struct | TokenKind::Use | TokenKind::Impl
+            TokenKind::Fn
+                | TokenKind::Extern
+                | TokenKind::Struct
+                | TokenKind::Use
+                | TokenKind::Impl
         )
     }
 
