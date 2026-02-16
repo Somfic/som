@@ -1,155 +1,227 @@
-permissions: write-all
 name: ci
+
 on:
-  - push
-  - pull_request
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-    name: build
-    strategy:
-      fail-fast: false
-      matrix:
-        # os: [ubuntu-latest, macos-latest, windows-latest]
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
     steps:
-      - name: Check out
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@nightly
         with:
-          profile: minimal
-          toolchain: nightly
-          override: true
           components: rustfmt, clippy
 
-      - name: Set up cargo cache
-        uses: actions/cache@v5
-        continue-on-error: false
-        with:
-          save-always: true
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        run: cargo build
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace -- -D warnings
 
   test:
     name: test
-    strategy:
-      fail-fast: false
-      matrix:
-        # os: [ubuntu-latest, macos-latest, windows-latest]
-        os: [ubuntu-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
-      - name: Check out
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-          components: rustfmt, clippy
+      - uses: dtolnay/rust-toolchain@nightly
 
-      - name: Set up cargo cache
-        uses: actions/cache@v5
-        continue-on-error: false
-        with:
-          save-always: true
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
+      - uses: Swatinem/rust-cache@v2
 
       - name: Test
         run: cargo test
 
-  cicd:
-    needs: test
-    name: ci/cd
+  version:
+    name: version
+    needs: [lint, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    permissions: write-all
-    concurrency:
-      group: ${{ github.workflow }}
+    outputs:
+      version: ${{ steps.semver.outputs.version }}
+      should_release: ${{ steps.semver.outputs.should_release }}
+      changelog: ${{ steps.semver.outputs.changelog }}
     steps:
-      - name: Check out
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-          components: rustfmt, clippy
-
-      - name: Set up cargo cache
-        uses: actions/cache@v5
-        continue-on-error: false
-        with:
-          save-always: true
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Lint
+      - name: Calculate version
+        id: semver
         run: |
-          cargo fmt --all -- --check
-          cargo check
+          # Find the latest semver tag or default to 0.1.0
+          LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="0.1.0"
+            MAJOR=0; MINOR=1; PATCH=0
+            REF="$(git rev-list --max-parents=0 HEAD)"
+          else
+            VERSION="${LATEST_TAG#v}"
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            PATCH=$(echo "$VERSION" | cut -d. -f3)
+            REF="$LATEST_TAG"
+          fi
 
-      - name: Install committer
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        run: cargo install --locked committer || true
+          echo "Latest tag: $LATEST_TAG (${MAJOR}.${MINOR}.${PATCH})"
 
-      - name: Tag
-        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+          # Read commits since last tag
+          COMMITS=$(git log "${REF}..HEAD" --pretty=format:"%H %s" 2>/dev/null || true)
+          if [ -z "$COMMITS" ]; then
+            echo "No new commits since last tag"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Determine bump level from commit bodies
+          BUMP=""
+          BREAKING=""
+          FEATURES=""
+          FIXES=""
+
+          while IFS= read -r line; do
+            HASH=$(echo "$line" | cut -d' ' -f1)
+            SUBJECT=$(echo "$line" | cut -d' ' -f2-)
+            BODY=$(git log -1 --pretty=format:"%b" "$HASH")
+
+            # Check for semver tag in body
+            if echo "$BODY" | grep -qi "semver: major"; then
+              BUMP="major"
+              BREAKING="${BREAKING}- ${SUBJECT}\n"
+            elif echo "$BODY" | grep -qi "semver: minor"; then
+              [ "$BUMP" != "major" ] && BUMP="minor"
+              FEATURES="${FEATURES}- ${SUBJECT}\n"
+            elif echo "$BODY" | grep -qi "semver: patch"; then
+              [ "$BUMP" != "major" ] && [ "$BUMP" != "minor" ] && BUMP="patch"
+              FIXES="${FIXES}- ${SUBJECT}\n"
+            fi
+          done <<< "$COMMITS"
+
+          if [ -z "$BUMP" ]; then
+            echo "No semver tags found in commits"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Calculate new version
+          case "$BUMP" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION ($BUMP bump)"
+
+          # Generate changelog
+          CHANGELOG=""
+          if [ -n "$BREAKING" ]; then
+            CHANGELOG="${CHANGELOG}### Breaking changes\n${BREAKING}\n"
+          fi
+          if [ -n "$FEATURES" ]; then
+            CHANGELOG="${CHANGELOG}### New features\n${FEATURES}\n"
+          fi
+          if [ -n "$FIXES" ]; then
+            CHANGELOG="${CHANGELOG}### Fixes\n${FIXES}\n"
+          fi
+
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+
+          # Use delimiter for multiline output
+          EOF=$(dd if=/dev/urandom bs=15 count=1 status=none | base64)
+          echo "changelog<<${EOF}" >> "$GITHUB_OUTPUT"
+          echo -e "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "${EOF}" >> "$GITHUB_OUTPUT"
+
+  build-release:
+    name: build (${{ matrix.os }})
+    needs: [version]
+    if: needs.version.outputs.should_release == 'true'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release
+
+      - name: Package (unix)
+        if: matrix.archive == 'tar.gz'
         run: |
-          committer tag
-          echo "COMMITTER_IS_NEW=$(cat .env/COMMITTER_IS_NEW)" >> $GITHUB_ENV
-          echo "COMMITTER_TAG=$(cat .env/COMMITTER_TAG)" >> $GITHUB_ENV
+          STAGING="som-${{ needs.version.outputs.version }}-${{ matrix.target }}"
+          mkdir "$STAGING"
+          cp target/release/somc target/release/som target/release/somlsp "$STAGING/"
+          tar czf "${STAGING}.tar.gz" "$STAGING"
 
-      - name: Publish to crates.io
-        if: env.COMMITTER_IS_NEW == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        run: cargo publish --allow-dirty
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      - name: Package (windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $STAGING = "som-${{ needs.version.outputs.version }}-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $STAGING
+          Copy-Item "target/release/somc.exe", "target/release/som.exe", "target/release/somlsp.exe" -Destination $STAGING
+          Compress-Archive -Path $STAGING -DestinationPath "${STAGING}.zip"
 
-      - name: Push tag to origin
-        if: env.COMMITTER_IS_NEW == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        run: git push --tags origin
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: som-${{ matrix.target }}
+          path: som-${{ needs.version.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
+
+  release:
+    name: release
+    needs: [version, build-release]
+    concurrency:
+      group: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create tag
+        run: |
+          git tag "v${{ needs.version.outputs.version }}"
+          git push origin "v${{ needs.version.outputs.version }}"
 
       - name: Create release
-        if: env.COMMITTER_IS_NEW == 'true' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: softprops/action-gh-release@v2
         with:
-          files: target/release/*.tar.gz
+          tag_name: v${{ needs.version.outputs.version }}
+          name: v${{ needs.version.outputs.version }}
+          body: ${{ needs.version.outputs.changelog }}
+          files: artifacts/*
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ env.COMMITTER_TAG }}
-          body_path: ".env/COMMITTER_CHANGELOG"
-          draft: false
