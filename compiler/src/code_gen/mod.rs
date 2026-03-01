@@ -322,7 +322,6 @@ impl<'ast> Codegen<'ast> {
                     BinOp::Subtract => func.body.ins().isub(lhs_val, rhs_val),
                     BinOp::Multiply => func.body.ins().imul(lhs_val, rhs_val),
                     BinOp::Divide => func.body.ins().sdiv(lhs_val, rhs_val),
-                    // Comparisons return i8 (bool)
                     BinOp::LessThan => {
                         func.body
                             .ins()
@@ -345,9 +344,9 @@ impl<'ast> Codegen<'ast> {
                     }
                     BinOp::Equals => func.body.ins().icmp(IntCC::Equal, lhs_val, rhs_val),
                     BinOp::NotEquals => func.body.ins().icmp(IntCC::NotEqual, lhs_val, rhs_val),
-                    // Boolean ops
                     BinOp::And => func.body.ins().band(lhs_val, rhs_val),
                     BinOp::Or => func.body.ins().bor(lhs_val, rhs_val),
+                    BinOp::Modulo => func.body.ins().srem(lhs_val, rhs_val),
                 }
             }
             Expr::Block { stmts, value } => {

@@ -68,6 +68,7 @@ pub enum BinOp {
     NotEquals,
     And,
     Or,
+    Modulo,
 }
 
 pub const TRAIT_ADD: Id<Trait> = Id::<Trait>::new(0);
@@ -82,6 +83,7 @@ pub const TRAIT_LT_EQ: Id<Trait> = Id::<Trait>::new(8);
 pub const TRAIT_GT_EQ: Id<Trait> = Id::<Trait>::new(9);
 pub const TRAIT_AND: Id<Trait> = Id::<Trait>::new(10);
 pub const TRAIT_OR: Id<Trait> = Id::<Trait>::new(11);
+pub const TRAIT_MODULO: Id<Trait> = Id::<Trait>::new(12);
 
 impl BinOp {
     pub fn trait_id(&self) -> Id<Trait> {
@@ -98,6 +100,7 @@ impl BinOp {
             BinOp::NotEquals => TRAIT_NEQ,
             BinOp::And => TRAIT_AND,
             BinOp::Or => TRAIT_OR,
+            BinOp::Modulo => TRAIT_MODULO,
         }
     }
 }

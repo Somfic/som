@@ -201,6 +201,13 @@ impl Ast {
             output_type: Type::Pointer,
         });
 
+        ast.impls.alloc(Impl {
+            trait_id: TRAIT_MODULO,
+            self_type: Type::I32,
+            arg_types: vec![Type::I32],
+            output_type: Type::I32,
+        });
+
         ast
     }
 

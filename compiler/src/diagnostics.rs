@@ -201,7 +201,8 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::LessThan
         | TokenKind::GreaterThan
         | TokenKind::LessThanOrEqual
-        | TokenKind::GreaterThanOrEqual => SKY,
+        | TokenKind::GreaterThanOrEqual
+        | TokenKind::Percentage => SKY,
         TokenKind::OpenParen
         | TokenKind::CloseParen
         | TokenKind::OpenBrace

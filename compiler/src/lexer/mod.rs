@@ -99,6 +99,8 @@ pub enum TokenKind {
     LessThanOrEqual,
     #[token(">=")]
     GreaterThanOrEqual,
+    #[token("%")]
+    Percentage,
 
     // Delimiters
     #[token("(")]
@@ -153,7 +155,6 @@ pub enum TokenKind {
 impl std::fmt::Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            // Keywords
             TokenKind::Fn => write!(f, "fn"),
             TokenKind::Extern => write!(f, "extern"),
             TokenKind::Struct => write!(f, "struct"),
@@ -166,8 +167,6 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Loop => write!(f, "loop"),
             TokenKind::While => write!(f, "while"),
             TokenKind::For => write!(f, "for"),
-
-            // Built-in types
             TokenKind::I8 => write!(f, "i8"),
             TokenKind::I16 => write!(f, "i16"),
             TokenKind::I32 => write!(f, "i32"),
@@ -185,16 +184,12 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Bool => write!(f, "bool"),
             TokenKind::Char => write!(f, "char"),
             TokenKind::Str => write!(f, "str"),
-
-            // Literals and identifiers
             TokenKind::Ident => write!(f, "identifier"),
             TokenKind::Int => write!(f, "integer"),
             TokenKind::Float => write!(f, "float"),
             TokenKind::Text => write!(f, "string"),
             TokenKind::True => write!(f, "true"),
             TokenKind::False => write!(f, "false"),
-
-            // Operators
             TokenKind::Plus => write!(f, "+"),
             TokenKind::Minus => write!(f, "-"),
             TokenKind::Star => write!(f, "*"),
@@ -207,8 +202,6 @@ impl std::fmt::Display for TokenKind {
             TokenKind::GreaterThan => write!(f, ">"),
             TokenKind::LessThanOrEqual => write!(f, "<="),
             TokenKind::GreaterThanOrEqual => write!(f, ">="),
-
-            // Delimiters
             TokenKind::OpenParen => write!(f, "("),
             TokenKind::CloseParen => write!(f, ")"),
             TokenKind::OpenBrace => write!(f, "{{"),
@@ -223,14 +216,11 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Dot => write!(f, "."),
             TokenKind::SingleQuote => write!(f, "'"),
             TokenKind::DoubleQuote => write!(f, "\""),
-
-            // Trivia
             TokenKind::Whitespace => write!(f, "whitespace"),
             TokenKind::Comment => write!(f, "comment"),
-
-            // Special
             TokenKind::Error => write!(f, "unexpected character"),
             TokenKind::Eof => write!(f, "end of file"),
+            TokenKind::Percentage => write!(f, "%"),
         }
     }
 }
