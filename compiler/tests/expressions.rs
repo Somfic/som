@@ -706,3 +706,999 @@ fn compare_greater_equal_statement() {
     let code = compile_and_run(source);
     assert_eq!(code, 2); // only first two conditions true
 }
+
+// ============================================================================
+// Modulo operator
+// ============================================================================
+
+#[test]
+fn modulo_basic() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        10 % 3
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 1);
+}
+
+#[test]
+fn modulo_even_check() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        10 % 2
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn modulo_larger_divisor() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        3 % 5
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 3);
+}
+
+#[test]
+fn modulo_same() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        7 % 7
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn modulo_one() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        42 % 1
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn modulo_in_expression() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        (10 % 3) + (7 % 4)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 4); // 1 + 3
+}
+
+// ============================================================================
+// Chained arithmetic
+// ============================================================================
+
+#[test]
+fn chained_addition() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        1 + 2 + 3 + 4 + 5
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 15);
+}
+
+#[test]
+fn chained_subtraction() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        100 - 20 - 30 - 10
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 40);
+}
+
+#[test]
+fn chained_multiplication() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        2 * 3 * 4
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 24);
+}
+
+#[test]
+fn mixed_arithmetic() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        2 + 3 * 4 - 1
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 13);
+}
+
+#[test]
+fn complex_precedence() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        (2 + 3) * (4 - 1)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 15);
+}
+
+#[test]
+fn division_and_modulo() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        17 / 3 + 17 % 3
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 7); // 5 + 2
+}
+
+// ============================================================================
+// Multiple let bindings
+// ============================================================================
+
+#[test]
+fn multiple_lets_sum() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let a = 10;
+        let b = 20;
+        let c = 30;
+        a + b + c
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 60);
+}
+
+#[test]
+fn let_chain_dependency() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let a = 5;
+        let b = a + 3;
+        let c = b * 2;
+        c
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 16);
+}
+
+#[test]
+fn many_bindings() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let a = 1;
+        let b = 2;
+        let c = 3;
+        let d = 4;
+        let e = 5;
+        a + b + c + d + e
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 15);
+}
+
+// ============================================================================
+// Complex block expressions
+// ============================================================================
+
+#[test]
+fn block_with_arithmetic() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = {
+            let a = 10;
+            let b = 20;
+            a * b
+        };
+        x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 200);
+}
+
+#[test]
+fn block_returns_conditional() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = {
+            1 if true else 0
+        };
+        x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 1);
+}
+
+#[test]
+fn nested_block_arithmetic() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = {
+            let a = { 3 + 4 };
+            a * 2
+        };
+        x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 14);
+}
+
+#[test]
+fn block_with_shadow() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = 10;
+        let x = { x + 5 };
+        x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 15);
+}
+
+#[test]
+fn multiple_blocks() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let a = { 10 };
+        let b = { 20 };
+        let c = { a + b };
+        c
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 30);
+}
+
+// ============================================================================
+// Function composition
+// ============================================================================
+
+#[test]
+fn triple_composition() {
+    let source = source_raw!(
+        r#"
+    fn f(x: i32) -> i32 { x + 1 }
+    fn g(x: i32) -> i32 { x * 2 }
+    fn h(x: i32) -> i32 { x - 3 }
+
+    fn main() -> i32 {
+        f(g(h(10)))
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 15); // f(g(7)) = f(14) = 15
+}
+
+#[test]
+fn function_in_let() {
+    let source = source_raw!(
+        r#"
+    fn square(x: i32) -> i32 { x * x }
+
+    fn main() -> i32 {
+        let a = square(3);
+        let b = square(4);
+        a + b
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 25); // 9 + 16
+}
+
+#[test]
+fn function_with_multiple_calls() {
+    let source = source_raw!(
+        r#"
+    fn add(a: i32, b: i32) -> i32 { a + b }
+
+    fn main() -> i32 {
+        add(add(1, 2), add(3, 4))
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 10); // add(3, 7)
+}
+
+// ============================================================================
+// Recursive algorithms
+// ============================================================================
+
+#[test]
+fn recursive_gcd() {
+    let source = source_raw!(
+        r#"
+    fn gcd(a: i32, b: i32) -> i32 {
+        a if b == 0 else gcd(b, a % b)
+    }
+
+    fn main() -> i32 {
+        gcd(48, 18)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 6);
+}
+
+#[test]
+fn recursive_power() {
+    let source = source_raw!(
+        r#"
+    fn power(base: i32, exp: i32) -> i32 {
+        1 if exp == 0 else base * power(base, exp - 1)
+    }
+
+    fn main() -> i32 {
+        power(2, 7)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 128);
+}
+
+#[test]
+fn recursive_abs() {
+    let source = source_raw!(
+        r#"
+    fn abs(x: i32) -> i32 {
+        x if x > 0 else 0 - x
+    }
+
+    fn main() -> i32 {
+        abs(0 - 42)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
+
+#[test]
+fn recursive_countdown() {
+    let source = source_raw!(
+        r#"
+    fn countdown(n: i32) -> i32 {
+        0 if n <= 0 else countdown(n - 1)
+    }
+
+    fn main() -> i32 {
+        countdown(10)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn recursive_sum() {
+    let source = source_raw!(
+        r#"
+    fn sum(n: i32) -> i32 {
+        0 if n <= 0 else n + sum(n - 1)
+    }
+
+    fn main() -> i32 {
+        sum(10)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 55);
+}
+
+// ============================================================================
+// Deeply nested shadowing
+// ============================================================================
+
+#[test]
+fn triple_shadow() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = 1;
+        let x = 2;
+        let x = 3;
+        x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 3);
+}
+
+#[test]
+fn shadow_with_computation() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = 10;
+        let x = x + 5;
+        let x = x * 2;
+        x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 30);
+}
+
+#[test]
+fn shadow_in_blocks() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = 1;
+        let x = {
+            let x = 10;
+            x + 1
+        };
+        x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 11);
+}
+
+#[test]
+fn shadow_different_types_return() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = true;
+        let x = 42;
+        x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
+
+// ============================================================================
+// Arithmetic with conditionals
+// ============================================================================
+
+#[test]
+fn conditional_arithmetic_true() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        (1 + 2) if true else (3 + 4)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 3);
+}
+
+#[test]
+fn conditional_arithmetic_false() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        (1 + 2) if false else (3 + 4)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 7);
+}
+
+#[test]
+fn conditional_with_comparison() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        10 if 5 > 3 else 20
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 10);
+}
+
+#[test]
+fn conditional_with_variable() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = 5;
+        (x * 2) if x > 3 else (x + 1)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 10);
+}
+
+#[test]
+fn nested_conditional() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        1 if true else (2 if false else 3)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 1);
+}
+
+#[test]
+fn nested_conditional_inner() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        1 if false else (2 if true else 3)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 2);
+}
+
+#[test]
+fn conditional_in_function() {
+    let source = source_raw!(
+        r#"
+    fn choose(b: bool, x: i32, y: i32) -> i32 {
+        x if b else y
+    }
+
+    fn main() -> i32 {
+        choose(true, 42, 0)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
+
+// ============================================================================
+// Large computation chains
+// ============================================================================
+
+#[test]
+fn sum_to_100() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let mut sum = 0;
+        let mut i = 1;
+        while i <= 10 {
+            sum = sum + i;
+            i = i + 1;
+        }
+        sum
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 55);
+}
+
+#[test]
+fn factorial_7() {
+    let source = source_raw!(
+        r#"
+    fn factorial(n: i32) -> i32 {
+        1 if n <= 1 else n * factorial(n - 1)
+    }
+
+    fn main() -> i32 {
+        factorial(7)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 176); // 5040 % 256 = 176
+}
+
+#[test]
+fn fibonacci_12() {
+    let source = source_raw!(
+        r#"
+    fn fib(n: i32) -> i32 {
+        n if n <= 1 else fib(n - 1) + fib(n - 2)
+    }
+
+    fn main() -> i32 {
+        fib(12)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 144);
+}
+
+// ============================================================================
+// Identity and helper functions
+// ============================================================================
+
+#[test]
+fn identity_function() {
+    let source = source_raw!(
+        r#"
+    fn id(x: i32) -> i32 { x }
+
+    fn main() -> i32 {
+        id(42)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
+
+#[test]
+fn constant_function() {
+    let source = source_raw!(
+        r#"
+    fn always_five() -> i32 { 5 }
+
+    fn main() -> i32 {
+        always_five()
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 5);
+}
+
+#[test]
+fn add_function() {
+    let source = source_raw!(
+        r#"
+    fn add(a: i32, b: i32) -> i32 { a + b }
+
+    fn main() -> i32 {
+        add(20, 22)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
+
+#[test]
+fn subtract_function() {
+    let source = source_raw!(
+        r#"
+    fn sub(a: i32, b: i32) -> i32 { a - b }
+
+    fn main() -> i32 {
+        sub(50, 8)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
+
+#[test]
+fn max_function() {
+    let source = source_raw!(
+        r#"
+    fn max(a: i32, b: i32) -> i32 { a if a > b else b }
+
+    fn main() -> i32 {
+        max(10, 42)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
+
+#[test]
+fn min_function() {
+    let source = source_raw!(
+        r#"
+    fn min(a: i32, b: i32) -> i32 { a if a < b else b }
+
+    fn main() -> i32 {
+        min(10, 42)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 10);
+}
+
+// ============================================================================
+// Constant folding / edge cases
+// ============================================================================
+
+#[test]
+fn zero_operations() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        0 + 0
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn multiply_by_zero() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        42 * 0
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn multiply_by_one() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        42 * 1
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
+
+#[test]
+fn subtract_self() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = 42;
+        x - x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn divide_self() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = 7;
+        x / x
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 1);
+}
+
+#[test]
+fn large_value_wraps() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        let x = 200;
+        let y = 100;
+        x + y
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 44); // 300 % 256 = 44
+}
+
+#[test]
+fn overflow_wraps() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        255 + 1
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 0); // 256 % 256 = 0
+}
+
+#[test]
+fn negative_wraps() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        0 - 1
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 255);
+}
+
+// ============================================================================
+// More edge cases
+// ============================================================================
+
+#[test]
+fn parenthesized_expression() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        (((42)))
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
+
+#[test]
+fn deeply_nested_parens() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        ((1 + 2) * (3 + 4))
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 21);
+}
+
+#[test]
+fn many_function_params() {
+    let source = source_raw!(
+        r#"
+    fn sum4(a: i32, b: i32, c: i32, d: i32) -> i32 { a + b + c + d }
+
+    fn main() -> i32 {
+        sum4(10, 20, 30, 40)
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 100);
+}
+
+#[test]
+fn block_is_expression() {
+    let source = source_raw!(
+        r#"
+    fn main() -> i32 {
+        { 42 }
+    }
+    "#
+    );
+
+    let code = compile_and_run(source);
+    assert_eq!(code, 42);
+}
