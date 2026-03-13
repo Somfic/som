@@ -253,3 +253,281 @@ fn test_full_std_usage() {
     )]);
     assert_eq!(code, 0);
 }
+
+// ============================================================================
+// Additional std library tests
+// ============================================================================
+
+#[test]
+fn test_std_println_multiple_lines() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            std::println("line one");
+            std::println("line two");
+            std::println("line three");
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_println_empty_string() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            std::println("");
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_malloc_free_in_function() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn alloc_and_free() -> i32 {
+            let p: * = std::malloc(128);
+            std::free(p);
+            0
+        }
+        fn main() -> i32 {
+            alloc_and_free()
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_exit_large_code() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            std::exit(42);
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 42);
+}
+
+#[test]
+fn test_std_exit_in_conditional() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            if true {
+                std::exit(5);
+            }
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 5);
+}
+
+#[test]
+fn test_std_malloc_in_loop() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            let mut i = 0;
+            while i < 3 {
+                let p: * = std::malloc(64);
+                std::free(p);
+                i = i + 1;
+            }
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_combined_println_and_exit() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            std::println("about to exit");
+            std::exit(7);
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 7);
+}
+
+#[test]
+fn test_std_combined_malloc_println_exit() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            let p: * = std::malloc(100);
+            std::println("allocated");
+            std::free(p);
+            std::println("freed");
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_user_module_calls_std() {
+    let code = compile_and_run_project(&[
+        (
+            "main.som",
+            r#"
+            use mymod;
+            fn main() -> i32 {
+                mymod::do_print();
+                0
+            }
+            "#,
+        ),
+        (
+            "mymod/lib.som",
+            r#"
+            use std;
+            fn do_print() {
+                std::println("from user module");
+            }
+            "#,
+        ),
+    ]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_with_structs() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        struct Config { size: i32 }
+        fn main() -> i32 {
+            let c = Config { size: 64 };
+            let p: * = std::malloc(c.size);
+            std::free(p);
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_println_in_while() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            let mut i = 0;
+            while i < 3 {
+                std::println("loop");
+                i = i + 1;
+            }
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_multiple_malloc_sizes() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            let a: * = std::malloc(8);
+            let b: * = std::malloc(64);
+            let c: * = std::malloc(512);
+            std::free(a);
+            std::free(b);
+            std::free(c);
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_exit_zero_explicit() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            std::exit(0);
+            99
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_free_null_like() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn main() -> i32 {
+            let p: * = std::malloc(16);
+            std::free(p);
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn test_std_with_function_composition() {
+    let code = compile_and_run_project(&[(
+        "main.som",
+        r#"
+        use std;
+        fn allocate(size: i32) -> * {
+            std::malloc(size)
+        }
+        fn deallocate(p: *) {
+            std::free(p);
+        }
+        fn main() -> i32 {
+            let p: * = allocate(256);
+            std::println("allocated via helper");
+            deallocate(p);
+            0
+        }
+        "#,
+    )]);
+    assert_eq!(code, 0);
+}
