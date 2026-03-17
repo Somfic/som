@@ -445,3 +445,336 @@ fn test_use_std_println_unqualified() {
         typed_ast.errors
     );
 }
+
+// ============================================================================
+// Additional module tests
+// ============================================================================
+
+#[test]
+fn test_module_with_struct() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use shapes;
+        fn main() {}
+        "#,
+    );
+    project.add_file(
+        "shapes/lib.som",
+        r#"
+        struct Point { x: i32, y: i32 }
+        fn origin() -> i32 { 0 }
+        "#,
+    );
+
+    let ast = project.load().expect("should load module with struct");
+    assert!(ast.func_registry.contains_key("shapes::origin"));
+}
+
+#[test]
+fn test_multiple_modules_shared_dependency() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use shared;
+        use a;
+        use b;
+        fn main() {}
+        "#,
+    );
+    project.add_file("a/lib.som", "use shared; fn a_func() -> i32 { 1 }");
+    project.add_file("a/shared/lib.som", "fn common() -> i32 { 0 }");
+    project.add_file("b/lib.som", "use shared; fn b_func() -> i32 { 2 }");
+    project.add_file("b/shared/lib.som", "fn common() -> i32 { 0 }");
+    project.add_file("shared/lib.som", "fn common() -> i32 { 0 }");
+
+    let ast = project.load().expect("should load");
+    // All three uses resolve - main, a, and b each load their own "shared" path,
+    // but main's shared is at root level
+    assert!(ast.func_registry.contains_key("shared::common"));
+}
+
+#[test]
+fn test_module_function_calls_other_module_function() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use a;
+        fn main() { a::call_b(); }
+        "#,
+    );
+    project.add_file(
+        "a/lib.som",
+        r#"
+        use b;
+        fn call_b() -> i32 { b::value() }
+        "#,
+    );
+    // b is inside a's directory since `use b` from a/lib.som resolves relative to a/
+    project.add_file("a/b/lib.som", "fn value() -> i32 { 99 }");
+
+    let ast = project.load().expect("should load");
+    assert!(ast.func_registry.contains_key("a::call_b"));
+    assert!(ast.func_registry.contains_key("b::value"));
+}
+
+#[test]
+fn test_module_with_multiple_files() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use mymod;
+        fn main() { mymod::greet(); }
+        "#,
+    );
+    project.add_file("mymod/lib.som", "fn greet() {}");
+    project.add_file("mymod/helper.som", "fn assist() -> i32 { 1 }");
+
+    let ast = project.load().expect("should load module with multiple files");
+    assert!(ast.func_registry.contains_key("mymod::greet"));
+    assert!(ast.func_registry.contains_key("mymod::assist"));
+}
+
+#[test]
+fn test_module_exports_multiple_functions() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use calc;
+        fn main() {}
+        "#,
+    );
+    project.add_file(
+        "calc/lib.som",
+        r#"
+        fn add(a: i32, b: i32) -> i32 { a + b }
+        fn sub(a: i32, b: i32) -> i32 { a - b }
+        fn mul(a: i32, b: i32) -> i32 { a * b }
+        "#,
+    );
+
+    let ast = project.load().expect("should load");
+    assert!(ast.func_registry.contains_key("calc::add"));
+    assert!(ast.func_registry.contains_key("calc::sub"));
+    assert!(ast.func_registry.contains_key("calc::mul"));
+}
+
+#[test]
+fn test_use_and_local_functions() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use utils;
+        fn local_helper() -> i32 { 10 }
+        fn main() -> i32 { local_helper() }
+        "#,
+    );
+    project.add_file("utils/lib.som", "fn tool() -> i32 { 5 }");
+
+    let ast = project.load().expect("should load");
+    assert!(ast.func_registry.contains_key("utils::tool"));
+    assert_eq!(ast.funcs.len(), 3); // main + local_helper + tool
+}
+
+#[test]
+fn test_module_with_extern() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use mylib;
+        fn main() { mylib::get_abs(); }
+        "#,
+    );
+    project.add_file(
+        "mylib/lib.som",
+        r#"
+        extern {
+            fn abs(x: i32) -> i32;
+        }
+        fn get_abs() -> i32 { abs(0 - 5) }
+        "#,
+    );
+
+    let ast = project.load().expect("should load module with extern");
+    assert!(ast.func_registry.contains_key("mylib::get_abs"));
+}
+
+#[test]
+fn test_deeply_nested_three_levels() {
+    let project = TestProject::new();
+    project.add_file("main.som", "use a; fn main() {}");
+    project.add_file("a/lib.som", "use b; fn fa() {}");
+    project.add_file("a/b/lib.som", "use c; fn fb() {}");
+    project.add_file("a/b/c/lib.som", "use d; fn fc() {}");
+    project.add_file("a/b/c/d/lib.som", "fn fd() {}");
+
+    let ast = project.load().expect("should load deeply nested modules");
+    assert_eq!(ast.mods.len(), 5);
+}
+
+#[test]
+fn test_empty_main_with_module() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use helper;
+        fn main() {}
+        "#,
+    );
+    project.add_file("helper/lib.som", "fn do_nothing() {}");
+
+    let ast = project.load().expect("should load");
+    assert!(ast.func_registry.contains_key("helper::do_nothing"));
+    assert_eq!(ast.funcs.len(), 2);
+}
+
+#[test]
+fn test_module_function_name_collision_with_main() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use a;
+        fn helper() -> i32 { 1 }
+        fn main() -> i32 { helper() }
+        "#,
+    );
+    project.add_file("a/lib.som", "fn helper() -> i32 { 2 }");
+
+    let ast = project.load().expect("should load");
+    assert!(ast.func_registry.contains_key("a::helper"));
+    assert_eq!(ast.funcs.len(), 3); // main + root helper + a::helper
+}
+
+#[test]
+fn test_two_modules_each_with_structs() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use geo;
+        use color;
+        fn main() {}
+        "#,
+    );
+    project.add_file(
+        "geo/lib.som",
+        r#"
+        struct Point { x: i32, y: i32 }
+        fn make_point() -> i32 { 0 }
+        "#,
+    );
+    project.add_file(
+        "color/lib.som",
+        r#"
+        struct Color { r: i32, g: i32, b: i32 }
+        fn make_color() -> i32 { 0 }
+        "#,
+    );
+
+    let ast = project.load().expect("should load modules with structs");
+    assert!(ast.func_registry.contains_key("geo::make_point"));
+    assert!(ast.func_registry.contains_key("color::make_color"));
+}
+
+#[test]
+fn test_module_with_qualified_call_type_checks() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use math;
+        fn main() -> i32 { math::add(1, 2) }
+        "#,
+    );
+    project.add_file("math/lib.som", "fn add(a: i32, b: i32) -> i32 { a + b }");
+
+    let ast = project.load().expect("should load");
+    let inferencer = TypeInferencer::new();
+    let typed_ast = inferencer.check_program(ast);
+    assert!(
+        typed_ast.errors.is_empty(),
+        "expected no type errors for qualified call, got: {:?}",
+        typed_ast.errors
+    );
+}
+
+#[test]
+fn test_missing_nested_module() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use a;
+        fn main() {}
+        "#,
+    );
+    project.add_file("a/lib.som", "use nonexistent; fn a_func() {}");
+
+    match project.load() {
+        Ok(_) => panic!("should fail with missing nested module"),
+        Err(errors) => {
+            assert!(!errors.program.is_empty(), "expected program errors");
+            let has_not_found = errors.program.iter().any(|e| {
+                matches!(e, ProgramError::ModuleNotFound { name, .. } if name == "nonexistent")
+            });
+            assert!(has_not_found, "expected ModuleNotFound for 'nonexistent', got: {:?}", errors.program);
+        }
+    }
+}
+
+#[test]
+fn test_module_with_constants() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use consts;
+        fn main() -> i32 { consts::pi_approx() }
+        "#,
+    );
+    project.add_file(
+        "consts/lib.som",
+        r#"
+        fn pi_approx() -> i32 { 3 }
+        fn zero() -> i32 { 0 }
+        fn one() -> i32 { 1 }
+        "#,
+    );
+
+    let ast = project.load().expect("should load");
+    assert!(ast.func_registry.contains_key("consts::pi_approx"));
+    assert!(ast.func_registry.contains_key("consts::zero"));
+    assert!(ast.func_registry.contains_key("consts::one"));
+}
+
+#[test]
+fn test_three_modules_independent() {
+    let project = TestProject::new();
+    project.add_file(
+        "main.som",
+        r#"
+        use alpha;
+        use beta;
+        use gamma;
+        fn main() {}
+        "#,
+    );
+    project.add_file("alpha/lib.som", "fn a_fn() -> i32 { 1 }");
+    project.add_file("beta/lib.som", "fn b_fn() -> i32 { 2 }");
+    project.add_file("gamma/lib.som", "fn g_fn() -> i32 { 3 }");
+
+    let ast = project.load().expect("should load");
+    assert_eq!(ast.mods.len(), 4); // root + alpha + beta + gamma
+    assert!(ast.func_registry.contains_key("alpha::a_fn"));
+    assert!(ast.func_registry.contains_key("beta::b_fn"));
+    assert!(ast.func_registry.contains_key("gamma::g_fn"));
+}
