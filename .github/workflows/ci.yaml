@@ -233,7 +233,7 @@ jobs:
           Compress-Archive -Path $STAGING -DestinationPath "${STAGING}.zip"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: som-${{ matrix.target }}
           path: som-${{ needs.version.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
