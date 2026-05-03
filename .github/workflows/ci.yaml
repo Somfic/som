@@ -2,7 +2,6 @@ name: ci
 
 on:
   push:
-    branches: [main, dev]
   pull_request:
 
 concurrency:
@@ -72,7 +71,7 @@ jobs:
 
   version:
     name: version
-    needs: [lint, test]
+    needs: [ lint, test ]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
@@ -179,7 +178,7 @@ jobs:
 
   build-release:
     name: build (${{ matrix.os }})
-    needs: [version]
+    needs: [ version ]
     if: needs.version.outputs.should_release == 'true'
     strategy:
       matrix:
@@ -236,11 +235,12 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: som-${{ matrix.target }}
-          path: som-${{ needs.version.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
+          path: som-${{ needs.version.outputs.version }}-${{ matrix.target }}.${{
+            matrix.archive }}
 
   release:
     name: release
-    needs: [version, build-release]
+    needs: [ version, build-release ]
     concurrency:
       group: release
     runs-on: ubuntu-latest

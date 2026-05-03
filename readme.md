@@ -60,6 +60,7 @@ let crew = when ship {
 ```rust
 type Pair<T, U> = { first: T, second: U }
 let int_pair: Pair<int, int> = { first: 1, second: 2 }
+```
 
 ## Optimizations
 - [ ] Constant folding

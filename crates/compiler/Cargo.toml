@@ -1,0 +1,8 @@
+[package]
+name = "som_compiler"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+som = { workspace = true }
+som_ast = { workspace = true }

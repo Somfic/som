@@ -1,3 +1,23 @@
+[package]
+name = "som"
+version = "0.1.0"
+edition = "2024"
+
 [workspace]
-members = ["compiler", "lsp", "cli"]
+members = ["crates/*"]
 resolver = "3"
+
+[dependencies]
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+som_compiler = { workspace = true }
+insta = "1.47"
+
+[workspace.dependencies]
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+som = { path = "." }
+som_ast = { path = "crates/ast" }
+som_compiler = { path = "crates/compiler" }
