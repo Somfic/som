@@ -1,4 +1,4 @@
-use som::Span;
+use som_common::Span;
 
 use crate::{
     Parser,

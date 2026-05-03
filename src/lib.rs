@@ -1,32 +1,49 @@
-mod arena;
-mod diagnostics;
-mod macros;
-mod source;
-mod span;
-mod symbol;
+pub use som_common::*;
 
-pub use arena::*;
-pub use diagnostics::*;
-pub use macros::*;
-pub use source::*;
-pub use span::*;
-pub use symbol::*;
+pub struct CompileResult {
+    pub diagnostics: Vec<Diagnostic>,
+}
 
-pub use tracing::debug;
-pub use tracing::error;
-pub use tracing::info;
-pub use tracing::trace;
-pub use tracing::warn;
+impl CompileResult {
+    pub fn failed(diags: DiagnosticSink) -> Self {
+        Self {
+            diagnostics: diags.diagnostics().to_vec(),
+        }
+    }
+}
 
-/// Install a tracing subscriber. Idempotent — safe to call from multiple tests.
-///
-/// Honors `RUST_LOG`; defaults to `info` when unset.
-pub fn init_tracing() {
-    use tracing_subscriber::{EnvFilter, fmt};
-    let _ = fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .with_test_writer()
-        .try_init();
+pub fn compile(source: &Source) -> CompileResult {
+    let mut sources = SourceMap::new();
+    let id = sources.add(source.clone());
+    let mut diags = DiagnosticSink::new();
+
+    let content = sources.source(id).content();
+    let ast = som_ast::parse(id, content, &mut diags);
+    if std::env::var("SOM_DUMP_AST").is_ok() {
+        info!("ast dump:\n{ast:#?}");
+    }
+    if diags.has_errors() {
+        for diag in diags.diagnostics() {
+            error!("{diag:#?}");
+        }
+        error!(
+            "compilation failed with {} errors and {} warnings",
+            diags.error_count(),
+            diags.warning_count()
+        );
+        return CompileResult::failed(diags);
+    }
+
+    CompileResult {
+        diagnostics: vec![],
+    }
+}
+
+pub fn compile_and_run(source: &str) -> Result<i32, Vec<Diagnostic>> {
+    let result = compile(&Source::from_raw(source));
+    if !result.diagnostics.is_empty() {
+        return Err(result.diagnostics);
+    }
+    // TODO: jit + run
+    Ok(0)
 }

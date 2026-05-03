@@ -1,5 +1,5 @@
 use logos::Logos;
-use som::Span;
+use som_common::Span;
 
 #[derive(Logos, logos_display::Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {

@@ -1,5 +1,5 @@
 use logos::Logos;
-use som::*;
+use som_common::*;
 
 use crate::{Token, TokenKind};
 

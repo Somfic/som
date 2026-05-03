@@ -1,4 +1,4 @@
-use som::*;
+use som_common::*;
 
 mod lexer;
 mod parser;

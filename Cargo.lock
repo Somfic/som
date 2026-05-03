@@ -397,7 +397,8 @@ name = "som"
 version = "0.1.0"
 dependencies = [
  "insta",
- "som_compiler",
+ "som_ast",
+ "som_common",
  "tracing",
  "tracing-subscriber",
 ]
@@ -408,15 +409,15 @@ version = "0.1.0"
 dependencies = [
  "logos",
  "logos-display",
- "som",
+ "som_common",
 ]
 
 [[package]]
-name = "som_compiler"
+name = "som_common"
 version = "0.1.0"
 dependencies = [
- "som",
- "som_ast",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

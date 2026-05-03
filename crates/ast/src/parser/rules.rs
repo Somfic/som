@@ -1,4 +1,4 @@
-use som::Id;
+use som_common::Id;
 
 use crate::{Expr, Parser};
 

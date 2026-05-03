@@ -1,4 +1,4 @@
-use som::{Id, Span};
+use som_common::{Id, Span};
 
 use crate::{
     Expr, Parser, Stmt,
