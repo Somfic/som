@@ -1,15 +1,28 @@
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::ops::Index;
 
 pub struct Arena<T> {
     items: Vec<T>,
 }
 
+impl<T> Index<Id<T>> for Arena<T> {
+    type Output = T;
+    fn index(&self, id: Id<T>) -> &T {
+        self.items.get(id.id).unwrap()
+    }
+}
+
 impl<T: Debug> Debug for Arena<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_map()
-            .entries(self.items.iter().enumerate().map(|(i, item)| (Id::<T>::new(i), item)))
+            .entries(
+                self.items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, item)| (Id::<T>::new(i), item)),
+            )
             .finish()
     }
 }

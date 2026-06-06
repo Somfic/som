@@ -2,6 +2,7 @@
 name = "som"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.95"
 
 [workspace]
 members = ["crates/*"]
@@ -10,6 +11,9 @@ resolver = "3"
 [dependencies]
 som_common = { workspace = true }
 som_ast = { workspace = true }
+som_hir = { workspace = true }
+som_mir = { workspace = true }
+som_codegen = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
@@ -21,3 +25,6 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 som_common = { path = "crates/common" }
 som_ast = { path = "crates/ast" }
+som_hir = { path = "crates/hir" }
+som_mir = { path = "crates/mir" }
+som_codegen = { path = "crates/codegen" }

@@ -35,5 +35,9 @@ pub fn lex(source: Id<Source>, content: &str) -> Vec<Token> {
 
     debug!(source = ?source, token_count = tokens.len(), "Lexing complete");
 
+    if std::env::var("SOM_DUMP_TOKENS").is_ok() {
+        info!("tokens dump:\n{tokens:#?}");
+    }
+
     tokens
 }

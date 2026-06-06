@@ -1,0 +1,8 @@
+[package]
+name = "som_mir"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+som_common = { workspace = true }
+som_hir = { workspace = true }

@@ -1,14 +1,32 @@
 mod common;
+use common::*;
 
 #[test]
-fn one_plus_one() {
-    let result = som::compile_and_run("1 + 1").unwrap();
-    assert_eq!(result, 2);
+fn addition() {
+    expect("1 + 1", 2);
 }
 
-// #[test]
-// fn test_compile() {
-//     let result = common::compile("1 + 1");
-//     assert_eq!(result.diagnostics.len(), 0);
-//     insta::assert_debug_snapshot!(result.diagnostics);
-// }
+#[test]
+fn subtraction() {
+    expect("2 - 1", 1);
+}
+
+#[test]
+fn multiplication() {
+    expect("2 * 3", 6);
+}
+
+#[test]
+fn division() {
+    expect("6 / 3", 2);
+}
+
+#[test]
+fn operator_precedence() {
+    expect("1 + 2 * 3", 7);
+}
+
+#[test]
+fn parentheses() {
+    expect("(1 + 2) * 3", 9);
+}

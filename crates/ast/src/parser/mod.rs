@@ -1,5 +1,5 @@
 use crate::{
-    Ast, Expr,
+    Ast, Expr, Stmt,
     token::{Token, TokenKind},
 };
 
@@ -26,7 +26,11 @@ impl<'a> Parser<'a> {
 
     pub fn parse(mut self) -> Ast {
         while self.peek().kind != TokenKind::Eof {
-            self.parse_expr();
+            let expr = self.parse_expr();
+            let span = self.ast[expr].span();
+            let stmt = self.ast.add_stmt(Stmt::Expr { expr, span });
+
+            self.ast.root.push(stmt);
         }
         self.ast
     }

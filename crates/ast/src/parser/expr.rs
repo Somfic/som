@@ -1,21 +1,27 @@
-use som_common::{Id, Span};
+use som_common::Id;
 
 use crate::{
-    Expr, Parser, Stmt,
+    BinaryOp, Expr, Parser, Stmt,
     parser::rules::{InfixRule, PrefixRule, infix, prefix},
-    token::{Token, TokenKind},
+    token::TokenKind,
 };
 
+/// starts with
 fn prefix_rule(token: TokenKind) -> Option<PrefixRule> {
     Some(match token {
         TokenKind::Int => prefix(parse_int_literal),
+        TokenKind::OpenParen => prefix(parse_grouping),
         _ => return None,
     })
 }
 
+/// continues with
 fn infix_rule(token: TokenKind) -> Option<InfixRule> {
     Some(match token {
         TokenKind::Plus => infix(parse_binary, 50, 51),
+        TokenKind::Minus => infix(parse_binary, 50, 51),
+        TokenKind::Star => infix(parse_binary, 60, 61),
+        TokenKind::Slash => infix(parse_binary, 60, 61),
         _ => return None,
     })
 }
@@ -30,6 +36,8 @@ impl Parser<'_> {
             Some(r) => r,
             None => {
                 let token = self.next();
+                self.diags
+                    .emit_error(token.span, format!("unexpected token `{}`", token.text));
                 return self.ast.add_expr(Expr::Error { span: token.span });
             }
         };
@@ -69,19 +77,31 @@ fn parse_int_literal(parser: &mut Parser) -> Id<Expr> {
     })
 }
 
+fn parse_grouping(parser: &mut Parser) -> Id<Expr> {
+    parser.next();
+    let expr = parser.parse_expr();
+    parser.expect(TokenKind::CloseParen);
+
+    expr
+}
+
 fn parse_binary(parser: &mut Parser, lhs: Id<Expr>) -> Id<Expr> {
     let op = parser.next();
     let rule = infix_rule(op.kind).unwrap();
     let rhs = parser.parse_expr_bp(rule.r_bp);
 
+    let op = match op.kind {
+        TokenKind::Plus => BinaryOp::Add,
+        TokenKind::Minus => BinaryOp::Subtract,
+        TokenKind::Star => BinaryOp::Multiply,
+        TokenKind::Slash => BinaryOp::Divide,
+        _ => unreachable!(),
+    };
+
     parser.expr(Expr::Binary {
-        op: op.kind,
+        op,
         lhs,
         rhs,
-        span: parser
-            .ast
-            .get_expr(lhs)
-            .span()
-            .merge(parser.ast.get_expr(rhs).span()),
+        span: parser.ast[lhs].span().merge(parser.ast[rhs].span()),
     })
 }

@@ -12,6 +12,14 @@ pub struct Span {
 }
 
 impl Span {
+    pub const DUMMY: Span = Span {
+        start: 0,
+        end: 0,
+        source: Id::new(0),
+    };
+}
+
+impl Span {
     pub fn new(source: Id<Source>, start: u32, end: u32) -> Self {
         debug_assert!(start <= end);
         Self { start, end, source }
