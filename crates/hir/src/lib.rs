@@ -7,6 +7,7 @@ mod hir;
 pub use hir::*;
 
 pub use som_ast::BinaryOp;
+pub use som_ast::UnaryOp;
 
 mod ty;
 pub use ty::*;
@@ -52,6 +53,16 @@ impl Typer {
                 ty: self.ctx.i32(span),
                 span: span,
             }),
+            UntypedExpr::Unary { op, operand, span } => {
+                let operand = self.lower_expr(ast, operand, diags);
+                // The "type checker": i32 → i32. That's the whole rule for now.
+                self.ast.add_expr(Expr::Unary {
+                    op: op,
+                    operand,
+                    ty: self.ctx.i32(span),
+                    span: span,
+                })
+            }
             UntypedExpr::Binary { op, lhs, rhs, span } => {
                 let lhs = self.lower_expr(ast, lhs, diags);
                 let rhs = self.lower_expr(ast, rhs, diags);

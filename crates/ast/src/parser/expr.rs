@@ -1,7 +1,7 @@
 use som_common::Id;
 
 use crate::{
-    BinaryOp, Expr, Parser, Stmt,
+    BinaryOp, Expr, Parser, Stmt, UnaryOp,
     parser::rules::{InfixRule, PrefixRule, infix, prefix},
     token::TokenKind,
 };
@@ -11,6 +11,7 @@ fn prefix_rule(token: TokenKind) -> Option<PrefixRule> {
     Some(match token {
         TokenKind::Int => prefix(parse_int_literal),
         TokenKind::OpenParen => prefix(parse_grouping),
+        TokenKind::Minus => prefix(parse_unary),
         _ => return None,
     })
 }
@@ -83,6 +84,23 @@ fn parse_grouping(parser: &mut Parser) -> Id<Expr> {
     parser.expect(TokenKind::CloseParen);
 
     expr
+}
+
+fn parse_unary(parser: &mut Parser) -> Id<Expr> {
+    let token = parser.next();
+
+    let op = match token.kind {
+        TokenKind::Minus => UnaryOp::Negate,
+        _ => unreachable!(),
+    };
+
+    let operand = parser.parse_expr_bp(70);
+
+    parser.expr(Expr::Unary {
+        op,
+        operand,
+        span: token.span.merge(parser.ast[operand].span()),
+    })
 }
 
 fn parse_binary(parser: &mut Parser, lhs: Id<Expr>) -> Id<Expr> {

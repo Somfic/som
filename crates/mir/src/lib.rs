@@ -65,6 +65,21 @@ impl<'a> MirBuilder<'a> {
                 );
                 local
             }
+            Expr::Unary {
+                span,
+                ty,
+                op,
+                operand,
+            } => {
+                let operand_local = self.lower_expr(*operand);
+                let result = self.func.alloc_local(*ty, *span, "unop");
+                self.push_assign(
+                    result,
+                    Rvalue::UnaryOp(*op, Operand::Copy(operand_local)),
+                    *span,
+                );
+                result
+            }
             Expr::Binary {
                 lhs,
                 op,

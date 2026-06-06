@@ -1,7 +1,7 @@
 use std::fmt;
 
 use som_common::{Arena, Id, LineWriter, Pretty, Show, SourceMap, Span, expand_enum};
-use som_hir::{BinaryOp, TyCtx, Type};
+use som_hir::{BinaryOp, TyCtx, Type, UnaryOp};
 
 #[derive(Copy, Clone)]
 pub struct MirCtx<'a> {
@@ -20,6 +20,7 @@ expand_enum! {
 #[derive(Debug)]
 pub enum Rvalue {
     Use(Operand),
+    UnaryOp(UnaryOp, Operand),
     BinaryOp(Operand, BinaryOp, Operand),
 }
 
@@ -185,6 +186,10 @@ fn fmt_rvalue(buf: &mut String, func: &Function, rv: &Rvalue) {
     use std::fmt::Write;
     match rv {
         Rvalue::Use(op) => fmt_operand(buf, func, op),
+        Rvalue::UnaryOp(op, operand) => {
+            let _ = write!(buf, "{op} ");
+            fmt_operand(buf, func, operand);
+        }
         Rvalue::BinaryOp(l, op, r) => {
             fmt_operand(buf, func, l);
             let _ = write!(buf, " {op} ");

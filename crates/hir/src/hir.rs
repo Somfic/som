@@ -1,6 +1,6 @@
 use std::fmt;
 
-use som_ast::BinaryOp;
+use som_ast::{BinaryOp, UnaryOp};
 use som_common::{Arena, Id, LineWriter, Pretty, Show, SourceMap, Span, expand_enum};
 
 use crate::{TyCtx, Type};
@@ -17,6 +17,7 @@ expand_enum! {
     pub enum Expr {
         Error,
         Int { value: i64 },
+        Unary { op: UnaryOp, operand: Id<Expr> },
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
     } with { span: Span, ty: Id<Type> }
 }
@@ -122,6 +123,10 @@ fn fmt_expr(buf: &mut String, hir: &Hir, tcx: &TyCtx, id: Id<Expr>, nested: bool
         }
         Expr::Int { value, ty, .. } => {
             let _ = write!(buf, "{value}: {}", fmt_ty(&tcx[*ty]));
+        }
+        Expr::Unary { op, operand, .. } => {
+            let _ = write!(buf, "{op}");
+            fmt_expr(buf, hir, tcx, *operand, true);
         }
         Expr::Binary { lhs, op, rhs, .. } => {
             if nested {

@@ -5,6 +5,7 @@ use cranelift_codegen::{
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
+use som_hir::UnaryOp;
 use som_mir::{Const, Function as MirFunction, Operand, Rvalue, Statement, Terminator};
 
 pub fn codegen(mir: &MirFunction) -> Result<fn() -> i32, String> {
@@ -111,6 +112,12 @@ fn lower_rvalue(b: &mut FunctionBuilder, locals: &[Variable], rv: &Rvalue) -> Va
     use som_hir::BinaryOp;
     match rv {
         Rvalue::Use(op) => lower_operand(b, locals, op),
+        Rvalue::UnaryOp(op, operand) => {
+            let operand = lower_operand(b, locals, operand);
+            match op {
+                UnaryOp::Negate => b.ins().ineg(operand),
+            }
+        }
         Rvalue::BinaryOp(l, op, r) => {
             let lv = lower_operand(b, locals, l);
             let rv = lower_operand(b, locals, r);

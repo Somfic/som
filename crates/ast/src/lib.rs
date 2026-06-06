@@ -55,8 +55,23 @@ expand_enum! {
     pub enum Expr {
         Error,
         Int { value: i64 },
+        Unary { op: UnaryOp, operand: Id<Expr> },
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
     } with { span: Span }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnaryOp {
+    Negate,
+}
+
+impl std::fmt::Display for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            UnaryOp::Negate => "-",
+        };
+        f.write_str(s)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -128,6 +143,13 @@ fn fmt_expr(buf: &mut String, ast: &Ast, id: Id<Expr>, nested: bool) {
         }
         Expr::Int { value, .. } => {
             let _ = write!(buf, "{value}");
+        }
+        Expr::Unary { op, operand, .. } => {
+            let op_str = match op {
+                UnaryOp::Negate => "-",
+            };
+            let _ = write!(buf, "{op_str}");
+            fmt_expr(buf, ast, operand, true);
         }
         Expr::Binary { lhs, op, rhs, .. } => {
             if nested {
