@@ -16,12 +16,14 @@ som_mir = { workspace = true }
 som_codegen = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+ena = { workspace = true }
 
 [dev-dependencies]
 insta = "1.47"
 
 [workspace.dependencies]
 tracing = "0.1.44"
+ena = "0.14.4"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 som_common = { path = "crates/common" }
 som_ast = { path = "crates/ast" }

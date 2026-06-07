@@ -62,3 +62,11 @@ fn not() {
     expect("!!true", 1);
     expect("!!false", 0);
 }
+
+#[test]
+fn type_mismatch() {
+    expect_type_error("true + 1");
+    expect_type_error("1 + false");
+    expect_type_error("-true"); // negate wants an integer
+    expect_type_error("!1"); // not wants a bool
+}

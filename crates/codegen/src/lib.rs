@@ -149,8 +149,11 @@ fn lower_operand(b: &mut FunctionBuilder, locals: &[Variable], op: &Operand) -> 
 
 fn lower_type(ty: &som_hir::Type) -> types::Type {
     match ty {
-        som_hir::Type::Int { .. } => types::I32,
+        som_hir::Type::I32 { .. } => types::I32,
         som_hir::Type::Bool { .. } => types::I8,
         som_hir::Type::Error { .. } => unreachable!("error type should not reach codegen"),
+        som_hir::Type::Infer { .. } => {
+            unreachable!("inference vars are resolved away before codegen")
+        }
     }
 }
