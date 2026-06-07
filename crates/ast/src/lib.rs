@@ -6,8 +6,8 @@ mod parser;
 mod pretty;
 mod token;
 
-use lexer::lex;
 pub use ast::*;
+use lexer::lex;
 pub use parser::Parser;
 pub use pretty::AstCtx;
 pub use token::*;
