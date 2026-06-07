@@ -6,14 +6,14 @@ use crate::{BinaryOp, Constraint, Expr, Hir, Provenance, Stmt, TyCtx, Type, Unar
 type UntypedExpr = som_ast::Expr;
 type UntypedStmt = som_ast::Stmt;
 
-pub struct Typer {
+pub(crate) struct Typer {
     ctx: TyCtx,
     ast: Hir,
     constraints: Vec<Constraint>,
 }
 
 impl Typer {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             ctx: TyCtx::new(),
             ast: Hir::new(),
@@ -21,9 +21,9 @@ impl Typer {
         }
     }
 
-    pub fn lower(mut self, ast: &Ast, diags: &mut DiagnosticSink) -> (Hir, TyCtx) {
+    pub(crate) fn lower(mut self, ast: &Ast, diags: &mut DiagnosticSink) -> (Hir, TyCtx) {
         for stmt_id in &ast.root {
-            let stmt = self.infer_stmt(ast, *stmt_id, diags);
+            let stmt = self.infer_stmt(ast, *stmt_id);
             self.ast.root.push(stmt);
         }
         self.solve(diags);
@@ -31,7 +31,7 @@ impl Typer {
         (self.ast, self.ctx)
     }
 
-    fn infer(&mut self, ast: &Ast, id: Id<UntypedExpr>, diags: &mut DiagnosticSink) -> Id<Expr> {
+    fn infer(&mut self, ast: &Ast, id: Id<UntypedExpr>) -> Id<Expr> {
         match ast[id] {
             UntypedExpr::Int { value, span } => {
                 let ty = self.ctx.int(span);
@@ -42,7 +42,7 @@ impl Typer {
                 self.ast.add_expr(Expr::Bool { value, ty, span })
             }
             UntypedExpr::Unary { op, operand, span } => {
-                let operand = self.infer(ast, operand, diags);
+                let operand = self.infer(ast, operand);
                 let operand_ty = self.ast.get_expr(operand).ty();
                 let ty = match op {
                     UnaryOp::Negate => self.ctx.int(span),
@@ -54,7 +54,6 @@ impl Typer {
                     ty,
                     span,
                 });
-                // the operand must have the same type as the result
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::Unary(node),
                     expected: ty,
@@ -63,8 +62,8 @@ impl Typer {
                 node
             }
             UntypedExpr::Binary { op, lhs, rhs, span } => {
-                let lhs = self.infer(ast, lhs, diags);
-                let rhs = self.infer(ast, rhs, diags);
+                let lhs = self.infer(ast, lhs);
+                let rhs = self.infer(ast, rhs);
                 let lhs_ty = self.ast.get_expr(lhs).ty();
                 let rhs_ty = self.ast.get_expr(rhs).ty();
                 let ty = match op {
@@ -98,14 +97,9 @@ impl Typer {
         }
     }
 
-    fn check(
-        &mut self,
-        ast: &Ast,
-        id: Id<UntypedExpr>,
-        expected: Id<Type>,
-        diags: &mut DiagnosticSink,
-    ) -> Id<Expr> {
-        let node = self.infer(ast, id, diags);
+    #[allow(dead_code)]
+    fn check(&mut self, ast: &Ast, id: Id<UntypedExpr>, expected: Id<Type>) -> Id<Expr> {
+        let node = self.infer(ast, id);
         let actual = self.ast.get_expr(node).ty();
         self.constraints.push(Constraint::Equal {
             provenance: Provenance::Check(node),
@@ -115,15 +109,10 @@ impl Typer {
         node
     }
 
-    fn infer_stmt(
-        &mut self,
-        ast: &Ast,
-        id: Id<UntypedStmt>,
-        diags: &mut DiagnosticSink,
-    ) -> Id<Stmt> {
+    fn infer_stmt(&mut self, ast: &Ast, id: Id<UntypedStmt>) -> Id<Stmt> {
         match ast[id] {
             som_ast::Stmt::Expr { expr, span } => {
-                let expr = self.infer(ast, expr, diags);
+                let expr = self.infer(ast, expr);
                 self.ast.add_stmt(Stmt::Expr { expr, span })
             }
         }

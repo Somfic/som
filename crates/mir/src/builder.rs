@@ -1,5 +1,5 @@
 use som_common::{Arena, DiagnosticSink, Id, Span};
-use som_hir::{BinaryOp, Expr, Hir, Stmt, TyCtx};
+use som_hir::{Expr, Hir, Stmt, TyCtx};
 
 use crate::{Block, Const, Function, LocalDecl, Operand, Rvalue, Statement, Terminator};
 

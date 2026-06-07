@@ -13,7 +13,7 @@ pub use context::*;
 pub use hir::*;
 pub use pretty::HirCtx;
 pub use ty::*;
-pub use typer::Typer;
+use typer::Typer;
 
 pub use som_ast::{BinaryOp, UnaryOp};
 

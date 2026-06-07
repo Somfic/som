@@ -25,27 +25,27 @@ impl Index<Id<Type>> for TyCtx {
 }
 
 impl TyCtx {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             types: Arena::new(),
             table: InPlaceUnificationTable::new(),
         }
     }
 
-    pub fn error(&mut self, span: Span) -> Id<Type> {
+    pub(crate) fn error(&mut self, span: Span) -> Id<Type> {
         self.types.alloc(Type::Error { span })
     }
 
-    pub fn bool(&mut self, span: Span) -> Id<Type> {
+    pub(crate) fn bool(&mut self, span: Span) -> Id<Type> {
         self.types.alloc(Type::Bool { span })
     }
 
-    pub fn int(&mut self, span: Span) -> Id<Type> {
+    pub(crate) fn int(&mut self, span: Span) -> Id<Type> {
         let var = self.table.new_key(TypeValue::Unbound { is_int: true });
         self.types.alloc(Type::Infer { var, span })
     }
 
-    pub fn unify(&mut self, a: Id<Type>, b: Id<Type>) -> Result<(), ()> {
+    pub(crate) fn unify(&mut self, a: Id<Type>, b: Id<Type>) -> Result<(), ()> {
         let (ta, tb) = (self.types[a], self.types[b]);
         match (ta, tb) {
             (Type::Error { .. }, _) | (_, Type::Error { .. }) => Ok(()),
@@ -66,7 +66,7 @@ impl TyCtx {
         }
     }
 
-    pub fn describe(&mut self, id: Id<Type>) -> &'static str {
+    pub(crate) fn describe(&mut self, id: Id<Type>) -> &'static str {
         match self.types[id] {
             Type::I32 { .. } => "i32",
             Type::Bool { .. } => "bool",
@@ -83,7 +83,7 @@ impl TyCtx {
     /// Rewrite every Infer entry in the arena to its resolved concrete type,
     /// defaulting unconstrained integers to i32. Run once after solving so MIR
     /// and codegen only ever see concrete types.
-    pub fn resolve_all(&mut self) {
+    pub(crate) fn resolve_all(&mut self) {
         for i in 0..self.types.len() {
             let id = Id::new(i);
             if let Type::Infer { var, span } = self.types[id] {

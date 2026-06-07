@@ -1,7 +1,7 @@
 use som_common::Id;
 
 use crate::{
-    BinaryOp, Expr, Parser, Stmt, UnaryOp,
+    BinaryOp, Expr, Parser, UnaryOp,
     parser::rules::{InfixRule, PrefixRule, infix, prefix},
     token::TokenKind,
 };
@@ -59,10 +59,6 @@ impl Parser<'_> {
 
     fn expr(&mut self, expr: Expr) -> Id<Expr> {
         self.ast.add_expr(expr)
-    }
-
-    fn stmt(&mut self, stmt: Stmt) -> Id<Stmt> {
-        self.ast.add_stmt(stmt)
     }
 }
 

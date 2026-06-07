@@ -8,7 +8,6 @@ mod symbol;
 
 pub use arena::*;
 pub use diagnostics::*;
-pub use macros::*;
 pub use pretty::*;
 pub use source::*;
 pub use span::*;

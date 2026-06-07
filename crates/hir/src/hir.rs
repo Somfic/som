@@ -32,7 +32,7 @@ pub struct Hir {
 }
 
 impl Hir {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             exprs: Arena::new(),
             stmts: Arena::new(),
@@ -40,11 +40,11 @@ impl Hir {
         }
     }
 
-    pub fn add_expr(&mut self, expr: Expr) -> Id<Expr> {
+    pub(crate) fn add_expr(&mut self, expr: Expr) -> Id<Expr> {
         self.exprs.alloc(expr)
     }
 
-    pub fn add_stmt(&mut self, stmt: Stmt) -> Id<Stmt> {
+    pub(crate) fn add_stmt(&mut self, stmt: Stmt) -> Id<Stmt> {
         self.stmts.alloc(stmt)
     }
 

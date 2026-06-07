@@ -24,7 +24,6 @@ pub fn codegen(mir: &MirFunction, tcx: &TyCtx) -> Result<fn() -> i32, String> {
     let mut ctx = module.make_context();
     let mut fb_ctx = FunctionBuilderContext::new();
 
-    // `fn main() -> i32` — the only signature we emit for now.
     ctx.func.signature.returns.push(AbiParam::new(types::I32));
 
     {
@@ -49,22 +48,18 @@ pub fn codegen(mir: &MirFunction, tcx: &TyCtx) -> Result<fn() -> i32, String> {
     let func_ptr = module.get_finalized_function(func_id);
     let func: fn() -> i32 = unsafe { std::mem::transmute(func_ptr) };
 
-    // Leak the module so the JIT-compiled code stays mapped for the function's
-    // lifetime. Fine for our toy run-once usage.
     std::mem::forget(module);
 
     Ok(func)
 }
 
 fn lower_function(mir: &MirFunction, tcx: &TyCtx, b: &mut FunctionBuilder) {
-    // Map MIR local id (dense u32) → Cranelift Variable.
     let local_vars: Vec<Variable> = mir
         .locals
         .iter_with_ids()
         .map(|(_, local)| b.declare_var(lower_type(&tcx[local.ty])))
         .collect();
 
-    // One Cranelift block per MIR block, indexed parallel to the arena.
     let clif_blocks: Vec<_> = mir
         .blocks
         .iter_with_ids()
@@ -111,7 +106,6 @@ fn lower_function(mir: &MirFunction, tcx: &TyCtx, b: &mut FunctionBuilder) {
         }
     }
 
-    // No back-edges yet, so it's safe to seal everything at the end.
     b.seal_all_blocks();
 }
 

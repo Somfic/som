@@ -27,6 +27,7 @@ pub(crate) fn infix(parser: InfixParser, l_bp: u8, r_bp: u8) -> InfixRule {
     }
 }
 
+#[allow(dead_code)] // rule constructor; used once postfix operators land
 pub(crate) fn postfix(parser: InfixParser, bp: u8) -> InfixRule {
     InfixRule {
         parse: parser,

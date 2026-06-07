@@ -12,7 +12,6 @@ pub struct MirCtx<'a> {
 }
 
 impl Function {
-    /// Wrap with a `TyCtx` to get a `Display` impl that renders rustc-MIR-style IR.
     pub fn display<'a>(&'a self, tcx: &'a TyCtx) -> Show<'a, Function, MirCtx<'a>> {
         Show::new(self, MirCtx { tcx, sources: None })
     }
@@ -57,7 +56,7 @@ impl Pretty<MirCtx<'_>> for Function {
                 format!("let {}: {};", self.local_name(id), ctx.tcx[local.ty]),
             )?;
         }
-        if self.locals.len() > 0 {
+        if !self.locals.is_empty() {
             w.blank()?;
         }
 

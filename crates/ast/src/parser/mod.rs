@@ -1,5 +1,5 @@
 use crate::{
-    Ast, Expr, Stmt,
+    Ast, Stmt,
     token::{Token, TokenKind},
 };
 
