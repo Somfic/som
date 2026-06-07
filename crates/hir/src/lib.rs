@@ -4,12 +4,14 @@ use som_common::DiagnosticSink;
 mod constraint;
 mod context;
 mod hir;
+mod pretty;
 mod ty;
 mod typer;
 
 pub use constraint::*;
 pub use context::*;
 pub use hir::*;
+pub use pretty::HirCtx;
 pub use ty::*;
 pub use typer::Typer;
 
