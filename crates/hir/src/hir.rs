@@ -17,6 +17,7 @@ expand_enum! {
     pub enum Expr {
         Error,
         Int { value: i64 },
+        Bool { value: bool },
         Unary { op: UnaryOp, operand: Id<Expr> },
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
     } with { span: Span, ty: Id<Type> }
@@ -97,13 +98,6 @@ impl Pretty<HirCtx<'_>> for Hir {
     }
 }
 
-fn fmt_ty(ty: &Type) -> &'static str {
-    match ty {
-        Type::Int { .. } => "i32",
-        Type::Error { .. } => "?",
-    }
-}
-
 fn fmt_stmt(buf: &mut String, hir: &Hir, tcx: &TyCtx, id: Id<Stmt>) {
     use std::fmt::Write;
     match hir.get_stmt(id) {
@@ -119,10 +113,13 @@ fn fmt_expr(buf: &mut String, hir: &Hir, tcx: &TyCtx, id: Id<Expr>, nested: bool
     let expr = hir.get_expr(id);
     match expr {
         Expr::Error { ty, .. } => {
-            let _ = write!(buf, "<error>: {}", fmt_ty(&tcx[*ty]));
+            let _ = write!(buf, "<error>: {}", tcx[*ty]);
         }
         Expr::Int { value, ty, .. } => {
-            let _ = write!(buf, "{value}: {}", fmt_ty(&tcx[*ty]));
+            let _ = write!(buf, "{value}: {}", tcx[*ty]);
+        }
+        Expr::Bool { value, ty, .. } => {
+            let _ = write!(buf, "{value}: {}", tcx[*ty]);
         }
         Expr::Unary { op, operand, .. } => {
             let _ = write!(buf, "{op}");

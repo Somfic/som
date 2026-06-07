@@ -10,8 +10,11 @@ use crate::{
 fn prefix_rule(token: TokenKind) -> Option<PrefixRule> {
     Some(match token {
         TokenKind::Int => prefix(parse_int_literal),
+        TokenKind::True => prefix(parse_bool_literal),
+        TokenKind::False => prefix(parse_bool_literal),
         TokenKind::OpenParen => prefix(parse_grouping),
         TokenKind::Minus => prefix(parse_unary),
+        TokenKind::Bang => prefix(parse_unary),
         _ => return None,
     })
 }
@@ -78,6 +81,20 @@ fn parse_int_literal(parser: &mut Parser) -> Id<Expr> {
     })
 }
 
+fn parse_bool_literal(parser: &mut Parser) -> Id<Expr> {
+    let token = parser.next();
+    let value = match token.kind {
+        TokenKind::True => true,
+        TokenKind::False => false,
+        _ => unreachable!(),
+    };
+
+    parser.expr(Expr::Bool {
+        value,
+        span: token.span,
+    })
+}
+
 fn parse_grouping(parser: &mut Parser) -> Id<Expr> {
     parser.next();
     let expr = parser.parse_expr();
@@ -91,6 +108,7 @@ fn parse_unary(parser: &mut Parser) -> Id<Expr> {
 
     let op = match token.kind {
         TokenKind::Minus => UnaryOp::Negate,
+        TokenKind::Bang => UnaryOp::Not,
         _ => unreachable!(),
     };
 

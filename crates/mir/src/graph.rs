@@ -33,7 +33,7 @@ pub enum Operand {
 #[derive(Debug, Clone)]
 pub enum Const {
     Int(i64, Id<Type>),
-    Bool(bool),
+    Bool(bool, Id<Type>),
 }
 
 #[derive(Debug)]
@@ -122,7 +122,7 @@ impl Pretty<MirCtx<'_>> for Function {
                 format!(
                     "let {}: {};",
                     self.local_name(id),
-                    fmt_ty(&ctx.tcx[local.ty])
+                    ctx.tcx[local.ty]
                 ),
             )?;
         }
@@ -165,13 +165,6 @@ impl Function {
     }
 }
 
-fn fmt_ty(ty: &Type) -> &'static str {
-    match ty {
-        Type::Int { .. } => "i32",
-        Type::Error { .. } => "?",
-    }
-}
-
 fn fmt_stmt(buf: &mut String, func: &Function, stmt: &Statement) {
     use std::fmt::Write;
     match stmt {
@@ -208,7 +201,7 @@ fn fmt_operand(buf: &mut String, func: &Function, op: &Operand) {
             Const::Int(v, _) => {
                 let _ = write!(buf, "const {v}_i32");
             }
-            Const::Bool(b) => {
+            Const::Bool(b, _) => {
                 let _ = write!(buf, "const {b}");
             }
         },

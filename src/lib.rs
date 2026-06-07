@@ -80,7 +80,7 @@ pub fn compile(source: &Source) -> CompileResult<i64> {
         return CompileResult::failed(diags);
     }
 
-    let func = match som_codegen::codegen(&mir) {
+    let func = match som_codegen::codegen(&mir, &tcx) {
         Ok(f) => f,
         Err(e) => {
             error!("codegen failed: {e}");

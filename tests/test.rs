@@ -2,6 +2,17 @@ mod common;
 use common::*;
 
 #[test]
+fn int_literal() {
+    expect("42", 42);
+}
+
+#[test]
+fn bool_literal() {
+    expect("true", 1);
+    expect("false", 0);
+}
+
+#[test]
 fn addition() {
     expect("1 + 1", 2);
     expect("1 + 2 + 3", 6);
@@ -42,4 +53,12 @@ fn parentheses() {
 fn negation() {
     expect("-5", -5);
     expect("--5", 5);
+}
+
+#[test]
+fn not() {
+    expect("!true", 0);
+    expect("!false", 1);
+    expect("!!true", 1);
+    expect("!!false", 0);
 }

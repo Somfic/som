@@ -53,25 +53,42 @@ impl Typer {
                 ty: self.ctx.i32(span),
                 span: span,
             }),
+            UntypedExpr::Bool { value, span } => self.ast.add_expr(Expr::Bool {
+                value: value,
+                ty: self.ctx.bool(span),
+                span: span,
+            }),
             UntypedExpr::Unary { op, operand, span } => {
                 let operand = self.lower_expr(ast, operand, diags);
+
+                let ty = match op {
+                    UnaryOp::Negate => self.ctx.i32(span),
+                    UnaryOp::Not => self.ctx.bool(span),
+                };
+
                 // The "type checker": i32 → i32. That's the whole rule for now.
                 self.ast.add_expr(Expr::Unary {
                     op: op,
                     operand,
-                    ty: self.ctx.i32(span),
+                    ty,
                     span: span,
                 })
             }
             UntypedExpr::Binary { op, lhs, rhs, span } => {
                 let lhs = self.lower_expr(ast, lhs, diags);
                 let rhs = self.lower_expr(ast, rhs, diags);
-                // The "type checker": both i32 → i32. That's the whole rule for now.
+
+                let ty = match op {
+                    BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide => {
+                        self.ctx.i32(span)
+                    } // BinaryOp::Eq => self.ctx.bool(span),
+                };
+
                 self.ast.add_expr(Expr::Binary {
                     op: op,
                     lhs,
                     rhs,
-                    ty: self.ctx.i32(span),
+                    ty,
                     span: span,
                 })
             }
@@ -122,5 +139,9 @@ impl TyCtx {
 
     pub fn i32(&mut self, span: Span) -> Id<Type> {
         self.types.alloc(Type::Int { span })
+    }
+
+    pub fn bool(&mut self, span: Span) -> Id<Type> {
+        self.types.alloc(Type::Bool { span })
     }
 }

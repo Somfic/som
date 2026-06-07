@@ -5,10 +5,10 @@ use cranelift_codegen::{
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, Module};
-use som_hir::UnaryOp;
+use som_hir::{TyCtx, UnaryOp};
 use som_mir::{Const, Function as MirFunction, Operand, Rvalue, Statement, Terminator};
 
-pub fn codegen(mir: &MirFunction) -> Result<fn() -> i32, String> {
+pub fn codegen(mir: &MirFunction, tcx: &TyCtx) -> Result<fn() -> i32, String> {
     let mut flag_builder = settings::builder();
     flag_builder.set("use_colocated_libcalls", "false").unwrap();
     flag_builder.set("is_pic", "false").unwrap();
@@ -29,7 +29,7 @@ pub fn codegen(mir: &MirFunction) -> Result<fn() -> i32, String> {
 
     {
         let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fb_ctx);
-        lower_function(mir, &mut builder);
+        lower_function(mir, tcx, &mut builder);
         builder.finalize();
     }
 
@@ -56,12 +56,12 @@ pub fn codegen(mir: &MirFunction) -> Result<fn() -> i32, String> {
     Ok(func)
 }
 
-fn lower_function(mir: &MirFunction, b: &mut FunctionBuilder) {
+fn lower_function(mir: &MirFunction, tcx: &TyCtx, b: &mut FunctionBuilder) {
     // Map MIR local id (dense u32) → Cranelift Variable.
     let local_vars: Vec<Variable> = mir
         .locals
         .iter_with_ids()
-        .map(|_| b.declare_var(types::I32))
+        .map(|(_, local)| b.declare_var(lower_type(&tcx[local.ty])))
         .collect();
 
     // One Cranelift block per MIR block, indexed parallel to the arena.
@@ -90,7 +90,14 @@ fn lower_function(mir: &MirFunction, b: &mut FunctionBuilder) {
         match &mir_block.terminator {
             Terminator::Return => {
                 let val = match mir.return_local {
-                    Some(id) => b.use_var(local_vars[id.id]),
+                    Some(id) => {
+                        let v = b.use_var(local_vars[id.id]);
+                        if b.func.dfg.value_type(v) == types::I32 {
+                            v
+                        } else {
+                            b.ins().uextend(types::I32, v) // cast return type to i32
+                        }
+                    }
                     None => b.ins().iconst(types::I32, 0),
                 };
                 b.ins().return_(&[val]);
@@ -116,6 +123,7 @@ fn lower_rvalue(b: &mut FunctionBuilder, locals: &[Variable], rv: &Rvalue) -> Va
             let operand = lower_operand(b, locals, operand);
             match op {
                 UnaryOp::Negate => b.ins().ineg(operand),
+                UnaryOp::Not => b.ins().bxor_imm(operand, 1), // bool negation: x ^ 1
             }
         }
         Rvalue::BinaryOp(l, op, r) => {
@@ -135,6 +143,14 @@ fn lower_operand(b: &mut FunctionBuilder, locals: &[Variable], op: &Operand) -> 
     match op {
         Operand::Copy(id) => b.use_var(locals[id.id]),
         Operand::Const(Const::Int(v, _)) => b.ins().iconst(types::I32, *v),
-        Operand::Const(Const::Bool(bv)) => b.ins().iconst(types::I8, if *bv { 1 } else { 0 }),
+        Operand::Const(Const::Bool(v, _)) => b.ins().iconst(types::I8, if *v { 1 } else { 0 }),
+    }
+}
+
+fn lower_type(ty: &som_hir::Type) -> types::Type {
+    match ty {
+        som_hir::Type::Int { .. } => types::I32,
+        som_hir::Type::Bool { .. } => types::I8,
+        som_hir::Type::Error { .. } => unreachable!("error type should not reach codegen"),
     }
 }

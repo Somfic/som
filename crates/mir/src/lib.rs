@@ -65,6 +65,15 @@ impl<'a> MirBuilder<'a> {
                 );
                 local
             }
+            Expr::Bool { value, ty, span } => {
+                let local = self.func.alloc_local(*ty, *span, "const");
+                self.push_assign(
+                    local,
+                    Rvalue::Use(Operand::Const(Const::Bool(*value, *ty))),
+                    *span,
+                );
+                local
+            }
             Expr::Unary {
                 span,
                 ty,
