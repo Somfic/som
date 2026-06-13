@@ -1,6 +1,0 @@
----
-source: tests/test.rs
-assertion_line: 7
-expression: result.diagnostics
----
-[]

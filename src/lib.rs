@@ -1,5 +1,31 @@
 pub use som_common::*;
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct EmitSet {
+    pub ast: bool,
+    pub hir: bool,
+    pub mir: bool,
+    pub spans: bool,
+}
+
+pub struct CompileOptions {
+    pub input: Source,
+    pub emit: EmitSet,
+    pub run: bool,
+    pub opt_level: u8,
+}
+
+impl CompileOptions {
+    pub fn new(input: Source) -> Self {
+        Self {
+            input,
+            emit: EmitSet::default(),
+            run: true,
+            opt_level: 0,
+        }
+    }
+}
+
 pub struct CompileResult<T> {
     pub artifact: Option<T>,
     pub diagnostics: Vec<Diagnostic>,
@@ -19,78 +45,71 @@ impl<T> CompileResult<T> {
             diagnostics: diags.finalize(),
         }
     }
+
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error)
+    }
 }
 
-pub fn compile(source: &Source) -> CompileResult<i64> {
+pub fn compile(args: &CompileOptions) -> CompileResult<i64> {
     let mut sources = SourceMap::new();
-    let id = sources.add(source.clone());
+    let id = sources.add(args.input.clone());
     let mut diags = DiagnosticSink::new();
-
-    let dump_spans = std::env::var("SOM_DUMP_SPANS").is_ok();
     let content = sources.source(id).content();
+
     let ast = som_ast::parse(id, content, &mut diags);
-    if std::env::var("SOM_DUMP_AST").is_ok() {
-        if dump_spans {
-            info!("AST dump:\n{}", ast.display_with_sources(&sources));
+    if args.emit.ast {
+        if args.emit.spans {
+            println!("{}", ast.display_with_sources(&sources));
         } else {
-            info!("AST dump:\n{}", ast.display());
+            println!("{}", ast.display());
         }
     }
     if diags.has_errors() {
-        for diag in diags.diagnostics() {
-            error!("{diag:#?}");
-        }
-        error!(
-            "compilation failed with {} errors and {} warnings",
-            diags.error_count(),
-            diags.warning_count()
-        );
         return CompileResult::failed(diags);
     }
 
     let (hir, tcx) = som_hir::typeck(&ast, &mut diags);
-    if std::env::var("SOM_DUMP_HIR").is_ok() {
-        if dump_spans {
-            info!("HIR dump:\n{}", hir.display_with_sources(&tcx, &sources));
+    if args.emit.hir {
+        if args.emit.spans {
+            println!("{}", hir.display_with_sources(&tcx, &sources));
         } else {
-            info!("HIR dump:\n{}", hir.display(&tcx));
+            println!("{}", hir.display(&tcx));
         }
     }
     if diags.has_errors() {
-        for diag in diags.diagnostics() {
-            error!("{diag:#?}");
-        }
-        error!(
-            "compilation failed with {} errors and {} warnings",
-            diags.error_count(),
-            diags.warning_count()
-        );
         return CompileResult::failed(diags);
     }
 
     let mir = som_mir::build(&hir, &tcx, &mut diags);
-    if std::env::var("SOM_DUMP_MIR").is_ok() {
-        if dump_spans {
-            info!("MIR dump:\n{}", mir.display_with_sources(&tcx, &sources));
+    if args.emit.mir {
+        if args.emit.spans {
+            println!("{}", mir.display_with_sources(&tcx, &sources));
         } else {
-            info!("MIR dump:\n{}", mir.display(&tcx));
+            println!("{}", mir.display(&tcx));
         }
     }
     if diags.has_errors() {
         return CompileResult::failed(diags);
     }
 
-    let func = match som_codegen::codegen(&mir, &tcx) {
+    if !args.run {
+        return CompileResult {
+            artifact: None,
+            diagnostics: diags.finalize(),
+        };
+    }
+
+    let func = match som_codegen::codegen(&mir, &tcx, args.opt_level) {
         Ok(f) => f,
         Err(e) => {
-            error!("codegen failed: {e}");
+            let span = Span::from_range(id, 0..content.len());
+            diags.emit_error(span, format!("codegen error: {e}"));
             return CompileResult::failed(diags);
         }
     };
     let result = func() as i64;
-
-    CompileResult {
-        diagnostics: diags.finalize(),
-        artifact: Some(result),
-    }
+    CompileResult::success(diags, result)
 }

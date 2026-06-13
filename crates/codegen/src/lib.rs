@@ -8,10 +8,17 @@ use cranelift_module::{Linkage, Module};
 use som_hir::{TyCtx, UnaryOp};
 use som_mir::{Const, Function as MirFunction, Operand, Rvalue, Statement, Terminator};
 
-pub fn codegen(mir: &MirFunction, tcx: &TyCtx) -> Result<fn() -> i32, String> {
+pub fn codegen(mir: &MirFunction, tcx: &TyCtx, opt_level: u8) -> Result<fn() -> i32, String> {
     let mut flag_builder = settings::builder();
     flag_builder.set("use_colocated_libcalls", "false").unwrap();
     flag_builder.set("is_pic", "false").unwrap();
+    // Map our 0–3 scale onto Cranelift's optimization settings.
+    let opt = match opt_level {
+        0 => "none",
+        1 | 2 => "speed",
+        _ => "speed_and_size",
+    };
+    flag_builder.set("opt_level", opt).unwrap();
 
     let isa_builder = cranelift_native::builder().map_err(|e| e.to_string())?;
     let isa = isa_builder
