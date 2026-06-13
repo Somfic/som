@@ -66,28 +66,49 @@ impl Typer {
                 let rhs = self.infer(ast, rhs);
                 let lhs_ty = self.ast.get_expr(lhs).ty();
                 let rhs_ty = self.ast.get_expr(rhs).ty();
-                let ty = match op {
+
+                let (operand_ty, result_ty) = match op {
+                    // int, int -> int
                     BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide => {
-                        self.ctx.int(span)
+                        let t = self.ctx.int(span);
+                        (t, t)
+                    }
+                    // equality: T, T -> bool  (operands any type, but equal to each other)
+                    BinaryOp::Equals | BinaryOp::NotEquals => {
+                        (self.ctx.var(span), self.ctx.bool(span))
+                    }
+                    // ordering: int, int -> bool
+                    BinaryOp::LessThan
+                    | BinaryOp::LessThanOrEquals
+                    | BinaryOp::GreaterThan
+                    | BinaryOp::GreaterThanOrEquals => (self.ctx.int(span), self.ctx.bool(span)),
+                    // bool, bool -> bool
+                    BinaryOp::And | BinaryOp::Or => {
+                        let t = self.ctx.bool(span);
+                        (t, t)
                     }
                 };
+
                 let node = self.ast.add_expr(Expr::Binary {
                     op,
                     lhs,
                     rhs,
-                    ty,
+                    ty: result_ty,
                     span,
                 });
+
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::BinaryOp(node),
-                    expected: ty,
+                    expected: operand_ty,
                     actual: lhs_ty,
                 });
+
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::BinaryOp(node),
-                    expected: ty,
+                    expected: operand_ty,
                     actual: rhs_ty,
                 });
+
                 node
             }
             UntypedExpr::Error { span } => {

@@ -70,3 +70,65 @@ fn type_mismatch() {
     expect_type_error("-true"); // negate wants an integer
     expect_type_error("!1"); // not wants a bool
 }
+
+#[test]
+fn equals() {
+    expect("1 == 1", 1);
+    expect("1 == 2", 0);
+    expect("true == true", 1);
+    expect("true == false", 0);
+    expect("false == false", 1);
+}
+
+#[test]
+fn not_equals() {
+    expect("1 != 1", 0);
+    expect("1 != 2", 1);
+    expect("true != true", 0);
+    expect("true != false", 1);
+    expect("false != false", 0);
+}
+
+#[test]
+fn less_than() {
+    expect("1 < 2", 1);
+    expect("2 < 1", 0);
+    expect("1 < 1", 0);
+}
+
+#[test]
+fn less_than_equals() {
+    expect("1 <= 2", 1);
+    expect("2 <= 1", 0);
+    expect("1 <= 1", 1);
+}
+
+#[test]
+fn greater_than() {
+    expect("2 > 1", 1);
+    expect("1 > 2", 0);
+    expect("1 > 1", 0);
+}
+
+#[test]
+fn greater_than_equals() {
+    expect("2 >= 1", 1);
+    expect("1 >= 2", 0);
+    expect("1 >= 1", 1);
+}
+
+#[test]
+fn and() {
+    expect("true && true", 1);
+    expect("true && false", 0);
+    expect("false && true", 0);
+    expect("false && false", 0);
+}
+
+#[test]
+fn or() {
+    expect("true || true", 1);
+    expect("true || false", 1);
+    expect("false || true", 1);
+    expect("false || false", 0);
+}

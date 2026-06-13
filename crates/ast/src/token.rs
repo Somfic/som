@@ -99,9 +99,9 @@ pub enum TokenKind {
     #[token(">")]
     GreaterThan,
     #[token("<=")]
-    LessThanOrEqual,
+    LessThanOrEquals,
     #[token(">=")]
-    GreaterThanOrEqual,
+    GreaterThanOrEquals,
     #[token("%")]
     Percentage,
 
@@ -205,8 +205,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Bang => write!(f, "!"),
             TokenKind::LessThan => write!(f, "<"),
             TokenKind::GreaterThan => write!(f, ">"),
-            TokenKind::LessThanOrEqual => write!(f, "<="),
-            TokenKind::GreaterThanOrEqual => write!(f, ">="),
+            TokenKind::LessThanOrEquals => write!(f, "<="),
+            TokenKind::GreaterThanOrEquals => write!(f, ">="),
             TokenKind::OpenParen => write!(f, "("),
             TokenKind::CloseParen => write!(f, ")"),
             TokenKind::OpenBrace => write!(f, "{{"),

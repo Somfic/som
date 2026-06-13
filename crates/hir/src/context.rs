@@ -45,6 +45,12 @@ impl TyCtx {
         self.types.alloc(Type::Infer { var, span })
     }
 
+    /// A fresh, fully unconstrained inference variable (any type).
+    pub(crate) fn var(&mut self, span: Span) -> Id<Type> {
+        let var = self.table.new_key(TypeValue::Unbound { is_int: false });
+        self.types.alloc(Type::Infer { var, span })
+    }
+
     pub(crate) fn unify(&mut self, a: Id<Type>, b: Id<Type>) -> Result<(), ()> {
         let (ta, tb) = (self.types[a], self.types[b]);
         match (ta, tb) {

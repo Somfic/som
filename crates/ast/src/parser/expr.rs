@@ -26,6 +26,14 @@ fn infix_rule(token: TokenKind) -> Option<InfixRule> {
         TokenKind::Minus => infix(parse_binary, 50, 51),
         TokenKind::Star => infix(parse_binary, 60, 61),
         TokenKind::Slash => infix(parse_binary, 60, 61),
+        TokenKind::DoubleEquals => infix(parse_binary, 30, 31),
+        TokenKind::NotEquals => infix(parse_binary, 30, 31),
+        TokenKind::LessThan => infix(parse_binary, 40, 41),
+        TokenKind::LessThanOrEquals => infix(parse_binary, 40, 41),
+        TokenKind::GreaterThan => infix(parse_binary, 40, 41),
+        TokenKind::GreaterThanOrEquals => infix(parse_binary, 40, 41),
+        TokenKind::And => infix(parse_binary, 20, 21),
+        TokenKind::Or => infix(parse_binary, 10, 11),
         _ => return None,
     })
 }
@@ -127,6 +135,14 @@ fn parse_binary(parser: &mut Parser, lhs: Id<Expr>) -> Id<Expr> {
         TokenKind::Minus => BinaryOp::Subtract,
         TokenKind::Star => BinaryOp::Multiply,
         TokenKind::Slash => BinaryOp::Divide,
+        TokenKind::DoubleEquals => BinaryOp::Equals,
+        TokenKind::NotEquals => BinaryOp::NotEquals,
+        TokenKind::LessThan => BinaryOp::LessThan,
+        TokenKind::LessThanOrEquals => BinaryOp::LessThanOrEquals,
+        TokenKind::GreaterThan => BinaryOp::GreaterThan,
+        TokenKind::GreaterThanOrEquals => BinaryOp::GreaterThanOrEquals,
+        TokenKind::And => BinaryOp::And,
+        TokenKind::Or => BinaryOp::Or,
         _ => unreachable!(),
     };
 

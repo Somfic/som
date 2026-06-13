@@ -7,8 +7,16 @@ pub fn compile(source: &str) -> CompileResult<i64> {
 
 pub fn expect(source: &str, expected: i64) {
     som::init_tracing();
-    let result = compile(source).artifact.expect("compilation to succeed");
-    assert_eq!(result, expected);
+    let compiled = compile(source);
+
+    if compiled.has_errors() {
+        panic!(
+            "expected `{source}` to compile successfully, but got errors: {:?}",
+            compiled.diagnostics
+        );
+    }
+
+    assert_eq!(compiled.artifact.unwrap(), expected);
 }
 
 /// Assert that compilation fails with a type-mismatch diagnostic (and does not

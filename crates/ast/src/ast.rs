@@ -83,6 +83,14 @@ pub enum BinaryOp {
     Subtract,
     Multiply,
     Divide,
+    Equals,
+    NotEquals,
+    LessThan,
+    LessThanOrEquals,
+    GreaterThan,
+    GreaterThanOrEquals,
+    And,
+    Or,
 }
 
 impl std::fmt::Display for BinaryOp {
@@ -92,6 +100,14 @@ impl std::fmt::Display for BinaryOp {
             BinaryOp::Subtract => "-",
             BinaryOp::Multiply => "*",
             BinaryOp::Divide => "/",
+            BinaryOp::Equals => "==",
+            BinaryOp::NotEquals => "!=",
+            BinaryOp::LessThan => "<",
+            BinaryOp::LessThanOrEquals => "<=",
+            BinaryOp::GreaterThan => ">",
+            BinaryOp::GreaterThanOrEquals => ">=",
+            BinaryOp::And => "&&",
+            BinaryOp::Or => "||",
         };
         f.write_str(s)
     }

@@ -1,5 +1,5 @@
 use cranelift_codegen::{
-    ir::{AbiParam, InstBuilder, TrapCode, Value, types},
+    ir::{AbiParam, InstBuilder, TrapCode, Value, condcodes::IntCC, types},
     settings::{self, Configurable},
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
@@ -135,6 +135,16 @@ fn lower_rvalue(b: &mut FunctionBuilder, locals: &[Variable], rv: &Rvalue) -> Va
                 BinaryOp::Subtract => b.ins().isub(lv, rv),
                 BinaryOp::Multiply => b.ins().imul(lv, rv),
                 BinaryOp::Divide => b.ins().sdiv(lv, rv),
+                BinaryOp::Equals => b.ins().icmp(IntCC::Equal, lv, rv),
+                BinaryOp::NotEquals => b.ins().icmp(IntCC::NotEqual, lv, rv),
+                BinaryOp::LessThan => b.ins().icmp(IntCC::SignedLessThan, lv, rv),
+                BinaryOp::LessThanOrEquals => b.ins().icmp(IntCC::SignedLessThanOrEqual, lv, rv),
+                BinaryOp::GreaterThan => b.ins().icmp(IntCC::SignedGreaterThan, lv, rv),
+                BinaryOp::GreaterThanOrEquals => {
+                    b.ins().icmp(IntCC::SignedGreaterThanOrEqual, lv, rv)
+                }
+                BinaryOp::And => b.ins().band(lv, rv),
+                BinaryOp::Or => b.ins().bor(lv, rv),
             }
         }
     }
