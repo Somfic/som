@@ -13,12 +13,16 @@ pub enum Provenance {
     BinaryOp(Id<Expr>),
     Unary(Id<Expr>),
     Check(Id<Expr>),
+    Condition(Id<Expr>),
 }
 
 impl Provenance {
     pub fn expr(&self) -> Id<Expr> {
         match self {
-            Provenance::BinaryOp(id) | Provenance::Unary(id) | Provenance::Check(id) => *id,
+            Provenance::BinaryOp(id)
+            | Provenance::Unary(id)
+            | Provenance::Check(id)
+            | Provenance::Condition(id) => *id,
         }
     }
 }

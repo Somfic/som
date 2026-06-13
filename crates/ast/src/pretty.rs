@@ -70,5 +70,17 @@ fn fmt_expr(buf: &mut String, ast: &Ast, id: Id<Expr>, nested: bool) {
                 buf.push(')');
             }
         }
+        Expr::Condition {
+            condition,
+            truthy,
+            falsy,
+            ..
+        } => {
+            fmt_expr(buf, ast, truthy, false);
+            let _ = buf.write_str(" if ");
+            fmt_expr(buf, ast, condition, false);
+            let _ = buf.write_str(" else ");
+            fmt_expr(buf, ast, falsy, false);
+        }
     }
 }

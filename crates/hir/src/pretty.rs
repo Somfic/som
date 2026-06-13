@@ -83,5 +83,17 @@ fn fmt_expr(buf: &mut String, hir: &Hir, tcx: &TyCtx, id: Id<Expr>, nested: bool
                 buf.push(')');
             }
         }
+        Expr::Condition {
+            condition,
+            truthy,
+            falsy,
+            ..
+        } => {
+            fmt_expr(buf, hir, tcx, *truthy, false);
+            let _ = write!(buf, " if ");
+            fmt_expr(buf, hir, tcx, *condition, false);
+            let _ = write!(buf, " else ");
+            fmt_expr(buf, hir, tcx, *falsy, false);
+        }
     }
 }

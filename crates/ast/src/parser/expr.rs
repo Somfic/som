@@ -34,6 +34,7 @@ fn infix_rule(token: TokenKind) -> Option<InfixRule> {
         TokenKind::GreaterThanOrEquals => infix(parse_binary, 40, 41),
         TokenKind::And => infix(parse_binary, 20, 21),
         TokenKind::Or => infix(parse_binary, 10, 11),
+        TokenKind::If => infix(parse_conditional, 5, 4),
         _ => return None,
     })
 }
@@ -105,6 +106,20 @@ fn parse_grouping(parser: &mut Parser) -> Id<Expr> {
     parser.expect(TokenKind::CloseParen);
 
     expr
+}
+
+fn parse_conditional(parser: &mut Parser, truthy: Id<Expr>) -> Id<Expr> {
+    parser.next();
+    let condition = parser.parse_expr();
+    parser.expect(TokenKind::Else);
+    let falsy = parser.parse_expr_bp(4);
+
+    parser.expr(Expr::Condition {
+        condition,
+        truthy,
+        falsy,
+        span: parser.ast[truthy].span().merge(parser.ast[falsy].span()),
+    })
 }
 
 fn parse_unary(parser: &mut Parser) -> Id<Expr> {

@@ -105,6 +105,39 @@ impl<'a> MirBuilder<'a> {
                 );
                 result
             }
+            Expr::Condition {
+                span,
+                ty,
+                condition,
+                truthy,
+                falsy,
+            } => {
+                let condition_local = self.lower_expr(*condition);
+
+                let result = self.func.alloc_local(*ty, *span, "cond.result");
+
+                let truthy_block = self.func.new_block("cond.truthy");
+                let falsy_block = self.func.new_block("cond.falsy");
+                let merge_block = self.func.new_block("cond.merge");
+
+                self.terminate(Terminator::SwitchInt {
+                    discr: Operand::Copy(condition_local),
+                    targets: vec![(1, truthy_block), (0, falsy_block)],
+                });
+
+                self.current_block = Some(truthy_block);
+                let truthy_local = self.lower_expr(*truthy);
+                self.push_assign(result, Rvalue::Use(Operand::Copy(truthy_local)), *span);
+                self.terminate(Terminator::Goto(merge_block));
+
+                self.current_block = Some(falsy_block);
+                let falsy_local = self.lower_expr(*falsy);
+                self.push_assign(result, Rvalue::Use(Operand::Copy(falsy_local)), *span);
+                self.terminate(Terminator::Goto(merge_block));
+
+                self.current_block = Some(merge_block);
+                result
+            }
             Expr::Error { .. } => unreachable!("error expr should not reach MIR"),
         }
     }

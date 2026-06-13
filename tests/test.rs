@@ -167,3 +167,24 @@ fn logical_precedence() {
     expect("true && 1 == 1", 1);
     expect("1 < 2 && 3 > 2 || false", 1);
 }
+
+#[test]
+fn conditionals() {
+    expect("1 if true else 2", 1);
+    expect("1 if false else 2", 2);
+    expect("10 if 2 < 3 else 20", 10);
+    expect("5 if 1 == 2 else 6", 6);
+    expect("100 if 1 < 2 && 3 > 2 else 0", 100);
+    // an `if` is an expression with a value
+    expect("1 + (10 if true else 20)", 11);
+    // bool-valued branches
+    expect("true if 1 < 2 else false", 1);
+    // right-associative chaining: 2 if false else (3 if true else 4)
+    expect("2 if false else 3 if true else 4", 3);
+}
+
+#[test]
+fn conditional_type_errors() {
+    expect_type_error("2 if 1 else 3"); // condition must be bool
+    expect_type_error("1 if true else false"); // branches must agree
+}

@@ -107,6 +107,19 @@ fn lower_function(mir: &MirFunction, tcx: &TyCtx, b: &mut FunctionBuilder) {
             Terminator::Goto(target) => {
                 b.ins().jump(clif_blocks[target.id], &[]);
             }
+            Terminator::SwitchInt { discr, targets } => {
+                let d = lower_operand(b, &local_vars, discr);
+                // The last target acts as the fallthrough; test each other value in turn.
+                let (_, default) = targets.last().expect("switch needs at least one target");
+                let default_block = clif_blocks[default.id];
+                for (value, target) in &targets[..targets.len() - 1] {
+                    let matches = b.ins().icmp_imm(IntCC::Equal, d, *value);
+                    let next = b.create_block();
+                    b.ins().brif(matches, clif_blocks[target.id], &[], next, &[]);
+                    b.switch_to_block(next);
+                }
+                b.ins().jump(default_block, &[]);
+            }
             Terminator::Unreachable => {
                 b.ins().trap(TrapCode::user(1).unwrap());
             }

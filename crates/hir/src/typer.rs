@@ -115,6 +115,50 @@ impl Typer {
                 let ty = self.ctx.error(span);
                 self.ast.add_expr(Expr::Error { ty, span })
             }
+            UntypedExpr::Condition {
+                span,
+                condition,
+                truthy,
+                falsy,
+            } => {
+                let condition = self.infer(ast, condition);
+                let truthy = self.infer(ast, truthy);
+                let falsy = self.infer(ast, falsy);
+
+                let condition_ty = self.ast.get_expr(condition).ty();
+                let truthy_ty = self.ast.get_expr(truthy).ty();
+                let falsy_ty = self.ast.get_expr(falsy).ty();
+
+                let result_ty = self.ctx.var(span);
+
+                let node = self.ast.add_expr(Expr::Condition {
+                    condition,
+                    truthy,
+                    falsy,
+                    ty: result_ty,
+                    span,
+                });
+
+                self.constraints.push(Constraint::Equal {
+                    provenance: Provenance::Condition(node),
+                    expected: self.ctx.bool(span),
+                    actual: condition_ty,
+                });
+
+                self.constraints.push(Constraint::Equal {
+                    provenance: Provenance::Condition(node),
+                    expected: result_ty,
+                    actual: truthy_ty,
+                });
+
+                self.constraints.push(Constraint::Equal {
+                    provenance: Provenance::Condition(node),
+                    expected: result_ty,
+                    actual: falsy_ty,
+                });
+
+                node
+            }
         }
     }
 

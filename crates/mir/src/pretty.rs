@@ -142,6 +142,18 @@ fn fmt_term(buf: &mut String, func: &Function, t: &Terminator) {
         Terminator::Goto(id) => {
             let _ = write!(buf, "goto -> {}", func.block_name(*id));
         }
+        Terminator::SwitchInt { discr, targets } => {
+            let _ = buf.write_str("switch ");
+            fmt_operand(buf, func, discr);
+            let _ = buf.write_str(" -> [");
+            for (i, (value, target)) in targets.iter().enumerate() {
+                if i > 0 {
+                    let _ = buf.write_str(", ");
+                }
+                let _ = write!(buf, "{value}: {}", func.block_name(*target));
+            }
+            let _ = buf.write_str("]");
+        }
         Terminator::Unreachable => {
             let _ = buf.write_str("unreachable");
         }

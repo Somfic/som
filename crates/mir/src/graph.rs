@@ -31,6 +31,10 @@ pub enum Const {
 #[derive(Debug)]
 pub enum Terminator {
     Goto(Id<Block>),
+    SwitchInt {
+        discr: Operand,
+        targets: Vec<(i64, Id<Block>)>,
+    },
     Return,
     Unreachable,
 }
@@ -39,7 +43,6 @@ pub enum Terminator {
 pub struct LocalDecl {
     pub ty: Id<Type>,
     pub span: Span,
-    /// Origin hint for readability in dumps (e.g. "const", "add"). Not load-bearing.
     pub name: &'static str,
 }
 
@@ -47,7 +50,6 @@ pub struct LocalDecl {
 pub struct Block {
     pub stmts: Vec<Id<Statement>>,
     pub terminator: Terminator,
-    /// Origin hint for readability in dumps (e.g. "entry", "then", "merge").
     pub name: &'static str,
 }
 

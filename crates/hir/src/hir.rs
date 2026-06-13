@@ -12,6 +12,7 @@ expand_enum! {
         Bool { value: bool },
         Unary { op: UnaryOp, operand: Id<Expr> },
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
+        Condition { condition: Id<Expr>, truthy: Id<Expr>, falsy: Id<Expr> },
     } with { span: Span, ty: Id<Type> }
 }
 
