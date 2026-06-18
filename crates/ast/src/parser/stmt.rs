@@ -1,17 +1,25 @@
 use som_common::Id;
 
-use crate::{Parser, Stmt, TokenKind};
+use crate::{Expr, Parser, Stmt, TokenKind};
+
+pub enum ExprOrStmt {
+    Expr(Id<Expr>),
+    Stmt(Id<Stmt>),
+}
 
 impl Parser<'_> {
-    pub(crate) fn parse_stmt(&mut self) -> Id<Stmt> {
+    pub(crate) fn parse_stmt(&mut self) -> ExprOrStmt {
         match self.peek().kind {
-            TokenKind::Let => self.parse_let(),
+            TokenKind::Let => ExprOrStmt::Stmt(self.parse_let()),
             _ => {
-                // expression statement
                 let expr = self.parse_expr();
-                let semi = self.expect(TokenKind::Semicolon);
-                let span = self.ast[expr].span().merge(semi.span);
-                self.stmt(Stmt::Expr { expr, span })
+
+                if let Some(semi) = self.try_eat(TokenKind::Semicolon) {
+                    let span = self.ast[expr].span().merge(semi.span);
+                    ExprOrStmt::Stmt(self.stmt(Stmt::Expr { span, expr }))
+                } else {
+                    ExprOrStmt::Expr(expr)
+                }
             }
         }
     }

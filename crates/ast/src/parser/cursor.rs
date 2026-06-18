@@ -20,13 +20,11 @@ impl Parser<'_> {
         token
     }
 
-    #[allow(dead_code)] // parser primitive; used once statements/`;` land
-    pub(crate) fn eat(&mut self, kind: TokenKind) -> bool {
+    pub(crate) fn try_eat(&mut self, kind: TokenKind) -> Option<Token> {
         if self.peek().kind == kind {
-            self.next();
-            true
+            Some(self.next())
         } else {
-            false
+            None
         }
     }
 

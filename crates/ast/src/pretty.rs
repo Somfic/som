@@ -51,7 +51,7 @@ fn fmt_stmt(buf: &mut String, ast: &Ast, id: Id<Stmt>) {
 
 fn fmt_expr(buf: &mut String, ast: &Ast, id: Id<Expr>, nested: bool) {
     use std::fmt::Write;
-    match ast[id] {
+    match &ast[id] {
         Expr::Error { .. } => {
             let _ = buf.write_str("<error>");
         }
@@ -63,15 +63,15 @@ fn fmt_expr(buf: &mut String, ast: &Ast, id: Id<Expr>, nested: bool) {
         }
         Expr::Unary { op, operand, .. } => {
             let _ = write!(buf, "{op}");
-            fmt_expr(buf, ast, operand, true);
+            fmt_expr(buf, ast, *operand, true);
         }
         Expr::Binary { lhs, op, rhs, .. } => {
             if nested {
                 buf.push('(');
             }
-            fmt_expr(buf, ast, lhs, true);
+            fmt_expr(buf, ast, *lhs, true);
             let _ = write!(buf, " {op} ");
-            fmt_expr(buf, ast, rhs, true);
+            fmt_expr(buf, ast, *rhs, true);
             if nested {
                 buf.push(')');
             }
@@ -82,11 +82,25 @@ fn fmt_expr(buf: &mut String, ast: &Ast, id: Id<Expr>, nested: bool) {
             falsy,
             ..
         } => {
-            fmt_expr(buf, ast, truthy, false);
+            fmt_expr(buf, ast, *truthy, false);
             let _ = buf.write_str(" if ");
-            fmt_expr(buf, ast, condition, false);
+            fmt_expr(buf, ast, *condition, false);
             let _ = buf.write_str(" else ");
-            fmt_expr(buf, ast, falsy, false);
+            fmt_expr(buf, ast, *falsy, false);
+        }
+        Expr::Block { span, stmts, value } => {
+            buf.push_str("{\n");
+            for stmt in stmts {
+                let mut stmt_buf = String::new();
+                fmt_stmt(&mut stmt_buf, ast, *stmt);
+                let _ = writeln!(buf, "    {stmt_buf}");
+            }
+            if let Some(value) = value {
+                let mut value_buf = String::new();
+                fmt_expr(&mut value_buf, ast, *value, false);
+                let _ = writeln!(buf, "    {value_buf}");
+            }
+            buf.push('}');
         }
     }
 }

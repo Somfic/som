@@ -13,6 +13,7 @@ expand_enum! {
         Unary { op: UnaryOp, operand: Id<Expr> },
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
         Condition { condition: Id<Expr>, truthy: Id<Expr>, falsy: Id<Expr> },
+        Block { stmts: Vec<Id<Stmt>>, value: Option<Id<Expr>> },
     } with { span: Span, ty: Id<Type> }
 }
 

@@ -145,6 +145,37 @@ impl<'a> MirBuilder<'a> {
                 self.current_block = Some(merge_block);
                 result
             }
+            Expr::Block {
+                stmts,
+                value,
+                ty,
+                span,
+            } => {
+                // Copy out first: iterating `stmts` (borrowed from `self.hir`) while
+                // calling `&mut self` methods below would otherwise conflict.
+                let stmts = stmts.clone();
+                let (value, ty, span) = (*value, *ty, *span);
+
+                for stmt_id in stmts {
+                    self.lower_stmt(stmt_id);
+                }
+
+                match value {
+                    // The block's value is its trailing expression.
+                    Some(expr) => self.lower_expr(expr),
+                    // No tail expression → no value. Synthesise a placeholder until
+                    // there's a real unit type.
+                    None => {
+                        let local = self.func.alloc_local(ty, span, "unit");
+                        self.push_assign(
+                            local,
+                            Rvalue::Use(Operand::Const(Const::Int(0, ty))),
+                            span,
+                        );
+                        local
+                    }
+                }
+            }
             Expr::Error { .. } => unreachable!("error expr should not reach MIR"),
         }
     }

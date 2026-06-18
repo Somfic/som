@@ -101,5 +101,19 @@ fn fmt_expr(buf: &mut String, hir: &Hir, tcx: &TyCtx, id: Id<Expr>, nested: bool
             let _ = write!(buf, " else ");
             fmt_expr(buf, hir, tcx, *falsy, false);
         }
+        Expr::Block { stmts, value, .. } => {
+            buf.push_str("{\n");
+            for stmt_id in stmts {
+                let mut line = String::new();
+                fmt_stmt(&mut line, hir, tcx, *stmt_id);
+                let _ = writeln!(buf, "    {line};");
+            }
+            if let Some(value) = value {
+                let mut line = String::new();
+                fmt_expr(&mut line, hir, tcx, *value, false);
+                let _ = writeln!(buf, "    {line}");
+            }
+            buf.push('}');
+        }
     }
 }

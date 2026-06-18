@@ -43,7 +43,7 @@ impl Index<Id<Stmt>> for Ast {
 
 #[rustfmt::skip]
 expand_enum! {
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone)]
     pub enum Expr {
         Error,
         Int { value: i64 },
@@ -51,12 +51,13 @@ expand_enum! {
         Unary { op: UnaryOp, operand: Id<Expr> },
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
         Condition { condition: Id<Expr>, truthy: Id<Expr>, falsy: Id<Expr> },
+        Block { stmts: Vec<Id<Stmt>>, value: Option<Id<Expr>> }
     } with { span: Span }
 }
 
 #[rustfmt::skip]
 expand_enum! {
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum Stmt {
         Expr { expr: Id<Expr> },
         Let { ident: Box<str>, expr: Id<Expr> },

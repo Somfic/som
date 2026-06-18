@@ -32,16 +32,20 @@ impl Typer {
     }
 
     fn infer(&mut self, ast: &Ast, id: Id<UntypedExpr>) -> Id<Expr> {
-        match ast[id] {
+        // `&ast[id]`: the AST `Expr` holds a `Vec` (Block) so it is no longer `Copy`.
+        match &ast[id] {
             UntypedExpr::Int { value, span } => {
+                let (value, span) = (*value, *span);
                 let ty = self.ctx.int(span);
                 self.ast.add_expr(Expr::Int { value, ty, span })
             }
             UntypedExpr::Bool { value, span } => {
+                let (value, span) = (*value, *span);
                 let ty = self.ctx.bool(span);
                 self.ast.add_expr(Expr::Bool { value, ty, span })
             }
             UntypedExpr::Unary { op, operand, span } => {
+                let (op, operand, span) = (*op, *operand, *span);
                 let operand = self.infer(ast, operand);
                 let operand_ty = self.ast.get_expr(operand).ty();
                 let ty = match op {
@@ -62,6 +66,7 @@ impl Typer {
                 node
             }
             UntypedExpr::Binary { op, lhs, rhs, span } => {
+                let (op, lhs, rhs, span) = (*op, *lhs, *rhs, *span);
                 let lhs = self.infer(ast, lhs);
                 let rhs = self.infer(ast, rhs);
                 let lhs_ty = self.ast.get_expr(lhs).ty();
@@ -112,6 +117,7 @@ impl Typer {
                 node
             }
             UntypedExpr::Error { span } => {
+                let span = *span;
                 let ty = self.ctx.error(span);
                 self.ast.add_expr(Expr::Error { ty, span })
             }
@@ -121,6 +127,7 @@ impl Typer {
                 truthy,
                 falsy,
             } => {
+                let (span, condition, truthy, falsy) = (*span, *condition, *truthy, *falsy);
                 let condition = self.infer(ast, condition);
                 let truthy = self.infer(ast, truthy);
                 let falsy = self.infer(ast, falsy);
@@ -130,6 +137,7 @@ impl Typer {
                 let falsy_ty = self.ast.get_expr(falsy).ty();
 
                 let result_ty = self.ctx.var(span);
+                let bool_ty = self.ctx.bool(span);
 
                 let node = self.ast.add_expr(Expr::Condition {
                     condition,
@@ -141,7 +149,7 @@ impl Typer {
 
                 self.constraints.push(Constraint::Equal {
                     provenance: Provenance::Condition(node),
-                    expected: self.ctx.bool(span),
+                    expected: bool_ty,
                     actual: condition_ty,
                 });
 
@@ -158,6 +166,21 @@ impl Typer {
                 });
 
                 node
+            }
+            UntypedExpr::Block { stmts, value, span } => {
+                let span = *span;
+                // Statements are typed in order — this is where `let` bindings will
+                // enter scope once variable references exist.
+                let stmts: Vec<_> = stmts.iter().map(|&s| self.infer_stmt(ast, s)).collect();
+                // The block's value (and type) is its trailing expression, if any.
+                let value = value.as_ref().map(|&v| self.infer(ast, v));
+                let ty = match value {
+                    Some(v) => self.ast.get_expr(v).ty(),
+                    // No tail expression → no value. Needs a real unit type later;
+                    // for now treat it as the error type so it can't be used.
+                    None => self.ctx.error(span),
+                };
+                self.ast.add_expr(Expr::Block { stmts, value, ty, span })
             }
         }
     }
