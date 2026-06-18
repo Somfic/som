@@ -59,6 +59,7 @@ expand_enum! {
     #[derive(Debug)]
     pub enum Stmt {
         Expr { expr: Id<Expr> },
+        Let { ident: Box<str>, expr: Id<Expr> },
     } with { span: Span }
 }
 

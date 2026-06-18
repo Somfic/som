@@ -43,14 +43,14 @@ pub enum Terminator {
 pub struct LocalDecl {
     pub ty: Id<Type>,
     pub span: Span,
-    pub name: &'static str,
+    pub name: Box<str>,
 }
 
 #[derive(Debug)]
 pub struct Block {
     pub stmts: Vec<Id<Statement>>,
     pub terminator: Terminator,
-    pub name: &'static str,
+    pub name: Box<str>,
 }
 
 #[derive(Debug)]
@@ -63,15 +63,24 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn alloc_local(&mut self, ty: Id<Type>, span: Span, name: &'static str) -> Id<LocalDecl> {
-        self.locals.alloc(LocalDecl { ty, span, name })
+    pub fn alloc_local(
+        &mut self,
+        ty: Id<Type>,
+        span: Span,
+        name: impl Into<String>,
+    ) -> Id<LocalDecl> {
+        self.locals.alloc(LocalDecl {
+            ty,
+            span,
+            name: name.into().into_boxed_str(),
+        })
     }
 
-    pub fn new_block(&mut self, name: &'static str) -> Id<Block> {
+    pub fn new_block(&mut self, name: impl Into<String>) -> Id<Block> {
         self.blocks.alloc(Block {
             stmts: Vec::new(),
             terminator: Terminator::Unreachable,
-            name,
+            name: name.into().into_boxed_str(),
         })
     }
 

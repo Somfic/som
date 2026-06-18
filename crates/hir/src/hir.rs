@@ -22,6 +22,7 @@ expand_enum! {
     pub enum Stmt {
         Error,
         Expr { expr: Id<Expr> },
+        Let { ident: Box<str>, expr: Id<Expr> },
     } with { span: Span }
 }
 

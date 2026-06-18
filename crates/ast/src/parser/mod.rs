@@ -6,6 +6,7 @@ use crate::{
 mod cursor;
 mod expr;
 mod rules;
+mod stmt;
 
 pub struct Parser<'a> {
     tokens: Vec<Token>,
@@ -26,10 +27,7 @@ impl<'a> Parser<'a> {
 
     pub fn parse(mut self) -> Ast {
         while self.peek().kind != TokenKind::Eof {
-            let expr = self.parse_expr();
-            let span = self.ast[expr].span();
-            let stmt = self.ast.add_stmt(Stmt::Expr { expr, span });
-
+            let stmt = self.parse_stmt();
             self.ast.root.push(stmt);
         }
         self.ast

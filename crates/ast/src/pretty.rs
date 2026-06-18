@@ -38,8 +38,14 @@ impl Pretty<AstCtx<'_>> for Ast {
 }
 
 fn fmt_stmt(buf: &mut String, ast: &Ast, id: Id<Stmt>) {
-    match ast[id] {
-        Stmt::Expr { expr, .. } => fmt_expr(buf, ast, expr, false),
+    match &ast[id] {
+        Stmt::Expr { expr, .. } => fmt_expr(buf, ast, *expr, false),
+        Stmt::Let { ident, expr, .. } => {
+            buf.push_str("let ");
+            buf.push_str(&ident);
+            buf.push_str(" = ");
+            fmt_expr(buf, ast, *expr, false);
+        }
     }
 }
 

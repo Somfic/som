@@ -175,10 +175,18 @@ impl Typer {
     }
 
     fn infer_stmt(&mut self, ast: &Ast, id: Id<UntypedStmt>) -> Id<Stmt> {
-        match ast[id] {
+        match &ast[id] {
             som_ast::Stmt::Expr { expr, span } => {
-                let expr = self.infer(ast, expr);
-                self.ast.add_stmt(Stmt::Expr { expr, span })
+                let expr = self.infer(ast, *expr);
+                self.ast.add_stmt(Stmt::Expr { expr, span: *span })
+            }
+            som_ast::Stmt::Let { span, ident, expr } => {
+                let expr = self.infer(ast, *expr);
+                self.ast.add_stmt(Stmt::Let {
+                    ident: ident.clone(),
+                    expr,
+                    span: *span,
+                })
             }
         }
     }

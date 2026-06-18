@@ -48,6 +48,13 @@ impl<'a> MirBuilder<'a> {
     fn lower_stmt(&mut self, stmt_id: Id<Stmt>) -> Option<Id<LocalDecl>> {
         match self.hir.get_stmt(stmt_id) {
             Stmt::Expr { expr, .. } => Some(self.lower_expr(*expr)),
+            Stmt::Let { ident, expr, span } => {
+                let ty = self.hir.get_expr(*expr).ty();
+                let local = self.func.alloc_local(ty, *span, ident.clone());
+                let value = self.lower_expr(*expr);
+                self.push_assign(local, Rvalue::Use(Operand::Copy(value)), *span);
+                Some(local)
+            }
             Stmt::Error { .. } => unreachable!("error stmt should not reach MIR"),
         }
     }
