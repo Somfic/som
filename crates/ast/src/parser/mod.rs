@@ -1,5 +1,6 @@
 use crate::{
-    Ast, Expr, Stmt, token::{Token, TokenKind}
+    Ast, Expr, Stmt,
+    token::{Token, TokenKind},
 };
 
 mod cursor;
@@ -40,7 +41,7 @@ impl<'a> Parser<'a> {
             let stmt = self.ast.add_stmt(Stmt::Expr { expr, span });
             self.ast.root.push(stmt);
         }
-        
+
         self.ast
     }
 }

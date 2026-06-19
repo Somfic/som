@@ -40,6 +40,10 @@ impl TyCtx {
         self.types.alloc(Type::Bool { span })
     }
 
+    pub(crate) fn nothing(&mut self, span: Span) -> Id<Type> {
+        self.types.alloc(Type::Nothing { span })
+    }
+
     pub(crate) fn int(&mut self, span: Span) -> Id<Type> {
         let var = self.table.new_key(TypeValue::Unbound { is_int: true });
         self.types.alloc(Type::Infer { var, span })
@@ -76,10 +80,12 @@ impl TyCtx {
         match self.types[id] {
             Type::I32 { .. } => "i32",
             Type::Bool { .. } => "bool",
+            Type::Nothing { .. } => "nothing",
             Type::Error { .. } => "<error>",
             Type::Infer { var, .. } => match self.table.probe_value(var) {
                 TypeValue::I32 => "i32",
                 TypeValue::Bool => "bool",
+                TypeValue::Nothing => "nothing",
                 TypeValue::Unbound { is_int: true } => "i32",
                 TypeValue::Unbound { is_int: false } => "_",
             },
@@ -96,6 +102,7 @@ impl TyCtx {
                 let resolved = match self.table.probe_value(var) {
                     TypeValue::I32 => Type::I32 { span },
                     TypeValue::Bool => Type::Bool { span },
+                    TypeValue::Nothing => Type::Nothing { span },
                     TypeValue::Unbound { is_int: true } => Type::I32 { span }, // the default
                     TypeValue::Unbound { is_int: false } => Type::Error { span },
                 };
@@ -109,6 +116,7 @@ fn prim(ty: Type) -> TypeValue {
     match ty {
         Type::I32 { .. } => TypeValue::I32,
         Type::Bool { .. } => TypeValue::Bool,
+        Type::Nothing { .. } => TypeValue::Nothing,
         _ => unreachable!("prim() on a non-concrete type"),
     }
 }

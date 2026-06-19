@@ -169,18 +169,18 @@ impl Typer {
             }
             UntypedExpr::Block { stmts, value, span } => {
                 let span = *span;
-                // Statements are typed in order — this is where `let` bindings will
-                // enter scope once variable references exist.
-                let stmts: Vec<_> = stmts.iter().map(|&s| self.infer_stmt(ast, s)).collect();
-                // The block's value (and type) is its trailing expression, if any.
+                let stmts = stmts.iter().map(|&s| self.infer_stmt(ast, s)).collect();
                 let value = value.as_ref().map(|&v| self.infer(ast, v));
                 let ty = match value {
                     Some(v) => self.ast.get_expr(v).ty(),
-                    // No tail expression → no value. Needs a real unit type later;
-                    // for now treat it as the error type so it can't be used.
-                    None => self.ctx.error(span),
+                    None => self.ctx.nothing(span),
                 };
-                self.ast.add_expr(Expr::Block { stmts, value, ty, span })
+                self.ast.add_expr(Expr::Block {
+                    stmts,
+                    value,
+                    ty,
+                    span,
+                })
             }
         }
     }

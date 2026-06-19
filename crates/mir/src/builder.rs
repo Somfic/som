@@ -166,7 +166,7 @@ impl<'a> MirBuilder<'a> {
                     // No tail expression → no value. Synthesise a placeholder until
                     // there's a real unit type.
                     None => {
-                        let local = self.func.alloc_local(ty, span, "unit");
+                        let local = self.func.alloc_local(ty, span, "nothing");
                         self.push_assign(
                             local,
                             Rvalue::Use(Operand::Const(Const::Int(0, ty))),

@@ -115,7 +115,8 @@ fn lower_function(mir: &MirFunction, tcx: &TyCtx, b: &mut FunctionBuilder) {
                 for (value, target) in &targets[..targets.len() - 1] {
                     let matches = b.ins().icmp_imm(IntCC::Equal, d, *value);
                     let next = b.create_block();
-                    b.ins().brif(matches, clif_blocks[target.id], &[], next, &[]);
+                    b.ins()
+                        .brif(matches, clif_blocks[target.id], &[], next, &[]);
                     b.switch_to_block(next);
                 }
                 b.ins().jump(default_block, &[]);
@@ -175,6 +176,7 @@ fn lower_type(ty: &som_hir::Type) -> types::Type {
     match ty {
         som_hir::Type::I32 { .. } => types::I32,
         som_hir::Type::Bool { .. } => types::I8,
+        som_hir::Type::Nothing { .. } => types::I32,
         som_hir::Type::Error { .. } => unreachable!("error type should not reach codegen"),
         som_hir::Type::Infer { .. } => {
             unreachable!("inference vars are resolved away before codegen")
