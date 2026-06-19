@@ -188,3 +188,12 @@ fn conditional_type_errors() {
     expect_type_error("2 if 1 else 3"); // condition must be bool
     expect_type_error("1 if true else false"); // branches must agree
 }
+
+#[test]
+fn blocks() {
+    expect("1; 2", 2);
+    expect("1; 2; 3", 3);
+    expect("1; 2; 3; 4", 4);
+    expect("{ true; }; 5", 5);
+    expect("{ { 1 } }", 1);
+}
