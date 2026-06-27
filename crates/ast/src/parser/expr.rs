@@ -19,6 +19,7 @@ fn prefix_rule(token: TokenKind) -> Option<PrefixRule> {
         TokenKind::Minus => prefix(|p| p.parse_unary()),
         TokenKind::Bang => prefix(|p| p.parse_unary()),
         TokenKind::OpenBrace => prefix(|p| p.parse_block()),
+        TokenKind::Ident => prefix(|p| p.parse_variable()),
         _ => return None,
     })
 }
@@ -72,6 +73,14 @@ impl Parser<'_> {
 
     fn expr(&mut self, expr: Expr) -> Id<Expr> {
         self.ast.add_expr(expr)
+    }
+
+    fn parse_variable(&mut self) -> Id<Expr> {
+        let token = self.next();
+        self.expr(Expr::Variable {
+            name: token.text,
+            span: token.span,
+        })
     }
 
     fn parse_int_literal(&mut self) -> Id<Expr> {

@@ -49,9 +49,9 @@ fn fmt_stmt(buf: &mut String, hir: &Hir, tcx: &TyCtx, id: Id<Stmt>) {
     use std::fmt::Write;
     match hir.get_stmt(id) {
         Stmt::Expr { expr, .. } => fmt_expr(buf, hir, tcx, *expr, false),
-        Stmt::Let { span, ident, expr } => {
+        Stmt::Let { ident, expr, .. } => {
             buf.push_str("let ");
-            buf.push_str(&ident);
+            buf.push_str(ident);
             buf.push_str(" = ");
             fmt_expr(buf, hir, tcx, *expr, false);
         }
@@ -73,6 +73,9 @@ fn fmt_expr(buf: &mut String, hir: &Hir, tcx: &TyCtx, id: Id<Expr>, nested: bool
         }
         Expr::Bool { value, ty, .. } => {
             let _ = write!(buf, "{value}: {}", tcx[*ty]);
+        }
+        Expr::Variable { name, ty, .. } => {
+            let _ = write!(buf, "{name}: {}", tcx[*ty]);
         }
         Expr::Unary { op, operand, .. } => {
             let _ = write!(buf, "{op}");

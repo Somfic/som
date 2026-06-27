@@ -190,6 +190,13 @@ fn conditional_type_errors() {
 }
 
 #[test]
+fn variables() {
+    expect("let x = 1; x", 1);
+    expect("let x = 2; let y = 3; x + y", 5);
+    expect("let x = 10; let y = 20; let z = 30; x + y + z", 60);
+}
+
+#[test]
 fn blocks() {
     expect("1; 2", 2);
     expect("1; 2; 3", 3);

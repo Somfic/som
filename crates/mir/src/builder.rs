@@ -1,5 +1,7 @@
+use std::collections::HashMap;
+
 use som_common::{Arena, DiagnosticSink, Id, Span};
-use som_hir::{Expr, Hir, Stmt, TyCtx};
+use som_hir::{Binding, Expr, Hir, Stmt, TyCtx};
 
 use crate::{Block, Const, Function, LocalDecl, Operand, Rvalue, Statement, Terminator};
 
@@ -21,6 +23,7 @@ struct MirBuilder<'a> {
     hir: &'a Hir,
     func: Function,
     current_block: Option<Id<Block>>,
+    env: HashMap<Id<Binding>, Id<LocalDecl>>,
 }
 
 impl<'a> MirBuilder<'a> {
@@ -38,6 +41,7 @@ impl<'a> MirBuilder<'a> {
             hir,
             func,
             current_block: Some(entry),
+            env: HashMap::new(),
         }
     }
 
@@ -48,11 +52,19 @@ impl<'a> MirBuilder<'a> {
     fn lower_stmt(&mut self, stmt_id: Id<Stmt>) -> Option<Id<LocalDecl>> {
         match self.hir.get_stmt(stmt_id) {
             Stmt::Expr { expr, .. } => Some(self.lower_expr(*expr)),
-            Stmt::Let { ident, expr, span } => {
-                let ty = self.hir.get_expr(*expr).ty();
-                let local = self.func.alloc_local(ty, *span, ident.clone());
-                let value = self.lower_expr(*expr);
-                self.push_assign(local, Rvalue::Use(Operand::Copy(value)), *span);
+            Stmt::Let {
+                ident,
+                binding,
+                expr,
+                span,
+            } => {
+                let ident = ident.clone();
+                let (binding, expr, span) = (*binding, *expr, *span);
+                let ty = self.hir.get_expr(expr).ty();
+                let local = self.func.alloc_local(ty, span, ident);
+                let value = self.lower_expr(expr);
+                self.push_assign(local, Rvalue::Use(Operand::Copy(value)), span);
+                self.env.insert(binding, local);
                 Some(local)
             }
             Stmt::Error { .. } => unreachable!("error stmt should not reach MIR"),
@@ -175,6 +187,10 @@ impl<'a> MirBuilder<'a> {
                         local
                     }
                 }
+            }
+            Expr::Variable { binding, .. } => {
+                let binding = binding.expect("variable resolved during type-checking");
+                *self.env.get(&binding).expect("binding has a local")
             }
             Expr::Error { .. } => unreachable!("error expr should not reach MIR"),
         }

@@ -42,7 +42,7 @@ fn fmt_stmt(buf: &mut String, ast: &Ast, id: Id<Stmt>) {
         Stmt::Expr { expr, .. } => fmt_expr(buf, ast, *expr, false),
         Stmt::Let { ident, expr, .. } => {
             buf.push_str("let ");
-            buf.push_str(&ident);
+            buf.push_str(ident);
             buf.push_str(" = ");
             fmt_expr(buf, ast, *expr, false);
         }
@@ -60,6 +60,9 @@ fn fmt_expr(buf: &mut String, ast: &Ast, id: Id<Expr>, nested: bool) {
         }
         Expr::Bool { value, .. } => {
             let _ = write!(buf, "{value}");
+        }
+        Expr::Variable { name, .. } => {
+            let _ = buf.write_str(name);
         }
         Expr::Unary { op, operand, .. } => {
             let _ = write!(buf, "{op}");
@@ -88,7 +91,7 @@ fn fmt_expr(buf: &mut String, ast: &Ast, id: Id<Expr>, nested: bool) {
             let _ = buf.write_str(" else ");
             fmt_expr(buf, ast, *falsy, false);
         }
-        Expr::Block { span, stmts, value } => {
+        Expr::Block { stmts, value, .. } => {
             buf.push_str("{\n");
             for stmt in stmts {
                 let mut stmt_buf = String::new();
