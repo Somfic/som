@@ -1,0 +1,112 @@
+{
+  "name": "som",
+  "displayName": "Som",
+  "description": "Language support for Som",
+  "version": "0.1.0",
+  "publisher": "somfic",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Somfic/som.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:som"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "som",
+        "extensions": [
+          ".som"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "som",
+        "scopeName": "source.som",
+        "path": "./syntaxes/som.tmLanguage.json"
+      }
+    ],
+    "semanticTokenScopes": [
+      {
+        "language": "som",
+        "scopes": {
+          "keyword": [
+            "keyword.control.som"
+          ],
+          "variable": [
+            "variable.other.som"
+          ],
+          "number": [
+            "constant.numeric.som"
+          ],
+          "string": [
+            "string.quoted.double.som"
+          ],
+          "type": [
+            "entity.name.type.som"
+          ],
+          "comment": [
+            "comment.line.double-slash.som"
+          ],
+          "operator": [
+            "keyword.operator.som"
+          ]
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "som.run",
+        "title": "Som: Run",
+        "icon": "$(play)"
+      },
+      {
+        "command": "som.restartServer",
+        "title": "Som: Restart Language Server"
+      }
+    ],
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "som.run",
+          "when": "resourceLangId == som",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Som",
+      "properties": {
+        "som.path": {
+          "type": "string",
+          "default": "som",
+          "description": "Path to the som binary. Used both for the language server (`som lsp`) and the Run command (`som run`)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "watch": "bun run compile -- --sourcemap --watch",
+    "package": "bun run compile && bunx @vscode/vsce package --no-dependencies --allow-missing-repository"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.4.0"
+  }
+}

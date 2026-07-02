@@ -38,6 +38,12 @@ enum Command {
     },
     /// Start the interactive REPL.
     Repl,
+    /// Run the language server over stdio (for editor integration).
+    Lsp {
+        /// Accepted for editor compatibility; stdio is the only transport.
+        #[arg(long, hide = true)]
+        stdio: bool,
+    },
     /// Create a new project.
     New { name: String },
     /// Remove the build directory.
@@ -100,8 +106,13 @@ impl EmitArgs {
 }
 
 pub fn main() -> ExitCode {
-    som::init_tracing();
     let cli = Cli::parse();
+
+    // In LSP mode stdout is the JSON-RPC channel; installing a stdout tracing
+    // subscriber would corrupt it, so leave tracing uninstalled there.
+    if !matches!(cli.command, Command::Lsp { .. }) {
+        som::init_tracing();
+    }
 
     match cli.command {
         Command::Run { input, codegen } => {
@@ -115,6 +126,7 @@ pub fn main() -> ExitCode {
             Some("Compiled project."),
         ),
         Command::Repl => repl(),
+        Command::Lsp { .. } => cmd_lsp(),
         Command::New { name } => cmd_new(&name),
         Command::Clean => cmd_clean(),
     }
@@ -254,6 +266,16 @@ fn cmd_new(name: &str) -> ExitCode {
 
     println!("Created project `{name}`");
     ExitCode::SUCCESS
+}
+
+fn cmd_lsp() -> ExitCode {
+    match som_lsp::run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("error: language server failed: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 fn cmd_clean() -> ExitCode {

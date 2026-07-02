@@ -69,9 +69,24 @@ jobs:
       - name: Test
         run: cargo test
 
+  extension:
+    name: extension
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Build extension
+        working-directory: editors/vscode
+        run: |
+          bun install --frozen-lockfile
+          bun run compile
+          bunx tsc --noEmit
+
   version:
     name: version
-    needs: [ lint, test ]
+    needs: [ lint, test, extension ]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
@@ -206,10 +221,11 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ needs.version.outputs.version }}"
-          for toml in compiler/Cargo.toml cli/Cargo.toml lsp/Cargo.toml; do
-            sed -i.bak "s/^version = \".*\"/version = \"${VERSION}\"/" "$toml"
-            rm -f "${toml}.bak"
-          done
+          # The released binary is the root `som` package; bump its version so
+          # `som --version` reports the release. (The internal crates/* are
+          # path deps and don't need bumping.)
+          sed -i.bak "0,/^version = \".*\"/s//version = \"${VERSION}\"/" Cargo.toml
+          rm -f Cargo.toml.bak
 
       - name: Build
         run: cargo build --release
@@ -219,7 +235,7 @@ jobs:
         run: |
           STAGING="som-${{ needs.version.outputs.version }}-${{ matrix.target }}"
           mkdir "$STAGING"
-          cp target/release/somc target/release/som target/release/somlsp "$STAGING/"
+          cp target/release/som "$STAGING/"
           tar czf "${STAGING}.tar.gz" "$STAGING"
 
       - name: Package (windows)
@@ -228,7 +244,7 @@ jobs:
         run: |
           $STAGING = "som-${{ needs.version.outputs.version }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Path $STAGING
-          Copy-Item "target/release/somc.exe", "target/release/som.exe", "target/release/somlsp.exe" -Destination $STAGING
+          Copy-Item "target/release/som.exe" -Destination $STAGING
           Compress-Archive -Path $STAGING -DestinationPath "${STAGING}.zip"
 
       - name: Upload artifact

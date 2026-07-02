@@ -1,0 +1,16 @@
+[package]
+name = "som_lsp"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Somfic"]
+description = "som language server"
+
+[dependencies]
+som_common = { workspace = true }
+som_ast = { workspace = true }
+som_hir = { workspace = true }
+som_mir = { workspace = true }
+tower-lsp = { workspace = true }
+tokio = { workspace = true }
+serde_json = { workspace = true }

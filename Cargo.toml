@@ -9,6 +9,7 @@ som_ast = { workspace = true }
 som_hir = { workspace = true }
 som_mir = { workspace = true }
 som_codegen = { workspace = true }
+som_lsp = { workspace = true }
 clap = { workspace = true }
 owo-colors = { workspace = true }
 terminal_size = { workspace = true }
@@ -29,3 +30,7 @@ som_ast = { path = "crates/ast" }
 som_hir = { path = "crates/hir" }
 som_mir = { path = "crates/mir" }
 som_codegen = { path = "crates/codegen" }
+som_lsp = { path = "crates/lsp" }
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"

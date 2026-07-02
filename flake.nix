@@ -34,6 +34,7 @@
             fd
             bat
             raylib
+            bun # for building the VS Code extension (editors/vscode)
           ];
 
           shellHook = ''
