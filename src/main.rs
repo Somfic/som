@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use som::{CompileOptions, CompileResult, EmitSet, Severity, Source};
+use som::{CompileOptions, CompileResult, EmitSet, Source};
 
 // cli args
 #[derive(clap::Parser)]
@@ -227,12 +227,7 @@ fn read_stdin() -> Result<String, String> {
 
 fn render_diagnostics(result: &CompileResult<i64>) {
     for d in &result.diagnostics {
-        let label = match d.severity {
-            Severity::Error => "error",
-            Severity::Warning => "warning",
-            _ => "note",
-        };
-        eprintln!("{label}: {}", d.message);
+        eprint!("{}", som::render_diagnostic(d, &result.sources));
     }
 }
 

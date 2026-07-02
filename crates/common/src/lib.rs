@@ -1,6 +1,7 @@
 mod arena;
 mod diagnostics;
 mod macros;
+mod message;
 mod pretty;
 mod scope;
 mod source;
@@ -9,6 +10,7 @@ mod symbol;
 
 pub use arena::*;
 pub use diagnostics::*;
+pub use message::*;
 pub use pretty::*;
 pub use scope::*;
 pub use source::*;

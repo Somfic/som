@@ -1,5 +1,8 @@
 pub use som_common::*;
 
+mod render;
+pub use render::render_diagnostic;
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct EmitSet {
     pub ast: bool,
@@ -29,20 +32,25 @@ impl CompileOptions {
 pub struct CompileResult<T> {
     pub artifact: Option<T>,
     pub diagnostics: Vec<Diagnostic>,
+    /// The sources the diagnostics point into, kept so callers can render
+    /// spans with source context.
+    pub sources: SourceMap,
 }
 
 impl<T> CompileResult<T> {
-    pub fn success(diags: DiagnosticSink, artifact: T) -> Self {
+    pub fn success(sources: SourceMap, diags: DiagnosticSink, artifact: T) -> Self {
         Self {
             artifact: Some(artifact),
             diagnostics: diags.finalize(),
+            sources,
         }
     }
 
-    pub fn failed(diags: DiagnosticSink) -> Self {
+    pub fn failed(sources: SourceMap, diags: DiagnosticSink) -> Self {
         Self {
             artifact: None,
             diagnostics: diags.finalize(),
+            sources,
         }
     }
 
@@ -57,9 +65,10 @@ pub fn compile(args: &CompileOptions) -> CompileResult<i64> {
     let mut sources = SourceMap::new();
     let id = sources.add(args.input.clone());
     let mut diags = DiagnosticSink::new();
-    let content = sources.source(id).content();
+    // Own the content so `sources` stays free to move into the result.
+    let content = sources.source(id).content().to_string();
 
-    let ast = som_ast::parse(id, content, &mut diags);
+    let ast = som_ast::parse(id, &content, &mut diags);
     if args.emit.ast {
         if args.emit.spans {
             println!("{}", ast.display_with_sources(&sources));
@@ -68,7 +77,7 @@ pub fn compile(args: &CompileOptions) -> CompileResult<i64> {
         }
     }
     if diags.has_errors() {
-        return CompileResult::failed(diags);
+        return CompileResult::failed(sources, diags);
     }
 
     let (hir, tcx) = som_hir::typeck(&ast, &mut diags);
@@ -80,7 +89,7 @@ pub fn compile(args: &CompileOptions) -> CompileResult<i64> {
         }
     }
     if diags.has_errors() {
-        return CompileResult::failed(diags);
+        return CompileResult::failed(sources, diags);
     }
 
     let mir = som_mir::build(&hir, &tcx, &mut diags);
@@ -92,14 +101,11 @@ pub fn compile(args: &CompileOptions) -> CompileResult<i64> {
         }
     }
     if diags.has_errors() {
-        return CompileResult::failed(diags);
+        return CompileResult::failed(sources, diags);
     }
 
     if !args.run {
-        return CompileResult {
-            artifact: None,
-            diagnostics: diags.finalize(),
-        };
+        return CompileResult::failed(sources, diags);
     }
 
     let func = match som_codegen::codegen(&mir, &tcx, args.opt_level) {
@@ -107,9 +113,9 @@ pub fn compile(args: &CompileOptions) -> CompileResult<i64> {
         Err(e) => {
             let span = Span::from_range(id, 0..content.len());
             diags.emit_error(span, format!("codegen error: {e}"));
-            return CompileResult::failed(diags);
+            return CompileResult::failed(sources, diags);
         }
     };
     let result = func() as i64;
-    CompileResult::success(diags, result)
+    CompileResult::success(sources, diags, result)
 }

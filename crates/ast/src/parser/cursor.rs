@@ -1,4 +1,4 @@
-use som_common::Span;
+use som_common::{Span, message};
 
 use crate::{
     Parser,
@@ -35,7 +35,7 @@ impl Parser<'_> {
         } else {
             self.diags.emit_error(
                 token.span,
-                format!("expected `{:?}`, found `{:?}`", kind, token.kind),
+                message!["expected ", kind, ", found ", token.kind],
             );
             // Synthetic token at the current position; don't advance.
             Token {

@@ -1,14 +1,84 @@
-use crate::Span;
+use crate::{Message, Span};
 
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
     pub code: Option<&'static str>,
-    pub message: String,
+    pub message: Message,
     pub primary: Label,
     pub secondary: Vec<Label>,
     pub suggestions: Vec<Suggestion>,
     pub notes: Vec<String>,
+}
+
+impl Diagnostic {
+    /// Start a diagnostic anchored at `span`. The primary label starts with an
+    /// empty message; add one with [`Diagnostic::label`].
+    pub fn new(severity: Severity, span: Span, message: impl Into<Message>) -> Self {
+        Self {
+            severity,
+            code: None,
+            message: message.into(),
+            primary: Label {
+                span,
+                message: String::new(),
+            },
+            secondary: Vec::new(),
+            suggestions: Vec::new(),
+            notes: Vec::new(),
+        }
+    }
+
+    pub fn error(span: Span, message: impl Into<Message>) -> Self {
+        Self::new(Severity::Error, span, message)
+    }
+
+    pub fn warning(span: Span, message: impl Into<Message>) -> Self {
+        Self::new(Severity::Warning, span, message)
+    }
+
+    /// Set the message shown under the primary underline.
+    pub fn label(mut self, message: impl Into<String>) -> Self {
+        self.primary.message = message.into();
+        self
+    }
+
+    /// Add a secondary underline elsewhere in the source.
+    pub fn secondary(mut self, span: Span, message: impl Into<String>) -> Self {
+        self.secondary.push(Label {
+            span,
+            message: message.into(),
+        });
+        self
+    }
+
+    /// Attach a free-standing note printed below the snippet.
+    pub fn note(mut self, message: impl Into<String>) -> Self {
+        self.notes.push(message.into());
+        self
+    }
+
+    /// Propose an edit at `span`.
+    pub fn suggest(
+        mut self,
+        span: Span,
+        replacement: impl Into<String>,
+        message: impl Into<String>,
+        applicability: Applicability,
+    ) -> Self {
+        self.suggestions.push(Suggestion {
+            span,
+            replacement: replacement.into(),
+            message: message.into(),
+            applicability,
+        });
+        self
+    }
+
+    pub fn with_code(mut self, code: &'static str) -> Self {
+        self.code = Some(code);
+        self
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -81,7 +151,7 @@ impl DiagnosticSink {
         self.diagnostics
     }
 
-    pub fn emit_error(&mut self, span: Span, message: impl Into<String>) {
+    pub fn emit_error(&mut self, span: Span, message: impl Into<Message>) {
         self.emit(Diagnostic {
             severity: Severity::Error,
             code: None,

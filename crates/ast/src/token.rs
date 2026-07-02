@@ -230,6 +230,14 @@ impl std::fmt::Display for TokenKind {
     }
 }
 
+/// A `TokenKind` in a diagnostic message renders as a highlighted code
+/// fragment (using its `Display`, e.g. `;` or `identifier`).
+impl som_common::IntoMessagePart for TokenKind {
+    fn into_message_part(self) -> som_common::MessagePart {
+        som_common::MessagePart::Code(self.to_string())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Token {
     pub kind: TokenKind,

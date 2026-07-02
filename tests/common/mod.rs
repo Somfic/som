@@ -32,7 +32,7 @@ pub fn expect_type_error(source: &str) {
         result
             .diagnostics
             .iter()
-            .any(|d| d.message.contains("type mismatch")),
+            .any(|d| d.message.plain().contains("type mismatch")),
         "expected a type-mismatch diagnostic for `{source}`, got: {:?}",
         result.diagnostics
     );

@@ -1,5 +1,5 @@
 use som_ast::Ast;
-use som_common::{DiagnosticSink, Id, Scope};
+use som_common::{Diagnostic, DiagnosticSink, Id, Scope, code, message};
 
 use crate::{BinaryOp, Binding, Constraint, Expr, Hir, Provenance, Stmt, TyCtx, Type, UnaryOp};
 
@@ -123,7 +123,11 @@ impl Typer {
                 let ty = match binding {
                     Some(b) => self.ast.binding(b).ty,
                     None => {
-                        diags.emit_error(span, format!("unknown variable `{name}`"));
+                        diags.emit(
+                            Diagnostic::error(span, message!["unknown variable ", code(name)])
+                                .label("not found in this scope")
+                                .note("variables must be introduced with `let` before use"),
+                        );
                         self.ctx.error(span)
                     }
                 };
@@ -273,7 +277,7 @@ impl Typer {
                 let span = self.ast.get_expr(provenance.expr()).span();
                 diags.emit_error(
                     span,
-                    format!("type mismatch: expected `{want}`, found `{got}`"),
+                    message!["type mismatch: expected ", code(want), ", found ", code(got)],
                 );
             }
         }

@@ -1,4 +1,4 @@
-use som_common::Id;
+use som_common::{Diagnostic, Id};
 
 use crate::{
     BinaryOp, Expr, Parser, Stmt, UnaryOp,
@@ -54,8 +54,10 @@ impl Parser<'_> {
             Some(r) => r,
             None => {
                 let token = self.next();
-                self.diags
-                    .emit_error(token.span, format!("unexpected token `{}`", token.text));
+                self.diags.emit(
+                    Diagnostic::error(token.span, format!("unexpected token `{}`", token.text))
+                        .label("expected an expression here"),
+                );
                 return self.ast.add_expr(Expr::Error { span: token.span });
             }
         };
