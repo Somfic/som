@@ -1,14 +1,15 @@
-use crate::{SlotKey, run_computation, with_runtime};
+use crate::{Slot, run_computation, with_runtime};
+use som_common::GenId;
 use std::marker::PhantomData;
 
 #[derive(Clone, Copy)]
 pub struct Signal<T> {
-    id: SlotKey,
+    id: GenId<Slot>,
     _marker: PhantomData<T>,
 }
 
 impl<T> Signal<T> {
-    pub(crate) fn new(id: SlotKey) -> Self {
+    pub(crate) fn new(id: GenId<Slot>) -> Self {
         Signal {
             id,
             _marker: PhantomData,

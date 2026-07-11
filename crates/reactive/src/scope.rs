@@ -1,8 +1,9 @@
-use crate::{ScopeKey, runtime::ScopeData, with_runtime};
+use crate::{runtime::ScopeData, with_runtime};
+use som_common::GenId;
 
 #[derive(Clone, Copy)]
 pub struct Scope {
-    key: ScopeKey,
+    key: GenId<ScopeData>,
 }
 
 pub fn scope() -> Scope {
@@ -38,7 +39,7 @@ impl Drop for ScopeGuard {
     }
 }
 
-fn dispose_scope(key: ScopeKey) {
+fn dispose_scope(key: GenId<ScopeData>) {
     let (children, computations, slots, parent) = match with_runtime(|rt| {
         rt.scopes.get(key).map(|s| {
             (

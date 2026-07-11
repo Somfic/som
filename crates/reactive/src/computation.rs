@@ -1,8 +1,9 @@
-use crate::{ComputationKey, SlotKey, with_runtime};
+use crate::{Slot, with_runtime};
+use som_common::GenId;
 use std::collections::HashSet;
 
 pub(crate) struct Computation {
-    pub dependencies: HashSet<SlotKey>,
+    pub dependencies: HashSet<GenId<Slot>>,
     pub run: Box<dyn FnMut()>,
 }
 
@@ -15,13 +16,13 @@ impl Computation {
     }
 }
 
-pub(crate) fn run_computation(id: ComputationKey) {
+pub(crate) fn run_computation(id: GenId<Computation>) {
     let taken = with_runtime(|rt| {
-        if !rt.computations.contains_key(id) {
+        if !rt.computations.contains(id) {
             return None;
         }
 
-        let old_deps: Vec<SlotKey> = rt.computations[id].dependencies.drain().collect();
+        let old_deps: Vec<GenId<Slot>> = rt.computations[id].dependencies.drain().collect();
         for slot_id in old_deps {
             if let Some(slot) = rt.slots.get_mut(slot_id) {
                 slot.subscribers.remove(&id);
