@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
-use std::ops::Index;
+use std::ops::{Index, IndexMut};
 
 pub struct Arena<T> {
     items: Vec<T>,
@@ -11,6 +11,12 @@ impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
     fn index(&self, id: Id<T>) -> &T {
         self.items.get(id.id).unwrap()
+    }
+}
+
+impl<T> IndexMut<Id<T>> for Arena<T> {
+    fn index_mut(&mut self, index: Id<T>) -> &mut Self::Output {
+        self.items.get_mut(index.id).unwrap()
     }
 }
 
