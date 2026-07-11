@@ -1,8 +1,3 @@
-mod computation;
-mod runtime;
-mod scope;
-mod signal;
-
 pub(crate) use crate::runtime::{ComputationKey, ScopeKey, SlotKey};
 use crate::{
     computation::{Computation, run_computation},
@@ -10,6 +5,11 @@ use crate::{
 };
 pub use scope::*;
 pub use signal::*;
+
+mod computation;
+mod runtime;
+mod scope;
+mod signal;
 
 pub fn signal<T: Clone + 'static>(value: T) -> Signal<T> {
     let slot = with_runtime(|rt| {
