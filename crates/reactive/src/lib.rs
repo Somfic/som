@@ -1,18 +1,22 @@
 mod computation;
 mod runtime;
+mod scope;
 mod signal;
 
-pub use signal::*;
-
+pub(crate) use crate::runtime::{ComputationKey, ScopeKey, SlotKey};
 use crate::{
     computation::{Computation, run_computation},
     runtime::{Slot, with_runtime},
 };
+pub use scope::*;
+pub use signal::*;
 
 pub fn signal<T: Clone + 'static>(value: T) -> Signal<T> {
     let slot = with_runtime(|rt| {
-        let slot = Slot::new(Box::new(value));
-        rt.slots.alloc(slot)
+        let slot = rt.slots.insert(Slot::new(Box::new(value)));
+        let scope = rt.current_scope();
+        rt.scopes[scope].slots.push(slot);
+        slot
     });
 
     Signal::new(slot)
@@ -20,8 +24,10 @@ pub fn signal<T: Clone + 'static>(value: T) -> Signal<T> {
 
 pub fn effect(f: impl FnMut() + 'static) {
     let computation = with_runtime(|rt| {
-        let computation = Computation::new(Box::new(f));
-        rt.computations.alloc(computation)
+        let computation = rt.computations.insert(Computation::new(Box::new(f)));
+        let scope = rt.current_scope();
+        rt.scopes[scope].computations.push(computation);
+        computation
     });
 
     // run once at the start
@@ -32,17 +38,20 @@ pub fn derived<T: Clone + 'static>(f: impl Fn() -> T + 'static) -> Signal<T> {
     let value = f();
 
     let slot = with_runtime(|rt| {
-        let slot = Slot::new(Box::new(value));
-        rt.slots.alloc(slot)
+        let slot = rt.slots.insert(Slot::new(Box::new(value)));
+        let scope = rt.current_scope();
+        rt.scopes[scope].slots.push(slot);
+        slot
     });
 
     let computation = with_runtime(|rt| {
-        let computation = Computation::new(Box::new(move || {
+        let computation = rt.computations.insert(Computation::new(Box::new(move || {
             let value = f(); // TODO: this reruns twice on first run, optimise
             Signal::new(slot).set(value);
-        }));
-
-        rt.computations.alloc(computation)
+        })));
+        let scope = rt.current_scope();
+        rt.scopes[scope].computations.push(computation);
+        computation
     });
 
     // run once at start
@@ -55,22 +64,21 @@ pub fn derived<T: Clone + 'static>(f: impl Fn() -> T + 'static) -> Signal<T> {
 mod tests {
     use std::{cell::RefCell, rc::Rc};
 
-    use crate::{derived, effect, signal};
+    use crate::{Signal, derived, effect, scope, signal};
 
     #[test]
     fn effect_fires_on_change() {
-        // "effect fires on change"
         let n = signal(0);
         let log = Rc::new(RefCell::new(vec![]));
         {
             let log = log.clone();
             effect(move || log.borrow_mut().push(n.get()));
         }
-        assert_eq!(*log.borrow(), [0]); // ran once immediately
+        assert_eq!(*log.borrow(), [0]);
 
         n.set(1);
         n.set(2);
-        assert_eq!(*log.borrow(), [0, 1, 2]); // re-ran on each change
+        assert_eq!(*log.borrow(), [0, 1, 2]);
     }
 
     #[test]
@@ -127,5 +135,72 @@ mod tests {
         b.set("B3");
 
         assert_eq!(*log.borrow(), ["A", "B2", "B3"]);
+    }
+
+    #[test]
+    fn disposed_scope_stops_firing() {
+        let n = signal(0);
+        let log = Rc::new(RefCell::new(vec![]));
+
+        let s = scope();
+        {
+            let log = log.clone();
+            s.run(|| {
+                effect(move || log.borrow_mut().push(n.get()));
+            });
+        }
+        assert_eq!(*log.borrow(), [0]);
+
+        n.set(1);
+        assert_eq!(*log.borrow(), [0, 1]);
+
+        s.dispose();
+        n.set(2);
+        n.set(3);
+        assert_eq!(*log.borrow(), [0, 1]);
+    }
+
+    #[test]
+    fn disposing_parent_disposes_children() {
+        let n = signal(0);
+        let log = Rc::new(RefCell::new(vec![]));
+
+        let parent = scope();
+        parent.run(|| {
+            let child = scope();
+            let log = log.clone();
+            child.run(|| {
+                effect(move || log.borrow_mut().push(n.get()));
+            });
+        });
+        assert_eq!(*log.borrow(), [0]);
+
+        n.set(1);
+        assert_eq!(*log.borrow(), [0, 1]);
+
+        parent.dispose();
+        n.set(2);
+        assert_eq!(*log.borrow(), [0, 1]);
+    }
+
+    #[test]
+    fn stale_signal_handle_returns_none() {
+        let s = scope();
+        let a: Signal<&str> = s.run(|| signal("hello"));
+        assert_eq!(a.try_get(), Some("hello"));
+
+        s.dispose();
+
+        let _b = signal(42_i32);
+        assert_eq!(a.try_get(), None);
+    }
+
+    #[test]
+    fn set_on_disposed_signal_is_a_noop() {
+        let s = scope();
+        let a: Signal<i32> = s.run(|| signal(1));
+        s.dispose();
+        a.set(99);
+        assert_eq!(a.try_get(), None);
     }
 }

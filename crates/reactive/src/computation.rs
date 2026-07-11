@@ -1,9 +1,8 @@
-use crate::{Slot, with_runtime};
-use som_common::Id;
+use crate::{ComputationKey, SlotKey, with_runtime};
 use std::collections::HashSet;
 
 pub(crate) struct Computation {
-    pub dependencies: HashSet<Id<Slot>>,
+    pub dependencies: HashSet<SlotKey>,
     pub run: Box<dyn FnMut()>,
 }
 
@@ -16,25 +15,34 @@ impl Computation {
     }
 }
 
-pub(crate) fn run_computation(id: Id<Computation>) {
-    let mut run = with_runtime(|rt| {
-        // unsubscribe from the old dependencies
-        let old_deps = rt.computations[id].dependencies.clone();
-        for slot_id in old_deps {
-            rt.slots[slot_id].subscribers.remove(&id);
+pub(crate) fn run_computation(id: ComputationKey) {
+    let taken = with_runtime(|rt| {
+        if !rt.computations.contains_key(id) {
+            return None;
         }
-        rt.computations[id].dependencies.clear();
 
-        // run
+        let old_deps: Vec<SlotKey> = rt.computations[id].dependencies.drain().collect();
+        for slot_id in old_deps {
+            if let Some(slot) = rt.slots.get_mut(slot_id) {
+                slot.subscribers.remove(&id);
+            }
+        }
+
         rt.push_running(id);
-        std::mem::replace(&mut rt.computations[id].run, Box::new(|| {}))
+        Some(std::mem::replace(
+            &mut rt.computations[id].run,
+            Box::new(|| {}),
+        ))
     });
+
+    let Some(mut run) = taken else { return };
 
     run(); // outside of runtime borrow, since it will need to borrow runtime on its own
 
     with_runtime(|rt| {
-        // clean up after running
-        rt.computations[id].run = run;
+        if let Some(comp) = rt.computations.get_mut(id) {
+            comp.run = run;
+        }
         rt.pop_running();
     });
 }
