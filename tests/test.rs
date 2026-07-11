@@ -197,6 +197,21 @@ fn variables() {
 }
 
 #[test]
+fn let_annotations() {
+    expect("let x: i32 = 5; x", 5);
+    expect("let b: bool = true; b", 1);
+    // the annotation drives inference of an otherwise-unconstrained literal
+    expect("let x: i32 = 1 + 2; x", 3);
+}
+
+#[test]
+fn let_annotation_type_errors() {
+    expect_type_error("let x: i32 = true; x");
+    expect_type_error("let x: bool = 1; x");
+    expect_type_error("let x: bool = 1 + 2; x");
+}
+
+#[test]
 fn blocks() {
     expect("1; 2", 2);
     expect("1; 2; 3", 3);

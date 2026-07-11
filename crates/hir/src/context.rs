@@ -44,6 +44,13 @@ impl TyCtx {
         self.types.alloc(Type::Nothing { span })
     }
 
+    /// A concrete `i32` — used for explicit annotations, where the type is
+    /// fixed rather than inferred. (Contrast `int`, which makes a fresh
+    /// integer-flavoured inference variable.)
+    pub(crate) fn i32(&mut self, span: Span) -> Id<Type> {
+        self.types.alloc(Type::I32 { span })
+    }
+
     pub(crate) fn int(&mut self, span: Span) -> Id<Type> {
         let var = self.table.new_key(TypeValue::Unbound { is_int: true });
         self.types.alloc(Type::Infer { var, span })

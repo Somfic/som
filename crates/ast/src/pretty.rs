@@ -1,6 +1,6 @@
 use som_common::{Id, LineWriter, Pretty, Show, SourceMap};
 
-use crate::{Ast, Expr, Stmt};
+use crate::{Ast, Expr, Stmt, Ty};
 
 #[derive(Copy, Clone)]
 pub struct AstCtx<'a> {
@@ -40,9 +40,17 @@ impl Pretty<AstCtx<'_>> for Ast {
 fn fmt_stmt(buf: &mut String, ast: &Ast, id: Id<Stmt>) {
     match &ast[id] {
         Stmt::Expr { expr, .. } => fmt_expr(buf, ast, *expr, false),
-        Stmt::Let { ident, expr, .. } => {
+        Stmt::Let { ident, ty, expr, .. } => {
             buf.push_str("let ");
             buf.push_str(ident);
+            if let Some(ty) = ty {
+                buf.push_str(": ");
+                buf.push_str(match ty {
+                    Ty::I32 { .. } => "i32",
+                    Ty::Bool { .. } => "bool",
+                    Ty::Error { .. } => "<error>",
+                });
+            }
             buf.push_str(" = ");
             fmt_expr(buf, ast, *expr, false);
         }

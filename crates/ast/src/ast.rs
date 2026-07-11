@@ -61,7 +61,17 @@ expand_enum! {
     #[derive(Debug, Clone)]
     pub enum Stmt {
         Expr { expr: Id<Expr> },
-        Let { ident: Box<str>, expr: Id<Expr> },
+        Let { ident: Box<str>, expr: Id<Expr>, ty: Option<Ty> },
+    } with { span: Span }
+}
+
+#[rustfmt::skip]
+expand_enum! {
+    #[derive(Debug, Clone, Copy)]
+    pub enum Ty {
+        Error,
+        I32,
+        Bool,
     } with { span: Span }
 }
 

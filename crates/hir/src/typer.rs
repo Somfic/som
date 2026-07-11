@@ -233,6 +233,15 @@ impl Typer {
         node
     }
 
+    /// Lower a syntactic type annotation to a concrete type.
+    fn lower_ty(&mut self, ty: &som_ast::Ty) -> Id<Type> {
+        match ty {
+            som_ast::Ty::I32 { span } => self.ctx.i32(*span),
+            som_ast::Ty::Bool { span } => self.ctx.bool(*span),
+            som_ast::Ty::Error { span } => self.ctx.error(*span),
+        }
+    }
+
     fn infer_stmt(
         &mut self,
         ast: &Ast,
@@ -244,9 +253,25 @@ impl Typer {
                 let expr = self.infer(ast, *expr, diags);
                 self.ast.add_stmt(Stmt::Expr { expr, span: *span })
             }
-            som_ast::Stmt::Let { span, ident, expr } => {
-                let expr = self.infer(ast, *expr, diags);
-                let ty = self.ast.get_expr(expr).ty();
+            som_ast::Stmt::Let {
+                span,
+                ident,
+                ty,
+                expr,
+            } => {
+                // With an annotation we *check* the initialiser against the
+                // declared type; without one we *infer* it. Either way the
+                // binding records the resulting type.
+                let (expr, ty) = match ty {
+                    Some(ty) => {
+                        let expected = self.lower_ty(ty);
+                        (self.check(ast, *expr, expected, diags), expected)
+                    }
+                    None => {
+                        let expr = self.infer(ast, *expr, diags);
+                        (expr, self.ast.get_expr(expr).ty())
+                    }
+                };
                 let binding = self.ast.add_binding(Binding {
                     name: ident.clone(),
                     span: *span,
