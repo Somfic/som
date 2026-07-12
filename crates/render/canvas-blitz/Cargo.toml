@@ -7,3 +7,4 @@ edition = "2024"
 som_common = { workspace = true }
 som_canvas = { workspace = true }
 blitz = { workspace = true }
+blitz-dom = { workspace = true }

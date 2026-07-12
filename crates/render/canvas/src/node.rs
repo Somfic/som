@@ -9,6 +9,7 @@ pub struct Node {
 pub enum Tag {
     Main,
     Block,
+    Button,
     Text,
 }
 
