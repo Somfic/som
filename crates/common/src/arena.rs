@@ -156,13 +156,6 @@ impl<'a, T> IntoIterator for &'a mut Arena<T> {
     }
 }
 
-/// A generational key into a [`GenArena`]. Unlike [`Id`], a `GenId` carries a
-/// generation, so a key that outlives its slot fails a lookup instead of
-/// silently aliasing whatever now occupies that slot.
-///
-/// The `index`/`generation` fields are private on purpose: a `GenId` is an
-/// opaque ticket. Store it, compare it, hash it — never reconstruct one from a
-/// raw index.
 pub struct GenId<T> {
     _marker: PhantomData<T>,
     index: u32,
@@ -213,21 +206,17 @@ impl<T> Hash for GenId<T> {
     }
 }
 
-/// One backing slot. Both variants carry a generation so that a stale key is
-/// rejected whether its slot was reused (generation moved on) or is still
-/// vacant (not `Occupied`).
 enum Entry<T> {
-    Occupied { generation: u32, value: T },
-    Free { generation: u32, next_free: Option<u32> },
+    Occupied {
+        generation: u32,
+        value: T,
+    },
+    Free {
+        generation: u32,
+        next_free: Option<u32>,
+    },
 }
 
-/// A generational arena: like [`Arena`], but slots can be freed and reused, and
-/// lookups are fallible. A [`GenId`] is valid iff its slot is `Occupied` *and*
-/// the slot's generation matches the key's.
-///
-/// Freeing a slot bumps its generation and pushes it onto a free list; the next
-/// `insert` reuses it. Any key handed out before the free carries the old
-/// generation, so its lookups return `None` from then on.
 pub struct GenArena<T> {
     items: Vec<Entry<T>>,
     free_head: Option<u32>,
@@ -249,8 +238,6 @@ impl<T> GenArena<T> {
         }
     }
 
-    /// Insert a value, reusing a freed slot if one is available. Returns a key
-    /// valid until the value is removed.
     pub fn insert(&mut self, value: T) -> GenId<T> {
         self.len += 1;
 
@@ -279,10 +266,7 @@ impl<T> GenArena<T> {
         }
     }
 
-    /// Remove a value, returning it. A stale key (wrong generation, or a slot
-    /// that's already free) is a no-op returning `None`.
     pub fn remove(&mut self, id: GenId<T>) -> Option<T> {
-        // Validate before taking the mutable borrow needed for the swap.
         match self.items.get(id.index as usize) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {}
             _ => return None,
@@ -329,7 +313,6 @@ impl<T> GenArena<T> {
         self.get(id).is_some()
     }
 
-    /// Number of live (occupied) values.
     pub fn len(&self) -> usize {
         self.len
     }
@@ -399,8 +382,6 @@ mod gen_arena_tests {
         assert!(arena.is_empty());
     }
 
-    /// The ABA test: after a slot is reused, the *old* key must not resolve to
-    /// the *new* occupant. This is the whole reason `GenArena` exists.
     #[test]
     fn stale_key_does_not_alias_reused_slot() {
         let mut arena = GenArena::new();
@@ -408,7 +389,6 @@ mod gen_arena_tests {
         let a = arena.insert("first");
         arena.remove(a);
 
-        // Reuses slot 0 — same index as `a`, bumped generation.
         let b = arena.insert("second");
 
         assert_ne!(a, b);
@@ -423,7 +403,6 @@ mod gen_arena_tests {
         let _b = arena.insert(2);
         arena.remove(a);
 
-        // Should reuse `a`'s slot rather than push a third.
         let c = arena.insert(3);
         assert_eq!(arena.len(), 2);
         assert_eq!(arena.get(c), Some(&3));

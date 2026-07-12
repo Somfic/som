@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 som_common = { workspace = true }
+strum = { workspace = true }
