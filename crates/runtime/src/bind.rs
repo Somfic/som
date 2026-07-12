@@ -1,7 +1,8 @@
-use som_canvas::{Node, Tag};
+use som_canvas::{Event, Node, Tag};
 use som_common::GenId;
 use som_reactive::effect;
 
+use crate::handler::register;
 use crate::renderer::with_renderer;
 
 pub fn create_element(tag: Tag) -> GenId<Node> {
@@ -35,6 +36,7 @@ pub fn bind_class(node: GenId<Node>, class: impl Into<String>, f: impl Fn() -> b
     });
 }
 
-pub fn on(_node: GenId<Node>, _event: &str, _handler: impl FnMut() + 'static) {
-    todo!("handler registration + dispatch — pending HandlerId design")
+pub fn on(node: GenId<Node>, event: Event, handler: impl FnMut() + 'static) {
+    let id = register(handler);
+    with_renderer(|r| r.listen(node, event, id));
 }

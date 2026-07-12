@@ -170,6 +170,10 @@ impl<T> GenId<T> {
             generation,
         }
     }
+
+    pub fn cast<U>(self) -> GenId<U> {
+        GenId::new(self.index, self.generation)
+    }
 }
 
 impl<T> Display for GenId<T> {

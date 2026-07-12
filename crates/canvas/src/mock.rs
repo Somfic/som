@@ -1,12 +1,13 @@
 use som_common::{GenArena, GenId};
 
-use crate::node::{Handler, Node, Tag};
+use crate::node::{Event, Handler, Node, Tag};
 use crate::renderer::Renderer;
 
 #[derive(Default)]
 pub struct MockRenderer {
     nodes: GenArena<Node>,
     log: Vec<String>,
+    handlers: Vec<(GenId<Node>, Event, GenId<Handler>)>,
 }
 
 impl MockRenderer {
@@ -16,6 +17,14 @@ impl MockRenderer {
 
     pub fn log(&self) -> &[String] {
         &self.log
+    }
+
+    pub fn handler_for(&self, node: GenId<Node>, event: Event) -> Option<GenId<Handler>> {
+        self.handlers
+            .iter()
+            .rev()
+            .find(|(n, e, _)| *n == node && *e == event)
+            .map(|(_, _, h)| *h)
     }
 
     fn node_ref(&self, id: GenId<Node>) -> String {
@@ -78,11 +87,13 @@ impl Renderer for MockRenderer {
         ));
     }
 
-    fn listen(&mut self, node: GenId<Node>, event: &str, handler: GenId<Handler>) {
+    fn listen(&mut self, node: GenId<Node>, event: Event, handler: GenId<Handler>) {
         self.log.push(format!(
-            "listen({}, {event:?}, handler={handler})",
-            self.node_ref(node)
+            "listen({}, {:?}, handler={handler})",
+            self.node_ref(node),
+            event.to_string()
         ));
+        self.handlers.push((node, event, handler));
     }
 }
 
@@ -102,7 +113,7 @@ mod tests {
 
         let mut handlers: GenArena<Handler> = GenArena::new();
         let click = handlers.insert(Handler);
-        r.listen(root, "click", click);
+        r.listen(root, Event::Click, click);
 
         r.set_text(text, "Count: 1");
 
