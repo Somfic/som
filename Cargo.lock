@@ -4469,8 +4469,10 @@ dependencies = [
  "blitz",
  "blitz-dom",
  "blitz-shell",
+ "blitz-traits",
  "som_canvas",
  "som_common",
+ "som_runtime",
 ]
 
 [[package]]
