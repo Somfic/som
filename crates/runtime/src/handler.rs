@@ -12,6 +12,11 @@ thread_local! {
     static HANDLERS: RefCell<GenArena<HandlerEntry>> = RefCell::new(GenArena::new());
 }
 
+// TODO(phase 6/7): handlers are not scope-owned yet, so `dispose` doesn't drop
+// them — harmless now (dispatch is generational-stale-safe and nothing churns
+// handlers), but becomes load-bearing once branch/each tear down subtrees. Wire
+// this up via an `on_cleanup(f)` hook in reactive's scope system that registers
+// removal of this entry.
 pub fn register(f: impl FnMut() + 'static) -> GenId<Handler> {
     HANDLERS.with(|h| {
         let id = h.borrow_mut().insert(HandlerEntry { run: Box::new(f) });
