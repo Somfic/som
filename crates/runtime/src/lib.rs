@@ -41,6 +41,30 @@ mod tests {
     }
 
     #[test]
+    fn bind_class_reacts_to_signal() {
+        install(Box::new(MockRenderer::new()));
+
+        let active = signal(false);
+        let node = create_element(Tag::Block);
+        bind_class(node, "active", move || active.get());
+
+        active.set(true);
+
+        let renderer = take().unwrap();
+        let any: &dyn Any = &*renderer;
+        let mock = any.downcast_ref::<MockRenderer>().unwrap();
+
+        assert_eq!(
+            mock.log(),
+            &[
+                r#"create_element("block") -> #0"#,
+                r#"set_class(block#0, "active", false)"#,
+                r#"set_class(block#0, "active", true)"#,
+            ]
+        );
+    }
+
+    #[test]
     fn click_dispatch_drives_reactive_update() {
         install(Box::new(MockRenderer::new()));
 
