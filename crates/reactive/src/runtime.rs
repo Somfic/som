@@ -16,8 +16,6 @@ impl Slot {
     }
 }
 
-/// A disposal scope: owns every computation and slot created while it was the
-/// active scope, plus any child scopes. Disposing it tears all of them down.
 pub(crate) struct ScopeData {
     pub parent: Option<GenId<ScopeData>>,
     pub children: Vec<GenId<ScopeData>>,
@@ -37,10 +35,7 @@ impl ScopeData {
 }
 
 pub(crate) struct Runtime {
-    /// Stack of currently-running computations, for dynamic dependency tracking.
     pub running: Vec<GenId<Computation>>,
-    /// Stack of active scopes; the top owns newly-created computations/slots.
-    /// Always non-empty — the root scope sits at the bottom and is never popped.
     pub scope_stack: Vec<GenId<ScopeData>>,
     pub computations: GenArena<Computation>,
     pub slots: GenArena<Slot>,
@@ -60,7 +55,6 @@ impl Runtime {
         }
     }
 
-    /// The scope that currently owns newly-created computations and slots.
     pub(crate) fn current_scope(&self) -> GenId<ScopeData> {
         *self.scope_stack.last().expect("scope stack is never empty")
     }

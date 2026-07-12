@@ -1172,6 +1172,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "som_runtime"
+version = "0.1.0"
+dependencies = [
+ "som_canvas",
+ "som_common",
+ "som_reactive",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

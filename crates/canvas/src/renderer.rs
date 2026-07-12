@@ -1,8 +1,10 @@
+use std::any::Any;
+
 use som_common::GenId;
 
 use crate::node::{Handler, Node, Tag};
 
-pub trait Renderer {
+pub trait Renderer: Any {
     fn create_element(&mut self, tag: Tag) -> GenId<Node>;
     fn create_text(&mut self) -> GenId<Node>;
 

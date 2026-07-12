@@ -32,6 +32,9 @@ som_hir = { path = "crates/hir" }
 som_mir = { path = "crates/mir" }
 som_codegen = { path = "crates/codegen" }
 som_lsp = { path = "crates/lsp" }
+som_reactive = { path = "crates/reactive" }
+som_canvas = { path = "crates/canvas" }
+som_runtime = { path = "crates/runtime" }
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
