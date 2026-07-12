@@ -8,7 +8,7 @@
 
 use anyrender_vello::VelloWindowRenderer;
 use blitz_shell::{BlitzApplication, BlitzShellEvent, WindowConfig, create_default_event_loop};
-use som_canvas::{Event, Tag};
+use som_canvas::{Attribute, Event, Tag};
 use som_canvas_blitz::{AmbientBlitz, build};
 use som_runtime::{bind_text, create_element, create_text, dispatch, insert, on, set_attr, signal};
 
@@ -20,7 +20,7 @@ fn main() {
         |body| {
             set_attr(
                 body,
-                "style",
+                Attribute::Style,
                 "display:flex;flex-direction:column;align-items:center;justify-content:center;\
                  min-height:100vh;margin:0;gap:20px;background:#1e1e2e;color:#cdd6f4;\
                  font-family:sans-serif;",
@@ -38,7 +38,7 @@ fn main() {
             let button = create_element(Tag::Button);
             set_attr(
                 button,
-                "style",
+                Attribute::Style,
                 "font-size:20px;padding:10px 24px;border:none;border-radius:10px;\
                  background:#89b4fa;color:#1e1e2e;",
             );

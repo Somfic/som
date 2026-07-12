@@ -1,4 +1,4 @@
-use som_canvas::{Event, Handler, Node, Renderer, Tag};
+use som_canvas::{Attribute, Event, Handler, Node, Renderer, Tag};
 use som_common::{GenArena, GenId};
 
 #[derive(Default)]
@@ -66,14 +66,14 @@ impl Renderer for MockRenderer {
             .push(format!("set_text({}, {text:?})", self.node_ref(node)));
     }
 
-    fn set_attr(&mut self, node: GenId<Node>, name: &str, value: &str) {
+    fn set_attr(&mut self, node: GenId<Node>, name: Attribute, value: &str) {
         self.log.push(format!(
             "set_attr({}, {name:?}, {value:?})",
             self.node_ref(node)
         ));
     }
 
-    fn remove_attr(&mut self, node: GenId<Node>, name: &str) {
+    fn remove_attr(&mut self, node: GenId<Node>, name: Attribute) {
         self.log
             .push(format!("remove_attr({}, {name:?})", self.node_ref(node)));
     }

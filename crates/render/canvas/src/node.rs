@@ -19,4 +19,10 @@ pub enum Event {
     Click,
 }
 
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+#[strum(serialize_all = "lowercase")]
+pub enum Attribute {
+    Style,
+}
+
 pub struct Handler;

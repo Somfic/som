@@ -1,4 +1,4 @@
-use som_canvas::{Event, Node, Tag};
+use som_canvas::{Attribute, Event, Node, Tag};
 use som_common::GenId;
 use som_reactive::effect;
 
@@ -17,7 +17,7 @@ pub fn insert(parent: GenId<Node>, child: GenId<Node>, before: Option<GenId<Node
     with_renderer(|r| r.insert(parent, child, before));
 }
 
-pub fn set_attr(node: GenId<Node>, name: &str, value: &str) {
+pub fn set_attr(node: GenId<Node>, name: Attribute, value: &str) {
     with_renderer(|r| r.set_attr(node, name, value));
 }
 
