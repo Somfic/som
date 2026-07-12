@@ -1,9 +1,8 @@
 [package]
-name = "som_runtime"
+name = "som_canvas_mock"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 som_common = { workspace = true }
-som_reactive = { workspace = true }
 som_canvas = { workspace = true }

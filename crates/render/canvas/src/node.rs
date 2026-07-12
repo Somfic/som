@@ -1,7 +1,7 @@
 use strum::Display;
 
 pub struct Node {
-    pub(crate) tag: Tag,
+    pub tag: Tag,
 }
 
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]

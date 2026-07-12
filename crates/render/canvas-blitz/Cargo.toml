@@ -1,0 +1,8 @@
+[package]
+name = "som_canvas_blitz"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+som_common = { workspace = true }
+som_canvas = { workspace = true }

@@ -1,7 +1,5 @@
+use som_canvas::{Event, Handler, Node, Renderer, Tag};
 use som_common::{GenArena, GenId};
-
-use crate::node::{Event, Handler, Node, Tag};
-use crate::renderer::Renderer;
 
 #[derive(Default)]
 pub struct MockRenderer {

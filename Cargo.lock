@@ -1113,6 +1113,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "som_canvas_blitz"
+version = "0.1.0"
+dependencies = [
+ "som_canvas",
+ "som_common",
+]
+
+[[package]]
+name = "som_canvas_mock"
+version = "0.1.0"
+dependencies = [
+ "som_canvas",
+ "som_common",
+]
+
+[[package]]
 name = "som_codegen"
 version = "0.1.0"
 dependencies = [
@@ -1176,6 +1192,7 @@ name = "som_runtime"
 version = "0.1.0"
 dependencies = [
  "som_canvas",
+ "som_canvas_mock",
  "som_common",
  "som_reactive",
 ]

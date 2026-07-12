@@ -12,7 +12,8 @@ pub use renderer::{install, take, with_renderer};
 mod tests {
     use std::any::Any;
 
-    use som_canvas::{Event, MockRenderer, Tag};
+    use som_canvas::{Event, Tag};
+    use som_canvas_mock::MockRenderer;
 
     use super::*;
 

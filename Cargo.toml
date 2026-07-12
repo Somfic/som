@@ -15,7 +15,12 @@ owo-colors = { workspace = true }
 terminal_size = { workspace = true }
 
 [workspace]
-members = ["crates/*"]
+members = [
+    "crates/common",
+    "crates/lang/*",
+    "crates/reactivity/*",
+    "crates/render/*",
+]
 resolver = "3"
 
 [workspace.dependencies]
@@ -27,14 +32,16 @@ clap = { version = "4", features = ["derive"] }
 owo-colors = "4"
 terminal_size = "0.4"
 som_common = { path = "crates/common" }
-som_ast = { path = "crates/ast" }
-som_hir = { path = "crates/hir" }
-som_mir = { path = "crates/mir" }
-som_codegen = { path = "crates/codegen" }
-som_lsp = { path = "crates/lsp" }
-som_reactive = { path = "crates/reactive" }
-som_canvas = { path = "crates/canvas" }
-som_runtime = { path = "crates/runtime" }
+som_ast = { path = "crates/lang/ast" }
+som_hir = { path = "crates/lang/hir" }
+som_mir = { path = "crates/lang/mir" }
+som_codegen = { path = "crates/lang/codegen" }
+som_lsp = { path = "crates/lang/lsp" }
+som_reactive = { path = "crates/reactivity/reactive" }
+som_runtime = { path = "crates/reactivity/runtime" }
+som_canvas = { path = "crates/render/canvas" }
+som_canvas_mock = { path = "crates/render/canvas-mock" }
+som_canvas_blitz = { path = "crates/render/canvas-blitz" }
 tower-lsp = "0.20"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
