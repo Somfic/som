@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 som_common = { workspace = true }
 som_canvas = { workspace = true }
+blitz = { workspace = true }
