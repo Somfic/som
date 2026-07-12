@@ -1,7 +1,3 @@
-//! Increment 1: a hardcoded counter-shaped DOM rendered in a Blitz window.
-//! No som code involved yet — this only proves the window/layout/text/paint
-//! pipeline works before we build the Renderer adapter on top of it.
-
 const HTML: &str = r#"
 <!DOCTYPE html>
 <html>

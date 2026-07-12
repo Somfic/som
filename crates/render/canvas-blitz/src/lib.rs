@@ -1,9 +1,34 @@
+use std::any::Any;
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
+
 use blitz_dom::{
-    BaseDocument, DocumentConfig, DocumentMutator, LocalName, QualName, local_name, ns,
+    BaseDocument, DEFAULT_CSS, Document, DocumentConfig, DocumentMutator, LocalName, QualName,
+    local_name, ns,
 };
 use som_canvas::{Event, Handler, Node, Renderer, Tag};
 use som_common::{GenArena, GenId};
-use std::collections::HashMap;
+
+pub struct SomDocument(BaseDocument);
+
+impl Deref for SomDocument {
+    type Target = BaseDocument;
+    fn deref(&self) -> &BaseDocument {
+        &self.0
+    }
+}
+
+impl DerefMut for SomDocument {
+    fn deref_mut(&mut self) -> &mut BaseDocument {
+        &mut self.0
+    }
+}
+
+impl Document for SomDocument {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
 
 pub struct BlitzRenderer {
     doc: BaseDocument,
@@ -15,10 +40,29 @@ pub struct BlitzRenderer {
 
 impl BlitzRenderer {
     pub fn new() -> Self {
-        let doc = BaseDocument::new(DocumentConfig::default());
+        let config = DocumentConfig {
+            ua_stylesheets: Some(vec![String::from(DEFAULT_CSS)]),
+            ..Default::default()
+        };
+        let mut doc = BaseDocument::new(config);
         let mut nodes = GenArena::new();
-        // Blitz's document root is node 0
-        let root = nodes.insert(0usize).cast();
+
+        let body = {
+            let mut m = DocumentMutator::new(&mut doc);
+            let html = m.create_element(
+                QualName::new(None, ns!(html), local_name!("html")),
+                Vec::new(),
+            );
+            let body = m.create_element(
+                QualName::new(None, ns!(html), local_name!("body")),
+                Vec::new(),
+            );
+            m.append_children(0, &[html]);
+            m.append_children(html, &[body]);
+            body
+        };
+        let root = nodes.insert(body).cast();
+
         Self {
             doc,
             nodes,
@@ -30,6 +74,10 @@ impl BlitzRenderer {
 
     pub fn root(&self) -> GenId<Node> {
         self.root
+    }
+
+    pub fn into_document(self) -> SomDocument {
+        SomDocument(self.doc)
     }
 
     fn blitz_id(&self, node: GenId<Node>) -> usize {
