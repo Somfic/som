@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use som_ast::{BinaryOp, UnaryOp};
 use som_common::{Arena, Id, Span, expand_enum};
 
@@ -29,6 +31,35 @@ expand_enum! {
     } with { span: Span }
 }
 
+#[rustfmt::skip]
+expand_enum! {
+    #[derive(Debug)]
+    pub enum Layout {
+        Element {
+            tag: Box<str>,
+            events: BTreeMap<Box<str>, Id<Expr>>,
+            attr: BTreeMap<Box<str>, Id<Expr>>,
+            children: Vec<Id<Layout>>
+        },
+        Text { text: Vec<TextPart> }
+    } with { span: Span }
+}
+
+#[rustfmt::skip]
+expand_enum! {
+    #[derive(Debug)]
+    pub enum TextPart {
+        Str { text: Box<str> },
+        Interp { value: Id<Expr> }
+    } with { span: Span }
+}
+
+#[derive(Debug)]
+pub enum Root {
+    Stmt(Id<Stmt>),
+    Layout(Id<Layout>),
+}
+
 #[derive(Debug)]
 pub struct Binding {
     pub name: Box<str>,
@@ -40,8 +71,9 @@ pub struct Binding {
 pub struct Hir {
     exprs: Arena<Expr>,
     stmts: Arena<Stmt>,
+    layout: Arena<Layout>,
     bindings: Arena<Binding>,
-    pub root: Vec<Id<Stmt>>,
+    pub root: Vec<Root>,
 }
 
 impl Hir {
@@ -49,6 +81,7 @@ impl Hir {
         Self {
             exprs: Arena::new(),
             stmts: Arena::new(),
+            layout: Arena::new(),
             bindings: Arena::new(),
             root: Vec::new(),
         }
@@ -62,8 +95,16 @@ impl Hir {
         self.stmts.alloc(stmt)
     }
 
+    pub(crate) fn add_layout(&mut self, layout: Layout) -> Id<Layout> {
+        self.layout.alloc(layout)
+    }
+
     pub(crate) fn add_binding(&mut self, binding: Binding) -> Id<Binding> {
         self.bindings.alloc(binding)
+    }
+
+    pub fn get_layout(&self, id: Id<Layout>) -> &Layout {
+        self.layout.get(&id)
     }
 
     pub fn get_expr(&self, id: Id<Expr>) -> &Expr {

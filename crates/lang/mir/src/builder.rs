@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use som_common::{Arena, DiagnosticSink, Id, Span};
-use som_hir::{Binding, Expr, Hir, Stmt, TyCtx};
+use som_hir::{Binding, Expr, Hir, Root, Stmt, TyCtx};
 
 use crate::{Block, Const, Function, LocalDecl, Operand, Rvalue, Statement, Terminator};
 
@@ -9,8 +9,11 @@ pub fn build(hir: &Hir, _tcx: &TyCtx, _diags: &mut DiagnosticSink) -> Function {
     let mut builder = MirBuilder::new(hir);
 
     let mut last_value: Option<Id<LocalDecl>> = None;
-    for stmt_id in &hir.root {
-        last_value = builder.lower_stmt(*stmt_id);
+    for root in &hir.root {
+        // Layout is lowered by the reactive evaluator, not to Cranelift.
+        if let Root::Stmt(stmt_id) = root {
+            last_value = builder.lower_stmt(*stmt_id);
+        }
     }
 
     builder.func.return_local = last_value;

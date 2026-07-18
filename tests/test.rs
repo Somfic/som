@@ -210,6 +210,13 @@ fn assignment_type_errors() {
 }
 
 #[test]
+fn layout_interpolation_type_errors() {
+    // a type error inside a `{…}` interpolation is caught during type-checking
+    expect_type_error("let count = 0\nmain\n  \"bad: {1 + true}\"");
+    expect_type_error("let count = 0\nbutton @click: count += true");
+}
+
+#[test]
 fn let_annotations() {
     expect("let x: i32 = 5; x", 5);
     expect("let b: bool = true; b", 1);

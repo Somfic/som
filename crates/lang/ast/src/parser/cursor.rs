@@ -12,6 +12,13 @@ impl Parser<'_> {
             .expect("token stream should always end with EOF")
     }
 
+    pub(crate) fn peek_nth(&self, n: usize) -> &Token {
+        self.tokens
+            .get(self.pos + n)
+            .or_else(|| self.tokens.last())
+            .expect("token stream should always end with EOF")
+    }
+
     pub(crate) fn next(&mut self) -> Token {
         let token = self.peek().clone();
         if self.pos + 1 < self.tokens.len() {
@@ -25,6 +32,12 @@ impl Parser<'_> {
             self.peek().kind,
             TokenKind::Newline | TokenKind::Indent | TokenKind::Dedent
         ) {
+            self.next();
+        }
+    }
+
+    pub(crate) fn skip_newlines(&mut self) {
+        while self.peek().kind == TokenKind::Newline {
             self.next();
         }
     }

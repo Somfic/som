@@ -1,10 +1,17 @@
+use std::collections::BTreeMap;
+
 use som_ast::{Ast, Root};
 use som_common::{Diagnostic, DiagnosticSink, Id, Scope, code, message};
 
-use crate::{BinaryOp, Binding, Constraint, Expr, Hir, Provenance, Stmt, TyCtx, Type, UnaryOp};
+use crate::{
+    BinaryOp, Binding, Constraint, Expr, Hir, Layout, Provenance, Stmt, TextPart, TyCtx, Type,
+    UnaryOp,
+};
 
 type UntypedExpr = som_ast::Expr;
 type UntypedStmt = som_ast::Stmt;
+type UntypedLayout = som_ast::Layout;
+type UntypedTextPart = som_ast::TextPart;
 
 pub(crate) struct Typer {
     ctx: TyCtx,
@@ -25,13 +32,13 @@ impl Typer {
 
     pub(crate) fn lower(mut self, ast: &Ast, diags: &mut DiagnosticSink) -> (Hir, TyCtx) {
         for root in &ast.root {
-            match root {
-                Root::Stmt(stmt_id) => {
-                    let stmt = self.infer_stmt(ast, *stmt_id, diags);
-                    self.ast.root.push(stmt);
+            let root = match root {
+                Root::Stmt(stmt_id) => crate::Root::Stmt(self.infer_stmt(ast, *stmt_id, diags)),
+                Root::Layout(layout_id) => {
+                    crate::Root::Layout(self.infer_layout(ast, *layout_id, diags))
                 }
-                Root::Layout(_layout_id) => todo!(),
-            }
+            };
+            self.ast.root.push(root);
         }
         self.solve(diags);
         self.ctx.resolve_all();
@@ -332,6 +339,67 @@ impl Typer {
                     expr,
                     span: *span,
                 })
+            }
+        }
+    }
+
+    fn infer_layout(
+        &mut self,
+        ast: &Ast,
+        id: Id<UntypedLayout>,
+        diags: &mut DiagnosticSink,
+    ) -> Id<Layout> {
+        match &ast[id] {
+            UntypedLayout::Element {
+                tag,
+                events,
+                attr,
+                children,
+                span,
+            } => {
+                let (tag, span) = (tag.clone(), *span);
+
+                // Handlers and attribute values are ordinary expressions; type
+                // them but place no constraint on their result.
+                let events = events
+                    .iter()
+                    .map(|(name, &body)| (name.clone(), self.infer(ast, body, diags)))
+                    .collect::<BTreeMap<_, _>>();
+                let attr = attr
+                    .iter()
+                    .map(|(name, &value)| (name.clone(), self.infer(ast, value, diags)))
+                    .collect::<BTreeMap<_, _>>();
+
+                let children = children
+                    .iter()
+                    .map(|&child| self.infer_layout(ast, child, diags))
+                    .collect();
+
+                self.ast.add_layout(Layout::Element {
+                    tag,
+                    events,
+                    attr,
+                    children,
+                    span,
+                })
+            }
+            UntypedLayout::Text { text, span } => {
+                let span = *span;
+                let text = text
+                    .iter()
+                    .map(|part| match part {
+                        UntypedTextPart::Str { text, span } => TextPart::Str {
+                            text: text.clone(),
+                            span: *span,
+                        },
+                        UntypedTextPart::Interp { value, span } => TextPart::Interp {
+                            value: self.infer(ast, *value, diags),
+                            span: *span,
+                        },
+                    })
+                    .collect();
+
+                self.ast.add_layout(Layout::Text { text, span })
             }
         }
     }

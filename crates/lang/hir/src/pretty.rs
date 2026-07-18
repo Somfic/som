@@ -2,7 +2,7 @@ use std::fmt;
 
 use som_common::{Id, LineWriter, Pretty, Show, SourceMap};
 
-use crate::{Expr, Hir, Stmt, TyCtx};
+use crate::{Expr, Hir, Layout, Root, Stmt, TextPart, TyCtx};
 
 #[derive(Copy, Clone)]
 pub struct HirCtx<'a> {
@@ -33,15 +33,67 @@ impl Hir {
 impl Pretty<HirCtx<'_>> for Hir {
     fn pretty(&self, ctx: HirCtx<'_>, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut w = LineWriter::new(f, ctx.sources);
-        for stmt_id in &self.root {
-            let stmt = self.get_stmt(*stmt_id);
-            let span = stmt.span();
-            let mut buf = String::new();
-            fmt_stmt(&mut buf, self, ctx.tcx, *stmt_id);
-            buf.push(';');
-            w.line(Some(span), 0, buf)?;
+        for root in &self.root {
+            match root {
+                Root::Stmt(stmt_id) => {
+                    let span = self.get_stmt(*stmt_id).span();
+                    let mut buf = String::new();
+                    fmt_stmt(&mut buf, self, ctx.tcx, *stmt_id);
+                    buf.push(';');
+                    w.line(Some(span), 0, buf)?;
+                }
+                Root::Layout(layout_id) => fmt_layout(&mut w, self, ctx.tcx, *layout_id, 0)?,
+            }
         }
         Ok(())
+    }
+}
+
+fn fmt_layout(
+    w: &mut LineWriter<'_, '_>,
+    hir: &Hir,
+    tcx: &TyCtx,
+    id: Id<Layout>,
+    depth: usize,
+) -> fmt::Result {
+    use std::fmt::Write;
+    match hir.get_layout(id) {
+        Layout::Element {
+            tag,
+            events,
+            attr,
+            children,
+            span,
+        } => {
+            let mut buf = tag.to_string();
+            for (name, &value) in attr {
+                let _ = write!(buf, " {name}=");
+                fmt_expr(&mut buf, hir, tcx, value, true);
+            }
+            for (name, &body) in events {
+                let _ = write!(buf, " @{name}: ");
+                fmt_expr(&mut buf, hir, tcx, body, true);
+            }
+            w.line(Some(*span), depth, buf)?;
+            for &child in children {
+                fmt_layout(w, hir, tcx, child, depth + 1)?;
+            }
+            Ok(())
+        }
+        Layout::Text { text, span } => {
+            let mut buf = String::new();
+            for part in text {
+                match part {
+                    TextPart::Str { text, .. } => buf.push_str(text),
+                    TextPart::Interp { value, .. } => {
+                        buf.push('{');
+                        fmt_expr(&mut buf, hir, tcx, *value, false);
+                        buf.push('}');
+                    }
+                }
+            }
+            w.line(Some(*span), depth, format!("\"{buf}\""))
+        }
     }
 }
 
