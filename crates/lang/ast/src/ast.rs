@@ -1,21 +1,26 @@
-use std::ops::Index;
-
 use som_common::{Arena, Id, Span, expand_enum};
+use std::{collections::BTreeMap, ops::Index};
 
 #[derive(Debug, Default)]
 pub struct Ast {
+    layout: Arena<Layout>,
     exprs: Arena<Expr>,
     stmts: Arena<Stmt>,
-    pub root: Vec<Id<Stmt>>,
+    pub root: Vec<Root>,
 }
 
 impl Ast {
     pub fn new() -> Self {
         Self {
+            layout: Arena::new(),
             exprs: Arena::new(),
             stmts: Arena::new(),
             root: Vec::new(),
         }
+    }
+
+    pub fn add_layout(&mut self, layout: Layout) -> Id<Layout> {
+        self.layout.alloc(layout)
     }
 
     pub fn add_expr(&mut self, expr: Expr) -> Id<Expr> {
@@ -24,6 +29,13 @@ impl Ast {
 
     pub fn add_stmt(&mut self, stmt: Stmt) -> Id<Stmt> {
         self.stmts.alloc(stmt)
+    }
+}
+
+impl Index<Id<Layout>> for Ast {
+    type Output = Layout;
+    fn index(&self, id: Id<Layout>) -> &Layout {
+        self.layout.get(&id)
     }
 }
 
@@ -44,6 +56,29 @@ impl Index<Id<Stmt>> for Ast {
 #[rustfmt::skip]
 expand_enum! {
     #[derive(Debug, Clone)]
+    pub enum Layout {
+        Element {
+            tag: Box<str>,
+            events: BTreeMap<Box<str>, Id<Expr>>,
+            attr: BTreeMap<Box<str>, Id<Expr>>,
+            children: Vec<Id<Layout>>
+        },
+        Text { text: Vec<TextPart> }
+    } with { span: Span }
+}
+
+#[rustfmt::skip]
+expand_enum! {
+    #[derive(Debug, Clone)]
+    pub enum TextPart {
+        Str { text: Box<str> },
+        Interp { value: Id<Expr> }
+    } with { span: Span }
+}
+
+#[rustfmt::skip]
+expand_enum! {
+    #[derive(Debug, Clone)]
     pub enum Expr {
         Error,
         Int { value: i64 },
@@ -52,6 +87,7 @@ expand_enum! {
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
         Condition { condition: Id<Expr>, truthy: Id<Expr>, falsy: Id<Expr> },
         Block { stmts: Vec<Id<Stmt>>, value: Option<Id<Expr>> },
+        Assignment { target: Box<str>, value: Id<Expr> },
         Variable { name: Box<str> }
     } with { span: Span }
 }
@@ -63,6 +99,12 @@ expand_enum! {
         Expr { expr: Id<Expr> },
         Let { ident: Box<str>, expr: Id<Expr>, ty: Option<Ty> },
     } with { span: Span }
+}
+
+#[derive(Debug)]
+pub enum Root {
+    Stmt(Id<Stmt>),
+    Layout(Id<Layout>),
 }
 
 #[rustfmt::skip]

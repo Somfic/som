@@ -192,6 +192,23 @@ impl<'a> MirBuilder<'a> {
                 let binding = binding.expect("variable resolved during type-checking");
                 *self.env.get(&binding).expect("binding has a local")
             }
+            Expr::Assignment {
+                binding,
+                value,
+                ty,
+                span,
+                ..
+            } => {
+                let binding = binding.expect("assignment target resolved during type-checking");
+                let (value, ty, span) = (*value, *ty, *span);
+                let value_local = self.lower_expr(value);
+                let target_local = *self.env.get(&binding).expect("binding has a local");
+                self.push_assign(target_local, Rvalue::Use(Operand::Copy(value_local)), span);
+                // assignment evaluates to nothing
+                let result = self.func.alloc_local(ty, span, "nothing");
+                self.push_assign(result, Rvalue::Use(Operand::Const(Const::Int(0, ty))), span);
+                result
+            }
             Expr::Error { .. } => unreachable!("error expr should not reach MIR"),
         }
     }

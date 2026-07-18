@@ -1,6 +1,6 @@
 use som_common::{Id, LineWriter, Pretty, Show, SourceMap};
 
-use crate::{Ast, Expr, Stmt, Ty};
+use crate::{Ast, Expr, Root, Stmt, Ty};
 
 #[derive(Copy, Clone)]
 pub struct AstCtx<'a> {
@@ -25,13 +25,20 @@ impl Ast {
 impl Pretty<AstCtx<'_>> for Ast {
     fn pretty(&self, ctx: AstCtx<'_>, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut w = LineWriter::new(f, ctx.sources);
-        for stmt_id in &self.root {
-            let stmt = &self[*stmt_id];
-            let span = stmt.span();
-            let mut buf = String::new();
-            fmt_stmt(&mut buf, self, *stmt_id);
-            buf.push(';');
-            w.line(Some(span), 0, buf)?;
+        for root in &self.root {
+            match *root {
+                Root::Stmt(stmt_id) => {
+                    let stmt = &self[stmt_id];
+                    let span = stmt.span();
+                    let mut buf = String::new();
+                    fmt_stmt(&mut buf, self, stmt_id);
+                    buf.push(';');
+                    w.line(Some(span), 0, buf)?;
+                }
+                Root::Layout(_layout_id) => {
+                    todo!()
+                }
+            }
         }
         Ok(())
     }
@@ -114,6 +121,11 @@ fn fmt_expr(buf: &mut String, ast: &Ast, id: Id<Expr>, nested: bool) {
                 let _ = writeln!(buf, "    {value_buf}");
             }
             buf.push('}');
+        }
+        Expr::Assignment { target, value, .. } => {
+            let _ = buf.write_str(target);
+            let _ = buf.write_str(" = ");
+            fmt_expr(buf, ast, *value, nested);
         }
     }
 }

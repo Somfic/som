@@ -197,6 +197,19 @@ fn variables() {
 }
 
 #[test]
+fn assignment() {
+    expect("let x = 0; x = 5; x", 5);
+    expect("let x = 10; x += 5; x", 15);
+    expect("let x = 1; let y = 2; x = y; x", 2);
+}
+
+#[test]
+fn assignment_type_errors() {
+    expect_type_error("let x = 0; x = true; x");
+    expect_type_error("let b = true; b += 1; b");
+}
+
+#[test]
 fn let_annotations() {
     expect("let x: i32 = 5; x", 5);
     expect("let b: bool = true; b", 1);

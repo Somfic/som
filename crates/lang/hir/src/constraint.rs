@@ -14,6 +14,7 @@ pub enum Provenance {
     Unary(Id<Expr>),
     Check(Id<Expr>),
     Condition(Id<Expr>),
+    Assignment(Id<Expr>),
 }
 
 impl Provenance {
@@ -22,7 +23,8 @@ impl Provenance {
             Provenance::BinaryOp(id)
             | Provenance::Unary(id)
             | Provenance::Check(id)
-            | Provenance::Condition(id) => *id,
+            | Provenance::Condition(id)
+            | Provenance::Assignment(id) => *id,
         }
     }
 }

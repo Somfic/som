@@ -14,6 +14,7 @@ expand_enum! {
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
         Condition { condition: Id<Expr>, truthy: Id<Expr>, falsy: Id<Expr> },
         Block { stmts: Vec<Id<Stmt>>, value: Option<Id<Expr>> },
+        Assignment { target: Box<str>, binding: Option<Id<Binding>>, value: Id<Expr> },
         Variable { name: Box<str>, binding: Option<Id<Binding>> },
     } with { span: Span, ty: Id<Type> }
 }

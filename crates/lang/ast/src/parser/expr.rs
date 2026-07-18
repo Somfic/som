@@ -24,6 +24,9 @@ fn prefix_rule(token: TokenKind) -> Option<PrefixRule> {
 /// continues with
 fn infix_rule(token: TokenKind) -> Option<InfixRule> {
     Some(match token {
+        // assignment binds loosest and is right-associative
+        TokenKind::Equals => infix(|p, lhs| p.parse_assignment(lhs), 2, 1),
+        TokenKind::PlusEquals => infix(|p, lhs| p.parse_assignment(lhs), 2, 1),
         TokenKind::Plus => infix(|p, lhs| p.parse_binary(lhs), 50, 51),
         TokenKind::Minus => infix(|p, lhs| p.parse_binary(lhs), 50, 51),
         TokenKind::Star => infix(|p, lhs| p.parse_binary(lhs), 60, 61),
@@ -147,6 +150,46 @@ impl Parser<'_> {
             op,
             operand,
             span: token.span.merge(self.ast[operand].span()),
+        })
+    }
+
+    fn parse_assignment(&mut self, lhs: Id<Expr>) -> Id<Expr> {
+        let op = self.next();
+
+        let target = match &self.ast[lhs] {
+            Expr::Variable { name, .. } => name.clone(),
+            _ => {
+                let span = self.ast[lhs].span();
+                self.diags.emit(
+                    Diagnostic::error(span, "cannot assign to this expression".to_string())
+                        .label("expected a variable on the left of `=`"),
+                );
+                let _ = self.parse_expr_bp(1);
+                return self.ast.add_expr(Expr::Error { span: op.span });
+            }
+        };
+
+        let rhs = self.parse_expr_bp(1);
+
+        // `x += e` desugars to `x = x + e`.
+        let value = match op.kind {
+            TokenKind::PlusEquals => {
+                let span = self.ast[lhs].span().merge(self.ast[rhs].span());
+                self.ast.add_expr(Expr::Binary {
+                    lhs,
+                    op: BinaryOp::Add,
+                    rhs,
+                    span,
+                })
+            }
+            _ => rhs,
+        };
+
+        let span = self.ast[lhs].span().merge(self.ast[value].span());
+        self.expr(Expr::Assignment {
+            target,
+            value,
+            span,
         })
     }
 

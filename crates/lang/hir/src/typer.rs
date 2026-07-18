@@ -1,4 +1,4 @@
-use som_ast::Ast;
+use som_ast::{Ast, Root};
 use som_common::{Diagnostic, DiagnosticSink, Id, Scope, code, message};
 
 use crate::{BinaryOp, Binding, Constraint, Expr, Hir, Provenance, Stmt, TyCtx, Type, UnaryOp};
@@ -24,9 +24,14 @@ impl Typer {
     }
 
     pub(crate) fn lower(mut self, ast: &Ast, diags: &mut DiagnosticSink) -> (Hir, TyCtx) {
-        for stmt_id in &ast.root {
-            let stmt = self.infer_stmt(ast, *stmt_id, diags);
-            self.ast.root.push(stmt);
+        for root in &ast.root {
+            match root {
+                Root::Stmt(stmt_id) => {
+                    let stmt = self.infer_stmt(ast, *stmt_id, diags);
+                    self.ast.root.push(stmt);
+                }
+                Root::Layout(_layout_id) => todo!(),
+            }
         }
         self.solve(diags);
         self.ctx.resolve_all();
@@ -212,6 +217,49 @@ impl Typer {
                     ty,
                     span,
                 })
+            }
+            UntypedExpr::Assignment {
+                span,
+                target,
+                value,
+            } => {
+                let (span, target, value) = (*span, target.clone(), *value);
+
+                // The target must be an existing binding (same as a variable read).
+                let binding = self.scope.lookup(&target).copied();
+                let target_ty = match binding {
+                    Some(b) => self.ast.binding(b).ty,
+                    None => {
+                        diags.emit(
+                            Diagnostic::error(span, message!["unknown variable ", code(&target)])
+                                .label("not found in this scope")
+                                .note("variables must be introduced with `let` before assignment"),
+                        );
+                        self.ctx.error(span)
+                    }
+                };
+
+                let value = self.infer(ast, value, diags);
+                let value_ty = self.ast.get_expr(value).ty();
+
+                // An assignment evaluates to nothing.
+                let ty = self.ctx.nothing(span);
+                let node = self.ast.add_expr(Expr::Assignment {
+                    target,
+                    binding,
+                    value,
+                    ty,
+                    span,
+                });
+
+                // The assigned value must match the target's type.
+                self.constraints.push(Constraint::Equal {
+                    provenance: Provenance::Assignment(node),
+                    expected: target_ty,
+                    actual: value_ty,
+                });
+
+                node
             }
         }
     }

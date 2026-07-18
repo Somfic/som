@@ -77,6 +77,13 @@ fn fmt_expr(buf: &mut String, hir: &Hir, tcx: &TyCtx, id: Id<Expr>, nested: bool
         Expr::Variable { name, ty, .. } => {
             let _ = write!(buf, "{name}: {}", tcx[*ty]);
         }
+        Expr::Assignment {
+            target, value, ty, ..
+        } => {
+            let _ = write!(buf, "{target} = ");
+            fmt_expr(buf, hir, tcx, *value, true);
+            let _ = write!(buf, ": {}", tcx[*ty]);
+        }
         Expr::Unary { op, operand, .. } => {
             let _ = write!(buf, "{op}");
             fmt_expr(buf, hir, tcx, *operand, true);

@@ -1,5 +1,5 @@
 use crate::{
-    Ast, Expr, Stmt,
+    Ast, Expr, Root, Stmt,
     token::{Token, TokenKind},
 };
 
@@ -39,7 +39,7 @@ impl<'a> Parser<'a> {
 
             let expr = self.ast.add_expr(Expr::Block { stmts, value, span });
             let stmt = self.ast.add_stmt(Stmt::Expr { expr, span });
-            self.ast.root.push(stmt);
+            self.ast.root.push(Root::Stmt(stmt));
         }
 
         self.ast
