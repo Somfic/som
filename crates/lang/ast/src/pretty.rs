@@ -1,6 +1,6 @@
 use som_common::{Id, LineWriter, Pretty, Show, SourceMap};
 
-use crate::{Ast, Expr, Root, Stmt, Ty};
+use crate::{Ast, Expr, Layout, Root, Stmt, TextPart, Ty};
 
 #[derive(Copy, Clone)]
 pub struct AstCtx<'a> {
@@ -35,12 +35,57 @@ impl Pretty<AstCtx<'_>> for Ast {
                     buf.push(';');
                     w.line(Some(span), 0, buf)?;
                 }
-                Root::Layout(_layout_id) => {
-                    todo!()
-                }
+                Root::Layout(layout_id) => fmt_layout(&mut w, self, layout_id, 0)?,
             }
         }
         Ok(())
+    }
+}
+
+fn fmt_layout(
+    w: &mut LineWriter<'_, '_>,
+    ast: &Ast,
+    id: Id<Layout>,
+    depth: usize,
+) -> std::fmt::Result {
+    use std::fmt::Write;
+    match &ast[id] {
+        Layout::Element {
+            tag,
+            events,
+            attr,
+            children,
+            span,
+        } => {
+            let mut buf = tag.to_string();
+            for (name, value) in attr {
+                let _ = write!(buf, " {name}=");
+                fmt_expr(&mut buf, ast, *value, true);
+            }
+            for (name, body) in events {
+                let _ = write!(buf, " @{name}: ");
+                fmt_expr(&mut buf, ast, *body, true);
+            }
+            w.line(Some(*span), depth, buf)?;
+            for child in children {
+                fmt_layout(w, ast, *child, depth + 1)?;
+            }
+            Ok(())
+        }
+        Layout::Text { text, span } => {
+            let mut buf = String::new();
+            for part in text {
+                match part {
+                    TextPart::Str { text, .. } => buf.push_str(text),
+                    TextPart::Interp { value, .. } => {
+                        buf.push('{');
+                        fmt_expr(&mut buf, ast, *value, false);
+                        buf.push('}');
+                    }
+                }
+            }
+            w.line(Some(*span), depth, format!("\"{buf}\""))
+        }
     }
 }
 
