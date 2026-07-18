@@ -11,9 +11,9 @@ mod tests {
     use blitz_dom::DocumentMutator;
     use som_canvas::{Renderer, Tag};
 
+    use crate::AmbientBlitz;
     use crate::ambient::{clear_active, set_active};
     use crate::renderer::BlitzRenderer;
-    use crate::AmbientBlitz;
 
     #[test]
     fn builds_a_blitz_dom_tree() {

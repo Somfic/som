@@ -82,15 +82,17 @@ impl LanguageServer for SomLanguageServer {
                     TextDocumentSyncKind::FULL,
                 )),
                 semantic_tokens_provider: Some(
-                    SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
-                        legend: SemanticTokensLegend {
-                            token_types: TOKEN_TYPES.to_vec(),
-                            token_modifiers: vec![],
+                    SemanticTokensServerCapabilities::SemanticTokensOptions(
+                        SemanticTokensOptions {
+                            legend: SemanticTokensLegend {
+                                token_types: TOKEN_TYPES.to_vec(),
+                                token_modifiers: vec![],
+                            },
+                            full: Some(SemanticTokensFullOptions::Bool(true)),
+                            range: None,
+                            work_done_progress_options: Default::default(),
                         },
-                        full: Some(SemanticTokensFullOptions::Bool(true)),
-                        range: None,
-                        work_done_progress_options: Default::default(),
-                    }),
+                    ),
                 ),
                 ..Default::default()
             },

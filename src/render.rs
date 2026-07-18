@@ -94,12 +94,13 @@ fn token_color(kind: TokenKind) -> Rgb {
         | Bool | Char | Str => YELLOW,
         Int | Float | Text | True | False => PEACH,
         Ident => TEXT,
-        Plus | Minus | Star | Slash | Equals | DoubleEquals | NotEquals | Or | And | Bang
-        | LessThan | GreaterThan | LessThanOrEquals | GreaterThanOrEquals | Percentage => SKY,
+        Plus | PlusEquals | Minus | Star | Slash | Equals | DoubleEquals | NotEquals | Or | And
+        | Bang | LessThan | GreaterThan | LessThanOrEquals | GreaterThanOrEquals | Percentage
+        | At => SKY,
         OpenParen | CloseParen | OpenBrace | CloseBrace | Comma | Colon | Semicolon
         | DoubleColon | Arrow | FatArrow | Ampersand | Dot | SingleQuote | DoubleQuote => SUBTEXT0,
         Comment => SURFACE2,
-        Whitespace | Eof | Error => TEXT,
+        Whitespace | Newline | Indent | Dedent | Eof | Error => TEXT,
     }
 }
 

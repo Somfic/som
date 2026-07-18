@@ -1,5 +1,5 @@
 use logos::Logos;
-use som_common::Span;
+use som_common::{IntoMessagePart, MessagePart, Span};
 
 #[derive(Logos, logos_display::Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {
@@ -76,6 +76,8 @@ pub enum TokenKind {
     // Operators
     #[token("+")]
     Plus,
+    #[token("+=")]
+    PlusEquals,
     #[token("-")]
     Minus,
     #[token("*")]
@@ -130,6 +132,8 @@ pub enum TokenKind {
     Ampersand,
     #[token(".")]
     Dot,
+    #[token("@")]
+    At,
 
     #[token("'")]
     SingleQuote,
@@ -149,6 +153,10 @@ pub enum TokenKind {
     While,
     #[token("for")]
     For,
+
+    Newline,
+    Indent,
+    Dedent,
 
     // Special
     Error,
@@ -194,6 +202,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::True => write!(f, "true"),
             TokenKind::False => write!(f, "false"),
             TokenKind::Plus => write!(f, "+"),
+            TokenKind::PlusEquals => write!(f, "+="),
             TokenKind::Minus => write!(f, "-"),
             TokenKind::Star => write!(f, "*"),
             TokenKind::Slash => write!(f, "/"),
@@ -219,10 +228,14 @@ impl std::fmt::Display for TokenKind {
             TokenKind::FatArrow => write!(f, "=>"),
             TokenKind::Ampersand => write!(f, "&"),
             TokenKind::Dot => write!(f, "."),
+            TokenKind::At => write!(f, "@"),
             TokenKind::SingleQuote => write!(f, "'"),
             TokenKind::DoubleQuote => write!(f, "\""),
             TokenKind::Whitespace => write!(f, "whitespace"),
             TokenKind::Comment => write!(f, "comment"),
+            TokenKind::Newline => write!(f, "newline"),
+            TokenKind::Indent => write!(f, "indent"),
+            TokenKind::Dedent => write!(f, "dedent"),
             TokenKind::Error => write!(f, "unexpected character"),
             TokenKind::Eof => write!(f, "end of file"),
             TokenKind::Percentage => write!(f, "%"),
@@ -232,9 +245,9 @@ impl std::fmt::Display for TokenKind {
 
 /// A `TokenKind` in a diagnostic message renders as a highlighted code
 /// fragment (using its `Display`, e.g. `;` or `identifier`).
-impl som_common::IntoMessagePart for TokenKind {
-    fn into_message_part(self) -> som_common::MessagePart {
-        som_common::MessagePart::Code(self.to_string())
+impl IntoMessagePart for TokenKind {
+    fn into_message_part(self) -> MessagePart {
+        MessagePart::Code(self.to_string())
     }
 }
 

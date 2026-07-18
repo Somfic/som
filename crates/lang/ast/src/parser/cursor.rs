@@ -20,6 +20,15 @@ impl Parser<'_> {
         token
     }
 
+    pub(crate) fn skip_layout(&mut self) {
+        while matches!(
+            self.peek().kind,
+            TokenKind::Newline | TokenKind::Indent | TokenKind::Dedent
+        ) {
+            self.next();
+        }
+    }
+
     pub(crate) fn try_eat(&mut self, kind: TokenKind) -> Option<Token> {
         if self.peek().kind == kind {
             Some(self.next())

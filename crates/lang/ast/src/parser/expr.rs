@@ -2,10 +2,7 @@ use som_common::{Diagnostic, Id};
 
 use crate::{
     BinaryOp, Expr, Parser, Stmt, UnaryOp,
-    parser::{
-        rules::{InfixRule, PrefixRule, infix, prefix},
-        stmt::ExprOrStmt,
-    },
+    parser::rules::{InfixRule, PrefixRule, infix, prefix},
     token::TokenKind,
 };
 
@@ -197,16 +194,43 @@ impl Parser<'_> {
         let mut stmts = vec![];
         let mut value = None;
 
-        while self.peek().kind != TokenKind::CloseBrace && self.peek().kind != TokenKind::Eof {
-            match self.parse_stmt() {
-                ExprOrStmt::Stmt(s) => stmts.push(s),
-                ExprOrStmt::Expr(e) => {
-                    value = Some(e);
-                    break;
-                }
+        loop {
+            self.skip_layout();
+            if self.at_block_end() {
+                break;
             }
+
+            if self.peek().kind == TokenKind::Let {
+                let stmt = self.parse_let();
+                stmts.push(stmt);
+                self.try_eat(TokenKind::Semicolon);
+                continue;
+            }
+
+            let expr = self.parse_expr();
+
+            // An explicit `;` always makes it a statement (value discarded).
+            if self.try_eat(TokenKind::Semicolon).is_some() {
+                let span = self.ast[expr].span();
+                stmts.push(self.ast.add_stmt(Stmt::Expr { span, expr }));
+                continue;
+            }
+
+            // Otherwise a trailing expr before the block ends is the value;
+            // if more items follow, it was a newline-separated statement.
+            self.skip_layout();
+            if self.at_block_end() {
+                value = Some(expr);
+                break;
+            }
+            let span = self.ast[expr].span();
+            stmts.push(self.ast.add_stmt(Stmt::Expr { span, expr }));
         }
 
         (stmts, value)
+    }
+
+    fn at_block_end(&self) -> bool {
+        matches!(self.peek().kind, TokenKind::CloseBrace | TokenKind::Eof)
     }
 }

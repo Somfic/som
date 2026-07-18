@@ -40,7 +40,9 @@ impl Pretty<AstCtx<'_>> for Ast {
 fn fmt_stmt(buf: &mut String, ast: &Ast, id: Id<Stmt>) {
     match &ast[id] {
         Stmt::Expr { expr, .. } => fmt_expr(buf, ast, *expr, false),
-        Stmt::Let { ident, ty, expr, .. } => {
+        Stmt::Let {
+            ident, ty, expr, ..
+        } => {
             buf.push_str("let ");
             buf.push_str(ident);
             if let Some(ty) = ty {

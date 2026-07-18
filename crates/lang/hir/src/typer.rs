@@ -302,7 +302,12 @@ impl Typer {
                 let span = self.ast.get_expr(provenance.expr()).span();
                 diags.emit_error(
                     span,
-                    message!["type mismatch: expected ", code(want), ", found ", code(got)],
+                    message![
+                        "type mismatch: expected ",
+                        code(want),
+                        ", found ",
+                        code(got)
+                    ],
                 );
             }
         }
