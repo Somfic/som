@@ -61,7 +61,22 @@ impl<T> CompileResult<T> {
     }
 }
 
-pub fn compile(args: &CompileOptions) -> CompileResult<i64> {
+/// What a successful compile produced: a computed value (pure logic, via
+/// Cranelift) or a UI program to run in a window (via the walker).
+pub enum Outcome {
+    Value(i64),
+    Ui(som_hir::Hir),
+}
+
+/// Open a window and run a UI program's reactive event loop. Blocks until the
+/// window closes.
+pub fn run_ui(hir: som_hir::Hir) {
+    use std::rc::Rc;
+    let hir = Rc::new(hir);
+    som_canvas_blitz::run(move |body| som_eval::build_ui(hir, body));
+}
+
+pub fn compile(args: &CompileOptions) -> CompileResult<Outcome> {
     let mut sources = SourceMap::new();
     let id = sources.add(args.input.clone());
     let mut diags = DiagnosticSink::new();
@@ -92,6 +107,15 @@ pub fn compile(args: &CompileOptions) -> CompileResult<i64> {
         return CompileResult::failed(sources, diags);
     }
 
+    // A program with layout is a UI: it runs through the walker in a window,
+    // not through MIR/Cranelift (which only handles pure logic).
+    if hir.root.iter().any(|r| matches!(r, som_hir::Root::Layout(_))) {
+        if !args.run {
+            return CompileResult::failed(sources, diags);
+        }
+        return CompileResult::success(sources, diags, Outcome::Ui(hir));
+    }
+
     let mir = som_mir::build(&hir, &tcx, &mut diags);
     if args.emit.mir {
         if args.emit.spans {
@@ -117,5 +141,5 @@ pub fn compile(args: &CompileOptions) -> CompileResult<i64> {
         }
     };
     let result = func() as i64;
-    CompileResult::success(sources, diags, result)
+    CompileResult::success(sources, diags, Outcome::Value(result))
 }

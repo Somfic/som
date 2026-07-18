@@ -1,0 +1,14 @@
+[package]
+name = "som_eval"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+som_common = { workspace = true }
+som_hir = { workspace = true }
+som_runtime = { workspace = true }
+som_canvas = { workspace = true }
+
+[dev-dependencies]
+som_ast = { workspace = true }
+som_canvas_mock = { workspace = true }

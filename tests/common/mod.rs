@@ -1,6 +1,6 @@
-use som::{CompileOptions, CompileResult, Source};
+use som::{CompileOptions, CompileResult, Outcome, Source};
 
-pub fn compile(source: &str) -> CompileResult<i64> {
+pub fn compile(source: &str) -> CompileResult<Outcome> {
     som::init_tracing();
     som::compile(&CompileOptions::new(Source::from_raw(source)))
 }
@@ -16,7 +16,11 @@ pub fn expect(source: &str, expected: i64) {
         );
     }
 
-    assert_eq!(compiled.artifact.unwrap(), expected);
+    match compiled.artifact {
+        Some(Outcome::Value(value)) => assert_eq!(value, expected),
+        Some(Outcome::Ui(_)) => panic!("expected a value from `{source}`, got a UI program"),
+        None => panic!("expected `{source}` to produce a value"),
+    }
 }
 
 /// Assert that compilation fails with a type-mismatch diagnostic (and does not

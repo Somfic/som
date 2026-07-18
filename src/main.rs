@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use som::{CompileOptions, CompileResult, EmitSet, Source};
+use som::{CompileOptions, CompileResult, EmitSet, Outcome, Source};
 
 // cli args
 #[derive(clap::Parser)]
@@ -116,7 +116,7 @@ pub fn main() -> ExitCode {
 
     match cli.command {
         Command::Run { input, codegen } => {
-            execute(build_options(Some(&input), Some(&codegen), true), None)
+            run_cmd(build_options(Some(&input), Some(&codegen), true))
         }
         Command::Check { input } => {
             execute(build_options(Some(&input), None, false), Some("Checked."))
@@ -161,22 +161,39 @@ fn execute(opts: Result<CompileOptions, String>, ok_msg: Option<&str>) -> ExitCo
         }
     };
     let result = som::compile(&opts);
-    let ok = report(&result, opts.run);
+    let ok = report(&result);
     if ok && let Some(msg) = ok_msg {
         println!("{msg}");
     }
     exit(ok)
 }
 
-fn report(result: &CompileResult<i64>, run: bool) -> bool {
-    render_diagnostics(result);
+/// The `run` command: compile, then either print a computed value or open a
+/// window for a UI program (blocking until it closes).
+fn run_cmd(opts: Result<CompileOptions, String>) -> ExitCode {
+    let opts = match opts {
+        Ok(opts) => opts,
+        Err(msg) => {
+            eprintln!("error: {msg}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let result = som::compile(&opts);
+    render_diagnostics(&result);
     if result.has_errors() {
-        return false;
+        return ExitCode::FAILURE;
     }
-    if run && let Some(value) = result.artifact {
-        println!("{value}");
+    match result.artifact {
+        Some(Outcome::Value(value)) => println!("{value}"),
+        Some(Outcome::Ui(hir)) => som::run_ui(hir),
+        None => {}
     }
-    true
+    ExitCode::SUCCESS
+}
+
+fn report(result: &CompileResult<Outcome>) -> bool {
+    render_diagnostics(result);
+    !result.has_errors()
 }
 
 fn exit(ok: bool) -> ExitCode {
@@ -208,7 +225,14 @@ fn repl() -> ExitCode {
         }
 
         let result = som::compile(&CompileOptions::new(Source::from_raw(line.clone())));
-        report(&result, true);
+        render_diagnostics(&result);
+        if !result.has_errors() {
+            match result.artifact {
+                Some(Outcome::Value(value)) => println!("{value}"),
+                Some(Outcome::Ui(hir)) => som::run_ui(hir),
+                None => {}
+            }
+        }
     }
 }
 
@@ -237,7 +261,7 @@ fn read_stdin() -> Result<String, String> {
     Ok(buf)
 }
 
-fn render_diagnostics(result: &CompileResult<i64>) {
+fn render_diagnostics<T>(result: &CompileResult<T>) {
     for d in &result.diagnostics {
         eprint!("{}", som::render_diagnostic(d, &result.sources));
     }

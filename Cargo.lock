@@ -4436,8 +4436,10 @@ dependencies = [
  "clap",
  "owo-colors",
  "som_ast",
+ "som_canvas_blitz",
  "som_codegen",
  "som_common",
+ "som_eval",
  "som_hir",
  "som_lsp",
  "som_mir",
@@ -4503,6 +4505,18 @@ version = "0.1.0"
 dependencies = [
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "som_eval"
+version = "0.1.0"
+dependencies = [
+ "som_ast",
+ "som_canvas",
+ "som_canvas_mock",
+ "som_common",
+ "som_hir",
+ "som_runtime",
 ]
 
 [[package]]

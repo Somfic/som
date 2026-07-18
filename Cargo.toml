@@ -9,7 +9,9 @@ som_ast = { workspace = true }
 som_hir = { workspace = true }
 som_mir = { workspace = true }
 som_codegen = { workspace = true }
+som_eval = { workspace = true }
 som_lsp = { workspace = true }
+som_canvas_blitz = { workspace = true }
 clap = { workspace = true }
 owo-colors = { workspace = true }
 terminal_size = { workspace = true }
@@ -41,6 +43,7 @@ som_ast = { path = "crates/lang/ast" }
 som_hir = { path = "crates/lang/hir" }
 som_mir = { path = "crates/lang/mir" }
 som_codegen = { path = "crates/lang/codegen" }
+som_eval = { path = "crates/lang/eval" }
 som_lsp = { path = "crates/lang/lsp" }
 som_reactive = { path = "crates/reactivity/reactive" }
 som_runtime = { path = "crates/reactivity/runtime" }

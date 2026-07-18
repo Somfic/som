@@ -1,1 +1,8 @@
-1 + 1 + true
+let count = 1000
+
+main
+    button @click: count += -1
+        "-"
+    "{count}"
+    button @click: count += 1
+        "+"

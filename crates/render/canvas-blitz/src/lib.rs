@@ -6,6 +6,25 @@ pub use ambient::AmbientBlitz;
 pub use renderer::BlitzRenderer;
 pub use view::{SomView, build};
 
+use anyrender_vello::VelloWindowRenderer;
+use blitz_shell::{BlitzApplication, BlitzShellEvent, WindowConfig, create_default_event_loop};
+use som_canvas::Node;
+use som_common::GenId;
+
+/// Install the ambient Blitz renderer, build the UI via `build_fn`, open a
+/// window, and run the event loop until it closes. Blocks the calling thread.
+pub fn run(build_fn: impl FnOnce(GenId<Node>)) {
+    som_runtime::install(Box::new(AmbientBlitz));
+    let view = build(build_fn, som_runtime::dispatch);
+
+    let event_loop = create_default_event_loop::<BlitzShellEvent>();
+    let proxy = event_loop.create_proxy();
+    let mut application = BlitzApplication::new(proxy);
+    let window = WindowConfig::new(Box::new(view) as _, VelloWindowRenderer::new());
+    application.add_window(window);
+    event_loop.run_app(&mut application).unwrap();
+}
+
 #[cfg(test)]
 mod tests {
     use blitz_dom::DocumentMutator;

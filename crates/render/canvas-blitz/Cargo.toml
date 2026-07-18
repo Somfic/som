@@ -6,11 +6,9 @@ edition = "2024"
 [dependencies]
 som_common = { workspace = true }
 som_canvas = { workspace = true }
+som_runtime = { workspace = true }
 blitz = { workspace = true }
 blitz-dom = { workspace = true }
 blitz-traits = { workspace = true }
-
-[dev-dependencies]
-som_runtime = { workspace = true }
 blitz-shell = { workspace = true }
 anyrender_vello = { workspace = true }
