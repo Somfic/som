@@ -10,6 +10,10 @@ use anyrender_vello::VelloWindowRenderer;
 use blitz_shell::{BlitzApplication, BlitzShellEvent, WindowConfig, create_default_event_loop};
 use som_canvas::Node;
 use som_common::GenId;
+use winit::application::ApplicationHandler;
+use winit::event::WindowEvent;
+use winit::event_loop::ActiveEventLoop;
+use winit::window::WindowId;
 
 /// Install the ambient Blitz renderer, build the UI via `build_fn`, open a
 /// window, and run the event loop until it closes. Blocks the calling thread.
@@ -19,10 +23,41 @@ pub fn run(build_fn: impl FnOnce(GenId<Node>)) {
 
     let event_loop = create_default_event_loop::<BlitzShellEvent>();
     let proxy = event_loop.create_proxy();
-    let mut application = BlitzApplication::new(proxy);
+    let mut application = CleanExit(BlitzApplication::new(proxy));
     let window = WindowConfig::new(Box::new(view) as _, VelloWindowRenderer::new());
-    application.add_window(window);
+    application.0.add_window(window);
     event_loop.run_app(&mut application).unwrap();
+}
+
+/// Wraps `BlitzApplication` so window close terminates the process cleanly.
+/// winit's macOS teardown throws an `NSException` on close (a TouchBar observer
+/// bug, upstream — not our code); exiting before it runs avoids the abort.
+struct CleanExit(BlitzApplication<VelloWindowRenderer>);
+
+impl ApplicationHandler<BlitzShellEvent> for CleanExit {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        self.0.resumed(event_loop);
+    }
+
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        self.0.suspended(event_loop);
+    }
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: BlitzShellEvent) {
+        self.0.user_event(event_loop, event);
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        if matches!(event, WindowEvent::CloseRequested) {
+            std::process::exit(0);
+        }
+        self.0.window_event(event_loop, window_id, event);
+    }
 }
 
 #[cfg(test)]

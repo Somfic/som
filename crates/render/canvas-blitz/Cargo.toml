@@ -12,3 +12,4 @@ blitz-dom = { workspace = true }
 blitz-traits = { workspace = true }
 blitz-shell = { workspace = true }
 anyrender_vello = { workspace = true }
+winit = "0.30"

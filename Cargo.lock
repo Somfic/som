@@ -4475,6 +4475,7 @@ dependencies = [
  "som_canvas",
  "som_common",
  "som_runtime",
+ "winit",
 ]
 
 [[package]]
