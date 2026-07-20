@@ -10,6 +10,7 @@ use crate::{
 fn prefix_rule(token: TokenKind) -> Option<PrefixRule> {
     Some(match token {
         TokenKind::Int => prefix(|p| p.parse_int_literal()),
+        TokenKind::Text => prefix(|p| p.parse_string_literal()),
         TokenKind::True => prefix(|p| p.parse_bool_literal()),
         TokenKind::False => prefix(|p| p.parse_bool_literal()),
         TokenKind::OpenParen => prefix(|p| p.parse_grouping()),
@@ -95,6 +96,15 @@ impl Parser<'_> {
 
         self.expr(Expr::Int {
             value,
+            span: token.span,
+        })
+    }
+
+    fn parse_string_literal(&mut self) -> Id<Expr> {
+        let token = self.next();
+        let value = unescape(&token.text);
+        self.expr(Expr::Str {
+            value: value.into(),
             span: token.span,
         })
     }
@@ -276,4 +286,31 @@ impl Parser<'_> {
     fn at_block_end(&self) -> bool {
         matches!(self.peek().kind, TokenKind::CloseBrace | TokenKind::Eof)
     }
+}
+
+/// Strip a string literal's surrounding quotes and resolve escape sequences.
+fn unescape(raw: &str) -> String {
+    let inner = raw
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(raw);
+
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('r') => out.push('\r'),
+                Some('"') => out.push('"'),
+                Some('\\') => out.push('\\'),
+                Some(other) => out.push(other),
+                None => {}
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }

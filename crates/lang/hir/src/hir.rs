@@ -12,6 +12,7 @@ expand_enum! {
         Error,
         Int { value: i64 },
         Bool { value: bool },
+        Str { value: Box<str> },
         Unary { op: UnaryOp, operand: Id<Expr> },
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
         Condition { condition: Id<Expr>, truthy: Id<Expr>, falsy: Id<Expr> },
@@ -65,6 +66,10 @@ pub struct Binding {
     pub name: Box<str>,
     pub span: Span,
     pub ty: Id<Type>,
+    /// Whether the binding is ever assigned to. Set by the typer when it sees an
+    /// assignment targeting it. Drives the walker's signal-vs-derived choice:
+    /// mutable state is a `signal`, an immutable binding is a `derived`.
+    pub mutable: bool,
 }
 
 #[derive(Debug)]
@@ -117,5 +122,9 @@ impl Hir {
 
     pub fn binding(&self, id: Id<Binding>) -> &Binding {
         self.bindings.get(&id)
+    }
+
+    pub(crate) fn binding_mut(&mut self, id: Id<Binding>) -> &mut Binding {
+        self.bindings.get_mut(&id)
     }
 }

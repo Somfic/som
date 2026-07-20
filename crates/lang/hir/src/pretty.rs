@@ -126,6 +126,9 @@ fn fmt_expr(buf: &mut String, hir: &Hir, tcx: &TyCtx, id: Id<Expr>, nested: bool
         Expr::Bool { value, ty, .. } => {
             let _ = write!(buf, "{value}: {}", tcx[*ty]);
         }
+        Expr::Str { value, ty, .. } => {
+            let _ = write!(buf, "{value:?}: {}", tcx[*ty]);
+        }
         Expr::Variable { name, ty, .. } => {
             let _ = write!(buf, "{name}: {}", tcx[*ty]);
         }

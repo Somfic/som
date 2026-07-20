@@ -57,6 +57,11 @@ impl Typer {
                 let ty = self.ctx.bool(span);
                 self.ast.add_expr(Expr::Bool { value, ty, span })
             }
+            UntypedExpr::Str { value, span } => {
+                let (value, span) = (value.clone(), *span);
+                let ty = self.ctx.str(span);
+                self.ast.add_expr(Expr::Str { value, ty, span })
+            }
             UntypedExpr::Unary { op, operand, span } => {
                 let (op, operand, span) = (*op, *operand, *span);
                 let operand = self.infer(ast, operand, diags);
@@ -234,6 +239,11 @@ impl Typer {
 
                 // The target must be an existing binding (same as a variable read).
                 let binding = self.scope.lookup(&target).copied();
+                // Being assigned to makes the binding mutable state (a signal),
+                // not a derived value.
+                if let Some(b) = binding {
+                    self.ast.binding_mut(b).mutable = true;
+                }
                 let target_ty = match binding {
                     Some(b) => self.ast.binding(b).ty,
                     None => {
@@ -331,6 +341,7 @@ impl Typer {
                     name: ident.clone(),
                     span: *span,
                     ty,
+                    mutable: false,
                 });
                 self.scope.define(ident.clone(), binding);
                 self.ast.add_stmt(Stmt::Let {

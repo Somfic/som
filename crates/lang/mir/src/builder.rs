@@ -5,8 +5,8 @@ use som_hir::{Binding, Expr, Hir, Root, Stmt, TyCtx};
 
 use crate::{Block, Const, Function, LocalDecl, Operand, Rvalue, Statement, Terminator};
 
-pub fn build(hir: &Hir, _tcx: &TyCtx, _diags: &mut DiagnosticSink) -> Function {
-    let mut builder = MirBuilder::new(hir);
+pub fn build(hir: &Hir, _tcx: &TyCtx, diags: &mut DiagnosticSink) -> Function {
+    let mut builder = MirBuilder::new(hir, diags);
 
     let mut last_value: Option<Id<LocalDecl>> = None;
     for root in &hir.root {
@@ -24,13 +24,14 @@ pub fn build(hir: &Hir, _tcx: &TyCtx, _diags: &mut DiagnosticSink) -> Function {
 
 struct MirBuilder<'a> {
     hir: &'a Hir,
+    diags: &'a mut DiagnosticSink,
     func: Function,
     current_block: Option<Id<Block>>,
     env: HashMap<Id<Binding>, Id<LocalDecl>>,
 }
 
 impl<'a> MirBuilder<'a> {
-    fn new(hir: &'a Hir) -> Self {
+    fn new(hir: &'a Hir, diags: &'a mut DiagnosticSink) -> Self {
         let mut func = Function {
             locals: Arena::new(),
             blocks: Arena::new(),
@@ -42,6 +43,7 @@ impl<'a> MirBuilder<'a> {
         func.entry = entry;
         Self {
             hir,
+            diags,
             func,
             current_block: Some(entry),
             env: HashMap::new(),
@@ -91,6 +93,22 @@ impl<'a> MirBuilder<'a> {
                 self.push_assign(
                     local,
                     Rvalue::Use(Operand::Const(Const::Bool(*value, *ty))),
+                    *span,
+                );
+                local
+            }
+            Expr::Str { ty, span, .. } => {
+                // Strings are a UI/runtime value; the Cranelift path only
+                // produces an `i32`. A string outside a UI program has nowhere
+                // to go, so report it rather than miscompile.
+                self.diags.emit_error(
+                    *span,
+                    "string values are only supported in UI programs".to_string(),
+                );
+                let local = self.func.alloc_local(*ty, *span, "str.unsupported");
+                self.push_assign(
+                    local,
+                    Rvalue::Use(Operand::Const(Const::Int(0, *ty))),
                     *span,
                 );
                 local

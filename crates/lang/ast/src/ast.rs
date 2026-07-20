@@ -83,6 +83,7 @@ expand_enum! {
         Error,
         Int { value: i64 },
         Bool { value: bool },
+        Str { value: Box<str> },
         Unary { op: UnaryOp, operand: Id<Expr> },
         Binary { lhs: Id<Expr>, op: BinaryOp, rhs: Id<Expr> },
         Condition { condition: Id<Expr>, truthy: Id<Expr>, falsy: Id<Expr> },

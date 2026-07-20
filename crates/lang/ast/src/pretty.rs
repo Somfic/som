@@ -123,6 +123,9 @@ fn fmt_expr(buf: &mut String, ast: &Ast, id: Id<Expr>, nested: bool) {
         Expr::Bool { value, .. } => {
             let _ = write!(buf, "{value}");
         }
+        Expr::Str { value, .. } => {
+            let _ = write!(buf, "{value:?}");
+        }
         Expr::Variable { name, .. } => {
             let _ = buf.write_str(name);
         }

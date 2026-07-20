@@ -177,6 +177,7 @@ fn lower_type(ty: &som_hir::Type) -> types::Type {
         som_hir::Type::I32 { .. } => types::I32,
         som_hir::Type::Bool { .. } => types::I8,
         som_hir::Type::Nothing { .. } => types::I32,
+        som_hir::Type::Str { .. } => unreachable!("string values do not reach codegen"),
         som_hir::Type::Error { .. } => unreachable!("error type should not reach codegen"),
         som_hir::Type::Infer { .. } => {
             unreachable!("inference vars are resolved away before codegen")

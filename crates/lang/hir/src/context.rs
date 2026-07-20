@@ -44,6 +44,10 @@ impl TyCtx {
         self.types.alloc(Type::Nothing { span })
     }
 
+    pub(crate) fn str(&mut self, span: Span) -> Id<Type> {
+        self.types.alloc(Type::Str { span })
+    }
+
     /// A concrete `i32` — used for explicit annotations, where the type is
     /// fixed rather than inferred. (Contrast `int`, which makes a fresh
     /// integer-flavoured inference variable.)
@@ -88,11 +92,13 @@ impl TyCtx {
             Type::I32 { .. } => "i32",
             Type::Bool { .. } => "bool",
             Type::Nothing { .. } => "nothing",
+            Type::Str { .. } => "str",
             Type::Error { .. } => "<error>",
             Type::Infer { var, .. } => match self.table.probe_value(var) {
                 TypeValue::I32 => "i32",
                 TypeValue::Bool => "bool",
                 TypeValue::Nothing => "nothing",
+                TypeValue::Str => "str",
                 TypeValue::Unbound { is_int: true } => "i32",
                 TypeValue::Unbound { is_int: false } => "_",
             },
@@ -110,6 +116,7 @@ impl TyCtx {
                     TypeValue::I32 => Type::I32 { span },
                     TypeValue::Bool => Type::Bool { span },
                     TypeValue::Nothing => Type::Nothing { span },
+                    TypeValue::Str => Type::Str { span },
                     TypeValue::Unbound { is_int: true } => Type::I32 { span }, // the default
                     TypeValue::Unbound { is_int: false } => Type::Error { span },
                 };
@@ -124,6 +131,7 @@ fn prim(ty: Type) -> TypeValue {
         Type::I32 { .. } => TypeValue::I32,
         Type::Bool { .. } => TypeValue::Bool,
         Type::Nothing { .. } => TypeValue::Nothing,
+        Type::Str { .. } => TypeValue::Str,
         _ => unreachable!("prim() on a non-concrete type"),
     }
 }

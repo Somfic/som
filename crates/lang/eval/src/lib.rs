@@ -11,13 +11,16 @@ use std::rc::Rc;
 use som_canvas::{Attribute, Event, Node, Tag};
 use som_common::{GenId, Id};
 use som_hir::{BinaryOp, Binding, Expr, Hir, Layout, Root, Stmt, TextPart, UnaryOp};
-use som_runtime::{Signal, bind_text, create_element, create_text, insert, on, set_attr, signal};
+use som_runtime::{
+    Signal, bind_text, create_element, create_text, derived, insert, on, set_attr, signal,
+};
 
 /// A runtime value. Every `let` binding holds one inside a `Signal`.
 #[derive(Clone, Debug)]
 pub enum Value {
     Int(i64),
     Bool(bool),
+    Str(String),
     Nothing,
 }
 
@@ -42,6 +45,7 @@ impl fmt::Display for Value {
         match self {
             Value::Int(n) => write!(f, "{n}"),
             Value::Bool(b) => write!(f, "{b}"),
+            Value::Str(s) => f.write_str(s),
             Value::Nothing => Ok(()),
         }
     }
@@ -80,8 +84,15 @@ impl Ctx {
     fn eval_stmt(&self, id: Id<Stmt>) {
         match self.hir.get_stmt(id) {
             Stmt::Let { binding, expr, .. } => {
-                let value = self.eval(*expr);
-                let sig = signal(value);
+                // Mutable bindings (ever assigned) are state; the rest are
+                // derived — their initialiser re-runs when its signals change.
+                let sig = if self.hir.binding(*binding).mutable {
+                    signal(self.eval(*expr))
+                } else {
+                    let ctx = self.clone();
+                    let expr = *expr;
+                    derived(move || ctx.eval(expr))
+                };
                 self.env.borrow_mut().insert(*binding, sig);
             }
             Stmt::Expr { expr, .. } => {
@@ -95,6 +106,7 @@ impl Ctx {
         match self.hir.get_expr(id) {
             Expr::Int { value, .. } => Value::Int(*value),
             Expr::Bool { value, .. } => Value::Bool(*value),
+            Expr::Str { value, .. } => Value::Str(value.to_string()),
             Expr::Error { .. } => Value::Nothing,
 
             Expr::Variable { binding, .. } => match binding {
@@ -241,6 +253,7 @@ fn value_eq(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Int(x), Value::Int(y)) => x == y,
         (Value::Bool(x), Value::Bool(y)) => x == y,
+        (Value::Str(x), Value::Str(y)) => x == y,
         _ => false,
     }
 }
@@ -284,6 +297,50 @@ mod tests {
         let (hir, _tcx) = som_hir::typeck(&ast, &mut diags);
         assert!(!diags.has_errors(), "unexpected diagnostics");
         Rc::new(hir)
+    }
+
+    #[test]
+    fn string_binding_interpolates() {
+        install(Box::new(MockRenderer::new()));
+        let body = create_element(Tag::Block);
+
+        let hir = hir_of("let name = \"world\"\nmain\n  \"hello {name}\"\n");
+        build_ui(hir, body);
+
+        let renderer = take().unwrap();
+        let any: &dyn std::any::Any = &*renderer;
+        let mock = any.downcast_ref::<MockRenderer>().unwrap();
+
+        assert!(
+            mock.log()
+                .iter()
+                .any(|line| line == r#"set_text(text#2, "hello world")"#),
+            "expected the interpolated string, got: {:?}",
+            mock.log()
+        );
+    }
+
+    #[test]
+    fn derived_binding_computes() {
+        install(Box::new(MockRenderer::new()));
+        let body = create_element(Tag::Block);
+
+        // `count` and `doubled` are never assigned → both are derived; the text
+        // node should render the chained computed value.
+        let hir = hir_of("let count = 5\nlet doubled = count * 2\nmain\n  \"{doubled}\"\n");
+        build_ui(hir, body);
+
+        let renderer = take().unwrap();
+        let any: &dyn std::any::Any = &*renderer;
+        let mock = any.downcast_ref::<MockRenderer>().unwrap();
+
+        assert!(
+            mock.log()
+                .iter()
+                .any(|line| line == r#"set_text(text#2, "10")"#),
+            "expected the derived value, got: {:?}",
+            mock.log()
+        );
     }
 
     #[test]

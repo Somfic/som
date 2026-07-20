@@ -217,6 +217,13 @@ fn layout_interpolation_type_errors() {
 }
 
 #[test]
+fn string_type_errors() {
+    // strings are their own type: they don't unify with ints
+    expect_type_error("let name = \"x\"\nmain\n  \"{name + 1}\"");
+    expect_type_error("let name = \"x\"\nmain\n  \"{name == 1}\"");
+}
+
+#[test]
 fn let_annotations() {
     expect("let x: i32 = 5; x", 5);
     expect("let b: bool = true; b", 1);

@@ -9,6 +9,7 @@ expand_enum! {
         Nothing,
         I32,
         Bool,
+        Str,
         Infer { var: TypeVar },
     } with { span: Span }
 }
@@ -37,10 +38,12 @@ impl UnifyValue for TypeValue {
             (I32, I32) => I32,
             (Bool, Bool) => Bool,
             (Nothing, Nothing) => Nothing,
+            (Str, Str) => Str,
 
             // concrete mismatches
             (I32, Bool) | (Bool, I32) => return Err(()),
             (Nothing, I32 | Bool) | (I32 | Bool, Nothing) => return Err(()),
+            (Str, I32 | Bool | Nothing) | (I32 | Bool | Nothing, Str) => return Err(()),
 
             // concrete vs inference variable
             (I32, Unbound { .. }) | (Unbound { .. }, I32) => I32,
@@ -51,6 +54,9 @@ impl UnifyValue for TypeValue {
                 return Err(());
             }
             (Nothing, Unbound { .. }) | (Unbound { .. }, Nothing) => Nothing,
+            // `Str` is never an integer
+            (Str, Unbound { is_int: true }) | (Unbound { is_int: true }, Str) => return Err(()),
+            (Str, Unbound { .. }) | (Unbound { .. }, Str) => Str,
 
             (Unbound { is_int: x }, Unbound { is_int: y }) => Unbound { is_int: *x || *y },
         })
@@ -63,6 +69,7 @@ pub enum TypeValue {
     I32,
     Bool,
     Nothing,
+    Str,
 }
 
 impl std::fmt::Display for Type {
@@ -71,6 +78,7 @@ impl std::fmt::Display for Type {
             Type::I32 { .. } => "i32",
             Type::Bool { .. } => "bool",
             Type::Nothing { .. } => "nothing",
+            Type::Str { .. } => "str",
             Type::Error { .. } => "<error>",
             Type::Infer { .. } => "<inferred>",
         })
