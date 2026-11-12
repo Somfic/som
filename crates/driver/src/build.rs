@@ -120,16 +120,9 @@ pub fn build(
         .arg(output)
         .arg(&c_file);
 
-    let (libraries, _) = checked.ast.extern_libraries();
-    for path in library_search_paths() {
-        cmd.arg(format!("-L{path}"));
-    }
-    for lib in &libraries {
-        if is_library_path(lib) {
-            cmd.arg(lib);
-        } else {
-            cmd.arg(format!("-l{lib}"));
-        }
+    // Link the exact files that were checked, rather than letting the linker search.
+    for library in &checked.libraries {
+        cmd.arg(library);
     }
 
     if let Some(show) = options.on_command {
@@ -157,11 +150,10 @@ pub fn build(
 pub fn run(checked: &Checked, executable: &Path, args: &[String]) -> std::io::Result<ExitStatus> {
     let mut cmd = Command::new(executable);
     cmd.args(args);
-    let (libraries, _) = checked.ast.extern_libraries();
-    let dirs: Vec<PathBuf> = libraries
+    let dirs: Vec<PathBuf> = checked
+        .libraries
         .iter()
-        .filter(|lib| is_library_path(lib))
-        .filter_map(|lib| Path::new(lib).parent().map(Path::to_path_buf))
+        .filter_map(|lib| lib.parent().map(Path::to_path_buf))
         .collect();
     if !dirs.is_empty() {
         let joined = std::env::join_paths(&dirs).unwrap_or_default();
@@ -173,20 +165,4 @@ pub fn run(checked: &Checked, executable: &Path, args: &[String]) -> std::io::Re
         cmd.env(var, joined);
     }
     cmd.status()
-}
-
-/// `extern "path/to/libfoo.so"` names a file; `extern "foo"` names a library to search for.
-fn is_library_path(lib: &str) -> bool {
-    lib.contains('/')
-        || [".so", ".dylib", ".a", ".dll"]
-            .iter()
-            .any(|ext| lib.ends_with(ext))
-}
-
-fn library_search_paths() -> Vec<&'static str> {
-    if cfg!(target_arch = "aarch64") && cfg!(target_os = "macos") {
-        vec!["/opt/homebrew/lib"]
-    } else {
-        vec!["/usr/local/lib"]
-    }
 }

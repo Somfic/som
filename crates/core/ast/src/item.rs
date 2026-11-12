@@ -1,4 +1,4 @@
-use crate::{Expr, Id, Ident, Path, TypeExpr};
+use crate::{Expr, Id, Ident, Path, Span, TypeExpr};
 
 /// A top-level declaration in a module.
 pub enum Item {
@@ -18,6 +18,8 @@ pub struct Use {
 /// (or from libc when no library is named).
 pub struct Extern {
     pub library: Option<String>,
+    /// Where the library's name is written, for errors about the library.
+    pub library_span: Option<Span>,
     pub funcs: Vec<Id<Func>>,
 }
 

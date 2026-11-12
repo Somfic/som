@@ -17,7 +17,7 @@ pub fn run_case(path: &str) {
     };
     let header = Header::parse(&std::fs::read_to_string(&main).unwrap());
 
-    let result = som_driver::check(path);
+    let result = som_driver::check(path, &Default::default());
 
     if let Ok(checked) = &result {
         let problems = checked.mir.validate();

@@ -7,7 +7,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use som_base::diagnostics::{BLUE, MAUVE, PEACH, RED, Rgb, SUBTEXT0, TEAL, YELLOW};
 use som_base::message;
 use som_base::{Diagnostic, msg};
-use som_driver::{BuildOptions, Checked, Error};
+use som_driver::{BuildOptions, Checked, Error, Options};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -66,7 +66,7 @@ enum Command {
         /// The program: a .som file, or a directory of them
         path: PathBuf,
         #[command(flatten)]
-        emit: EmitArgs,
+        check: CheckArgs,
     },
     /// Start the language server, for editors (speaks LSP over stdin and stdout)
     Lsp {
@@ -79,7 +79,7 @@ enum Command {
 #[derive(Args)]
 struct BuildArgs {
     #[command(flatten)]
-    emit: EmitArgs,
+    check: CheckArgs,
     /// The C compiler to use
     #[arg(long, env = "SOM_CC", default_value = "cc", value_name = "PATH")]
     cc: String,
@@ -89,7 +89,11 @@ struct BuildArgs {
 }
 
 #[derive(Args)]
-struct EmitArgs {
+struct CheckArgs {
+    /// Also look for libraries in DIR, before the system's directories (repeatable)
+    #[arg(short = 'L', long = "library-path", value_name = "DIR")]
+    library_dirs: Vec<PathBuf>,
+
     /// Also write intermediate stages: tokens, ast, mir, c.
     ///
     /// Each goes next to the output by default (`main.c`). Write `c=out.c` for
@@ -154,7 +158,7 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
             build,
         } => {
             let output = output.unwrap_or_else(|| default_output(&path));
-            match compile(&path, &build.emit.emit, &output) {
+            match compile(&path, &build.check, &output) {
                 Some(checked) => {
                     build_to(&checked, &output, &build).map_or(ExitCode::FAILURE, |exe| {
                         ui::success("built", message::path(exe.display()));
@@ -168,7 +172,7 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
             som_lsp::serve();
             ExitCode::SUCCESS
         }
-        Command::Check { path, emit } => match compile(&path, &emit.emit, &default_output(&path)) {
+        Command::Check { path, check } => match compile(&path, &check, &default_output(&path)) {
             Some(_) => {
                 ui::success("checked", message::path(path.display()));
                 ExitCode::SUCCESS
@@ -183,7 +187,8 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
 ///
 /// Tokens and the AST are written even when later checks fail, which is when
 /// they're most useful.
-fn compile(path: &Path, emits: &[Emit], output: &Path) -> Option<Checked> {
+fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
+    let emits = &args.emit;
     if !path.exists() {
         ui::diagnostic(&missing_program(path));
         return None;
@@ -203,7 +208,10 @@ fn compile(path: &Path, emits: &[Emit], output: &Path) -> Option<Checked> {
         return None;
     }
 
-    let checked = match som_driver::check_loaded(ast) {
+    let options = Options {
+        library_dirs: args.library_dirs.clone(),
+    };
+    let checked = match som_driver::check_loaded(ast, &options) {
         Ok(checked) => checked,
         Err(errors) => {
             report(path, errors);
@@ -331,7 +339,7 @@ fn build_to(checked: &Checked, output: &Path, args: &BuildArgs) -> Option<PathBu
 }
 
 fn run(path: &Path, build: &BuildArgs, args: &[String]) -> ExitCode {
-    let Some(checked) = compile(path, &build.emit.emit, &default_output(path)) else {
+    let Some(checked) = compile(path, &build.check, &default_output(path)) else {
         return ExitCode::FAILURE;
     };
     let dir = std::env::temp_dir().join(format!("som-run-{}", std::process::id()));

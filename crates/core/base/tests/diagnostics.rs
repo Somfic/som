@@ -7,6 +7,9 @@ fn edit_distance_counts_characters() {
     assert_eq!(edit_distance("same", "same"), 0);
     // `é` is two bytes but one character.
     assert_eq!(edit_distance("café", "cafe"), 1);
+    // Swapping two neighbouring characters is one edit.
+    assert_eq!(edit_distance("deom", "demo"), 1);
+    assert_eq!(edit_distance("ab", "ba"), 1);
 }
 
 #[test]

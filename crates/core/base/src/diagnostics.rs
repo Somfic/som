@@ -60,23 +60,31 @@ fn surface(text: impl std::fmt::Display) -> String {
     )
 }
 
-/// Levenshtein edit distance between two strings.
+/// How many single-character edits turn `a` into `b`: inserting, deleting or replacing
+/// a character, or swapping two neighbouring ones (a common typo: `deom` for `demo`).
 pub fn edit_distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
-    // One row of the distance matrix at a time.
-    let mut previous: Vec<usize> = (0..=b.len()).collect();
-    for (i, ca) in a.iter().enumerate() {
-        let mut current = vec![i + 1; b.len() + 1];
-        for (j, cb) in b.iter().enumerate() {
-            let cost = usize::from(ca != cb);
-            current[j + 1] = (previous[j + 1] + 1)
-                .min(current[j] + 1)
-                .min(previous[j] + cost);
-        }
-        previous = current;
+    // d[i][j]: the distance between the first i characters of a and the first j of b.
+    let mut d = vec![vec![0usize; b.len() + 1]; a.len() + 1];
+    for (i, row) in d.iter_mut().enumerate() {
+        row[0] = i;
     }
-    previous[b.len()]
+    for (j, cell) in d[0].iter_mut().enumerate() {
+        *cell = j;
+    }
+    for i in 1..=a.len() {
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            d[i][j] = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                d[i][j] = d[i][j].min(d[i - 2][j - 2] + 1);
+            }
+        }
+    }
+    d[a.len()][b.len()]
 }
 
 /// Find the closest match from a list of candidates using edit distance.

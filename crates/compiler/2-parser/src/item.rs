@@ -232,13 +232,14 @@ impl Parser<'_> {
     fn parse_extern(&mut self) -> Option<Extern> {
         self.expect(TokenKind::Extern, "an extern block")?;
 
-        let library = if self.at(TokenKind::Text) {
-            let text = &self.peek_token().text;
-            let library = text[1..text.len() - 1].to_string();
+        let (library, library_span) = if self.at(TokenKind::Text) {
+            let token = self.peek_token();
+            let library = token.text[1..token.text.len() - 1].to_string();
+            let span = token.span.clone();
             self.advance();
-            Some(library)
+            (Some(library), Some(span))
         } else {
-            None
+            (None, None)
         };
 
         self.expect(
@@ -262,7 +263,11 @@ impl Parser<'_> {
         }
         self.expect(TokenKind::CloseBrace, "a closing brace after extern block")?;
 
-        Some(Extern { library, funcs })
+        Some(Extern {
+            library,
+            library_span,
+            funcs,
+        })
     }
 
     /// `fn name(params) -> Ret;`

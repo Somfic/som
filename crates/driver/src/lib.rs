@@ -2,9 +2,11 @@
 
 mod build;
 mod bundled;
+mod libraries;
 mod load;
 
 pub use build::{BuildError, BuildOptions, build, emit_c, run};
+pub use libraries::LibraryError;
 pub use load::{LoadError, load};
 
 use som_ast::Ast;
@@ -13,7 +15,7 @@ use som_borrowck::BorrowError;
 use som_mir::Mir;
 use som_resolve::{Names, ResolveError};
 use som_typeck::{TypeError, Typed};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Everything the front end knows about a program that passed all checks so far.
 pub struct Checked {
@@ -21,12 +23,22 @@ pub struct Checked {
     pub names: Names,
     pub typed: Typed,
     pub mir: Mir,
+    /// The library files `extern "…"` blocks link against.
+    pub libraries: Vec<PathBuf>,
+}
+
+/// Settings for checking a program.
+#[derive(Debug, Clone, Default)]
+pub struct Options {
+    /// Extra directories to look for libraries in, before the system's.
+    pub library_dirs: Vec<PathBuf>,
 }
 
 /// An error from any pass, keeping its pass-specific type.
 #[derive(Debug)]
 pub enum Error {
     Load(LoadError),
+    Library(LibraryError),
     Resolve(ResolveError),
     Type(TypeError),
     Borrow(BorrowError),
@@ -37,6 +49,7 @@ impl Error {
     pub fn kind(&self) -> String {
         let debug = match self {
             Error::Load(e) => format!("{e:?}"),
+            Error::Library(e) => format!("{e:?}"),
             Error::Resolve(e) => format!("{e:?}"),
             Error::Type(e) => format!("{e:?}"),
             Error::Borrow(e) => format!("{e:?}"),
@@ -51,6 +64,7 @@ impl Error {
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
             Error::Load(e) => e.to_diagnostic(),
+            Error::Library(e) => e.to_diagnostic(),
             Error::Resolve(e) => e.to_diagnostic(),
             Error::Type(e) => e.to_diagnostic(),
             Error::Borrow(e) => e.to_diagnostic(),
@@ -59,16 +73,21 @@ impl Error {
 }
 
 /// Loads `path` and runs every check, stopping after the first pass that reports errors.
-pub fn check(path: &Path) -> Result<Checked, Vec<Error>> {
+pub fn check(path: &Path, options: &Options) -> Result<Checked, Vec<Error>> {
     let (ast, errors) = load(path);
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Load).collect());
     }
-    check_loaded(ast)
+    check_loaded(ast, options)
 }
 
 /// Runs every check on a program that loaded without errors.
-pub fn check_loaded(ast: Ast) -> Result<Checked, Vec<Error>> {
+pub fn check_loaded(ast: Ast, options: &Options) -> Result<Checked, Vec<Error>> {
+    let (libraries, errors) = libraries::check(&ast, &options.library_dirs);
+    if !errors.is_empty() {
+        return Err(errors.into_iter().map(Error::Library).collect());
+    }
+
     let (names, errors) = som_resolve::resolve(&ast);
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Resolve).collect());
@@ -90,6 +109,7 @@ pub fn check_loaded(ast: Ast) -> Result<Checked, Vec<Error>> {
         names,
         typed,
         mir,
+        libraries,
     })
 }
 
@@ -106,9 +126,15 @@ pub struct Analysis {
 
 /// Loads `path` and runs as many passes as possible. Loading, name resolution and
 /// type checking always run; lowering and borrow checking only if they found nothing.
-pub fn analyze(path: &Path) -> Analysis {
+pub fn analyze(path: &Path, options: &Options) -> Analysis {
     let (ast, load_errors) = load(path);
     let mut errors: Vec<Error> = load_errors.into_iter().map(Error::Load).collect();
+    errors.extend(
+        libraries::check(&ast, &options.library_dirs)
+            .1
+            .into_iter()
+            .map(Error::Library),
+    );
 
     let (names, resolve_errors) = som_resolve::resolve(&ast);
     errors.extend(resolve_errors.into_iter().map(Error::Resolve));

@@ -583,6 +583,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "object"
+version = "0.36.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -896,6 +905,7 @@ dependencies = [
 name = "som_driver"
 version = "0.1.0"
 dependencies = [
+ "object",
  "som_ast",
  "som_base",
  "som_borrowck",
@@ -906,6 +916,7 @@ dependencies = [
  "som_parser",
  "som_resolve",
  "som_typeck",
+ "tempfile",
 ]
 
 [[package]]

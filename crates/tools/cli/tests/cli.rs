@@ -182,3 +182,42 @@ fn lsp_accepts_the_stdio_flag_editors_pass() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[test]
+fn library_path_flag_is_searched() {
+    let dir = project();
+    std::fs::write(
+        dir.path().join("main.som"),
+        "extern \"nowhere_som_test\" { fn f(); }\nfn main() {}\n",
+    )
+    .unwrap();
+    let out = som(dir.path(), &["check", "main.som"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("cannot find library `nowhere_som_test`")
+    );
+
+    let libs = dir.path().join("libs");
+    std::fs::create_dir(&libs).unwrap();
+    std::fs::write(libs.join("f.c"), "void f(void) {}\n").unwrap();
+    let file = if cfg!(target_os = "macos") {
+        "libnowhere_som_test.dylib"
+    } else {
+        "libnowhere_som_test.so"
+    };
+    assert!(
+        Command::new("cc")
+            .args(["-shared", "-fPIC", "-o"])
+            .arg(libs.join(file))
+            .arg(libs.join("f.c"))
+            .status()
+            .unwrap()
+            .success()
+    );
+    let out = som(dir.path(), &["check", "main.som", "-L", "libs"]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

@@ -83,7 +83,7 @@ impl SomLanguageServer {
         };
         let opened = Self::file_of(uri).unwrap_or_default();
 
-        let analysis = som_driver::analyze(&root);
+        let analysis = som_driver::analyze(&root, &Default::default());
 
         // Every file the program was loaded from, so fixed files get their diagnostics cleared.
         let ast = &analysis.ast;
