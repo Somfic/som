@@ -69,7 +69,8 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::FatArrow
         | TokenKind::SingleQuote
         | TokenKind::DoubleQuote
-        | TokenKind::Dot => SUBTEXT0,
+        | TokenKind::Dot
+        | TokenKind::Ellipsis => SUBTEXT0,
         TokenKind::Comment => SURFACE2,
         TokenKind::Whitespace | TokenKind::Eof | TokenKind::Error => TEXT,
     }

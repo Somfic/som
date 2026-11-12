@@ -1,4 +1,6 @@
 use som_ast::{Expr, Id, Span};
+use som_base::message::code;
+use som_base::msg;
 use som_lexer::TokenKind;
 
 use crate::grammar::Grammar;
@@ -157,10 +159,9 @@ impl Parser<'_> {
             }
 
             TokenKind::Text => {
-                let text = &self.peek_token().text;
-                let unquoted = text[1..text.len() - 1].into();
+                let text = self.peek_token().text.clone();
                 self.advance();
-                Expr::Str(unquoted)
+                Expr::Str(self.unescape(&text[1..text.len() - 1], &start).into())
             }
 
             TokenKind::Ident => {
@@ -191,6 +192,36 @@ impl Parser<'_> {
         };
 
         Some(self.alloc_expr(expr, &start))
+    }
+
+    /// The text of a string literal with its escapes resolved: `\n`, `\t`, `\r`, `\0`,
+    /// `\\`, `\"` and `\'`. An unknown escape is reported, and kept as written.
+    fn unescape(&mut self, raw: &str, span: &Span) -> String {
+        let mut out = String::with_capacity(raw.len());
+        let mut chars = raw.chars();
+        while let Some(c) = chars.next() {
+            if c != '\\' {
+                out.push(c);
+                continue;
+            }
+            match chars.next() {
+                Some('n') => out.push('\n'),
+                Some('t') => out.push('\t'),
+                Some('r') => out.push('\r'),
+                Some('0') => out.push('\0'),
+                Some(c @ ('\\' | '"' | '\'')) => out.push(c),
+                other => {
+                    let escape = format!("\\{}", other.map(String::from).unwrap_or_default());
+                    self.error_at(
+                        span.clone(),
+                        msg!["unknown escape ", code(&escape)],
+                        msg!["expected one of ", code("\\n \\t \\r \\0 \\\\ \\\" \\'")],
+                    );
+                    out.push_str(&escape);
+                }
+            }
+        }
+        out
     }
 
     /// `(a, b, c)`

@@ -1,23 +1,29 @@
 //! Code generation: MIR to C.
 //!
-//! The output is a single self-contained C11 file. Each MIR construct maps
-//! almost directly onto C:
+//! The output is a single self-contained C11 file, written to read like the
+//! program it came from:
 //!
-//! | MIR                        | C                                        |
-//! |----------------------------|------------------------------------------|
-//! | struct                     | `struct som_sN { T f0; T f1; }`          |
-//! | function                   | `static T som_fN(T _1, ...)`             |
-//! | local `_n`                 | a variable declared at the top           |
-//! | block `bbN`                | a label, with `goto` / `if` between them |
-//! | place `(*_1).0`            | `(*_1).f0`                               |
-//! | `StorageLive`/`StorageDead`| nothing                                  |
+//! | MIR                         | C                                                      |
+//! |-----------------------------|--------------------------------------------------------|
+//! | struct `geo::Point`         | `struct geo_Point { int32_t x; int32_t y; }`           |
+//! | function `Point::sum`       | `static int32_t Point_sum(struct Point* self)`         |
+//! | local                       | a variable named after its som name; temporaries `_N`  |
+//! | block `bbN`                 | a label, if anything jumps to it                       |
+//! | place `(*self).0`           | `self->x`                                              |
+//! | `StorageLive`/`StorageDead` | nothing                                                |
 //!
-//! The C compiler lays out structs and handles calling conventions, so
-//! neither appears here. Generated names are prefixed `som_` so they can't
-//! clash with the extern functions a program links against.
+//! A temporary that's used once, by the very next statement, is folded into
+//! that use: `_2 = a + b; _0 = _2; return _0;` becomes `return a + b;`. C
+//! leaves the order of evaluation within an expression open, and does
+//! arithmetic on small integer types in `int`, so folding is limited to where
+//! neither can change the meaning (see [`Use::allows`]).
+//!
+//! The C compiler lays out structs and handles calling conventions, so neither
+//! appears here.
 
 use som_mir::*;
-use std::collections::HashSet;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,9 +47,10 @@ pub fn emit_c(mir: &Mir) -> Result<String, CodegenError> {
         .iter()
         .position(|f| f.is_entry)
         .ok_or(CodegenError::NoEntryPoint)?;
+    let names = Names::new(mir);
     let mut c = Emitter {
         mir,
-        body: None,
+        names,
         out: String::new(),
     };
     c.prelude();
@@ -58,18 +65,351 @@ pub fn emit_c(mir: &Mir) -> Result<String, CodegenError> {
     Ok(c.out)
 }
 
+// --- Names ---
+
+/// C's keywords, the names `<stdbool.h>` and `<stdint.h>` define, and `main`.
+const C_RESERVED: &[&str] = &[
+    "auto",
+    "break",
+    "case",
+    "char",
+    "const",
+    "continue",
+    "default",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "extern",
+    "float",
+    "for",
+    "goto",
+    "if",
+    "inline",
+    "int",
+    "long",
+    "register",
+    "restrict",
+    "return",
+    "short",
+    "signed",
+    "sizeof",
+    "static",
+    "struct",
+    "switch",
+    "typedef",
+    "union",
+    "unsigned",
+    "void",
+    "volatile",
+    "while",
+    "bool",
+    "true",
+    "false",
+    "int8_t",
+    "int16_t",
+    "int32_t",
+    "int64_t",
+    "uint8_t",
+    "uint16_t",
+    "uint32_t",
+    "uint64_t",
+    "intptr_t",
+    "uintptr_t",
+    "main",
+];
+
+/// Picks `base`, or `base_2`, `base_3`... for the first one that isn't taken or reserved,
+/// and takes it. Names starting with `_` are reserved in C, so those get `prefix` in front.
+fn unique(
+    base: &str,
+    prefix: &str,
+    taken: &mut HashSet<String>,
+    reserved: impl Fn(&str) -> bool,
+) -> String {
+    let base = if base.starts_with('_') {
+        format!("{prefix}{base}")
+    } else {
+        base.to_string()
+    };
+    let mut name = base.clone();
+    let mut n = 2;
+    while taken.contains(&name) || C_RESERVED.contains(&name.as_str()) || reserved(&name) {
+        name = format!("{base}_{n}");
+        n += 1;
+    }
+    taken.insert(name.clone());
+    name
+}
+
+/// A som name as a C identifier: `Point::sum` → `Point_sum`, `id<&i32>` → `id_ref_i32`.
+fn identifier(name: &str) -> String {
+    let spelled = name
+        .replace("::", "_")
+        .replace("&mut ", "mutref_")
+        .replace('&', "ref_")
+        .replace('*', "ptr");
+    let mut out = String::new();
+    for c in spelled.chars() {
+        let c = if c.is_ascii_alphanumeric() { c } else { '_' };
+        // One `_` at a time, so `id<i32>` is `id_i32`, not `id_i32_`.
+        if c != '_' || !out.ends_with('_') {
+            out.push(c);
+        }
+    }
+    let trimmed = out.trim_end_matches('_');
+    if trimmed.is_empty() {
+        "f".into()
+    } else {
+        trimmed.into()
+    }
+}
+
+/// The C names of the program's structs, their fields and its functions.
+struct Names {
+    structs: HashMap<DefId, String>,
+    fields: HashMap<DefId, Vec<String>>,
+    funcs: Vec<String>,
+}
+
+impl Names {
+    fn new(mir: &Mir) -> Names {
+        // Struct tags have their own namespace in C.
+        let mut tags = HashSet::new();
+        let mut structs = HashMap::new();
+        let mut fields = HashMap::new();
+        for s in &mir.structs {
+            structs.insert(
+                s.def,
+                unique(&identifier(&s.name), "s", &mut tags, |_| false),
+            );
+            let mut taken = HashSet::new();
+            let names = s
+                .fields
+                .iter()
+                .map(|(name, _)| unique(name, "f", &mut taken, |_| false))
+                .collect();
+            fields.insert(s.def, names);
+        }
+
+        // Externs keep their names, since that's what they link against; the rest avoid them.
+        let externs: HashSet<String> = mir
+            .funcs
+            .iter()
+            .filter_map(|f| f.link_name.clone())
+            .collect();
+        let mut taken = HashSet::new();
+        let funcs = mir
+            .funcs
+            .iter()
+            .map(|f| match &f.link_name {
+                Some(link) => link.clone(),
+                None if f.is_entry => unique("som_main", "f", &mut taken, |n| externs.contains(n)),
+                None => unique(&identifier(&f.name), "f", &mut taken, |n| {
+                    externs.contains(n)
+                }),
+            })
+            .collect();
+
+        Names {
+            structs,
+            fields,
+            funcs,
+        }
+    }
+}
+
+/// C names for a function's locals: the som name where possible, so the C reads like the
+/// source. The return value is `_0` and temporaries are `_N`. A name that would clash (a C
+/// keyword, a function, a shadowed `let`, or one of the `_N` names) gets a `_2`, `_3`...
+fn local_names(body: &Body, functions: &HashSet<String>) -> Vec<String> {
+    let mut taken: HashSet<String> = HashSet::new();
+    let mut names: Vec<Option<String>> = body
+        .locals
+        .iter()
+        .enumerate()
+        .map(|(i, local)| {
+            (i == 0 || local.name.is_none()).then(|| {
+                taken.insert(format!("_{i}"));
+                format!("_{i}")
+            })
+        })
+        .collect();
+    for (i, local) in body.locals.iter().enumerate() {
+        if let (Some(source), None) = (&local.name, &names[i]) {
+            names[i] = Some(unique(source, "v", &mut taken, |n| {
+                functions.contains(n) || n.starts_with("som_")
+            }));
+        }
+    }
+    names
+        .into_iter()
+        .map(|n| n.expect("every local is named"))
+        .collect()
+}
+
+// --- Folding temporaries ---
+
+/// Where a local is read.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Use {
+    /// The whole right-hand side of an assignment: `x = _3`.
+    Assign,
+    /// A call argument; C converts it to the parameter's type.
+    Arg,
+    /// A struct literal field; C converts it to the field's type.
+    Field,
+    /// An operand of an operator: `_3 + 1`, `!_3`.
+    Operand,
+    /// The condition of a branch.
+    Branch,
+    /// Anything else: borrowed, written through, or read through a projection.
+    Other,
+}
+
+impl Use {
+    /// Whether a temporary assigned `rvalue` can be folded into this use without changing
+    /// what the program does.
+    fn allows(self, rvalue: &Rvalue, narrow: bool) -> bool {
+        match rvalue {
+            // C doesn't fix the order of evaluation inside an expression, so a call is only
+            // folded where nothing else is evaluated around it.
+            Rvalue::Call { .. } => matches!(self, Use::Assign | Use::Branch),
+            // C does arithmetic on 8- and 16-bit integers in `int`, so their results only fold
+            // where C converts them back right away.
+            Rvalue::Binary { op, .. } if narrow && is_arithmetic(*op) => {
+                matches!(self, Use::Assign | Use::Arg | Use::Field)
+            }
+            _ => self != Use::Other,
+        }
+    }
+}
+
+fn is_arithmetic(op: BinOp) -> bool {
+    matches!(
+        op,
+        BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
+    )
+}
+
+/// How often each local is assigned and read in a body, and where it was read.
+struct Usage {
+    assigns: Vec<u32>,
+    reads: Vec<u32>,
+    read_as: Vec<Use>,
+}
+
+impl Usage {
+    fn of(mir: &Mir, body: &Body) -> Usage {
+        let n = body.locals.len();
+        let mut u = Usage {
+            assigns: vec![0; n],
+            reads: vec![0; n],
+            read_as: vec![Use::Other; n],
+        };
+        for block in &body.blocks {
+            for stmt in &block.stmts {
+                let StatementKind::Assign(dest, rvalue) = &stmt.kind else {
+                    continue;
+                };
+                if dest.projection.is_empty() {
+                    u.assigns[dest.local.0 as usize] += 1;
+                } else {
+                    u.read(dest.local, Use::Other);
+                }
+                match rvalue {
+                    Rvalue::Use(op) => u.operand(op, Use::Assign),
+                    Rvalue::Ref { place, .. } => u.read(place.local, Use::Other),
+                    Rvalue::Not(op) => u.operand(op, Use::Operand),
+                    Rvalue::Binary { lhs, rhs, .. } => {
+                        u.operand(lhs, Use::Operand);
+                        u.operand(rhs, Use::Operand);
+                    }
+                    Rvalue::Struct { fields, .. } => {
+                        fields.iter().for_each(|f| u.operand(f, Use::Field))
+                    }
+                    Rvalue::Call { func, args } => {
+                        // C converts an argument to its parameter's type, but a variadic
+                        // function's extra arguments are only promoted, so they're operands.
+                        let fixed = mir.func(*func).params.len();
+                        for (i, a) in args.iter().enumerate() {
+                            u.operand(a, if i < fixed { Use::Arg } else { Use::Operand });
+                        }
+                    }
+                }
+            }
+            if let TerminatorKind::Branch { condition, .. } = &block.terminator.kind {
+                u.operand(condition, Use::Branch);
+            }
+        }
+        u
+    }
+
+    fn operand(&mut self, op: &Operand, as_: Use) {
+        if let Operand::Copy(place) | Operand::Move(place) = op {
+            self.read(
+                place.local,
+                if place.projection.is_empty() {
+                    as_
+                } else {
+                    Use::Other
+                },
+            );
+        }
+    }
+
+    fn read(&mut self, local: Local, as_: Use) {
+        self.reads[local.0 as usize] += 1;
+        self.read_as[local.0 as usize] = as_;
+    }
+}
+
+/// A C expression, and whether it can be used as an operand without parentheses.
+#[derive(Clone)]
+struct Expr {
+    text: String,
+    atomic: bool,
+}
+
+impl Expr {
+    fn atom(text: String) -> Expr {
+        Expr { text, atomic: true }
+    }
+
+    fn compound(text: String) -> Expr {
+        Expr {
+            text,
+            atomic: false,
+        }
+    }
+
+    /// The expression as an operand of an operator.
+    fn operand(self) -> String {
+        if self.atomic {
+            self.text
+        } else {
+            format!("({})", self.text)
+        }
+    }
+}
+
+// --- Emitting ---
+
 struct Emitter<'a> {
     mir: &'a Mir,
-    /// The body of the function being emitted.
-    body: Option<&'a Body>,
+    names: Names,
     out: String,
 }
 
-/// `name` with everything but letters, digits and `_` replaced, for use in a C identifier.
-fn sanitize(name: &str) -> String {
-    name.chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-        .collect()
+/// The state while emitting one function.
+struct FnState<'a> {
+    body: &'a Body,
+    locals: Vec<String>,
+    usage: Usage,
+    /// Temporaries computed but not yet written out, waiting to be folded into their use.
+    pending: HashMap<Local, Expr>,
+    /// How often the emitted code mentions each local, so only those mentioned get declared.
+    mentioned: RefCell<HashMap<Local, u32>>,
 }
 
 impl<'a> Emitter<'a> {
@@ -87,27 +427,12 @@ impl<'a> Emitter<'a> {
         self.line("");
     }
 
-    // --- Names and types ---
-
     fn struct_name(&self, def: DefId) -> String {
-        let index = self
-            .mir
-            .structs
-            .iter()
-            .position(|s| s.def == def)
-            .expect("struct exists");
-        format!(
-            "struct som_s{index}_{}",
-            sanitize(&self.mir.structs[index].name)
-        )
+        format!("struct {}", self.names.structs[&def])
     }
 
-    fn func_name(&self, id: FuncId) -> String {
-        let func = self.mir.func(id);
-        match &func.link_name {
-            Some(link) => link.clone(),
-            None => format!("som_f{}_{}", id.0, sanitize(&func.name)),
-        }
+    fn func_name(&self, id: FuncId) -> &str {
+        &self.names.funcs[id.0 as usize]
     }
 
     fn ty(&self, ty: TypeId) -> String {
@@ -146,6 +471,14 @@ impl<'a> Emitter<'a> {
         matches!(self.mir.types.get(ty), Ty::Unit)
     }
 
+    /// Whether `ty` is an integer that C does arithmetic on as `int`.
+    fn is_narrow(&self, ty: TypeId) -> bool {
+        matches!(
+            self.mir.types.get(ty),
+            Ty::Int(IntTy::I8 | IntTy::I16 | IntTy::U8 | IntTy::U16)
+        )
+    }
+
     /// The C return type of a function. Externs returning `()` return `void`.
     fn ret_ty(&self, func: &Function) -> String {
         if func.link_name.is_some() && self.is_unit(func.ret) {
@@ -164,7 +497,6 @@ impl<'a> Emitter<'a> {
             let name = self.struct_name(s.def);
             self.line(format!("{name};"));
         }
-
         let mut done = HashSet::new();
         for s in &mir.structs {
             self.define_struct(s.def, &mut done, &mut Vec::new());
@@ -191,37 +523,37 @@ impl<'a> Emitter<'a> {
         let fields: Vec<String> = s
             .fields
             .iter()
-            .enumerate()
-            .map(|(i, &(_, ty))| format!(" {} f{i};", self.ty(ty)))
+            .zip(&self.names.fields[&def])
+            .map(|(&(_, ty), name)| format!(" {} {name};", self.ty(ty)))
             .collect();
-        let name = self.struct_name(def);
         // C doesn't allow empty structs.
         let fields = if fields.is_empty() {
             " som_unit unused;".to_string()
         } else {
             fields.concat()
         };
+        let name = self.struct_name(def);
         self.line(format!("{name} {{{fields} }};"));
     }
 
-    fn signature(&self, id: FuncId, func: &Function, named_params: bool) -> String {
+    fn signature(&self, id: FuncId, func: &Function, params: Option<&[String]>) -> String {
         let params: Vec<String> = func
             .params
             .iter()
             .enumerate()
-            .map(|(i, &p)| {
-                if named_params {
-                    format!("{} _{}", self.ty(p), i + 1)
-                } else {
-                    self.ty(p)
-                }
+            .map(|(i, &p)| match params {
+                Some(names) => format!("{} {}", self.ty(p), names[i + 1]),
+                None => self.ty(p),
             })
             .collect();
-        let params = if params.is_empty() {
+        let mut params = if params.is_empty() {
             "void".into()
         } else {
             params.join(", ")
         };
+        if func.variadic {
+            params.push_str(", ...");
+        }
         let storage = if func.link_name.is_some() {
             ""
         } else {
@@ -244,7 +576,7 @@ impl<'a> Emitter<'a> {
             {
                 continue;
             }
-            let decl = self.signature(FuncId(i as u32), func, false);
+            let decl = self.signature(FuncId(i as u32), func, None);
             self.line(format!("{decl}; // {}", func.name));
         }
         self.line("");
@@ -266,123 +598,232 @@ impl<'a> Emitter<'a> {
     // --- Bodies ---
 
     fn function(&mut self, id: FuncId, func: &Function, body: &'a Body) {
-        self.body = Some(body);
-        let signature = self.signature(id, func, true);
+        let functions: HashSet<String> = self.names.funcs.iter().cloned().collect();
+        let mut f = FnState {
+            body,
+            locals: local_names(body, &functions),
+            usage: Usage::of(self.mir, body),
+            pending: HashMap::new(),
+            mentioned: RefCell::new(HashMap::new()),
+        };
+
+        // Only blocks something jumps to need a label. Every block ends in a jump or a
+        // return, so control never falls from one block into the next.
+        let targets: HashSet<BlockId> = body
+            .blocks
+            .iter()
+            .flat_map(|b| b.terminator.kind.successors())
+            .collect();
+        let mut code = Vec::new();
+        for (i, block) in body.blocks.iter().enumerate() {
+            if targets.contains(&BlockId(i as u32)) {
+                code.push(format!("{}:", BlockId(i as u32)));
+            }
+            self.block(&mut f, block, &mut code);
+        }
+
+        let signature = self.signature(id, func, Some(&f.locals));
         self.line(format!("// {}", func.name));
         self.line(format!("{signature} {{"));
+        let mentioned = f.mentioned.borrow();
         for (i, local) in body
             .locals
             .iter()
             .enumerate()
             .skip(body.arg_count + 1)
-            .chain(std::iter::once((0, &body.locals[0])))
+            .chain([(0, &body.locals[0])])
         {
-            let comment = local
-                .name
-                .as_ref()
-                .map(|n| format!(" // {n}"))
-                .unwrap_or_default();
-            self.line(format!("    {} _{i};{comment}", self.ty(local.ty)));
-        }
-        for (i, block) in body.blocks.iter().enumerate() {
-            self.line(format!("bb{i}:;"));
-            for stmt in &block.stmts {
-                if let StatementKind::Assign(place, rvalue) = &stmt.kind {
-                    let line = self.assign(place, rvalue);
-                    self.line(format!("    {line}"));
-                }
+            if mentioned.get(&Local(i as u32)).is_some_and(|&n| n > 0) {
+                self.line(format!("    {} {};", self.ty(local.ty), f.locals[i]));
             }
-            let terminator = self.terminator(&block.terminator.kind);
-            self.line(format!("    {terminator}"));
+        }
+        for line in code {
+            self.line(line);
         }
         self.line("}");
         self.line("");
     }
 
-    fn terminator(&self, kind: &TerminatorKind) -> String {
-        match kind {
-            TerminatorKind::Goto(target) => format!("goto {target};"),
+    fn block(&self, f: &mut FnState, block: &Block, code: &mut Vec<String>) {
+        // `_0 = …` written as the block's last statement, which a `return` can take over.
+        let mut returned: Option<(usize, String)> = None;
+
+        for stmt in &block.stmts {
+            let StatementKind::Assign(dest, rvalue) = &stmt.kind else {
+                continue;
+            };
+            self.flush_unless_read(f, &reads(rvalue), code);
+
+            let value = self.rvalue(f, rvalue);
+            let local = dest.local;
+            let is_temp = local != Local::RETURN && f.body.local(local).name.is_none();
+            if is_temp && dest.projection.is_empty() {
+                let narrow = self.is_narrow(f.body.local(local).ty);
+                let (assigns, reads) = (
+                    f.usage.assigns[local.0 as usize],
+                    f.usage.reads[local.0 as usize],
+                );
+                if assigns == 1
+                    && reads == 1
+                    && f.usage.read_as[local.0 as usize].allows(rvalue, narrow)
+                {
+                    f.pending.insert(local, value);
+                    continue;
+                }
+                // Nothing reads it: a call is kept for what it does, anything else dropped.
+                if reads == 0 {
+                    if matches!(rvalue, Rvalue::Call { .. }) {
+                        code.push(format!("    {};", value.text));
+                    }
+                    returned = None;
+                    continue;
+                }
+            }
+
+            let place = self.place(f, dest);
+            // A call to an extern returning `void` can't be assigned; call it, then store `()`.
+            if let Rvalue::Call { func, .. } = rvalue
+                && self.ret_ty(self.mir.func(*func)) == "void"
+            {
+                code.push(format!("    {}; {place} = 0;", value.text));
+                returned = None;
+                continue;
+            }
+            code.push(format!("    {place} = {};", value.text));
+            returned = (local == Local::RETURN && dest.projection.is_empty())
+                .then(|| (code.len() - 1, value.text));
+        }
+
+        let condition = match &block.terminator.kind {
+            TerminatorKind::Branch { condition, .. } => vec![operand_local(condition)],
+            _ => vec![],
+        };
+        self.flush_unless_read(
+            f,
+            &condition.into_iter().flatten().collect::<Vec<_>>(),
+            code,
+        );
+
+        match &block.terminator.kind {
+            TerminatorKind::Goto(target) => code.push(format!("    goto {target};")),
             TerminatorKind::Branch {
                 condition,
                 then,
                 otherwise,
             } => {
-                format!(
-                    "if ({}) goto {then}; else goto {otherwise};",
-                    self.operand(condition)
-                )
+                let condition = self.operand(f, condition).text;
+                code.push(format!(
+                    "    if ({condition}) goto {then}; else goto {otherwise};"
+                ));
             }
-            TerminatorKind::Return => "return _0;".into(),
-            TerminatorKind::Unreachable => "__builtin_unreachable();".into(),
-        }
-    }
-
-    fn assign(&self, place: &Place, rvalue: &Rvalue) -> String {
-        let place = self.place(place);
-        // A call to an extern returning `void` can't be assigned; call it, then store `()`.
-        if let Rvalue::Call { func, .. } = rvalue
-            && self.ret_ty(self.mir.func(*func)) == "void"
-        {
-            return format!("{}; {place} = 0;", self.rvalue(rvalue));
-        }
-        format!("{place} = {};", self.rvalue(rvalue))
-    }
-
-    fn rvalue(&self, rvalue: &Rvalue) -> String {
-        match rvalue {
-            Rvalue::Use(op) => self.operand(op),
-            Rvalue::Ref { place, .. } => format!("&{}", self.place(place)),
-            Rvalue::Not(op) => format!("!{}", self.operand(op)),
-            Rvalue::Binary { op, lhs, rhs } => {
-                let (l, r) = (self.operand(lhs), self.operand(rhs));
-                // `ptr + n` offsets by `n` bytes.
-                if *op == BinOp::Add && self.operand_ty(lhs) == self.mir.types.pointer {
-                    return format!("(void*)((uint8_t*){l} + {r})");
+            TerminatorKind::Return => match returned {
+                // `_0 = x; return _0;` is `return x;`, if nothing was written in between.
+                Some((line, value)) if line == code.len() - 1 => {
+                    code[line] = format!("    return {value};");
+                    *f.mentioned.borrow_mut().entry(Local::RETURN).or_default() -= 1;
                 }
-                format!("({l} {} {r})", op.symbol())
+                _ => {
+                    *f.mentioned.borrow_mut().entry(Local::RETURN).or_default() += 1;
+                    code.push(format!("    return {};", f.locals[0]));
+                }
+            },
+            TerminatorKind::Unreachable => code.push("    __builtin_unreachable();".into()),
+        }
+    }
+
+    /// Writes out every pending temporary that the next statement doesn't read, so that
+    /// temporaries are only ever folded into the statement right after them.
+    fn flush_unless_read(&self, f: &mut FnState, read: &[Local], code: &mut Vec<String>) {
+        let mut flush: Vec<Local> = f
+            .pending
+            .keys()
+            .filter(|l| !read.contains(l))
+            .copied()
+            .collect();
+        flush.sort();
+        for local in flush {
+            let value = f.pending.remove(&local).expect("pending");
+            *f.mentioned.borrow_mut().entry(local).or_default() += 1;
+            code.push(format!(
+                "    {} = {};",
+                f.locals[local.0 as usize], value.text
+            ));
+        }
+    }
+
+    fn rvalue(&self, f: &mut FnState, rvalue: &Rvalue) -> Expr {
+        match rvalue {
+            Rvalue::Use(op) => self.operand(f, op),
+            Rvalue::Ref { place, .. } => Expr::compound(format!("&{}", self.place(f, place))),
+            Rvalue::Not(op) => Expr::compound(format!("!{}", self.operand(f, op).operand())),
+            Rvalue::Binary { op, lhs, rhs } => {
+                let pointer =
+                    *op == BinOp::Add && self.operand_ty(f, lhs) == self.mir.types.pointer;
+                let (l, r) = (
+                    self.operand(f, lhs).operand(),
+                    self.operand(f, rhs).operand(),
+                );
+                // `ptr + n` offsets by `n` bytes.
+                if pointer {
+                    return Expr::compound(format!("(void*)((uint8_t*){l} + {r})"));
+                }
+                Expr::compound(format!("{l} {} {r}", op.symbol()))
             }
             Rvalue::Struct { def, fields } => {
-                let fields: Vec<String> = fields.iter().map(|f| self.operand(f)).collect();
+                let fields: Vec<String> =
+                    fields.iter().map(|op| self.operand(f, op).text).collect();
                 let fields = if fields.is_empty() {
                     "0".into()
                 } else {
                     fields.join(", ")
                 };
-                format!("({}){{{fields}}}", self.struct_name(*def))
+                Expr::atom(format!("({}){{{fields}}}", self.struct_name(*def)))
             }
             Rvalue::Call { func, args } => {
-                let args: Vec<String> = args.iter().map(|a| self.operand(a)).collect();
-                format!("{}({})", self.func_name(*func), args.join(", "))
+                let args: Vec<String> = args.iter().map(|a| self.operand(f, a).text).collect();
+                Expr::atom(format!("{}({})", self.func_name(*func), args.join(", ")))
             }
         }
     }
 
-    fn operand_ty(&self, op: &Operand) -> TypeId {
+    fn operand_ty(&self, f: &FnState, op: &Operand) -> TypeId {
         match op {
             Operand::Const(c) => c.ty,
-            Operand::Copy(place) | Operand::Move(place) => self.place_ty(place),
+            Operand::Copy(place) | Operand::Move(place) => self.place_ty(f, place),
         }
     }
 
-    fn place_ty(&self, place: &Place) -> TypeId {
-        let body = self.body.expect("places only appear in bodies");
-        let mut ty = body.local(place.local).ty;
+    fn place_ty(&self, f: &FnState, place: &Place) -> TypeId {
+        let mut ty = f.body.local(place.local).ty;
         for projection in &place.projection {
-            ty = match (projection, self.mir.types.get(ty)) {
-                (Projection::Deref, Ty::Ref { to, .. }) => *to,
-                (Projection::Field(i), Ty::Struct(def)) => self.mir.struct_def(*def).fields[*i].1,
-                _ => unreachable!("validated MIR has well-typed places"),
-            };
+            ty = self.project(ty, *projection);
         }
         ty
     }
 
-    fn operand(&self, op: &Operand) -> String {
+    fn project(&self, ty: TypeId, projection: Projection) -> TypeId {
+        match (projection, self.mir.types.get(ty)) {
+            (Projection::Deref, Ty::Ref { to, .. }) => *to,
+            (Projection::Field(i), Ty::Struct(def)) => self.mir.struct_def(*def).fields[i].1,
+            _ => unreachable!("validated MIR has well-typed places"),
+        }
+    }
+
+    fn operand(&self, f: &mut FnState, op: &Operand) -> Expr {
         match op {
+            // A temporary computed by the previous statement is folded in here.
+            Operand::Copy(place) | Operand::Move(place) if place.projection.is_empty() => {
+                match f.pending.remove(&place.local) {
+                    Some(value) => value,
+                    None => Expr::atom(self.place(f, place)),
+                }
+            }
             // Moves are plain copies in C; the borrow checker already made sure they're sound.
-            Operand::Copy(place) | Operand::Move(place) => self.place(place),
-            Operand::Const(c) => match &c.kind {
-                ConstKind::Int(n) => format!("(({}){n}LL)", self.ty(c.ty)),
+            Operand::Copy(place) | Operand::Move(place) => Expr::atom(self.place(f, place)),
+            Operand::Const(c) => Expr::atom(match &c.kind {
+                // C gives a literal a type wide enough for its value, and converts it to
+                // whatever it's combined with, so no cast is needed.
+                ConstKind::Int(n) => n.to_string(),
                 ConstKind::Float(x) => match self.mir.types.get(c.ty) {
                     Ty::Float(FloatTy::F32) => format!("{x:?}f"),
                     _ => format!("{x:?}"),
@@ -390,20 +831,66 @@ impl<'a> Emitter<'a> {
                 ConstKind::Bool(b) => (if *b { "true" } else { "false" }).into(),
                 ConstKind::Str(s) => format!("(uint8_t*){}", c_string(s)),
                 ConstKind::Unit => "0".into(),
-                ConstKind::Func(f) => format!("(void*)&{}", self.func_name(*f)),
-            },
+                ConstKind::Func(id) => format!("(void*)&{}", self.func_name(*id)),
+            }),
         }
     }
 
-    fn place(&self, place: &Place) -> String {
-        let mut s = format!("_{}", place.local.0);
-        for projection in &place.projection {
+    /// A place as a C lvalue: `x`, `p.x`, `self->x`, `(*r)`.
+    fn place(&self, f: &FnState, place: &Place) -> String {
+        *f.mentioned.borrow_mut().entry(place.local).or_default() += 1;
+        let mut s = f.locals[place.local.0 as usize].clone();
+        let mut ty = f.body.local(place.local).ty;
+        let mut projections = place.projection.iter().peekable();
+        while let Some(&projection) = projections.next() {
+            if projection == Projection::Deref
+                && let Some(&&Projection::Field(i)) = projections.peek()
+            {
+                // `(*p).x` is `p->x`.
+                projections.next();
+                ty = self.project(ty, Projection::Deref);
+                s = format!("{s}->{}", self.field_name(ty, i));
+                ty = self.project(ty, Projection::Field(i));
+                continue;
+            }
             s = match projection {
-                Projection::Field(i) => format!("{s}.f{i}"),
+                Projection::Field(i) => format!("{s}.{}", self.field_name(ty, i)),
                 Projection::Deref => format!("(*{s})"),
             };
+            ty = self.project(ty, projection);
         }
         s
+    }
+
+    fn field_name(&self, struct_ty: TypeId, index: usize) -> &str {
+        let Ty::Struct(def) = self.mir.types.get(struct_ty) else {
+            unreachable!("fields belong to structs")
+        };
+        &self.names.fields[def][index]
+    }
+}
+
+/// The local a whole-local operand reads, if it is one.
+fn operand_local(op: &Operand) -> Option<Local> {
+    match op {
+        Operand::Copy(place) | Operand::Move(place) if place.projection.is_empty() => {
+            Some(place.local)
+        }
+        _ => None,
+    }
+}
+
+/// The whole locals an rvalue reads, which pending temporaries can be folded into.
+fn reads(rvalue: &Rvalue) -> Vec<Local> {
+    match rvalue {
+        Rvalue::Use(op) | Rvalue::Not(op) => operand_local(op).into_iter().collect(),
+        Rvalue::Binary { lhs, rhs, .. } => {
+            [lhs, rhs].into_iter().filter_map(operand_local).collect()
+        }
+        Rvalue::Struct { fields: ops, .. } | Rvalue::Call { args: ops, .. } => {
+            ops.iter().filter_map(operand_local).collect()
+        }
+        Rvalue::Ref { .. } => Vec::new(),
     }
 }
 

@@ -524,6 +524,7 @@ impl<'a> Checker<'a> {
                         self.errors.push(TypeError::WrongArgCount {
                             name,
                             expected: 0,
+                            at_least: false,
                             found: args.len() + 1,
                             span: self.span(id),
                         });
@@ -654,10 +655,18 @@ impl<'a> Checker<'a> {
         params: &[TypeId],
         args: &[Id<Expr>],
     ) {
-        if args.len() != params.len() {
+        // A variadic extern takes any number of extra arguments after its parameters.
+        let variadic = self.ast.funcs[func].variadic;
+        let count_ok = if variadic {
+            args.len() >= params.len()
+        } else {
+            args.len() == params.len()
+        };
+        if !count_ok {
             self.errors.push(TypeError::WrongArgCount {
                 name: name.to_string(),
                 expected: params.len(),
+                at_least: variadic,
                 found: args.len(),
                 span: self.span(call),
             });
@@ -671,6 +680,9 @@ impl<'a> Checker<'a> {
                 .ty
                 .map(|t| self.ast.types.span(t).clone());
             self.expect(arg, param, from);
+        }
+        for &extra in &args[params.len()..] {
+            self.infer(extra);
         }
     }
 

@@ -1,0 +1,5 @@
+// expect: error
+
+fn sum(first: i32, ...) -> i32 {
+    first
+}

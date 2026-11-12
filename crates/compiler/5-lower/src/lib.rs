@@ -138,6 +138,7 @@ impl<'a> Lowerer<'a> {
                 .is_none()
                 .then(|| ast_func.name.name.to_string()),
             is_entry,
+            variadic: ast_func.variadic,
         });
         if ast_func.body.is_some() {
             self.queue.push((id, func, type_args.clone()));

@@ -343,17 +343,30 @@ fn run(path: &Path, build: &BuildArgs, args: &[String]) -> ExitCode {
         ]);
         return ExitCode::FAILURE;
     }
-    let code = match build_to(&checked, &dir.join("program"), build) {
-        Some(exe) => match som_driver::run(&checked, &exe, args) {
-            // Exit codes are a byte; a program killed by a signal has none.
-            Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
-            Err(e) => {
-                ui::error(format!("could not start the program: {e}"));
-                ExitCode::FAILURE
-            }
-        },
-        None => ExitCode::FAILURE,
-    };
+    let code = run_in(&checked, path, &dir, build, args);
     let _ = std::fs::remove_dir_all(&dir);
     code
+}
+
+/// Builds the program into `dir` and runs it, returning its exit code.
+fn run_in(
+    checked: &Checked,
+    path: &Path,
+    dir: &Path,
+    build: &BuildArgs,
+    args: &[String],
+) -> ExitCode {
+    let Some(exe) = build_to(checked, &dir.join("program"), build) else {
+        return ExitCode::FAILURE;
+    };
+    // The executable is temporary, so name the program rather than where it went.
+    ui::success("built", message::path(path.display()));
+    match som_driver::run(checked, &exe, args) {
+        // Exit codes are a byte; a program killed by a signal has none.
+        Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
+        Err(e) => {
+            ui::error(format!("could not start the program: {e}"));
+            ExitCode::FAILURE
+        }
+    }
 }

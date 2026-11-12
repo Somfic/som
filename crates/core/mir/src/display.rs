@@ -51,7 +51,10 @@ impl Mir {
 
     fn write_func(&self, out: &mut String, func: &Function) -> fmt::Result {
         let Some(body) = &func.body else {
-            let params: Vec<String> = func.params.iter().map(|&p| self.display_ty(p)).collect();
+            let mut params: Vec<String> = func.params.iter().map(|&p| self.display_ty(p)).collect();
+            if func.variadic {
+                params.push("...".into());
+            }
             let link = func.link_name.as_deref().unwrap_or("?");
             return writeln!(
                 out,

@@ -1,0 +1,10 @@
+// expect: exit 1
+
+// A variadic argument isn't converted to a parameter type, so `x + 10` must already
+// have wrapped to 4 (one character) rather than reaching printf as 260.
+extern { fn printf(format: &str, ...) -> i32; }
+
+fn main() -> i32 {
+    let x: u8 = 250;
+    printf("%d", x + 10)
+}

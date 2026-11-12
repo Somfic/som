@@ -138,6 +138,11 @@ impl Dumper<'_> {
             .returns
             .map(|r| format!(" -> {}", ast.type_text(r)))
             .unwrap_or_default();
+        let params = if f.variadic {
+            [params, vec!["...".to_string()]].concat()
+        } else {
+            params
+        };
         self.node(
             format!("fn {}{generics}({}){returns}", f.name, params.join(", ")),
             |d| {

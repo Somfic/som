@@ -23,6 +23,8 @@ pub enum TypeError {
     WrongArgCount {
         name: String,
         expected: usize,
+        /// The function is variadic, so `expected` is a minimum.
+        at_least: bool,
         found: usize,
         span: Span,
     },
@@ -109,21 +111,27 @@ impl TypeError {
             TypeError::WrongArgCount {
                 name,
                 expected,
+                at_least,
                 found,
                 span,
             } => {
                 let arguments = |n: usize| if n == 1 { "argument" } else { "arguments" };
                 let given = if *found == 1 { "was" } else { "were" };
+                let count = if *at_least {
+                    format!("at least {expected}")
+                } else {
+                    expected.to_string()
+                };
                 Diagnostic::error(msg![
                     func(name),
                     format!(
-                        " takes {expected} {}, but {found} {given} given",
+                        " takes {count} {}, but {found} {given} given",
                         arguments(*expected)
                     ),
                 ])
                 .with_label(Label::primary(
                     span.clone(),
-                    format!("expected {expected} {}", arguments(*expected)),
+                    format!("expected {count} {}", arguments(*expected)),
                 ))
             }
             TypeError::UnknownField {

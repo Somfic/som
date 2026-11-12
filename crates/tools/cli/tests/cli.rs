@@ -36,10 +36,9 @@ fn help_lists_commands_in_workflow_order() {
 #[test]
 fn run_exits_with_the_programs_exit_code() {
     let dir = project();
-    assert_eq!(
-        som(dir.path(), &["run", "main.som"]).status.code(),
-        Some(42)
-    );
+    let out = som(dir.path(), &["run", "main.som"]);
+    assert_eq!(out.status.code(), Some(42));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("built: `main.som`"));
 }
 
 #[test]

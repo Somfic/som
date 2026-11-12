@@ -34,6 +34,8 @@ pub struct Func {
     pub params: Vec<Param>,
     pub returns: Option<Id<TypeExpr>>,
     pub body: Option<Id<Expr>>,
+    /// An extern function taking extra arguments after its parameters, like C's `printf`.
+    pub variadic: bool,
 }
 
 pub struct Param {

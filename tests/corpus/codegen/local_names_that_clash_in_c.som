@@ -1,0 +1,14 @@
+// expect: exit 15
+
+// The generated C names locals after their som names. These would all break C:
+// a keyword, a shadowed name, a local that hides a function, and one that looks
+// like a temporary.
+extern { fn abs(x: i32) -> i32; }
+
+fn main() -> i32 {
+    let int = 2;
+    let abs = abs(0 - 3);
+    let int = int + abs;
+    let _1 = 10;
+    int + _1
+}

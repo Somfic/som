@@ -194,7 +194,16 @@ impl Validator<'_> {
                     self.problem(format!("calls missing function {}", func.0));
                     return None;
                 };
-                self.check_operands(&format!("call to {}", callee.name), &callee.params, args);
+                // A variadic extern's extra arguments can be anything.
+                let fixed = if callee.variadic {
+                    &args[..callee.params.len().min(args.len())]
+                } else {
+                    args
+                };
+                if callee.variadic && args.len() < callee.params.len() {
+                    self.problem(format!("call to {} has too few arguments", callee.name));
+                }
+                self.check_operands(&format!("call to {}", callee.name), &callee.params, fixed);
                 Some(callee.ret)
             }
         }

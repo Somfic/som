@@ -1,0 +1,8 @@
+// expect: exit 1
+
+// C does u8 arithmetic in int, where 250 + 10 is 260. In som it wraps to 4.
+fn main() -> i32 {
+    let x: u8 = 250;
+    let wrapped = x + 10 < 10;
+    1 if wrapped else 0
+}

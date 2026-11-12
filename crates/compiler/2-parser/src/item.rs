@@ -1,4 +1,6 @@
 use som_ast::{Expr, Extern, Field, Func, Id, Impl, Item, Param, Struct, Use};
+use som_base::message::code;
+use som_base::msg;
 use som_lexer::TokenKind;
 
 use crate::{Parser, RecoveryLevel, StmtOrExpr};
@@ -79,6 +81,7 @@ impl Parser<'_> {
             params: Vec::new(),
             returns: None,
             body: Some(body),
+            variadic: false,
         };
         let id = self.ast.funcs.alloc(func, span);
         self.add_item(Item::Func(id));
@@ -150,7 +153,7 @@ impl Parser<'_> {
             Vec::new()
         };
 
-        let params = self.parse_params(false)?;
+        let (params, variadic) = self.parse_params(false)?;
         let returns = if self.eat(TokenKind::Arrow) {
             Some(self.parse_type()?)
         } else {
@@ -165,30 +168,64 @@ impl Parser<'_> {
             params,
             returns,
             body,
+            variadic,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
 
-    /// `(a: i32, b)`. Extern functions must annotate every parameter.
-    fn parse_params(&mut self, require_types: bool) -> Option<Vec<Param>> {
+    /// `(a: i32, b)`. Extern functions must annotate every parameter, and may end with
+    /// `...` to take extra arguments, like C's `printf`; the `bool` says whether they do.
+    fn parse_params(&mut self, is_extern: bool) -> Option<(Vec<Param>, bool)> {
         self.expect(TokenKind::OpenParen, "a list of function parameters")?;
-        let params = self.parse_comma_list(TokenKind::CloseParen, |p| {
-            let name = p.parse_ident("a function parameter name")?;
-            let ty = if require_types {
-                p.expect(TokenKind::Colon, "a colon after function parameter name")?;
-                Some(p.parse_type()?)
-            } else if p.eat(TokenKind::Colon) {
-                Some(p.parse_type()?)
+        let mut params = Vec::new();
+        let mut variadic = false;
+        while !self.at(TokenKind::CloseParen) && !self.at_eof() {
+            if self.at(TokenKind::Ellipsis) {
+                let span = self.current_span();
+                self.advance();
+                if !is_extern {
+                    self.error_at(
+                        span,
+                        "only extern functions can take extra arguments",
+                        "`...` isn't allowed here",
+                    );
+                } else if params.is_empty() {
+                    self.error_at(
+                        span,
+                        msg!["a ", code("..."), " needs a parameter before it"],
+                        "C requires one",
+                    );
+                } else {
+                    variadic = true;
+                }
+                if !self.at(TokenKind::CloseParen) {
+                    self.error_missing(
+                        msg![code("..."), " must come last"],
+                        "a closing parenthesis",
+                    );
+                    return None;
+                }
+                break;
+            }
+            let name = self.parse_ident("a function parameter name")?;
+            let ty = if is_extern {
+                self.expect(TokenKind::Colon, "a colon after function parameter name")?;
+                Some(self.parse_type()?)
+            } else if self.eat(TokenKind::Colon) {
+                Some(self.parse_type()?)
             } else {
                 None
             };
-            Some(Param { name, ty })
-        })?;
+            params.push(Param { name, ty });
+            if !self.eat(TokenKind::Comma) {
+                break;
+            }
+        }
         self.expect(
             TokenKind::CloseParen,
             "a closing parenthesis after function parameters",
         )?;
-        Some(params)
+        Some((params, variadic))
     }
 
     /// `extern "lib" { fn foo(); }`
@@ -233,7 +270,7 @@ impl Parser<'_> {
         let start = self.current_span();
         self.expect(TokenKind::Fn, "a function declaration")?;
         let name = self.parse_ident("a function name")?;
-        let params = self.parse_params(true)?;
+        let (params, variadic) = self.parse_params(true)?;
         let returns = if self.eat(TokenKind::Arrow) {
             Some(self.parse_type()?)
         } else {
@@ -251,6 +288,7 @@ impl Parser<'_> {
             params,
             returns,
             body: None,
+            variadic,
         };
         Some(self.ast.funcs.alloc(func, span))
     }

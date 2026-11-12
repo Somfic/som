@@ -662,10 +662,14 @@ fn signature(a: &Analysis, f: Id<Func>) -> String {
         format!(" -> {}", ty(a, sig.ret))
     };
     let prefix = if func.body.is_none() { "extern " } else { "" };
+    let mut params = params_of(a, f);
+    if func.variadic {
+        params.push("...".into());
+    }
     format!(
         "{prefix}fn {}{generics}({}){ret}",
         func.name,
-        params_of(a, f).join(", ")
+        params.join(", ")
     )
 }
 

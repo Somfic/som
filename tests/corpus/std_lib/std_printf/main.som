@@ -1,0 +1,7 @@
+// expect: exit 7
+
+use std;
+
+fn main() -> i32 {
+    std::printf("%s %d\n", "fib", 55)
+}

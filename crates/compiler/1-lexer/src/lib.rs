@@ -131,6 +131,8 @@ pub enum TokenKind {
     Ampersand,
     #[token(".")]
     Dot,
+    #[token("...")]
+    Ellipsis,
 
     #[token("'")]
     SingleQuote,
@@ -218,6 +220,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::FatArrow => write!(f, "=>"),
             TokenKind::Ampersand => write!(f, "&"),
             TokenKind::Dot => write!(f, "."),
+            TokenKind::Ellipsis => write!(f, "..."),
             TokenKind::SingleQuote => write!(f, "'"),
             TokenKind::DoubleQuote => write!(f, "\""),
             TokenKind::Whitespace => write!(f, "whitespace"),

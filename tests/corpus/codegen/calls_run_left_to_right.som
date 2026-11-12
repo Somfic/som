@@ -1,0 +1,13 @@
+// expect: exit 12
+
+// C doesn't fix the order operands are evaluated in, so the generated C must not
+// put both calls in one expression: left to right, this is 1 * 10 + 2.
+fn bump(counter: &mut i32) -> i32 {
+    *counter = *counter + 1;
+    *counter
+}
+
+fn main() -> i32 {
+    let mut n = 0;
+    bump(&mut n) * 10 + bump(&mut n)
+}

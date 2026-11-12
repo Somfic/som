@@ -1,0 +1,5 @@
+// expect: error
+
+fn main() -> &str {
+    "\q"
+}

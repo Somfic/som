@@ -1,5 +1,7 @@
+extern "raylib" {
+    fn test();
+}
+
 fn main() {
-    let a = "hello";
-    let b = "hello2";
-    a + b
+    test();
 }

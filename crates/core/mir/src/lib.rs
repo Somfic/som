@@ -84,6 +84,8 @@ pub struct Function {
     pub link_name: Option<String>,
     /// The program's entry point: `main` in the root module.
     pub is_entry: bool,
+    /// An extern taking extra arguments after `params`, like C's `printf`.
+    pub variadic: bool,
 }
 
 pub struct Body {
