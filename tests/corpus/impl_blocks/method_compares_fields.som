@@ -1,0 +1,14 @@
+// expect: exit 1
+
+struct R { w: i32, h: i32 }
+
+impl R {
+    fn is_square(self: R) -> bool {
+        self.w == self.h
+    }
+}
+
+fn main() -> i32 {
+    let r = R { w: 5, h: 5 };
+    1 if r.is_square() else 0
+}

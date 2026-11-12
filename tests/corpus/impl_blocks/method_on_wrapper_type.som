@@ -1,0 +1,19 @@
+// expect: exit 15
+
+struct Wrapper { inner: i32 }
+
+impl Wrapper {
+    fn get(self: Wrapper) -> i32 {
+        self.inner
+    }
+
+    fn add(self: Wrapper, n: i32) -> Wrapper {
+        Wrapper { inner: self.inner + n }
+    }
+}
+
+fn main() -> i32 {
+    let w = Wrapper { inner: 10 };
+    let w2 = w.add(5);
+    w2.get()
+}

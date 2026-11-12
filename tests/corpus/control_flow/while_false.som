@@ -1,0 +1,9 @@
+// expect: exit 42
+
+fn main() -> i32 {
+    let mut x = 42;
+    while false {
+        x = 0;
+    }
+    x
+}

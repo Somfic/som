@@ -1,0 +1,10 @@
+// expect: exit 0
+// ignore: bitwise | on bool not implemented
+
+fn main() -> i32 {
+    if false | false {
+        1
+    } else {
+        0
+    }
+}

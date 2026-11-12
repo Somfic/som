@@ -1,0 +1,4 @@
+// expect: error Mismatch
+
+fn takes_bool(b: bool) {}
+fn test() { takes_bool(42); }

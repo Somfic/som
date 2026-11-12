@@ -1,0 +1,10 @@
+// expect: exit 30
+
+struct Pair { a: i32, b: i32 }
+
+fn make() -> Pair { Pair { a: 10, b: 20 } }
+
+fn main() -> i32 {
+    let p = make();
+    p.a + p.b
+}

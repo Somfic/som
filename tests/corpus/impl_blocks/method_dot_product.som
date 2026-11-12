@@ -1,0 +1,15 @@
+// expect: exit 39
+
+struct V { x: i32, y: i32 }
+
+impl V {
+    fn dot(self: V, other: V) -> i32 {
+        self.x * other.x + self.y * other.y
+    }
+}
+
+fn main() -> i32 {
+    let a = V { x: 3, y: 4 };
+    let b = V { x: 5, y: 6 };
+    a.dot(b)
+}

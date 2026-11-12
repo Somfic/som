@@ -1,0 +1,4 @@
+// expect: ok
+
+fn double(x: i32) -> i32 { x * 2 }
+fn test(b: bool) -> i32 { double(5) if b else 0 }

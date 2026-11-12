@@ -73,32 +73,67 @@
         "command": "som.run",
         "title": "Som: Run",
         "icon": "$(play)"
+      },
+      {
+        "command": "som.restartServer",
+        "title": "Som: Restart Language Server"
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "som",
+        "required": [
+          "command",
+          "program"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The som command, like `run`."
+          },
+          "program": {
+            "type": "string",
+            "description": "The program: a .som file, or a directory of them."
+          }
+        }
       }
     ],
     "configuration": {
       "title": "Som",
       "properties": {
-        "som.lsp.path": {
+        "som.path": {
           "type": "string",
-          "default": "som-lsp",
-          "description": "Path to the som-lsp binary"
-        },
-        "som.compiler.path": {
-          "type": "string",
-          "default": "som",
-          "description": "Path to the som compiler binary"
+          "default": "",
+          "markdownDescription": "Path to the `som` binary, used to run programs (`som run`) and as the language server (`som lsp`). When empty: the newest `target/debug` or `target/release` build in the open workspace (when working on som itself), otherwise `som` from PATH (`cargo install --path crates/tools/cli`)."
         }
       }
+    },
+    "menus": {
+      "editor/title/run": [
+        {
+          "command": "som.run",
+          "when": "resourceLangId == som",
+          "group": "navigation"
+        }
+      ]
     }
   },
   "scripts": {
-    "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node"
+    "compile": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "watch": "bun run compile -- --sourcemap --watch",
+    "package": "bun run compile && bunx @vscode/vsce package --no-dependencies"
   },
   "dependencies": {
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
-    "esbuild": "^0.24.0"
+    "esbuild": "^0.24.0",
+    "@types/node": "^20.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Somfic/som.git",
+    "directory": "editors/vscode"
   }
 }

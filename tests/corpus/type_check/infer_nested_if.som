@@ -1,0 +1,11 @@
+// expect: ok
+
+fn test() -> i32 {
+    let mut x = 0;
+    if true {
+        if true {
+            x = 42;
+        }
+    }
+    x
+}

@@ -1,0 +1,12 @@
+// expect: exit 30
+
+struct P { x: i32, y: i32 }
+
+fn get_x(p: P) -> i32 { p.x }
+fn get_y(p: P) -> i32 { p.y }
+
+fn main() -> i32 {
+    let p1 = P { x: 10, y: 20 };
+    let p2 = P { x: 10, y: 20 };
+    get_x(p1) + get_y(p2)
+}

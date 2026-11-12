@@ -1,0 +1,7 @@
+// expect: exit 42
+
+struct S { val: i32, flag: bool }
+fn main() -> i32 {
+    let s = S { val: 42, flag: true };
+    s.val if s.flag else 0
+}

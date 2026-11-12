@@ -1,0 +1,12 @@
+// expect: ok
+
+fn test() {
+    let x = 10;
+    let y = 20;
+    {
+        let rx = &x;
+        {
+            let ry = &mut y;
+        }
+    };
+}

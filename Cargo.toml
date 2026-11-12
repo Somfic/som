@@ -1,3 +1,27 @@
 [workspace]
-members = ["compiler", "lsp", "cli"]
 resolver = "3"
+members = [
+    # shared data
+    "crates/core/base",
+    "crates/core/ast",
+    "crates/core/mir",
+
+    # the compiler passes, in pipeline order
+    "crates/compiler/1-lexer",
+    "crates/compiler/2-parser",
+    "crates/compiler/3-resolve",
+    "crates/compiler/4-typeck",
+    "crates/compiler/5-lower",
+    "crates/compiler/6-borrowck",
+    "crates/compiler/7-codegen",
+
+    # orchestration
+    "crates/driver",
+
+    # tools
+    "crates/tools/cli",
+    "crates/tools/lsp",
+
+    # the corpus of test programs and its runner
+    "tests",
+]

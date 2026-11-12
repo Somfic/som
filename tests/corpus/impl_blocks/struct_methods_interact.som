@@ -1,0 +1,16 @@
+// expect: exit 33
+
+struct Offset { dx: i32, dy: i32 }
+struct Point { x: i32, y: i32 }
+
+impl Point {
+    fn apply(self: Point, o: Offset) -> i32 {
+        self.x + o.dx + self.y + o.dy
+    }
+}
+
+fn main() -> i32 {
+    let p = Point { x: 10, y: 20 };
+    let o = Offset { dx: 1, dy: 2 };
+    p.apply(o)
+}

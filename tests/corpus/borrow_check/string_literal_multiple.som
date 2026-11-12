@@ -1,0 +1,7 @@
+// expect: ok
+
+fn test() -> &str {
+    let a = "hello";
+    let b = "world";
+    a
+}

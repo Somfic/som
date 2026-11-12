@@ -1,0 +1,14 @@
+// expect: exit 56
+
+struct R { x: i32, y: i32, w: i32, h: i32 }
+
+impl R {
+    fn area(self: R) -> i32 {
+        self.w * self.h
+    }
+}
+
+fn main() -> i32 {
+    let r = R { x: 0, y: 0, w: 7, h: 8 };
+    r.area()
+}

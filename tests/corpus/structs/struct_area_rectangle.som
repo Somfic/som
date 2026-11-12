@@ -1,0 +1,7 @@
+// expect: exit 120
+
+struct Rect { x: i32, y: i32, w: i32, h: i32 }
+fn main() -> i32 {
+    let r = Rect { x: 0, y: 0, w: 12, h: 10 };
+    r.w * r.h
+}

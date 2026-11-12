@@ -1,0 +1,6 @@
+// expect: error
+
+fn test() {
+    let x = 5;
+    x.field;
+}

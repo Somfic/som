@@ -1,0 +1,7 @@
+// expect: exit 7
+
+use std;
+fn main() -> i32 {
+    std::exit(7);
+    0
+}

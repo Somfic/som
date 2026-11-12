@@ -1,0 +1,4 @@
+// expect: ok
+
+use mymod;
+fn main() { mymod::greet(); }

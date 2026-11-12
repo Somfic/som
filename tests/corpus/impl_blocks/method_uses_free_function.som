@@ -1,0 +1,18 @@
+// expect: exit 22
+
+fn double(x: i32) -> i32 {
+    x * 2
+}
+
+struct S { x: i32 }
+
+impl S {
+    fn doubled(self: S) -> i32 {
+        double(self.x)
+    }
+}
+
+fn main() -> i32 {
+    let s = S { x: 11 };
+    s.doubled()
+}

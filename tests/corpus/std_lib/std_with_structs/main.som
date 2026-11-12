@@ -1,0 +1,10 @@
+// expect: exit 0
+
+use std;
+struct Config { size: i32 }
+fn main() -> i32 {
+    let c = Config { size: 64 };
+    let p: * = std::malloc(c.size);
+    std::free(p);
+    0
+}

@@ -1,0 +1,5 @@
+// expect: ok
+
+fn test(x: &i32, y: &i32, b: bool) -> &i32 {
+    x if b else y
+}

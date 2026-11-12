@@ -1,0 +1,6 @@
+// expect: ok
+
+fn first<T, U>(x: T, y: U) -> T { x }
+fn main() -> i32 {
+    first(1, true)
+}

@@ -1,0 +1,10 @@
+// expect: ok
+
+struct W { v: i32 }
+impl W {
+    fn get(self: W) -> i32 { self.v }
+}
+fn test() -> i32 {
+    let w = W { v: 5 };
+    w.get()
+}

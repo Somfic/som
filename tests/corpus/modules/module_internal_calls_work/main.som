@@ -1,0 +1,6 @@
+// expect: ok
+
+use mymod;
+fn main() {
+    mymod::outer();
+}

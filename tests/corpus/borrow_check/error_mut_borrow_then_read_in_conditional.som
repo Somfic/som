@@ -1,0 +1,7 @@
+// expect: error UseWhileMutBorrowed
+
+fn test(b: bool) {
+    let x = 42;
+    let r = &mut x;
+    let y = x if b else 99;
+}

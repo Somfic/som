@@ -1,0 +1,7 @@
+// expect: exit 42
+
+// Values beyond i32 are fine as long as the result fits the exit code.
+fn main() -> i64 {
+    let big: i64 = 3000000000;
+    big * 2 - 5999999958
+}

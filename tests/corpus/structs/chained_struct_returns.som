@@ -1,0 +1,17 @@
+// expect: exit 15
+
+struct Point { x: i32, y: i32 }
+
+fn origin() -> Point {
+    Point { x: 0, y: 0 }
+}
+
+fn offset(p: Point, dx: i32, dy: i32) -> Point {
+    Point { x: p.x + dx, y: p.y + dy }
+}
+
+fn main() -> i32 {
+    let p1 = origin();
+    let p2 = offset(p1, 5, 10);
+    p2.x + p2.y
+}

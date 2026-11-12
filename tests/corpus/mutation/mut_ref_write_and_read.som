@@ -1,0 +1,9 @@
+// expect: exit 15
+// ignore: writing through mutable ref then reading original causes borrow error
+
+fn main() -> i32 {
+    let mut x = 5;
+    let r = &mut x;
+    *r = *r + 10;
+    x
+}

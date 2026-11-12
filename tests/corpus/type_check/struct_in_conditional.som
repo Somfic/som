@@ -1,0 +1,4 @@
+// expect: ok
+
+struct P { x: i32 }
+fn test(b: bool) -> P { P { x: 1 } if b else P { x: 2 } }

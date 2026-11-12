@@ -9,3 +9,7 @@ coverage-html/
 /.claude
 /.vscode
 /build
+
+# Build outputs of the example program (`som build example`, `--emit`)
+/example/example
+/example/example.*

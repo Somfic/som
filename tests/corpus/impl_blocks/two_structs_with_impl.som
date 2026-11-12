@@ -1,0 +1,18 @@
+// expect: exit 30
+
+struct A { val: i32 }
+struct B { val: i32 }
+
+impl A {
+    fn get(self: A) -> i32 { self.val }
+}
+
+impl B {
+    fn get(self: B) -> i32 { self.val * 2 }
+}
+
+fn main() -> i32 {
+    let a = A { val: 10 };
+    let b = B { val: 10 };
+    a.get() + b.get()
+}

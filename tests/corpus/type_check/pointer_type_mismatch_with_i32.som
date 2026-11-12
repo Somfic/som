@@ -1,0 +1,8 @@
+// expect: error Mismatch
+
+extern {
+    fn malloc(size: i32) -> *;
+}
+fn test() -> i32 {
+    malloc(100)
+}

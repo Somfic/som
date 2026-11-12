@@ -1,0 +1,5 @@
+// expect: error UnboundVariable
+
+fn test() -> i32 {
+    x
+}

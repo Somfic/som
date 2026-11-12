@@ -1,0 +1,5 @@
+// expect: ok
+
+fn test() -> i32 {
+    5 - 3
+}

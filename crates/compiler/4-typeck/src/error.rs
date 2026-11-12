@@ -1,0 +1,205 @@
+use som_base::diagnostics::closest_match;
+use som_base::message::{Message, code, field, func, struct_name, var};
+use som_base::{Diagnostic, Label, Span, msg};
+
+#[derive(Debug, Clone)]
+pub enum TypeError {
+    /// `found` was used where `expected` is required. `expected_from` points at what required it.
+    Mismatch {
+        expected: Message,
+        found: Message,
+        span: Span,
+        expected_from: Option<Span>,
+    },
+    /// A binary operator applied to types it isn't defined for.
+    ///
+    /// Types are [`Message`]s: a type that isn't known yet is described in words, like "an integer".
+    InvalidOperands {
+        op: String,
+        lhs: Message,
+        rhs: Message,
+        span: Span,
+    },
+    WrongArgCount {
+        name: String,
+        expected: usize,
+        found: usize,
+        span: Span,
+    },
+    UnknownField {
+        ty: String,
+        field: String,
+        available: Vec<String>,
+        span: Span,
+    },
+    MissingField {
+        ty: String,
+        field: String,
+        span: Span,
+    },
+    DuplicateField {
+        field: String,
+        span: Span,
+    },
+    UnknownMethod {
+        ty: Message,
+        method: String,
+        span: Span,
+    },
+    /// `.field` or `.method()` on a value that isn't a struct.
+    NotAStruct {
+        ty: Message,
+        span: Span,
+    },
+    NotAFunction {
+        name: String,
+        ty: Message,
+        span: Span,
+    },
+    CannotDeref {
+        ty: Message,
+        span: Span,
+    },
+    /// Assigning to something that isn't a variable, field or dereference.
+    InvalidAssignTarget {
+        span: Span,
+    },
+    /// The type of an expression isn't known where it needs to be.
+    CannotInfer {
+        span: Span,
+    },
+}
+
+impl TypeError {
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        match self {
+            TypeError::Mismatch {
+                expected,
+                found,
+                span,
+                expected_from,
+            } => {
+                let mut d = Diagnostic::error(msg![
+                    "expected ",
+                    expected.clone(),
+                    ", found ",
+                    found.clone()
+                ])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg!["this is ", found.clone()],
+                ));
+                if let Some(from) = expected_from {
+                    d = d.with_label(Label::secondary(
+                        from.clone(),
+                        msg![expected.clone(), " expected because of this"],
+                    ));
+                }
+                d
+            }
+            TypeError::InvalidOperands { op, lhs, rhs, span } => Diagnostic::error(msg![
+                "cannot apply ",
+                code(op),
+                " to ",
+                lhs.clone(),
+                " and ",
+                rhs.clone()
+            ])
+            .with_label(Label::primary(span.clone(), "no such operation")),
+            TypeError::WrongArgCount {
+                name,
+                expected,
+                found,
+                span,
+            } => {
+                let arguments = |n: usize| if n == 1 { "argument" } else { "arguments" };
+                let given = if *found == 1 { "was" } else { "were" };
+                Diagnostic::error(msg![
+                    func(name),
+                    format!(
+                        " takes {expected} {}, but {found} {given} given",
+                        arguments(*expected)
+                    ),
+                ])
+                .with_label(Label::primary(
+                    span.clone(),
+                    format!("expected {expected} {}", arguments(*expected)),
+                ))
+            }
+            TypeError::UnknownField {
+                ty: owner,
+                field: name,
+                available,
+                span,
+            } => {
+                let mut d =
+                    Diagnostic::error(msg![struct_name(owner), " has no field ", field(name)])
+                        .with_label(Label::primary(span.clone(), "unknown field"));
+                if let Some(close) = closest_match(name, available, 2) {
+                    d = d.with_hint(msg!["did you mean ", field(close), "?"]);
+                } else if !available.is_empty() {
+                    let mut hint = msg!["available fields: "];
+                    for (i, f) in available.iter().enumerate() {
+                        if i > 0 {
+                            hint.0.push(", ".into());
+                        }
+                        hint.0.push(field(f));
+                    }
+                    d = d.with_hint(hint);
+                }
+                d
+            }
+            TypeError::MissingField {
+                ty: owner,
+                field: name,
+                span,
+            } => Diagnostic::error(msg![
+                "missing field ",
+                field(name),
+                " in ",
+                struct_name(owner)
+            ])
+            .with_label(Label::primary(
+                span.clone(),
+                msg![field(name), " is not given a value"],
+            )),
+            TypeError::DuplicateField { field: name, span } => {
+                Diagnostic::error(msg!["field ", field(name), " is given twice"])
+                    .with_label(Label::primary(span.clone(), "second value here"))
+            }
+            TypeError::UnknownMethod {
+                ty: owner,
+                method,
+                span,
+            } => Diagnostic::error(msg![owner.clone(), " has no method ", func(method)])
+                .with_label(Label::primary(span.clone(), "unknown method")),
+            TypeError::NotAStruct { ty: found, span } => {
+                Diagnostic::error(msg![found.clone(), " is not a struct"]).with_label(
+                    Label::primary(span.clone(), "only structs have fields and methods"),
+                )
+            }
+            TypeError::NotAFunction {
+                name,
+                ty: found,
+                span,
+            } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
+                Label::primary(span.clone(), msg!["this is ", found.clone()]),
+            ),
+            TypeError::CannotDeref { ty: found, span } => {
+                Diagnostic::error(msg!["cannot dereference ", found.clone()]).with_label(
+                    Label::primary(span.clone(), "only references can be dereferenced"),
+                )
+            }
+            TypeError::InvalidAssignTarget { span } => {
+                Diagnostic::error("cannot assign to this expression").with_label(Label::primary(
+                    span.clone(),
+                    "expected a variable, field or dereference",
+                ))
+            }
+            TypeError::CannotInfer { span } => {
+                Diagnostic::error("cannot infer the type of this expression")
+                    .with_label(Label::primary(span.clone(), "add a type annotation"))
+            }
+        }
+    }
+}

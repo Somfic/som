@@ -1,0 +1,7 @@
+// expect: exit 42
+
+fn main() -> i32 {
+    let x = true;
+    let x = 42;
+    x
+}

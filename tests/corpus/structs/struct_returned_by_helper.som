@@ -1,0 +1,12 @@
+// expect: exit 33
+
+struct Pair { a: i32, b: i32 }
+
+fn make_pair(x: i32, y: i32) -> Pair {
+    Pair { a: x, b: y }
+}
+
+fn main() -> i32 {
+    let p = make_pair(11, 22);
+    p.a + p.b
+}

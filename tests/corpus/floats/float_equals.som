@@ -1,0 +1,10 @@
+// expect: exit 1
+// ignore: float comparison traits not implemented for f32
+
+fn main() -> i32 {
+    if 1.0 == 1.0 {
+        1
+    } else {
+        0
+    }
+}

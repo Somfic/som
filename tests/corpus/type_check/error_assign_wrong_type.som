@@ -1,0 +1,6 @@
+// expect: error Mismatch
+
+fn test() {
+    let mut x: i32 = 0;
+    x = true;
+}

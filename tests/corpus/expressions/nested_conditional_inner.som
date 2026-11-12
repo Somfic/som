@@ -1,0 +1,5 @@
+// expect: exit 2
+
+fn main() -> i32 {
+    1 if false else (2 if true else 3)
+}

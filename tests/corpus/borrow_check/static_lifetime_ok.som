@@ -1,0 +1,5 @@
+// expect: ok
+
+fn test(x: &'static i32) -> &'static i32 {
+    x
+}

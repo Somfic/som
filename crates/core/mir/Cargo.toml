@@ -1,0 +1,11 @@
+[package]
+name = "som_mir"
+version = "0.1.0"
+edition = "2024"
+description = "Mid-level IR: functions as control-flow graphs over typed places"
+
+[dependencies]
+som_base = { path = "../base" }
+som_ast = { path = "../ast" }
+som_resolve = { path = "../../compiler/3-resolve" }
+som_typeck = { path = "../../compiler/4-typeck" }

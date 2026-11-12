@@ -1,0 +1,9 @@
+// expect: exit 3
+
+struct Empty {}
+
+fn three(e: Empty) -> i32 { 3 }
+
+fn main() -> i32 {
+    three(Empty {})
+}

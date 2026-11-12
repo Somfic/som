@@ -1,0 +1,11 @@
+// expect: exit 11
+
+fn increment(r: &mut i32) {
+    *r = *r + 1;
+}
+
+fn main() -> i32 {
+    let mut x = 10;
+    increment(&mut x);
+    x
+}

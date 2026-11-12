@@ -1,0 +1,10 @@
+// expect: exit 9
+
+struct Point { x: i32, y: i32 }
+
+fn id<T>(value: T) -> T { value }
+
+fn main() -> i32 {
+    let p = id(Point { x: 4, y: 5 });
+    p.x + p.y
+}

@@ -1,0 +1,12 @@
+// expect: exit 24
+
+struct Config { width: i32, height: i32 }
+
+fn default_config() -> Config {
+    Config { width: 80, height: 24 }
+}
+
+fn main() -> i32 {
+    let c = default_config();
+    c.height
+}

@@ -1,0 +1,10 @@
+// expect: ok
+
+fn test() -> i32 {
+    let a = 1;
+    let b = 2;
+    let c = 3;
+    let d = a + b + c;
+    let e = a + d;
+    e
+}

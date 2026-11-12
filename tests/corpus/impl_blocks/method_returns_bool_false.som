@@ -1,0 +1,14 @@
+// expect: exit 0
+
+struct S { x: i32 }
+
+impl S {
+    fn is_large(self: S) -> bool {
+        self.x > 100
+    }
+}
+
+fn main() -> i32 {
+    let s = S { x: 5 };
+    1 if s.is_large() else 0
+}

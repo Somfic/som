@@ -1,0 +1,4 @@
+// expect: ok
+
+use consts;
+fn main() -> i32 { consts::pi_approx() }

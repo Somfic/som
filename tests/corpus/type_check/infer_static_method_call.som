@@ -1,0 +1,10 @@
+// expect: ok
+
+struct C { n: i32 }
+impl C {
+    fn zero() -> C { C { n: 0 } }
+}
+fn test() -> i32 {
+    let c = C::zero();
+    c.n
+}

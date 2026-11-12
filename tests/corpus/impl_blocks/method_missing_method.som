@@ -1,0 +1,14 @@
+// expect: error
+
+struct S { x: i32 }
+
+impl S {
+    fn get(self: S) -> i32 {
+        self.x
+    }
+}
+
+fn main() -> i32 {
+    let s = S { x: 1 };
+    s.missing()
+}

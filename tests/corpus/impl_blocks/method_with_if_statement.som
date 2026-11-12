@@ -1,0 +1,21 @@
+// expect: exit 100
+
+struct S { x: i32 }
+
+impl S {
+    fn clamp(self: S) -> i32 {
+        let mut result = self.x;
+        if self.x > 100 {
+            result = 100;
+        }
+        if self.x < 0 {
+            result = 0;
+        }
+        result
+    }
+}
+
+fn main() -> i32 {
+    let s = S { x: 200 };
+    s.clamp()
+}

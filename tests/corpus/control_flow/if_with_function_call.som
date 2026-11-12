@@ -1,0 +1,19 @@
+// expect: exit 50
+
+fn is_big(x: i32) -> i32 {
+    let mut r = 0;
+    if x > 10 {
+        r = 1;
+    }
+    r
+}
+
+fn main() -> i32 {
+    let mut result = 0;
+    if is_big(20) == 1 {
+        result = 50;
+    } else {
+        result = 10;
+    }
+    result
+}

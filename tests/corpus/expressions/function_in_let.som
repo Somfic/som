@@ -1,0 +1,9 @@
+// expect: exit 25
+
+fn square(x: i32) -> i32 { x * x }
+
+fn main() -> i32 {
+    let a = square(3);
+    let b = square(4);
+    a + b
+}

@@ -1,0 +1,7 @@
+// expect: exit 4
+// ignore: float arithmetic traits not implemented for f32
+
+fn main() -> i32 {
+    let x = 1.5 + 2.5;
+    x as i32
+}

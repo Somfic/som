@@ -1,0 +1,14 @@
+// expect: exit 100
+
+struct P { x: i32, y: i32 }
+
+fn add(a: P, b: P) -> P {
+    P { x: a.x + b.x, y: a.y + b.y }
+}
+
+fn main() -> i32 {
+    let a = P { x: 10, y: 20 };
+    let b = P { x: 30, y: 40 };
+    let c = add(a, b);
+    c.x + c.y
+}

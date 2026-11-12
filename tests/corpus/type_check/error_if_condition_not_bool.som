@@ -1,0 +1,6 @@
+// expect: error Mismatch
+
+fn test() {
+    let mut x = 0;
+    if 42 { x = 1; }
+}

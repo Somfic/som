@@ -1,0 +1,7 @@
+// expect: exit 10
+
+fn min(a: i32, b: i32) -> i32 { a if a < b else b }
+
+fn main() -> i32 {
+    min(10, 42)
+}

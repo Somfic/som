@@ -1,0 +1,13 @@
+// expect: exit 13
+
+struct A { x: i32 }
+struct B { y: i32 }
+
+fn extract(a: A) -> i32 { a.x * 2 }
+
+fn main() -> i32 {
+    let a = A { x: 5 };
+    let val = extract(a);
+    let b = B { y: val + 3 };
+    b.y
+}

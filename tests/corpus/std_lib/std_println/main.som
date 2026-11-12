@@ -1,0 +1,7 @@
+// expect: exit 0
+
+use std;
+fn main() -> i32 {
+    std::println("Hello from test!");
+    0
+}

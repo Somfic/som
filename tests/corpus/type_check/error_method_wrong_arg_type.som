@@ -1,0 +1,10 @@
+// expect: error Mismatch
+
+struct P { x: i32 }
+impl P {
+    fn add(self: P, n: i32) -> i32 { self.x + n }
+}
+fn test() {
+    let p = P { x: 1 };
+    p.add(true);
+}

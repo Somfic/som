@@ -1,0 +1,15 @@
+[package]
+name = "som_codegen"
+version = "0.1.0"
+edition = "2024"
+description = "MIR to C source"
+
+[dependencies]
+som_mir = { path = "../../core/mir" }
+
+[dev-dependencies]
+som_base = { path = "../../core/base" }
+som_parser = { path = "../2-parser" }
+som_resolve = { path = "../3-resolve" }
+som_typeck = { path = "../4-typeck" }
+som_lower = { path = "../5-lower" }

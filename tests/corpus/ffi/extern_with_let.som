@@ -1,0 +1,10 @@
+// expect: exit 42
+
+extern {
+    fn abs(x: i32) -> i32;
+}
+
+fn main() -> i32 {
+    let n = abs(0 - 42);
+    n
+}

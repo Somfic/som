@@ -1,0 +1,7 @@
+// expect: exit 42
+
+struct Msg { text: &str, code: i32 }
+fn main() -> i32 {
+    let m = Msg { text: "hello", code: 42 };
+    m.code
+}

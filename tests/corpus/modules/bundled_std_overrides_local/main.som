@@ -1,0 +1,6 @@
+// expect: ok
+
+use std;
+fn main() {
+    std::println("test");
+}

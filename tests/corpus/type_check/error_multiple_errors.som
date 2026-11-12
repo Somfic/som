@@ -1,0 +1,3 @@
+// expect: error
+
+fn test() { unknown1(); unknown2(); }

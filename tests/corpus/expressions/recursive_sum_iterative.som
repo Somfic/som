@@ -1,0 +1,15 @@
+// expect: exit 55
+
+fn sum_to_n(n: i32) -> i32 {
+    let mut result = 0;
+    let mut i = 1;
+    while i <= n {
+        result = result + i;
+        i = i + 1;
+    }
+    result
+}
+
+fn main() -> i32 {
+    sum_to_n(10)
+}

@@ -1,0 +1,9 @@
+// expect: exit 56
+
+fn main() -> i32 {
+    let mut n = 50;
+    while n % 7 != 0 {
+        n = n + 1;
+    }
+    n
+}

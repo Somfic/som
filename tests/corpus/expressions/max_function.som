@@ -1,0 +1,7 @@
+// expect: exit 42
+
+fn max(a: i32, b: i32) -> i32 { a if a > b else b }
+
+fn main() -> i32 {
+    max(10, 42)
+}

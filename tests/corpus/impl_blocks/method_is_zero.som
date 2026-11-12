@@ -1,0 +1,14 @@
+// expect: exit 1
+
+struct S { x: i32 }
+
+impl S {
+    fn is_zero(self: S) -> bool {
+        self.x == 0
+    }
+}
+
+fn main() -> i32 {
+    let s = S { x: 0 };
+    1 if s.is_zero() else 0
+}

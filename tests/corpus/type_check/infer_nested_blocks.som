@@ -1,0 +1,9 @@
+// expect: ok
+
+fn test() -> i32 {
+    let x = {
+        let y = 10;
+        y + 1
+    };
+    x
+}

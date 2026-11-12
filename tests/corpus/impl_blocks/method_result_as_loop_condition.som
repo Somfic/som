@@ -1,0 +1,22 @@
+// expect: exit 15
+
+struct Counter { n: i32 }
+
+impl Counter {
+    fn is_positive(self: Counter) -> bool {
+        self.n > 0
+    }
+}
+
+fn main() -> i32 {
+    let mut val = 5;
+    let mut total = 0;
+    while val > 0 {
+        let c = Counter { n: val };
+        if c.is_positive() {
+            total = total + val;
+        }
+        val = val - 1;
+    }
+    total
+}

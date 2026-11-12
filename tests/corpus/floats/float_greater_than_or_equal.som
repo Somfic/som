@@ -1,0 +1,13 @@
+// expect: exit 1
+// ignore: float comparison traits not implemented for f32
+
+fn main() -> i32 {
+    let a = 2.0 >= 1.0;
+    let b = 2.0 >= 2.0;
+    let c = 2.0 >= 3.0;
+    if a && b && !c {
+        1
+    } else {
+        0
+    }
+}

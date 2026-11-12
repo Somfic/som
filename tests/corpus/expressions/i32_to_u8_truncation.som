@@ -1,0 +1,8 @@
+// expect: exit 0
+// ignore: u8 type not fully supported
+
+fn main() -> i32 {
+    let x: i32 = 256;
+    let y: u8 = x as u8;
+    y as i32
+}

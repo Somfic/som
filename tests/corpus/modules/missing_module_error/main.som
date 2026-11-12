@@ -1,0 +1,4 @@
+// expect: error ModuleNotFound
+
+use nonexistent;
+fn main() {}

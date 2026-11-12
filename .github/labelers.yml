@@ -1,50 +1,56 @@
 lexer:
   - changed-files:
-      - any-glob-to-any-file: compiler/src/lexer/**
+      - any-glob-to-any-file: crates/compiler/1-lexer/**
 
 parser:
   - changed-files:
-      - any-glob-to-any-file: compiler/src/parser/**
+      - any-glob-to-any-file: crates/compiler/2-parser/**
 
 ast:
   - changed-files:
-      - any-glob-to-any-file: compiler/src/ast/**
+      - any-glob-to-any-file: crates/core/ast/**
 
-type-checker:
+base:
   - changed-files:
-      - any-glob-to-any-file: compiler/src/type_check/**
-
-borrow-checker:
-  - changed-files:
-      - any-glob-to-any-file: compiler/src/borrow_check/**
+      - any-glob-to-any-file: crates/core/base/**
 
 resolver:
   - changed-files:
-      - any-glob-to-any-file: compiler/src/resolve/**
+      - any-glob-to-any-file: crates/compiler/3-resolve/**
+
+type-checker:
+  - changed-files:
+      - any-glob-to-any-file: crates/compiler/4-typeck/**
+
+mir:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/core/mir/**
+          - crates/compiler/5-lower/**
+
+borrow-checker:
+  - changed-files:
+      - any-glob-to-any-file: crates/compiler/6-borrowck/**
 
 codegen:
   - changed-files:
-      - any-glob-to-any-file: compiler/src/code_gen/**
+      - any-glob-to-any-file: crates/compiler/7-codegen/**
 
-linker:
+driver:
   - changed-files:
-      - any-glob-to-any-file: compiler/src/linker/**
-
-runner:
-  - changed-files:
-      - any-glob-to-any-file: compiler/src/runner/**
-
-program:
-  - changed-files:
-      - any-glob-to-any-file: compiler/src/program/**
+      - any-glob-to-any-file: crates/driver/**
 
 cli:
   - changed-files:
-      - any-glob-to-any-file: cli/**
+      - any-glob-to-any-file: crates/tools/cli/**
 
 lsp:
   - changed-files:
-      - any-glob-to-any-file: lsp/**
+      - any-glob-to-any-file: crates/tools/lsp/**
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: tests/**
 
 stdlib:
   - changed-files:

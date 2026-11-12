@@ -1,0 +1,10 @@
+// expect: exit 42
+
+struct Single { a: i32 }
+
+fn make() -> Single { Single { a: 42 } }
+
+fn main() -> i32 {
+    let s = make();
+    s.a
+}

@@ -1,0 +1,4 @@
+// expect: ok
+
+fn fact(n: i32) -> i32 { 1 if n <= 1 else n * fact(n - 1) }
+fn test() -> i32 { fact(5) }

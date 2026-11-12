@@ -1,0 +1,5 @@
+// expect: ok
+
+use a;
+fn helper() -> i32 { 1 }
+fn main() -> i32 { helper() }

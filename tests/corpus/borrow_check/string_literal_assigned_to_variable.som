@@ -1,0 +1,6 @@
+// expect: ok
+
+fn test() -> &str {
+    let s = "hello";
+    s
+}

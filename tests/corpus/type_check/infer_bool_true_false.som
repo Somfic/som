@@ -1,0 +1,8 @@
+// expect: ok
+
+fn test_true() -> bool {
+    true
+}
+fn test_false() -> bool {
+    false
+}

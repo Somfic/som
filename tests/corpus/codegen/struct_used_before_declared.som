@@ -1,0 +1,10 @@
+// expect: exit 7
+
+// C needs `Inner` defined before `Outer`; codegen has to reorder them.
+struct Outer { inner: Inner, extra: i32 }
+struct Inner { value: i32 }
+
+fn main() -> i32 {
+    let o = Outer { inner: Inner { value: 5 }, extra: 2 };
+    o.inner.value + o.extra
+}

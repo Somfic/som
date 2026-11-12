@@ -1,0 +1,4 @@
+// expect: ok
+
+use utils;
+fn main() { utils::print(); }

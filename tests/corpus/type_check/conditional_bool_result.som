@@ -1,0 +1,5 @@
+// expect: ok
+
+fn test(a: bool, b: bool) -> bool {
+    a if b else false
+}

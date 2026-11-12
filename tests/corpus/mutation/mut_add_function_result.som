@@ -1,0 +1,11 @@
+// expect: exit 15
+
+fn five() -> i32 {
+    5
+}
+
+fn main() -> i32 {
+    let mut x = 10;
+    x = x + five();
+    x
+}

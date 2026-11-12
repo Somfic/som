@@ -1,0 +1,7 @@
+// expect: exit 30
+
+struct S { a: i32, b: i32, c: bool }
+fn main() -> i32 {
+    let s = S { a: 10, b: 20, c: true };
+    (s.a + s.b) if s.c else 0
+}

@@ -1,0 +1,10 @@
+// expect: exit 25
+
+struct P { x: i32, y: i32 }
+fn main() -> i32 {
+    let p1 = P { x: 1, y: 2 };
+    let p2 = P { x: 4, y: 6 };
+    let dx = p2.x - p1.x;
+    let dy = p2.y - p1.y;
+    dx * dx + dy * dy
+}

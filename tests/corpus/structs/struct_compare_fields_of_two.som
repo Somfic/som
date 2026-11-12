@@ -1,0 +1,8 @@
+// expect: exit 1
+
+struct P { x: i32, y: i32 }
+fn main() -> i32 {
+    let a = P { x: 5, y: 10 };
+    let b = P { x: 3, y: 12 };
+    1 if a.x > b.x else 0
+}

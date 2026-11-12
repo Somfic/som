@@ -1,0 +1,4 @@
+// expect: ok
+
+use a;
+fn main() { a::call_b(); }

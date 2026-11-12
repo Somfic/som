@@ -1,0 +1,19 @@
+// expect: exit 7
+
+fn abs_diff(a: i32, b: i32) -> i32 {
+    a - b if a > b else b - a
+}
+
+struct P { x: i32, y: i32 }
+
+impl P {
+    fn manhattan(self: P, other: P) -> i32 {
+        abs_diff(self.x, other.x) + abs_diff(self.y, other.y)
+    }
+}
+
+fn main() -> i32 {
+    let a = P { x: 1, y: 2 };
+    let b = P { x: 4, y: 6 };
+    a.manhattan(b)
+}

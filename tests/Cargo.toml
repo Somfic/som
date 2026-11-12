@@ -1,0 +1,10 @@
+[package]
+name = "som_corpus"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Runs every program in tests/corpus through the compiler"
+
+[dependencies]
+som_driver = { path = "../crates/driver" }
+tempfile = "3"

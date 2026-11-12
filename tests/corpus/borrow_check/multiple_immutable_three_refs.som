@@ -1,0 +1,8 @@
+// expect: ok
+
+fn test() {
+    let x = 10;
+    let a = &x;
+    let b = &x;
+    let c = &x;
+}

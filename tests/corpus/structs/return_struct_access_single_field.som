@@ -1,0 +1,12 @@
+// expect: exit 42
+
+struct Wrapper { value: i32 }
+
+fn wrap(n: i32) -> Wrapper {
+    Wrapper { value: n }
+}
+
+fn main() -> i32 {
+    let w = wrap(42);
+    w.value
+}

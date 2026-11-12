@@ -1,0 +1,2 @@
+struct Point { x: i32, y: i32 }
+fn origin() -> i32 { 0 }

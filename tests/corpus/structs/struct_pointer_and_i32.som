@@ -1,0 +1,14 @@
+// expect: exit 77
+
+extern { fn malloc(size: i32) -> *; }
+
+struct PtrInt { ptr: *, val: i32 }
+
+fn make(n: i32) -> PtrInt {
+    PtrInt { ptr: malloc(10), val: n }
+}
+
+fn main() -> i32 {
+    let p = make(77);
+    p.val
+}

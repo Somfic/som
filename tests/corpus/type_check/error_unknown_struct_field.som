@@ -1,0 +1,4 @@
+// expect: error UnknownField
+
+struct P { x: i32 }
+fn test() { let p = P { x: 1, z: 2 }; }

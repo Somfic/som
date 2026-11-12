@@ -1,0 +1,7 @@
+// expect: exit 5
+
+fn always_five() -> i32 { 5 }
+
+fn main() -> i32 {
+    always_five()
+}

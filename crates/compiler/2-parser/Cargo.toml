@@ -1,0 +1,10 @@
+[package]
+name = "som_parser"
+version = "0.1.0"
+edition = "2024"
+description = "Tokens to syntax tree"
+
+[dependencies]
+som_base = { path = "../../core/base" }
+som_ast = { path = "../../core/ast" }
+som_lexer = { path = "../1-lexer" }

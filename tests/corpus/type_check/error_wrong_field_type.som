@@ -1,0 +1,4 @@
+// expect: error Mismatch
+
+struct P { x: i32 }
+fn test() { let p = P { x: true }; }

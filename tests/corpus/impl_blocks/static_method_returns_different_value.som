@@ -1,0 +1,14 @@
+// expect: exit 2
+
+struct P { x: i32, y: i32 }
+
+impl P {
+    fn unit() -> P {
+        P { x: 1, y: 1 }
+    }
+}
+
+fn main() -> i32 {
+    let p = P::unit();
+    p.x + p.y
+}

@@ -1,0 +1,9 @@
+// expect: exit 5
+
+extern {
+    fn strlen(s: &str) -> i32;
+}
+
+fn main() -> i32 {
+    strlen("hi") + strlen("bye")
+}

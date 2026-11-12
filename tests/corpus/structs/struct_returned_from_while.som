@@ -1,0 +1,12 @@
+// expect: exit 9
+
+struct V { val: i32 }
+
+fn make_at(n: i32) -> V {
+    V { val: n }
+}
+
+fn main() -> i32 {
+    let v = make_at(9);
+    v.val
+}

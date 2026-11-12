@@ -1,0 +1,14 @@
+// expect: exit 100
+
+struct S { base: i32 }
+
+impl S {
+    fn combine(self: S, a: i32, b: i32, c: i32) -> i32 {
+        self.base + a + b + c
+    }
+}
+
+fn main() -> i32 {
+    let s = S { base: 10 };
+    s.combine(20, 30, 40)
+}

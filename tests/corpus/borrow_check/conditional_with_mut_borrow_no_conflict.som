@@ -1,0 +1,7 @@
+// expect: ok
+
+fn test(b: bool) {
+    let x = 10;
+    let r = &mut x;
+    let y = 1 if b else 2;
+}

@@ -1,0 +1,15 @@
+// expect: exit 23
+
+struct Vec2 { x: i32, y: i32 }
+
+impl Vec2 {
+    fn dot(self: Vec2, other: Vec2) -> i32 {
+        self.x * other.x + self.y * other.y
+    }
+}
+
+fn main() -> i32 {
+    let a = Vec2 { x: 2, y: 3 };
+    let b = Vec2 { x: 4, y: 5 };
+    a.dot(b)
+}

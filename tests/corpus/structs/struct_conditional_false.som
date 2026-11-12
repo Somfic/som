@@ -1,0 +1,7 @@
+// expect: exit 2
+
+struct P { x: i32 }
+fn main() -> i32 {
+    let p = P { x: 1 } if false else P { x: 2 };
+    p.x
+}

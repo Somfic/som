@@ -1,0 +1,5 @@
+// expect: ok
+
+fn f(x: i32) -> i32 { x + 1 }
+fn g(x: i32) -> i32 { f(x) + 1 }
+fn test() -> i32 { g(1) }

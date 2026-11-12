@@ -1,0 +1,9 @@
+// expect: exit 42
+
+struct W { value: i32 }
+
+fn unwrap(w: W) -> i32 { w.value }
+
+fn main() -> i32 {
+    unwrap(W { value: 42 })
+}

@@ -1,0 +1,11 @@
+// expect: exit 0
+
+use std;
+fn alloc_some() -> * {
+    std::malloc(64)
+}
+fn main() -> i32 {
+    let p: * = alloc_some();
+    std::free(p);
+    0
+}

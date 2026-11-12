@@ -1,0 +1,18 @@
+// expect: exit 55
+
+struct S { x: i32 }
+
+impl S {
+    fn new(v: i32) -> S {
+        S { x: v }
+    }
+
+    fn get(self: S) -> i32 {
+        self.x
+    }
+}
+
+fn main() -> i32 {
+    let s = S::new(55);
+    s.get()
+}

@@ -1,0 +1,4 @@
+// expect: ok
+
+fn id<T>(x: T) -> T { x }
+fn test() -> bool { id(true) }

@@ -1,0 +1,10 @@
+// expect: exit 10
+
+struct Quad { a: i32, b: i32, c: i32, d: i32 }
+
+fn make() -> Quad { Quad { a: 1, b: 2, c: 3, d: 4 } }
+
+fn main() -> i32 {
+    let q = make();
+    q.a + q.b + q.c + q.d
+}

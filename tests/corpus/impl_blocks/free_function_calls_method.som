@@ -1,0 +1,18 @@
+// expect: exit 33
+
+struct S { x: i32 }
+
+impl S {
+    fn get(self: S) -> i32 {
+        self.x
+    }
+}
+
+fn extract(s: S) -> i32 {
+    s.get()
+}
+
+fn main() -> i32 {
+    let s = S { x: 33 };
+    extract(s)
+}

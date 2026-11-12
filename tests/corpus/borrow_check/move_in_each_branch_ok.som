@@ -1,0 +1,9 @@
+// expect: exit 1
+
+// Only one branch runs, so `b` is moved once.
+struct Big { a: i32, b: i32, c: i32 }
+fn take(x: Big) -> i32 { x.a }
+fn main() -> i32 {
+    let b = Big { a: 1, b: 2, c: 3 };
+    take(b) if true else take(b)
+}

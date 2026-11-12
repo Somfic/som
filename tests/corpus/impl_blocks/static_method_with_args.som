@@ -1,0 +1,14 @@
+// expect: exit 30
+
+struct Point { x: i32, y: i32 }
+
+impl Point {
+    fn new(x: i32, y: i32) -> Point {
+        Point { x: x, y: y }
+    }
+}
+
+fn main() -> i32 {
+    let p = Point::new(10, 20);
+    p.x + p.y
+}

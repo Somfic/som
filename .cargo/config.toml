@@ -1,0 +1,4 @@
+[alias]
+# `cargo som <command> ...` runs the som CLI without Cargo's build status lines,
+# e.g. `cargo som run example`.
+som = "run -q --bin som --"

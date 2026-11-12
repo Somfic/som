@@ -1,0 +1,15 @@
+// expect: exit 14
+
+struct P { x: i32, y: i32 }
+
+impl P {
+    fn doubled(self: P) -> P {
+        P { x: self.x * 2, y: self.y * 2 }
+    }
+}
+
+fn main() -> i32 {
+    let p = P { x: 3, y: 4 };
+    let p2 = p.doubled();
+    p2.x + p2.y
+}

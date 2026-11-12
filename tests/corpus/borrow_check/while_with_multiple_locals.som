@@ -1,0 +1,11 @@
+// expect: ok
+
+fn test() {
+    let mut i = 0;
+    while i < 3 {
+        let a = 1;
+        let b = 2;
+        let c = a + b;
+        i = i + 1;
+    }
+}

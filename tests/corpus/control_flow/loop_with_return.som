@@ -1,0 +1,8 @@
+// expect: exit 5
+// ignore: loop keyword not fully implemented (parsing issue)
+
+fn main() -> i32 {
+    loop {
+        return 5;
+    }
+}

@@ -1,0 +1,10 @@
+// expect: exit 5
+
+extern {
+    fn abs(x: i32) -> i32;
+    fn strlen(s: &str) -> i32;
+}
+
+fn main() -> i32 {
+    abs(0 - 3) + strlen("ab")
+}

@@ -1,0 +1,11 @@
+// expect: exit 0
+
+fn main() -> i32 {
+    let mut result = 1;
+    let mut i = 0;
+    while i < 8 {
+        result = result * 2;
+        i = i + 1;
+    }
+    result
+}

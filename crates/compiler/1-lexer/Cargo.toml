@@ -1,0 +1,10 @@
+[package]
+name = "som_lexer"
+version = "0.1.0"
+edition = "2024"
+description = "Source text to tokens"
+
+[dependencies]
+som_base = { path = "../../core/base" }
+logos = "0.16.1"
+owo-colors = "4.2.3"

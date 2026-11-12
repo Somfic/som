@@ -1,0 +1,14 @@
+// expect: exit 77
+
+struct S { x: i32 }
+
+impl S {
+    fn new(v: i32) -> S {
+        S { x: v }
+    }
+}
+
+fn main() -> i32 {
+    let s = S::new(77);
+    s.x
+}

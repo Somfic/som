@@ -1,0 +1,12 @@
+// expect: exit 123
+
+struct Pair { x: i32, y: i32 }
+
+fn sum(p: Pair) -> i32 {
+    p.x + p.y
+}
+
+fn main() -> i32 {
+    let p = Pair { x: 100, y: 23 };
+    sum(p)
+}

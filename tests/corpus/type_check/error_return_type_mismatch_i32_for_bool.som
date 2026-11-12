@@ -1,0 +1,3 @@
+// expect: error Mismatch
+
+fn test() -> bool { 42 }

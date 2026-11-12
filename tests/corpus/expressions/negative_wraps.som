@@ -1,0 +1,5 @@
+// expect: exit 255
+
+fn main() -> i32 {
+    0 - 1
+}

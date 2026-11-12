@@ -1,0 +1,5 @@
+// expect: ok
+
+fn test() -> &'static str {
+    "hello world"
+}

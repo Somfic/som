@@ -1,0 +1,13 @@
+// expect: exit 20
+
+fn main() -> i32 {
+    let x = 7;
+    let mut category = 0;
+    if x > 5 {
+        category = 2;
+    } else {
+        category = 1;
+    }
+    let result = category * 10;
+    result
+}

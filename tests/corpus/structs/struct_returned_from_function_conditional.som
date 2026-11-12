@@ -1,0 +1,12 @@
+// expect: exit 1
+
+struct P { x: i32 }
+
+fn make(b: bool) -> P {
+    P { x: 1 } if b else P { x: 2 }
+}
+
+fn main() -> i32 {
+    let p = make(true);
+    p.x
+}

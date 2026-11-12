@@ -1,0 +1,16 @@
+// expect: exit 21
+
+fn main() -> i32 {
+    let mut total = 0;
+    let mut i = 1;
+    while i <= 5 {
+        total = total + i;
+        i = i + 1;
+    }
+    let mut j = 1;
+    while j <= 3 {
+        total = total + j;
+        j = j + 1;
+    }
+    total
+}

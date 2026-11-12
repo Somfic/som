@@ -1,0 +1,8 @@
+// expect: exit 0
+
+use std;
+fn main() -> i32 {
+    let p: * = std::malloc(16);
+    std::free(p);
+    0
+}

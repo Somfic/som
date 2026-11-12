@@ -1,0 +1,16 @@
+// expect: exit 6
+
+fn gcd(a: i32, b: i32) -> i32 {
+    let mut x = a;
+    let mut y = b;
+    while y != 0 {
+        let t = y;
+        y = x % y;
+        x = t;
+    }
+    x
+}
+
+fn main() -> i32 {
+    gcd(48, 18)
+}

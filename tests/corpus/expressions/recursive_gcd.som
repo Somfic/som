@@ -1,0 +1,9 @@
+// expect: exit 6
+
+fn gcd(a: i32, b: i32) -> i32 {
+    a if b == 0 else gcd(b, a % b)
+}
+
+fn main() -> i32 {
+    gcd(48, 18)
+}

@@ -1,0 +1,20 @@
+[package]
+name = "som_lsp"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Somfic"]
+description = "som language server"
+rust-version = "1.90.0"
+
+
+[dependencies]
+som_base = { path = "../../core/base" }
+som_ast = { path = "../../core/ast" }
+som_lexer = { path = "../../compiler/1-lexer" }
+som_resolve = { path = "../../compiler/3-resolve" }
+som_typeck = { path = "../../compiler/4-typeck" }
+som_driver = { path = "../../driver" }
+tower-lsp = "0.20"
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"

@@ -1,0 +1,6 @@
+// expect: error DanglingReference
+
+// `x` lives in this function's frame, so a reference to it can't be returned.
+fn test(x: i32) -> &i32 {
+    &x
+}

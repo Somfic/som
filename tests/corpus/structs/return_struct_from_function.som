@@ -1,0 +1,12 @@
+// expect: exit 30
+
+struct Vec2 { x: i32, y: i32 }
+
+fn make_vec() -> Vec2 {
+    Vec2 { x: 10, y: 20 }
+}
+
+fn main() -> i32 {
+    let v = make_vec();
+    v.x + v.y
+}

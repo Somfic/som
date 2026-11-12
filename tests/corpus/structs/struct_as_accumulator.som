@@ -1,0 +1,16 @@
+// expect: exit 10
+
+struct Acc { total: i32 }
+
+fn step(a: Acc, i: i32) -> Acc {
+    Acc { total: a.total + i }
+}
+
+fn main() -> i32 {
+    let a0 = Acc { total: 0 };
+    let a1 = step(a0, 1);
+    let a2 = step(a1, 2);
+    let a3 = step(a2, 3);
+    let a4 = step(a3, 4);
+    a4.total
+}

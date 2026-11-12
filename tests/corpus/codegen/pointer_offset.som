@@ -1,0 +1,14 @@
+// expect: exit 1
+
+extern {
+    fn malloc(size: i32) -> *;
+    fn free(p: *);
+}
+
+fn main() -> i32 {
+    let p = malloc(16);
+    let q = p + 8;
+    let different = q != p;
+    free(p);
+    1 if different else 0
+}

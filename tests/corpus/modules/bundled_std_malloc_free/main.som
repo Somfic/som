@@ -1,0 +1,7 @@
+// expect: ok
+
+use std;
+fn main() {
+    let p: * = std::malloc(100);
+    std::free(p);
+}

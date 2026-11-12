@@ -1,0 +1,11 @@
+// expect: exit 15
+
+fn main() -> i32 {
+    let mut count = 0;
+    let mut i = 0;
+    while i < 5 {
+        count = count + 3;
+        i = i + 1;
+    }
+    count
+}

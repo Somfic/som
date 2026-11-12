@@ -1,0 +1,14 @@
+// expect: exit 42
+
+struct A { x: i32 }
+struct B { y: i32 }
+
+fn combine(a: A, b: B) -> i32 {
+    a.x + b.y
+}
+
+fn main() -> i32 {
+    let a = A { x: 15 };
+    let b = B { y: 27 };
+    combine(a, b)
+}

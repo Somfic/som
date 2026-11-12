@@ -1,0 +1,3 @@
+// expect: error UnknownStruct
+
+fn test() { let p = Unknown { x: 1 }; }

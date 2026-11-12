@@ -1,0 +1,14 @@
+// expect: exit 50
+
+struct P { x: i32, y: i32 }
+
+impl P {
+    fn get_x(self: P) -> i32 { self.x }
+    fn get_y(self: P) -> i32 { self.y }
+}
+
+fn main() -> i32 {
+    let p1 = P { x: 10, y: 20 };
+    let p2 = P { x: 30, y: 40 };
+    p1.get_x() + p2.get_y()
+}

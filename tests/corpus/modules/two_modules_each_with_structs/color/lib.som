@@ -1,0 +1,2 @@
+struct Color { r: i32, g: i32, b: i32 }
+fn make_color() -> i32 { 0 }

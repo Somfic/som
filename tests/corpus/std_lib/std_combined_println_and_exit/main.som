@@ -1,0 +1,8 @@
+// expect: exit 7
+
+use std;
+fn main() -> i32 {
+    std::println("about to exit");
+    std::exit(7);
+    0
+}

@@ -1,0 +1,6 @@
+// expect: ok
+
+fn test(x: i32) {
+    let r = &x;
+    let s = &x;
+}

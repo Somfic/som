@@ -1,0 +1,15 @@
+// expect: exit 25
+
+struct Point { x: i32, y: i32 }
+
+impl Point {
+    fn scale(self: Point, factor: i32) -> Point {
+        Point { x: self.x * factor, y: self.y * factor }
+    }
+}
+
+fn main() -> i32 {
+    let p = Point { x: 2, y: 3 };
+    let p2 = p.scale(5);
+    p2.x + p2.y
+}

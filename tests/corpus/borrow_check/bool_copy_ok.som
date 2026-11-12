@@ -1,0 +1,7 @@
+// expect: ok
+
+fn test() {
+    let b = true;
+    let c = b;
+    let d = b;
+}

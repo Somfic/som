@@ -1,0 +1,6 @@
+extern {
+    fn puts(s: &str);
+}
+fn greet() {
+    puts("Hello from mylib!");
+}

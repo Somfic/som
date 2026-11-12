@@ -1,0 +1,4 @@
+// expect: ok
+
+use std;
+fn main() {}

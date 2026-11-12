@@ -1,0 +1,15 @@
+// expect: exit 31
+
+struct P { x: i32, y: i32 }
+
+impl P {
+    fn sum(self: P) -> i32 {
+        self.x + self.y
+    }
+}
+
+fn main() -> i32 {
+    let p = P { x: 10, y: 20 };
+    let x = p.sum();
+    x + 1
+}

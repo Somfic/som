@@ -1,0 +1,13 @@
+// expect: exit 7
+
+struct P { x: i32, y: i32 }
+
+fn neg(p: P) -> P {
+    P { x: 0 - p.x, y: 0 - p.y }
+}
+
+fn main() -> i32 {
+    let p = P { x: 3, y: 4 };
+    let n = neg(p);
+    0 - n.x + (0 - n.y)
+}

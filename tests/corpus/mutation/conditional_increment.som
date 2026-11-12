@@ -1,0 +1,12 @@
+// expect: exit 1
+
+fn main() -> i32 {
+    let mut x = 0;
+    if true {
+        x = x + 1;
+    }
+    if false {
+        x = x + 10;
+    }
+    x
+}

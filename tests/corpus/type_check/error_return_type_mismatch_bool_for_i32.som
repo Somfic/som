@@ -1,0 +1,3 @@
+// expect: error Mismatch
+
+fn test() -> i32 { true }

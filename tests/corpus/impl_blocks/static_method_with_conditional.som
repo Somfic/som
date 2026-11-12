@@ -1,0 +1,14 @@
+// expect: exit 1
+
+struct S { x: i32 }
+
+impl S {
+    fn make(positive: bool) -> S {
+        S { x: 1 } if positive else S { x: 0 }
+    }
+}
+
+fn main() -> i32 {
+    let s = S::make(true);
+    s.x
+}

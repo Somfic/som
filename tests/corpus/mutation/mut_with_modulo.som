@@ -1,0 +1,7 @@
+// expect: exit 2
+
+fn main() -> i32 {
+    let mut x = 100;
+    x = x % 7;
+    x
+}

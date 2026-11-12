@@ -1,0 +1,12 @@
+// expect: exit 0
+
+use std;
+fn main() -> i32 {
+    let mut i = 0;
+    while i < 3 {
+        let p: * = std::malloc(64);
+        std::free(p);
+        i = i + 1;
+    }
+    0
+}

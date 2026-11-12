@@ -1,0 +1,14 @@
+// expect: exit 40
+
+struct P { x: i32, y: i32 }
+
+impl P {
+    fn from_pair(x: i32, y: i32) -> P {
+        P { x: x, y: y }
+    }
+}
+
+fn main() -> i32 {
+    let p = P::from_pair(15, 25);
+    p.x + p.y
+}

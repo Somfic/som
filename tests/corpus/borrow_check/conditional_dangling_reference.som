@@ -1,0 +1,6 @@
+// expect: error DanglingReference
+
+fn test(b: bool) -> &i32 {
+    let x = 10;
+    &x if b else &x
+}

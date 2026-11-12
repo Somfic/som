@@ -1,0 +1,16 @@
+// expect: exit 30
+
+fn main() -> i32 {
+    let x = 3;
+    let mut result = 0;
+    if x == 1 {
+        result = 10;
+    } else if x == 2 {
+        result = 20;
+    } else if x == 3 {
+        result = 30;
+    } else {
+        result = 40;
+    }
+    result
+}

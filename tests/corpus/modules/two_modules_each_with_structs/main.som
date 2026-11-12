@@ -1,0 +1,5 @@
+// expect: ok
+
+use geo;
+use color;
+fn main() {}

@@ -1,0 +1,5 @@
+// expect: ok
+
+fn test(x: &i32) -> &i32 {
+    x
+}

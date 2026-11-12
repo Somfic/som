@@ -1,0 +1,15 @@
+// expect: exit 8
+
+fn double(x: i32) -> i32 {
+    x * 2
+}
+
+fn main() -> i32 {
+    let mut x = 1;
+    let mut i = 0;
+    while i < 3 {
+        x = double(x);
+        i = i + 1;
+    }
+    x
+}

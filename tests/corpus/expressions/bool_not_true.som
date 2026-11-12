@@ -1,0 +1,10 @@
+// expect: exit 0
+// ignore: unary ! on bool not implemented
+
+fn main() -> i32 {
+    if !true {
+        1
+    } else {
+        0
+    }
+}

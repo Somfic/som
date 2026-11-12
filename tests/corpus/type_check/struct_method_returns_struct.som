@@ -1,0 +1,10 @@
+// expect: ok
+
+struct P { x: i32 }
+impl P {
+    fn dup(self: P) -> P { P { x: self.x } }
+}
+fn test() {
+    let p = P { x: 1 };
+    let q = p.dup();
+}

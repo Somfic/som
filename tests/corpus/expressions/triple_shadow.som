@@ -1,0 +1,8 @@
+// expect: exit 3
+
+fn main() -> i32 {
+    let x = 1;
+    let x = 2;
+    let x = 3;
+    x
+}

@@ -1,0 +1,19 @@
+// expect: exit 26
+
+struct Rect { w: i32, h: i32 }
+
+impl Rect {
+    fn area(self: Rect) -> i32 {
+        self.w * self.h
+    }
+
+    fn perimeter(self: Rect) -> i32 {
+        self.w + self.w + self.h + self.h
+    }
+}
+
+fn main() -> i32 {
+    let r1 = Rect { w: 3, h: 4 };
+    let r2 = Rect { w: 3, h: 4 };
+    r1.area() + r2.perimeter()
+}

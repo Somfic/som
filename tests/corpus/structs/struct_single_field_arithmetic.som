@@ -1,0 +1,8 @@
+// expect: exit 30
+
+struct N { v: i32 }
+fn main() -> i32 {
+    let a = N { v: 10 };
+    let b = N { v: 20 };
+    a.v + b.v
+}

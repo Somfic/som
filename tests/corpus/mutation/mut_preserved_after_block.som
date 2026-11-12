@@ -1,0 +1,10 @@
+// expect: exit 6
+
+fn main() -> i32 {
+    let mut x = 5;
+    {
+        let y = x + 1;
+        x = y;
+    };
+    x
+}

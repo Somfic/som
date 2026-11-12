@@ -1,0 +1,10 @@
+// expect: exit 200
+
+fn main() -> i32 {
+    let x = {
+        let a = 10;
+        let b = 20;
+        a * b
+    };
+    x
+}

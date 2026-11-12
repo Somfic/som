@@ -1,0 +1,6 @@
+// expect: ok
+
+use alpha;
+use beta;
+use gamma;
+fn main() {}

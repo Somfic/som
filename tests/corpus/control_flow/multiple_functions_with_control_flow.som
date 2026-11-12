@@ -1,0 +1,27 @@
+// expect: exit 9
+
+fn abs_diff(a: i32, b: i32) -> i32 {
+    let mut result = 0;
+    if a > b {
+        result = a - b;
+    } else {
+        result = b - a;
+    }
+    result
+}
+
+fn sum_to(n: i32) -> i32 {
+    let mut sum = 0;
+    let mut i = 1;
+    while i <= n {
+        sum = sum + i;
+        i = i + 1;
+    }
+    sum
+}
+
+fn main() -> i32 {
+    let x = sum_to(5);
+    let y = sum_to(3);
+    abs_diff(x, y)
+}

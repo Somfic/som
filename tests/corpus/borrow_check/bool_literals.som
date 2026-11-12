@@ -1,0 +1,6 @@
+// expect: ok
+
+fn test() {
+    let t = true;
+    let f = false;
+}

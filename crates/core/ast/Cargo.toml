@@ -1,0 +1,8 @@
+[package]
+name = "som_ast"
+version = "0.1.0"
+edition = "2024"
+description = "The syntax tree produced by the parser"
+
+[dependencies]
+som_base = { path = "../base" }

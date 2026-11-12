@@ -1,0 +1,10 @@
+// expect: ok
+
+fn foo() {
+    let x = 10;
+    let r = &x;
+}
+fn bar() {
+    let y = 20;
+    let s = &mut y;
+}

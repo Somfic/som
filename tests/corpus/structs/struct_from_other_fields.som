@@ -1,0 +1,9 @@
+// expect: exit 4
+
+struct A { x: i32 }
+struct B { y: i32 }
+fn main() -> i32 {
+    let a = A { x: 3 };
+    let b = B { y: a.x + 1 };
+    b.y
+}

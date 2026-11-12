@@ -1,0 +1,13 @@
+// expect: exit 5
+
+fn main() -> i32 {
+    let a = 5;
+    let b = 3;
+    let mut result = 0;
+    if a > b {
+        result = a;
+    } else {
+        result = b;
+    }
+    result
+}

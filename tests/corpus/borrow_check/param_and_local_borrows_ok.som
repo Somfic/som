@@ -1,0 +1,7 @@
+// expect: ok
+
+fn test(x: &i32) -> &i32 {
+    let y = 10;
+    let r = &y;
+    x
+}

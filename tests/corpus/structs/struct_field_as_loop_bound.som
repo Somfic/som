@@ -1,0 +1,13 @@
+// expect: exit 7
+
+struct Config { limit: i32 }
+fn main() -> i32 {
+    let c = Config { limit: 7 };
+    let mut i = 0;
+    let mut sum = 0;
+    while i < c.limit {
+        sum = sum + 1;
+        i = i + 1;
+    }
+    sum
+}

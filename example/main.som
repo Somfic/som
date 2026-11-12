@@ -1,0 +1,5 @@
+fn main() {
+    let a = "hello";
+    let b = "hello2";
+    a + b
+}

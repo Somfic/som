@@ -1,0 +1,10 @@
+// expect: exit 99
+
+fn main() -> i32 {
+    let x = 5;
+    let mut result = 0;
+    if x == 5 {
+        result = 99;
+    }
+    result
+}

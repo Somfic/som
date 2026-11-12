@@ -1,0 +1,20 @@
+// expect: exit 65
+
+fn classify(x: i32) -> i32 {
+    let mut r = 0;
+    if x > 10 {
+        r = 3;
+    } else if x > 5 {
+        r = 2;
+    } else {
+        r = 1;
+    }
+    r
+}
+
+fn main() -> i32 {
+    let a = classify(15);
+    let b = classify(7);
+    let c = classify(2);
+    a * 100 + b * 10 + c
+}

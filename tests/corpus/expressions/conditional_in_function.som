@@ -1,0 +1,9 @@
+// expect: exit 42
+
+fn choose(b: bool, x: i32, y: i32) -> i32 {
+    x if b else y
+}
+
+fn main() -> i32 {
+    choose(true, 42, 0)
+}

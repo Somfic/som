@@ -1,0 +1,6 @@
+// expect: error DanglingReference
+
+fn test() -> &i32 {
+    let x = 10;
+    &x
+}

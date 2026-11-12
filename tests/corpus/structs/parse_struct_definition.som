@@ -1,0 +1,4 @@
+// expect: exit 0
+
+struct Vec2 { x: i32, y: i32 }
+fn main() -> i32 { 0 }

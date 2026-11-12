@@ -1,0 +1,14 @@
+// expect: exit 1
+
+struct S { x: i32 }
+
+impl S {
+    fn is_positive(self: S) -> bool {
+        self.x > 0
+    }
+}
+
+fn main() -> i32 {
+    let s = S { x: 5 };
+    1 if s.is_positive() else 0
+}

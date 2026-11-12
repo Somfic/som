@@ -1,0 +1,14 @@
+// expect: exit 0
+
+extern {
+    fn malloc(size: i32) -> *;
+    fn memset(ptr: *, value: i32, size: i32) -> *;
+    fn free(ptr: *);
+}
+
+fn main() -> i32 {
+    let ptr = malloc(32);
+    memset(ptr, 0, 32);
+    free(ptr);
+    0
+}

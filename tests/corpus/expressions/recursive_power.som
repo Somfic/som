@@ -1,0 +1,9 @@
+// expect: exit 128
+
+fn power(base: i32, exp: i32) -> i32 {
+    1 if exp == 0 else base * power(base, exp - 1)
+}
+
+fn main() -> i32 {
+    power(2, 7)
+}

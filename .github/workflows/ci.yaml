@@ -207,7 +207,7 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ needs.version.outputs.version }}"
-          for toml in compiler/Cargo.toml cli/Cargo.toml lsp/Cargo.toml; do
+          for toml in crates/tools/cli/Cargo.toml; do
             sed -i.bak "s/^version = \".*\"/version = \"${VERSION}\"/" "$toml"
             rm -f "${toml}.bak"
           done
@@ -220,7 +220,7 @@ jobs:
         run: |
           STAGING="som-${{ needs.version.outputs.version }}-${{ matrix.target }}"
           mkdir "$STAGING"
-          cp target/release/somc target/release/som target/release/somlsp "$STAGING/"
+          cp target/release/som "$STAGING/"
           tar czf "${STAGING}.tar.gz" "$STAGING"
 
       - name: Package (windows)
@@ -229,7 +229,7 @@ jobs:
         run: |
           $STAGING = "som-${{ needs.version.outputs.version }}-${{ matrix.target }}"
           New-Item -ItemType Directory -Path $STAGING
-          Copy-Item "target/release/somc.exe", "target/release/som.exe", "target/release/somlsp.exe" -Destination $STAGING
+          Copy-Item "target/release/som.exe" -Destination $STAGING
           Compress-Archive -Path $STAGING -DestinationPath "${STAGING}.zip"
 
       - name: Upload artifact

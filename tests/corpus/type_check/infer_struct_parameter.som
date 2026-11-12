@@ -1,0 +1,4 @@
+// expect: ok
+
+struct P { x: i32 }
+fn get_x(p: P) -> i32 { p.x }

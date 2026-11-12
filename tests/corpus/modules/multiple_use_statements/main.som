@@ -1,0 +1,5 @@
+// expect: ok
+
+use math;
+use strings;
+fn main() {}

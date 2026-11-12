@@ -1,0 +1,14 @@
+// expect: exit 6
+
+struct Vec3 { x: i32, y: i32, z: i32 }
+
+impl Vec3 {
+    fn sum(self: Vec3) -> i32 {
+        self.x + self.y + self.z
+    }
+}
+
+fn main() -> i32 {
+    let v = Vec3 { x: 1, y: 2, z: 3 };
+    v.sum()
+}

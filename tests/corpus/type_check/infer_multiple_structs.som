@@ -1,0 +1,9 @@
+// expect: ok
+
+struct A { a: i32 }
+struct B { b: i32 }
+fn test() -> i32 {
+    let a = A { a: 1 };
+    let b = B { b: 2 };
+    a.a + b.b
+}

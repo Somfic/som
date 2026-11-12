@@ -1,0 +1,4 @@
+// expect: error WrongArgCount
+
+fn single(a: i32) -> i32 { a }
+fn test() { single(1, 2); }

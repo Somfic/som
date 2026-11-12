@@ -1,0 +1,7 @@
+// expect: ok
+
+fn test() -> i32 {
+    let mut x = 0;
+    if true { x = 1; }
+    x
+}

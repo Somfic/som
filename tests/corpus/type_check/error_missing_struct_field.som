@@ -1,0 +1,4 @@
+// expect: error MissingField
+
+struct P { x: i32, y: i32 }
+fn test() { let p = P { x: 1 }; }

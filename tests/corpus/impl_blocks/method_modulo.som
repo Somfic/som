@@ -1,0 +1,14 @@
+// expect: exit 2
+
+struct S { value: i32 }
+
+impl S {
+    fn remainder(self: S, divisor: i32) -> i32 {
+        self.value % divisor
+    }
+}
+
+fn main() -> i32 {
+    let s = S { value: 17 };
+    s.remainder(5)
+}

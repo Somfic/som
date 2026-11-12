@@ -1,0 +1,5 @@
+// expect: ok
+
+fn test(a: bool, b: bool) -> i32 {
+    1 if a else (2 if b else 3)
+}

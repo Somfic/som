@@ -1,0 +1,7 @@
+// expect: ok
+
+fn test() {
+    let x = 10;
+    let y = x;
+    let z = x;
+}

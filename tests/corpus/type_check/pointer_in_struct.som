@@ -1,0 +1,9 @@
+// expect: ok
+
+extern {
+    fn malloc(size: i32) -> *;
+}
+struct S { ptr: * }
+fn test() {
+    let s = S { ptr: malloc(10) };
+}

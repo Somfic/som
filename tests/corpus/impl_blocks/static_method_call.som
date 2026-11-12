@@ -1,0 +1,14 @@
+// expect: exit 0
+
+struct Counter { n: i32 }
+
+impl Counter {
+    fn zero() -> Counter {
+        Counter { n: 0 }
+    }
+}
+
+fn main() -> i32 {
+    let c = Counter::zero();
+    c.n
+}

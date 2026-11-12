@@ -1,0 +1,8 @@
+// expect: ok
+
+extern {
+    fn malloc(size: i32) -> *;
+}
+fn test() {
+    let p: * = malloc(100);
+}

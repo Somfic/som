@@ -1,0 +1,7 @@
+// expect: ok
+
+fn test(b: bool) {
+    let x = 10;
+    let y = x if b else 20;
+    let z = x;
+}

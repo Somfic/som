@@ -1,0 +1,15 @@
+// expect: exit 0
+
+use std;
+fn allocate(size: i32) -> * {
+    std::malloc(size)
+}
+fn deallocate(p: *) {
+    std::free(p);
+}
+fn main() -> i32 {
+    let p: * = allocate(256);
+    std::println("allocated via helper");
+    deallocate(p);
+    0
+}

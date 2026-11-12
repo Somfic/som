@@ -1,0 +1,3 @@
+// expect: ok
+
+use a; fn main() {}

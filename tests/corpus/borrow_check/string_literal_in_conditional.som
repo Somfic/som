@@ -1,0 +1,5 @@
+// expect: ok
+
+fn test(b: bool) -> &str {
+    "yes" if b else "no"
+}

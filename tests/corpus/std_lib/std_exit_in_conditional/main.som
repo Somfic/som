@@ -1,0 +1,9 @@
+// expect: exit 5
+
+use std;
+fn main() -> i32 {
+    if true {
+        std::exit(5);
+    }
+    0
+}

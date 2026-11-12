@@ -1,0 +1,9 @@
+// expect: exit 55
+
+fn sum(n: i32) -> i32 {
+    0 if n <= 0 else n + sum(n - 1)
+}
+
+fn main() -> i32 {
+    sum(10)
+}

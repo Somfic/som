@@ -1,0 +1,10 @@
+// expect: error Mismatch
+
+extern {
+    fn malloc(size: i32) -> *;
+}
+fn takes_int(x: i32) {}
+fn test() {
+    let p: * = malloc(100);
+    takes_int(p);
+}

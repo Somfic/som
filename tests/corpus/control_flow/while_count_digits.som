@@ -1,0 +1,11 @@
+// expect: exit 5
+
+fn main() -> i32 {
+    let mut n = 12345;
+    let mut digits = 0;
+    while n > 0 {
+        n = n / 10;
+        digits = digits + 1;
+    }
+    digits
+}

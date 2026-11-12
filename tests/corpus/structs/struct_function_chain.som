@@ -1,0 +1,11 @@
+// expect: exit 22
+
+struct P { x: i32, y: i32 }
+
+fn add_x(p: P) -> i32 { p.x + 1 }
+fn double(n: i32) -> i32 { n * 2 }
+
+fn main() -> i32 {
+    let p = P { x: 10, y: 0 };
+    double(add_x(p))
+}

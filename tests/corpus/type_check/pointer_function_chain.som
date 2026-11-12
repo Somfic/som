@@ -1,0 +1,10 @@
+// expect: ok
+
+extern {
+    fn malloc(size: i32) -> *;
+    fn free(p: *);
+}
+fn alloc_and_free() {
+    let p = malloc(10);
+    free(p);
+}

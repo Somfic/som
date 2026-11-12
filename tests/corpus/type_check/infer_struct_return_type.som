@@ -1,0 +1,4 @@
+// expect: ok
+
+struct P { x: i32 }
+fn make() -> P { P { x: 1 } }

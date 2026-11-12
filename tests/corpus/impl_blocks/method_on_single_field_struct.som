@@ -1,0 +1,14 @@
+// expect: exit 42
+
+struct Wrapper { value: i32 }
+
+impl Wrapper {
+    fn get(self: Wrapper) -> i32 {
+        self.value
+    }
+}
+
+fn main() -> i32 {
+    let w = Wrapper { value: 42 };
+    w.get()
+}
