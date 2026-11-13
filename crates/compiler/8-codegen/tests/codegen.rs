@@ -28,14 +28,14 @@ fn unit_main_exits_with_zero() {
 
 #[test]
 fn strings_are_escaped() {
-    let c = c(r#"extern { fn puts(s: &str); } fn main() { puts("tab	quote\" é"); }"#).unwrap();
+    let c = c(r#"extern { fn puts(s: cstr); } fn main() { puts("tab	quote\" é"); }"#).unwrap();
     assert!(c.contains(r#""tab\011quote\" \303\251""#), "{c}");
 }
 
 #[test]
 fn externs_are_declared_once_and_return_void_for_unit() {
     let c =
-        c("extern { fn puts(s: &str); } extern { fn puts(s: &str); } fn main() { puts(\"x\"); }")
+        c("extern { fn puts(s: cstr); } extern { fn puts(s: cstr); } fn main() { puts(\"x\"); }")
             .unwrap();
     assert_eq!(c.matches("void puts(uint8_t*);").count(), 1, "{c}");
     assert!(

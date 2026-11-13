@@ -11,6 +11,8 @@ pub enum VarKind {
     Int,
     /// From a float literal: any float type. Defaults to `f64`.
     Float,
+    /// From a string literal: a `str`, or a `cstr` for C. Defaults to `str`.
+    Text,
     /// From a collection literal, `[a, b, c]` or `[v; N]`: `len` elements of type `element`,
     /// in an array of that length or a slice. Defaults to the array.
     Collection {
@@ -112,6 +114,7 @@ impl Unifier {
             VarKind::Any => true,
             VarKind::Int => matches!(self.table.get(ty), Ty::Int(_)),
             VarKind::Float => matches!(self.table.get(ty), Ty::Float(_)),
+            VarKind::Text => ty == self.table.str_ref || ty == self.table.cstr,
             // An array of as many, or a slice, of the same elements.
             VarKind::Collection { element, len } => {
                 let found = match self.table.get(ty).clone() {
@@ -167,6 +170,10 @@ impl Unifier {
                     unresolved.get_or_insert(id);
                     self.table.error
                 }
+                VarKind::Text => {
+                    self.vars[v as usize].bound = Some(self.table.str_ref);
+                    self.table.str_ref
+                }
                 VarKind::Collection { element, len } => {
                     let element = self.finish(element, unresolved);
                     let array = self.intern(Ty::Array { element, len });
@@ -195,6 +202,7 @@ impl Unifier {
                 VarKind::Int => "i32".into(),
                 VarKind::Float => "f64".into(),
                 VarKind::Any => "_".into(),
+                VarKind::Text => "str".into(),
                 VarKind::Collection { element, len } => {
                     format!("[{}; {len}]", self.display(element, names))
                 }
@@ -203,6 +211,7 @@ impl Unifier {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.
                 match self.table.get(self.shallow(*to)) {
+                    Ty::Str => "str".into(),
                     Ty::Optional(_) => format!("&{mutability}({})", self.display(*to, names)),
                     Ty::Slice(element) => {
                         format!("[{mutability}{}]", self.display(*element, names))

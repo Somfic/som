@@ -69,6 +69,8 @@ pub enum TokenKind {
     Char,
     #[token("str")]
     Str,
+    #[token("cstr")]
+    CStr,
 
     // Literals and identifiers
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
@@ -210,6 +212,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Bool => write!(f, "bool"),
             TokenKind::Char => write!(f, "char"),
             TokenKind::Str => write!(f, "str"),
+            TokenKind::CStr => write!(f, "cstr"),
             TokenKind::Ident => write!(f, "identifier"),
             TokenKind::Int => write!(f, "integer"),
             TokenKind::Float => write!(f, "float"),

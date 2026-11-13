@@ -207,7 +207,8 @@ impl Names {
                 Ty::Slice(element) => {
                     format!("som_slice_{}", identifier(&mir.display_ty(*element)))
                 }
-                _ => unreachable!("used_generated returns optionals and arrays"),
+                Ty::Str => "som_str".to_string(),
+                _ => unreachable!("used_generated returns optionals, arrays, slices and text"),
             };
             generated.insert(ty, unique(&name, "s", &mut tags, |_| false));
         }
@@ -266,7 +267,10 @@ fn used_generated(mir: &Mir) -> Vec<TypeId> {
             continue;
         }
         let t = mir.types.get(ty);
-        if matches!(t, Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_)) {
+        if matches!(
+            t,
+            Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_) | Ty::Str
+        ) {
             found.push(ty);
         }
         todo.extend(t.children());
@@ -510,7 +514,8 @@ impl<'a> Emitter<'a> {
             Ty::Unit => "som_unit".into(),
             Ty::Bool => "bool".into(),
             Ty::Char => "uint32_t".into(),
-            Ty::Str => "uint8_t".into(), // only ever behind a reference: `&str` is `uint8_t*`
+            Ty::Str => format!("struct {}", self.names.generated[&ty]),
+            Ty::CStr => "uint8_t*".into(),
             Ty::Int(int) => match int {
                 IntTy::I8 => "int8_t",
                 IntTy::I16 => "int16_t",
@@ -530,7 +535,9 @@ impl<'a> Emitter<'a> {
             Ty::Float(FloatTy::F64) => "double".into(),
             Ty::Pointer | Ty::Fn { .. } => "void*".into(),
             // A slice is both: where its elements start, and how many there are.
-            Ty::Ref { to, .. } if matches!(self.mir.types.get(*to), Ty::Slice(_)) => self.ty(*to),
+            Ty::Ref { to, .. } if matches!(self.mir.types.get(*to), Ty::Slice(_) | Ty::Str) => {
+                self.ty(*to)
+            }
             Ty::Ref { to, .. } => format!("{}*", self.ty(*to)),
             // A handle is a pointer to a struct only C sees inside.
             Ty::Struct(def) if self.mir.struct_def(*def).handle => {
@@ -610,14 +617,16 @@ impl<'a> Emitter<'a> {
                 .collect(),
             Ty::Optional(inner) | Ty::Array { element: inner, .. } => vec![*inner],
             // Its elements are behind a pointer, so they don't have to come first.
-            Ty::Slice(_) => Vec::new(),
+            Ty::Slice(_) | Ty::Str => Vec::new(),
             _ => return,
         };
         visiting.push(ty);
         for inner in contains {
             // A slice is a struct of its own, held by value even though it's a reference.
             let inner = match self.mir.types.get(inner) {
-                Ty::Ref { to, .. } if matches!(self.mir.types.get(*to), Ty::Slice(_)) => *to,
+                Ty::Ref { to, .. } if matches!(self.mir.types.get(*to), Ty::Slice(_) | Ty::Str) => {
+                    *to
+                }
                 _ => inner,
             };
             self.define(inner, done, visiting);
@@ -634,6 +643,12 @@ impl<'a> Emitter<'a> {
                 let element = self.ty(element);
                 self.line(format!(
                     "{} {{ {element}* ptr; uintptr_t len; }};",
+                    self.ty(ty)
+                ));
+            }
+            Ty::Str => {
+                self.line(format!(
+                    "{} {{ uint8_t* ptr; uintptr_t len; }};",
                     self.ty(ty)
                 ));
             }
@@ -1028,7 +1043,16 @@ impl<'a> Emitter<'a> {
                     _ => format!("{x:?}"),
                 },
                 ConstKind::Bool(b) => (if *b { "true" } else { "false" }).into(),
-                ConstKind::Str(s) => format!("(uint8_t*){}", c_string(s)),
+                // A `cstr` is the literal; a `str` is where it starts, and how many bytes it has.
+                ConstKind::Str(s) if c.ty == self.mir.types.cstr => {
+                    format!("(uint8_t*){}", c_string(s))
+                }
+                ConstKind::Str(s) => format!(
+                    "({}){{(uint8_t*){}, {}}}",
+                    self.ty(c.ty),
+                    c_string(s),
+                    s.len()
+                ),
                 ConstKind::Unit => "0".into(),
                 ConstKind::Func(id) => format!("(void*)&{}", self.func_name(*id)),
                 // A compound literal zeroes anything: `(void*){0}`, `(Color){0}`.
@@ -1053,7 +1077,7 @@ impl<'a> Emitter<'a> {
                 let viewed = self.project(ty, Projection::Deref);
                 s = match (self.mir.types.get(viewed), next) {
                     // `(*s)[i]` of a slice is `s.ptr[i]`.
-                    (Ty::Slice(_), Projection::Index(index)) => {
+                    (Ty::Slice(_) | Ty::Str, Projection::Index(index)) => {
                         *f.mentioned.borrow_mut().entry(index).or_default() += 1;
                         format!("{s}.ptr[{}]", f.locals[index.id])
                     }

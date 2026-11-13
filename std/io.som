@@ -1,8 +1,9 @@
 extern {
-    fn puts(s: &str);
-    fn printf(format: &str, ...) -> i32;
+    fn puts(s: cstr);
+    fn printf(format: cstr, ...) -> i32;
 }
 
-fn println(text: &str) {
+/// Prints `text` and a newline. Takes a `cstr` for now: a string literal works as one.
+fn println(text: cstr) {
     puts(text);
 }

@@ -468,6 +468,10 @@ impl<'a> FnChecker<'a> {
                     name = format!("{name}[_]");
                     ty = *element;
                 }
+                (Projection::Index(_), Ty::Str) => {
+                    name = format!("{name}[_]");
+                    ty = self.mir.types.u8;
+                }
                 // Where a slice's elements start, or how many there are: part of the slice.
                 (Projection::Field(_), Ty::Ref { .. }) => {
                     ty = self.mir.project(ty, *projection).expect("validated MIR");

@@ -1,4 +1,4 @@
-use som_ast::{Ast, BinOp, Expr, Func, Id, Span, Stmt, TypeExpr};
+use som_ast::{Ast, BinOp, Expr, Func, Id, Primitive, Span, Stmt, TypeExpr};
 use som_resolve::{DefId, DefKind, Names};
 use std::collections::{HashMap, HashSet};
 
@@ -225,6 +225,8 @@ impl<'a> Checker<'a> {
     fn lower(&mut self, id: Id<TypeExpr>) -> TypeId {
         let ty = match &self.ast.types[id] {
             TypeExpr::Unit => Ty::Unit,
+            // Text is a view of bytes, like a slice: `str` is a reference to them.
+            TypeExpr::Primitive(Primitive::Str) => return self.u.table.str_ref,
             TypeExpr::Primitive(p) => Ty::from_primitive(*p),
             TypeExpr::Pointer => Ty::Pointer,
             TypeExpr::Named(_) => match self
@@ -236,6 +238,15 @@ impl<'a> Checker<'a> {
                 Some((def, DefKind::TypeParam { .. })) => Ty::Param(def),
                 _ => Ty::Error, // already reported by the resolver
             },
+            // `&str` from before strings were slices.
+            TypeExpr::Reference { to, .. }
+                if matches!(self.ast.types[*to], TypeExpr::Primitive(Primitive::Str)) =>
+            {
+                self.errors.push(TypeError::StrBehindReference {
+                    span: self.ast.types.span(id).clone(),
+                });
+                return self.u.table.str_ref;
+            }
             TypeExpr::Reference { mutable, to, .. } => {
                 let to = self.lower(*to);
                 Ty::Ref {
@@ -317,6 +328,7 @@ impl<'a> Checker<'a> {
         let text = match self.u.var_kind(ty) {
             Some(VarKind::Int) => "an integer".to_string(),
             Some(VarKind::Float) => "a float".to_string(),
+            Some(VarKind::Text) => "a string".to_string(),
             Some(VarKind::Collection { len: 1, .. }) => "a collection of 1 element".to_string(),
             Some(VarKind::Collection { len, .. }) => format!("a collection of {len} elements"),
             Some(VarKind::Any) => "an unknown type".to_string(),
@@ -626,9 +638,19 @@ impl<'a> Checker<'a> {
     /// Infers the type of `expr` and requires it to be `expected`.
     fn expect(&mut self, expr: Id<Expr>, expected: TypeId, expected_from: Option<Span>) {
         let found = self.infer(expr);
-        if !self.coerce(expr, expected, found) {
-            self.mismatch(expected, found, self.span(expr), expected_from);
+        if self.coerce(expr, expected, found) {
+            return;
         }
+        // A `str` where C needs a `cstr`: say why they differ.
+        if self.u.shallow(expected) == self.u.table.cstr
+            && self.u.shallow(found) == self.u.table.str_ref
+        {
+            self.errors.push(TypeError::StrToC {
+                span: self.span(expr),
+            });
+            return;
+        }
+        self.mismatch(expected, found, self.span(expr), expected_from);
     }
 
     /// Makes `expr`, of type `found`, usable where `expected` is required, returning whether
@@ -796,7 +818,8 @@ impl<'a> Checker<'a> {
             Expr::Int(_) => self.u.fresh(VarKind::Int),
             Expr::Float(_) => self.u.fresh(VarKind::Float),
             Expr::Bool(_) => bool,
-            Expr::Str(_) => self.u.table.str_ref,
+            // A `str`, or a `cstr` where C needs one.
+            Expr::Str(_) => self.u.fresh(VarKind::Text),
             Expr::None => {
                 let inner = self.u.fresh(VarKind::Any);
                 self.u.intern(Ty::Optional(inner))
@@ -958,7 +981,7 @@ impl<'a> Checker<'a> {
                 let ty = self.u.shallow(ty);
                 match self.u.get(ty).clone() {
                     Ty::Ref { to, .. }
-                        if matches!(self.u.get(self.u.shallow(to)), Ty::Slice(_)) =>
+                        if matches!(self.u.get(self.u.shallow(to)), Ty::Slice(_) | Ty::Str) =>
                     {
                         self.errors.push(TypeError::DerefSlice {
                             span: self.span(id),
@@ -1229,10 +1252,17 @@ impl<'a> Checker<'a> {
         args: &[Id<Expr>],
     ) -> Option<TypeId> {
         let error = self.u.table.error;
-        // `[1, 2, 3].len()`: a collection nothing else decides is an array.
-        if let Some(VarKind::Collection { element, len }) = self.u.var_kind(receiver_ty) {
-            let array = self.u.intern(Ty::Array { element, len });
-            let _ = self.u.unify(receiver_ty, array);
+        // `[1, 2, 3].len()`: a collection nothing else decides is an array, and a string a `str`.
+        match self.u.var_kind(receiver_ty) {
+            Some(VarKind::Collection { element, len }) => {
+                let array = self.u.intern(Ty::Array { element, len });
+                let _ = self.u.unify(receiver_ty, array);
+            }
+            Some(VarKind::Text) => {
+                let str = self.u.table.str_ref;
+                let _ = self.u.unify(receiver_ty, str);
+            }
+            _ => {}
         }
         let shallow = self.u.shallow(receiver_ty);
         let (array, through) = match *self.u.get(shallow) {
@@ -1242,6 +1272,8 @@ impl<'a> Checker<'a> {
         let (element, is_slice) = match *self.u.get(array) {
             Ty::Array { element, .. } => (element, false),
             Ty::Slice(element) => (element, true),
+            // Text is its bytes.
+            Ty::Str => (self.u.table.u8, true),
             _ => return None,
         };
         let infer_args = |c: &mut Self| {
@@ -1284,6 +1316,11 @@ impl<'a> Checker<'a> {
             let borrow = kind == ArrayMethod::GetMut;
             match through {
                 Some(true) => {}
+                Some(false) if *self.u.get(array) == Ty::Str => {
+                    self.errors.push(TypeError::ReadOnlyStr {
+                        span: self.span(receiver),
+                    })
+                }
                 Some(false) if is_slice => self.errors.push(TypeError::ReadOnlySlice {
                     span: self.span(receiver),
                 }),
@@ -1386,8 +1423,17 @@ impl<'a> Checker<'a> {
             let from = declared.ty.map(|t| self.ast.types.span(t).clone());
             self.expect(arg, param, from);
         }
+        // C reads a variadic function's extra arguments as C types: text has to be a `cstr`.
         for &extra in &args[params.len()..] {
-            self.infer(extra);
+            let ty = self.infer(extra);
+            if self.u.var_kind(ty) == Some(VarKind::Text) {
+                let cstr = self.u.table.cstr;
+                let _ = self.u.unify(ty, cstr);
+            } else if self.u.shallow(ty) == self.u.table.str_ref {
+                self.errors.push(TypeError::StrToC {
+                    span: self.span(extra),
+                });
+            }
         }
     }
 
@@ -1537,7 +1583,7 @@ impl<'a> Checker<'a> {
             return match kind {
                 VarKind::Any => None,
                 VarKind::Int | VarKind::Float => Some(true),
-                VarKind::Collection { .. } => Some(false),
+                VarKind::Collection { .. } | VarKind::Text => Some(false),
             };
         }
         let ty = self.u.get(self.u.shallow(ty));

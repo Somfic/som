@@ -14,7 +14,7 @@
 //! |-------------------------------------|----------------|
 //! | `char`, `short`, `int`, `long`, …   | `i8` … `u64`   |
 //! | `float`, `double`, `bool`           | `f32`, `f64`, `bool` |
-//! | `const char *`                      | `&str`         |
+//! | `const char *`                      | `cstr`         |
 //! | parameter `const T *`, `T *`        | `&T`, `&mut T` |
 //! | `sqlite3 *`, a struct never defined | `Sqlite3`, an `extern struct` handle |
 //! | any other pointer                   | `*`            |
@@ -353,7 +353,7 @@ fn mismatch(
 }
 
 /// Whether a type written in som agrees with the header's. All pointers are alike to C,
-/// so `*` and `&str` are interchangeable, and a struct agrees with another struct whose
+/// so `*`, `cstr` and references are interchangeable, and a struct agrees with another struct whose
 /// fields have the same types in the same order, whatever either is called.
 fn compatible(
     ast: &Ast,
@@ -361,7 +361,7 @@ fn compatible(
     written: &str,
     header: &str,
 ) -> bool {
-    let pointer = |t: &str| t == "*" || t.starts_with('&');
+    let pointer = |t: &str| t == "*" || t == "cstr" || t.starts_with('&');
     if written == header || (pointer(written) && pointer(header)) {
         return true;
     }
@@ -382,7 +382,7 @@ fn compatible(
 }
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 15;
+const GENERATOR_VERSION: u32 = 16;
 
 /// The first line of a cached import: everything it depends on. Any change to the header,
 /// the library or the generator makes it stale.
@@ -520,7 +520,8 @@ fn clang_ast(header: &Path, root: &Path, library_dirs: &[PathBuf]) -> Result<Val
 const SOM_KEYWORDS: &[&str] = &[
     "fn", "extern", "struct", "impl", "let", "if", "else", "mut", "out", "use", "loop", "while",
     "break", "for", "true", "false", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16",
-    "u32", "u64", "u128", "usize", "f32", "f64", "bool", "char", "str",
+    "u32", "u64", "u128", "usize", "f32", "f64", "bool", "char", "str", "cstr", "none", "and",
+    "or",
 ];
 
 fn identifier(name: &str) -> String {
@@ -989,12 +990,14 @@ impl Converter {
         let Some(pointee) = text.strip_suffix('*').map(str::trim) else {
             return self.ty(text);
         };
-        if self.ty(text)? == "&str" {
-            return Ok("&str".into());
+        if self.ty(text)? == "cstr" {
+            return Ok("cstr".into());
         }
         let constant = pointee.starts_with("const ") || pointee.ends_with(" const");
         match self.ty(pointee) {
-            Ok(to) if to != "()" && !to.starts_with('&') && !pointee.contains('(') => {
+            Ok(to)
+                if to != "()" && to != "cstr" && !to.starts_with('&') && !pointee.contains('(') =>
+            {
                 Ok(format!("&{}{to}", if constant { "" } else { "mut " }))
             }
             // `void *`, an opaque struct, a function pointer, `const char *`.
@@ -1021,7 +1024,7 @@ impl Converter {
         if let Some(pointee) = text.strip_suffix('*') {
             let pointee = pointee.trim().trim_start_matches("const ").trim();
             if constant && pointee == "char" {
-                return Ok("&str".into());
+                return Ok("cstr".into());
             }
             // `sqlite3 *`, where the header never says what's in a `sqlite3`.
             let mut pointee = pointee.to_string();
@@ -1178,7 +1181,7 @@ mod tests {
     fn types() {
         let mut c = Converter::default();
         c.typedefs.insert("size_t".into(), "unsigned long".into());
-        assert_eq!(c.ty("const char *").unwrap(), "&str");
+        assert_eq!(c.ty("const char *").unwrap(), "cstr");
         assert_eq!(c.ty("char *").unwrap(), "*");
         assert_eq!(c.ty("size_t").unwrap(), "u64");
         assert_eq!(c.ty("void (*)(int)").unwrap(), "*");
@@ -1193,7 +1196,7 @@ mod tests {
         assert_eq!(c.param_ty("int *").unwrap(), "&mut i32");
         assert_eq!(c.param_ty("int *const").unwrap(), "&mut i32");
         assert_eq!(c.param_ty("struct opaque **").unwrap(), "&mut Opaque");
-        assert_eq!(c.param_ty("const char *").unwrap(), "&str");
+        assert_eq!(c.param_ty("const char *").unwrap(), "cstr");
         assert_eq!(c.param_ty("const char **").unwrap(), "*");
         assert_eq!(c.param_ty("void *").unwrap(), "*");
         assert_eq!(c.param_ty("struct opaque *").unwrap(), "Opaque");

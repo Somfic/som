@@ -1,6 +1,6 @@
 // expect: error WrongArgCount
 
-extern { fn printf(format: &str, ...) -> i32; }
+extern { fn printf(format: cstr, ...) -> i32; }
 
 fn main() -> i32 {
     printf()

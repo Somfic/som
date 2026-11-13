@@ -109,7 +109,7 @@ fn constructor_fields_are_put_in_declaration_order() {
 
 #[test]
 fn entry_point_and_externs() {
-    let mir = lower("extern { fn puts(s: &str); } fn main() { puts(\"hi\"); }");
+    let mir = lower("extern { fn puts(s: cstr); } fn main() { puts(\"hi\"); }");
     assert!(func(&mir, "main").1.is_entry);
     let puts = func(&mir, "puts").1;
     assert!(puts.body.is_none());

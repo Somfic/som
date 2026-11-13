@@ -1,5 +1,5 @@
 // expect: ok
 
-fn test() -> &'static str {
+fn test() -> str {
     "hello world"
 }

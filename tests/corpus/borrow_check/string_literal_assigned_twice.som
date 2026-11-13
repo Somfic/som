@@ -1,6 +1,6 @@
 // expect: ok
 
-fn test() -> &str {
+fn test() -> str {
     let s = "first";
     let s = "second";
     s

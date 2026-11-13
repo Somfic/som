@@ -1,7 +1,7 @@
 // expect: exit 5
 
 extern {
-    fn strlen(s: &str) -> i32;
+    fn strlen(s: cstr) -> i32;
 }
 
 fn main() -> i32 {

@@ -1,7 +1,7 @@
 // expect: exit 6
 
 // a, tab, b, newline, quote, backslash: six characters.
-extern { fn strlen(s: &str) -> i32; }
+extern { fn strlen(s: cstr) -> i32; }
 
 fn main() -> i32 {
     strlen("a\tb\n\"\\")

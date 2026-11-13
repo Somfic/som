@@ -2,7 +2,7 @@
 
 // `printf` returns how many characters it printed: "42|hi\n" is 6. Calling a variadic
 // C function as if its arguments were fixed would make it read garbage.
-extern { fn printf(format: &str, ...) -> i32; }
+extern { fn printf(format: cstr, ...) -> i32; }
 
 fn main() -> i32 {
     printf("%d|%s\n", 42, "hi")

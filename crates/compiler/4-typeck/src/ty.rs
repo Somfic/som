@@ -14,7 +14,11 @@ pub enum Ty {
     Unit,
     Bool,
     Char,
+    /// Text's bytes. Only ever behind a reference, which holds where they start and how many
+    /// there are: som's `str` is `&` of this, like `[u8]` is of a slice.
     Str,
+    /// `cstr`: a pointer to text ending in a zero byte, as C takes it.
+    CStr,
     Int(IntTy),
     Float(FloatTy),
     /// `*`, an untyped raw pointer.
@@ -85,6 +89,7 @@ impl Ty {
             | Ty::Bool
             | Ty::Char
             | Ty::Str
+            | Ty::CStr
             | Ty::Int(_)
             | Ty::Float(_)
             | Ty::Pointer
@@ -143,6 +148,7 @@ impl Ty {
             Primitive::Bool => Ty::Bool,
             Primitive::Char => Ty::Char,
             Primitive::Str => Ty::Str,
+            Primitive::CStr => Ty::CStr,
         }
     }
 }
@@ -158,7 +164,10 @@ pub struct TypeTable {
     pub i32: TypeId,
     pub f64: TypeId,
     pub pointer: TypeId,
+    /// `str`: a reference to text's bytes.
     pub str_ref: TypeId,
+    pub cstr: TypeId,
+    pub u8: TypeId,
 }
 
 impl Default for TypeTable {
@@ -173,6 +182,8 @@ impl Default for TypeTable {
             f64: Id::new(0),
             pointer: Id::new(0),
             str_ref: Id::new(0),
+            cstr: Id::new(0),
+            u8: Id::new(0),
         };
         table.error = table.intern(Ty::Error);
         table.unit = table.intern(Ty::Unit);
@@ -185,6 +196,8 @@ impl Default for TypeTable {
             mutable: false,
             to: str,
         });
+        table.cstr = table.intern(Ty::CStr);
+        table.u8 = table.intern(Ty::Int(IntTy::U8));
         table
     }
 }
@@ -221,6 +234,7 @@ impl TypeTable {
             Ty::Bool => "bool".into(),
             Ty::Char => "char".into(),
             Ty::Str => "str".into(),
+            Ty::CStr => "cstr".into(),
             Ty::Int(int) => format!("{int:?}").to_lowercase(),
             Ty::Float(float) => format!("{float:?}").to_lowercase(),
             Ty::Pointer => "*".into(),
@@ -228,6 +242,7 @@ impl TypeTable {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.
                 match self.get(*to) {
+                    Ty::Str => "str".into(),
                     Ty::Optional(_) => format!("&{mutability}({})", self.display(*to, names)),
                     Ty::Slice(element) => {
                         format!("[{mutability}{}]", self.display(*element, names))

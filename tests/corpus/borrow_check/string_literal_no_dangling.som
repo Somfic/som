@@ -1,5 +1,5 @@
 // expect: ok
 
-fn test() -> &str {
+fn test() -> str {
     "hello"
 }

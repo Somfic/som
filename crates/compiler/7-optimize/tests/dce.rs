@@ -70,7 +70,7 @@ fn unused_structs_and_borrows_are_removed_and_shaken() {
 #[test]
 fn calls_writes_through_references_and_traps_stay() {
     let mir = optimized(
-        "extern { fn puts(s: &str); }
+        "extern { fn puts(s: cstr); }
          fn set(x: &mut i32) { *x = 5; }
          fn main(a: i32) -> i32 { let unused = puts(\"hi\"); let q = 10 / a; let mut v = 1; set(&mut v); 0 }",
     );

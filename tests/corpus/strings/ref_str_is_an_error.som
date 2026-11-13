@@ -1,0 +1,5 @@
+// expect: error StrBehindReference
+
+fn greet(name: &str) {}
+
+fn main() -> i32 { 0 }

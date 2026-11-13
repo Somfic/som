@@ -1,6 +1,6 @@
 // expect: ok
 
-fn test(b: bool) -> &str {
+fn test(b: bool) -> str {
     let s = {
         "hello" if b else "world"
     };

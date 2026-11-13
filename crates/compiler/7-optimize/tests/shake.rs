@@ -41,7 +41,7 @@ fn only_functions_reachable_from_main_stay() {
 #[test]
 fn only_called_externs_stay() {
     let mir = shaken(
-        "extern { fn puts(s: &str); fn abs(x: i32) -> i32; fn rand() -> i32; }
+        "extern { fn puts(s: cstr); fn abs(x: i32) -> i32; fn rand() -> i32; }
          fn main() { puts(\"x\"); }",
     );
     assert_eq!(funcs(&mir), ["puts", "main"]);

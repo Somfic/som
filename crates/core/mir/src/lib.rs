@@ -68,14 +68,15 @@ impl Mir {
             (Projection::Index(_), Ty::Array { element, .. } | Ty::Slice(element)) => {
                 Some(*element)
             }
+            (Projection::Index(_), Ty::Str) => Some(self.types.u8),
             // A slice's reference holds where its elements start, and how many there are.
             (Projection::Field(0), Ty::Ref { to, .. })
-                if matches!(self.types.get(*to), Ty::Slice(_)) =>
+                if matches!(self.types.get(*to), Ty::Slice(_) | Ty::Str) =>
             {
                 Some(self.types.pointer)
             }
             (Projection::Field(1), Ty::Ref { to, .. })
-                if matches!(self.types.get(*to), Ty::Slice(_)) =>
+                if matches!(self.types.get(*to), Ty::Slice(_) | Ty::Str) =>
             {
                 self.types.lookup(&Ty::Int(IntTy::USize))
             }

@@ -1,5 +1,5 @@
 extern {
-    fn puts(s: &str);
+    fn puts(s: cstr);
 }
 fn greet() {
     puts("Hello from mylib!");

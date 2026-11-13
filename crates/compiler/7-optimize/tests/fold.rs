@@ -85,7 +85,7 @@ fn mutated_and_borrowed_locals_are_not_propagated() {
 #[test]
 fn constant_branches_become_jumps_and_dead_blocks_go() {
     let mir = folded(
-        "extern { fn puts(s: &str); }
+        "extern { fn puts(s: cstr); }
          fn main() -> i32 { if 1 < 2 { puts(\"always\"); } else { puts(\"never\"); } 0 }",
     );
     assert!(mir.contains("always"), "{mir}");

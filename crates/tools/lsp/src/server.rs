@@ -719,7 +719,13 @@ impl LanguageServer for SomLanguageServer {
             if let Some(expr) = receiver
                 && let Some((element, len)) = array_of(a, a.typed.expr(expr))
             {
+                let is_text = matches!(a.typed.ty(a.typed.expr(expr)), Ty::Ref { to, .. }
+                    if matches!(a.typed.ty(*to), Ty::Str));
                 for (_, method) in ArrayMethod::ALL {
+                    // Text can only be read.
+                    if is_text && matches!(method, ArrayMethod::GetMut | ArrayMethod::Set) {
+                        continue;
+                    }
                     let doc = array_method_doc(a, method, element, len);
                     items.push(CompletionItem {
                         label: doc.name.to_string(),
@@ -1289,6 +1295,8 @@ fn array_of(a: &Analysis, t: som_typeck::TypeId) -> Option<(som_typeck::TypeId, 
     match a.typed.ty(t) {
         Ty::Array { element, len } => Some((*element, Some(*len))),
         Ty::Slice(element) => Some((*element, None)),
+        // Text is its bytes.
+        Ty::Str => Some((a.typed.table.u8, None)),
         _ => None,
     }
 }
@@ -1998,7 +2006,8 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::F64
             | TokenKind::Bool
             | TokenKind::Char
-            | TokenKind::Str => 4,
+            | TokenKind::Str
+            | TokenKind::CStr => 4,
             TokenKind::Comment => 5,
             // `*` is the pointer type after `:` or `->`, and multiplication or a dereference otherwise.
             TokenKind::Star if matches!(prev, Some(TokenKind::Colon | TokenKind::Arrow)) => 4,

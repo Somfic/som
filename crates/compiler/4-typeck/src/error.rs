@@ -94,8 +94,20 @@ pub enum TypeError {
         name: String,
         span: Span,
     },
+    /// `&str`: a `str` is already a view of the text, like a slice.
+    StrBehindReference {
+        span: Span,
+    },
+    /// A `str` passed to C, which needs text ending in a zero byte: a `cstr`.
+    StrToC {
+        span: Span,
+    },
     /// `*s` of a slice: what it views has no fixed size, so it can't be a value of its own.
     DerefSlice {
+        span: Span,
+    },
+    /// `set` or `get_mut` on a `str`: text can't be changed in place.
+    ReadOnlyStr {
         span: Span,
     },
     /// `set` or `get_mut` on a `[T]`, which can only read.
@@ -268,12 +280,38 @@ impl TypeError {
             } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
                 Label::primary(span.clone(), msg!["this is ", found.clone()]),
             ),
+            TypeError::StrBehindReference { span } => {
+                Diagnostic::error(msg![code("&str"), " is a reference to a reference"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "a `str` already refers to its text",
+                    ))
+                    .with_fix(Fix::replace(
+                        msg!["write ", code("str")],
+                        span.clone(),
+                        "str",
+                    ))
+            }
+            TypeError::StrToC { span } => Diagnostic::error(msg!["C can't take a ", code("str")])
+                .with_label(Label::primary(
+                    span.clone(),
+                    "C needs text ending in a zero byte",
+                ))
+                .with_hint(msg![
+                    "pass a ",
+                    code("cstr"),
+                    "; a string literal becomes one"
+                ]),
             TypeError::DerefSlice { span } => Diagnostic::error("cannot dereference a slice")
                 .with_label(Label::primary(
                     span.clone(),
                     "how many elements it views isn't fixed",
                 ))
                 .with_hint(msg!["use its methods instead, like ", code("get")]),
+            TypeError::ReadOnlyStr { span } => {
+                Diagnostic::error(msg!["cannot change the bytes of a ", code("str")])
+                    .with_label(Label::primary(span.clone(), "text can only be read"))
+            }
             TypeError::ReadOnlySlice { span } => {
                 Diagnostic::error(msg!["cannot change the elements of a ", code("[T]")])
                     .with_label(Label::primary(span.clone(), "this slice can only read"))

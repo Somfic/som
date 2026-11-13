@@ -1091,7 +1091,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let types = &self.l.mir.types;
         let (elements, len) = match *types.get(receiver_ty) {
             Ty::Ref { to, .. } => match *types.get(to) {
-                Ty::Slice(_) => {
+                // Text holds its length the way a slice does.
+                Ty::Slice(_) | Ty::Str => {
                     let count = Operand::Copy(place.clone().project(Projection::Field(1)));
                     (place.project(Projection::Deref), Length::Held(count))
                 }

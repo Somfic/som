@@ -1,17 +1,14 @@
-extern {
-    fn strlen(string: &str) -> i32;
-}
-
 struct String {
-    value: &str
+    value: str
 }
 
 impl String {
-    fn new(string: &str) -> String {
+    fn new(string: str) -> String {
         String { value: string }
     }
 
+    /// How many bytes it has.
     fn len(self: String) -> i32 {
-        strlen(self.value)
+        self.value.len()
     }
 }

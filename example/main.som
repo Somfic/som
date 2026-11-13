@@ -1,7 +1,7 @@
 use std;
 
 fn print_3rd(arr: [i32]) {
-    let x = arr.get(3);
+    let a = "hello";
     if x {
         std::printf("%d", x);
     } else {

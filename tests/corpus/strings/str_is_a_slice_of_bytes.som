@@ -1,0 +1,21 @@
+// expect: exit 18
+
+use std;
+
+/// Counts how often `byte` appears in `text`.
+fn count(text: str, byte: u8) -> i32 {
+    let mut n = 0;
+    let mut i = 0;
+    while i < text.len() {
+        if text.get(i) == byte { n = n + 1; }
+        i = i + 1;
+    }
+    n
+}
+
+fn main() -> i32 {
+    let greeting = "hello, world";
+    let s = std::String::new("abc");
+    // 3 `l`s, 12 bytes, and 3 more.
+    count(greeting, 108) + greeting.len() + s.len()
+}

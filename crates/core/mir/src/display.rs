@@ -26,6 +26,7 @@ impl Mir {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.
                 match self.types.get(*to) {
+                    Ty::Str => "str".into(),
                     Ty::Optional(_) => format!("&{mutability}({})", self.display_ty(*to)),
                     Ty::Slice(element) => format!("[{mutability}{}]", self.display_ty(*element)),
                     _ => format!("&{mutability}{}", self.display_ty(*to)),
@@ -47,6 +48,7 @@ impl Mir {
             Ty::Bool => "bool".into(),
             Ty::Char => "char".into(),
             Ty::Str => "str".into(),
+            Ty::CStr => "cstr".into(),
             Ty::Int(int) => format!("{int:?}").to_lowercase(),
             Ty::Float(float) => format!("{float:?}").to_lowercase(),
             Ty::Pointer => "*".into(),

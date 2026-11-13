@@ -1,0 +1,10 @@
+// expect: error StrToC
+
+extern { fn puts(s: cstr); }
+
+fn main() -> i32 {
+    let s: str = "hi";
+    // `s` isn't a literal: it has no zero byte at the end.
+    puts(s);
+    0
+}

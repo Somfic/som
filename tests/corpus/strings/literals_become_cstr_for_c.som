@@ -1,0 +1,12 @@
+// expect: exit 5
+
+extern {
+    fn strlen(s: cstr) -> i32;
+    fn printf(format: cstr, ...) -> i32;
+}
+
+fn main() -> i32 {
+    // A literal passed to C, and as an extra argument to a variadic one, is a `cstr`.
+    printf("%s\n", "done");
+    strlen("hello")
+}

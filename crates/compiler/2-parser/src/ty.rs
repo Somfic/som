@@ -140,6 +140,7 @@ fn primitive(kind: TokenKind) -> Option<Primitive> {
         TokenKind::Bool => Primitive::Bool,
         TokenKind::Char => Primitive::Char,
         TokenKind::Str => Primitive::Str,
+        TokenKind::CStr => Primitive::CStr,
         _ => return None,
     })
 }

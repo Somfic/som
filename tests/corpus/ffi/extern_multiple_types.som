@@ -2,7 +2,7 @@
 
 extern {
     fn abs(x: i32) -> i32;
-    fn strlen(s: &str) -> i32;
+    fn strlen(s: cstr) -> i32;
 }
 
 fn main() -> i32 {

@@ -1,0 +1,9 @@
+// expect: error StrToC
+
+extern { fn printf(format: cstr, ...) -> i32; }
+
+fn main() -> i32 {
+    let s: str = "hi";
+    printf("%s", s);
+    0
+}

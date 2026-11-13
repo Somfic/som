@@ -40,7 +40,8 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::F64
         | TokenKind::Bool
         | TokenKind::Char
-        | TokenKind::Str => YELLOW,
+        | TokenKind::Str
+        | TokenKind::CStr => YELLOW,
         TokenKind::Int
         | TokenKind::Float
         | TokenKind::Text

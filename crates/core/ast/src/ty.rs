@@ -51,5 +51,8 @@ pub enum Primitive {
     F64,
     Bool,
     Char,
+    /// `str`: text, a view of bytes that live elsewhere.
     Str,
+    /// `cstr`: a pointer to text ending in a zero byte, for C.
+    CStr,
 }

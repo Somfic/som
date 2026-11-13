@@ -1,5 +1,5 @@
 // expect: error
 
-fn main() -> &str {
+fn main() -> str {
     "\q"
 }
