@@ -174,6 +174,7 @@ impl Mir {
                 ConstKind::Str(s) => format!("const {s:?}"),
                 ConstKind::Unit => "const ()".into(),
                 ConstKind::Func(f) => format!("const {}", self.func(*f).name),
+                ConstKind::Zeroed => format!("const zeroed_{}", self.display_ty(c.ty)),
             },
         }
     }

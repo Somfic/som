@@ -31,6 +31,8 @@ DEMO_API demo_size demo_size_of(int w);
 /* Frees nothing,    */
 /* in two lines.     */
 DEMO_API void demo_free(void);
+int demo_left(Pair pair);
+void demo_widen(demo_size *size);
 ";
 
 const SOURCE: &str = "
@@ -44,6 +46,8 @@ int AddNumbers(int a, int b) { return a + b; }
 int GetFPS(void) { return 60; }
 demo_size demo_size_of(int w) { demo_size s = { w, w, 2 * w }; return s; }
 void demo_free(void) {}
+int demo_left(Pair pair) { return pair.left; }
+void demo_widen(demo_size *size) { size->w += 1; }
 ";
 
 /// A directory with `demo.h` and the shared library `demo` built from it.
@@ -90,6 +94,28 @@ fn imported_functions_and_structs_can_be_used() {
          fn main() -> i32 {
              let p: demo::Pair = demo::demo_pair(40);
              demo::demo_add(p.left, 2) + demo::demo_count(\"%d %d\", 1, 2) - 3
+         }",
+    );
+    let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
+    let exe =
+        som_driver::build(&checked, &dir.path().join("program"), &Default::default()).unwrap();
+    assert_eq!(
+        som_driver::run(&checked, &exe, &[]).unwrap().code(),
+        Some(42)
+    );
+}
+
+#[test]
+fn imported_structs_are_copied_and_pointer_parameters_take_references() {
+    let dir = project();
+    let main = write(
+        dir.path(),
+        "extern \"demo\" from \"demo.h\";
+         fn main() -> i32 {
+             let p = demo::demo_pair(20);
+             let mut s = demo::demo_size_of(1);
+             demo::demo_widen(&mut s);
+             demo::demo_left(p) + demo::demo_left(p) + s.w
          }",
     );
     let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));

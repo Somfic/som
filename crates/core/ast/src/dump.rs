@@ -135,9 +135,12 @@ impl Dumper<'_> {
         let params: Vec<String> = f
             .params
             .iter()
-            .map(|p| match p.ty {
-                Some(ty) => format!("{}: {}", p.name, ast.type_text(ty)),
-                None => p.name.to_string(),
+            .map(|p| {
+                let out = if p.out { "out " } else { "" };
+                match p.ty {
+                    Some(ty) => format!("{out}{}: {}", p.name, ast.type_text(ty)),
+                    None => format!("{out}{}", p.name),
+                }
             })
             .collect();
         let returns = f
@@ -219,6 +222,7 @@ impl Dumper<'_> {
                     d.expr(*expr)
                 }),
             Expr::Deref(e) => self.node("deref", |d| d.expr(*e)),
+            Expr::Out(name) => self.line(format!("out {name}")),
             Expr::Assign { target, value } => self.node("assign", |d| d.exprs(&[*target, *value])),
             Expr::Call { callee, args } => self.node(format!("call {callee}"), |d| d.exprs(args)),
             Expr::MethodCall {

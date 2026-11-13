@@ -124,6 +124,11 @@ pub fn build(
     for library in &checked.libraries {
         cmd.arg(library);
     }
+    // A static library (`libbox2d.a`) doesn't bring the libraries it uses, and libm,
+    // separate from libc outside macOS, is the usual one.
+    if !cfg!(target_os = "macos") {
+        cmd.arg("-lm");
+    }
 
     if let Some(show) = options.on_command {
         let args: Vec<String> = cmd

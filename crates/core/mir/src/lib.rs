@@ -49,7 +49,10 @@ impl Mir {
 
     /// Whether values of `ty` are copied rather than moved.
     pub fn is_copy(&self, ty: TypeId) -> bool {
-        !matches!(self.types.get(ty), Ty::Struct(_))
+        match self.types.get(ty) {
+            Ty::Struct(def) => self.struct_def(*def).copy,
+            _ => true,
+        }
     }
 }
 
@@ -70,6 +73,8 @@ pub struct StructDef {
     pub def: DefId,
     pub name: String,
     pub fields: Vec<(String, TypeId)>,
+    /// Values are copied rather than moved.
+    pub copy: bool,
 }
 
 pub struct Function {
@@ -91,6 +96,9 @@ pub struct Function {
 pub struct Body {
     pub locals: Vec<LocalDecl>,
     pub arg_count: usize,
+    /// The `out` parameters: pointers the function must assign through on every path
+    /// before it returns, and before reading through them.
+    pub outs: Vec<Local>,
     pub blocks: Vec<Block>,
 }
 
@@ -240,4 +248,6 @@ pub enum ConstKind {
     Unit,
     /// A function used as a value.
     Func(FuncId),
+    /// Every byte zero: `0`, `false`, a null pointer, or a struct of those.
+    Zeroed,
 }

@@ -1,0 +1,7 @@
+// expect: error
+
+fn ignore<T>(x: &mut T) {}
+
+fn main() {
+    ignore(out n);
+}

@@ -1,7 +1,23 @@
 use std;
-extern "miniaudio";
+extern "sqlite3";
+
+/// Divides `a` by `b`, handing back the remainder through `remainder`.
+fn divide(a: i32, b: i32, out remainder: i32) -> i32 {
+    remainder = a % b;
+    a / b
+}
 
 fn main() {
-    while true {
-    }
+    // `out r` declares `r` right here; `divide` must fill it in.
+    let q = divide(17, 5, out r);
+    std::printf("17 / 5 = %d remainder %d\n", q, r);
+
+    // C functions hand back handles the same way.
+    sqlite3::sqlite3_open(":memory:", out db);
+    sqlite3::sqlite3_exec(db, "create table t (x int); insert into t values (1), (2), (3);", std::null(), std::null(), out err);
+    sqlite3::sqlite3_prepare_v2(db, "select sum(x) from t", 0 - 1, out stmt, std::null());
+    sqlite3::sqlite3_step(stmt);
+    std::printf("sum = %d\n", sqlite3::sqlite3_column_int(stmt, 0));
+    sqlite3::sqlite3_finalize(stmt);
+    sqlite3::sqlite3_close(db);
 }

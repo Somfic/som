@@ -188,6 +188,12 @@ fn import_header(
     let source = Source::from_raw_at(text, cache);
     let parse_errors = som_parser::parse_file(Arc::new(source), ast, module);
     errors.extend(parse_errors.into_iter().map(LoadError::Parse));
+    // C copies its structs whenever it passes them, and so does som.
+    for item in &ast.modules[module].items {
+        if let Item::Struct(s) = item {
+            ast.structs.get_mut(*s).copy = true;
+        }
+    }
 }
 
 /// Where each function in a generated file (`.som/raylib.som`) is declared in C: its
@@ -375,7 +381,7 @@ fn compatible(
 }
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 12;
+const GENERATOR_VERSION: u32 = 13;
 
 /// The first line of a cached import: everything it depends on. Any change to the header,
 /// the library or the generator makes it stale.
@@ -511,9 +517,9 @@ fn clang_ast(header: &Path, root: &Path, library_dirs: &[PathBuf]) -> Result<Val
 
 /// som can't name these, so imported names that use them get a `_` after.
 const SOM_KEYWORDS: &[&str] = &[
-    "fn", "extern", "struct", "impl", "let", "if", "else", "mut", "use", "loop", "while", "for",
-    "true", "false", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128",
-    "usize", "f32", "f64", "bool", "char", "str",
+    "fn", "extern", "struct", "impl", "let", "if", "else", "mut", "out", "use", "loop", "while",
+    "for", "true", "false", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64",
+    "u128", "usize", "f32", "f64", "bool", "char", "str",
 ];
 
 fn identifier(name: &str) -> String {

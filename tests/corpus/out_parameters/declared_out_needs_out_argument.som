@@ -1,0 +1,8 @@
+// expect: error NeedsOut
+
+fn fill(out x: i32) { x = 1; }
+
+fn main() {
+    let mut y = 0;
+    fill(&mut y);
+}

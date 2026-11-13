@@ -45,7 +45,7 @@
         },
         {
           "name": "keyword.other.som",
-          "match": "\\b(fn|extern|struct|let|mut)\\b"
+          "match": "\\b(fn|extern|struct|let|mut|out)\\b"
         },
         {
           "name": "constant.language.boolean.som",

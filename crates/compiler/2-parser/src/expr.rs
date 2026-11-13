@@ -235,10 +235,21 @@ impl Parser<'_> {
         out
     }
 
+    /// An argument: an expression, or `out name`.
+    fn parse_arg(&mut self) -> Option<Id<Expr>> {
+        if !self.at(TokenKind::Out) {
+            return self.parse_expr();
+        }
+        let start = self.current_span();
+        self.advance();
+        let name = self.parse_ident("a name for the out variable")?;
+        Some(self.alloc_expr(Expr::Out(name), &start))
+    }
+
     /// `(a, b, c)`
     fn parse_args(&mut self) -> Option<Vec<Id<Expr>>> {
         self.expect(TokenKind::OpenParen, "a list of arguments")?;
-        let args = self.parse_comma_list(TokenKind::CloseParen, |p| p.parse_expr())?;
+        let args = self.parse_comma_list(TokenKind::CloseParen, |p| p.parse_arg())?;
         // `free(alloc(10).` while typing: report the missing `)`, but keep the call and
         // its arguments, so an editor still knows them.
         if !self.eat(TokenKind::CloseParen) {

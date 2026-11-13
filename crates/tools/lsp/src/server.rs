@@ -811,7 +811,7 @@ impl LanguageServer for SomLanguageServer {
             }
             for keyword in [
                 "fn", "let", "mut", "if", "else", "struct", "impl", "extern", "loop", "while",
-                "use", "true", "false",
+                "use", "out", "true", "false",
             ] {
                 items.push(CompletionItem {
                     label: keyword.to_string(),
@@ -969,7 +969,8 @@ fn describe(a: &Analysis, def: DefId) -> String {
     match &d.kind {
         DefKind::Func(f) => signature(a, *f),
         DefKind::Struct(s) => struct_text(a, *s),
-        DefKind::Param { .. } | DefKind::Local(_) => match a.typed.try_local(def) {
+        DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) => match a.typed.try_local(def)
+        {
             Some(t) => format!("{}: {}", d.name, ty(a, t)),
             None => d.name.to_string(),
         },
@@ -988,10 +989,12 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
     // What's under the cursor, as som, and its documentation.
     let (text, doc) = match node {
         NodeRef::Expr(id) => match &a.ast.exprs[id] {
-            Expr::Var(_) | Expr::Call { .. } | Expr::Construct { .. } => match a.names.expr(id) {
-                Some(def) => (Some(describe(a, def)), doc_of(a, def)),
-                None => (None, None),
-            },
+            Expr::Var(_) | Expr::Out(_) | Expr::Call { .. } | Expr::Construct { .. } => {
+                match a.names.expr(id) {
+                    Some(def) => (Some(describe(a, def)), doc_of(a, def)),
+                    None => (None, None),
+                }
+            }
             Expr::MethodCall { .. } => match a.typed.method(id) {
                 Some(def) => (Some(describe(a, def)), doc_of(a, def)),
                 None => (None, None),
@@ -1752,6 +1755,7 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::If
             | TokenKind::Else
             | TokenKind::Mut
+            | TokenKind::Out
             | TokenKind::Use
             | TokenKind::Loop
             | TokenKind::While

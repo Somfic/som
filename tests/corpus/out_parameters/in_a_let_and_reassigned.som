@@ -1,0 +1,11 @@
+// expect: exit 42
+
+fn fill(x: &mut i32) -> i32 { *x = 40; 2 }
+
+fn main() -> i32 {
+    let two = fill(out n);
+    let mut total = n + two;
+    fill(out total_again);
+    total = total + total_again - 40;
+    total
+}

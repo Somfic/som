@@ -1,0 +1,9 @@
+// expect: error UnboundVariable
+
+fn fill(x: &mut i32) { *x = 42; }
+
+fn main() -> i32 {
+    let early = n;
+    fill(out n);
+    early
+}

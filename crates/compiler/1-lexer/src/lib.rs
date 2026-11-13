@@ -25,6 +25,8 @@ pub enum TokenKind {
     Else,
     #[token("mut")]
     Mut,
+    #[token("out")]
+    Out,
     #[token("use")]
     Use,
 
@@ -169,6 +171,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::If => write!(f, "if"),
             TokenKind::Else => write!(f, "else"),
             TokenKind::Mut => write!(f, "mut"),
+            TokenKind::Out => write!(f, "out"),
             TokenKind::Use => write!(f, "use"),
             TokenKind::Loop => write!(f, "loop"),
             TokenKind::While => write!(f, "while"),

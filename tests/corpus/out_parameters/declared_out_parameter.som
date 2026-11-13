@@ -1,0 +1,11 @@
+// expect: exit 42
+
+fn divide(a: i32, b: i32, out remainder: i32) -> i32 {
+    remainder = a % b;
+    a / b
+}
+
+fn main() -> i32 {
+    let q = divide(17, 5, out r);
+    q * 10 + r * 6
+}

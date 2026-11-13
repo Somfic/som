@@ -1,0 +1,13 @@
+// expect: error OutNotAssigned
+
+fn count(n: i32, out total: i32) {
+    let mut i = 0;
+    while i < n {
+        total = i;
+        i = i + 1;
+    }
+}
+
+fn main() {
+    count(3, out t);
+}

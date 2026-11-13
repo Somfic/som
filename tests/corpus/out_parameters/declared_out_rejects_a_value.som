@@ -1,0 +1,7 @@
+// expect: error NeedsOut
+
+fn fill(out x: i32) { x = 1; }
+
+fn main() {
+    fill(1);
+}

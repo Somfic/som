@@ -55,9 +55,19 @@ impl<'a> Checker<'a> {
             let params = func
                 .params
                 .iter()
-                .map(|p| match p.ty {
-                    Some(ty) => self.lower(ty),
-                    None => self.u.fresh(VarKind::Any),
+                .map(|p| {
+                    let ty = match p.ty {
+                        Some(ty) => self.lower(ty),
+                        None => self.u.fresh(VarKind::Any),
+                    };
+                    // Passed as a pointer to the caller's variable.
+                    match p.out {
+                        true => self.u.intern(Ty::Ref {
+                            mutable: true,
+                            to: ty,
+                        }),
+                        false => ty,
+                    }
                 })
                 .collect();
             let ret = match (func.returns, func.body) {
@@ -385,7 +395,17 @@ impl<'a> Checker<'a> {
                 .expr(id)
                 .map(|def| (def, &self.names.def(def).kind))
             {
-                Some((def, DefKind::Param { .. } | DefKind::Local(_))) => {
+                // An `out` parameter is a pointer, but it's used as what it points to.
+                Some((def, &DefKind::Param { func, index }))
+                    if self.ast.funcs[func].params[index].out =>
+                {
+                    let ty = self.locals.get(&def).copied().unwrap_or(error);
+                    match self.u.get(ty) {
+                        Ty::Ref { to, .. } => *to,
+                        _ => error,
+                    }
+                }
+                Some((def, DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_))) => {
                     self.locals.get(&def).copied().unwrap_or(error)
                 }
                 Some((_, DefKind::Func(func))) => {
@@ -418,6 +438,15 @@ impl<'a> Checker<'a> {
                     mutable: *mutable,
                     to,
                 })
+            }
+
+            // The parameter it's passed to says what the variable is.
+            Expr::Out(_) => {
+                let to = self.u.fresh(VarKind::Any);
+                if let Some(def) = self.names.expr(id) {
+                    self.locals.insert(def, to);
+                }
+                self.u.intern(Ty::Ref { mutable: true, to })
             }
 
             Expr::Deref(inner) => {
@@ -676,9 +705,17 @@ impl<'a> Checker<'a> {
             return;
         }
         for (i, (&arg, &param)) in args.iter().zip(params).enumerate() {
-            let from = self.ast.funcs[func].params[first + i]
-                .ty
-                .map(|t| self.ast.types.span(t).clone());
+            let declared = &self.ast.funcs[func].params[first + i];
+            if declared.out && !matches!(self.ast.exprs[arg], Expr::Out(_)) {
+                self.errors.push(TypeError::NeedsOut {
+                    param: declared.name.name.to_string(),
+                    span: self.span(arg),
+                    declared_at: declared.name.span.clone(),
+                });
+                self.infer(arg);
+                continue;
+            }
+            let from = declared.ty.map(|t| self.ast.types.span(t).clone());
             self.expect(arg, param, from);
         }
         for &extra in &args[params.len()..] {
@@ -717,7 +754,7 @@ impl<'a> Checker<'a> {
             Expr::Var(_) => self.names.expr(expr).is_none_or(|def| {
                 matches!(
                     self.names.def(def).kind,
-                    DefKind::Local(_) | DefKind::Param { .. }
+                    DefKind::Local(_) | DefKind::Out(_) | DefKind::Param { .. }
                 )
             }),
             Expr::Field { object, .. } => self.is_place(*object),

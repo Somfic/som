@@ -832,6 +832,8 @@ impl<'a> Emitter<'a> {
                 ConstKind::Str(s) => format!("(uint8_t*){}", c_string(s)),
                 ConstKind::Unit => "0".into(),
                 ConstKind::Func(id) => format!("(void*)&{}", self.func_name(*id)),
+                // A compound literal zeroes anything: `(void*){0}`, `(Color){0}`.
+                ConstKind::Zeroed => format!("({}){{0}}", self.ty(c.ty)),
             }),
         }
     }

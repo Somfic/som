@@ -1,0 +1,8 @@
+// expect: exit 42
+
+fn fill(x: &mut i32) { *x = 42; }
+
+fn main() -> i32 {
+    fill(out n);
+    n
+}

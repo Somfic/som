@@ -1,0 +1,9 @@
+// expect: exit 7
+
+// Leaves its out-parameter alone, like a C function failing early.
+fn skip(x: &mut i32) {}
+
+fn main() -> i32 {
+    skip(out n);
+    n + 7
+}

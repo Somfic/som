@@ -39,6 +39,10 @@ pub enum BorrowError {
         borrowed_at: Span,
         dies_at: Span,
     },
+    /// A function that can return without assigning one of its `out` parameters.
+    OutNotAssigned { name: String, span: Span },
+    /// An `out` parameter read before the function assigned it.
+    OutReadBeforeAssigned { name: String, span: Span },
 }
 
 fn kind(mutable: bool) -> &'static str {
@@ -137,6 +141,24 @@ impl BorrowError {
                     dies_at.last_char(),
                     msg![code(name), " stops existing here"],
                 )),
+            BorrowError::OutNotAssigned { name, span } => Diagnostic::error(msg![
+                code("out"),
+                " parameter ",
+                code(name),
+                " isn't assigned on every path"
+            ])
+            .with_label(Label::primary(
+                span.clone(),
+                "the function can return without assigning this",
+            )),
+            BorrowError::OutReadBeforeAssigned { name, span } => Diagnostic::error(msg![
+                code("out"),
+                " parameter ",
+                code(name),
+                " is read before it's assigned"
+            ])
+            .with_label(Label::primary(span.clone(), "read here"))
+            .with_hint("callers pass a fresh variable, so it has no value until it's assigned"),
         }
     }
 }

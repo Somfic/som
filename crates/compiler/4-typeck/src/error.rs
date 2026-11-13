@@ -70,6 +70,12 @@ pub enum TypeError {
     CannotInfer {
         span: Span,
     },
+    /// Something other than `out name` passed to an `out` parameter.
+    NeedsOut {
+        param: String,
+        span: Span,
+        declared_at: Span,
+    },
 }
 
 impl TypeError {
@@ -208,6 +214,16 @@ impl TypeError {
                 Diagnostic::error("cannot infer the type of this expression")
                     .with_label(Label::primary(span.clone(), "add a type annotation"))
             }
+            TypeError::NeedsOut {
+                param,
+                span,
+                declared_at,
+            } => Diagnostic::error(msg![var(param), " is an ", code("out"), " parameter"])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg!["pass ", code(format!("out {param}")), " to get its value"],
+                ))
+                .with_label(Label::secondary(declared_at.clone(), "declared here")),
         }
     }
 }

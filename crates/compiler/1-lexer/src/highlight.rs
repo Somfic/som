@@ -19,6 +19,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Struct
         | TokenKind::Use
         | TokenKind::Mut
+        | TokenKind::Out
         | TokenKind::Impl => MAUVE,
         TokenKind::I8
         | TokenKind::I16
@@ -80,7 +81,7 @@ fn token_color(kind: TokenKind) -> Rgb {
 fn is_italic(kind: TokenKind) -> bool {
     matches!(
         kind,
-        TokenKind::Fn | TokenKind::Let | TokenKind::If | TokenKind::Else | TokenKind::Mut | TokenKind::Extern | // Keywords
+        TokenKind::Fn | TokenKind::Let | TokenKind::If | TokenKind::Else | TokenKind::Mut | TokenKind::Out | TokenKind::Extern | // Keywords
         TokenKind::Comment // Comments
     )
 }

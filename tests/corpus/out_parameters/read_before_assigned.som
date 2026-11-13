@@ -1,0 +1,9 @@
+// expect: error OutReadBeforeAssigned
+
+fn twice(out x: i32) {
+    x = x + 1;
+}
+
+fn main() {
+    twice(out x);
+}

@@ -57,6 +57,9 @@ pub struct Func {
 pub struct Param {
     pub name: Ident,
     pub ty: Option<Id<TypeExpr>>,
+    /// `out remainder: i32`: the function fills it in, and callers pass `out name`.
+    /// Passed as a pointer, like `&mut i32`.
+    pub out: bool,
 }
 
 pub struct Struct {
@@ -64,6 +67,9 @@ pub struct Struct {
     pub doc: Option<String>,
     pub name: Ident,
     pub fields: Vec<Field>,
+    /// Values are copied rather than moved. Set for structs imported from a C header,
+    /// which are plain data.
+    pub copy: bool,
 }
 
 pub struct Field {

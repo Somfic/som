@@ -63,7 +63,12 @@ impl<'a> Lowerer<'a> {
                 .map(|(f, &ty)| (f.name.name.to_string(), ty))
                 .collect();
             let name = self.qualified(def, &s.name.name);
-            self.mir.add_struct(StructDef { def, name, fields });
+            self.mir.add_struct(StructDef {
+                def,
+                name,
+                fields,
+                copy: s.copy,
+            });
         }
 
         // Every non-generic function, whether or not anything calls it. Generic ones are
@@ -266,9 +271,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }),
             })
             .collect();
+        let outs = (func.params.iter().enumerate())
+            .filter(|(_, p)| p.out)
+            .map(|(i, _)| Local(i as u32 + 1))
+            .collect();
         Body {
             locals: self.locals,
             arg_count: func.params.len(),
+            outs,
             blocks,
         }
     }
@@ -472,8 +482,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         self.constant(ConstKind::Func(id), ty)
                     }
                     _ => {
-                        let local = self.bindings[&def];
-                        self.read(Place::local(local), ty)
+                        let place = self.variable(def).expect("variables are bound");
+                        self.read(place, ty)
                     }
                 }
             }
@@ -566,6 +576,32 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     place: self.place(*inner),
                 }
             }
+            // A variable living to the end of the surrounding scope, like a `let` before the
+            // call. It starts zeroed: C functions don't always fill in their out-parameters.
+            Expr::Out(name) => {
+                let def = self
+                    .l
+                    .names
+                    .expr(expr)
+                    .expect("checked programs are fully resolved");
+                let ty = self.ty(self.l.typed.local(def));
+                let span = name.span.clone();
+                let local = self.new_local(ty, Some(name.name.to_string()), true, span.clone());
+                self.bindings.insert(def, local);
+                self.scopes
+                    .last_mut()
+                    .expect("arguments are inside a scope")
+                    .push(local);
+                self.push(StatementKind::StorageLive(local), span.clone());
+                let zero = self.constant(ConstKind::Zeroed, ty);
+                self.assign(Place::local(local), Rvalue::Use(zero), span);
+                // Make sure the reference type exists in MIR's table, even after substitution.
+                self.expr_ty(expr);
+                Rvalue::Ref {
+                    mutable: true,
+                    place: Place::local(local),
+                }
+            }
             Expr::Construct { fields, .. } => {
                 let def = self
                     .l
@@ -643,6 +679,18 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         args.into_iter().map(|t| self.ty(t)).collect()
     }
 
+    /// Where a parameter or local lives. An `out` parameter is a pointer to the caller's
+    /// variable, and its name means what it points to.
+    fn variable(&self, def: DefId) -> Option<Place> {
+        let place = Place::local(*self.bindings.get(&def)?);
+        Some(match self.l.names.def(def).kind {
+            DefKind::Param { func, index } if self.l.ast.funcs[func].params[index].out => {
+                place.project(Projection::Deref)
+            }
+            _ => place,
+        })
+    }
+
     /// Evaluates `expr` to a place, storing it in a temporary if it isn't one already.
     fn place(&mut self, expr: Id<Expr>) -> Place {
         let ast = self.l.ast;
@@ -653,8 +701,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     .names
                     .expr(expr)
                     .expect("checked programs are fully resolved");
-                if let Some(&local) = self.bindings.get(&def) {
-                    return Place::local(local);
+                if let Some(place) = self.variable(def) {
+                    return place;
                 }
             }
             Expr::Field { object, .. } => {

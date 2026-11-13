@@ -154,7 +154,15 @@ impl Parser<'_> {
         self.expect(TokenKind::CloseBrace, "a closing brace after struct fields")?;
 
         let span = self.span_from(&start);
-        Some(self.ast.structs.alloc(Struct { doc, name, fields }, span))
+        Some(self.ast.structs.alloc(
+            Struct {
+                doc,
+                name,
+                fields,
+                copy: false,
+            },
+            span,
+        ))
     }
 
     /// `fn name<T>(params) -> Ret { body }`
@@ -233,6 +241,7 @@ impl Parser<'_> {
                 }
                 break;
             }
+            let out = self.eat(TokenKind::Out);
             let name = self.parse_ident("a function parameter name")?;
             let ty = if is_extern {
                 self.expect(TokenKind::Colon, "a colon after function parameter name")?;
@@ -242,7 +251,7 @@ impl Parser<'_> {
             } else {
                 None
             };
-            params.push(Param { name, ty });
+            params.push(Param { name, ty, out });
             if !self.eat(TokenKind::Comma) {
                 break;
             }

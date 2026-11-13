@@ -1,0 +1,10 @@
+// expect: exit 42
+
+struct Point { x: i32, y: i32 }
+
+fn answer(p: &mut Point) { *p = Point { x: 40, y: 2 }; }
+
+fn main() -> i32 {
+    answer(out p);
+    p.x + p.y
+}

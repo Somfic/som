@@ -1,0 +1,16 @@
+// expect: exit 3
+
+fn sign(x: i32, out s: i32) {
+    if x < 0 {
+        s = 0 - 1;
+    } else {
+        s = 1;
+    }
+}
+
+fn main() -> i32 {
+    sign(5, out a);
+    sign(7, out b);
+    sign(0 - 2, out c);
+    a + b - c
+}

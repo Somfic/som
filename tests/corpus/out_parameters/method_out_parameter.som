@@ -1,0 +1,16 @@
+// expect: exit 7
+
+struct Counter { n: i32 }
+
+impl Counter {
+    fn split(self: Counter, out half: i32) -> i32 {
+        half = self.n / 2;
+        self.n - half
+    }
+}
+
+fn main() -> i32 {
+    let c = Counter { n: 7 };
+    let rest = c.split(out half);
+    rest + half
+}

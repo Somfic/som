@@ -319,6 +319,14 @@ impl<'a> Resolver<'a> {
         match &self.ast.exprs[id] {
             Expr::Hole | Expr::Int(_) | Expr::Float(_) | Expr::Bool(_) | Expr::Str(_) => {}
             Expr::Var(path) => self.bind_expr(id, path, Expect::Value),
+            // Visible from here to the end of the block, like a `let` before the call.
+            Expr::Out(name) => {
+                let def =
+                    self.names
+                        .define(&name.name, DefKind::Out(id), name.span.clone(), self.module);
+                self.names.set_expr(id, def);
+                self.bind(name, def);
+            }
             Expr::Binary { lhs, rhs, .. } => {
                 self.resolve_expr(*lhs);
                 self.resolve_expr(*rhs);

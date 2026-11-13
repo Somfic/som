@@ -1,0 +1,12 @@
+// expect: error OutReadBeforeAssigned
+
+struct Point { x: i32, y: i32 }
+
+fn make(out p: Point) {
+    p.x = 40;
+    p = Point { x: 1, y: 2 };
+}
+
+fn main() {
+    make(out p);
+}

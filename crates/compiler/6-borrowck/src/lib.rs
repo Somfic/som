@@ -18,6 +18,7 @@
 //! reference.
 
 mod error;
+mod outs;
 
 pub use error::BorrowError;
 
@@ -30,6 +31,7 @@ pub fn check(mir: &Mir) -> Vec<BorrowError> {
     for func in &mir.funcs {
         if let Some(body) = &func.body {
             FnChecker::new(mir, body).run(&mut errors);
+            outs::check(body, &mut errors);
         }
     }
     errors
@@ -370,7 +372,9 @@ impl<'a> FnChecker<'a> {
             | BorrowError::MoveWhileBorrowed { span, .. }
             | BorrowError::ConflictingBorrow { span, .. }
             | BorrowError::UseWhileMutBorrowed { span, .. }
-            | BorrowError::AssignWhileBorrowed { span, .. } => span,
+            | BorrowError::AssignWhileBorrowed { span, .. }
+            | BorrowError::OutNotAssigned { span, .. }
+            | BorrowError::OutReadBeforeAssigned { span, .. } => span,
         };
         if self.reported.insert((kind, span.start_offset)) {
             self.errors.push(error);

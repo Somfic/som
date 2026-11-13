@@ -1,0 +1,7 @@
+// expect: exit 1
+
+use std;
+fn main() -> i32 {
+    let p = std::null();
+    1 if p == std::null() else 0
+}

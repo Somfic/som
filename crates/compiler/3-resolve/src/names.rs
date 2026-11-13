@@ -17,6 +17,8 @@ pub enum DefKind {
     },
     /// A `let` binding.
     Local(Id<Stmt>),
+    /// A variable declared by an `out name` argument.
+    Out(Id<Expr>),
     /// The `index`th type parameter of `func`, as in `fn id<T>(x: T) -> T`.
     TypeParam {
         func: Id<Func>,

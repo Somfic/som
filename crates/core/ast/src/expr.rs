@@ -22,6 +22,9 @@ pub enum Expr {
     },
     /// `*expr`
     Deref(Id<Expr>),
+    /// `out name`, as an argument: declares `name` in the surrounding block, starting
+    /// out zeroed, and passes `&mut name` for the function to fill in.
+    Out(Ident),
     /// `target = value`
     Assign {
         target: Id<Expr>,

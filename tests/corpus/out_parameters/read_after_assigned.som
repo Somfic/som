@@ -1,0 +1,11 @@
+// expect: exit 5
+
+fn twice(out x: i32) {
+    x = 2;
+    x = x + 3;
+}
+
+fn main() -> i32 {
+    twice(out x);
+    x
+}
