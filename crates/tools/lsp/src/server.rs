@@ -333,13 +333,18 @@ impl LanguageServer for SomLanguageServer {
         let Some(a) = Self::project_for(&projects, &cursor.file) else {
             return Ok(None);
         };
+        // `break x` is one thing: the hover covers all of it, not just the word.
+        let range = match AstIndex::build(&a.ast).find_at(&cursor.file, cursor.offset) {
+            Some(NodeRef::Stmt(id)) => jump_span(a, id).map(|span| convert::span_to_range(&span)),
+            _ => None,
+        };
         Ok(
             hover_markdown(a, &cursor.file, cursor.offset).map(|value| Hover {
                 contents: HoverContents::Markup(MarkupContent {
                     kind: MarkupKind::Markdown,
                     value,
                 }),
-                range: None,
+                range,
             }),
         )
     }
@@ -383,6 +388,24 @@ impl LanguageServer for SomLanguageServer {
                 _ => None,
             },
             NodeRef::Type(id) => a.names.ty(id).map(|d| a.names.def(d).span.clone()),
+            // `break x` is one thing: the link starts from all of it, so the editor underlines
+            // all of it.
+            NodeRef::Stmt(id) => {
+                let (Some(from), Some(to)) = (jump_span(a, id), loop_of(a, id)) else {
+                    return Ok(None);
+                };
+                let to = loop_header(a, to);
+                let Ok(target_uri) = Url::from_file_path(to.source.identifier()) else {
+                    return Ok(None);
+                };
+                let target = convert::span_to_range(&to);
+                return Ok(Some(GotoDefinitionResponse::Link(vec![LocationLink {
+                    origin_selection_range: Some(convert::span_to_range(&from)),
+                    target_uri,
+                    target_range: target,
+                    target_selection_range: target,
+                }])));
+            }
             // In a generated file, a function's definition is its C declaration.
             NodeRef::Func(id) => {
                 return Ok(origin_location(a, id).map(GotoDefinitionResponse::Scalar));
@@ -391,7 +414,6 @@ impl LanguageServer for SomLanguageServer {
                 let location = origin_of(&a.ast.structs[id].name).and_then(location_in);
                 return Ok(location.map(GotoDefinitionResponse::Scalar));
             }
-            _ => None,
         };
 
         Ok(target
@@ -1129,6 +1151,15 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
         NodeRef::Struct(id) => (Some(struct_text(a, id)), struct_doc(a, id)),
         NodeRef::Stmt(id) => match &a.ast.stmts[id] {
             Stmt::Let { .. } => (a.names.local(id).map(|def| describe(a, def)), None),
+            // `break` or `continue`, and the `x` in `break x;`, which names the loop like a
+            // label: the loop it leaves or goes on with.
+            Stmt::Break(_) | Stmt::Continue(_) => (
+                loop_of(a, id).map(|l| {
+                    let header = loop_header(a, l).get_text();
+                    header.split_whitespace().collect::<Vec<_>>().join(" ")
+                }),
+                None,
+            ),
             _ => (None, None),
         },
     };
@@ -1138,6 +1169,73 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
         Some(doc) => format!("```som\n{text}\n```\n\n{doc}"),
         None => format!("```som\n{text}\n```"),
     })
+}
+
+/// Where `break`, `continue` or `break x` is written, without the `;`: the one thing hover
+/// and go to definition point at.
+fn jump_span(a: &Analysis, stmt: Id<Stmt>) -> Option<Span> {
+    let (Stmt::Break(named) | Stmt::Continue(named)) = &a.ast.stmts[stmt] else {
+        return None;
+    };
+    let whole = a.ast.stmts.span(stmt);
+    let end = match named {
+        Some(name) => name.span.start_offset + name.span.length,
+        None => {
+            let keyword = match a.ast.stmts[stmt] {
+                Stmt::Break(_) => "break",
+                _ => "continue",
+            };
+            whole.start_offset + keyword.len()
+        }
+    };
+    Some(Span::from_range(
+        whole.start_offset..end,
+        whole.source.clone(),
+    ))
+}
+
+/// The loop `stmt` leaves or goes on with, if it's `break` or `continue`: the `for` loop it
+/// names, or else the innermost loop around it.
+fn loop_of(a: &Analysis, stmt: Id<Stmt>) -> Option<Id<Stmt>> {
+    let (Stmt::Break(named) | Stmt::Continue(named)) = &a.ast.stmts[stmt] else {
+        return None;
+    };
+    if named.is_some() {
+        return match a.names.def(a.names.loop_target(stmt)?).kind {
+            DefKind::Local(for_stmt) => Some(for_stmt),
+            _ => None,
+        };
+    }
+    // Loops nest inside one another, so the innermost is the shortest around it.
+    let at = a.ast.stmts.span(stmt);
+    let around = |span: &Span| {
+        span.source.identifier() == at.source.identifier()
+            && span.start_offset <= at.start_offset
+            && at.start_offset + at.length <= span.start_offset + span.length
+    };
+    a.ast
+        .stmts
+        .iter()
+        .filter(|(_, s)| matches!(s, Stmt::Loop { .. } | Stmt::While { .. } | Stmt::For { .. }))
+        .filter(|(id, _)| around(a.ast.stmts.span(*id)))
+        .min_by_key(|(id, _)| a.ast.stmts.span(*id).length)
+        .map(|(id, _)| id)
+}
+
+/// Where a loop's header is written, without its body: `for x in 1..4`, `while i < n`, `loop`.
+fn loop_header(a: &Analysis, loop_stmt: Id<Stmt>) -> Span {
+    let whole = a.ast.stmts.span(loop_stmt);
+    let end = match &a.ast.stmts[loop_stmt] {
+        Stmt::For { iterable: last, .. }
+        | Stmt::While {
+            condition: last, ..
+        } => {
+            let last = a.ast.exprs.span(*last);
+            last.start_offset + last.length
+        }
+        _ => whole.start_offset + "loop".len(),
+    };
+    Span::from_range(whole.start_offset..end, whole.source.clone())
 }
 
 /// A definition's `///` documentation, for functions and structs.

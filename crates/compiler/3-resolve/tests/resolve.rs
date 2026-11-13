@@ -22,7 +22,7 @@ fn help(error: &ResolveError) -> Option<String> {
         | ResolveError::UnknownFunction { help, .. }
         | ResolveError::UnknownStruct { help, .. }
         | ResolveError::UnknownType { help, .. } => help.as_ref().map(|h| h.plain()),
-        ResolveError::DuplicateDefinition { .. } => None,
+        ResolveError::DuplicateDefinition { .. } | ResolveError::NotALoop { .. } => None,
     }
 }
 

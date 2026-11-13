@@ -202,8 +202,10 @@ impl Dumper<'_> {
             }
             Stmt::Expr(expr) => self.expr(*expr),
             Stmt::Loop { body } => self.stmts("loop", body),
-            Stmt::Break => self.line("break"),
-            Stmt::Continue => self.line("continue"),
+            Stmt::Break(None) => self.line("break"),
+            Stmt::Break(Some(name)) => self.line(format!("break {name}")),
+            Stmt::Continue(None) => self.line("continue"),
+            Stmt::Continue(Some(name)) => self.line(format!("continue {name}")),
             Stmt::For {
                 name,
                 mutable,

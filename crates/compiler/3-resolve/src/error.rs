@@ -1,4 +1,4 @@
-use som_base::message::{Message, Part, func, struct_name, ty, var};
+use som_base::message::{Message, Part, code, func, struct_name, ty, var};
 use som_base::{Diagnostic, Fix, Label, Span, msg};
 
 #[derive(Debug, Clone)]
@@ -35,6 +35,13 @@ pub enum ResolveError {
         name: String,
         span: Span,
         previous: Span,
+    },
+    /// `break x;` or `continue x;` where `x` isn't a `for` loop's variable.
+    NotALoop {
+        keyword: &'static str,
+        name: String,
+        span: Span,
+        defined_at: Span,
     },
 }
 
@@ -74,6 +81,24 @@ impl ResolveError {
                 return Diagnostic::error(msg![var(name), " is defined more than once"])
                     .with_label(Label::primary(span.clone(), "redefined here"))
                     .with_label(Label::secondary(previous.clone(), "first defined here"));
+            }
+            ResolveError::NotALoop {
+                keyword,
+                name,
+                span,
+                defined_at,
+            } => {
+                return Diagnostic::error(msg![var(name), " isn't a loop"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![
+                            code(*keyword),
+                            " needs the variable of a ",
+                            code("for"),
+                            " around it"
+                        ],
+                    ))
+                    .with_label(Label::secondary(defined_at.clone(), "defined here"));
             }
         };
 

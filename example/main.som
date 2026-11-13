@@ -5,5 +5,9 @@ let upper = 100;
 for x in 1..4 {
     for y in 1..4 {
         std::printf("%d,%d\n", x, y);
+
+        if y == 1 {
+            break x;
+        }
     }
 }

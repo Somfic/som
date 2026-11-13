@@ -175,6 +175,8 @@ struct LoopTargets {
     next: BlockId,
     /// How many scopes were open where it started: those opened since end at either.
     depth: usize,
+    /// The `for` loop it is, which `break x;` and `continue x;` name by its variable.
+    stmt: Option<Id<Stmt>>,
 }
 
 /// How many elements an array or slice has.
@@ -451,8 +453,24 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 iterable,
                 body,
             } => self.for_loop(id, name, *mutable, *iterable, body, span),
-            Stmt::Break | Stmt::Continue => {
-                let targets = *self.loops.last().expect("checked: break is in a loop");
+            Stmt::Break(named) | Stmt::Continue(named) => {
+                // The innermost loop, or the `for` loop whose variable is named.
+                let targets = match named {
+                    None => *self.loops.last().expect("checked: break is in a loop"),
+                    Some(_) => {
+                        let def = self
+                            .l
+                            .names
+                            .loop_target(id)
+                            .expect("resolved: it names a loop");
+                        let DefKind::Local(for_stmt) = self.l.names.def(def).kind else {
+                            unreachable!("resolved: loop variables are locals")
+                        };
+                        *(self.loops.iter().rev())
+                            .find(|l| l.stmt == Some(for_stmt))
+                            .expect("resolved: the loop it names is around it")
+                    }
+                };
                 // The loop's own locals end here, as they would at the end of the body.
                 let dying: Vec<Local> = (self.scopes[targets.depth..].iter().rev())
                     .flat_map(|scope| scope.iter().rev().copied())
@@ -461,7 +479,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     self.push(StatementKind::StorageDead(local), span.clone());
                 }
                 let target = match ast.stmts[id] {
-                    Stmt::Break => targets.exit,
+                    Stmt::Break(_) => targets.exit,
                     _ => targets.next,
                 };
                 self.terminate(TerminatorKind::Goto(target), span);
@@ -756,6 +774,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 exit,
                 next: step,
                 depth: b.scopes.len(),
+                stmt: Some(stmt),
             });
             b.in_scope(span.clone(), |b| {
                 let local = b.new_local(
@@ -802,6 +821,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             exit,
             next,
             depth: self.scopes.len(),
+            stmt: None,
         });
         self.stmts(body, span);
         self.loops.pop();

@@ -459,9 +459,9 @@ impl<'a> Checker<'a> {
                 }
                 self.check_loop(body);
             }
-            Stmt::Break | Stmt::Continue if self.loops == 0 => {
+            Stmt::Break(_) | Stmt::Continue(_) if self.loops == 0 => {
                 self.errors.push(TypeError::BreakOutsideLoop {
-                    keyword: if matches!(self.ast.stmts[id], Stmt::Break) {
+                    keyword: if matches!(self.ast.stmts[id], Stmt::Break(_)) {
                         "break"
                     } else {
                         "continue"
@@ -469,7 +469,7 @@ impl<'a> Checker<'a> {
                     span: self.ast.stmts.span(id).clone(),
                 });
             }
-            Stmt::Break | Stmt::Continue => {}
+            Stmt::Break(_) | Stmt::Continue(_) => {}
             Stmt::If {
                 condition,
                 then,
@@ -1898,7 +1898,7 @@ impl Checker<'_> {
                     self.forget_changed_by(*condition, false);
                     self.forget_changed_in(body);
                 }
-                Stmt::Break | Stmt::Continue => {}
+                Stmt::Break(_) | Stmt::Continue(_) => {}
                 Stmt::If {
                     condition,
                     then,

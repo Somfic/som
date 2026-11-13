@@ -1,0 +1,7 @@
+// expect: error NotALoop
+
+fn main() -> i32 {
+    let total = 0;
+    for x in 0..3 { continue total; }
+    0
+}

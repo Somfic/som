@@ -116,10 +116,12 @@ pub enum Stmt {
         condition: Id<Expr>,
         body: Vec<Id<Stmt>>,
     },
-    /// `break;`: leaves the innermost `loop`, `while` or `for`.
-    Break,
-    /// `continue;`: goes on with the innermost loop's next time round.
-    Continue,
+    /// `break;`: leaves the innermost `loop`, `while` or `for`. `break x;` leaves the `for`
+    /// loop whose variable is `x`, and every loop inside it.
+    Break(Option<Ident>),
+    /// `continue;`: goes on with the innermost loop's next time round. `continue x;` goes on
+    /// with the next `x` of the `for` loop whose variable it is.
+    Continue(Option<Ident>),
     /// `for name in iterable { body }`: runs `body` once for each integer in a range, or each
     /// element of an array or slice, with `name` bound to it.
     For {

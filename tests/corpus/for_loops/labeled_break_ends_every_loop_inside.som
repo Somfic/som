@@ -1,0 +1,18 @@
+// expect: exit 9
+
+struct P { v: i32 }
+
+fn main() -> i32 {
+    let mut ps = [P { v: 1 }, P { v: 2 }];
+    // Both loops lend `ps`; leaving the outer one ends both.
+    for p in ps {
+        for q in ps {
+            if q.v == 2 { break p; }
+        }
+    }
+    ps.set(0, P { v: 9 });
+    let first = ps.get_ref(0);
+    let mut v = 0;
+    if first { v = first.v; }
+    v
+}

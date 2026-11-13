@@ -78,17 +78,27 @@ impl Parser<'_> {
     fn parse_break(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::Break, "a break statement")?;
+        let target = self.parse_loop_target()?;
         self.expect(TokenKind::Semicolon, "a semicolon after break")?;
         let span = self.span_from(&start);
-        Some(self.ast.stmts.alloc(Stmt::Break, span))
+        Some(self.ast.stmts.alloc(Stmt::Break(target), span))
     }
 
     fn parse_continue(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::Continue, "a continue statement")?;
+        let target = self.parse_loop_target()?;
         self.expect(TokenKind::Semicolon, "a semicolon after continue")?;
         let span = self.span_from(&start);
-        Some(self.ast.stmts.alloc(Stmt::Continue, span))
+        Some(self.ast.stmts.alloc(Stmt::Continue(target), span))
+    }
+
+    /// The `x` in `break x;` or `continue x;`: which `for` loop, by its variable.
+    fn parse_loop_target(&mut self) -> Option<Option<som_ast::Ident>> {
+        if !self.at(TokenKind::Ident) {
+            return Some(None);
+        }
+        Some(Some(self.parse_ident("which loop")?))
     }
 
     fn parse_while(&mut self) -> Option<Id<Stmt>> {

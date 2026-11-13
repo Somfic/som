@@ -294,7 +294,15 @@ impl<'a> Resolver<'a> {
             }
             Stmt::Expr(expr) => self.resolve_expr(*expr),
             Stmt::Loop { body } => self.resolve_stmts(body),
-            Stmt::Break | Stmt::Continue => {}
+            Stmt::Break(target) | Stmt::Continue(target) => {
+                let keyword = match self.ast.stmts[id] {
+                    Stmt::Break(_) => "break",
+                    _ => "continue",
+                };
+                if let Some(name) = target {
+                    self.resolve_loop_target(id, keyword, name);
+                }
+            }
             // The name is only bound in the body.
             Stmt::For {
                 name,
@@ -330,6 +338,33 @@ impl<'a> Resolver<'a> {
                     self.resolve_stmts(otherwise);
                 }
             }
+        }
+    }
+
+    /// The `x` in `break x;` or `continue x;`: a variable in scope, which has to be an
+    /// enclosing `for` loop's. An inner loop with the same name hides an outer one, as it does
+    /// for reading it.
+    fn resolve_loop_target(&mut self, stmt: Id<Stmt>, keyword: &'static str, name: &Ident) {
+        let Some(def) = self.lookup(&name.name, Expect::Value) else {
+            self.errors.push(ResolveError::UnboundVariable {
+                name: name.name.to_string(),
+                span: name.span.clone(),
+                help: None,
+                fixes: Vec::new(),
+            });
+            return;
+        };
+        let defined = self.names.def(def);
+        match defined.kind {
+            DefKind::Local(loop_stmt) if matches!(self.ast.stmts[loop_stmt], Stmt::For { .. }) => {
+                self.names.set_loop_target(stmt, def);
+            }
+            _ => self.errors.push(ResolveError::NotALoop {
+                keyword,
+                name: name.name.to_string(),
+                span: name.span.clone(),
+                defined_at: defined.span.clone(),
+            }),
         }
     }
 

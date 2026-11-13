@@ -46,6 +46,8 @@ pub struct Names {
     types: Vec<Option<DefId>>,
     /// `Stmt::Let` → the local it introduces.
     lets: Vec<Option<DefId>>,
+    /// `break x;` and `continue x;` → the variable of the `for` loop they name.
+    loop_targets: Vec<Option<DefId>>,
     /// Each function's own definition and its parameters.
     funcs: Vec<Option<DefId>>,
     params: Vec<Vec<DefId>>,
@@ -62,6 +64,7 @@ impl Names {
             exprs: vec![None; ast.exprs.len()],
             types: vec![None; ast.types.len()],
             lets: vec![None; ast.stmts.len()],
+            loop_targets: vec![None; ast.stmts.len()],
             funcs: vec![None; ast.funcs.len()],
             params: vec![Vec::new(); ast.funcs.len()],
             type_params: vec![Vec::new(); ast.funcs.len()],
@@ -137,6 +140,15 @@ impl Names {
     /// The local introduced by a `let` statement.
     pub fn local(&self, stmt: Id<Stmt>) -> Option<DefId> {
         self.lets[stmt.id]
+    }
+
+    pub fn set_loop_target(&mut self, stmt: Id<Stmt>, def: DefId) {
+        self.loop_targets[stmt.id] = Some(def);
+    }
+
+    /// The `for` loop variable `break x;` or `continue x;` names.
+    pub fn loop_target(&self, stmt: Id<Stmt>) -> Option<DefId> {
+        self.loop_targets[stmt.id]
     }
 
     /// The definition of a function. Every function in the AST has one.

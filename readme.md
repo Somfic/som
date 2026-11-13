@@ -15,10 +15,10 @@ type Option<T> = Some(T) | None
 
 type Rgb = { r: int, g: int, b: int }
 
-type Color = Red 
-           | Green 
-           | Blue 
-           | Hex(string) 
+type Color = Red
+           | Green
+           | Blue
+           | Hex(string)
            | Rgb(Rgb)
 
 let print_color = fn(color: Color) print(color)
@@ -66,3 +66,6 @@ let int_pair: Pair<int, int> = { first: 1, second: 2 }
 - [ ] Function inlining
 - [ ] Loop unrolling
 - [ ] Aggressive interprocedural optimization
+
+## Features
+- Labeled loops (break and continue)

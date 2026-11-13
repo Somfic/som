@@ -1,0 +1,54 @@
+// expect: exit 46
+
+fn main() -> i32 {
+    // Your example: `continue x` skips the rest of the y loop.
+    let mut printed = 0;
+    for x in 1..4 {
+        for y in 1..4 {
+            if y == 2 { continue x; }
+            printed = printed + 1;
+        }
+    }
+
+    // `break x` leaves both loops.
+    let mut steps = 0;
+    for x in 0..10 {
+        for y in 0..10 {
+            if x == 2 and y == 3 { break x; }
+            steps = steps + 1;                    // 10 + 10 + 3 = 23
+        }
+    }
+
+    // Three deep: continue the middle one.
+    let mut middle = 0;
+    for a in 0..2 {
+        for b in 0..3 {
+            for c in 0..3 {
+                if c == 1 { continue b; }
+                middle = middle + 1;              // 2 * 3 * 1 = 6
+            }
+        }
+    }
+
+    // An inner loop with the same name hides the outer one.
+    let mut inner = 0;
+    for i in 0..2 {
+        for i in 0..5 {
+            if i == 2 { break i; }                // leaves the inner loop only
+            inner = inner + 1;                    // 2 * 2 = 4
+        }
+    }
+
+    // A labeled break out of a `while` inside a `for`.
+    let mut w = 0;
+    for x in 0..5 {
+        let mut k = 0;
+        while k < 100 {
+            k = k + 1;
+            if k == 3 { continue x; }             // goes on with the next x, past the while
+            w = w + 1;                            // 2 per x: 10
+        }
+    }
+
+    printed + steps + middle + inner + w
+}
