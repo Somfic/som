@@ -2,6 +2,6 @@
 
 use som;
 fn main() -> i32 {
-    let p = som::null();
-    1 if p == som::null() else 0
+    let p = som::mem::null();
+    1 if p == som::mem::null() else 0
 }

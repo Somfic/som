@@ -1,8 +1,8 @@
 // expect: exit 7
 
-use som;
+use som::io;
 fn main() -> i32 {
-    som::println("about to exit");
-    som::exit(7);
+    som::io::println("about to exit");
+    som::io::exit(7);
     0
 }

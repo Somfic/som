@@ -2,10 +2,10 @@
 
 use som;
 fn main() -> i32 {
-    som::println("Starting...");
-    let p: * = som::malloc(256);
-    som::println("Allocated memory");
-    som::free(p);
-    som::println("Freed memory");
+    som::io::println("Starting...");
+    let p: * = som::mem::malloc(256);
+    som::io::println("Allocated memory");
+    som::mem::free(p);
+    som::io::println("Freed memory");
     0
 }

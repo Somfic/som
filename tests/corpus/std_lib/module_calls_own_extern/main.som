@@ -2,7 +2,7 @@
 
 use som;
 fn main() -> i32 {
-    som::println("test1");
-    som::println("test2");
+    som::io::println("test1");
+    som::io::println("test2");
     0
 }

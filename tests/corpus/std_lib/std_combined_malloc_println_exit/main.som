@@ -2,9 +2,9 @@
 
 use som;
 fn main() -> i32 {
-    let p: * = som::malloc(100);
-    som::println("allocated");
-    som::free(p);
-    som::println("freed");
+    let p: * = som::mem::malloc(100);
+    som::io::println("allocated");
+    som::mem::free(p);
+    som::io::println("freed");
     0
 }

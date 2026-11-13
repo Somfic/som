@@ -3,7 +3,7 @@
 use som;
 fn main() -> i32 {
     if true {
-        som::exit(5);
+        som::io::exit(5);
     }
     0
 }

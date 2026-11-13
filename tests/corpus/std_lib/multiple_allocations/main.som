@@ -2,11 +2,11 @@
 
 use som;
 fn main() -> i32 {
-    let a: * = som::malloc(10);
-    let b: * = som::malloc(20);
-    let c: * = som::malloc(30);
-    som::free(c);
-    som::free(b);
-    som::free(a);
+    let a: * = som::mem::malloc(10);
+    let b: * = som::mem::malloc(20);
+    let c: * = som::mem::malloc(30);
+    som::mem::free(c);
+    som::mem::free(b);
+    som::mem::free(a);
     0
 }

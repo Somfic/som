@@ -2,6 +2,6 @@
 
 use som;
 fn main() {
-    let p: * = som::malloc(100);
-    som::free(p);
+    let p: * = som::mem::malloc(100);
+    som::mem::free(p);
 }

@@ -1,7 +1,8 @@
 //! Finds and parses every module a program uses.
 //!
 //! A program is either a single `.som` file or a directory of them. Each `use a::b;`
-//! loads module `a::b`: the bundled module of that name if there is one, otherwise
+//! loads module `a::b`: the bundled module of that name if there is one (with the bundled
+//! modules inside it), otherwise
 //! the `.som` files in `<folder of the using module>/a/b/`. Modules are identified by
 //! name, so every `use b;` in a program refers to the same module.
 
@@ -117,6 +118,12 @@ pub fn load_with(
     }
     loader.import_headers(root);
     loader.load_uses(root);
+    // The standard library is always there by its full name, `som::io::printf`, without a
+    // `use`; `use som::io;` is for naming what's in it unqualified.
+    if !loader.loaded.contains("som") {
+        let nowhere = Span::empty(Arc::new(Source::from_raw("")));
+        loader.load_module("som".into(), &folder_of(path), nowhere);
+    }
 
     (loader.ast, loader.errors)
 }
@@ -264,6 +271,10 @@ impl Loader {
         self.import_headers(module);
         self.load_uses(module);
         self.loading.remove(&name);
-        self.loaded.insert(name);
+        self.loaded.insert(name.clone());
+        // A bundled module comes with the ones inside it: `use som;` gives `som::data::String`.
+        for child in crate::bundled::submodules(&name) {
+            self.load_module(child.name.to_string(), folder, span.clone());
+        }
     }
 }

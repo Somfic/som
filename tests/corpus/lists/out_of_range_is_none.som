@@ -1,6 +1,7 @@
 // expect: exit 9
 
-use som;
+use som::data;
+use som::mem;
 
 fn main() -> i32 {
     let mut xs: List<i32> = List::new();

@@ -1,6 +1,7 @@
 // expect: exit 6
 
-use som;
+use som::data;
+use som::mem;
 
 struct Item { value: i32 }
 

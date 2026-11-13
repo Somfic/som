@@ -2,6 +2,6 @@
 
 use som;
 fn main() -> i32 {
-    som::exit(0);
+    som::io::exit(0);
     99
 }

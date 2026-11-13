@@ -2,5 +2,5 @@
 
 use som;
 fn main() {
-    som::exit(0);
+    som::io::exit(0);
 }

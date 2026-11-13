@@ -2,6 +2,6 @@
 
 use som;
 fn main() -> i32 {
-    som::println("Hello from test!");
+    som::io::println("Hello from test!");
     0
 }

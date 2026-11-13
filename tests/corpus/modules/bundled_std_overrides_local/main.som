@@ -2,5 +2,5 @@
 
 use som;
 fn main() {
-    som::println("test");
+    som::io::println("test");
 }

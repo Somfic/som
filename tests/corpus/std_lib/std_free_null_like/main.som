@@ -2,7 +2,7 @@
 
 use som;
 fn main() -> i32 {
-    let p: * = som::malloc(16);
-    som::free(p);
+    let p: * = som::mem::malloc(16);
+    som::mem::free(p);
     0
 }

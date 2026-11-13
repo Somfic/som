@@ -1,6 +1,7 @@
 // expect: exit 43
 
-use som;
+use som::data;
+use som::mem;
 
 struct Point { x: i32, y: i32 }
 

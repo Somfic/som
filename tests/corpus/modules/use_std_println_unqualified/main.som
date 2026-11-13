@@ -1,6 +1,6 @@
 // expect: ok
 
-use som;
+use som::io;
 fn main() {
     println("Hello");
 }

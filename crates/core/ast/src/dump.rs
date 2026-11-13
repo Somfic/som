@@ -25,7 +25,8 @@ impl Ast {
             out: String::new(),
             depth: 0,
         };
-        for module in &self.modules {
+        // The bundled standard library (`<som::io>`) is part of every program; it isn't shown.
+        for module in (self.modules.iter()).filter(|m| !m.path.to_string_lossy().starts_with('<')) {
             d.line(format!("module {:?}", &*module.name));
             d.nested(|d| module.items.iter().for_each(|item| d.item(item)));
         }

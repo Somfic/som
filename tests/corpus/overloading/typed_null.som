@@ -1,6 +1,6 @@
 // expect: exit 1
 
-use som;
+use som::mem;
 
 fn main() -> i32 {
     let p: *i32 = null();

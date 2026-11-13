@@ -1,6 +1,6 @@
 // expect: exit 12
 
-use som;
+use som::mem;
 
 fn main() -> i32 {
     let mut p: *i32 = null() as *i32;

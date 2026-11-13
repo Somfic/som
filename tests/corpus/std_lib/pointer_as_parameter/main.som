@@ -2,10 +2,10 @@
 
 use som;
 fn free_it(p: *) {
-    som::free(p);
+    som::mem::free(p);
 }
 fn main() -> i32 {
-    let p: * = som::malloc(64);
+    let p: * = som::mem::malloc(64);
     free_it(p);
     0
 }

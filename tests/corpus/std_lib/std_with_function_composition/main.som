@@ -2,14 +2,14 @@
 
 use som;
 fn allocate(size: i32) -> * {
-    som::malloc(size)
+    som::mem::malloc(size)
 }
 fn deallocate(p: *) {
-    som::free(p);
+    som::mem::free(p);
 }
 fn main() -> i32 {
     let p: * = allocate(256);
-    som::println("allocated via helper");
+    som::io::println("allocated via helper");
     deallocate(p);
     0
 }

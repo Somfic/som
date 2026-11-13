@@ -2,8 +2,8 @@
 
 use som;
 fn main() -> i32 {
-    som::println("line one");
-    som::println("line two");
-    som::println("line three");
+    som::io::println("line one");
+    som::io::println("line two");
+    som::io::println("line three");
     0
 }

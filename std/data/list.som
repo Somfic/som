@@ -1,3 +1,5 @@
+use som::mem;
+
 /// `T`s one after another, as many as are pushed: room for more is made as it's needed.
 /// Its memory isn't given back by itself yet: call `free` when it's no longer needed.
 struct List<T> {

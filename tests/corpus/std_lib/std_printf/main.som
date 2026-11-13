@@ -3,5 +3,5 @@
 use som;
 
 fn main() -> i32 {
-    som::printf("%s %d\n", "fib", 55)
+    som::io::printf("%s %d\n", "fib", 55)
 }

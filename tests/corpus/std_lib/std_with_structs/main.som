@@ -4,7 +4,7 @@ use som;
 struct Config { size: i32 }
 fn main() -> i32 {
     let c = Config { size: 64 };
-    let p: * = som::malloc(c.size);
-    som::free(p);
+    let p: * = som::mem::malloc(c.size);
+    som::mem::free(p);
     0
 }

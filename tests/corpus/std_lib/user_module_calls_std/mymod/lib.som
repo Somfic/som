@@ -1,4 +1,4 @@
 use som;
 fn do_print() {
-    som::println("from user module");
+    som::io::println("from user module");
 }

@@ -1,10 +1,11 @@
-use som;
+use som::io;
 
-let mut list: List<i32> = List::new();
-
-for i in 1..10000000 {
-    list.push(123);
+fn hello(i: i32) {
+    1
 }
 
+fn hello(i: i32) {
+    1
+}
 
-printf("%d", list.capacity);
+let a = hello(12);

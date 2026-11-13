@@ -923,7 +923,10 @@ impl LanguageServer for SomLanguageServer {
                         kind: Some(CompletionItemKind::MODULE),
                         ..Default::default()
                     });
-                    items.extend(module_items(a, m, Some(&module.name), insert));
+                    // What's in scope is offered by its bare name above.
+                    if !in_scope.contains(&m) {
+                        items.extend(module_items(a, m, Some(&module.name), insert));
+                    }
                 }
             }
             // Modules that aren't imported yet: choosing one adds the import. Libraries are
@@ -2062,9 +2065,10 @@ fn modules_in_scope(a: &Analysis, file: &str) -> (usize, Vec<usize>) {
         .unwrap_or(0);
     let mut in_scope = vec![here];
     for item in &a.ast.modules[here].items {
+        // `use som::io;` too: modules are named by their whole path.
         if let Item::Use(u) = item
-            && let [name] = u.path.segments.as_slice()
-            && let Some(m) = a.ast.modules.iter().position(|m| *m.name == *name.name)
+            && let name = u.path.to_string()
+            && let Some(m) = a.ast.modules.iter().position(|m| *m.name == *name)
         {
             in_scope.push(m);
         }

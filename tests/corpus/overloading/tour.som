@@ -1,6 +1,6 @@
 // expect: exit 136
 
-use som;
+use som::mem;
 fn describe(x: i32) -> i32 { 1 }
 fn describe(x: bool) -> i32 { 2 }
 fn describe(x: i32, y: i32) -> i32 { 3 }

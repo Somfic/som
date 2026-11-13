@@ -2,8 +2,8 @@
 
 use som;
 fn alloc_and_free() -> i32 {
-    let p: * = som::malloc(128);
-    som::free(p);
+    let p: * = som::mem::malloc(128);
+    som::mem::free(p);
     0
 }
 fn main() -> i32 {
