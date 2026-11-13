@@ -284,6 +284,10 @@ impl Parser<'_> {
                 {
                     n += 2;
                 }
+                // `Pair<i32> { … }`: type arguments before the brace.
+                if self.peek_nth(n) == TokenKind::LessThan {
+                    n = self.past_type_args(n).unwrap_or(n);
+                }
                 let is_constructor = self.peek_nth(n) == TokenKind::OpenBrace
                     && (self.peek_nth(n + 1) == TokenKind::CloseBrace
                         || (self.peek_nth(n + 1) == TokenKind::Ident
@@ -446,10 +450,60 @@ impl Parser<'_> {
         Some(self.alloc_expr(Expr::Block { stmts, value }, &start))
     }
 
-    /// `Point { x: 1, y: 2 }`
+    /// How far ahead the `>` closing type arguments that open at `n` (a `<`) is, plus one; `None`
+    /// if what's there can't be type arguments, as in `a < b`. Only looks ahead.
+    fn past_type_args(&self, mut n: usize) -> Option<usize> {
+        let mut depth = 0;
+        loop {
+            match self.peek_nth(n) {
+                TokenKind::LessThan => depth += 1,
+                TokenKind::GreaterThan => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return Some(n + 1);
+                    }
+                }
+                // What a type can be made of.
+                TokenKind::Ident
+                | TokenKind::DoubleColon
+                | TokenKind::Comma
+                | TokenKind::Ampersand
+                | TokenKind::Mut
+                | TokenKind::Question
+                | TokenKind::OpenBracket
+                | TokenKind::CloseBracket
+                | TokenKind::Semicolon
+                | TokenKind::Int
+                | TokenKind::Star
+                | TokenKind::I8
+                | TokenKind::I16
+                | TokenKind::I32
+                | TokenKind::I64
+                | TokenKind::I128
+                | TokenKind::ISize
+                | TokenKind::U8
+                | TokenKind::U16
+                | TokenKind::U32
+                | TokenKind::U64
+                | TokenKind::U128
+                | TokenKind::USize
+                | TokenKind::F32
+                | TokenKind::F64
+                | TokenKind::Bool
+                | TokenKind::Char
+                | TokenKind::Str
+                | TokenKind::CStr => {}
+                _ => return None,
+            }
+            n += 1;
+        }
+    }
+
+    /// `Point { x: 1, y: 2 }`, or `Pair<i32> { a: 1, b: 2 }`
     fn parse_constructor(&mut self) -> Option<Id<Expr>> {
         let start = self.current_span();
         let ty = self.parse_path("a constructor name")?;
+        let args = self.parse_type_args()?;
 
         self.expect(TokenKind::OpenBrace, "constructor fields")?;
         let fields = self.parse_comma_list(TokenKind::CloseBrace, |p| {
@@ -463,6 +517,6 @@ impl Parser<'_> {
             "a closing brace after constructor fields",
         )?;
 
-        Some(self.alloc_expr(Expr::Construct { ty, fields }, &start))
+        Some(self.alloc_expr(Expr::Construct { ty, args, fields }, &start))
     }
 }

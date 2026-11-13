@@ -208,9 +208,22 @@ impl<'a> Resolver<'a> {
                     Item::Extern(block) => block.funcs.iter().for_each(|&id| self.resolve_func(id)),
                     Item::Impl(block) => block.methods.iter().for_each(|&id| self.resolve_func(id)),
                     Item::Struct(id) => {
+                        // Its fields can be written in terms of its type parameters.
+                        self.type_params.clear();
+                        for (index, param) in ast.structs[*id].type_params.iter().enumerate() {
+                            let def = self.names.define(
+                                &param.name,
+                                DefKind::StructParam { strukt: *id, index },
+                                param.span.clone(),
+                                self.module,
+                            );
+                            self.names.push_struct_param(*id, def);
+                            self.type_params.push((&param.name, def));
+                        }
                         for field in &ast.structs[*id].fields {
                             self.resolve_type(field.ty);
                         }
+                        self.type_params.clear();
                     }
                     Item::Use(_) => {}
                 }
@@ -424,8 +437,9 @@ impl<'a> Resolver<'a> {
                 args.iter().for_each(|&a| self.resolve_expr(a));
             }
             Expr::Field { object, .. } => self.resolve_expr(*object),
-            Expr::Construct { ty, fields } => {
+            Expr::Construct { ty, args, fields } => {
                 self.bind_expr(id, ty, Expect::Struct);
+                args.iter().for_each(|&arg| self.resolve_type(arg));
                 fields
                     .iter()
                     .for_each(|(_, value)| self.resolve_expr(*value));
@@ -456,10 +470,11 @@ impl<'a> Resolver<'a> {
 
     fn resolve_type(&mut self, id: Id<TypeExpr>) {
         match &self.ast.types[id] {
-            TypeExpr::Named(path) => {
+            TypeExpr::Named { path, args } => {
                 if let Some(def) = self.resolve_path(path, Expect::Type) {
                     self.names.set_type(id, def);
                 }
+                args.iter().for_each(|&arg| self.resolve_type(arg));
             }
             TypeExpr::Reference { to, .. }
             | TypeExpr::Optional(to)
@@ -553,10 +568,16 @@ impl<'a> Resolver<'a> {
     fn fits(&self, def: DefId, expect: Expect) -> bool {
         let kind = &self.names.def(def).kind;
         match expect {
-            Expect::Value => !matches!(kind, DefKind::Struct(_) | DefKind::TypeParam { .. }),
+            Expect::Value => !matches!(
+                kind,
+                DefKind::Struct(_) | DefKind::TypeParam { .. } | DefKind::StructParam { .. }
+            ),
             Expect::Func => matches!(kind, DefKind::Func(_)),
             Expect::Struct => matches!(kind, DefKind::Struct(_)),
-            Expect::Type => matches!(kind, DefKind::Struct(_) | DefKind::TypeParam { .. }),
+            Expect::Type => matches!(
+                kind,
+                DefKind::Struct(_) | DefKind::TypeParam { .. } | DefKind::StructParam { .. }
+            ),
         }
     }
 

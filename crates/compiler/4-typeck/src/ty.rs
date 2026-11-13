@@ -27,7 +27,8 @@ pub enum Ty {
         mutable: bool,
         to: TypeId,
     },
-    Struct(DefId),
+    /// A struct, and its type arguments if it's generic: `Pair<i32>`.
+    Struct(DefId, Vec<TypeId>),
     /// `T?`: a `T`, or `none`.
     Optional(TypeId),
     /// `[T; N]`
@@ -87,6 +88,7 @@ impl Ty {
             | Ty::Slice(inner)
             | Ty::Range(inner) => vec![*inner],
             Ty::Fn { params, ret } => params.iter().chain([ret]).copied().collect(),
+            Ty::Struct(_, args) => args.clone(),
             Ty::Error
             | Ty::Unit
             | Ty::Bool
@@ -96,7 +98,6 @@ impl Ty {
             | Ty::Int(_)
             | Ty::Float(_)
             | Ty::Pointer
-            | Ty::Struct(_)
             | Ty::Param(_)
             | Ty::Var(_) => Vec::new(),
         }
@@ -120,6 +121,7 @@ impl Ty {
                 params: params.iter().map(|&p| f(p)).collect(),
                 ret: f(*ret),
             },
+            Ty::Struct(def, args) => Ty::Struct(*def, args.iter().map(|&a| f(a)).collect()),
             leaf => leaf.clone(),
         }
     }
@@ -263,7 +265,11 @@ impl TypeTable {
             // Only reached on its own for a dereferenced slice, which is an error.
             Ty::Slice(element) => format!("[{}]", self.display(*element, names)),
             Ty::Range(int) => format!("Range<{}>", self.display(*int, names)),
-            Ty::Struct(def) | Ty::Param(def) => names.def(*def).name.to_string(),
+            Ty::Struct(def, args) if !args.is_empty() => {
+                let args: Vec<String> = args.iter().map(|&a| self.display(a, names)).collect();
+                format!("{}<{}>", names.def(*def).name, args.join(", "))
+            }
+            Ty::Struct(def, _) | Ty::Param(def) => names.def(*def).name.to_string(),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display(*ret, names))

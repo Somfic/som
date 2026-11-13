@@ -16,6 +16,19 @@ impl Parser<'_> {
         Some(ty)
     }
 
+    /// `<A, B>` after a struct's name in a type, if it's there.
+    pub(crate) fn parse_type_args(&mut self) -> Option<Vec<Id<TypeExpr>>> {
+        if !self.eat(TokenKind::LessThan) {
+            return Some(Vec::new());
+        }
+        let args = self.parse_comma_list(TokenKind::GreaterThan, |p| p.parse_type())?;
+        self.expect(
+            TokenKind::GreaterThan,
+            "a closing angle bracket for type arguments",
+        )?;
+        Some(args)
+    }
+
     fn parse_type_without_optional(&mut self) -> Option<Id<TypeExpr>> {
         let start = self.current_span();
 
@@ -80,7 +93,12 @@ impl Parser<'_> {
                 }
             }
 
-            TokenKind::Ident => TypeExpr::Named(self.parse_path("a type name")?),
+            // `Point`, or `Pair<i32>`
+            TokenKind::Ident => {
+                let path = self.parse_path("a type name")?;
+                let args = self.parse_type_args()?;
+                TypeExpr::Named { path, args }
+            }
 
             TokenKind::OpenParen => {
                 self.advance();

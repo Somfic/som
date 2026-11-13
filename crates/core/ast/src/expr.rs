@@ -66,9 +66,12 @@ pub enum Expr {
         object: Id<Expr>,
         field: Ident,
     },
-    /// `Point { x: 1, y: 2 }`
+    /// `Point { x: 1, y: 2 }`, or `Pair<i32> { a: 1, b: 2 }`
     Construct {
         ty: Path,
+        /// A generic struct's type arguments, if they're written: `i32` in `Pair<i32> { … }`.
+        /// Left out, the fields' values decide them.
+        args: Vec<Id<TypeExpr>>,
         fields: Vec<(Ident, Id<Expr>)>,
     },
     /// `then if condition else otherwise`

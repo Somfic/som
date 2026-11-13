@@ -255,16 +255,21 @@ impl Validator<'_> {
                 }
                 found
             }
-            Rvalue::Struct { def, fields } => {
-                let expected: Vec<TypeId> = self
-                    .mir
-                    .struct_def(*def)
-                    .fields
-                    .iter()
+            Rvalue::Struct { ty, fields } => {
+                let Ty::Struct(def, args) = self.mir.types.get(*ty) else {
+                    self.problem("struct literal of a type that isn't a struct".into());
+                    return None;
+                };
+                if !self.mir.has_struct(*def, args) {
+                    let name = self.mir.display_ty(*ty);
+                    self.problem(format!("struct literal of {name}, which has no struct"));
+                    return None;
+                }
+                let expected: Vec<TypeId> = (self.mir.struct_def(*def, args).fields.iter())
                     .map(|(_, t)| *t)
                     .collect();
                 self.check_operands("struct", &expected, fields);
-                self.mir.types.lookup(&Ty::Struct(*def))
+                Some(*ty)
             }
             Rvalue::Call { func, args } => {
                 let Some(callee) = self.mir.funcs.get(*func) else {

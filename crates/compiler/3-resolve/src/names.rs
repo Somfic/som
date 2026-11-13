@@ -24,6 +24,11 @@ pub enum DefKind {
         func: Id<Func>,
         index: usize,
     },
+    /// The `index`th type parameter of a struct, as in `struct Pair<T>`.
+    StructParam {
+        strukt: Id<Struct>,
+        index: usize,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -52,6 +57,8 @@ pub struct Names {
     funcs: Vec<Option<DefId>>,
     params: Vec<Vec<DefId>>,
     type_params: Vec<Vec<DefId>>,
+    /// Each struct's type parameters.
+    struct_params: Vec<Vec<DefId>>,
     structs: Vec<Option<DefId>>,
     /// `(struct, method name)` → the method, for `impl` blocks.
     methods: HashMap<(DefId, Box<str>), DefId>,
@@ -68,6 +75,7 @@ impl Names {
             funcs: vec![None; ast.funcs.len()],
             params: vec![Vec::new(); ast.funcs.len()],
             type_params: vec![Vec::new(); ast.funcs.len()],
+            struct_params: vec![Vec::new(); ast.structs.len()],
             structs: vec![None; ast.structs.len()],
             methods: HashMap::new(),
         }
@@ -108,6 +116,10 @@ impl Names {
 
     pub(crate) fn push_type_param(&mut self, func: Id<Func>, def: DefId) {
         self.type_params[func.id].push(def);
+    }
+
+    pub(crate) fn push_struct_param(&mut self, s: Id<Struct>, def: DefId) {
+        self.struct_params[s.id].push(def);
     }
 
     /// Returns the existing method if one with this name is already defined.
@@ -163,6 +175,11 @@ impl Names {
     /// The type parameters of a generic function, in declaration order.
     pub fn type_params(&self, func: Id<Func>) -> &[DefId] {
         &self.type_params[func.id]
+    }
+
+    /// The type parameters of a generic struct, in declaration order.
+    pub fn struct_params(&self, s: Id<Struct>) -> &[DefId] {
+        &self.struct_params[s.id]
     }
 
     /// The definition of a struct. Every struct in the AST has one.

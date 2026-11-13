@@ -226,6 +226,10 @@ impl Unifier {
             },
             Ty::Array { element, len } => format!("[{}; {len}]", self.display(*element, names)),
             Ty::Slice(element) => format!("[{}]", self.display(*element, names)),
+            Ty::Struct(def, args) if !args.is_empty() => {
+                let args: Vec<String> = args.iter().map(|&a| self.display(a, names)).collect();
+                format!("{}<{}>", names.def(*def).name, args.join(", "))
+            }
             Ty::Range(int) => format!("Range<{}>", self.display(*int, names)),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();

@@ -117,6 +117,13 @@ pub enum TypeError {
         span: Span,
         returns: Option<Span>,
     },
+    /// `Pair<i32, i32>` for a struct with one type parameter, or `Pair` for one with any.
+    WrongTypeArgCount {
+        name: String,
+        expected: usize,
+        found: usize,
+        span: Span,
+    },
     /// `return;` in a function that returns something.
     ReturnWithoutValue {
         ty: Message,
@@ -354,6 +361,27 @@ impl TypeError {
                     code("return"),
                     ", or end the function with a value"
                 ])
+            }
+            TypeError::WrongTypeArgCount {
+                name,
+                expected,
+                found,
+                span,
+            } => {
+                let plural = |n: &usize| if *n == 1 { "" } else { "s" };
+                Diagnostic::error(msg![
+                    struct_name(name),
+                    format!(
+                        " takes {expected} type argument{}, but {found} ",
+                        plural(expected)
+                    ),
+                    if *found == 1 {
+                        "was given"
+                    } else {
+                        "were given"
+                    }
+                ])
+                .with_label(Label::primary(span.clone(), "here"))
             }
             TypeError::ReturnWithoutValue { ty, span } => {
                 Diagnostic::error(msg![code("return"), " needs a value here"]).with_label(

@@ -1,0 +1,8 @@
+// expect: error Mismatch
+
+struct Vector<T> { a: T, b: T }
+
+fn main() -> i32 {
+    let v = Vector { a: 1, b: true };
+    0
+}

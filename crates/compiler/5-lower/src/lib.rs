@@ -8,7 +8,7 @@
 //! - Generic functions are monomorphized: every distinct set of type arguments a
 //!   generic function is called with becomes its own MIR function.
 
-use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt};
+use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
 use som_typeck::{ArrayMethod, Loop, Typed};
@@ -55,22 +55,12 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        // Every non-generic struct. Generic ones get a copy for each set of type arguments the
+        // program uses, once the functions are lowered.
         for (id, s) in ast.structs.iter() {
-            let def = self.names.strukt(id);
-            let fields = s
-                .fields
-                .iter()
-                .zip(self.typed.fields(id))
-                .map(|(f, &ty)| (f.name.name.to_string(), ty))
-                .collect();
-            let name = self.qualified(def, &s.name.name);
-            self.mir.add_struct(StructDef {
-                def,
-                name,
-                fields,
-                copy: s.copy,
-                handle: s.handle,
-            });
+            if s.type_params.is_empty() {
+                self.struct_instance(id, Vec::new());
+            }
         }
 
         // Every non-generic function, whether or not anything calls it. Generic ones are
@@ -87,6 +77,78 @@ impl<'a> Lowerer<'a> {
             let body = FnBuilder::new(self, func, type_args).build();
             self.mir.funcs[func_id].body = Some(body);
         }
+
+        // A copy of each generic struct for each set of concrete type arguments it's used with.
+        // A copy's fields can use more, so until there are no new ones.
+        loop {
+            let types = &self.mir.types;
+            let wanted: Vec<(DefId, Vec<TypeId>)> = types
+                .iter()
+                .filter_map(|(id, ty)| match ty {
+                    Ty::Struct(def, args)
+                        if !args.is_empty()
+                            && concrete(types, id)
+                            && !self.mir.has_struct(*def, args) =>
+                    {
+                        Some((*def, args.clone()))
+                    }
+                    _ => None,
+                })
+                .collect();
+            if wanted.is_empty() {
+                break;
+            }
+            for (def, args) in wanted {
+                let DefKind::Struct(s) = self.names.def(def).kind else {
+                    unreachable!("struct types name structs")
+                };
+                self.struct_instance(s, args);
+            }
+        }
+    }
+
+    /// Whether values of `ty` are copied rather than moved, like `Mir::is_copy`, but working
+    /// before the copies of generic structs exist: copying is the struct's, whatever its type
+    /// arguments.
+    fn is_copy(&self, ty: TypeId) -> bool {
+        match self.mir.types.get(ty) {
+            Ty::Struct(def, _) => match self.names.def(*def).kind {
+                DefKind::Struct(s) => self.ast.structs[s].copy,
+                _ => true,
+            },
+            Ty::Ref { mutable: true, .. } => false,
+            Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.is_copy(*inner),
+            _ => true,
+        }
+    }
+
+    /// Adds struct `s` with type arguments `args`: its fields' types with the arguments filled in.
+    fn struct_instance(&mut self, s: Id<Struct>, args: Vec<TypeId>) {
+        let ast_struct = &self.ast.structs[s];
+        let def = self.names.strukt(s);
+        let subst = Subst::new(self.names.struct_params(s), &args);
+        let fields = (ast_struct.fields.iter())
+            .zip(self.typed.fields(s))
+            .map(|(f, &ty)| {
+                (
+                    f.name.name.to_string(),
+                    subst.apply(&mut self.mir.types, ty),
+                )
+            })
+            .collect();
+        let mut name = self.qualified(def, &ast_struct.name.name);
+        if !args.is_empty() {
+            let shown: Vec<String> = args.iter().map(|&a| self.mir.display_ty(a)).collect();
+            name = format!("{name}<{}>", shown.join(", "));
+        }
+        self.mir.add_struct(StructDef {
+            def,
+            args,
+            name,
+            fields,
+            copy: ast_struct.copy,
+            handle: ast_struct.handle,
+        });
     }
 
     /// `name` prefixed with its module, if it isn't in the root module.
@@ -185,6 +247,14 @@ enum Length {
     Fixed(u64),
     /// A slice's, read from it at run time: a `usize`.
     Held(Operand),
+}
+
+/// Whether `ty` is fully known: no type parameters or inference variables left in it.
+fn concrete(types: &TypeTable, ty: TypeId) -> bool {
+    match types.get(ty) {
+        Ty::Param(_) | Ty::Var(_) | Ty::Error => false,
+        t => t.children().into_iter().all(|child| concrete(types, child)),
+    }
 }
 
 /// Replaces a generic function's type parameters with concrete types.
@@ -367,7 +437,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     /// Reads a place, copying or moving depending on its type.
     fn read(&self, place: Place, ty: TypeId) -> Operand {
-        if self.l.mir.is_copy(ty) {
+        if self.l.is_copy(ty) {
             Operand::Copy(place)
         } else {
             Operand::Move(place)
@@ -1176,9 +1246,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     values[index] = Some(self.operand(*value));
                 }
                 let ty = self.expr_ty(expr);
-                debug_assert!(self.l.mir.types.lookup(&Ty::Struct(def)) == Some(ty));
                 Rvalue::Struct {
-                    def,
+                    ty,
                     fields: values
                         .into_iter()
                         .map(|v| v.expect("checked: no missing fields"))
@@ -1586,10 +1655,9 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let position = self.temp(usize, span.clone());
         self.assign(Place::local(position), Rvalue::Use(first), span.clone());
         let mutable = method == ArrayMethod::SliceMut;
-        let element_ty = self
-            .l
-            .mir
-            .project(self.place_ty(&elements), Projection::Index(position))
+        let elements_ty = self.place_ty(&elements);
+        let element_ty = (self.l.mir)
+            .project(elements_ty, Projection::Index(position))
             .expect("checked: slices are sliced by element");
         let reference_ty = self.l.mir.types.intern(Ty::Ref {
             mutable,
@@ -1627,9 +1695,17 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     /// The type of `place` in the body being built.
-    fn place_ty(&self, place: &Place) -> TypeId {
+    fn place_ty(&mut self, place: &Place) -> TypeId {
         let mut ty = self.locals[place.local].ty;
         for &projection in &place.projection {
+            // A field of a generic struct's copy that may not have been made yet.
+            if let Ty::Struct(def, args) = self.l.mir.types.get(ty).clone()
+                && !args.is_empty()
+                && !self.l.mir.has_struct(def, &args)
+                && let DefKind::Struct(s) = self.l.names.def(def).kind
+            {
+                self.l.struct_instance(s, args);
+            }
             ty = (self.l.mir.project(ty, projection)).expect("places are built well-typed");
         }
         ty

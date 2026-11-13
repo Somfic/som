@@ -22,7 +22,7 @@ pub struct Mir {
     pub types: TypeTable,
     pub funcs: Arena<Function>,
     pub structs: Vec<StructDef>,
-    struct_index: HashMap<DefId, usize>,
+    struct_index: HashMap<(DefId, Vec<TypeId>), usize>,
 }
 
 impl Mir {
@@ -36,8 +36,14 @@ impl Mir {
     }
 
     pub fn add_struct(&mut self, def: StructDef) {
-        self.struct_index.insert(def.def, self.structs.len());
+        let key = (def.def, def.args.clone());
+        self.struct_index.insert(key, self.structs.len());
         self.structs.push(def);
+    }
+
+    /// Whether the struct `def` with type arguments `args` has been added.
+    pub fn has_struct(&self, def: DefId, args: &[TypeId]) -> bool {
+        self.struct_index.contains_key(&(def, args.to_vec()))
     }
 
     /// Keeps only the structs `keep` returns true for.
@@ -47,21 +53,21 @@ impl Mir {
             .structs
             .iter()
             .enumerate()
-            .map(|(i, s)| (s.def, i))
+            .map(|(i, s)| ((s.def, s.args.clone()), i))
             .collect();
     }
 
-    /// The struct a `Ty::Struct(def)` refers to.
-    pub fn struct_def(&self, def: DefId) -> &StructDef {
-        &self.structs[self.struct_index[&def]]
+    /// The struct a `Ty::Struct(def, args)` refers to: one copy per set of type arguments.
+    pub fn struct_def(&self, def: DefId, args: &[TypeId]) -> &StructDef {
+        &self.structs[self.struct_index[&(def, args.to_vec())]]
     }
 
     /// The type of `projection` applied to a place of type `ty`, or `None` if it doesn't apply.
     pub fn project(&self, ty: TypeId, projection: Projection) -> Option<TypeId> {
         match (projection, self.types.get(ty)) {
             (Projection::Deref, Ty::Ref { to, .. }) => Some(*to),
-            (Projection::Field(i), Ty::Struct(def)) => {
-                self.struct_def(*def).fields.get(i).map(|&(_, ty)| ty)
+            (Projection::Field(i), Ty::Struct(def, args)) => {
+                self.struct_def(*def, args).fields.get(i).map(|&(_, ty)| ty)
             }
             (Projection::Field(0), Ty::Optional(_)) => Some(self.types.bool),
             (Projection::Field(1), Ty::Optional(inner)) => Some(*inner),
@@ -94,7 +100,7 @@ impl Mir {
     /// it would be two ways to change the same thing.
     pub fn is_copy(&self, ty: TypeId) -> bool {
         match self.types.get(ty) {
-            Ty::Struct(def) => self.struct_def(*def).copy,
+            Ty::Struct(def, args) => self.struct_def(*def, args).copy,
             Ty::Ref { mutable: true, .. } => false,
             // As copyable as what it holds.
             Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.is_copy(*inner),
@@ -123,9 +129,14 @@ impl IdPrefix for LocalDecl {
     const PREFIX: &'static str = "_";
 }
 
+/// A struct, or one copy of a generic struct for a set of type arguments.
 pub struct StructDef {
     pub def: DefId,
+    /// Its type arguments, if it's generic: `[i32]` for `Pair<i32>`.
+    pub args: Vec<TypeId>,
+    /// Readable name, with its type arguments: `geo::Point`, `Pair<i32>`.
     pub name: String,
+    /// Each field's name and type, with the type arguments filled in.
     pub fields: Vec<(String, TypeId)>,
     /// Values are copied rather than moved.
     pub copy: bool,
@@ -325,7 +336,8 @@ pub enum Rvalue {
     },
     /// A struct value, with fields in declaration order.
     Struct {
-        def: DefId,
+        /// The struct type, with its type arguments.
+        ty: TypeId,
         fields: Vec<Operand>,
     },
     Call {

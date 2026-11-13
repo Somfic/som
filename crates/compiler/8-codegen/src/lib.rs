@@ -169,7 +169,8 @@ fn identifier(name: &str) -> String {
 
 /// The C names of the program's structs, their fields and its functions.
 struct Names {
-    structs: HashMap<DefId, String>,
+    /// Each struct's name, one for each set of type arguments: `Pair<i32>` is `Pair_i32`.
+    structs: HashMap<(DefId, Vec<TypeId>), String>,
     /// The structs made for optional, array and slice types the program uses: whether an
     /// optional holds a value and the value; an array's elements; where a slice's elements
     /// start, and how many there are.
@@ -186,7 +187,7 @@ impl Names {
         let mut fields = HashMap::new();
         for s in &mir.structs {
             structs.insert(
-                s.def,
+                (s.def, s.args.clone()),
                 unique(&identifier(&s.name), "s", &mut tags, |_| false),
             );
             let mut taken = HashSet::new();
@@ -510,8 +511,8 @@ impl<'a> Emitter<'a> {
         self.line("typedef uint8_t som_unit;");
     }
 
-    fn struct_name(&self, def: DefId) -> String {
-        format!("struct {}", self.names.structs[&def])
+    fn struct_name(&self, def: DefId, args: &[TypeId]) -> String {
+        format!("struct {}", self.names.structs[&(def, args.to_vec())])
     }
 
     fn func_name(&self, id: FuncId) -> &str {
@@ -549,10 +550,10 @@ impl<'a> Emitter<'a> {
             }
             Ty::Ref { to, .. } => format!("{}*", self.ty(*to)),
             // A handle is a pointer to a struct only C sees inside.
-            Ty::Struct(def) if self.mir.struct_def(*def).handle => {
-                format!("{}*", self.struct_name(*def))
+            Ty::Struct(def, args) if self.mir.struct_def(*def, args).handle => {
+                format!("{}*", self.struct_name(*def, args))
             }
-            Ty::Struct(def) => self.struct_name(*def),
+            Ty::Struct(def, args) => self.struct_name(*def, args),
             Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_) | Ty::Range(_) => {
                 format!("struct {}", self.names.generated[&ty])
             }
@@ -592,7 +593,7 @@ impl<'a> Emitter<'a> {
         let mut types: Vec<TypeId> = mir
             .structs
             .iter()
-            .filter_map(|s| mir.types.lookup(&Ty::Struct(s.def)))
+            .filter_map(|s| mir.types.lookup(&Ty::Struct(s.def, s.args.clone())))
             .collect();
         let mut generated: Vec<TypeId> = self.names.generated.keys().copied().collect();
         generated.sort();
@@ -617,11 +618,7 @@ impl<'a> Emitter<'a> {
             return;
         }
         let contains: Vec<TypeId> = match self.mir.types.get(ty) {
-            Ty::Struct(def) => self
-                .mir
-                .struct_def(*def)
-                .fields
-                .iter()
+            Ty::Struct(def, args) => (self.mir.struct_def(*def, args).fields.iter())
                 .map(|f| f.1)
                 .collect(),
             Ty::Optional(inner) | Ty::Array { element: inner, .. } | Ty::Range(inner) => {
@@ -644,8 +641,8 @@ impl<'a> Emitter<'a> {
         }
         visiting.pop();
         done.insert(ty);
-        match *self.mir.types.get(ty) {
-            Ty::Struct(def) => self.define_struct(def),
+        match self.mir.types.get(ty).clone() {
+            Ty::Struct(def, args) => self.define_struct(def, &args),
             Ty::Optional(inner) => {
                 let value = self.ty(inner);
                 self.line(format!("{} {{ bool some; {value} value; }};", self.ty(ty)));
@@ -677,8 +674,8 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    fn define_struct(&mut self, def: DefId) {
-        let s = self.mir.struct_def(def);
+    fn define_struct(&mut self, def: DefId, args: &[TypeId]) {
+        let s = self.mir.struct_def(def, args);
         // Only C knows what's inside: the forward declaration is all there is.
         if s.handle {
             return;
@@ -696,7 +693,7 @@ impl<'a> Emitter<'a> {
         } else {
             fields.concat()
         };
-        let name = self.struct_name(def);
+        let name = self.struct_name(def, args);
         self.line(format!("{name} {{{fields} }};"));
     }
 
@@ -1018,7 +1015,7 @@ impl<'a> Emitter<'a> {
                 };
                 Expr::compound(format!("{l} {symbol} {r}"))
             }
-            Rvalue::Struct { def, fields } => {
+            Rvalue::Struct { ty, fields } => {
                 let fields: Vec<String> =
                     fields.iter().map(|op| self.operand(f, op).text).collect();
                 let fields = if fields.is_empty() {
@@ -1026,7 +1023,7 @@ impl<'a> Emitter<'a> {
                 } else {
                     fields.join(", ")
                 };
-                Expr::atom(format!("({}){{{fields}}}", self.struct_name(*def)))
+                Expr::atom(format!("({}){{{fields}}}", self.ty(*ty)))
             }
             Rvalue::Call { func, args } => {
                 let args: Vec<String> = args.iter().map(|a| self.operand(f, a).text).collect();
@@ -1182,7 +1179,7 @@ impl<'a> Emitter<'a> {
 
     fn field_name(&self, ty: TypeId, index: usize) -> &str {
         match self.mir.types.get(ty) {
-            Ty::Struct(def) => &self.names.fields[def][index],
+            Ty::Struct(def, _) => &self.names.fields[def][index],
             Ty::Optional(_) if index == 0 => "some",
             Ty::Optional(_) => "value",
             Ty::Range(_) if index == 0 => "start",

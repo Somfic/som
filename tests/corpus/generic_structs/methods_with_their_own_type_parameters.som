@@ -1,0 +1,13 @@
+// expect: exit 1
+
+struct Box<T> { value: T }
+
+impl<T> Box<T> {
+    fn replace<U>(self: Box<T>, other: U) -> Box<U> { Box { value: other } }
+}
+
+fn main() -> i32 {
+    let b = Box { value: 41 };
+    let c = b.replace(true);
+    1 if c.value else 0
+}

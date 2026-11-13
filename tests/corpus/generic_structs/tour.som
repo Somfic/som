@@ -1,0 +1,31 @@
+// expect: exit 27
+
+struct Vector<T> {
+    a: T,
+    b: T
+}
+
+impl<T> Vector<T> {
+    fn swapped(self: Vector<T>) -> Vector<T> { Vector { a: self.b, b: self.a } }
+    fn first(self: &Vector<T>) -> &T { &self.a }
+}
+
+struct Named<T> { name: str, value: T }
+
+/// Generic structs inside generic structs, and in non-generic ones.
+struct Holder { ints: Vector<i32>, flags: Vector<bool> }
+
+fn sum(v: Vector<i32>) -> i32 { v.a + v.b }
+
+fn main() -> i32 {
+    let vec = Vector<i32> { a: 1, b: 2 };          // written type arguments
+    let inferred = Vector { a: 10, b: 20 };        // inferred: Vector<i32>
+    let flags: Vector<bool> = Vector { a: true, b: false };
+    let swapped = vec.swapped();                   // a = 2, b = 1
+    let first = *(&inferred).first();              // 10
+    let nested = Vector { a: Vector { a: 1, b: 2 }, b: Vector { a: 3, b: 4 } };
+    let holder = Holder { ints: Vector { a: 5, b: 6 }, flags: flags };
+    let named = Named { name: "x", value: 3.5 };
+    let wide: Vector<i64> = Vector { a: 7, b: 8 };
+    sum(swapped) + first + nested.b.a + sum(holder.ints)   // 3 + 10 + 3 + 11 = 27
+}

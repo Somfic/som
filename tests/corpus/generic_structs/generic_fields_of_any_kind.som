@@ -1,0 +1,10 @@
+// expect: exit 4
+
+struct Window<T> { values: [T], current: T? }
+
+fn main() -> i32 {
+    let data = [1, 2, 3];
+    let w = Window { values: &data, current: 2 };
+    let rest = w.values.slice(1..) else [];
+    rest.len() + (w.current else 0)
+}

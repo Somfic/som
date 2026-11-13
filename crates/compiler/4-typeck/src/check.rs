@@ -283,13 +283,29 @@ impl<'a> Checker<'a> {
             TypeExpr::Primitive(Primitive::Str) => return self.u.table.str_ref,
             TypeExpr::Primitive(p) => Ty::from_primitive(*p),
             TypeExpr::Pointer => Ty::Pointer,
-            TypeExpr::Named(_) => match self
+            TypeExpr::Named { args, .. } => match self
                 .names
                 .ty(id)
-                .map(|def| (def, &self.names.def(def).kind))
+                .map(|def| (def, self.names.def(def).kind.clone()))
             {
-                Some((def, DefKind::Struct(_))) => Ty::Struct(def),
-                Some((def, DefKind::TypeParam { .. })) => Ty::Param(def),
+                Some((def, DefKind::Struct(s))) => {
+                    let args: Vec<TypeId> = args.iter().map(|&a| self.lower(a)).collect();
+                    let expected = self.names.struct_params(s).len();
+                    if args.len() == expected {
+                        Ty::Struct(def, args)
+                    } else {
+                        self.errors.push(TypeError::WrongTypeArgCount {
+                            name: self.names.def(def).name.to_string(),
+                            expected,
+                            found: args.len(),
+                            span: self.ast.types.span(id).clone(),
+                        });
+                        Ty::Struct(def, vec![self.u.table.error; expected])
+                    }
+                }
+                Some((def, DefKind::TypeParam { .. } | DefKind::StructParam { .. })) => {
+                    Ty::Param(def)
+                }
                 _ => Ty::Error, // already reported by the resolver
             },
             // `&str` from before strings were slices.
@@ -331,6 +347,16 @@ impl<'a> Checker<'a> {
             }
         };
         self.u.intern(ty)
+    }
+
+    /// What each of struct `s`'s type parameters stands for: `args`.
+    fn struct_subst(
+        &self,
+        s: som_ast::Id<som_ast::Struct>,
+        args: &[TypeId],
+    ) -> Vec<(DefId, TypeId)> {
+        let params = self.names.struct_params(s);
+        params.iter().copied().zip(args.iter().copied()).collect()
     }
 
     /// A function's signature with its type parameters replaced by fresh variables.
@@ -1284,7 +1310,7 @@ impl<'a> Checker<'a> {
                 if let Some(ty) = self.array_method(id, *receiver, receiver_ty, method, args) {
                     return ty;
                 }
-                let Some(owner) = self.struct_of(receiver_ty, *receiver) else {
+                let Some((owner, _)) = self.struct_of(receiver_ty, *receiver) else {
                     args.iter().for_each(|&a| {
                         self.infer(a);
                     });
@@ -1361,7 +1387,7 @@ impl<'a> Checker<'a> {
                     self.fields.insert(id, index);
                     return int;
                 }
-                let Some(owner) = self.struct_of(object_ty, *object) else {
+                let Some((owner, args)) = self.struct_of(object_ty, *object) else {
                     return error;
                 };
                 let DefKind::Struct(s) = self.names.def(owner).kind else {
@@ -1371,7 +1397,9 @@ impl<'a> Checker<'a> {
                 match fields.iter().position(|f| f.name.name == field.name) {
                     Some(index) => {
                         self.fields.insert(id, index);
-                        self.structs[s.id][index]
+                        // Written in terms of the struct's type parameters: fill in its arguments.
+                        let subst = self.struct_subst(s, &args);
+                        self.substitute(self.structs[s.id][index], &subst)
                     }
                     None => {
                         self.errors.push(TypeError::UnknownField {
@@ -1385,7 +1413,11 @@ impl<'a> Checker<'a> {
                 }
             }
 
-            Expr::Construct { fields: given, .. } => {
+            Expr::Construct {
+                args: written,
+                fields: given,
+                ..
+            } => {
                 let Some(def) = self.names.expr(id) else {
                     given.iter().for_each(|(_, v)| {
                         self.infer(*v);
@@ -1396,6 +1428,27 @@ impl<'a> Checker<'a> {
                     unreachable!("resolver only binds constructors to structs")
                 };
                 let struct_name = self.names.def(def).name.to_string();
+                // The type arguments written, `Pair<i32> { … }`; or each starts unknown, and the
+                // fields' values decide them.
+                let expected = self.names.struct_params(s).len();
+                let args: Vec<TypeId> = if written.is_empty() {
+                    (0..expected).map(|_| self.u.fresh(VarKind::Any)).collect()
+                } else {
+                    let lowered: Vec<TypeId> = written.iter().map(|&a| self.lower(a)).collect();
+                    if lowered.len() == expected {
+                        lowered
+                    } else {
+                        self.errors.push(TypeError::WrongTypeArgCount {
+                            name: struct_name.clone(),
+                            expected,
+                            found: lowered.len(),
+                            span: self.span(id),
+                        });
+                        vec![self.u.table.error; expected]
+                    }
+                };
+                let subst = self.struct_subst(s, &args);
+                let ty = self.u.intern(Ty::Struct(def, args));
                 // Only C can make one: som doesn't know what's inside.
                 if self.ast.structs[s].handle {
                     self.errors.push(TypeError::ConstructHandle {
@@ -1405,7 +1458,7 @@ impl<'a> Checker<'a> {
                     given.iter().for_each(|(_, v)| {
                         self.infer(*v);
                     });
-                    return self.u.intern(Ty::Struct(def));
+                    return ty;
                 }
                 let declared = &self.ast.structs[s].fields;
 
@@ -1421,7 +1474,7 @@ impl<'a> Checker<'a> {
                         }
                         Some(index) => {
                             seen[index] = true;
-                            let expected = self.structs[s.id][index];
+                            let expected = self.substitute(self.structs[s.id][index], &subst);
                             let from = self.ast.types.span(declared[index].ty).clone();
                             self.expect(*value, expected, Some(from));
                         }
@@ -1446,7 +1499,7 @@ impl<'a> Checker<'a> {
                         span: self.span(id),
                     });
                 }
-                self.u.intern(Ty::Struct(def))
+                ty
             }
 
             Expr::Conditional {
@@ -1642,7 +1695,7 @@ impl<'a> Checker<'a> {
     /// taken to be.
     fn is_copy(&self, ty: TypeId) -> bool {
         match *self.u.get(self.u.shallow(ty)) {
-            Ty::Struct(def) => match self.names.def(def).kind {
+            Ty::Struct(def, _) => match self.names.def(def).kind {
                 DefKind::Struct(s) => self.ast.structs[s].copy,
                 _ => true,
             },
@@ -1721,14 +1774,15 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// The struct `ty` is, looking through one reference. Reports an error if it isn't one.
-    fn struct_of(&mut self, ty: TypeId, expr: Id<Expr>) -> Option<DefId> {
+    /// The struct `ty` is, looking through one reference, and its type arguments. Reports an
+    /// error if it isn't one.
+    fn struct_of(&mut self, ty: TypeId, expr: Id<Expr>) -> Option<(DefId, Vec<TypeId>)> {
         let mut ty = self.u.shallow(ty);
         if let Ty::Ref { to, .. } = self.u.get(ty) {
             ty = self.u.shallow(*to);
         }
         match self.u.get(ty) {
-            Ty::Struct(def) => Some(*def),
+            Ty::Struct(def, args) => Some((*def, args.clone())),
             Ty::Error => None,
             Ty::Var(_) if self.u.var_kind(ty) == Some(VarKind::Any) => {
                 self.errors.push(TypeError::CannotInfer {

@@ -430,12 +430,9 @@ impl<'a> FnChecker<'a> {
     fn has_ref(&self, ty: TypeId) -> bool {
         match self.mir.types.get(ty) {
             Ty::Ref { .. } => true,
-            Ty::Struct(def) => self
-                .mir
-                .struct_def(*def)
-                .fields
-                .iter()
-                .any(|&(_, f)| self.has_ref(f)),
+            Ty::Struct(def, args) => {
+                (self.mir.struct_def(*def, args).fields.iter()).any(|&(_, f)| self.has_ref(f))
+            }
             // A function's parameters and result are only types: a function value holds no loan.
             Ty::Fn { .. } => false,
             t => t.children().into_iter().any(|child| self.has_ref(child)),
@@ -457,14 +454,14 @@ impl<'a> FnChecker<'a> {
                     // A struct's fields are reached through a reference without the `*`:
                     // `u.name`, not `*u.name`.
                     let field_of_struct = matches!(projections.peek(), Some(Projection::Field(_)))
-                        && matches!(self.mir.types.get(*to), Ty::Struct(_));
+                        && matches!(self.mir.types.get(*to), Ty::Struct(..));
                     if !field_of_struct {
                         name = format!("*{name}");
                     }
                     ty = *to;
                 }
-                (Projection::Field(i), Ty::Struct(def)) => {
-                    let (field, field_ty) = &self.mir.struct_def(*def).fields[*i];
+                (Projection::Field(i), Ty::Struct(def, args)) => {
+                    let (field, field_ty) = &self.mir.struct_def(*def, args).fields[*i];
                     name = format!("{name}.{field}");
                     ty = *field_ty;
                 }

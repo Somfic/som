@@ -37,7 +37,11 @@ impl Ast {
         match &self.types[id] {
             TypeExpr::Unit => "()".into(),
             TypeExpr::Primitive(p) => format!("{p:?}").to_lowercase(),
-            TypeExpr::Named(path) => path.to_string(),
+            TypeExpr::Named { path, args } if args.is_empty() => path.to_string(),
+            TypeExpr::Named { path, args } => {
+                let args: Vec<String> = args.iter().map(|&a| self.type_text(a)).collect();
+                format!("{path}<{}>", args.join(", "))
+            }
             TypeExpr::Pointer => "*".into(),
             TypeExpr::Reference {
                 mutable,
@@ -292,7 +296,7 @@ impl Dumper<'_> {
             Expr::Field { object, field } => {
                 self.node(format!("field {field}"), |d| d.expr(*object))
             }
-            Expr::Construct { ty, fields } => self.node(format!("construct {ty}"), |d| {
+            Expr::Construct { ty, fields, .. } => self.node(format!("construct {ty}"), |d| {
                 for (name, value) in fields {
                     d.node(format!("{name}:"), |d| d.expr(*value));
                 }

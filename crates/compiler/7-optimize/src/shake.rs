@@ -21,7 +21,7 @@ pub fn shake(mir: &mut Mir) {
     let funcs = used_funcs(mir, entry);
     let structs = used_structs(mir, &funcs);
     mir.funcs.retain(|id, _| funcs.contains(&id));
-    mir.retain_structs(|s| structs.contains(&s.def));
+    mir.retain_structs(|s| structs.contains(&(s.def, s.args.clone())));
 }
 
 /// The functions reachable from `entry`.
@@ -89,8 +89,9 @@ fn referenced(body: &Body) -> Vec<FuncId> {
     found
 }
 
-/// The structs the used functions mention, and the structs those contain or point to.
-fn used_structs(mir: &Mir, funcs: &HashSet<FuncId>) -> HashSet<DefId> {
+/// The structs the used functions mention, and the structs those contain or point to, each
+/// with its type arguments.
+fn used_structs(mir: &Mir, funcs: &HashSet<FuncId>) -> HashSet<(DefId, Vec<TypeId>)> {
     let mut types = Vec::new();
     for &id in funcs {
         let func = mir.func(id);
@@ -109,10 +110,10 @@ fn used_structs(mir: &Mir, funcs: &HashSet<FuncId>) -> HashSet<DefId> {
         }
         let t = mir.types.get(ty);
         types.extend(t.children());
-        if let Ty::Struct(def) = t
-            && used.insert(*def)
+        if let Ty::Struct(def, args) = t
+            && used.insert((*def, args.clone()))
         {
-            types.extend(mir.struct_def(*def).fields.iter().map(|&(_, ty)| ty));
+            types.extend(mir.struct_def(*def, args).fields.iter().map(|&(_, ty)| ty));
         }
     }
     used

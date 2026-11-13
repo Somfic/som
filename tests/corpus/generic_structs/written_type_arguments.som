@@ -1,0 +1,11 @@
+// expect: exit 3
+
+struct Vector<T> {
+    a: T,
+    b: T
+}
+
+fn main() -> i32 {
+    let vec = Vector<i32> { a: 1, b: 2 };
+    vec.a + vec.b
+}

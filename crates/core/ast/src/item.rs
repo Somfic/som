@@ -37,6 +37,8 @@ pub struct Extern {
 pub struct Impl {
     /// The struct the methods are for: `Point`, or one from another module, `box2d::B2Vec2`.
     pub target: Path,
+    /// `impl<T> Pair<T>`: type parameters every method gets, ahead of its own.
+    pub type_params: Vec<Ident>,
     pub methods: Vec<Id<Func>>,
 }
 
@@ -73,6 +75,8 @@ pub struct Struct {
     /// The `///` comment above it.
     pub doc: Option<String>,
     pub name: Ident,
+    /// `struct Pair<T>`: the types it's written in terms of, filled in where it's used.
+    pub type_params: Vec<Ident>,
     pub fields: Vec<Field>,
     /// Values are copied rather than moved. Set for structs imported from a C header,
     /// which are plain data.

@@ -98,7 +98,10 @@ impl Parser<'_> {
 
     fn parse_impl(&mut self) -> Option<Impl> {
         self.expect(TokenKind::Impl, "an impl block")?;
+        let type_params = self.parse_type_params()?;
         let target = self.parse_path("a struct name")?;
+        // `Pair<T>`: the struct's own parameters, which `impl<T>` declared.
+        self.parse_type_args()?;
         self.expect(TokenKind::OpenBrace, "an impl block")?;
 
         let mut methods = Vec::new();
@@ -115,7 +118,17 @@ impl Parser<'_> {
         }
 
         self.expect(TokenKind::CloseBrace, "a closing brace after impl block")?;
-        Some(Impl { target, methods })
+        // Every method is generic over the impl's parameters, ahead of its own.
+        for &method in &methods {
+            let own = std::mem::take(&mut self.ast.funcs.get_mut(method).type_params);
+            self.ast.funcs.get_mut(method).type_params =
+                type_params.iter().cloned().chain(own).collect();
+        }
+        Some(Impl {
+            target,
+            type_params,
+            methods,
+        })
     }
 
     /// `use extern "raylib" …`: an extern block whose library module is also `use`d.
@@ -149,6 +162,7 @@ impl Parser<'_> {
         let handle = self.eat(TokenKind::Extern);
         self.expect(TokenKind::Struct, "a struct declaration")?;
         let name = self.parse_ident("a struct name")?;
+        let type_params = self.parse_type_params()?;
 
         let fields = if handle {
             self.expect(TokenKind::Semicolon, "a semicolon after an extern struct")?;
@@ -171,6 +185,7 @@ impl Parser<'_> {
             Struct {
                 doc,
                 name,
+                type_params,
                 fields,
                 // A handle is just a pointer, so copying it copies nothing C owns.
                 copy: handle,
@@ -187,19 +202,7 @@ impl Parser<'_> {
         self.expect(TokenKind::Fn, "a function declaration")?;
         let name = self.parse_ident("a function name")?;
 
-        let type_params = if self.eat(TokenKind::LessThan) {
-            let params = self.parse_comma_list(TokenKind::GreaterThan, |p| {
-                p.parse_ident("a type parameter name")
-            })?;
-            self.expect(
-                TokenKind::GreaterThan,
-                "a closing angle bracket for type parameters",
-            )?;
-            params
-        } else {
-            Vec::new()
-        };
-
+        let type_params = self.parse_type_params()?;
         let (params, variadic) = self.parse_params(false)?;
         let returns = if self.eat(TokenKind::Arrow) {
             Some(self.parse_type()?)
@@ -221,6 +224,21 @@ impl Parser<'_> {
             library: None,
         };
         Some(self.ast.funcs.alloc(func, span))
+    }
+
+    /// `<T, U>` declaring type parameters, if it's there.
+    fn parse_type_params(&mut self) -> Option<Vec<som_ast::Ident>> {
+        if !self.eat(TokenKind::LessThan) {
+            return Some(Vec::new());
+        }
+        let params = self.parse_comma_list(TokenKind::GreaterThan, |p| {
+            p.parse_ident("a type parameter name")
+        })?;
+        self.expect(
+            TokenKind::GreaterThan,
+            "a closing angle bracket for type parameters",
+        )?;
+        Some(params)
     }
 
     /// `(a: i32, b)`. Extern functions must annotate every parameter, and may end with

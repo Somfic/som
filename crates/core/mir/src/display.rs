@@ -21,7 +21,7 @@ impl Mir {
     /// Renders a type the way it would be written in som.
     pub fn display_ty(&self, ty: TypeId) -> String {
         match self.types.get(ty) {
-            Ty::Struct(def) => self.struct_def(*def).name.clone(),
+            Ty::Struct(def, args) => self.struct_def(*def, args).name.clone(),
             Ty::Ref { mutable, to } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.
@@ -189,8 +189,11 @@ impl Mir {
                     self.display_ty(*ty)
                 )
             }
-            Rvalue::Struct { def, fields } => {
-                let s = self.struct_def(*def);
+            Rvalue::Struct { ty, fields } => {
+                let Ty::Struct(def, args) = self.types.get(*ty) else {
+                    return format!("struct literal of {}", self.display_ty(*ty));
+                };
+                let s = self.struct_def(*def, args);
                 let fields: Vec<String> = s
                     .fields
                     .iter()

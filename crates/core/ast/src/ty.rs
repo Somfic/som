@@ -6,8 +6,12 @@ pub enum TypeExpr {
     Unit,
     /// `i32`, `bool`, `str`, ...
     Primitive(Primitive),
-    /// `Point`, `geo::Point`
-    Named(Path),
+    /// `Point`, `geo::Point`, `Pair<i32>`
+    Named {
+        path: Path,
+        /// The type arguments of a generic struct: `i32` in `Pair<i32>`.
+        args: Vec<Id<TypeExpr>>,
+    },
     /// `*`, an untyped raw pointer
     Pointer,
     /// `&T`, `&mut T`, `&'a T`

@@ -1093,7 +1093,9 @@ fn describe(a: &Analysis, def: DefId) -> String {
             Some(t) => format!("{}: {}", d.name, ty(a, t)),
             None => d.name.to_string(),
         },
-        DefKind::TypeParam { .. } => format!("type parameter {}", d.name),
+        DefKind::TypeParam { .. } | DefKind::StructParam { .. } => {
+            format!("type parameter {}", d.name)
+        }
     }
 }
 
@@ -1537,7 +1539,7 @@ fn struct_of(a: &Analysis, t: som_typeck::TypeId) -> Option<DefId> {
         _ => t,
     };
     match a.typed.ty(t) {
-        Ty::Struct(def) => Some(*def),
+        Ty::Struct(def, _) => Some(*def),
         _ => None,
     }
 }
