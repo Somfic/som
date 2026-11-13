@@ -15,6 +15,7 @@
 //! | `char`, `short`, `int`, `long`, …   | `i8` … `u64`   |
 //! | `float`, `double`, `bool`           | `f32`, `f64`, `bool` |
 //! | `const char *`                      | `&str`         |
+//! | parameter `const T *`, `T *`        | `&T`, `&mut T` |
 //! | any other pointer                   | `*`            |
 //! | `struct Color` (by value)           | `Color`, with the same fields |
 //! | `enum …`                            | `i32`          |
@@ -374,7 +375,7 @@ fn compatible(
 }
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 10;
+const GENERATOR_VERSION: u32 = 12;
 
 /// The first line of a cached import: everything it depends on. Any change to the header,
 /// the library or the generator makes it stale.
@@ -935,7 +936,7 @@ impl Converter {
             if param["kind"] != "ParmVarDecl" {
                 continue;
             }
-            let ty = self.ty(type_text(&param["type"]))?;
+            let ty = self.param_ty(type_text(&param["type"]))?;
             let name = param["name"]
                 .as_str()
                 .map_or(format!("arg{i}"), |n| identifier(&snake_case(n)));
@@ -951,6 +952,32 @@ impl Converter {
     /// `fn name(a: i32, b: &str) -> f32;`
     fn function(&mut self, decl: &Value, name: &str) -> Result<String, String> {
         Ok(format!("{};", self.signature(decl)?.text(name)))
+    }
+
+    /// The som type for a parameter: like [`Converter::ty`], except that a pointer to
+    /// a struct, a number or another pointer is a reference, `&mut` unless what it
+    /// points to is `const`. Return values and fields stay `*`: C can hand back NULL,
+    /// or memory the caller now owns.
+    fn param_ty(&mut self, text: &str) -> Result<String, String> {
+        // `int *const`: a pointer that can't be changed, to something that can.
+        let text = text.trim();
+        let text = (text.strip_suffix("const").map(str::trim_end))
+            .filter(|t| t.ends_with('*'))
+            .unwrap_or(text);
+        let Some(pointee) = text.strip_suffix('*').map(str::trim) else {
+            return self.ty(text);
+        };
+        if self.ty(text)? == "&str" {
+            return Ok("&str".into());
+        }
+        let constant = pointee.starts_with("const ") || pointee.ends_with(" const");
+        match self.ty(pointee) {
+            Ok(to) if to != "()" && !to.starts_with('&') && !pointee.contains('(') => {
+                Ok(format!("&{}{to}", if constant { "" } else { "mut " }))
+            }
+            // `void *`, an opaque struct, a function pointer, `const char *`.
+            _ => self.ty(text),
+        }
     }
 
     /// The som type for a C type, importing any struct it names.
@@ -1108,5 +1135,20 @@ mod tests {
         assert_eq!(c.ty("void (*)(int)").unwrap(), "*");
         assert_eq!(c.ty("enum Mode").unwrap(), "i32");
         assert!(c.ty("float [4]").is_err());
+    }
+
+    #[test]
+    fn pointer_parameters_are_references() {
+        let mut c = Converter::default();
+        assert_eq!(c.param_ty("const float *").unwrap(), "&f32");
+        assert_eq!(c.param_ty("int *").unwrap(), "&mut i32");
+        assert_eq!(c.param_ty("int *const").unwrap(), "&mut i32");
+        assert_eq!(c.param_ty("struct opaque **").unwrap(), "&mut *");
+        assert_eq!(c.param_ty("const char *").unwrap(), "&str");
+        assert_eq!(c.param_ty("const char **").unwrap(), "*");
+        assert_eq!(c.param_ty("void *").unwrap(), "*");
+        assert_eq!(c.param_ty("struct opaque *").unwrap(), "*");
+        assert_eq!(c.param_ty("void (*)(int)").unwrap(), "*");
+        assert_eq!(c.param_ty("int").unwrap(), "i32");
     }
 }
