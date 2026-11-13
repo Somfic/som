@@ -91,6 +91,9 @@ impl Unifier {
                 },
             ) if m1 == m2 => self.unify(t1, t2),
             (Ty::Optional(a), Ty::Optional(b)) => self.unify(a, b),
+            (Ty::Array { element: a, len: n }, Ty::Array { element: b, len: m }) if n == m => {
+                self.unify(a, b)
+            }
             (
                 Ty::Fn {
                     params: p1,
@@ -126,7 +129,9 @@ impl Unifier {
     fn occurs(&self, var: u32, ty: TypeId) -> bool {
         match self.table.get(self.shallow(ty)) {
             Ty::Var(v) => *v == var,
-            Ty::Ref { to, .. } | Ty::Optional(to) => self.occurs(var, *to),
+            Ty::Ref { to, .. } | Ty::Optional(to) | Ty::Array { element: to, .. } => {
+                self.occurs(var, *to)
+            }
             Ty::Fn { params, ret } => {
                 params.iter().any(|&p| self.occurs(var, p)) || self.occurs(var, *ret)
             }
@@ -160,6 +165,10 @@ impl Unifier {
             Ty::Optional(inner) => {
                 let inner = self.finish(inner, unresolved);
                 self.intern(Ty::Optional(inner))
+            }
+            Ty::Array { element, len } => {
+                let element = self.finish(element, unresolved);
+                self.intern(Ty::Array { element, len })
             }
             Ty::Fn { params, ret } => {
                 let params = params
@@ -198,6 +207,7 @@ impl Unifier {
                 Ty::Fn { .. } => format!("({})?", self.display(*inner, names)),
                 _ => format!("{}?", self.display(*inner, names)),
             },
+            Ty::Array { element, len } => format!("[{}; {len}]", self.display(*element, names)),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display(*ret, names))

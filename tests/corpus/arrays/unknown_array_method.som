@@ -1,0 +1,7 @@
+// expect: error UnknownMethod
+
+fn main() -> i32 {
+    let mut a = [1, 2];
+    a.push(3);
+    0
+}

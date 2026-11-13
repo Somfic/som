@@ -13,7 +13,7 @@ use som_base::Source;
 use som_driver::Analysis;
 use som_lexer::{TokenKind, lex};
 use som_resolve::{DefId, DefKind};
-use som_typeck::Ty;
+use som_typeck::{ArrayMethod, Ty};
 
 use crate::convert;
 use crate::index::{AstIndex, NodeRef, items_in_file};
@@ -717,6 +717,19 @@ impl LanguageServer for SomLanguageServer {
                 }
             };
             if let Some(expr) = receiver
+                && let Some((element, len)) = array_of(a, a.typed.expr(expr))
+            {
+                for (_, method) in ArrayMethod::ALL {
+                    let doc = array_method_doc(a, method, element, len);
+                    items.push(CompletionItem {
+                        label: doc.name.to_string(),
+                        kind: Some(CompletionItemKind::METHOD),
+                        detail: Some(doc.signature),
+                        documentation: markdown(Some(doc.doc)),
+                        ..Default::default()
+                    });
+                }
+            } else if let Some(expr) = receiver
                 && let Some(owner) = struct_of(a, a.typed.expr(expr))
                 && let DefKind::Struct(s) = a.names.def(owner).kind
             {
@@ -966,23 +979,6 @@ impl LanguageServer for SomLanguageServer {
         let Some((call, expr)) = call else {
             return Ok(None);
         };
-        let (def, skip_self) = match expr {
-            Expr::Call { .. } => (a.names.expr(call), 0),
-            _ => (a.typed.method(call), 1),
-        };
-        let Some(DefKind::Func(func)) = def.map(|d| a.names.def(d).kind.clone()) else {
-            return Ok(None);
-        };
-
-        let parameters = params_of(a, func)
-            .into_iter()
-            .skip(skip_self)
-            .map(|p| ParameterInformation {
-                label: ParameterLabel::Simple(p),
-                documentation: None,
-            })
-            .collect();
-
         // The active parameter: commas between the opening parenthesis and the cursor.
         let span = a.ast.exprs.span(call);
         let before_cursor =
@@ -991,10 +987,39 @@ impl LanguageServer for SomLanguageServer {
             before_cursor[open + 1..].matches(',').count() as u32
         });
 
+        // The label, its parameters, and its documentation.
+        let (label, params, doc) = match expr {
+            Expr::MethodCall { receiver, .. }
+                if let Some(method) = a.typed.array_method(call)
+                    && let Some((element, len)) = array_of(a, a.typed.expr(*receiver)) =>
+            {
+                let doc = array_method_doc(a, method, element, len);
+                (doc.signature, doc.params, Some(doc.doc))
+            }
+            _ => {
+                let (def, skip_self) = match expr {
+                    Expr::Call { .. } => (a.names.expr(call), 0),
+                    _ => (a.typed.method(call), 1),
+                };
+                let Some(DefKind::Func(func)) = def.map(|d| a.names.def(d).kind.clone()) else {
+                    return Ok(None);
+                };
+                let params = params_of(a, func).into_iter().skip(skip_self).collect();
+                (signature(a, func), params, a.ast.funcs[func].doc.clone())
+            }
+        };
+        let parameters = params
+            .into_iter()
+            .map(|p| ParameterInformation {
+                label: ParameterLabel::Simple(p),
+                documentation: None,
+            })
+            .collect();
+
         Ok(Some(SignatureHelp {
             signatures: vec![SignatureInformation {
-                label: signature(a, func),
-                documentation: markdown(a.ast.funcs[func].doc.clone()),
+                label,
+                documentation: markdown(doc),
                 parameters: Some(parameters),
                 active_parameter: Some(active),
             }],
@@ -1064,9 +1089,18 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
                     None => (None, None),
                 }
             }
-            Expr::MethodCall { .. } => match a.typed.method(id) {
+            Expr::MethodCall { receiver, .. } => match a.typed.method(id) {
                 Some(def) => (Some(describe(a, def)), doc_of(a, def)),
-                None => (None, None),
+                None => match (
+                    a.typed.array_method(id),
+                    array_of(a, a.typed.expr(*receiver)),
+                ) {
+                    (Some(method), Some((element, len))) => {
+                        let doc = array_method_doc(a, method, element, len);
+                        (Some(doc.signature), Some(doc.doc))
+                    }
+                    _ => (None, None),
+                },
             },
             Expr::Field { object, field } => (
                 Some(format!(".{}: {}", field.name, ty(a, a.typed.expr(id)))),
@@ -1245,6 +1279,78 @@ fn struct_text(a: &Analysis, s: Id<Struct>) -> String {
 }
 
 /// The struct a value of type `t` is, looking through one reference.
+/// The element type and length of the array `t` is, looking through one reference.
+fn array_of(a: &Analysis, t: som_typeck::TypeId) -> Option<(som_typeck::TypeId, u64)> {
+    let t = match a.typed.ty(t) {
+        Ty::Ref { to, .. } => *to,
+        _ => t,
+    };
+    match a.typed.ty(t) {
+        Ty::Array { element, len } => Some((*element, *len)),
+        _ => None,
+    }
+}
+
+/// One of the methods every array has, as the editor shows it.
+struct ArrayMethodDoc {
+    name: &'static str,
+    signature: String,
+    params: Vec<String>,
+    doc: String,
+}
+
+/// How `method` reads for an array of `len` elements of type `element`.
+fn array_method_doc(
+    a: &Analysis,
+    method: ArrayMethod,
+    element: som_typeck::TypeId,
+    len: u64,
+) -> ArrayMethodDoc {
+    let t = ty(a, element);
+    let index = "index: any integer".to_string();
+    let bounds = "or `none` if `index` is out of bounds.";
+    let (name, params, returns, doc) = match method {
+        ArrayMethod::Len => (
+            "len",
+            vec![],
+            "any integer".to_string(),
+            format!("The number of elements: {len}. It works as any integer type."),
+        ),
+        ArrayMethod::Get => (
+            "get",
+            vec![index],
+            format!("{t}?"),
+            format!("A copy of the element at `index`, {bounds}"),
+        ),
+        ArrayMethod::GetRef => (
+            "get_ref",
+            vec![index],
+            format!("&{t}?"),
+            format!("A reference to the element at `index`, {bounds}"),
+        ),
+        ArrayMethod::GetMut => (
+            "get_mut",
+            vec![index],
+            format!("&mut {t}?"),
+            format!("A mutable reference to the element at `index`, {bounds}"),
+        ),
+        ArrayMethod::Set => (
+            "set",
+            vec![index, format!("value: {t}")],
+            "bool".to_string(),
+            "Stores `value` at `index`, and returns whether `index` was in bounds. If it \
+             wasn't, nothing changes."
+                .to_string(),
+        ),
+    };
+    ArrayMethodDoc {
+        name,
+        signature: format!("fn {name}({}) -> {returns}", params.join(", ")),
+        params,
+        doc,
+    }
+}
+
 fn struct_of(a: &Analysis, t: som_typeck::TypeId) -> Option<DefId> {
     let t = match a.typed.ty(t) {
         Ty::Ref { to, .. } => *to,

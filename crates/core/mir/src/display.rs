@@ -35,6 +35,7 @@ impl Mir {
                 Ty::Fn { .. } => format!("({})?", self.display_ty(*inner)),
                 _ => format!("{}?", self.display_ty(*inner)),
             },
+            Ty::Array { element, len } => format!("[{}; {len}]", self.display_ty(*element)),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display_ty(p)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display_ty(*ret))
@@ -155,6 +156,24 @@ impl Mir {
             ),
             Rvalue::Not(op) => format!("Not({})", self.display_operand(op)),
             Rvalue::Some(op) => format!("Some({})", self.display_operand(op)),
+            Rvalue::Array { items, .. } => {
+                let items: Vec<String> = items.iter().map(|op| self.display_operand(op)).collect();
+                format!("[{}]", items.join(", "))
+            }
+            Rvalue::Repeat { ty, operand } => {
+                let len = match self.types.get(*ty) {
+                    Ty::Array { len, .. } => *len,
+                    _ => 0,
+                };
+                format!("[{}; {len}]", self.display_operand(operand))
+            }
+            Rvalue::Cast { operand, ty } => {
+                format!(
+                    "{} as {}",
+                    self.display_operand(operand),
+                    self.display_ty(*ty)
+                )
+            }
             Rvalue::Struct { def, fields } => {
                 let s = self.struct_def(*def);
                 let fields: Vec<String> = s
@@ -210,6 +229,7 @@ impl Display for Place {
             s = match projection {
                 Projection::Field(i) => format!("{s}.{i}"),
                 Projection::Deref => format!("(*{s})"),
+                Projection::Index(index) => format!("{s}[{index}]"),
             };
         }
         f.write_str(&s)

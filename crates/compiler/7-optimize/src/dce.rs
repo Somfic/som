@@ -206,26 +206,31 @@ fn remove_unmentioned_locals(body: &mut Body) {
 
 /// Calls `read` with each local the assignment reads.
 fn reads(dest: &Place, rvalue: &Rvalue, mut read: impl FnMut(Local)) {
-    // Writing through a reference reads the reference.
+    // Writing through a reference reads the reference; writing an element reads its index.
     if dest.projection.contains(&Projection::Deref) {
         read(dest.local);
     }
+    dest.index_locals().for_each(&mut read);
     match rvalue {
-        Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => read_operand(op, read),
-        Rvalue::Ref { place, .. } => read(place.local),
+        Rvalue::Use(op)
+        | Rvalue::Not(op)
+        | Rvalue::Some(op)
+        | Rvalue::Repeat { operand: op, .. }
+        | Rvalue::Cast { operand: op, .. } => read_operand(op, read),
+        Rvalue::Ref { place, .. } => place.locals().for_each(read),
         Rvalue::Binary { lhs, rhs, .. } => {
             read_operand(lhs, &mut read);
             read_operand(rhs, read);
         }
-        Rvalue::Struct { fields: ops, .. } | Rvalue::Call { args: ops, .. } => {
-            ops.iter().for_each(|op| read_operand(op, &mut read))
-        }
+        Rvalue::Struct { fields: ops, .. }
+        | Rvalue::Array { items: ops, .. }
+        | Rvalue::Call { args: ops, .. } => ops.iter().for_each(|op| read_operand(op, &mut read)),
     }
 }
 
-fn read_operand(op: &Operand, mut read: impl FnMut(Local)) {
+fn read_operand(op: &Operand, read: impl FnMut(Local)) {
     if let Operand::Copy(place) | Operand::Move(place) = op {
-        read(place.local);
+        place.locals().for_each(read);
     }
 }
 
@@ -255,6 +260,7 @@ fn has_effect(dest: &Place, rvalue: &Rvalue) -> bool {
                 })
             )
         }
+        Rvalue::Array { .. } | Rvalue::Repeat { .. } | Rvalue::Cast { .. } => false,
         Rvalue::Use(_)
         | Rvalue::Not(_)
         | Rvalue::Some(_)

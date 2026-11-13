@@ -1,0 +1,13 @@
+// expect: exit 21
+
+fn main() -> i32 {
+    let sevens = [7; 3];
+    let zeros = [0; 1000];
+    let mut total = 0;
+    let mut i = 0;
+    while i < sevens.len() {
+        total = total + (sevens.get(i) else 0);
+        i = i + 1;
+    }
+    total + (zeros.get(999) else 50)
+}

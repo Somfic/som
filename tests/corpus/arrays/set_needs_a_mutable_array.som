@@ -1,0 +1,7 @@
+// expect: error NotMutable
+
+fn main() -> i32 {
+    let a = [1, 2];
+    a.set(0, 5);
+    0
+}

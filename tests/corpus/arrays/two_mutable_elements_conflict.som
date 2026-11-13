@@ -1,0 +1,9 @@
+// expect: error ConflictingBorrow
+
+fn main() -> i32 {
+    let mut a = [1, 2];
+    // Which elements they are is only known at run time: they might be the same one.
+    let r = a.get_mut(0);
+    let s = a.get_mut(1);
+    0
+}

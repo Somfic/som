@@ -26,6 +26,11 @@ pub enum Ty {
     Struct(DefId),
     /// `T?`: a `T`, or `none`.
     Optional(TypeId),
+    /// `[T; N]`
+    Array {
+        element: TypeId,
+        len: u64,
+    },
     /// A type parameter, inside the generic function that declares it.
     Param(DefId),
     Fn {
@@ -172,6 +177,7 @@ impl TypeTable {
                 Ty::Fn { .. } => format!("({})?", self.display(*inner, names)),
                 _ => format!("{}?", self.display(*inner, names)),
             },
+            Ty::Array { element, len } => format!("[{}; {len}]", self.display(*element, names)),
             Ty::Struct(def) | Ty::Param(def) => names.def(*def).name.to_string(),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();

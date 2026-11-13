@@ -192,6 +192,34 @@ impl Parser<'_> {
                 Expr::None
             }
 
+            // `[a, b, c]` or `[value; count]`
+            TokenKind::OpenBracket => {
+                self.advance();
+                if self.eat(TokenKind::CloseBracket) {
+                    Expr::Array(Vec::new())
+                } else {
+                    let first = self.with_condition(false, |p| p.parse_expr())?;
+                    if self.eat(TokenKind::Semicolon) {
+                        let count = self.parse_count("how many copies")?;
+                        self.expect(TokenKind::CloseBracket, "a closing bracket")?;
+                        Expr::ArrayRepeat {
+                            value: first,
+                            count,
+                        }
+                    } else {
+                        let mut items = vec![first];
+                        while self.eat(TokenKind::Comma) && !self.at(TokenKind::CloseBracket) {
+                            items.push(self.with_condition(false, |p| p.parse_expr())?);
+                        }
+                        self.expect(
+                            TokenKind::CloseBracket,
+                            "a closing bracket after the elements",
+                        )?;
+                        Expr::Array(items)
+                    }
+                }
+            }
+
             TokenKind::True | TokenKind::False => {
                 let value = self.at(TokenKind::True);
                 self.advance();
@@ -239,6 +267,24 @@ impl Parser<'_> {
         };
 
         Some(self.alloc_expr(expr, &start))
+    }
+
+    /// A count written as an integer literal: an array's length, or how many copies.
+    pub(crate) fn parse_count(&mut self, what: &str) -> Option<u64> {
+        let span = self.current_span();
+        if !self.at(TokenKind::Int) {
+            self.error_expected(&[TokenKind::Int], what);
+            return None;
+        }
+        let text = self.peek_token().text.clone();
+        self.advance();
+        match text.parse() {
+            Ok(count) => Some(count),
+            Err(_) => {
+                self.error_at(span, "count is too large", "this does not fit in 64 bits");
+                None
+            }
+        }
     }
 
     /// The text of a string literal with its escapes resolved: `\n`, `\t`, `\r`, `\0`,

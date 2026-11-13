@@ -9,6 +9,13 @@ pub enum Expr {
     Str(Box<str>),
     /// `none`: an optional without a value.
     None,
+    /// `[a, b, c]`
+    Array(Vec<Id<Expr>>),
+    /// `[value; count]`: `count` copies of `value`.
+    ArrayRepeat {
+        value: Id<Expr>,
+        count: u64,
+    },
     Var(Path),
     Binary {
         op: BinOp,

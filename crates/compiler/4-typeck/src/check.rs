@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use crate::error::TypeError;
 use crate::ty::{Ty, TypeId};
 use crate::unify::{Unifier, VarKind};
-use crate::{Signature, Typed};
+use crate::{ArrayMethod, Signature, Typed};
 use som_base::Message;
 use som_base::message;
 
@@ -27,6 +27,7 @@ pub(crate) struct Checker<'a> {
     next_narrowing: usize,
     /// Reads of narrowed places: they read the value, not the optional.
     narrowed_reads: HashSet<Id<Expr>>,
+    array_methods: HashMap<Id<Expr>, ArrayMethod>,
     /// The next expression inferred is the object of a field access or dereference.
     in_place: bool,
     /// Operators whose operand type wasn't known yet when they were checked.
@@ -53,6 +54,7 @@ impl<'a> Checker<'a> {
             narrowed: Vec::new(),
             next_narrowing: 0,
             narrowed_reads: HashSet::new(),
+            array_methods: HashMap::new(),
             in_place: false,
             deferred_ops: Vec::new(),
             loops: 0,
@@ -205,6 +207,7 @@ impl<'a> Checker<'a> {
             type_args,
             wrapped: self.wrapped,
             narrowed_reads: self.narrowed_reads,
+            array_methods: self.array_methods,
         };
         (typed, self.errors)
     }
@@ -234,6 +237,10 @@ impl<'a> Checker<'a> {
                 }
             }
             TypeExpr::Optional(inner) => Ty::Optional(self.lower(*inner)),
+            TypeExpr::Array { element, len } => Ty::Array {
+                element: self.lower(*element),
+                len: *len,
+            },
             TypeExpr::Fn { params, returns } => {
                 let params = params.iter().map(|&p| self.lower(p)).collect();
                 let ret = match returns {
@@ -286,6 +293,10 @@ impl<'a> Checker<'a> {
             Ty::Optional(inner) => {
                 let inner = self.substitute(inner, subst);
                 self.u.intern(Ty::Optional(inner))
+            }
+            Ty::Array { element, len } => {
+                let element = self.substitute(element, subst);
+                self.u.intern(Ty::Array { element, len })
             }
             Ty::Fn { params, ret } => {
                 let params = params.iter().map(|&p| self.substitute(p, subst)).collect();
@@ -711,7 +722,7 @@ impl<'a> Checker<'a> {
         };
         let (lifted, kept): (Vec<Narrowing>, Vec<Narrowing>) = std::mem::take(&mut self.narrowed)
             .into_iter()
-            .partition(|n| n.key == key);
+            .partition(|n| n.key.same(&key));
         self.narrowed = kept;
         let ty = self.infer(expr);
         self.narrowed.extend(lifted);
@@ -738,6 +749,30 @@ impl<'a> Checker<'a> {
             Expr::None => {
                 let inner = self.u.fresh(VarKind::Any);
                 self.u.intern(Ty::Optional(inner))
+            }
+            Expr::Array(items) => {
+                let element = self.u.fresh(VarKind::Any);
+                for &item in items {
+                    self.expect(item, element, None);
+                }
+                self.u.intern(Ty::Array {
+                    element,
+                    len: items.len() as u64,
+                })
+            }
+            Expr::ArrayRepeat { value, count } => {
+                let element = self.infer(*value);
+                if !self.is_copy(element) {
+                    self.errors.push(TypeError::NotCopyable {
+                        ty: self.describe(element),
+                        span: self.span(*value),
+                        repeat: true,
+                    });
+                }
+                self.u.intern(Ty::Array {
+                    element,
+                    len: *count,
+                })
             }
             Expr::Fallback { optional, fallback } => {
                 let ty = self.infer_optional(*optional);
@@ -898,7 +933,7 @@ impl<'a> Checker<'a> {
                 let assigned = self.key(*target);
                 let (lifted, kept) = std::mem::take(&mut self.narrowed)
                     .into_iter()
-                    .partition(|n| assigned.as_ref().is_some_and(|a| n.key.within(a)));
+                    .partition(|n| assigned.as_ref().is_some_and(|a| n.key.same(a)));
                 self.narrowed = kept;
                 let target_ty = self.infer(*target);
                 self.check_mutable(*target, false);
@@ -941,6 +976,9 @@ impl<'a> Checker<'a> {
                 args,
             } => {
                 let receiver_ty = self.infer(*receiver);
+                if let Some(ty) = self.array_method(id, *receiver, receiver_ty, method, args) {
+                    return ty;
+                }
                 let Some(owner) = self.struct_of(receiver_ty, *receiver) else {
                     args.iter().for_each(|&a| {
                         self.infer(a);
@@ -1117,6 +1155,109 @@ impl<'a> Checker<'a> {
                 self.narrowed.retain(|n| outer.contains(&n.id));
                 ty
             }
+        }
+    }
+
+    /// Checks a call of one of the methods every array has, if `receiver` is an array or a
+    /// reference to one, returning its type.
+    fn array_method(
+        &mut self,
+        call: Id<Expr>,
+        receiver: Id<Expr>,
+        receiver_ty: TypeId,
+        method: &som_ast::Ident,
+        args: &[Id<Expr>],
+    ) -> Option<TypeId> {
+        let error = self.u.table.error;
+        let shallow = self.u.shallow(receiver_ty);
+        let (array, through) = match *self.u.get(shallow) {
+            Ty::Ref { mutable, to } => (self.u.shallow(to), Some(mutable)),
+            _ => (shallow, None),
+        };
+        let Ty::Array { element, .. } = *self.u.get(array) else {
+            return None;
+        };
+        let infer_args = |c: &mut Self| {
+            for &arg in args {
+                c.infer(arg);
+            }
+        };
+        let Some(kind) = ArrayMethod::from_name(&method.name) else {
+            self.errors.push(TypeError::UnknownMethod {
+                ty: self.describe(array),
+                method: method.name.to_string(),
+                span: method.span.clone(),
+            });
+            infer_args(self);
+            return Some(error);
+        };
+        if args.len() != kind.arity() {
+            self.errors.push(TypeError::WrongArgCount {
+                name: method.name.to_string(),
+                expected: kind.arity(),
+                at_least: false,
+                found: args.len(),
+                span: self.span(call),
+            });
+            infer_args(self);
+            return Some(error);
+        }
+        self.array_methods.insert(call, kind);
+
+        // Any integer type can index.
+        if let Some(&index) = args.first() {
+            let int = self.u.fresh(VarKind::Int);
+            self.expect(index, int, None);
+        }
+        if kind == ArrayMethod::Set {
+            self.expect(args[1], element, None);
+        }
+        // Changing an element changes the array: it has to be changeable, or behind a `&mut`.
+        if matches!(kind, ArrayMethod::Set | ArrayMethod::GetMut) {
+            let borrow = kind == ArrayMethod::GetMut;
+            match through {
+                Some(true) => {}
+                Some(false) => self.errors.push(TypeError::BehindSharedReference {
+                    span: self.span(receiver),
+                    borrow,
+                }),
+                None => self.check_mutable(receiver, borrow),
+            }
+        }
+        if kind == ArrayMethod::Get && !self.is_copy(element) {
+            self.errors.push(TypeError::NotCopyable {
+                ty: self.describe(element),
+                span: method.span.clone(),
+                repeat: false,
+            });
+        }
+
+        Some(match kind {
+            // The length is a constant, usable as any integer type.
+            ArrayMethod::Len => self.u.fresh(VarKind::Int),
+            ArrayMethod::Get => self.u.intern(Ty::Optional(element)),
+            ArrayMethod::GetRef | ArrayMethod::GetMut => {
+                let reference = self.u.intern(Ty::Ref {
+                    mutable: kind == ArrayMethod::GetMut,
+                    to: element,
+                });
+                self.u.intern(Ty::Optional(reference))
+            }
+            ArrayMethod::Set => self.u.table.bool,
+        })
+    }
+
+    /// Whether values of `ty` are copied rather than moved. A type that isn't known yet is
+    /// taken to be.
+    fn is_copy(&self, ty: TypeId) -> bool {
+        match *self.u.get(self.u.shallow(ty)) {
+            Ty::Struct(def) => match self.names.def(def).kind {
+                DefKind::Struct(s) => self.ast.structs[s].copy,
+                _ => true,
+            },
+            Ty::Ref { mutable: true, .. } => false,
+            Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.is_copy(inner),
+            _ => true,
         }
     }
 
@@ -1399,15 +1540,29 @@ enum Step {
 }
 
 impl Key {
-    /// The fields, without dereferences: `p.x` and `(*p).x` are the same memory.
+    /// The fields, without the dereferences between them: `p.x` and `(*p).x` are the same
+    /// memory, since a field is reached through a reference without writing the `*`.
     fn fields(&self) -> impl Iterator<Item = &Step> {
         self.path.iter().filter(|s| matches!(s, Step::Field(_)))
+    }
+
+    /// How many dereferences end the path: `*r` is what `r` points to, not `r` itself.
+    fn trailing_derefs(&self) -> usize {
+        self.path
+            .iter()
+            .rev()
+            .take_while(|s| **s == Step::Deref)
+            .count()
     }
 
     /// Whether this place is `other`, or inside it.
     fn within(&self, other: &Key) -> bool {
         let mut mine = self.fields();
-        self.root == other.root && other.fields().all(|step| mine.next() == Some(step))
+        let prefix =
+            self.root == other.root && other.fields().all(|step| mine.next() == Some(step));
+        // Past `other`'s fields, it's inside; at the same fields, it's `other` itself or what
+        // `other` points to, not a reference `other` is behind.
+        prefix && (mine.next().is_some() || other.trailing_derefs() <= self.trailing_derefs())
     }
 
     fn same(&self, other: &Key) -> bool {
@@ -1533,7 +1688,12 @@ impl Checker<'_> {
                 self.forget_changed_by(*target, true);
                 self.forget_changed_by(*value, false);
             }
-            Expr::Not(e) => self.forget_changed_by(*e, false),
+            Expr::Not(e) | Expr::ArrayRepeat { value: e, .. } => self.forget_changed_by(*e, false),
+            Expr::Array(items) => {
+                for &item in items {
+                    self.forget_changed_by(item, false);
+                }
+            }
             Expr::Binary { lhs, rhs, .. }
             | Expr::Fallback {
                 optional: lhs,

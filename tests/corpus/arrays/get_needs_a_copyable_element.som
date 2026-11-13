@@ -1,0 +1,10 @@
+// expect: error NotCopyable
+
+struct Point { x: i32 }
+
+fn main() -> i32 {
+    let a = [Point { x: 1 }];
+    // `get_ref` would borrow it instead.
+    let p = a.get(0);
+    0
+}

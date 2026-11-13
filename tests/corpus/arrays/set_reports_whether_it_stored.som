@@ -1,0 +1,8 @@
+// expect: exit 9
+
+fn main() -> i32 {
+    let mut a = [0; 3];
+    let stored = a.set(2, 9);
+    let missed = a.set(3, 1);
+    (a.get(2) else 0) if stored and !missed else 0
+}

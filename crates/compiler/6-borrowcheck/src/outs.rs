@@ -74,14 +74,18 @@ impl Checker<'_> {
                 continue;
             };
             match rvalue {
-                Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => {
-                    self.operand(assigned, op, &stmt.span)
-                }
+                Rvalue::Use(op)
+                | Rvalue::Not(op)
+                | Rvalue::Some(op)
+                | Rvalue::Repeat { operand: op, .. }
+                | Rvalue::Cast { operand: op, .. } => self.operand(assigned, op, &stmt.span),
                 Rvalue::Binary { lhs, rhs, .. } => {
                     self.operand(assigned, lhs, &stmt.span);
                     self.operand(assigned, rhs, &stmt.span);
                 }
-                Rvalue::Struct { fields: ops, .. } | Rvalue::Call { args: ops, .. } => {
+                Rvalue::Struct { fields: ops, .. }
+                | Rvalue::Array { items: ops, .. }
+                | Rvalue::Call { args: ops, .. } => {
                     ops.iter()
                         .for_each(|op| self.operand(assigned, op, &stmt.span));
                 }

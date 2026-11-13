@@ -1,0 +1,12 @@
+// expect: error UseAfterMove
+
+struct Token { v: i32 }
+
+fn maybe() -> Token? { Token { v: 1 } }
+
+fn main() -> i32 {
+    let o = maybe();
+    let a = o;
+    let b = o;
+    0
+}

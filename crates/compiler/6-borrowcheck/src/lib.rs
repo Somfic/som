@@ -79,10 +79,18 @@ impl State {
     }
 }
 
-/// Whether two places refer to overlapping memory: the same local, and one path extends the other.
+/// Whether two places refer to overlapping memory: the same local, and one path extends the
+/// other. Any two elements of an array might be the same one, so indexes all count as equal.
 fn overlaps(a: &Place, b: &Place) -> bool {
+    let same = |x: &Projection, y: &Projection| match (x, y) {
+        (Projection::Index(_), Projection::Index(_)) => true,
+        _ => x == y,
+    };
     a.local == b.local
-        && (a.projection.starts_with(&b.projection) || b.projection.starts_with(&a.projection))
+        && a.projection
+            .iter()
+            .zip(&b.projection)
+            .all(|(x, y)| same(x, y))
 }
 
 struct FnChecker<'a> {
@@ -196,13 +204,19 @@ impl<'a> FnChecker<'a> {
         span: &Span,
     ) -> BTreeSet<LoanId> {
         match rvalue {
-            Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => self.operand(state, op, span),
+            Rvalue::Use(op)
+            | Rvalue::Not(op)
+            | Rvalue::Some(op)
+            | Rvalue::Repeat { operand: op, .. }
+            | Rvalue::Cast { operand: op, .. } => self.operand(state, op, span),
             Rvalue::Binary { lhs, rhs, .. } => {
                 let mut flows = self.operand(state, lhs, span);
                 flows.extend(self.operand(state, rhs, span));
                 flows
             }
-            Rvalue::Struct { fields: ops, .. } | Rvalue::Call { args: ops, .. } => {
+            Rvalue::Struct { fields: ops, .. }
+            | Rvalue::Array { items: ops, .. }
+            | Rvalue::Call { args: ops, .. } => {
                 let mut flows = BTreeSet::new();
                 for op in ops {
                     flows.extend(self.operand(state, op, span));
@@ -406,7 +420,7 @@ impl<'a> FnChecker<'a> {
     fn has_ref(&self, ty: TypeId) -> bool {
         match self.mir.types.get(ty) {
             Ty::Ref { .. } => true,
-            Ty::Optional(inner) => self.has_ref(*inner),
+            Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.has_ref(*inner),
             Ty::Struct(def) => self
                 .mir
                 .struct_def(*def)
@@ -447,6 +461,11 @@ impl<'a> FnChecker<'a> {
                 // `if let` binds, so it goes by the optional's own name.
                 (Projection::Field(i), Ty::Optional(inner)) => {
                     ty = if *i == 0 { self.mir.types.bool } else { *inner };
+                }
+                // Which element isn't known until run time.
+                (Projection::Index(_), Ty::Array { element, .. }) => {
+                    name = format!("{name}[_]");
+                    ty = *element;
                 }
                 _ => unreachable!("validated MIR has well-typed places"),
             }

@@ -1,0 +1,12 @@
+// expect: exit 111
+
+fn main() -> i32 {
+    let a = [1, 2, 3];
+    let mut r = 0;
+    if a.get(3) == none { r = r + 1; }
+    if a.get(0 - 1) == none { r = r + 10; }
+    // An index type that can't reach the length is never too big, only negative.
+    let small: i8 = 2;
+    if a.get(small) == 3 { r = r + 100; }
+    r
+}

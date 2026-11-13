@@ -297,11 +297,15 @@ fn remove_unreachable(body: &mut Body) -> bool {
 
 fn operands_mut(rvalue: &mut Rvalue) -> Vec<&mut Operand> {
     match rvalue {
-        Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => vec![op],
+        Rvalue::Use(op)
+        | Rvalue::Not(op)
+        | Rvalue::Some(op)
+        | Rvalue::Repeat { operand: op, .. }
+        | Rvalue::Cast { operand: op, .. } => vec![op],
         Rvalue::Ref { .. } => Vec::new(),
         Rvalue::Binary { lhs, rhs, .. } => vec![lhs, rhs],
-        Rvalue::Struct { fields: ops, .. } | Rvalue::Call { args: ops, .. } => {
-            ops.iter_mut().collect()
-        }
+        Rvalue::Struct { fields: ops, .. }
+        | Rvalue::Array { items: ops, .. }
+        | Rvalue::Call { args: ops, .. } => ops.iter_mut().collect(),
     }
 }

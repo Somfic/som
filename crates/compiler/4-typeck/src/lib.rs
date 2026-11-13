@@ -51,6 +51,53 @@ pub struct Typed {
     wrapped: HashSet<Id<Expr>>,
     /// Reads of an optional place inside `if x { … }`: they read the value it holds.
     narrowed_reads: HashSet<Id<Expr>>,
+    /// Method calls on arrays → the built-in method they call.
+    array_methods: HashMap<Id<Expr>, ArrayMethod>,
+}
+
+/// A method every array has.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ArrayMethod {
+    /// `a.len()`: how many elements it has.
+    Len,
+    /// `a.get(i)`: a copy of the element at `i`, or `none` past the end.
+    Get,
+    /// `a.get_ref(i)`: a reference to the element at `i`, or `none`.
+    GetRef,
+    /// `a.get_mut(i)`: a mutable reference to the element at `i`, or `none`.
+    GetMut,
+    /// `a.set(i, v)`: stores `v` at `i`, returning whether `i` was in bounds.
+    Set,
+}
+
+impl ArrayMethod {
+    pub fn from_name(name: &str) -> Option<ArrayMethod> {
+        Some(match name {
+            "len" => ArrayMethod::Len,
+            "get" => ArrayMethod::Get,
+            "get_ref" => ArrayMethod::GetRef,
+            "get_mut" => ArrayMethod::GetMut,
+            "set" => ArrayMethod::Set,
+            _ => return None,
+        })
+    }
+
+    pub const ALL: [(&str, ArrayMethod); 5] = [
+        ("len", ArrayMethod::Len),
+        ("get", ArrayMethod::Get),
+        ("get_ref", ArrayMethod::GetRef),
+        ("get_mut", ArrayMethod::GetMut),
+        ("set", ArrayMethod::Set),
+    ];
+
+    /// How many arguments it takes, after the array.
+    pub fn arity(self) -> usize {
+        match self {
+            ArrayMethod::Len => 0,
+            ArrayMethod::Get | ArrayMethod::GetRef | ArrayMethod::GetMut => 1,
+            ArrayMethod::Set => 2,
+        }
+    }
 }
 
 impl Typed {
@@ -93,6 +140,11 @@ impl Typed {
     /// The type arguments of a call to a generic function. Empty if it isn't generic.
     pub fn type_args(&self, expr: Id<Expr>) -> &[TypeId] {
         self.type_args.get(&expr).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// The built-in method a method call on an array calls.
+    pub fn array_method(&self, expr: Id<Expr>) -> Option<ArrayMethod> {
+        self.array_methods.get(&expr).copied()
     }
 
     /// Whether `expr` reads the value a narrowed optional holds, rather than the optional.

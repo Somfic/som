@@ -170,8 +170,9 @@ fn identifier(name: &str) -> String {
 /// The C names of the program's structs, their fields and its functions.
 struct Names {
     structs: HashMap<DefId, String>,
-    /// Each optional type the program uses: a struct of whether it holds a value, and the value.
-    optionals: HashMap<TypeId, String>,
+    /// The structs made for optional and array types the program uses: whether an optional
+    /// holds a value and the value; an array's elements.
+    generated: HashMap<TypeId, String>,
     fields: HashMap<DefId, Vec<String>>,
     funcs: HashMap<FuncId, String>,
 }
@@ -195,13 +196,16 @@ impl Names {
                 .collect();
             fields.insert(s.def, names);
         }
-        let mut optionals = HashMap::new();
-        for ty in used_optionals(mir) {
-            let Ty::Optional(inner) = mir.types.get(ty) else {
-                unreachable!("used_optionals returns optionals")
+        let mut generated = HashMap::new();
+        for ty in used_generated(mir) {
+            let name = match mir.types.get(ty) {
+                Ty::Optional(inner) => format!("som_opt_{}", identifier(&mir.display_ty(*inner))),
+                Ty::Array { element, len } => {
+                    format!("som_arr_{}_{len}", identifier(&mir.display_ty(*element)))
+                }
+                _ => unreachable!("used_generated returns optionals and arrays"),
             };
-            let name = format!("som_opt_{}", identifier(&mir.display_ty(*inner)));
-            optionals.insert(ty, unique(&name, "s", &mut tags, |_| false));
+            generated.insert(ty, unique(&name, "s", &mut tags, |_| false));
         }
 
         // Externs keep their names, since that's what they link against; the rest avoid them.
@@ -231,15 +235,15 @@ impl Names {
 
         Names {
             structs,
-            optionals,
+            generated,
             fields,
             funcs,
         }
     }
 }
 
-/// The optional types in the program's functions and structs, inner types first.
-fn used_optionals(mir: &Mir) -> Vec<TypeId> {
+/// The optional and array types in the program's functions and structs.
+fn used_generated(mir: &Mir) -> Vec<TypeId> {
     let mut todo: Vec<TypeId> = Vec::new();
     for func in &mir.funcs {
         todo.extend(&func.params);
@@ -263,7 +267,7 @@ fn used_optionals(mir: &Mir) -> Vec<TypeId> {
                 todo.extend(params);
                 todo.push(*ret);
             }
-            Ty::Optional(inner) => {
+            Ty::Optional(inner) | Ty::Array { element: inner, .. } => {
                 found.push(ty);
                 todo.push(*inner);
             }
@@ -327,6 +331,8 @@ impl Use {
             // C doesn't fix the order of evaluation inside an expression, so a call is only
             // folded where nothing else is evaluated around it.
             Rvalue::Call { .. } => matches!(self, Use::Assign | Use::Branch),
+            // A loop, not an expression.
+            Rvalue::Repeat { operand, .. } if !is_zero(operand) => false,
             // C does arithmetic on 8- and 16-bit integers in `int`, so their results only fold
             // where C converts them back right away.
             Rvalue::Binary { op, .. } if narrow && is_arithmetic(*op) => {
@@ -369,12 +375,22 @@ impl Usage {
                 } else {
                     u.read(dest.local, Use::Other);
                 }
+                dest.index_locals()
+                    .for_each(|index| u.read(index, Use::Other));
                 match rvalue {
                     Rvalue::Use(op) => u.operand(op, Use::Assign),
-                    Rvalue::Ref { place, .. } => u.read(place.local, Use::Other),
+                    Rvalue::Ref { place, .. } => {
+                        place.locals().for_each(|local| u.read(local, Use::Other))
+                    }
                     Rvalue::Not(op) => u.operand(op, Use::Operand),
                     // A field of the compound literal it becomes.
                     Rvalue::Some(op) => u.operand(op, Use::Field),
+                    Rvalue::Array { items, .. } => {
+                        items.iter().for_each(|item| u.operand(item, Use::Field))
+                    }
+                    // Read once per element, by a loop.
+                    Rvalue::Repeat { operand, .. } => u.operand(operand, Use::Other),
+                    Rvalue::Cast { operand, .. } => u.operand(operand, Use::Operand),
                     Rvalue::Binary { lhs, rhs, .. } => {
                         u.operand(lhs, Use::Operand);
                         u.operand(rhs, Use::Operand);
@@ -409,6 +425,9 @@ impl Usage {
                     Use::Other
                 },
             );
+            place
+                .index_locals()
+                .for_each(|index| self.read(index, Use::Other));
         }
     }
 
@@ -519,7 +538,7 @@ impl<'a> Emitter<'a> {
                 format!("{}*", self.struct_name(*def))
             }
             Ty::Struct(def) => self.struct_name(*def),
-            Ty::Optional(_) => format!("struct {}", self.names.optionals[&ty]),
+            Ty::Optional(_) | Ty::Array { .. } => format!("struct {}", self.names.generated[&ty]),
             Ty::Error | Ty::Param(_) | Ty::Var(_) => {
                 unreachable!("codegen only sees checked, concrete types")
             }
@@ -549,8 +568,8 @@ impl<'a> Emitter<'a> {
 
     // --- Declarations ---
 
-    /// Struct and optional definitions, ordered so that each comes after any it contains by
-    /// value.
+    /// Struct, optional and array definitions, ordered so that each comes after any it
+    /// contains by value.
     fn structs(&mut self) {
         let mir = self.mir;
         let mut types: Vec<TypeId> = mir
@@ -558,9 +577,9 @@ impl<'a> Emitter<'a> {
             .iter()
             .filter_map(|s| mir.types.lookup(&Ty::Struct(s.def)))
             .collect();
-        let mut optionals: Vec<TypeId> = self.names.optionals.keys().copied().collect();
-        optionals.sort();
-        types.extend(optionals);
+        let mut generated: Vec<TypeId> = self.names.generated.keys().copied().collect();
+        generated.sort();
+        types.extend(generated);
         for &ty in &types {
             let name = self.ty(ty);
             // A handle's type is a pointer to the struct.
@@ -573,7 +592,7 @@ impl<'a> Emitter<'a> {
         self.line("");
     }
 
-    /// Defines the struct or optional `ty`, after what it contains by value.
+    /// Defines the struct, optional or array `ty`, after what it contains by value.
     fn define(&mut self, ty: TypeId, done: &mut HashSet<TypeId>, visiting: &mut Vec<TypeId>) {
         // A struct that contains itself by value has no size; the type checker doesn't catch
         // that yet, so emit it anyway and let the C compiler report it.
@@ -588,7 +607,7 @@ impl<'a> Emitter<'a> {
                 .iter()
                 .map(|f| f.1)
                 .collect(),
-            Ty::Optional(inner) => vec![*inner],
+            Ty::Optional(inner) | Ty::Array { element: inner, .. } => vec![*inner],
             _ => return,
         };
         visiting.push(ty);
@@ -602,6 +621,12 @@ impl<'a> Emitter<'a> {
             Ty::Optional(inner) => {
                 let value = self.ty(inner);
                 self.line(format!("{} {{ bool some; {value} value; }};", self.ty(ty)));
+            }
+            // C has no empty arrays; one that's never read stands in.
+            Ty::Array { element, len } => {
+                let element = self.ty(element);
+                let len = len.max(1);
+                self.line(format!("{} {{ {element} items[{len}]; }};", self.ty(ty)));
             }
             _ => {}
         }
@@ -758,6 +783,22 @@ impl<'a> Emitter<'a> {
             };
             self.flush_unless_read(f, &reads(rvalue), code);
 
+            // `[value; N]`: C has no expression for that, so a loop fills it in.
+            if let Rvalue::Repeat { ty, operand } = rvalue
+                && !is_zero(operand)
+            {
+                let Ty::Array { len, .. } = *self.mir.types.get(*ty) else {
+                    unreachable!("repeats make arrays")
+                };
+                let value = self.operand(f, operand).text;
+                let place = self.place(f, dest);
+                code.push(format!(
+                    "    for (uintptr_t som_i = 0; som_i < {len}; som_i++) {place}.items[som_i] = {value};"
+                ));
+                returned = None;
+                continue;
+            }
+
             let value = self.rvalue(f, rvalue);
             let local = dest.local;
             let is_temp = local != RETURN && f.body.local(local).name.is_none();
@@ -851,6 +892,25 @@ impl<'a> Emitter<'a> {
             Rvalue::Use(op) => self.operand(f, op),
             Rvalue::Ref { place, .. } => Expr::compound(format!("&{}", self.place(f, place))),
             Rvalue::Not(op) => Expr::compound(format!("!{}", self.operand(f, op).operand())),
+            Rvalue::Array { ty, items } => {
+                let items: Vec<String> = items.iter().map(|op| self.operand(f, op).text).collect();
+                let items = if items.is_empty() {
+                    "0".into()
+                } else {
+                    format!("{{{}}}", items.join(", "))
+                };
+                Expr::atom(format!("({}){{{items}}}", self.ty(*ty)))
+            }
+            // Anything other than all zeroes is a loop, written by `block`.
+            Rvalue::Repeat { ty, operand } => {
+                debug_assert!(is_zero(operand), "only zeroes repeat in an expression");
+                Expr::atom(format!("({}){{0}}", self.ty(*ty)))
+            }
+            Rvalue::Cast { operand, ty } => Expr::compound(format!(
+                "({}){}",
+                self.ty(*ty),
+                self.operand(f, operand).operand()
+            )),
             Rvalue::Some(op) => {
                 let ty = self.operand_ty(f, op);
                 let optional = (self.mir.types.lookup(&Ty::Optional(ty)))
@@ -948,23 +1008,38 @@ impl<'a> Emitter<'a> {
         let mut ty = f.body.local(place.local).ty;
         let mut projections = place.projection.iter().peekable();
         while let Some(&projection) = projections.next() {
+            // `(*p).x` is `p->x`, and `(*p)[i]` is `p->items[i]`.
             if projection == Projection::Deref
-                && let Some(&&Projection::Field(i)) = projections.peek()
+                && let Some(&&next @ (Projection::Field(_) | Projection::Index(_))) =
+                    projections.peek()
             {
-                // `(*p).x` is `p->x`.
                 projections.next();
                 ty = self.project(ty, Projection::Deref);
-                s = format!("{s}->{}", self.field_name(ty, i));
-                ty = self.project(ty, Projection::Field(i));
+                s = format!("{s}->{}", self.member(f, ty, next));
+                ty = self.project(ty, next);
                 continue;
             }
             s = match projection {
-                Projection::Field(i) => format!("{s}.{}", self.field_name(ty, i)),
+                Projection::Field(_) | Projection::Index(_) => {
+                    format!("{s}.{}", self.member(f, ty, projection))
+                }
                 Projection::Deref => format!("(*{s})"),
             };
             ty = self.project(ty, projection);
         }
         s
+    }
+
+    /// What follows the `.` or `->` for a field, or an array's element: `x`, `items[i]`.
+    fn member(&self, f: &FnState, ty: TypeId, projection: Projection) -> String {
+        match projection {
+            Projection::Field(i) => self.field_name(ty, i).to_string(),
+            Projection::Index(index) => {
+                *f.mentioned.borrow_mut().entry(index).or_default() += 1;
+                format!("items[{}]", f.locals[index.id])
+            }
+            Projection::Deref => unreachable!("a dereference isn't a member"),
+        }
     }
 
     fn field_name(&self, ty: TypeId, index: usize) -> &str {
@@ -974,6 +1049,20 @@ impl<'a> Emitter<'a> {
             Ty::Optional(_) => "value",
             _ => unreachable!("fields belong to structs and optionals"),
         }
+    }
+}
+
+/// Whether `op` is a constant whose bytes are all zero, so `{0}` makes copies of it.
+fn is_zero(op: &Operand) -> bool {
+    match op {
+        Operand::Const(c) => match &c.kind {
+            ConstKind::Int(n) => *n == 0,
+            ConstKind::Float(x) => *x == 0.0 && x.is_sign_positive(),
+            ConstKind::Bool(b) => !b,
+            ConstKind::Unit | ConstKind::Zeroed => true,
+            ConstKind::Str(_) | ConstKind::Func(_) => false,
+        },
+        _ => false,
     }
 }
 
@@ -990,15 +1079,17 @@ fn operand_local(op: &Operand) -> Option<Local> {
 /// The whole locals an rvalue reads, which pending temporaries can be folded into.
 fn reads(rvalue: &Rvalue) -> Vec<Local> {
     match rvalue {
-        Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => {
-            operand_local(op).into_iter().collect()
-        }
+        Rvalue::Use(op)
+        | Rvalue::Not(op)
+        | Rvalue::Some(op)
+        | Rvalue::Repeat { operand: op, .. }
+        | Rvalue::Cast { operand: op, .. } => operand_local(op).into_iter().collect(),
         Rvalue::Binary { lhs, rhs, .. } => {
             [lhs, rhs].into_iter().filter_map(operand_local).collect()
         }
-        Rvalue::Struct { fields: ops, .. } | Rvalue::Call { args: ops, .. } => {
-            ops.iter().filter_map(operand_local).collect()
-        }
+        Rvalue::Struct { fields: ops, .. }
+        | Rvalue::Array { items: ops, .. }
+        | Rvalue::Call { args: ops, .. } => ops.iter().filter_map(operand_local).collect(),
         Rvalue::Ref { .. } => Vec::new(),
     }
 }

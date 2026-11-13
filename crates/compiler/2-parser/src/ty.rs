@@ -58,6 +58,19 @@ impl Parser<'_> {
                 TypeExpr::Pointer
             }
 
+            // `[T; N]`
+            TokenKind::OpenBracket => {
+                self.advance();
+                let element = self.parse_type()?;
+                self.expect(TokenKind::Semicolon, "a `;` before the array's length")?;
+                let len = self.parse_count("the array's length")?;
+                self.expect(
+                    TokenKind::CloseBracket,
+                    "a closing bracket after the array type",
+                )?;
+                TypeExpr::Array { element, len }
+            }
+
             TokenKind::Ident => TypeExpr::Named(self.parse_path("a type name")?),
 
             TokenKind::OpenParen => {

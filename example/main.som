@@ -1,17 +1,6 @@
-fn maybe<T>(t: T) -> T? {
-    t
-}
+use std;
+let a = [ 1, 2, 3 ];
 
-let mut a = maybe(1);
-let mut b = maybe(1);
+let a = a.get(10) else 0 - 1;
 
-if a and a == b or a > b {
-    a = a + 1;
-}
-
-let mut a = maybe(1);
-let mut b = 1;
-
-if a == b {
-    a = a + 1;
-}
+std::printf("%d", a);

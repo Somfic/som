@@ -65,6 +65,7 @@ impl Mir {
             }
             (Projection::Field(0), Ty::Optional(_)) => Some(self.types.bool),
             (Projection::Field(1), Ty::Optional(inner)) => Some(*inner),
+            (Projection::Index(_), Ty::Array { element, .. }) => Some(*element),
             _ => None,
         }
     }
@@ -79,6 +80,8 @@ impl Mir {
         match self.types.get(ty) {
             Ty::Struct(def) => self.struct_def(*def).copy,
             Ty::Ref { mutable: true, .. } => false,
+            // As copyable as what it holds.
+            Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.is_copy(*inner),
             _ => true,
         }
     }
@@ -231,6 +234,19 @@ impl Place {
         self.projection.push(projection);
         self
     }
+
+    /// Every local the place reads: its own, and those holding indexes.
+    pub fn locals(&self) -> impl Iterator<Item = Local> + '_ {
+        std::iter::once(self.local).chain(self.projection.iter().filter_map(|p| match p {
+            Projection::Index(index) => Some(*index),
+            _ => None,
+        }))
+    }
+
+    /// The locals holding the place's indexes.
+    pub fn index_locals(&self) -> impl Iterator<Item = Local> + '_ {
+        self.locals().skip(1)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -240,6 +256,9 @@ pub enum Projection {
     Field(usize),
     /// `*`: what a reference points to.
     Deref,
+    /// `[i]`: the element of an array at the index the local holds, a `usize`. The index has
+    /// been checked to be in bounds.
+    Index(Local),
 }
 
 pub enum Rvalue {
@@ -257,6 +276,21 @@ pub enum Rvalue {
     Not(Operand),
     /// An optional holding a value. One without is `Zeroed`.
     Some(Operand),
+    /// An array of type `ty`, with these elements.
+    Array {
+        ty: TypeId,
+        items: Vec<Operand>,
+    },
+    /// An array of type `ty`, every element a copy of `operand`.
+    Repeat {
+        ty: TypeId,
+        operand: Operand,
+    },
+    /// An integer converted to the integer type `ty`, wrapping if it doesn't fit.
+    Cast {
+        operand: Operand,
+        ty: TypeId,
+    },
     /// A struct value, with fields in declaration order.
     Struct {
         def: DefId,

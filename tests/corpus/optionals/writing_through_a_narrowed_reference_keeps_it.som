@@ -1,0 +1,16 @@
+// expect: exit 30
+
+fn find(n: &mut i32, want: bool) -> &mut i32? { n if want else none }
+
+fn main() -> i32 {
+    let mut n = 3;
+    {
+        let slot = find(&mut n, true);
+        if slot {
+            // Writes what `slot` points to; `slot` itself still holds a value.
+            *slot = *slot * 5;
+            *slot = *slot * 2;
+        }
+    };
+    n
+}

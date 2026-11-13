@@ -115,6 +115,12 @@ impl Validator<'_> {
     fn place_ty(&mut self, place: &Place) -> Option<TypeId> {
         let mut ty = self.local_ty(place.local)?;
         for &projection in &place.projection {
+            if let Projection::Index(index) = projection
+                && let Some(index_ty) = self.local_ty(index)
+                && !matches!(self.mir.types.get(index_ty), Ty::Int(IntTy::USize))
+            {
+                self.problem(format!("{place}: index {index} isn't a usize"));
+            }
             ty = match self.mir.project(ty, projection) {
                 Some(ty) => ty,
                 None => {
@@ -168,6 +174,32 @@ impl Validator<'_> {
             Rvalue::Not(op) => {
                 self.operand_ty(op);
                 Some(types.bool)
+            }
+            Rvalue::Array { ty, items } => {
+                let Ty::Array { element, len } = *self.mir.types.get(*ty) else {
+                    self.problem("array literal of a type that isn't an array".into());
+                    return None;
+                };
+                let expected = vec![element; len as usize];
+                self.check_operands("array", &expected, items);
+                Some(*ty)
+            }
+            Rvalue::Repeat { ty, operand } => {
+                let Ty::Array { element, .. } = *self.mir.types.get(*ty) else {
+                    self.problem("array literal of a type that isn't an array".into());
+                    return None;
+                };
+                self.check_operands("array", &[element], std::slice::from_ref(operand));
+                Some(*ty)
+            }
+            Rvalue::Cast { operand, ty } => {
+                let from = self.operand_ty(operand)?;
+                let int = |t: TypeId| matches!(self.mir.types.get(t), Ty::Int(_));
+                if !int(from) || !int(*ty) {
+                    let (f, t) = (self.mir.display_ty(from), self.mir.display_ty(*ty));
+                    self.problem(format!("cast from {f} to {t}: only integers convert"));
+                }
+                Some(*ty)
             }
             Rvalue::Some(op) => {
                 let inner = self.operand_ty(op)?;

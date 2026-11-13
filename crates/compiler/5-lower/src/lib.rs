@@ -11,7 +11,7 @@
 use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
-use som_typeck::Typed;
+use som_typeck::{ArrayMethod, Typed};
 use std::collections::{HashMap, HashSet};
 
 pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
@@ -187,6 +187,10 @@ impl Subst {
             Ty::Optional(inner) => {
                 let inner = self.apply(types, inner);
                 types.intern(Ty::Optional(inner))
+            }
+            Ty::Array { element, len } => {
+                let element = self.apply(types, element);
+                types.intern(Ty::Array { element, len })
             }
             Ty::Fn { params, ret } => {
                 let params = params.iter().map(|&p| self.apply(types, p)).collect();
@@ -928,6 +932,21 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 };
                 self.call(expr, func, None, args)
             }
+            Expr::Array(items) => {
+                let ty = self.expr_ty(expr);
+                let items = items.iter().map(|&item| self.operand(item)).collect();
+                Rvalue::Array { ty, items }
+            }
+            Expr::ArrayRepeat { value, .. } => {
+                let ty = self.expr_ty(expr);
+                let operand = self.operand(*value);
+                Rvalue::Repeat { ty, operand }
+            }
+            Expr::MethodCall { receiver, args, .. }
+                if let Some(method) = self.l.typed.array_method(expr) =>
+            {
+                Rvalue::Use(self.array_method(expr, method, *receiver, args))
+            }
             Expr::MethodCall { receiver, args, .. } => {
                 let def = self
                     .l
@@ -984,6 +1003,155 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         };
         self.assign(Place::local(temp), borrow, span);
         Operand::Move(Place::local(temp))
+    }
+
+    /// A call of one of the methods every array has. Each that takes an index checks it's in
+    /// bounds first, comparing in the index's own type, so any integer type works.
+    fn array_method(
+        &mut self,
+        expr: Id<Expr>,
+        method: ArrayMethod,
+        receiver: Id<Expr>,
+        args: &[Id<Expr>],
+    ) -> Operand {
+        let span = self.span(expr);
+        let ty = self.expr_ty(expr);
+        let receiver_ty = self.expr_ty(receiver);
+        let mut array = self.place(receiver);
+        let array_ty = match *self.l.mir.types.get(receiver_ty) {
+            Ty::Ref { to, .. } => {
+                array = array.project(Projection::Deref);
+                to
+            }
+            _ => receiver_ty,
+        };
+        let Ty::Array { len, .. } = *self.l.mir.types.get(array_ty) else {
+            unreachable!("checked: array methods are called on arrays")
+        };
+        if method == ArrayMethod::Len {
+            return self.constant(ConstKind::Int(len as i64), ty);
+        }
+
+        // Arguments in order, before anything is checked.
+        let index_ty = self.expr_ty(args[0]);
+        let index = self.operand(args[0]);
+        let value = (method == ArrayMethod::Set).then(|| self.operand(args[1]));
+        let in_bounds = self.in_bounds(index.clone(), index_ty, len, span.clone());
+        let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
+        let position = self.temp(usize, span.clone());
+        let converted = if index_ty == usize {
+            Rvalue::Use(index)
+        } else {
+            Rvalue::Cast {
+                operand: index,
+                ty: usize,
+            }
+        };
+        self.assign(Place::local(position), converted, span.clone());
+        let element = array.project(Projection::Index(position));
+
+        let result = self.temp(ty, span.clone());
+        let (inside, outside, join) = (self.new_block(), self.new_block(), self.new_block());
+        self.terminate(
+            TerminatorKind::Branch {
+                condition: in_bounds,
+                then: inside,
+                otherwise: outside,
+            },
+            span.clone(),
+        );
+        self.current = inside;
+        let found = match method {
+            ArrayMethod::Get => Rvalue::Some(Operand::Copy(element)),
+            ArrayMethod::GetRef | ArrayMethod::GetMut => {
+                let Ty::Optional(reference_ty) = *self.l.mir.types.get(ty) else {
+                    unreachable!("checked: get_ref returns an optional reference")
+                };
+                let reference = self.temp(reference_ty, span.clone());
+                let borrow = Rvalue::Ref {
+                    mutable: method == ArrayMethod::GetMut,
+                    place: element,
+                };
+                self.assign(Place::local(reference), borrow, span.clone());
+                Rvalue::Some(Operand::Move(Place::local(reference)))
+            }
+            ArrayMethod::Set => {
+                let value = value.expect("set has a value");
+                self.assign(element, Rvalue::Use(value), span.clone());
+                Rvalue::Use(self.constant(ConstKind::Bool(true), ty))
+            }
+            ArrayMethod::Len => unreachable!("handled above"),
+        };
+        self.assign(Place::local(result), found, span.clone());
+        self.terminate(TerminatorKind::Goto(join), span.clone());
+        self.current = outside;
+        let missing = match method {
+            ArrayMethod::Set => ConstKind::Bool(false),
+            _ => ConstKind::Zeroed,
+        };
+        let missing = self.constant(missing, ty);
+        self.assign(Place::local(result), Rvalue::Use(missing), span.clone());
+        self.terminate(TerminatorKind::Goto(join), span);
+        self.current = join;
+        self.read(Place::local(result), ty)
+    }
+
+    /// Whether `index`, of integer type `index_ty`, is at least 0 and less than `len`. A
+    /// bound the type can't reach isn't checked: an `i8` is always less than 300.
+    fn in_bounds(&mut self, index: Operand, index_ty: TypeId, len: u64, span: Span) -> Operand {
+        let bool = self.l.mir.types.bool;
+        let Ty::Int(int) = *self.l.mir.types.get(index_ty) else {
+            unreachable!("checked: indexes are integers")
+        };
+        let (signed, max): (bool, u128) = match int {
+            IntTy::I8 => (true, i8::MAX as u128),
+            IntTy::I16 => (true, i16::MAX as u128),
+            IntTy::I32 => (true, i32::MAX as u128),
+            IntTy::I64 | IntTy::ISize => (true, i64::MAX as u128),
+            IntTy::I128 => (true, i128::MAX as u128),
+            IntTy::U8 => (false, u8::MAX as u128),
+            IntTy::U16 => (false, u16::MAX as u128),
+            IntTy::U32 => (false, u32::MAX as u128),
+            IntTy::U64 | IntTy::USize => (false, u64::MAX as u128),
+            IntTy::U128 => (false, u128::MAX),
+        };
+        let mut checks = Vec::new();
+        if signed {
+            let zero = self.constant(ConstKind::Int(0), index_ty);
+            checks.push(Rvalue::Binary {
+                op: BinOp::GreaterThanOrEqual,
+                lhs: index.clone(),
+                rhs: zero,
+            });
+        }
+        if (len as u128) <= max {
+            let len = self.constant(ConstKind::Int(len as i64), index_ty);
+            checks.push(Rvalue::Binary {
+                op: BinOp::LessThan,
+                lhs: index,
+                rhs: len,
+            });
+        }
+        let mut result: Option<Operand> = None;
+        for check in checks {
+            let temp = self.temp(bool, span.clone());
+            self.assign(Place::local(temp), check, span.clone());
+            let check = Operand::Copy(Place::local(temp));
+            result = Some(match result {
+                None => check,
+                Some(earlier) => {
+                    let both = self.temp(bool, span.clone());
+                    let and = Rvalue::Binary {
+                        op: BinOp::And,
+                        lhs: earlier,
+                        rhs: check,
+                    };
+                    self.assign(Place::local(both), and, span.clone());
+                    Operand::Copy(Place::local(both))
+                }
+            });
+        }
+        result.unwrap_or_else(|| self.constant(ConstKind::Bool(true), bool))
     }
 
     fn type_args(&mut self, expr: Id<Expr>) -> Vec<TypeId> {

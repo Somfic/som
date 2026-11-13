@@ -1,0 +1,46 @@
+// expect: exit 78
+
+struct Point { x: i32, y: i32 }
+
+fn sum(numbers: &[i32; 5]) -> i32 {
+    let mut total = 0;
+    let mut i = 0;
+    while i < numbers.len() {
+        total = total + (numbers.get(i) else 0);
+        i = i + 1;
+    }
+    total
+}
+
+fn main() -> i32 {
+    let mut numbers = [1, 2, 3, 4, 5];
+
+    // Reads: `get` copies the element out, `none` past the end.
+    let first = numbers.get(0) else 0;
+    let past_end = numbers.get(10) else 100;
+
+    // Writes: `set` says whether the index was in bounds.
+    let stored = numbers.set(4, 50);
+
+    // In place, through a reference to the element.
+    {
+        let slot = numbers.get_mut(1);
+        if slot { *slot = *slot * 10; }
+    };
+
+    // Elements that move: borrow them.
+    let points = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
+    let mut px = 0;
+    let p = points.get_ref(1);
+    if p { px = p.x; }
+
+    // Any integer type indexes.
+    let small: u8 = 2;
+    let wide: i64 = 3;
+    let third = numbers.get(small) else 0;
+    let fourth = numbers.get(wide) else 0;
+
+    // [1, 20, 3, 4, 50]
+    let checks = first == 1 and past_end == 100 and stored and px == 3 and third == 3 and fourth == 4;
+    sum(&numbers) if checks else 0
+}

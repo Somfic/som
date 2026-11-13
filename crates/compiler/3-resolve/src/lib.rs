@@ -338,9 +338,11 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(*lhs);
                 self.resolve_expr(*rhs);
             }
-            Expr::Not(inner) | Expr::Deref(inner) | Expr::Borrow { expr: inner, .. } => {
-                self.resolve_expr(*inner)
-            }
+            Expr::Not(inner)
+            | Expr::Deref(inner)
+            | Expr::Borrow { expr: inner, .. }
+            | Expr::ArrayRepeat { value: inner, .. } => self.resolve_expr(*inner),
+            Expr::Array(items) => items.iter().for_each(|&item| self.resolve_expr(item)),
             Expr::Assign { target, value } => {
                 self.resolve_expr(*target);
                 self.resolve_expr(*value);
@@ -392,7 +394,9 @@ impl<'a> Resolver<'a> {
                     self.names.set_type(id, def);
                 }
             }
-            TypeExpr::Reference { to, .. } | TypeExpr::Optional(to) => self.resolve_type(*to),
+            TypeExpr::Reference { to, .. }
+            | TypeExpr::Optional(to)
+            | TypeExpr::Array { element: to, .. } => self.resolve_type(*to),
             TypeExpr::Fn { params, returns } => {
                 params.iter().for_each(|&p| self.resolve_type(p));
                 if let Some(returns) = returns {

@@ -56,6 +56,7 @@ impl Ast {
                 };
                 format!("&{lifetime}{mutability}{to}")
             }
+            TypeExpr::Array { element, len } => format!("[{}; {len}]", self.type_text(*element)),
             // `fn() -> i32?` returns an optional.
             TypeExpr::Optional(inner) => match &self.types[*inner] {
                 TypeExpr::Fn { .. } => format!("({})?", self.type_text(*inner)),
@@ -228,6 +229,10 @@ impl Dumper<'_> {
             Expr::Bool(b) => self.line(format!("bool {b}")),
             Expr::Str(s) => self.line(format!("str {s:?}")),
             Expr::None => self.line("none"),
+            Expr::Array(items) => self.node("array", |d| d.exprs(items)),
+            Expr::ArrayRepeat { value, count } => {
+                self.node(format!("array repeat {count}"), |d| d.expr(*value))
+            }
             Expr::Var(path) => self.line(format!("var {path}")),
             Expr::Binary { op, lhs, rhs } => self.node(format!("binary {}", op.symbol()), |d| {
                 d.exprs(&[*lhs, *rhs])

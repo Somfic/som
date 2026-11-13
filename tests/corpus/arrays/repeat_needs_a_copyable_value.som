@@ -1,0 +1,8 @@
+// expect: error NotCopyable
+
+struct Point { x: i32 }
+
+fn main() -> i32 {
+    let a = [Point { x: 1 }; 3];
+    0
+}

@@ -94,6 +94,13 @@ pub enum TypeError {
         name: String,
         span: Span,
     },
+    /// Copying a value whose type moves: `a.get(i)` of an array of structs, or `[value; N]`.
+    NotCopyable {
+        ty: Message,
+        span: Span,
+        /// From `[value; N]`, rather than `get`.
+        repeat: bool,
+    },
     /// `if flag` with a `bool?`: it's unclear whether that asks for a value or for `true`.
     OptionalBoolCondition {
         span: Span,
@@ -253,6 +260,25 @@ impl TypeError {
             } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
                 Label::primary(span.clone(), msg!["this is ", found.clone()]),
             ),
+            TypeError::NotCopyable { ty, span, repeat } => {
+                let (message, hint) = if *repeat {
+                    (
+                        msg!["cannot make copies of ", ty.clone()],
+                        msg!["write each element out, as in ", code("[a, b, c]")],
+                    )
+                } else {
+                    (
+                        msg!["cannot copy ", ty.clone(), " out of the array"],
+                        msg![code("get_ref"), " borrows the element instead"],
+                    )
+                };
+                Diagnostic::error(message)
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "its values move rather than copy",
+                    ))
+                    .with_hint(hint)
+            }
             TypeError::OptionalBoolCondition { span } => {
                 Diagnostic::error(msg!["cannot use a ", code("bool?"), " as a condition"])
                     .with_label(Label::primary(

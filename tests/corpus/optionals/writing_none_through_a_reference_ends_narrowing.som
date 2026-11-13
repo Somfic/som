@@ -1,0 +1,12 @@
+// expect: error InvalidOperands
+
+fn clear(o: &mut (i32?)) -> i32 {
+    let mut r = 0;
+    if *o {
+        *o = none;
+        r = *o + 1;
+    }
+    r
+}
+
+fn main() -> i32 { 0 }

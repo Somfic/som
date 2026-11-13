@@ -1,0 +1,5 @@
+// expect: error BehindSharedReference
+
+fn clear(a: &[i32; 3]) { a.set(0, 0); }
+
+fn main() -> i32 { 0 }

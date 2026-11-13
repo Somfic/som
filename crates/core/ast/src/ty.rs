@@ -18,6 +18,8 @@ pub enum TypeExpr {
     },
     /// `T?`: a `T`, or `none`.
     Optional(Id<TypeExpr>),
+    /// `[T; N]`: `N` values of type `T`.
+    Array { element: Id<TypeExpr>, len: u64 },
     /// `fn(A, B) -> C`
     Fn {
         params: Vec<Id<TypeExpr>>,
