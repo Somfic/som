@@ -183,6 +183,7 @@ impl Dumper<'_> {
             }
             Stmt::Expr(expr) => self.expr(*expr),
             Stmt::Loop { body } => self.stmts("loop", body),
+            Stmt::Break => self.line("break"),
             Stmt::While { condition, body } => self.node("while", |d| {
                 d.expr(*condition);
                 d.stmts("do", body);

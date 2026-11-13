@@ -70,6 +70,10 @@ pub enum TypeError {
     CannotInfer {
         span: Span,
     },
+    /// `break;` with no `loop` or `while` around it.
+    BreakOutsideLoop {
+        span: Span,
+    },
     /// `Sqlite3 {}` for an `extern struct`, which only C can create.
     ConstructHandle {
         name: String,
@@ -218,6 +222,20 @@ impl TypeError {
             TypeError::CannotInfer { span } => {
                 Diagnostic::error("cannot infer the type of this expression")
                     .with_label(Label::primary(span.clone(), "add a type annotation"))
+            }
+            TypeError::BreakOutsideLoop { span } => {
+                Diagnostic::error(msg![code("break"), " outside of a loop"]).with_label(
+                    Label::primary(
+                        span.clone(),
+                        msg![
+                            "only a ",
+                            code("loop"),
+                            " or ",
+                            code("while"),
+                            " can be left"
+                        ],
+                    ),
+                )
             }
             TypeError::ConstructHandle { name, span } => {
                 Diagnostic::error(msg!["cannot create a ", struct_name(name), " in som"])

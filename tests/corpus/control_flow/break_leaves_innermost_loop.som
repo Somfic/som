@@ -1,0 +1,15 @@
+// expect: exit 12
+
+// `break` leaves only the innermost loop.
+fn main() -> i32 {
+    let mut total = 0;
+    let mut i = 0;
+    while i < 4 {
+        loop {
+            total = total + 3;
+            break;
+        }
+        i = i + 1;
+    }
+    total
+}

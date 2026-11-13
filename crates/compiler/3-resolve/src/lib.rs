@@ -297,6 +297,7 @@ impl<'a> Resolver<'a> {
             }
             Stmt::Expr(expr) => self.resolve_expr(*expr),
             Stmt::Loop { body } => self.resolve_stmts(body),
+            Stmt::Break => {}
             Stmt::While { condition, body } => {
                 self.resolve_expr(*condition);
                 self.resolve_stmts(body);

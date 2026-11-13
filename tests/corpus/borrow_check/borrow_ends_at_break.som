@@ -1,0 +1,11 @@
+// expect: ok
+
+// Breaking ends the borrow taken inside the loop.
+fn test() {
+    let mut x = 10;
+    loop {
+        let r = &mut x;
+        break;
+    }
+    let s = &mut x;
+}

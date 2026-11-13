@@ -238,6 +238,7 @@ impl Parser<'_> {
                 TokenKind::Let,
                 TokenKind::Loop,
                 TokenKind::While,
+                TokenKind::Break,
                 TokenKind::If,
                 TokenKind::Fn,
             ],

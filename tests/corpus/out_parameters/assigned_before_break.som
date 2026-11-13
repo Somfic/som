@@ -1,0 +1,8 @@
+// expect: ok
+
+fn first(out v: i32) {
+    loop {
+        v = 1;
+        break;
+    }
+}

@@ -205,6 +205,9 @@ struct FnBuilder<'l, 'a> {
     bindings: HashMap<DefId, Local>,
     /// The `let` locals of each enclosing scope, innermost last.
     scopes: Vec<Vec<Local>>,
+    /// Each enclosing loop's exit, and how many scopes were open where it started,
+    /// innermost last.
+    loops: Vec<(BlockId, usize)>,
 }
 
 impl<'l, 'a> FnBuilder<'l, 'a> {
@@ -219,6 +222,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             current: BlockId(0),
             bindings: HashMap::new(),
             scopes: Vec::new(),
+            loops: Vec::new(),
         }
     }
 
@@ -399,13 +403,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }
             Stmt::Loop { body } => {
-                let start = self.new_block();
+                let (start, exit) = (self.new_block(), self.new_block());
                 self.terminate(TerminatorKind::Goto(start), span.clone());
                 self.current = start;
-                self.stmts(body, span.clone());
+                self.loop_body(body, exit, span.clone());
                 self.terminate(TerminatorKind::Goto(start), span);
-                // There's no `break` yet, so nothing follows a `loop`.
-                self.current = self.new_block();
+                // Only a `break` gets here.
+                self.current = exit;
             }
             Stmt::While { condition, body } => {
                 let (header, body_block, exit) =
@@ -422,9 +426,22 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     span.clone(),
                 );
                 self.current = body_block;
-                self.stmts(body, span.clone());
+                self.loop_body(body, exit, span.clone());
                 self.terminate(TerminatorKind::Goto(header), span);
                 self.current = exit;
+            }
+            Stmt::Break => {
+                let &(exit, depth) = self.loops.last().expect("checked: break is in a loop");
+                // The loop's own locals end here, as they would at the end of the body.
+                let dying: Vec<Local> = (self.scopes[depth..].iter().rev())
+                    .flat_map(|scope| scope.iter().rev().copied())
+                    .collect();
+                for local in dying {
+                    self.push(StatementKind::StorageDead(local), span.clone());
+                }
+                self.terminate(TerminatorKind::Goto(exit), span);
+                // Whatever follows in the body can't be reached.
+                self.current = self.new_block();
             }
             Stmt::If {
                 condition,
@@ -453,6 +470,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.current = join;
             }
         }
+    }
+
+    /// A loop's body, where `break` goes to `exit`.
+    fn loop_body(&mut self, body: &[Id<Stmt>], exit: BlockId, span: Span) {
+        self.loops.push((exit, self.scopes.len()));
+        self.stmts(body, span);
+        self.loops.pop();
     }
 
     // --- Expressions ---

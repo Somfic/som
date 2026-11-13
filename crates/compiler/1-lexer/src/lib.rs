@@ -152,6 +152,8 @@ pub enum TokenKind {
     Loop,
     #[token("while")]
     While,
+    #[token("break")]
+    Break,
     #[token("for")]
     For,
 
@@ -175,6 +177,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Use => write!(f, "use"),
             TokenKind::Loop => write!(f, "loop"),
             TokenKind::While => write!(f, "while"),
+            TokenKind::Break => write!(f, "break"),
             TokenKind::For => write!(f, "for"),
             TokenKind::I8 => write!(f, "i8"),
             TokenKind::I16 => write!(f, "i16"),

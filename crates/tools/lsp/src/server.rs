@@ -811,7 +811,7 @@ impl LanguageServer for SomLanguageServer {
             }
             for keyword in [
                 "fn", "let", "mut", "if", "else", "struct", "impl", "extern", "loop", "while",
-                "use", "out", "true", "false",
+                "break", "use", "out", "true", "false",
             ] {
                 items.push(CompletionItem {
                     label: keyword.to_string(),
@@ -1798,6 +1798,7 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::Use
             | TokenKind::Loop
             | TokenKind::While
+            | TokenKind::Break
             | TokenKind::For => 0,
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
             TokenKind::Ident if token.text.starts_with(char::is_uppercase) => 8,

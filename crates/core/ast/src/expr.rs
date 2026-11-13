@@ -96,6 +96,8 @@ pub enum Stmt {
         condition: Id<Expr>,
         body: Vec<Id<Stmt>>,
     },
+    /// `break;`: leaves the innermost `loop` or `while`.
+    Break,
     If {
         condition: Id<Expr>,
         then: Vec<Id<Stmt>>,

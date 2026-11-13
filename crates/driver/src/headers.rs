@@ -519,8 +519,8 @@ fn clang_ast(header: &Path, root: &Path, library_dirs: &[PathBuf]) -> Result<Val
 /// som can't name these, so imported names that use them get a `_` after.
 const SOM_KEYWORDS: &[&str] = &[
     "fn", "extern", "struct", "impl", "let", "if", "else", "mut", "out", "use", "loop", "while",
-    "for", "true", "false", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64",
-    "u128", "usize", "f32", "f64", "bool", "char", "str",
+    "break", "for", "true", "false", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16",
+    "u32", "u64", "u128", "usize", "f32", "f64", "bool", "char", "str",
 ];
 
 fn identifier(name: &str) -> String {

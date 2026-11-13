@@ -9,6 +9,7 @@ impl Parser<'_> {
             TokenKind::Let => self.parse_let(),
             TokenKind::Loop => self.parse_loop(),
             TokenKind::While => self.parse_while(),
+            TokenKind::Break => self.parse_break(),
             TokenKind::If => self.parse_if(),
             _ => {
                 let Some(expr) = self.parse_expr() else {
@@ -70,6 +71,14 @@ impl Parser<'_> {
         let body = self.parse_stmt_block("the loop body")?;
         let span = self.span_from(&start);
         Some(self.ast.stmts.alloc(Stmt::Loop { body }, span))
+    }
+
+    fn parse_break(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        self.expect(TokenKind::Break, "a break statement")?;
+        self.expect(TokenKind::Semicolon, "a semicolon after break")?;
+        let span = self.span_from(&start);
+        Some(self.ast.stmts.alloc(Stmt::Break, span))
     }
 
     fn parse_while(&mut self) -> Option<Id<Stmt>> {

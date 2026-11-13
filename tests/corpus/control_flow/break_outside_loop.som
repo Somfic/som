@@ -1,0 +1,5 @@
+// expect: error BreakOutsideLoop
+
+fn main() {
+    break;
+}

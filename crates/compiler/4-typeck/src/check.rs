@@ -23,6 +23,8 @@ pub(crate) struct Checker<'a> {
     type_args: HashMap<Id<Expr>, Vec<TypeId>>,
     /// Operators whose operand type wasn't known yet when they were checked.
     deferred_ops: Vec<(Id<Expr>, BinOp, TypeId, TypeId)>,
+    /// How many `loop`s and `while`s enclose the statement being checked.
+    loops: usize,
 }
 
 impl<'a> Checker<'a> {
@@ -40,6 +42,7 @@ impl<'a> Checker<'a> {
             fields: HashMap::new(),
             type_args: HashMap::new(),
             deferred_ops: Vec::new(),
+            loops: 0,
         }
     }
 
@@ -323,6 +326,12 @@ impl<'a> Checker<'a> {
         }
     }
 
+    fn check_loop(&mut self, body: &[Id<Stmt>]) {
+        self.loops += 1;
+        self.check_stmts(body);
+        self.loops -= 1;
+    }
+
     fn check_stmt(&mut self, id: Id<Stmt>) {
         match &self.ast.stmts[id] {
             Stmt::Let { ty, value, .. } => {
@@ -342,12 +351,18 @@ impl<'a> Checker<'a> {
             Stmt::Expr(expr) => {
                 self.infer(*expr);
             }
-            Stmt::Loop { body } => self.check_stmts(body),
+            Stmt::Loop { body } => self.check_loop(body),
             Stmt::While { condition, body } => {
                 let bool = self.u.table.bool;
                 self.expect(*condition, bool, None);
-                self.check_stmts(body);
+                self.check_loop(body);
             }
+            Stmt::Break if self.loops == 0 => {
+                self.errors.push(TypeError::BreakOutsideLoop {
+                    span: self.ast.stmts.span(id).clone(),
+                });
+            }
+            Stmt::Break => {}
             Stmt::If {
                 condition,
                 then,

@@ -15,6 +15,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Else
         | TokenKind::Loop
         | TokenKind::While
+        | TokenKind::Break
         | TokenKind::For
         | TokenKind::Struct
         | TokenKind::Use

@@ -1,0 +1,8 @@
+// expect: error OutNotAssigned
+
+fn first(out v: i32) {
+    loop {
+        break;
+        v = 1;
+    }
+}
