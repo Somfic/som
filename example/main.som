@@ -1,4 +1,17 @@
-fn double(mut n: i32) -> i32 {
-    n = n * 2;
-    n
+fn maybe<T>(t: T) -> T? {
+    t
+}
+
+let mut a = maybe(1);
+let mut b = maybe(1);
+
+if a and a == b  {
+    a = a + 1;
+}
+
+let mut a = maybe(1);
+let mut b = 1;
+
+if a == b {
+    a = a + 1;
 }

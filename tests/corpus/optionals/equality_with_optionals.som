@@ -1,0 +1,24 @@
+// expect: exit 68
+
+fn maybe(n: i32, present: bool) -> i32? { n if present else none }
+
+fn main() -> i32 {
+    let five = maybe(5, true);
+    let six = maybe(6, true);
+    let missing = maybe(5, false);
+    let also_missing = maybe(0, false);
+    let mut r = 0;
+    if five == 5 { r = r + 1; }                 // yes
+    if missing == 5 { r = r + 1000; }           // no: holds nothing
+    if missing != 5 { r = r + 2; }              // yes: exact opposite of ==
+    if 5 == five { r = r + 4; }                 // either side
+    if five == six { r = r + 1000; }            // no
+    if missing == also_missing { r = r + 8; }   // both none: equal
+    if five == missing { r = r + 1000; }        // one none: not equal
+    if five == maybe(5, true) { r = r + 16; }   // both hold 5
+    // `== 5` means it holds a value, so it's narrowed inside.
+    if five == 5 { r = r + five; }              // + 5
+    let flag: bool? = true;
+    if flag == true { r = r + 32; }             // the explicit form for `bool?`
+    r
+}

@@ -240,7 +240,7 @@ impl TypeError {
                         "write ",
                         code("!= none"),
                         " to check for a value, or ",
-                        code("else false"),
+                        code("== true"),
                         " to check that it's true"
                     ])
             }

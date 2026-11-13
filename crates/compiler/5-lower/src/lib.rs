@@ -470,6 +470,87 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         }
     }
 
+    fn is_optional(&mut self, expr: Id<Expr>) -> bool {
+        let ty = self.expr_ty(expr);
+        matches!(self.l.mir.types.get(ty), Ty::Optional(_))
+    }
+
+    /// Whether `lhs` and `rhs`, at least one of them optional, are equal: an optional and a
+    /// value when it holds that value, two optionals when neither holds one, or both hold
+    /// equal ones. What a `none` holds is zeroed, so reading it is harmless; only the result
+    /// ignores it.
+    fn optional_equality(&mut self, lhs: Id<Expr>, rhs: Id<Expr>, span: Span) -> Operand {
+        let bool = self.l.mir.types.bool;
+        let (lhs_some, lhs_value) = self.equality_side(lhs);
+        let (rhs_some, rhs_value) = self.equality_side(rhs);
+        let compute = |b: &mut Self, rvalue: Rvalue| {
+            let temp = b.temp(bool, span.clone());
+            b.assign(Place::local(temp), rvalue, span.clone());
+            Operand::Copy(Place::local(temp))
+        };
+        let values_equal = compute(
+            self,
+            Rvalue::Binary {
+                op: BinOp::Equals,
+                lhs: lhs_value,
+                rhs: rhs_value,
+            },
+        );
+        match (lhs_some, rhs_some) {
+            // Both: the same presence, and if present, the same value.
+            (Some(lhs_some), Some(rhs_some)) => {
+                let same_presence = compute(
+                    self,
+                    Rvalue::Binary {
+                        op: BinOp::Equals,
+                        lhs: lhs_some.clone(),
+                        rhs: rhs_some,
+                    },
+                );
+                let absent = compute(self, Rvalue::Not(lhs_some));
+                let values_match = compute(
+                    self,
+                    Rvalue::Binary {
+                        op: BinOp::Or,
+                        lhs: absent,
+                        rhs: values_equal,
+                    },
+                );
+                compute(
+                    self,
+                    Rvalue::Binary {
+                        op: BinOp::And,
+                        lhs: same_presence,
+                        rhs: values_match,
+                    },
+                )
+            }
+            // One: it holds a value, and that's the other side.
+            (Some(some), None) | (None, Some(some)) => compute(
+                self,
+                Rvalue::Binary {
+                    op: BinOp::And,
+                    lhs: some,
+                    rhs: values_equal,
+                },
+            ),
+            (None, None) => unreachable!("one side is optional"),
+        }
+    }
+
+    /// One side of an `==` with an optional: whether it holds a value, if it's optional, and
+    /// the value.
+    fn equality_side(&mut self, expr: Id<Expr>) -> (Option<Operand>, Operand) {
+        if !self.is_optional(expr) {
+            return (None, self.operand(expr));
+        }
+        let place = self.place(expr);
+        (
+            Some(Operand::Copy(place.clone().project(Projection::Field(0)))),
+            Operand::Copy(place.project(Projection::Field(1))),
+        )
+    }
+
     /// Evaluates an `if` condition: a `bool`, or whether an optional holds a value.
     fn condition(&mut self, expr: Id<Expr>) -> Operand {
         let ty = self.expr_ty(expr);
@@ -751,6 +832,17 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 match op {
                     BinOp::NotEquals => Rvalue::Use(holds_value),
                     _ => Rvalue::Not(holds_value),
+                }
+            }
+            Expr::Binary {
+                op: op @ (BinOp::Equals | BinOp::NotEquals),
+                lhs,
+                rhs,
+            } if self.is_optional(*lhs) || self.is_optional(*rhs) => {
+                let equal = self.optional_equality(*lhs, *rhs, self.span(expr));
+                match op {
+                    BinOp::Equals => Rvalue::Use(equal),
+                    _ => Rvalue::Not(equal),
                 }
             }
             Expr::Binary { op, lhs, rhs } => Rvalue::Binary {

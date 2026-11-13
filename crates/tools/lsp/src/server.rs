@@ -8,7 +8,7 @@ use tower_lsp::lsp_types;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer};
 
-use som_ast::{Expr, Func, Id, Item, Span, Stmt, Struct};
+use som_ast::{BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_base::Source;
 use som_driver::Analysis;
 use som_lexer::{TokenKind, lex};
@@ -847,14 +847,34 @@ impl LanguageServer for SomLanguageServer {
             hints.push(type_hint(&name.span, ty(a, t)));
         }
 
-        // What `if x` asks of an optional `x`: `if x != none`.
-        for (_, stmt) in a.ast.stmts.iter() {
-            let Stmt::If { condition, .. } = stmt else {
-                continue;
-            };
-            let span = a.ast.exprs.span(*condition);
+        // What an optional used as a condition asks: `if x` is `if x != none`, and so is each
+        // optional operand of `and`, `or` and `!`.
+        let mut conditions: Vec<Id<Expr>> = a
+            .ast
+            .stmts
+            .iter()
+            .filter_map(|(_, stmt)| match stmt {
+                Stmt::If { condition, .. } => Some(*condition),
+                _ => None,
+            })
+            .collect();
+        for (_, expr) in a.ast.exprs.iter() {
+            match expr {
+                Expr::Binary {
+                    op: BinOp::And | BinOp::Or,
+                    lhs,
+                    rhs,
+                } => conditions.extend([*lhs, *rhs]),
+                Expr::Not(inner) => conditions.push(*inner),
+                _ => {}
+            }
+        }
+        conditions.sort_by_key(|e| e.id);
+        conditions.dedup();
+        for condition in conditions {
+            let span = a.ast.exprs.span(condition);
             if span.source.identifier() != file
-                || !matches!(a.typed.ty(a.typed.expr(*condition)), Ty::Optional(_))
+                || !matches!(a.typed.ty(a.typed.expr(condition)), Ty::Optional(_))
             {
                 continue;
             }

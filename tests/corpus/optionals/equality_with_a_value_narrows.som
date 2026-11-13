@@ -1,0 +1,13 @@
+// expect: exit 12
+
+fn maybe(n: i32) -> i32? { n }
+
+fn main() -> i32 {
+    let x = maybe(6);
+    let mut r = 0;
+    // Equal to a value: it holds one.
+    if x == 6 { r = r + x; }
+    // Not equal to a value: it holds one when that's false.
+    if x != 6 { } else { r = r + x; }
+    r
+}

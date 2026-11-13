@@ -486,19 +486,32 @@ impl<'a> Checker<'a> {
             self.mismatch(bool, ty, self.span(condition), None);
             return None;
         }
-        // `x != none` and `x == none`.
+        // `x != none`, `x == none`, `x == 5` and `x != 5`.
         let Expr::Binary { op, lhs, rhs } = &self.ast.exprs[condition] else {
             return None;
         };
-        let holds_value = match op {
-            BinOp::NotEquals => true,
-            BinOp::Equals => false,
+        let equals = match op {
+            BinOp::Equals => true,
+            BinOp::NotEquals => false,
             _ => return None,
+        };
+        let against_none = matches!(self.ast.exprs[*lhs], Expr::None)
+            || matches!(self.ast.exprs[*rhs], Expr::None);
+        // Equal to `none` means it holds nothing; equal to a value means it holds one.
+        let holds_value = equals != against_none;
+        let is_optional = |c: &Self, e: Id<Expr>| {
+            c.exprs[e.id].is_some_and(|ty| matches!(c.u.get(c.u.shallow(ty)), Ty::Optional(_)))
         };
         let optional = match (&self.ast.exprs[*lhs], &self.ast.exprs[*rhs]) {
             (_, Expr::None) => *lhs,
             (Expr::None, _) => *rhs,
-            _ => return None,
+            // `x == 5`: only equal if `x` holds a value. Not for two optionals: both could be
+            // `none`.
+            _ => match (is_optional(self, *lhs), is_optional(self, *rhs)) {
+                (true, false) => *lhs,
+                (false, true) => *rhs,
+                _ => return None,
+            },
         };
         let ty = self.exprs[optional.id]?;
         let Ty::Optional(inner) = *self.u.get(self.u.shallow(ty)) else {
@@ -647,6 +660,19 @@ impl<'a> Checker<'a> {
         ty
     }
 
+    /// For `==` with an optional on either side, the types whose values are compared: what each
+    /// optional holds. `None` if neither side is optional.
+    fn optional_operands(&self, lhs: TypeId, rhs: TypeId) -> Option<(TypeId, TypeId)> {
+        let inner = |ty: TypeId| match *self.u.get(self.u.shallow(ty)) {
+            Ty::Optional(inner) => Some(inner),
+            _ => None,
+        };
+        match (inner(lhs), inner(rhs)) {
+            (None, None) => None,
+            (l, r) => Some((l.unwrap_or(lhs), r.unwrap_or(rhs))),
+        }
+    }
+
     /// Infers `expr` as the optional it is, even where it's narrowed: for `if x`, `x != none`
     /// and `x else …`, which ask about the optional itself.
     fn infer_optional(&mut self, expr: Id<Expr>) -> TypeId {
@@ -758,6 +784,21 @@ impl<'a> Checker<'a> {
                         });
                         // Already reported: don't also say the `none` can't be inferred.
                         self.exprs[none.id] = Some(error);
+                    }
+                    return bool;
+                }
+                // `x == 5` on an optional: true only if it holds 5.
+                if matches!(op, BinOp::Equals | BinOp::NotEquals)
+                    && let Some((lhs_inner, rhs_inner)) = self.optional_operands(lhs_ty, rhs_ty)
+                {
+                    // The values are compared, but errors name the types as written.
+                    let comparable = self.u.unify(lhs_inner, rhs_inner).is_ok();
+                    match self.operand_ok(*op, lhs_inner) {
+                        Some(true) if comparable => {}
+                        None if comparable => {
+                            self.deferred_ops.push((id, *op, lhs_inner, rhs_inner))
+                        }
+                        _ => self.invalid_operands(id, *op, lhs_ty, rhs_ty),
                     }
                     return bool;
                 }

@@ -1,0 +1,9 @@
+// expect: error InvalidOperands
+
+fn maybe() -> i32? { 1 }
+
+fn main() -> i32 {
+    let a = maybe();
+    if a == "five" { }
+    0
+}
