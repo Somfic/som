@@ -234,7 +234,16 @@ impl TypeTable {
 
     /// Renders a type the way it would be written in som.
     pub fn display(&self, id: TypeId, names: &Names) -> String {
+        self.display_with(id, names, &[])
+    }
+
+    /// Renders a type with type parameters shown as what `subst` says they stand for: a
+    /// generic struct's field as it is in one use of it, `i32` rather than `T`.
+    pub fn display_with(&self, id: TypeId, names: &Names, subst: &[(DefId, TypeId)]) -> String {
         match self.get(id) {
+            Ty::Param(def) if let Some(&(_, arg)) = subst.iter().find(|(d, _)| d == def) => {
+                self.display_with(arg, names, subst)
+            }
             Ty::Error => "{error}".into(),
             Ty::Unit => "()".into(),
             Ty::Bool => "bool".into(),
@@ -249,30 +258,47 @@ impl TypeTable {
                 // `&i32?` is an optional reference.
                 match self.get(*to) {
                     Ty::Str => "str".into(),
-                    Ty::Optional(_) => format!("&{mutability}({})", self.display(*to, names)),
-                    Ty::Slice(element) => {
-                        format!("[{mutability}{}]", self.display(*element, names))
+                    Ty::Optional(_) => {
+                        format!("&{mutability}({})", self.display_with(*to, names, subst))
                     }
-                    _ => format!("&{mutability}{}", self.display(*to, names)),
+                    Ty::Slice(element) => {
+                        format!(
+                            "[{mutability}{}]",
+                            self.display_with(*element, names, subst)
+                        )
+                    }
+                    _ => format!("&{mutability}{}", self.display_with(*to, names, subst)),
                 }
             }
             // `fn() -> i32?` returns an optional.
             Ty::Optional(inner) => match self.get(*inner) {
-                Ty::Fn { .. } => format!("({})?", self.display(*inner, names)),
-                _ => format!("{}?", self.display(*inner, names)),
+                Ty::Fn { .. } => format!("({})?", self.display_with(*inner, names, subst)),
+                _ => format!("{}?", self.display_with(*inner, names, subst)),
             },
-            Ty::Array { element, len } => format!("[{}; {len}]", self.display(*element, names)),
+            Ty::Array { element, len } => {
+                format!("[{}; {len}]", self.display_with(*element, names, subst))
+            }
             // Only reached on its own for a dereferenced slice, which is an error.
-            Ty::Slice(element) => format!("[{}]", self.display(*element, names)),
-            Ty::Range(int) => format!("Range<{}>", self.display(*int, names)),
+            Ty::Slice(element) => format!("[{}]", self.display_with(*element, names, subst)),
+            Ty::Range(int) => format!("Range<{}>", self.display_with(*int, names, subst)),
             Ty::Struct(def, args) if !args.is_empty() => {
-                let args: Vec<String> = args.iter().map(|&a| self.display(a, names)).collect();
+                let args: Vec<String> = args
+                    .iter()
+                    .map(|&a| self.display_with(a, names, subst))
+                    .collect();
                 format!("{}<{}>", names.def(*def).name, args.join(", "))
             }
             Ty::Struct(def, _) | Ty::Param(def) => names.def(*def).name.to_string(),
             Ty::Fn { params, ret } => {
-                let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();
-                format!("fn({}) -> {}", params.join(", "), self.display(*ret, names))
+                let params: Vec<String> = params
+                    .iter()
+                    .map(|&p| self.display_with(p, names, subst))
+                    .collect();
+                format!(
+                    "fn({}) -> {}",
+                    params.join(", "),
+                    self.display_with(*ret, names, subst)
+                )
             }
             Ty::Var(_) => "_".into(),
         }

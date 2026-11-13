@@ -772,20 +772,29 @@ impl LanguageServer for SomLanguageServer {
                 && let Some(owner) = struct_of(a, a.typed.expr(expr))
                 && let DefKind::Struct(s) = a.names.def(owner).kind
             {
+                // A generic struct's fields as they are here: `i32`, not `T`.
+                let subst = struct_subst(a, s, a.typed.expr(expr));
                 for (field, &t) in a.ast.structs[s].fields.iter().zip(a.typed.fields(s)) {
                     items.push(CompletionItem {
                         label: field.name.name.to_string(),
                         kind: Some(CompletionItemKind::FIELD),
-                        detail: Some(ty(a, t)),
+                        detail: Some(a.typed.table.display_with(t, &a.names, &subst)),
                         documentation: markdown(field.doc.clone()),
                         ..Default::default()
                     });
                 }
                 for (name, method) in a.names.methods_of(owner) {
+                    // As it is on this receiver: `Vector<i32>`, not `Vector<T>`.
+                    let detail = match a.names.def(method).kind {
+                        DefKind::Func(f) => {
+                            signature_with(a, f, &method_subst(a, f, a.typed.expr(expr)))
+                        }
+                        _ => describe(a, method),
+                    };
                     items.push(CompletionItem {
                         label: name.to_string(),
                         kind: Some(CompletionItemKind::METHOD),
-                        detail: Some(describe(a, method)),
+                        detail: Some(detail),
                         documentation: markdown(doc_of(a, method)),
                         ..Default::default()
                     });
@@ -817,6 +826,16 @@ impl LanguageServer for SomLanguageServer {
             }
             return Ok(Some(CompletionResponse::Array(items)));
         } else {
+            // The variables in scope here: parameters, and what's declared before the cursor.
+            for def in locals_at(a, &cursor.file, cursor.offset) {
+                let d = a.names.def(def);
+                items.push(CompletionItem {
+                    label: d.name.to_string(),
+                    kind: Some(CompletionItemKind::VARIABLE),
+                    detail: Some(describe(a, def)),
+                    ..Default::default()
+                });
+            }
             // This file's module, and the modules it `use`s, by bare name; other modules by
             // theirs, so `rayl` finds `raylib::init_window`.
             let (here, in_scope) = modules_in_scope(a, &cursor.file);
@@ -1044,8 +1063,21 @@ impl LanguageServer for SomLanguageServer {
                 let Some(DefKind::Func(func)) = def.map(|d| a.names.def(d).kind.clone()) else {
                     return Ok(None);
                 };
-                let params = params_of(a, func).into_iter().skip(skip_self).collect();
-                (signature(a, func), params, a.ast.funcs[func].doc.clone())
+                let subst = match expr {
+                    Expr::MethodCall { receiver, .. } => {
+                        method_subst(a, func, a.typed.expr(*receiver))
+                    }
+                    _ => Vec::new(),
+                };
+                let params = params_with(a, func, &subst)
+                    .into_iter()
+                    .skip(skip_self)
+                    .collect();
+                (
+                    signature_with(a, func, &subst),
+                    params,
+                    a.ast.funcs[func].doc.clone(),
+                )
             }
         };
         let parameters = params
@@ -1084,7 +1116,7 @@ fn describe(a: &Analysis, def: DefId) -> String {
         DefKind::Param { func, index } if a.ast.funcs[*func].params[*index].out => {
             let param = &a.ast.funcs[*func].params[*index];
             match a.typed.try_local(def) {
-                Some(t) => param_text(a, param, t),
+                Some(t) => param_text(a, param, t, &[]),
                 None => format!("out {}", d.name),
             }
         }
@@ -1132,7 +1164,13 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
                 }
             }
             Expr::MethodCall { receiver, .. } => match a.typed.method(id) {
-                Some(def) => (Some(describe(a, def)), doc_of(a, def)),
+                Some(def) => match a.names.def(def).kind {
+                    DefKind::Func(f) => {
+                        let subst = method_subst(a, f, a.typed.expr(*receiver));
+                        (Some(signature_with(a, f, &subst)), doc_of(a, def))
+                    }
+                    _ => (Some(describe(a, def)), doc_of(a, def)),
+                },
                 None => match (
                     a.typed.array_method(id),
                     array_of(a, a.typed.expr(*receiver)),
@@ -1193,6 +1231,91 @@ fn hover_node(a: &Analysis, node: NodeRef) -> NodeRef {
         .iter()
         .find(|(_, e)| matches!(e, Expr::Range { start, end } if *start == Some(id) || *end == Some(id)))
         .map_or(node, |(range, _)| NodeRef::Expr(range))
+}
+
+/// The variables visible at `offset` in `file`: the parameters of the function it's in, and
+/// the `let`, `for` and `out` variables declared before it in a block around it. A later
+/// declaration of the same name hides an earlier one.
+fn locals_at(a: &Analysis, file: &str, offset: usize) -> Vec<DefId> {
+    let contains = |span: &Span| {
+        span.source.identifier() == file
+            && span.start_offset <= offset
+            && offset <= span.start_offset + span.length
+    };
+    let Some((func, func_span)) = (a.ast.funcs.iter())
+        .map(|(id, _)| (id, a.ast.funcs.span(id)))
+        .filter(|(_, span)| contains(span))
+        .min_by_key(|(_, span)| span.length)
+    else {
+        return Vec::new();
+    };
+    // What a declaration is visible in: the innermost block or loop around it, or for a `for`
+    // loop's variable, the loop itself.
+    let scopes: Vec<&Span> = (a.ast.exprs.iter())
+        .filter(|(_, e)| matches!(e, Expr::Block { .. }))
+        .map(|(id, _)| a.ast.exprs.span(id))
+        .chain(
+            (a.ast.stmts.iter())
+                .filter(|(_, s)| {
+                    matches!(
+                        s,
+                        Stmt::If { .. } | Stmt::While { .. } | Stmt::Loop { .. } | Stmt::For { .. }
+                    )
+                })
+                .map(|(id, _)| a.ast.stmts.span(id)),
+        )
+        .collect();
+    // The function's own body: while a line is still being typed, it can end before the
+    // cursor, so what's declared in it is visible anywhere in the function.
+    let body = a.ast.funcs[func].body.map(|b| a.ast.exprs.span(b));
+    let scope_of = |declared: &Span| {
+        let innermost = scopes
+            .iter()
+            .filter(|scope| {
+                scope.source.identifier() == file
+                    && scope.start_offset <= declared.start_offset
+                    && declared.start_offset + declared.length <= scope.start_offset + scope.length
+                    && scope.length > declared.length
+            })
+            .min_by_key(|scope| scope.length)
+            .copied()?;
+        let is_body = body.is_some_and(|b| {
+            b.start_offset == innermost.start_offset && b.length == innermost.length
+        });
+        Some(if is_body { func_span } else { innermost })
+    };
+
+    let mut found: Vec<(usize, DefId)> = a
+        .names
+        .params(func)
+        .iter()
+        .map(|&def| (a.names.def(def).span.start_offset, def))
+        .collect();
+    for (def, d) in a.names.defs.iter_with_ids() {
+        let scope = match d.kind {
+            // A `for` loop's variable is visible in the loop.
+            DefKind::Local(stmt) if matches!(a.ast.stmts[stmt], Stmt::For { .. }) => {
+                Some(a.ast.stmts.span(stmt))
+            }
+            DefKind::Local(stmt) => scope_of(a.ast.stmts.span(stmt)),
+            DefKind::Out(expr) => scope_of(a.ast.exprs.span(expr)),
+            _ => continue,
+        };
+        let declared_before = d.span.source.identifier() == file && d.span.start_offset < offset;
+        let in_function = func_span.start_offset <= d.span.start_offset
+            && d.span.start_offset <= func_span.start_offset + func_span.length;
+        if declared_before && in_function && scope.is_some_and(contains) {
+            found.push((d.span.start_offset, def));
+        }
+    }
+    // The latest declaration of each name wins.
+    found.sort_by_key(|&(at, _)| std::cmp::Reverse(at));
+    let mut seen = HashSet::new();
+    found
+        .into_iter()
+        .filter(|&(_, def)| seen.insert(a.names.def(def).name.clone()))
+        .map(|(_, def)| def)
+        .collect()
 }
 
 /// Where `break`, `continue` or `break x` is written, without the `;`: the one thing hover
@@ -1357,41 +1480,88 @@ fn markdown(doc: Option<String>) -> Option<Documentation> {
     })
 }
 
-fn params_of(a: &Analysis, f: Id<Func>) -> Vec<String> {
+/// The parameters of `f`, with type parameters shown as what `subst` says they are.
+fn params_with(a: &Analysis, f: Id<Func>, subst: &[(DefId, som_typeck::TypeId)]) -> Vec<String> {
     a.ast.funcs[f]
         .params
         .iter()
         .zip(&a.typed.func(f).params)
-        .map(|(p, &t)| param_text(a, p, t))
+        .map(|(p, &t)| param_text(a, p, t, subst))
         .collect()
 }
 
 /// `width: i32`, or `out remainder: i32` for a parameter whose type is `&mut i32`
 /// underneath.
-fn param_text(a: &Analysis, p: &som_ast::Param, t: som_typeck::TypeId) -> String {
+fn param_text(
+    a: &Analysis,
+    p: &som_ast::Param,
+    t: som_typeck::TypeId,
+    subst: &[(DefId, som_typeck::TypeId)],
+) -> String {
+    let shown = |t| a.typed.table.display_with(t, &a.names, subst);
     match (p.out, a.typed.ty(t)) {
-        (true, Ty::Ref { to, .. }) => format!("out {}: {}", p.name, ty(a, *to)),
-        _ => format!("{}: {}", p.name, ty(a, t)),
+        (true, Ty::Ref { to, .. }) => format!("out {}: {}", p.name, shown(*to)),
+        _ => format!("{}: {}", p.name, shown(t)),
+    }
+}
+
+/// What method `f`'s type parameters are when it's called on `receiver`: `T` is `i32` for a
+/// `Vector<T>` method called on a `Vector<i32>`, worked out from its `self` parameter.
+fn method_subst(
+    a: &Analysis,
+    f: Id<Func>,
+    receiver: som_typeck::TypeId,
+) -> Vec<(DefId, som_typeck::TypeId)> {
+    let unref = |t: som_typeck::TypeId| match a.typed.ty(t) {
+        Ty::Ref { to, .. } => *to,
+        _ => t,
+    };
+    let Some(&self_ty) = a.typed.func(f).params.first() else {
+        return Vec::new();
+    };
+    match (a.typed.ty(unref(self_ty)), a.typed.ty(unref(receiver))) {
+        (Ty::Struct(_, written), Ty::Struct(_, actual)) => written
+            .iter()
+            .zip(actual)
+            .filter_map(|(&w, &actual)| match a.typed.ty(w) {
+                Ty::Param(def) => Some((*def, actual)),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
 /// `fn name<T>(a: i32, b: T) -> i32`, or `extern fn ...` for externs.
 fn signature(a: &Analysis, f: Id<Func>) -> String {
+    signature_with(a, f, &[])
+}
+
+/// `f`'s signature with type parameters shown as what `subst` says they are; those it settles
+/// are left out of the `<…>`.
+fn signature_with(a: &Analysis, f: Id<Func>, subst: &[(DefId, som_typeck::TypeId)]) -> String {
     let func = &a.ast.funcs[f];
     let sig = a.typed.func(f);
-    let generics = if func.type_params.is_empty() {
+    let open: Vec<&str> = (func.type_params.iter())
+        .zip(a.names.type_params(f))
+        .filter(|(_, def)| !subst.iter().any(|(d, _)| d == *def))
+        .map(|(p, _)| &*p.name)
+        .collect();
+    let generics = if open.is_empty() {
         String::new()
     } else {
-        let names: Vec<&str> = func.type_params.iter().map(|p| &*p.name).collect();
-        format!("<{}>", names.join(", "))
+        format!("<{}>", open.join(", "))
     };
     let ret = if matches!(a.typed.ty(sig.ret), Ty::Unit) {
         String::new()
     } else {
-        format!(" -> {}", ty(a, sig.ret))
+        format!(
+            " -> {}",
+            a.typed.table.display_with(sig.ret, &a.names, subst)
+        )
     };
     let prefix = if func.body.is_none() { "extern " } else { "" };
-    let mut params = params_of(a, f);
+    let mut params = params_with(a, f, subst);
     if func.variadic {
         params.push("...".into());
     }
@@ -1530,6 +1700,25 @@ fn array_method_doc(a: &Analysis, method: ArrayMethod, sequence: Sequence) -> Ar
         signature: format!("fn {name}({}) -> {returns}", params.join(", ")),
         params,
         doc,
+    }
+}
+
+/// What struct `s`'s type parameters stand for in `t`, a use of it (or a reference to one):
+/// `T` is `i32` in a `Vector<i32>`.
+fn struct_subst(
+    a: &Analysis,
+    s: Id<Struct>,
+    t: som_typeck::TypeId,
+) -> Vec<(DefId, som_typeck::TypeId)> {
+    let t = match a.typed.ty(t) {
+        Ty::Ref { to, .. } => *to,
+        _ => t,
+    };
+    match a.typed.ty(t) {
+        Ty::Struct(_, args) => (a.names.struct_params(s).iter().copied())
+            .zip(args.iter().copied())
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
