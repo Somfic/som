@@ -1,17 +1,17 @@
 use std::ops::Index;
 
-use som_base::{Id, Span};
+use som_base::{Arena, Id, Span};
 
 /// An arena of syntax nodes, each with the span it was parsed from.
 pub struct Nodes<T> {
-    nodes: Vec<T>,
+    nodes: Arena<T>,
     spans: Vec<Span>,
 }
 
 impl<T> Default for Nodes<T> {
     fn default() -> Self {
         Self {
-            nodes: Vec::new(),
+            nodes: Arena::new(),
             spans: Vec::new(),
         }
     }
@@ -19,10 +19,8 @@ impl<T> Default for Nodes<T> {
 
 impl<T> Nodes<T> {
     pub fn alloc(&mut self, node: T, span: Span) -> Id<T> {
-        let id = Id::new(self.nodes.len());
-        self.nodes.push(node);
         self.spans.push(span);
-        id
+        self.nodes.alloc(node)
     }
 
     pub fn span(&self, id: Id<T>) -> &Span {
@@ -31,19 +29,16 @@ impl<T> Nodes<T> {
 
     /// Replaces a node and its span, keeping its id.
     pub fn replace(&mut self, id: Id<T>, node: T, span: Span) {
-        self.nodes[id.id] = node;
+        self.nodes[id] = node;
         self.spans[id.id] = span;
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> &mut T {
-        &mut self.nodes[id.id]
+        &mut self.nodes[id]
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (Id<T>, &T)> {
-        self.nodes
-            .iter()
-            .enumerate()
-            .map(|(i, node)| (Id::new(i), node))
+        self.nodes.iter_with_ids()
     }
 
     pub fn len(&self) -> usize {
@@ -59,6 +54,6 @@ impl<T> Index<Id<T>> for Nodes<T> {
     type Output = T;
 
     fn index(&self, id: Id<T>) -> &T {
-        &self.nodes[id.id]
+        &self.nodes[id]
     }
 }

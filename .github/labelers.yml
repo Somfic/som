@@ -30,7 +30,7 @@ mir:
 
 borrow-checker:
   - changed-files:
-      - any-glob-to-any-file: crates/compiler/6-borrowck/**
+      - any-glob-to-any-file: crates/compiler/6-borrowcheck/**
 
 codegen:
   - changed-files:

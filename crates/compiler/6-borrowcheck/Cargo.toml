@@ -1,5 +1,5 @@
 [package]
-name = "som_borrowck"
+name = "som_borrowcheck"
 version = "0.1.0"
 edition = "2024"
 description = "Checks moves, borrows and dangling references on MIR"

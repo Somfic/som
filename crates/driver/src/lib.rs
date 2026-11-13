@@ -13,7 +13,7 @@ pub use load::{LoadError, load};
 
 use som_ast::Ast;
 use som_base::{Diagnostic, Fix, message, msg};
-use som_borrowck::BorrowError;
+use som_borrowcheck::BorrowError;
 use som_mir::Mir;
 use som_resolve::{Names, ResolveError};
 use som_typeck::{TypeError, Typed};
@@ -107,7 +107,7 @@ pub fn check_loaded(mut ast: Ast, options: &Options) -> Result<Checked, Vec<Erro
     }
 
     let mut mir = som_lower::lower(&ast, &names, &typed);
-    let errors = som_borrowck::check(&mir);
+    let errors = som_borrowcheck::check(&mir);
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Borrow).collect());
     }
@@ -260,7 +260,7 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
 
     let mir = if errors.is_empty() {
         let mir = som_lower::lower(&ast, &names, &typed);
-        errors.extend(som_borrowck::check(&mir).into_iter().map(Error::Borrow));
+        errors.extend(som_borrowcheck::check(&mir).into_iter().map(Error::Borrow));
         Some(mir)
     } else {
         None

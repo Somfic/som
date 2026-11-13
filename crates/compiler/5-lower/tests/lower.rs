@@ -122,7 +122,7 @@ fn validator_catches_ill_typed_mir() {
     let bool = mir.types.bool;
     let body = mir.funcs.iter_mut().next().unwrap().body.as_mut().unwrap();
     let StatementKind::Assign(_, Rvalue::Use(Operand::Const(c))) =
-        &mut body.blocks[0].stmts[0].kind
+        &mut body.blocks[Id::new(0)].stmts[0].kind
     else {
         panic!("expected `_0 = const 1`");
     };

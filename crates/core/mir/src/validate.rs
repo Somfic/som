@@ -40,7 +40,7 @@ impl Validator<'_> {
             self.problem("fewer locals than return value and parameters".into());
             return;
         }
-        if self.body.local(Local::RETURN).ty != self.func.ret {
+        if self.body.local(RETURN).ty != self.func.ret {
             self.problem("_0 doesn't have the return type".into());
         }
         let args: Vec<TypeId> = self.body.args().map(|l| self.body.local(l).ty).collect();
@@ -92,7 +92,7 @@ impl Validator<'_> {
     }
 
     fn target(&mut self, block: BlockId) {
-        if block.0 as usize >= self.body.blocks.len() {
+        if self.body.blocks.get(block).is_none() {
             self.problem(format!("jumps to missing {block}"));
         }
     }
@@ -103,7 +103,7 @@ impl Validator<'_> {
     }
 
     fn local_ty(&mut self, local: Local) -> Option<TypeId> {
-        match self.body.locals.get(local.0 as usize) {
+        match self.body.locals.get(local) {
             Some(decl) => Some(decl.ty),
             None => {
                 self.problem(format!("uses missing local {local}"));

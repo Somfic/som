@@ -1,5 +1,5 @@
 use som_base::Source;
-use som_borrowck::BorrowError;
+use som_borrowcheck::BorrowError;
 use std::sync::Arc;
 
 fn check(source: &str) -> Vec<BorrowError> {
@@ -10,7 +10,7 @@ fn check(source: &str) -> Vec<BorrowError> {
     let (typed, errors) = som_typeck::check(&ast, &names);
     assert!(errors.is_empty(), "type errors: {errors:?}");
     let mir = som_lower::lower(&ast, &names, &typed);
-    som_borrowck::check(&mir)
+    som_borrowcheck::check(&mir)
 }
 
 fn kinds(source: &str) -> Vec<String> {

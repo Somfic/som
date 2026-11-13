@@ -12,7 +12,7 @@ members = [
     "crates/compiler/3-resolve",
     "crates/compiler/4-typeck",
     "crates/compiler/5-lower",
-    "crates/compiler/6-borrowck",
+    "crates/compiler/6-borrowcheck",
     "crates/compiler/7-shake",
     "crates/compiler/8-codegen",
 

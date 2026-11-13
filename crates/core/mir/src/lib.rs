@@ -13,7 +13,8 @@ pub use som_ast::BinOp;
 pub use som_resolve::DefId;
 pub use som_typeck::{FloatTy, IntTy, Ty, TypeId, TypeTable};
 
-use som_base::{Arena, Id, Span};
+pub use som_base::{Arena, Id};
+use som_base::{IdPrefix, Span};
 use std::collections::HashMap;
 
 pub struct Mir {
@@ -70,14 +71,21 @@ impl Mir {
 /// A function, by its id in `Mir::funcs`. Ids stay the same when other functions are removed.
 pub type FuncId = Id<Function>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct BlockId(pub u32);
+/// A block, by its id in `Body::blocks`. Written `bb3`.
+pub type BlockId = Id<Block>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Local(pub u32);
+/// A local, by its id in `Body::locals`. Written `_3`.
+pub type Local = Id<LocalDecl>;
 
-impl Local {
-    pub const RETURN: Local = Local(0);
+/// The local holding a function's return value: `_0`.
+pub const RETURN: Local = Id::new(0);
+
+impl IdPrefix for Block {
+    const PREFIX: &'static str = "bb";
+}
+
+impl IdPrefix for LocalDecl {
+    const PREFIX: &'static str = "_";
 }
 
 pub struct StructDef {
@@ -107,26 +115,27 @@ pub struct Function {
 }
 
 pub struct Body {
-    pub locals: Vec<LocalDecl>,
+    pub locals: Arena<LocalDecl>,
     pub arg_count: usize,
     /// The `out` parameters: pointers the function must assign through on every path
     /// before it returns, and before reading through them.
     pub outs: Vec<Local>,
-    pub blocks: Vec<Block>,
+    /// The entry block is `bb0`.
+    pub blocks: Arena<Block>,
 }
 
 impl Body {
     pub fn local(&self, local: Local) -> &LocalDecl {
-        &self.locals[local.0 as usize]
+        &self.locals[local]
     }
 
     pub fn block(&self, block: BlockId) -> &Block {
-        &self.blocks[block.0 as usize]
+        &self.blocks[block]
     }
 
     /// The parameters' locals: `_1..=_n`.
     pub fn args(&self) -> impl Iterator<Item = Local> {
-        (1..=self.arg_count as u32).map(Local)
+        (1..=self.arg_count).map(Id::new)
     }
 }
 

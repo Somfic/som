@@ -74,7 +74,7 @@ impl State {
     }
 
     fn release(&mut self, local: Local) {
-        self.holds[local.0 as usize].clear();
+        self.holds[local.id].clear();
         self.moved.retain(|place, _| place.local != local);
     }
 }
@@ -136,8 +136,8 @@ impl<'a> FnChecker<'a> {
         while let Some(b) = queue.pop_front() {
             let mut state = entry[b].clone().expect("queued blocks have a state");
             self.block(b, &mut state);
-            for next in self.body.blocks[b].terminator.kind.successors() {
-                let next = next.0 as usize;
+            for next in self.body.blocks[Id::new(b)].terminator.kind.successors() {
+                let next = next.id;
                 let changed = match &mut entry[next] {
                     Some(existing) => existing.join(&state),
                     slot @ None => {
@@ -162,13 +162,13 @@ impl<'a> FnChecker<'a> {
     }
 
     fn block(&mut self, b: usize, state: &mut State) {
-        let block = &self.body.blocks[b];
+        let block = &self.body.blocks[Id::new(b)];
         for (s, stmt) in block.stmts.iter().enumerate() {
             match &stmt.kind {
                 StatementKind::Assign(place, rvalue) => {
                     let flows = self.rvalue(state, (b, s), rvalue, &stmt.span);
                     self.write(state, place, &stmt.span);
-                    let holds = &mut state.holds[place.local.0 as usize];
+                    let holds = &mut state.holds[place.local.id];
                     if place.projection.is_empty() {
                         holds.clear();
                     }
@@ -262,7 +262,7 @@ impl<'a> FnChecker<'a> {
             }
         }
 
-        let holds = &mut state.holds[place.local.0 as usize];
+        let holds = &mut state.holds[place.local.id];
         if self.is_temp(place.local) {
             std::mem::take(holds)
         } else {
@@ -298,7 +298,7 @@ impl<'a> FnChecker<'a> {
         let mut flows = BTreeSet::from([id]);
         // Reborrowing through a reference (`&*r`) keeps the original loan alive too.
         if place.projection.contains(&Projection::Deref) {
-            flows.extend(state.holds[place.local.0 as usize].iter().copied());
+            flows.extend(state.holds[place.local.id].iter().copied());
         }
         flows
     }
@@ -327,7 +327,7 @@ impl<'a> FnChecker<'a> {
                 .holds
                 .iter()
                 .enumerate()
-                .any(|(holder, loans)| holder != local.0 as usize && loans.contains(&loan))
+                .any(|(holder, loans)| holder != local.id && loans.contains(&loan))
         };
         let dangling: Vec<LoanId> = state
             .active()
@@ -384,7 +384,7 @@ impl<'a> FnChecker<'a> {
     // --- Places and types ---
 
     fn is_temp(&self, local: Local) -> bool {
-        local != Local::RETURN && self.body.local(local).name.is_none()
+        local != RETURN && self.body.local(local).name.is_none()
     }
 
     fn place_ty(&self, place: &Place) -> TypeId {

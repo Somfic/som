@@ -870,7 +870,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "som_borrowck"
+name = "som_borrowcheck"
 version = "0.1.0"
 dependencies = [
  "som_base",
@@ -909,7 +909,7 @@ dependencies = [
  "serde_json",
  "som_ast",
  "som_base",
- "som_borrowck",
+ "som_borrowcheck",
  "som_codegen",
  "som_lexer",
  "som_lower",

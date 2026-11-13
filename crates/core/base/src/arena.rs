@@ -3,8 +3,11 @@ use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
 use std::ops::{Index, IndexMut};
 
+/// Items stored by id. Removing one leaves its slot empty, so every other id stays valid.
 pub struct Arena<T> {
     items: Vec<Option<T>>,
+    /// How many of `items` are `Some`.
+    live: usize,
 }
 
 pub struct Id<T> {
@@ -12,9 +15,14 @@ pub struct Id<T> {
     pub id: usize,
 }
 
-impl<T> Display for Id<T> {
+/// How the ids of an item type are written: MIR locals as `_3`, blocks as `bb3`.
+pub trait IdPrefix {
+    const PREFIX: &'static str;
+}
+
+impl<T: IdPrefix> Display for Id<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "#{}", self.id)
+        write!(f, "{}{}", T::PREFIX, self.id)
     }
 }
 
@@ -74,12 +82,16 @@ impl<T> Default for Arena<T> {
 
 impl<T> Arena<T> {
     pub fn new() -> Self {
-        Self { items: vec![] }
+        Self {
+            items: vec![],
+            live: 0,
+        }
     }
 
     pub fn alloc(&mut self, item: T) -> Id<T> {
         let id = Id::new(self.items.len());
         self.items.push(Some(item));
+        self.live += 1;
         id
     }
 
@@ -94,7 +106,9 @@ impl<T> Arena<T> {
 
     /// Removes the item with `id`. Its id isn't reused.
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
-        self.items.get_mut(id.id)?.take()
+        let item = self.items.get_mut(id.id)?.take()?;
+        self.live -= 1;
+        Some(item)
     }
 
     /// Keeps only the items `keep` returns true for.
@@ -102,6 +116,7 @@ impl<T> Arena<T> {
         for (i, slot) in self.items.iter_mut().enumerate() {
             if slot.as_ref().is_some_and(|item| !keep(Id::new(i), item)) {
                 *slot = None;
+                self.live -= 1;
             }
         }
     }
@@ -123,11 +138,11 @@ impl<T> Arena<T> {
 
     /// The number of items, not counting removed ones.
     pub fn len(&self) -> usize {
-        self.iter().count()
+        self.live
     }
 
     pub fn is_empty(&self) -> bool {
-        self.iter().next().is_none()
+        self.live == 0
     }
 }
 
@@ -169,5 +184,14 @@ impl<'a, T> IntoIterator for &'a mut Arena<T> {
 
     fn into_iter(self) -> Self::IntoIter {
         self.items.iter_mut().flatten()
+    }
+}
+
+impl<T: Clone> Clone for Arena<T> {
+    fn clone(&self) -> Self {
+        Self {
+            items: self.items.clone(),
+            live: self.live,
+        }
     }
 }

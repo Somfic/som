@@ -12,7 +12,7 @@ use som_ast::{Ast, Expr, Func, Id, Item, Span, Stmt};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
 use som_typeck::Typed;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
     let mut lowerer = Lowerer {
@@ -198,8 +198,10 @@ struct FnBuilder<'l, 'a> {
     l: &'l mut Lowerer<'a>,
     func: Id<Func>,
     subst: Subst,
-    locals: Vec<LocalDecl>,
-    blocks: Vec<(Vec<Statement>, Option<Terminator>)>,
+    locals: Arena<LocalDecl>,
+    /// Each starts out `Unreachable`, and stays that way if nothing terminates it.
+    blocks: Arena<Block>,
+    terminated: HashSet<BlockId>,
     current: BlockId,
     /// Parameters and `let` bindings → their locals.
     bindings: HashMap<DefId, Local>,
@@ -213,17 +215,20 @@ struct FnBuilder<'l, 'a> {
 impl<'l, 'a> FnBuilder<'l, 'a> {
     fn new(l: &'l mut Lowerer<'a>, func: Id<Func>, type_args: Vec<TypeId>) -> Self {
         let subst = Subst::new(l.names.type_params(func), &type_args);
-        FnBuilder {
+        let mut builder = FnBuilder {
             l,
             func,
             subst,
-            locals: Vec::new(),
-            blocks: vec![(Vec::new(), None)],
-            current: BlockId(0),
+            locals: Arena::new(),
+            blocks: Arena::new(),
+            terminated: HashSet::new(),
+            current: Id::new(0),
             bindings: HashMap::new(),
             scopes: Vec::new(),
             loops: Vec::new(),
-        }
+        };
+        builder.current = builder.new_block();
+        builder
     }
 
     fn build(mut self) -> Body {
@@ -254,37 +259,21 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
         let body = func.body.expect("only functions with bodies are lowered");
         let value = self.operand(body);
-        self.assign(
-            Place::local(Local::RETURN),
-            Rvalue::Use(value),
-            span.clone(),
-        );
-        for arg in 1..=func.params.len() as u32 {
-            self.push(StatementKind::StorageDead(Local(arg)), span.clone());
+        self.assign(Place::local(RETURN), Rvalue::Use(value), span.clone());
+        for arg in 1..=func.params.len() {
+            self.push(StatementKind::StorageDead(Id::new(arg)), span.clone());
         }
         self.terminate(TerminatorKind::Return, span.clone());
 
-        let blocks = self
-            .blocks
-            .into_iter()
-            .map(|(stmts, terminator)| Block {
-                stmts,
-                // Blocks nothing jumps to, like the one after an endless `loop`, end here.
-                terminator: terminator.unwrap_or(Terminator {
-                    kind: TerminatorKind::Unreachable,
-                    span: span.clone(),
-                }),
-            })
-            .collect();
         let outs = (func.params.iter().enumerate())
             .filter(|(_, p)| p.out)
-            .map(|(i, _)| Local(i as u32 + 1))
+            .map(|(i, _)| Id::new(i + 1))
             .collect();
         Body {
             locals: self.locals,
             arg_count: func.params.len(),
             outs,
-            blocks,
+            blocks: self.blocks,
         }
     }
 
@@ -304,14 +293,12 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     fn new_local(&mut self, ty: TypeId, name: Option<String>, mutable: bool, span: Span) -> Local {
-        let local = Local(self.locals.len() as u32);
-        self.locals.push(LocalDecl {
+        self.locals.alloc(LocalDecl {
             ty,
             name,
             mutable,
             span,
-        });
-        local
+        })
     }
 
     fn temp(&mut self, ty: TypeId, span: Span) -> Local {
@@ -319,13 +306,20 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     fn new_block(&mut self) -> BlockId {
-        self.blocks.push((Vec::new(), None));
-        BlockId(self.blocks.len() as u32 - 1)
+        // Blocks nothing jumps to, like the one after an endless `loop`, end here.
+        let span = self.l.ast.funcs.span(self.func).clone();
+        self.blocks.alloc(Block {
+            stmts: Vec::new(),
+            terminator: Terminator {
+                kind: TerminatorKind::Unreachable,
+                span,
+            },
+        })
     }
 
     fn push(&mut self, kind: StatementKind, span: Span) {
-        self.blocks[self.current.0 as usize]
-            .0
+        self.blocks[self.current]
+            .stmts
             .push(Statement { kind, span });
     }
 
@@ -334,9 +328,9 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     fn terminate(&mut self, kind: TerminatorKind, span: Span) {
-        let block = &mut self.blocks[self.current.0 as usize];
-        debug_assert!(block.1.is_none(), "block terminated twice");
-        block.1 = Some(Terminator { kind, span });
+        let first = self.terminated.insert(self.current);
+        debug_assert!(first, "block terminated twice");
+        self.blocks[self.current].terminator = Terminator { kind, span };
     }
 
     /// Reads a place, copying or moving depending on its type.
@@ -396,8 +390,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 // The result is unused: a temporary holding it dies with the statement.
                 if let Operand::Copy(place) | Operand::Move(place) = self.operand(*expr)
                     && place.projection.is_empty()
-                    && place.local != Local::RETURN
-                    && self.locals[place.local.0 as usize].name.is_none()
+                    && place.local != RETURN
+                    && self.locals[place.local].name.is_none()
                 {
                     self.push(StatementKind::StorageDead(place.local), span);
                 }

@@ -12,7 +12,11 @@ fn shaken(source: &str) -> Mir {
     let mut mir = som_lower::lower(&ast, &names, &typed);
     som_shake::shake(&mut mir);
     let problems = mir.validate();
-    assert!(problems.is_empty(), "invalid MIR:\n{}\n{mir}", problems.join("\n"));
+    assert!(
+        problems.is_empty(),
+        "invalid MIR:\n{}\n{mir}",
+        problems.join("\n")
+    );
     mir
 }
 

@@ -1,10 +1,10 @@
 use som_ast::Primitive;
+use som_base::{Arena, Id};
 use som_resolve::{DefId, Names};
 use std::collections::HashMap;
 
 /// A type, interned in a `TypeTable`. Equal types have equal ids.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct TypeId(pub u32);
+pub type TypeId = Id<Ty>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Ty {
@@ -83,7 +83,7 @@ impl Ty {
 /// Interns types, so they can be compared and copied as plain ids.
 #[derive(Clone)]
 pub struct TypeTable {
-    tys: Vec<Ty>,
+    tys: Arena<Ty>,
     ids: HashMap<Ty, TypeId>,
     pub error: TypeId,
     pub unit: TypeId,
@@ -97,15 +97,15 @@ pub struct TypeTable {
 impl Default for TypeTable {
     fn default() -> Self {
         let mut table = TypeTable {
-            tys: Vec::new(),
+            tys: Arena::new(),
             ids: HashMap::new(),
-            error: TypeId(0),
-            unit: TypeId(0),
-            bool: TypeId(0),
-            i32: TypeId(0),
-            f64: TypeId(0),
-            pointer: TypeId(0),
-            str_ref: TypeId(0),
+            error: Id::new(0),
+            unit: Id::new(0),
+            bool: Id::new(0),
+            i32: Id::new(0),
+            f64: Id::new(0),
+            pointer: Id::new(0),
+            str_ref: Id::new(0),
         };
         table.error = table.intern(Ty::Error);
         table.unit = table.intern(Ty::Unit);
@@ -127,14 +127,13 @@ impl TypeTable {
         if let Some(&id) = self.ids.get(&ty) {
             return id;
         }
-        let id = TypeId(self.tys.len() as u32);
-        self.tys.push(ty.clone());
+        let id = self.tys.alloc(ty.clone());
         self.ids.insert(ty, id);
         id
     }
 
     pub fn get(&self, id: TypeId) -> &Ty {
-        &self.tys[id.0 as usize]
+        &self.tys[id]
     }
 
     /// The id of `ty` if it has been interned.

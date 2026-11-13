@@ -210,7 +210,9 @@ impl Names {
                 ),
                 None => (
                     id,
-                    unique(&identifier(&f.name), "f", &mut taken, |n| externs.contains(n)),
+                    unique(&identifier(&f.name), "f", &mut taken, |n| {
+                        externs.contains(n)
+                    }),
                 ),
             })
             .collect();
@@ -317,7 +319,7 @@ impl Usage {
                     continue;
                 };
                 if dest.projection.is_empty() {
-                    u.assigns[dest.local.0 as usize] += 1;
+                    u.assigns[dest.local.id] += 1;
                 } else {
                     u.read(dest.local, Use::Other);
                 }
@@ -363,8 +365,8 @@ impl Usage {
     }
 
     fn read(&mut self, local: Local, as_: Use) {
-        self.reads[local.0 as usize] += 1;
-        self.read_as[local.0 as usize] = as_;
+        self.reads[local.id] += 1;
+        self.read_as[local.id] = as_;
     }
 }
 
@@ -627,9 +629,9 @@ impl<'a> Emitter<'a> {
             .flat_map(|b| b.terminator.kind.successors())
             .collect();
         let mut code = Vec::new();
-        for (i, block) in body.blocks.iter().enumerate() {
-            if targets.contains(&BlockId(i as u32)) {
-                code.push(format!("{}:", BlockId(i as u32)));
+        for (id, block) in body.blocks.iter_with_ids() {
+            if targets.contains(&id) {
+                code.push(format!("{id}:"));
             }
             self.block(&mut f, block, &mut code);
         }
@@ -638,15 +640,14 @@ impl<'a> Emitter<'a> {
         self.line(format!("// {}", func.name));
         self.line(format!("{signature} {{"));
         let mentioned = f.mentioned.borrow();
-        for (i, local) in body
+        for (id, local) in body
             .locals
-            .iter()
-            .enumerate()
+            .iter_with_ids()
             .skip(body.arg_count + 1)
-            .chain([(0, &body.locals[0])])
+            .chain([(RETURN, &body.locals[RETURN])])
         {
-            if mentioned.get(&Local(i as u32)).is_some_and(|&n| n > 0) {
-                self.line(format!("    {} {};", self.ty(local.ty), f.locals[i]));
+            if mentioned.get(&id).is_some_and(|&n| n > 0) {
+                self.line(format!("    {} {};", self.ty(local.ty), f.locals[id.id]));
             }
         }
         for line in code {
@@ -668,17 +669,11 @@ impl<'a> Emitter<'a> {
 
             let value = self.rvalue(f, rvalue);
             let local = dest.local;
-            let is_temp = local != Local::RETURN && f.body.local(local).name.is_none();
+            let is_temp = local != RETURN && f.body.local(local).name.is_none();
             if is_temp && dest.projection.is_empty() {
                 let narrow = self.is_narrow(f.body.local(local).ty);
-                let (assigns, reads) = (
-                    f.usage.assigns[local.0 as usize],
-                    f.usage.reads[local.0 as usize],
-                );
-                if assigns == 1
-                    && reads == 1
-                    && f.usage.read_as[local.0 as usize].allows(rvalue, narrow)
-                {
+                let (assigns, reads) = (f.usage.assigns[local.id], f.usage.reads[local.id]);
+                if assigns == 1 && reads == 1 && f.usage.read_as[local.id].allows(rvalue, narrow) {
                     f.pending.insert(local, value);
                     continue;
                 }
@@ -702,7 +697,7 @@ impl<'a> Emitter<'a> {
                 continue;
             }
             code.push(format!("    {place} = {};", value.text));
-            returned = (local == Local::RETURN && dest.projection.is_empty())
+            returned = (local == RETURN && dest.projection.is_empty())
                 .then(|| (code.len() - 1, value.text));
         }
 
@@ -732,10 +727,10 @@ impl<'a> Emitter<'a> {
                 // `_0 = x; return _0;` is `return x;`, if nothing was written in between.
                 Some((line, value)) if line == code.len() - 1 => {
                     code[line] = format!("    return {value};");
-                    *f.mentioned.borrow_mut().entry(Local::RETURN).or_default() -= 1;
+                    *f.mentioned.borrow_mut().entry(RETURN).or_default() -= 1;
                 }
                 _ => {
-                    *f.mentioned.borrow_mut().entry(Local::RETURN).or_default() += 1;
+                    *f.mentioned.borrow_mut().entry(RETURN).or_default() += 1;
                     code.push(format!("    return {};", f.locals[0]));
                 }
             },
@@ -756,10 +751,7 @@ impl<'a> Emitter<'a> {
         for local in flush {
             let value = f.pending.remove(&local).expect("pending");
             *f.mentioned.borrow_mut().entry(local).or_default() += 1;
-            code.push(format!(
-                "    {} = {};",
-                f.locals[local.0 as usize], value.text
-            ));
+            code.push(format!("    {} = {};", f.locals[local.id], value.text));
         }
     }
 
@@ -853,7 +845,7 @@ impl<'a> Emitter<'a> {
     /// A place as a C lvalue: `x`, `p.x`, `self->x`, `(*r)`.
     fn place(&self, f: &FnState, place: &Place) -> String {
         *f.mentioned.borrow_mut().entry(place.local).or_default() += 1;
-        let mut s = f.locals[place.local.0 as usize].clone();
+        let mut s = f.locals[place.local.id].clone();
         let mut ty = f.body.local(place.local).ty;
         let mut projections = place.projection.iter().peekable();
         while let Some(&projection) = projections.next() {

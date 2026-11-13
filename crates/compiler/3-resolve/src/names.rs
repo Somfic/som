@@ -1,9 +1,9 @@
 use som_ast::{Ast, Expr, Func, Id, Span, Stmt, Struct, TypeExpr};
+use som_base::Arena;
 use std::collections::HashMap;
 
 /// A definition: anything a name can refer to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct DefId(pub u32);
+pub type DefId = Id<Def>;
 
 #[derive(Clone, Debug)]
 pub enum DefKind {
@@ -39,7 +39,7 @@ pub struct Def {
 ///
 /// Side tables are indexed by the AST's own ids, so the AST itself stays untouched.
 pub struct Names {
-    pub defs: Vec<Def>,
+    pub defs: Arena<Def>,
     /// `Expr::Var`, `Expr::Call` and `Expr::Construct` → what their path names.
     exprs: Vec<Option<DefId>>,
     /// `TypeExpr::Named` → the struct or type parameter it names.
@@ -58,7 +58,7 @@ pub struct Names {
 impl Names {
     pub(crate) fn new(ast: &Ast) -> Names {
         Names {
-            defs: Vec::new(),
+            defs: Arena::new(),
             exprs: vec![None; ast.exprs.len()],
             types: vec![None; ast.types.len()],
             lets: vec![None; ast.stmts.len()],
@@ -71,14 +71,12 @@ impl Names {
     }
 
     pub(crate) fn define(&mut self, name: &str, kind: DefKind, span: Span, module: usize) -> DefId {
-        let id = DefId(self.defs.len() as u32);
-        self.defs.push(Def {
+        self.defs.alloc(Def {
             name: name.into(),
             kind,
             span,
             module,
-        });
-        id
+        })
     }
 
     pub(crate) fn set_func(&mut self, func: Id<Func>, def: DefId) {
@@ -123,7 +121,7 @@ impl Names {
     // --- Queries ---
 
     pub fn def(&self, id: DefId) -> &Def {
-        &self.defs[id.0 as usize]
+        &self.defs[id]
     }
 
     /// What a `Var`, `Call` or `Construct` expression refers to. `None` if it failed to resolve.

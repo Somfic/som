@@ -77,12 +77,12 @@ impl Mir {
             self.display_ty(func.ret)
         )?;
 
-        for (i, local) in body.locals.iter().enumerate() {
+        for (id, local) in body.locals.iter_with_ids() {
             let mutability = if local.mutable { "mut " } else { "" };
             write!(
                 out,
                 "    let {mutability}{}: {};",
-                Local(i as u32),
+                id,
                 self.display_ty(local.ty)
             )?;
             if let Some(name) = &local.name {
@@ -91,8 +91,8 @@ impl Mir {
             writeln!(out)?;
         }
 
-        for (i, block) in body.blocks.iter().enumerate() {
-            writeln!(out, "\n    {}: {{", BlockId(i as u32))?;
+        for (id, block) in body.blocks.iter_with_ids() {
+            writeln!(out, "\n    {id}: {{")?;
             for stmt in &block.stmts {
                 writeln!(out, "        {};", self.display_stmt(&stmt.kind))?;
             }
@@ -190,18 +190,6 @@ impl Display for Mir {
             self.write_func(&mut out, func)?;
         }
         f.write_str(&out)
-    }
-}
-
-impl Display for Local {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "_{}", self.0)
-    }
-}
-
-impl Display for BlockId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "bb{}", self.0)
     }
 }
 

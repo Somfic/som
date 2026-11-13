@@ -29,8 +29,8 @@ pub(crate) fn check(body: &Body, errors: &mut Vec<BorrowError>) {
     while let Some(b) = queue.pop_front() {
         let mut assigned = entry[b].clone().expect("queued blocks have a state");
         checker.block(b, &mut assigned);
-        for next in body.blocks[b].terminator.kind.successors() {
-            let next = next.0 as usize;
+        for next in body.blocks[Id::new(b)].terminator.kind.successors() {
+            let next = next.id;
             let changed = match &mut entry[next] {
                 Some(existing) => {
                     let before = existing.len();
@@ -68,7 +68,7 @@ struct Checker<'a> {
 
 impl Checker<'_> {
     fn block(&mut self, b: usize, assigned: &mut BTreeSet<Local>) {
-        let block = &self.body.blocks[b];
+        let block = &self.body.blocks[Id::new(b)];
         for stmt in &block.stmts {
             let StatementKind::Assign(place, rvalue) = &stmt.kind else {
                 continue;
