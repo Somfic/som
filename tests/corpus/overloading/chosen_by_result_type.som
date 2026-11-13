@@ -1,0 +1,10 @@
+// expect: exit 7
+
+fn make() -> i32 { 3 }
+fn make() -> bool { true }
+
+fn main() -> i32 {
+    let n: i32 = make();
+    let b: bool = make();
+    n + (4 if b else 0)
+}

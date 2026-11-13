@@ -1,7 +1,7 @@
 // expect: ok
 
-use std;
+use som;
 fn main() {
-    let p: * = std::malloc(100);
-    std::free(p);
+    let p: * = som::malloc(100);
+    som::free(p);
 }

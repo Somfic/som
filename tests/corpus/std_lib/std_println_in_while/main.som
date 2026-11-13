@@ -1,10 +1,10 @@
 // expect: exit 0
 
-use std;
+use som;
 fn main() -> i32 {
     let mut i = 0;
     while i < 3 {
-        std::println("loop");
+        som::println("loop");
         i = i + 1;
     }
     0

@@ -1,0 +1,14 @@
+// expect: exit 136
+
+use som;
+fn describe(x: i32) -> i32 { 1 }
+fn describe(x: bool) -> i32 { 2 }
+fn describe(x: i32, y: i32) -> i32 { 3 }
+fn pick<T>(x: T) -> i32 { 10 }
+fn pick(x: i32) -> i32 { 20 }
+fn main() -> i32 {
+    let p: *i32 = null();
+    let q = null();
+    let both = 100 if p.is_null() else 0;
+    describe(5) + describe(true) + describe(1, 2) + pick(1) + pick(true) + both
+}

@@ -1,6 +1,6 @@
 // expect: exit 18
 
-use std;
+use som;
 
 /// Counts how often `byte` appears in `text`.
 fn count(text: str, byte: u8) -> i32 {
@@ -15,7 +15,7 @@ fn count(text: str, byte: u8) -> i32 {
 
 fn main() -> i32 {
     let greeting = "hello, world";
-    let s = std::String::new("abc");
+    let s = som::String::new("abc");
     // 3 `l`s, 12 bytes, and 3 more.
     count(greeting, 108) + greeting.len() + s.len()
 }

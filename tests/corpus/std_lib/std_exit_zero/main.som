@@ -1,7 +1,7 @@
 // expect: exit 0
 
-use std;
+use som;
 fn main() -> i32 {
-    std::exit(0);
+    som::exit(0);
     42
 }

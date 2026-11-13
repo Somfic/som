@@ -1,9 +1,9 @@
 // expect: exit 5
 
-use std;
+use som;
 fn main() -> i32 {
     if true {
-        std::exit(5);
+        som::exit(5);
     }
     0
 }

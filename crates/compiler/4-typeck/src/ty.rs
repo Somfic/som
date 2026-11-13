@@ -23,6 +23,8 @@ pub enum Ty {
     Float(FloatTy),
     /// `*`, an untyped raw pointer.
     Pointer,
+    /// `*T`: a raw pointer to `T`s. Nothing checks what it points to.
+    Ptr(TypeId),
     Ref {
         mutable: bool,
         to: TypeId,
@@ -107,6 +109,7 @@ impl Ty {
     pub fn children(&self) -> Vec<TypeId> {
         match self {
             Ty::Ref { to: inner, .. }
+            | Ty::Ptr(inner)
             | Ty::Optional(inner)
             | Ty::Slice(inner)
             | Ty::Range(inner) => vec![*inner],
@@ -137,6 +140,7 @@ impl Ty {
                 to: f(*to),
             },
             Ty::Optional(inner) => Ty::Optional(f(*inner)),
+            Ty::Ptr(to) => Ty::Ptr(f(*to)),
             Ty::Slice(element) => Ty::Slice(f(*element)),
             Ty::Range(int) => Ty::Range(f(*int)),
             Ty::Array { element, len } => Ty::Array {
@@ -381,6 +385,7 @@ impl TypeTable {
             Ty::Int(int) => format!("{int:?}").to_lowercase(),
             Ty::Float(float) => format!("{float:?}").to_lowercase(),
             Ty::Pointer => "*".into(),
+            Ty::Ptr(to) => format!("*{}", self.display_with(*to, names, subst)),
             Ty::Ref { mutable, to } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.

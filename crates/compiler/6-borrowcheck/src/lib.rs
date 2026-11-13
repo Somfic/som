@@ -226,7 +226,8 @@ impl<'a> FnChecker<'a> {
             }
             Rvalue::Struct { fields: ops, .. }
             | Rvalue::Array { items: ops, .. }
-            | Rvalue::Call { args: ops, .. } => {
+            | Rvalue::Call { args: ops, .. }
+            | Rvalue::Intrinsic { args: ops, .. } => {
                 let mut flows = BTreeSet::new();
                 for op in ops {
                     flows.extend(self.operand(state, op, span));

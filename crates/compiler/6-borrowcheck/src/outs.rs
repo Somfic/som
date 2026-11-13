@@ -95,7 +95,8 @@ impl Checker<'_> {
                 }
                 Rvalue::Struct { fields: ops, .. }
                 | Rvalue::Array { items: ops, .. }
-                | Rvalue::Call { args: ops, .. } => {
+                | Rvalue::Call { args: ops, .. }
+                | Rvalue::Intrinsic { args: ops, .. } => {
                     ops.iter()
                         .for_each(|op| self.operand(assigned, op, &stmt.span));
                 }

@@ -13,7 +13,7 @@ use som_base::Source;
 use som_driver::Analysis;
 use som_lexer::{TokenKind, lex};
 use som_resolve::{DefId, DefKind};
-use som_typeck::{ArrayMethod, Ty};
+use som_typeck::{ArrayMethod, PointerMethod, Ty};
 
 use crate::convert;
 use crate::index::{AstIndex, NodeRef, items_in_file};
@@ -385,9 +385,9 @@ impl LanguageServer for SomLanguageServer {
 
         let target: Option<Span> = match node {
             NodeRef::Expr(id) => match &a.ast.exprs[id] {
-                Expr::Var(_) | Expr::Call { .. } | Expr::Construct { .. } => {
-                    a.names.expr(id).map(|d| a.names.def(d).span.clone())
-                }
+                Expr::Var(_) | Expr::Call { .. } | Expr::Construct { .. } => (a.typed)
+                    .callee(id, &a.names)
+                    .map(|d| a.names.def(d).span.clone()),
                 Expr::MethodCall { .. } => a.typed.method(id).map(|d| a.names.def(d).span.clone()),
                 Expr::Field { object, .. } => field_definition(a, *object, a.typed.field(id)),
                 _ => None,
@@ -769,6 +769,43 @@ impl LanguageServer for SomLanguageServer {
                     });
                 }
             } else if let Some(expr) = receiver
+                && let Ty::Ptr(element) = *a.typed.ty(a.typed.expr(expr))
+            {
+                // A typed pointer's built-in methods.
+                for (name, method) in PointerMethod::ALL {
+                    let (params, ret, doc) = pointer_method_doc(method);
+                    let element = ty(a, element);
+                    let fill = |s: &str| s.replace('T', &element);
+                    let signature = format!(
+                        "fn {name}({}){}",
+                        params
+                            .iter()
+                            .map(|(p, t)| format!("{p}: {}", fill(t)))
+                            .collect::<Vec<_>>()
+                            .join(", "),
+                        if ret.is_empty() {
+                            String::new()
+                        } else {
+                            format!(" -> {}", fill(ret))
+                        }
+                    );
+                    let snippet = (!insert.call_follows).then(|| {
+                        let args: Vec<String> = (params.iter().enumerate())
+                            .map(|(i, (p, _))| format!("${{{}:{p}}}", i + 1))
+                            .collect();
+                        format!("{name}({})$0", args.join(", "))
+                    });
+                    items.push(CompletionItem {
+                        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
+                        insert_text: snippet,
+                        label: name.to_string(),
+                        kind: Some(CompletionItemKind::METHOD),
+                        detail: Some(signature),
+                        documentation: markdown(Some(doc.to_string())),
+                        ..Default::default()
+                    });
+                }
+            } else if let Some(expr) = receiver
                 && let Some(owner) = struct_of(a, a.typed.expr(expr))
                 && let DefKind::Struct(s) = a.names.def(owner).kind
             {
@@ -1018,7 +1055,7 @@ impl LanguageServer for SomLanguageServer {
         // The parameter each argument is for: `init_window(width: 800, …)`.
         for (id, expr) in a.ast.exprs.iter() {
             let (def, args, skip) = match expr {
-                Expr::Call { args, .. } => (a.names.expr(id), args, 0),
+                Expr::Call { args, .. } => (a.typed.callee(id, &a.names), args, 0),
                 // A method's first parameter is the receiver, before the dot.
                 Expr::MethodCall { args, .. } => (a.typed.method(id), args, 1),
                 _ => continue,
@@ -1094,7 +1131,7 @@ impl LanguageServer for SomLanguageServer {
             }
             _ => {
                 let (def, skip_self) = match expr {
-                    Expr::Call { .. } => (a.names.expr(call), 0),
+                    Expr::Call { .. } => (a.typed.callee(call, &a.names), 0),
                     _ => (a.typed.method(call), 1),
                 };
                 let Some(DefKind::Func(func)) = def.map(|d| a.names.def(d).kind.clone()) else {
@@ -1200,7 +1237,7 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
         }
         NodeRef::Expr(id) => match &a.ast.exprs[id] {
             Expr::Var(_) | Expr::Out(_) | Expr::Call { .. } | Expr::Construct { .. } => {
-                match a.names.expr(id) {
+                match a.typed.callee(id, &a.names) {
                     Some(def) => (Some(describe(a, def)), doc_of(a, def)),
                     None => (None, None),
                 }
@@ -1524,6 +1561,57 @@ fn readable_fields(a: &Analysis, s: Id<Struct>) -> Vec<(&som_ast::Field, som_typ
     (a.typed.common_fields(s).iter())
         .map(|c| (payload[c.payload[0]], types[c.payload[0]]))
         .collect()
+}
+
+/// A typed pointer method's parameters (after the pointer), its result, and what it does;
+/// `T` is what the pointer points to.
+fn pointer_method_doc(
+    method: PointerMethod,
+) -> (
+    &'static [(&'static str, &'static str)],
+    &'static str,
+    &'static str,
+) {
+    match method {
+        PointerMethod::Resize => (
+            &[("count", "usize")],
+            "*T",
+            "Room for `count` values, keeping the ones there (as many as fit). The old pointer \
+             is no longer valid; a null one starts empty.",
+        ),
+        PointerMethod::Free => (&[], "", "Gives the memory back."),
+        PointerMethod::Read => (
+            &[("index", "usize")],
+            "T",
+            "The value at `index`, copied or moved out. Nothing checks it's there.",
+        ),
+        PointerMethod::Write => (
+            &[("index", "usize"), ("value", "T")],
+            "",
+            "Stores `value` at `index`, without reading or freeing what was there.",
+        ),
+        PointerMethod::At => (
+            &[("index", "usize")],
+            "&T",
+            "A reference to the value at `index`.",
+        ),
+        PointerMethod::AtMut => (
+            &[("index", "usize")],
+            "&mut T",
+            "A reference to the value at `index`, to change it.",
+        ),
+        PointerMethod::View => (
+            &[("len", "usize")],
+            "[T]",
+            "The `len` values starting here, as a slice.",
+        ),
+        PointerMethod::ViewMut => (
+            &[("len", "usize")],
+            "[mut T]",
+            "The `len` values starting here, as a slice that can change them.",
+        ),
+        PointerMethod::IsNull => (&[], "bool", "Whether it points to nothing."),
+    }
 }
 
 /// Markdown documentation for completion items and signature help.

@@ -1,12 +1,12 @@
 // expect: exit 0
 
-use std;
+use som;
 fn main() -> i32 {
-    let a: * = std::malloc(8);
-    let b: * = std::malloc(64);
-    let c: * = std::malloc(512);
-    std::free(a);
-    std::free(b);
-    std::free(c);
+    let a: * = som::malloc(8);
+    let b: * = som::malloc(64);
+    let c: * = som::malloc(512);
+    som::free(a);
+    som::free(b);
+    som::free(c);
     0
 }

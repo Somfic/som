@@ -1,0 +1,21 @@
+// expect: exit 6
+
+use som;
+
+struct Item { value: i32 }
+
+fn main() -> i32 {
+    let mut items: List<Item> = List::new();
+    items.push(Item { value: 1 });
+    items.push(Item { value: 2 });
+    items.push(Item { value: 3 });
+    let mut total = 0;
+    let mut next = items.pop();
+    while next != none {
+        total = total + (match next { none => 0, item => item.value });
+        next = items.pop();
+    }
+    let empty = 1 if items.is_empty() else 0;
+    items.free();
+    total * empty
+}

@@ -1,9 +1,9 @@
 // expect: exit 0
 
-use std;
+use som;
 fn alloc_and_free() -> i32 {
-    let p: * = std::malloc(128);
-    std::free(p);
+    let p: * = som::malloc(128);
+    som::free(p);
     0
 }
 fn main() -> i32 {

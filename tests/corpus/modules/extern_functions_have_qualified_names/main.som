@@ -1,4 +1,4 @@
 // expect: ok
 
-use std;
+use som;
 fn main() {}

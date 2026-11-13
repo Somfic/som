@@ -372,6 +372,9 @@ impl Use {
             // C doesn't fix the order of evaluation inside an expression, so a call is only
             // folded where nothing else is evaluated around it.
             Rvalue::Call { .. } => matches!(self, Use::Assign | Use::Branch),
+            Rvalue::Intrinsic { intrinsic, .. } if intrinsic.has_effect() => {
+                matches!(self, Use::Assign | Use::Branch)
+            }
             // A loop, not an expression.
             Rvalue::Repeat { operand, .. } if !is_zero(operand) => false,
             // C does arithmetic on 8- and 16-bit integers in `int`, so their results only fold
@@ -447,6 +450,9 @@ impl Usage {
                     }
                     Rvalue::Struct { fields, .. } => {
                         fields.iter().for_each(|f| u.operand(f, Use::Field))
+                    }
+                    Rvalue::Intrinsic { args, .. } => {
+                        args.iter().for_each(|a| u.operand(a, Use::Operand))
                     }
                     Rvalue::Call { func, args } => {
                         // C converts an argument to its parameter's type, but a variadic
@@ -582,6 +588,7 @@ impl<'a> Emitter<'a> {
             Ty::Float(FloatTy::F32) => "float".into(),
             Ty::Float(FloatTy::F64) => "double".into(),
             Ty::Pointer | Ty::Fn { .. } => "void*".into(),
+            Ty::Ptr(to) => format!("{}*", self.ty(*to)),
             // A slice is both: where its elements start, and how many there are.
             Ty::Ref { to, .. } if matches!(self.mir.types.get(*to), Ty::Slice(_) | Ty::Str) => {
                 self.ty(*to)
@@ -928,7 +935,12 @@ impl<'a> Emitter<'a> {
                 }
                 // Nothing reads it: a call is kept for what it does, anything else dropped.
                 if reads == 0 {
-                    if matches!(rvalue, Rvalue::Call { .. }) {
+                    let effect = match rvalue {
+                        Rvalue::Call { .. } => true,
+                        Rvalue::Intrinsic { intrinsic, .. } => intrinsic.has_effect(),
+                        _ => false,
+                    };
+                    if effect {
                         code.push(format!("    {};", value.text));
                     }
                     returned = None;
@@ -1118,6 +1130,39 @@ impl<'a> Emitter<'a> {
                     fields.join(", ")
                 };
                 Expr::atom(format!("({}){{{fields}}}", self.ty(*ty)))
+            }
+            Rvalue::Intrinsic {
+                intrinsic,
+                args,
+                ty,
+            } => {
+                let p = self.operand(f, &args[0]).operand();
+                let element = match self.mir.types.get(self.operand_ty(f, &args[0])) {
+                    Ty::Ptr(element) => self.ty(*element),
+                    _ => unreachable!("intrinsics work on typed pointers"),
+                };
+                let mut arg = |i: usize| self.operand(f, &args[i]).operand();
+                match intrinsic {
+                    Intrinsic::Resize => {
+                        let count = arg(1);
+                        Expr::compound(format!(
+                            "({})__builtin_realloc({p}, {count} * sizeof({element}))",
+                            self.ty(*ty)
+                        ))
+                    }
+                    Intrinsic::Free => Expr::atom(format!("(__builtin_free({p}), 0)")),
+                    Intrinsic::Read => Expr::atom(format!("{p}[{}]", arg(1))),
+                    Intrinsic::Write => {
+                        let (i, value) = (arg(1), arg(2));
+                        Expr::atom(format!("({p}[{i}] = {value}, 0)"))
+                    }
+                    Intrinsic::Offset => Expr::compound(format!("{p} + {}", arg(1))),
+                    Intrinsic::View => {
+                        let len = arg(1);
+                        Expr::atom(format!("({}){{{p}, {len}}}", self.ty(*ty)))
+                    }
+                    Intrinsic::IsNull => Expr::compound(format!("{p} == 0")),
+                }
             }
             Rvalue::Call { func, args } => {
                 let args: Vec<String> = args.iter().map(|a| self.operand(f, a).text).collect();
@@ -1330,7 +1375,8 @@ fn reads(rvalue: &Rvalue) -> Vec<Local> {
         } => [lhs, rhs].into_iter().filter_map(operand_local).collect(),
         Rvalue::Struct { fields: ops, .. }
         | Rvalue::Array { items: ops, .. }
-        | Rvalue::Call { args: ops, .. } => ops.iter().filter_map(operand_local).collect(),
+        | Rvalue::Call { args: ops, .. }
+        | Rvalue::Intrinsic { args: ops, .. } => ops.iter().filter_map(operand_local).collect(),
         Rvalue::Ref { .. } => Vec::new(),
     }
 }

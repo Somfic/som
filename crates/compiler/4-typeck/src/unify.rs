@@ -122,6 +122,54 @@ impl Unifier {
         }
     }
 
+    /// Whether `found` could be used where `expected` is, without changing anything: as it is,
+    /// a `T` as a `T?`, or a reference to an array as a slice. An unknown counts as fitting
+    /// whatever its kind allows. For choosing between functions with the same name.
+    pub fn could_fit(&self, expected: TypeId, found: TypeId) -> bool {
+        let (e, f) = (self.shallow(expected), self.shallow(found));
+        if e == f {
+            return true;
+        }
+        let (wanted, given) = (self.table.get(e), self.table.get(f));
+        match (wanted, given) {
+            (Ty::Error, _) | (_, Ty::Error) => true,
+            (Ty::Var(v), _) => self.kind_allows(self.vars[*v as usize].kind, f),
+            (_, Ty::Var(w)) => self.kind_allows(self.vars[*w as usize].kind, e),
+            (x, y) if x.is_arithmetic() || y.is_arithmetic() => true,
+            (Ty::Optional(inner), given) if !matches!(given, Ty::Optional(_)) => {
+                self.could_fit(*inner, f)
+            }
+            (Ty::Ref { to: slice, .. }, Ty::Ref { to: array, .. })
+                if matches!(self.table.get(self.shallow(*slice)), Ty::Slice(_))
+                    && matches!(self.table.get(self.shallow(*array)), Ty::Array { .. }) =>
+            {
+                true
+            }
+            (x, y) => match x.zip_children(y) {
+                Some(pairs) => pairs.into_iter().all(|(a, b)| self.could_fit(a, b)),
+                None => false,
+            },
+        }
+    }
+
+    /// Whether an unknown of `kind` could turn out to be `ty`.
+    fn kind_allows(&self, kind: VarKind, ty: TypeId) -> bool {
+        let ty = self.shallow(ty);
+        match (kind, self.table.get(ty)) {
+            (_, Ty::Var(_) | Ty::Error) | (VarKind::Any, _) => true,
+            // Wrapped in the optional where it's used.
+            (kind, Ty::Optional(inner)) => self.kind_allows(kind, *inner),
+            (VarKind::Int, t) => matches!(t, Ty::Int(_)),
+            (VarKind::Float, t) => matches!(t, Ty::Float(_)),
+            (VarKind::Text, t) => matches!(t, Ty::CStr) || ty == self.table.str_ref,
+            (VarKind::Collection { .. }, Ty::Array { .. }) => true,
+            (VarKind::Collection { .. }, Ty::Ref { to, .. }) => {
+                matches!(self.table.get(self.shallow(*to)), Ty::Slice(_))
+            }
+            (VarKind::Collection { .. }, _) => false,
+        }
+    }
+
     /// `id` with every bound variable in it replaced by what it's bound to.
     fn resolved(&mut self, id: TypeId) -> TypeId {
         let id = self.shallow(id);
@@ -332,6 +380,7 @@ impl Unifier {
                     )
                 }
             },
+            Ty::Ptr(to) => format!("*{}", self.display(*to, names)),
             Ty::Ref { mutable, to } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.

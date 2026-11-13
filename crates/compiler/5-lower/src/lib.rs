@@ -15,7 +15,7 @@ mod matching;
 use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
-use som_typeck::{ArrayMethod, Loop, Receiver, Typed, Value};
+use som_typeck::{ArrayMethod, Loop, PointerMethod, Receiver, Typed, Value};
 use std::collections::{HashMap, HashSet};
 
 pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
@@ -126,8 +126,28 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Makes the copies of the generic structs `ty` uses, if they aren't made yet: naming a
+    /// type, `List<List<i32>>`, needs them.
+    fn make_structs_in(&mut self, ty: TypeId) {
+        let t = self.mir.types.get(ty).clone();
+        for child in t.children() {
+            self.make_structs_in(child);
+        }
+        if let Ty::Struct(def, args) = t
+            && !args.is_empty()
+            && concrete(&self.mir.types, ty)
+            && !self.mir.has_struct(def, &args)
+            && let DefKind::Struct(s) = self.names.def(def).kind
+        {
+            self.struct_instance(s, args);
+        }
+    }
+
     /// Adds struct `s` with type arguments `args`: its fields' types with the arguments filled in.
     fn struct_instance(&mut self, s: Id<Struct>, args: Vec<TypeId>) {
+        for &arg in &args {
+            self.make_structs_in(arg);
+        }
         let ast_struct = &self.ast.structs[s];
         let def = self.names.strukt(s);
         let subst = Subst::new(self.names.struct_params(s), &args);
@@ -226,6 +246,9 @@ impl<'a> Lowerer<'a> {
         }
         name = self.qualified(def, &name);
         if !type_args.is_empty() {
+            for &arg in type_args {
+                self.make_structs_in(arg);
+            }
             let args: Vec<String> = type_args.iter().map(|&t| self.mir.display_ty(t)).collect();
             name = format!("{name}<{}>", args.join(", "));
         }
@@ -859,6 +882,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 Loop::Elements { .. } => {
                     let iterable_ty = b.expr_ty(iterable);
                     let mut place = b.place(iterable);
+                    // A temporary holding what's gone through, like a call's result, ends with
+                    // the loop, and so do the borrows it holds.
+                    if place.projection.is_empty()
+                        && place.local != RETURN
+                        && b.locals[place.local].name.is_none()
+                    {
+                        b.scopes.last_mut().expect("in scope").push(place.local);
+                    }
                     let mut viewed_ty = iterable_ty;
                     if let Ty::Ref { to, .. } = *b.l.mir.types.get(iterable_ty) {
                         place = place.project(Projection::Deref);
@@ -1071,10 +1102,9 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::Hole => unreachable!("programs with parse errors are never lowered"),
 
             Expr::Var(_) => {
-                let def = self
-                    .l
-                    .names
-                    .expr(expr)
+                // Of functions sharing a name, the one the type checker picked.
+                let def = (self.l.typed)
+                    .callee(expr, self.l.names)
                     .expect("checked programs are fully resolved");
                 match self.l.names.def(def).kind {
                     DefKind::Func(func) => {
@@ -1349,10 +1379,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }
             Expr::Call { args, .. } => {
-                let def = self
-                    .l
-                    .names
-                    .expr(expr)
+                let def = (self.l.typed)
+                    .callee(expr, self.l.names)
                     .expect("checked programs are fully resolved");
                 match self.l.names.def(def).kind {
                     DefKind::Func(func) => self.call(expr, func, None, args),
@@ -1398,6 +1426,29 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 let len = self.l.typed.count(expr);
                 let len = self.value_of(len);
                 self.collection(expr, len, |ty| Rvalue::Repeat { ty, operand })
+            }
+            Expr::MethodCall { receiver, args, .. }
+                if let Some(method) = self.l.typed.pointer_method(expr) =>
+            {
+                let intrinsic = match method {
+                    PointerMethod::Resize => Intrinsic::Resize,
+                    PointerMethod::Free => Intrinsic::Free,
+                    PointerMethod::Read => Intrinsic::Read,
+                    PointerMethod::Write => Intrinsic::Write,
+                    PointerMethod::At | PointerMethod::AtMut => Intrinsic::Offset,
+                    PointerMethod::View | PointerMethod::ViewMut => Intrinsic::View,
+                    PointerMethod::IsNull => Intrinsic::IsNull,
+                };
+                let args = std::iter::once(*receiver)
+                    .chain(args.iter().copied())
+                    .map(|a| self.operand(a))
+                    .collect();
+                let ty = self.expr_ty(expr);
+                Rvalue::Intrinsic {
+                    intrinsic,
+                    args,
+                    ty,
+                }
             }
             Expr::MethodCall { receiver, args, .. }
                 if let Some(method) = self.l.typed.array_method(expr) =>

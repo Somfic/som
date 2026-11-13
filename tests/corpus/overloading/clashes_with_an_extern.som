@@ -1,0 +1,7 @@
+// expect: error DuplicateOverload
+
+extern { fn abs(n: i32) -> i32; }
+
+fn abs(n: i32) -> i32 { n }
+
+fn main() -> i32 { abs(1) }

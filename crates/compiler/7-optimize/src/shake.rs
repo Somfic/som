@@ -67,9 +67,9 @@ fn referenced(body: &Body) -> Vec<FuncId> {
                     len: rhs,
                     ..
                 } => vec![lhs, rhs],
-                Rvalue::Struct { fields: ops, .. } | Rvalue::Array { items: ops, .. } => {
-                    ops.iter().collect()
-                }
+                Rvalue::Struct { fields: ops, .. }
+                | Rvalue::Array { items: ops, .. }
+                | Rvalue::Intrinsic { args: ops, .. } => ops.iter().collect(),
                 Rvalue::Call { func, args } => {
                     found.push(*func);
                     args.iter().collect()

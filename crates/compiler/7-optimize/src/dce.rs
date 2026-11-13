@@ -234,7 +234,10 @@ fn reads(dest: &Place, rvalue: &Rvalue, mut read: impl FnMut(Local)) {
         }
         Rvalue::Struct { fields: ops, .. }
         | Rvalue::Array { items: ops, .. }
-        | Rvalue::Call { args: ops, .. } => ops.iter().for_each(|op| read_operand(op, &mut read)),
+        | Rvalue::Call { args: ops, .. }
+        | Rvalue::Intrinsic { args: ops, .. } => {
+            ops.iter().for_each(|op| read_operand(op, &mut read))
+        }
     }
 }
 
@@ -252,6 +255,7 @@ fn has_effect(dest: &Place, rvalue: &Rvalue) -> bool {
     }
     match rvalue {
         Rvalue::Call { .. } => true,
+        Rvalue::Intrinsic { intrinsic, .. } => intrinsic.has_effect(),
         // Dividing by zero, or `MIN / -1`, traps; leave that for run time, as folding does.
         // Only a constant divisor shows it can't.
         Rvalue::Binary {

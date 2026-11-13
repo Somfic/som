@@ -474,7 +474,7 @@ fn importable_lists_libraries_with_headers_and_bundled_modules() {
             .any(|(l, path)| l == "demo" && path.is_file()),
         "{found:?}"
     );
-    assert!(found.modules.contains(&"std".to_string()));
+    assert!(found.modules.contains(&"som".to_string()));
 
     // Without its header, a library can't be imported with `extern "demo";`.
     std::fs::remove_file(dir.path().join("demo.h")).unwrap();

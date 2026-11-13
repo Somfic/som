@@ -1,0 +1,15 @@
+// expect: exit 12
+
+use som;
+
+fn main() -> i32 {
+    let mut p: *i32 = null() as *i32;
+    let was_null = p.is_null();
+    p = p.resize(3);
+    p.write(0, 3);
+    p.write(1, 4);
+    p.write(2, 5);
+    let sum = p.read(0) + p.read(1) + *p.at(2);
+    p.free();
+    sum
+}

@@ -1,0 +1,11 @@
+// expect: exit 6
+
+/// A loop over what a call returns borrows it only while the loop runs.
+fn view(xs: &[i32; 3]) -> [i32] { xs }
+fn main() -> i32 {
+    let mut a = [1, 2, 3];
+    let mut t = 0;
+    for n in view(&a) { t = t + n; }
+    a.set(0, 5);
+    t
+}

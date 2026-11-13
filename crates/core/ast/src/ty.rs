@@ -14,6 +14,8 @@ pub enum TypeExpr {
     },
     /// `*`, an untyped raw pointer
     Pointer,
+    /// `*T`: a raw pointer to `T`s, which som doesn't check: it's what `List` is built on.
+    PointerTo(Id<TypeExpr>),
     /// `&T`, `&mut T`, `&'a T`
     Reference {
         mutable: bool,

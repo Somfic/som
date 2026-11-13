@@ -1,11 +1,11 @@
 // expect: exit 0
 
-use std;
+use som;
 fn main() -> i32 {
-    std::println("Starting...");
-    let p: * = std::malloc(256);
-    std::println("Allocated memory");
-    std::free(p);
-    std::println("Freed memory");
+    som::println("Starting...");
+    let p: * = som::malloc(256);
+    som::println("Allocated memory");
+    som::free(p);
+    som::println("Freed memory");
     0
 }

@@ -1,0 +1,20 @@
+// expect: exit 7
+
+use som;
+
+fn main() -> i32 {
+    let mut rows: List<List<i32>> = List::new();
+    for r in 0..4 {
+        let mut row: List<i32> = List::new();
+        for c in 0..r { row.push(c); }
+        rows.push(row);
+    }
+    let mut total = 0;
+    for row in rows.as_slice() {
+        total = total + row.len() as i32;
+    }
+    let mut extra = 0;
+    let last = rows.pop();
+    if last { extra = last.len() as i32; last.free(); }
+    total + extra - 6 + 4
+}

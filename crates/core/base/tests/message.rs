@@ -39,8 +39,8 @@ fn strings_convert_to_plain_text() {
         "`--cc``use std;`"
     );
     assert_eq!(
-        som_base::message::module("std"),
-        Part::Name(Kind::Module, "std".into())
+        som_base::message::module("som"),
+        Part::Name(Kind::Module, "som".into())
     );
 }
 

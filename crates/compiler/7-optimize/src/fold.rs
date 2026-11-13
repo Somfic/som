@@ -316,6 +316,7 @@ fn operands_mut(rvalue: &mut Rvalue) -> Vec<&mut Operand> {
         } => vec![lhs, rhs],
         Rvalue::Struct { fields: ops, .. }
         | Rvalue::Array { items: ops, .. }
-        | Rvalue::Call { args: ops, .. } => ops.iter_mut().collect(),
+        | Rvalue::Call { args: ops, .. }
+        | Rvalue::Intrinsic { args: ops, .. } => ops.iter_mut().collect(),
     }
 }

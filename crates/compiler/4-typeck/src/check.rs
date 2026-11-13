@@ -5,7 +5,9 @@ use std::collections::{HashMap, HashSet};
 use crate::error::TypeError;
 use crate::ty::{IntTy, Ty, TypeId, Value};
 use crate::unify::{Unifier, VarKind};
-use crate::{ArrayMethod, CommonField, Loop, PatternInfo, Receiver, Signature, Typed};
+use crate::{
+    ArrayMethod, CommonField, Loop, PatternInfo, PointerMethod, Receiver, Signature, Typed,
+};
 use som_base::Message;
 use som_base::message;
 
@@ -36,6 +38,7 @@ pub(crate) struct Checker<'a> {
     /// Reads of narrowed places: they read the value, not the optional.
     narrowed_reads: HashSet<Id<Expr>>,
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
+    pointer_methods: HashMap<Id<Expr>, PointerMethod>,
     sliced: HashMap<Id<Expr>, TypeId>,
     for_loops: HashMap<Id<Stmt>, Loop>,
     /// The function being checked: its return type, and where that's written.
@@ -52,6 +55,13 @@ pub(crate) struct Checker<'a> {
     diverging: HashSet<Id<Expr>>,
     /// The next expression checked is a statement's: its value isn't used.
     discarding: bool,
+    /// The type the next expression inferred is expected to have, if `expect` knows it.
+    expected: Option<TypeId>,
+    /// The type the expression being inferred is expected to have: for a call of a function
+    /// that shares its name with others, it helps decide which.
+    expected_here: Option<TypeId>,
+    /// Calls and function values → which of the functions sharing their name they name.
+    callees: HashMap<Id<Expr>, DefId>,
 }
 
 impl<'a> Checker<'a> {
@@ -75,6 +85,7 @@ impl<'a> Checker<'a> {
             next_narrowing: 0,
             narrowed_reads: HashSet::new(),
             array_methods: HashMap::new(),
+            pointer_methods: HashMap::new(),
             sliced: HashMap::new(),
             for_loops: HashMap::new(),
             returns: None,
@@ -86,6 +97,9 @@ impl<'a> Checker<'a> {
             common: Vec::new(),
             diverging: HashSet::new(),
             discarding: false,
+            expected: None,
+            expected_here: None,
+            callees: HashMap::new(),
         }
     }
 
@@ -153,6 +167,8 @@ impl<'a> Checker<'a> {
                 self.locals.insert(def, self.sigs[id.id].params[i]);
             }
         }
+
+        self.check_overloads();
 
         for (id, func) in ast.funcs.iter() {
             if let Some(body) = func.body {
@@ -318,10 +334,12 @@ impl<'a> Checker<'a> {
             wrapped: self.wrapped,
             narrowed_reads: self.narrowed_reads,
             array_methods: self.array_methods,
+            pointer_methods: self.pointer_methods,
             sliced,
             loops: self.for_loops,
             patterns: self.patterns,
             receivers: self.receivers,
+            callees: self.callees,
             common: self.common,
             diverging: self.diverging,
         };
@@ -338,6 +356,7 @@ impl<'a> Checker<'a> {
             TypeExpr::Primitive(Primitive::Str) => return self.u.table.str_ref,
             TypeExpr::Primitive(p) => Ty::from_primitive(*p),
             TypeExpr::Pointer => Ty::Pointer,
+            TypeExpr::PointerTo(to) => Ty::Ptr(self.lower(*to)),
             TypeExpr::Named { args, .. } => match self
                 .names
                 .ty(id)
@@ -1067,6 +1086,7 @@ impl<'a> Checker<'a> {
 
     /// Infers the type of `expr` and requires it to be `expected`.
     fn expect(&mut self, expr: Id<Expr>, expected: TypeId, expected_from: Option<Span>) {
+        self.expected = Some(expected);
         let found = self.infer(expr);
         if self.coerce(expr, expected, found) {
             return;
@@ -1195,6 +1215,7 @@ impl<'a> Checker<'a> {
 
     fn infer(&mut self, id: Id<Expr>) -> TypeId {
         let in_place = std::mem::replace(&mut self.in_place, false);
+        self.expected_here = self.expected.take();
         let mut ty = self.infer_inner(id, in_place);
         if let Some(inner) = self.narrowed_type(id) {
             self.narrowed_reads.insert(id);
@@ -1287,7 +1308,12 @@ impl<'a> Checker<'a> {
                 // An enum whose variants hold nothing converts to the number of its variant.
                 let plain_enum = self.is_plain_enum(self.u.get(self.u.shallow(found)))
                     && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_));
-                if !plain_enum && (!number(self, found) || !number(self, target)) {
+                // A raw pointer to another: `null() as *T`.
+                let pointer = |c: &Self, ty: TypeId| {
+                    matches!(c.u.get(c.u.shallow(ty)), Ty::Pointer | Ty::Ptr(_))
+                };
+                let pointers = pointer(self, found) && pointer(self, target);
+                if !plain_enum && !pointers && (!number(self, found) || !number(self, target)) {
                     self.errors.push(TypeError::InvalidCast {
                         from: self.describe(found),
                         to: self.describe(target),
@@ -1375,8 +1401,10 @@ impl<'a> Checker<'a> {
                 }
                 // `N` in `struct Buffer<N: usize>`: the number it is in each copy.
                 Some((def, _)) if let Some(&ty) = self.value_params.get(&def) => ty,
-                Some((_, DefKind::Func(func))) => {
-                    let (sig, args) = self.instantiate(*func);
+                Some((def, DefKind::Func(func))) => {
+                    let expected = self.expected_here.take();
+                    let func = self.pick_function(id, def, expected).unwrap_or(*func);
+                    let (sig, args) = self.instantiate(func);
                     if !args.is_empty() {
                         self.type_args.insert(id, args);
                     }
@@ -1529,6 +1557,12 @@ impl<'a> Checker<'a> {
             }
 
             Expr::Call { callee, args } => {
+                let expected = self.expected_here.take();
+                if let Some(def) = self.names.expr(id)
+                    && self.names.overloads(def).len() > 1
+                {
+                    return self.overloaded_call(id, callee, def, args, expected);
+                }
                 match self.names.expr(id).map(|def| &self.names.def(def).kind) {
                     Some(DefKind::Func(func)) => {
                         let func = *func;
@@ -1591,6 +1625,9 @@ impl<'a> Checker<'a> {
             } => {
                 let receiver_ty = self.infer(*receiver);
                 if let Some(ty) = self.array_method(id, *receiver, receiver_ty, method, args) {
+                    return ty;
+                }
+                if let Some(ty) = self.pointer_method(id, receiver_ty, method, args) {
                     return ty;
                 }
                 let Some((owner, _)) = self.struct_of(receiver_ty, *receiver) else {
@@ -2016,6 +2053,255 @@ impl<'a> Checker<'a> {
                     to: bytes,
                 })
             }
+        })
+    }
+
+    /// A call `callee(args)` naming function `first` and others with its name: the one whose
+    /// parameters fit the arguments and whose result fits `expected`, where that's known; of
+    /// several, one that isn't generic. Returns the call's type.
+    fn overloaded_call(
+        &mut self,
+        call: Id<Expr>,
+        callee: &som_ast::Path,
+        first: DefId,
+        args: &[Id<Expr>],
+        expected: Option<TypeId>,
+    ) -> TypeId {
+        // The arguments decide which, so they're worked out first, once.
+        let found: Vec<TypeId> = args.iter().map(|&a| self.infer(a)).collect();
+        let mut fitting = Vec::new();
+        for def in self.names.overloads(first) {
+            let DefKind::Func(func) = self.names.def(def).kind else {
+                continue;
+            };
+            let (sig, type_args) = self.instantiate(func);
+            let variadic = self.ast.funcs[func].variadic;
+            let count_ok = match variadic {
+                true => found.len() >= sig.params.len(),
+                false => found.len() == sig.params.len(),
+            };
+            let fits = count_ok
+                && sig
+                    .params
+                    .iter()
+                    .zip(&found)
+                    .all(|(&p, &a)| self.u.could_fit(p, a))
+                && expected.is_none_or(|e| self.u.could_fit(e, sig.ret));
+            if fits {
+                fitting.push((def, func, sig, type_args));
+            }
+        }
+        // Of several, one that isn't generic fits most closely.
+        if fitting.len() > 1 {
+            let plain: Vec<_> = (fitting.iter())
+                .filter(|(.., type_args)| type_args.is_empty())
+                .cloned()
+                .collect();
+            if plain.len() == 1 {
+                fitting = plain;
+            }
+        }
+        let candidates = |c: &Self, defs: Vec<DefId>| -> Vec<String> {
+            (defs.into_iter())
+                .filter_map(|d| match c.names.def(d).kind {
+                    DefKind::Func(f) => Some(c.signature_text(f)),
+                    _ => None,
+                })
+                .collect()
+        };
+        if fitting.len() != 1 {
+            let error = match fitting.len() {
+                0 => TypeError::NoMatchingOverload {
+                    name: callee.to_string(),
+                    args: found.iter().map(|&t| self.describe(t)).collect(),
+                    candidates: candidates(self, self.names.overloads(first)),
+                    span: self.span(call),
+                },
+                _ => TypeError::AmbiguousCall {
+                    name: callee.to_string(),
+                    candidates: candidates(self, fitting.iter().map(|f| f.0).collect()),
+                    span: self.span(call),
+                },
+            };
+            self.errors.push(error);
+            return self.u.table.error;
+        }
+        let (def, func, sig, type_args) = fitting.pop().expect("exactly one");
+        self.callees.insert(call, def);
+        if !type_args.is_empty() {
+            self.type_args.insert(call, type_args);
+        }
+        for (i, ((&arg, &param), &ty)) in args.iter().zip(&sig.params).zip(&found).enumerate() {
+            let declared = &self.ast.funcs[func].params[i];
+            if declared.out && !matches!(self.ast.exprs[arg], Expr::Out(_)) {
+                self.errors.push(TypeError::NeedsOut {
+                    param: declared.name.name.to_string(),
+                    span: self.span(arg),
+                    declared_at: declared.name.span.clone(),
+                });
+                continue;
+            }
+            if !self.coerce(arg, param, ty) {
+                let from = declared.ty.map(|t| self.ast.types.span(t).clone());
+                self.mismatch(param, ty, self.span(arg), from);
+            }
+        }
+        sig.ret
+    }
+
+    /// For a function value naming `first` and others with its name: the one whose type fits
+    /// `expected`, or else the one that isn't generic. `None` if `first` is alone.
+    fn pick_function(
+        &mut self,
+        expr: Id<Expr>,
+        first: DefId,
+        expected: Option<TypeId>,
+    ) -> Option<Id<Func>> {
+        let all = self.names.overloads(first);
+        if all.len() < 2 {
+            return None;
+        }
+        let funcs: Vec<(DefId, Id<Func>)> = (all.into_iter())
+            .filter_map(|d| match self.names.def(d).kind {
+                DefKind::Func(f) => Some((d, f)),
+                _ => None,
+            })
+            .collect();
+        let fits = |c: &mut Self, f: Id<Func>| {
+            let (sig, _) = c.instantiate(f);
+            let ty = c.u.intern(Ty::Fn {
+                params: sig.params,
+                ret: sig.ret,
+            });
+            expected.is_none_or(|e| c.u.could_fit(e, ty))
+        };
+        let mut chosen = None;
+        for &(def, f) in &funcs {
+            if fits(self, f) && (chosen.is_none() || self.names.type_params(f).is_empty()) {
+                chosen = Some((def, f));
+            }
+        }
+        let (def, f) = chosen.unwrap_or(funcs[0]);
+        self.callees.insert(expr, def);
+        Some(f)
+    }
+
+    /// Reports functions sharing a name that can't be told apart: neither generic, and taking
+    /// and giving the same types.
+    fn check_overloads(&mut self) {
+        let firsts: Vec<DefId> = (self.ast.funcs.iter())
+            .map(|(id, _)| self.names.func(id))
+            .filter(|&def| self.names.overloads(def).len() > 1)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        for first in firsts {
+            let funcs: Vec<(Id<Func>, Span)> = (self.names.overloads(first).into_iter())
+                .filter_map(|d| match self.names.def(d).kind {
+                    DefKind::Func(f) => Some((f, self.names.def(d).span.clone())),
+                    _ => None,
+                })
+                .collect();
+            for (i, (f, span)) in funcs.iter().enumerate() {
+                let same = funcs[..i].iter().find(|(g, _)| {
+                    self.names.type_params(*f).is_empty()
+                        && self.names.type_params(*g).is_empty()
+                        && self.sigs[f.id].params == self.sigs[g.id].params
+                        && self.sigs[f.id].ret == self.sigs[g.id].ret
+                });
+                if let Some((_, previous)) = same {
+                    self.errors.push(TypeError::DuplicateOverload {
+                        name: self.ast.funcs[*f].name.name.to_string(),
+                        span: span.clone(),
+                        previous: previous.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    /// `name<T>(a: i32, b: T) -> T`, for messages.
+    fn signature_text(&self, func: Id<Func>) -> String {
+        let f = &self.ast.funcs[func];
+        let generics: Vec<&str> = f.generics.iter().map(|g| &*g.name.name).collect();
+        let generics = match generics.is_empty() {
+            true => String::new(),
+            false => format!("<{}>", generics.join(", ")),
+        };
+        let params: Vec<String> = (f.params.iter().zip(&self.sigs[func.id].params))
+            .map(|(p, &t)| format!("{}: {}", p.name, self.u.display(t, self.names)))
+            .collect();
+        let ret = self.sigs[func.id].ret;
+        let ret = match self.u.get(self.u.shallow(ret)) {
+            Ty::Unit => String::new(),
+            _ => format!(" -> {}", self.u.display(ret, self.names)),
+        };
+        format!("{}{generics}({}){ret}", f.name, params.join(", "))
+    }
+
+    /// Checks a call of one of the methods every typed pointer has, if the receiver is one,
+    /// returning its type.
+    fn pointer_method(
+        &mut self,
+        call: Id<Expr>,
+        receiver_ty: TypeId,
+        method: &som_ast::Ident,
+        args: &[Id<Expr>],
+    ) -> Option<TypeId> {
+        let Ty::Ptr(element) = *self.u.get(self.u.shallow(receiver_ty)) else {
+            return None;
+        };
+        let (error, unit, bool) = (self.u.table.error, self.u.table.unit, self.u.table.bool);
+        let Some(kind) = PointerMethod::from_name(&method.name) else {
+            self.errors.push(TypeError::UnknownMethod {
+                ty: self.describe(receiver_ty),
+                method: method.name.to_string(),
+                span: method.span.clone(),
+            });
+            args.iter().for_each(|&a| {
+                self.infer(a);
+            });
+            return Some(error);
+        };
+        if args.len() != kind.arity() {
+            self.errors.push(TypeError::WrongArgCount {
+                name: method.name.to_string(),
+                expected: kind.arity(),
+                at_least: false,
+                found: args.len(),
+                span: self.span(call),
+            });
+            args.iter().for_each(|&a| {
+                self.infer(a);
+            });
+            return Some(error);
+        }
+        self.pointer_methods.insert(call, kind);
+        // The first argument is a count or an index.
+        let usize = self.u.table.usize;
+        if let Some(&first) = args.first() {
+            self.expect(first, usize, None);
+        }
+        Some(match kind {
+            PointerMethod::Resize => receiver_ty,
+            PointerMethod::Free => unit,
+            PointerMethod::Read => element,
+            PointerMethod::Write => {
+                self.expect(args[1], element, None);
+                unit
+            }
+            PointerMethod::At | PointerMethod::AtMut => self.u.intern(Ty::Ref {
+                mutable: kind == PointerMethod::AtMut,
+                to: element,
+            }),
+            PointerMethod::View | PointerMethod::ViewMut => {
+                let slice = self.u.intern(Ty::Slice(element));
+                self.u.intern(Ty::Ref {
+                    mutable: kind == PointerMethod::ViewMut,
+                    to: slice,
+                })
+            }
+            PointerMethod::IsNull => bool,
         })
     }
 

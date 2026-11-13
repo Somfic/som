@@ -164,9 +164,38 @@ impl Parser<'_> {
                 TypeExpr::Fn { params, returns }
             }
 
+            // `*`, or `*T` when a type follows.
             TokenKind::Star => {
                 self.advance();
-                TypeExpr::Pointer
+                let pointee = matches!(
+                    self.peek(),
+                    TokenKind::Ident
+                        | TokenKind::Star
+                        | TokenKind::Ampersand
+                        | TokenKind::OpenBracket
+                        | TokenKind::I8
+                        | TokenKind::I16
+                        | TokenKind::I32
+                        | TokenKind::I64
+                        | TokenKind::I128
+                        | TokenKind::ISize
+                        | TokenKind::U8
+                        | TokenKind::U16
+                        | TokenKind::U32
+                        | TokenKind::U64
+                        | TokenKind::U128
+                        | TokenKind::USize
+                        | TokenKind::F32
+                        | TokenKind::F64
+                        | TokenKind::Bool
+                        | TokenKind::Char
+                        | TokenKind::Str
+                        | TokenKind::CStr
+                );
+                match pointee {
+                    true => TypeExpr::PointerTo(self.parse_type_without_optional()?),
+                    false => TypeExpr::Pointer,
+                }
             }
 
             // `[T; N]`, `[T]` or `[mut T]`

@@ -70,6 +70,9 @@ pub struct Names {
     methods: HashMap<(DefId, Box<str>), DefId>,
     /// Each enum's variants, in order.
     variants: Vec<Vec<DefId>>,
+    /// Functions sharing a name in a module: the first one's definition → all of them, in
+    /// order. A call names the first; the type checker picks the one that fits.
+    overloads: HashMap<DefId, Vec<DefId>>,
     /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
     /// name (`Circle(r)`, `Empty`) has none: the type matched decides which enum's it is.
     patterns: Vec<Option<DefId>>,
@@ -90,8 +93,17 @@ impl Names {
             structs: vec![None; ast.structs.len()],
             methods: HashMap::new(),
             variants: vec![Vec::new(); ast.structs.len()],
+            overloads: HashMap::new(),
             patterns: vec![None; ast.patterns.len()],
         }
+    }
+
+    /// Adds `def` to the functions named like `first`.
+    pub(crate) fn add_overload(&mut self, first: DefId, def: DefId) {
+        self.overloads
+            .entry(first)
+            .or_insert_with(|| vec![first])
+            .push(def);
     }
 
     pub(crate) fn push_variant(&mut self, s: Id<Struct>, def: DefId) {
@@ -226,6 +238,15 @@ impl Names {
             .collect();
         methods.sort();
         methods
+    }
+
+    /// Every function named like function `def` in its module, `def` first; just `def` if it's
+    /// the only one.
+    pub fn overloads(&self, def: DefId) -> Vec<DefId> {
+        match self.overloads.get(&def) {
+            Some(all) => all.clone(),
+            None => vec![def],
+        }
     }
 
     /// An enum's variants, in order. Empty for a struct.

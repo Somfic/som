@@ -6,11 +6,13 @@ extern {
     fn memset(s: *, c: i32, n: i32) -> *;
 }
 
-/// A pointer to nothing: C's `NULL`.
 fn null() -> * {
     leave(out p);
     p
 }
 
-/// Leaves `p` as it is. An `out` variable starts zeroed, so this one stays null.
+fn null<T>() -> *T {
+    null() as *T
+}
+
 fn leave(p: &mut *) {}

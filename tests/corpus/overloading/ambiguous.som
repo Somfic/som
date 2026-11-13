@@ -1,0 +1,6 @@
+// expect: error AmbiguousCall
+
+fn h<T>(x: T) -> i32 { 1 }
+fn h<U>(x: U) -> i32 { 2 }
+
+fn main() -> i32 { h(1) }

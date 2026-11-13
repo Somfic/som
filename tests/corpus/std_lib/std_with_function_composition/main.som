@@ -1,15 +1,15 @@
 // expect: exit 0
 
-use std;
+use som;
 fn allocate(size: i32) -> * {
-    std::malloc(size)
+    som::malloc(size)
 }
 fn deallocate(p: *) {
-    std::free(p);
+    som::free(p);
 }
 fn main() -> i32 {
     let p: * = allocate(256);
-    std::println("allocated via helper");
+    som::println("allocated via helper");
     deallocate(p);
     0
 }

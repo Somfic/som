@@ -1,6 +1,6 @@
 // expect: ok
 
-use std;
+use som;
 fn main() {
-    std::exit(0);
+    som::exit(0);
 }

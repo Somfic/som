@@ -1,0 +1,9 @@
+// expect: error UnknownMethod
+
+use som;
+
+fn main() -> i32 {
+    let p: *i32 = null() as *i32;
+    p.push(1);
+    0
+}

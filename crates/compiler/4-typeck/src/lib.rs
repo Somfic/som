@@ -47,6 +47,9 @@ pub struct Typed {
     patterns: HashMap<Id<Pattern>, PatternInfo>,
     /// Method receivers passed other than as they are: see `Receiver`.
     receivers: HashMap<Id<Expr>, Receiver>,
+    /// Calls and function values naming a function that shares its name with others → the
+    /// one they name.
+    callees: HashMap<Id<Expr>, DefId>,
     /// `match` arms that never finish, like `{ return 0; }`: they have no value to give.
     diverging: HashSet<Id<Expr>>,
     /// `[value; N]` → `N`, as an array type's length.
@@ -70,6 +73,8 @@ pub struct Typed {
     loops: HashMap<Id<Stmt>, Loop>,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
+    /// Method calls on typed pointers → the built-in method they call.
+    pointer_methods: HashMap<Id<Expr>, PointerMethod>,
 }
 
 /// A field every variant of an enum has, by the same name and of the same type: `base` in
@@ -138,6 +143,58 @@ pub enum ArrayMethod {
     Slice,
     /// `a.slice_mut(r)`: the same, as a `[mut T]`.
     SliceMut,
+}
+
+/// A method every typed pointer `*T` has: raw memory operations that nothing checks, for
+/// building types like `List` in som.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerMethod {
+    /// `p.resize(count)`: room for `count` `T`s, holding what `p` held (as many as fit); `p`
+    /// itself is no longer valid. A null `p` starts empty.
+    Resize,
+    /// `p.free()`: gives the memory back.
+    Free,
+    /// `p.read(i)`: the `T` at `i`, copied or moved out.
+    Read,
+    /// `p.write(i, value)`: stores `value` at `i`, without reading or freeing what was there.
+    Write,
+    /// `p.at(i)`: a reference to the `T` at `i`.
+    At,
+    /// `p.at_mut(i)`: a `&mut` reference to the `T` at `i`.
+    AtMut,
+    /// `p.view(len)`: the `len` `T`s starting at `p`, as a `[T]`.
+    View,
+    /// `p.view_mut(len)`: as a `[mut T]`.
+    ViewMut,
+    /// `p.is_null()`
+    IsNull,
+}
+
+impl PointerMethod {
+    pub const ALL: [(&str, PointerMethod); 9] = [
+        ("resize", PointerMethod::Resize),
+        ("free", PointerMethod::Free),
+        ("read", PointerMethod::Read),
+        ("write", PointerMethod::Write),
+        ("at", PointerMethod::At),
+        ("at_mut", PointerMethod::AtMut),
+        ("view", PointerMethod::View),
+        ("view_mut", PointerMethod::ViewMut),
+        ("is_null", PointerMethod::IsNull),
+    ];
+
+    pub fn from_name(name: &str) -> Option<PointerMethod> {
+        Self::ALL.iter().find(|(n, _)| *n == name).map(|&(_, m)| m)
+    }
+
+    /// How many arguments it takes, after the pointer.
+    pub fn arity(self) -> usize {
+        match self {
+            PointerMethod::Free | PointerMethod::IsNull => 0,
+            PointerMethod::Write => 2,
+            _ => 1,
+        }
+    }
 }
 
 impl ArrayMethod {
@@ -219,6 +276,15 @@ impl Typed {
         self.common[s.id].iter().any(|c| c.payload.contains(&index))
     }
 
+    /// The function call or function value `expr` names: the one of those sharing its name
+    /// whose types fit, or what the resolver found if it's alone.
+    pub fn callee(&self, expr: Id<Expr>, names: &Names) -> Option<DefId> {
+        self.callees
+            .get(&expr)
+            .copied()
+            .or_else(|| names.expr(expr))
+    }
+
     /// How method call receiver `expr` becomes the method's `self`, if not as it is.
     pub fn receiver(&self, expr: Id<Expr>) -> Option<Receiver> {
         self.receivers.get(&expr).copied()
@@ -269,6 +335,11 @@ impl Typed {
     /// The built-in method a method call on an array calls.
     pub fn array_method(&self, expr: Id<Expr>) -> Option<ArrayMethod> {
         self.array_methods.get(&expr).copied()
+    }
+
+    /// The built-in method a method call on a typed pointer calls.
+    pub fn pointer_method(&self, expr: Id<Expr>) -> Option<PointerMethod> {
+        self.pointer_methods.get(&expr).copied()
     }
 
     /// Whether `expr` reads the value a narrowed optional holds, rather than the optional.

@@ -1,0 +1,6 @@
+// expect: error NoMatchingOverload
+
+fn g(x: bool) -> i32 { 1 }
+fn g(x: i32) -> i32 { 2 }
+
+fn main() -> i32 { g(1.5) }

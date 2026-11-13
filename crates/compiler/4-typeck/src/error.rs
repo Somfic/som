@@ -163,6 +163,25 @@ pub enum TypeError {
         ty: Message,
         span: Span,
     },
+    /// A call where none of the functions with that name fit the arguments.
+    NoMatchingOverload {
+        name: String,
+        args: Vec<Message>,
+        candidates: Vec<String>,
+        span: Span,
+    },
+    /// A call where several functions with that name fit equally well.
+    AmbiguousCall {
+        name: String,
+        candidates: Vec<String>,
+        span: Span,
+    },
+    /// Two functions with the same name, both taking and giving the same types.
+    DuplicateOverload {
+        name: String,
+        span: Span,
+        previous: Span,
+    },
     /// A pattern names a variant the enum doesn't have.
     UnknownVariant {
         ty: String,
@@ -543,6 +562,50 @@ impl TypeError {
                 "it can't be moved out of the reference",
             ))
             .with_hint(msg!["have the method take ", code("self: &…"), " instead"]),
+            TypeError::NoMatchingOverload {
+                name,
+                args,
+                candidates,
+                span,
+            } => {
+                let mut given = Message(Vec::new());
+                for (i, a) in args.iter().enumerate() {
+                    if i > 0 {
+                        given.0.push(", ".into());
+                    }
+                    given.push(a.clone());
+                }
+                let label = match args.is_empty() {
+                    true => msg!["called with no arguments"],
+                    false => msg!["called with ", given],
+                };
+                let mut d = Diagnostic::error(msg!["no ", func(name), " fits this call"])
+                    .with_label(Label::primary(span.clone(), label));
+                for c in candidates {
+                    d = d.with_hint(msg!["there's ", code(c)]);
+                }
+                d
+            }
+            TypeError::AmbiguousCall {
+                name,
+                candidates,
+                span,
+            } => {
+                let mut d =
+                    Diagnostic::error(msg!["more than one ", func(name), " fits this call"])
+                        .with_label(Label::primary(span.clone(), "which one is meant?"));
+                for c in candidates {
+                    d = d.with_hint(msg!["it could be ", code(c)]);
+                }
+                d.with_hint("say what type the result should be, to pick one")
+            }
+            TypeError::DuplicateOverload {
+                name,
+                span,
+                previous,
+            } => Diagnostic::error(msg![func(name), " is defined twice with the same types"])
+                .with_label(Label::primary(span.clone(), "defined again here"))
+                .with_label(Label::secondary(previous.clone(), "first defined here")),
             TypeError::UnknownVariant {
                 ty: owner,
                 variant,

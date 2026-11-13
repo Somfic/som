@@ -1,7 +1,7 @@
 // expect: exit 0
 
-use std;
+use som;
 fn main() -> i32 {
-    std::println("Hello from test!");
+    som::println("Hello from test!");
     0
 }

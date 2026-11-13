@@ -175,6 +175,14 @@ impl<'a> Resolver<'a> {
     }
 
     fn add_item(&mut self, module: usize, name: &'a Ident, def: DefId) {
+        // Functions can share a name: a call picks the one whose types fit.
+        if let Some(&previous) = self.items[module].get(&*name.name)
+            && matches!(self.names.def(previous).kind, DefKind::Func(_))
+            && matches!(self.names.def(def).kind, DefKind::Func(_))
+        {
+            self.names.add_overload(previous, def);
+            return;
+        }
         if let Some(&previous) = self.items[module].get(&*name.name) {
             self.errors.push(ResolveError::DuplicateDefinition {
                 name: name.name.to_string(),
@@ -570,6 +578,7 @@ impl<'a> Resolver<'a> {
                 args.iter().for_each(|&arg| self.resolve_type(arg));
             }
             TypeExpr::Reference { to, .. }
+            | TypeExpr::PointerTo(to)
             | TypeExpr::Optional(to)
             | TypeExpr::Slice { element: to, .. } => self.resolve_type(*to),
             TypeExpr::Array {

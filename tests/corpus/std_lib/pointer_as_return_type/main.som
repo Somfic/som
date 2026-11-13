@@ -1,11 +1,11 @@
 // expect: exit 0
 
-use std;
+use som;
 fn alloc_some() -> * {
-    std::malloc(64)
+    som::malloc(64)
 }
 fn main() -> i32 {
     let p: * = alloc_some();
-    std::free(p);
+    som::free(p);
     0
 }

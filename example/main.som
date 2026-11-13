@@ -1,22 +1,10 @@
-use std;
-enum Test<T> {
-    A { base: i32, a: T },
-    B { base: i32, b: T }
+use som;
+
+let mut list: List<i32> = List::new();
+
+for i in 1..10000000 {
+    list.push(123);
 }
 
-impl<T> Test<T> {
-    fn common(self: &Test<T>) -> i32 {
-        return self.base;
-    }
-}
 
-let a = Test::A { base: 1, a: 1 };
-
-a.common();
-
-let base = match a {
-    A { base, a } => a,
-    B { base, b } => b
-};
-
-std::printf("%d", base);
+printf("%d", list.capacity);

@@ -1,0 +1,33 @@
+// expect: exit 43
+
+use som;
+
+struct Point { x: i32, y: i32 }
+
+fn main() -> i32 {
+    let mut numbers: List<i32> = List::new();
+    for i in 0..10 {
+        numbers.push(i);
+    }
+    let mut total = 0;
+    for n in numbers.as_slice() {
+        total = total + n;
+    }
+    let last = numbers.pop() else 0;
+    let first = numbers.as_slice().get(0) else 100;
+    let mut points: List<Point> = List::new();
+    points.push(Point { x: 1, y: 2 });
+    points.push(Point { x: 3, y: 4 });
+    if let_ok(&points) { total = total + 1000; }
+    let p = points.pop();
+    let y = match p { none => 0, q => q.y };
+    let size = numbers.len() as i32;
+    numbers.free();
+    points.free();
+    total + last + first + y + size
+}
+
+fn let_ok(points: &List<Point>) -> bool {
+    let p = points.get_ref(1);
+    match p { none => false, q => q.x == 3 }
+}

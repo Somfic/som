@@ -1,6 +1,6 @@
 // expect: ok
 
-use std;
+use som;
 fn main() {
     println("Hello");
 }

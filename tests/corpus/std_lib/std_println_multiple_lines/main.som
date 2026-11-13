@@ -1,9 +1,9 @@
 // expect: exit 0
 
-use std;
+use som;
 fn main() -> i32 {
-    std::println("line one");
-    std::println("line two");
-    std::println("line three");
+    som::println("line one");
+    som::println("line two");
+    som::println("line three");
     0
 }

@@ -142,12 +142,12 @@ fn structs_are_not_values() {
 }
 
 #[test]
-fn duplicate_functions_are_an_error() {
-    let (_, _, errors) = run("fn f() {} fn f() {}");
-    assert!(
-        matches!(errors[..], [ResolveError::DuplicateDefinition { .. }]),
-        "{errors:?}"
-    );
+fn functions_sharing_a_name_are_overloads() {
+    // Whether their types tell them apart is the type checker's to say.
+    let (ast, names, errors) = run("fn f() {} fn f(x: i32) {}");
+    assert!(errors.is_empty(), "{errors:?}");
+    let first = names.func(ast.funcs.iter().next().unwrap().0);
+    assert_eq!(names.overloads(first).len(), 2);
 }
 
 #[test]
@@ -167,12 +167,9 @@ fn duplicate_extern_declarations_are_fine() {
 }
 
 #[test]
-fn function_clashing_with_extern_is_an_error() {
-    let (_, _, errors) = run("extern { fn puts(s: &str); } fn puts(s: &str) {}");
-    assert!(
-        matches!(errors[..], [ResolveError::DuplicateDefinition { .. }]),
-        "{errors:?}"
-    );
+fn function_sharing_an_externs_name_overloads_it() {
+    let (_, _, errors) = run("extern { fn puts(s: &str); } fn puts(n: i32) {}");
+    assert!(errors.is_empty(), "{errors:?}");
 }
 
 #[test]

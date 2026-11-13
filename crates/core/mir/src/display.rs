@@ -56,6 +56,7 @@ impl Mir {
             Ty::Int(int) => format!("{int:?}").to_lowercase(),
             Ty::Float(float) => format!("{float:?}").to_lowercase(),
             Ty::Pointer => "*".into(),
+            Ty::Ptr(to) => format!("*{}", self.display_ty(*to)),
             Ty::Param(_) | Ty::Var(_) | Ty::Add(..) | Ty::Mul(..) => {
                 unreachable!("MIR only has concrete types")
             }
@@ -220,6 +221,12 @@ impl Mir {
                     .map(|((name, _), op)| format!("{name}: {}", self.display_operand(op)))
                     .collect();
                 format!("{name} {{ {} }}", fields.join(", "))
+            }
+            Rvalue::Intrinsic {
+                intrinsic, args, ..
+            } => {
+                let args: Vec<String> = args.iter().map(|a| self.display_operand(a)).collect();
+                format!("{intrinsic:?}({})", args.join(", "))
             }
             Rvalue::Call { func, args } => {
                 let args: Vec<String> = args.iter().map(|a| self.display_operand(a)).collect();

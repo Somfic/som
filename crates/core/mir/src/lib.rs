@@ -65,7 +65,7 @@ impl Mir {
     /// The type of `projection` applied to a place of type `ty`, or `None` if it doesn't apply.
     pub fn project(&self, ty: TypeId, projection: Projection) -> Option<TypeId> {
         match (projection, self.types.get(ty)) {
-            (Projection::Deref, Ty::Ref { to, .. }) => Some(*to),
+            (Projection::Deref, Ty::Ref { to, .. } | Ty::Ptr(to)) => Some(*to),
             (Projection::Field(i), Ty::Struct(def, args)) => {
                 self.struct_def(*def, args).fields.get(i).map(|&(_, ty)| ty)
             }
@@ -365,6 +365,39 @@ pub enum Rvalue {
         func: FuncId,
         args: Vec<Operand>,
     },
+    /// An operation on raw memory through a `*T`, with a result of type `ty`. Nothing checks
+    /// it: it's what `List` is built on.
+    Intrinsic {
+        intrinsic: Intrinsic,
+        args: Vec<Operand>,
+        ty: TypeId,
+    },
+}
+
+/// What an `Rvalue::Intrinsic` does, given its arguments: a pointer `p` to `T`s, then the rest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Intrinsic {
+    /// `p, count`: room for `count` `T`s, moved from where `p` points (or new, if it's null).
+    Resize,
+    /// `p`: gives back what `p` points to.
+    Free,
+    /// `p, i`: the `T` at `i`, moved or copied out.
+    Read,
+    /// `p, i, value`: stores `value` at `i`, without reading what was there.
+    Write,
+    /// `p, i`: where the `T` at `i` is, as a reference.
+    Offset,
+    /// `p, len`: a slice of the `len` `T`s starting at `p`.
+    View,
+    /// `p`: whether it's null.
+    IsNull,
+}
+
+impl Intrinsic {
+    /// Whether it changes memory, so it has to happen even if its result isn't used.
+    pub fn has_effect(self) -> bool {
+        matches!(self, Intrinsic::Resize | Intrinsic::Free | Intrinsic::Write)
+    }
 }
 
 #[derive(Clone)]

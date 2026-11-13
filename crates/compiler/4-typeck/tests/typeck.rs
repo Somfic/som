@@ -142,7 +142,7 @@ fn fields_and_methods_work_through_references() {
 #[test]
 fn method_receiver_must_match_self() {
     let errs = errors(
-        "struct P { x: i32 } impl P { fn get(self: &P) -> i32 { self.x } } fn f(p: P) -> i32 { p.get() }",
+        "struct P { x: i32 } impl P { fn get(self: &mut P) -> i32 { self.x } } fn f(p: &P) -> i32 { p.get() }",
     );
     assert!(matches!(errs[..], [TypeError::Mismatch { .. }]), "{errs:?}");
 }

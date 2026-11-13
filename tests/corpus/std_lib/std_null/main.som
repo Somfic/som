@@ -1,7 +1,7 @@
 // expect: exit 1
 
-use std;
+use som;
 fn main() -> i32 {
-    let p = std::null();
-    1 if p == std::null() else 0
+    let p = som::null();
+    1 if p == som::null() else 0
 }

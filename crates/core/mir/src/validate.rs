@@ -240,7 +240,10 @@ impl Validator<'_> {
                         viewed(from),
                         Some(Ty::Array { .. } | Ty::Slice(_) | Ty::Str)
                     );
-                if !(int(from) && int(*ty)) && !slicing {
+                // Raw pointers convert to each other: `null() as *T`.
+                let pointer = |t: TypeId| matches!(types.get(t), Ty::Pointer | Ty::Ptr(_));
+                let pointers = pointer(from) && pointer(*ty);
+                if !(int(from) && int(*ty)) && !slicing && !pointers {
                     let (f, t) = (self.mir.display_ty(from), self.mir.display_ty(*ty));
                     self.problem(format!("cast from {f} to {t}: those don't convert"));
                     // (Numbers convert to numbers; references to arrays and slices to slices.)
@@ -283,6 +286,12 @@ impl Validator<'_> {
                     None => s.fields.iter().map(|(_, t)| *t).collect(),
                 };
                 self.check_operands("struct", &expected, fields);
+                Some(*ty)
+            }
+            Rvalue::Intrinsic { args, ty, .. } => {
+                for arg in args {
+                    self.operand_ty(arg);
+                }
                 Some(*ty)
             }
             Rvalue::Call { func, args } => {
