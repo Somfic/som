@@ -1,0 +1,9 @@
+// expect: error UseAfterMove
+
+fn main() -> i32 {
+    let mut a = [1, 2];
+    let v: [mut i32] = &mut a;
+    let w = v;
+    let x = v;
+    0
+}

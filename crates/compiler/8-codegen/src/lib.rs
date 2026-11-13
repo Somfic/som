@@ -170,8 +170,9 @@ fn identifier(name: &str) -> String {
 /// The C names of the program's structs, their fields and its functions.
 struct Names {
     structs: HashMap<DefId, String>,
-    /// The structs made for optional and array types the program uses: whether an optional
-    /// holds a value and the value; an array's elements.
+    /// The structs made for optional, array and slice types the program uses: whether an
+    /// optional holds a value and the value; an array's elements; where a slice's elements
+    /// start, and how many there are.
     generated: HashMap<TypeId, String>,
     fields: HashMap<DefId, Vec<String>>,
     funcs: HashMap<FuncId, String>,
@@ -202,6 +203,9 @@ impl Names {
                 Ty::Optional(inner) => format!("som_opt_{}", identifier(&mir.display_ty(*inner))),
                 Ty::Array { element, len } => {
                     format!("som_arr_{}_{len}", identifier(&mir.display_ty(*element)))
+                }
+                Ty::Slice(element) => {
+                    format!("som_slice_{}", identifier(&mir.display_ty(*element)))
                 }
                 _ => unreachable!("used_generated returns optionals and arrays"),
             };
@@ -242,7 +246,7 @@ impl Names {
     }
 }
 
-/// The optional and array types in the program's functions and structs.
+/// The optional, array and slice types in the program's functions and structs.
 fn used_generated(mir: &Mir) -> Vec<TypeId> {
     let mut todo: Vec<TypeId> = Vec::new();
     for func in &mir.funcs {
@@ -262,7 +266,7 @@ fn used_generated(mir: &Mir) -> Vec<TypeId> {
             continue;
         }
         let t = mir.types.get(ty);
-        if matches!(t, Ty::Optional(_) | Ty::Array { .. }) {
+        if matches!(t, Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_)) {
             found.push(ty);
         }
         todo.extend(t.children());
@@ -525,13 +529,17 @@ impl<'a> Emitter<'a> {
             Ty::Float(FloatTy::F32) => "float".into(),
             Ty::Float(FloatTy::F64) => "double".into(),
             Ty::Pointer | Ty::Fn { .. } => "void*".into(),
+            // A slice is both: where its elements start, and how many there are.
+            Ty::Ref { to, .. } if matches!(self.mir.types.get(*to), Ty::Slice(_)) => self.ty(*to),
             Ty::Ref { to, .. } => format!("{}*", self.ty(*to)),
             // A handle is a pointer to a struct only C sees inside.
             Ty::Struct(def) if self.mir.struct_def(*def).handle => {
                 format!("{}*", self.struct_name(*def))
             }
             Ty::Struct(def) => self.struct_name(*def),
-            Ty::Optional(_) | Ty::Array { .. } => format!("struct {}", self.names.generated[&ty]),
+            Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_) => {
+                format!("struct {}", self.names.generated[&ty])
+            }
             Ty::Error | Ty::Param(_) | Ty::Var(_) => {
                 unreachable!("codegen only sees checked, concrete types")
             }
@@ -601,10 +609,17 @@ impl<'a> Emitter<'a> {
                 .map(|f| f.1)
                 .collect(),
             Ty::Optional(inner) | Ty::Array { element: inner, .. } => vec![*inner],
+            // Its elements are behind a pointer, so they don't have to come first.
+            Ty::Slice(_) => Vec::new(),
             _ => return,
         };
         visiting.push(ty);
         for inner in contains {
+            // A slice is a struct of its own, held by value even though it's a reference.
+            let inner = match self.mir.types.get(inner) {
+                Ty::Ref { to, .. } if matches!(self.mir.types.get(*to), Ty::Slice(_)) => *to,
+                _ => inner,
+            };
             self.define(inner, done, visiting);
         }
         visiting.pop();
@@ -614,6 +629,13 @@ impl<'a> Emitter<'a> {
             Ty::Optional(inner) => {
                 let value = self.ty(inner);
                 self.line(format!("{} {{ bool some; {value} value; }};", self.ty(ty)));
+            }
+            Ty::Slice(element) => {
+                let element = self.ty(element);
+                self.line(format!(
+                    "{} {{ {element}* ptr; uintptr_t len; }};",
+                    self.ty(ty)
+                ));
             }
             // C has no empty arrays; one that's never read stands in.
             Ty::Array { element, len } => {
@@ -659,7 +681,8 @@ impl<'a> Emitter<'a> {
                 // parameter points to while the call runs, which is what `restrict`
                 // promises C. Extern functions keep the signature C declared.
                 if func.link_name.is_none()
-                    && matches!(self.mir.types.get(p), Ty::Ref { mutable: true, .. })
+                    && let Ty::Ref { mutable: true, to } = self.mir.types.get(p)
+                    && !matches!(self.mir.types.get(*to), Ty::Slice(_))
                 {
                     ty.push_str(" restrict");
                 }
@@ -883,6 +906,12 @@ impl<'a> Emitter<'a> {
     fn rvalue(&self, f: &mut FnState, rvalue: &Rvalue) -> Expr {
         match rvalue {
             Rvalue::Use(op) => self.operand(f, op),
+            // `&*p` is `p`: for a slice, that's the only way to write it.
+            Rvalue::Ref { place, .. } if place.projection.last() == Some(&Projection::Deref) => {
+                let mut inner = place.clone();
+                inner.projection.pop();
+                Expr::atom(self.place(f, &inner))
+            }
             Rvalue::Ref { place, .. } => Expr::compound(format!("&{}", self.place(f, place))),
             Rvalue::Not(op) => Expr::compound(format!("!{}", self.operand(f, op).operand())),
             Rvalue::Array { ty, items } => {
@@ -899,11 +928,25 @@ impl<'a> Emitter<'a> {
                 debug_assert!(is_zero(operand), "only zeroes repeat in an expression");
                 Expr::atom(format!("({}){{0}}", self.ty(*ty)))
             }
-            Rvalue::Cast { operand, ty } => Expr::compound(format!(
-                "({}){}",
-                self.ty(*ty),
-                self.operand(f, operand).operand()
-            )),
+            Rvalue::Cast { operand, ty } => {
+                let from = self.operand_ty(f, operand);
+                let value = self.operand(f, operand);
+                let viewed = |t: TypeId| match self.mir.types.get(t) {
+                    Ty::Ref { to, .. } => Some(self.mir.types.get(*to)),
+                    _ => None,
+                };
+                match (viewed(from), viewed(*ty)) {
+                    // A reference to an array becomes where its elements start, and how many.
+                    (Some(Ty::Array { len, .. }), Some(Ty::Slice(_))) => Expr::atom(format!(
+                        "({}){{{}->items, {len}}}",
+                        self.ty(*ty),
+                        value.operand()
+                    )),
+                    // `[mut T]` to `[T]`: the same struct.
+                    (Some(Ty::Slice(_)), Some(Ty::Slice(_))) => value,
+                    _ => Expr::compound(format!("({}){}", self.ty(*ty), value.operand())),
+                }
+            }
             Rvalue::Some(op) => {
                 let ty = self.operand_ty(f, op);
                 let optional = (self.mir.types.lookup(&Ty::Optional(ty)))
@@ -1007,9 +1050,16 @@ impl<'a> Emitter<'a> {
                     projections.peek()
             {
                 projections.next();
-                ty = self.project(ty, Projection::Deref);
-                s = format!("{s}->{}", self.member(f, ty, next));
-                ty = self.project(ty, next);
+                let viewed = self.project(ty, Projection::Deref);
+                s = match (self.mir.types.get(viewed), next) {
+                    // `(*s)[i]` of a slice is `s.ptr[i]`.
+                    (Ty::Slice(_), Projection::Index(index)) => {
+                        *f.mentioned.borrow_mut().entry(index).or_default() += 1;
+                        format!("{s}.ptr[{}]", f.locals[index.id])
+                    }
+                    _ => format!("{s}->{}", self.member(f, viewed, next)),
+                };
+                ty = self.project(viewed, next);
                 continue;
             }
             s = match projection {
@@ -1040,6 +1090,8 @@ impl<'a> Emitter<'a> {
             Ty::Struct(def) => &self.names.fields[def][index],
             Ty::Optional(_) if index == 0 => "some",
             Ty::Optional(_) => "value",
+            Ty::Ref { .. } if index == 0 => "ptr",
+            Ty::Ref { .. } => "len",
             _ => unreachable!("fields belong to structs and optionals"),
         }
     }

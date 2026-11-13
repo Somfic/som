@@ -1,0 +1,9 @@
+// expect: error Mismatch
+
+fn clear(numbers: [mut i32]) { numbers.set(0, 0); }
+
+fn main() -> i32 {
+    let a = [1, 2];
+    clear(&a);
+    0
+}

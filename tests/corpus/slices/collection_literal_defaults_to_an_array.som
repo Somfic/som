@@ -1,0 +1,9 @@
+// expect: exit 5
+
+fn main() -> i32 {
+    // Nothing asks for anything else, so it's a `[i32; 3]`: copied, and borrowed with `&`.
+    let a = [1, 2, 3];
+    let b = a;
+    let s: [i32] = &a;
+    s.len() + b.len() - 1
+}

@@ -51,11 +51,14 @@ pub struct Typed {
     wrapped: HashSet<Id<Expr>>,
     /// Reads of an optional place inside `if x { … }`: they read the value it holds.
     narrowed_reads: HashSet<Id<Expr>>,
+    /// References to arrays used where a slice is expected (`&numbers` for a `[i32]`), and
+    /// `[mut T]`s used where a `[T]` is.
+    sliced: HashMap<Id<Expr>, TypeId>,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
 }
 
-/// A method every array has.
+/// A method every array and slice has.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ArrayMethod {
     /// `a.len()`: how many elements it has.
@@ -140,6 +143,12 @@ impl Typed {
     /// The type arguments of a call to a generic function. Empty if it isn't generic.
     pub fn type_args(&self, expr: Id<Expr>) -> &[TypeId] {
         self.type_args.get(&expr).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// The slice type `expr` becomes where it's used, if it does: a reference to an array, or
+    /// a `[mut T]` where a `[T]` is expected.
+    pub fn sliced_to(&self, expr: Id<Expr>) -> Option<TypeId> {
+        self.sliced.get(&expr).copied()
     }
 
     /// The built-in method a method call on an array calls.

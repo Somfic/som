@@ -1,0 +1,14 @@
+// expect: exit 14
+
+struct Window { values: [i32], label: i32 }
+
+fn total(w: Window) -> i32 { w.values.len() + w.label }
+
+fn main() -> i32 {
+    let data = [1, 2, 3, 4];
+    let w = Window { values: &data, label: 10 };
+    // Slices inside optionals and arrays too.
+    let maybe: [i32]? = &data;
+    let several = [maybe, maybe];
+    total(w)
+}

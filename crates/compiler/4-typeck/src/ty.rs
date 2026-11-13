@@ -31,6 +31,9 @@ pub enum Ty {
         element: TypeId,
         len: u64,
     },
+    /// Some number of `T`s, known at run time. Only ever behind a reference, which holds where
+    /// they start and how many there are: som's `[T]` is `&` of this, and `[mut T]` `&mut`.
+    Slice(TypeId),
     /// A type parameter, inside the generic function that declares it.
     Param(DefId),
     Fn {
@@ -72,9 +75,10 @@ impl Ty {
     /// that walks into types doesn't need a case for each kind.
     pub fn children(&self) -> Vec<TypeId> {
         match self {
-            Ty::Ref { to: inner, .. } | Ty::Optional(inner) | Ty::Array { element: inner, .. } => {
-                vec![*inner]
-            }
+            Ty::Ref { to: inner, .. }
+            | Ty::Optional(inner)
+            | Ty::Array { element: inner, .. }
+            | Ty::Slice(inner) => vec![*inner],
             Ty::Fn { params, ret } => params.iter().chain([ret]).copied().collect(),
             Ty::Error
             | Ty::Unit
@@ -98,6 +102,7 @@ impl Ty {
                 to: f(*to),
             },
             Ty::Optional(inner) => Ty::Optional(f(*inner)),
+            Ty::Slice(element) => Ty::Slice(f(*element)),
             Ty::Array { element, len } => Ty::Array {
                 element: f(*element),
                 len: *len,
@@ -224,6 +229,9 @@ impl TypeTable {
                 // `&i32?` is an optional reference.
                 match self.get(*to) {
                     Ty::Optional(_) => format!("&{mutability}({})", self.display(*to, names)),
+                    Ty::Slice(element) => {
+                        format!("[{mutability}{}]", self.display(*element, names))
+                    }
                     _ => format!("&{mutability}{}", self.display(*to, names)),
                 }
             }
@@ -233,6 +241,8 @@ impl TypeTable {
                 _ => format!("{}?", self.display(*inner, names)),
             },
             Ty::Array { element, len } => format!("[{}; {len}]", self.display(*element, names)),
+            // Only reached on its own for a dereferenced slice, which is an error.
+            Ty::Slice(element) => format!("[{}]", self.display(*element, names)),
             Ty::Struct(def) | Ty::Param(def) => names.def(*def).name.to_string(),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();

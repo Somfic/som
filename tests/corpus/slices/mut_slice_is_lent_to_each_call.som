@@ -1,0 +1,19 @@
+// expect: exit 40
+
+fn double_all(numbers: [mut i32]) {
+    let mut i = 0;
+    while i < numbers.len() {
+        let n = numbers.get_mut(i);
+        if n { *n = *n * 2; }
+        i = i + 1;
+    }
+}
+
+fn main() -> i32 {
+    let mut a = [5, 5];
+    let view: [mut i32] = &mut a;
+    // `view` is lent to each call, not moved into the first.
+    double_all(view);
+    double_all(view);
+    (view.get(0) else 0) + (view.get(1) else 0)
+}

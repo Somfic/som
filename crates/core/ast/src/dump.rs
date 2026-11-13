@@ -57,6 +57,10 @@ impl Ast {
                 format!("&{lifetime}{mutability}{to}")
             }
             TypeExpr::Array { element, len } => format!("[{}; {len}]", self.type_text(*element)),
+            TypeExpr::Slice { element, mutable } => {
+                let mutability = if *mutable { "mut " } else { "" };
+                format!("[{mutability}{}]", self.type_text(*element))
+            }
             // `fn() -> i32?` returns an optional.
             TypeExpr::Optional(inner) => match &self.types[*inner] {
                 TypeExpr::Fn { .. } => format!("({})?", self.type_text(*inner)),

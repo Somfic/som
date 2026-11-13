@@ -1279,14 +1279,16 @@ fn struct_text(a: &Analysis, s: Id<Struct>) -> String {
 }
 
 /// The struct a value of type `t` is, looking through one reference.
-/// The element type and length of the array `t` is, looking through one reference.
-fn array_of(a: &Analysis, t: som_typeck::TypeId) -> Option<(som_typeck::TypeId, u64)> {
+/// The element type of the array or slice `t` is, looking through one reference, and its
+/// length if that's fixed.
+fn array_of(a: &Analysis, t: som_typeck::TypeId) -> Option<(som_typeck::TypeId, Option<u64>)> {
     let t = match a.typed.ty(t) {
         Ty::Ref { to, .. } => *to,
         _ => t,
     };
     match a.typed.ty(t) {
-        Ty::Array { element, len } => Some((*element, *len)),
+        Ty::Array { element, len } => Some((*element, Some(*len))),
+        Ty::Slice(element) => Some((*element, None)),
         _ => None,
     }
 }
@@ -1299,12 +1301,13 @@ struct ArrayMethodDoc {
     doc: String,
 }
 
-/// How `method` reads for an array of `len` elements of type `element`.
+/// How `method` reads for an array or slice of elements of type `element`, with `len` of them
+/// if that's fixed.
 fn array_method_doc(
     a: &Analysis,
     method: ArrayMethod,
     element: som_typeck::TypeId,
-    len: u64,
+    len: Option<u64>,
 ) -> ArrayMethodDoc {
     let t = ty(a, element);
     let index = "index: any integer".to_string();
@@ -1314,7 +1317,12 @@ fn array_method_doc(
             "len",
             vec![],
             "any integer".to_string(),
-            format!("The number of elements: {len}. It works as any integer type."),
+            match len {
+                Some(len) => {
+                    format!("The number of elements: {len}. It works as any integer type.")
+                }
+                None => "The number of elements. It works as any integer type.".to_string(),
+            },
         ),
         ArrayMethod::Get => (
             "get",

@@ -11,6 +11,12 @@ pub enum VarKind {
     Int,
     /// From a float literal: any float type. Defaults to `f64`.
     Float,
+    /// From a collection literal, `[a, b, c]` or `[v; N]`: `len` elements of type `element`,
+    /// in an array of that length or a slice. Defaults to the array.
+    Collection {
+        element: TypeId,
+        len: u64,
+    },
 }
 
 struct Var {
@@ -72,6 +78,19 @@ impl Unifier {
         match (self.table.get(a).clone(), self.table.get(b).clone()) {
             (Ty::Error, _) | (_, Ty::Error) => Ok(()),
             (Ty::Var(v), Ty::Var(w)) => {
+                // Two collections: the same number of the same elements.
+                if let (
+                    VarKind::Collection { element: x, len: n },
+                    VarKind::Collection { element: y, len: m },
+                ) = (self.vars[v as usize].kind, self.vars[w as usize].kind)
+                {
+                    if n != m {
+                        return Err(());
+                    }
+                    self.unify(x, y)?;
+                    self.vars[v as usize].bound = Some(b);
+                    return Ok(());
+                }
                 let kind =
                     merge(self.vars[v as usize].kind, self.vars[w as usize].kind).ok_or(())?;
                 self.vars[w as usize].kind = kind;
@@ -93,6 +112,21 @@ impl Unifier {
             VarKind::Any => true,
             VarKind::Int => matches!(self.table.get(ty), Ty::Int(_)),
             VarKind::Float => matches!(self.table.get(ty), Ty::Float(_)),
+            // An array of as many, or a slice, of the same elements.
+            VarKind::Collection { element, len } => {
+                let found = match self.table.get(ty).clone() {
+                    Ty::Array { element, len: n } if n == len => Some(element),
+                    Ty::Ref { to, .. } => match self.table.get(self.shallow(to)) {
+                        Ty::Slice(element) => Some(*element),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                match found {
+                    Some(found) => self.unify(element, found).is_ok(),
+                    None => false,
+                }
+            }
         };
         if !fits || self.occurs(var, ty) {
             return Err(());
@@ -103,7 +137,11 @@ impl Unifier {
 
     fn occurs(&self, var: u32, ty: TypeId) -> bool {
         match self.table.get(self.shallow(ty)) {
-            Ty::Var(v) => *v == var,
+            Ty::Var(v) if *v == var => true,
+            Ty::Var(v) => match self.vars[*v as usize].kind {
+                VarKind::Collection { element, .. } => self.occurs(var, element),
+                _ => false,
+            },
             ty => ty
                 .children()
                 .into_iter()
@@ -129,6 +167,12 @@ impl Unifier {
                     unresolved.get_or_insert(id);
                     self.table.error
                 }
+                VarKind::Collection { element, len } => {
+                    let element = self.finish(element, unresolved);
+                    let array = self.intern(Ty::Array { element, len });
+                    self.vars[v as usize].bound = Some(array);
+                    array
+                }
             },
             ty => {
                 if ty.children().is_empty() {
@@ -151,12 +195,18 @@ impl Unifier {
                 VarKind::Int => "i32".into(),
                 VarKind::Float => "f64".into(),
                 VarKind::Any => "_".into(),
+                VarKind::Collection { element, len } => {
+                    format!("[{}; {len}]", self.display(element, names))
+                }
             },
             Ty::Ref { mutable, to } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.
                 match self.table.get(self.shallow(*to)) {
                     Ty::Optional(_) => format!("&{mutability}({})", self.display(*to, names)),
+                    Ty::Slice(element) => {
+                        format!("[{mutability}{}]", self.display(*element, names))
+                    }
                     _ => format!("&{mutability}{}", self.display(*to, names)),
                 }
             }
@@ -166,6 +216,7 @@ impl Unifier {
                 _ => format!("{}?", self.display(*inner, names)),
             },
             Ty::Array { element, len } => format!("[{}; {len}]", self.display(*element, names)),
+            Ty::Slice(element) => format!("[{}]", self.display(*element, names)),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display(*ret, names))

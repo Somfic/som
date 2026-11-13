@@ -1,6 +1,14 @@
 use std;
-let a = [ 1, 2, 3 ];
 
-let a = a.get(10) else 0 - 1;
+fn print_3rd(arr: [i32]) {
+    let x = arr.get(3);
+    if x {
+        std::printf("%d", x);
+    } else {
+        std::printf("none");
+    }
+}
 
-std::printf("%d", a);
+let a: [i32] = [ 1, 2, 3 ];
+
+print_3rd(a);

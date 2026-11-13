@@ -28,6 +28,7 @@ pub(crate) struct Checker<'a> {
     /// Reads of narrowed places: they read the value, not the optional.
     narrowed_reads: HashSet<Id<Expr>>,
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
+    sliced: HashMap<Id<Expr>, TypeId>,
     /// The next expression inferred is the object of a field access or dereference.
     in_place: bool,
     /// Operators whose operand type wasn't known yet when they were checked.
@@ -55,6 +56,7 @@ impl<'a> Checker<'a> {
             next_narrowing: 0,
             narrowed_reads: HashSet::new(),
             array_methods: HashMap::new(),
+            sliced: HashMap::new(),
             in_place: false,
             deferred_ops: Vec::new(),
             loops: 0,
@@ -196,6 +198,10 @@ impl<'a> Checker<'a> {
             })
             .collect();
 
+        let sliced = std::mem::take(&mut self.sliced)
+            .into_iter()
+            .map(|(expr, ty)| (expr, self.u.finish(ty, &mut ignore)))
+            .collect();
         let typed = Typed {
             table: self.u.table,
             exprs,
@@ -208,6 +214,7 @@ impl<'a> Checker<'a> {
             wrapped: self.wrapped,
             narrowed_reads: self.narrowed_reads,
             array_methods: self.array_methods,
+            sliced,
         };
         (typed, self.errors)
     }
@@ -241,6 +248,14 @@ impl<'a> Checker<'a> {
                 element: self.lower(*element),
                 len: *len,
             },
+            TypeExpr::Slice { element, mutable } => {
+                let element = self.lower(*element);
+                let slice = self.u.intern(Ty::Slice(element));
+                Ty::Ref {
+                    mutable: *mutable,
+                    to: slice,
+                }
+            }
             TypeExpr::Fn { params, returns } => {
                 let params = params.iter().map(|&p| self.lower(p)).collect();
                 let ret = match returns {
@@ -302,6 +317,8 @@ impl<'a> Checker<'a> {
         let text = match self.u.var_kind(ty) {
             Some(VarKind::Int) => "an integer".to_string(),
             Some(VarKind::Float) => "a float".to_string(),
+            Some(VarKind::Collection { len: 1, .. }) => "a collection of 1 element".to_string(),
+            Some(VarKind::Collection { len, .. }) => format!("a collection of {len} elements"),
             Some(VarKind::Any) => "an unknown type".to_string(),
             None => self.u.display(ty, self.names),
         };
@@ -621,11 +638,20 @@ impl<'a> Checker<'a> {
             return true;
         }
         let expected = self.u.shallow(expected);
-        if let Ty::Optional(inner) = *self.u.get(expected)
-            && self.u.unify(inner, found).is_ok()
-        {
-            self.wrapped.insert(expr);
+        if self.slices_to(expected, found) {
+            self.sliced.insert(expr, expected);
             return true;
+        }
+        if let Ty::Optional(inner) = *self.u.get(expected) {
+            if self.u.unify(inner, found).is_ok() {
+                self.wrapped.insert(expr);
+                return true;
+            }
+            if self.slices_to(inner, found) {
+                self.sliced.insert(expr, inner);
+                self.wrapped.insert(expr);
+                return true;
+            }
         }
         // `&x` of a narrowed `x` borrows the value, but where a reference to the optional is
         // expected, it borrows the optional: `read(&o)` for `fn read(o: &(i32?))`.
@@ -653,6 +679,44 @@ impl<'a> Checker<'a> {
             }
         }
         false
+    }
+
+    /// Whether a value of type `found` becomes the slice `expected`: a reference to an array of
+    /// the same elements (`&numbers` for a `[i32]`, `&mut numbers` for a `[mut i32]`), or a
+    /// `[mut T]` where a `[T]` is.
+    fn slices_to(&mut self, expected: TypeId, found: TypeId) -> bool {
+        let shallow = |c: &Self, ty: TypeId| c.u.get(c.u.shallow(ty)).clone();
+        let Ty::Ref {
+            mutable: wants_mut,
+            to: slice,
+        } = shallow(self, expected)
+        else {
+            return false;
+        };
+        let Ty::Slice(element) = shallow(self, slice) else {
+            return false;
+        };
+        let Ty::Ref {
+            mutable: is_mut,
+            to: viewed,
+        } = shallow(self, found)
+        else {
+            return false;
+        };
+        // A `[mut T]` needs something it may change.
+        if wants_mut && !is_mut {
+            return false;
+        }
+        // `&b` of a collection nothing has decided yet: borrowing it makes it the array.
+        if let Some(VarKind::Collection { element, len }) = self.u.var_kind(viewed) {
+            let array = self.u.intern(Ty::Array { element, len });
+            let _ = self.u.unify(viewed, array);
+        }
+        match shallow(self, viewed) {
+            Ty::Array { element: found, .. } => self.u.unify(element, found).is_ok(),
+            Ty::Slice(found) => is_mut && !wants_mut && self.u.unify(element, found).is_ok(),
+            _ => false,
+        }
     }
 
     /// What unwrapping an optional of type `ty` gives: the `T` a `T?` holds, or a reference
@@ -737,12 +801,13 @@ impl<'a> Checker<'a> {
                 let inner = self.u.fresh(VarKind::Any);
                 self.u.intern(Ty::Optional(inner))
             }
+            // A collection: an array, or a slice where one is expected.
             Expr::Array(items) => {
                 let element = self.u.fresh(VarKind::Any);
                 for &item in items {
                     self.expect(item, element, None);
                 }
-                self.u.intern(Ty::Array {
+                self.u.fresh(VarKind::Collection {
                     element,
                     len: items.len() as u64,
                 })
@@ -756,7 +821,7 @@ impl<'a> Checker<'a> {
                         repeat: true,
                     });
                 }
-                self.u.intern(Ty::Array {
+                self.u.fresh(VarKind::Collection {
                     element,
                     len: *count,
                 })
@@ -892,6 +957,14 @@ impl<'a> Checker<'a> {
                 let ty = self.infer_object(*inner);
                 let ty = self.u.shallow(ty);
                 match self.u.get(ty).clone() {
+                    Ty::Ref { to, .. }
+                        if matches!(self.u.get(self.u.shallow(to)), Ty::Slice(_)) =>
+                    {
+                        self.errors.push(TypeError::DerefSlice {
+                            span: self.span(id),
+                        });
+                        error
+                    }
                     Ty::Ref { to, .. } => to,
                     Ty::Error => error,
                     Ty::Var(_) if self.u.var_kind(ty) == Some(VarKind::Any) => {
@@ -1156,13 +1229,20 @@ impl<'a> Checker<'a> {
         args: &[Id<Expr>],
     ) -> Option<TypeId> {
         let error = self.u.table.error;
+        // `[1, 2, 3].len()`: a collection nothing else decides is an array.
+        if let Some(VarKind::Collection { element, len }) = self.u.var_kind(receiver_ty) {
+            let array = self.u.intern(Ty::Array { element, len });
+            let _ = self.u.unify(receiver_ty, array);
+        }
         let shallow = self.u.shallow(receiver_ty);
         let (array, through) = match *self.u.get(shallow) {
             Ty::Ref { mutable, to } => (self.u.shallow(to), Some(mutable)),
             _ => (shallow, None),
         };
-        let Ty::Array { element, .. } = *self.u.get(array) else {
-            return None;
+        let (element, is_slice) = match *self.u.get(array) {
+            Ty::Array { element, .. } => (element, false),
+            Ty::Slice(element) => (element, true),
+            _ => return None,
         };
         let infer_args = |c: &mut Self| {
             for &arg in args {
@@ -1204,6 +1284,9 @@ impl<'a> Checker<'a> {
             let borrow = kind == ArrayMethod::GetMut;
             match through {
                 Some(true) => {}
+                Some(false) if is_slice => self.errors.push(TypeError::ReadOnlySlice {
+                    span: self.span(receiver),
+                }),
                 Some(false) => self.errors.push(TypeError::BehindSharedReference {
                     span: self.span(receiver),
                     borrow,
@@ -1454,6 +1537,7 @@ impl<'a> Checker<'a> {
             return match kind {
                 VarKind::Any => None,
                 VarKind::Int | VarKind::Float => Some(true),
+                VarKind::Collection { .. } => Some(false),
             };
         }
         let ty = self.u.get(self.u.shallow(ty));

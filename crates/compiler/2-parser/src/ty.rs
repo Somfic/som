@@ -58,17 +58,26 @@ impl Parser<'_> {
                 TypeExpr::Pointer
             }
 
-            // `[T; N]`
+            // `[T; N]`, `[T]` or `[mut T]`
             TokenKind::OpenBracket => {
                 self.advance();
+                let mutable = self.eat(TokenKind::Mut);
                 let element = self.parse_type()?;
-                self.expect(TokenKind::Semicolon, "a `;` before the array's length")?;
-                let len = self.parse_count("the array's length")?;
-                self.expect(
-                    TokenKind::CloseBracket,
-                    "a closing bracket after the array type",
-                )?;
-                TypeExpr::Array { element, len }
+                if mutable || self.at(TokenKind::CloseBracket) {
+                    self.expect(
+                        TokenKind::CloseBracket,
+                        "a closing bracket after the slice type",
+                    )?;
+                    TypeExpr::Slice { element, mutable }
+                } else {
+                    self.expect(TokenKind::Semicolon, "a `;` before the array's length")?;
+                    let len = self.parse_count("the array's length")?;
+                    self.expect(
+                        TokenKind::CloseBracket,
+                        "a closing bracket after the array type",
+                    )?;
+                    TypeExpr::Array { element, len }
+                }
             }
 
             TokenKind::Ident => TypeExpr::Named(self.parse_path("a type name")?),

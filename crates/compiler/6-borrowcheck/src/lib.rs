@@ -464,9 +464,13 @@ impl<'a> FnChecker<'a> {
                     ty = if *i == 0 { self.mir.types.bool } else { *inner };
                 }
                 // Which element isn't known until run time.
-                (Projection::Index(_), Ty::Array { element, .. }) => {
+                (Projection::Index(_), Ty::Array { element, .. } | Ty::Slice(element)) => {
                     name = format!("{name}[_]");
                     ty = *element;
+                }
+                // Where a slice's elements start, or how many there are: part of the slice.
+                (Projection::Field(_), Ty::Ref { .. }) => {
+                    ty = self.mir.project(ty, *projection).expect("validated MIR");
                 }
                 _ => unreachable!("validated MIR has well-typed places"),
             }

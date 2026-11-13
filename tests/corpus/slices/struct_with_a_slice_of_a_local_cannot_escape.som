@@ -1,0 +1,10 @@
+// expect: error DanglingReference
+
+struct Window { values: [i32] }
+
+fn make() -> Window {
+    let data = [1, 2];
+    Window { values: &data }
+}
+
+fn main() -> i32 { 0 }

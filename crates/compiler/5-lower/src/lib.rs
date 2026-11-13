@@ -158,6 +158,14 @@ impl<'a> Lowerer<'a> {
     }
 }
 
+/// How many elements an array or slice has.
+enum Length {
+    /// An array's, known at compile time.
+    Fixed(u64),
+    /// A slice's, read from it at run time: a `usize`.
+    Held(Operand),
+}
+
 /// Replaces a generic function's type parameters with concrete types.
 struct Subst {
     map: Vec<(DefId, TypeId)>,
@@ -616,33 +624,65 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     // --- Expressions ---
 
-    /// Evaluates `expr` to an operand: a constant or a read of a place. A value used where
-    /// an optional is expected is wrapped in one.
+    /// Evaluates `expr` to an operand: a constant or a read of a place. Where a slice is
+    /// expected, a reference to an array becomes one; where an optional is expected, a value
+    /// is wrapped in one.
     fn operand(&mut self, expr: Id<Expr>) -> Operand {
-        if !self.l.typed.is_wrapped(expr) {
+        let typed = self.l.typed;
+        if !typed.is_wrapped(expr) && typed.sliced_to(expr).is_none() {
             return self.operand_unwrapped(expr);
         }
         let rvalue = self.rvalue(expr);
-        let ty = self.optional_ty(expr);
+        let ty = self.used_ty(expr);
         let temp = self.temp(ty, self.span(expr));
         self.assign(Place::local(temp), rvalue, self.span(expr));
         self.read(Place::local(temp), ty)
     }
 
-    /// Evaluates `expr` to a value that can be assigned to a place. A value used where an
-    /// optional is expected is wrapped in one.
+    /// Evaluates `expr` to a value that can be assigned to a place, made a slice or wrapped in
+    /// an optional where that's what's expected.
     fn rvalue(&mut self, expr: Id<Expr>) -> Rvalue {
-        if !self.l.typed.is_wrapped(expr) {
-            return self.rvalue_unwrapped(expr);
+        let typed = self.l.typed;
+        let sliced = typed.sliced_to(expr).map(|ty| self.ty(ty));
+        let value = match sliced {
+            Some(slice) => {
+                let span = self.span(expr);
+                let source = self.operand_unwrapped(expr);
+                // A `&mut` variable is lent, not moved: `&mut *r` becomes the slice.
+                let source_ty = self.expr_ty(expr);
+                let source = self.reborrow(source, source_ty, span);
+                Rvalue::Cast {
+                    operand: source,
+                    ty: slice,
+                }
+            }
+            None if typed.is_wrapped(expr) => {
+                self.used_ty(expr);
+                return Rvalue::Some(self.operand_unwrapped(expr));
+            }
+            None => return self.rvalue_unwrapped(expr),
+        };
+        if !typed.is_wrapped(expr) {
+            return value;
         }
-        self.optional_ty(expr);
-        Rvalue::Some(self.operand_unwrapped(expr))
+        let slice = sliced.expect("handled above");
+        let temp = self.temp(slice, self.span(expr));
+        self.assign(Place::local(temp), value, self.span(expr));
+        self.used_ty(expr);
+        Rvalue::Some(Operand::Move(Place::local(temp)))
     }
 
-    /// `T?`, for an `expr` of type `T`.
-    fn optional_ty(&mut self, expr: Id<Expr>) -> TypeId {
-        let inner = self.expr_ty(expr);
-        self.l.mir.types.intern(Ty::Optional(inner))
+    /// The type `expr` has where it's used: made a slice, or wrapped in an optional.
+    fn used_ty(&mut self, expr: Id<Expr>) -> TypeId {
+        let ty = match self.l.typed.sliced_to(expr) {
+            Some(slice) => self.ty(slice),
+            None => self.expr_ty(expr),
+        };
+        if self.l.typed.is_wrapped(expr) {
+            self.l.mir.types.intern(Ty::Optional(ty))
+        } else {
+            ty
+        }
     }
 
     fn operand_unwrapped(&mut self, expr: Id<Expr>) -> Operand {
@@ -920,14 +960,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.call(expr, func, None, args)
             }
             Expr::Array(items) => {
-                let ty = self.expr_ty(expr);
-                let items = items.iter().map(|&item| self.operand(item)).collect();
-                Rvalue::Array { ty, items }
+                let items: Vec<Operand> = items.iter().map(|&item| self.operand(item)).collect();
+                let len = items.len() as u64;
+                self.collection(expr, len, |ty| Rvalue::Array { ty, items })
             }
-            Expr::ArrayRepeat { value, .. } => {
-                let ty = self.expr_ty(expr);
+            Expr::ArrayRepeat { value, count } => {
                 let operand = self.operand(*value);
-                Rvalue::Repeat { ty, operand }
+                self.collection(expr, *count, |ty| Rvalue::Repeat { ty, operand })
             }
             Expr::MethodCall { receiver, args, .. }
                 if let Some(method) = self.l.typed.array_method(expr) =>
@@ -992,6 +1031,48 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         Operand::Move(Place::local(temp))
     }
 
+    /// A collection literal of `len` elements, made by `make` given its array type. Where a
+    /// slice is expected, the array is kept in storage of its own until the end of the
+    /// enclosing block, and the slice views it.
+    fn collection(
+        &mut self,
+        expr: Id<Expr>,
+        len: u64,
+        make: impl FnOnce(TypeId) -> Rvalue,
+    ) -> Rvalue {
+        let ty = self.expr_ty(expr);
+        let types = &mut self.l.mir.types;
+        let Ty::Ref { mutable, to } = *types.get(ty) else {
+            return make(ty);
+        };
+        let Ty::Slice(element) = *types.get(to) else {
+            unreachable!("checked: collection literals are arrays or slices")
+        };
+        let array_ty = types.intern(Ty::Array { element, len });
+        let reference_ty = types.intern(Ty::Ref {
+            mutable,
+            to: array_ty,
+        });
+        let span = self.span(expr);
+        let storage = self.new_local(array_ty, None, mutable, span.clone());
+        self.scopes
+            .last_mut()
+            .expect("expressions are inside a scope")
+            .push(storage);
+        self.push(StatementKind::StorageLive(storage), span.clone());
+        self.assign(Place::local(storage), make(array_ty), span.clone());
+        let reference = self.temp(reference_ty, span.clone());
+        let borrow = Rvalue::Ref {
+            mutable,
+            place: Place::local(storage),
+        };
+        self.assign(Place::local(reference), borrow, span);
+        Rvalue::Cast {
+            operand: Operand::Move(Place::local(reference)),
+            ty,
+        }
+    }
+
     /// A call of one of the methods every array has. Each that takes an index checks it's in
     /// bounds first, comparing in the index's own type, so any integer type works.
     fn array_method(
@@ -1004,28 +1085,42 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let span = self.span(expr);
         let ty = self.expr_ty(expr);
         let receiver_ty = self.expr_ty(receiver);
-        let mut array = self.place(receiver);
-        let array_ty = match *self.l.mir.types.get(receiver_ty) {
-            Ty::Ref { to, .. } => {
-                array = array.project(Projection::Deref);
-                to
-            }
-            _ => receiver_ty,
-        };
-        let Ty::Array { len, .. } = *self.l.mir.types.get(array_ty) else {
-            unreachable!("checked: array methods are called on arrays")
+        let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
+        let place = self.place(receiver);
+        // Where the elements are, and how many: fixed for an array, held by a slice.
+        let types = &self.l.mir.types;
+        let (elements, len) = match *types.get(receiver_ty) {
+            Ty::Ref { to, .. } => match *types.get(to) {
+                Ty::Slice(_) => {
+                    let count = Operand::Copy(place.clone().project(Projection::Field(1)));
+                    (place.project(Projection::Deref), Length::Held(count))
+                }
+                Ty::Array { len, .. } => (place.project(Projection::Deref), Length::Fixed(len)),
+                _ => unreachable!("checked: array methods are called on arrays and slices"),
+            },
+            Ty::Array { len, .. } => (place, Length::Fixed(len)),
+            _ => unreachable!("checked: array methods are called on arrays and slices"),
         };
         if method == ArrayMethod::Len {
-            return self.constant(ConstKind::Int(len as i64), ty);
+            return match len {
+                Length::Fixed(len) => self.constant(ConstKind::Int(len as i64), ty),
+                Length::Held(count) if ty == usize => count,
+                // Any integer type: converted, like any other.
+                Length::Held(count) => {
+                    let temp = self.temp(ty, span.clone());
+                    let cast = Rvalue::Cast { operand: count, ty };
+                    self.assign(Place::local(temp), cast, span);
+                    Operand::Copy(Place::local(temp))
+                }
+            };
         }
 
         // Arguments in order, before anything is checked.
         let index_ty = self.expr_ty(args[0]);
         let index = self.operand(args[0]);
         let value = (method == ArrayMethod::Set).then(|| self.operand(args[1]));
-        let in_bounds = self.in_bounds(index.clone(), index_ty, len, span.clone());
-        let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
         let position = self.temp(usize, span.clone());
+        let index_copy = index.clone();
         let converted = if index_ty == usize {
             Rvalue::Use(index)
         } else {
@@ -1035,7 +1130,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             }
         };
         self.assign(Place::local(position), converted, span.clone());
-        let element = array.project(Projection::Index(position));
+        let in_bounds = self.in_bounds(index_copy, index_ty, &len, position, span.clone());
+        let element = elements.project(Projection::Index(position));
 
         let result = self.temp(ty, span.clone());
         let (inside, outside, join) = (self.new_block(), self.new_block(), self.new_block());
@@ -1083,9 +1179,18 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         self.read(Place::local(result), ty)
     }
 
-    /// Whether `index`, of integer type `index_ty`, is at least 0 and less than `len`. A
-    /// bound the type can't reach isn't checked: an `i8` is always less than 300.
-    fn in_bounds(&mut self, index: Operand, index_ty: TypeId, len: u64, span: Span) -> Operand {
+    /// Whether `index`, of integer type `index_ty`, is at least 0 and less than `len`.
+    /// `position` holds it converted to a `usize`, which a held length is compared against;
+    /// a fixed one is compared in the index's own type, and not at all if that type can't
+    /// reach it: an `i8` is always less than 300.
+    fn in_bounds(
+        &mut self,
+        index: Operand,
+        index_ty: TypeId,
+        len: &Length,
+        position: Local,
+        span: Span,
+    ) -> Operand {
         let bool = self.l.mir.types.bool;
         let Ty::Int(int) = *self.l.mir.types.get(index_ty) else {
             unreachable!("checked: indexes are integers")
@@ -1111,13 +1216,36 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 rhs: zero,
             });
         }
-        if (len as u128) <= max {
-            let len = self.constant(ConstKind::Int(len as i64), index_ty);
-            checks.push(Rvalue::Binary {
+        match len {
+            Length::Fixed(len) if (*len as u128) <= max => {
+                let len = self.constant(ConstKind::Int(*len as i64), index_ty);
+                checks.push(Rvalue::Binary {
+                    op: BinOp::LessThan,
+                    lhs: index,
+                    rhs: len,
+                });
+            }
+            Length::Fixed(_) => {}
+            // A 128-bit index could be past what a `usize` holds: compare in its own type.
+            Length::Held(count) if matches!(int, IntTy::I128 | IntTy::U128) => {
+                let wide = self.temp(index_ty, span.clone());
+                let cast = Rvalue::Cast {
+                    operand: count.clone(),
+                    ty: index_ty,
+                };
+                self.assign(Place::local(wide), cast, span.clone());
+                checks.push(Rvalue::Binary {
+                    op: BinOp::LessThan,
+                    lhs: index,
+                    rhs: Operand::Copy(Place::local(wide)),
+                });
+            }
+            // Anything else that's at least 0 fits in a `usize`.
+            Length::Held(count) => checks.push(Rvalue::Binary {
                 op: BinOp::LessThan,
-                lhs: index,
-                rhs: len,
-            });
+                lhs: Operand::Copy(Place::local(position)),
+                rhs: count.clone(),
+            }),
         }
         let mut result: Option<Operand> = None;
         for check in checks {

@@ -1,0 +1,5 @@
+// expect: error ReadOnlySlice
+
+fn clear(numbers: [i32]) { numbers.set(0, 0); }
+
+fn main() -> i32 { 0 }

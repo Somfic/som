@@ -1,0 +1,16 @@
+// expect: exit 75
+
+fn sum(numbers: [i32]) -> i32 {
+    let mut total = 0;
+    let mut i = 0;
+    while i < numbers.len() {
+        total = total + (numbers.get(i) else 0);
+        i = i + 1;
+    }
+    total
+}
+
+fn main() -> i32 {
+    // Arrays of different lengths, one function.
+    sum(&[1, 2, 3, 4, 5]) + sum(&[10, 20, 30]) + sum(&[])
+}

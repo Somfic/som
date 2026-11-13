@@ -141,6 +141,23 @@ impl BorrowError {
                 name,
                 borrowed_at,
                 dies_at,
+            } if name == "temporary value" => {
+                // No name to give it: a value made for the expression, like a collection
+                // literal's elements behind a slice.
+                Diagnostic::error("reference to a temporary value outlives it")
+                    .with_label(Label::primary(
+                        borrowed_at.clone(),
+                        "this value is temporary",
+                    ))
+                    .with_label(Label::secondary(
+                        dies_at.last_char(),
+                        "it stops existing at the end of this block",
+                    ))
+            }
+            BorrowError::DanglingReference {
+                name,
+                borrowed_at,
+                dies_at,
             } => Diagnostic::error(msg!["reference to ", code(name), " outlives it"])
                 .with_label(Label::primary(borrowed_at.clone(), "borrowed here"))
                 .with_label(Label::secondary(

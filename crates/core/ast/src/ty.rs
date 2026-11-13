@@ -20,6 +20,12 @@ pub enum TypeExpr {
     Optional(Id<TypeExpr>),
     /// `[T; N]`: `N` values of type `T`.
     Array { element: Id<TypeExpr>, len: u64 },
+    /// `[T]` or `[mut T]`: a view of some number of values of type `T` that live elsewhere,
+    /// known at run time. It borrows them; `mut` can change them.
+    Slice {
+        element: Id<TypeExpr>,
+        mutable: bool,
+    },
     /// `fn(A, B) -> C`
     Fn {
         params: Vec<Id<TypeExpr>>,

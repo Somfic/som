@@ -194,10 +194,17 @@ impl Validator<'_> {
             }
             Rvalue::Cast { operand, ty } => {
                 let from = self.operand_ty(operand)?;
-                let int = |t: TypeId| matches!(self.mir.types.get(t), Ty::Int(_));
-                if !int(from) || !int(*ty) {
+                let types = &self.mir.types;
+                let int = |t: TypeId| matches!(types.get(t), Ty::Int(_));
+                let viewed = |t: TypeId| match types.get(t) {
+                    Ty::Ref { to, .. } => Some(types.get(*to)),
+                    _ => None,
+                };
+                let slicing = matches!(viewed(*ty), Some(Ty::Slice(_)))
+                    && matches!(viewed(from), Some(Ty::Array { .. } | Ty::Slice(_)));
+                if !(int(from) && int(*ty)) && !slicing {
                     let (f, t) = (self.mir.display_ty(from), self.mir.display_ty(*ty));
-                    self.problem(format!("cast from {f} to {t}: only integers convert"));
+                    self.problem(format!("cast from {f} to {t}: those don't convert"));
                 }
                 Some(*ty)
             }

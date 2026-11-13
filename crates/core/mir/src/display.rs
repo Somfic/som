@@ -27,6 +27,7 @@ impl Mir {
                 // `&i32?` is an optional reference.
                 match self.types.get(*to) {
                     Ty::Optional(_) => format!("&{mutability}({})", self.display_ty(*to)),
+                    Ty::Slice(element) => format!("[{mutability}{}]", self.display_ty(*element)),
                     _ => format!("&{mutability}{}", self.display_ty(*to)),
                 }
             }
@@ -36,6 +37,7 @@ impl Mir {
                 _ => format!("{}?", self.display_ty(*inner)),
             },
             Ty::Array { element, len } => format!("[{}; {len}]", self.display_ty(*element)),
+            Ty::Slice(element) => format!("[{}]", self.display_ty(*element)),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display_ty(p)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display_ty(*ret))

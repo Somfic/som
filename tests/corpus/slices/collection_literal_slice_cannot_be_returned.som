@@ -1,0 +1,6 @@
+// expect: error DanglingReference
+
+// The elements only live until the end of the function's block.
+fn make() -> [i32] { [1, 2] }
+
+fn main() -> i32 { 0 }

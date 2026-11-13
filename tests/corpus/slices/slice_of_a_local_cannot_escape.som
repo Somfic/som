@@ -1,0 +1,8 @@
+// expect: error DanglingReference
+
+fn make() -> [i32] {
+    let a = [1, 2];
+    &a
+}
+
+fn main() -> i32 { 0 }

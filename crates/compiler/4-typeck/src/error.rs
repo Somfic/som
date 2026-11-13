@@ -94,6 +94,14 @@ pub enum TypeError {
         name: String,
         span: Span,
     },
+    /// `*s` of a slice: what it views has no fixed size, so it can't be a value of its own.
+    DerefSlice {
+        span: Span,
+    },
+    /// `set` or `get_mut` on a `[T]`, which can only read.
+    ReadOnlySlice {
+        span: Span,
+    },
     /// Copying a value whose type moves: `a.get(i)` of an array of structs, or `[value; N]`.
     NotCopyable {
         ty: Message,
@@ -260,6 +268,17 @@ impl TypeError {
             } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
                 Label::primary(span.clone(), msg!["this is ", found.clone()]),
             ),
+            TypeError::DerefSlice { span } => Diagnostic::error("cannot dereference a slice")
+                .with_label(Label::primary(
+                    span.clone(),
+                    "how many elements it views isn't fixed",
+                ))
+                .with_hint(msg!["use its methods instead, like ", code("get")]),
+            TypeError::ReadOnlySlice { span } => {
+                Diagnostic::error(msg!["cannot change the elements of a ", code("[T]")])
+                    .with_label(Label::primary(span.clone(), "this slice can only read"))
+                    .with_hint(msg!["changing them needs a ", code("[mut T]")])
+            }
             TypeError::NotCopyable { ty, span, repeat } => {
                 let (message, hint) = if *repeat {
                     (

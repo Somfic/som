@@ -1,0 +1,5 @@
+// expect: error DerefSlice
+
+fn first(numbers: [i32]) -> i32 { *numbers }
+
+fn main() -> i32 { 0 }

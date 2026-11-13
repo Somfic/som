@@ -1,0 +1,9 @@
+// expect: exit 4
+
+fn main() -> i32 {
+    let a = [1, 2];
+    let v: [i32] = &a;
+    let w = v;
+    let x = v;
+    w.len() + x.len()
+}

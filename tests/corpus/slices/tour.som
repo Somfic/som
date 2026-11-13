@@ -1,0 +1,50 @@
+// expect: exit 142
+
+
+struct Point { x: i32, y: i32 }
+
+/// Works for any number of numbers.
+fn sum(numbers: [i32]) -> i32 {
+    let mut total = 0;
+    let mut i = 0;
+    while i < numbers.len() {
+        total = total + (numbers.get(i) else 0);
+        i = i + 1;
+    }
+    total
+}
+
+/// Changes them in place.
+fn double_all(numbers: [mut i32]) {
+    let mut i = 0;
+    while i < numbers.len() {
+        let n = numbers.get_mut(i);
+        if n { *n = *n * 2; }
+        i = i + 1;
+    }
+}
+
+fn first_x(points: [Point]) -> i32 {
+    let mut x = 0;
+    let p = points.get_ref(0);
+    if p { x = p.x; }
+    x
+}
+
+fn main() -> i32 {
+    let mut five = [1, 2, 3, 4, 5];
+    let three = [10, 20, 30];
+    let a = sum(&five);                 // 15
+    let b = sum(&three);                // 60
+    double_all(&mut five);
+    double_all(&mut five);              // the slice was lent, not moved
+    let c = sum(&five);                 // 60
+    // A `[mut T]` passes where a `[T]` is expected.
+    let view: [mut i32] = &mut five;
+    let d = view.len();
+    let e = sum(view);
+    let points = [Point { x: 7, y: 0 }];
+    let f = first_x(&points);
+    let past = three.get(5) else 0;
+    a + b + c + f
+}

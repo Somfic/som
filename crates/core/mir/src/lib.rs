@@ -65,7 +65,20 @@ impl Mir {
             }
             (Projection::Field(0), Ty::Optional(_)) => Some(self.types.bool),
             (Projection::Field(1), Ty::Optional(inner)) => Some(*inner),
-            (Projection::Index(_), Ty::Array { element, .. }) => Some(*element),
+            (Projection::Index(_), Ty::Array { element, .. } | Ty::Slice(element)) => {
+                Some(*element)
+            }
+            // A slice's reference holds where its elements start, and how many there are.
+            (Projection::Field(0), Ty::Ref { to, .. })
+                if matches!(self.types.get(*to), Ty::Slice(_)) =>
+            {
+                Some(self.types.pointer)
+            }
+            (Projection::Field(1), Ty::Ref { to, .. })
+                if matches!(self.types.get(*to), Ty::Slice(_)) =>
+            {
+                self.types.lookup(&Ty::Int(IntTy::USize))
+            }
             _ => None,
         }
     }
@@ -252,7 +265,8 @@ impl Place {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Projection {
     /// `.n`: the nth field of a struct. An optional has two: `.0` is whether it holds a
-    /// value, and `.1` the value.
+    /// value, and `.1` the value. So does a reference to a slice: `.0` is where its elements
+    /// start, and `.1` how many there are.
     Field(usize),
     /// `*`: what a reference points to.
     Deref,
@@ -286,7 +300,8 @@ pub enum Rvalue {
         ty: TypeId,
         operand: Operand,
     },
-    /// An integer converted to the integer type `ty`, wrapping if it doesn't fit.
+    /// A value converted to type `ty`: an integer to another integer type, wrapping if it
+    /// doesn't fit; or a reference to an array, or a `[mut T]`, to a slice.
     Cast {
         operand: Operand,
         ty: TypeId,

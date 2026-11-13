@@ -396,7 +396,8 @@ impl<'a> Resolver<'a> {
             }
             TypeExpr::Reference { to, .. }
             | TypeExpr::Optional(to)
-            | TypeExpr::Array { element: to, .. } => self.resolve_type(*to),
+            | TypeExpr::Array { element: to, .. }
+            | TypeExpr::Slice { element: to, .. } => self.resolve_type(*to),
             TypeExpr::Fn { params, returns } => {
                 params.iter().for_each(|&p| self.resolve_type(p));
                 if let Some(returns) = returns {
