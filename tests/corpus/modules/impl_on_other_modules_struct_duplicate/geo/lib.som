@@ -1,0 +1,5 @@
+struct Point { x: i32, y: i32 }
+
+impl Point {
+    fn sum(self: Point) -> i32 { self.x + self.y }
+}

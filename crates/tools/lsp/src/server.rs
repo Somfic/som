@@ -553,18 +553,15 @@ impl LanguageServer for SomLanguageServer {
                         .iter()
                         .map(|&m| func_symbol(m, SymbolKind::METHOD))
                         .collect();
-                    let span = block
-                        .methods
-                        .last()
-                        .map_or(block.target.span.clone(), |&m| {
-                            block.target.span.merge(ast.funcs.span(m))
-                        });
+                    let span = block.methods.last().map_or(block.target.span(), |&m| {
+                        block.target.span().merge(ast.funcs.span(m))
+                    });
                     symbols.push(symbol(
-                        format!("impl {}", block.target.name),
+                        format!("impl {}", block.target),
                         None,
                         SymbolKind::OBJECT,
                         &span,
-                        &block.target.span,
+                        &block.target.span(),
                         Some(methods),
                     ));
                 }

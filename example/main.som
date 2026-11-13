@@ -2,29 +2,35 @@ use std;
 extern "raylib";
 extern "box2d";
 
-// box2d works in meters with y pointing up; the screen is in pixels with y pointing down.
-fn to_screen(p: box2d::B2Vec2) -> raylib::Vector2 {
-    raylib::Vector2 { x: 400.0 + p.x * 30.0, y: 420.0 - p.y * 30.0 }
+impl box2d::B2Vec2 {
+    fn new(x: f32, y: f32) -> box2d::B2Vec2 {
+        box2d::B2Vec2 { x: x, y: y }
+    }
+
+    /// Where this point is on screen: box2d works in meters with y pointing up, the
+    /// screen in pixels with y pointing down.
+    fn to_screen(self: box2d::B2Vec2) -> raylib::Vector2 {
+        raylib::Vector2 { x: 400.0 + self.x * 30.0, y: 420.0 - self.y * 30.0 }
+    }
 }
 
-fn vec(x: f32, y: f32) -> box2d::B2Vec2 {
-    box2d::B2Vec2 { x: x, y: y }
-}
-
-fn color(r: u8, g: u8, b: u8) -> raylib::Color {
-    raylib::Color { r: r, g: g, b: b, a: 255 }
+impl raylib::Color {
+    /// An opaque color.
+    fn rgb(r: u8, g: u8, b: u8) -> raylib::Color {
+        raylib::Color { r: r, g: g, b: b, a: 255 }
+    }
 }
 
 /// A ball that falls, rolls and bounces: the higher `bounce`, the more it keeps.
 fn ball(world: box2d::B2WorldId, x: f32, y: f32, bounce: f32) -> box2d::B2BodyId {
     let mut def = box2d::b2_default_body_def();
     def.type = 2; // b2_dynamicBody
-    def.position = vec(x, y);
+    def.position = box2d::B2Vec2::new(x, y);
     let body = box2d::b2_create_body(world, &def);
 
     let mut shape = box2d::b2_default_shape_def();
     shape.material.restitution = bounce;
-    let circle = box2d::B2Circle { center: vec(0.0, 0.0), radius: 0.5 };
+    let circle = box2d::B2Circle { center: box2d::B2Vec2::new(0.0, 0.0), radius: 0.5 };
     box2d::b2_create_circle_shape(body, &shape, &circle);
     body
 }
@@ -37,25 +43,25 @@ fn wall(ground: box2d::B2BodyId, a: box2d::B2Vec2, b: box2d::B2Vec2) {
 }
 
 fn draw_wall(a: box2d::B2Vec2, b: box2d::B2Vec2) {
-    raylib::draw_line_ex(to_screen(a), to_screen(b), 4.0, color(80, 80, 80));
+    raylib::draw_line_ex(a.to_screen(), b.to_screen(), 4.0, raylib::Color::rgb(80, 80, 80));
 }
 
 fn draw_ball(body: box2d::B2BodyId, c: raylib::Color) {
-    raylib::draw_circle_v(to_screen(box2d::b2_body_get_position(body)), 15.0, c);
+    raylib::draw_circle_v(box2d::b2_body_get_position(body).to_screen(), 15.0, c);
 }
 
 fn main() {
     let mut world_def = box2d::b2_default_world_def();
-    world_def.gravity = vec(0.0, 0.0 - 10.0);
+    world_def.gravity = box2d::B2Vec2::new(0.0, 0.0 - 10.0);
     let world = box2d::b2_create_world(&world_def);
 
     // The floor, two side walls and a ramp.
     let ground = box2d::b2_create_body(world, &box2d::b2_default_body_def());
-    let floor_left = vec(0.0 - 12.0, 0.0);
-    let floor_right = vec(12.0, 0.0);
-    let ramp_top = vec(0.0 - 12.0, 9.0);
-    let ramp_bottom = vec(0.0 - 3.0, 4.0);
-    let right_top = vec(12.0, 13.0);
+    let floor_left = box2d::B2Vec2::new(0.0 - 12.0, 0.0);
+    let floor_right = box2d::B2Vec2::new(12.0, 0.0);
+    let ramp_top = box2d::B2Vec2::new(0.0 - 12.0, 9.0);
+    let ramp_bottom = box2d::B2Vec2::new(0.0 - 3.0, 4.0);
+    let right_top = box2d::B2Vec2::new(12.0, 13.0);
     wall(ground, floor_left, floor_right);
     wall(ground, floor_left, ramp_top);
     wall(ground, floor_right, right_top);
@@ -79,23 +85,23 @@ fn main() {
         box2d::b2_world_step(world, 1.0 / 60.0, 4);
 
         raylib::begin_drawing();
-        raylib::clear_background(color(245, 245, 245));
+        raylib::clear_background(raylib::Color::rgb(245, 245, 245));
         draw_wall(floor_left, floor_right);
         draw_wall(floor_left, ramp_top);
         draw_wall(floor_right, right_top);
         draw_wall(ramp_top, ramp_bottom);
         // From barely bouncing (dark red) to very bouncy (purple).
-        draw_ball(b1, color(190, 33, 55));
-        draw_ball(b2, color(230, 41, 55));
-        draw_ball(b3, color(255, 120, 0));
-        draw_ball(b4, color(255, 190, 0));
-        draw_ball(b5, color(160, 200, 0));
-        draw_ball(b6, color(0, 158, 47));
-        draw_ball(b7, color(0, 180, 170));
-        draw_ball(b8, color(0, 121, 241));
-        draw_ball(b9, color(80, 70, 220));
-        draw_ball(b10, color(150, 60, 200));
-        raylib::draw_text("bounce: 0.1 (red) to 0.95 (purple)", 10, 10, 20, color(80, 80, 80));
+        draw_ball(b1, raylib::Color::rgb(190, 33, 55));
+        draw_ball(b2, raylib::Color::rgb(230, 41, 55));
+        draw_ball(b3, raylib::Color::rgb(255, 120, 0));
+        draw_ball(b4, raylib::Color::rgb(255, 190, 0));
+        draw_ball(b5, raylib::Color::rgb(160, 200, 0));
+        draw_ball(b6, raylib::Color::rgb(0, 158, 47));
+        draw_ball(b7, raylib::Color::rgb(0, 180, 170));
+        draw_ball(b8, raylib::Color::rgb(0, 121, 241));
+        draw_ball(b9, raylib::Color::rgb(80, 70, 220));
+        draw_ball(b10, raylib::Color::rgb(150, 60, 200));
+        raylib::draw_text("bounce: 0.1 (red) to 0.95 (purple)", 10, 10, 20, raylib::Color::rgb(80, 80, 80));
         raylib::end_drawing();
     }
 

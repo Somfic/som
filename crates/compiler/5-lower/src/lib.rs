@@ -48,7 +48,8 @@ impl<'a> Lowerer<'a> {
             for item in &module.items {
                 if let Item::Impl(block) = item {
                     for &method in &block.methods {
-                        self.owners.insert(method, block.target.name.to_string());
+                        self.owners
+                            .insert(method, block.target.name().name.to_string());
                     }
                 }
             }

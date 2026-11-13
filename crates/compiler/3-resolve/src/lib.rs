@@ -178,10 +178,7 @@ impl<'a> Resolver<'a> {
             self.module = m;
             for item in &module.items {
                 let Item::Impl(block) = item else { continue };
-                let path = Path {
-                    segments: vec![block.target.clone()],
-                };
-                let Some(owner) = self.resolve_path(&path, Expect::Struct) else {
+                let Some(owner) = self.resolve_path(&block.target, Expect::Struct) else {
                     continue;
                 };
                 for &method in &block.methods {

@@ -97,7 +97,7 @@ impl Parser<'_> {
 
     fn parse_impl(&mut self) -> Option<Impl> {
         self.expect(TokenKind::Impl, "an impl block")?;
-        let target = self.parse_ident("a struct name")?;
+        let target = self.parse_path("a struct name")?;
         self.expect(TokenKind::OpenBrace, "an impl block")?;
 
         let mut methods = Vec::new();

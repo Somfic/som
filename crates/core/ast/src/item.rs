@@ -34,7 +34,8 @@ pub struct Extern {
 
 /// `impl Point { fn sum(self: Point) -> i32 { ... } }`
 pub struct Impl {
-    pub target: Ident,
+    /// The struct the methods are for: `Point`, or one from another module, `box2d::B2Vec2`.
+    pub target: Path,
     pub methods: Vec<Id<Func>>,
 }
 

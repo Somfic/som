@@ -1,0 +1,15 @@
+// expect: exit 42
+
+use geo;
+
+// Methods can be added to a struct from another module, like a generated C binding.
+impl geo::Point {
+    fn new(x: i32, y: i32) -> geo::Point { geo::Point { x: x, y: y } }
+    fn product(self: geo::Point) -> i32 { self.x * self.y }
+}
+
+fn main() -> i32 {
+    let p = geo::Point::new(4, 9);
+    let q = geo::Point::new(1, 5);
+    p.product() + q.sum()
+}
