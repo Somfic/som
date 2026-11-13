@@ -24,6 +24,8 @@ pub enum Ty {
         to: TypeId,
     },
     Struct(DefId),
+    /// `T?`: a `T`, or `none`.
+    Optional(TypeId),
     /// A type parameter, inside the generic function that declares it.
     Param(DefId),
     Fn {
@@ -136,6 +138,11 @@ impl TypeTable {
         &self.tys[id]
     }
 
+    /// Every interned type, with its id.
+    pub fn iter(&self) -> impl Iterator<Item = (TypeId, &Ty)> {
+        self.tys.iter_with_ids()
+    }
+
     /// The id of `ty` if it has been interned.
     pub fn lookup(&self, ty: &Ty) -> Option<TypeId> {
         self.ids.get(ty).copied()
@@ -153,12 +160,18 @@ impl TypeTable {
             Ty::Float(float) => format!("{float:?}").to_lowercase(),
             Ty::Pointer => "*".into(),
             Ty::Ref { mutable, to } => {
-                format!(
-                    "&{}{}",
-                    if *mutable { "mut " } else { "" },
-                    self.display(*to, names)
-                )
+                let mutability = if *mutable { "mut " } else { "" };
+                // `&i32?` is an optional reference.
+                match self.get(*to) {
+                    Ty::Optional(_) => format!("&{mutability}({})", self.display(*to, names)),
+                    _ => format!("&{mutability}{}", self.display(*to, names)),
+                }
             }
+            // `fn() -> i32?` returns an optional.
+            Ty::Optional(inner) => match self.get(*inner) {
+                Ty::Fn { .. } => format!("({})?", self.display(*inner, names)),
+                _ => format!("{}?", self.display(*inner, names)),
+            },
             Ty::Struct(def) | Ty::Param(def) => names.def(*def).name.to_string(),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();

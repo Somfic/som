@@ -1,0 +1,15 @@
+// expect: exit 0
+
+struct P { x: i32 }
+
+fn get(p: P) -> i32 { p.x }
+
+fn main() -> i32 {
+    let flag = true;
+    // `flag { }` is the condition and the body, not a constructor.
+    if flag { }
+    while false { }
+    // Inside parentheses, constructors are allowed again.
+    if get(P { x: 1 }) == 1 { }
+    0
+}

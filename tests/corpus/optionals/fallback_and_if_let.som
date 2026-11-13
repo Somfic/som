@@ -1,0 +1,34 @@
+// expect: exit 36
+
+struct Point { x: i32, y: i32 }
+
+/// The first of `a` and `b` that's positive, if either is.
+fn first_positive(a: i32, b: i32) -> i32? {
+    a if a > 0 else (b if b > 0 else none)
+}
+
+fn find_point(want: bool) -> Point? {
+    Point { x: 3, y: 4 } if want else none
+}
+
+fn main() -> i32 {
+    let some: i32? = 5;
+    let nothing: i32? = none;
+    let a = some else 0;
+    let b = nothing else 10;
+    // Right-associative: tries each optional in turn, then takes the last value.
+    let c = first_positive(0 - 1, 0 - 2) else first_positive(0, 7) else 100;
+
+    let mut total = a + b + c;
+    if let p = find_point(true) {
+        total = total + p.x * p.y;
+    } else {
+        total = 0;
+    }
+    if let p = find_point(false) {
+        total = 0;
+    } else if let n = first_positive(2, 3) {
+        total = total + n;
+    }
+    total
+}

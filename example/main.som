@@ -1,17 +1,4 @@
-extern "raylib";
-use std;
-struct Point { x: i32, y: i32 }
+let a: i32? = 123;
+let b: i32? = 123;
 
-fn work(a: i32, b: i32) -> i32 {
-    let sum = a + b;          // never read
-    let doubled = sum * 2;    // only read by another dead variable
-    let p = Point { x: a, y: b };  // never read
-    let r = &p;               // never read
-    let unused_flag = a < b;  // never read
-    puts("side effects stay");
-    a - b
-}
-
-fn main() -> i32 {
-    work(3, 4)
-}
+let a = a else b else 0;

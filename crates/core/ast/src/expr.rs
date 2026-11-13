@@ -7,6 +7,8 @@ pub enum Expr {
     Float(f64),
     Bool(bool),
     Str(Box<str>),
+    /// `none`: an optional without a value.
+    None,
     Var(Path),
     Binary {
         op: BinOp,
@@ -57,6 +59,11 @@ pub enum Expr {
         then: Id<Expr>,
         otherwise: Id<Expr>,
     },
+    /// `optional else fallback`: the optional's value, or `fallback` if it has none.
+    Fallback {
+        optional: Id<Expr>,
+        fallback: Id<Expr>,
+    },
     /// `{ stmts; value }`
     Block {
         stmts: Vec<Id<Stmt>>,
@@ -100,6 +107,14 @@ pub enum Stmt {
     Break,
     If {
         condition: Id<Expr>,
+        then: Vec<Id<Stmt>>,
+        otherwise: Option<Vec<Id<Stmt>>>,
+    },
+    /// `if let name = optional { then } else { otherwise }`: runs `then` with `name` bound
+    /// to the optional's value, if it has one.
+    IfLet {
+        name: Ident,
+        value: Id<Expr>,
         then: Vec<Id<Stmt>>,
         otherwise: Option<Vec<Id<Stmt>>>,
     },

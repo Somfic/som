@@ -43,12 +43,14 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Float
         | TokenKind::Text
         | TokenKind::True
-        | TokenKind::False => PEACH,
+        | TokenKind::False
+        | TokenKind::None => PEACH,
         TokenKind::Ident => TEXT,
         TokenKind::Plus
         | TokenKind::Minus
         | TokenKind::Star
         | TokenKind::Ampersand
+        | TokenKind::Question
         | TokenKind::Slash
         | TokenKind::Equals
         | TokenKind::DoubleEquals
@@ -63,6 +65,8 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::CloseParen
         | TokenKind::OpenBrace
         | TokenKind::CloseBrace
+        | TokenKind::OpenBracket
+        | TokenKind::CloseBracket
         | TokenKind::Comma
         | TokenKind::Colon
         | TokenKind::Semicolon

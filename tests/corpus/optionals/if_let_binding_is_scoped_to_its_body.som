@@ -1,0 +1,7 @@
+// expect: error
+
+fn main() -> i32 {
+    let o: i32? = 3;
+    if let x = o { }
+    x
+}

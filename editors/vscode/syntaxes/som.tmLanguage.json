@@ -49,7 +49,7 @@
         },
         {
           "name": "constant.language.boolean.som",
-          "match": "\\b(true|false)\\b"
+          "match": "\\b(true|false|none)\\b"
         }
       ]
     },

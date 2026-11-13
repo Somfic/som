@@ -50,7 +50,7 @@ fn referenced(body: &Body) -> Vec<FuncId> {
                 continue;
             };
             let operands: Vec<&Operand> = match rvalue {
-                Rvalue::Use(op) | Rvalue::Not(op) => vec![op],
+                Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => vec![op],
                 Rvalue::Ref { .. } => Vec::new(),
                 Rvalue::Binary { lhs, rhs, .. } => vec![lhs, rhs],
                 Rvalue::Struct { fields, .. } => fields.iter().collect(),
@@ -92,7 +92,7 @@ fn used_structs(mir: &Mir, funcs: &HashSet<FuncId>) -> HashSet<DefId> {
             continue;
         }
         match mir.types.get(ty) {
-            Ty::Ref { to, .. } => types.push(*to),
+            Ty::Ref { to, .. } | Ty::Optional(to) => types.push(*to),
             Ty::Fn { params, ret } => {
                 types.extend(params.iter().copied());
                 types.push(*ret);

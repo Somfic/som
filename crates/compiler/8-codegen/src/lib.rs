@@ -149,6 +149,7 @@ fn identifier(name: &str) -> String {
         .replace("::", "_")
         .replace("&mut ", "mutref_")
         .replace('&', "ref_")
+        .replace('?', "_opt")
         .replace('*', "ptr");
     let mut out = String::new();
     for c in spelled.chars() {
@@ -169,6 +170,8 @@ fn identifier(name: &str) -> String {
 /// The C names of the program's structs, their fields and its functions.
 struct Names {
     structs: HashMap<DefId, String>,
+    /// Each optional type the program uses: a struct of whether it holds a value, and the value.
+    optionals: HashMap<TypeId, String>,
     fields: HashMap<DefId, Vec<String>>,
     funcs: HashMap<FuncId, String>,
 }
@@ -191,6 +194,14 @@ impl Names {
                 .map(|(name, _)| unique(name, "f", &mut taken, |_| false))
                 .collect();
             fields.insert(s.def, names);
+        }
+        let mut optionals = HashMap::new();
+        for ty in used_optionals(mir) {
+            let Ty::Optional(inner) = mir.types.get(ty) else {
+                unreachable!("used_optionals returns optionals")
+            };
+            let name = format!("som_opt_{}", identifier(&mir.display_ty(*inner)));
+            optionals.insert(ty, unique(&name, "s", &mut tags, |_| false));
         }
 
         // Externs keep their names, since that's what they link against; the rest avoid them.
@@ -220,10 +231,48 @@ impl Names {
 
         Names {
             structs,
+            optionals,
             fields,
             funcs,
         }
     }
+}
+
+/// The optional types in the program's functions and structs, inner types first.
+fn used_optionals(mir: &Mir) -> Vec<TypeId> {
+    let mut todo: Vec<TypeId> = Vec::new();
+    for func in &mir.funcs {
+        todo.extend(&func.params);
+        todo.push(func.ret);
+        if let Some(body) = &func.body {
+            todo.extend(body.locals.iter().map(|l| l.ty));
+        }
+    }
+    for s in &mir.structs {
+        todo.extend(s.fields.iter().map(|&(_, ty)| ty));
+    }
+    let mut seen = HashSet::new();
+    let mut found = Vec::new();
+    while let Some(ty) = todo.pop() {
+        if !seen.insert(ty) {
+            continue;
+        }
+        match mir.types.get(ty) {
+            Ty::Ref { to, .. } => todo.push(*to),
+            Ty::Fn { params, ret } => {
+                todo.extend(params);
+                todo.push(*ret);
+            }
+            Ty::Optional(inner) => {
+                found.push(ty);
+                todo.push(*inner);
+            }
+            _ => {}
+        }
+    }
+    // Sorted, so the output doesn't depend on hash order.
+    found.sort();
+    found
 }
 
 /// C names for a function's locals: the som name where possible, so the C reads like the
@@ -324,6 +373,8 @@ impl Usage {
                     Rvalue::Use(op) => u.operand(op, Use::Assign),
                     Rvalue::Ref { place, .. } => u.read(place.local, Use::Other),
                     Rvalue::Not(op) => u.operand(op, Use::Operand),
+                    // A field of the compound literal it becomes.
+                    Rvalue::Some(op) => u.operand(op, Use::Field),
                     Rvalue::Binary { lhs, rhs, .. } => {
                         u.operand(lhs, Use::Operand);
                         u.operand(rhs, Use::Operand);
@@ -468,6 +519,7 @@ impl<'a> Emitter<'a> {
                 format!("{}*", self.struct_name(*def))
             }
             Ty::Struct(def) => self.struct_name(*def),
+            Ty::Optional(_) => format!("struct {}", self.names.optionals[&ty]),
             Ty::Error | Ty::Param(_) | Ty::Var(_) => {
                 unreachable!("codegen only sees checked, concrete types")
             }
@@ -497,35 +549,66 @@ impl<'a> Emitter<'a> {
 
     // --- Declarations ---
 
-    /// Struct definitions, ordered so that a struct comes after any struct it contains by value.
+    /// Struct and optional definitions, ordered so that each comes after any it contains by
+    /// value.
     fn structs(&mut self) {
         let mir = self.mir;
-        for s in &mir.structs {
-            let name = self.struct_name(s.def);
-            self.line(format!("{name};"));
+        let mut types: Vec<TypeId> = mir
+            .structs
+            .iter()
+            .filter_map(|s| mir.types.lookup(&Ty::Struct(s.def)))
+            .collect();
+        let mut optionals: Vec<TypeId> = self.names.optionals.keys().copied().collect();
+        optionals.sort();
+        types.extend(optionals);
+        for &ty in &types {
+            let name = self.ty(ty);
+            // A handle's type is a pointer to the struct.
+            self.line(format!("{};", name.trim_end_matches('*')));
         }
         let mut done = HashSet::new();
-        for s in &mir.structs {
-            self.define_struct(s.def, &mut done, &mut Vec::new());
+        for &ty in &types {
+            self.define(ty, &mut done, &mut Vec::new());
         }
         self.line("");
     }
 
-    fn define_struct(&mut self, def: DefId, done: &mut HashSet<DefId>, visiting: &mut Vec<DefId>) {
+    /// Defines the struct or optional `ty`, after what it contains by value.
+    fn define(&mut self, ty: TypeId, done: &mut HashSet<TypeId>, visiting: &mut Vec<TypeId>) {
         // A struct that contains itself by value has no size; the type checker doesn't catch
         // that yet, so emit it anyway and let the C compiler report it.
-        if done.contains(&def) || visiting.contains(&def) {
+        if done.contains(&ty) || visiting.contains(&ty) {
             return;
         }
-        visiting.push(def);
-        let s = self.mir.struct_def(def);
-        for &(_, ty) in &s.fields {
-            if let Ty::Struct(inner) = self.mir.types.get(ty) {
-                self.define_struct(*inner, done, visiting);
-            }
+        let contains: Vec<TypeId> = match self.mir.types.get(ty) {
+            Ty::Struct(def) => self
+                .mir
+                .struct_def(*def)
+                .fields
+                .iter()
+                .map(|f| f.1)
+                .collect(),
+            Ty::Optional(inner) => vec![*inner],
+            _ => return,
+        };
+        visiting.push(ty);
+        for inner in contains {
+            self.define(inner, done, visiting);
         }
         visiting.pop();
-        done.insert(def);
+        done.insert(ty);
+        match *self.mir.types.get(ty) {
+            Ty::Struct(def) => self.define_struct(def),
+            Ty::Optional(inner) => {
+                let value = self.ty(inner);
+                self.line(format!("{} {{ bool some; {value} value; }};", self.ty(ty)));
+            }
+            _ => {}
+        }
+    }
+
+    fn define_struct(&mut self, def: DefId) {
+        let s = self.mir.struct_def(def);
         // Only C knows what's inside: the forward declaration is all there is.
         if s.handle {
             return;
@@ -768,6 +851,13 @@ impl<'a> Emitter<'a> {
             Rvalue::Use(op) => self.operand(f, op),
             Rvalue::Ref { place, .. } => Expr::compound(format!("&{}", self.place(f, place))),
             Rvalue::Not(op) => Expr::compound(format!("!{}", self.operand(f, op).operand())),
+            Rvalue::Some(op) => {
+                let ty = self.operand_ty(f, op);
+                let optional = (self.mir.types.lookup(&Ty::Optional(ty)))
+                    .expect("validated MIR interns the optional types it builds");
+                let value = self.operand(f, op).text;
+                Expr::atom(format!("({}){{true, {value}}}", self.ty(optional)))
+            }
             Rvalue::Binary { op, lhs, rhs } => {
                 let pointer =
                     *op == BinOp::Add && self.operand_ty(f, lhs) == self.mir.types.pointer;
@@ -814,11 +904,7 @@ impl<'a> Emitter<'a> {
     }
 
     fn project(&self, ty: TypeId, projection: Projection) -> TypeId {
-        match (projection, self.mir.types.get(ty)) {
-            (Projection::Deref, Ty::Ref { to, .. }) => *to,
-            (Projection::Field(i), Ty::Struct(def)) => self.mir.struct_def(*def).fields[i].1,
-            _ => unreachable!("validated MIR has well-typed places"),
-        }
+        (self.mir.project(ty, projection)).expect("validated MIR has well-typed places")
     }
 
     fn operand(&self, f: &mut FnState, op: &Operand) -> Expr {
@@ -876,11 +962,13 @@ impl<'a> Emitter<'a> {
         s
     }
 
-    fn field_name(&self, struct_ty: TypeId, index: usize) -> &str {
-        let Ty::Struct(def) = self.mir.types.get(struct_ty) else {
-            unreachable!("fields belong to structs")
-        };
-        &self.names.fields[def][index]
+    fn field_name(&self, ty: TypeId, index: usize) -> &str {
+        match self.mir.types.get(ty) {
+            Ty::Struct(def) => &self.names.fields[def][index],
+            Ty::Optional(_) if index == 0 => "some",
+            Ty::Optional(_) => "value",
+            _ => unreachable!("fields belong to structs and optionals"),
+        }
     }
 }
 
@@ -897,7 +985,9 @@ fn operand_local(op: &Operand) -> Option<Local> {
 /// The whole locals an rvalue reads, which pending temporaries can be folded into.
 fn reads(rvalue: &Rvalue) -> Vec<Local> {
     match rvalue {
-        Rvalue::Use(op) | Rvalue::Not(op) => operand_local(op).into_iter().collect(),
+        Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => {
+            operand_local(op).into_iter().collect()
+        }
         Rvalue::Binary { lhs, rhs, .. } => {
             [lhs, rhs].into_iter().filter_map(operand_local).collect()
         }

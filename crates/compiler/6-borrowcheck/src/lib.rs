@@ -196,7 +196,7 @@ impl<'a> FnChecker<'a> {
         span: &Span,
     ) -> BTreeSet<LoanId> {
         match rvalue {
-            Rvalue::Use(op) | Rvalue::Not(op) => self.operand(state, op, span),
+            Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => self.operand(state, op, span),
             Rvalue::Binary { lhs, rhs, .. } => {
                 let mut flows = self.operand(state, lhs, span);
                 flows.extend(self.operand(state, rhs, span));
@@ -389,12 +389,8 @@ impl<'a> FnChecker<'a> {
 
     fn place_ty(&self, place: &Place) -> TypeId {
         let mut ty = self.body.local(place.local).ty;
-        for projection in &place.projection {
-            ty = match (projection, self.mir.types.get(ty)) {
-                (Projection::Deref, Ty::Ref { to, .. }) => *to,
-                (Projection::Field(i), Ty::Struct(def)) => self.mir.struct_def(*def).fields[*i].1,
-                _ => unreachable!("validated MIR has well-typed places"),
-            };
+        for &projection in &place.projection {
+            ty = (self.mir.project(ty, projection)).expect("validated MIR has well-typed places");
         }
         ty
     }
@@ -403,6 +399,7 @@ impl<'a> FnChecker<'a> {
     fn has_ref(&self, ty: TypeId) -> bool {
         match self.mir.types.get(ty) {
             Ty::Ref { .. } => true,
+            Ty::Optional(inner) => self.has_ref(*inner),
             Ty::Struct(def) => self
                 .mir
                 .struct_def(*def)
@@ -431,6 +428,11 @@ impl<'a> FnChecker<'a> {
                     let (field, field_ty) = &self.mir.struct_def(*def).fields[*i];
                     name = format!("{name}.{field}");
                     ty = *field_ty;
+                }
+                // Only the value an optional holds can be borrowed or moved: it's what
+                // `if let` binds, so it goes by the optional's own name.
+                (Projection::Field(i), Ty::Optional(inner)) => {
+                    ty = if *i == 0 { self.mir.types.bool } else { *inner };
                 }
                 _ => unreachable!("validated MIR has well-typed places"),
             }

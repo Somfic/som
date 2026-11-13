@@ -1800,7 +1800,11 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
             TokenKind::Ident if token.text.starts_with(char::is_uppercase) => 8,
             TokenKind::Ident => 1,
-            TokenKind::Int | TokenKind::Float | TokenKind::True | TokenKind::False => 2,
+            TokenKind::Int
+            | TokenKind::Float
+            | TokenKind::True
+            | TokenKind::False
+            | TokenKind::None => 2,
             TokenKind::Text => 3,
             TokenKind::I8
             | TokenKind::I16
@@ -1835,7 +1839,8 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::GreaterThan
             | TokenKind::LessThanOrEqual
             | TokenKind::GreaterThanOrEqual
-            | TokenKind::Ampersand => 6,
+            | TokenKind::Ampersand
+            | TokenKind::Question => 6,
             _ => continue,
         };
 

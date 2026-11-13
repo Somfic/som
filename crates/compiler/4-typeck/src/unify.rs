@@ -90,6 +90,7 @@ impl Unifier {
                     to: t2,
                 },
             ) if m1 == m2 => self.unify(t1, t2),
+            (Ty::Optional(a), Ty::Optional(b)) => self.unify(a, b),
             (
                 Ty::Fn {
                     params: p1,
@@ -125,7 +126,7 @@ impl Unifier {
     fn occurs(&self, var: u32, ty: TypeId) -> bool {
         match self.table.get(self.shallow(ty)) {
             Ty::Var(v) => *v == var,
-            Ty::Ref { to, .. } => self.occurs(var, *to),
+            Ty::Ref { to, .. } | Ty::Optional(to) => self.occurs(var, *to),
             Ty::Fn { params, ret } => {
                 params.iter().any(|&p| self.occurs(var, p)) || self.occurs(var, *ret)
             }
@@ -156,6 +157,10 @@ impl Unifier {
                 let to = self.finish(to, unresolved);
                 self.intern(Ty::Ref { mutable, to })
             }
+            Ty::Optional(inner) => {
+                let inner = self.finish(inner, unresolved);
+                self.intern(Ty::Optional(inner))
+            }
             Ty::Fn { params, ret } => {
                 let params = params
                     .into_iter()
@@ -175,11 +180,19 @@ impl Unifier {
             // Only reached for a variable inside another type, like `&_`: on its own, the
             // checker describes it in words instead.
             Ty::Var(_) => "_".into(),
-            Ty::Ref { mutable, to } => format!(
-                "&{}{}",
-                if *mutable { "mut " } else { "" },
-                self.display(*to, names)
-            ),
+            Ty::Ref { mutable, to } => {
+                let mutability = if *mutable { "mut " } else { "" };
+                // `&i32?` is an optional reference.
+                match self.table.get(self.shallow(*to)) {
+                    Ty::Optional(_) => format!("&{mutability}({})", self.display(*to, names)),
+                    _ => format!("&{mutability}{}", self.display(*to, names)),
+                }
+            }
+            // `fn() -> i32?` returns an optional.
+            Ty::Optional(inner) => match self.table.get(self.shallow(*inner)) {
+                Ty::Fn { .. } => format!("({})?", self.display(*inner, names)),
+                _ => format!("{}?", self.display(*inner, names)),
+            },
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display(*ret, names))

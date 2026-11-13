@@ -79,6 +79,8 @@ pub enum TokenKind {
     True,
     #[regex(r"false")]
     False,
+    #[token("none")]
+    None,
 
     // Operators
     #[token("+")]
@@ -131,6 +133,12 @@ pub enum TokenKind {
     FatArrow,
     #[token("&")]
     Ampersand,
+    #[token("?")]
+    Question,
+    #[token("[")]
+    OpenBracket,
+    #[token("]")]
+    CloseBracket,
     #[token(".")]
     Dot,
     #[token("...")]
@@ -202,6 +210,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Text => write!(f, "string"),
             TokenKind::True => write!(f, "true"),
             TokenKind::False => write!(f, "false"),
+            TokenKind::None => write!(f, "none"),
             TokenKind::Plus => write!(f, "+"),
             TokenKind::Minus => write!(f, "-"),
             TokenKind::Star => write!(f, "*"),
@@ -225,6 +234,9 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Arrow => write!(f, "->"),
             TokenKind::FatArrow => write!(f, "=>"),
             TokenKind::Ampersand => write!(f, "&"),
+            TokenKind::Question => write!(f, "?"),
+            TokenKind::OpenBracket => write!(f, "["),
+            TokenKind::CloseBracket => write!(f, "]"),
             TokenKind::Dot => write!(f, "."),
             TokenKind::Ellipsis => write!(f, "..."),
             TokenKind::SingleQuote => write!(f, "'"),

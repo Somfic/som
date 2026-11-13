@@ -31,6 +31,9 @@ pub struct Grammar;
 #[allow(dead_code)]
 impl Grammar {
     pub const ASSIGNMENT: u8 = 1;
+    /// `optional else fallback`: below every binary operator, above `if … else` and `=`.
+    /// Right-associative: `a else b else c` tries `a`, then `b`, then takes `c`.
+    pub const FALLBACK: u8 = 3;
     pub const OR: u8 = 2;
     pub const AND: u8 = 3;
     pub const EQUALITY: u8 = 4;

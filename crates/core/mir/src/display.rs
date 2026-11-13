@@ -22,11 +22,19 @@ impl Mir {
     pub fn display_ty(&self, ty: TypeId) -> String {
         match self.types.get(ty) {
             Ty::Struct(def) => self.struct_def(*def).name.clone(),
-            Ty::Ref { mutable, to } => format!(
-                "&{}{}",
-                if *mutable { "mut " } else { "" },
-                self.display_ty(*to)
-            ),
+            Ty::Ref { mutable, to } => {
+                let mutability = if *mutable { "mut " } else { "" };
+                // `&i32?` is an optional reference.
+                match self.types.get(*to) {
+                    Ty::Optional(_) => format!("&{mutability}({})", self.display_ty(*to)),
+                    _ => format!("&{mutability}{}", self.display_ty(*to)),
+                }
+            }
+            // `fn() -> i32?` returns an optional.
+            Ty::Optional(inner) => match self.types.get(*inner) {
+                Ty::Fn { .. } => format!("({})?", self.display_ty(*inner)),
+                _ => format!("{}?", self.display_ty(*inner)),
+            },
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display_ty(p)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display_ty(*ret))
@@ -146,6 +154,7 @@ impl Mir {
                 self.display_operand(rhs)
             ),
             Rvalue::Not(op) => format!("Not({})", self.display_operand(op)),
+            Rvalue::Some(op) => format!("Some({})", self.display_operand(op)),
             Rvalue::Struct { def, fields } => {
                 let s = self.struct_def(*def);
                 let fields: Vec<String> = s

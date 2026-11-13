@@ -1,0 +1,6 @@
+// expect: error CannotInfer
+
+fn main() -> i32 {
+    let x = none;
+    0
+}

@@ -1,0 +1,18 @@
+// expect: exit 27
+
+struct Config { retries: i32?, verbose: bool }
+
+fn wrap<T>(x: T) -> T? { x }
+
+fn larger(a: &i32, b: &i32) -> &i32? { a if *a > *b else (b if *b > *a else none) }
+
+fn main() -> i32 {
+    let c = Config { retries: 3, verbose: true };
+    let d = Config { retries: none, verbose: false };
+    let r = (c.retries else 0) + (d.retries else 10);
+    let w = wrap(4) else 0;
+    let x = 5;
+    let y = 9;
+    let big = *(larger(&x, &y) else &x);
+    r + w + big + (100 if d.verbose else 0) + (1 if true else 2)
+}

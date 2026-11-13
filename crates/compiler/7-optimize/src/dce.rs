@@ -211,7 +211,7 @@ fn reads(dest: &Place, rvalue: &Rvalue, mut read: impl FnMut(Local)) {
         read(dest.local);
     }
     match rvalue {
-        Rvalue::Use(op) | Rvalue::Not(op) => read_operand(op, read),
+        Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => read_operand(op, read),
         Rvalue::Ref { place, .. } => read(place.local),
         Rvalue::Binary { lhs, rhs, .. } => {
             read_operand(lhs, &mut read);
@@ -257,6 +257,7 @@ fn has_effect(dest: &Place, rvalue: &Rvalue) -> bool {
         }
         Rvalue::Use(_)
         | Rvalue::Not(_)
+        | Rvalue::Some(_)
         | Rvalue::Ref { .. }
         | Rvalue::Binary { .. }
         | Rvalue::Struct { .. } => false,

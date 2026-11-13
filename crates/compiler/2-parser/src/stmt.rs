@@ -84,7 +84,7 @@ impl Parser<'_> {
     fn parse_while(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::While, "a while statement")?;
-        let condition = self.parse_expr()?;
+        let condition = self.parse_condition()?;
         let body = self.parse_stmt_block("the while body")?;
         let span = self.span_from(&start);
         Some(self.ast.stmts.alloc(Stmt::While { condition, body }, span))
@@ -93,16 +93,12 @@ impl Parser<'_> {
     fn parse_if(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::If, "an if statement")?;
-        let condition = self.parse_expr()?;
+        if self.eat(TokenKind::Let) {
+            return self.parse_if_let(start);
+        }
+        let condition = self.parse_condition()?;
         let then = self.parse_stmt_block("the if body")?;
-
-        let otherwise = if !self.eat(TokenKind::Else) {
-            None
-        } else if self.at(TokenKind::If) {
-            Some(vec![self.parse_if()?])
-        } else {
-            Some(self.parse_stmt_block("the else body")?)
-        };
+        let otherwise = self.parse_else()?;
 
         let span = self.span_from(&start);
         Some(self.ast.stmts.alloc(
@@ -113,6 +109,36 @@ impl Parser<'_> {
             },
             span,
         ))
+    }
+
+    /// `if let name = optional { … } else { … }`, after the `if let`.
+    fn parse_if_let(&mut self, start: som_ast::Span) -> Option<Id<Stmt>> {
+        let name = self.parse_ident("a name for the optional's value")?;
+        self.expect(TokenKind::Equals, "an optional to unwrap")?;
+        let value = self.parse_condition()?;
+        let then = self.parse_stmt_block("the if body")?;
+        let otherwise = self.parse_else()?;
+        let span = self.span_from(&start);
+        Some(self.ast.stmts.alloc(
+            Stmt::IfLet {
+                name,
+                value,
+                then,
+                otherwise,
+            },
+            span,
+        ))
+    }
+
+    /// An optional `else { … }` or `else if …`.
+    fn parse_else(&mut self) -> Option<Option<Vec<Id<Stmt>>>> {
+        Some(if !self.eat(TokenKind::Else) {
+            None
+        } else if self.at(TokenKind::If) {
+            Some(vec![self.parse_if()?])
+        } else {
+            Some(self.parse_stmt_block("the else body")?)
+        })
     }
 
     /// `{ stmt; stmt; expr }` where a trailing expression becomes an expression statement.

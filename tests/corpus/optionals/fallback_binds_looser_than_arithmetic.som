@@ -1,0 +1,6 @@
+// expect: exit 12
+
+fn main() -> i32 {
+    let absent: i32? = none;
+    absent else 10 + 2
+}

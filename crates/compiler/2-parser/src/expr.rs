@@ -11,6 +11,19 @@ impl Parser<'_> {
         self.parse_expr_bp(0)
     }
 
+    /// The condition of an `if` or `while`, or the optional of an `if let`: `x { … }` there
+    /// is `x` followed by the body. Write `(Point { … })` for a constructor.
+    pub(crate) fn parse_condition(&mut self) -> Option<Id<Expr>> {
+        self.with_condition(true, |p| p.parse_expr())
+    }
+
+    fn with_condition<T>(&mut self, in_condition: bool, f: impl FnOnce(&mut Self) -> T) -> T {
+        let outer = std::mem::replace(&mut self.in_condition, in_condition);
+        let result = f(self);
+        self.in_condition = outer;
+        result
+    }
+
     fn alloc_expr(&mut self, expr: Expr, start: &Span) -> Id<Expr> {
         let span = self.span_from(start);
         self.ast.exprs.alloc(expr, span)
@@ -70,7 +83,8 @@ impl Parser<'_> {
                     break;
                 }
                 self.advance();
-                let condition = self.parse_expr()?;
+                // Stops before `else`, which belongs to this conditional, not to a fallback.
+                let condition = self.parse_expr_bp(Grammar::FALLBACK + 1)?;
                 self.expect(TokenKind::Else, "an else branch")?;
                 let otherwise = self.parse_expr()?;
                 lhs = self.alloc_expr(
@@ -78,6 +92,23 @@ impl Parser<'_> {
                         condition,
                         then: lhs,
                         otherwise,
+                    },
+                    &start,
+                );
+                continue;
+            }
+
+            // `optional else fallback`
+            if self.at(TokenKind::Else) {
+                if Grammar::FALLBACK < min_bp {
+                    break;
+                }
+                self.advance();
+                let fallback = self.parse_expr_bp(Grammar::FALLBACK)?;
+                lhs = self.alloc_expr(
+                    Expr::Fallback {
+                        optional: lhs,
+                        fallback,
                     },
                     &start,
                 );
@@ -156,6 +187,11 @@ impl Parser<'_> {
                 Expr::Float(value)
             }
 
+            TokenKind::None => {
+                self.advance();
+                Expr::None
+            }
+
             TokenKind::True | TokenKind::False => {
                 let value = self.at(TokenKind::True);
                 self.advance();
@@ -181,7 +217,7 @@ impl Parser<'_> {
                     && (self.peek_nth(n + 1) == TokenKind::CloseBrace
                         || (self.peek_nth(n + 1) == TokenKind::Ident
                             && self.peek_nth(n + 2) == TokenKind::Colon));
-                if is_constructor {
+                if is_constructor && !self.in_condition {
                     return self.parse_constructor();
                 }
                 Expr::Var(self.parse_path("an identifier or constructor name")?)
@@ -189,12 +225,12 @@ impl Parser<'_> {
 
             TokenKind::OpenParen => {
                 self.advance();
-                let inner = self.parse_expr()?;
+                let inner = self.with_condition(false, |p| p.parse_expr())?;
                 self.expect(TokenKind::CloseParen, "closing parenthesis")?;
                 return Some(inner);
             }
 
-            TokenKind::OpenBrace => return self.parse_block(),
+            TokenKind::OpenBrace => return self.with_condition(false, |p| p.parse_block()),
 
             _ => {
                 self.error_missing("expected expression", "an expression");
@@ -249,7 +285,9 @@ impl Parser<'_> {
     /// `(a, b, c)`
     fn parse_args(&mut self) -> Option<Vec<Id<Expr>>> {
         self.expect(TokenKind::OpenParen, "a list of arguments")?;
-        let args = self.parse_comma_list(TokenKind::CloseParen, |p| p.parse_arg())?;
+        let args = self.with_condition(false, |p| {
+            p.parse_comma_list(TokenKind::CloseParen, |p| p.parse_arg())
+        })?;
         // `free(alloc(10).` while typing: report the missing `)`, but keep the call and
         // its arguments, so an editor still knows them.
         if !self.eat(TokenKind::CloseParen) {

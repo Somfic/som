@@ -1,0 +1,12 @@
+// expect: exit 1
+
+fn bump(n: &mut i32) -> i32 { *n = *n + 1; *n }
+
+fn main() -> i32 {
+    let mut calls = 0;
+    let present: i32? = 7;
+    let absent: i32? = none;
+    let a = present else bump(&mut calls);
+    let b = absent else bump(&mut calls);
+    calls
+}

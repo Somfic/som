@@ -310,12 +310,40 @@ impl<'a> Resolver<'a> {
                     self.resolve_stmts(otherwise);
                 }
             }
+            // The name is only bound in `then`, where the optional has a value.
+            Stmt::IfLet {
+                name,
+                value,
+                then,
+                otherwise,
+            } => {
+                self.resolve_expr(*value);
+                let def = self.names.define(
+                    &name.name,
+                    DefKind::Local(id),
+                    name.span.clone(),
+                    self.module,
+                );
+                self.names.set_let(id, def);
+                self.in_scope(|r| {
+                    r.bind(name, def);
+                    r.resolve_stmts(then);
+                });
+                if let Some(otherwise) = otherwise {
+                    self.resolve_stmts(otherwise);
+                }
+            }
         }
     }
 
     fn resolve_expr(&mut self, id: Id<Expr>) {
         match &self.ast.exprs[id] {
-            Expr::Hole | Expr::Int(_) | Expr::Float(_) | Expr::Bool(_) | Expr::Str(_) => {}
+            Expr::Hole
+            | Expr::Int(_)
+            | Expr::Float(_)
+            | Expr::Bool(_)
+            | Expr::Str(_)
+            | Expr::None => {}
             Expr::Var(path) => self.bind_expr(id, path, Expect::Value),
             // Visible from here to the end of the block, like a `let` before the call.
             Expr::Out(name) => {
@@ -325,7 +353,11 @@ impl<'a> Resolver<'a> {
                 self.names.set_expr(id, def);
                 self.bind(name, def);
             }
-            Expr::Binary { lhs, rhs, .. } => {
+            Expr::Binary { lhs, rhs, .. }
+            | Expr::Fallback {
+                optional: lhs,
+                fallback: rhs,
+            } => {
                 self.resolve_expr(*lhs);
                 self.resolve_expr(*rhs);
             }
@@ -383,7 +415,7 @@ impl<'a> Resolver<'a> {
                     self.names.set_type(id, def);
                 }
             }
-            TypeExpr::Reference { to, .. } => self.resolve_type(*to),
+            TypeExpr::Reference { to, .. } | TypeExpr::Optional(to) => self.resolve_type(*to),
             TypeExpr::Fn { params, returns } => {
                 params.iter().for_each(|&p| self.resolve_type(p));
                 if let Some(returns) = returns {

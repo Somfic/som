@@ -184,6 +184,10 @@ impl Subst {
                 let to = self.apply(types, to);
                 types.intern(Ty::Ref { mutable, to })
             }
+            Ty::Optional(inner) => {
+                let inner = self.apply(types, inner);
+                types.intern(Ty::Optional(inner))
+            }
             Ty::Fn { params, ret } => {
                 let params = params.iter().map(|&p| self.apply(types, p)).collect();
                 let ret = self.apply(types, ret);
@@ -464,7 +468,54 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.terminate(TerminatorKind::Goto(join), span);
                 self.current = join;
             }
+            Stmt::IfLet {
+                name,
+                value,
+                then,
+                otherwise,
+            } => {
+                let (place, some_block, none_block) = self.branch_on_some(*value, span.clone());
+                let join = self.new_block();
+                self.current = some_block;
+                self.in_scope(span.clone(), |b| {
+                    let def = b.l.names.local(id).expect("every if let is resolved");
+                    let ty = b.l.typed.local(def);
+                    let ty = b.ty(ty);
+                    let local =
+                        b.new_local(ty, Some(name.name.to_string()), false, name.span.clone());
+                    b.bindings.insert(def, local);
+                    b.scopes.last_mut().expect("in scope").push(local);
+                    b.push(StatementKind::StorageLive(local), span.clone());
+                    let value = b.read(place.project(Projection::Field(1)), ty);
+                    b.assign(Place::local(local), Rvalue::Use(value), span.clone());
+                    b.stmts(then, span.clone());
+                });
+                self.terminate(TerminatorKind::Goto(join), span.clone());
+                self.current = none_block;
+                if let Some(otherwise) = otherwise {
+                    self.stmts(otherwise, span.clone());
+                }
+                self.terminate(TerminatorKind::Goto(join), span);
+                self.current = join;
+            }
         }
+    }
+
+    /// Evaluates the optional `expr` and branches on whether it holds a value, returning
+    /// its place and the blocks for each case.
+    fn branch_on_some(&mut self, expr: Id<Expr>, span: Span) -> (Place, BlockId, BlockId) {
+        let place = self.place(expr);
+        let (some_block, none_block) = (self.new_block(), self.new_block());
+        let condition = Operand::Copy(place.clone().project(Projection::Field(0)));
+        self.terminate(
+            TerminatorKind::Branch {
+                condition,
+                then: some_block,
+                otherwise: none_block,
+            },
+            span,
+        );
+        (place, some_block, none_block)
     }
 
     /// A loop's body, where `break` goes to `exit`.
@@ -476,8 +527,36 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     // --- Expressions ---
 
-    /// Evaluates `expr` to an operand: a constant or a read of a place.
+    /// Evaluates `expr` to an operand: a constant or a read of a place. A value used where
+    /// an optional is expected is wrapped in one.
     fn operand(&mut self, expr: Id<Expr>) -> Operand {
+        if !self.l.typed.is_wrapped(expr) {
+            return self.operand_unwrapped(expr);
+        }
+        let rvalue = self.rvalue(expr);
+        let ty = self.optional_ty(expr);
+        let temp = self.temp(ty, self.span(expr));
+        self.assign(Place::local(temp), rvalue, self.span(expr));
+        self.read(Place::local(temp), ty)
+    }
+
+    /// Evaluates `expr` to a value that can be assigned to a place. A value used where an
+    /// optional is expected is wrapped in one.
+    fn rvalue(&mut self, expr: Id<Expr>) -> Rvalue {
+        if !self.l.typed.is_wrapped(expr) {
+            return self.rvalue_unwrapped(expr);
+        }
+        self.optional_ty(expr);
+        Rvalue::Some(self.operand_unwrapped(expr))
+    }
+
+    /// `T?`, for an `expr` of type `T`.
+    fn optional_ty(&mut self, expr: Id<Expr>) -> TypeId {
+        let inner = self.expr_ty(expr);
+        self.l.mir.types.intern(Ty::Optional(inner))
+    }
+
+    fn operand_unwrapped(&mut self, expr: Id<Expr>) -> Operand {
         let ast = self.l.ast;
         let ty = self.expr_ty(expr);
         let span = self.span(expr);
@@ -487,6 +566,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::Float(x) => self.constant(ConstKind::Float(*x), ty),
             Expr::Bool(b) => self.constant(ConstKind::Bool(*b), ty),
             Expr::Str(s) => self.constant(ConstKind::Str(s.to_string()), ty),
+            Expr::None => self.constant(ConstKind::Zeroed, ty),
             Expr::Hole => unreachable!("programs with parse errors are never lowered"),
 
             Expr::Var(_) => {
@@ -539,6 +619,23 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }),
 
+            Expr::Fallback { optional, fallback } => {
+                let result = self.temp(ty, span.clone());
+                let (place, some_block, none_block) = self.branch_on_some(*optional, span.clone());
+                let join = self.new_block();
+                self.current = some_block;
+                let value = self.read(place.project(Projection::Field(1)), ty);
+                self.assign(Place::local(result), Rvalue::Use(value), span.clone());
+                self.terminate(TerminatorKind::Goto(join), span.clone());
+                // The fallback is only evaluated when it's needed.
+                self.current = none_block;
+                let value = self.operand(*fallback);
+                self.assign(Place::local(result), Rvalue::Use(value), span.clone());
+                self.terminate(TerminatorKind::Goto(join), span);
+                self.current = join;
+                self.read(Place::local(result), ty)
+            }
+
             Expr::Conditional {
                 condition,
                 then,
@@ -567,7 +664,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             }
 
             _ => {
-                let rvalue = self.rvalue(expr);
+                let rvalue = self.rvalue_unwrapped(expr);
                 let temp = self.temp(ty, span.clone());
                 self.assign(Place::local(temp), rvalue, span);
                 self.read(Place::local(temp), ty)
@@ -575,8 +672,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         }
     }
 
-    /// Evaluates `expr` to a value that can be assigned to a place.
-    fn rvalue(&mut self, expr: Id<Expr>) -> Rvalue {
+    fn rvalue_unwrapped(&mut self, expr: Id<Expr>) -> Rvalue {
         let ast = self.l.ast;
         match &ast.exprs[expr] {
             Expr::Binary { op, lhs, rhs } => Rvalue::Binary {
@@ -673,7 +769,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 };
                 self.call(expr, func, Some(*receiver), args)
             }
-            _ => Rvalue::Use(self.operand(expr)),
+            _ => Rvalue::Use(self.operand_unwrapped(expr)),
         }
     }
 

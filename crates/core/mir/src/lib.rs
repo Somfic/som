@@ -56,6 +56,19 @@ impl Mir {
         &self.structs[self.struct_index[&def]]
     }
 
+    /// The type of `projection` applied to a place of type `ty`, or `None` if it doesn't apply.
+    pub fn project(&self, ty: TypeId, projection: Projection) -> Option<TypeId> {
+        match (projection, self.types.get(ty)) {
+            (Projection::Deref, Ty::Ref { to, .. }) => Some(*to),
+            (Projection::Field(i), Ty::Struct(def)) => {
+                self.struct_def(*def).fields.get(i).map(|&(_, ty)| ty)
+            }
+            (Projection::Field(0), Ty::Optional(_)) => Some(self.types.bool),
+            (Projection::Field(1), Ty::Optional(inner)) => Some(*inner),
+            _ => None,
+        }
+    }
+
     pub fn func(&self, id: FuncId) -> &Function {
         &self.funcs[id]
     }
@@ -222,7 +235,8 @@ impl Place {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Projection {
-    /// `.n`: the nth field of a struct.
+    /// `.n`: the nth field of a struct. An optional has two: `.0` is whether it holds a
+    /// value, and `.1` the value.
     Field(usize),
     /// `*`: what a reference points to.
     Deref,
@@ -241,6 +255,8 @@ pub enum Rvalue {
         rhs: Operand,
     },
     Not(Operand),
+    /// An optional holding a value. One without is `Zeroed`.
+    Some(Operand),
     /// A struct value, with fields in declaration order.
     Struct {
         def: DefId,

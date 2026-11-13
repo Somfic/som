@@ -74,7 +74,9 @@ impl Checker<'_> {
                 continue;
             };
             match rvalue {
-                Rvalue::Use(op) | Rvalue::Not(op) => self.operand(assigned, op, &stmt.span),
+                Rvalue::Use(op) | Rvalue::Not(op) | Rvalue::Some(op) => {
+                    self.operand(assigned, op, &stmt.span)
+                }
                 Rvalue::Binary { lhs, rhs, .. } => {
                     self.operand(assigned, lhs, &stmt.span);
                     self.operand(assigned, rhs, &stmt.span);

@@ -114,19 +114,10 @@ impl Validator<'_> {
 
     fn place_ty(&mut self, place: &Place) -> Option<TypeId> {
         let mut ty = self.local_ty(place.local)?;
-        for projection in &place.projection {
-            ty = match (projection, self.mir.types.get(ty)) {
-                (Projection::Deref, Ty::Ref { to, .. }) => *to,
-                (Projection::Field(i), Ty::Struct(def)) => {
-                    match self.mir.struct_def(*def).fields.get(*i) {
-                        Some((_, field_ty)) => *field_ty,
-                        None => {
-                            self.problem(format!("{place}: no field {i}"));
-                            return None;
-                        }
-                    }
-                }
-                _ => {
+        for &projection in &place.projection {
+            ty = match self.mir.project(ty, projection) {
+                Some(ty) => ty,
+                None => {
                     let ty = self.mir.display_ty(ty);
                     self.problem(format!("{place}: can't apply {projection:?} to {ty}"));
                     return None;
@@ -177,6 +168,14 @@ impl Validator<'_> {
             Rvalue::Not(op) => {
                 self.operand_ty(op);
                 Some(types.bool)
+            }
+            Rvalue::Some(op) => {
+                let inner = self.operand_ty(op)?;
+                let found = self.mir.types.lookup(&Ty::Optional(inner));
+                if found.is_none() {
+                    self.problem("optional type was never interned".into());
+                }
+                found
             }
             Rvalue::Struct { def, fields } => {
                 let expected: Vec<TypeId> = self

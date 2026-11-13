@@ -49,8 +49,18 @@ impl Ast {
                     .map(|l| format!("'{l} "))
                     .unwrap_or_default();
                 let mutability = if *mutable { "mut " } else { "" };
-                format!("&{lifetime}{mutability}{}", self.type_text(*to))
+                // `&i32?` is an optional reference.
+                let to = match &self.types[*to] {
+                    TypeExpr::Optional(_) => format!("({})", self.type_text(*to)),
+                    _ => self.type_text(*to),
+                };
+                format!("&{lifetime}{mutability}{to}")
             }
+            // `fn() -> i32?` returns an optional.
+            TypeExpr::Optional(inner) => match &self.types[*inner] {
+                TypeExpr::Fn { .. } => format!("({})?", self.type_text(*inner)),
+                _ => format!("{}?", self.type_text(*inner)),
+            },
             TypeExpr::Fn { params, returns } => {
                 let params: Vec<String> = params.iter().map(|&p| self.type_text(p)).collect();
                 let returns = returns
@@ -199,6 +209,18 @@ impl Dumper<'_> {
                     d.stmts("else", otherwise);
                 }
             }),
+            Stmt::IfLet {
+                name,
+                value,
+                then,
+                otherwise,
+            } => self.node(format!("if let {name}"), |d| {
+                d.expr(*value);
+                d.stmts("then", then);
+                if let Some(otherwise) = otherwise {
+                    d.stmts("else", otherwise);
+                }
+            }),
         }
     }
 
@@ -213,6 +235,7 @@ impl Dumper<'_> {
             Expr::Float(x) => self.line(format!("float {x:?}")),
             Expr::Bool(b) => self.line(format!("bool {b}")),
             Expr::Str(s) => self.line(format!("str {s:?}")),
+            Expr::None => self.line("none"),
             Expr::Var(path) => self.line(format!("var {path}")),
             Expr::Binary { op, lhs, rhs } => self.node(format!("binary {}", op.symbol()), |d| {
                 d.exprs(&[*lhs, *rhs])
@@ -251,6 +274,9 @@ impl Dumper<'_> {
                 d.node("then", |d| d.expr(*then));
                 d.node("else", |d| d.expr(*otherwise));
             }),
+            Expr::Fallback { optional, fallback } => {
+                self.node("else", |d| d.exprs(&[*optional, *fallback]))
+            }
             Expr::Block { stmts, value } => self.node("block", |d| {
                 stmts.iter().for_each(|&s| d.stmt(s));
                 if let Some(value) = value {

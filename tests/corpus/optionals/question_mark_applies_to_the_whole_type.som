@@ -1,0 +1,19 @@
+// expect: exit 111
+
+// `&i32?` is an optional reference: the `?` applies to everything before it.
+fn pick(a: &i32, take: bool) -> &i32? { a if take else none }
+
+// `&(i32?)` is a reference to an optional.
+fn read(o: &(i32?)) -> i32 { *o else 0 }
+
+fn main() -> i32 {
+    let x = 100;
+    let a = *(pick(&x, true) else &x);
+    let o: i32? = 10;
+    let b = read(&o);
+    // An optional optional: the outer one holds a value, the inner one doesn't.
+    let inner: i32? = none;
+    let nested: i32?? = inner;
+    let c = (nested else 5) else 1;
+    a + b + c
+}

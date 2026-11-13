@@ -16,6 +16,8 @@ pub enum TypeExpr {
         lifetime: Option<Ident>,
         to: Id<TypeExpr>,
     },
+    /// `T?`: a `T`, or `none`.
+    Optional(Id<TypeExpr>),
     /// `fn(A, B) -> C`
     Fn {
         params: Vec<Id<TypeExpr>>,

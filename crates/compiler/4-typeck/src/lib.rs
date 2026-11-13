@@ -17,7 +17,7 @@ pub use ty::{FloatTy, IntTy, Ty, TypeId, TypeTable};
 
 use som_ast::{Ast, Expr, Func, Id, Struct};
 use som_resolve::{DefId, Names};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub fn check(ast: &Ast, names: &Names) -> (Typed, Vec<TypeError>) {
     check::Checker::new(ast, names).run()
@@ -46,6 +46,9 @@ pub struct Typed {
     /// Calls to generic functions (`Call`, `MethodCall`, or `Var` naming one) → the
     /// types their type parameters were instantiated with.
     type_args: HashMap<Id<Expr>, Vec<TypeId>>,
+    /// Expressions whose value becomes an optional's where it's used: `5` in
+    /// `let x: i32? = 5`.
+    wrapped: HashSet<Id<Expr>>,
 }
 
 impl Typed {
@@ -88,6 +91,11 @@ impl Typed {
     /// The type arguments of a call to a generic function. Empty if it isn't generic.
     pub fn type_args(&self, expr: Id<Expr>) -> &[TypeId] {
         self.type_args.get(&expr).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// Whether `expr`'s value is wrapped in an optional where it's used.
+    pub fn is_wrapped(&self, expr: Id<Expr>) -> bool {
+        self.wrapped.contains(&expr)
     }
 
     pub fn display(&self, id: TypeId, names: &Names) -> String {

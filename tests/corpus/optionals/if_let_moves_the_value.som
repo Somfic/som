@@ -1,0 +1,10 @@
+// expect: error UseAfterMove
+
+struct Token { v: i32 }
+
+fn main() -> i32 {
+    let o: Token? = Token { v: 1 };
+    if let a = o { }
+    if let b = o { }
+    0
+}

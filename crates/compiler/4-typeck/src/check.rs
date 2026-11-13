@@ -21,6 +21,7 @@ pub(crate) struct Checker<'a> {
     methods: HashMap<Id<Expr>, DefId>,
     fields: HashMap<Id<Expr>, usize>,
     type_args: HashMap<Id<Expr>, Vec<TypeId>>,
+    wrapped: HashSet<Id<Expr>>,
     /// Operators whose operand type wasn't known yet when they were checked.
     deferred_ops: Vec<(Id<Expr>, BinOp, TypeId, TypeId)>,
     /// How many `loop`s and `while`s enclose the statement being checked.
@@ -41,6 +42,7 @@ impl<'a> Checker<'a> {
             methods: HashMap::new(),
             fields: HashMap::new(),
             type_args: HashMap::new(),
+            wrapped: HashSet::new(),
             deferred_ops: Vec::new(),
             loops: 0,
         }
@@ -103,7 +105,7 @@ impl<'a> Checker<'a> {
     fn check_body(&mut self, id: Id<Func>, func: &Func, body: Id<Expr>) {
         let ret = self.sigs[id.id].ret;
         let body_ty = self.infer(body);
-        if self.u.unify(ret, body_ty).is_err() {
+        if !self.coerce(body, ret, body_ty) {
             // Point at the value the body produces, not the whole block.
             let at = match &self.ast.exprs[body] {
                 Expr::Block {
@@ -190,6 +192,7 @@ impl<'a> Checker<'a> {
             methods: self.methods,
             fields: self.fields,
             type_args,
+            wrapped: self.wrapped,
         };
         (typed, self.errors)
     }
@@ -218,6 +221,7 @@ impl<'a> Checker<'a> {
                     to,
                 }
             }
+            TypeExpr::Optional(inner) => Ty::Optional(self.lower(*inner)),
             TypeExpr::Fn { params, returns } => {
                 let params = params.iter().map(|&p| self.lower(p)).collect();
                 let ret = match returns {
@@ -266,6 +270,10 @@ impl<'a> Checker<'a> {
             Ty::Ref { mutable, to } => {
                 let to = self.substitute(to, subst);
                 self.u.intern(Ty::Ref { mutable, to })
+            }
+            Ty::Optional(inner) => {
+                let inner = self.substitute(inner, subst);
+                self.u.intern(Ty::Optional(inner))
             }
             Ty::Fn { params, ret } => {
                 let params = params.iter().map(|&p| self.substitute(p, subst)).collect();
@@ -375,6 +383,22 @@ impl<'a> Checker<'a> {
                     self.check_stmts(otherwise);
                 }
             }
+            Stmt::IfLet {
+                value,
+                then,
+                otherwise,
+                ..
+            } => {
+                let ty = self.infer(*value);
+                let inner = self.optional_inner(ty, *value);
+                if let Some(def) = self.names.local(id) {
+                    self.locals.insert(def, inner);
+                }
+                self.check_stmts(then);
+                if let Some(otherwise) = otherwise {
+                    self.check_stmts(otherwise);
+                }
+            }
         }
     }
 
@@ -383,9 +407,39 @@ impl<'a> Checker<'a> {
     /// Infers the type of `expr` and requires it to be `expected`.
     fn expect(&mut self, expr: Id<Expr>, expected: TypeId, expected_from: Option<Span>) {
         let found = self.infer(expr);
-        if self.u.unify(expected, found).is_err() {
+        if !self.coerce(expr, expected, found) {
             self.mismatch(expected, found, self.span(expr), expected_from);
         }
+    }
+
+    /// Makes `expr`, of type `found`, usable where `expected` is required, returning whether
+    /// it is. A `T` is also usable as a `T?`: it's wrapped.
+    fn coerce(&mut self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> bool {
+        if self.u.unify(expected, found).is_ok() {
+            return true;
+        }
+        let expected = self.u.shallow(expected);
+        if let Ty::Optional(inner) = *self.u.get(expected)
+            && self.u.unify(inner, found).is_ok()
+        {
+            self.wrapped.insert(expr);
+            return true;
+        }
+        false
+    }
+
+    /// The type an optional of type `ty` holds, reporting an error if `ty` isn't optional.
+    fn optional_inner(&mut self, ty: TypeId, expr: Id<Expr>) -> TypeId {
+        let inner = self.u.fresh(VarKind::Any);
+        let optional = self.u.intern(Ty::Optional(inner));
+        if self.u.unify(optional, ty).is_err() {
+            self.errors.push(TypeError::NotOptional {
+                ty: self.describe(ty),
+                span: self.span(expr),
+            });
+            return self.u.table.error;
+        }
+        inner
     }
 
     fn infer(&mut self, id: Id<Expr>) -> TypeId {
@@ -404,6 +458,17 @@ impl<'a> Checker<'a> {
             Expr::Float(_) => self.u.fresh(VarKind::Float),
             Expr::Bool(_) => bool,
             Expr::Str(_) => self.u.table.str_ref,
+            Expr::None => {
+                let inner = self.u.fresh(VarKind::Any);
+                self.u.intern(Ty::Optional(inner))
+            }
+            Expr::Fallback { optional, fallback } => {
+                let ty = self.infer(*optional);
+                let inner = self.optional_inner(ty, *optional);
+                let from = self.span(*optional);
+                self.expect(*fallback, inner, Some(from));
+                inner
+            }
 
             Expr::Var(_) => match self
                 .names
@@ -674,9 +739,17 @@ impl<'a> Checker<'a> {
             } => {
                 self.expect(*condition, bool, None);
                 let then_ty = self.infer(*then);
-                let from = self.span(*then);
-                self.expect(*otherwise, then_ty, Some(from));
-                then_ty
+                let otherwise_ty = self.infer(*otherwise);
+                // `x if c else none`: either branch can be the optional the other is wrapped in.
+                if self.coerce(*otherwise, then_ty, otherwise_ty) {
+                    then_ty
+                } else if self.coerce(*then, otherwise_ty, then_ty) {
+                    otherwise_ty
+                } else {
+                    let from = self.span(*then);
+                    self.mismatch(then_ty, otherwise_ty, self.span(*otherwise), Some(from));
+                    then_ty
+                }
             }
 
             Expr::Block { stmts, value } => {

@@ -4,8 +4,19 @@ use som_lexer::TokenKind;
 use crate::Parser;
 
 impl Parser<'_> {
-    /// Parses a type annotation.
+    /// Parses a type annotation. A `?` after it makes the whole type optional: `&i32?` is
+    /// an optional reference, and `&(i32?)` a reference to an optional.
     pub(crate) fn parse_type(&mut self) -> Option<Id<TypeExpr>> {
+        let start = self.current_span();
+        let mut ty = self.parse_type_without_optional()?;
+        while self.eat(TokenKind::Question) {
+            let span = self.span_from(&start);
+            ty = self.ast.types.alloc(TypeExpr::Optional(ty), span);
+        }
+        Some(ty)
+    }
+
+    fn parse_type_without_optional(&mut self) -> Option<Id<TypeExpr>> {
         let start = self.current_span();
 
         let ty = match self.peek() {
@@ -17,7 +28,8 @@ impl Parser<'_> {
                     None
                 };
                 let mutable = self.eat(TokenKind::Mut);
-                let to = self.parse_type()?;
+                // A `?` after it is for the reference, not what it points to.
+                let to = self.parse_type_without_optional()?;
                 TypeExpr::Reference {
                     mutable,
                     lifetime,

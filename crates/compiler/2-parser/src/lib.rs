@@ -34,6 +34,7 @@ pub fn parse_file(source: Arc<Source>, ast: &mut Ast, module: usize) -> Vec<Pars
         module,
         errors: Vec::new(),
         in_recovery: false,
+        in_condition: false,
     };
     parser.skip_trivia();
     parser.parse_program();
@@ -63,6 +64,9 @@ struct Parser<'a> {
     module: usize,
     errors: Vec<ParseError>,
     in_recovery: bool,
+    /// Parsing the condition of an `if` or `while`, where `name {` starts the body, not a
+    /// constructor. Cleared again inside parentheses and blocks.
+    in_condition: bool,
 }
 
 impl Parser<'_> {

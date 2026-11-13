@@ -79,6 +79,11 @@ pub enum TypeError {
         name: String,
         span: Span,
     },
+    /// `if let` or `else` on a value that isn't an optional.
+    NotOptional {
+        ty: Message,
+        span: Span,
+    },
     /// Something other than `out name` passed to an `out` parameter.
     NeedsOut {
         param: String,
@@ -208,6 +213,14 @@ impl TypeError {
             } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
                 Label::primary(span.clone(), msg!["this is ", found.clone()]),
             ),
+            TypeError::NotOptional { ty, span } => {
+                Diagnostic::error(msg!["expected an optional, found ", ty.clone()]).with_label(
+                    Label::primary(
+                        span.clone(),
+                        msg!["this is ", ty.clone(), ", which always has a value"],
+                    ),
+                )
+            }
             TypeError::CannotDeref { ty: found, span } => {
                 Diagnostic::error(msg!["cannot dereference ", found.clone()]).with_label(
                     Label::primary(span.clone(), "only references can be dereferenced"),
