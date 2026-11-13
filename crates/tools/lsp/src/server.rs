@@ -717,21 +717,22 @@ impl LanguageServer for SomLanguageServer {
                 }
             };
             if let Some(expr) = receiver
-                && let Some((element, len)) = array_of(a, a.typed.expr(expr))
+                && let Some(sequence) = array_of(a, a.typed.expr(expr))
             {
-                let is_text = matches!(a.typed.ty(a.typed.expr(expr)), Ty::Ref { to, .. }
-                    if matches!(a.typed.ty(*to), Ty::Str));
                 for (_, method) in ArrayMethod::ALL {
                     // Text can only be read, and only text has `bytes`.
-                    let skip = if is_text {
-                        matches!(method, ArrayMethod::GetMut | ArrayMethod::Set)
+                    let skip = if sequence.is_text {
+                        matches!(
+                            method,
+                            ArrayMethod::GetMut | ArrayMethod::Set | ArrayMethod::SliceMut
+                        )
                     } else {
                         method == ArrayMethod::Bytes
                     };
                     if skip {
                         continue;
                     }
-                    let doc = array_method_doc(a, method, element, len);
+                    let doc = array_method_doc(a, method, sequence);
                     items.push(CompletionItem {
                         label: doc.name.to_string(),
                         kind: Some(CompletionItemKind::METHOD),
@@ -1002,9 +1003,9 @@ impl LanguageServer for SomLanguageServer {
         let (label, params, doc) = match expr {
             Expr::MethodCall { receiver, .. }
                 if let Some(method) = a.typed.array_method(call)
-                    && let Some((element, len)) = array_of(a, a.typed.expr(*receiver)) =>
+                    && let Some(sequence) = array_of(a, a.typed.expr(*receiver)) =>
             {
-                let doc = array_method_doc(a, method, element, len);
+                let doc = array_method_doc(a, method, sequence);
                 (doc.signature, doc.params, Some(doc.doc))
             }
             _ => {
@@ -1106,8 +1107,8 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
                     a.typed.array_method(id),
                     array_of(a, a.typed.expr(*receiver)),
                 ) {
-                    (Some(method), Some((element, len))) => {
-                        let doc = array_method_doc(a, method, element, len);
+                    (Some(method), Some(sequence)) => {
+                        let doc = array_method_doc(a, method, sequence);
                         (Some(doc.signature), Some(doc.doc))
                     }
                     _ => (None, None),
@@ -1290,20 +1291,33 @@ fn struct_text(a: &Analysis, s: Id<Struct>) -> String {
 }
 
 /// The struct a value of type `t` is, looking through one reference.
-/// The element type of the array or slice `t` is, looking through one reference, and its
-/// length if that's fixed.
-fn array_of(a: &Analysis, t: som_typeck::TypeId) -> Option<(som_typeck::TypeId, Option<u64>)> {
+/// What the editor needs to describe an array's, slice's or text's methods.
+#[derive(Clone, Copy)]
+struct Sequence {
+    element: som_typeck::TypeId,
+    /// How many elements, if that's fixed.
+    len: Option<u64>,
+    is_text: bool,
+}
+
+/// The array, slice or text `t` is, looking through one reference.
+fn array_of(a: &Analysis, t: som_typeck::TypeId) -> Option<Sequence> {
     let t = match a.typed.ty(t) {
         Ty::Ref { to, .. } => *to,
         _ => t,
     };
-    match a.typed.ty(t) {
-        Ty::Array { element, len } => Some((*element, Some(*len))),
-        Ty::Slice(element) => Some((*element, None)),
+    let (element, len, is_text) = match a.typed.ty(t) {
+        Ty::Array { element, len } => (*element, Some(*len), false),
+        Ty::Slice(element) => (*element, None, false),
         // Text is its bytes.
-        Ty::Str => Some((a.typed.table.u8, None)),
-        _ => None,
-    }
+        Ty::Str => (a.typed.table.u8, None, true),
+        _ => return None,
+    };
+    Some(Sequence {
+        element,
+        len,
+        is_text,
+    })
 }
 
 /// One of the methods every array has, as the editor shows it.
@@ -1314,15 +1328,17 @@ struct ArrayMethodDoc {
     doc: String,
 }
 
-/// How `method` reads for an array or slice of elements of type `element`, with `len` of them
-/// if that's fixed.
-fn array_method_doc(
-    a: &Analysis,
-    method: ArrayMethod,
-    element: som_typeck::TypeId,
-    len: Option<u64>,
-) -> ArrayMethodDoc {
+/// How `method` reads for `sequence`.
+fn array_method_doc(a: &Analysis, method: ArrayMethod, sequence: Sequence) -> ArrayMethodDoc {
+    let Sequence {
+        element,
+        len,
+        is_text,
+    } = sequence;
     let t = ty(a, element);
+    let range = "range: Range<any integer>".to_string();
+    let part = "or `none` if the range isn't within them. An end left out, as in `1..`, is \
+                their own.";
     let index = "index: any integer".to_string();
     let bounds = "or `none` if `index` is out of bounds.";
     let (name, params, returns, doc) = match method {
@@ -1354,6 +1370,22 @@ fn array_method_doc(
             vec![index],
             format!("&mut {t}?"),
             format!("A mutable reference to the element at `index`, {bounds}"),
+        ),
+        ArrayMethod::Slice => (
+            "slice",
+            vec![range],
+            if is_text {
+                "str?".to_string()
+            } else {
+                format!("[{t}]?")
+            },
+            format!("A view of the elements in `range`, {part}"),
+        ),
+        ArrayMethod::SliceMut => (
+            "slice_mut",
+            vec![range],
+            format!("[mut {t}]?"),
+            format!("A view of the elements in `range` that can change them, {part}"),
         ),
         ArrayMethod::Bytes => (
             "bytes",
@@ -2036,7 +2068,8 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::LessThanOrEqual
             | TokenKind::GreaterThanOrEqual
             | TokenKind::Ampersand
-            | TokenKind::Question => 6,
+            | TokenKind::Question
+            | TokenKind::DotDot => 6,
             _ => continue,
         };
 

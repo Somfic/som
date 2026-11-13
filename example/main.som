@@ -1,6 +1,3 @@
 use std;
-let len = "hello".len();
-std::printf("%d", len);
 
-
-let mut a: str = "abc";
+let a = "abc".slice(..2);

@@ -73,6 +73,11 @@ pub enum ArrayMethod {
     Set,
     /// `s.bytes()`: a `str`'s bytes, as a `[u8]`. Only text has it.
     Bytes,
+    /// `a.slice(r)`: a view of the elements in the range `r`, or `none` if it isn't within
+    /// them. Text gives text.
+    Slice,
+    /// `a.slice_mut(r)`: the same, as a `[mut T]`.
+    SliceMut,
 }
 
 impl ArrayMethod {
@@ -84,24 +89,32 @@ impl ArrayMethod {
             "get_mut" => ArrayMethod::GetMut,
             "set" => ArrayMethod::Set,
             "bytes" => ArrayMethod::Bytes,
+            "slice" => ArrayMethod::Slice,
+            "slice_mut" => ArrayMethod::SliceMut,
             _ => return None,
         })
     }
 
-    pub const ALL: [(&str, ArrayMethod); 6] = [
+    pub const ALL: [(&str, ArrayMethod); 8] = [
         ("len", ArrayMethod::Len),
         ("get", ArrayMethod::Get),
         ("get_ref", ArrayMethod::GetRef),
         ("get_mut", ArrayMethod::GetMut),
         ("set", ArrayMethod::Set),
         ("bytes", ArrayMethod::Bytes),
+        ("slice", ArrayMethod::Slice),
+        ("slice_mut", ArrayMethod::SliceMut),
     ];
 
     /// How many arguments it takes, after the array.
     pub fn arity(self) -> usize {
         match self {
             ArrayMethod::Len | ArrayMethod::Bytes => 0,
-            ArrayMethod::Get | ArrayMethod::GetRef | ArrayMethod::GetMut => 1,
+            ArrayMethod::Get
+            | ArrayMethod::GetRef
+            | ArrayMethod::GetMut
+            | ArrayMethod::Slice
+            | ArrayMethod::SliceMut => 1,
             ArrayMethod::Set => 2,
         }
     }

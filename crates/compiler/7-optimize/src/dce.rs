@@ -218,7 +218,17 @@ fn reads(dest: &Place, rvalue: &Rvalue, mut read: impl FnMut(Local)) {
         | Rvalue::Repeat { operand: op, .. }
         | Rvalue::Cast { operand: op, .. } => read_operand(op, read),
         Rvalue::Ref { place, .. } => place.locals().for_each(read),
-        Rvalue::Binary { lhs, rhs, .. } => {
+        Rvalue::Binary { lhs, rhs, .. }
+        | Rvalue::Range {
+            start: lhs,
+            end: rhs,
+            ..
+        }
+        | Rvalue::MakeSlice {
+            start: lhs,
+            len: rhs,
+            ..
+        } => {
             read_operand(lhs, &mut read);
             read_operand(rhs, read);
         }
@@ -260,7 +270,11 @@ fn has_effect(dest: &Place, rvalue: &Rvalue) -> bool {
                 })
             )
         }
-        Rvalue::Array { .. } | Rvalue::Repeat { .. } | Rvalue::Cast { .. } => false,
+        Rvalue::Array { .. }
+        | Rvalue::Repeat { .. }
+        | Rvalue::Cast { .. }
+        | Rvalue::Range { .. }
+        | Rvalue::MakeSlice { .. } => false,
         Rvalue::Use(_)
         | Rvalue::Not(_)
         | Rvalue::Some(_)

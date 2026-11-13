@@ -36,13 +36,15 @@ impl Grammar {
     pub const FALLBACK: u8 = 3;
     pub const OR: u8 = 2;
     pub const AND: u8 = 3;
-    pub const EQUALITY: u8 = 4;
-    pub const COMPARISON: u8 = 5;
-    pub const ADDITIVE: u8 = 6;
-    pub const MULTIPLICATIVE: u8 = 7;
-    pub const UNARY: u8 = 8;
-    pub const POSTFIX: u8 = 9;
-    pub const MODULO: u8 = 10;
+    /// `a..b`: below comparisons and arithmetic, so `0..n + 1` is `0..(n + 1)`.
+    pub const RANGE: u8 = 4;
+    pub const EQUALITY: u8 = 5;
+    pub const COMPARISON: u8 = 6;
+    pub const ADDITIVE: u8 = 7;
+    pub const MULTIPLICATIVE: u8 = 8;
+    pub const UNARY: u8 = 9;
+    pub const POSTFIX: u8 = 10;
+    pub const MODULO: u8 = 11;
 
     pub fn infix_op(kind: TokenKind) -> Option<(BinOp, OpInfo)> {
         let (operator, precedence, association) = match kind {

@@ -54,6 +54,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Star
         | TokenKind::Ampersand
         | TokenKind::Question
+        | TokenKind::DotDot
         | TokenKind::Slash
         | TokenKind::Equals
         | TokenKind::DoubleEquals

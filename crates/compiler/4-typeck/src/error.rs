@@ -102,6 +102,10 @@ pub enum TypeError {
     StrToC {
         span: Span,
     },
+    /// `a..` or `..b` somewhere other than `slice`, where nothing says where it ends.
+    OpenRange {
+        span: Span,
+    },
     /// `*s` of a slice: what it views has no fixed size, so it can't be a value of its own.
     DerefSlice {
         span: Span,
@@ -301,6 +305,18 @@ impl TypeError {
                     "pass a ",
                     code("cstr"),
                     "; a string literal becomes one"
+                ]),
+            TypeError::OpenRange { span } => Diagnostic::error("this range needs both ends")
+                .with_label(Label::primary(
+                    span.clone(),
+                    "where it starts or stops isn't known here",
+                ))
+                .with_hint(msg![
+                    "only ",
+                    code("slice"),
+                    " knows where a range like ",
+                    code("1.."),
+                    " ends"
                 ]),
             TypeError::DerefSlice { span } => Diagnostic::error("cannot dereference a slice")
                 .with_label(Label::primary(

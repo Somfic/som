@@ -39,6 +39,7 @@ impl Mir {
             },
             Ty::Array { element, len } => format!("[{}; {len}]", self.display_ty(*element)),
             Ty::Slice(element) => format!("[{}]", self.display_ty(*element)),
+            Ty::Range(int) => format!("Range<{}>", self.display_ty(*int)),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display_ty(p)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display_ty(*ret))
@@ -171,6 +172,16 @@ impl Mir {
                 };
                 format!("[{}; {len}]", self.display_operand(operand))
             }
+            Rvalue::Range { start, end, .. } => format!(
+                "{}..{}",
+                self.display_operand(start),
+                self.display_operand(end)
+            ),
+            Rvalue::MakeSlice { start, len, .. } => format!(
+                "Slice({}, {})",
+                self.display_operand(start),
+                self.display_operand(len)
+            ),
             Rvalue::Cast { operand, ty } => {
                 format!(
                     "{} as {}",

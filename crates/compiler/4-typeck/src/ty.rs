@@ -38,6 +38,8 @@ pub enum Ty {
     /// Some number of `T`s, known at run time. Only ever behind a reference, which holds where
     /// they start and how many there are: som's `[T]` is `&` of this, and `[mut T]` `&mut`.
     Slice(TypeId),
+    /// `start..end`: the integers of type `T` from `start` up to, not including, `end`.
+    Range(TypeId),
     /// A type parameter, inside the generic function that declares it.
     Param(DefId),
     Fn {
@@ -82,7 +84,8 @@ impl Ty {
             Ty::Ref { to: inner, .. }
             | Ty::Optional(inner)
             | Ty::Array { element: inner, .. }
-            | Ty::Slice(inner) => vec![*inner],
+            | Ty::Slice(inner)
+            | Ty::Range(inner) => vec![*inner],
             Ty::Fn { params, ret } => params.iter().chain([ret]).copied().collect(),
             Ty::Error
             | Ty::Unit
@@ -108,6 +111,7 @@ impl Ty {
             },
             Ty::Optional(inner) => Ty::Optional(f(*inner)),
             Ty::Slice(element) => Ty::Slice(f(*element)),
+            Ty::Range(int) => Ty::Range(f(*int)),
             Ty::Array { element, len } => Ty::Array {
                 element: f(*element),
                 len: *len,
@@ -258,6 +262,7 @@ impl TypeTable {
             Ty::Array { element, len } => format!("[{}; {len}]", self.display(*element, names)),
             // Only reached on its own for a dereferenced slice, which is an error.
             Ty::Slice(element) => format!("[{}]", self.display(*element, names)),
+            Ty::Range(int) => format!("Range<{}>", self.display(*int, names)),
             Ty::Struct(def) | Ty::Param(def) => names.def(*def).name.to_string(),
             Ty::Fn { params, ret } => {
                 let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();

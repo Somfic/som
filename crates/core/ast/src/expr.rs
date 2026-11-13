@@ -11,6 +11,12 @@ pub enum Expr {
     None,
     /// `[a, b, c]`
     Array(Vec<Id<Expr>>),
+    /// `start..end`: the integers from `start` up to, not including, `end`. Either end can be
+    /// left out where something else knows it: `s.slice(1..)`.
+    Range {
+        start: Option<Id<Expr>>,
+        end: Option<Id<Expr>>,
+    },
     /// `[value; count]`: `count` copies of `value`.
     ArrayRepeat {
         value: Id<Expr>,

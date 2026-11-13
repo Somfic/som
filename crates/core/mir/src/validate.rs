@@ -192,6 +192,41 @@ impl Validator<'_> {
                 self.check_operands("array", &[element], std::slice::from_ref(operand));
                 Some(*ty)
             }
+            Rvalue::Range { ty, start, end } => {
+                let Ty::Range(int) = *self.mir.types.get(*ty) else {
+                    self.problem("range of a type that isn't a range".into());
+                    return None;
+                };
+                self.check_operands("range", &[int, int], &[start.clone(), end.clone()]);
+                Some(*ty)
+            }
+            Rvalue::MakeSlice { ty, start, len } => {
+                let viewed = match self.mir.types.get(*ty) {
+                    Ty::Ref { to, .. } => self.mir.types.get(*to).clone(),
+                    _ => Ty::Error,
+                };
+                let element = match viewed {
+                    Ty::Slice(element) => element,
+                    Ty::Str => self.mir.types.u8,
+                    _ => {
+                        self.problem("slice made of a type that isn't a slice".into());
+                        return None;
+                    }
+                };
+                if let Some(start_ty) = self.operand_ty(start)
+                    && !matches!(self.mir.types.get(start_ty), Ty::Ref { to, .. } if *to == element)
+                {
+                    self.problem(
+                        "slice made from something other than a reference to an element".into(),
+                    );
+                }
+                if let Some(len_ty) = self.operand_ty(len)
+                    && !matches!(self.mir.types.get(len_ty), Ty::Int(IntTy::USize))
+                {
+                    self.problem("slice made with a length that isn't a usize".into());
+                }
+                Some(*ty)
+            }
             Rvalue::Cast { operand, ty } => {
                 let from = self.operand_ty(operand)?;
                 let types = &self.mir.types;

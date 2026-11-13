@@ -1,0 +1,8 @@
+// expect: error AssignWhileBorrowed
+
+fn main() -> i32 {
+    let mut a = [1, 2];
+    let v = a.slice_mut(0..2);
+    a.set(0, 9);
+    0
+}

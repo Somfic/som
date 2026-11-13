@@ -343,6 +343,9 @@ impl<'a> Resolver<'a> {
             | Expr::Borrow { expr: inner, .. }
             | Expr::ArrayRepeat { value: inner, .. } => self.resolve_expr(*inner),
             Expr::Array(items) => items.iter().for_each(|&item| self.resolve_expr(item)),
+            Expr::Range { start, end } => {
+                start.iter().chain(end).for_each(|&e| self.resolve_expr(e));
+            }
             Expr::Assign { target, value } => {
                 self.resolve_expr(*target);
                 self.resolve_expr(*value);

@@ -1,0 +1,12 @@
+// expect: exit 111
+
+fn main() -> i32 {
+    let a = [1, 2, 3];
+    let mut r = 0;
+    if a.slice(2..5) == none { r = r + 1; }
+    if a.slice(2..1) == none { r = r + 10; }
+    // Empty, right at the end: allowed.
+    let empty = a.slice(3..);
+    if empty { if empty.len() == 0 { r = r + 100; } }
+    r
+}

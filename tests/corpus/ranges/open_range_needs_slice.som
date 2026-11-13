@@ -1,0 +1,6 @@
+// expect: error OpenRange
+
+fn main() -> i32 {
+    let r = 1..;
+    0
+}

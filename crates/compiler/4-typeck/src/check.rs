@@ -835,6 +835,19 @@ impl<'a> Checker<'a> {
                     len: items.len() as u64,
                 })
             }
+            Expr::Range { start, end } => {
+                let int = self.u.fresh(VarKind::Int);
+                for &bound in start.iter().chain(end) {
+                    self.expect(bound, int, None);
+                }
+                // Only `slice` knows where an open range ends; it checks those itself.
+                if start.is_none() || end.is_none() {
+                    self.errors.push(TypeError::OpenRange {
+                        span: self.span(id),
+                    });
+                }
+                self.u.intern(Ty::Range(int))
+            }
             Expr::ArrayRepeat { value, count } => {
                 let element = self.infer(*value);
                 if !self.is_copy(element) {
@@ -1117,6 +1130,28 @@ impl<'a> Checker<'a> {
 
             Expr::Field { object, field } => {
                 let object_ty = self.infer_object(*object);
+                // A range's two ends.
+                let mut viewed = self.u.shallow(object_ty);
+                if let Ty::Ref { to, .. } = *self.u.get(viewed) {
+                    viewed = self.u.shallow(to);
+                }
+                if let Ty::Range(int) = *self.u.get(viewed) {
+                    let index = match &*field.name {
+                        "start" => 0,
+                        "end" => 1,
+                        _ => {
+                            self.errors.push(TypeError::UnknownField {
+                                ty: self.u.display(viewed, self.names),
+                                field: field.name.to_string(),
+                                available: vec!["start".into(), "end".into()],
+                                span: field.span.clone(),
+                            });
+                            return error;
+                        }
+                    };
+                    self.fields.insert(id, index);
+                    return int;
+                }
                 let Some(owner) = self.struct_of(object_ty, *object) else {
                     return error;
                 };
@@ -1307,8 +1342,21 @@ impl<'a> Checker<'a> {
         }
         self.array_methods.insert(call, kind);
 
-        // Any integer type can index.
-        if let Some(&index) = args.first() {
+        // A range of any integer type, or any integer, says which elements.
+        if matches!(kind, ArrayMethod::Slice | ArrayMethod::SliceMut) {
+            let int = self.u.fresh(VarKind::Int);
+            let range = self.u.intern(Ty::Range(int));
+            match &self.ast.exprs[args[0]] {
+                // `1..` and `..2`: the ends left out are the slice's own.
+                Expr::Range { start, end } if start.is_none() || end.is_none() => {
+                    for &bound in start.iter().chain(end) {
+                        self.expect(bound, int, None);
+                    }
+                    self.exprs[args[0].id] = Some(range);
+                }
+                _ => self.expect(args[0], range, None),
+            }
+        } else if let Some(&index) = args.first() {
             let int = self.u.fresh(VarKind::Int);
             self.expect(index, int, None);
         }
@@ -1316,8 +1364,11 @@ impl<'a> Checker<'a> {
             self.expect(args[1], element, None);
         }
         // Changing an element changes the array: it has to be changeable, or behind a `&mut`.
-        if matches!(kind, ArrayMethod::Set | ArrayMethod::GetMut) {
-            let borrow = kind == ArrayMethod::GetMut;
+        if matches!(
+            kind,
+            ArrayMethod::Set | ArrayMethod::GetMut | ArrayMethod::SliceMut
+        ) {
+            let borrow = kind != ArrayMethod::Set;
             match through {
                 Some(true) => {}
                 Some(false) if *self.u.get(array) == Ty::Str => {
@@ -1355,6 +1406,18 @@ impl<'a> Checker<'a> {
                 self.u.intern(Ty::Optional(reference))
             }
             ArrayMethod::Set => self.u.table.bool,
+            ArrayMethod::Slice if is_text => {
+                let str = self.u.table.str_ref;
+                self.u.intern(Ty::Optional(str))
+            }
+            ArrayMethod::Slice | ArrayMethod::SliceMut => {
+                let slice = self.u.intern(Ty::Slice(element));
+                let view = self.u.intern(Ty::Ref {
+                    mutable: kind == ArrayMethod::SliceMut,
+                    to: slice,
+                });
+                self.u.intern(Ty::Optional(view))
+            }
             ArrayMethod::Bytes => {
                 let u8 = self.u.table.u8;
                 let bytes = self.u.intern(Ty::Slice(u8));
@@ -1818,6 +1881,11 @@ impl Checker<'_> {
                 self.forget_changed_by(*value, false);
             }
             Expr::Not(e) | Expr::ArrayRepeat { value: e, .. } => self.forget_changed_by(*e, false),
+            Expr::Range { start, end } => {
+                for &bound in start.iter().chain(end) {
+                    self.forget_changed_by(bound, false);
+                }
+            }
             Expr::Array(items) => {
                 for &item in items {
                     self.forget_changed_by(item, false);

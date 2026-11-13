@@ -147,6 +147,8 @@ pub enum TokenKind {
     CloseBracket,
     #[token(".")]
     Dot,
+    #[token("..")]
+    DotDot,
     #[token("...")]
     Ellipsis,
 
@@ -247,6 +249,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::OpenBracket => write!(f, "["),
             TokenKind::CloseBracket => write!(f, "]"),
             TokenKind::Dot => write!(f, "."),
+            TokenKind::DotDot => write!(f, ".."),
             TokenKind::Ellipsis => write!(f, "..."),
             TokenKind::SingleQuote => write!(f, "'"),
             TokenKind::DoubleQuote => write!(f, "\""),

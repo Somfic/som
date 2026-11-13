@@ -1,0 +1,38 @@
+// expect: exit 37
+
+
+fn sum(numbers: [i32]) -> i32 {
+    let mut total = 0;
+    let mut rest = numbers;
+    // Walk with a shrinking view.
+    while rest.len() > 0 {
+        total = total + (rest.get(0) else 0);
+        rest = rest.slice(1..) else rest;
+    }
+    total
+}
+
+fn zero(numbers: [mut i32]) {
+    let mut i = 0;
+    while i < numbers.len() { numbers.set(i, 0); i = i + 1; }
+}
+
+fn main() -> i32 {
+    let mut numbers = [1, 2, 3, 4, 5];
+    let r = 1..4;
+    let middle = numbers.slice(r) else [];             // 2, 3, 4
+    let a = sum(middle);                              // 9
+    let b = sum(numbers.slice(..2) else []);          // 1 + 2 = 3
+    let c = sum(numbers.slice(3..) else []);          // 4 + 5 = 9
+    let past = numbers.slice(4..9) == none;           // out of bounds
+    let backwards = numbers.slice(3..1) == none;      // start after end
+    let empty = (numbers.slice(5..) else [9]).len();  // empty, at the very end: 0
+    {
+        let tail = numbers.slice_mut(3..);
+        if tail { zero(tail); }                      // numbers: 1, 2, 3, 0, 0
+    };
+    let d = sum(&numbers);                            // 6
+    let text = "hello, world";
+    let word = text.slice(7..) else "";
+    a + b + c + d + word.len() + r.start + r.end
+}

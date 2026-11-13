@@ -79,7 +79,17 @@ impl Checker<'_> {
                 | Rvalue::Some(op)
                 | Rvalue::Repeat { operand: op, .. }
                 | Rvalue::Cast { operand: op, .. } => self.operand(assigned, op, &stmt.span),
-                Rvalue::Binary { lhs, rhs, .. } => {
+                Rvalue::Binary { lhs, rhs, .. }
+                | Rvalue::Range {
+                    start: lhs,
+                    end: rhs,
+                    ..
+                }
+                | Rvalue::MakeSlice {
+                    start: lhs,
+                    len: rhs,
+                    ..
+                } => {
                     self.operand(assigned, lhs, &stmt.span);
                     self.operand(assigned, rhs, &stmt.span);
                 }

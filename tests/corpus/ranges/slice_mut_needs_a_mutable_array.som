@@ -1,0 +1,7 @@
+// expect: error NotMutable
+
+fn main() -> i32 {
+    let a = [1, 2];
+    let s = a.slice_mut(0..1);
+    0
+}

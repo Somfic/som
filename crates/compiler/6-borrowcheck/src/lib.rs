@@ -209,7 +209,17 @@ impl<'a> FnChecker<'a> {
             | Rvalue::Some(op)
             | Rvalue::Repeat { operand: op, .. }
             | Rvalue::Cast { operand: op, .. } => self.operand(state, op, span),
-            Rvalue::Binary { lhs, rhs, .. } => {
+            Rvalue::Binary { lhs, rhs, .. }
+            | Rvalue::Range {
+                start: lhs,
+                end: rhs,
+                ..
+            }
+            | Rvalue::MakeSlice {
+                start: lhs,
+                len: rhs,
+                ..
+            } => {
                 let mut flows = self.operand(state, lhs, span);
                 flows.extend(self.operand(state, rhs, span));
                 flows

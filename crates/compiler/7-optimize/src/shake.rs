@@ -56,7 +56,17 @@ fn referenced(body: &Body) -> Vec<FuncId> {
                 | Rvalue::Repeat { operand: op, .. }
                 | Rvalue::Cast { operand: op, .. } => vec![op],
                 Rvalue::Ref { .. } => Vec::new(),
-                Rvalue::Binary { lhs, rhs, .. } => vec![lhs, rhs],
+                Rvalue::Binary { lhs, rhs, .. }
+                | Rvalue::Range {
+                    start: lhs,
+                    end: rhs,
+                    ..
+                }
+                | Rvalue::MakeSlice {
+                    start: lhs,
+                    len: rhs,
+                    ..
+                } => vec![lhs, rhs],
                 Rvalue::Struct { fields: ops, .. } | Rvalue::Array { items: ops, .. } => {
                     ops.iter().collect()
                 }

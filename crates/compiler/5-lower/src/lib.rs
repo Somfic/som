@@ -971,6 +971,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 let len = items.len() as u64;
                 self.collection(expr, len, |ty| Rvalue::Array { ty, items })
             }
+            Expr::Range {
+                start: Some(start),
+                end: Some(end),
+            } => {
+                let ty = self.expr_ty(expr);
+                let (start, end) = (self.operand(*start), self.operand(*end));
+                Rvalue::Range { ty, start, end }
+            }
             Expr::ArrayRepeat { value, count } => {
                 let operand = self.operand(*value);
                 self.collection(expr, *count, |ty| Rvalue::Repeat { ty, operand })
@@ -1109,6 +1117,9 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Ty::Array { len, .. } => (place, Length::Fixed(len)),
             _ => unreachable!("checked: array methods are called on arrays and slices"),
         };
+        if matches!(method, ArrayMethod::Slice | ArrayMethod::SliceMut) {
+            return self.slice_method(method, ty, elements, len, args[0], span);
+        }
         // The same view, as bytes.
         if method == ArrayMethod::Bytes {
             debug_assert!(
@@ -1183,7 +1194,9 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.assign(element, Rvalue::Use(value), span.clone());
                 Rvalue::Use(self.constant(ConstKind::Bool(true), ty))
             }
-            ArrayMethod::Len | ArrayMethod::Bytes => unreachable!("handled above"),
+            ArrayMethod::Len | ArrayMethod::Bytes | ArrayMethod::Slice | ArrayMethod::SliceMut => {
+                unreachable!("handled above")
+            }
         };
         self.assign(Place::local(result), found, span.clone());
         self.terminate(TerminatorKind::Goto(join), span.clone());
@@ -1197,6 +1210,189 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         self.terminate(TerminatorKind::Goto(join), span);
         self.current = join;
         self.read(Place::local(result), ty)
+    }
+
+    /// `slice(range)` or `slice_mut(range)` of `elements`, which has `len` of them: a view of
+    /// those in the range, of type `ty` (an optional view), or `none` unless
+    /// `0 <= start <= end <= len`. An end left out of the range is the elements' own.
+    fn slice_method(
+        &mut self,
+        method: ArrayMethod,
+        ty: TypeId,
+        elements: Place,
+        len: Length,
+        range: Id<Expr>,
+        span: Span,
+    ) -> Operand {
+        let ast = self.l.ast;
+        let bool = self.l.mir.types.bool;
+        let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
+        let range_ty = self.expr_ty(range);
+        let Ty::Range(int_ty) = *self.l.mir.types.get(range_ty) else {
+            unreachable!("checked: slices take ranges")
+        };
+        let Ty::Int(int) = *self.l.mir.types.get(int_ty) else {
+            unreachable!("checked: ranges are of integers")
+        };
+        let (start, end) = match &ast.exprs[range] {
+            Expr::Range { start, end } if start.is_none() || end.is_none() => {
+                let start = match start {
+                    Some(start) => self.operand(*start),
+                    None => self.constant(ConstKind::Int(0), int_ty),
+                };
+                (start, end.map(|end| self.operand(end)))
+            }
+            _ => {
+                let place = self.place(range);
+                let field = |i| Operand::Copy(place.clone().project(Projection::Field(i)));
+                (field(0), Some(field(1)))
+            }
+        };
+
+        // Where the range stops: its end, or the elements' own.
+        let stop = end.clone().unwrap_or_else(|| match &len {
+            Length::Fixed(n) => self.constant(ConstKind::Int(*n as i64), usize),
+            Length::Held(count) => count.clone(),
+        });
+        let to_usize = |b: &mut Self, value: Operand, from: TypeId| -> Operand {
+            if from == usize {
+                return value;
+            }
+            let temp = b.temp(usize, span.clone());
+            let cast = Rvalue::Cast {
+                operand: value,
+                ty: usize,
+            };
+            b.assign(Place::local(temp), cast, span.clone());
+            Operand::Copy(Place::local(temp))
+        };
+        let first = to_usize(self, start.clone(), int_ty);
+        let stop_usize = match &end {
+            Some(end) => to_usize(self, end.clone(), int_ty),
+            None => stop.clone(),
+        };
+
+        let mut checks = Vec::new();
+        let signed = matches!(
+            int,
+            IntTy::I8 | IntTy::I16 | IntTy::I32 | IntTy::I64 | IntTy::ISize | IntTy::I128
+        );
+        if signed {
+            let zero = self.constant(ConstKind::Int(0), int_ty);
+            checks.push(Rvalue::Binary {
+                op: BinOp::GreaterThanOrEqual,
+                lhs: start.clone(),
+                rhs: zero,
+            });
+        }
+        if let Some(end) = &end {
+            checks.push(Rvalue::Binary {
+                op: BinOp::LessThanOrEqual,
+                lhs: start.clone(),
+                rhs: end.clone(),
+            });
+        }
+        // Within the elements: compared as `usize`s, which the checks above make exact.
+        // (A 128-bit range past what a `usize` holds is the one case that isn't.)
+        let last_usize = match &end {
+            Some(_) => stop_usize.clone(),
+            None => first.clone(),
+        };
+        let len_usize = match &len {
+            Length::Fixed(n) => self.constant(ConstKind::Int(*n as i64), usize),
+            Length::Held(count) => count.clone(),
+        };
+        checks.push(Rvalue::Binary {
+            op: BinOp::LessThanOrEqual,
+            lhs: last_usize,
+            rhs: len_usize,
+        });
+        let mut in_bounds: Option<Operand> = None;
+        for check in checks {
+            let temp = self.temp(bool, span.clone());
+            self.assign(Place::local(temp), check, span.clone());
+            let check = Operand::Copy(Place::local(temp));
+            in_bounds = Some(match in_bounds {
+                None => check,
+                Some(earlier) => {
+                    let both = self.temp(bool, span.clone());
+                    let and = Rvalue::Binary {
+                        op: BinOp::And,
+                        lhs: earlier,
+                        rhs: check,
+                    };
+                    self.assign(Place::local(both), and, span.clone());
+                    Operand::Copy(Place::local(both))
+                }
+            });
+        }
+        let in_bounds = in_bounds.expect("there's always an upper bound");
+
+        let result = self.temp(ty, span.clone());
+        let (inside, outside, join) = (self.new_block(), self.new_block(), self.new_block());
+        self.terminate(
+            TerminatorKind::Branch {
+                condition: in_bounds,
+                then: inside,
+                otherwise: outside,
+            },
+            span.clone(),
+        );
+        self.current = inside;
+        let Ty::Optional(view_ty) = *self.l.mir.types.get(ty) else {
+            unreachable!("checked: slicing gives an optional view")
+        };
+        // The first element in the range (one past the last, for an empty one), and how many.
+        let position = self.temp(usize, span.clone());
+        self.assign(Place::local(position), Rvalue::Use(first), span.clone());
+        let mutable = method == ArrayMethod::SliceMut;
+        let element_ty = self
+            .l
+            .mir
+            .project(self.place_ty(&elements), Projection::Index(position))
+            .expect("checked: slices are sliced by element");
+        let reference_ty = self.l.mir.types.intern(Ty::Ref {
+            mutable,
+            to: element_ty,
+        });
+        let reference = self.temp(reference_ty, span.clone());
+        let borrow = Rvalue::Ref {
+            mutable,
+            place: elements.project(Projection::Index(position)),
+        };
+        self.assign(Place::local(reference), borrow, span.clone());
+        let count = self.temp(usize, span.clone());
+        let difference = Rvalue::Binary {
+            op: BinOp::Subtract,
+            lhs: stop_usize,
+            rhs: Operand::Copy(Place::local(position)),
+        };
+        self.assign(Place::local(count), difference, span.clone());
+        let view = self.temp(view_ty, span.clone());
+        let made = Rvalue::MakeSlice {
+            ty: view_ty,
+            start: Operand::Move(Place::local(reference)),
+            len: Operand::Copy(Place::local(count)),
+        };
+        self.assign(Place::local(view), made, span.clone());
+        let some = Rvalue::Some(Operand::Move(Place::local(view)));
+        self.assign(Place::local(result), some, span.clone());
+        self.terminate(TerminatorKind::Goto(join), span.clone());
+        self.current = outside;
+        let missing = self.constant(ConstKind::Zeroed, ty);
+        self.assign(Place::local(result), Rvalue::Use(missing), span.clone());
+        self.terminate(TerminatorKind::Goto(join), span);
+        self.current = join;
+        self.read(Place::local(result), ty)
+    }
+
+    /// The type of `place` in the body being built.
+    fn place_ty(&self, place: &Place) -> TypeId {
+        let mut ty = self.locals[place.local].ty;
+        for &projection in &place.projection {
+            ty = (self.l.mir.project(ty, projection)).expect("places are built well-typed");
+        }
+        ty
     }
 
     /// Whether `index`, of integer type `index_ty`, is at least 0 and less than `len`.

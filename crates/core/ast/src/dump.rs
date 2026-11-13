@@ -234,6 +234,16 @@ impl Dumper<'_> {
             Expr::Str(s) => self.line(format!("str {s:?}")),
             Expr::None => self.line("none"),
             Expr::Array(items) => self.node("array", |d| d.exprs(items)),
+            Expr::Range { start, end } => self.node("range", |d| {
+                match start {
+                    Some(start) => d.node("start", |d| d.expr(*start)),
+                    None => d.line("start open"),
+                }
+                match end {
+                    Some(end) => d.node("end", |d| d.expr(*end)),
+                    None => d.line("end open"),
+                }
+            }),
             Expr::ArrayRepeat { value, count } => {
                 self.node(format!("array repeat {count}"), |d| d.expr(*value))
             }

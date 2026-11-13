@@ -69,6 +69,8 @@ impl Mir {
                 Some(*element)
             }
             (Projection::Index(_), Ty::Str) => Some(self.types.u8),
+            // A range's two ends.
+            (Projection::Field(0 | 1), Ty::Range(int)) => Some(*int),
             // A slice's reference holds where its elements start, and how many there are.
             (Projection::Field(0), Ty::Ref { to, .. })
                 if matches!(self.types.get(*to), Ty::Slice(_) | Ty::Str) =>
@@ -300,6 +302,19 @@ pub enum Rvalue {
     Repeat {
         ty: TypeId,
         operand: Operand,
+    },
+    /// A range of type `ty`, from `start` up to `end`.
+    Range {
+        ty: TypeId,
+        start: Operand,
+        end: Operand,
+    },
+    /// A slice (or text) of type `ty`: `len` elements starting where the reference `start`
+    /// points.
+    MakeSlice {
+        ty: TypeId,
+        start: Operand,
+        len: Operand,
     },
     /// A value converted to type `ty`: an integer to another integer type, wrapping if it
     /// doesn't fit; or a reference to an array, or a `[mut T]`, to a slice.

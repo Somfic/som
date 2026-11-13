@@ -126,6 +126,27 @@ impl Parser<'_> {
                 continue;
             }
 
+            // `start..end`, or `start..` with the end left open.
+            if self.at(TokenKind::DotDot) {
+                if Grammar::RANGE * 2 < min_bp {
+                    break;
+                }
+                self.advance();
+                let end = if self.can_start_expr() {
+                    Some(self.parse_expr_bp(Grammar::RANGE * 2 + 1)?)
+                } else {
+                    None
+                };
+                lhs = self.alloc_expr(
+                    Expr::Range {
+                        start: Some(lhs),
+                        end,
+                    },
+                    &start,
+                );
+                continue;
+            }
+
             let Some((op, info)) = Grammar::infix_op(self.peek()) else {
                 break;
             };
@@ -144,6 +165,17 @@ impl Parser<'_> {
     fn parse_prefix_or_atom(&mut self) -> Option<Id<Expr>> {
         let start = self.current_span();
         let kind = self.peek();
+
+        // `..end`, or `..`: a range from the start.
+        if kind == TokenKind::DotDot {
+            self.advance();
+            let end = if self.can_start_expr() {
+                Some(self.parse_expr_bp(Grammar::RANGE * 2 + 1)?)
+            } else {
+                None
+            };
+            return Some(self.alloc_expr(Expr::Range { start: None, end }, &start));
+        }
 
         let Some(bp) = Grammar::prefix_bp(kind).filter(|_| kind != TokenKind::Minus) else {
             return self.parse_atom();
@@ -267,6 +299,21 @@ impl Parser<'_> {
         };
 
         Some(self.alloc_expr(expr, &start))
+    }
+
+    /// Whether an expression can start here: after `..`, whether a range has an end.
+    fn can_start_expr(&self) -> bool {
+        !matches!(
+            self.peek(),
+            TokenKind::CloseParen
+                | TokenKind::CloseBracket
+                | TokenKind::CloseBrace
+                | TokenKind::OpenBrace
+                | TokenKind::Comma
+                | TokenKind::Semicolon
+                | TokenKind::Else
+                | TokenKind::Eof
+        )
     }
 
     /// A count written as an integer literal: an array's length, or how many copies.

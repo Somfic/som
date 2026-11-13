@@ -208,6 +208,7 @@ impl Names {
                     format!("som_slice_{}", identifier(&mir.display_ty(*element)))
                 }
                 Ty::Str => "som_str".to_string(),
+                Ty::Range(int) => format!("som_range_{}", identifier(&mir.display_ty(*int))),
                 _ => unreachable!("used_generated returns optionals, arrays, slices and text"),
             };
             generated.insert(ty, unique(&name, "s", &mut tags, |_| false));
@@ -269,7 +270,7 @@ fn used_generated(mir: &Mir) -> Vec<TypeId> {
         let t = mir.types.get(ty);
         if matches!(
             t,
-            Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_) | Ty::Str
+            Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_) | Ty::Str | Ty::Range(_)
         ) {
             found.push(ty);
         }
@@ -392,6 +393,15 @@ impl Usage {
                     // Read once per element, by a loop.
                     Rvalue::Repeat { operand, .. } => u.operand(operand, Use::Other),
                     Rvalue::Cast { operand, .. } => u.operand(operand, Use::Operand),
+                    // Fields of the compound literal they become.
+                    Rvalue::Range { start, end, .. } => {
+                        u.operand(start, Use::Field);
+                        u.operand(end, Use::Field);
+                    }
+                    Rvalue::MakeSlice { start, len, .. } => {
+                        u.operand(start, Use::Field);
+                        u.operand(len, Use::Field);
+                    }
                     Rvalue::Binary { lhs, rhs, .. } => {
                         u.operand(lhs, Use::Operand);
                         u.operand(rhs, Use::Operand);
@@ -544,7 +554,7 @@ impl<'a> Emitter<'a> {
                 format!("{}*", self.struct_name(*def))
             }
             Ty::Struct(def) => self.struct_name(*def),
-            Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_) => {
+            Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_) | Ty::Range(_) => {
                 format!("struct {}", self.names.generated[&ty])
             }
             Ty::Error | Ty::Param(_) | Ty::Var(_) => {
@@ -615,7 +625,9 @@ impl<'a> Emitter<'a> {
                 .iter()
                 .map(|f| f.1)
                 .collect(),
-            Ty::Optional(inner) | Ty::Array { element: inner, .. } => vec![*inner],
+            Ty::Optional(inner) | Ty::Array { element: inner, .. } | Ty::Range(inner) => {
+                vec![*inner]
+            }
             // Its elements are behind a pointer, so they don't have to come first.
             Ty::Slice(_) | Ty::Str => Vec::new(),
             _ => return,
@@ -651,6 +663,10 @@ impl<'a> Emitter<'a> {
                     "{} {{ uint8_t* ptr; uintptr_t len; }};",
                     self.ty(ty)
                 ));
+            }
+            Ty::Range(int) => {
+                let int = self.ty(int);
+                self.line(format!("{} {{ {int} start; {int} end; }};", self.ty(ty)));
             }
             // C has no empty arrays; one that's never read stands in.
             Ty::Array { element, len } => {
@@ -943,6 +959,14 @@ impl<'a> Emitter<'a> {
                 debug_assert!(is_zero(operand), "only zeroes repeat in an expression");
                 Expr::atom(format!("({}){{0}}", self.ty(*ty)))
             }
+            Rvalue::Range { ty, start, end } => {
+                let (start, end) = (self.operand(f, start).text, self.operand(f, end).text);
+                Expr::atom(format!("({}){{{start}, {end}}}", self.ty(*ty)))
+            }
+            Rvalue::MakeSlice { ty, start, len } => {
+                let (start, len) = (self.operand(f, start).text, self.operand(f, len).text);
+                Expr::atom(format!("({}){{{start}, {len}}}", self.ty(*ty)))
+            }
             Rvalue::Cast { operand, ty } => {
                 let from = self.operand_ty(f, operand);
                 let value = self.operand(f, operand);
@@ -1119,6 +1143,8 @@ impl<'a> Emitter<'a> {
             Ty::Struct(def) => &self.names.fields[def][index],
             Ty::Optional(_) if index == 0 => "some",
             Ty::Optional(_) => "value",
+            Ty::Range(_) if index == 0 => "start",
+            Ty::Range(_) => "end",
             Ty::Ref { .. } if index == 0 => "ptr",
             Ty::Ref { .. } => "len",
             _ => unreachable!("fields belong to structs and optionals"),
@@ -1158,9 +1184,17 @@ fn reads(rvalue: &Rvalue) -> Vec<Local> {
         | Rvalue::Some(op)
         | Rvalue::Repeat { operand: op, .. }
         | Rvalue::Cast { operand: op, .. } => operand_local(op).into_iter().collect(),
-        Rvalue::Binary { lhs, rhs, .. } => {
-            [lhs, rhs].into_iter().filter_map(operand_local).collect()
+        Rvalue::Binary { lhs, rhs, .. }
+        | Rvalue::Range {
+            start: lhs,
+            end: rhs,
+            ..
         }
+        | Rvalue::MakeSlice {
+            start: lhs,
+            len: rhs,
+            ..
+        } => [lhs, rhs].into_iter().filter_map(operand_local).collect(),
         Rvalue::Struct { fields: ops, .. }
         | Rvalue::Array { items: ops, .. }
         | Rvalue::Call { args: ops, .. } => ops.iter().filter_map(operand_local).collect(),
