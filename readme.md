@@ -72,8 +72,8 @@ let int_pair: Pair<int, int> = { first: 1, second: 2 }
 - Types parameratized by types and values
 - Enums with data, and `match` that checks every case is covered
 - Fields every variant of an enum has are reachable without a `match`
+- Method receivers are borrowed automatically: `list.push(1)` for `self: &mut List`
 
 
 ## Todo
 - What would change is mostly the methods. len/get/set/slice are currently hard-coded in ArrayMethod. They could move into a std impl once there's a way to write methods on built-in types, but the storage and slice handling stay in the compiler.
-- som doesn't auto-borrow method receivers yet,

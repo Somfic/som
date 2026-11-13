@@ -45,6 +45,8 @@ pub struct Typed {
     common: Vec<Vec<CommonField>>,
     /// What each `match` arm's pattern turned out to be.
     patterns: HashMap<Id<Pattern>, PatternInfo>,
+    /// Method receivers passed other than as they are: see `Receiver`.
+    receivers: HashMap<Id<Expr>, Receiver>,
     /// `match` arms that never finish, like `{ return 0; }`: they have no value to give.
     diverging: HashSet<Id<Expr>>,
     /// `[value; N]` → `N`, as an array type's length.
@@ -78,6 +80,17 @@ pub struct CommonField {
     pub name: Box<str>,
     /// Where it is in each variant's fields, as an index into the enum's payload.
     pub payload: Vec<usize>,
+}
+
+/// How a method call's receiver becomes the method's `self`, when it isn't as it is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Receiver {
+    /// Borrowed: `a.len()` for `fn len(self: &List)` is `(&a).len()`, and with `mutable`,
+    /// `(&mut a).push(1)`.
+    Borrow { mutable: bool },
+    /// Copied out of the reference it is: `r.area()` for `fn area(self: Point)`, with `r` a
+    /// `&Point`, is `(*r).area()`.
+    Deref,
 }
 
 /// What a pattern in a `match` arm turned out to be, once the type it matches was known.
@@ -204,6 +217,11 @@ impl Typed {
     /// Whether payload field `index` of enum `s` is one of its common fields.
     pub fn is_common(&self, s: Id<Struct>, index: usize) -> bool {
         self.common[s.id].iter().any(|c| c.payload.contains(&index))
+    }
+
+    /// How method call receiver `expr` becomes the method's `self`, if not as it is.
+    pub fn receiver(&self, expr: Id<Expr>) -> Option<Receiver> {
+        self.receivers.get(&expr).copied()
     }
 
     /// What a `match` arm's pattern turned out to be.

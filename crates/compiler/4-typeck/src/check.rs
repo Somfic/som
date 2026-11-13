@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use crate::error::TypeError;
 use crate::ty::{IntTy, Ty, TypeId, Value};
 use crate::unify::{Unifier, VarKind};
-use crate::{ArrayMethod, CommonField, Loop, PatternInfo, Signature, Typed};
+use crate::{ArrayMethod, CommonField, Loop, PatternInfo, Receiver, Signature, Typed};
 use som_base::Message;
 use som_base::message;
 
@@ -47,6 +47,7 @@ pub(crate) struct Checker<'a> {
     /// How many `loop`s and `while`s enclose the statement being checked.
     loops: usize,
     patterns: HashMap<Id<som_ast::Pattern>, PatternInfo>,
+    receivers: HashMap<Id<Expr>, Receiver>,
     common: Vec<Vec<CommonField>>,
     diverging: HashSet<Id<Expr>>,
     /// The next expression checked is a statement's: its value isn't used.
@@ -81,6 +82,7 @@ impl<'a> Checker<'a> {
             deferred_ops: Vec::new(),
             loops: 0,
             patterns: HashMap::new(),
+            receivers: HashMap::new(),
             common: Vec::new(),
             diverging: HashSet::new(),
             discarding: false,
@@ -319,6 +321,7 @@ impl<'a> Checker<'a> {
             sliced,
             loops: self.for_loops,
             patterns: self.patterns,
+            receivers: self.receivers,
             common: self.common,
             diverging: self.diverging,
         };
@@ -1620,7 +1623,7 @@ impl<'a> Checker<'a> {
                 // The receiver is the first (`self`) parameter.
                 match sig.params.split_first() {
                     Some((&self_ty, rest)) => {
-                        if self.u.unify(self_ty, receiver_ty).is_err() {
+                        if !self.receive(*receiver, self_ty, receiver_ty) {
                             let from = self.ast.funcs[func].params[0]
                                 .ty
                                 .map(|t| self.ast.types.span(t).clone());
@@ -2014,6 +2017,47 @@ impl<'a> Checker<'a> {
                 })
             }
         })
+    }
+
+    /// Makes method call receiver `receiver`, of type `found`, the `self` of a method taking
+    /// `expected`, returning whether it can be: as it is; borrowed, when the method takes a
+    /// reference to what it is (`a.len()` for `self: &List`); or copied out of a reference to
+    /// what the method takes, if that copies.
+    fn receive(&mut self, receiver: Id<Expr>, expected: TypeId, found: TypeId) -> bool {
+        let wanted = self.u.get(self.u.shallow(expected)).clone();
+        let given = self.u.get(self.u.shallow(found)).clone();
+        let adjusted = match (wanted, given) {
+            (Ty::Ref { mutable, to }, given) if !matches!(given, Ty::Ref { .. } | Ty::Error) => {
+                if self.u.unify(to, found).is_err() {
+                    return false;
+                }
+                // Like `&mut a`: it can change anything inside `a`, and `a` has to allow that.
+                if mutable {
+                    if let Some(borrowed) = self.key(receiver) {
+                        self.forget(|key| key.within(&borrowed) && !key.same(&borrowed));
+                    }
+                    self.check_mutable(receiver, true);
+                }
+                Receiver::Borrow { mutable }
+            }
+            (wanted, Ty::Ref { to, .. }) if !matches!(wanted, Ty::Ref { .. } | Ty::Var(_)) => {
+                if self.u.unify(expected, to).is_err() {
+                    return false;
+                }
+                // Taking it would move it out from behind the reference.
+                if !self.is_copy(to) {
+                    self.errors.push(TypeError::ReceiverBehindReference {
+                        ty: self.describe(to),
+                        span: self.span(receiver),
+                    });
+                    return true;
+                }
+                Receiver::Deref
+            }
+            _ => return self.u.unify(expected, found).is_ok(),
+        };
+        self.receivers.insert(receiver, adjusted);
+        true
     }
 
     /// Whether values of `ty` are copied rather than moved. A type that isn't known yet is

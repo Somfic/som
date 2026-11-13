@@ -1,0 +1,11 @@
+// expect: error ReceiverBehindReference
+
+struct Counter { n: i32 }
+
+impl Counter {
+    fn take(self: Counter) -> i32 { self.n }
+}
+
+fn f(c: &Counter) -> i32 { c.take() }
+
+fn main() -> i32 { f(&Counter { n: 1 }) }

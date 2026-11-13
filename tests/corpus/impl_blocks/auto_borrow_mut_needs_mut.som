@@ -1,0 +1,13 @@
+// expect: error NotMutable
+
+struct Counter { n: i32 }
+
+impl Counter {
+    fn bump(self: &mut Counter) { self.n = self.n + 1; }
+}
+
+fn main() -> i32 {
+    let c = Counter { n: 1 };
+    c.bump();
+    c.n
+}

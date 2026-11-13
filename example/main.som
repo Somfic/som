@@ -12,11 +12,11 @@ impl<T> Test<T> {
 
 let a = Test::A { base: 1, a: 1 };
 
-&a.common();
+a.common();
 
 let base = match a {
-    A { base, a } => base,
-    B { base, b } => base
+    A { base, a } => a,
+    B { base, b } => b
 };
 
-std::printf("%d", a.base);
+std::printf("%d", base);

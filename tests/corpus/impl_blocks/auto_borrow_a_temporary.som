@@ -1,0 +1,11 @@
+// expect: exit 7
+
+struct Counter { n: i32 }
+
+impl Counter {
+    fn get(self: &Counter) -> i32 { self.n }
+}
+
+fn make() -> Counter { Counter { n: 7 } }
+
+fn main() -> i32 { make().get() }

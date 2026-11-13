@@ -158,6 +158,11 @@ pub enum TypeError {
         without: Vec<String>,
         span: Span,
     },
+    /// A method taking `self` by value, called on a reference to a value that can't be copied.
+    ReceiverBehindReference {
+        ty: Message,
+        span: Span,
+    },
     /// A pattern names a variant the enum doesn't have.
     UnknownVariant {
         ty: String,
@@ -528,6 +533,16 @@ impl TypeError {
                     " to reach it in the variants that have it"
                 ])
             }
+            TypeError::ReceiverBehindReference { ty, span } => Diagnostic::error(msg![
+                "the method takes the ",
+                ty.clone(),
+                " itself, but this is a reference to one"
+            ])
+            .with_label(Label::primary(
+                span.clone(),
+                "it can't be moved out of the reference",
+            ))
+            .with_hint(msg!["have the method take ", code("self: &…"), " instead"]),
             TypeError::UnknownVariant {
                 ty: owner,
                 variant,

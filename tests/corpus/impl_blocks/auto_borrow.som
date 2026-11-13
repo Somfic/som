@@ -1,0 +1,30 @@
+// expect: exit 39
+
+struct Counter { n: i32 }
+impl Counter {
+    fn get(self: &Counter) -> i32 { self.n }
+    fn bump(self: &mut Counter) { self.n = self.n + 1; }
+    fn doubled(self: Counter) -> i32 { self.n * 2 }
+}
+enum Test<T> {
+    A { base: i32, a: T },
+    B { base: i32, b: T }
+}
+impl<T> Test<T> {
+    fn common(self: &Test<T>) -> i32 { self.base }
+}
+fn make() -> Counter { Counter { n: 40 } }
+enum Level { Low, High }
+impl Level { fn score(self: Level) -> i32 { 10 if self == Level::High else 1 } }
+fn through(c: &Counter, l: &Level) -> i32 { l.score() + c.get() }
+fn main() -> i32 {
+    let mut c = Counter { n: 1 };
+    c.bump();
+    c.bump();
+    let a = Test::A { base: 1, a: 1 };
+    {
+        let r = &mut c;
+        r.bump();
+    }
+    c.get() + a.common() + make().get() + through(&c, &Level::High) + make().doubled() - 100
+}

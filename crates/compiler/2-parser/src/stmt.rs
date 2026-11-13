@@ -14,9 +14,14 @@ impl Parser<'_> {
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
-            // Like `if`, a `match` that starts a statement ends at its brace: no `;` needed.
-            TokenKind::Match => {
-                let Some(expr) = self.parse_match() else {
+            // Like `if`, a `match` or block that starts a statement ends at its brace: no `;`
+            // needed.
+            TokenKind::Match | TokenKind::OpenBrace => {
+                let expr = match self.peek() {
+                    TokenKind::Match => self.parse_match(),
+                    _ => self.parse_block(),
+                };
+                let Some(expr) = expr else {
                     return StmtOrExpr::Error;
                 };
                 let ends_block = self.at(TokenKind::CloseBrace) || self.at_eof();

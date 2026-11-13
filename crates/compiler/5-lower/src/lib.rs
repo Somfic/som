@@ -15,7 +15,7 @@ mod matching;
 use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
-use som_typeck::{ArrayMethod, Loop, Typed, Value};
+use som_typeck::{ArrayMethod, Loop, Receiver, Typed, Value};
 use std::collections::{HashMap, HashSet};
 
 pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
@@ -1428,10 +1428,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     ) -> Rvalue {
         let type_args = self.type_args(expr);
         let func = self.l.instance(func, type_args);
+        let receiver = receiver.map(|r| self.receiver(r));
         let args: Vec<(Operand, TypeId, Span)> = receiver
             .into_iter()
-            .chain(args.iter().copied())
-            .map(|a| (self.operand(a), self.expr_ty(a), self.span(a)))
+            .chain(
+                args.iter()
+                    .map(|&a| (self.operand(a), self.expr_ty(a), self.span(a))),
+            )
             .collect();
         // Every argument is evaluated before any is reborrowed, so `x.f(x.g())` works.
         let args = args
@@ -1439,6 +1442,34 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             .map(|(arg, ty, span)| self.reborrow(arg, ty, span))
             .collect();
         Rvalue::Call { func, args }
+    }
+
+    /// A method call's receiver as the method's `self`: as it is, borrowed (`a.len()` for
+    /// `self: &List`), or copied out of the reference it is. With its type and where it is.
+    fn receiver(&mut self, receiver: Id<Expr>) -> (Operand, TypeId, Span) {
+        let ty = self.expr_ty(receiver);
+        let span = self.span(receiver);
+        match self.l.typed.receiver(receiver) {
+            None => (self.operand(receiver), ty, span),
+            Some(Receiver::Borrow { mutable }) => {
+                let place = self.place(receiver);
+                let reference = self.l.mir.types.intern(Ty::Ref { mutable, to: ty });
+                let temp = self.temp(reference, span.clone());
+                self.assign(
+                    Place::local(temp),
+                    Rvalue::Ref { mutable, place },
+                    span.clone(),
+                );
+                (self.read(Place::local(temp), reference), reference, span)
+            }
+            Some(Receiver::Deref) => {
+                let place = self.place(receiver).project(Projection::Deref);
+                let Ty::Ref { to, .. } = *self.l.mir.types.get(ty) else {
+                    unreachable!("checked: only references are dereferenced")
+                };
+                (self.read(place, to), to, span)
+            }
+        }
     }
 
     /// Passes a `&mut` variable on as `&mut *x` rather than moving it, so it's usable again
