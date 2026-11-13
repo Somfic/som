@@ -85,7 +85,7 @@ impl<'a> Lowerer<'a> {
 
         while let Some((func_id, func, type_args)) = self.queue.pop() {
             let body = FnBuilder::new(self, func, type_args).build();
-            self.mir.funcs[func_id.0 as usize].body = Some(body);
+            self.mir.funcs[func_id].body = Some(body);
         }
     }
 
@@ -133,8 +133,7 @@ impl<'a> Lowerer<'a> {
             && !self.owners.contains_key(&func)
             && type_args.is_empty();
 
-        let id = FuncId(self.mir.funcs.len() as u32);
-        self.mir.funcs.push(Function {
+        let id = self.mir.funcs.alloc(Function {
             name,
             params,
             ret,

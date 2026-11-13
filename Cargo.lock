@@ -916,6 +916,7 @@ dependencies = [
  "som_mir",
  "som_parser",
  "som_resolve",
+ "som_shake",
  "som_typeck",
  "tempfile",
 ]
@@ -983,6 +984,18 @@ dependencies = [
  "som_ast",
  "som_base",
  "som_parser",
+]
+
+[[package]]
+name = "som_shake"
+version = "0.1.0"
+dependencies = [
+ "som_base",
+ "som_lower",
+ "som_mir",
+ "som_parser",
+ "som_resolve",
+ "som_typeck",
 ]
 
 [[package]]

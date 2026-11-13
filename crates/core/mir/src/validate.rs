@@ -190,8 +190,8 @@ impl Validator<'_> {
                 self.mir.types.lookup(&Ty::Struct(*def))
             }
             Rvalue::Call { func, args } => {
-                let Some(callee) = self.mir.funcs.get(func.0 as usize) else {
-                    self.problem(format!("calls missing function {}", func.0));
+                let Some(callee) = self.mir.funcs.get(*func) else {
+                    self.problem(format!("calls missing function {}", func.id));
                     return None;
                 };
                 // A variadic extern's extra arguments can be anything.

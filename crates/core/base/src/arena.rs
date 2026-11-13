@@ -1,9 +1,10 @@
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
+use std::ops::{Index, IndexMut};
 
 pub struct Arena<T> {
-    items: Vec<T>,
+    items: Vec<Option<T>>,
 }
 
 pub struct Id<T> {
@@ -38,6 +39,18 @@ impl<T> PartialEq for Id<T> {
     }
 }
 
+impl<T> PartialOrd for Id<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> Ord for Id<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id)
+    }
+}
+
 impl<T> Hash for Id<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id.hash(state);
@@ -66,65 +79,95 @@ impl<T> Arena<T> {
 
     pub fn alloc(&mut self, item: T) -> Id<T> {
         let id = Id::new(self.items.len());
-        self.items.push(item);
+        self.items.push(Some(item));
         id
     }
 
-    pub fn get(&self, id: &Id<T>) -> &T {
-        self.items.get(id.id).unwrap()
+    /// The item with `id`, or `None` if it was removed.
+    pub fn get(&self, id: Id<T>) -> Option<&T> {
+        self.items.get(id.id)?.as_ref()
     }
 
-    pub fn get_mut(&mut self, id: &Id<T>) -> &mut T {
-        self.items.get_mut(id.id).unwrap()
+    pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
+        self.items.get_mut(id.id)?.as_mut()
+    }
+
+    /// Removes the item with `id`. Its id isn't reused.
+    pub fn remove(&mut self, id: Id<T>) -> Option<T> {
+        self.items.get_mut(id.id)?.take()
+    }
+
+    /// Keeps only the items `keep` returns true for.
+    pub fn retain(&mut self, mut keep: impl FnMut(Id<T>, &T) -> bool) {
+        for (i, slot) in self.items.iter_mut().enumerate() {
+            if slot.as_ref().is_some_and(|item| !keep(Id::new(i), item)) {
+                *slot = None;
+            }
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.items.iter()
+        self.items.iter().flatten()
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.items.iter_mut()
+        self.items.iter_mut().flatten()
     }
 
     pub fn iter_with_ids(&self) -> impl Iterator<Item = (Id<T>, &T)> {
         self.items
             .iter()
             .enumerate()
-            .map(|(i, item)| (Id::new(i), item))
+            .filter_map(|(i, item)| Some((Id::new(i), item.as_ref()?)))
     }
 
+    /// The number of items, not counting removed ones.
     pub fn len(&self) -> usize {
-        self.items.len()
+        self.iter().count()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.items.is_empty()
+        self.iter().next().is_none()
+    }
+}
+
+impl<T> Index<Id<T>> for Arena<T> {
+    type Output = T;
+
+    fn index(&self, id: Id<T>) -> &T {
+        self.get(id).expect("no item with this id")
+    }
+}
+
+impl<T> IndexMut<Id<T>> for Arena<T> {
+    fn index_mut(&mut self, id: Id<T>) -> &mut T {
+        self.get_mut(id).expect("no item with this id")
     }
 }
 
 impl<T> IntoIterator for Arena<T> {
     type Item = T;
-    type IntoIter = std::vec::IntoIter<T>;
+    type IntoIter = std::iter::Flatten<std::vec::IntoIter<Option<T>>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.items.into_iter()
+        self.items.into_iter().flatten()
     }
 }
 
 impl<'a, T> IntoIterator for &'a Arena<T> {
     type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
+    type IntoIter = std::iter::Flatten<std::slice::Iter<'a, Option<T>>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.items.iter()
+        self.items.iter().flatten()
     }
 }
 
 impl<'a, T> IntoIterator for &'a mut Arena<T> {
     type Item = &'a mut T;
-    type IntoIter = std::slice::IterMut<'a, T>;
+    type IntoIter = std::iter::Flatten<std::slice::IterMut<'a, Option<T>>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.items.iter_mut()
+        self.items.iter_mut().flatten()
     }
 }

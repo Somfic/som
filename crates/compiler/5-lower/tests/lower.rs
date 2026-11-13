@@ -20,13 +20,10 @@ fn lower(source: &str) -> Mir {
 }
 
 fn func<'m>(mir: &'m Mir, name: &str) -> (FuncId, &'m Function) {
-    let (i, f) = mir
-        .funcs
-        .iter()
-        .enumerate()
+    mir.funcs
+        .iter_with_ids()
         .find(|(_, f)| f.name == name)
-        .unwrap_or_else(|| panic!("no {name} in\n{mir}"));
-    (FuncId(i as u32), f)
+        .unwrap_or_else(|| panic!("no {name} in\n{mir}"))
 }
 
 #[test]
@@ -123,7 +120,7 @@ fn entry_point_and_externs() {
 fn validator_catches_ill_typed_mir() {
     let mut mir = lower("fn f() -> i32 { 1 }");
     let bool = mir.types.bool;
-    let body = mir.funcs[0].body.as_mut().unwrap();
+    let body = mir.funcs.iter_mut().next().unwrap().body.as_mut().unwrap();
     let StatementKind::Assign(_, Rvalue::Use(Operand::Const(c))) =
         &mut body.blocks[0].stmts[0].kind
     else {

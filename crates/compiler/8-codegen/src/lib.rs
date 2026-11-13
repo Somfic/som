@@ -42,10 +42,10 @@ impl std::fmt::Display for CodegenError {
 
 /// Generates a C program from `mir`.
 pub fn emit_c(mir: &Mir) -> Result<String, CodegenError> {
-    let entry = mir
+    let (entry, _) = mir
         .funcs
-        .iter()
-        .position(|f| f.is_entry)
+        .iter_with_ids()
+        .find(|(_, f)| f.is_entry)
         .ok_or(CodegenError::NoEntryPoint)?;
     let names = Names::new(mir);
     let mut c = Emitter {
@@ -56,12 +56,12 @@ pub fn emit_c(mir: &Mir) -> Result<String, CodegenError> {
     c.prelude();
     c.structs();
     c.declarations();
-    for (i, func) in mir.funcs.iter().enumerate() {
+    for (id, func) in mir.funcs.iter_with_ids() {
         if let Some(body) = &func.body {
-            c.function(FuncId(i as u32), func, body);
+            c.function(id, func, body);
         }
     }
-    c.main(FuncId(entry as u32));
+    c.main(entry);
     Ok(c.out)
 }
 
@@ -169,7 +169,7 @@ fn identifier(name: &str) -> String {
 struct Names {
     structs: HashMap<DefId, String>,
     fields: HashMap<DefId, Vec<String>>,
-    funcs: Vec<String>,
+    funcs: HashMap<FuncId, String>,
 }
 
 impl Names {
@@ -201,13 +201,17 @@ impl Names {
         let mut taken = HashSet::new();
         let funcs = mir
             .funcs
-            .iter()
-            .map(|f| match &f.link_name {
-                Some(link) => link.clone(),
-                None if f.is_entry => unique("som_main", "f", &mut taken, |n| externs.contains(n)),
-                None => unique(&identifier(&f.name), "f", &mut taken, |n| {
-                    externs.contains(n)
-                }),
+            .iter_with_ids()
+            .map(|(id, f)| match &f.link_name {
+                Some(link) => (id, link.clone()),
+                None if f.is_entry => (
+                    id,
+                    unique("som_main", "f", &mut taken, |n| externs.contains(n)),
+                ),
+                None => (
+                    id,
+                    unique(&identifier(&f.name), "f", &mut taken, |n| externs.contains(n)),
+                ),
             })
             .collect();
 
@@ -432,7 +436,7 @@ impl<'a> Emitter<'a> {
     }
 
     fn func_name(&self, id: FuncId) -> &str {
-        &self.names.funcs[id.0 as usize]
+        &self.names.funcs[&id]
     }
 
     fn ty(&self, ty: TypeId) -> String {
@@ -577,14 +581,14 @@ impl<'a> Emitter<'a> {
     fn declarations(&mut self) {
         let mir = self.mir;
         let mut externs = HashSet::new();
-        for (i, func) in mir.funcs.iter().enumerate() {
+        for (id, func) in mir.funcs.iter_with_ids() {
             // Two modules can declare the same C function; declare it once.
             if let Some(link) = &func.link_name
                 && !externs.insert(link.clone())
             {
                 continue;
             }
-            let decl = self.signature(FuncId(i as u32), func, None);
+            let decl = self.signature(id, func, None);
             self.line(format!("{decl}; // {}", func.name));
         }
         self.line("");
@@ -606,7 +610,7 @@ impl<'a> Emitter<'a> {
     // --- Bodies ---
 
     fn function(&mut self, id: FuncId, func: &Function, body: &'a Body) {
-        let functions: HashSet<String> = self.names.funcs.iter().cloned().collect();
+        let functions: HashSet<String> = self.names.funcs.values().cloned().collect();
         let mut f = FnState {
             body,
             locals: local_names(body, &functions),

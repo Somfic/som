@@ -13,12 +13,12 @@ pub use som_ast::BinOp;
 pub use som_resolve::DefId;
 pub use som_typeck::{FloatTy, IntTy, Ty, TypeId, TypeTable};
 
-use som_base::Span;
+use som_base::{Arena, Id, Span};
 use std::collections::HashMap;
 
 pub struct Mir {
     pub types: TypeTable,
-    pub funcs: Vec<Function>,
+    pub funcs: Arena<Function>,
     pub structs: Vec<StructDef>,
     struct_index: HashMap<DefId, usize>,
 }
@@ -27,7 +27,7 @@ impl Mir {
     pub fn new(types: TypeTable) -> Self {
         Mir {
             types,
-            funcs: Vec::new(),
+            funcs: Arena::new(),
             structs: Vec::new(),
             struct_index: HashMap::new(),
         }
@@ -38,13 +38,24 @@ impl Mir {
         self.structs.push(def);
     }
 
+    /// Keeps only the structs `keep` returns true for.
+    pub fn retain_structs(&mut self, keep: impl Fn(&StructDef) -> bool) {
+        self.structs.retain(keep);
+        self.struct_index = self
+            .structs
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (s.def, i))
+            .collect();
+    }
+
     /// The struct a `Ty::Struct(def)` refers to.
     pub fn struct_def(&self, def: DefId) -> &StructDef {
         &self.structs[self.struct_index[&def]]
     }
 
     pub fn func(&self, id: FuncId) -> &Function {
-        &self.funcs[id.0 as usize]
+        &self.funcs[id]
     }
 
     /// Whether values of `ty` are copied rather than moved.
@@ -56,8 +67,8 @@ impl Mir {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct FuncId(pub u32);
+/// A function, by its id in `Mir::funcs`. Ids stay the same when other functions are removed.
+pub type FuncId = Id<Function>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct BlockId(pub u32);

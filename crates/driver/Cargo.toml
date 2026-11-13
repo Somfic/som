@@ -16,7 +16,8 @@ som_typeck = { path = "../compiler/4-typeck" }
 som_lower = { path = "../compiler/5-lower" }
 som_mir = { path = "../core/mir" }
 som_borrowck = { path = "../compiler/6-borrowck" }
-som_codegen = { path = "../compiler/7-codegen" }
+som_shake = { path = "../compiler/7-shake" }
+som_codegen = { path = "../compiler/8-codegen" }
 
 [dev-dependencies]
 tempfile = "3"
