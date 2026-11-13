@@ -83,5 +83,65 @@ fn calls_writes_through_references_and_traps_stay() {
 #[test]
 fn unused_parameters_are_kept() {
     let mir = optimized("fn f(a: i32, b: i32) -> i32 { a } fn main() -> i32 { f(1, 2) }");
-    assert!(func(&mir, "f").starts_with("fn f(_1: i32, _2: i32)"), "{mir}");
+    assert!(
+        func(&mir, "f").starts_with("fn f(_1: i32, _2: i32)"),
+        "{mir}"
+    );
+}
+
+#[test]
+fn overwritten_stores_are_removed() {
+    let mir = optimized(
+        "fn f(a: i32, b: i32) -> i32 { let mut x = a * 3; x = b * 5; x }
+         fn main() -> i32 { f(1, 2) }",
+    );
+    let f = func(&mir, "f");
+    assert!(
+        !f.contains("Multiply(copy _1"),
+        "`a * 3` is overwritten:\n{f}"
+    );
+    assert!(f.contains("Multiply(copy _2"), "{f}");
+}
+
+#[test]
+fn stores_read_on_some_path_stay() {
+    let mir = optimized(
+        "fn f(a: i32, c: bool) -> i32 { let mut x = a * 3; if c { x = a * 5; } x }
+         fn main() -> i32 { f(1, true) }",
+    );
+    let f = func(&mir, "f");
+    assert!(
+        f.contains("const 3_i32"),
+        "`x` is read when `c` is false:\n{f}"
+    );
+    assert!(f.contains("const 5_i32"), "{f}");
+}
+
+#[test]
+fn stores_before_a_loop_reads_them_stay() {
+    let mir = optimized(
+        "fn f(n: i32) -> i32 { let mut s = n * 2; let mut i = 0; while i < n { s = s + i; i = i + 1; } s }
+         fn main() -> i32 { f(3) }",
+    );
+    assert!(func(&mir, "f").contains("Multiply"), "{mir}");
+}
+
+#[test]
+fn stores_to_borrowed_locals_stay() {
+    let mir = optimized(
+        "fn read(r: &i32) -> i32 { *r }
+         fn f(a: i32) -> i32 { let mut x = a * 7; let r = &x; read(r) }
+         fn main() -> i32 { f(1) }",
+    );
+    assert!(func(&mir, "f").contains("Multiply"), "{mir}");
+}
+
+#[test]
+fn field_stores_that_are_overwritten_whole_are_removed() {
+    let mir = optimized(
+        "struct P { x: i32, y: i32 }
+         fn f(a: i32) -> i32 { let mut p = P { x: a, y: a }; p.x = a * 9; p = P { x: 1, y: a }; p.y }
+         fn main() -> i32 { f(1) }",
+    );
+    assert!(!func(&mir, "f").contains("const 9_i32"), "{mir}");
 }
