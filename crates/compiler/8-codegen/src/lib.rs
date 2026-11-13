@@ -261,18 +261,11 @@ fn used_generated(mir: &Mir) -> Vec<TypeId> {
         if !seen.insert(ty) {
             continue;
         }
-        match mir.types.get(ty) {
-            Ty::Ref { to, .. } => todo.push(*to),
-            Ty::Fn { params, ret } => {
-                todo.extend(params);
-                todo.push(*ret);
-            }
-            Ty::Optional(inner) | Ty::Array { element: inner, .. } => {
-                found.push(ty);
-                todo.push(*inner);
-            }
-            _ => {}
+        let t = mir.types.get(ty);
+        if matches!(t, Ty::Optional(_) | Ty::Array { .. }) {
+            found.push(ty);
         }
+        todo.extend(t.children());
     }
     // Sorted, so the output doesn't depend on hash order.
     found.sort();

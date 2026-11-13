@@ -64,6 +64,61 @@ pub enum FloatTy {
 }
 
 impl Ty {
+    /// The types written inside this one: what a reference points to, what an optional or
+    /// array holds, a function's parameters and result. A struct's fields aren't: a struct is
+    /// a name, and its fields belong to its definition.
+    ///
+    /// With [`Ty::map_children`], this is the one place that knows how types nest, so code
+    /// that walks into types doesn't need a case for each kind.
+    pub fn children(&self) -> Vec<TypeId> {
+        match self {
+            Ty::Ref { to: inner, .. } | Ty::Optional(inner) | Ty::Array { element: inner, .. } => {
+                vec![*inner]
+            }
+            Ty::Fn { params, ret } => params.iter().chain([ret]).copied().collect(),
+            Ty::Error
+            | Ty::Unit
+            | Ty::Bool
+            | Ty::Char
+            | Ty::Str
+            | Ty::Int(_)
+            | Ty::Float(_)
+            | Ty::Pointer
+            | Ty::Struct(_)
+            | Ty::Param(_)
+            | Ty::Var(_) => Vec::new(),
+        }
+    }
+
+    /// This type with each of its [`children`](Ty::children) replaced by `f` of it.
+    pub fn map_children(&self, mut f: impl FnMut(TypeId) -> TypeId) -> Ty {
+        match self {
+            Ty::Ref { mutable, to } => Ty::Ref {
+                mutable: *mutable,
+                to: f(*to),
+            },
+            Ty::Optional(inner) => Ty::Optional(f(*inner)),
+            Ty::Array { element, len } => Ty::Array {
+                element: f(*element),
+                len: *len,
+            },
+            Ty::Fn { params, ret } => Ty::Fn {
+                params: params.iter().map(|&p| f(p)).collect(),
+                ret: f(*ret),
+            },
+            leaf => leaf.clone(),
+        }
+    }
+
+    /// If this type and `other` are the same kind of type, apart from their children (both
+    /// `&mut`, both arrays of 3, both functions of two parameters...), the children to match
+    /// up, in pairs.
+    pub fn zip_children(&self, other: &Ty) -> Option<Vec<(TypeId, TypeId)>> {
+        let blank = |ty: &Ty| ty.map_children(|_| Id::new(0));
+        (blank(self) == blank(other))
+            .then(|| self.children().into_iter().zip(other.children()).collect())
+    }
+
     pub fn from_primitive(p: Primitive) -> Ty {
         match p {
             Primitive::I8 => Ty::Int(IntTy::I8),

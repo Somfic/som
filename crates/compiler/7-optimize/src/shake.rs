@@ -97,18 +97,12 @@ fn used_structs(mir: &Mir, funcs: &HashSet<FuncId>) -> HashSet<DefId> {
         if !seen.insert(ty) {
             continue;
         }
-        match mir.types.get(ty) {
-            Ty::Ref { to, .. } | Ty::Optional(to) | Ty::Array { element: to, .. } => {
-                types.push(*to)
-            }
-            Ty::Fn { params, ret } => {
-                types.extend(params.iter().copied());
-                types.push(*ret);
-            }
-            Ty::Struct(def) if used.insert(*def) => {
-                types.extend(mir.struct_def(*def).fields.iter().map(|&(_, ty)| ty));
-            }
-            _ => {}
+        let t = mir.types.get(ty);
+        types.extend(t.children());
+        if let Ty::Struct(def) = t
+            && used.insert(*def)
+        {
+            types.extend(mir.struct_def(*def).fields.iter().map(|&(_, ty)| ty));
         }
     }
     used

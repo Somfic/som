@@ -286,24 +286,11 @@ impl<'a> Checker<'a> {
                 .iter()
                 .find(|(d, _)| *d == def)
                 .map_or(ty, |(_, t)| *t),
-            Ty::Ref { mutable, to } => {
-                let to = self.substitute(to, subst);
-                self.u.intern(Ty::Ref { mutable, to })
+            other if other.children().is_empty() => ty,
+            other => {
+                let substituted = other.map_children(|child| self.substitute(child, subst));
+                self.u.intern(substituted)
             }
-            Ty::Optional(inner) => {
-                let inner = self.substitute(inner, subst);
-                self.u.intern(Ty::Optional(inner))
-            }
-            Ty::Array { element, len } => {
-                let element = self.substitute(element, subst);
-                self.u.intern(Ty::Array { element, len })
-            }
-            Ty::Fn { params, ret } => {
-                let params = params.iter().map(|&p| self.substitute(p, subst)).collect();
-                let ret = self.substitute(ret, subst);
-                self.u.intern(Ty::Fn { params, ret })
-            }
-            _ => ty,
         }
     }
 

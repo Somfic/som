@@ -180,24 +180,11 @@ impl Subst {
                 .iter()
                 .find(|(d, _)| *d == def)
                 .map_or(ty, |(_, t)| *t),
-            Ty::Ref { mutable, to } => {
-                let to = self.apply(types, to);
-                types.intern(Ty::Ref { mutable, to })
+            other if other.children().is_empty() => ty,
+            other => {
+                let applied = other.map_children(|child| self.apply(types, child));
+                types.intern(applied)
             }
-            Ty::Optional(inner) => {
-                let inner = self.apply(types, inner);
-                types.intern(Ty::Optional(inner))
-            }
-            Ty::Array { element, len } => {
-                let element = self.apply(types, element);
-                types.intern(Ty::Array { element, len })
-            }
-            Ty::Fn { params, ret } => {
-                let params = params.iter().map(|&p| self.apply(types, p)).collect();
-                let ret = self.apply(types, ret);
-                types.intern(Ty::Fn { params, ret })
-            }
-            _ => ty,
         }
     }
 }

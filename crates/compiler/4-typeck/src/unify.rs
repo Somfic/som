@@ -80,36 +80,11 @@ impl Unifier {
             }
             (Ty::Var(v), _) => self.bind(v, b),
             (_, Ty::Var(w)) => self.bind(w, a),
-            (
-                Ty::Ref {
-                    mutable: m1,
-                    to: t1,
-                },
-                Ty::Ref {
-                    mutable: m2,
-                    to: t2,
-                },
-            ) if m1 == m2 => self.unify(t1, t2),
-            (Ty::Optional(a), Ty::Optional(b)) => self.unify(a, b),
-            (Ty::Array { element: a, len: n }, Ty::Array { element: b, len: m }) if n == m => {
-                self.unify(a, b)
-            }
-            (
-                Ty::Fn {
-                    params: p1,
-                    ret: r1,
-                },
-                Ty::Fn {
-                    params: p2,
-                    ret: r2,
-                },
-            ) if p1.len() == p2.len() => {
-                for (x, y) in p1.into_iter().zip(p2) {
-                    self.unify(x, y)?;
-                }
-                self.unify(r1, r2)
-            }
-            _ => Err(()),
+            // The same kind of type: their children have to match too.
+            (a, b) => match a.zip_children(&b) {
+                Some(pairs) => pairs.into_iter().try_for_each(|(x, y)| self.unify(x, y)),
+                None => Err(()),
+            },
         }
     }
 
@@ -129,13 +104,10 @@ impl Unifier {
     fn occurs(&self, var: u32, ty: TypeId) -> bool {
         match self.table.get(self.shallow(ty)) {
             Ty::Var(v) => *v == var,
-            Ty::Ref { to, .. } | Ty::Optional(to) | Ty::Array { element: to, .. } => {
-                self.occurs(var, *to)
-            }
-            Ty::Fn { params, ret } => {
-                params.iter().any(|&p| self.occurs(var, p)) || self.occurs(var, *ret)
-            }
-            _ => false,
+            ty => ty
+                .children()
+                .into_iter()
+                .any(|child| self.occurs(var, child)),
         }
     }
 
@@ -158,27 +130,13 @@ impl Unifier {
                     self.table.error
                 }
             },
-            Ty::Ref { mutable, to } => {
-                let to = self.finish(to, unresolved);
-                self.intern(Ty::Ref { mutable, to })
+            ty => {
+                if ty.children().is_empty() {
+                    return id;
+                }
+                let finished = ty.map_children(|child| self.finish(child, unresolved));
+                self.intern(finished)
             }
-            Ty::Optional(inner) => {
-                let inner = self.finish(inner, unresolved);
-                self.intern(Ty::Optional(inner))
-            }
-            Ty::Array { element, len } => {
-                let element = self.finish(element, unresolved);
-                self.intern(Ty::Array { element, len })
-            }
-            Ty::Fn { params, ret } => {
-                let params = params
-                    .into_iter()
-                    .map(|p| self.finish(p, unresolved))
-                    .collect();
-                let ret = self.finish(ret, unresolved);
-                self.intern(Ty::Fn { params, ret })
-            }
-            _ => id,
         }
     }
 

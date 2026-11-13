@@ -420,14 +420,15 @@ impl<'a> FnChecker<'a> {
     fn has_ref(&self, ty: TypeId) -> bool {
         match self.mir.types.get(ty) {
             Ty::Ref { .. } => true,
-            Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.has_ref(*inner),
             Ty::Struct(def) => self
                 .mir
                 .struct_def(*def)
                 .fields
                 .iter()
                 .any(|&(_, f)| self.has_ref(f)),
-            _ => false,
+            // A function's parameters and result are only types: a function value holds no loan.
+            Ty::Fn { .. } => false,
+            t => t.children().into_iter().any(|child| self.has_ref(child)),
         }
     }
 
