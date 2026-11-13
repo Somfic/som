@@ -847,16 +847,21 @@ impl LanguageServer for SomLanguageServer {
             if matches!(a.typed.ty(t), Ty::Unit | Ty::Error) {
                 continue;
             }
-            hints.push(InlayHint {
-                position: convert::span_to_range(&name.span).end,
-                label: InlayHintLabel::String(format!(": {}", ty(a, t))),
-                kind: Some(InlayHintKind::TYPE),
-                text_edits: None,
-                tooltip: None,
-                padding_left: None,
-                padding_right: None,
-                data: None,
-            });
+            hints.push(type_hint(&name.span, ty(a, t)));
+        }
+
+        // The type the parameter gives every `out name` argument: `out db: Sqlite3`.
+        for (id, expr) in a.ast.exprs.iter() {
+            let Expr::Out(name) = expr else { continue };
+            if name.span.source.identifier() != file {
+                continue;
+            }
+            let Some(t) = a.names.expr(id).and_then(|def| a.typed.try_local(def)) else {
+                continue;
+            };
+            if !matches!(a.typed.ty(t), Ty::Error) {
+                hints.push(type_hint(&name.span, ty(a, t)));
+            }
         }
 
         // The parameter each argument is for: `init_window(width: 800, …)`.
@@ -969,6 +974,13 @@ fn describe(a: &Analysis, def: DefId) -> String {
     match &d.kind {
         DefKind::Func(f) => signature(a, *f),
         DefKind::Struct(s) => struct_text(a, *s),
+        DefKind::Param { func, index } if a.ast.funcs[*func].params[*index].out => {
+            let param = &a.ast.funcs[*func].params[*index];
+            match a.typed.try_local(def) {
+                Some(t) => param_text(a, param, t),
+                None => format!("out {}", d.name),
+            }
+        }
         DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) => match a.typed.try_local(def)
         {
             Some(t) => format!("{}: {}", d.name, ty(a, t)),
@@ -1124,8 +1136,17 @@ fn params_of(a: &Analysis, f: Id<Func>) -> Vec<String> {
         .params
         .iter()
         .zip(&a.typed.func(f).params)
-        .map(|(p, &t)| format!("{}: {}", p.name, ty(a, t)))
+        .map(|(p, &t)| param_text(a, p, t))
         .collect()
+}
+
+/// `width: i32`, or `out remainder: i32` for a parameter whose type is `&mut i32`
+/// underneath.
+fn param_text(a: &Analysis, p: &som_ast::Param, t: som_typeck::TypeId) -> String {
+    match (p.out, a.typed.ty(t)) {
+        (true, Ty::Ref { to, .. }) => format!("out {}: {}", p.name, ty(a, *to)),
+        _ => format!("{}: {}", p.name, ty(a, t)),
+    }
 }
 
 /// `fn name<T>(a: i32, b: T) -> i32`, or `extern fn ...` for externs.
@@ -1550,6 +1571,20 @@ fn can_have_dot(a: &Analysis, expr: Id<Expr>) -> bool {
     }
 }
 
+/// `: i32` after the name a variable is declared with.
+fn type_hint(name: &Span, ty: String) -> InlayHint {
+    InlayHint {
+        position: convert::span_to_range(name).end,
+        label: InlayHintLabel::String(format!(": {ty}")),
+        kind: Some(InlayHintKind::TYPE),
+        text_edits: None,
+        tooltip: None,
+        padding_left: None,
+        padding_right: None,
+        data: None,
+    }
+}
+
 /// Whether an argument's parameter name says something: not when the argument is a
 /// variable of that name already (`width` for `width`), or the name was made up because
 /// the C header had none (`arg0`).
@@ -1559,6 +1594,7 @@ fn worth_naming(a: &Analysis, arg: Id<Expr>, param: &str) -> bool {
         .is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()));
     let same = match &a.ast.exprs[arg] {
         Expr::Var(path) => *path.name().name == *param,
+        Expr::Out(name) => *name.name == *param,
         _ => false,
     };
     !made_up && !same
@@ -1592,7 +1628,10 @@ fn func_item(a: &Analysis, f: Id<Func>, label: String, insert: Insert) -> Comple
             .params
             .iter()
             .enumerate()
-            .map(|(i, p)| format!("${{{}:{}}}", i + 1, p.name.name))
+            .map(|(i, p)| {
+                let out = if p.out { "out " } else { "" };
+                format!("{out}${{{}:{}}}", i + 1, p.name.name)
+            })
             .collect();
         format!("{label}({}){}", args.join(", "), "$0")
     });
@@ -1926,6 +1965,52 @@ mod tests {
             .map(|(_, param)| param)
             .collect();
         assert_eq!(named, ["height"]);
+    }
+
+    #[test]
+    fn out_parameters_show_as_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.som");
+        let source = "fn divide(a: i32, b: i32, out remainder: i32) -> i32 {\n    \
+                      remainder = a % b;\n    a / b\n}\n\n\
+                      fn main() { let q = divide(17, 5, out remainder); }\n";
+        std::fs::write(&main, source).unwrap();
+        let a = som_driver::analyze(&main, &Default::default());
+        let file = main.to_str().unwrap();
+        let hover = |needle: &str| hover_markdown(&a, file, source.find(needle).unwrap() + 1);
+
+        let signature = "fn divide(a: i32, b: i32, out remainder: i32) -> i32";
+        assert_eq!(
+            hover("divide(17").as_deref(),
+            Some(format!("```som\n{signature}\n```").as_str())
+        );
+        // Inside the function, and the variable `out` declares at the call.
+        assert_eq!(
+            hover("remainder = ").as_deref(),
+            Some("```som\nout remainder: i32\n```")
+        );
+        assert_eq!(
+            hover_markdown(&a, file, source.find("out remainder)").unwrap() + 5).as_deref(),
+            Some("```som\nremainder: i32\n```")
+        );
+
+        let divide = a.ast.funcs.iter().find(|(_, f)| &*f.name.name == "divide");
+        let item = func_item(
+            &a,
+            divide.unwrap().0,
+            "divide".into(),
+            Insert {
+                value: true,
+                call_follows: false,
+            },
+        );
+        assert_eq!(
+            item.insert_text.as_deref(),
+            Some("divide(${1:a}, ${2:b}, out ${3:remainder})$0")
+        );
+
+        let out = a.ast.exprs.iter().find(|(_, e)| matches!(e, Expr::Out(_)));
+        assert!(!worth_naming(&a, out.unwrap().0, "remainder"));
     }
 
     #[test]
