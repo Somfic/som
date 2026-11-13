@@ -1,8 +1,8 @@
 [package]
-name = "som_shake"
+name = "som_optimize"
 version = "0.1.0"
 edition = "2024"
-description = "Removes the functions and structs a program never uses from its MIR"
+description = "MIR-to-MIR optimizations: constant folding, tree shaking"
 
 [dependencies]
 som_mir = { path = "../../core/mir" }

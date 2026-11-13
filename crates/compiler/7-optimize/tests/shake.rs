@@ -10,7 +10,7 @@ fn shaken(source: &str) -> Mir {
     let (typed, errors) = som_typeck::check(&ast, &names);
     assert!(errors.is_empty(), "type errors: {errors:?}");
     let mut mir = som_lower::lower(&ast, &names, &typed);
-    som_shake::shake(&mut mir);
+    som_optimize::shake(&mut mir);
     let problems = mir.validate();
     assert!(
         problems.is_empty(),

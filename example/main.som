@@ -107,4 +107,9 @@ fn main() {
 
     // raylib::close_window();
     // box2d::b2_destroy_world(world);
+
+    let a = 12;
+    let b = a;
+
+    std::printf("%d", b);
 }

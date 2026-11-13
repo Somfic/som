@@ -13,7 +13,7 @@ members = [
     "crates/compiler/4-typeck",
     "crates/compiler/5-lower",
     "crates/compiler/6-borrowcheck",
-    "crates/compiler/7-shake",
+    "crates/compiler/7-optimize",
     "crates/compiler/8-codegen",
 
     # orchestration

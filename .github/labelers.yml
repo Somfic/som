@@ -32,9 +32,14 @@ borrow-checker:
   - changed-files:
       - any-glob-to-any-file: crates/compiler/6-borrowcheck/**
 
+optimizer:
+  - changed-files:
+      - any-glob-to-any-file:
+          - crates/compiler/7-optimize/**
+
 codegen:
   - changed-files:
-      - any-glob-to-any-file: crates/compiler/7-codegen/**
+      - any-glob-to-any-file: crates/compiler/8-codegen/**
 
 driver:
   - changed-files:

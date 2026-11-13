@@ -3,13 +3,11 @@
 //! Starting from the entry point, a function is used if a used function calls it
 //! or takes it as a value, and a struct is used if a used function's locals or
 //! signature mention it, or a used struct contains or points to it. Everything
-//! else is dropped, so the C has no declarations for the hundreds of functions a
+//! else is dropped, so the output has no declarations for the hundreds of functions a
 //! header import brings in, only for the few the program calls.
 //!
 //! Functions live in an arena, so removing some leaves the others' ids, and every
 //! call to them, as they were.
-//!
-//! This runs after borrow checking, so unused code is still checked.
 
 use som_mir::*;
 use std::collections::HashSet;

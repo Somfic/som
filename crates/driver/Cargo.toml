@@ -19,7 +19,7 @@ som_typeck = { path = "../compiler/4-typeck" }
 som_lower = { path = "../compiler/5-lower" }
 som_mir = { path = "../core/mir" }
 som_borrowcheck = { path = "../compiler/6-borrowcheck" }
-som_shake = { path = "../compiler/7-shake" }
+som_optimize = { path = "../compiler/7-optimize" }
 som_codegen = { path = "../compiler/8-codegen" }
 
 [dev-dependencies]

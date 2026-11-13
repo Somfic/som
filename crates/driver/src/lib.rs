@@ -111,8 +111,7 @@ pub fn check_loaded(mut ast: Ast, options: &Options) -> Result<Checked, Vec<Erro
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Borrow).collect());
     }
-    // After borrow checking, so code that's never called is still checked.
-    som_shake::shake(&mut mir);
+    som_optimize::optimize(&mut mir);
 
     Ok(Checked {
         ast,
