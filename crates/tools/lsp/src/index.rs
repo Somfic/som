@@ -2,7 +2,7 @@ use som_ast::{Ast, Expr, Func, Id, Item, Span, Stmt, Struct, TypeExpr};
 use std::collections::HashMap;
 
 /// An AST node found at a source position.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeRef {
     Expr(Id<Expr>),
     Stmt(Id<Stmt>),

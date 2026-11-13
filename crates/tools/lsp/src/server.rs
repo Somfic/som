@@ -334,8 +334,13 @@ impl LanguageServer for SomLanguageServer {
             return Ok(None);
         };
         // `break x` is one thing: the hover covers all of it, not just the word.
-        let range = match AstIndex::build(&a.ast).find_at(&cursor.file, cursor.offset) {
+        let found = AstIndex::build(&a.ast).find_at(&cursor.file, cursor.offset);
+        let range = match found.map(|node| hover_node(a, node)) {
             Some(NodeRef::Stmt(id)) => jump_span(a, id).map(|span| convert::span_to_range(&span)),
+            // A range is one thing, from any part of it.
+            Some(NodeRef::Expr(id)) if matches!(a.ast.exprs[id], Expr::Range { .. }) => {
+                Some(convert::span_to_range(a.ast.exprs.span(id)))
+            }
             _ => None,
         };
         Ok(
@@ -1098,7 +1103,7 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
     if let Some(block) = extern_at(a, file, offset) {
         return Some(extern_hover(a, block));
     }
-    let node = AstIndex::build(&a.ast).find_at(file, offset)?;
+    let node = hover_node(a, AstIndex::build(&a.ast).find_at(file, offset)?);
 
     // What's under the cursor, as som, and its documentation.
     let (text, doc) = match node {
@@ -1169,6 +1174,23 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
         Some(doc) => format!("```som\n{text}\n```\n\n{doc}"),
         None => format!("```som\n{text}\n```"),
     })
+}
+
+/// What hovering over `node` describes: usually `node` itself, but a literal bound of a range
+/// is part of one thing, so `1` in `1..4` stands for the whole range. A bound that's a name or
+/// a calculation, like `n` in `0..n`, stays itself: its type is worth seeing.
+fn hover_node(a: &Analysis, node: NodeRef) -> NodeRef {
+    let NodeRef::Expr(id) = node else {
+        return node;
+    };
+    if !matches!(a.ast.exprs[id], Expr::Int(_) | Expr::Float(_)) {
+        return node;
+    }
+    a.ast
+        .exprs
+        .iter()
+        .find(|(_, e)| matches!(e, Expr::Range { start, end } if *start == Some(id) || *end == Some(id)))
+        .map_or(node, |(range, _)| NodeRef::Expr(range))
 }
 
 /// Where `break`, `continue` or `break x` is written, without the `;`: the one thing hover
