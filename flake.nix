@@ -20,7 +20,8 @@
           extensions = [ "rust-src" "rust-analyzer" "clippy" ];
         };
       in {
-        devShells.default = pkgs.mkShell {
+        # som reads C headers with `cc -Xclang -ast-dump=json`, so `cc` must be clang.
+        devShells.default = pkgs.mkShell.override { stdenv = pkgs.clangStdenv; } {
           buildInputs = with pkgs; [
             rustToolchain
             pkg-config
