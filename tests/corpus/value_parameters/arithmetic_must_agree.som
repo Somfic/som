@@ -1,0 +1,8 @@
+// expect: error Mismatch
+
+/// `A + B` isn't `A + B + 1`.
+fn concat<A: usize, B: usize>(x: [i32; A], y: [i32; B]) -> [i32; A + B + 1] {
+    [0; A + B]
+}
+
+fn main() -> i32 { 0 }

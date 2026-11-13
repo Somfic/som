@@ -1,0 +1,5 @@
+// expect: error ValueAsType
+
+fn first<N: usize>(x: N) -> i32 { 0 }
+
+fn main() -> i32 { 0 }

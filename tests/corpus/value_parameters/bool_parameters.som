@@ -1,0 +1,16 @@
+// expect: exit 1
+
+/// Whether it's open is part of its type.
+struct Door<OPEN: bool> { id: i32 }
+
+impl<OPEN: bool> Door<OPEN> {
+    fn is_open(self: &Door<OPEN>) -> bool { OPEN }
+}
+
+fn open(door: Door<false>) -> Door<true> { Door { id: door.id } }
+
+fn main() -> i32 {
+    let closed = Door<false> { id: 1 };
+    let opened = open(closed);
+    1 if (&opened).is_open() else 0
+}

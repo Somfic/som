@@ -19,15 +19,19 @@ pub enum DefKind {
     Local(Id<Stmt>),
     /// A variable declared by an `out name` argument.
     Out(Id<Expr>),
-    /// The `index`th type parameter of `func`, as in `fn id<T>(x: T) -> T`.
+    /// The `index`th generic parameter of `func`, as in `fn id<T>(x: T) -> T`. A `value`
+    /// parameter, `N` in `fn sum<N: usize>(xs: [i32; N])`, stands for a value, not a type.
     TypeParam {
         func: Id<Func>,
         index: usize,
+        value: bool,
     },
-    /// The `index`th type parameter of a struct, as in `struct Pair<T>`.
+    /// The `index`th generic parameter of a struct, as in `struct Pair<T>`, or a value
+    /// parameter, as in `struct Buffer<N: usize>`.
     StructParam {
         strukt: Id<Struct>,
         index: usize,
+        value: bool,
     },
 }
 
@@ -139,6 +143,14 @@ impl Names {
         &self.defs[id]
     }
 
+    /// Whether `def` is a value parameter, like `N` in `struct Buffer<N: usize>`.
+    pub fn is_value_param(&self, def: DefId) -> bool {
+        matches!(
+            self.defs[def].kind,
+            DefKind::TypeParam { value: true, .. } | DefKind::StructParam { value: true, .. }
+        )
+    }
+
     /// What a `Var`, `Call` or `Construct` expression refers to. `None` if it failed to resolve.
     pub fn expr(&self, expr: Id<Expr>) -> Option<DefId> {
         self.exprs[expr.id]
@@ -172,12 +184,12 @@ impl Names {
         &self.params[func.id]
     }
 
-    /// The type parameters of a generic function, in declaration order.
+    /// The generic parameters of a function, types and values, in declaration order.
     pub fn type_params(&self, func: Id<Func>) -> &[DefId] {
         &self.type_params[func.id]
     }
 
-    /// The type parameters of a generic struct, in declaration order.
+    /// The generic parameters of a struct, types and values, in declaration order.
     pub fn struct_params(&self, s: Id<Struct>) -> &[DefId] {
         &self.struct_params[s.id]
     }

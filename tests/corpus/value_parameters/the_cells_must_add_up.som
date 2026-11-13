@@ -1,0 +1,9 @@
+// expect: error Mismatch
+
+struct Matrix<R: usize, C: usize> { cells: [i32; R * C] }
+
+fn main() -> i32 {
+    // A 2×3 matrix has 6 cells, not 5.
+    let a = Matrix<2, 3> { cells: [1, 2, 3, 4, 5] };
+    0
+}

@@ -13,7 +13,7 @@ mod ty;
 mod unify;
 
 pub use error::TypeError;
-pub use ty::{FloatTy, IntTy, Ty, TypeId, TypeTable};
+pub use ty::{FloatTy, IntTy, Ty, TypeId, TypeTable, Value};
 
 use som_ast::{Ast, Expr, Func, Id, Stmt, Struct};
 use som_resolve::{DefId, Names};
@@ -39,6 +39,8 @@ pub struct Typed {
     funcs: Vec<Signature>,
     /// Field types of each struct, in declaration order.
     structs: Vec<Vec<TypeId>>,
+    /// `[value; N]` → `N`, as an array type's length.
+    counts: HashMap<Id<Expr>, TypeId>,
     /// `MethodCall` → the method it calls.
     methods: HashMap<Id<Expr>, DefId>,
     /// `Field` → the index of the field it reads.
@@ -157,6 +159,12 @@ impl Typed {
 
     pub fn fields(&self, s: Id<Struct>) -> &[TypeId] {
         &self.structs[s.id]
+    }
+
+    /// How many copies `[value; N]` makes: `N`, as an array type's length. It's in terms of
+    /// the enclosing function's value parameters, if it has any.
+    pub fn count(&self, expr: Id<Expr>) -> TypeId {
+        self.counts[&expr]
     }
 
     /// The method a `MethodCall` expression calls.

@@ -37,8 +37,8 @@ pub struct Extern {
 pub struct Impl {
     /// The struct the methods are for: `Point`, or one from another module, `box2d::B2Vec2`.
     pub target: Path,
-    /// `impl<T> Pair<T>`: type parameters every method gets, ahead of its own.
-    pub type_params: Vec<Ident>,
+    /// `impl<T> Pair<T>`: generic parameters every method gets, ahead of its own.
+    pub generics: Vec<Generic>,
     pub methods: Vec<Id<Func>>,
 }
 
@@ -47,7 +47,7 @@ pub struct Func {
     /// The `///` comment above it.
     pub doc: Option<String>,
     pub name: Ident,
-    pub type_params: Vec<Ident>,
+    pub generics: Vec<Generic>,
     pub params: Vec<Param>,
     pub returns: Option<Id<TypeExpr>>,
     pub body: Option<Id<Expr>>,
@@ -59,6 +59,15 @@ pub struct Func {
     /// For a function in an `extern "lib"` block, the library file it's linked from.
     /// Worked out while checking.
     pub library: Option<PathBuf>,
+}
+
+/// A generic parameter: a type, `T` in `struct Pair<T>`, or a value of a type, `N: usize` in
+/// `struct Buffer<N: usize>`.
+#[derive(Clone)]
+pub struct Generic {
+    pub name: Ident,
+    /// The value's type, for a value parameter.
+    pub ty: Option<Id<TypeExpr>>,
 }
 
 pub struct Param {
@@ -75,8 +84,9 @@ pub struct Struct {
     /// The `///` comment above it.
     pub doc: Option<String>,
     pub name: Ident,
-    /// `struct Pair<T>`: the types it's written in terms of, filled in where it's used.
-    pub type_params: Vec<Ident>,
+    /// `struct Pair<T>`, `struct Buffer<N: usize>`: what it's written in terms of, filled in
+    /// where it's used.
+    pub generics: Vec<Generic>,
     pub fields: Vec<Field>,
     /// Values are copied rather than moved. Set for structs imported from a C header,
     /// which are plain data.

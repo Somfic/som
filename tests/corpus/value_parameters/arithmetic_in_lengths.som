@@ -1,0 +1,28 @@
+// expect: exit 24
+
+/// The result is as long as both put together.
+fn concat<A: usize, B: usize>(x: [i32; A], y: [i32; B]) -> [i32; A + B] {
+    let mut result = [0; A + B];
+    let mut i = 0;
+    for n in x { result.set(i, n); i = i + 1; }
+    for n in y { result.set(i, n); i = i + 1; }
+    result
+}
+
+/// `A + B` is the same length as `B + A`.
+fn swapped<A: usize, B: usize>(x: [i32; A], y: [i32; B]) -> [i32; B + A] { concat(x, y) }
+
+/// And `N + N` the same as `2 * N`.
+fn doubled<N: usize>(x: [i32; N]) -> [i32; 2 * N] { concat(x, x) }
+
+/// `N` is worked result from `N + 1`.
+fn rest<N: usize>(x: [i32; N + 1]) -> usize { N }
+
+fn main() -> i32 {
+    let joined = concat([1, 2], [3, 4, 5]);          // [1, 2, 3, 4, 5]
+    let mut total = 0;
+    for n in joined { total = total + n; }           // 15
+    let flipped = swapped([1], [2, 3]);              // 3 long
+    let both = doubled([1, 2]);                      // 4 long
+    total + flipped.len() + both.len() + rest([0, 0, 0]) as i32   // 15 + 3 + 4 + 2
+}

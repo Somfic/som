@@ -1,4 +1,4 @@
-use som_ast::{Id, Primitive, TypeExpr};
+use som_ast::{BinOp, Id, Primitive, TypeExpr};
 use som_lexer::TokenKind;
 
 use crate::Parser;
@@ -16,17 +16,115 @@ impl Parser<'_> {
         Some(ty)
     }
 
-    /// `<A, B>` after a struct's name in a type, if it's there.
+    /// `<A, B>` after a struct's name in a type, if it's there. An argument is a type, or a
+    /// value: `Buffer<64>`, `Socket<true>`.
     pub(crate) fn parse_type_args(&mut self) -> Option<Vec<Id<TypeExpr>>> {
         if !self.eat(TokenKind::LessThan) {
             return Some(Vec::new());
         }
-        let args = self.parse_comma_list(TokenKind::GreaterThan, |p| p.parse_type())?;
+        let args = self.parse_comma_list(TokenKind::GreaterThan, |p| match p.peek() {
+            TokenKind::Int | TokenKind::True | TokenKind::False => {
+                p.parse_value_expr("a type argument")
+            }
+            // `N`, a type or a value parameter, or the start of arithmetic on one: `N + 1`.
+            TokenKind::Ident => {
+                let start = p.current_span();
+                let first = p.parse_type()?;
+                p.parse_value_rest(first, &start)
+            }
+            _ => p.parse_type(),
+        })?;
         self.expect(
             TokenKind::GreaterThan,
             "a closing angle bracket for type arguments",
         )?;
         Some(args)
+    }
+
+    /// A length, as in `[T; N]` and `[value; N]`: a number, a value parameter, or `+` and `*`
+    /// of those, `[T; R * C]`.
+    pub(crate) fn parse_length(&mut self, what: &str) -> Option<Id<TypeExpr>> {
+        self.parse_value_expr(what)
+    }
+
+    /// A value written where a type argument goes: `64`, `true`, `N`, or a sum of products of
+    /// those, `2 * N + 1`. `*` binds tighter than `+`, and parentheses group.
+    fn parse_value_expr(&mut self, what: &str) -> Option<Id<TypeExpr>> {
+        let start = self.current_span();
+        let first = self.parse_value_atom(what)?;
+        self.parse_value_rest(first, &start)
+    }
+
+    /// The rest of a value expression that started at `start` with `first`, if there's more:
+    /// `+ 1` after `N`.
+    fn parse_value_rest(
+        &mut self,
+        first: Id<TypeExpr>,
+        start: &som_ast::Span,
+    ) -> Option<Id<TypeExpr>> {
+        let mut sum = self.parse_value_product(first, start)?;
+        while self.eat(TokenKind::Plus) {
+            let term_start = self.current_span();
+            let atom = self.parse_value_atom("a value to add")?;
+            let term = self.parse_value_product(atom, &term_start)?;
+            let span = self.span_from(start);
+            let op = BinOp::Add;
+            sum = (self.ast.types).alloc(
+                TypeExpr::Binary {
+                    op,
+                    lhs: sum,
+                    rhs: term,
+                },
+                span,
+            );
+        }
+        Some(sum)
+    }
+
+    /// `first`, multiplied by what follows it.
+    fn parse_value_product(
+        &mut self,
+        first: Id<TypeExpr>,
+        start: &som_ast::Span,
+    ) -> Option<Id<TypeExpr>> {
+        let mut product = first;
+        while self.eat(TokenKind::Star) {
+            let factor = self.parse_value_atom("a value to multiply by")?;
+            let span = self.span_from(start);
+            let op = BinOp::Multiply;
+            let binary = TypeExpr::Binary {
+                op,
+                lhs: product,
+                rhs: factor,
+            };
+            product = self.ast.types.alloc(binary, span);
+        }
+        Some(product)
+    }
+
+    /// A number, `true` or `false`, a value parameter, or a parenthesized value expression.
+    fn parse_value_atom(&mut self, what: &str) -> Option<Id<TypeExpr>> {
+        let start = self.current_span();
+        let value = match self.peek() {
+            TokenKind::True | TokenKind::False => {
+                let value = self.at(TokenKind::True);
+                self.advance();
+                TypeExpr::Bool(value)
+            }
+            TokenKind::Ident => TypeExpr::Named {
+                path: self.parse_path(what)?,
+                args: Vec::new(),
+            },
+            TokenKind::OpenParen => {
+                self.advance();
+                let inner = self.parse_value_expr(what)?;
+                self.expect(TokenKind::CloseParen, "a closing parenthesis")?;
+                return Some(inner);
+            }
+            _ => TypeExpr::Int(self.parse_count(what)?),
+        };
+        let span = self.span_from(&start);
+        Some(self.ast.types.alloc(value, span))
     }
 
     fn parse_type_without_optional(&mut self) -> Option<Id<TypeExpr>> {
@@ -84,7 +182,7 @@ impl Parser<'_> {
                     TypeExpr::Slice { element, mutable }
                 } else {
                     self.expect(TokenKind::Semicolon, "a `;` before the array's length")?;
-                    let len = self.parse_count("the array's length")?;
+                    let len = self.parse_length("the array's length")?;
                     self.expect(
                         TokenKind::CloseBracket,
                         "a closing bracket after the array type",

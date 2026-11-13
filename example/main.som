@@ -1,9 +1,9 @@
-use std;
-struct Vector<T> {
-    a: T,
-    b: T
+struct Matrix<R: usize, C: usize> {
+    cells: [i32; R * C]
 }
 
-let vec = Vector<i32> { a: 1, b: 1 };
-
-std::printf("%d, %d", vec.a);
+fn mul<A: usize, B: usize, C: usize>(x: &Matrix<A, B>, y: &Matrix<B, C>) -> Matrix<A, C> {
+    let mut result: Matrix<A, C> = Matrix::zero();
+    for i in 0..A { for j in 0..C { ... } }
+    result
+}

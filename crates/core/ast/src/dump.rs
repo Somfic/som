@@ -60,7 +60,21 @@ impl Ast {
                 };
                 format!("&{lifetime}{mutability}{to}")
             }
-            TypeExpr::Array { element, len } => format!("[{}; {len}]", self.type_text(*element)),
+            TypeExpr::Array { element, len } => {
+                format!("[{}; {}]", self.type_text(*element), self.type_text(*len))
+            }
+            TypeExpr::Int(n) => n.to_string(),
+            TypeExpr::Bool(b) => b.to_string(),
+            TypeExpr::Binary { op, lhs, rhs } => {
+                // A sum inside a product keeps its parentheses.
+                let side = |id: Id<TypeExpr>| match (&self.types[id], op) {
+                    (TypeExpr::Binary { op: BinOp::Add, .. }, BinOp::Multiply) => {
+                        format!("({})", self.type_text(id))
+                    }
+                    _ => self.type_text(id),
+                };
+                format!("{} {} {}", side(*lhs), op.symbol(), side(*rhs))
+            }
             TypeExpr::Slice { element, mutable } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 format!("[{mutability}{}]", self.type_text(*element))
@@ -145,10 +159,15 @@ impl Dumper<'_> {
     fn func(&mut self, id: Id<Func>) {
         let ast = self.ast;
         let f = &ast.funcs[id];
-        let generics = if f.type_params.is_empty() {
+        let generics = if f.generics.is_empty() {
             String::new()
         } else {
-            let names: Vec<&str> = f.type_params.iter().map(|p| &*p.name).collect();
+            let names: Vec<String> = (f.generics.iter())
+                .map(|g| match g.ty {
+                    Some(ty) => format!("{}: {}", g.name.name, ast.type_text(ty)),
+                    None => g.name.name.to_string(),
+                })
+                .collect();
             format!("<{}>", names.join(", "))
         };
         let params: Vec<String> = f
@@ -270,6 +289,7 @@ impl Dumper<'_> {
                 }
             }),
             Expr::ArrayRepeat { value, count } => {
+                let count = self.ast.type_text(*count);
                 self.node(format!("array repeat {count}"), |d| d.expr(*value))
             }
             Expr::Var(path) => self.line(format!("var {path}")),

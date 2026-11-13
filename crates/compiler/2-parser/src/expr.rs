@@ -243,7 +243,7 @@ impl Parser<'_> {
                 } else {
                     let first = self.with_condition(false, |p| p.parse_expr())?;
                     if self.eat(TokenKind::Semicolon) {
-                        let count = self.parse_count("how many copies")?;
+                        let count = self.parse_length("how many copies")?;
                         self.expect(TokenKind::CloseBracket, "a closing bracket")?;
                         Expr::ArrayRepeat {
                             value: first,
@@ -332,7 +332,7 @@ impl Parser<'_> {
     }
 
     /// A count written as an integer literal: an array's length, or how many copies.
-    pub(crate) fn parse_count(&mut self, what: &str) -> Option<u64> {
+    pub(crate) fn parse_count(&mut self, what: &str) -> Option<u128> {
         let span = self.current_span();
         if !self.at(TokenKind::Int) {
             self.error_expected(&[TokenKind::Int], what);
@@ -343,7 +343,7 @@ impl Parser<'_> {
         match text.parse() {
             Ok(count) => Some(count),
             Err(_) => {
-                self.error_at(span, "count is too large", "this does not fit in 64 bits");
+                self.error_at(span, "count is too large", "this does not fit in 128 bits");
                 None
             }
         }
@@ -474,6 +474,9 @@ impl Parser<'_> {
                 | TokenKind::CloseBracket
                 | TokenKind::Semicolon
                 | TokenKind::Int
+                | TokenKind::True
+                | TokenKind::False
+                | TokenKind::Plus
                 | TokenKind::Star
                 | TokenKind::I8
                 | TokenKind::I16

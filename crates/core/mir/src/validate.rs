@@ -180,7 +180,7 @@ impl Validator<'_> {
                     self.problem("array literal of a type that isn't an array".into());
                     return None;
                 };
-                let expected = vec![element; len as usize];
+                let expected = vec![element; self.mir.types.len(len) as usize];
                 self.check_operands("array", &expected, items);
                 Some(*ty)
             }

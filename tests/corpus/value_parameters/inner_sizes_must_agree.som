@@ -1,0 +1,11 @@
+// expect: error Mismatch
+
+struct Matrix<R: usize, C: usize> { cells: [i32; R * C] }
+
+fn mul<A: usize, B: usize, C: usize>(x: &Matrix<A, B>, y: &Matrix<B, C>) -> i32 { 0 }
+
+fn main() -> i32 {
+    let a = Matrix<2, 3> { cells: [0; 6] };
+    let b = Matrix<2, 2> { cells: [0; 4] };
+    mul(&a, &b)
+}

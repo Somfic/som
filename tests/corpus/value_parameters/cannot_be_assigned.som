@@ -1,0 +1,8 @@
+// expect: error
+
+fn f<N: usize>(xs: [i32; N]) -> usize {
+    N = 3;
+    N
+}
+
+fn main() -> i32 { f([1]) as i32 }

@@ -1,0 +1,8 @@
+// expect: error LiteralOutOfRange
+
+struct Small<N: u8> { n: i32 }
+
+fn main() -> i32 {
+    let s = Small<300> { n: 0 };
+    0
+}

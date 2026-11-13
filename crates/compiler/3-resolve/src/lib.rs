@@ -210,15 +210,25 @@ impl<'a> Resolver<'a> {
                     Item::Struct(id) => {
                         // Its fields can be written in terms of its type parameters.
                         self.type_params.clear();
-                        for (index, param) in ast.structs[*id].type_params.iter().enumerate() {
+                        for (index, param) in ast.structs[*id].generics.iter().enumerate() {
+                            let kind = DefKind::StructParam {
+                                strukt: *id,
+                                index,
+                                value: param.ty.is_some(),
+                            };
                             let def = self.names.define(
-                                &param.name,
-                                DefKind::StructParam { strukt: *id, index },
-                                param.span.clone(),
+                                &param.name.name,
+                                kind,
+                                param.name.span.clone(),
                                 self.module,
                             );
                             self.names.push_struct_param(*id, def);
-                            self.type_params.push((&param.name, def));
+                            self.type_params.push((&param.name.name, def));
+                        }
+                        for param in &ast.structs[*id].generics {
+                            if let Some(ty) = param.ty {
+                                self.resolve_type(ty);
+                            }
                         }
                         for field in &ast.structs[*id].fields {
                             self.resolve_type(field.ty);
@@ -235,15 +245,22 @@ impl<'a> Resolver<'a> {
         let func = &self.ast.funcs[id];
 
         self.type_params.clear();
-        for (index, param) in func.type_params.iter().enumerate() {
-            let def = self.names.define(
-                &param.name,
-                DefKind::TypeParam { func: id, index },
-                param.span.clone(),
-                self.module,
-            );
+        for (index, param) in func.generics.iter().enumerate() {
+            let kind = DefKind::TypeParam {
+                func: id,
+                index,
+                value: param.ty.is_some(),
+            };
+            let def =
+                self.names
+                    .define(&param.name.name, kind, param.name.span.clone(), self.module);
             self.names.push_type_param(id, def);
-            self.type_params.push((&param.name, def));
+            self.type_params.push((&param.name.name, def));
+        }
+        for param in &func.generics {
+            if let Some(ty) = param.ty {
+                self.resolve_type(ty);
+            }
         }
 
         self.scopes.push(HashMap::new());
@@ -411,10 +428,13 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(*lhs);
                 self.resolve_expr(*rhs);
             }
-            Expr::Not(inner)
-            | Expr::Deref(inner)
-            | Expr::Borrow { expr: inner, .. }
-            | Expr::ArrayRepeat { value: inner, .. } => self.resolve_expr(*inner),
+            Expr::Not(inner) | Expr::Deref(inner) | Expr::Borrow { expr: inner, .. } => {
+                self.resolve_expr(*inner)
+            }
+            Expr::ArrayRepeat { value, count } => {
+                self.resolve_expr(*value);
+                self.resolve_type(*count);
+            }
             Expr::Array(items) => items.iter().for_each(|&item| self.resolve_expr(item)),
             Expr::Range { start, end } => {
                 start.iter().chain(end).for_each(|&e| self.resolve_expr(e));
@@ -478,15 +498,26 @@ impl<'a> Resolver<'a> {
             }
             TypeExpr::Reference { to, .. }
             | TypeExpr::Optional(to)
-            | TypeExpr::Array { element: to, .. }
             | TypeExpr::Slice { element: to, .. } => self.resolve_type(*to),
+            TypeExpr::Array {
+                element: lhs,
+                len: rhs,
+            }
+            | TypeExpr::Binary { lhs, rhs, .. } => {
+                self.resolve_type(*lhs);
+                self.resolve_type(*rhs);
+            }
             TypeExpr::Fn { params, returns } => {
                 params.iter().for_each(|&p| self.resolve_type(p));
                 if let Some(returns) = returns {
                     self.resolve_type(*returns);
                 }
             }
-            TypeExpr::Unit | TypeExpr::Primitive(_) | TypeExpr::Pointer => {}
+            TypeExpr::Unit
+            | TypeExpr::Primitive(_)
+            | TypeExpr::Pointer
+            | TypeExpr::Int(_)
+            | TypeExpr::Bool(_) => {}
         }
     }
 
@@ -512,8 +543,10 @@ impl<'a> Resolver<'a> {
         {
             return Some(def);
         }
-        if expect == Expect::Type
-            && let Some(&(_, def)) = self.type_params.iter().find(|(n, _)| *n == name)
+        // A value parameter is a value too: `N` in `struct Buffer<N: usize>`.
+        if let Some(&(_, def)) = self.type_params.iter().find(|(n, _)| *n == name)
+            && (expect == Expect::Type
+                || (expect == Expect::Value && self.names.is_value_param(def)))
         {
             return Some(def);
         }

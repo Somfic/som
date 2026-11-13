@@ -124,6 +124,23 @@ pub enum TypeError {
         found: usize,
         span: Span,
     },
+    /// A value where a type is needed: `x: N` for a value parameter `N`, or `Pair<5>`.
+    ValueAsType {
+        what: Message,
+        span: Span,
+    },
+    /// A type where a value is needed: `Buffer<i32>` for `struct Buffer<N: usize>`, or
+    /// `[u8; T]`. `ty` is the value's type, if one is wanted; an array's length is any integer.
+    TypeAsValue {
+        what: Message,
+        ty: Option<Message>,
+        span: Span,
+    },
+    /// A value parameter of a type it can't be: `struct S<X: str>`.
+    InvalidValueParamType {
+        ty: Message,
+        span: Span,
+    },
     /// `return;` in a function that returns something.
     ReturnWithoutValue {
         ty: Message,
@@ -135,6 +152,8 @@ pub enum TypeError {
         ty: String,
         max: u128,
         span: Span,
+        /// It's a type argument, `Small<300>`, which `as` can't convert.
+        type_arg: bool,
     },
     /// `value as T` where they aren't both numbers.
     InvalidCast {
@@ -383,6 +402,25 @@ impl TypeError {
                 ])
                 .with_label(Label::primary(span.clone(), "here"))
             }
+            TypeError::ValueAsType { what, span } => {
+                Diagnostic::error(msg![what.clone(), " is a value, not a type"])
+                    .with_label(Label::primary(span.clone(), "a type is needed here"))
+            }
+            TypeError::TypeAsValue { what, ty, span } => {
+                let wanted = match ty {
+                    Some(ty) => msg!["a value of type ", ty.clone(), " is needed here"],
+                    None => msg!["a number is needed here"],
+                };
+                Diagnostic::error(msg![what.clone(), " is a type, not a value"])
+                    .with_label(Label::primary(span.clone(), wanted))
+            }
+            TypeError::InvalidValueParamType { ty, span } => {
+                Diagnostic::error(msg!["a value parameter can't be of type ", ty.clone()])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg!["not an integer or ", code("bool")],
+                    ))
+            }
             TypeError::ReturnWithoutValue { ty, span } => {
                 Diagnostic::error(msg![code("return"), " needs a value here"]).with_label(
                     Label::primary(span.clone(), msg!["the function returns ", ty.clone()]),
@@ -393,15 +431,22 @@ impl TypeError {
                 ty,
                 max,
                 span,
-            } => Diagnostic::error(msg![code(value.to_string()), " doesn't fit in ", code(ty)])
-                .with_label(Label::primary(
-                    span.clone(),
-                    msg!["the largest ", code(ty), " is ", code(max.to_string())],
-                ))
-                .with_hint(msg![
-                    "to wrap it on purpose, convert it: ",
-                    code(format!("{value} as {ty}"))
-                ]),
+                type_arg,
+            } => {
+                let error =
+                    Diagnostic::error(msg![code(value.to_string()), " doesn't fit in ", code(ty)])
+                        .with_label(Label::primary(
+                            span.clone(),
+                            msg!["the largest ", code(ty), " is ", code(max.to_string())],
+                        ));
+                match type_arg {
+                    true => error,
+                    false => error.with_hint(msg![
+                        "to wrap it on purpose, convert it: ",
+                        code(format!("{value} as {ty}"))
+                    ]),
+                }
+            }
             TypeError::InvalidCast { from, to, span } => {
                 Diagnostic::error(msg!["cannot convert ", from.clone(), " to ", to.clone()])
                     .with_label(Label::primary(

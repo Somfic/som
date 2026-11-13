@@ -202,9 +202,11 @@ impl Names {
         for ty in used_generated(mir) {
             let name = match mir.types.get(ty) {
                 Ty::Optional(inner) => format!("som_opt_{}", identifier(&mir.display_ty(*inner))),
-                Ty::Array { element, len } => {
-                    format!("som_arr_{}_{len}", identifier(&mir.display_ty(*element)))
-                }
+                Ty::Array { element, len } => format!(
+                    "som_arr_{}_{}",
+                    identifier(&mir.display_ty(*element)),
+                    mir.types.len(*len)
+                ),
                 Ty::Slice(element) => {
                     format!("som_slice_{}", identifier(&mir.display_ty(*element)))
                 }
@@ -557,7 +559,7 @@ impl<'a> Emitter<'a> {
             Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_) | Ty::Range(_) => {
                 format!("struct {}", self.names.generated[&ty])
             }
-            Ty::Error | Ty::Param(_) | Ty::Var(_) => {
+            Ty::Error | Ty::Param(_) | Ty::Var(_) | Ty::Value(_) | Ty::Add(..) | Ty::Mul(..) => {
                 unreachable!("codegen only sees checked, concrete types")
             }
         }
@@ -667,7 +669,7 @@ impl<'a> Emitter<'a> {
             // C has no empty arrays; one that's never read stands in.
             Ty::Array { element, len } => {
                 let element = self.ty(element);
-                let len = len.max(1);
+                let len = self.mir.types.len(len).max(1);
                 self.line(format!("{} {{ {element} items[{len}]; }};", self.ty(ty)));
             }
             _ => {}
@@ -833,6 +835,7 @@ impl<'a> Emitter<'a> {
                 let Ty::Array { len, .. } = *self.mir.types.get(*ty) else {
                     unreachable!("repeats make arrays")
                 };
+                let len = self.mir.types.len(len);
                 let value = self.operand(f, operand).text;
                 let place = self.place(f, dest);
                 code.push(format!(
@@ -973,9 +976,10 @@ impl<'a> Emitter<'a> {
                 match (viewed(from), viewed(*ty)) {
                     // A reference to an array becomes where its elements start, and how many.
                     (Some(Ty::Array { len, .. }), Some(Ty::Slice(_))) => Expr::atom(format!(
-                        "({}){{{}->items, {len}}}",
+                        "({}){{{}->items, {}}}",
                         self.ty(*ty),
-                        value.operand()
+                        value.operand(),
+                        self.mir.types.len(*len)
                     )),
                     // `[mut T]` to `[T]`: the same struct.
                     (Some(Ty::Slice(_)), Some(Ty::Slice(_))) => value,

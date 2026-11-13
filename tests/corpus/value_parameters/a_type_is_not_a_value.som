@@ -1,0 +1,8 @@
+// expect: error TypeAsValue
+
+struct Buffer<N: usize> { bytes: [u8; N] }
+
+fn main() -> i32 {
+    let b: Buffer<i32> = Buffer { bytes: [0; 4] };
+    0
+}

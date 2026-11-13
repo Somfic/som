@@ -25,7 +25,8 @@ pub enum Expr {
     /// `[value; count]`: `count` copies of `value`.
     ArrayRepeat {
         value: Id<Expr>,
-        count: u64,
+        /// How many: a number, or a value parameter. Written like an array type's length.
+        count: Id<TypeExpr>,
     },
     Var(Path),
     Binary {

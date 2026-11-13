@@ -1,0 +1,8 @@
+// expect: error Mismatch
+
+struct Door<OPEN: bool> { id: i32 }
+
+fn main() -> i32 {
+    let d = Door<1> { id: 0 };
+    0
+}

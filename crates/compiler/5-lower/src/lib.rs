@@ -6,12 +6,14 @@
 //! - Each block scope ends with `StorageDead` for its `let`s; each function ends with
 //!   `StorageDead` for its parameters.
 //! - Generic functions are monomorphized: every distinct set of type arguments a
-//!   generic function is called with becomes its own MIR function.
+//!   generic function is called with becomes its own MIR function. A value parameter's
+//!   argument is part of the set: `sum<3>` and `sum<4>` are different functions, and `N`
+//!   is a constant in each.
 
 use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
-use som_typeck::{ArrayMethod, Loop, Typed};
+use som_typeck::{ArrayMethod, Loop, Typed, Value};
 use std::collections::{HashMap, HashSet};
 
 pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
@@ -58,7 +60,7 @@ impl<'a> Lowerer<'a> {
         // Every non-generic struct. Generic ones get a copy for each set of type arguments the
         // program uses, once the functions are lowered.
         for (id, s) in ast.structs.iter() {
-            if s.type_params.is_empty() {
+            if s.generics.is_empty() {
                 self.struct_instance(id, Vec::new());
             }
         }
@@ -68,7 +70,7 @@ impl<'a> Lowerer<'a> {
         for (id, func) in ast.funcs.iter() {
             let is_alias =
                 !matches!(self.names.def(self.names.func(id)).kind, DefKind::Func(f) if f == id);
-            if func.type_params.is_empty() && !is_alias {
+            if func.generics.is_empty() && !is_alias {
                 self.instance(id, Vec::new());
             }
         }
@@ -282,7 +284,9 @@ impl Subst {
             other if other.children().is_empty() => ty,
             other => {
                 let applied = other.map_children(|child| self.apply(types, child));
-                types.intern(applied)
+                let applied = types.intern(applied);
+                // `N + 1` with `N` filled in adds up: `3 + 1` is `4`.
+                types.normalize(applied)
             }
         }
     }
@@ -836,7 +840,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     };
                     b.assign(Place::local(view), borrow, span.clone());
                     let limit = match *b.l.mir.types.get(viewed_ty) {
-                        Ty::Array { len, .. } => b.constant(ConstKind::Int(len as i64), usize),
+                        Ty::Array { len, .. } => {
+                            let len = b.l.mir.types.len(len);
+                            b.constant(ConstKind::Int(len as i64), usize)
+                        }
                         _ => Operand::Copy(Place::local(view).project(Projection::Field(1))),
                     };
                     let first = b.constant(ConstKind::Int(0), usize);
@@ -1016,6 +1023,17 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         let type_args = self.type_args(expr);
                         let id = self.l.instance(func, type_args);
                         self.constant(ConstKind::Func(id), ty)
+                    }
+                    // A value parameter: what it is in this copy of the function.
+                    _ if self.l.names.is_value_param(def) => {
+                        let param = self.l.mir.types.intern(Ty::Param(def));
+                        let value = self.value_of(param);
+                        let kind = match *self.l.mir.types.get(value) {
+                            Ty::Value(Value::Int(n)) => ConstKind::Int(n as i64),
+                            Ty::Value(Value::Bool(b)) => ConstKind::Bool(b),
+                            _ => unreachable!("value parameters stand for values"),
+                        };
+                        self.constant(kind, ty)
                     }
                     _ if self.l.typed.is_narrowed(expr) => {
                         let place = self.place(expr);
@@ -1267,7 +1285,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             }
             Expr::Array(items) => {
                 let items: Vec<Operand> = items.iter().map(|&item| self.operand(item)).collect();
-                let len = items.len() as u64;
+                let len = Ty::Value(Value::Int(items.len() as u128));
+                let len = self.l.mir.types.intern(len);
                 self.collection(expr, len, |ty| Rvalue::Array { ty, items })
             }
             Expr::Cast { value, .. } => {
@@ -1288,9 +1307,11 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 let (start, end) = (self.operand(*start), self.operand(*end));
                 Rvalue::Range { ty, start, end }
             }
-            Expr::ArrayRepeat { value, count } => {
+            Expr::ArrayRepeat { value, .. } => {
                 let operand = self.operand(*value);
-                self.collection(expr, *count, |ty| Rvalue::Repeat { ty, operand })
+                let len = self.l.typed.count(expr);
+                let len = self.value_of(len);
+                self.collection(expr, len, |ty| Rvalue::Repeat { ty, operand })
             }
             Expr::MethodCall { receiver, args, .. }
                 if let Some(method) = self.l.typed.array_method(expr) =>
@@ -1355,13 +1376,18 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         Operand::Move(Place::local(temp))
     }
 
+    /// `ty` with this copy's type arguments filled in.
+    fn value_of(&mut self, ty: TypeId) -> TypeId {
+        self.subst.apply(&mut self.l.mir.types, ty)
+    }
+
     /// A collection literal of `len` elements, made by `make` given its array type. Where a
     /// slice is expected, the array is kept in storage of its own until the end of the
     /// enclosing block, and the slice views it.
     fn collection(
         &mut self,
         expr: Id<Expr>,
-        len: u64,
+        len: TypeId,
         make: impl FnOnce(TypeId) -> Rvalue,
     ) -> Rvalue {
         let ty = self.expr_ty(expr);
@@ -1420,10 +1446,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     let count = Operand::Copy(place.clone().project(Projection::Field(1)));
                     (place.project(Projection::Deref), Length::Held(count))
                 }
-                Ty::Array { len, .. } => (place.project(Projection::Deref), Length::Fixed(len)),
+                Ty::Array { len, .. } => (
+                    place.project(Projection::Deref),
+                    Length::Fixed(types.len(len)),
+                ),
                 _ => unreachable!("checked: array methods are called on arrays and slices"),
             },
-            Ty::Array { len, .. } => (place, Length::Fixed(len)),
+            Ty::Array { len, .. } => (place, Length::Fixed(types.len(len))),
             _ => unreachable!("checked: array methods are called on arrays and slices"),
         };
         if matches!(method, ArrayMethod::Slice | ArrayMethod::SliceMut) {

@@ -1,4 +1,4 @@
-use crate::{Id, Ident, Path};
+use crate::{BinOp, Id, Ident, Path};
 
 /// A type annotation as written. Resolving it to an actual type is the type checker's job.
 pub enum TypeExpr {
@@ -9,7 +9,7 @@ pub enum TypeExpr {
     /// `Point`, `geo::Point`, `Pair<i32>`
     Named {
         path: Path,
-        /// The type arguments of a generic struct: `i32` in `Pair<i32>`.
+        /// The arguments of a generic struct: `i32` in `Pair<i32>`, `64` in `Buffer<64>`.
         args: Vec<Id<TypeExpr>>,
     },
     /// `*`, an untyped raw pointer
@@ -22,8 +22,22 @@ pub enum TypeExpr {
     },
     /// `T?`: a `T`, or `none`.
     Optional(Id<TypeExpr>),
-    /// `[T; N]`: `N` values of type `T`.
-    Array { element: Id<TypeExpr>, len: u64 },
+    /// `[T; N]`: `N` values of type `T`. `N` is a number or a value parameter.
+    Array {
+        element: Id<TypeExpr>,
+        len: Id<TypeExpr>,
+    },
+    /// A number written where a type argument goes: `64` in `Buffer<64>` or `[u8; 64]`.
+    Int(u128),
+    /// `true` or `false` written where a type argument goes: `Socket<true>`.
+    Bool(bool),
+    /// Arithmetic on values where a type argument goes: `A + B` in `[T; A + B]`. `op` is
+    /// `+` or `*`.
+    Binary {
+        op: BinOp,
+        lhs: Id<TypeExpr>,
+        rhs: Id<TypeExpr>,
+    },
     /// `[T]` or `[mut T]`: a view of some number of values of type `T` that live elsewhere,
     /// known at run time. It borrows them; `mut` can change them.
     Slice {

@@ -1542,10 +1542,13 @@ fn signature(a: &Analysis, f: Id<Func>) -> String {
 fn signature_with(a: &Analysis, f: Id<Func>, subst: &[(DefId, som_typeck::TypeId)]) -> String {
     let func = &a.ast.funcs[f];
     let sig = a.typed.func(f);
-    let open: Vec<&str> = (func.type_params.iter())
+    let open: Vec<String> = (func.generics.iter())
         .zip(a.names.type_params(f))
         .filter(|(_, def)| !subst.iter().any(|(d, _)| d == *def))
-        .map(|(p, _)| &*p.name)
+        .map(|(p, _)| match p.ty {
+            Some(ty) => format!("{}: {}", p.name.name, a.ast.type_text(ty)),
+            None => p.name.name.to_string(),
+        })
         .collect();
     let generics = if open.is_empty() {
         String::new()
@@ -1600,7 +1603,14 @@ fn array_of(a: &Analysis, t: som_typeck::TypeId) -> Option<Sequence> {
         _ => t,
     };
     let (element, len, is_text) = match a.typed.ty(t) {
-        Ty::Array { element, len } => (*element, Some(*len), false),
+        Ty::Array { element, len } => {
+            let len = match a.typed.ty(*len) {
+                Ty::Value(som_typeck::Value::Int(n)) => Some(*n as u64),
+                // `N` in a generic function: only known in each copy of it.
+                _ => None,
+            };
+            (*element, len, false)
+        }
         Ty::Slice(element) => (*element, None, false),
         // Text is its bytes.
         Ty::Str => (a.typed.table.u8, None, true),

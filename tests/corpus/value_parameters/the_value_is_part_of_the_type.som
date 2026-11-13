@@ -1,0 +1,9 @@
+// expect: error Mismatch
+
+struct Buffer<N: usize> { bytes: [u8; N] }
+
+fn main() -> i32 {
+    let a: Buffer<4> = Buffer { bytes: [0; 4] };
+    let b: Buffer<5> = a;
+    0
+}

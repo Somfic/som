@@ -84,7 +84,7 @@ impl Parser<'_> {
         let func = Func {
             doc: None,
             name,
-            type_params: Vec::new(),
+            generics: Vec::new(),
             params: Vec::new(),
             returns: None,
             body: Some(body),
@@ -98,7 +98,7 @@ impl Parser<'_> {
 
     fn parse_impl(&mut self) -> Option<Impl> {
         self.expect(TokenKind::Impl, "an impl block")?;
-        let type_params = self.parse_type_params()?;
+        let generics = self.parse_generics()?;
         let target = self.parse_path("a struct name")?;
         // `Pair<T>`: the struct's own parameters, which `impl<T>` declared.
         self.parse_type_args()?;
@@ -120,13 +120,12 @@ impl Parser<'_> {
         self.expect(TokenKind::CloseBrace, "a closing brace after impl block")?;
         // Every method is generic over the impl's parameters, ahead of its own.
         for &method in &methods {
-            let own = std::mem::take(&mut self.ast.funcs.get_mut(method).type_params);
-            self.ast.funcs.get_mut(method).type_params =
-                type_params.iter().cloned().chain(own).collect();
+            let own = std::mem::take(&mut self.ast.funcs.get_mut(method).generics);
+            self.ast.funcs.get_mut(method).generics = generics.iter().cloned().chain(own).collect();
         }
         Some(Impl {
             target,
-            type_params,
+            generics,
             methods,
         })
     }
@@ -162,7 +161,7 @@ impl Parser<'_> {
         let handle = self.eat(TokenKind::Extern);
         self.expect(TokenKind::Struct, "a struct declaration")?;
         let name = self.parse_ident("a struct name")?;
-        let type_params = self.parse_type_params()?;
+        let generics = self.parse_generics()?;
 
         let fields = if handle {
             self.expect(TokenKind::Semicolon, "a semicolon after an extern struct")?;
@@ -185,7 +184,7 @@ impl Parser<'_> {
             Struct {
                 doc,
                 name,
-                type_params,
+                generics,
                 fields,
                 // A handle is just a pointer, so copying it copies nothing C owns.
                 copy: handle,
@@ -202,7 +201,7 @@ impl Parser<'_> {
         self.expect(TokenKind::Fn, "a function declaration")?;
         let name = self.parse_ident("a function name")?;
 
-        let type_params = self.parse_type_params()?;
+        let generics = self.parse_generics()?;
         let (params, variadic) = self.parse_params(false)?;
         let returns = if self.eat(TokenKind::Arrow) {
             Some(self.parse_type()?)
@@ -215,7 +214,7 @@ impl Parser<'_> {
         let func = Func {
             doc,
             name,
-            type_params,
+            generics,
             params,
             returns,
             body,
@@ -226,13 +225,20 @@ impl Parser<'_> {
         Some(self.ast.funcs.alloc(func, span))
     }
 
-    /// `<T, U>` declaring type parameters, if it's there.
-    fn parse_type_params(&mut self) -> Option<Vec<som_ast::Ident>> {
+    /// `<T, N: usize>` declaring generic parameters, if it's there: a type parameter is a
+    /// name, a value parameter a name and its type.
+    fn parse_generics(&mut self) -> Option<Vec<som_ast::Generic>> {
         if !self.eat(TokenKind::LessThan) {
             return Some(Vec::new());
         }
         let params = self.parse_comma_list(TokenKind::GreaterThan, |p| {
-            p.parse_ident("a type parameter name")
+            let name = p.parse_ident("a generic parameter name")?;
+            let ty = if p.eat(TokenKind::Colon) {
+                Some(p.parse_type()?)
+            } else {
+                None
+            };
+            Some(som_ast::Generic { name, ty })
         })?;
         self.expect(
             TokenKind::GreaterThan,
@@ -406,7 +412,7 @@ impl Parser<'_> {
         let func = Func {
             doc,
             name,
-            type_params: Vec::new(),
+            generics: Vec::new(),
             params,
             returns,
             body: None,

@@ -1,0 +1,40 @@
+// expect: exit 42
+
+/// Up to `N` bytes, stored inline, and how many of them are in use.
+struct Buffer<N: usize> {
+    bytes: [u8; N],
+    len: usize
+}
+
+impl<N: usize> Buffer<N> {
+    fn new() -> Buffer<N> { Buffer { bytes: [0; N], len: 0 } }
+
+    /// `N` is a value like any other.
+    fn capacity(self: &Buffer<N>) -> usize { N }
+
+    fn push(self: &mut Buffer<N>, byte: u8) -> bool {
+        if self.len == N { return false; }
+        self.bytes.set(self.len, byte);
+        self.len = self.len + 1;
+        true
+    }
+}
+
+/// Works out `N` from the array it's given.
+fn sum<N: usize>(numbers: [i32; N]) -> i32 {
+    let mut total = 0;
+    for n in numbers { total = total + n; }
+    total
+}
+
+fn main() -> i32 {
+    let mut small: Buffer<2> = Buffer::new();
+    let big = Buffer<64> { bytes: [0; 64], len: 0 };
+    (&mut small).push(1);
+    (&mut small).push(2);
+    let full = (&mut small).push(3);                  // false: there's no room
+    let a = sum([1, 2, 3]);                           // 6
+    let b = sum([10, 10]);                            // 20
+    let c = ((&small).capacity() + (&big).capacity()) as i32;  // 66
+    a + b + c - 50 + (1 if full else 0)               // 42
+}

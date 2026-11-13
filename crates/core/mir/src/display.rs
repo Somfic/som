@@ -37,7 +37,10 @@ impl Mir {
                 Ty::Fn { .. } => format!("({})?", self.display_ty(*inner)),
                 _ => format!("{}?", self.display_ty(*inner)),
             },
-            Ty::Array { element, len } => format!("[{}; {len}]", self.display_ty(*element)),
+            Ty::Array { element, len } => {
+                format!("[{}; {}]", self.display_ty(*element), self.types.len(*len))
+            }
+            Ty::Value(value) => value.to_string(),
             Ty::Slice(element) => format!("[{}]", self.display_ty(*element)),
             Ty::Range(int) => format!("Range<{}>", self.display_ty(*int)),
             Ty::Fn { params, ret } => {
@@ -53,7 +56,9 @@ impl Mir {
             Ty::Int(int) => format!("{int:?}").to_lowercase(),
             Ty::Float(float) => format!("{float:?}").to_lowercase(),
             Ty::Pointer => "*".into(),
-            Ty::Param(_) | Ty::Var(_) => unreachable!("MIR only has concrete types"),
+            Ty::Param(_) | Ty::Var(_) | Ty::Add(..) | Ty::Mul(..) => {
+                unreachable!("MIR only has concrete types")
+            }
         }
     }
 
@@ -167,7 +172,7 @@ impl Mir {
             }
             Rvalue::Repeat { ty, operand } => {
                 let len = match self.types.get(*ty) {
-                    Ty::Array { len, .. } => *len,
+                    Ty::Array { len, .. } => self.types.len(*len),
                     _ => 0,
                 };
                 format!("[{}; {len}]", self.display_operand(operand))

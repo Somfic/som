@@ -3,7 +3,7 @@ use som_resolve::{DefId, DefKind, Names};
 use std::collections::{HashMap, HashSet};
 
 use crate::error::TypeError;
-use crate::ty::{IntTy, Ty, TypeId};
+use crate::ty::{IntTy, Ty, TypeId, Value};
 use crate::unify::{Unifier, VarKind};
 use crate::{ArrayMethod, Loop, Signature, Typed};
 use som_base::Message;
@@ -18,6 +18,10 @@ pub(crate) struct Checker<'a> {
     locals: HashMap<DefId, TypeId>,
     sigs: Vec<Signature>,
     structs: Vec<Vec<TypeId>>,
+    /// `[value; N]` → `N`.
+    counts: HashMap<Id<Expr>, TypeId>,
+    /// Each value parameter's type: `usize` for `N` in `struct Buffer<N: usize>`.
+    value_params: HashMap<DefId, TypeId>,
     methods: HashMap<Id<Expr>, DefId>,
     fields: HashMap<Id<Expr>, usize>,
     type_args: HashMap<Id<Expr>, Vec<TypeId>>,
@@ -51,6 +55,8 @@ impl<'a> Checker<'a> {
             locals: HashMap::new(),
             sigs: Vec::new(),
             structs: Vec::new(),
+            counts: HashMap::new(),
+            value_params: HashMap::new(),
             methods: HashMap::new(),
             fields: HashMap::new(),
             type_args: HashMap::new(),
@@ -70,6 +76,26 @@ impl<'a> Checker<'a> {
 
     pub fn run(mut self) -> (Typed, Vec<TypeError>) {
         let ast = self.ast;
+
+        // The types of value parameters, which the types of fields and parameters can use.
+        let generics = (ast.structs.iter())
+            .flat_map(|(id, s)| s.generics.iter().zip(self.names.struct_params(id)))
+            .chain(
+                (ast.funcs.iter())
+                    .flat_map(|(id, f)| f.generics.iter().zip(self.names.type_params(id))),
+            );
+        for (generic, &def) in generics.collect::<Vec<_>>() {
+            if let Some(ty) = generic.ty {
+                let lowered = self.lower(ty);
+                if !matches!(self.u.get(lowered), Ty::Int(_) | Ty::Bool | Ty::Error) {
+                    self.errors.push(TypeError::InvalidValueParamType {
+                        ty: self.describe(lowered),
+                        span: self.ast.types.span(ty).clone(),
+                    });
+                }
+                self.value_params.insert(def, lowered);
+            }
+        }
 
         // Struct fields and function signatures first, so bodies can use them in any order.
         for (_, s) in ast.structs.iter() {
@@ -109,6 +135,7 @@ impl<'a> Checker<'a> {
         for (id, func) in ast.funcs.iter() {
             if let Some(body) = func.body {
                 self.check_body(id, func, body);
+                self.settle(func.name.span.clone());
             }
         }
 
@@ -180,6 +207,7 @@ impl<'a> Checker<'a> {
                     ty: format!("{int:?}").to_lowercase(),
                     max,
                     span: self.span(id),
+                    type_arg: false,
                 });
             }
         }
@@ -261,6 +289,7 @@ impl<'a> Checker<'a> {
             locals,
             funcs,
             structs: self.structs,
+            counts: self.counts,
             methods: self.methods,
             fields: self.fields,
             type_args,
@@ -289,19 +318,16 @@ impl<'a> Checker<'a> {
                 .map(|def| (def, self.names.def(def).kind.clone()))
             {
                 Some((def, DefKind::Struct(s))) => {
-                    let args: Vec<TypeId> = args.iter().map(|&a| self.lower(a)).collect();
-                    let expected = self.names.struct_params(s).len();
-                    if args.len() == expected {
-                        Ty::Struct(def, args)
-                    } else {
-                        self.errors.push(TypeError::WrongTypeArgCount {
-                            name: self.names.def(def).name.to_string(),
-                            expected,
-                            found: args.len(),
-                            span: self.ast.types.span(id).clone(),
-                        });
-                        Ty::Struct(def, vec![self.u.table.error; expected])
-                    }
+                    let span = self.ast.types.span(id).clone();
+                    Ty::Struct(def, self.lower_args(def, s, args, span))
+                }
+                // `N` in `struct Buffer<N: usize>` stands for a number, not a type.
+                Some((def, _)) if self.names.is_value_param(def) => {
+                    self.errors.push(TypeError::ValueAsType {
+                        what: message::var(&*self.names.def(def).name).into(),
+                        span: self.ast.types.span(id).clone(),
+                    });
+                    Ty::Error
                 }
                 Some((def, DefKind::TypeParam { .. } | DefKind::StructParam { .. })) => {
                     Ty::Param(def)
@@ -327,8 +353,15 @@ impl<'a> Checker<'a> {
             TypeExpr::Optional(inner) => Ty::Optional(self.lower(*inner)),
             TypeExpr::Array { element, len } => Ty::Array {
                 element: self.lower(*element),
-                len: *len,
+                len: self.lower_value(*len, None),
             },
+            TypeExpr::Int(_) | TypeExpr::Bool(_) | TypeExpr::Binary { .. } => {
+                self.errors.push(TypeError::ValueAsType {
+                    what: message::code(self.ast.type_text(id)).into(),
+                    span: self.ast.types.span(id).clone(),
+                });
+                Ty::Error
+            }
             TypeExpr::Slice { element, mutable } => {
                 let element = self.lower(*element);
                 let slice = self.u.intern(Ty::Slice(element));
@@ -347,6 +380,134 @@ impl<'a> Checker<'a> {
             }
         };
         self.u.intern(ty)
+    }
+
+    /// The arguments written for struct `s`, `def`: each a type, or a value for a value
+    /// parameter. If there are too many or too few, an error for each.
+    fn lower_args(
+        &mut self,
+        def: DefId,
+        s: som_ast::Id<som_ast::Struct>,
+        args: &[Id<TypeExpr>],
+        span: Span,
+    ) -> Vec<TypeId> {
+        let params = self.names.struct_params(s);
+        if args.len() != params.len() {
+            args.iter().for_each(|&a| {
+                self.lower_arg(a, None);
+            });
+            self.errors.push(TypeError::WrongTypeArgCount {
+                name: self.names.def(def).name.to_string(),
+                expected: params.len(),
+                found: args.len(),
+                span,
+            });
+            return vec![self.u.table.error; params.len()];
+        }
+        (args.iter().zip(params))
+            .map(|(&arg, &param)| self.lower_arg(arg, Some(param)))
+            .collect()
+    }
+
+    /// An argument for generic parameter `param`: a type, or a value if it's a value parameter.
+    fn lower_arg(&mut self, arg: Id<TypeExpr>, param: Option<DefId>) -> TypeId {
+        match param.and_then(|p| self.value_params.get(&p).copied()) {
+            Some(ty) => self.lower_value(arg, Some(ty)),
+            None => self.lower(arg),
+        }
+    }
+
+    /// A value written where a type argument goes, of type `expected`, or of any integer type
+    /// for an array's length: a literal, or a value parameter.
+    fn lower_value(&mut self, id: Id<TypeExpr>, expected: Option<TypeId>) -> TypeId {
+        let span = self.ast.types.span(id).clone();
+        let error = self.u.table.error;
+        let (value, found) = match self.ast.types[id] {
+            TypeExpr::Int(n) => {
+                let int = expected.unwrap_or(self.u.table.usize);
+                match self.u.get(int).clone() {
+                    Ty::Int(int_ty) => {
+                        let max: u128 = match int_ty {
+                            IntTy::I8 => i8::MAX as u128,
+                            IntTy::I16 => i16::MAX as u128,
+                            IntTy::I32 => i32::MAX as u128,
+                            IntTy::I64 | IntTy::ISize => i64::MAX as u128,
+                            IntTy::I128 => i128::MAX as u128,
+                            IntTy::U8 => u8::MAX as u128,
+                            IntTy::U16 => u16::MAX as u128,
+                            IntTy::U32 => u32::MAX as u128,
+                            IntTy::U64 | IntTy::USize => u64::MAX as u128,
+                            IntTy::U128 => u128::MAX,
+                        };
+                        if n > max {
+                            self.errors.push(TypeError::LiteralOutOfRange {
+                                value: n.min(i64::MAX as u128) as i64,
+                                ty: format!("{int_ty:?}").to_lowercase(),
+                                max,
+                                span,
+                                type_arg: true,
+                            });
+                            return error;
+                        }
+                        return self.u.intern(Ty::Value(Value::Int(n)));
+                    }
+                    _ => (Ty::Value(Value::Int(n)), self.u.fresh(VarKind::Int)),
+                }
+            }
+            TypeExpr::Bool(b) => (Ty::Value(Value::Bool(b)), self.u.table.bool),
+            // `A + B`: arithmetic on numbers, of the same type.
+            TypeExpr::Binary { op, lhs, rhs } => {
+                if let Some(ty) = expected
+                    && !matches!(self.u.get(ty), Ty::Int(_) | Ty::Error)
+                {
+                    let found = self.u.fresh(VarKind::Int);
+                    self.mismatch(ty, found, span, None);
+                    return error;
+                }
+                let (lhs, rhs) = (
+                    self.lower_value(lhs, expected),
+                    self.lower_value(rhs, expected),
+                );
+                if lhs == error || rhs == error {
+                    return error;
+                }
+                let ty = match op {
+                    BinOp::Multiply => Ty::Mul(lhs, rhs),
+                    _ => Ty::Add(lhs, rhs),
+                };
+                let ty = self.u.intern(ty);
+                return self.u.normalize(ty);
+            }
+            TypeExpr::Named { ref args, .. }
+                if args.is_empty()
+                    && let Some(def) = self.names.ty(id)
+                    && let Some(&ty) = self.value_params.get(&def) =>
+            {
+                (Ty::Param(def), ty)
+            }
+            // Already reported by the resolver.
+            TypeExpr::Named { .. } if self.names.ty(id).is_none() => return error,
+            _ => {
+                let what = message::code(self.ast.type_text(id)).into();
+                let ty = expected.map(|ty| self.describe(ty));
+                self.errors.push(TypeError::TypeAsValue { what, ty, span });
+                return error;
+            }
+        };
+        // An array's length can be any integer.
+        let fits = match expected {
+            Some(expected) => self.u.unify(expected, found).is_ok(),
+            None => {
+                matches!(self.u.get(found), Ty::Int(_) | Ty::Error)
+                    || self.u.var_kind(found) == Some(VarKind::Int)
+            }
+        };
+        if !fits {
+            let expected = expected.unwrap_or(self.u.table.usize);
+            self.mismatch(expected, found, span, None);
+            return error;
+        }
+        self.u.intern(value)
     }
 
     /// What each of struct `s`'s type parameters stands for: `args`.
@@ -395,8 +556,19 @@ impl<'a> Checker<'a> {
             other if other.children().is_empty() => ty,
             other => {
                 let substituted = other.map_children(|child| self.substitute(child, subst));
-                self.u.intern(substituted)
+                let substituted = self.u.intern(substituted);
+                // `N + 1` with `N` filled in may add up: `3 + 1` is `4`.
+                self.u.normalize(substituted)
             }
+        }
+    }
+
+    /// Reports arithmetic in types that turned out unequal once more was known, like a
+    /// `[T; R * C]` that's `[T; 6]` with `R` and `C` both 2. Where's no longer known, so it's
+    /// reported at `span`, the function it was found in.
+    fn settle(&mut self, span: Span) {
+        for (expected, found) in self.u.settle() {
+            self.mismatch(expected, found, span.clone(), None);
         }
     }
 
@@ -409,8 +581,17 @@ impl<'a> Checker<'a> {
             Some(VarKind::Int) => "an integer".to_string(),
             Some(VarKind::Float) => "a float".to_string(),
             Some(VarKind::Text) => "a string".to_string(),
-            Some(VarKind::Collection { len: 1, .. }) => "a collection of 1 element".to_string(),
-            Some(VarKind::Collection { len, .. }) => format!("a collection of {len} elements"),
+            Some(VarKind::Collection { len, .. })
+                if *self.u.get(self.u.shallow(len)) == Ty::Value(Value::Int(1)) =>
+            {
+                "a collection of 1 element".to_string()
+            }
+            Some(VarKind::Collection { len, .. }) => {
+                format!(
+                    "a collection of {} elements",
+                    self.u.display(len, self.names)
+                )
+            }
             Some(VarKind::Any) => "an unknown type".to_string(),
             None => self.u.display(ty, self.names),
         };
@@ -1046,10 +1227,8 @@ impl<'a> Checker<'a> {
                         self.mismatch(element, ty, self.span(item), None);
                     }
                 }
-                self.u.fresh(VarKind::Collection {
-                    element,
-                    len: items.len() as u64,
-                })
+                let len = self.u.intern(Ty::Value(Value::Int(items.len() as u128)));
+                self.u.fresh(VarKind::Collection { element, len })
             }
             Expr::Cast { value, ty } => {
                 let target = self.lower(*ty);
@@ -1092,10 +1271,9 @@ impl<'a> Checker<'a> {
                         repeat: true,
                     });
                 }
-                self.u.fresh(VarKind::Collection {
-                    element,
-                    len: *count,
-                })
+                let len = self.lower_value(*count, None);
+                self.counts.insert(id, len);
+                self.u.fresh(VarKind::Collection { element, len })
             }
             Expr::Fallback { optional, fallback } => {
                 let ty = self.infer_optional(*optional);
@@ -1128,6 +1306,8 @@ impl<'a> Checker<'a> {
                     }
                     ty
                 }
+                // `N` in `struct Buffer<N: usize>`: the number it is in each copy.
+                Some((def, _)) if let Some(&ty) = self.value_params.get(&def) => ty,
                 Some((_, DefKind::Func(func))) => {
                     let (sig, args) = self.instantiate(*func);
                     if !args.is_empty() {
@@ -1434,18 +1614,7 @@ impl<'a> Checker<'a> {
                 let args: Vec<TypeId> = if written.is_empty() {
                     (0..expected).map(|_| self.u.fresh(VarKind::Any)).collect()
                 } else {
-                    let lowered: Vec<TypeId> = written.iter().map(|&a| self.lower(a)).collect();
-                    if lowered.len() == expected {
-                        lowered
-                    } else {
-                        self.errors.push(TypeError::WrongTypeArgCount {
-                            name: struct_name.clone(),
-                            expected,
-                            found: lowered.len(),
-                            span: self.span(id),
-                        });
-                        vec![self.u.table.error; expected]
-                    }
+                    self.lower_args(def, s, written, self.span(id))
                 };
                 let subst = self.struct_subst(s, &args);
                 let ty = self.u.intern(Ty::Struct(def, args));
