@@ -35,6 +35,8 @@
             fd
             bat
             raylib
+            box2d
+            sqlite
           ];
 
           shellHook = ''

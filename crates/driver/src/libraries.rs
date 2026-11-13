@@ -298,7 +298,7 @@ pub(crate) fn search_dirs(root: &Path, extra: &[PathBuf]) -> Vec<PathBuf> {
         dirs.extend(std::env::split_paths(&paths));
     }
     if let Ok(flags) = std::env::var("NIX_LDFLAGS") {
-        for dir in nix_library_dirs(&flags) {
+        for dir in flag_dirs(&flags, &["-L"]) {
             if !dirs.contains(&dir) {
                 dirs.push(dir);
             }
@@ -307,13 +307,14 @@ pub(crate) fn search_dirs(root: &Path, extra: &[PathBuf]) -> Vec<PathBuf> {
     dirs
 }
 
-/// The `-L` directories in `NIX_LDFLAGS`, where a Nix shell puts its packages' libraries
-/// instead of `LIBRARY_PATH`. Both `-L/dir` and `-L /dir` are understood.
-fn nix_library_dirs(flags: &str) -> Vec<PathBuf> {
+/// The directories given with any of `flags` in a compiler or linker command line, like
+/// the `-L` ones in `NIX_LDFLAGS`, where a Nix shell puts its packages' libraries instead
+/// of `LIBRARY_PATH`. Both `-L/dir` and `-L /dir` are understood.
+pub(crate) fn flag_dirs(line: &str, flags: &[&str]) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    let mut words = flags.split_whitespace();
+    let mut words = line.split_whitespace();
     while let Some(word) = words.next() {
-        let dir = match word.strip_prefix("-L") {
+        let dir = match flags.iter().find_map(|flag| word.strip_prefix(flag)) {
             Some("") => words.next(),
             other => other,
         };

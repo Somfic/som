@@ -451,7 +451,9 @@ pub fn importable_libraries(root: &Path, library_dirs: &[PathBuf]) -> Vec<(Strin
 }
 
 /// Where headers are looked for: the program's directory, then `CPATH` and
-/// `C_INCLUDE_PATH`, then the `include` directory next to each library directory.
+/// `C_INCLUDE_PATH`, then the `-isystem` and `-I` directories in Nix's
+/// `NIX_CFLAGS_COMPILE` (packages like sqlite keep their headers apart from their
+/// libraries), then the `include` directory next to each library directory.
 fn include_dirs(root: &Path, library_dirs: &[PathBuf]) -> Vec<PathBuf> {
     let root = if root.as_os_str().is_empty() {
         Path::new(".")
@@ -464,11 +466,14 @@ fn include_dirs(root: &Path, library_dirs: &[PathBuf]) -> Vec<PathBuf> {
         .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
         // To clang an empty entry is the current directory; the program's comes first anyway.
         .filter(|dir| !dir.as_os_str().is_empty());
+    let from_nix = std::env::var("NIX_CFLAGS_COMPILE")
+        .map(|flags| libraries::flag_dirs(&flags, &["-isystem", "-I"]))
+        .unwrap_or_default();
     let next_to_libraries = libraries::search_dirs(root, library_dirs)
         .into_iter()
         .filter_map(|dir| Some(dir.parent()?.join("include")));
     let mut dirs = vec![root.to_path_buf()];
-    for include in from_env.chain(next_to_libraries) {
+    for include in from_env.chain(from_nix).chain(next_to_libraries) {
         if !dirs.contains(&include) {
             dirs.push(include);
         }
