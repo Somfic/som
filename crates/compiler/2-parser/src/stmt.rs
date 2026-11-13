@@ -93,9 +93,6 @@ impl Parser<'_> {
     fn parse_if(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::If, "an if statement")?;
-        if self.eat(TokenKind::Let) {
-            return self.parse_if_let(start);
-        }
         let condition = self.parse_condition()?;
         let then = self.parse_stmt_block("the if body")?;
         let otherwise = self.parse_else()?;
@@ -104,25 +101,6 @@ impl Parser<'_> {
         Some(self.ast.stmts.alloc(
             Stmt::If {
                 condition,
-                then,
-                otherwise,
-            },
-            span,
-        ))
-    }
-
-    /// `if let name = optional { … } else { … }`, after the `if let`.
-    fn parse_if_let(&mut self, start: som_ast::Span) -> Option<Id<Stmt>> {
-        let name = self.parse_ident("a name for the optional's value")?;
-        self.expect(TokenKind::Equals, "an optional to unwrap")?;
-        let value = self.parse_condition()?;
-        let then = self.parse_stmt_block("the if body")?;
-        let otherwise = self.parse_else()?;
-        let span = self.span_from(&start);
-        Some(self.ast.stmts.alloc(
-            Stmt::IfLet {
-                name,
-                value,
                 then,
                 otherwise,
             },

@@ -1,0 +1,9 @@
+// expect: error InvalidOperands
+
+fn main() -> i32 {
+    let mut x: i32? = none;
+    let c = true;
+    if c { x = 5; }
+    // `c` might have been false.
+    x + 1
+}

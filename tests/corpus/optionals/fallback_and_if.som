@@ -20,14 +20,15 @@ fn main() -> i32 {
     let c = first_positive(0 - 1, 0 - 2) else first_positive(0, 7) else 100;
 
     let mut total = a + b + c;
-    if let p = find_point(true) {
-        total = total + p.x * p.y;
-    } else {
-        total = 0;
+    let found = find_point(true);
+    if found {
+        total = total + found.x * found.y;
     }
-    if let p = find_point(false) {
+    let lost = find_point(false);
+    let n = first_positive(2, 3);
+    if lost {
         total = 0;
-    } else if let n = first_positive(2, 3) {
+    } else if n {
         total = total + n;
     }
     total

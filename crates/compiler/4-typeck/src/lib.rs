@@ -49,6 +49,8 @@ pub struct Typed {
     /// Expressions whose value becomes an optional's where it's used: `5` in
     /// `let x: i32? = 5`.
     wrapped: HashSet<Id<Expr>>,
+    /// Reads of an optional place inside `if x { … }`: they read the value it holds.
+    narrowed_reads: HashSet<Id<Expr>>,
 }
 
 impl Typed {
@@ -91,6 +93,11 @@ impl Typed {
     /// The type arguments of a call to a generic function. Empty if it isn't generic.
     pub fn type_args(&self, expr: Id<Expr>) -> &[TypeId] {
         self.type_args.get(&expr).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// Whether `expr` reads the value a narrowed optional holds, rather than the optional.
+    pub fn is_narrowed(&self, expr: Id<Expr>) -> bool {
+        self.narrowed_reads.contains(&expr)
     }
 
     /// Whether `expr`'s value is wrapped in an optional where it's used.

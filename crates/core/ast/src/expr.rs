@@ -105,16 +105,10 @@ pub enum Stmt {
     },
     /// `break;`: leaves the innermost `loop` or `while`.
     Break,
+    /// `if condition { then } else { otherwise }`. The condition is a `bool`, or an optional
+    /// that's true when it holds a value: `if x` is `if x != none`.
     If {
         condition: Id<Expr>,
-        then: Vec<Id<Stmt>>,
-        otherwise: Option<Vec<Id<Stmt>>>,
-    },
-    /// `if let name = optional { then } else { otherwise }`: runs `then` with `name` bound
-    /// to the optional's value, if it has one.
-    IfLet {
-        name: Ident,
-        value: Id<Expr>,
         then: Vec<Id<Stmt>>,
         otherwise: Option<Vec<Id<Stmt>>>,
     },

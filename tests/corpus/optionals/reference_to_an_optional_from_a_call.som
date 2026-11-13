@@ -6,10 +6,12 @@ fn slot(u: &mut User) -> &mut (i32?) { &mut u.age }
 
 fn main() -> i32 {
     let mut u = User { age: 1 };
-    if let a = slot(&mut u) { *a = 3; }
-    // The borrow ends with the `if let`, whether or not there was a value.
+    {
+        let age = slot(&mut u);
+        if *age { *age = 3; }
+    };
     u.age = none;
-    if let b = &mut u.age { *b = 9; }
+    if u.age { u.age = 9; }
     u.age = 7;
     u.age else 0
 }

@@ -4,7 +4,8 @@ struct Name { len: i32 }
 
 fn main() -> i32 {
     let mut o: Name? = Name { len: 1 };
-    if let n = &mut o {
+    if o {
+        let n = &mut o;
         o = none;
         n.len = 2;
     }

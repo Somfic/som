@@ -310,29 +310,6 @@ impl<'a> Resolver<'a> {
                     self.resolve_stmts(otherwise);
                 }
             }
-            // The name is only bound in `then`, where the optional has a value.
-            Stmt::IfLet {
-                name,
-                value,
-                then,
-                otherwise,
-            } => {
-                self.resolve_expr(*value);
-                let def = self.names.define(
-                    &name.name,
-                    DefKind::Local(id),
-                    name.span.clone(),
-                    self.module,
-                );
-                self.names.set_let(id, def);
-                self.in_scope(|r| {
-                    r.bind(name, def);
-                    r.resolve_stmts(then);
-                });
-                if let Some(otherwise) = otherwise {
-                    self.resolve_stmts(otherwise);
-                }
-            }
         }
     }
 

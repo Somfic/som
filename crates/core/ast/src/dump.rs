@@ -209,18 +209,6 @@ impl Dumper<'_> {
                     d.stmts("else", otherwise);
                 }
             }),
-            Stmt::IfLet {
-                name,
-                value,
-                then,
-                otherwise,
-            } => self.node(format!("if let {name}"), |d| {
-                d.expr(*value);
-                d.stmts("then", then);
-                if let Some(otherwise) = otherwise {
-                    d.stmts("else", otherwise);
-                }
-            }),
         }
     }
 

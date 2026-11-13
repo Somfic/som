@@ -6,7 +6,10 @@ struct User { name: Name? }
 // `&u.name` would borrow the value instead.
 fn name_len(u: &User) -> i32 {
     let mut len = 0;
-    if let n = u.name { len = n.len; }
+    if u.name {
+        let n = u.name;
+        len = n.len;
+    }
     len
 }
 

@@ -1,0 +1,18 @@
+// expect: exit 145
+
+fn main() -> i32 {
+    // Reading `a` on the right happens before it's assigned, so it's still narrowed there.
+    let mut a: i32? = 123;
+    if a {
+        a = a + 1;
+        // And it was just given a value, so it still holds one.
+        a = a + 1;
+    }
+    // A plain value given to an optional: it holds one until the end of the block.
+    let b: i32? = 5;
+    let mut r = 0;
+    // Checking it again still looks at the optional.
+    if b { r = r + 1; }
+    if b != none { r = r + 10; }
+    (a else 0) + b + r + (b else 0) - 1
+}

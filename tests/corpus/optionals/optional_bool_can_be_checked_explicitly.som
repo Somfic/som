@@ -1,0 +1,12 @@
+// expect: exit 1
+
+fn main() -> i32 {
+    let flag: bool? = false;
+    let mut r = 0;
+    // It holds a value...
+    if flag != none { r = r + 1; }
+    // ...and that value is `false`, whichever default a missing value would get.
+    if flag else false { r = r + 100; }
+    if flag else true { r = r + 10; }
+    r
+}

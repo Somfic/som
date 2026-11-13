@@ -1,0 +1,16 @@
+// expect: error InvalidOperands
+
+struct User { age: i32? }
+
+fn reset(u: &mut User) { u.age = none; }
+
+fn older(u: &mut User) -> i32 {
+    let mut r = 0;
+    if u.age {
+        reset(u);
+        r = u.age + 1;
+    }
+    r
+}
+
+fn main() -> i32 { 0 }

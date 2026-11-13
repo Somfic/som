@@ -1,0 +1,16 @@
+// expect: error InvalidOperands
+
+fn main() -> i32 {
+    let mut x: i32? = 1;
+    let mut r = 0;
+    let mut i = 0;
+    if x {
+        while i < 2 {
+            // On the second iteration, `x` is `none`.
+            r = r + x;
+            x = none;
+            i = i + 1;
+        }
+    }
+    r
+}

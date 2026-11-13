@@ -79,7 +79,11 @@ pub enum TypeError {
         name: String,
         span: Span,
     },
-    /// `if let` or `else` on a value that isn't an optional.
+    /// `if flag` with a `bool?`: it's unclear whether that asks for a value or for `true`.
+    OptionalBoolCondition {
+        span: Span,
+    },
+    /// `else` or `== none` on a value that isn't an optional.
     NotOptional {
         ty: Message,
         span: Span,
@@ -213,6 +217,20 @@ impl TypeError {
             } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
                 Label::primary(span.clone(), msg!["this is ", found.clone()]),
             ),
+            TypeError::OptionalBoolCondition { span } => {
+                Diagnostic::error(msg!["cannot use a ", code("bool?"), " as a condition"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "this could mean it holds a value, or that it's true",
+                    ))
+                    .with_hint(msg![
+                        "write ",
+                        code("!= none"),
+                        " to check for a value, or ",
+                        code("else false"),
+                        " to check that it's true"
+                    ])
+            }
             TypeError::NotOptional { ty, span } => {
                 Diagnostic::error(msg!["expected an optional, found ", ty.clone()]).with_label(
                     Label::primary(

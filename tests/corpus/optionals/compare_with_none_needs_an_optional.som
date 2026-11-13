@@ -1,6 +1,7 @@
 // expect: error NotOptional
 
 fn main() -> i32 {
-    if let x = 5 { }
+    let a = 5;
+    if a != none { }
     0
 }

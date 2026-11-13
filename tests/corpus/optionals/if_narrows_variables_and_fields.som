@@ -1,0 +1,39 @@
+// expect: exit 72
+
+struct Name { len: i32 }
+struct User { name: Name?, age: i32? }
+
+fn name_len(u: &User) -> i32 {
+    let mut len = 0;
+    if u.name { len = u.name.len; }          // through a reference: no move, just a read
+    len
+}
+
+fn grow(u: &mut User) {
+    if u.name != none { u.name.len = u.name.len * 10; }
+}
+
+fn bump(n: &mut i32) { *n = *n + 1; }
+
+fn len_of(name: &(Name?)) -> i32 {
+    let mut len = 0;
+    if *name { len = (*name).len; }
+    len
+}
+
+fn main() -> i32 {
+    let x: i32? = 2;
+    let y: i32? = 3;
+    let mut product = 0;
+    if x { if y { product = x * y; } }       // two values: nested
+
+    let mut u = User { name: Name { len: 3 }, age: 4 };
+    grow(&mut u);
+    if u.age { bump(&mut u.age); }          // `&mut` of the narrowed place itself is fine
+
+    let mut missing = 0;
+    let z: i32? = none;
+    if z == none { missing = 1; } else { missing = z; }
+
+    product + name_len(&u) + len_of(&u.name) + (u.age else 0) + missing
+}

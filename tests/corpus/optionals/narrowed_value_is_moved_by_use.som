@@ -2,9 +2,13 @@
 
 struct Token { v: i32 }
 
+fn take(t: Token) {}
+
 fn main() -> i32 {
     let o: Token? = Token { v: 1 };
-    if let a = o { }
-    if let b = o { }
+    if o {
+        take(o);
+        take(o);
+    }
     0
 }

@@ -22,6 +22,13 @@ pub(crate) struct Checker<'a> {
     fields: HashMap<Id<Expr>, usize>,
     type_args: HashMap<Id<Expr>, Vec<TypeId>>,
     wrapped: HashSet<Id<Expr>>,
+    /// The optional places known to hold a value here, innermost last.
+    narrowed: Vec<Narrowing>,
+    next_narrowing: usize,
+    /// Reads of narrowed places: they read the value, not the optional.
+    narrowed_reads: HashSet<Id<Expr>>,
+    /// The next expression inferred is the object of a field access or dereference.
+    in_place: bool,
     /// Operators whose operand type wasn't known yet when they were checked.
     deferred_ops: Vec<(Id<Expr>, BinOp, TypeId, TypeId)>,
     /// How many `loop`s and `while`s enclose the statement being checked.
@@ -43,6 +50,10 @@ impl<'a> Checker<'a> {
             fields: HashMap::new(),
             type_args: HashMap::new(),
             wrapped: HashSet::new(),
+            narrowed: Vec::new(),
+            next_narrowing: 0,
+            narrowed_reads: HashSet::new(),
+            in_place: false,
             deferred_ops: Vec::new(),
             loops: 0,
         }
@@ -193,6 +204,7 @@ impl<'a> Checker<'a> {
             fields: self.fields,
             type_args,
             wrapped: self.wrapped,
+            narrowed_reads: self.narrowed_reads,
         };
         (typed, self.errors)
     }
@@ -329,12 +341,17 @@ impl<'a> Checker<'a> {
     // --- Statements ---
 
     fn check_stmts(&mut self, stmts: &[Id<Stmt>]) {
+        let outer: HashSet<usize> = self.narrowed.iter().map(|n| n.id).collect();
         for &stmt in stmts {
             self.check_stmt(stmt);
         }
+        // What an assignment in here narrowed ends with the block; what ended stays ended.
+        self.narrowed.retain(|n| outer.contains(&n.id));
     }
 
     fn check_loop(&mut self, body: &[Id<Stmt>]) {
+        // A later iteration sees what the body changes, even further down.
+        self.forget_changed_in(body);
         self.loops += 1;
         self.check_stmts(body);
         self.loops -= 1;
@@ -354,6 +371,11 @@ impl<'a> Checker<'a> {
                 };
                 if let Some(def) = self.names.local(id) {
                     self.locals.insert(def, ty);
+                    let key = Key {
+                        root: def,
+                        path: Vec::new(),
+                    };
+                    self.narrow_if_assigned_a_value(Some(key), ty, *value);
                 }
             }
             Stmt::Expr(expr) => {
@@ -361,6 +383,8 @@ impl<'a> Checker<'a> {
             }
             Stmt::Loop { body } => self.check_loop(body),
             Stmt::While { condition, body } => {
+                // The condition runs again after the body.
+                self.forget_changed_in(body);
                 let bool = self.u.table.bool;
                 self.expect(*condition, bool, None);
                 self.check_loop(body);
@@ -376,30 +400,100 @@ impl<'a> Checker<'a> {
                 then,
                 otherwise,
             } => {
-                let bool = self.u.table.bool;
-                self.expect(*condition, bool, None);
-                self.check_stmts(then);
+                let narrows = self.check_condition(*condition);
+                let (then_narrows, otherwise_narrows) = match narrows {
+                    Some((narrowing, true)) => (Some(narrowing), None),
+                    Some((narrowing, false)) => (None, Some(narrowing)),
+                    None => (None, None),
+                };
+                self.narrowed_while(then_narrows, |c| c.check_stmts(then));
                 if let Some(otherwise) = otherwise {
-                    self.check_stmts(otherwise);
-                }
-            }
-            Stmt::IfLet {
-                value,
-                then,
-                otherwise,
-                ..
-            } => {
-                let ty = self.infer(*value);
-                let inner = self.optional_inner(ty, *value);
-                if let Some(def) = self.names.local(id) {
-                    self.locals.insert(def, inner);
-                }
-                self.check_stmts(then);
-                if let Some(otherwise) = otherwise {
-                    self.check_stmts(otherwise);
+                    self.narrowed_while(otherwise_narrows, |c| c.check_stmts(otherwise));
                 }
             }
         }
+    }
+
+    /// Checks an `if` condition: a `bool`, or an optional, which is true when it holds a value
+    /// (`if x` is `if x != none`). Returns the optional place it tells something about, and
+    /// whether it holds a value when the condition is true.
+    fn check_condition(&mut self, condition: Id<Expr>) -> Option<(Narrowing, bool)> {
+        let bool = self.u.table.bool;
+        let ty = self.infer_optional(condition);
+        let shallow = self.u.shallow(ty);
+        if let Ty::Optional(inner) = *self.u.get(shallow) {
+            if matches!(self.u.get(self.u.shallow(inner)), Ty::Bool) {
+                self.errors.push(TypeError::OptionalBoolCondition {
+                    span: self.span(condition),
+                });
+                return None;
+            }
+            return Some((self.narrowing(condition, inner)?, true));
+        }
+        if !self.coerce(condition, bool, ty) {
+            self.mismatch(bool, ty, self.span(condition), None);
+            return None;
+        }
+        // `x != none` and `x == none`.
+        let Expr::Binary { op, lhs, rhs } = &self.ast.exprs[condition] else {
+            return None;
+        };
+        let holds_value = match op {
+            BinOp::NotEquals => true,
+            BinOp::Equals => false,
+            _ => return None,
+        };
+        let optional = match (&self.ast.exprs[*lhs], &self.ast.exprs[*rhs]) {
+            (_, Expr::None) => *lhs,
+            (Expr::None, _) => *rhs,
+            _ => return None,
+        };
+        let ty = self.exprs[optional.id]?;
+        let Ty::Optional(inner) = *self.u.get(self.u.shallow(ty)) else {
+            return None;
+        };
+        Some((self.narrowing(optional, inner)?, holds_value))
+    }
+
+    /// A narrowing of `expr` to the `inner` type it holds, if it's a place that can be narrowed.
+    fn narrowing(&mut self, expr: Id<Expr>, inner: TypeId) -> Option<Narrowing> {
+        let key = self.key(expr)?;
+        self.next_narrowing += 1;
+        Some(Narrowing {
+            id: self.next_narrowing,
+            key,
+            inner,
+        })
+    }
+
+    /// After an optional place of type `ty` is assigned `value`: if that was a plain value,
+    /// wrapped, the place holds it until the end of the block.
+    fn narrow_if_assigned_a_value(&mut self, key: Option<Key>, ty: TypeId, value: Id<Expr>) {
+        let Some(key) = key else { return };
+        if !self.wrapped.contains(&value) {
+            return;
+        }
+        let Ty::Optional(inner) = *self.u.get(self.u.shallow(ty)) else {
+            return;
+        };
+        self.next_narrowing += 1;
+        self.narrowed.push(Narrowing {
+            id: self.next_narrowing,
+            key,
+            inner,
+        });
+    }
+
+    /// Runs `f` with `narrowing` in effect, if there is one.
+    fn narrowed_while(&mut self, narrowing: Option<Narrowing>, f: impl FnOnce(&mut Self)) {
+        let Some(narrowing) = narrowing else {
+            return f(self);
+        };
+        let id = narrowing.id;
+        self.narrowed.push(narrowing);
+        f(self);
+        // It may have ended early; others ended inside stay ended.
+        self.narrowed.retain(|n| n.id != id);
     }
 
     // --- Expressions ---
@@ -424,6 +518,31 @@ impl<'a> Checker<'a> {
         {
             self.wrapped.insert(expr);
             return true;
+        }
+        // `&x` of a narrowed `x` borrows the value, but where a reference to the optional is
+        // expected, it borrows the optional: `read(&o)` for `fn read(o: &(i32?))`.
+        if let Expr::Borrow {
+            mutable,
+            expr: borrowed,
+        } = self.ast.exprs[expr]
+            && self.narrowed_reads.contains(&borrowed)
+        {
+            let value = self.exprs[borrowed.id].unwrap_or(self.u.table.error);
+            let optional = self.u.intern(Ty::Optional(value));
+            let reference = self.u.intern(Ty::Ref {
+                mutable,
+                to: optional,
+            });
+            if self.u.unify(expected, reference).is_ok() {
+                self.narrowed_reads.remove(&borrowed);
+                self.exprs[borrowed.id] = Some(optional);
+                self.exprs[expr.id] = Some(reference);
+                // Through `&mut` of the optional, it can be made `none`.
+                if mutable && let Some(borrowed) = self.key(borrowed) {
+                    self.forget(|key| key.within(&borrowed));
+                }
+                return true;
+            }
         }
         false
     }
@@ -451,12 +570,39 @@ impl<'a> Checker<'a> {
     }
 
     fn infer(&mut self, id: Id<Expr>) -> TypeId {
-        let ty = self.infer_inner(id);
+        let in_place = std::mem::replace(&mut self.in_place, false);
+        let mut ty = self.infer_inner(id, in_place);
+        if let Some(inner) = self.narrowed_type(id) {
+            self.narrowed_reads.insert(id);
+            ty = inner;
+        }
         self.exprs[id.id] = Some(ty);
         ty
     }
 
-    fn infer_inner(&mut self, id: Id<Expr>) -> TypeId {
+    /// Infers `expr` as the optional it is, even where it's narrowed: for `if x`, `x != none`
+    /// and `x else …`, which ask about the optional itself.
+    fn infer_optional(&mut self, expr: Id<Expr>) -> TypeId {
+        let Some(key) = self.key(expr) else {
+            return self.infer(expr);
+        };
+        let (lifted, kept): (Vec<Narrowing>, Vec<Narrowing>) = std::mem::take(&mut self.narrowed)
+            .into_iter()
+            .partition(|n| n.key == key);
+        self.narrowed = kept;
+        let ty = self.infer(expr);
+        self.narrowed.extend(lifted);
+        ty
+    }
+
+    /// Infers `object`, whose place is part of a larger one: the `p` in `p.x` or `*p`.
+    fn infer_object(&mut self, object: Id<Expr>) -> TypeId {
+        self.in_place = true;
+        self.infer(object)
+    }
+
+    /// `in_place`: `id` is the object of a field access or dereference, not a value on its own.
+    fn infer_inner(&mut self, id: Id<Expr>, in_place: bool) -> TypeId {
         let table = &self.u.table;
         let (error, unit, bool) = (table.error, table.unit, table.bool);
 
@@ -471,7 +617,7 @@ impl<'a> Checker<'a> {
                 self.u.intern(Ty::Optional(inner))
             }
             Expr::Fallback { optional, fallback } => {
-                let ty = self.infer(*optional);
+                let ty = self.infer_optional(*optional);
                 let inner = self.optional_inner(ty, *optional);
                 let from = self.span(*optional);
                 self.expect(*fallback, inner, Some(from));
@@ -494,7 +640,12 @@ impl<'a> Checker<'a> {
                     }
                 }
                 Some((def, DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_))) => {
-                    self.locals.get(&def).copied().unwrap_or(error)
+                    let ty = self.locals.get(&def).copied().unwrap_or(error);
+                    // Passed on, a `&mut` can change what's behind it.
+                    if !in_place && self.is_mut_ref(ty) {
+                        self.forget(|key| key.root == def && !key.path.is_empty());
+                    }
+                    ty
                 }
                 Some((_, DefKind::Func(func))) => {
                     let (sig, args) = self.instantiate(*func);
@@ -510,8 +661,31 @@ impl<'a> Checker<'a> {
             },
 
             Expr::Binary { op, lhs, rhs } => {
-                let lhs_ty = self.infer(*lhs);
-                let rhs_ty = self.infer(*rhs);
+                // `x == none` and `x != none` ask whether `x` holds a value.
+                let against_none = matches!(op, BinOp::Equals | BinOp::NotEquals)
+                    && (matches!(self.ast.exprs[*lhs], Expr::None)
+                        || matches!(self.ast.exprs[*rhs], Expr::None));
+                let (lhs_ty, rhs_ty) = if against_none {
+                    (self.infer_optional(*lhs), self.infer_optional(*rhs))
+                } else {
+                    (self.infer(*lhs), self.infer(*rhs))
+                };
+                if against_none {
+                    if self.u.unify(lhs_ty, rhs_ty).is_err() {
+                        let ((optional, ty), none) = if matches!(self.ast.exprs[*lhs], Expr::None) {
+                            ((*rhs, rhs_ty), *lhs)
+                        } else {
+                            ((*lhs, lhs_ty), *rhs)
+                        };
+                        self.errors.push(TypeError::NotOptional {
+                            ty: self.describe(ty),
+                            span: self.span(optional),
+                        });
+                        // Already reported: don't also say the `none` can't be inferred.
+                        self.exprs[none.id] = Some(error);
+                    }
+                    return bool;
+                }
                 self.binary(id, *op, lhs_ty, rhs_ty)
             }
 
@@ -521,6 +695,11 @@ impl<'a> Checker<'a> {
             }
 
             Expr::Borrow { mutable, expr } => {
+                // `&mut p` can change anything inside `p`, other than through what's narrowed:
+                // `&mut x` of a narrowed `x` borrows the value it holds.
+                if *mutable && let Some(borrowed) = self.key(*expr) {
+                    self.forget(|key| key.within(&borrowed) && !key.same(&borrowed));
+                }
                 let to = self.infer(*expr);
                 self.u.intern(Ty::Ref {
                     mutable: *mutable,
@@ -538,7 +717,7 @@ impl<'a> Checker<'a> {
             }
 
             Expr::Deref(inner) => {
-                let ty = self.infer(*inner);
+                let ty = self.infer_object(*inner);
                 let ty = self.u.shallow(ty);
                 match self.u.get(ty).clone() {
                     Ty::Ref { to, .. } => to,
@@ -565,9 +744,23 @@ impl<'a> Checker<'a> {
                         span: self.span(*target),
                     });
                 }
+                // The target is the optional itself, not the value it held: `x = none` is fine.
+                let assigned = self.key(*target);
+                let (lifted, kept) = std::mem::take(&mut self.narrowed)
+                    .into_iter()
+                    .partition(|n| assigned.as_ref().is_some_and(|a| n.key.within(a)));
+                self.narrowed = kept;
                 let target_ty = self.infer(*target);
+                // The value is worked out first, while the target still holds what it did:
+                // `x = x + 1` reads the narrowed `x`.
+                self.narrowed.extend::<Vec<Narrowing>>(lifted);
                 let from = self.span(*target);
                 self.expect(*value, target_ty, Some(from));
+                // Afterwards it holds what was assigned.
+                if let Some(assigned) = &assigned {
+                    self.forget(|key| key.within(assigned));
+                }
+                self.narrow_if_assigned_a_value(assigned, target_ty, *value);
                 unit
             }
 
@@ -651,7 +844,7 @@ impl<'a> Checker<'a> {
             }
 
             Expr::Field { object, field } => {
-                let object_ty = self.infer(*object);
+                let object_ty = self.infer_object(*object);
                 let Some(owner) = self.struct_of(object_ty, *object) else {
                     return error;
                 };
@@ -761,11 +954,17 @@ impl<'a> Checker<'a> {
             }
 
             Expr::Block { stmts, value } => {
-                self.check_stmts(stmts);
-                match value {
+                // Like `check_stmts`, but what's narrowed in here lasts into the final value.
+                let outer: HashSet<usize> = self.narrowed.iter().map(|n| n.id).collect();
+                for &stmt in stmts {
+                    self.check_stmt(stmt);
+                }
+                let ty = match value {
                     Some(value) => self.infer(*value),
                     None => unit,
-                }
+                };
+                self.narrowed.retain(|n| outer.contains(&n.id));
+                ty
             }
         }
     }
@@ -939,4 +1138,211 @@ fn is_arithmetic(op: BinOp) -> bool {
         op,
         BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
     )
+}
+
+// --- Narrowing ---
+//
+// Inside `if x { … }` (or `if x != none`), where `x` is an optional variable or field, `x`
+// means the value it holds. Anything that could make `x` `none` again ends that: assigning
+// it or what contains it, `&mut` of what contains it, or passing on a `&mut` it's behind.
+// A loop is checked for those first, since a later iteration sees changes further down.
+
+/// An optional place known to hold a value.
+#[derive(Clone)]
+struct Narrowing {
+    id: usize,
+    key: Key,
+    inner: TypeId,
+}
+
+/// A place as written: a variable, then fields and dereferences.
+#[derive(Clone, PartialEq)]
+struct Key {
+    root: DefId,
+    path: Vec<Step>,
+}
+
+#[derive(Clone, PartialEq)]
+enum Step {
+    Field(Box<str>),
+    Deref,
+}
+
+impl Key {
+    /// The fields, without dereferences: `p.x` and `(*p).x` are the same memory.
+    fn fields(&self) -> impl Iterator<Item = &Step> {
+        self.path.iter().filter(|s| matches!(s, Step::Field(_)))
+    }
+
+    /// Whether this place is `other`, or inside it.
+    fn within(&self, other: &Key) -> bool {
+        let mut mine = self.fields();
+        self.root == other.root && other.fields().all(|step| mine.next() == Some(step))
+    }
+
+    fn same(&self, other: &Key) -> bool {
+        self.within(other) && other.within(self)
+    }
+}
+
+impl Checker<'_> {
+    /// The place `expr` denotes, if it's a variable, field or dereference of one.
+    fn key(&self, expr: Id<Expr>) -> Option<Key> {
+        match &self.ast.exprs[expr] {
+            Expr::Var(_) => {
+                let def = self.names.expr(expr)?;
+                matches!(
+                    self.names.def(def).kind,
+                    DefKind::Local(_) | DefKind::Param { .. } | DefKind::Out(_)
+                )
+                .then(|| Key {
+                    root: def,
+                    path: Vec::new(),
+                })
+            }
+            Expr::Field { object, field } => {
+                let mut key = self.key(*object)?;
+                key.path.push(Step::Field(field.name.clone()));
+                Some(key)
+            }
+            Expr::Deref(inner) => {
+                let mut key = self.key(*inner)?;
+                key.path.push(Step::Deref);
+                Some(key)
+            }
+            _ => None,
+        }
+    }
+
+    /// The type `expr` holds, if it's a narrowed place. Only the same spelling matches, so
+    /// `(*p).x` isn't narrowed by `if p.x`, which is safe, just less convenient.
+    fn narrowed_type(&self, expr: Id<Expr>) -> Option<TypeId> {
+        if self.narrowed.is_empty() {
+            return None;
+        }
+        let key = self.key(expr)?;
+        let found = self.narrowed.iter().rev().find(|n| n.key == key)?;
+        Some(found.inner)
+    }
+
+    /// Ends the narrowings of the places `changed` says could change.
+    fn forget(&mut self, changed: impl Fn(&Key) -> bool) {
+        self.narrowed.retain(|n| !changed(&n.key));
+    }
+
+    fn is_mut_ref(&self, ty: TypeId) -> bool {
+        matches!(
+            self.u.get(self.u.shallow(ty)),
+            Ty::Ref { mutable: true, .. }
+        )
+    }
+
+    /// Ends the narrowings of the places `stmts` could change.
+    fn forget_changed_in(&mut self, stmts: &[Id<Stmt>]) {
+        if self.narrowed.is_empty() {
+            return;
+        }
+        for &stmt in stmts {
+            match &self.ast.stmts[stmt] {
+                Stmt::Let { value, .. } => self.forget_changed_by(*value, false),
+                Stmt::Expr(expr) => self.forget_changed_by(*expr, false),
+                Stmt::Loop { body } => self.forget_changed_in(body),
+                Stmt::While { condition, body } => {
+                    self.forget_changed_by(*condition, false);
+                    self.forget_changed_in(body);
+                }
+                Stmt::Break => {}
+                Stmt::If {
+                    condition,
+                    then,
+                    otherwise,
+                } => {
+                    self.forget_changed_by(*condition, false);
+                    self.forget_changed_in(then);
+                    if let Some(otherwise) = otherwise {
+                        self.forget_changed_in(otherwise);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Ends the narrowings of the places `expr` could change. `in_place`: it's the object of
+    /// a field access or dereference.
+    fn forget_changed_by(&mut self, expr: Id<Expr>, in_place: bool) {
+        match &self.ast.exprs[expr] {
+            Expr::Hole
+            | Expr::Int(_)
+            | Expr::Float(_)
+            | Expr::Bool(_)
+            | Expr::Str(_)
+            | Expr::None
+            | Expr::Out(_) => {}
+            Expr::Var(_) => {
+                if !in_place
+                    && let Some(def) = self.names.expr(expr)
+                    && let Some(&ty) = self.locals.get(&def)
+                    && self.is_mut_ref(ty)
+                {
+                    self.forget(|key| key.root == def && !key.path.is_empty());
+                }
+            }
+            Expr::Field { object, .. } | Expr::Deref(object) => {
+                self.forget_changed_by(*object, true)
+            }
+            Expr::Borrow { mutable, expr } => {
+                if *mutable && let Some(borrowed) = self.key(*expr) {
+                    self.forget(|key| key.within(&borrowed) && !key.same(&borrowed));
+                }
+                self.forget_changed_by(*expr, false);
+            }
+            Expr::Assign { target, value } => {
+                if let Some(assigned) = self.key(*target) {
+                    self.forget(|key| key.within(&assigned));
+                }
+                self.forget_changed_by(*target, true);
+                self.forget_changed_by(*value, false);
+            }
+            Expr::Not(e) => self.forget_changed_by(*e, false),
+            Expr::Binary { lhs, rhs, .. }
+            | Expr::Fallback {
+                optional: lhs,
+                fallback: rhs,
+            } => {
+                self.forget_changed_by(*lhs, false);
+                self.forget_changed_by(*rhs, false);
+            }
+            Expr::Call { args, .. } => {
+                for &arg in args {
+                    self.forget_changed_by(arg, false);
+                }
+            }
+            Expr::MethodCall { receiver, args, .. } => {
+                self.forget_changed_by(*receiver, false);
+                for &arg in args {
+                    self.forget_changed_by(arg, false);
+                }
+            }
+            Expr::Construct { fields, .. } => {
+                for &(_, value) in fields {
+                    self.forget_changed_by(value, false);
+                }
+            }
+            Expr::Conditional {
+                condition,
+                then,
+                otherwise,
+            } => {
+                for e in [*condition, *then, *otherwise] {
+                    self.forget_changed_by(e, false);
+                }
+            }
+            Expr::Block { stmts, value } => {
+                self.forget_changed_in(stmts);
+                if let Some(value) = value {
+                    self.forget_changed_by(*value, false);
+                }
+            }
+        }
+    }
 }

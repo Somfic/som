@@ -1,0 +1,10 @@
+// expect: error InvalidOperands
+
+// Takes the optional itself, so it can make it `none`.
+fn clear(o: &mut (i32?)) { *o = none; }
+
+fn main() -> i32 {
+    let mut x: i32? = 5;
+    clear(&mut x);
+    x + 1
+}

@@ -8,7 +8,7 @@
 //! - Generic functions are monomorphized: every distinct set of type arguments a
 //!   generic function is called with becomes its own MIR function.
 
-use som_ast::{Ast, Expr, Func, Id, Item, Span, Stmt};
+use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
 use som_typeck::Typed;
@@ -447,7 +447,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 then,
                 otherwise,
             } => {
-                let condition = self.operand(*condition);
+                let condition = self.condition(*condition);
                 let (then_block, else_block, join) =
                     (self.new_block(), self.new_block(), self.new_block());
                 self.terminate(
@@ -468,36 +468,17 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.terminate(TerminatorKind::Goto(join), span);
                 self.current = join;
             }
-            Stmt::IfLet {
-                name,
-                value,
-                then,
-                otherwise,
-            } => {
-                let def = self.l.names.local(id).expect("every if let is resolved");
-                let ty = self.l.typed.local(def);
-                let ty = self.ty(ty);
-                let (value, some_block, none_block) = self.branch_on_some(*value, ty, span.clone());
-                let join = self.new_block();
-                self.current = some_block;
-                self.in_scope(span.clone(), |b| {
-                    let local =
-                        b.new_local(ty, Some(name.name.to_string()), false, name.span.clone());
-                    b.bindings.insert(def, local);
-                    b.scopes.last_mut().expect("in scope").push(local);
-                    b.push(StatementKind::StorageLive(local), span.clone());
-                    b.assign(Place::local(local), Rvalue::Use(value), span.clone());
-                    b.stmts(then, span.clone());
-                });
-                self.terminate(TerminatorKind::Goto(join), span.clone());
-                self.current = none_block;
-                if let Some(otherwise) = otherwise {
-                    self.stmts(otherwise, span.clone());
-                }
-                self.terminate(TerminatorKind::Goto(join), span);
-                self.current = join;
-            }
         }
+    }
+
+    /// Evaluates an `if` condition: a `bool`, or whether an optional holds a value.
+    fn condition(&mut self, expr: Id<Expr>) -> Operand {
+        let ty = self.expr_ty(expr);
+        if matches!(self.l.mir.types.get(ty), Ty::Optional(_)) {
+            let place = self.place(expr);
+            return Operand::Copy(place.project(Projection::Field(0)));
+        }
+        self.operand(expr)
     }
 
     /// Evaluates the optional `expr` and branches on whether it holds a value. Returns the
@@ -618,6 +599,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         let id = self.l.instance(func, type_args);
                         self.constant(ConstKind::Func(id), ty)
                     }
+                    _ if self.l.typed.is_narrowed(expr) => {
+                        let place = self.place(expr);
+                        self.read(place, ty)
+                    }
                     _ => {
                         let place = self.variable(def).expect("variables are bound");
                         self.read(place, ty)
@@ -712,6 +697,23 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn rvalue_unwrapped(&mut self, expr: Id<Expr>) -> Rvalue {
         let ast = self.l.ast;
         match &ast.exprs[expr] {
+            // `x != none` is whether `x` holds a value.
+            Expr::Binary { op, lhs, rhs }
+                if matches!(ast.exprs[*lhs], Expr::None)
+                    || matches!(ast.exprs[*rhs], Expr::None) =>
+            {
+                let optional = if matches!(ast.exprs[*lhs], Expr::None) {
+                    *rhs
+                } else {
+                    *lhs
+                };
+                let place = self.place(optional);
+                let holds_value = Operand::Copy(place.project(Projection::Field(0)));
+                match op {
+                    BinOp::NotEquals => Rvalue::Use(holds_value),
+                    _ => Rvalue::Not(holds_value),
+                }
+            }
             Expr::Binary { op, lhs, rhs } => Rvalue::Binary {
                 op: *op,
                 lhs: self.operand(*lhs),
@@ -870,8 +872,18 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         })
     }
 
-    /// Evaluates `expr` to a place, storing it in a temporary if it isn't one already.
+    /// Evaluates `expr` to a place, storing it in a temporary if it isn't one already. A
+    /// narrowed optional's place is the value it holds.
     fn place(&mut self, expr: Id<Expr>) -> Place {
+        let place = self.place_of(expr);
+        if self.l.typed.is_narrowed(expr) {
+            place.project(Projection::Field(1))
+        } else {
+            place
+        }
+    }
+
+    fn place_of(&mut self, expr: Id<Expr>) -> Place {
         let ast = self.l.ast;
         match &ast.exprs[expr] {
             Expr::Var(_) => {

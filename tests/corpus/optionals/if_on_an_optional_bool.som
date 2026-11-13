@@ -1,0 +1,8 @@
+// expect: error OptionalBoolCondition
+
+fn main() -> i32 {
+    let flag: bool? = false;
+    // Ambiguous: holds a value, or is true? `flag != none` or `flag else false` says which.
+    if flag { }
+    0
+}

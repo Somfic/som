@@ -847,6 +847,31 @@ impl LanguageServer for SomLanguageServer {
             hints.push(type_hint(&name.span, ty(a, t)));
         }
 
+        // What `if x` asks of an optional `x`: `if x != none`.
+        for (_, stmt) in a.ast.stmts.iter() {
+            let Stmt::If { condition, .. } = stmt else {
+                continue;
+            };
+            let span = a.ast.exprs.span(*condition);
+            if span.source.identifier() != file
+                || !matches!(a.typed.ty(a.typed.expr(*condition)), Ty::Optional(_))
+            {
+                continue;
+            }
+            hints.push(InlayHint {
+                position: convert::span_to_range(span).end,
+                label: InlayHintLabel::String(" != none".into()),
+                kind: None,
+                text_edits: None,
+                tooltip: Some(InlayHintTooltip::String(
+                    "`if` on an optional checks whether it holds a value".into(),
+                )),
+                padding_left: Some(true),
+                padding_right: None,
+                data: None,
+            });
+        }
+
         // The type the parameter gives every `out name` argument: `out db: Sqlite3`.
         for (id, expr) in a.ast.exprs.iter() {
             let Expr::Out(name) = expr else { continue };
