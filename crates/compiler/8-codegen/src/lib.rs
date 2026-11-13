@@ -190,12 +190,34 @@ impl Names {
                 (s.def, s.args.clone()),
                 unique(&identifier(&s.name), "s", &mut tags, |_| false),
             );
-            let mut taken = HashSet::new();
-            let names = s
-                .fields
-                .iter()
-                .map(|(name, _)| unique(name, "f", &mut taken, |_| false))
-                .collect();
+            let names = match &s.variants {
+                None => {
+                    let mut taken = HashSet::new();
+                    (s.fields.iter())
+                        .map(|(name, _)| unique(name, "f", &mut taken, |_| false))
+                        .collect()
+                }
+                // `tag`, then each variant's fields, reached through the union of variants:
+                // `as.Rect.w`, `as.Circle._0`.
+                Some(variants) => {
+                    let mut names = vec!["tag".to_string()];
+                    let mut taken_variants = HashSet::new();
+                    for (i, v) in variants.iter().enumerate() {
+                        let variant = unique(&v.name, "v", &mut taken_variants, |_| false);
+                        let mut taken = HashSet::new();
+                        for (name, _) in &s.fields[s.variant_fields(i)] {
+                            let field = name.rsplit('.').next().unwrap_or(name);
+                            // A position, `_0`, can't clash with a name.
+                            let field = match field.parse::<usize>() {
+                                Ok(n) => format!("_{n}"),
+                                Err(_) => unique(field, "f", &mut taken, |_| false),
+                            };
+                            names.push(format!("as.{variant}.{field}"));
+                        }
+                    }
+                    names
+                }
+            };
             fields.insert(s.def, names);
         }
         let mut generated = HashMap::new();
@@ -683,10 +705,38 @@ impl<'a> Emitter<'a> {
             return;
         }
 
+        let names = &self.names.fields[&def];
+        if let Some(variants) = &s.variants {
+            // `struct Shape { uint32_t tag; union { struct { float _0; } Circle; … } as; };`
+            let mut members = Vec::new();
+            for (i, _) in variants.iter().enumerate() {
+                let range = s.variant_fields(i);
+                if range.is_empty() {
+                    continue;
+                }
+                let mut variant = String::new();
+                let mut fields = String::new();
+                for index in range {
+                    let mut parts = names[index].split('.').skip(1);
+                    variant = parts.next().unwrap_or_default().to_string();
+                    let field = parts.next().unwrap_or_default();
+                    fields.push_str(&format!(" {} {field};", self.ty(s.fields[index].1)));
+                }
+                members.push(format!(" struct {{{fields} }} {variant};"));
+            }
+            let union = if members.is_empty() {
+                String::new()
+            } else {
+                format!(" union {{{} }} as;", members.concat())
+            };
+            let name = self.struct_name(def, args);
+            self.line(format!("{name} {{ uint32_t tag;{union} }};"));
+            return;
+        }
         let fields: Vec<String> = s
             .fields
             .iter()
-            .zip(&self.names.fields[&def])
+            .zip(names)
             .map(|(&(_, ty), name)| format!(" {} {name};", self.ty(ty)))
             .collect();
         // C doesn't allow empty structs.
@@ -1019,7 +1069,28 @@ impl<'a> Emitter<'a> {
                 };
                 Expr::compound(format!("{l} {symbol} {r}"))
             }
-            Rvalue::Struct { ty, fields } => {
+            Rvalue::Struct {
+                ty,
+                variant: Some(variant),
+                fields,
+            } => {
+                // `(struct Shape){ .tag = 1, .as.Rect = { w, h } }`
+                let Ty::Struct(def, args) = self.mir.types.get(*ty) else {
+                    unreachable!("variants are of enums")
+                };
+                let s = self.mir.struct_def(*def, args);
+                let mut text = format!("({}){{ .tag = {variant}", self.ty(*ty));
+                if let Some(first) = s.variant_fields(*variant).next() {
+                    let member = &self.names.fields[def][first];
+                    let union_member = member.rsplit_once('.').map_or(&**member, |(m, _)| m);
+                    let values: Vec<String> =
+                        fields.iter().map(|op| self.operand(f, op).text).collect();
+                    text.push_str(&format!(", .{union_member} = {{ {} }}", values.join(", ")));
+                }
+                text.push_str(" }");
+                Expr::atom(text)
+            }
+            Rvalue::Struct { ty, fields, .. } => {
                 let fields: Vec<String> =
                     fields.iter().map(|op| self.operand(f, op).text).collect();
                 let fields = if fields.is_empty() {

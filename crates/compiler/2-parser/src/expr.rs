@@ -1,4 +1,4 @@
-use som_ast::{Expr, Id, Span};
+use som_ast::{Arm, Expr, Id, Ident, Pattern, PatternFields, Span};
 use som_base::message::code;
 use som_base::msg;
 use som_lexer::TokenKind;
@@ -307,6 +307,8 @@ impl Parser<'_> {
 
             TokenKind::OpenBrace => return self.with_condition(false, |p| p.parse_block()),
 
+            TokenKind::Match => return self.parse_match(),
+
             _ => {
                 self.error_missing("expected expression", "an expression");
                 return Some(self.ast.exprs.alloc(Expr::Hole, start));
@@ -500,6 +502,136 @@ impl Parser<'_> {
             }
             n += 1;
         }
+    }
+
+    /// `match scrutinee { pattern => value, … }`. An arm whose value is a block needs no comma
+    /// after it.
+    pub(crate) fn parse_match(&mut self) -> Option<Id<Expr>> {
+        let start = self.current_span();
+        self.expect(TokenKind::Match, "a match")?;
+        let scrutinee = self.parse_condition()?;
+        self.expect(TokenKind::OpenBrace, "the match arms")?;
+        let mut arms = Vec::new();
+        self.with_condition(false, |p| {
+            while !p.at(TokenKind::CloseBrace) && !p.at_eof() {
+                let pattern = p.parse_pattern()?;
+                p.expect(TokenKind::FatArrow, "`=>` and the arm's value")?;
+                let body = p.parse_expr()?;
+                arms.push(Arm { pattern, body });
+                let ends_in_block = matches!(p.ast.exprs[body], Expr::Block { .. });
+                if !p.eat(TokenKind::Comma) && !ends_in_block {
+                    break;
+                }
+            }
+            Some(())
+        })?;
+        self.expect(TokenKind::CloseBrace, "a closing brace after the match arms")?;
+        let scrutinee_and_arms = Expr::Match { scrutinee, arms };
+        Some(self.alloc_expr(scrutinee_and_arms, &start))
+    }
+
+    /// A `match` arm's pattern: `_`, `name`, `3`, `true`, `none`, `Circle(r)`,
+    /// `Rect { w, h }` or `Shape::Empty`.
+    fn parse_pattern(&mut self) -> Option<Id<Pattern>> {
+        let start = self.current_span();
+        let pattern = match self.peek() {
+            TokenKind::Int | TokenKind::Minus => {
+                let negative = self.eat(TokenKind::Minus);
+                let span = self.current_span();
+                let count = self.parse_count("a number")?;
+                match i64::try_from(count) {
+                    Ok(n) => Pattern::Int(if negative { -n } else { n }),
+                    Err(_) => {
+                        self.error_at(
+                            span,
+                            "integer literal is too large",
+                            "this does not fit in 64 bits",
+                        );
+                        Pattern::Wildcard
+                    }
+                }
+            }
+            TokenKind::True | TokenKind::False => {
+                let value = self.at(TokenKind::True);
+                self.advance();
+                Pattern::Bool(value)
+            }
+            TokenKind::None => {
+                self.advance();
+                Pattern::None
+            }
+            TokenKind::Mut => {
+                self.advance();
+                let name = self.parse_ident("a name to bind")?;
+                Pattern::Binding {
+                    name,
+                    mutable: true,
+                }
+            }
+            TokenKind::Ident => {
+                let path = self.parse_path("a pattern")?;
+                if self.eat(TokenKind::OpenParen) {
+                    let fields =
+                        self.parse_comma_list(TokenKind::CloseParen, |p| p.parse_pattern())?;
+                    self.expect(TokenKind::CloseParen, "a closing parenthesis")?;
+                    Pattern::Variant {
+                        path,
+                        fields: PatternFields::Tuple(fields),
+                    }
+                } else if self.eat(TokenKind::OpenBrace) {
+                    let fields = self.parse_named_field_patterns()?;
+                    Pattern::Variant { path, fields }
+                } else if path.segments.len() > 1 {
+                    Pattern::Variant {
+                        path,
+                        fields: PatternFields::Unit,
+                    }
+                } else if &*path.segments[0].name == "_" {
+                    Pattern::Wildcard
+                } else {
+                    let name = path.segments.into_iter().next().expect("paths aren't empty");
+                    Pattern::Binding {
+                        name,
+                        mutable: false,
+                    }
+                }
+            }
+            _ => {
+                self.error_missing("expected a pattern", "a pattern");
+                return None;
+            }
+        };
+        let span = self.span_from(&start);
+        Some(self.ast.patterns.alloc(pattern, span))
+    }
+
+    /// `w, h: height, .. }` after the `{` of a variant pattern.
+    fn parse_named_field_patterns(&mut self) -> Option<PatternFields> {
+        let mut fields = Vec::new();
+        let mut rest = false;
+        while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            if self.eat(TokenKind::DotDot) {
+                rest = true;
+                break;
+            }
+            let name: Ident = self.parse_ident("a field name")?;
+            let pattern = if self.eat(TokenKind::Colon) {
+                self.parse_pattern()?
+            } else {
+                // `w` is short for `w: w`.
+                let binding = Pattern::Binding {
+                    name: name.clone(),
+                    mutable: false,
+                };
+                self.ast.patterns.alloc(binding, name.span.clone())
+            };
+            fields.push((name, pattern));
+            if !self.eat(TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect(TokenKind::CloseBrace, "a closing brace after the fields")?;
+        Some(PatternFields::Named { fields, rest })
     }
 
     /// `Point { x: 1, y: 2 }`, or `Pair<i32> { a: 1, b: 2 }`

@@ -1,9 +1,15 @@
-struct Matrix<R: usize, C: usize> {
-    cells: [i32; R * C]
+use std;
+enum Test<T> {
+    A { base: i32, a: T },
+    B { base: i32, b: T }
 }
 
-fn mul<A: usize, B: usize, C: usize>(x: &Matrix<A, B>, y: &Matrix<B, C>) -> Matrix<A, C> {
-    let mut result: Matrix<A, C> = Matrix::zero();
-    for i in 0..A { for j in 0..C { ... } }
-    result
-}
+
+let a = Test::A { base: 1, a: 1 };
+
+let base = match a {
+    A { base, a } => base,
+    B { base, b } => base
+};
+
+std::printf("%d", a);

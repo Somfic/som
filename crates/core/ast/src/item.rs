@@ -88,12 +88,57 @@ pub struct Struct {
     /// where it's used.
     pub generics: Vec<Generic>,
     pub fields: Vec<Field>,
+    /// `enum Shape { … }`: the variants, one of which each value is. An enum has no `fields`
+    /// of its own; each variant has its own.
+    pub variants: Option<Vec<Variant>>,
     /// Values are copied rather than moved. Set for structs imported from a C header,
-    /// which are plain data.
+    /// which are plain data, and for enums whose variants hold nothing.
     pub copy: bool,
     /// `extern struct Sqlite3;`: a struct only C sees inside. Its values are handles,
     /// pointers to one, which som can pass around but not look into or create.
     pub handle: bool,
+}
+
+impl Struct {
+    pub fn is_enum(&self) -> bool {
+        self.variants.is_some()
+    }
+
+    /// An enum's variants; none for a struct.
+    pub fn variants(&self) -> &[Variant] {
+        self.variants.as_deref().unwrap_or(&[])
+    }
+
+    /// Every variant's fields, one variant after another: how an enum's payload is laid out.
+    pub fn payload(&self) -> impl Iterator<Item = &Field> {
+        self.variants().iter().flat_map(|v| &v.fields)
+    }
+
+    /// Where variant `variant`'s fields start in `payload`.
+    pub fn payload_start(&self, variant: usize) -> usize {
+        self.variants()[..variant].iter().map(|v| v.fields.len()).sum()
+    }
+}
+
+/// One of an enum's variants: `Empty`, `Circle(f32)` or `Rect { w: f32, h: f32 }`.
+pub struct Variant {
+    /// The `///` comment above it.
+    pub doc: Option<String>,
+    pub name: Ident,
+    pub kind: VariantKind,
+    /// What it holds: named fields for `Rect { w: f32 }`, or numbered `0`, `1`, … for
+    /// `Circle(f32)`.
+    pub fields: Vec<Field>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VariantKind {
+    /// `Empty`: holds nothing.
+    Unit,
+    /// `Circle(f32)`: fields by position.
+    Tuple,
+    /// `Rect { w: f32, h: f32 }`: fields by name.
+    Named,
 }
 
 pub struct Field {

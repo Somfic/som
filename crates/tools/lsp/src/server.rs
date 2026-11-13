@@ -879,7 +879,7 @@ impl LanguageServer for SomLanguageServer {
             }
             for keyword in [
                 "fn", "let", "mut", "if", "else", "struct", "impl", "extern", "loop", "while",
-                "break", "use", "out", "true", "false",
+                "break", "use", "out", "true", "false", "enum", "match",
             ] {
                 items.push(CompletionItem {
                     label: keyword.to_string(),
@@ -1120,7 +1120,13 @@ fn describe(a: &Analysis, def: DefId) -> String {
                 None => format!("out {}", d.name),
             }
         }
-        DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) => match a.typed.try_local(def)
+        DefKind::Variant { strukt, index } => {
+            let def = &a.ast.structs[*strukt];
+            format!("{}::{}", def.name, variant_text(a, *strukt, *index))
+        }
+        DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_) => match a
+            .typed
+            .try_local(def)
         {
             Some(t) => format!("{}: {}", d.name, ty(a, t)),
             None => d.name.to_string(),
@@ -1577,6 +1583,12 @@ fn signature_with(a: &Analysis, f: Id<Func>, subst: &[(DefId, som_typeck::TypeId
 
 fn struct_text(a: &Analysis, s: Id<Struct>) -> String {
     let def = &a.ast.structs[s];
+    if def.is_enum() {
+        let variants: Vec<String> = (0..def.variants().len())
+            .map(|i| format!("    {},", variant_text(a, s, i)))
+            .collect();
+        return format!("enum {} {{\n{}\n}}", def.name, variants.join("\n"));
+    }
     let fields: Vec<String> = def
         .fields
         .iter()
@@ -1584,6 +1596,27 @@ fn struct_text(a: &Analysis, s: Id<Struct>) -> String {
         .map(|(f, &t)| format!("    {}: {},", f.name, ty(a, t)))
         .collect();
     format!("struct {} {{\n{}\n}}", def.name, fields.join("\n"))
+}
+
+/// Variant `index` of enum `s` as declared: `Circle(f32)`, `Rect { w: f32, h: f32 }`.
+fn variant_text(a: &Analysis, s: Id<Struct>, index: usize) -> String {
+    let def = &a.ast.structs[s];
+    let variant = &def.variants()[index];
+    let start = def.payload_start(index);
+    let types = &a.typed.fields(s)[start..start + variant.fields.len()];
+    match variant.kind {
+        som_ast::VariantKind::Unit => variant.name.to_string(),
+        som_ast::VariantKind::Tuple => {
+            let types: Vec<String> = types.iter().map(|&t| ty(a, t)).collect();
+            format!("{}({})", variant.name, types.join(", "))
+        }
+        som_ast::VariantKind::Named => {
+            let fields: Vec<String> = (variant.fields.iter().zip(types))
+                .map(|(f, &t)| format!("{}: {}", f.name, ty(a, t)))
+                .collect();
+            format!("{} {{ {} }}", variant.name, fields.join(", "))
+        }
+    }
 }
 
 /// The struct a value of type `t` is, looking through one reference.
@@ -2333,6 +2366,8 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             TokenKind::Fn
             | TokenKind::Extern
             | TokenKind::Struct
+            | TokenKind::Enum
+            | TokenKind::Match
             | TokenKind::Impl
             | TokenKind::Let
             | TokenKind::If

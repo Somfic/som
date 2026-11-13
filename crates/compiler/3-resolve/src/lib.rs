@@ -15,7 +15,8 @@ mod names;
 pub use error::ResolveError;
 pub use names::{Def, DefId, DefKind, Names};
 
-use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Stmt, TypeExpr};
+use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Pattern, PatternFields, Stmt, TypeExpr};
+use std::collections::HashSet;
 use som_base::diagnostics::{closest_match, snake_case};
 use som_base::message::{self, Message, Part, code};
 use som_base::{Fix, msg};
@@ -29,6 +30,7 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         modules: HashMap::new(),
         items: vec![HashMap::new(); ast.modules.len()],
         imports: vec![Vec::new(); ast.modules.len()],
+        variant_names: vec![HashSet::new(); ast.modules.len()],
         module: 0,
         scopes: Vec::new(),
         type_params: Vec::new(),
@@ -71,6 +73,9 @@ struct Resolver<'a> {
     items: Vec<HashMap<&'a str, DefId>>,
     /// Per module: the modules it `use`s, in order.
     imports: Vec<Vec<usize>>,
+    /// Per module: the names of its enums' variants. A bare name in a pattern that's one of
+    /// those, here or in a module this one uses, is that variant rather than a new binding.
+    variant_names: Vec<HashSet<&'a str>>,
     /// The module whose code is being resolved.
     module: usize,
     /// Local scopes of the function being resolved, innermost last.
@@ -120,6 +125,13 @@ impl<'a> Resolver<'a> {
                         );
                         self.names.set_struct(*id, def);
                         self.add_item(m, &s.name, def);
+                        // Named through the enum: `Shape::Circle`.
+                        for (index, v) in s.variants().iter().enumerate() {
+                            let kind = DefKind::Variant { strukt: *id, index };
+                            let variant = self.names.define(&v.name.name, kind, v.name.span.clone(), m);
+                            self.names.push_variant(*id, variant);
+                            self.variant_names[m].insert(&v.name.name);
+                        }
                     }
                     Item::Impl(block) => {
                         // Methods aren't visible by name in the module; they're attached in `collect_methods`.
@@ -230,7 +242,7 @@ impl<'a> Resolver<'a> {
                                 self.resolve_type(ty);
                             }
                         }
-                        for field in &ast.structs[*id].fields {
+                        for field in ast.structs[*id].fields.iter().chain(ast.structs[*id].payload()) {
                             self.resolve_type(field.ty);
                         }
                         self.type_params.clear();
@@ -479,7 +491,62 @@ impl<'a> Resolver<'a> {
                     r.resolve_expr(*value);
                 }
             }),
+            // What an arm's pattern binds is only seen in that arm.
+            Expr::Match { scrutinee, arms } => {
+                self.resolve_expr(*scrutinee);
+                for arm in arms {
+                    self.in_scope(|r| {
+                        r.resolve_pattern(arm.pattern);
+                        r.resolve_expr(arm.body);
+                    });
+                }
+            }
         }
+    }
+
+    fn resolve_pattern(&mut self, id: Id<Pattern>) {
+        match &self.ast.patterns[id] {
+            Pattern::Wildcard | Pattern::Int(_) | Pattern::Bool(_) | Pattern::None => {}
+            // `Empty`, if some enum in scope has a variant of that name: the type matched
+            // decides whose.
+            Pattern::Binding { name, mutable } => {
+                if !*mutable && self.is_variant_name(&name.name) {
+                    return;
+                }
+                let def = (self.names).define(
+                    &name.name,
+                    DefKind::Binding(id),
+                    name.span.clone(),
+                    self.module,
+                );
+                self.names.set_pattern(id, def);
+                self.bind(name, def);
+            }
+            Pattern::Variant { path, fields } => {
+                // `Shape::Circle(r)`; a bare `Circle(r)` is found from the type matched.
+                if path.segments.len() > 1
+                    && let Some(def) = self.resolve_path(path, Expect::Value)
+                {
+                    self.names.set_pattern(id, def);
+                }
+                match fields {
+                    PatternFields::Unit => {}
+                    PatternFields::Tuple(fields) => {
+                        fields.iter().for_each(|&f| self.resolve_pattern(f));
+                    }
+                    PatternFields::Named { fields, .. } => {
+                        fields.iter().for_each(|&(_, f)| self.resolve_pattern(f));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Whether `name` is a variant of an enum in the current module or one it uses.
+    fn is_variant_name(&self, name: &str) -> bool {
+        std::iter::once(self.module)
+            .chain(self.imports[self.module].iter().copied())
+            .any(|m| self.variant_names[m].contains(name))
     }
 
     fn bind_expr(&mut self, id: Id<Expr>, path: &Path, expect: Expect) {
@@ -589,9 +656,9 @@ impl<'a> Resolver<'a> {
         };
 
         match rest {
-            [method] if matches!(self.names.def(owner).kind, DefKind::Struct(_)) => self
-                .names
-                .method(owner, &method.name)
+            [name] if matches!(self.names.def(owner).kind, DefKind::Struct(_)) => (self.names)
+                .variant(owner, &name.name)
+                .or_else(|| self.names.method(owner, &name.name))
                 .filter(|&d| self.fits(d, expect)),
             _ => None,
         }
@@ -605,8 +672,9 @@ impl<'a> Resolver<'a> {
                 kind,
                 DefKind::Struct(_) | DefKind::TypeParam { .. } | DefKind::StructParam { .. }
             ),
-            Expect::Func => matches!(kind, DefKind::Func(_)),
-            Expect::Struct => matches!(kind, DefKind::Struct(_)),
+            // `Shape::Circle(1.0)` and `Shape::Rect { … }` make a variant.
+            Expect::Func => matches!(kind, DefKind::Func(_) | DefKind::Variant { .. }),
+            Expect::Struct => matches!(kind, DefKind::Struct(_) | DefKind::Variant { .. }),
             Expect::Type => matches!(
                 kind,
                 DefKind::Struct(_) | DefKind::TypeParam { .. } | DefKind::StructParam { .. }
@@ -674,10 +742,13 @@ impl<'a> Resolver<'a> {
             } else if let Some(owner) = self.lookup(&path.segments[0].name, Expect::Struct)
                 && path.segments.len() == 2
             {
-                self.names
-                    .methods_of(owner)
-                    .into_iter()
-                    .map(|(n, _)| n.to_string())
+                let variants = match self.names.def(owner).kind {
+                    DefKind::Struct(s) => self.names.variants(s).to_vec(),
+                    _ => Vec::new(),
+                };
+                (variants.iter())
+                    .map(|&v| self.names.def(v).name.to_string())
+                    .chain(self.names.methods_of(owner).into_iter().map(|(n, _)| n.to_string()))
                     .collect()
             } else {
                 return None;

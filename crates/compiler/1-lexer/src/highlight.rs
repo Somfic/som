@@ -21,6 +21,8 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::For
         | TokenKind::In
         | TokenKind::Struct
+        | TokenKind::Enum
+        | TokenKind::Match
         | TokenKind::Use
         | TokenKind::Mut
         | TokenKind::Out

@@ -1,4 +1,4 @@
-use som_ast::{Ast, Expr, Func, Id, Span, Stmt, Struct, TypeExpr};
+use som_ast::{Ast, Expr, Func, Id, Pattern, Span, Stmt, Struct, TypeExpr};
 use som_base::Arena;
 use std::collections::HashMap;
 
@@ -9,7 +9,15 @@ pub type DefId = Id<Def>;
 pub enum DefKind {
     /// A function, method or extern function.
     Func(Id<Func>),
+    /// A struct, or an enum.
     Struct(Id<Struct>),
+    /// The `index`th variant of enum `strukt`: `Shape::Circle`.
+    Variant {
+        strukt: Id<Struct>,
+        index: usize,
+    },
+    /// A name a `match` arm's pattern binds: `r` in `Circle(r) => …`.
+    Binding(Id<Pattern>),
     /// The `index`th parameter of `func`.
     Param {
         func: Id<Func>,
@@ -66,6 +74,11 @@ pub struct Names {
     structs: Vec<Option<DefId>>,
     /// `(struct, method name)` → the method, for `impl` blocks.
     methods: HashMap<(DefId, Box<str>), DefId>,
+    /// Each enum's variants, in order.
+    variants: Vec<Vec<DefId>>,
+    /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
+    /// name (`Circle(r)`, `Empty`) has none: the type matched decides which enum's it is.
+    patterns: Vec<Option<DefId>>,
 }
 
 impl Names {
@@ -82,7 +95,17 @@ impl Names {
             struct_params: vec![Vec::new(); ast.structs.len()],
             structs: vec![None; ast.structs.len()],
             methods: HashMap::new(),
+            variants: vec![Vec::new(); ast.structs.len()],
+            patterns: vec![None; ast.patterns.len()],
         }
+    }
+
+    pub(crate) fn push_variant(&mut self, s: Id<Struct>, def: DefId) {
+        self.variants[s.id].push(def);
+    }
+
+    pub(crate) fn set_pattern(&mut self, pattern: Id<Pattern>, def: DefId) {
+        self.patterns[pattern.id] = Some(def);
     }
 
     pub(crate) fn define(&mut self, name: &str, kind: DefKind, span: Span, module: usize) -> DefId {
@@ -209,6 +232,24 @@ impl Names {
             .collect();
         methods.sort();
         methods
+    }
+
+    /// An enum's variants, in order. Empty for a struct.
+    pub fn variants(&self, s: Id<Struct>) -> &[DefId] {
+        &self.variants[s.id]
+    }
+
+    /// Enum `owner`'s variant called `name`.
+    pub fn variant(&self, owner: DefId, name: &str) -> Option<DefId> {
+        let DefKind::Struct(s) = self.defs[owner].kind else {
+            return None;
+        };
+        (self.variants[s.id].iter().copied()).find(|&v| &*self.defs[v].name == name)
+    }
+
+    /// What pattern `pattern` binds, or the variant it names if it's qualified: see `patterns`.
+    pub fn pattern(&self, pattern: Id<Pattern>) -> Option<DefId> {
+        self.patterns[pattern.id]
     }
 
     /// The method `name` defined on `owner` by an `impl` block.

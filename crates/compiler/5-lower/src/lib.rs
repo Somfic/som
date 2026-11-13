@@ -10,6 +10,8 @@
 //!   argument is part of the set: `sum<3>` and `sum<4>` are different functions, and `N`
 //!   is a constant in each.
 
+mod matching;
+
 use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
@@ -129,7 +131,7 @@ impl<'a> Lowerer<'a> {
         let ast_struct = &self.ast.structs[s];
         let def = self.names.strukt(s);
         let subst = Subst::new(self.names.struct_params(s), &args);
-        let fields = (ast_struct.fields.iter())
+        let mut fields: Vec<(String, TypeId)> = (ast_struct.fields.iter())
             .zip(self.typed.fields(s))
             .map(|(f, &ty)| {
                 (
@@ -138,6 +140,27 @@ impl<'a> Lowerer<'a> {
                 )
             })
             .collect();
+        // An enum: which variant it is, then every variant's fields.
+        let variants = ast_struct.is_enum().then(|| {
+            let tag = self.mir.types.intern(Ty::Int(IntTy::U32));
+            fields.push(("tag".into(), tag));
+            let mut payload = self.typed.fields(s).iter();
+            (ast_struct.variants().iter())
+                .map(|v| {
+                    let first = fields.len();
+                    for f in &v.fields {
+                        let ty = *payload.next().expect("a type for each field");
+                        let ty = subst.apply(&mut self.mir.types, ty);
+                        fields.push((format!("{}.{}", v.name, f.name), ty));
+                    }
+                    VariantDef {
+                        name: v.name.name.to_string(),
+                        first,
+                        count: v.fields.len(),
+                    }
+                })
+                .collect()
+        });
         let mut name = self.qualified(def, &ast_struct.name.name);
         if !args.is_empty() {
             let shown: Vec<String> = args.iter().map(|&a| self.mir.display_ty(a)).collect();
@@ -148,6 +171,7 @@ impl<'a> Lowerer<'a> {
             args,
             name,
             fields,
+            variants,
             copy: ast_struct.copy,
             handle: ast_struct.handle,
         });
@@ -953,6 +977,26 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         self.read(Place::local(temp), ty)
     }
 
+    /// Evaluates `expr` like `operand`, but an enum whose variants hold nothing as the number
+    /// its tag is: what `==` compares and `as` converts.
+    fn number(&mut self, expr: Id<Expr>) -> Operand {
+        let ty = self.expr_ty(expr);
+        let is_enum = match self.l.mir.types.get(ty) {
+            Ty::Struct(def, _) => matches!(
+                self.l.names.def(*def).kind,
+                DefKind::Struct(s) if self.l.ast.structs[s].is_enum()
+            ),
+            _ => false,
+        };
+        if !is_enum {
+            return self.operand(expr);
+        }
+        let tag = self.place(expr).project(Projection::Field(0));
+        // Make sure the enum's copy, and so its tag, exists.
+        self.place_ty(&tag);
+        Operand::Copy(tag)
+    }
+
     /// Evaluates `expr` to a value that can be assigned to a place, made a slice or wrapped in
     /// an optional where that's what's expected.
     fn rvalue(&mut self, expr: Id<Expr>) -> Rvalue {
@@ -1023,6 +1067,17 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         let type_args = self.type_args(expr);
                         let id = self.l.instance(func, type_args);
                         self.constant(ConstKind::Func(id), ty)
+                    }
+                    // `Shape::Empty`
+                    DefKind::Variant { index, .. } => {
+                        let value = Rvalue::Struct {
+                            ty,
+                            variant: Some(index),
+                            fields: Vec::new(),
+                        };
+                        let temp = self.temp(ty, span.clone());
+                        self.assign(Place::local(temp), value, span);
+                        self.read(Place::local(temp), ty)
                     }
                     // A value parameter: what it is in this copy of the function.
                     _ if self.l.names.is_value_param(def) => {
@@ -1129,6 +1184,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.read(Place::local(result), ty)
             }
 
+            Expr::Match { scrutinee, arms } => self.lower_match(expr, *scrutinee, arms),
+
             Expr::Conditional {
                 condition,
                 then,
@@ -1203,8 +1260,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             }
             Expr::Binary { op, lhs, rhs } => Rvalue::Binary {
                 op: *op,
-                lhs: self.operand(*lhs),
-                rhs: self.operand(*rhs),
+                lhs: self.number(*lhs),
+                rhs: self.number(*rhs),
             },
             Expr::Not(inner) => Rvalue::Not(self.condition(*inner)),
             Expr::Borrow {
@@ -1250,10 +1307,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     .names
                     .expr(expr)
                     .expect("checked programs are fully resolved");
-                let DefKind::Struct(s) = self.l.names.def(def).kind else {
-                    unreachable!("constructors name structs")
+                let (declared, variant) = match self.l.names.def(def).kind {
+                    DefKind::Struct(s) => (&ast.structs[s].fields, None),
+                    // `Shape::Rect { w: 1.0, h: 2.0 }`
+                    DefKind::Variant { strukt, index } => {
+                        (&ast.structs[strukt].variants()[index].fields, Some(index))
+                    }
+                    _ => unreachable!("constructors name structs and variants"),
                 };
-                let declared = &ast.structs[s].fields;
                 // Evaluate in source order, then put the values in declaration order.
                 let mut values: Vec<Option<Operand>> = vec![None; declared.len()];
                 for (name, value) in fields {
@@ -1266,6 +1327,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 let ty = self.expr_ty(expr);
                 Rvalue::Struct {
                     ty,
+                    variant,
                     fields: values
                         .into_iter()
                         .map(|v| v.expect("checked: no missing fields"))
@@ -1278,10 +1340,20 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     .names
                     .expr(expr)
                     .expect("checked programs are fully resolved");
-                let DefKind::Func(func) = self.l.names.def(def).kind else {
-                    unreachable!("calls name functions")
-                };
-                self.call(expr, func, None, args)
+                match self.l.names.def(def).kind {
+                    DefKind::Func(func) => self.call(expr, func, None, args),
+                    // `Shape::Circle(1.0)`
+                    DefKind::Variant { index, .. } => {
+                        let fields = args.iter().map(|&a| self.operand(a)).collect();
+                        let ty = self.expr_ty(expr);
+                        Rvalue::Struct {
+                            ty,
+                            variant: Some(index),
+                            fields,
+                        }
+                    }
+                    _ => unreachable!("calls name functions and variants"),
+                }
             }
             Expr::Array(items) => {
                 let items: Vec<Operand> = items.iter().map(|&item| self.operand(item)).collect();
@@ -1292,7 +1364,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::Cast { value, .. } => {
                 let ty = self.expr_ty(expr);
                 let from = self.expr_ty(*value);
-                let operand = self.operand(*value);
+                let operand = self.number(*value);
                 if from == ty {
                     Rvalue::Use(operand)
                 } else {

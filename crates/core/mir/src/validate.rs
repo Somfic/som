@@ -255,7 +255,11 @@ impl Validator<'_> {
                 }
                 found
             }
-            Rvalue::Struct { ty, fields } => {
+            Rvalue::Struct {
+                ty,
+                variant,
+                fields,
+            } => {
                 let Ty::Struct(def, args) = self.mir.types.get(*ty) else {
                     self.problem("struct literal of a type that isn't a struct".into());
                     return None;
@@ -265,9 +269,18 @@ impl Validator<'_> {
                     self.problem(format!("struct literal of {name}, which has no struct"));
                     return None;
                 }
-                let expected: Vec<TypeId> = (self.mir.struct_def(*def, args).fields.iter())
-                    .map(|(_, t)| *t)
-                    .collect();
+                let s = self.mir.struct_def(*def, args);
+                let declared = match variant {
+                    Some(v) if s.variants.as_ref().is_some_and(|vs| *v < vs.len()) => {
+                        &s.fields[s.variant_fields(*v)]
+                    }
+                    Some(_) => {
+                        self.problem("variant literal of a variant its type doesn't have".into());
+                        return None;
+                    }
+                    None => &s.fields[..],
+                };
+                let expected: Vec<TypeId> = declared.iter().map(|(_, t)| *t).collect();
                 self.check_operands("struct", &expected, fields);
                 Some(*ty)
             }

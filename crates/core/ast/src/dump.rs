@@ -130,9 +130,17 @@ impl Dumper<'_> {
             Item::Func(id) => self.func(*id),
             Item::Struct(id) => {
                 let s = &ast.structs[*id];
-                self.node(format!("struct {}", s.name), |d| {
+                let keyword = if s.is_enum() { "enum" } else { "struct" };
+                self.node(format!("{keyword} {}", s.name), |d| {
                     for f in &s.fields {
                         d.line(format!("field {}: {}", f.name, ast.type_text(f.ty)));
+                    }
+                    for v in s.variants() {
+                        d.node(format!("variant {}", v.name), |d| {
+                            for f in &v.fields {
+                                d.line(format!("field {}: {}", f.name, ast.type_text(f.ty)));
+                            }
+                        });
                     }
                 });
             }
@@ -333,12 +341,50 @@ impl Dumper<'_> {
             Expr::Fallback { optional, fallback } => {
                 self.node("else", |d| d.exprs(&[*optional, *fallback]))
             }
+            Expr::Match { scrutinee, arms } => self.node("match", |d| {
+                d.expr(*scrutinee);
+                for arm in arms {
+                    let pattern = d.ast.pattern_text(arm.pattern);
+                    d.node(format!("arm {pattern}"), |d| d.expr(arm.body));
+                }
+            }),
             Expr::Block { stmts, value } => self.node("block", |d| {
                 stmts.iter().for_each(|&s| d.stmt(s));
                 if let Some(value) = value {
                     d.node("value", |d| d.expr(*value));
                 }
             }),
+        }
+    }
+}
+
+impl Ast {
+    /// A pattern as it would be written.
+    pub fn pattern_text(&self, id: Id<Pattern>) -> String {
+        match &self.patterns[id] {
+            Pattern::Wildcard => "_".into(),
+            Pattern::Binding { name, mutable } => {
+                format!("{}{name}", if *mutable { "mut " } else { "" })
+            }
+            Pattern::Int(n) => n.to_string(),
+            Pattern::Bool(b) => b.to_string(),
+            Pattern::None => "none".into(),
+            Pattern::Variant { path, fields } => match fields {
+                PatternFields::Unit => path.to_string(),
+                PatternFields::Tuple(fields) => {
+                    let fields: Vec<String> = fields.iter().map(|&f| self.pattern_text(f)).collect();
+                    format!("{path}({})", fields.join(", "))
+                }
+                PatternFields::Named { fields, rest } => {
+                    let mut parts: Vec<String> = (fields.iter())
+                        .map(|(name, p)| format!("{name}: {}", self.pattern_text(*p)))
+                        .collect();
+                    if *rest {
+                        parts.push("..".into());
+                    }
+                    format!("{path} {{ {} }}", parts.join(", "))
+                }
+            },
         }
     }
 }

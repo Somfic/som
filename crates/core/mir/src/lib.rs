@@ -136,12 +136,33 @@ pub struct StructDef {
     pub args: Vec<TypeId>,
     /// Readable name, with its type arguments: `geo::Point`, `Pair<i32>`.
     pub name: String,
-    /// Each field's name and type, with the type arguments filled in.
+    /// Each field's name and type, with the type arguments filled in. An enum's first field
+    /// is its `tag`, a `u32` saying which variant it is; every variant's fields follow, one
+    /// variant after another, named like `Circle.0` and `Rect.w`. Only the tag's variant's
+    /// fields hold anything.
     pub fields: Vec<(String, TypeId)>,
+    /// For an enum: its variants, in order.
+    pub variants: Option<Vec<VariantDef>>,
     /// Values are copied rather than moved.
     pub copy: bool,
     /// An `extern struct`: values are pointers to a struct only C sees inside.
     pub handle: bool,
+}
+
+impl StructDef {
+    /// The fields of variant `variant`, by their index in `fields`.
+    pub fn variant_fields(&self, variant: usize) -> std::ops::Range<usize> {
+        let v = &self.variants.as_ref().expect("only enums have variants")[variant];
+        v.first..v.first + v.count
+    }
+}
+
+/// One of an enum's variants.
+pub struct VariantDef {
+    pub name: String,
+    /// Where its fields start in the enum's `fields`, and how many there are.
+    pub first: usize,
+    pub count: usize,
 }
 
 pub struct Function {
@@ -334,10 +355,12 @@ pub enum Rvalue {
         operand: Operand,
         ty: TypeId,
     },
-    /// A struct value, with fields in declaration order.
+    /// A struct value, with fields in declaration order; or, with `variant`, an enum's, with
+    /// that variant's fields in order and its tag set.
     Struct {
         /// The struct type, with its type arguments.
         ty: TypeId,
+        variant: Option<usize>,
         fields: Vec<Operand>,
     },
     Call {

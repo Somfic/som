@@ -9,13 +9,14 @@
 
 mod check;
 mod error;
+mod exhaustive;
 mod ty;
 mod unify;
 
 pub use error::TypeError;
 pub use ty::{FloatTy, IntTy, Ty, TypeId, TypeTable, Value};
 
-use som_ast::{Ast, Expr, Func, Id, Stmt, Struct};
+use som_ast::{Ast, Expr, Func, Id, Pattern, Stmt, Struct};
 use som_resolve::{DefId, Names};
 use std::collections::{HashMap, HashSet};
 
@@ -37,8 +38,13 @@ pub struct Typed {
     /// Parameters and `let` locals.
     locals: HashMap<DefId, TypeId>,
     funcs: Vec<Signature>,
-    /// Field types of each struct, in declaration order.
+    /// Field types of each struct, in declaration order; for an enum, every variant's fields,
+    /// one variant after another.
     structs: Vec<Vec<TypeId>>,
+    /// What each `match` arm's pattern turned out to be.
+    patterns: HashMap<Id<Pattern>, PatternInfo>,
+    /// `match` arms that never finish, like `{ return 0; }`: they have no value to give.
+    diverging: HashSet<Id<Expr>>,
     /// `[value; N]` → `N`, as an array type's length.
     counts: HashMap<Id<Expr>, TypeId>,
     /// `MethodCall` → the method it calls.
@@ -60,6 +66,21 @@ pub struct Typed {
     loops: HashMap<Id<Stmt>, Loop>,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
+}
+
+/// What a pattern in a `match` arm turned out to be, once the type it matches was known.
+#[derive(Clone, Debug, Default)]
+pub struct PatternInfo {
+    /// It's matched against an optional, and matches the value the optional holds: `5` or
+    /// `Circle(r)` against a `Shape?`.
+    pub unwraps: bool,
+    /// A variant pattern, or a bare name that's a variant: which of the enum's variants.
+    pub variant: Option<usize>,
+    /// For a variant pattern: the field each of its patterns matches, in the order written.
+    pub fields: Vec<usize>,
+    /// A binding that borrows what it matches instead of copying or moving it, matched through
+    /// a reference: whether it's `&mut`.
+    pub by_ref: Option<bool>,
 }
 
 /// What a `for` loop goes through.
@@ -157,8 +178,19 @@ impl Typed {
         &self.funcs[func.id]
     }
 
+    /// A struct's field types, or an enum's payload: every variant's fields, one after another.
     pub fn fields(&self, s: Id<Struct>) -> &[TypeId] {
         &self.structs[s.id]
+    }
+
+    /// What a `match` arm's pattern turned out to be.
+    pub fn pattern(&self, pattern: Id<Pattern>) -> Option<&PatternInfo> {
+        self.patterns.get(&pattern)
+    }
+
+    /// Whether `match` arm body `expr` never finishes, so it has no value.
+    pub fn diverges(&self, expr: Id<Expr>) -> bool {
+        self.diverging.contains(&expr)
     }
 
     /// How many copies `[value; N]` makes: `N`, as an array type's length. It's in terms of

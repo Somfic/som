@@ -28,6 +28,7 @@ pub struct Ast {
     pub exprs: Nodes<Expr>,
     pub stmts: Nodes<Stmt>,
     pub types: Nodes<TypeExpr>,
+    pub patterns: Nodes<Pattern>,
 }
 
 /// One module: the `.som` files in one directory, named by the `use` path that loaded it.

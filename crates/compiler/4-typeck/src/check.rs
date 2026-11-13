@@ -1,13 +1,17 @@
-use som_ast::{Ast, BinOp, Expr, Func, Id, Primitive, Span, Stmt, TypeExpr};
+use som_ast::{Ast, BinOp, Expr, Func, Id, Pattern, Primitive, Span, Stmt, TypeExpr, VariantKind};
 use som_resolve::{DefId, DefKind, Names};
 use std::collections::{HashMap, HashSet};
 
 use crate::error::TypeError;
 use crate::ty::{IntTy, Ty, TypeId, Value};
 use crate::unify::{Unifier, VarKind};
-use crate::{ArrayMethod, Loop, Signature, Typed};
+use crate::{ArrayMethod, Loop, PatternInfo, Signature, Typed};
 use som_base::Message;
 use som_base::message;
+
+mod matching;
+
+use matching::holds;
 
 pub(crate) struct Checker<'a> {
     ast: &'a Ast,
@@ -42,6 +46,10 @@ pub(crate) struct Checker<'a> {
     deferred_ops: Vec<(Id<Expr>, BinOp, TypeId, TypeId)>,
     /// How many `loop`s and `while`s enclose the statement being checked.
     loops: usize,
+    patterns: HashMap<Id<som_ast::Pattern>, PatternInfo>,
+    diverging: HashSet<Id<Expr>>,
+    /// The next expression checked is a statement's: its value isn't used.
+    discarding: bool,
 }
 
 impl<'a> Checker<'a> {
@@ -71,6 +79,9 @@ impl<'a> Checker<'a> {
             in_place: false,
             deferred_ops: Vec::new(),
             loops: 0,
+            patterns: HashMap::new(),
+            diverging: HashSet::new(),
+            discarding: false,
         }
     }
 
@@ -99,7 +110,10 @@ impl<'a> Checker<'a> {
 
         // Struct fields and function signatures first, so bodies can use them in any order.
         for (_, s) in ast.structs.iter() {
-            let fields = s.fields.iter().map(|f| self.lower(f.ty)).collect();
+            // An enum's payload: every variant's fields, one variant after another.
+            let fields = (s.fields.iter().chain(s.payload()))
+                .map(|f| self.lower(f.ty))
+                .collect();
             self.structs.push(fields);
         }
         for (id, func) in ast.funcs.iter() {
@@ -298,6 +312,8 @@ impl<'a> Checker<'a> {
             array_methods: self.array_methods,
             sliced,
             loops: self.for_loops,
+            patterns: self.patterns,
+            diverging: self.diverging,
         };
         (typed, self.errors)
     }
@@ -697,7 +713,10 @@ impl<'a> Checker<'a> {
                 }
             }
             Stmt::Expr(expr) => {
+                // A `match` whose value isn't used can have arms of different types.
+                self.discarding = matches!(self.ast.exprs[*expr], Expr::Match { .. });
                 self.infer(*expr);
+                self.discarding = false;
             }
             Stmt::Loop { body } => self.check_loop(body),
             Stmt::While { condition, body } => {
@@ -788,10 +807,19 @@ impl<'a> Checker<'a> {
                 ..
             } => self.leaves(then) && self.leaves(otherwise),
             Stmt::Loop { body } => !self.breaks(body),
-            Stmt::Expr(expr) => match &self.ast.exprs[*expr] {
-                Expr::Block { stmts, value: None } => self.leaves(stmts),
-                _ => false,
-            },
+            Stmt::Expr(expr) => self.expr_leaves(*expr),
+            _ => false,
+        }
+    }
+
+    /// Whether control never gets past `expr`: a block with no value that `leaves`, or a
+    /// `match` all of whose arms do.
+    fn expr_leaves(&self, expr: Id<Expr>) -> bool {
+        match &self.ast.exprs[expr] {
+            Expr::Block { stmts, value: None } => self.leaves(stmts),
+            Expr::Match { arms, .. } => {
+                !arms.is_empty() && arms.iter().all(|arm| self.expr_leaves(arm.body))
+            }
             _ => false,
         }
     }
@@ -806,12 +834,18 @@ impl<'a> Checker<'a> {
             Stmt::If {
                 then, otherwise, ..
             } => self.breaks(then) || otherwise.as_ref().is_some_and(|o| self.breaks(o)),
-            Stmt::Expr(expr) => match &self.ast.exprs[*expr] {
-                Expr::Block { stmts, .. } => self.breaks(stmts),
-                _ => false,
-            },
+            Stmt::Expr(expr) => self.expr_breaks(*expr),
             _ => false,
         })
+    }
+
+    /// Whether there's a `break` in a block or `match` arm `expr`.
+    fn expr_breaks(&self, expr: Id<Expr>) -> bool {
+        match &self.ast.exprs[expr] {
+            Expr::Block { stmts, .. } => self.breaks(stmts),
+            Expr::Match { arms, .. } => arms.iter().any(|arm| self.expr_breaks(arm.body)),
+            _ => false,
+        }
     }
 
     /// What a `for` loop over `iterable`, of type `ty`, binds each time round, recording how
@@ -1240,7 +1274,10 @@ impl<'a> Checker<'a> {
                         Ty::Int(_) | Ty::Float(_) | Ty::Error
                     ) || matches!(c.u.var_kind(ty), Some(VarKind::Int | VarKind::Float))
                 };
-                if !number(self, found) || !number(self, target) {
+                // An enum whose variants hold nothing converts to the number of its variant.
+                let plain_enum = self.is_plain_enum(self.u.get(self.u.shallow(found)))
+                    && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_));
+                if !plain_enum && (!number(self, found) || !number(self, target)) {
                     self.errors.push(TypeError::InvalidCast {
                         from: self.describe(found),
                         to: self.describe(target),
@@ -1298,11 +1335,28 @@ impl<'a> Checker<'a> {
                         _ => error,
                     }
                 }
-                Some((def, DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_))) => {
+                Some((
+                    def,
+                    DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_),
+                )) => {
                     let ty = self.locals.get(&def).copied().unwrap_or(error);
                     // Passed on, a `&mut` can change what's behind it.
                     if !in_place && self.is_mut_ref(ty) {
                         self.forget(|key| key.root == def && !key.path.is_empty());
+                    }
+                    ty
+                }
+                // `Shape::Empty`
+                Some((def, DefKind::Variant { .. })) => {
+                    let (ty, s, index, _) = self.variant_value(def);
+                    let kind = self.ast.structs[s].variants()[index].kind;
+                    if kind != VariantKind::Unit {
+                        self.errors.push(TypeError::WrongVariantForm {
+                            name: self.variant_name(s, index),
+                            holds: holds(kind),
+                            form: self.variant_form(s, index),
+                            span: self.span(id),
+                        });
                     }
                     ty
                 }
@@ -1472,6 +1526,42 @@ impl<'a> Checker<'a> {
                         self.check_args(id, &callee.to_string(), func, &sig.params, args);
                         sig.ret
                     }
+                    // `Shape::Circle(1.0)`
+                    Some(DefKind::Variant { .. }) => {
+                        let def = self.names.expr(id).expect("matched above");
+                        let (ty, s, index, fields) = self.variant_value(def);
+                        let variant = &self.ast.structs[s].variants()[index];
+                        if variant.kind != VariantKind::Tuple {
+                            self.errors.push(TypeError::WrongVariantForm {
+                                name: self.variant_name(s, index),
+                                holds: holds(variant.kind),
+                                form: self.variant_form(s, index),
+                                span: self.span(id),
+                            });
+                            args.iter().for_each(|&a| {
+                                self.infer(a);
+                            });
+                        } else if args.len() != fields.len() {
+                            self.errors.push(TypeError::WrongArgCount {
+                                name: callee.to_string(),
+                                expected: fields.len(),
+                                at_least: false,
+                                found: args.len(),
+                                span: self.span(id),
+                            });
+                            args.iter().for_each(|&a| {
+                                self.infer(a);
+                            });
+                        } else {
+                            for ((&arg, &field), declared) in
+                                args.iter().zip(&fields).zip(&variant.fields)
+                            {
+                                let from = self.ast.types.span(declared.ty).clone();
+                                self.expect(arg, field, Some(from));
+                            }
+                        }
+                        ty
+                    }
                     _ => {
                         args.iter().for_each(|&a| {
                             self.infer(a);
@@ -1604,10 +1694,13 @@ impl<'a> Checker<'a> {
                     });
                     return error;
                 };
-                let DefKind::Struct(s) = self.names.def(def).kind else {
-                    unreachable!("resolver only binds constructors to structs")
+                // A struct, or a variant with named fields: `Shape::Rect { w: 1.0, h: 2.0 }`.
+                let (s, variant) = match self.names.def(def).kind {
+                    DefKind::Struct(s) => (s, None),
+                    DefKind::Variant { strukt, index } => (strukt, Some(index)),
+                    _ => unreachable!("resolver only binds constructors to structs and variants"),
                 };
-                let struct_name = self.names.def(def).name.to_string();
+                let def = self.names.strukt(s);
                 // The type arguments written, `Pair<i32> { … }`; or each starts unknown, and the
                 // fields' values decide them.
                 let expected = self.names.struct_params(s).len();
@@ -1617,7 +1710,50 @@ impl<'a> Checker<'a> {
                     self.lower_args(def, s, written, self.span(id))
                 };
                 let subst = self.struct_subst(s, &args);
-                let ty = self.u.intern(Ty::Struct(def, args));
+                let ty = self.u.intern(Ty::Struct(def, args.clone()));
+                let ast_struct = &self.ast.structs[s];
+                let wrong_form = match variant {
+                    // `Shape { … }`: an enum is made from one of its variants.
+                    None if ast_struct.is_enum() => {
+                        let example = (!ast_struct.variants().is_empty())
+                            .then(|| self.variant_form(s, 0));
+                        self.errors.push(TypeError::ConstructEnum {
+                            name: ast_struct.name.name.to_string(),
+                            example,
+                            span: self.span(id),
+                        });
+                        true
+                    }
+                    Some(index) if ast_struct.variants()[index].kind != VariantKind::Named => {
+                        self.errors.push(TypeError::WrongVariantForm {
+                            name: self.variant_name(s, index),
+                            holds: holds(ast_struct.variants()[index].kind),
+                            form: self.variant_form(s, index),
+                            span: self.span(id),
+                        });
+                        true
+                    }
+                    _ => false,
+                };
+                if wrong_form {
+                    given.iter().for_each(|(_, v)| {
+                        self.infer(*v);
+                    });
+                    return ty;
+                }
+                let (struct_name, declared, field_tys) = match variant {
+                    Some(index) => (
+                        self.variant_name(s, index),
+                        &ast_struct.variants()[index].fields,
+                        self.variant_fields(s, index, &args),
+                    ),
+                    None => {
+                        let tys = (0..ast_struct.fields.len())
+                            .map(|i| self.substitute(self.structs[s.id][i], &subst))
+                            .collect();
+                        (self.names.def(def).name.to_string(), &ast_struct.fields, tys)
+                    }
+                };
                 // Only C can make one: som doesn't know what's inside.
                 if self.ast.structs[s].handle {
                     self.errors.push(TypeError::ConstructHandle {
@@ -1629,8 +1765,6 @@ impl<'a> Checker<'a> {
                     });
                     return ty;
                 }
-                let declared = &self.ast.structs[s].fields;
-
                 let mut seen = vec![false; declared.len()];
                 for (name, value) in given {
                     match declared.iter().position(|f| f.name.name == name.name) {
@@ -1643,7 +1777,7 @@ impl<'a> Checker<'a> {
                         }
                         Some(index) => {
                             seen[index] = true;
-                            let expected = self.substitute(self.structs[s.id][index], &subst);
+                            let expected = field_tys[index];
                             let from = self.ast.types.span(declared[index].ty).clone();
                             self.expect(*value, expected, Some(from));
                         }
@@ -1689,6 +1823,11 @@ impl<'a> Checker<'a> {
                     self.mismatch(then_ty, otherwise_ty, self.span(*otherwise), Some(from));
                     then_ty
                 }
+            }
+
+            Expr::Match { scrutinee, arms } => {
+                let discarded = std::mem::take(&mut self.discarding);
+                self.check_match(id, *scrutinee, arms, discarded)
             }
 
             Expr::Block { stmts, value } => {
@@ -2007,6 +2146,10 @@ impl<'a> Checker<'a> {
                         let param = &self.ast.funcs[func].params[index];
                         param.mutable || param.out
                     }
+                    DefKind::Binding(pattern) => matches!(
+                        self.ast.patterns[pattern],
+                        Pattern::Binding { mutable: true, .. }
+                    ),
                     _ => true,
                 };
                 (!mutable).then_some(Immutable::Variable(def))
@@ -2041,7 +2184,7 @@ impl<'a> Checker<'a> {
             Expr::Var(_) => self.names.expr(expr).is_none_or(|def| {
                 matches!(
                     self.names.def(def).kind,
-                    DefKind::Local(_) | DefKind::Out(_) | DefKind::Param { .. }
+                    DefKind::Local(_) | DefKind::Out(_) | DefKind::Param { .. } | DefKind::Binding(_)
                 )
             }),
             Expr::Field { object, .. } => self.is_place(*object),
@@ -2085,6 +2228,21 @@ impl<'a> Checker<'a> {
         result
     }
 
+    /// Whether `ty` is an enum whose variants hold nothing: a number, really, which can be
+    /// compared and converted to one.
+    fn is_plain_enum(&self, ty: &Ty) -> bool {
+        match ty {
+            Ty::Struct(def, _) => match self.names.def(*def).kind {
+                DefKind::Struct(s) => {
+                    let s = &self.ast.structs[s];
+                    s.is_enum() && s.payload().next().is_none()
+                }
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     /// Whether `op` is defined on operands of type `ty`, or `None` if `ty` isn't known yet.
     fn operand_ok(&self, op: BinOp, ty: TypeId) -> Option<bool> {
         if let Some(kind) = self.u.var_kind(ty) {
@@ -2106,10 +2264,12 @@ impl<'a> Checker<'a> {
             | BinOp::GreaterThanOrEqual => {
                 matches!(ty, Ty::Int(_) | Ty::Float(_) | Ty::Char)
             }
-            BinOp::Equals | BinOp::NotEquals => matches!(
-                ty,
-                Ty::Int(_) | Ty::Float(_) | Ty::Char | Ty::Bool | Ty::Pointer
-            ),
+            BinOp::Equals | BinOp::NotEquals => {
+                matches!(
+                    ty,
+                    Ty::Int(_) | Ty::Float(_) | Ty::Char | Ty::Bool | Ty::Pointer
+                ) || self.is_plain_enum(ty)
+            }
             BinOp::And | BinOp::Or => matches!(ty, Ty::Bool),
         })
     }
@@ -2203,7 +2363,7 @@ impl Checker<'_> {
                 let def = self.names.expr(expr)?;
                 matches!(
                     self.names.def(def).kind,
-                    DefKind::Local(_) | DefKind::Param { .. } | DefKind::Out(_)
+                    DefKind::Local(_) | DefKind::Param { .. } | DefKind::Out(_) | DefKind::Binding(_)
                 )
                 .then(|| Key {
                     root: def,
@@ -2372,6 +2532,12 @@ impl Checker<'_> {
                 self.forget_changed_in(stmts);
                 if let Some(value) = value {
                     self.forget_changed_by(*value, false);
+                }
+            }
+            Expr::Match { scrutinee, arms } => {
+                self.forget_changed_by(*scrutinee, false);
+                for arm in arms {
+                    self.forget_changed_by(arm.body, false);
                 }
             }
         }

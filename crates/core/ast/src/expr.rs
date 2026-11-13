@@ -86,10 +86,54 @@ pub enum Expr {
         optional: Id<Expr>,
         fallback: Id<Expr>,
     },
+    /// `match scrutinee { pattern => value, … }`: the value of the first arm whose pattern
+    /// matches.
+    Match {
+        scrutinee: Id<Expr>,
+        arms: Vec<Arm>,
+    },
     /// `{ stmts; value }`
     Block {
         stmts: Vec<Id<Stmt>>,
         value: Option<Id<Expr>>,
+    },
+}
+
+/// `pattern => body` in a `match`.
+pub struct Arm {
+    pub pattern: Id<Pattern>,
+    pub body: Id<Expr>,
+}
+
+/// What a `match` arm compares a value against.
+pub enum Pattern {
+    /// `_`: anything, ignored.
+    Wildcard,
+    /// `name` or `mut name`: anything, bound to `name`. A bare name that's one of an enum's
+    /// variants, like `Empty`, is that variant instead; the resolver tells them apart.
+    Binding { name: Ident, mutable: bool },
+    /// `3`, `-1`
+    Int(i64),
+    /// `true` or `false`
+    Bool(bool),
+    /// `none`: an optional without a value. Any other pattern matched against an optional
+    /// matches the value it holds.
+    None,
+    /// `Circle(r)`, `Rect { w, h }`, `Shape::Empty`: one of an enum's variants, and patterns
+    /// for what it holds.
+    Variant { path: Path, fields: PatternFields },
+}
+
+pub enum PatternFields {
+    /// `Shape::Empty`
+    Unit,
+    /// `Circle(r)`: a pattern for each field, in order.
+    Tuple(Vec<Id<Pattern>>),
+    /// `Rect { w, h: height, .. }`: patterns for fields by name; `rest` if `..` leaves the
+    /// others out. `w` alone is short for `w: w`.
+    Named {
+        fields: Vec<(Ident, Id<Pattern>)>,
+        rest: bool,
     },
 }
 

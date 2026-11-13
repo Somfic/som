@@ -194,18 +194,29 @@ impl Mir {
                     self.display_ty(*ty)
                 )
             }
-            Rvalue::Struct { ty, fields } => {
+            Rvalue::Struct {
+                ty,
+                variant,
+                fields,
+            } => {
                 let Ty::Struct(def, args) = self.types.get(*ty) else {
                     return format!("struct literal of {}", self.display_ty(*ty));
                 };
                 let s = self.struct_def(*def, args);
-                let fields: Vec<String> = s
-                    .fields
+                let (name, declared) = match variant {
+                    Some(v) => {
+                        let variants = s.variants.as_ref().expect("variants are of enums");
+                        let name = format!("{}::{}", s.name, variants[*v].name);
+                        (name, &s.fields[s.variant_fields(*v)])
+                    }
+                    None => (s.name.clone(), &s.fields[..]),
+                };
+                let fields: Vec<String> = declared
                     .iter()
                     .zip(fields)
                     .map(|((name, _), op)| format!("{name}: {}", self.display_operand(op)))
                     .collect();
-                format!("{} {{ {} }}", s.name, fields.join(", "))
+                format!("{name} {{ {} }}", fields.join(", "))
             }
             Rvalue::Call { func, args } => {
                 let args: Vec<String> = args.iter().map(|a| self.display_operand(a)).collect();

@@ -14,6 +14,18 @@ impl Parser<'_> {
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
+            // Like `if`, a `match` that starts a statement ends at its brace: no `;` needed.
+            TokenKind::Match => {
+                let Some(expr) = self.parse_match() else {
+                    return StmtOrExpr::Error;
+                };
+                let ends_block = self.at(TokenKind::CloseBrace) || self.at_eof();
+                if !self.eat(TokenKind::Semicolon) && ends_block {
+                    return StmtOrExpr::Expr(expr);
+                }
+                let span = self.ast.exprs.span(expr).clone();
+                Some(self.ast.stmts.alloc(Stmt::Expr(expr), span))
+            }
             _ => {
                 let Some(expr) = self.parse_expr() else {
                     return StmtOrExpr::Error;

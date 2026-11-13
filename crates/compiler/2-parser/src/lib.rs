@@ -246,7 +246,12 @@ impl Parser<'_> {
                 TokenKind::If,
                 TokenKind::Fn,
             ],
-            RecoveryLevel::Declaration => &[TokenKind::Fn, TokenKind::Extern, TokenKind::Struct],
+            RecoveryLevel::Declaration => &[
+                TokenKind::Fn,
+                TokenKind::Extern,
+                TokenKind::Struct,
+                TokenKind::Enum,
+            ],
         };
 
         while !self.at_eof() {

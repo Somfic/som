@@ -1,4 +1,6 @@
-use som_ast::{Expr, Extern, Field, Func, Id, Impl, Item, Param, Struct, Use};
+use som_ast::{
+    Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Use, Variant, VariantKind,
+};
 use som_base::message::code;
 use som_base::msg;
 use som_lexer::TokenKind;
@@ -12,6 +14,7 @@ impl Parser<'_> {
             TokenKind::Fn
                 | TokenKind::Extern
                 | TokenKind::Struct
+                | TokenKind::Enum
                 | TokenKind::Use
                 | TokenKind::Impl
         )
@@ -25,6 +28,7 @@ impl Parser<'_> {
             }
             TokenKind::Extern => self.parse_extern().map(Item::Extern),
             TokenKind::Struct => self.parse_struct().map(Item::Struct),
+            TokenKind::Enum => self.parse_enum().map(Item::Struct),
             TokenKind::Use if self.peek_nth(1) == TokenKind::Extern => {
                 self.parse_use_extern().map(Item::Extern)
             }
@@ -186,12 +190,80 @@ impl Parser<'_> {
                 name,
                 generics,
                 fields,
+                variants: None,
                 // A handle is just a pointer, so copying it copies nothing C owns.
                 copy: handle,
                 handle,
             },
             span,
         ))
+    }
+
+    /// `enum Shape { Circle(f32), Rect { w: f32, h: f32 }, Empty }`: a type whose values are
+    /// each one of its variants.
+    fn parse_enum(&mut self) -> Option<Id<Struct>> {
+        let doc = self.doc_comment();
+        let start = self.current_span();
+        self.expect(TokenKind::Enum, "an enum declaration")?;
+        let name = self.parse_ident("an enum name")?;
+        let generics = self.parse_generics()?;
+        self.expect(TokenKind::OpenBrace, "a list of enum variants")?;
+        let variants = self.parse_comma_list(TokenKind::CloseBrace, |p| p.parse_variant())?;
+        self.expect(TokenKind::CloseBrace, "a closing brace after the variants")?;
+        // Variants that hold nothing are just a number.
+        let copy = variants.iter().all(|v| v.fields.is_empty());
+        let span = self.span_from(&start);
+        Some(self.ast.structs.alloc(
+            Struct {
+                doc,
+                name,
+                generics,
+                fields: Vec::new(),
+                variants: Some(variants),
+                copy,
+                handle: false,
+            },
+            span,
+        ))
+    }
+
+    /// `Empty`, `Circle(f32)` or `Rect { w: f32, h: f32 }`
+    fn parse_variant(&mut self) -> Option<Variant> {
+        let doc = self.doc_comment();
+        let name = self.parse_ident("a variant name")?;
+        let (kind, fields) = if self.eat(TokenKind::OpenParen) {
+            let types = self.parse_comma_list(TokenKind::CloseParen, |p| p.parse_type())?;
+            self.expect(TokenKind::CloseParen, "a closing parenthesis after the fields")?;
+            let fields = (types.into_iter().enumerate())
+                .map(|(i, ty)| Field {
+                    doc: None,
+                    name: Ident {
+                        name: i.to_string().into(),
+                        span: self.ast.types.span(ty).clone(),
+                    },
+                    ty,
+                })
+                .collect();
+            (VariantKind::Tuple, fields)
+        } else if self.eat(TokenKind::OpenBrace) {
+            let fields = self.parse_comma_list(TokenKind::CloseBrace, |p| {
+                let doc = p.doc_comment();
+                let name = p.parse_ident("a field name")?;
+                p.expect(TokenKind::Colon, "a field type")?;
+                let ty = p.parse_type()?;
+                Some(Field { doc, name, ty })
+            })?;
+            self.expect(TokenKind::CloseBrace, "a closing brace after the fields")?;
+            (VariantKind::Named, fields)
+        } else {
+            (VariantKind::Unit, Vec::new())
+        };
+        Some(Variant {
+            doc,
+            name,
+            kind,
+            fields,
+        })
     }
 
     /// `fn name<T>(params) -> Ret { body }`

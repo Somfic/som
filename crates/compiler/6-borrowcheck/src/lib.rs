@@ -460,6 +460,12 @@ impl<'a> FnChecker<'a> {
                     }
                     ty = *to;
                 }
+                // An enum's fields are named by the enum: `match m` moved from `m`.
+                (Projection::Field(_), Ty::Struct(def, args))
+                    if self.mir.struct_def(*def, args).variants.is_some() =>
+                {
+                    break;
+                }
                 (Projection::Field(i), Ty::Struct(def, args)) => {
                     let (field, field_ty) = &self.mir.struct_def(*def, args).fields[*i];
                     name = format!("{name}.{field}");
