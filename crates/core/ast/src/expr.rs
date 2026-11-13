@@ -116,8 +116,18 @@ pub enum Stmt {
         condition: Id<Expr>,
         body: Vec<Id<Stmt>>,
     },
-    /// `break;`: leaves the innermost `loop` or `while`.
+    /// `break;`: leaves the innermost `loop`, `while` or `for`.
     Break,
+    /// `continue;`: goes on with the innermost loop's next time round.
+    Continue,
+    /// `for name in iterable { body }`: runs `body` once for each integer in a range, or each
+    /// element of an array or slice, with `name` bound to it.
+    For {
+        name: Ident,
+        mutable: bool,
+        iterable: Id<Expr>,
+        body: Vec<Id<Stmt>>,
+    },
     /// `if condition { then } else { otherwise }`. The condition is a `bool`, or an optional
     /// that's true when it holds a value: `if x` is `if x != none`.
     If {

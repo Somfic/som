@@ -508,7 +508,6 @@ impl<'a> Emitter<'a> {
         self.line("#include <stdint.h>");
         self.line("");
         self.line("typedef uint8_t som_unit;");
-        self.line("");
     }
 
     fn struct_name(&self, def: DefId) -> String {

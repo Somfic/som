@@ -1,0 +1,7 @@
+// expect: error NotIterable
+
+fn main() -> i32 {
+    // `"hi".bytes()` would loop over its bytes.
+    for c in "hi" { }
+    0
+}

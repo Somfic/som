@@ -170,8 +170,12 @@ pub enum TokenKind {
     While,
     #[token("break")]
     Break,
+    #[token("continue")]
+    Continue,
     #[token("for")]
     For,
+    #[token("in")]
+    In,
 
     // Special
     Error,
@@ -196,7 +200,9 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Loop => write!(f, "loop"),
             TokenKind::While => write!(f, "while"),
             TokenKind::Break => write!(f, "break"),
+            TokenKind::Continue => write!(f, "continue"),
             TokenKind::For => write!(f, "for"),
+            TokenKind::In => write!(f, "in"),
             TokenKind::I8 => write!(f, "i8"),
             TokenKind::I16 => write!(f, "i16"),
             TokenKind::I32 => write!(f, "i32"),

@@ -1,0 +1,6 @@
+// expect: error BreakOutsideLoop
+
+fn main() -> i32 {
+    continue;
+    0
+}

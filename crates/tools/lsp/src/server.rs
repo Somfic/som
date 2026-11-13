@@ -854,11 +854,12 @@ impl LanguageServer for SomLanguageServer {
             return Ok(None);
         };
 
-        // The inferred type after every unannotated `let`.
+        // The inferred type after every unannotated `let`, and every `for` loop's name.
         let mut hints = Vec::new();
         for (id, stmt) in a.ast.stmts.iter() {
-            let Stmt::Let { name, ty: None, .. } = stmt else {
-                continue;
+            let name = match stmt {
+                Stmt::Let { name, ty: None, .. } | Stmt::For { name, .. } => name,
+                _ => continue,
             };
             if name.span.source.identifier() != file {
                 continue;
@@ -2023,7 +2024,9 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::Loop
             | TokenKind::While
             | TokenKind::Break
-            | TokenKind::For => 0,
+            | TokenKind::Continue
+            | TokenKind::For
+            | TokenKind::In => 0,
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
             TokenKind::Ident if token.text.starts_with(char::is_uppercase) => 8,
             TokenKind::Ident => 1,

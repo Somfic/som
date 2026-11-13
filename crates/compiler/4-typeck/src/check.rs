@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use crate::error::TypeError;
 use crate::ty::{Ty, TypeId};
 use crate::unify::{Unifier, VarKind};
-use crate::{ArrayMethod, Signature, Typed};
+use crate::{ArrayMethod, Loop, Signature, Typed};
 use som_base::Message;
 use som_base::message;
 
@@ -29,6 +29,7 @@ pub(crate) struct Checker<'a> {
     narrowed_reads: HashSet<Id<Expr>>,
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
     sliced: HashMap<Id<Expr>, TypeId>,
+    for_loops: HashMap<Id<Stmt>, Loop>,
     /// The next expression inferred is the object of a field access or dereference.
     in_place: bool,
     /// Operators whose operand type wasn't known yet when they were checked.
@@ -57,6 +58,7 @@ impl<'a> Checker<'a> {
             narrowed_reads: HashSet::new(),
             array_methods: HashMap::new(),
             sliced: HashMap::new(),
+            for_loops: HashMap::new(),
             in_place: false,
             deferred_ops: Vec::new(),
             loops: 0,
@@ -215,6 +217,7 @@ impl<'a> Checker<'a> {
             narrowed_reads: self.narrowed_reads,
             array_methods: self.array_methods,
             sliced,
+            loops: self.for_loops,
         };
         (typed, self.errors)
     }
@@ -446,12 +449,27 @@ impl<'a> Checker<'a> {
                 self.expect(*condition, bool, None);
                 self.check_loop(body);
             }
-            Stmt::Break if self.loops == 0 => {
+            Stmt::For { iterable, body, .. } => {
+                // A later iteration sees what the body changes.
+                self.forget_changed_in(body);
+                let ty = self.infer(*iterable);
+                let element = self.loop_element(id, *iterable, ty);
+                if let Some(def) = self.names.local(id) {
+                    self.locals.insert(def, element);
+                }
+                self.check_loop(body);
+            }
+            Stmt::Break | Stmt::Continue if self.loops == 0 => {
                 self.errors.push(TypeError::BreakOutsideLoop {
+                    keyword: if matches!(self.ast.stmts[id], Stmt::Break) {
+                        "break"
+                    } else {
+                        "continue"
+                    },
                     span: self.ast.stmts.span(id).clone(),
                 });
             }
-            Stmt::Break => {}
+            Stmt::Break | Stmt::Continue => {}
             Stmt::If {
                 condition,
                 then,
@@ -463,6 +481,53 @@ impl<'a> Checker<'a> {
                     self.narrowed_while(facts.when_false, |c| c.check_stmts(otherwise));
                 }
             }
+        }
+    }
+
+    /// What a `for` loop over `iterable`, of type `ty`, binds each time round, recording how
+    /// it goes through it.
+    fn loop_element(&mut self, stmt: Id<Stmt>, iterable: Id<Expr>, ty: TypeId) -> TypeId {
+        let error = self.u.table.error;
+        // `for x in [1, 2, 3]`: a collection nothing else decides is an array.
+        if let Some(VarKind::Collection { element, len }) = self.u.var_kind(ty) {
+            let array = self.u.intern(Ty::Array { element, len });
+            let _ = self.u.unify(ty, array);
+        }
+        let shallow = self.u.shallow(ty);
+        let viewed = match *self.u.get(shallow) {
+            Ty::Ref { to, .. } => self.u.shallow(to),
+            _ => shallow,
+        };
+        let element = match *self.u.get(shallow) {
+            Ty::Range(int) => {
+                self.for_loops.insert(stmt, Loop::Range);
+                return int;
+            }
+            Ty::Error => return error,
+            _ => match *self.u.get(viewed) {
+                Ty::Array { element, .. } | Ty::Slice(element) => element,
+                _ => {
+                    let text = *self.u.get(viewed) == Ty::Str
+                        || self.u.var_kind(ty) == Some(VarKind::Text);
+                    self.errors.push(TypeError::NotIterable {
+                        ty: self.describe(ty),
+                        span: self.span(iterable),
+                        text,
+                    });
+                    return error;
+                }
+            },
+        };
+        // Elements that move are lent, not moved out.
+        let by_reference = !self.is_copy(element);
+        self.for_loops.insert(stmt, Loop::Elements { by_reference });
+        if by_reference {
+            self.u.intern(Ty::Ref {
+                mutable: false,
+                to: element,
+            })
+        } else {
+            element
         }
     }
 
@@ -1567,9 +1632,10 @@ impl<'a> Checker<'a> {
             Expr::Var(_) => {
                 let def = self.names.expr(expr)?;
                 let mutable = match self.names.def(def).kind {
-                    DefKind::Local(stmt) => {
-                        matches!(self.ast.stmts[stmt], Stmt::Let { mutable: true, .. })
-                    }
+                    DefKind::Local(stmt) => matches!(
+                        self.ast.stmts[stmt],
+                        Stmt::Let { mutable: true, .. } | Stmt::For { mutable: true, .. }
+                    ),
                     DefKind::Param { func, index } => {
                         let param = &self.ast.funcs[func].params[index];
                         param.mutable || param.out
@@ -1824,11 +1890,15 @@ impl Checker<'_> {
                 Stmt::Let { value, .. } => self.forget_changed_by(*value, false),
                 Stmt::Expr(expr) => self.forget_changed_by(*expr, false),
                 Stmt::Loop { body } => self.forget_changed_in(body),
+                Stmt::For { iterable, body, .. } => {
+                    self.forget_changed_by(*iterable, false);
+                    self.forget_changed_in(body);
+                }
                 Stmt::While { condition, body } => {
                     self.forget_changed_by(*condition, false);
                     self.forget_changed_in(body);
                 }
-                Stmt::Break => {}
+                Stmt::Break | Stmt::Continue => {}
                 Stmt::If {
                     condition,
                     then,

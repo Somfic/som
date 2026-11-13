@@ -1,0 +1,12 @@
+// expect: exit 12
+
+fn main() -> i32 {
+    let mut found = 0;
+    for n in [3, 8, 12, 20] {
+        if n > 10 {
+            found = n;
+            break;
+        }
+    }
+    found
+}

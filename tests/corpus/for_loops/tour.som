@@ -1,0 +1,42 @@
+// expect: exit 91
+
+struct Point { x: i32, y: i32 }
+
+fn sum(numbers: [i32]) -> i32 {
+    let mut total = 0;
+    for n in numbers { total = total + n; }
+    total
+}
+
+fn main() -> i32 {
+    let mut squares = 0;
+    for i in 0..4 { squares = squares + i * i; }            // 0 + 1 + 4 + 9 = 14
+
+    let numbers = [1, 2, 3, 4, 5];
+    let mut total = 0;
+    for n in numbers { total = total + n; }                 // 15
+
+    let points = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
+    let mut xs = 0;
+    for p in points { xs = xs + p.x; }                      // references: 4
+
+    let mut letters = 0;
+    for b in "hello".bytes() { if b == 108 { letters = letters + 1; } }   // 2 `l`s
+
+    let mut first_big = 0;
+    for n in [3, 8, 12, 20] {
+        if n > 10 { first_big = n; break; }                 // 12
+    }
+
+    let mut countdown = 0;
+    for mut k in 0..3 { k = k * 10; countdown = countdown + k; }  // 0 + 10 + 20 = 30
+
+    let small: u8 = 3;
+    let mut bytes = 0;
+    for j in 0..small { bytes = bytes + j; }                // 0 + 1 + 2 = 3, as u8
+    let r = 2..5;
+    let mut ranged = 0;
+    for v in r { ranged = ranged + v; }                     // 2 + 3 + 4 = 9
+
+    squares + total + xs + letters + first_big + countdown + ranged + sum(numbers.slice(1..3) else [])
+}

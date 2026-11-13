@@ -1,0 +1,13 @@
+// expect: exit 4
+
+struct Point { x: i32, y: i32 }
+
+fn main() -> i32 {
+    let points = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
+    let mut xs = 0;
+    // `p` is a `&Point`: the points stay in the array.
+    for p in points { xs = xs + p.x; }
+    // So they can be looped over again.
+    for p in points { xs = xs + 0 * p.y; }
+    xs
+}

@@ -86,7 +86,9 @@ pub enum TypeError {
         span: Span,
     },
     /// `break;` with no `loop` or `while` around it.
+    /// `break;` or `continue;` with no loop around it.
     BreakOutsideLoop {
+        keyword: &'static str,
         span: Span,
     },
     /// `Sqlite3 {}` for an `extern struct`, which only C can create.
@@ -101,6 +103,13 @@ pub enum TypeError {
     /// A `str` passed to C, which needs text ending in a zero byte: a `cstr`.
     StrToC {
         span: Span,
+    },
+    /// `for x in v` where `v` isn't a range, array or slice.
+    NotIterable {
+        ty: Message,
+        span: Span,
+        /// It's text: its bytes can be.
+        text: bool,
     },
     /// `a..` or `..b` somewhere other than `slice`, where nothing says where it ends.
     OpenRange {
@@ -306,6 +315,19 @@ impl TypeError {
                     code("cstr"),
                     "; a string literal becomes one"
                 ]),
+            TypeError::NotIterable { ty, span, text } => {
+                let d = Diagnostic::error(msg!["cannot loop over ", ty.clone()]).with_label(
+                    Label::primary(span.clone(), "`for` goes through ranges, arrays and slices"),
+                );
+                if *text {
+                    d.with_hint(msg![
+                        code("bytes()"),
+                        " gives the text's bytes to loop over"
+                    ])
+                } else {
+                    d
+                }
+            }
             TypeError::OpenRange { span } => Diagnostic::error("this range needs both ends")
                 .with_label(Label::primary(
                     span.clone(),
@@ -425,16 +447,17 @@ impl TypeError {
                 Diagnostic::error("cannot infer the type of this expression")
                     .with_label(Label::primary(span.clone(), "add a type annotation"))
             }
-            TypeError::BreakOutsideLoop { span } => {
-                Diagnostic::error(msg![code("break"), " outside of a loop"]).with_label(
+            TypeError::BreakOutsideLoop { keyword, span } => {
+                Diagnostic::error(msg![code(*keyword), " outside of a loop"]).with_label(
                     Label::primary(
                         span.clone(),
                         msg![
-                            "only a ",
+                            "only inside a ",
                             code("loop"),
-                            " or ",
+                            ", ",
                             code("while"),
-                            " can be left"
+                            " or ",
+                            code("for")
                         ],
                     ),
                 )

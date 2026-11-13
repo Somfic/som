@@ -1,0 +1,11 @@
+// expect: exit 5
+
+fn main() -> i32 {
+    // If `continue` skipped the step, this would never end.
+    let mut seen = 0;
+    for i in 0..5 {
+        seen = seen + 1;
+        continue;
+    }
+    seen
+}

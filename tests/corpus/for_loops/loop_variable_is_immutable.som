@@ -1,0 +1,6 @@
+// expect: error NotMutable
+
+fn main() -> i32 {
+    for x in 0..3 { x = 1; }
+    0
+}

@@ -11,7 +11,7 @@
 use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
-use som_typeck::{ArrayMethod, Typed};
+use som_typeck::{ArrayMethod, Loop, Typed};
 use std::collections::{HashMap, HashSet};
 
 pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
@@ -165,6 +165,18 @@ fn elements_ref(elements: &Place) -> Place {
     reference
 }
 
+/// Where `break` and `continue` go in a loop.
+#[derive(Clone, Copy)]
+struct LoopTargets {
+    /// Past the loop.
+    exit: BlockId,
+    /// Its next time round: the start of a `loop`, a `while`'s condition, a `for`'s step to
+    /// the next value.
+    next: BlockId,
+    /// How many scopes were open where it started: those opened since end at either.
+    depth: usize,
+}
+
 /// How many elements an array or slice has.
 enum Length {
     /// An array's, known at compile time.
@@ -218,9 +230,8 @@ struct FnBuilder<'l, 'a> {
     bindings: HashMap<DefId, Local>,
     /// The `let` locals of each enclosing scope, innermost last.
     scopes: Vec<Vec<Local>>,
-    /// Each enclosing loop's exit, and how many scopes were open where it started,
-    /// innermost last.
-    loops: Vec<(BlockId, usize)>,
+    /// The enclosing loops, innermost last.
+    loops: Vec<LoopTargets>,
 }
 
 impl<'l, 'a> FnBuilder<'l, 'a> {
@@ -410,7 +421,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 let (start, exit) = (self.new_block(), self.new_block());
                 self.terminate(TerminatorKind::Goto(start), span.clone());
                 self.current = start;
-                self.loop_body(body, exit, span.clone());
+                self.loop_body(body, exit, start, span.clone());
                 self.terminate(TerminatorKind::Goto(start), span);
                 // Only a `break` gets here.
                 self.current = exit;
@@ -430,20 +441,30 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     span.clone(),
                 );
                 self.current = body_block;
-                self.loop_body(body, exit, span.clone());
+                self.loop_body(body, exit, header, span.clone());
                 self.terminate(TerminatorKind::Goto(header), span);
                 self.current = exit;
             }
-            Stmt::Break => {
-                let &(exit, depth) = self.loops.last().expect("checked: break is in a loop");
+            Stmt::For {
+                name,
+                mutable,
+                iterable,
+                body,
+            } => self.for_loop(id, name, *mutable, *iterable, body, span),
+            Stmt::Break | Stmt::Continue => {
+                let targets = *self.loops.last().expect("checked: break is in a loop");
                 // The loop's own locals end here, as they would at the end of the body.
-                let dying: Vec<Local> = (self.scopes[depth..].iter().rev())
+                let dying: Vec<Local> = (self.scopes[targets.depth..].iter().rev())
                     .flat_map(|scope| scope.iter().rev().copied())
                     .collect();
                 for local in dying {
                     self.push(StatementKind::StorageDead(local), span.clone());
                 }
-                self.terminate(TerminatorKind::Goto(exit), span);
+                let target = match ast.stmts[id] {
+                    Stmt::Break => targets.exit,
+                    _ => targets.next,
+                };
+                self.terminate(TerminatorKind::Goto(target), span);
                 // Whatever follows in the body can't be reached.
                 self.current = self.new_block();
             }
@@ -622,9 +643,166 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         (value, some_block, none_block)
     }
 
-    /// A loop's body, where `break` goes to `exit`.
-    fn loop_body(&mut self, body: &[Id<Stmt>], exit: BlockId, span: Span) {
-        self.loops.push((exit, self.scopes.len()));
+    /// `for name in iterable { body }`: a counter going up to a limit, both worked out once
+    /// before the loop; and for an array or slice, a view of it, which keeps it borrowed until
+    /// the loop ends.
+    fn for_loop(
+        &mut self,
+        stmt: Id<Stmt>,
+        name: &som_ast::Ident,
+        mutable: bool,
+        iterable: Id<Expr>,
+        body: &[Id<Stmt>],
+        span: Span,
+    ) {
+        let ast = self.l.ast;
+        let kind = self
+            .l
+            .typed
+            .for_loop(stmt)
+            .expect("checked: for loops go through something");
+        let def = self
+            .l
+            .names
+            .local(stmt)
+            .expect("every for loop is resolved");
+        let value_ty = self.l.typed.local(def);
+        let value_ty = self.ty(value_ty);
+        let bool = self.l.mir.types.bool;
+        let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
+
+        self.in_scope(span.clone(), |b| {
+            // What to go through: a counter's type, where it starts, where it stops, and the
+            // elements it picks.
+            let (counter_ty, first, limit, elements) = match kind {
+                Loop::Range => {
+                    let range_ty = b.expr_ty(iterable);
+                    let Ty::Range(int) = *b.l.mir.types.get(range_ty) else {
+                        unreachable!("checked: ranges are looped over as ranges")
+                    };
+                    let (first, limit) = match &ast.exprs[iterable] {
+                        Expr::Range {
+                            start: Some(start),
+                            end: Some(end),
+                        } => (b.operand(*start), b.operand(*end)),
+                        _ => {
+                            let place = b.place(iterable);
+                            let field =
+                                |i| Operand::Copy(place.clone().project(Projection::Field(i)));
+                            (field(0), field(1))
+                        }
+                    };
+                    (int, first, limit, None)
+                }
+                Loop::Elements { .. } => {
+                    let iterable_ty = b.expr_ty(iterable);
+                    let mut place = b.place(iterable);
+                    let mut viewed_ty = iterable_ty;
+                    if let Ty::Ref { to, .. } = *b.l.mir.types.get(iterable_ty) {
+                        place = place.project(Projection::Deref);
+                        viewed_ty = to;
+                    }
+                    let view_ty = b.l.mir.types.intern(Ty::Ref {
+                        mutable: false,
+                        to: viewed_ty,
+                    });
+                    // Named, so the borrow it holds lasts the whole loop.
+                    let view = b.new_local(view_ty, Some("iterated".into()), false, span.clone());
+                    b.scopes.last_mut().expect("in scope").push(view);
+                    b.push(StatementKind::StorageLive(view), span.clone());
+                    let borrow = Rvalue::Ref {
+                        mutable: false,
+                        place,
+                    };
+                    b.assign(Place::local(view), borrow, span.clone());
+                    let limit = match *b.l.mir.types.get(viewed_ty) {
+                        Ty::Array { len, .. } => b.constant(ConstKind::Int(len as i64), usize),
+                        _ => Operand::Copy(Place::local(view).project(Projection::Field(1))),
+                    };
+                    let first = b.constant(ConstKind::Int(0), usize);
+                    let elements = Place::local(view).project(Projection::Deref);
+                    (usize, first, limit, Some(elements))
+                }
+            };
+            let counter = b.temp(counter_ty, span.clone());
+            b.assign(Place::local(counter), Rvalue::Use(first), span.clone());
+            let stop = b.temp(counter_ty, span.clone());
+            b.assign(Place::local(stop), Rvalue::Use(limit), span.clone());
+
+            let (header, body_block, step, exit) =
+                (b.new_block(), b.new_block(), b.new_block(), b.new_block());
+            b.terminate(TerminatorKind::Goto(header), span.clone());
+            b.current = header;
+            let more = b.temp(bool, span.clone());
+            let compare = Rvalue::Binary {
+                op: BinOp::LessThan,
+                lhs: Operand::Copy(Place::local(counter)),
+                rhs: Operand::Copy(Place::local(stop)),
+            };
+            b.assign(Place::local(more), compare, span.clone());
+            b.terminate(
+                TerminatorKind::Branch {
+                    condition: Operand::Copy(Place::local(more)),
+                    then: body_block,
+                    otherwise: exit,
+                },
+                span.clone(),
+            );
+
+            // Each time round: the value, then the body. `break` leaves both.
+            b.current = body_block;
+            // `continue` goes on to the next value.
+            b.loops.push(LoopTargets {
+                exit,
+                next: step,
+                depth: b.scopes.len(),
+            });
+            b.in_scope(span.clone(), |b| {
+                let local = b.new_local(
+                    value_ty,
+                    Some(name.name.to_string()),
+                    mutable,
+                    name.span.clone(),
+                );
+                b.bindings.insert(def, local);
+                b.scopes.last_mut().expect("in scope").push(local);
+                b.push(StatementKind::StorageLive(local), span.clone());
+                let value = match (&elements, kind) {
+                    (None, _) => Rvalue::Use(Operand::Copy(Place::local(counter))),
+                    (Some(elements), Loop::Elements { by_reference: true }) => Rvalue::Ref {
+                        mutable: false,
+                        place: elements.clone().project(Projection::Index(counter)),
+                    },
+                    (Some(elements), _) => Rvalue::Use(Operand::Copy(
+                        elements.clone().project(Projection::Index(counter)),
+                    )),
+                };
+                b.assign(Place::local(local), value, span.clone());
+                b.stmts(body, span.clone());
+            });
+            b.loops.pop();
+            b.terminate(TerminatorKind::Goto(step), span.clone());
+
+            b.current = step;
+            let one = b.constant(ConstKind::Int(1), counter_ty);
+            let next = Rvalue::Binary {
+                op: BinOp::Add,
+                lhs: Operand::Copy(Place::local(counter)),
+                rhs: one,
+            };
+            b.assign(Place::local(counter), next, span.clone());
+            b.terminate(TerminatorKind::Goto(header), span.clone());
+            b.current = exit;
+        });
+    }
+
+    /// A loop's body, where `break` goes to `exit` and `continue` to `next`.
+    fn loop_body(&mut self, body: &[Id<Stmt>], exit: BlockId, next: BlockId, span: Span) {
+        self.loops.push(LoopTargets {
+            exit,
+            next,
+            depth: self.scopes.len(),
+        });
         self.stmts(body, span);
         self.loops.pop();
     }

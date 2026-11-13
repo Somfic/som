@@ -203,6 +203,19 @@ impl Dumper<'_> {
             Stmt::Expr(expr) => self.expr(*expr),
             Stmt::Loop { body } => self.stmts("loop", body),
             Stmt::Break => self.line("break"),
+            Stmt::Continue => self.line("continue"),
+            Stmt::For {
+                name,
+                mutable,
+                iterable,
+                body,
+            } => {
+                let mutability = if *mutable { "mut " } else { "" };
+                self.node(format!("for {mutability}{name}"), |d| {
+                    d.expr(*iterable);
+                    d.stmts("do", body);
+                })
+            }
             Stmt::While { condition, body } => self.node("while", |d| {
                 d.expr(*condition);
                 d.stmts("do", body);

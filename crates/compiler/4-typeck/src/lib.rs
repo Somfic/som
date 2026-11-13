@@ -15,7 +15,7 @@ mod unify;
 pub use error::TypeError;
 pub use ty::{FloatTy, IntTy, Ty, TypeId, TypeTable};
 
-use som_ast::{Ast, Expr, Func, Id, Struct};
+use som_ast::{Ast, Expr, Func, Id, Stmt, Struct};
 use som_resolve::{DefId, Names};
 use std::collections::{HashMap, HashSet};
 
@@ -54,8 +54,20 @@ pub struct Typed {
     /// References to arrays used where a slice is expected (`&numbers` for a `[i32]`), and
     /// `[mut T]`s used where a `[T]` is.
     sliced: HashMap<Id<Expr>, TypeId>,
+    /// `for` loops → what they loop over.
+    loops: HashMap<Id<Stmt>, Loop>,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
+}
+
+/// What a `for` loop goes through.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Loop {
+    /// Each integer in a range.
+    Range,
+    /// Each element of an array or slice: a copy of it, or, for elements that move rather
+    /// than copy, a reference to it.
+    Elements { by_reference: bool },
 }
 
 /// A method every array and slice has.
@@ -166,6 +178,11 @@ impl Typed {
     /// a `[mut T]` where a `[T]` is expected.
     pub fn sliced_to(&self, expr: Id<Expr>) -> Option<TypeId> {
         self.sliced.get(&expr).copied()
+    }
+
+    /// What the `for` loop `stmt` goes through.
+    pub fn for_loop(&self, stmt: Id<Stmt>) -> Option<Loop> {
+        self.loops.get(&stmt).copied()
     }
 
     /// The built-in method a method call on an array calls.

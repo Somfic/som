@@ -294,7 +294,27 @@ impl<'a> Resolver<'a> {
             }
             Stmt::Expr(expr) => self.resolve_expr(*expr),
             Stmt::Loop { body } => self.resolve_stmts(body),
-            Stmt::Break => {}
+            Stmt::Break | Stmt::Continue => {}
+            // The name is only bound in the body.
+            Stmt::For {
+                name,
+                iterable,
+                body,
+                ..
+            } => {
+                self.resolve_expr(*iterable);
+                let def = self.names.define(
+                    &name.name,
+                    DefKind::Local(id),
+                    name.span.clone(),
+                    self.module,
+                );
+                self.names.set_let(id, def);
+                self.in_scope(|r| {
+                    r.bind(name, def);
+                    r.resolve_stmts(body);
+                });
+            }
             Stmt::While { condition, body } => {
                 self.resolve_expr(*condition);
                 self.resolve_stmts(body);

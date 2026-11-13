@@ -1,3 +1,9 @@
 use std;
 
-let a = "abc".slice(..2);
+let upper = 100;
+
+for x in 1..4 {
+    for y in 1..4 {
+        std::printf("%d,%d\n", x, y);
+    }
+}

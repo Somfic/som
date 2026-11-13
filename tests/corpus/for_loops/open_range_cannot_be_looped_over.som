@@ -1,0 +1,6 @@
+// expect: error OpenRange
+
+fn main() -> i32 {
+    for x in 1.. { }
+    0
+}

@@ -9,7 +9,9 @@ impl Parser<'_> {
             TokenKind::Let => self.parse_let(),
             TokenKind::Loop => self.parse_loop(),
             TokenKind::While => self.parse_while(),
+            TokenKind::For => self.parse_for(),
             TokenKind::Break => self.parse_break(),
+            TokenKind::Continue => self.parse_continue(),
             TokenKind::If => self.parse_if(),
             _ => {
                 let Some(expr) = self.parse_expr() else {
@@ -81,6 +83,14 @@ impl Parser<'_> {
         Some(self.ast.stmts.alloc(Stmt::Break, span))
     }
 
+    fn parse_continue(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        self.expect(TokenKind::Continue, "a continue statement")?;
+        self.expect(TokenKind::Semicolon, "a semicolon after continue")?;
+        let span = self.span_from(&start);
+        Some(self.ast.stmts.alloc(Stmt::Continue, span))
+    }
+
     fn parse_while(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::While, "a while statement")?;
@@ -88,6 +98,27 @@ impl Parser<'_> {
         let body = self.parse_stmt_block("the while body")?;
         let span = self.span_from(&start);
         Some(self.ast.stmts.alloc(Stmt::While { condition, body }, span))
+    }
+
+    /// `for name in iterable { body }`
+    fn parse_for(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        self.expect(TokenKind::For, "a for loop")?;
+        let mutable = self.eat(TokenKind::Mut);
+        let name = self.parse_ident("a name for each value")?;
+        self.expect(TokenKind::In, "`in` and what to loop over")?;
+        let iterable = self.parse_condition()?;
+        let body = self.parse_stmt_block("the for body")?;
+        let span = self.span_from(&start);
+        Some(self.ast.stmts.alloc(
+            Stmt::For {
+                name,
+                mutable,
+                iterable,
+                body,
+            },
+            span,
+        ))
     }
 
     fn parse_if(&mut self) -> Option<Id<Stmt>> {
