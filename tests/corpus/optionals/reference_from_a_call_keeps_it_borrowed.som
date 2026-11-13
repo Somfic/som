@@ -1,0 +1,15 @@
+// expect: error AssignWhileBorrowed
+
+struct User { age: i32? }
+
+fn slot(u: &mut User) -> &mut (i32?) { &mut u.age }
+
+fn main() -> i32 {
+    let mut u = User { age: 1 };
+    // `a` points into `u.age`, through the reference `slot` returned.
+    if let a = slot(&mut u) {
+        u.age = none;
+        *a = 3;
+    }
+    0
+}

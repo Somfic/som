@@ -428,8 +428,16 @@ impl<'a> Checker<'a> {
         false
     }
 
-    /// The type an optional of type `ty` holds, reporting an error if `ty` isn't optional.
+    /// What unwrapping an optional of type `ty` gives: the `T` a `T?` holds, or a reference
+    /// to it through a reference to the optional (`&T?` gives `&T`), which leaves the
+    /// optional where it is. Reports an error if `ty` isn't either.
     fn optional_inner(&mut self, ty: TypeId, expr: Id<Expr>) -> TypeId {
+        let shallow = self.u.shallow(ty);
+        if let Ty::Ref { mutable, to } = *self.u.get(shallow)
+            && let Ty::Optional(inner) = *self.u.get(self.u.shallow(to))
+        {
+            return self.u.intern(Ty::Ref { mutable, to: inner });
+        }
         let inner = self.u.fresh(VarKind::Any);
         let optional = self.u.intern(Ty::Optional(inner));
         if self.u.unify(optional, ty).is_err() {

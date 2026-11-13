@@ -1,0 +1,13 @@
+// expect: error MoveOutOfReference
+
+struct Name { len: i32 }
+struct User { name: Name? }
+
+// `&u.name` would borrow the value instead.
+fn name_len(u: &User) -> i32 {
+    let mut len = 0;
+    if let n = u.name { len = n.len; }
+    len
+}
+
+fn main() -> i32 { 0 }

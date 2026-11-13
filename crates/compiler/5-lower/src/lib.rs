@@ -474,19 +474,18 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 then,
                 otherwise,
             } => {
-                let (place, some_block, none_block) = self.branch_on_some(*value, span.clone());
+                let def = self.l.names.local(id).expect("every if let is resolved");
+                let ty = self.l.typed.local(def);
+                let ty = self.ty(ty);
+                let (value, some_block, none_block) = self.branch_on_some(*value, ty, span.clone());
                 let join = self.new_block();
                 self.current = some_block;
                 self.in_scope(span.clone(), |b| {
-                    let def = b.l.names.local(id).expect("every if let is resolved");
-                    let ty = b.l.typed.local(def);
-                    let ty = b.ty(ty);
                     let local =
                         b.new_local(ty, Some(name.name.to_string()), false, name.span.clone());
                     b.bindings.insert(def, local);
                     b.scopes.last_mut().expect("in scope").push(local);
                     b.push(StatementKind::StorageLive(local), span.clone());
-                    let value = b.read(place.project(Projection::Field(1)), ty);
                     b.assign(Place::local(local), Rvalue::Use(value), span.clone());
                     b.stmts(then, span.clone());
                 });
@@ -501,10 +500,37 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         }
     }
 
-    /// Evaluates the optional `expr` and branches on whether it holds a value, returning
-    /// its place and the blocks for each case.
-    fn branch_on_some(&mut self, expr: Id<Expr>, span: Span) -> (Place, BlockId, BlockId) {
-        let place = self.place(expr);
+    /// Evaluates the optional `expr` and branches on whether it holds a value. Returns the
+    /// value, of type `ty`, to read in the first block, and the blocks for each case.
+    ///
+    /// Through a reference to an optional (`&T?`), the value is a reference to what it holds.
+    /// That reference is taken before the branch reads whether there is a value: reading
+    /// through a temporary hands its loans on, and they have to end up in the reference.
+    fn branch_on_some(
+        &mut self,
+        expr: Id<Expr>,
+        ty: TypeId,
+        span: Span,
+    ) -> (Operand, BlockId, BlockId) {
+        let expr_ty = self.expr_ty(expr);
+        let mut place = self.place(expr);
+        let by_ref = match self.l.mir.types.get(expr_ty) {
+            Ty::Ref { mutable, .. } => Some(*mutable),
+            _ => None,
+        };
+        let value = match by_ref {
+            Some(mutable) => {
+                place = place.project(Projection::Deref);
+                let reference = self.temp(ty, span.clone());
+                let borrow = Rvalue::Ref {
+                    mutable,
+                    place: place.clone().project(Projection::Field(1)),
+                };
+                self.assign(Place::local(reference), borrow, span.clone());
+                Some(reference)
+            }
+            None => None,
+        };
         let (some_block, none_block) = (self.new_block(), self.new_block());
         let condition = Operand::Copy(place.clone().project(Projection::Field(0)));
         self.terminate(
@@ -513,9 +539,20 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 then: some_block,
                 otherwise: none_block,
             },
-            span,
+            span.clone(),
         );
-        (place, some_block, none_block)
+        let value = match value {
+            Some(reference) => {
+                // Without a value, the reference is never used: end it, and its loans.
+                self.blocks[none_block].stmts.push(Statement {
+                    kind: StatementKind::StorageDead(reference),
+                    span,
+                });
+                Operand::Move(Place::local(reference))
+            }
+            None => self.read(place.project(Projection::Field(1)), ty),
+        };
+        (value, some_block, none_block)
     }
 
     /// A loop's body, where `break` goes to `exit`.
@@ -621,10 +658,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
             Expr::Fallback { optional, fallback } => {
                 let result = self.temp(ty, span.clone());
-                let (place, some_block, none_block) = self.branch_on_some(*optional, span.clone());
+                let (value, some_block, none_block) =
+                    self.branch_on_some(*optional, ty, span.clone());
                 let join = self.new_block();
                 self.current = some_block;
-                let value = self.read(place.project(Projection::Field(1)), ty);
                 self.assign(Place::local(result), Rvalue::Use(value), span.clone());
                 self.terminate(TerminatorKind::Goto(join), span.clone());
                 // The fallback is only evaluated when it's needed.

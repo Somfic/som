@@ -1,4 +1,8 @@
 let a: i32? = 123;
 let b: i32? = 123;
 
+if let b {
+    b = b + 1;
+}
+
 let a = a else b else 0;

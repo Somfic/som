@@ -76,8 +76,14 @@ impl BorrowError {
                 ])
             }
             BorrowError::MoveOutOfReference { name, span } => {
+                // What `*r` is moved out of is already behind the reference `r`.
+                let borrowed = match name.strip_prefix('*') {
+                    Some(reference) => reference.to_string(),
+                    None => format!("&{name}"),
+                };
                 Diagnostic::error(msg!["cannot move ", code(name), " out of a reference"])
                     .with_label(Label::primary(span.clone(), "moved here"))
+                    .with_hint(msg!["borrow it instead, with ", code(borrowed)])
             }
             BorrowError::MoveWhileBorrowed {
                 name,

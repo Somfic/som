@@ -329,10 +329,17 @@ impl<'a> FnChecker<'a> {
                 .enumerate()
                 .any(|(holder, loans)| holder != local.id && loans.contains(&loan))
         };
+        // A reborrow through a reference (`&(*r).x`) points at what `r` refers to, which
+        // outlives `r`; the reborrow also holds `r`'s own loans, which keep that borrowed.
         let dangling: Vec<LoanId> = state
             .active()
             .into_iter()
-            .filter(|&loan| self.loans[loan].place.local == local && holders_of(state, loan))
+            .filter(|&loan| {
+                let place = &self.loans[loan].place;
+                place.local == local
+                    && !place.projection.contains(&Projection::Deref)
+                    && holders_of(state, loan)
+            })
             .collect();
         for loan in dangling {
             let l = &self.loans[loan];
@@ -418,10 +425,17 @@ impl<'a> FnChecker<'a> {
             .clone()
             .unwrap_or_else(|| "temporary value".into());
         let mut ty = decl.ty;
-        for projection in &place.projection {
+        let mut projections = place.projection.iter().peekable();
+        while let Some(projection) = projections.next() {
             match (projection, self.mir.types.get(ty)) {
                 (Projection::Deref, Ty::Ref { to, .. }) => {
-                    name = format!("*{name}");
+                    // A struct's fields are reached through a reference without the `*`:
+                    // `u.name`, not `*u.name`.
+                    let field_of_struct = matches!(projections.peek(), Some(Projection::Field(_)))
+                        && matches!(self.mir.types.get(*to), Ty::Struct(_));
+                    if !field_of_struct {
+                        name = format!("*{name}");
+                    }
                     ty = *to;
                 }
                 (Projection::Field(i), Ty::Struct(def)) => {

@@ -1,0 +1,15 @@
+// expect: exit 5
+
+struct Pair { x: i32, y: i32 }
+
+// The reference points into what `p` refers to, which outlives `p` itself.
+fn x_of(p: &mut Pair) -> &mut i32 { &mut p.x }
+
+fn main() -> i32 {
+    let mut p = Pair { x: 1, y: 2 };
+    {
+        let r = x_of(&mut p);
+        *r = 5;
+    };
+    p.x
+}

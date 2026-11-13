@@ -1,0 +1,10 @@
+// expect: error DanglingReference
+
+// Reborrowing through `p` still borrows `x`, which dies at the end of the function.
+fn dangling() -> &i32 {
+    let x = 1;
+    let p = &x;
+    &*p
+}
+
+fn main() -> i32 { *dangling() }
