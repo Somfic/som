@@ -17,7 +17,7 @@ use som_borrowcheck::BorrowError;
 use som_mir::Mir;
 use som_resolve::{Names, ResolveError};
 use som_typeck::{TypeError, Typed};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Everything the front end knows about a program that passed all checks so far.
@@ -26,7 +26,8 @@ pub struct Checked {
     pub names: Names,
     pub typed: Typed,
     pub mir: Mir,
-    /// The library files `extern "…"` blocks link against.
+    /// The library files to link: those of the `extern "…"` blocks whose functions the
+    /// program still uses after tree shaking.
     pub libraries: Vec<PathBuf>,
 }
 
@@ -112,6 +113,13 @@ pub fn check_loaded(mut ast: Ast, options: &Options) -> Result<Checked, Vec<Erro
         return Err(errors.into_iter().map(Error::Borrow).collect());
     }
     som_optimize::optimize(&mut mir);
+    // Tree shaking may have removed every function a library was declared for.
+    let used: HashSet<&PathBuf> = mir
+        .funcs
+        .iter()
+        .filter_map(|f| f.library.as_ref())
+        .collect();
+    let libraries = libraries.into_iter().filter(|l| used.contains(l)).collect();
 
     Ok(Checked {
         ast,

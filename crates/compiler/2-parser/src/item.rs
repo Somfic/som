@@ -90,6 +90,7 @@ impl Parser<'_> {
             body: Some(body),
             variadic: false,
             link_name: None,
+            library: None,
         };
         let id = self.ast.funcs.alloc(func, span);
         self.add_item(Item::Func(id));
@@ -217,6 +218,7 @@ impl Parser<'_> {
             body,
             variadic,
             link_name: None,
+            library: None,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -386,6 +388,7 @@ impl Parser<'_> {
             body: None,
             variadic,
             link_name: None,
+            library: None,
         };
         Some(self.ast.funcs.alloc(func, span))
     }

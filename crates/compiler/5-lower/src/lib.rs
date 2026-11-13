@@ -146,6 +146,7 @@ impl<'a> Lowerer<'a> {
                     .unwrap_or(&ast_func.name.name)
                     .to_string()
             }),
+            library: ast_func.library.clone(),
             is_entry,
             variadic: ast_func.variadic,
         });

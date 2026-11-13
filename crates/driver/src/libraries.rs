@@ -145,6 +145,7 @@ pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryErro
     let mut symbols: HashMap<PathBuf, Result<Symbols, String>> = HashMap::new();
     let mut errors = Vec::new();
     let mut link_names = Vec::new();
+    let mut linked_from = Vec::new();
 
     for item in ast.modules.iter().flat_map(|m| &m.items) {
         let Item::Extern(block) = item else { continue };
@@ -173,6 +174,7 @@ pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryErro
         if !found.contains(&path) {
             found.push(path.clone());
         }
+        linked_from.extend(block.funcs.iter().map(|&func| (func, path.clone())));
         let exported = match symbols
             .entry(path.clone())
             .or_insert_with(|| read_symbols(&path).map(Symbols::new))
@@ -208,6 +210,9 @@ pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryErro
 
     for (func, symbol) in link_names {
         ast.funcs.get_mut(func).link_name = Some(symbol.into());
+    }
+    for (func, path) in linked_from {
+        ast.funcs.get_mut(func).library = Some(path);
     }
     (found, errors)
 }

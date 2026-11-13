@@ -16,6 +16,7 @@ pub use som_typeck::{FloatTy, IntTy, Ty, TypeId, TypeTable};
 pub use som_base::{Arena, Id};
 use som_base::{IdPrefix, Span};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 pub struct Mir {
     pub types: TypeTable,
@@ -110,6 +111,8 @@ pub struct Function {
     pub body: Option<Body>,
     /// For extern functions: the symbol to link against.
     pub link_name: Option<String>,
+    /// For extern functions from an `extern "lib"` block: the library file to link.
+    pub library: Option<PathBuf>,
     /// The program's entry point: `main` in the root module.
     pub is_entry: bool,
     /// An extern taking extra arguments after `params`, like C's `printf`.

@@ -65,6 +65,21 @@ fn a_library_next_to_the_program_is_found_linked_and_run() {
 }
 
 #[test]
+fn a_library_whose_functions_go_unused_is_not_linked() {
+    let dir = tempfile::tempdir().unwrap();
+    shared_library(dir.path(), "demo");
+    let main = dir.path().join("main.som");
+    std::fs::write(
+        &main,
+        "use extern \"demo\" { fn demo_add(a: i32, b: i32) -> i32; }\nfn main() -> i32 { 0 }\n",
+    )
+    .unwrap();
+
+    let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(checked.libraries.is_empty(), "{:?}", checked.libraries);
+}
+
+#[test]
 fn a_function_the_library_lacks_is_reported_with_a_suggestion() {
     let dir = tempfile::tempdir().unwrap();
     shared_library(dir.path(), "demo");

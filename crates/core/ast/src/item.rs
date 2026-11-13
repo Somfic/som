@@ -1,4 +1,5 @@
 use crate::{Expr, Id, Ident, Path, Span, TypeExpr};
+use std::path::PathBuf;
 
 /// A top-level declaration in a module.
 pub enum Item {
@@ -53,6 +54,9 @@ pub struct Func {
     /// For an extern function, the symbol it links to when that isn't its name: som's
     /// `init_window` is raylib's `InitWindow`. Worked out from the library while checking.
     pub link_name: Option<Box<str>>,
+    /// For a function in an `extern "lib"` block, the library file it's linked from.
+    /// Worked out while checking.
+    pub library: Option<PathBuf>,
 }
 
 pub struct Param {
