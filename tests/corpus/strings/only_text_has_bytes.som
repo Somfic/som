@@ -1,0 +1,7 @@
+// expect: error UnknownMethod
+
+fn main() -> i32 {
+    let a = [1, 2];
+    a.bytes();
+    0
+}

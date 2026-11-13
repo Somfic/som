@@ -1,14 +1,6 @@
 use std;
+let len = "hello".len();
+std::printf("%d", len);
 
-fn print_3rd(arr: [i32]) {
-    let a = "hello";
-    if x {
-        std::printf("%d", x);
-    } else {
-        std::printf("none");
-    }
-}
 
-let a: [i32] = [ 1, 2, 3 ];
-
-print_3rd(a);
+let mut a: str = "abc";

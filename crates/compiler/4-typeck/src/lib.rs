@@ -71,6 +71,8 @@ pub enum ArrayMethod {
     GetMut,
     /// `a.set(i, v)`: stores `v` at `i`, returning whether `i` was in bounds.
     Set,
+    /// `s.bytes()`: a `str`'s bytes, as a `[u8]`. Only text has it.
+    Bytes,
 }
 
 impl ArrayMethod {
@@ -81,22 +83,24 @@ impl ArrayMethod {
             "get_ref" => ArrayMethod::GetRef,
             "get_mut" => ArrayMethod::GetMut,
             "set" => ArrayMethod::Set,
+            "bytes" => ArrayMethod::Bytes,
             _ => return None,
         })
     }
 
-    pub const ALL: [(&str, ArrayMethod); 5] = [
+    pub const ALL: [(&str, ArrayMethod); 6] = [
         ("len", ArrayMethod::Len),
         ("get", ArrayMethod::Get),
         ("get_ref", ArrayMethod::GetRef),
         ("get_mut", ArrayMethod::GetMut),
         ("set", ArrayMethod::Set),
+        ("bytes", ArrayMethod::Bytes),
     ];
 
     /// How many arguments it takes, after the array.
     pub fn arity(self) -> usize {
         match self {
-            ArrayMethod::Len => 0,
+            ArrayMethod::Len | ArrayMethod::Bytes => 0,
             ArrayMethod::Get | ArrayMethod::GetRef | ArrayMethod::GetMut => 1,
             ArrayMethod::Set => 2,
         }

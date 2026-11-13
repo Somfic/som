@@ -1,0 +1,12 @@
+// expect: exit 9
+
+fn count(values: [u8]) -> i32 { values.len() }
+
+fn first(values: [u8]) -> u8 { values.get(0) else 0 }
+
+fn main() -> i32 {
+    let text = "abc";
+    let bytes = text.bytes();
+    // 3 + 5 bytes; the first byte of "abc" is 97.
+    count(bytes) + count("hello".bytes()) + (1 if first(bytes) == 97 else 0)
+}

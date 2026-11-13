@@ -959,6 +959,11 @@ impl<'a> Emitter<'a> {
                     )),
                     // `[mut T]` to `[T]`: the same struct.
                     (Some(Ty::Slice(_)), Some(Ty::Slice(_))) => value,
+                    // Text as its bytes: the same pointer and count, in a slice's struct.
+                    (Some(Ty::Str), Some(Ty::Slice(_))) => {
+                        let text = value.operand();
+                        Expr::atom(format!("({}){{{text}.ptr, {text}.len}}", self.ty(*ty)))
+                    }
                     _ => Expr::compound(format!("({}){}", self.ty(*ty), value.operand())),
                 }
             }

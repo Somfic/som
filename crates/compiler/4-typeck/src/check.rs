@@ -1281,7 +1281,11 @@ impl<'a> Checker<'a> {
                 c.infer(arg);
             }
         };
-        let Some(kind) = ArrayMethod::from_name(&method.name) else {
+        let is_text = *self.u.get(array) == Ty::Str;
+        // `bytes` is text's own.
+        let kind = ArrayMethod::from_name(&method.name)
+            .filter(|&kind| kind != ArrayMethod::Bytes || is_text);
+        let Some(kind) = kind else {
             self.errors.push(TypeError::UnknownMethod {
                 ty: self.describe(array),
                 method: method.name.to_string(),
@@ -1351,6 +1355,14 @@ impl<'a> Checker<'a> {
                 self.u.intern(Ty::Optional(reference))
             }
             ArrayMethod::Set => self.u.table.bool,
+            ArrayMethod::Bytes => {
+                let u8 = self.u.table.u8;
+                let bytes = self.u.intern(Ty::Slice(u8));
+                self.u.intern(Ty::Ref {
+                    mutable: false,
+                    to: bytes,
+                })
+            }
         })
     }
 

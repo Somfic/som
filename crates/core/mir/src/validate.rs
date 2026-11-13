@@ -201,7 +201,10 @@ impl Validator<'_> {
                     _ => None,
                 };
                 let slicing = matches!(viewed(*ty), Some(Ty::Slice(_)))
-                    && matches!(viewed(from), Some(Ty::Array { .. } | Ty::Slice(_)));
+                    && matches!(
+                        viewed(from),
+                        Some(Ty::Array { .. } | Ty::Slice(_) | Ty::Str)
+                    );
                 if !(int(from) && int(*ty)) && !slicing {
                     let (f, t) = (self.mir.display_ty(from), self.mir.display_ty(*ty));
                     self.problem(format!("cast from {f} to {t}: those don't convert"));

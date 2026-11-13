@@ -722,8 +722,13 @@ impl LanguageServer for SomLanguageServer {
                 let is_text = matches!(a.typed.ty(a.typed.expr(expr)), Ty::Ref { to, .. }
                     if matches!(a.typed.ty(*to), Ty::Str));
                 for (_, method) in ArrayMethod::ALL {
-                    // Text can only be read.
-                    if is_text && matches!(method, ArrayMethod::GetMut | ArrayMethod::Set) {
+                    // Text can only be read, and only text has `bytes`.
+                    let skip = if is_text {
+                        matches!(method, ArrayMethod::GetMut | ArrayMethod::Set)
+                    } else {
+                        method == ArrayMethod::Bytes
+                    };
+                    if skip {
                         continue;
                     }
                     let doc = array_method_doc(a, method, element, len);
@@ -1349,6 +1354,12 @@ fn array_method_doc(
             vec![index],
             format!("&mut {t}?"),
             format!("A mutable reference to the element at `index`, {bounds}"),
+        ),
+        ArrayMethod::Bytes => (
+            "bytes",
+            vec![],
+            "[u8]".to_string(),
+            "The text's bytes, as a slice: the same view, so it costs nothing.".to_string(),
         ),
         ArrayMethod::Set => (
             "set",

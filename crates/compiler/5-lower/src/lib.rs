@@ -158,6 +158,13 @@ impl<'a> Lowerer<'a> {
     }
 }
 
+/// The reference a slice's (or text's) elements are reached through: `s` for `(*s)`.
+fn elements_ref(elements: &Place) -> Place {
+    let mut reference = elements.clone();
+    reference.projection.pop();
+    reference
+}
+
 /// How many elements an array or slice has.
 enum Length {
     /// An array's, known at compile time.
@@ -1102,6 +1109,18 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Ty::Array { len, .. } => (place, Length::Fixed(len)),
             _ => unreachable!("checked: array methods are called on arrays and slices"),
         };
+        // The same view, as bytes.
+        if method == ArrayMethod::Bytes {
+            debug_assert!(
+                matches!(len, Length::Held(_)),
+                "checked: only text has bytes"
+            );
+            let view = Operand::Copy(elements_ref(&elements));
+            let temp = self.temp(ty, span.clone());
+            let cast = Rvalue::Cast { operand: view, ty };
+            self.assign(Place::local(temp), cast, span);
+            return Operand::Copy(Place::local(temp));
+        }
         if method == ArrayMethod::Len {
             return match len {
                 Length::Fixed(len) => self.constant(ConstKind::Int(len as i64), ty),
@@ -1164,7 +1183,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.assign(element, Rvalue::Use(value), span.clone());
                 Rvalue::Use(self.constant(ConstKind::Bool(true), ty))
             }
-            ArrayMethod::Len => unreachable!("handled above"),
+            ArrayMethod::Len | ArrayMethod::Bytes => unreachable!("handled above"),
         };
         self.assign(Place::local(result), found, span.clone());
         self.terminate(TerminatorKind::Goto(join), span.clone());
