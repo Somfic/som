@@ -133,3 +133,19 @@ fn clashing_local_names_get_a_suffix() {
     }
     assert!(!c.contains("int32_t int;"), "{c}");
 }
+
+#[test]
+fn mut_ref_parameters_are_restrict() {
+    let c = c("extern { fn memset(p: &mut u8, v: i32, n: usize); }
+               fn set(a: &mut i32, b: &i32) { *a = *b; }
+               fn main() { let mut x = 1; set(&mut x, &2); }")
+    .unwrap();
+    assert!(
+        c.contains("set(int32_t* restrict a, int32_t* b)"),
+        "only `&mut` is restrict:\n{c}"
+    );
+    assert!(
+        c.contains("memset(uint8_t*, int32_t, uintptr_t)"),
+        "extern signatures stay as C declares them:\n{c}"
+    );
+}

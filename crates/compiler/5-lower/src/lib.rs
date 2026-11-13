@@ -685,12 +685,38 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     ) -> Rvalue {
         let type_args = self.type_args(expr);
         let func = self.l.instance(func, type_args);
-        let args = receiver
+        let args: Vec<(Operand, TypeId, Span)> = receiver
             .into_iter()
             .chain(args.iter().copied())
-            .map(|a| self.operand(a))
+            .map(|a| (self.operand(a), self.expr_ty(a), self.span(a)))
+            .collect();
+        // Every argument is evaluated before any is reborrowed, so `x.f(x.g())` works.
+        let args = args
+            .into_iter()
+            .map(|(arg, ty, span)| self.reborrow(arg, ty, span))
             .collect();
         Rvalue::Call { func, args }
+    }
+
+    /// Passes a `&mut` variable on as `&mut *x` rather than moving it, so it's usable again
+    /// after the call. The new loan is what stops two arguments from being the same `&mut`:
+    /// codegen marks `&mut` parameters `restrict`, which relies on that.
+    fn reborrow(&mut self, arg: Operand, ty: TypeId, span: Span) -> Operand {
+        let Operand::Move(place) = arg else {
+            return arg;
+        };
+        let fresh = place.projection.is_empty() && self.locals[place.local].name.is_none();
+        if fresh || !matches!(self.l.mir.types.get(ty), Ty::Ref { mutable: true, .. }) {
+            return Operand::Move(place);
+        }
+        let temp = self.temp(ty, span.clone());
+        let place = place.project(Projection::Deref);
+        let borrow = Rvalue::Ref {
+            mutable: true,
+            place,
+        };
+        self.assign(Place::local(temp), borrow, span);
+        Operand::Move(Place::local(temp))
     }
 
     fn type_args(&mut self, expr: Id<Expr>) -> Vec<TypeId> {

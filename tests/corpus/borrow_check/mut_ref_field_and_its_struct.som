@@ -1,0 +1,11 @@
+// expect: error ConflictingBorrow
+
+struct Holder { r: &mut i32 }
+
+fn read(a: &mut i32, h: &Holder) -> i32 { *a = 1; *h.r }
+
+fn test() -> i32 {
+    let mut x = 0;
+    let h = Holder { r: &mut x };
+    read(h.r, &h)
+}

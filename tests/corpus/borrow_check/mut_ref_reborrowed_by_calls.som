@@ -1,0 +1,27 @@
+// expect: exit 26
+
+struct Counter { n: i32 }
+
+impl Counter {
+    fn get(self: &mut Counter) -> i32 { self.n }
+    fn add(self: &mut Counter, k: i32) { self.n = self.n + k; }
+}
+
+fn bump(x: &mut i32) { *x = *x + 1; }
+
+// `x` is still usable after each call: passing it reborrows it.
+fn twice(x: &mut i32) { bump(x); bump(x); *x = *x * 2; }
+
+// The argument is evaluated before the receiver is reborrowed.
+fn add_own(c: &mut Counter) { c.add(c.get()); c.add(1); }
+
+fn main() -> i32 {
+    let mut x = 1;
+    twice(&mut x);
+    twice(&mut x);
+    let mut c = Counter { n: 3 };
+    add_own(&mut c);
+    let mut i = 0;
+    while i < 3 { bump(&mut x); i = i + 1; }
+    x + c.n
+}

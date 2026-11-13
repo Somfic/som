@@ -1,0 +1,7 @@
+// expect: error ConflictingBorrow
+
+fn both(a: &mut i32, b: &mut i32) { *a = 1; *b = 2; }
+
+fn test(x: &mut i32) {
+    both(x, x);
+}

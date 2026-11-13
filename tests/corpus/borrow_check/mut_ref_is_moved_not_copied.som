@@ -1,0 +1,8 @@
+// expect: error UseAfterMove
+
+fn both(a: &mut i32, b: &mut i32) { *a = 1; *b = 2; }
+
+fn test(x: &mut i32) {
+    let y = x;
+    both(x, y);
+}

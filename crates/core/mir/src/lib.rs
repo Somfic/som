@@ -59,10 +59,12 @@ impl Mir {
         &self.funcs[id]
     }
 
-    /// Whether values of `ty` are copied rather than moved.
+    /// Whether values of `ty` are copied rather than moved. A `&mut` moves: two copies of
+    /// it would be two ways to change the same thing.
     pub fn is_copy(&self, ty: TypeId) -> bool {
         match self.types.get(ty) {
             Ty::Struct(def) => self.struct_def(*def).copy,
+            Ty::Ref { mutable: true, .. } => false,
             _ => true,
         }
     }

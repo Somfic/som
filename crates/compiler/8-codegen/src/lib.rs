@@ -7,6 +7,7 @@
 //! |-----------------------------|--------------------------------------------------------|
 //! | struct `geo::Point`         | `struct geo_Point { int32_t x; int32_t y; }`           |
 //! | function `Point::sum`       | `static int32_t Point_sum(struct Point* self)`         |
+//! | `&mut T` parameter          | `T* restrict`                                          |
 //! | local                       | a variable named after its som name; temporaries `_N`  |
 //! | block `bbN`                 | a label, if anything jumps to it                       |
 //! | place `(*self).0`           | `self->x`                                              |
@@ -551,9 +552,20 @@ impl<'a> Emitter<'a> {
             .params
             .iter()
             .enumerate()
-            .map(|(i, &p)| match params {
-                Some(names) => format!("{} {}", self.ty(p), names[i + 1]),
-                None => self.ty(p),
+            .map(|(i, &p)| {
+                let mut ty = self.ty(p);
+                // The borrow checker makes sure nothing else reaches what a `&mut`
+                // parameter points to while the call runs, which is what `restrict`
+                // promises C. Extern functions keep the signature C declared.
+                if func.link_name.is_none()
+                    && matches!(self.mir.types.get(p), Ty::Ref { mutable: true, .. })
+                {
+                    ty.push_str(" restrict");
+                }
+                match params {
+                    Some(names) => format!("{ty} {}", names[i + 1]),
+                    None => ty,
+                }
             })
             .collect();
         let mut params = if params.is_empty() {
