@@ -200,19 +200,33 @@ impl Names {
                 // `tag`, then each variant's fields, reached through the union of variants:
                 // `as.Rect.w`, `as.Circle._0`.
                 Some(variants) => {
-                    let mut names = vec!["tag".to_string()];
+                    // The common fields sit beside the tag and the union.
+                    let mut taken_common: HashSet<String> =
+                        ["tag", "as"].into_iter().map(String::from).collect();
+                    let mut names: Vec<String> = (s.fields.iter().enumerate())
+                        .map(|(i, (name, _))| match i {
+                            0 => "tag".to_string(),
+                            _ if !name.contains('.') => {
+                                unique(name, "f", &mut taken_common, |_| false)
+                            }
+                            _ => String::new(),
+                        })
+                        .collect();
                     let mut taken_variants = HashSet::new();
                     for (i, v) in variants.iter().enumerate() {
                         let variant = unique(&v.name, "v", &mut taken_variants, |_| false);
                         let mut taken = HashSet::new();
-                        for (name, _) in &s.fields[s.variant_fields(i)] {
-                            let field = name.rsplit('.').next().unwrap_or(name);
+                        for &index in s.variant_fields(i) {
+                            let name = &s.fields[index].0;
+                            let Some((_, field)) = name.split_once('.') else {
+                                continue;
+                            };
                             // A position, `_0`, can't clash with a name.
                             let field = match field.parse::<usize>() {
                                 Ok(n) => format!("_{n}"),
                                 Err(_) => unique(field, "f", &mut taken, |_| false),
                             };
-                            names.push(format!("as.{variant}.{field}"));
+                            names[index] = format!("as.{variant}.{field}");
                         }
                     }
                     names
@@ -707,16 +721,23 @@ impl<'a> Emitter<'a> {
 
         let names = &self.names.fields[&def];
         if let Some(variants) = &s.variants {
-            // `struct Shape { uint32_t tag; union { struct { float _0; } Circle; … } as; };`
+            // `struct Shape { uint32_t tag; float base; union { struct { float _0; } Circle; … }
+            // as; };`
+            let common: String = (s.fields.iter().zip(names).skip(1))
+                .filter(|(_, name)| !name.starts_with("as."))
+                .map(|(&(_, ty), name)| format!(" {} {name};", self.ty(ty)))
+                .collect();
             let mut members = Vec::new();
             for (i, _) in variants.iter().enumerate() {
-                let range = s.variant_fields(i);
-                if range.is_empty() {
+                let own: Vec<usize> = (s.variant_fields(i).iter().copied())
+                    .filter(|&index| names[index].starts_with("as."))
+                    .collect();
+                if own.is_empty() {
                     continue;
                 }
                 let mut variant = String::new();
                 let mut fields = String::new();
-                for index in range {
+                for index in own {
                     let mut parts = names[index].split('.').skip(1);
                     variant = parts.next().unwrap_or_default().to_string();
                     let field = parts.next().unwrap_or_default();
@@ -730,7 +751,7 @@ impl<'a> Emitter<'a> {
                 format!(" union {{{} }} as;", members.concat())
             };
             let name = self.struct_name(def, args);
-            self.line(format!("{name} {{ uint32_t tag;{union} }};"));
+            self.line(format!("{name} {{ uint32_t tag;{common}{union} }};"));
             return;
         }
         let fields: Vec<String> = s
@@ -1078,14 +1099,12 @@ impl<'a> Emitter<'a> {
                 let Ty::Struct(def, args) = self.mir.types.get(*ty) else {
                     unreachable!("variants are of enums")
                 };
+                // Each field by its designator: `.base = 1`, `.as.Rect.w = 2`.
                 let s = self.mir.struct_def(*def, args);
                 let mut text = format!("({}){{ .tag = {variant}", self.ty(*ty));
-                if let Some(first) = s.variant_fields(*variant).next() {
-                    let member = &self.names.fields[def][first];
-                    let union_member = member.rsplit_once('.').map_or(&**member, |(m, _)| m);
-                    let values: Vec<String> =
-                        fields.iter().map(|op| self.operand(f, op).text).collect();
-                    text.push_str(&format!(", .{union_member} = {{ {} }}", values.join(", ")));
+                for (&index, op) in s.variant_fields(*variant).iter().zip(fields) {
+                    let member = &self.names.fields[def][index];
+                    text.push_str(&format!(", .{member} = {}", self.operand(f, op).text));
                 }
                 text.push_str(" }");
                 Expr::atom(text)

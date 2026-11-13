@@ -1,0 +1,17 @@
+// expect: exit 53
+
+/// Fields every variant has are reachable without a `match`, wherever each declares them.
+enum Test<T> {
+    A { base: i32, a: T },
+    B { b: T, base: i32 }
+}
+
+fn bump(t: &mut Test<bool>) { t.base = t.base + 1; }
+
+fn main() -> i32 {
+    let mut x: Test<bool> = Test::A { base: 10, a: true };
+    let y: Test<bool> = Test::B { base: 20, b: false };
+    bump(&mut x);
+    let extra = match y { A { a, .. } => 0, B { b, base } => base + (1 if b else 2) };
+    x.base + y.base + extra
+}

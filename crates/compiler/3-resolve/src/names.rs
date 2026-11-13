@@ -12,17 +12,11 @@ pub enum DefKind {
     /// A struct, or an enum.
     Struct(Id<Struct>),
     /// The `index`th variant of enum `strukt`: `Shape::Circle`.
-    Variant {
-        strukt: Id<Struct>,
-        index: usize,
-    },
+    Variant { strukt: Id<Struct>, index: usize },
     /// A name a `match` arm's pattern binds: `r` in `Circle(r) => …`.
     Binding(Id<Pattern>),
     /// The `index`th parameter of `func`.
-    Param {
-        func: Id<Func>,
-        index: usize,
-    },
+    Param { func: Id<Func>, index: usize },
     /// A `let` binding.
     Local(Id<Stmt>),
     /// A variable declared by an `out name` argument.

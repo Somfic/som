@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use crate::error::TypeError;
 use crate::ty::{IntTy, Ty, TypeId, Value};
 use crate::unify::{Unifier, VarKind};
-use crate::{ArrayMethod, Loop, PatternInfo, Signature, Typed};
+use crate::{ArrayMethod, CommonField, Loop, PatternInfo, Signature, Typed};
 use som_base::Message;
 use som_base::message;
 
@@ -47,6 +47,7 @@ pub(crate) struct Checker<'a> {
     /// How many `loop`s and `while`s enclose the statement being checked.
     loops: usize,
     patterns: HashMap<Id<som_ast::Pattern>, PatternInfo>,
+    common: Vec<Vec<CommonField>>,
     diverging: HashSet<Id<Expr>>,
     /// The next expression checked is a statement's: its value isn't used.
     discarding: bool,
@@ -80,6 +81,7 @@ impl<'a> Checker<'a> {
             deferred_ops: Vec::new(),
             loops: 0,
             patterns: HashMap::new(),
+            common: Vec::new(),
             diverging: HashSet::new(),
             discarding: false,
         }
@@ -115,6 +117,10 @@ impl<'a> Checker<'a> {
                 .map(|f| self.lower(f.ty))
                 .collect();
             self.structs.push(fields);
+        }
+        for (id, s) in ast.structs.iter() {
+            let common = self.common_fields(id, s);
+            self.common.push(common);
         }
         for (id, func) in ast.funcs.iter() {
             let params = func
@@ -313,6 +319,7 @@ impl<'a> Checker<'a> {
             sliced,
             loops: self.for_loops,
             patterns: self.patterns,
+            common: self.common,
             diverging: self.diverging,
         };
         (typed, self.errors)
@@ -1337,7 +1344,10 @@ impl<'a> Checker<'a> {
                 }
                 Some((
                     def,
-                    DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_),
+                    DefKind::Param { .. }
+                    | DefKind::Local(_)
+                    | DefKind::Out(_)
+                    | DefKind::Binding(_),
                 )) => {
                     let ty = self.locals.get(&def).copied().unwrap_or(error);
                     // Passed on, a `&mut` can change what's behind it.
@@ -1663,6 +1673,9 @@ impl<'a> Checker<'a> {
                 let DefKind::Struct(s) = self.names.def(owner).kind else {
                     unreachable!("struct_of returns structs")
                 };
+                if self.ast.structs[s].is_enum() {
+                    return self.common_field(id, s, &args, field);
+                }
                 let fields = &self.ast.structs[s].fields;
                 match fields.iter().position(|f| f.name.name == field.name) {
                     Some(index) => {
@@ -1715,8 +1728,8 @@ impl<'a> Checker<'a> {
                 let wrong_form = match variant {
                     // `Shape { … }`: an enum is made from one of its variants.
                     None if ast_struct.is_enum() => {
-                        let example = (!ast_struct.variants().is_empty())
-                            .then(|| self.variant_form(s, 0));
+                        let example =
+                            (!ast_struct.variants().is_empty()).then(|| self.variant_form(s, 0));
                         self.errors.push(TypeError::ConstructEnum {
                             name: ast_struct.name.name.to_string(),
                             example,
@@ -1751,7 +1764,11 @@ impl<'a> Checker<'a> {
                         let tys = (0..ast_struct.fields.len())
                             .map(|i| self.substitute(self.structs[s.id][i], &subst))
                             .collect();
-                        (self.names.def(def).name.to_string(), &ast_struct.fields, tys)
+                        (
+                            self.names.def(def).name.to_string(),
+                            &ast_struct.fields,
+                            tys,
+                        )
                     }
                 };
                 // Only C can make one: som doesn't know what's inside.
@@ -2184,7 +2201,10 @@ impl<'a> Checker<'a> {
             Expr::Var(_) => self.names.expr(expr).is_none_or(|def| {
                 matches!(
                     self.names.def(def).kind,
-                    DefKind::Local(_) | DefKind::Out(_) | DefKind::Param { .. } | DefKind::Binding(_)
+                    DefKind::Local(_)
+                        | DefKind::Out(_)
+                        | DefKind::Param { .. }
+                        | DefKind::Binding(_)
                 )
             }),
             Expr::Field { object, .. } => self.is_place(*object),
@@ -2363,7 +2383,10 @@ impl Checker<'_> {
                 let def = self.names.expr(expr)?;
                 matches!(
                     self.names.def(def).kind,
-                    DefKind::Local(_) | DefKind::Param { .. } | DefKind::Out(_) | DefKind::Binding(_)
+                    DefKind::Local(_)
+                        | DefKind::Param { .. }
+                        | DefKind::Out(_)
+                        | DefKind::Binding(_)
                 )
                 .then(|| Key {
                     root: def,

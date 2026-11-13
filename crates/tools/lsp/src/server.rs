@@ -774,7 +774,7 @@ impl LanguageServer for SomLanguageServer {
             {
                 // A generic struct's fields as they are here: `i32`, not `T`.
                 let subst = struct_subst(a, s, a.typed.expr(expr));
-                for (field, &t) in a.ast.structs[s].fields.iter().zip(a.typed.fields(s)) {
+                for (field, t) in readable_fields(a, s) {
                     items.push(CompletionItem {
                         label: field.name.name.to_string(),
                         kind: Some(CompletionItemKind::FIELD),
@@ -791,7 +791,14 @@ impl LanguageServer for SomLanguageServer {
                         }
                         _ => describe(a, method),
                     };
+                    // `v.push(${1:value})`: the receiver is `self`.
+                    let snippet = match a.names.def(method).kind {
+                        DefKind::Func(f) => call_snippet(a, f, name, 1, insert),
+                        _ => None,
+                    };
                     items.push(CompletionItem {
+                        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
+                        insert_text: snippet,
                         label: name.to_string(),
                         kind: Some(CompletionItemKind::METHOD),
                         detail: Some(detail),
@@ -823,6 +830,36 @@ impl LanguageServer for SomLanguageServer {
             // `raylib::` lists what's in `raylib`.
             if let Some(m) = a.ast.modules.iter().position(|m| *m.name == *module) {
                 items.extend(module_items(a, m, None, insert));
+            } else if let Some(s) = find_struct(a, module, &cursor.file) {
+                // `Shape::` lists its variants, then its methods.
+                for (i, variant) in a.ast.structs[s].variants().iter().enumerate() {
+                    let snippet = variant_snippet(a, s, i, insert);
+                    items.push(CompletionItem {
+                        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
+                        insert_text: snippet,
+                        label: variant.name.name.to_string(),
+                        kind: Some(CompletionItemKind::ENUM_MEMBER),
+                        detail: Some(variant_text(a, s, i)),
+                        documentation: markdown(variant.doc.clone()),
+                        ..Default::default()
+                    });
+                }
+                let owner = a.names.strukt(s);
+                for (name, method) in a.names.methods_of(owner) {
+                    let snippet = match a.names.def(method).kind {
+                        DefKind::Func(f) => call_snippet(a, f, name, 0, insert),
+                        _ => None,
+                    };
+                    items.push(CompletionItem {
+                        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
+                        insert_text: snippet,
+                        label: name.to_string(),
+                        kind: Some(CompletionItemKind::METHOD),
+                        detail: Some(describe(a, method)),
+                        documentation: markdown(doc_of(a, method)),
+                        ..Default::default()
+                    });
+                }
             }
             return Ok(Some(CompletionResponse::Array(items)));
         } else {
@@ -1124,13 +1161,12 @@ fn describe(a: &Analysis, def: DefId) -> String {
             let def = &a.ast.structs[*strukt];
             format!("{}::{}", def.name, variant_text(a, *strukt, *index))
         }
-        DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_) => match a
-            .typed
-            .try_local(def)
-        {
-            Some(t) => format!("{}: {}", d.name, ty(a, t)),
-            None => d.name.to_string(),
-        },
+        DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_) => {
+            match a.typed.try_local(def) {
+                Some(t) => format!("{}: {}", d.name, ty(a, t)),
+                None => d.name.to_string(),
+            }
+        }
         DefKind::TypeParam { .. } | DefKind::StructParam { .. } => {
             format!("type parameter {}", d.name)
         }
@@ -1473,7 +1509,21 @@ fn field_doc(a: &Analysis, object: Id<Expr>, index: Option<usize>) -> Option<Str
     let DefKind::Struct(s) = a.names.def(owner).kind else {
         return None;
     };
-    a.ast.structs[s].fields.get(index?)?.doc.clone()
+    readable_fields(a, s).get(index?)?.0.doc.clone()
+}
+
+/// What `value.field` can read on a value of struct `s`: its fields; or for an enum, the
+/// fields every variant has. Each with its declared type.
+fn readable_fields(a: &Analysis, s: Id<Struct>) -> Vec<(&som_ast::Field, som_typeck::TypeId)> {
+    let st = &a.ast.structs[s];
+    let types = a.typed.fields(s);
+    if !st.is_enum() {
+        return st.fields.iter().zip(types.iter().copied()).collect();
+    }
+    let payload: Vec<&som_ast::Field> = st.payload().collect();
+    (a.typed.common_fields(s).iter())
+        .map(|c| (payload[c.payload[0]], types[c.payload[0]]))
+        .collect()
 }
 
 /// Markdown documentation for completion items and signature help.
@@ -1782,7 +1832,7 @@ fn field_definition(a: &Analysis, object: Id<Expr>, index: Option<usize>) -> Opt
     let DefKind::Struct(s) = a.names.def(owner).kind else {
         return None;
     };
-    Some(a.ast.structs[s].fields.get(index?)?.name.span.clone())
+    Some(readable_fields(a, s).get(index?)?.0.name.span.clone())
 }
 
 /// The `extern` whose library or header name is at `offset` in `file`.
@@ -2200,18 +2250,7 @@ impl Insert {
 /// argument.
 fn func_item(a: &Analysis, f: Id<Func>, label: String, insert: Insert) -> CompletionItem {
     let func = &a.ast.funcs[f];
-    let snippet = (!insert.call_follows).then(|| {
-        let args: Vec<String> = func
-            .params
-            .iter()
-            .enumerate()
-            .map(|(i, p)| {
-                let out = if p.out { "out " } else { "" };
-                format!("{out}${{{}:{}}}", i + 1, p.name.name)
-            })
-            .collect();
-        format!("{label}({}){}", args.join(", "), "$0")
-    });
+    let snippet = call_snippet(a, f, &label, 0, insert);
     CompletionItem {
         insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
         insert_text: snippet,
@@ -2220,6 +2259,52 @@ fn func_item(a: &Analysis, f: Id<Func>, label: String, insert: Insert) -> Comple
         detail: Some(signature(a, f)),
         documentation: markdown(func.doc.clone()),
         ..Default::default()
+    }
+}
+
+/// `label(${1:a}, ${2:b})$0`: a call of `f` with a tab stop on each argument after the first
+/// `skip` (a method's `self`, for `v.len()`). None if a call already follows.
+fn call_snippet(
+    a: &Analysis,
+    f: Id<Func>,
+    label: &str,
+    skip: usize,
+    insert: Insert,
+) -> Option<String> {
+    if insert.call_follows {
+        return None;
+    }
+    let args: Vec<String> = (a.ast.funcs[f].params.iter().skip(skip).enumerate())
+        .map(|(i, p)| {
+            let out = if p.out { "out " } else { "" };
+            format!("{out}${{{}:{}}}", i + 1, p.name.name)
+        })
+        .collect();
+    Some(format!("{label}({})$0", args.join(", ")))
+}
+
+/// Variant `index` of enum `s` as a value to fill in: `Circle(${1:f32})`, `Rect { w: $1, h: $2 }`.
+fn variant_snippet(a: &Analysis, s: Id<Struct>, index: usize, insert: Insert) -> Option<String> {
+    let def = &a.ast.structs[s];
+    let variant = &def.variants()[index];
+    let start = def.payload_start(index);
+    let types = &a.typed.fields(s)[start..start + variant.fields.len()];
+    let name = &variant.name.name;
+    match variant.kind {
+        som_ast::VariantKind::Unit => None,
+        som_ast::VariantKind::Tuple if insert.call_follows => None,
+        som_ast::VariantKind::Tuple => {
+            let args: Vec<String> = (types.iter().enumerate())
+                .map(|(i, &t)| format!("${{{}:{}}}", i + 1, ty(a, t)))
+                .collect();
+            Some(format!("{name}({})$0", args.join(", ")))
+        }
+        som_ast::VariantKind::Named => {
+            let fields: Vec<String> = (variant.fields.iter().enumerate())
+                .map(|(i, f)| format!("{}: ${}", f.name, i + 1))
+                .collect();
+            Some(format!("{name} {{ {} }}$0", fields.join(", ")))
+        }
     }
 }
 

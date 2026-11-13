@@ -1,0 +1,10 @@
+// expect: exit 125
+
+enum Color { Red, Green, Blue }
+fn code(c: Color) -> i32 { match c { Red => 1, Green => 2, Blue => 3 } }
+fn main() -> i32 {
+    let c = Color::Green;
+    let d = c;
+    code(c) + code(d) + (1 if c == Color::Green else 0) + order(Color::Blue) * 10 + (1 if c != Color::Red else 0) * 100
+}
+fn order(c: Color) -> i32 { c as i32 }

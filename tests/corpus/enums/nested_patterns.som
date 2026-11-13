@@ -1,0 +1,13 @@
+// expect: exit 6
+
+enum Shape { Circle(i32), Empty }
+enum Wrap { One(Shape), Two(Shape, Shape) }
+fn count(w: Wrap) -> i32 {
+    match w {
+        One(Circle(r)) => r,
+        One(Empty) => 0,
+        Two(Circle(a), Circle(b)) => a + b,
+        Two(_, _) => 1000,
+    }
+}
+fn main() -> i32 { count(Wrap::One(Shape::Circle(3))) + count(Wrap::Two(Shape::Circle(1), Shape::Circle(2))) + count(Wrap::One(Shape::Empty)) }

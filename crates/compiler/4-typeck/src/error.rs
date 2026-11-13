@@ -150,6 +150,14 @@ pub enum TypeError {
         example: Option<String>,
         span: Span,
     },
+    /// `t.field` on an enum where not every variant has `field`, or of the same type.
+    /// `without` are the variants that don't have it; if none, they have it typed differently.
+    NotInEveryVariant {
+        ty: String,
+        field: String,
+        without: Vec<String>,
+        span: Span,
+    },
     /// A pattern names a variant the enum doesn't have.
     UnknownVariant {
         ty: String,
@@ -487,18 +495,48 @@ impl TypeError {
                     None => d,
                 }
             }
+            TypeError::NotInEveryVariant {
+                ty: owner,
+                field: name,
+                without,
+                span,
+            } => {
+                let label = match without.as_slice() {
+                    [] => msg!["its type differs between the variants"],
+                    [one] => msg![code(one), " doesn't have it"],
+                    many => {
+                        let mut m = Message(Vec::new());
+                        for (i, v) in many.iter().enumerate() {
+                            if i > 0 {
+                                m.0.push(if i + 1 == many.len() { " and " } else { ", " }.into());
+                            }
+                            m.0.push(code(v));
+                        }
+                        m.push(" don't have it");
+                        m
+                    }
+                };
+                Diagnostic::error(msg![
+                    field(name),
+                    " isn't in every variant of ",
+                    struct_name(owner)
+                ])
+                .with_label(Label::primary(span.clone(), label))
+                .with_hint(msg![
+                    "use ",
+                    code("match"),
+                    " to reach it in the variants that have it"
+                ])
+            }
             TypeError::UnknownVariant {
                 ty: owner,
                 variant,
                 available,
                 span,
             } => {
-                let mut d = Diagnostic::error(msg![
-                    struct_name(owner),
-                    " has no variant ",
-                    code(variant)
-                ])
-                .with_label(Label::primary(span.clone(), "unknown variant"));
+                let mut d =
+                    Diagnostic::error(msg![struct_name(owner), " has no variant ", code(variant)])
+                        .with_label(Label::primary(span.clone(), "unknown variant"));
                 if let Some(close) = closest_match(variant, available, 2) {
                     d = d.with_hint(msg!["did you mean ", code(close), "?"]);
                 } else if !available.is_empty() {
@@ -542,13 +580,19 @@ impl TypeError {
                 let mut message = msg![code(variant), " also has "];
                 for (i, f) in fields.iter().enumerate() {
                     if i > 0 {
-                        message.0.push(if i + 1 == fields.len() { " and " } else { ", " }.into());
+                        message
+                            .0
+                            .push(if i + 1 == fields.len() { " and " } else { ", " }.into());
                     }
                     message.0.push(field(f));
                 }
                 Diagnostic::error(message)
                     .with_label(Label::primary(span.clone(), "not matched here"))
-                    .with_hint(msg!["match them too, or add ", code(".."), " to ignore them"])
+                    .with_hint(msg![
+                        "match them too, or add ",
+                        code(".."),
+                        " to ignore them"
+                    ])
             }
             TypeError::NonExhaustiveMatch {
                 ty,
@@ -571,13 +615,28 @@ impl TypeError {
                 let mut message = Message(Vec::new());
                 for (i, m) in missing.iter().enumerate() {
                     if i > 0 {
-                        message.0.push(if i + 1 == missing.len() { " and " } else { ", " }.into());
+                        message.0.push(
+                            if i + 1 == missing.len() {
+                                " and "
+                            } else {
+                                ", "
+                            }
+                            .into(),
+                        );
                     }
                     message.0.push(code(m));
                 }
-                let verb = if missing.len() == 1 { " isn't" } else { " aren't" };
+                let verb = if missing.len() == 1 {
+                    " isn't"
+                } else {
+                    " aren't"
+                };
                 message.push(msg![verb, " matched"]);
-                let what = if missing.len() == 1 { "that" } else { "any of those" };
+                let what = if missing.len() == 1 {
+                    "that"
+                } else {
+                    "any of those"
+                };
                 let mut d = Diagnostic::error(message).with_label(Label::primary(
                     span.clone(),
                     msg!["this ", ty.clone(), " can be ", what],

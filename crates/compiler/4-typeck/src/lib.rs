@@ -41,6 +41,8 @@ pub struct Typed {
     /// Field types of each struct, in declaration order; for an enum, every variant's fields,
     /// one variant after another.
     structs: Vec<Vec<TypeId>>,
+    /// Each enum's common fields: see `CommonField`.
+    common: Vec<Vec<CommonField>>,
     /// What each `match` arm's pattern turned out to be.
     patterns: HashMap<Id<Pattern>, PatternInfo>,
     /// `match` arms that never finish, like `{ return 0; }`: they have no value to give.
@@ -66,6 +68,16 @@ pub struct Typed {
     loops: HashMap<Id<Stmt>, Loop>,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
+}
+
+/// A field every variant of an enum has, by the same name and of the same type: `base` in
+/// `enum Test<T> { A { base: i32, a: T }, B { base: i32, b: T } }`. It can be reached
+/// without a `match`, `t.base`, and lives outside the variants, in the same place for all.
+#[derive(Clone, Debug)]
+pub struct CommonField {
+    pub name: Box<str>,
+    /// Where it is in each variant's fields, as an index into the enum's payload.
+    pub payload: Vec<usize>,
 }
 
 /// What a pattern in a `match` arm turned out to be, once the type it matches was known.
@@ -181,6 +193,17 @@ impl Typed {
     /// A struct's field types, or an enum's payload: every variant's fields, one after another.
     pub fn fields(&self, s: Id<Struct>) -> &[TypeId] {
         &self.structs[s.id]
+    }
+
+    /// An enum's common fields, in the order its first variant declares them. A `Field`
+    /// expression on an enum reads the one at its `field` index.
+    pub fn common_fields(&self, s: Id<Struct>) -> &[CommonField] {
+        &self.common[s.id]
+    }
+
+    /// Whether payload field `index` of enum `s` is one of its common fields.
+    pub fn is_common(&self, s: Id<Struct>, index: usize) -> bool {
+        self.common[s.id].iter().any(|c| c.payload.contains(&index))
     }
 
     /// What a `match` arm's pattern turned out to be.

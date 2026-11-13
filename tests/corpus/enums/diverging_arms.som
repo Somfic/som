@@ -1,0 +1,17 @@
+// expect: exit 110
+
+enum Token { Num(i32), Stop }
+fn value(t: Token) -> i32 {
+    let n = match t {
+        Num(n) => n,
+        Stop => { return 99; }
+    };
+    n * 2
+}
+fn all_return(t: Token) -> i32 {
+    match t {
+        Num(n) => { return n; }
+        Stop => { return 0; }
+    }
+}
+fn main() -> i32 { value(Token::Num(4)) + value(Token::Stop) + all_return(Token::Num(3)) }

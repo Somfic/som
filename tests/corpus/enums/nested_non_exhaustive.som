@@ -1,0 +1,13 @@
+// expect: error NonExhaustiveMatch
+
+enum Shape { Circle(i32), Empty }
+
+fn f(s: Shape?) -> i32 {
+    match s {
+        none => 0,
+        Circle(1) => 1,
+        Empty => 2,
+    }
+}
+
+fn main() -> i32 { f(none) }

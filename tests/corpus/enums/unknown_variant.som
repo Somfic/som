@@ -1,0 +1,12 @@
+// expect: error UnknownVariant
+
+enum Dir { North, South }
+
+fn f(d: Dir) -> i32 {
+    match d {
+        North => 1,
+        Sooth => 2,
+    }
+}
+
+fn main() -> i32 { f(Dir::North) }

@@ -70,6 +70,8 @@ let int_pair: Pair<int, int> = { first: 1, second: 2 }
 ## Features
 - Labeled loops (break and continue)
 - Types parameratized by types and values
+- Enums with data, and `match` that checks every case is covered
+- Fields every variant of an enum has are reachable without a `match`
 
 
 ## Todo

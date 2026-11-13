@@ -270,17 +270,18 @@ impl Validator<'_> {
                     return None;
                 }
                 let s = self.mir.struct_def(*def, args);
-                let declared = match variant {
-                    Some(v) if s.variants.as_ref().is_some_and(|vs| *v < vs.len()) => {
-                        &s.fields[s.variant_fields(*v)]
-                    }
+                let expected: Vec<TypeId> = match variant {
+                    Some(v) if s.variants.as_ref().is_some_and(|vs| *v < vs.len()) => s
+                        .variant_fields(*v)
+                        .iter()
+                        .map(|&i| s.fields[i].1)
+                        .collect(),
                     Some(_) => {
                         self.problem("variant literal of a variant its type doesn't have".into());
                         return None;
                     }
-                    None => &s.fields[..],
+                    None => s.fields.iter().map(|(_, t)| *t).collect(),
                 };
-                let expected: Vec<TypeId> = declared.iter().map(|(_, t)| *t).collect();
                 self.check_operands("struct", &expected, fields);
                 Some(*ty)
             }

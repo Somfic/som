@@ -47,7 +47,15 @@ pub(crate) fn useful(
     match head {
         Pat::Ctor(ctor, fields) => {
             let field_tys = field_types(space, ty, ctor, fields.len());
-            specialized(rows, rest, &tys[1..], ctor, fields.clone(), field_tys, space)
+            specialized(
+                rows,
+                rest,
+                &tys[1..],
+                ctor,
+                fields.clone(),
+                field_tys,
+                space,
+            )
         }
         Pat::Wild => {
             let all = space(ty);
@@ -63,15 +71,7 @@ pub(crate) fn useful(
             {
                 return all.iter().find_map(|(ctor, field_tys)| {
                     let wilds = vec![Pat::Wild; field_tys.len()];
-                    specialized(
-                        rows,
-                        rest,
-                        &tys[1..],
-                        ctor,
-                        wilds,
-                        field_tys.clone(),
-                        space,
-                    )
+                    specialized(rows, rest, &tys[1..], ctor, wilds, field_tys.clone(), space)
                 });
             }
             // Some way of making it has none: only the rows matching anything decide the rest.
@@ -108,7 +108,10 @@ fn specialized(
         .filter_map(|row| specialize(row, ctor, arity))
         .collect();
     let pats: Vec<Pat> = fields.into_iter().chain(rest.iter().cloned()).collect();
-    let tys: Vec<TypeId> = field_tys.into_iter().chain(rest_tys.iter().copied()).collect();
+    let tys: Vec<TypeId> = field_tys
+        .into_iter()
+        .chain(rest_tys.iter().copied())
+        .collect();
     let mut witness = useful(&rows, &pats, &tys, space)?;
     let rest = witness.split_off(arity);
     Some(

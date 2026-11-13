@@ -65,12 +65,15 @@ impl Parser<'_> {
                 continue;
             }
 
+            let before = self.pos;
             match self.parse_stmt_or_expr() {
                 StmtOrExpr::Stmt(stmt) => stmts.push(stmt),
                 StmtOrExpr::Expr(expr) if self.at_eof() => value = Some(expr),
-                StmtOrExpr::Expr(_) => {
+                StmtOrExpr::Expr(expr) => {
                     self.error_missing("expected ;", "a semicolon after the expression");
-                    break;
+                    if !self.keep_unterminated(expr, before, &mut stmts) {
+                        break;
+                    }
                 }
                 StmtOrExpr::Error => self.recover(RecoveryLevel::Statement),
             }
@@ -233,7 +236,10 @@ impl Parser<'_> {
         let name = self.parse_ident("a variant name")?;
         let (kind, fields) = if self.eat(TokenKind::OpenParen) {
             let types = self.parse_comma_list(TokenKind::CloseParen, |p| p.parse_type())?;
-            self.expect(TokenKind::CloseParen, "a closing parenthesis after the fields")?;
+            self.expect(
+                TokenKind::CloseParen,
+                "a closing parenthesis after the fields",
+            )?;
             let fields = (types.into_iter().enumerate())
                 .map(|(i, ty)| Field {
                     doc: None,

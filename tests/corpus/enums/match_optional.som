@@ -1,0 +1,14 @@
+// expect: exit 21
+
+enum Dir { North, South }
+fn f(o: i32?) -> i32 {
+    match o {
+        none => 0,
+        1 => 10,
+        n => n + 1,
+    }
+}
+fn g(d: Dir?) -> i32 {
+    match d { North => 1, South => 2, none => 3 }
+}
+fn main() -> i32 { f(none) + f(1) + f(5) + g(Dir::South) + g(none) }

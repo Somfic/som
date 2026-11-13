@@ -460,9 +460,10 @@ impl<'a> FnChecker<'a> {
                     }
                     ty = *to;
                 }
-                // An enum's fields are named by the enum: `match m` moved from `m`.
-                (Projection::Field(_), Ty::Struct(def, args))
-                    if self.mir.struct_def(*def, args).variants.is_some() =>
+                // A variant's own fields are named by the enum: `match m` moved from `m`.
+                (Projection::Field(i), Ty::Struct(def, args))
+                    if self.mir.struct_def(*def, args).variants.is_some()
+                        && self.mir.struct_def(*def, args).fields[*i].0.contains('.') =>
                 {
                     break;
                 }

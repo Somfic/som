@@ -1,0 +1,18 @@
+// expect: exit 10
+
+struct Point { x: i32, y: i32 }
+enum Maybe<T> { Just(T), Nothing }
+
+fn take(m: Maybe<Point>) -> i32 {
+    match m { Just(p) => p.x + p.y, Nothing => 0 }
+}
+fn peek(m: &Maybe<Point>) -> i32 {
+    match m { Just(p) => p.x, Nothing => 0 }
+}
+fn main() -> i32 {
+    let m = Maybe::Just(Point { x: 3, y: 4 });
+    let a = peek(&m);
+    let b = take(m);
+    let n: Maybe<Point> = Maybe::Nothing;
+    a + b + take(n)
+}

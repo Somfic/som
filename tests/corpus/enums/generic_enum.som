@@ -1,0 +1,16 @@
+// expect: exit 12
+
+enum Result<T, E> { Ok(T), Err(E) }
+
+fn divide(a: i32, b: i32) -> Result<i32, bool> {
+    if b == 0 { return Result::Err(true); }
+    Result::Ok(a / b)
+}
+
+fn main() -> i32 {
+    let r = divide(10, 2);
+    let s: Result<i32, bool> = divide(1, 0);
+    let x = match r { Ok(v) => v, Err(_) => 100 };
+    let y = match s { Ok(v) => v, Err(e) => 7 if e else 8 };
+    x + y
+}

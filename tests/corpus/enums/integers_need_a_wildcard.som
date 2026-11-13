@@ -1,0 +1,5 @@
+// expect: error NonExhaustiveMatch
+
+fn f(n: i32) -> i32 { match n { 0 => 1, 1 => 2 } }
+
+fn main() -> i32 { f(0) }

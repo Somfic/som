@@ -1,0 +1,12 @@
+// expect: error UseAfterMove
+
+struct Point { x: i32, y: i32 }
+
+enum Maybe<T> { Just(T), Nothing }
+
+fn main() -> i32 {
+    let m = Maybe::Just(Point { x: 3, y: 4 });
+    let a = match m { Just(p) => p.x, Nothing => 0 };
+    let b = match m { Just(p) => p.y, Nothing => 0 };
+    a + b
+}

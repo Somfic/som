@@ -372,7 +372,8 @@ impl Ast {
             Pattern::Variant { path, fields } => match fields {
                 PatternFields::Unit => path.to_string(),
                 PatternFields::Tuple(fields) => {
-                    let fields: Vec<String> = fields.iter().map(|&f| self.pattern_text(f)).collect();
+                    let fields: Vec<String> =
+                        fields.iter().map(|&f| self.pattern_text(f)).collect();
                     format!("{path}({})", fields.join(", "))
                 }
                 PatternFields::Named { fields, rest } => {

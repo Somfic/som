@@ -1,0 +1,7 @@
+// expect: error PatternMismatch
+
+enum Shape { Circle(i32), Empty }
+
+fn f(n: i32) -> i32 { match n { Circle(r) => r, _ => 0 } }
+
+fn main() -> i32 { f(1) }

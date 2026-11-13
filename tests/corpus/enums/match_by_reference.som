@@ -1,0 +1,19 @@
+// expect: exit 17
+
+enum Shape { Circle(i32), Rect { w: i32, h: i32 } }
+fn grow(s: &mut Shape) {
+    match s {
+        Circle(r) => *r = *r + 1,
+        Rect { w, .. } => *w = *w * 2,
+    }
+}
+fn size(s: &Shape) -> i32 {
+    match s { Circle(r) => r, Rect { w, h } => w * h }
+}
+fn main() -> i32 {
+    let mut a = Shape::Circle(4);
+    let mut b = Shape::Rect { w: 3, h: 2 };
+    grow(&mut a);
+    grow(&mut b);
+    size(&a) + size(&b)
+}

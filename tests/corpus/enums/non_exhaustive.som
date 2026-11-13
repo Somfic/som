@@ -1,0 +1,12 @@
+// expect: error NonExhaustiveMatch
+
+enum Shape { Circle(i32), Rect { w: i32, h: i32 }, Empty }
+
+fn area(s: Shape) -> i32 {
+    match s {
+        Circle(r) => r,
+        Empty => 0,
+    }
+}
+
+fn main() -> i32 { area(Shape::Empty) }

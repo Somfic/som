@@ -116,7 +116,10 @@ impl Struct {
 
     /// Where variant `variant`'s fields start in `payload`.
     pub fn payload_start(&self, variant: usize) -> usize {
-        self.variants()[..variant].iter().map(|v| v.fields.len()).sum()
+        self.variants()[..variant]
+            .iter()
+            .map(|v| v.fields.len())
+            .sum()
     }
 }
 

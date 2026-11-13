@@ -203,16 +203,19 @@ impl Mir {
                     return format!("struct literal of {}", self.display_ty(*ty));
                 };
                 let s = self.struct_def(*def, args);
-                let (name, declared) = match variant {
+                let (name, declared): (String, Vec<&(String, TypeId)>) = match variant {
                     Some(v) => {
                         let variants = s.variants.as_ref().expect("variants are of enums");
                         let name = format!("{}::{}", s.name, variants[*v].name);
-                        (name, &s.fields[s.variant_fields(*v)])
+                        (
+                            name,
+                            s.variant_fields(*v).iter().map(|&i| &s.fields[i]).collect(),
+                        )
                     }
-                    None => (s.name.clone(), &s.fields[..]),
+                    None => (s.name.clone(), s.fields.iter().collect()),
                 };
                 let fields: Vec<String> = declared
-                    .iter()
+                    .into_iter()
                     .zip(fields)
                     .map(|((name, _), op)| format!("{name}: {}", self.display_operand(op)))
                     .collect();

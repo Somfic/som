@@ -137,9 +137,9 @@ pub struct StructDef {
     /// Readable name, with its type arguments: `geo::Point`, `Pair<i32>`.
     pub name: String,
     /// Each field's name and type, with the type arguments filled in. An enum's first field
-    /// is its `tag`, a `u32` saying which variant it is; every variant's fields follow, one
-    /// variant after another, named like `Circle.0` and `Rect.w`. Only the tag's variant's
-    /// fields hold anything.
+    /// is its `tag`, a `u32` saying which variant it is; then its common fields, which every
+    /// variant has (`base`); then each variant's own fields, one variant after another, named
+    /// like `Circle.0` and `Rect.w`. Only the tag's variant's own fields hold anything.
     pub fields: Vec<(String, TypeId)>,
     /// For an enum: its variants, in order.
     pub variants: Option<Vec<VariantDef>>,
@@ -150,19 +150,17 @@ pub struct StructDef {
 }
 
 impl StructDef {
-    /// The fields of variant `variant`, by their index in `fields`.
-    pub fn variant_fields(&self, variant: usize) -> std::ops::Range<usize> {
-        let v = &self.variants.as_ref().expect("only enums have variants")[variant];
-        v.first..v.first + v.count
+    /// The fields of variant `variant`, in its order, by their index in `fields`.
+    pub fn variant_fields(&self, variant: usize) -> &[usize] {
+        &self.variants.as_ref().expect("only enums have variants")[variant].fields
     }
 }
 
 /// One of an enum's variants.
 pub struct VariantDef {
     pub name: String,
-    /// Where its fields start in the enum's `fields`, and how many there are.
-    pub first: usize,
-    pub count: usize,
+    /// Its fields, in order, by their index in the enum's `fields`: common ones, then its own.
+    pub fields: Vec<usize>,
 }
 
 pub struct Function {

@@ -1,0 +1,7 @@
+// expect: exit 6
+
+enum Shape { Circle(i32) }
+
+fn f(s: Shape) -> i32 { match s { Circle(mut r) => { r = r * 2; r } } }
+
+fn main() -> i32 { f(Shape::Circle(3)) }

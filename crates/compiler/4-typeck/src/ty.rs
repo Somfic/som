@@ -368,8 +368,9 @@ impl TypeTable {
     /// generic struct's field as it is in one use of it, `i32` rather than `T`.
     pub fn display_with(&self, id: TypeId, names: &Names, subst: &[(DefId, TypeId)]) -> String {
         match self.get(id) {
+            // Once: what it stands for is in the caller's terms, which can be the same `T`.
             Ty::Param(def) if let Some(&(_, arg)) = subst.iter().find(|(d, _)| d == def) => {
-                self.display_with(arg, names, subst)
+                self.display_with(arg, names, &[])
             }
             Ty::Error => "{error}".into(),
             Ty::Unit => "()".into(),

@@ -1,0 +1,7 @@
+// expect: exit 5
+
+enum Dir { North, South }
+
+fn f(d: Dir) -> i32? { match d { North => 5, South => none } }
+
+fn main() -> i32 { (f(Dir::North) else 0) + (f(Dir::South) else 0) }

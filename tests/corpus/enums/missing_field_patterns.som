@@ -1,0 +1,7 @@
+// expect: error MissingFieldPatterns
+
+enum Shape { Rect { w: i32, h: i32 } }
+
+fn f(s: Shape) -> i32 { match s { Rect { w } => w } }
+
+fn main() -> i32 { f(Shape::Rect { w: 1, h: 2 }) }

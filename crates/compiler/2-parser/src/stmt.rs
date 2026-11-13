@@ -106,7 +106,11 @@ impl Parser<'_> {
         } else {
             Some(self.parse_expr()?)
         };
-        self.expect(TokenKind::Semicolon, "a semicolon after return")?;
+        // Without its `;` (still being typed), it's reported but kept, like a `let`: an editor
+        // still knows what's returned, `self.` while typing a field.
+        if !self.eat(TokenKind::Semicolon) {
+            self.error_expected(&[TokenKind::Semicolon], "a semicolon after return");
+        }
         let span = self.span_from(&start);
         Some(self.ast.stmts.alloc(Stmt::Return(value), span))
     }
@@ -187,21 +191,42 @@ impl Parser<'_> {
         })
     }
 
+    /// After an expression missing its `;` (reported already), whether to go on parsing the
+    /// statements after it, keeping it as one: so `a.` while typing, with more below, is still
+    /// there for an editor, and so is what follows. Only if the expression got somewhere since
+    /// `before`, so parsing can't get stuck.
+    pub(crate) fn keep_unterminated(
+        &mut self,
+        expr: som_ast::Id<som_ast::Expr>,
+        before: usize,
+        stmts: &mut Vec<Id<Stmt>>,
+    ) -> bool {
+        if self.pos == before {
+            return false;
+        }
+        let span = self.ast.exprs.span(expr).clone();
+        stmts.push(self.ast.stmts.alloc(Stmt::Expr(expr), span));
+        true
+    }
+
     /// `{ stmt; stmt; expr }` where a trailing expression becomes an expression statement.
     fn parse_stmt_block(&mut self, what: &str) -> Option<Vec<Id<Stmt>>> {
         self.expect(TokenKind::OpenBrace, format!("an opening brace for {what}"))?;
 
         let mut stmts = Vec::new();
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            let before = self.pos;
             match self.parse_stmt_or_expr() {
                 StmtOrExpr::Stmt(stmt) => stmts.push(stmt),
                 StmtOrExpr::Expr(expr) if self.at(TokenKind::CloseBrace) => {
                     let span = self.ast.exprs.span(expr).clone();
                     stmts.push(self.ast.stmts.alloc(Stmt::Expr(expr), span));
                 }
-                StmtOrExpr::Expr(_) => {
+                StmtOrExpr::Expr(expr) => {
                     self.error_missing("expected `;` or `}`", "a semicolon or closing brace");
-                    break;
+                    if !self.keep_unterminated(expr, before, &mut stmts) {
+                        break;
+                    }
                 }
                 StmtOrExpr::Error => self.recover(RecoveryLevel::Statement),
             }

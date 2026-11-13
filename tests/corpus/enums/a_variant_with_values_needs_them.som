@@ -1,0 +1,8 @@
+// expect: error WrongVariantForm
+
+enum Shape { Circle(i32), Empty }
+
+fn main() -> i32 {
+    let s = Shape::Circle;
+    0
+}

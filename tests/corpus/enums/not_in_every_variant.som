@@ -1,0 +1,8 @@
+// expect: error NotInEveryVariant
+
+enum Event { Click { x: i32, y: i32 }, Key { code: i32, x: i32 } }
+
+fn main() -> i32 {
+    let e = Event::Key { code: 1, x: 2 };
+    e.x + e.y
+}

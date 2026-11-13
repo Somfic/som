@@ -1,0 +1,7 @@
+// expect: error PatternFieldCount
+
+enum Shape { Circle(i32), Empty }
+
+fn f(s: Shape) -> i32 { match s { Circle(a, b) => a, Empty => 0 } }
+
+fn main() -> i32 { f(Shape::Empty) }

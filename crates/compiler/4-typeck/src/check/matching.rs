@@ -2,17 +2,17 @@
 //! and making sure the arms cover every value.
 
 use som_ast::{Arm, Expr, Id, Ident, Pattern, PatternFields, Struct, VariantKind};
-use som_base::{Fix, Span, msg};
 use som_base::message::code;
+use som_base::{Fix, Span, msg};
 use som_resolve::{DefId, DefKind};
 use std::collections::HashSet;
 
 use super::Checker;
-use crate::PatternInfo;
 use crate::error::TypeError;
 use crate::exhaustive::{Ctor, Pat, useful};
 use crate::ty::{Ty, TypeId};
 use crate::unify::VarKind;
+use crate::{CommonField, PatternInfo};
 
 /// What a variant of `kind` holds, for messages: "`Shape::Circle` holds values by position".
 pub(super) fn holds(kind: VariantKind) -> &'static str {
@@ -88,6 +88,78 @@ impl Checker<'_> {
         }
     }
 
+    /// Enum `s`'s fields that every variant has, by the same name and of the same type.
+    pub(super) fn common_fields(&self, id: Id<Struct>, s: &Struct) -> Vec<CommonField> {
+        let Some(first) = s.variants().first() else {
+            return Vec::new();
+        };
+        let payload = &self.structs[id.id];
+        let mut common = Vec::new();
+        for (k, field) in first.fields.iter().enumerate() {
+            let ty = payload[s.payload_start(0) + k];
+            let positions: Option<Vec<usize>> = (s.variants().iter().enumerate())
+                .map(|(i, v)| {
+                    if v.kind != VariantKind::Named {
+                        return None;
+                    }
+                    let j = v
+                        .fields
+                        .iter()
+                        .position(|f| f.name.name == field.name.name)?;
+                    let at = s.payload_start(i) + j;
+                    (payload[at] == ty).then_some(at)
+                })
+                .collect();
+            if let Some(payload) = positions {
+                common.push(CommonField {
+                    name: field.name.name.clone(),
+                    payload,
+                });
+            }
+        }
+        common
+    }
+
+    /// `t.base` on a value of enum `s` with type arguments `args`: one of its common fields.
+    pub(super) fn common_field(
+        &mut self,
+        expr: Id<Expr>,
+        s: Id<Struct>,
+        args: &[TypeId],
+        field: &Ident,
+    ) -> TypeId {
+        let common = &self.common[s.id];
+        if let Some(k) = common.iter().position(|c| c.name == field.name) {
+            self.fields.insert(expr, k);
+            let at = common[k].payload[0];
+            let subst = self.struct_subst(s, args);
+            return self.substitute(self.structs[s.id][at], &subst);
+        }
+        let ast_struct = &self.ast.structs[s];
+        let without: Vec<String> = (ast_struct.variants().iter())
+            .filter(|v| !v.fields.iter().any(|f| f.name.name == field.name))
+            .map(|v| v.name.name.to_string())
+            .collect();
+        let error = if without.len() < ast_struct.variants().len() {
+            // Some variants have it: only a `match` knows which one a value is.
+            TypeError::NotInEveryVariant {
+                ty: ast_struct.name.name.to_string(),
+                field: field.name.to_string(),
+                without,
+                span: field.span.clone(),
+            }
+        } else {
+            TypeError::UnknownField {
+                ty: ast_struct.name.name.to_string(),
+                field: field.name.to_string(),
+                available: common.iter().map(|c| c.name.to_string()).collect(),
+                span: field.span.clone(),
+            }
+        };
+        self.errors.push(error);
+        self.u.table.error
+    }
+
     // --- `match` ---
 
     /// `match scrutinee { arms }`. With `discarded`, its value isn't used, so the arms can be of
@@ -153,8 +225,7 @@ impl Checker<'_> {
             valued.push(arm.body);
         }
 
-        if rows.iter().all(Option::is_some) && *self.u.get(self.u.shallow(matched)) != Ty::Error
-        {
+        if rows.iter().all(Option::is_some) && *self.u.get(self.u.shallow(matched)) != Ty::Error {
             let pats: Vec<Pat> = rows.into_iter().flatten().collect();
             self.check_coverage(id, arms, &pats, matched);
         }
@@ -257,7 +328,10 @@ impl Checker<'_> {
     /// The ways of making a value of `ty`, for `useful`.
     fn ctors(&mut self, ty: TypeId) -> Option<Vec<(Ctor, Vec<TypeId>)>> {
         match self.u.get(self.u.shallow(ty)).clone() {
-            Ty::Bool => Some(vec![(Ctor::Bool(false), vec![]), (Ctor::Bool(true), vec![])]),
+            Ty::Bool => Some(vec![
+                (Ctor::Bool(false), vec![]),
+                (Ctor::Bool(true), vec![]),
+            ]),
             Ty::Optional(inner) => Some(vec![(Ctor::None, vec![]), (Ctor::Some, vec![inner])]),
             _ => {
                 let (s, args) = self.enum_of(ty)?;
@@ -348,7 +422,9 @@ impl Checker<'_> {
             // name would quietly match everything: `Emtpy`.
             Pattern::Binding { name, .. }
                 if self.names.pattern(id).is_none()
-                    || self.variant_index(optional.unwrap_or(ty), &name.name).is_some()
+                    || self
+                        .variant_index(optional.unwrap_or(ty), &name.name)
+                        .is_some()
                     || (name.name.starts_with(|c: char| c.is_ascii_uppercase())
                         && self.enum_of(optional.unwrap_or(ty)).is_some()) =>
             {
@@ -499,10 +575,20 @@ impl Checker<'_> {
                     }
                 }
             }
-            (PatternFields::Named { fields: given, rest }, VariantKind::Named) => {
+            (
+                PatternFields::Named {
+                    fields: given,
+                    rest,
+                },
+                VariantKind::Named,
+            ) => {
                 let mut seen = vec![false; field_tys.len()];
                 for (field, pat) in given {
-                    match variant.fields.iter().position(|f| f.name.name == field.name) {
+                    match variant
+                        .fields
+                        .iter()
+                        .position(|f| f.name.name == field.name)
+                    {
                         Some(i) if !seen[i] => {
                             seen[i] = true;
                             subs[i] = self.check_pattern(*pat, field_tys[i], by_ref, false);

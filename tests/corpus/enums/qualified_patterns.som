@@ -1,0 +1,7 @@
+// expect: exit 2
+
+enum Dir { North, South }
+
+fn f(d: Dir) -> i32 { match d { Dir::North => 1, Dir::South => 2 } }
+
+fn main() -> i32 { f(Dir::South) }

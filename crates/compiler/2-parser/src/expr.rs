@@ -437,12 +437,15 @@ impl Parser<'_> {
         let mut stmts = Vec::new();
         let mut value = None;
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            let before = self.pos;
             match self.parse_stmt_or_expr() {
                 StmtOrExpr::Stmt(stmt) => stmts.push(stmt),
                 StmtOrExpr::Expr(expr) if self.at(TokenKind::CloseBrace) => value = Some(expr),
-                StmtOrExpr::Expr(_) => {
+                StmtOrExpr::Expr(expr) => {
                     self.error_missing("expected `;` or `}`", "a semicolon or closing brace");
-                    break;
+                    if !self.keep_unterminated(expr, before, &mut stmts) {
+                        break;
+                    }
                 }
                 StmtOrExpr::Error => self.recover(RecoveryLevel::Statement),
             }
@@ -525,7 +528,10 @@ impl Parser<'_> {
             }
             Some(())
         })?;
-        self.expect(TokenKind::CloseBrace, "a closing brace after the match arms")?;
+        self.expect(
+            TokenKind::CloseBrace,
+            "a closing brace after the match arms",
+        )?;
         let scrutinee_and_arms = Expr::Match { scrutinee, arms };
         Some(self.alloc_expr(scrutinee_and_arms, &start))
     }
@@ -589,7 +595,11 @@ impl Parser<'_> {
                 } else if &*path.segments[0].name == "_" {
                     Pattern::Wildcard
                 } else {
-                    let name = path.segments.into_iter().next().expect("paths aren't empty");
+                    let name = path
+                        .segments
+                        .into_iter()
+                        .next()
+                        .expect("paths aren't empty");
                     Pattern::Binding {
                         name,
                         mutable: false,

@@ -141,22 +141,36 @@ impl<'a> Lowerer<'a> {
             })
             .collect();
         // An enum: which variant it is, then every variant's fields.
+        // An enum: which variant it is, the fields every variant has, then each variant's own.
         let variants = ast_struct.is_enum().then(|| {
             let tag = self.mir.types.intern(Ty::Int(IntTy::U32));
             fields.push(("tag".into(), tag));
-            let mut payload = self.typed.fields(s).iter();
-            (ast_struct.variants().iter())
-                .map(|v| {
-                    let first = fields.len();
-                    for f in &v.fields {
-                        let ty = *payload.next().expect("a type for each field");
-                        let ty = subst.apply(&mut self.mir.types, ty);
-                        fields.push((format!("{}.{}", v.name, f.name), ty));
-                    }
+            let payload: Vec<TypeId> = (self.typed.fields(s).iter())
+                .map(|&ty| subst.apply(&mut self.mir.types, ty))
+                .collect();
+            let mut common_at = HashMap::new();
+            for common in self.typed.common_fields(s) {
+                for &at in &common.payload {
+                    common_at.insert(at, fields.len());
+                }
+                fields.push((common.name.to_string(), payload[common.payload[0]]));
+            }
+            (ast_struct.variants().iter().enumerate())
+                .map(|(i, v)| {
+                    let start = ast_struct.payload_start(i);
+                    let indexes = (v.fields.iter().enumerate())
+                        .map(|(k, f)| match common_at.get(&(start + k)) {
+                            Some(&at) => at,
+                            None => {
+                                let name = format!("{}.{}", v.name, f.name);
+                                fields.push((name, payload[start + k]));
+                                fields.len() - 1
+                            }
+                        })
+                        .collect();
                     VariantDef {
                         name: v.name.name.to_string(),
-                        first,
-                        count: v.fields.len(),
+                        fields: indexes,
                     }
                 })
                 .collect()
@@ -1949,12 +1963,18 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     .typed
                     .field(expr)
                     .expect("checked fields are resolved");
-                let object_ty = self.expr_ty(*object);
+                let mut object_ty = self.expr_ty(*object);
                 let mut place = self.place(*object);
                 // Fields are reachable through one reference.
-                if matches!(self.l.mir.types.get(object_ty), Ty::Ref { .. }) {
+                if let Ty::Ref { to, .. } = *self.l.mir.types.get(object_ty) {
                     place = place.project(Projection::Deref);
+                    object_ty = to;
                 }
+                // An enum's common fields come right after its tag.
+                let is_enum = matches!(self.l.mir.types.get(object_ty), Ty::Struct(def, _)
+                    if matches!(self.l.names.def(*def).kind,
+                        DefKind::Struct(s) if self.l.ast.structs[s].is_enum()));
+                let index = if is_enum { index + 1 } else { index };
                 return place.project(Projection::Field(index));
             }
             Expr::Deref(inner) => return self.place(*inner).project(Projection::Deref),

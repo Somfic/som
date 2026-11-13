@@ -1,0 +1,5 @@
+// expect: exit 3
+
+fn f(b: bool) -> i32 { match b { true => 1, false => 2 } }
+
+fn main() -> i32 { f(true) + f(false) }

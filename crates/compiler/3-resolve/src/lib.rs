@@ -16,11 +16,11 @@ pub use error::ResolveError;
 pub use names::{Def, DefId, DefKind, Names};
 
 use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Pattern, PatternFields, Stmt, TypeExpr};
-use std::collections::HashSet;
 use som_base::diagnostics::{closest_match, snake_case};
 use som_base::message::{self, Message, Part, code};
 use som_base::{Fix, msg};
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
     let mut resolver = Resolver {
@@ -128,7 +128,9 @@ impl<'a> Resolver<'a> {
                         // Named through the enum: `Shape::Circle`.
                         for (index, v) in s.variants().iter().enumerate() {
                             let kind = DefKind::Variant { strukt: *id, index };
-                            let variant = self.names.define(&v.name.name, kind, v.name.span.clone(), m);
+                            let variant =
+                                self.names
+                                    .define(&v.name.name, kind, v.name.span.clone(), m);
                             self.names.push_variant(*id, variant);
                             self.variant_names[m].insert(&v.name.name);
                         }
@@ -242,7 +244,11 @@ impl<'a> Resolver<'a> {
                                 self.resolve_type(ty);
                             }
                         }
-                        for field in ast.structs[*id].fields.iter().chain(ast.structs[*id].payload()) {
+                        for field in ast.structs[*id]
+                            .fields
+                            .iter()
+                            .chain(ast.structs[*id].payload())
+                        {
                             self.resolve_type(field.ty);
                         }
                         self.type_params.clear();
@@ -748,7 +754,12 @@ impl<'a> Resolver<'a> {
                 };
                 (variants.iter())
                     .map(|&v| self.names.def(v).name.to_string())
-                    .chain(self.names.methods_of(owner).into_iter().map(|(n, _)| n.to_string()))
+                    .chain(
+                        self.names
+                            .methods_of(owner)
+                            .into_iter()
+                            .map(|(n, _)| n.to_string()),
+                    )
                     .collect()
             } else {
                 return None;

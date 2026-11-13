@@ -41,13 +41,7 @@ impl FnBuilder<'_, '_> {
         for arm in arms {
             let next = self.new_block();
             let mut bindings = Vec::new();
-            self.test_pattern(
-                arm.pattern,
-                place.clone(),
-                matched_ty,
-                next,
-                &mut bindings,
-            );
+            self.test_pattern(arm.pattern, place.clone(), matched_ty, next, &mut bindings);
             let diverges = self.l.typed.diverges(arm.body);
             self.in_scope(span.clone(), |b| {
                 for binding in bindings {
@@ -114,9 +108,9 @@ impl FnBuilder<'_, '_> {
                 PatternFields::Tuple(pats) => pats.clone(),
                 PatternFields::Named { fields, .. } => fields.iter().map(|&(_, p)| p).collect(),
             };
-            let first = self.variant_fields(ty, variant).start;
+            let indexes = self.variant_fields(ty, variant);
             for (sub, &field) in subs.into_iter().zip(&info.fields) {
-                let field_place = place.clone().project(Projection::Field(first + field));
+                let field_place = place.clone().project(Projection::Field(indexes[field]));
                 let field_ty = self.place_ty(&field_place);
                 self.test_pattern(sub, field_place, field_ty, fail, bindings);
             }
@@ -166,13 +160,7 @@ impl FnBuilder<'_, '_> {
     }
 
     /// Tests that the enum at `place` is variant `variant`.
-    fn test_variant(
-        &mut self,
-        place: &Place,
-        variant: usize,
-        span: som_ast::Span,
-        fail: BlockId,
-    ) {
+    fn test_variant(&mut self, place: &Place, variant: usize, span: som_ast::Span, fail: BlockId) {
         let bool = self.l.mir.types.bool;
         let tag_place = place.clone().project(Projection::Field(0));
         let tag_ty = self.place_ty(&tag_place);
@@ -190,11 +178,15 @@ impl FnBuilder<'_, '_> {
     }
 
     /// Where variant `variant`'s fields are among enum `ty`'s.
-    fn variant_fields(&mut self, ty: TypeId, variant: usize) -> std::ops::Range<usize> {
+    fn variant_fields(&mut self, ty: TypeId, variant: usize) -> Vec<usize> {
         let Ty::Struct(def, args) = self.l.mir.types.get(ty).clone() else {
             unreachable!("checked: variants are of enums")
         };
-        self.l.mir.struct_def(def, &args).variant_fields(variant)
+        self.l
+            .mir
+            .struct_def(def, &args)
+            .variant_fields(variant)
+            .to_vec()
     }
 
     /// Goes on if `condition` holds, and to `fail` if not.

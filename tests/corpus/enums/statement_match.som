@@ -1,0 +1,15 @@
+// expect: exit 7
+
+enum Op { Add(i32), Sub(i32), Reset }
+fn main() -> i32 {
+    let ops = [Op::Add(5), Op::Sub(2), Op::Add(10), Op::Reset, Op::Add(7)];
+    let mut total = 0;
+    for op in ops {
+        match op {
+            Add(n) => total = total + n,
+            Sub(n) => { total = total - n; }
+            Reset => total = 0,
+        }
+    }
+    total
+}
