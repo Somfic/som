@@ -230,7 +230,7 @@ impl Validator<'_> {
             Rvalue::Cast { operand, ty } => {
                 let from = self.operand_ty(operand)?;
                 let types = &self.mir.types;
-                let int = |t: TypeId| matches!(types.get(t), Ty::Int(_));
+                let int = |t: TypeId| matches!(types.get(t), Ty::Int(_) | Ty::Float(_));
                 let viewed = |t: TypeId| match types.get(t) {
                     Ty::Ref { to, .. } => Some(types.get(*to)),
                     _ => None,
@@ -243,6 +243,7 @@ impl Validator<'_> {
                 if !(int(from) && int(*ty)) && !slicing {
                     let (f, t) = (self.mir.display_ty(from), self.mir.display_ty(*ty));
                     self.problem(format!("cast from {f} to {t}: those don't convert"));
+                    // (Numbers convert to numbers; references to arrays and slices to slices.)
                 }
                 Some(*ty)
             }

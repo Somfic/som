@@ -42,9 +42,11 @@ impl Grammar {
     pub const COMPARISON: u8 = 6;
     pub const ADDITIVE: u8 = 7;
     pub const MULTIPLICATIVE: u8 = 8;
-    pub const UNARY: u8 = 9;
-    pub const POSTFIX: u8 = 10;
-    pub const MODULO: u8 = 11;
+    /// `x as T`: tighter than `*`, looser than unary operators, so `-x as u8` converts `-x`.
+    pub const AS: u8 = 9;
+    pub const UNARY: u8 = 10;
+    pub const POSTFIX: u8 = 11;
+    pub const MODULO: u8 = 12;
 
     pub fn infix_op(kind: TokenKind) -> Option<(BinOp, OpInfo)> {
         let (operator, precedence, association) = match kind {

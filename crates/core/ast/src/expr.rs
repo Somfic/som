@@ -11,6 +11,11 @@ pub enum Expr {
     None,
     /// `[a, b, c]`
     Array(Vec<Id<Expr>>),
+    /// `value as ty`: a number converted to another number type.
+    Cast {
+        value: Id<Expr>,
+        ty: Id<TypeExpr>,
+    },
     /// `start..end`: the integers from `start` up to, not including, `end`. Either end can be
     /// left out where something else knows it: `s.slice(1..)`.
     Range {

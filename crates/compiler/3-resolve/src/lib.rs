@@ -401,6 +401,10 @@ impl<'a> Resolver<'a> {
             Expr::Range { start, end } => {
                 start.iter().chain(end).for_each(|&e| self.resolve_expr(e));
             }
+            Expr::Cast { value, ty } => {
+                self.resolve_expr(*value);
+                self.resolve_type(*ty);
+            }
             Expr::Assign { target, value } => {
                 self.resolve_expr(*target);
                 self.resolve_expr(*value);

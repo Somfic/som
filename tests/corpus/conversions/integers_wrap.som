@@ -1,0 +1,7 @@
+// expect: exit 44
+
+fn main() -> i32 {
+    let big = 300;
+    let small = big as u8;
+    small as i32
+}

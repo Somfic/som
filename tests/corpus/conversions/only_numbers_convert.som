@@ -1,0 +1,6 @@
+// expect: error InvalidCast
+
+fn main() -> i32 {
+    let b = true;
+    b as i32
+}

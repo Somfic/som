@@ -2140,6 +2140,7 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::Out
             | TokenKind::Use
             | TokenKind::And
+            | TokenKind::As
             | TokenKind::Or
             | TokenKind::Loop
             | TokenKind::While

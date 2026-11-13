@@ -1169,6 +1169,16 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 let len = items.len() as u64;
                 self.collection(expr, len, |ty| Rvalue::Array { ty, items })
             }
+            Expr::Cast { value, .. } => {
+                let ty = self.expr_ty(expr);
+                let from = self.expr_ty(*value);
+                let operand = self.operand(*value);
+                if from == ty {
+                    Rvalue::Use(operand)
+                } else {
+                    Rvalue::Cast { operand, ty }
+                }
+            }
             Expr::Range {
                 start: Some(start),
                 end: Some(end),

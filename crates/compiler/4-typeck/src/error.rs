@@ -111,6 +111,19 @@ pub enum TypeError {
         /// It's text: its bytes can be.
         text: bool,
     },
+    /// An integer literal too big for its type: `let x: u8 = 300;`.
+    LiteralOutOfRange {
+        value: i64,
+        ty: String,
+        max: u128,
+        span: Span,
+    },
+    /// `value as T` where they aren't both numbers.
+    InvalidCast {
+        from: Message,
+        to: Message,
+        span: Span,
+    },
     /// `a..` or `..b` somewhere other than `slice`, where nothing says where it ends.
     OpenRange {
         span: Span,
@@ -315,6 +328,27 @@ impl TypeError {
                     code("cstr"),
                     "; a string literal becomes one"
                 ]),
+            TypeError::LiteralOutOfRange {
+                value,
+                ty,
+                max,
+                span,
+            } => Diagnostic::error(msg![code(value.to_string()), " doesn't fit in ", code(ty)])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg!["the largest ", code(ty), " is ", code(max.to_string())],
+                ))
+                .with_hint(msg![
+                    "to wrap it on purpose, convert it: ",
+                    code(format!("{value} as {ty}"))
+                ]),
+            TypeError::InvalidCast { from, to, span } => {
+                Diagnostic::error(msg!["cannot convert ", from.clone(), " to ", to.clone()])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "only numbers convert with `as`",
+                    ))
+            }
             TypeError::NotIterable { ty, span, text } => {
                 let d = Diagnostic::error(msg!["cannot loop over ", ty.clone()]).with_label(
                     Label::primary(span.clone(), "`for` goes through ranges, arrays and slices"),

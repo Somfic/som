@@ -316,8 +316,9 @@ pub enum Rvalue {
         start: Operand,
         len: Operand,
     },
-    /// A value converted to type `ty`: an integer to another integer type, wrapping if it
-    /// doesn't fit; or a reference to an array, or a `[mut T]`, to a slice.
+    /// A value converted to type `ty`: a number to another number type (an integer wraps if it
+    /// doesn't fit, a float becomes the integer nearest zero, saturating); or a reference to an
+    /// array, or a `[mut T]`, to a slice.
     Cast {
         operand: Operand,
         ty: TypeId,

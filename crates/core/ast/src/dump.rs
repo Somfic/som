@@ -249,6 +249,10 @@ impl Dumper<'_> {
             Expr::Str(s) => self.line(format!("str {s:?}")),
             Expr::None => self.line("none"),
             Expr::Array(items) => self.node("array", |d| d.exprs(items)),
+            Expr::Cast { value, ty } => {
+                let ty = self.ast.type_text(*ty);
+                self.node(format!("as {ty}"), |d| d.expr(*value))
+            }
             Expr::Range { start, end } => self.node("range", |d| {
                 match start {
                     Some(start) => d.node("start", |d| d.expr(*start)),

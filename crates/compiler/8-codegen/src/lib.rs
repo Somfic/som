@@ -987,7 +987,10 @@ impl<'a> Emitter<'a> {
                         let text = value.operand();
                         Expr::atom(format!("({}){{{text}.ptr, {text}.len}}", self.ty(*ty)))
                     }
-                    _ => Expr::compound(format!("({}){}", self.ty(*ty), value.operand())),
+                    _ => match (self.mir.types.get(from), self.mir.types.get(*ty)) {
+                        (Ty::Float(_), Ty::Int(int)) => self.float_to_int(&value.operand(), *int),
+                        _ => Expr::compound(format!("({}){}", self.ty(*ty), value.operand())),
+                    },
                 }
             }
             Rvalue::Some(op) => {
@@ -1030,6 +1033,46 @@ impl<'a> Emitter<'a> {
                 Expr::atom(format!("{}({})", self.func_name(*func), args.join(", ")))
             }
         }
+    }
+
+    /// A float converted to the integer type `int`: C leaves one out of range undefined, so
+    /// it saturates, and NaN is 0. `x` is read more than once, which only ever means reading a
+    /// place again: calls aren't folded into conversions.
+    fn float_to_int(&self, x: &str, int: IntTy) -> Expr {
+        let target = match int {
+            IntTy::I8 => "int8_t",
+            IntTy::I16 => "int16_t",
+            IntTy::I32 => "int32_t",
+            IntTy::I64 => "int64_t",
+            IntTy::ISize => "intptr_t",
+            IntTy::U8 => "uint8_t",
+            IntTy::U16 => "uint16_t",
+            IntTy::U32 => "uint32_t",
+            IntTy::U64 => "uint64_t",
+            IntTy::USize => "uintptr_t",
+            // C can't write their limits as literals; these convert unchecked.
+            IntTy::I128 => return Expr::compound(format!("(__int128){x}")),
+            IntTy::U128 => return Expr::compound(format!("(unsigned __int128){x}")),
+        };
+        let (min, max) = match int {
+            IntTy::I8 => ("INT8_MIN", "INT8_MAX"),
+            IntTy::I16 => ("INT16_MIN", "INT16_MAX"),
+            IntTy::I32 => ("INT32_MIN", "INT32_MAX"),
+            IntTy::I64 => ("INT64_MIN", "INT64_MAX"),
+            IntTy::ISize => ("INTPTR_MIN", "INTPTR_MAX"),
+            IntTy::U8 => ("0", "UINT8_MAX"),
+            IntTy::U16 => ("0", "UINT16_MAX"),
+            IntTy::U32 => ("0", "UINT32_MAX"),
+            IntTy::U64 => ("0", "UINT64_MAX"),
+            IntTy::USize => ("0", "UINTPTR_MAX"),
+            IntTy::I128 | IntTy::U128 => unreachable!("handled above"),
+        };
+        // Comparing in `double`: a limit that rounds up there still compares right, as anything
+        // that large or larger is out of range.
+        Expr::compound(format!(
+            "({x} != {x} ? ({target})0 : {x} <= (double){min} ? ({target}){min} \
+             : {x} >= (double){max} ? ({target}){max} : ({target}){x})"
+        ))
     }
 
     fn operand_ty(&self, f: &FnState, op: &Operand) -> TypeId {

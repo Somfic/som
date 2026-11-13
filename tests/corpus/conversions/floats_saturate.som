@@ -1,0 +1,11 @@
+// expect: exit 111
+
+fn main() -> i32 {
+    let mut r = 0;
+    let huge = 100000000000000000000.0;
+    if huge as i32 == 2147483647 { r = r + 1; }
+    if (0.0 - huge) as u8 == 0 { r = r + 10; }
+    let zero = 0.0;
+    if (zero / zero) as i64 == 0 { r = r + 100; }
+    r
+}

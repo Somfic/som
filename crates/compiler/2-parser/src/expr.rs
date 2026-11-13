@@ -126,6 +126,17 @@ impl Parser<'_> {
                 continue;
             }
 
+            // `value as ty`
+            if self.at(TokenKind::As) {
+                if Grammar::AS * 2 < min_bp {
+                    break;
+                }
+                self.advance();
+                let ty = self.parse_type()?;
+                lhs = self.alloc_expr(Expr::Cast { value: lhs, ty }, &start);
+                continue;
+            }
+
             // `start..end`, or `start..` with the end left open.
             if self.at(TokenKind::DotDot) {
                 if Grammar::RANGE * 2 < min_bp {

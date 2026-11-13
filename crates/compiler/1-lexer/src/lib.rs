@@ -31,6 +31,8 @@ pub enum TokenKind {
     Use,
     #[token("and")]
     And,
+    #[token("as")]
+    As,
     #[token("or")]
     Or,
 
@@ -196,6 +198,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Out => write!(f, "out"),
             TokenKind::Use => write!(f, "use"),
             TokenKind::And => write!(f, "and"),
+            TokenKind::As => write!(f, "as"),
             TokenKind::Or => write!(f, "or"),
             TokenKind::Loop => write!(f, "loop"),
             TokenKind::While => write!(f, "while"),

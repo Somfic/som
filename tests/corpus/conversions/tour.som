@@ -1,0 +1,41 @@
+// expect: exit 182
+
+fn main() -> i32 {
+    // Adding up bytes: the reason this exists.
+    let mut total = 0;
+    for b in "abc".bytes() { total = total + b as i32; }    // 97 + 98 + 99 = 294
+
+    // Integers wrap when they don't fit.
+    let big = 300;
+    let wrapped = big as u8;                                 // 44
+    let literal = 300 as u8;                                 // a u8 literal: also 44
+    let negative = 0 - 1;
+    let unsigned = negative as u32;                          // 4294967295
+    let back = unsigned as i32;                              // -1
+
+    // Integers to floats, and back: the fraction goes, towards zero.
+    let n = 7;
+    let half = n as f64 / 2.0;                               // 3.5
+    let down = 3.9 as i32;                                   // 3
+    let neg = 0.0 - 3.9;
+    let neg_down = neg as i32;                               // -3
+
+    // Out of range saturates; NaN is 0.
+    let huge = 100000000000000000000.0 as i32;                                // 2147483647
+    let tiny = 0.0 - 100000000000000000000.0;
+    let tiny_i = tiny as i32;                                // -2147483648
+    let below = (0.0 - 5.0) as u8;                           // 0
+    let zero = 0.0;
+    let nan = zero / zero;
+    let nan_i = nan as i32;                                  // 0
+
+    // Precedence: tighter than `*`, looser than unary minus.
+    let a: u8 = 200;
+    let b: u8 = 2;
+    let product = a as i32 * b as i32;                       // 400, no u8 wrap
+
+    let f32_value: f32 = 2.5;
+    let widened = f32_value as f64;
+
+    total + product + down + neg_down + nan_i + below as i32
+}

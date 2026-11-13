@@ -3,7 +3,7 @@ use som_resolve::{DefId, DefKind, Names};
 use std::collections::{HashMap, HashSet};
 
 use crate::error::TypeError;
-use crate::ty::{Ty, TypeId};
+use crate::ty::{IntTy, Ty, TypeId};
 use crate::unify::{Unifier, VarKind};
 use crate::{ArrayMethod, Loop, Signature, Typed};
 use som_base::Message;
@@ -135,6 +135,35 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Reports integer literals too big for the type they ended up with: `let x: u8 = 300;`.
+    /// Wrapping one silently is almost always a mistake; `as` asks for it.
+    fn check_literals_fit(&mut self, types: &[TypeId]) {
+        for (id, expr) in self.ast.exprs.iter() {
+            let Expr::Int(n) = expr else { continue };
+            let Ty::Int(int) = *self.u.table.get(types[id.id]) else {
+                continue;
+            };
+            let max: u128 = match int {
+                IntTy::I8 => i8::MAX as u128,
+                IntTy::I16 => i16::MAX as u128,
+                IntTy::I32 => i32::MAX as u128,
+                IntTy::I64 | IntTy::ISize => i64::MAX as u128,
+                IntTy::U8 => u8::MAX as u128,
+                IntTy::U16 => u16::MAX as u128,
+                IntTy::U32 => u32::MAX as u128,
+                IntTy::U64 | IntTy::USize | IntTy::I128 | IntTy::U128 => continue,
+            };
+            if *n as u128 > max {
+                self.errors.push(TypeError::LiteralOutOfRange {
+                    value: *n,
+                    ty: format!("{int:?}").to_lowercase(),
+                    max,
+                    span: self.span(id),
+                });
+            }
+        }
+    }
+
     /// Replaces all inference variables, producing the final tables.
     fn finish(mut self) -> (Typed, Vec<TypeError>) {
         let mut reported = HashSet::new();
@@ -204,6 +233,7 @@ impl<'a> Checker<'a> {
             .into_iter()
             .map(|(expr, ty)| (expr, self.u.finish(ty, &mut ignore)))
             .collect();
+        self.check_literals_fit(&exprs);
         let typed = Typed {
             table: self.u.table,
             exprs,
@@ -899,6 +929,25 @@ impl<'a> Checker<'a> {
                     element,
                     len: items.len() as u64,
                 })
+            }
+            Expr::Cast { value, ty } => {
+                let target = self.lower(*ty);
+                let found = self.infer(*value);
+                // The value converts at run time: `300 as u8` is the `i32` 300, wrapped to 44.
+                let number = |c: &Self, ty: TypeId| {
+                    matches!(
+                        c.u.get(c.u.shallow(ty)),
+                        Ty::Int(_) | Ty::Float(_) | Ty::Error
+                    ) || matches!(c.u.var_kind(ty), Some(VarKind::Int | VarKind::Float))
+                };
+                if !number(self, found) || !number(self, target) {
+                    self.errors.push(TypeError::InvalidCast {
+                        from: self.describe(found),
+                        to: self.describe(target),
+                        span: self.span(id),
+                    });
+                }
+                target
             }
             Expr::Range { start, end } => {
                 let int = self.u.fresh(VarKind::Int);
@@ -1950,7 +1999,9 @@ impl Checker<'_> {
                 self.forget_changed_by(*target, true);
                 self.forget_changed_by(*value, false);
             }
-            Expr::Not(e) | Expr::ArrayRepeat { value: e, .. } => self.forget_changed_by(*e, false),
+            Expr::Not(e) | Expr::ArrayRepeat { value: e, .. } | Expr::Cast { value: e, .. } => {
+                self.forget_changed_by(*e, false)
+            }
             Expr::Range { start, end } => {
                 for &bound in start.iter().chain(end) {
                     self.forget_changed_by(bound, false);
