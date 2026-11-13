@@ -399,7 +399,8 @@ fn cache_stamp(header: &Path, library: Option<&Path>) -> String {
 }
 
 /// The header file, or the directories that were searched for it: the program's
-/// directory, then the `include` directory next to each library directory. A bare
+/// directory, then `CPATH` and `C_INCLUDE_PATH`, then the `include` directory next to
+/// each library directory. A bare
 /// `name.h` is also looked for as `name/name.h`, where packages like Homebrew's
 /// `miniaudio` put it.
 pub(crate) fn find_header(
@@ -442,21 +443,27 @@ pub fn importable_libraries(root: &Path, library_dirs: &[PathBuf]) -> Vec<String
     names
 }
 
-/// Where headers are looked for: the program's directory, then the `include` directory
-/// next to each library directory.
+/// Where headers are looked for: the program's directory, then `CPATH` and
+/// `C_INCLUDE_PATH`, then the `include` directory next to each library directory.
 fn include_dirs(root: &Path, library_dirs: &[PathBuf]) -> Vec<PathBuf> {
     let root = if root.as_os_str().is_empty() {
         Path::new(".")
     } else {
         root
     };
+    let from_env = ["CPATH", "C_INCLUDE_PATH"]
+        .into_iter()
+        .filter_map(std::env::var_os)
+        .flat_map(|paths| std::env::split_paths(&paths).collect::<Vec<_>>())
+        // To clang an empty entry is the current directory; the program's comes first anyway.
+        .filter(|dir| !dir.as_os_str().is_empty());
+    let next_to_libraries = libraries::search_dirs(root, library_dirs)
+        .into_iter()
+        .filter_map(|dir| Some(dir.parent()?.join("include")));
     let mut dirs = vec![root.to_path_buf()];
-    for dir in libraries::search_dirs(root, library_dirs) {
-        if let Some(parent) = dir.parent() {
-            let include = parent.join("include");
-            if !dirs.contains(&include) {
-                dirs.push(include);
-            }
+    for include in from_env.chain(next_to_libraries) {
+        if !dirs.contains(&include) {
+            dirs.push(include);
         }
     }
     dirs

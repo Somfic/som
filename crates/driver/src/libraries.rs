@@ -3,7 +3,7 @@
 //!
 //! `extern "raylib"` means `libraylib.dylib` or `libraylib.a` (`.so` on Linux),
 //! looked for in the program's own directory, then the usual system places,
-//! then `LIBRARY_PATH`. A name that looks like a path (`"libs/libfoo.dylib"`)
+//! then `LIBRARY_PATH` and the `-L` flags in `NIX_LDFLAGS`. A name that looks like a path (`"libs/libfoo.dylib"`)
 //! is used as written, relative to the program. Function names are read from
 //! the library's symbol table, so nothing has to be compiled or linked.
 //!
@@ -281,7 +281,7 @@ fn file_names(library: &str) -> Vec<String> {
 }
 
 /// Where libraries are looked for: the program's directory, then `extra` (from `-L`),
-/// then the system's.
+/// then the system's, then `LIBRARY_PATH` and Nix's `NIX_LDFLAGS`.
 pub(crate) fn search_dirs(root: &Path, extra: &[PathBuf]) -> Vec<PathBuf> {
     let root = if root.as_os_str().is_empty() {
         Path::new(".")
@@ -296,6 +296,30 @@ pub(crate) fn search_dirs(root: &Path, extra: &[PathBuf]) -> Vec<PathBuf> {
     dirs.extend(["/usr/local/lib".into(), "/usr/lib".into()]);
     if let Some(paths) = std::env::var_os("LIBRARY_PATH") {
         dirs.extend(std::env::split_paths(&paths));
+    }
+    if let Ok(flags) = std::env::var("NIX_LDFLAGS") {
+        for dir in nix_library_dirs(&flags) {
+            if !dirs.contains(&dir) {
+                dirs.push(dir);
+            }
+        }
+    }
+    dirs
+}
+
+/// The `-L` directories in `NIX_LDFLAGS`, where a Nix shell puts its packages' libraries
+/// instead of `LIBRARY_PATH`. Both `-L/dir` and `-L /dir` are understood.
+fn nix_library_dirs(flags: &str) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut words = flags.split_whitespace();
+    while let Some(word) = words.next() {
+        let dir = match word.strip_prefix("-L") {
+            Some("") => words.next(),
+            other => other,
+        };
+        if let Some(dir) = dir {
+            dirs.push(PathBuf::from(dir));
+        }
     }
     dirs
 }
