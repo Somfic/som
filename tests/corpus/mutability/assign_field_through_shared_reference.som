@@ -1,0 +1,7 @@
+// expect: error BehindSharedReference
+
+struct Point { x: i32 }
+
+fn set(p: &Point) { p.x = 1; }
+
+fn main() -> i32 { 0 }

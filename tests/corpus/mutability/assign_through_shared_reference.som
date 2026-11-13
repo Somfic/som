@@ -1,0 +1,5 @@
+// expect: error BehindSharedReference
+
+fn set(r: &i32) { *r = 1; }
+
+fn main() -> i32 { 0 }

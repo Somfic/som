@@ -1,0 +1,9 @@
+// expect: error BehindSharedReference
+
+struct Point { x: i32 }
+
+fn bump(n: &mut i32) { *n = *n + 1; }
+
+fn grow(p: &Point) { bump(&mut p.x); }
+
+fn main() -> i32 { 0 }

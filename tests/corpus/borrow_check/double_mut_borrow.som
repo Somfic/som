@@ -1,7 +1,7 @@
 // expect: error ConflictingBorrow
 
 fn test() {
-    let x = 10;
+    let mut x = 10;
     let r = &mut x;
     let s = &mut x;
 }

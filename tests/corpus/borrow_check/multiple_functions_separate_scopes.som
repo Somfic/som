@@ -5,6 +5,6 @@ fn foo() {
     let r = &x;
 }
 fn bar() {
-    let y = 20;
+    let mut y = 20;
     let s = &mut y;
 }

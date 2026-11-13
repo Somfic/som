@@ -701,6 +701,9 @@ impl<'a> Checker<'a> {
                     self.forget(|key| key.within(&borrowed) && !key.same(&borrowed));
                 }
                 let to = self.infer(*expr);
+                if *mutable {
+                    self.check_mutable(*expr, true);
+                }
                 self.u.intern(Ty::Ref {
                     mutable: *mutable,
                     to,
@@ -751,6 +754,7 @@ impl<'a> Checker<'a> {
                     .partition(|n| assigned.as_ref().is_some_and(|a| n.key.within(a)));
                 self.narrowed = kept;
                 let target_ty = self.infer(*target);
+                self.check_mutable(*target, false);
                 // The value is worked out first, while the target still holds what it did:
                 // `x = x + 1` reads the narrowed `x`.
                 self.narrowed.extend::<Vec<Narrowing>>(lifted);
@@ -1054,6 +1058,67 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// Reports it if the place `expr` can't be changed: assigned to, or with `borrow`, borrowed
+    /// as `&mut`.
+    fn check_mutable(&mut self, expr: Id<Expr>, borrow: bool) {
+        let error = match self.immutable(expr) {
+            Some(Immutable::Variable(def)) => {
+                let def = self.names.def(def);
+                TypeError::NotMutable {
+                    name: def.name.to_string(),
+                    span: self.span(expr),
+                    declared_at: def.span.clone(),
+                    borrow,
+                }
+            }
+            Some(Immutable::BehindSharedReference) => TypeError::BehindSharedReference {
+                span: self.span(expr),
+                borrow,
+            },
+            None => return,
+        };
+        self.errors.push(error);
+    }
+
+    /// Why the place `expr` can't be changed, if it can't. Parameters can be, since there's no
+    /// way to write `mut` on them yet; so can `out` variables. Anything that isn't a place, like
+    /// a call's result, is a fresh value.
+    fn immutable(&self, expr: Id<Expr>) -> Option<Immutable> {
+        match &self.ast.exprs[expr] {
+            Expr::Var(_) => {
+                let def = self.names.expr(expr)?;
+                let DefKind::Local(stmt) = self.names.def(def).kind else {
+                    return None;
+                };
+                match self.ast.stmts[stmt] {
+                    Stmt::Let { mutable: false, .. } => Some(Immutable::Variable(def)),
+                    _ => None,
+                }
+            }
+            // Through a reference, what counts is the reference: `&mut` allows it, even in a
+            // variable that isn't `mut`.
+            Expr::Field { object, .. } => match self.reference(*object) {
+                Some(true) => None,
+                Some(false) => Some(Immutable::BehindSharedReference),
+                None => self.immutable(*object),
+            },
+            Expr::Deref(inner) => match self.reference(*inner) {
+                Some(false) => Some(Immutable::BehindSharedReference),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Whether `expr` is a `&mut` reference, a `&` one, or not a reference.
+    fn reference(&self, expr: Id<Expr>) -> Option<bool> {
+        let ty = self.exprs[expr.id]?;
+        match self.u.get(self.u.shallow(ty)) {
+            Ty::Ref { mutable, .. } => Some(*mutable),
+            _ => None,
+        }
+    }
+
     /// Whether `expr` denotes a memory location that can be assigned to.
     fn is_place(&self, expr: Id<Expr>) -> bool {
         match &self.ast.exprs[expr] {
@@ -1138,6 +1203,13 @@ fn is_arithmetic(op: BinOp) -> bool {
         op,
         BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
     )
+}
+
+/// Why a place can't be changed.
+enum Immutable {
+    /// A variable declared without `mut`.
+    Variable(DefId),
+    BehindSharedReference,
 }
 
 // --- Narrowing ---

@@ -1,6 +1,6 @@
 use som_base::diagnostics::closest_match;
 use som_base::message::{Message, code, field, func, struct_name, var};
-use som_base::{Diagnostic, Label, Span, msg};
+use som_base::{Diagnostic, Fix, Label, Span, msg};
 
 #[derive(Debug, Clone)]
 pub enum TypeError {
@@ -65,6 +65,19 @@ pub enum TypeError {
     /// Assigning to something that isn't a variable, field or dereference.
     InvalidAssignTarget {
         span: Span,
+    },
+    /// Assigning to a variable declared without `mut`, or to one of its fields, or `&mut` of it.
+    NotMutable {
+        name: String,
+        span: Span,
+        declared_at: Span,
+        /// `&mut` of it, rather than an assignment.
+        borrow: bool,
+    },
+    /// Assigning, or `&mut`, through a `&` reference, which only allows reading.
+    BehindSharedReference {
+        span: Span,
+        borrow: bool,
     },
     /// The type of an expression isn't known where it needs to be.
     CannotInfer {
@@ -243,6 +256,42 @@ impl TypeError {
                 Diagnostic::error(msg!["cannot dereference ", found.clone()]).with_label(
                     Label::primary(span.clone(), "only references can be dereferenced"),
                 )
+            }
+            TypeError::NotMutable {
+                name,
+                span,
+                declared_at,
+                borrow,
+            } => {
+                let label = if *borrow {
+                    "borrowed as mutable here"
+                } else {
+                    "assigned here"
+                };
+                Diagnostic::error(msg![var(name), " is immutable"])
+                    .with_label(Label::primary(span.clone(), label))
+                    .with_label(Label::secondary(
+                        declared_at.clone(),
+                        msg!["declared without ", code("mut")],
+                    ))
+                    .with_fix(Fix::replace(
+                        msg!["make ", var(name), " mutable"],
+                        declared_at.clone(),
+                        format!("mut {name}"),
+                    ))
+            }
+            TypeError::BehindSharedReference { span, borrow } => {
+                let message = if *borrow {
+                    "cannot borrow as mutable through a `&` reference"
+                } else {
+                    "cannot assign through a `&` reference"
+                };
+                Diagnostic::error(message)
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "this is behind a `&` reference",
+                    ))
+                    .with_hint(msg!["changing it needs a ", code("&mut"), " reference"])
             }
             TypeError::InvalidAssignTarget { span } => {
                 Diagnostic::error("cannot assign to this expression").with_label(Label::primary(

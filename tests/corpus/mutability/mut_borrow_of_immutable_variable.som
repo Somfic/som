@@ -1,0 +1,9 @@
+// expect: error NotMutable
+
+fn bump(n: &mut i32) { *n = *n + 1; }
+
+fn main() -> i32 {
+    let n = 1;
+    bump(&mut n);
+    n
+}

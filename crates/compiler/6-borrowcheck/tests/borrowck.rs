@@ -25,43 +25,44 @@ const BIG: &str = "struct Big { a: i32 } fn take(b: Big) -> i32 { b.a } ";
 #[test]
 fn loans_flow_through_function_results() {
     // `first` returns a reference derived from its argument, so `r` keeps `x` borrowed.
-    let src = "fn first(a: &mut i32) -> &mut i32 { a } fn f() { let x = 1; let r = first(&mut x); let y = x; }";
+    let src = "fn first(a: &mut i32) -> &mut i32 { a } fn f() { let mut x = 1; let r = first(&mut x); let y = x; }";
     assert_eq!(kinds(src), ["UseWhileMutBorrowed"]);
 }
 
 #[test]
 fn loans_flow_through_struct_fields() {
-    let src = "struct R { r: &mut i32 } fn f() { let x = 1; let h = R { r: &mut x }; let y = x; }";
+    let src =
+        "struct R { r: &mut i32 } fn f() { let mut x = 1; let h = R { r: &mut x }; let y = x; }";
     assert_eq!(kinds(src), ["UseWhileMutBorrowed"]);
 }
 
 #[test]
 fn borrows_passed_to_a_call_end_with_it() {
-    let src = "fn bump(a: &mut i32) { *a = *a + 1; } fn f() -> i32 { let x = 1; bump(&mut x); bump(&mut x); x }";
+    let src = "fn bump(a: &mut i32) { *a = *a + 1; } fn f() -> i32 { let mut x = 1; bump(&mut x); bump(&mut x); x }";
     assert!(check(src).is_empty());
 }
 
 #[test]
 fn unused_results_release_their_loans() {
-    let src = "fn same(a: &i32) -> &i32 { a } fn f() { let x = 1; same(&x); let r = &mut x; }";
+    let src = "fn same(a: &i32) -> &i32 { a } fn f() { let mut x = 1; same(&x); let r = &mut x; }";
     assert!(check(src).is_empty());
 }
 
 #[test]
 fn writing_through_a_mutable_reference_is_fine() {
-    assert!(check("fn f() { let x = 1; let r = &mut x; *r = 2; *r = *r + 1; }").is_empty());
+    assert!(check("fn f() { let mut x = 1; let r = &mut x; *r = 2; *r = *r + 1; }").is_empty());
 }
 
 #[test]
 fn reborrows_keep_the_original_loan_alive() {
-    let src = "fn f() -> i32 { let x = 1; let r = &mut x; let s = &mut *r; x }";
+    let src = "fn f() -> i32 { let mut x = 1; let r = &mut x; let s = &mut *r; x }";
     assert_eq!(kinds(src), ["UseWhileMutBorrowed"]);
 }
 
 #[test]
 fn assigning_a_borrowed_value_is_an_error() {
     assert_eq!(
-        kinds("fn f() { let x = 1; let r = &x; x = 2; }"),
+        kinds("fn f() { let mut x = 1; let r = &x; x = 2; }"),
         ["AssignWhileBorrowed"]
     );
 }
@@ -94,14 +95,13 @@ fn a_partially_moved_struct_cannot_be_used_whole() {
 
 #[test]
 fn a_loop_can_borrow_again_each_iteration() {
-    let src =
-        "fn f() { let x = 1; let mut i = 0; while i < 3 { let r = &mut x; *r = i; i = i + 1; } }";
+    let src = "fn f() { let mut x = 1; let mut i = 0; while i < 3 { let r = &mut x; *r = i; i = i + 1; } }";
     assert!(check(src).is_empty());
 }
 
 #[test]
 fn a_borrow_kept_across_iterations_conflicts() {
-    let src = "struct H { r: &mut i32 } fn f() { let x = 1; let y = 2; let mut h = H { r: &mut y }; let mut i = 0;
+    let src = "struct H { r: &mut i32 } fn f() { let mut x = 1; let mut y = 2; let mut h = H { r: &mut y }; let mut i = 0;
                while i < 3 { let r = &mut x; i = i + 1; } let z = &mut y; }";
     assert_eq!(kinds(src), ["ConflictingBorrow"]);
 }

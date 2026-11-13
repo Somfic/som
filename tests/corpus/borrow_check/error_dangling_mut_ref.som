@@ -1,6 +1,6 @@
 // expect: error DanglingReference
 
 fn test() -> &mut i32 {
-    let x = 10;
+    let mut x = 10;
     &mut x
 }

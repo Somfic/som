@@ -1,8 +1,8 @@
 // expect: ok
 
 fn test() {
-    let x = 1;
-    let y = 2;
+    let mut x = 1;
+    let mut y = 2;
     let rx = &mut x;
     let ry = &mut y;
 }
