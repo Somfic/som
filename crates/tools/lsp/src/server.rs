@@ -1818,6 +1818,8 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::Mut
             | TokenKind::Out
             | TokenKind::Use
+            | TokenKind::And
+            | TokenKind::Or
             | TokenKind::Loop
             | TokenKind::While
             | TokenKind::Break

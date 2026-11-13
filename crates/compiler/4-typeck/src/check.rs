@@ -400,24 +400,76 @@ impl<'a> Checker<'a> {
                 then,
                 otherwise,
             } => {
-                let narrows = self.check_condition(*condition);
-                let (then_narrows, otherwise_narrows) = match narrows {
-                    Some((narrowing, true)) => (Some(narrowing), None),
-                    Some((narrowing, false)) => (None, Some(narrowing)),
-                    None => (None, None),
-                };
-                self.narrowed_while(then_narrows, |c| c.check_stmts(then));
+                let facts = self.check_condition(*condition);
+                self.narrowed_while(facts.when_true, |c| c.check_stmts(then));
                 if let Some(otherwise) = otherwise {
-                    self.narrowed_while(otherwise_narrows, |c| c.check_stmts(otherwise));
+                    self.narrowed_while(facts.when_false, |c| c.check_stmts(otherwise));
                 }
             }
         }
     }
 
-    /// Checks an `if` condition: a `bool`, or an optional, which is true when it holds a value
-    /// (`if x` is `if x != none`). Returns the optional place it tells something about, and
-    /// whether it holds a value when the condition is true.
-    fn check_condition(&mut self, condition: Id<Expr>) -> Option<(Narrowing, bool)> {
+    /// Checks a condition: a `bool`, or an optional, which is true when it holds a value
+    /// (`if x` is `if x != none`), combined with `and`, `or` and `!`. Returns what it being
+    /// true, or false, says about optional places.
+    fn check_condition(&mut self, condition: Id<Expr>) -> Facts {
+        let bool = self.u.table.bool;
+        let facts = match &self.ast.exprs[condition] {
+            // The right side only runs when the left is true: `x != none and x > 3`.
+            Expr::Binary {
+                op: BinOp::And,
+                lhs,
+                rhs,
+            } => {
+                let left = self.check_condition(*lhs);
+                let (right, left_true) =
+                    self.narrowed_during(left.when_true, |c| c.check_condition(*rhs));
+                Facts {
+                    when_true: left_true.into_iter().chain(right.when_true).collect(),
+                    when_false: Vec::new(),
+                }
+            }
+            // The right side only runs when the left is false: `x == none or x > 3`.
+            Expr::Binary {
+                op: BinOp::Or,
+                lhs,
+                rhs,
+            } => {
+                let left = self.check_condition(*lhs);
+                let (right, left_false) =
+                    self.narrowed_during(left.when_false, |c| c.check_condition(*rhs));
+                Facts {
+                    when_true: Vec::new(),
+                    when_false: left_false.into_iter().chain(right.when_false).collect(),
+                }
+            }
+            Expr::Not(inner) => {
+                let inner = self.check_condition(*inner);
+                Facts {
+                    when_true: inner.when_false,
+                    when_false: inner.when_true,
+                }
+            }
+            _ => return self.check_condition_operand(condition),
+        };
+        self.exprs[condition.id] = Some(bool);
+        facts
+    }
+
+    /// Checks a condition that isn't `and`, `or` or `!`.
+    fn check_condition_operand(&mut self, condition: Id<Expr>) -> Facts {
+        let mut facts = Facts::default();
+        match self.condition_narrowing(condition) {
+            Some((narrowing, true)) => facts.when_true.push(narrowing),
+            Some((narrowing, false)) => facts.when_false.push(narrowing),
+            None => {}
+        }
+        facts
+    }
+
+    /// Checks a condition that isn't `and`, `or` or `!`, returning the optional place it tells
+    /// something about, and whether that holds a value when the condition is true.
+    fn condition_narrowing(&mut self, condition: Id<Expr>) -> Option<(Narrowing, bool)> {
         let bool = self.u.table.bool;
         let ty = self.infer_optional(condition);
         let shallow = self.u.shallow(ty);
@@ -485,15 +537,30 @@ impl<'a> Checker<'a> {
     }
 
     /// Runs `f` with `narrowing` in effect, if there is one.
-    fn narrowed_while(&mut self, narrowing: Option<Narrowing>, f: impl FnOnce(&mut Self)) {
-        let Some(narrowing) = narrowing else {
-            return f(self);
-        };
-        let id = narrowing.id;
-        self.narrowed.push(narrowing);
-        f(self);
-        // It may have ended early; others ended inside stay ended.
-        self.narrowed.retain(|n| n.id != id);
+    fn narrowed_while<T>(
+        &mut self,
+        narrowings: Vec<Narrowing>,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        self.narrowed_during(narrowings, f).0
+    }
+
+    /// Runs `f` with `narrowings` in effect, returning its result and the narrowings it didn't
+    /// end.
+    fn narrowed_during<T>(
+        &mut self,
+        narrowings: Vec<Narrowing>,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> (T, Vec<Narrowing>) {
+        let ids: HashSet<usize> = narrowings.iter().map(|n| n.id).collect();
+        self.narrowed.extend(narrowings);
+        let result = f(self);
+        // They may have ended early; others ended inside stay ended.
+        let (still, others): (Vec<Narrowing>, Vec<Narrowing>) = std::mem::take(&mut self.narrowed)
+            .into_iter()
+            .partition(|n| ids.contains(&n.id));
+        self.narrowed = others;
+        (result, still)
     }
 
     // --- Expressions ---
@@ -660,6 +727,14 @@ impl<'a> Checker<'a> {
                 _ => error,
             },
 
+            Expr::Binary {
+                op: BinOp::And | BinOp::Or,
+                ..
+            } => {
+                self.check_condition(id);
+                bool
+            }
+
             Expr::Binary { op, lhs, rhs } => {
                 // `x == none` and `x != none` ask whether `x` holds a value.
                 let against_none = matches!(op, BinOp::Equals | BinOp::NotEquals)
@@ -689,8 +764,9 @@ impl<'a> Checker<'a> {
                 self.binary(id, *op, lhs_ty, rhs_ty)
             }
 
-            Expr::Not(inner) => {
-                self.expect(*inner, bool, None);
+            // `!x` of an optional is `x == none`.
+            Expr::Not(_) => {
+                self.check_condition(id);
                 bool
             }
 
@@ -1207,6 +1283,13 @@ fn is_arithmetic(op: BinOp) -> bool {
         op,
         BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
     )
+}
+
+/// What a condition says about optional places when it's true, and when it's false.
+#[derive(Default)]
+struct Facts {
+    when_true: Vec<Narrowing>,
+    when_false: Vec<Narrowing>,
 }
 
 /// Why a place can't be changed.

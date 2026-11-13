@@ -640,6 +640,41 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }),
 
+            // The right side only runs when it decides the result.
+            Expr::Binary {
+                op: op @ (BinOp::And | BinOp::Or),
+                lhs,
+                rhs,
+            } => {
+                let result = self.temp(ty, span.clone());
+                let left = self.condition(*lhs);
+                let (right_block, short_block, join) =
+                    (self.new_block(), self.new_block(), self.new_block());
+                let (then, otherwise) = match op {
+                    BinOp::And => (right_block, short_block),
+                    _ => (short_block, right_block),
+                };
+                self.terminate(
+                    TerminatorKind::Branch {
+                        condition: left,
+                        then,
+                        otherwise,
+                    },
+                    span.clone(),
+                );
+                self.current = right_block;
+                let right = self.condition(*rhs);
+                self.assign(Place::local(result), Rvalue::Use(right), span.clone());
+                self.terminate(TerminatorKind::Goto(join), span.clone());
+                // `false and …` is false, `true or …` is true.
+                self.current = short_block;
+                let known = self.constant(ConstKind::Bool(*op == BinOp::Or), ty);
+                self.assign(Place::local(result), Rvalue::Use(known), span.clone());
+                self.terminate(TerminatorKind::Goto(join), span);
+                self.current = join;
+                self.read(Place::local(result), ty)
+            }
+
             Expr::Fallback { optional, fallback } => {
                 let result = self.temp(ty, span.clone());
                 let (value, some_block, none_block) =
@@ -696,10 +731,15 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn rvalue_unwrapped(&mut self, expr: Id<Expr>) -> Rvalue {
         let ast = self.l.ast;
         match &ast.exprs[expr] {
+            Expr::Binary {
+                op: BinOp::And | BinOp::Or,
+                ..
+            } => Rvalue::Use(self.operand_unwrapped(expr)),
             // `x != none` is whether `x` holds a value.
             Expr::Binary { op, lhs, rhs }
-                if matches!(ast.exprs[*lhs], Expr::None)
-                    || matches!(ast.exprs[*rhs], Expr::None) =>
+                if matches!(op, BinOp::Equals | BinOp::NotEquals)
+                    && (matches!(ast.exprs[*lhs], Expr::None)
+                        || matches!(ast.exprs[*rhs], Expr::None)) =>
             {
                 let optional = if matches!(ast.exprs[*lhs], Expr::None) {
                     *rhs
@@ -718,7 +758,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 lhs: self.operand(*lhs),
                 rhs: self.operand(*rhs),
             },
-            Expr::Not(inner) => Rvalue::Not(self.operand(*inner)),
+            Expr::Not(inner) => Rvalue::Not(self.condition(*inner)),
             Expr::Borrow {
                 mutable,
                 expr: inner,

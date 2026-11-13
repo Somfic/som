@@ -1,0 +1,10 @@
+// expect: error Mismatch
+
+fn maybe(n: i32) -> i32? { n }
+
+fn main() -> i32 {
+    let x = maybe(1);
+    let mut r = 0;
+    if x and x > 0 { } else { r = x; }
+    r
+}

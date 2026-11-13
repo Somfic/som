@@ -1,7 +1,7 @@
 use som_ast::BinOp;
 use som_lexer::TokenKind;
 
-// `Right`, `OR` and `AND` are reserved for `&&`, `||` and right-associative operators.
+// `Right` is reserved for right-associative operators.
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub enum Association {
@@ -46,9 +46,8 @@ impl Grammar {
 
     pub fn infix_op(kind: TokenKind) -> Option<(BinOp, OpInfo)> {
         let (operator, precedence, association) = match kind {
-            // TokenKind::Equals => (BinOp::Assign, Self::ASSIGNMENT, Assoc::Right),
-            // TokenKind::Or => (BinOp::Or, Self::OR, Assoc::Left),
-            // TokenKind::AmpAmp => (BinOp::And, Self::AND, Assoc::Left),
+            TokenKind::Or => (BinOp::Or, Self::OR, Association::Left),
+            TokenKind::And => (BinOp::And, Self::AND, Association::Left),
             TokenKind::DoubleEquals => (BinOp::Equals, Self::EQUALITY, Association::Left),
             TokenKind::NotEquals => (BinOp::NotEquals, Self::EQUALITY, Association::Left),
 

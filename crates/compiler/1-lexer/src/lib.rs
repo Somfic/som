@@ -29,6 +29,10 @@ pub enum TokenKind {
     Out,
     #[token("use")]
     Use,
+    #[token("and")]
+    And,
+    #[token("or")]
+    Or,
 
     // Built-in types
     #[token("i8")]
@@ -183,6 +187,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Mut => write!(f, "mut"),
             TokenKind::Out => write!(f, "out"),
             TokenKind::Use => write!(f, "use"),
+            TokenKind::And => write!(f, "and"),
+            TokenKind::Or => write!(f, "or"),
             TokenKind::Loop => write!(f, "loop"),
             TokenKind::While => write!(f, "while"),
             TokenKind::Break => write!(f, "break"),

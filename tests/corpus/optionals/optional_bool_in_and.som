@@ -1,0 +1,7 @@
+// expect: error OptionalBoolCondition
+
+fn main() -> i32 {
+    let flag: bool? = true;
+    if flag and true { }
+    0
+}

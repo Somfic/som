@@ -1,0 +1,12 @@
+// expect: error Mismatch
+
+fn maybe(n: i32) -> i32? { n }
+
+fn main() -> i32 {
+    let x = maybe(1);
+    let y = maybe(2);
+    let mut r = 0;
+    // Only one of them is known to hold a value.
+    if x or y { r = x; }
+    r
+}

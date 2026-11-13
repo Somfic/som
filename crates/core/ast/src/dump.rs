@@ -294,8 +294,8 @@ impl BinOp {
             BinOp::GreaterThanOrEqual => ">=",
             BinOp::Equals => "==",
             BinOp::NotEquals => "!=",
-            BinOp::And => "&&",
-            BinOp::Or => "||",
+            BinOp::And => "and",
+            BinOp::Or => "or",
         }
     }
 }

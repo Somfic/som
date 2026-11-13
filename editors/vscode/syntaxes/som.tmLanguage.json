@@ -41,7 +41,7 @@
       "patterns": [
         {
           "name": "keyword.control.som",
-          "match": "\\b(if|else|loop|while|break|for|use)\\b"
+          "match": "\\b(if|else|loop|while|break|for|use|and|or)\\b"
         },
         {
           "name": "keyword.other.som",

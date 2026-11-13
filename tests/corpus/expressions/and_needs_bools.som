@@ -1,0 +1,6 @@
+// expect: error Mismatch
+
+fn main() -> i32 {
+    if true and 5 { }
+    0
+}

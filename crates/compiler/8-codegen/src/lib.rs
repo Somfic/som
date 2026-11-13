@@ -869,7 +869,12 @@ impl<'a> Emitter<'a> {
                 if pointer {
                     return Expr::compound(format!("(void*)((uint8_t*){l} + {r})"));
                 }
-                Expr::compound(format!("{l} {} {r}", op.symbol()))
+                let symbol = match op {
+                    BinOp::And => "&&",
+                    BinOp::Or => "||",
+                    op => op.symbol(),
+                };
+                Expr::compound(format!("{l} {symbol} {r}"))
             }
             Rvalue::Struct { def, fields } => {
                 let fields: Vec<String> =

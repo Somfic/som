@@ -1,0 +1,20 @@
+// expect: exit 97
+
+fn maybe(n: i32) -> i32? { n }
+
+fn main() -> i32 {
+    let x = maybe(2);
+    let y = maybe(3);
+    let missing: i32? = none;
+    let mut r = 0;
+    // Both present: both narrowed inside.
+    if x and y { r = r + x * y; }
+    // The right side sees what the left established.
+    if x != none and x > 1 { r = r + 10; }
+    if missing == none or missing > 100 { r = r + 100; }
+    // `or` narrows the `else`.
+    if x == none or y == none { r = 0; } else { r = r + x + y; }
+    // `!` swaps what's known.
+    if !missing { r = r + 1000; }
+    r
+}
