@@ -20,6 +20,9 @@ impl Parser<'_> {
     fn parse_item(&mut self) {
         let item = match self.peek() {
             TokenKind::Fn => self.parse_function().map(Item::Func),
+            TokenKind::Extern if self.peek_nth(1) == TokenKind::Struct => {
+                self.parse_struct().map(Item::Struct)
+            }
             TokenKind::Extern => self.parse_extern().map(Item::Extern),
             TokenKind::Struct => self.parse_struct().map(Item::Struct),
             TokenKind::Use if self.peek_nth(1) == TokenKind::Extern => {
@@ -137,21 +140,30 @@ impl Parser<'_> {
         Some(Use { path })
     }
 
+    /// `struct Point { x: i32, y: i32 }`, or `extern struct Sqlite3;`: a struct only C
+    /// sees inside, used through handles to one.
     fn parse_struct(&mut self) -> Option<Id<Struct>> {
         let doc = self.doc_comment();
         let start = self.current_span();
+        let handle = self.eat(TokenKind::Extern);
         self.expect(TokenKind::Struct, "a struct declaration")?;
         let name = self.parse_ident("a struct name")?;
 
-        self.expect(TokenKind::OpenBrace, "a list of struct fields")?;
-        let fields = self.parse_comma_list(TokenKind::CloseBrace, |p| {
-            let doc = p.doc_comment();
-            let name = p.parse_ident("a struct field name")?;
-            p.expect(TokenKind::Colon, "a struct field type")?;
-            let ty = p.parse_type()?;
-            Some(Field { doc, name, ty })
-        })?;
-        self.expect(TokenKind::CloseBrace, "a closing brace after struct fields")?;
+        let fields = if handle {
+            self.expect(TokenKind::Semicolon, "a semicolon after an extern struct")?;
+            Vec::new()
+        } else {
+            self.expect(TokenKind::OpenBrace, "a list of struct fields")?;
+            let fields = self.parse_comma_list(TokenKind::CloseBrace, |p| {
+                let doc = p.doc_comment();
+                let name = p.parse_ident("a struct field name")?;
+                p.expect(TokenKind::Colon, "a struct field type")?;
+                let ty = p.parse_type()?;
+                Some(Field { doc, name, ty })
+            })?;
+            self.expect(TokenKind::CloseBrace, "a closing brace after struct fields")?;
+            fields
+        };
 
         let span = self.span_from(&start);
         Some(self.ast.structs.alloc(
@@ -159,7 +171,9 @@ impl Parser<'_> {
                 doc,
                 name,
                 fields,
-                copy: false,
+                // A handle is just a pointer, so copying it copies nothing C owns.
+                copy: handle,
+                handle,
             },
             span,
         ))

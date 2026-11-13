@@ -16,6 +16,7 @@
 //! | `float`, `double`, `bool`           | `f32`, `f64`, `bool` |
 //! | `const char *`                      | `&str`         |
 //! | parameter `const T *`, `T *`        | `&T`, `&mut T` |
+//! | `sqlite3 *`, a struct never defined | `Sqlite3`, an `extern struct` handle |
 //! | any other pointer                   | `*`            |
 //! | `struct Color` (by value)           | `Color`, with the same fields |
 //! | `enum …`                            | `i32`          |
@@ -381,7 +382,7 @@ fn compatible(
 }
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 13;
+const GENERATOR_VERSION: u32 = 15;
 
 /// The first line of a cached import: everything it depends on. Any change to the header,
 /// the library or the generator makes it stale.
@@ -620,6 +621,18 @@ fn generate(
             let _ = writeln!(out, "    {}: {ty},", identifier(name));
         }
         out.push_str("}\n\n");
+    }
+    for (name, tag) in &c.handles {
+        let decl = decls
+            .iter()
+            .find(|d| d["kind"] == "RecordDecl" && d["name"] == tag.as_str());
+        if let Some(decl) = decl {
+            out.push_str(&docs.write(&docs.above(decl, true), ""));
+            if let Some((file, line)) = docs.origin(decl) {
+                let _ = writeln!(origins, "{name}\t{file}\t{line}");
+            }
+        }
+        let _ = writeln!(out, "extern struct {name};\n");
     }
     // Naming the header marks these as coming from it, so they aren't checked against it again.
     match library {
@@ -905,6 +918,9 @@ struct Converter {
     tags: HashMap<String, String>,
     /// Structs that can't be converted, and why.
     unsupported: HashMap<String, String>,
+    /// Structs the header only declares, used through pointers: som name → C tag.
+    /// They become `extern struct`s, whose values are those pointers.
+    handles: BTreeMap<String, String>,
 }
 
 impl Converter {
@@ -1004,12 +1020,21 @@ impl Converter {
         }
         if let Some(pointee) = text.strip_suffix('*') {
             let pointee = pointee.trim().trim_start_matches("const ").trim();
-            return Ok(if constant && pointee == "char" {
-                "&str"
-            } else {
-                "*"
+            if constant && pointee == "char" {
+                return Ok("&str".into());
             }
-            .into());
+            // `sqlite3 *`, where the header never says what's in a `sqlite3`.
+            let mut pointee = pointee.to_string();
+            while let Some(underlying) = self.typedefs.get(&pointee).filter(|u| **u != pointee) {
+                pointee = underlying.trim().to_string();
+            }
+            if let Some(tag) = pointee.strip_prefix("struct ")
+                && !self.records.contains_key(tag)
+                && let Some(name) = self.handle(tag)
+            {
+                return Ok(name);
+            }
+            return Ok("*".into());
         }
         Ok(match text {
             "void" => "()",
@@ -1048,6 +1073,19 @@ impl Converter {
     }
 
     /// A struct, under its som name: `struct ma_device` is `MaDevice`.
+    /// The handle type for pointers to the opaque `struct tag`, or `None` if its som name
+    /// is taken by another struct.
+    fn handle(&mut self, tag: &str) -> Option<String> {
+        let name = pascal_case(tag);
+        let taken = self.tags.contains_key(&name)
+            || self.handles.get(&name).is_some_and(|other| other != tag);
+        if taken {
+            return None;
+        }
+        self.handles.insert(name.clone(), tag.to_string());
+        Some(name)
+    }
+
     fn import_struct(&mut self, tag: &str) -> Result<String, String> {
         let name = pascal_case(tag);
         match self.tags.get(&name) {
@@ -1061,6 +1099,11 @@ impl Converter {
         }
         if let Some(reason) = self.unsupported.get(tag) {
             return Err(reason.clone());
+        }
+        if let Some(other) = self.handles.get(&name) {
+            return Err(format!(
+                "it uses `{tag}`, which in som would be called `{name}`, like `{other}`"
+            ));
         }
         let Some(fields) = self.records.get(tag).cloned() else {
             return Err(format!(
@@ -1149,11 +1192,11 @@ mod tests {
         assert_eq!(c.param_ty("const float *").unwrap(), "&f32");
         assert_eq!(c.param_ty("int *").unwrap(), "&mut i32");
         assert_eq!(c.param_ty("int *const").unwrap(), "&mut i32");
-        assert_eq!(c.param_ty("struct opaque **").unwrap(), "&mut *");
+        assert_eq!(c.param_ty("struct opaque **").unwrap(), "&mut Opaque");
         assert_eq!(c.param_ty("const char *").unwrap(), "&str");
         assert_eq!(c.param_ty("const char **").unwrap(), "*");
         assert_eq!(c.param_ty("void *").unwrap(), "*");
-        assert_eq!(c.param_ty("struct opaque *").unwrap(), "*");
+        assert_eq!(c.param_ty("struct opaque *").unwrap(), "Opaque");
         assert_eq!(c.param_ty("void (*)(int)").unwrap(), "*");
         assert_eq!(c.param_ty("int").unwrap(), "i32");
     }

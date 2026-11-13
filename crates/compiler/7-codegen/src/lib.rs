@@ -460,6 +460,10 @@ impl<'a> Emitter<'a> {
             Ty::Float(FloatTy::F64) => "double".into(),
             Ty::Pointer | Ty::Fn { .. } => "void*".into(),
             Ty::Ref { to, .. } => format!("{}*", self.ty(*to)),
+            // A handle is a pointer to a struct only C sees inside.
+            Ty::Struct(def) if self.mir.struct_def(*def).handle => {
+                format!("{}*", self.struct_name(*def))
+            }
             Ty::Struct(def) => self.struct_name(*def),
             Ty::Error | Ty::Param(_) | Ty::Var(_) => {
                 unreachable!("codegen only sees checked, concrete types")
@@ -519,6 +523,10 @@ impl<'a> Emitter<'a> {
         }
         visiting.pop();
         done.insert(def);
+        // Only C knows what's inside: the forward declaration is all there is.
+        if s.handle {
+            return;
+        }
 
         let fields: Vec<String> = s
             .fields

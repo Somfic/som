@@ -1,0 +1,11 @@
+// expect: ok
+
+/// A struct only C sees inside.
+extern struct Window;
+
+fn same(w: Window) -> Window { w }
+
+fn twice(w: Window) -> Window {
+    let a = same(w);
+    same(w)
+}

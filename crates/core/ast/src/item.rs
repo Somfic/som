@@ -70,6 +70,9 @@ pub struct Struct {
     /// Values are copied rather than moved. Set for structs imported from a C header,
     /// which are plain data.
     pub copy: bool,
+    /// `extern struct Sqlite3;`: a struct only C sees inside. Its values are handles,
+    /// pointers to one, which som can pass around but not look into or create.
+    pub handle: bool,
 }
 
 pub struct Field {

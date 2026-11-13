@@ -70,6 +70,11 @@ pub enum TypeError {
     CannotInfer {
         span: Span,
     },
+    /// `Sqlite3 {}` for an `extern struct`, which only C can create.
+    ConstructHandle {
+        name: String,
+        span: Span,
+    },
     /// Something other than `out name` passed to an `out` parameter.
     NeedsOut {
         param: String,
@@ -213,6 +218,18 @@ impl TypeError {
             TypeError::CannotInfer { span } => {
                 Diagnostic::error("cannot infer the type of this expression")
                     .with_label(Label::primary(span.clone(), "add a type annotation"))
+            }
+            TypeError::ConstructHandle { name, span } => {
+                Diagnostic::error(msg!["cannot create a ", struct_name(name), " in som"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![
+                            "it's an ",
+                            code("extern struct"),
+                            ": only C knows what's inside"
+                        ],
+                    ))
+                    .with_hint("get one from the C library, or zeroed with `out`")
             }
             TypeError::NeedsOut {
                 param,

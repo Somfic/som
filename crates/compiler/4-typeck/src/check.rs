@@ -598,8 +598,19 @@ impl<'a> Checker<'a> {
                 let DefKind::Struct(s) = self.names.def(def).kind else {
                     unreachable!("resolver only binds constructors to structs")
                 };
-                let declared = &self.ast.structs[s].fields;
                 let struct_name = self.names.def(def).name.to_string();
+                // Only C can make one: som doesn't know what's inside.
+                if self.ast.structs[s].handle {
+                    self.errors.push(TypeError::ConstructHandle {
+                        name: struct_name,
+                        span: self.span(id),
+                    });
+                    given.iter().for_each(|(_, v)| {
+                        self.infer(*v);
+                    });
+                    return self.u.intern(Ty::Struct(def));
+                }
+                let declared = &self.ast.structs[s].fields;
 
                 let mut seen = vec![false; declared.len()];
                 for (name, value) in given {

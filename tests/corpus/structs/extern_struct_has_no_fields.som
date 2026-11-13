@@ -1,0 +1,5 @@
+// expect: error UnknownField
+
+extern struct Window;
+
+fn width(w: Window) -> i32 { w.width }

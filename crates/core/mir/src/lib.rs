@@ -75,6 +75,8 @@ pub struct StructDef {
     pub fields: Vec<(String, TypeId)>,
     /// Values are copied rather than moved.
     pub copy: bool,
+    /// An `extern struct`: values are pointers to a struct only C sees inside.
+    pub handle: bool,
 }
 
 pub struct Function {

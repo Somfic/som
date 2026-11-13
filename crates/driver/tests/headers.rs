@@ -33,6 +33,9 @@ DEMO_API demo_size demo_size_of(int w);
 DEMO_API void demo_free(void);
 int demo_left(Pair pair);
 void demo_widen(demo_size *size);
+typedef struct demo_db demo_db;
+int demo_open(int answer, demo_db **db);
+int demo_query(const demo_db *db);
 ";
 
 const SOURCE: &str = "
@@ -48,6 +51,10 @@ demo_size demo_size_of(int w) { demo_size s = { w, w, 2 * w }; return s; }
 void demo_free(void) {}
 int demo_left(Pair pair) { return pair.left; }
 void demo_widen(demo_size *size) { size->w += 1; }
+struct demo_db { int answer; };
+static struct demo_db the_db;
+int demo_open(int answer, demo_db **db) { the_db.answer = answer; *db = &the_db; return 0; }
+int demo_query(const demo_db *db) { return db->answer; }
 ";
 
 /// A directory with `demo.h` and the shared library `demo` built from it.
@@ -124,6 +131,44 @@ fn imported_structs_are_copied_and_pointer_parameters_take_references() {
     assert_eq!(
         som_driver::run(&checked, &exe, &[]).unwrap().code(),
         Some(42)
+    );
+}
+
+#[test]
+fn structs_the_header_only_declares_are_handles() {
+    let dir = project();
+    let main = write(
+        dir.path(),
+        "extern \"demo\" from \"demo.h\";
+         fn main() -> i32 {
+             demo::demo_open(42, out db);
+             let copy = db;
+             demo::demo_query(db) + demo::demo_query(copy) - 42
+         }",
+    );
+    let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
+    let generated = std::fs::read_to_string(dir.path().join(".som/demo.som")).unwrap();
+    assert!(generated.contains("extern struct DemoDb;"), "{generated}");
+    assert!(
+        generated.contains("fn demo_open(answer: i32, db: &mut DemoDb) -> i32;"),
+        "{generated}"
+    );
+    let exe =
+        som_driver::build(&checked, &dir.path().join("program"), &Default::default()).unwrap();
+    assert_eq!(
+        som_driver::run(&checked, &exe, &[]).unwrap().code(),
+        Some(42)
+    );
+
+    // Only C can make one.
+    let main = write(
+        dir.path(),
+        "extern \"demo\" from \"demo.h\";
+         fn main() { let db = demo::DemoDb {}; }",
+    );
+    assert_eq!(
+        kinds(check(&main, &Options::default())),
+        ["ConstructHandle"]
     );
 }
 

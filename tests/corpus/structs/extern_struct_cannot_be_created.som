@@ -1,0 +1,5 @@
+// expect: error ConstructHandle
+
+extern struct Window;
+
+fn make() -> Window { Window {} }

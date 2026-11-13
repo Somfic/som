@@ -68,6 +68,7 @@ impl<'a> Lowerer<'a> {
                 name,
                 fields,
                 copy: s.copy,
+                handle: s.handle,
             });
         }
 
