@@ -144,6 +144,12 @@ impl<T> Arena<T> {
     pub fn is_empty(&self) -> bool {
         self.live == 0
     }
+
+    /// One past the highest id handed out, counting removed items: the length for a
+    /// `Vec` indexed by id.
+    pub fn slots(&self) -> usize {
+        self.items.len()
+    }
 }
 
 impl<T> Index<Id<T>> for Arena<T> {

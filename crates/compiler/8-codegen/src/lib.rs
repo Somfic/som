@@ -228,30 +228,26 @@ impl Names {
 /// C names for a function's locals: the som name where possible, so the C reads like the
 /// source. The return value is `_0` and temporaries are `_N`. A name that would clash (a C
 /// keyword, a function, a shadowed `let`, or one of the `_N` names) gets a `_2`, `_3`...
+/// Indexed by local id; removed locals get an empty name.
 fn local_names(body: &Body, functions: &HashSet<String>) -> Vec<String> {
     let mut taken: HashSet<String> = HashSet::new();
-    let mut names: Vec<Option<String>> = body
-        .locals
-        .iter()
-        .enumerate()
-        .map(|(i, local)| {
-            (i == 0 || local.name.is_none()).then(|| {
-                taken.insert(format!("_{i}"));
-                format!("_{i}")
-            })
-        })
-        .collect();
-    for (i, local) in body.locals.iter().enumerate() {
-        if let (Some(source), None) = (&local.name, &names[i]) {
-            names[i] = Some(unique(source, "v", &mut taken, |n| {
+    let mut names = vec![String::new(); body.locals.slots()];
+    for (id, local) in body.locals.iter_with_ids() {
+        if id == RETURN || local.name.is_none() {
+            names[id.id] = format!("_{}", id.id);
+            taken.insert(names[id.id].clone());
+        }
+    }
+    for (id, local) in body.locals.iter_with_ids() {
+        if let Some(source) = &local.name
+            && names[id.id].is_empty()
+        {
+            names[id.id] = unique(source, "v", &mut taken, |n| {
                 functions.contains(n) || n.starts_with("som_")
-            }));
+            });
         }
     }
     names
-        .into_iter()
-        .map(|n| n.expect("every local is named"))
-        .collect()
 }
 
 // --- Folding temporaries ---
@@ -307,7 +303,7 @@ struct Usage {
 
 impl Usage {
     fn of(mir: &Mir, body: &Body) -> Usage {
-        let n = body.locals.len();
+        let n = body.locals.slots();
         let mut u = Usage {
             assigns: vec![0; n],
             reads: vec![0; n],

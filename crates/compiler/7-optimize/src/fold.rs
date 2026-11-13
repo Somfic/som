@@ -9,7 +9,8 @@
 //! - A branch on a constant becomes a `goto`, and blocks nothing can reach any more are
 //!   removed.
 //!
-//! Then assignments of constants to locals nothing reads are dropped.
+//! The assignments left behind to locals nothing reads any more are removed by
+//! [`dce`](crate::dce).
 //!
 //! A folded value has to be exactly what the program would have computed at run time.
 //! Integers wrap to their type's width (the C backend compiles with `-fwrapv` for
@@ -37,7 +38,6 @@ fn fold_body(types: &TypeTable, body: &mut Body) {
             break;
         }
     }
-    remove_dead_constants(body);
 }
 
 // --- Expressions ---
@@ -197,7 +197,7 @@ fn wrap(n: i128, int: IntTy) -> Option<i64> {
 
 /// Replaces reads of locals that only ever hold one constant with that constant.
 fn propagate(body: &mut Body) -> bool {
-    let mut assigned: Vec<Vec<&Rvalue>> = vec![Vec::new(); body.locals.len()];
+    let mut assigned: Vec<Vec<&Rvalue>> = vec![Vec::new(); body.locals.slots()];
     let mut pinned: HashSet<Local> = body.args().chain([RETURN]).collect();
     pinned.extend(body.outs.iter().copied());
     for stmt in body.blocks.iter().flat_map(|b| &b.stmts) {
@@ -253,43 +253,6 @@ fn propagate(body: &mut Body) -> bool {
     changed
 }
 
-/// Drops assignments of constants to locals nothing reads, such as the ones `propagate`
-/// replaced every read of.
-fn remove_dead_constants(body: &mut Body) {
-    let mut read = vec![false; body.locals.len()];
-    let mut note = |op: &Operand| {
-        if let Operand::Copy(place) | Operand::Move(place) = op {
-            read[place.local.id] = true;
-        }
-    };
-    for block in body.blocks.iter() {
-        for stmt in &block.stmts {
-            if let StatementKind::Assign(dest, rvalue) = &stmt.kind {
-                operands(rvalue).into_iter().for_each(&mut note);
-                // Borrowing a local, or writing to part of it, keeps it too.
-                if let Rvalue::Ref { place, .. } = rvalue {
-                    note(&Operand::Copy(place.clone()));
-                }
-                if !dest.projection.is_empty() {
-                    note(&Operand::Copy(dest.clone()));
-                }
-            }
-        }
-        if let TerminatorKind::Branch { condition, .. } = &block.terminator.kind {
-            note(condition);
-        }
-    }
-    let kept: HashSet<Local> = body.args().chain([RETURN]).collect();
-    for block in body.blocks.iter_mut() {
-        block.stmts.retain(|stmt| match &stmt.kind {
-            StatementKind::Assign(dest, Rvalue::Use(Operand::Const(_))) => {
-                !dest.projection.is_empty() || read[dest.local.id] || kept.contains(&dest.local)
-            }
-            _ => true,
-        });
-    }
-}
-
 // --- Control flow ---
 
 /// Turns branches on constants into jumps.
@@ -331,15 +294,6 @@ fn remove_unreachable(body: &mut Body) -> bool {
 }
 
 // --- Operands ---
-
-fn operands(rvalue: &Rvalue) -> Vec<&Operand> {
-    match rvalue {
-        Rvalue::Use(op) | Rvalue::Not(op) => vec![op],
-        Rvalue::Ref { .. } => Vec::new(),
-        Rvalue::Binary { lhs, rhs, .. } => vec![lhs, rhs],
-        Rvalue::Struct { fields: ops, .. } | Rvalue::Call { args: ops, .. } => ops.iter().collect(),
-    }
-}
 
 fn operands_mut(rvalue: &mut Rvalue) -> Vec<&mut Operand> {
     match rvalue {

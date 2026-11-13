@@ -36,13 +36,9 @@ fn arithmetic_on_constants_is_folded() {
 }
 
 #[test]
-fn constant_locals_are_propagated_and_removed() {
+fn constant_locals_are_propagated() {
     let mir = folded("fn main() -> i32 { let a = 2; let b = a * 10; b + 1 }");
     assert!(mir.contains("_0 = const 21_i32"), "{mir}");
-    assert!(
-        !mir.contains("= const 2_i32"),
-        "the dead `a = 2` should be gone:\n{mir}"
-    );
 }
 
 #[test]
