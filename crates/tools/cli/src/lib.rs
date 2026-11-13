@@ -194,7 +194,7 @@ fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
         return None;
     }
 
-    let (ast, errors) = som_driver::load(path);
+    let (ast, errors) = som_driver::load(path, &args.library_dirs);
     let mut ok = true;
     for e in emits {
         ok &= match e.stage {
@@ -210,6 +210,7 @@ fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
 
     let options = Options {
         library_dirs: args.library_dirs.clone(),
+        ..Options::default()
     };
     let checked = match som_driver::check_loaded(ast, &options) {
         Ok(checked) => checked,

@@ -20,6 +20,15 @@ pub struct Extern {
     pub library: Option<String>,
     /// Where the library's name is written, for errors about the library.
     pub library_span: Option<Span>,
+    /// `extern "raylib" from "raylib.h"`: a C header to import declarations from, and
+    /// where it's written.
+    pub header: Option<(String, Span)>,
+    /// `use extern "raylib" …`: also `use` the library's module.
+    pub use_module: bool,
+    /// The module the functions belong to, when it's not the one the block is written in:
+    /// a library's functions go in a module named after it (`raylib::InitWindow`). Set
+    /// while loading.
+    pub module: Option<usize>,
     pub funcs: Vec<Id<Func>>,
 }
 
@@ -31,6 +40,8 @@ pub struct Impl {
 
 /// A function, method, or extern declaration (which has no `body`).
 pub struct Func {
+    /// The `///` comment above it.
+    pub doc: Option<String>,
     pub name: Ident,
     pub type_params: Vec<Ident>,
     pub params: Vec<Param>,
@@ -38,6 +49,9 @@ pub struct Func {
     pub body: Option<Id<Expr>>,
     /// An extern function taking extra arguments after its parameters, like C's `printf`.
     pub variadic: bool,
+    /// For an extern function, the symbol it links to when that isn't its name: som's
+    /// `init_window` is raylib's `InitWindow`. Worked out from the library while checking.
+    pub link_name: Option<Box<str>>,
 }
 
 pub struct Param {
@@ -46,11 +60,15 @@ pub struct Param {
 }
 
 pub struct Struct {
+    /// The `///` comment above it.
+    pub doc: Option<String>,
     pub name: Ident,
     pub fields: Vec<Field>,
 }
 
 pub struct Field {
+    /// The `///` comment above it.
+    pub doc: Option<String>,
     pub name: Ident,
     pub ty: Id<TypeExpr>,
 }

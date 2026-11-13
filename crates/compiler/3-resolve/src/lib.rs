@@ -16,9 +16,9 @@ pub use error::ResolveError;
 pub use names::{Def, DefId, DefKind, Names};
 
 use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Stmt, TypeExpr};
-use som_base::diagnostics::closest_match;
+use som_base::diagnostics::{closest_match, snake_case};
 use som_base::message::{self, Message, Part, code};
-use som_base::msg;
+use som_base::{Fix, msg};
 use std::collections::HashMap;
 
 pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
@@ -104,9 +104,10 @@ impl<'a> Resolver<'a> {
             for item in &module.items {
                 match item {
                     Item::Func(id) => self.define_func(*id, m, true),
+                    // A library's functions belong to its module, wherever they're declared.
                     Item::Extern(block) => {
                         for &id in &block.funcs {
-                            self.define_func(id, m, true);
+                            self.define_func(id, block.module.unwrap_or(m), true);
                         }
                     }
                     Item::Struct(id) => {
@@ -477,63 +478,146 @@ impl<'a> Resolver<'a> {
     fn not_found(&self, path: &Path, expect: Expect) -> ResolveError {
         let name = path.to_string();
         let span = path.span();
-        let help = self.suggest(path, expect);
+        let (help, fixes) = self.suggest(path, expect).unwrap_or_default();
+        let help = Some(help).filter(|h| !h.is_empty());
         match expect {
-            Expect::Value => ResolveError::UnboundVariable { name, span, help },
-            Expect::Func => ResolveError::UnknownFunction { name, span, help },
-            Expect::Struct => ResolveError::UnknownStruct { name, span, help },
-            Expect::Type => ResolveError::UnknownType { name, span, help },
+            Expect::Value => ResolveError::UnboundVariable {
+                name,
+                span,
+                help,
+                fixes,
+            },
+            Expect::Func => ResolveError::UnknownFunction {
+                name,
+                span,
+                help,
+                fixes,
+            },
+            Expect::Struct => ResolveError::UnknownStruct {
+                name,
+                span,
+                help,
+                fixes,
+            },
+            Expect::Type => ResolveError::UnknownType {
+                name,
+                span,
+                help,
+                fixes,
+            },
         }
     }
 
-    fn suggest(&self, path: &Path, expect: Expect) -> Option<Message> {
+    /// A hint for a name that wasn't found, and the changes it suggests.
+    fn suggest(&self, path: &Path, expect: Expect) -> Option<(Message, Vec<Fix>)> {
+        let span = path.span();
+        let change_to = |text: String| {
+            vec![Fix::replace(
+                msg!["change to ", code(&text)],
+                span.clone(),
+                text,
+            )]
+        };
         let name = &*path.name().name;
 
-        if path.segments.len() == 1 {
-            // Defined in a loaded module that isn't imported here?
-            if let Some((module, _)) =
-                self.ast
-                    .modules
+        if path.segments.len() > 1 {
+            // Look among what the qualifier names: a module's items, or a struct's methods.
+            let qualifier: Vec<&str> = path.qualifier().iter().map(|s| &*s.name).collect();
+            let qualifier = qualifier.join("::");
+            let candidates: Vec<String> = if let Some(&m) = self.modules.get(qualifier.as_str()) {
+                self.items[m]
                     .iter()
-                    .zip(&self.items)
-                    .find(|(module, items)| {
-                        !module.name.is_empty()
-                            && items.get(name).is_some_and(|&d| self.fits(d, expect))
-                    })
+                    .filter(|&(_, &d)| self.fits(d, expect))
+                    .map(|(n, _)| n.to_string())
+                    .collect()
+            } else if let Some(owner) = self.lookup(&path.segments[0].name, Expect::Struct)
+                && path.segments.len() == 2
             {
-                let m = &module.name;
-                return Some(msg![
-                    expect.name(name),
-                    " is defined in module ",
-                    message::module(m),
-                    ": write ",
-                    code(format!("{m}::{name}")),
-                    " or add ",
-                    code(format!("use {m};")),
-                ]);
-            }
+                self.names
+                    .methods_of(owner)
+                    .into_iter()
+                    .map(|(n, _)| n.to_string())
+                    .collect()
+            } else {
+                return None;
+            };
+            return best_match(name, &candidates).map(|m| {
+                let text = format!("{qualifier}::{m}");
+                (msg!["did you mean ", code(&text), "?"], change_to(text))
+            });
+        }
 
-            // A close match among the names visible here?
-            let mut visible: Vec<String> = std::iter::once(self.module)
-                .chain(self.imports[self.module].iter().copied())
-                .flat_map(|m| self.items[m].iter())
-                .filter(|&(_, &def)| self.fits(def, expect))
-                .map(|(name, _)| name.to_string())
-                .collect();
-            if expect == Expect::Value {
-                visible.extend(
-                    self.scopes
-                        .iter()
-                        .flat_map(|s| s.keys())
-                        .map(|n| n.to_string()),
-                );
+        // A close match among the names visible here?
+        let mut visible: Vec<String> = std::iter::once(self.module)
+            .chain(self.imports[self.module].iter().copied())
+            .flat_map(|m| self.items[m].iter())
+            .filter(|&(_, &def)| self.fits(def, expect))
+            .map(|(name, _)| name.to_string())
+            .collect();
+        if expect == Expect::Value {
+            visible.extend(
+                self.scopes
+                    .iter()
+                    .flat_map(|s| s.keys())
+                    .map(|n| n.to_string()),
+            );
+        }
+        visible.sort();
+        visible.dedup();
+        if let Some(m) = best_match(name, &visible) {
+            return Some((
+                msg!["did you mean ", expect.name(m), "?"],
+                change_to(m.to_string()),
+            ));
+        }
+
+        // Defined in a loaded module that isn't in scope here, maybe spelled in snake_case?
+        let snake = snake_case(name);
+        for (index, (module, items)) in self.ast.modules.iter().zip(&self.items).enumerate() {
+            if module.name.is_empty()
+                || index == self.module
+                || self.imports[self.module].contains(&index)
+            {
+                continue;
             }
-            visible.sort();
-            visible.dedup();
-            return closest_match(name, &visible, 2)
-                .map(|m| msg!["did you mean ", expect.name(m), "?"]);
+            let Some(found) = [name, snake.as_str()]
+                .into_iter()
+                .find(|n| items.get(n).is_some_and(|&d| self.fits(d, expect)))
+            else {
+                continue;
+            };
+            let m = &module.name;
+            let (qualified, import) = (format!("{m}::{found}"), format!("use {m};"));
+            let help = msg![
+                expect.name(found),
+                " is defined in module ",
+                message::module(m),
+                ": write ",
+                code(&qualified),
+                " or add ",
+                code(&import),
+            ];
+            let mut fixes = change_to(qualified);
+            fixes.push(Fix::add_line(
+                msg!["add ", code(&import)],
+                span.source.clone(),
+                &import,
+            ));
+            return Some((help, fixes));
         }
 
         None
     }
+}
+
+/// The best suggestion for a misspelled `name`: its snake_case spelling if that exists
+/// (`InitWindow` for `init_window`, as imported C functions are named), otherwise the
+/// closest name.
+fn best_match<'a>(name: &str, candidates: &'a [String]) -> Option<&'a str> {
+    let snake = snake_case(name);
+    candidates
+        .iter()
+        .find(|c| snake != name && **c == snake)
+        .map(String::as_str)
+        .or_else(|| closest_match(name, candidates, 2))
 }

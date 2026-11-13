@@ -906,6 +906,7 @@ name = "som_driver"
 version = "0.1.0"
 dependencies = [
  "object",
+ "serde_json",
  "som_ast",
  "som_base",
  "som_borrowck",
@@ -951,6 +952,7 @@ dependencies = [
  "som_lexer",
  "som_resolve",
  "som_typeck",
+ "tempfile",
  "tokio",
  "tower-lsp",
 ]

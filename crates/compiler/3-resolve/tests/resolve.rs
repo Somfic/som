@@ -183,3 +183,33 @@ fn suggests_close_names() {
     let (_, _, errors) = run("fn main() { let count = 1; let y = cuont; }");
     assert_eq!(help(&errors[0]).as_deref(), Some("did you mean `count`?"));
 }
+
+/// Each fix of the first error, as its title and the source after applying it.
+fn fixes(source: &str) -> Vec<(String, String)> {
+    let (_, _, errors) = run(source);
+    let diagnostic = errors[0].to_diagnostic();
+    diagnostic
+        .fixes
+        .iter()
+        .map(|fix| {
+            let mut text = source.to_string();
+            let mut edits = fix.edits.clone();
+            edits.sort_by_key(|(span, _)| std::cmp::Reverse(span.start_offset));
+            for (span, new) in edits {
+                text.replace_range(span.start_offset..span.start_offset + span.length, &new);
+            }
+            (fix.title.plain(), text)
+        })
+        .collect()
+}
+
+#[test]
+fn a_misspelled_name_can_be_fixed() {
+    assert_eq!(
+        fixes("fn helper() {} fn main() { helpr() }"),
+        [(
+            "change to `helper`".to_string(),
+            "fn helper() {} fn main() { helper() }".to_string()
+        )]
+    );
+}

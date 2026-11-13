@@ -22,6 +22,9 @@ impl Parser<'_> {
             TokenKind::Fn => self.parse_function().map(Item::Func),
             TokenKind::Extern => self.parse_extern().map(Item::Extern),
             TokenKind::Struct => self.parse_struct().map(Item::Struct),
+            TokenKind::Use if self.peek_nth(1) == TokenKind::Extern => {
+                self.parse_use_extern().map(Item::Extern)
+            }
             TokenKind::Use => self.parse_use().map(Item::Use),
             TokenKind::Impl => self.parse_impl().map(Item::Impl),
             _ => unreachable!("caller checks at_item"),
@@ -76,12 +79,14 @@ impl Parser<'_> {
             span: start.clone(),
         };
         let func = Func {
+            doc: None,
             name,
             type_params: Vec::new(),
             params: Vec::new(),
             returns: None,
             body: Some(body),
             variadic: false,
+            link_name: None,
         };
         let id = self.ast.funcs.alloc(func, span);
         self.add_item(Item::Func(id));
@@ -109,6 +114,22 @@ impl Parser<'_> {
         Some(Impl { target, methods })
     }
 
+    /// `use extern "raylib" …`: an extern block whose library module is also `use`d.
+    fn parse_use_extern(&mut self) -> Option<Extern> {
+        self.expect(TokenKind::Use, "a use statement")?;
+        let mut block = self.parse_extern()?;
+        if block.library.is_none() {
+            let span = self.previous_span();
+            self.error_at(
+                span,
+                msg!["only a library's declarations can be ", code("use"), "d"],
+                msg!["name the library: ", code("use extern \"lib\" { … }")],
+            );
+        }
+        block.use_module = true;
+        Some(block)
+    }
+
     fn parse_use(&mut self) -> Option<Use> {
         self.expect(TokenKind::Use, "a use statement")?;
         let path = self.parse_path("an import path")?;
@@ -117,25 +138,28 @@ impl Parser<'_> {
     }
 
     fn parse_struct(&mut self) -> Option<Id<Struct>> {
+        let doc = self.doc_comment();
         let start = self.current_span();
         self.expect(TokenKind::Struct, "a struct declaration")?;
         let name = self.parse_ident("a struct name")?;
 
         self.expect(TokenKind::OpenBrace, "a list of struct fields")?;
         let fields = self.parse_comma_list(TokenKind::CloseBrace, |p| {
+            let doc = p.doc_comment();
             let name = p.parse_ident("a struct field name")?;
             p.expect(TokenKind::Colon, "a struct field type")?;
             let ty = p.parse_type()?;
-            Some(Field { name, ty })
+            Some(Field { doc, name, ty })
         })?;
         self.expect(TokenKind::CloseBrace, "a closing brace after struct fields")?;
 
         let span = self.span_from(&start);
-        Some(self.ast.structs.alloc(Struct { name, fields }, span))
+        Some(self.ast.structs.alloc(Struct { doc, name, fields }, span))
     }
 
     /// `fn name<T>(params) -> Ret { body }`
     fn parse_function(&mut self) -> Option<Id<Func>> {
+        let doc = self.doc_comment();
         let start = self.current_span();
         self.expect(TokenKind::Fn, "a function declaration")?;
         let name = self.parse_ident("a function name")?;
@@ -163,12 +187,14 @@ impl Parser<'_> {
 
         let span = self.span_from(&start);
         let func = Func {
+            doc,
             name,
             type_params,
             params,
             returns,
             body,
             variadic,
+            link_name: None,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -242,6 +268,43 @@ impl Parser<'_> {
             (None, None)
         };
 
+        // `from "raylib.h"` imports the declarations from a C header. `from` is only a
+        // keyword here, so it can still name things elsewhere.
+        let header = if self.at(TokenKind::Ident) && &*self.peek_token().text == "from" {
+            self.advance();
+            if !self.at(TokenKind::Text) {
+                self.error_expected(&[TokenKind::Text], "a header file name");
+                return None;
+            }
+            let token = self.peek_token();
+            let header = (
+                token.text[1..token.text.len() - 1].to_string(),
+                token.span.clone(),
+            );
+            self.advance();
+            Some(header)
+        } else {
+            None
+        };
+        // `extern "raylib";` is short for `extern "raylib" from "raylib.h";`.
+        if (header.is_some() || library.is_some()) && self.eat(TokenKind::Semicolon) {
+            let header = header.or_else(|| {
+                let span = library_span.clone().expect("a library has a span");
+                Some((
+                    format!("{}.h", library.as_ref().expect("checked above")),
+                    span,
+                ))
+            });
+            return Some(Extern {
+                library,
+                library_span,
+                header,
+                use_module: false,
+                module: None,
+                funcs: Vec::new(),
+            });
+        }
+
         self.expect(
             TokenKind::OpenBrace,
             "a list of extern function declarations",
@@ -266,12 +329,16 @@ impl Parser<'_> {
         Some(Extern {
             library,
             library_span,
+            header,
+            use_module: false,
+            module: None,
             funcs,
         })
     }
 
     /// `fn name(params) -> Ret;`
     fn parse_extern_func(&mut self) -> Option<Id<Func>> {
+        let doc = self.doc_comment();
         let start = self.current_span();
         self.expect(TokenKind::Fn, "a function declaration")?;
         let name = self.parse_ident("a function name")?;
@@ -288,12 +355,14 @@ impl Parser<'_> {
 
         let span = self.span_from(&start);
         let func = Func {
+            doc,
             name,
             type_params: Vec::new(),
             params,
             returns,
             body: None,
             variadic,
+            link_name: None,
         };
         Some(self.ast.funcs.alloc(func, span))
     }

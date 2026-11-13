@@ -14,9 +14,9 @@ use object::read::archive::ArchiveFile;
 use object::read::macho::{FatArch, MachOFatFile32, MachOFatFile64};
 use object::{BinaryFormat, FileKind, Object, ObjectSymbol};
 use som_ast::{Ast, Item, Span};
-use som_base::diagnostics::{closest_match, edit_distance};
+use som_base::diagnostics::{closest_match, edit_distance, snake_case};
 use som_base::message as m;
-use som_base::{Diagnostic, Label, msg};
+use som_base::{Diagnostic, Label, Message, msg};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -33,6 +33,15 @@ pub enum LibraryError {
     UnreadableLibrary {
         path: PathBuf,
         message: String,
+        span: Span,
+    },
+    /// A hand-written declaration that disagrees with the library's header.
+    HeaderMismatch {
+        function: String,
+        header: String,
+        /// The header's declaration, in som.
+        declared_there: String,
+        problem: Message,
         span: Span,
     },
     /// A function declared in an `extern` block that its library doesn't have.
@@ -90,6 +99,19 @@ impl LibraryError {
                 format!(": {message}")
             ])
             .with_label(Label::primary(span.clone(), "linked from here")),
+            LibraryError::HeaderMismatch {
+                function,
+                header,
+                declared_there,
+                problem,
+                span,
+            } => Diagnostic::error(msg![m::func(function), " doesn't match ", m::path(header)])
+                .with_label(Label::primary(span.clone(), problem.clone()))
+                .with_hint(msg![
+                    m::path(header),
+                    " declares it as ",
+                    m::code(declared_there)
+                ]),
             LibraryError::NotInLibrary {
                 library,
                 file,
@@ -117,11 +139,12 @@ impl LibraryError {
 
 /// Checks every `extern "library"` block in the program, looking in `extra` directories
 /// as well. Returns the library files found, for linking, and the problems.
-pub fn check(ast: &Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryError>) {
-    let root = &ast.modules[0].path;
+pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryError>) {
+    let root = ast.modules[0].path.clone();
     let mut found: Vec<PathBuf> = Vec::new();
-    let mut symbols: HashMap<PathBuf, Result<Vec<String>, String>> = HashMap::new();
+    let mut symbols: HashMap<PathBuf, Result<Symbols, String>> = HashMap::new();
     let mut errors = Vec::new();
+    let mut link_names = Vec::new();
 
     for item in ast.modules.iter().flat_map(|m| &m.items) {
         let Item::Extern(block) = item else { continue };
@@ -129,7 +152,7 @@ pub fn check(ast: &Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryError>) 
             continue;
         };
 
-        let path = match find(library, root, extra) {
+        let path = match find(library, &root, extra) {
             Ok(path) => path,
             Err(searched) => {
                 let suggestion = if is_path(library) {
@@ -152,7 +175,7 @@ pub fn check(ast: &Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryError>) 
         }
         let exported = match symbols
             .entry(path.clone())
-            .or_insert_with(|| read_symbols(&path))
+            .or_insert_with(|| read_symbols(&path).map(Symbols::new))
         {
             Ok(exported) => exported,
             Err(message) => {
@@ -167,18 +190,71 @@ pub fn check(ast: &Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryError>) 
 
         for &func in &block.funcs {
             let name = &ast.funcs[func].name;
-            if exported.binary_search(&name.name.to_string()).is_err() {
-                errors.push(LibraryError::NotInLibrary {
+            match exported.symbol_for(&name.name) {
+                Some(symbol) if symbol != &*name.name => {
+                    link_names.push((func, symbol.to_string()))
+                }
+                Some(_) => {}
+                None => errors.push(LibraryError::NotInLibrary {
                     library: library.clone(),
                     file: path.clone(),
                     function: name.name.to_string(),
                     span: name.span.clone(),
-                    suggestion: closest_match(&name.name, exported, 2).map(str::to_string),
-                });
+                    suggestion: closest_match(&name.name, &exported.snake, 2).map(str::to_string),
+                }),
             }
         }
     }
+
+    for (func, symbol) in link_names {
+        ast.funcs.get_mut(func).link_name = Some(symbol.into());
+    }
     (found, errors)
+}
+
+/// A library's exported names, and the snake_case name som code uses for each.
+struct Symbols {
+    /// Sorted.
+    names: Vec<String>,
+    /// snake_case name → the symbol, for symbols whose snake_case name differs.
+    by_snake: HashMap<String, String>,
+    /// Every name som code could use, sorted: for suggestions.
+    snake: Vec<String>,
+}
+
+impl Symbols {
+    fn new(names: Vec<String>) -> Symbols {
+        let mut by_snake = HashMap::new();
+        for name in &names {
+            let snake = snake_case(name);
+            if snake != *name {
+                // Of two symbols with the same snake_case name, the first (sorted) wins.
+                by_snake.entry(snake).or_insert_with(|| name.clone());
+            }
+        }
+        let mut snake: Vec<String> = names.iter().map(|n| snake_case(n)).collect();
+        snake.sort();
+        snake.dedup();
+        Symbols {
+            names,
+            by_snake,
+            snake,
+        }
+    }
+
+    /// The symbol a declared name links to: the symbol of that exact name, or the one
+    /// whose snake_case name it is (`init_window` is `InitWindow`). A trailing `_`, added
+    /// when the name is a som keyword, is ignored.
+    fn symbol_for(&self, declared: &str) -> Option<&str> {
+        [declared, declared.strip_suffix('_').unwrap_or(declared)]
+            .into_iter()
+            .find_map(
+                |name| match self.names.binary_search_by(|n| n.as_str().cmp(name)) {
+                    Ok(i) => Some(self.names[i].as_str()),
+                    Err(_) => self.by_snake.get(name).map(String::as_str),
+                },
+            )
+    }
 }
 
 /// Whether a library is written as a path rather than a name.
@@ -206,7 +282,7 @@ fn file_names(library: &str) -> Vec<String> {
 
 /// Where libraries are looked for: the program's directory, then `extra` (from `-L`),
 /// then the system's.
-fn search_dirs(root: &Path, extra: &[PathBuf]) -> Vec<PathBuf> {
+pub(crate) fn search_dirs(root: &Path, extra: &[PathBuf]) -> Vec<PathBuf> {
     let root = if root.as_os_str().is_empty() {
         Path::new(".")
     } else {
@@ -252,7 +328,7 @@ fn similar_library(library: &str, dirs: &[PathBuf]) -> Option<String> {
 }
 
 /// The file `library` refers to, or the directories that were searched for it.
-fn find(library: &str, root: &Path, extra: &[PathBuf]) -> Result<PathBuf, Vec<PathBuf>> {
+pub(crate) fn find(library: &str, root: &Path, extra: &[PathBuf]) -> Result<PathBuf, Vec<PathBuf>> {
     if is_path(library) {
         let path = root.join(library);
         return if path.is_file() {
@@ -274,7 +350,7 @@ fn find(library: &str, root: &Path, extra: &[PathBuf]) -> Result<PathBuf, Vec<Pa
 }
 
 /// The functions a library exports, sorted.
-fn read_symbols(path: &Path) -> Result<Vec<String>, String> {
+pub(crate) fn read_symbols(path: &Path) -> Result<Vec<String>, String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let mut names = HashSet::new();
     collect_symbols(&data, &mut names)?;

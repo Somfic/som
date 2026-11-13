@@ -261,25 +261,69 @@ pub fn lex(source: Arc<Source>) -> Vec<Token> {
     let input = source.content();
     let mut lexer = TokenKind::lexer(input);
     let mut tokens = Vec::new();
+    // Line and column are tracked while moving forward, so lexing stays linear.
+    let mut cursor = Cursor::default();
 
     while let Some(result) = lexer.next() {
         let kind = result.unwrap_or(TokenKind::Error);
-        let span_range = lexer.span();
-        let text = lexer.slice();
+        let range = lexer.span();
+        let start = cursor.advance_to(input, range.start);
+        let end = cursor.advance_to(input, range.end);
         tokens.push(Token {
             kind,
-            text: text.into(),
-            span: Span::from_range(span_range, source.clone()),
+            text: lexer.slice().into(),
+            span: Span::new(
+                start.0,
+                start.1,
+                end.0,
+                end.1,
+                range.start,
+                range.len(),
+                source.clone(),
+            ),
         });
     }
 
-    // Add EOF token
-    let eof_pos = input.len();
+    let end = cursor.advance_to(input, input.len());
     tokens.push(Token {
         kind: TokenKind::Eof,
         text: "".into(),
-        span: Span::from_range(eof_pos..eof_pos, source),
+        span: Span::new(end.0, end.1, end.0, end.1, input.len(), 0, source),
     });
 
     tokens
+}
+
+/// A position in the source, moved forward as tokens are read.
+struct Cursor {
+    offset: usize,
+    line: usize,
+    col: usize,
+}
+
+impl Default for Cursor {
+    fn default() -> Self {
+        Cursor {
+            offset: 0,
+            line: 1,
+            col: 1,
+        }
+    }
+}
+
+impl Cursor {
+    /// Moves to the byte `offset` and returns its line and column (1-indexed; columns
+    /// count characters).
+    fn advance_to(&mut self, input: &str, offset: usize) -> (usize, usize) {
+        for c in input[self.offset..offset].chars() {
+            if c == '\n' {
+                self.line += 1;
+                self.col = 1;
+            } else {
+                self.col += 1;
+            }
+        }
+        self.offset = offset;
+        (self.line, self.col)
+    }
 }

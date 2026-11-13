@@ -1,7 +1,7 @@
-extern "raylib" {
-    fn InitWindow();
-}
+use std;
+extern "miniaudio";
 
 fn main() {
-    test();
+    while true {
+    }
 }

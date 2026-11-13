@@ -2,19 +2,22 @@
 
 mod build;
 mod bundled;
+mod headers;
 mod libraries;
 mod load;
 
 pub use build::{BuildError, BuildOptions, build, emit_c, run};
+pub use headers::origins;
 pub use libraries::LibraryError;
 pub use load::{LoadError, load};
 
 use som_ast::Ast;
-use som_base::Diagnostic;
+use som_base::{Diagnostic, Fix, message, msg};
 use som_borrowck::BorrowError;
 use som_mir::Mir;
 use som_resolve::{Names, ResolveError};
 use som_typeck::{TypeError, Typed};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 /// Everything the front end knows about a program that passed all checks so far.
@@ -32,6 +35,8 @@ pub struct Checked {
 pub struct Options {
     /// Extra directories to look for libraries in, before the system's.
     pub library_dirs: Vec<PathBuf>,
+    /// Files' contents to use instead of what's on disk: an editor's unsaved changes.
+    pub overlay: HashMap<PathBuf, String>,
 }
 
 /// An error from any pass, keeping its pass-specific type.
@@ -74,7 +79,7 @@ impl Error {
 
 /// Loads `path` and runs every check, stopping after the first pass that reports errors.
 pub fn check(path: &Path, options: &Options) -> Result<Checked, Vec<Error>> {
-    let (ast, errors) = load(path);
+    let (ast, errors) = load(path, &options.library_dirs);
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Load).collect());
     }
@@ -82,14 +87,17 @@ pub fn check(path: &Path, options: &Options) -> Result<Checked, Vec<Error>> {
 }
 
 /// Runs every check on a program that loaded without errors.
-pub fn check_loaded(ast: Ast, options: &Options) -> Result<Checked, Vec<Error>> {
-    let (libraries, errors) = libraries::check(&ast, &options.library_dirs);
+pub fn check_loaded(mut ast: Ast, options: &Options) -> Result<Checked, Vec<Error>> {
+    // Missing functions and mismatched ones are reported together.
+    let (libraries, mut errors) = libraries::check(&mut ast, &options.library_dirs);
+    errors.extend(headers::check_declarations(&ast, &options.library_dirs));
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Library).collect());
     }
 
-    let (names, errors) = som_resolve::resolve(&ast);
+    let (names, mut errors) = som_resolve::resolve(&ast);
     if !errors.is_empty() {
+        suggest_imports(&ast, &mut errors, options);
         return Err(errors.into_iter().map(Error::Resolve).collect());
     }
 
@@ -124,19 +132,125 @@ pub struct Analysis {
     pub errors: Vec<Error>,
 }
 
+/// What a program can bring in that it hasn't yet: bundled modules (`use std;`) and
+/// libraries with a header (`extern "raylib";`).
+#[derive(Debug, Clone, Default)]
+pub struct Importable {
+    pub modules: Vec<String>,
+    pub libraries: Vec<String>,
+}
+
+/// `raylib::init_window` without `extern "raylib";`: suggests importing it, when there's
+/// a library or bundled module by that name.
+fn suggest_imports(ast: &Ast, errors: &mut [ResolveError], options: &Options) {
+    let mut found: Option<Importable> = None; // only read the directories when needed
+    for error in errors {
+        let (ResolveError::UnboundVariable {
+            name,
+            span,
+            help,
+            fixes,
+        }
+        | ResolveError::UnknownFunction {
+            name,
+            span,
+            help,
+            fixes,
+        }
+        | ResolveError::UnknownStruct {
+            name,
+            span,
+            help,
+            fixes,
+        }
+        | ResolveError::UnknownType {
+            name,
+            span,
+            help,
+            fixes,
+        }) = error
+        else {
+            continue;
+        };
+        let Some((module, _)) = name.split_once("::") else {
+            continue;
+        };
+        if ast.modules.iter().any(|m| *m.name == *module) {
+            continue;
+        }
+        let found = found.get_or_insert_with(|| importable(&ast.modules[0].path, options));
+        let line = if found.libraries.iter().any(|l| l == module) {
+            format!("extern {module:?};")
+        } else if found.modules.iter().any(|m| m == module) {
+            format!("use {module};")
+        } else {
+            continue;
+        };
+        *help = Some(msg![
+            message::module(module),
+            " isn't imported: add ",
+            message::code(&line)
+        ]);
+        fixes.push(Fix::add_line(
+            msg!["add ", message::code(&line)],
+            span.source.clone(),
+            &line,
+        ));
+    }
+}
+
+/// Where `extern "library" from "header";` is found, for a program in `root`: the
+/// library file and the header, when they are.
+pub fn locate(
+    library: Option<&str>,
+    header: Option<&str>,
+    root: &Path,
+    options: &Options,
+) -> (Option<PathBuf>, Option<PathBuf>) {
+    let library_file = library.and_then(|l| libraries::find(l, root, &options.library_dirs).ok());
+    let header = header
+        .map(str::to_string)
+        .or_else(|| library.map(|l| format!("{l}.h")));
+    let header_file =
+        header.and_then(|h| headers::find_header(&h, root, &options.library_dirs).ok());
+    (library_file, header_file)
+}
+
+/// What a program in `root` (a file or its folder) could import.
+pub fn importable(root: &Path, options: &Options) -> Importable {
+    let root = if root.is_dir() {
+        root
+    } else {
+        root.parent().unwrap_or(Path::new("."))
+    };
+    Importable {
+        modules: bundled::BUNDLED
+            .iter()
+            .map(|m| m.name.to_string())
+            .collect(),
+        libraries: headers::importable_libraries(root, &options.library_dirs),
+    }
+}
+
 /// Loads `path` and runs as many passes as possible. Loading, name resolution and
 /// type checking always run; lowering and borrow checking only if they found nothing.
 pub fn analyze(path: &Path, options: &Options) -> Analysis {
-    let (ast, load_errors) = load(path);
+    let (mut ast, load_errors) = load::load_with(path, &options.library_dirs, &options.overlay);
     let mut errors: Vec<Error> = load_errors.into_iter().map(Error::Load).collect();
     errors.extend(
-        libraries::check(&ast, &options.library_dirs)
+        libraries::check(&mut ast, &options.library_dirs)
             .1
             .into_iter()
             .map(Error::Library),
     );
+    errors.extend(
+        headers::check_declarations(&ast, &options.library_dirs)
+            .into_iter()
+            .map(Error::Library),
+    );
 
-    let (names, resolve_errors) = som_resolve::resolve(&ast);
+    let (names, mut resolve_errors) = som_resolve::resolve(&ast);
+    suggest_imports(&ast, &mut resolve_errors, options);
     errors.extend(resolve_errors.into_iter().map(Error::Resolve));
 
     let (typed, type_errors) = som_typeck::check(&ast, &names);

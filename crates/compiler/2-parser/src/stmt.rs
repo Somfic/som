@@ -43,10 +43,14 @@ impl Parser<'_> {
             self.error_missing("missing expression", "an expression after `=`");
             return None;
         };
-        self.expect(
-            TokenKind::Semicolon,
-            "a semicolon at the end of the variable declaration",
-        )?;
+        // Without its `;` (still being typed), it's reported but kept: what's known about
+        // it, like its type, stays available to an editor.
+        if !self.eat(TokenKind::Semicolon) {
+            self.error_expected(
+                &[TokenKind::Semicolon],
+                "a semicolon at the end of the variable declaration",
+            );
+        }
 
         let span = self.span_from(&start);
         Some(self.ast.stmts.alloc(

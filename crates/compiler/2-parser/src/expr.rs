@@ -28,7 +28,11 @@ impl Parser<'_> {
                     break;
                 }
                 self.advance();
-                let name = self.parse_ident("a field or method name")?;
+                // `alloc(10).` while typing: report the missing name, but keep what's
+                // before the dot, so an editor still knows its type and can list fields.
+                let Some(name) = self.parse_ident("a field or method name") else {
+                    break;
+                };
                 lhs = if self.at(TokenKind::OpenParen) {
                     let args = self.parse_args()?;
                     self.alloc_expr(
@@ -165,11 +169,18 @@ impl Parser<'_> {
             }
 
             TokenKind::Ident => {
-                // `Name { field: ...` or `Name {}` is a constructor; `name { ... }` is not.
-                let is_constructor = self.peek_next() == TokenKind::OpenBrace
-                    && (self.peek_nth(2) == TokenKind::CloseBrace
-                        || (self.peek_nth(2) == TokenKind::Ident
-                            && self.peek_nth(3) == TokenKind::Colon));
+                // `Name { field: ...` or `Name {}` is a constructor, and so is
+                // `module::Name { ... }`; `name { ... }` is not.
+                let mut n = 1;
+                while self.peek_nth(n) == TokenKind::DoubleColon
+                    && self.peek_nth(n + 1) == TokenKind::Ident
+                {
+                    n += 2;
+                }
+                let is_constructor = self.peek_nth(n) == TokenKind::OpenBrace
+                    && (self.peek_nth(n + 1) == TokenKind::CloseBrace
+                        || (self.peek_nth(n + 1) == TokenKind::Ident
+                            && self.peek_nth(n + 2) == TokenKind::Colon));
                 if is_constructor {
                     return self.parse_constructor();
                 }
@@ -228,10 +239,14 @@ impl Parser<'_> {
     fn parse_args(&mut self) -> Option<Vec<Id<Expr>>> {
         self.expect(TokenKind::OpenParen, "a list of arguments")?;
         let args = self.parse_comma_list(TokenKind::CloseParen, |p| p.parse_expr())?;
-        self.expect(
-            TokenKind::CloseParen,
-            "a closing parenthesis after the arguments",
-        )?;
+        // `free(alloc(10).` while typing: report the missing `)`, but keep the call and
+        // its arguments, so an editor still knows them.
+        if !self.eat(TokenKind::CloseParen) {
+            self.error_expected(
+                &[TokenKind::CloseParen],
+                "a closing parenthesis after the arguments",
+            );
+        }
         Some(args)
     }
 

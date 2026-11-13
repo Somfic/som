@@ -5,6 +5,7 @@ edition = "2024"
 description = "Loads a program and runs the compiler passes over it, in order"
 
 [dependencies]
+serde_json = "1"
 object = { version = "0.36", default-features = false, features = ["read", "std"] }
 som_base = { path = "../core/base" }
 som_ast = { path = "../core/ast" }

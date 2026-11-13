@@ -13,3 +13,6 @@ coverage-html/
 # Build outputs of the example program (`som build example`, `--emit`)
 /example/example
 /example/example.*
+
+# Imported C headers, cached by the som compiler (`extern "lib";`)
+.som/

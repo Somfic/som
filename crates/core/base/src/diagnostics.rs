@@ -5,10 +5,10 @@ use owo_colors::OwoColorize;
 /// A 24-bit colour, as used by the palette below.
 pub use owo_colors::Rgb;
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
-use crate::Span;
 use crate::message::Message;
+use crate::{Source, Span};
 
 // Catppuccin Mocha colors
 pub const ROSEWATER: Rgb = Rgb(245, 224, 220);
@@ -87,6 +87,47 @@ pub fn edit_distance(a: &str, b: &str) -> usize {
     d[a.len()][b.len()]
 }
 
+/// `InitWindow` → `init_window`, `GetFPS` → `get_fps`, `Vector2Add` → `vector2_add`,
+/// `DrawText3D` → `draw_text3d`. Names already in snake_case stay as they are.
+pub fn snake_case(name: &str) -> String {
+    let chars: Vec<char> = name.chars().collect();
+    let mut out = String::with_capacity(name.len() + 4);
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_ascii_uppercase() && i > 0 {
+            let prev = chars[i - 1];
+            let next_lower = chars.get(i + 1).is_some_and(|n| n.is_ascii_lowercase());
+            // A new word starts after a lowercase letter, or at the last capital of an
+            // acronym or after a number when a lowercase letter follows: `FPSCounter`, `2Add`.
+            let new_word = prev.is_ascii_lowercase()
+                || ((prev.is_ascii_uppercase() || prev.is_ascii_digit()) && next_lower);
+            if new_word && !out.ends_with('_') {
+                out.push('_');
+            }
+        }
+        out.push(c.to_ascii_lowercase());
+    }
+    out
+}
+
+/// `ma_resampler_config` → `MaResamplerConfig`, `Color` → `Color`,
+/// `SDL_Rect` → `SDLRect`: each word's first letter capitalised and the underscores
+/// dropped. Names already in PascalCase stay as they are.
+pub fn pascal_case(name: &str) -> String {
+    let words = name.split('_').filter(|w| !w.is_empty());
+    let out: String = words
+        .flat_map(|w| {
+            let mut chars = w.chars();
+            let first = chars.next().map(|c| c.to_ascii_uppercase());
+            first.into_iter().chain(chars)
+        })
+        .collect();
+    if out.is_empty() {
+        name.to_string()
+    } else {
+        out
+    }
+}
+
 /// Find the closest match from a list of candidates using edit distance.
 /// Returns `None` if no candidate is close enough (distance must be <= max_dist).
 pub fn closest_match<'a>(
@@ -128,6 +169,35 @@ pub struct Diagnostic {
     pub message: Message,
     pub hints: Vec<Message>,
     pub labels: Vec<Label>,
+    /// Changes that would resolve it, for an editor to offer.
+    pub fixes: Vec<Fix>,
+}
+
+/// A change to the source that resolves a diagnostic: `init_window` for `init_windw`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Fix {
+    /// What it does: "change to `init_window`".
+    pub title: Message,
+    /// Text to put in place of each span; an empty span inserts.
+    pub edits: Vec<(Span, String)>,
+}
+
+impl Fix {
+    /// Replaces what `span` covers with `text`.
+    pub fn replace(title: impl Into<Message>, span: Span, text: impl Into<String>) -> Fix {
+        Fix {
+            title: title.into(),
+            edits: vec![(span, text.into())],
+        }
+    }
+
+    /// Adds a line at the top of `source`'s file: `use std;`.
+    pub fn add_line(title: impl Into<Message>, source: Arc<Source>, line: &str) -> Fix {
+        Fix {
+            title: title.into(),
+            edits: vec![(Span::from_range(0..0, source), format!("{line}\n"))],
+        }
+    }
 }
 
 impl Diagnostic {
@@ -138,6 +208,7 @@ impl Diagnostic {
             message: message.into(),
             hints: vec![],
             labels: vec![],
+            fixes: vec![],
         }
     }
 
@@ -168,13 +239,14 @@ impl Diagnostic {
         self
     }
 
-    pub fn with_trace(mut self, trace: impl Into<String>) -> Self {
-        self.trace.push(trace.into());
+    pub fn with_fix(mut self, fix: Fix) -> Self {
+        self.fixes.push(fix);
         self
     }
 
-    pub fn to_err<T>(self) -> Result<T, Self> {
-        Err(self)
+    pub fn with_trace(mut self, trace: impl Into<String>) -> Self {
+        self.trace.push(trace.into());
+        self
     }
 
     /// The diagnostic for a terminal (`color`), or as plain text with names and
@@ -330,6 +402,76 @@ fn fmt_label_group(
     Ok(())
 }
 
+/// A fix as a diff of the lines it changes. Each edit replaces a whole node (a name, a
+/// path) or inserts whole lines, so the removed and added parts are exactly the edits,
+/// with the rest of the line highlighted as usual.
+fn fmt_fix(f: &mut std::fmt::Formatter<'_>, fix: &Fix) -> std::fmt::Result {
+    let line_number =
+        |n: usize, rgb: Rgb| format!("{}", format!("{n:>4}").truecolor(rgb.0, rgb.1, rgb.2));
+    let paint = |text: &str, rgb: Rgb| {
+        format!("{}", text.truecolor(rgb.0, rgb.1, rgb.2).bold().underline())
+    };
+    let marker = |text: &str, rgb: Rgb| format!("{}", text.truecolor(rgb.0, rgb.1, rgb.2).bold());
+
+    for (span, text) in &fix.edits {
+        let content = span.source.content();
+        let start = span.start_offset;
+        let end = start + span.length;
+        let line_start = content[..start].rfind('\n').map_or(0, |i| i + 1);
+        let line_end = content[end..].find('\n').map_or(content.len(), |i| end + i);
+        let line = span.start.line;
+
+        // Whole lines put in front of a line: `extern "raylib";`.
+        if span.length == 0 && start == line_start && text.ends_with('\n') {
+            for (i, added) in text.lines().enumerate() {
+                writeln!(
+                    f,
+                    "{} {} {}",
+                    line_number(line + i, GREEN),
+                    marker("+", GREEN),
+                    paint(added, GREEN)
+                )?;
+            }
+            if let Some(next) = content[line_start..].lines().next() {
+                let n = line + text.lines().count();
+                writeln!(
+                    f,
+                    "{} {}   {}",
+                    subtext(format!("{n:>4}")),
+                    surface("│"),
+                    syntax_highlight(next)
+                )?;
+            }
+            continue;
+        }
+
+        let (before, removed, after) = (
+            &content[line_start..start],
+            &content[start..end],
+            &content[end..line_end],
+        );
+        writeln!(
+            f,
+            "{} {} {}{}{}",
+            line_number(line, RED),
+            marker("-", RED),
+            syntax_highlight(before),
+            paint(removed, RED),
+            syntax_highlight(after)
+        )?;
+        writeln!(
+            f,
+            "{} {} {}{}{}",
+            line_number(line, GREEN),
+            marker("+", GREEN),
+            syntax_highlight(before),
+            paint(text, GREEN),
+            syntax_highlight(after)
+        )?;
+    }
+    Ok(())
+}
+
 /// Group labels by source file, returning groups of labels from the same source.
 fn group_labels_by_source<'a>(labels: &'a [Label]) -> Vec<Vec<&'a Label>> {
     let mut groups: Vec<Vec<&'a Label>> = Vec::new();
@@ -389,6 +531,11 @@ impl Display for Rendered<'_> {
 
         for hint in &d.hints {
             writeln!(f, "{}{} {}", GUTTER, teal("?"), hint.render(self.color))?;
+        }
+
+        for fix in &d.fixes {
+            writeln!(f)?;
+            fmt_fix(f, fix)?;
         }
 
         for trace in &d.trace {

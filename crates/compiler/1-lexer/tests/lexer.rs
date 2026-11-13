@@ -190,3 +190,13 @@ fn test_lex_all_delimiters() {
     assert_eq!(non_ws[6].kind, TokenKind::Colon);
     assert_eq!(non_ws[7].kind, TokenKind::Dot);
 }
+
+#[test]
+fn positions_count_lines_and_characters() {
+    let tokens = filter_whitespace(&test_lex("a\n  é b\nc"))
+        .into_iter()
+        .map(|t| (t.span.start.line, t.span.start.col))
+        .collect::<Vec<_>>();
+    // `é` is one character but two bytes; `b` is still in column 5.
+    assert_eq!(&tokens[..4], [(1, 1), (2, 3), (2, 5), (3, 1)]);
+}

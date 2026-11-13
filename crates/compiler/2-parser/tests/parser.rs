@@ -313,3 +313,81 @@ fn test_parse_return_struct() {
         test_parse("struct P { x: i32, y: i32 } fn make() -> P { P { x: 1, y: 2 } } fn main() {}");
     assert!(errors.is_empty(), "Errors: {:?}", errors);
 }
+
+fn doc_of_func(ast: &Ast, name: &str) -> Option<String> {
+    ast.funcs
+        .iter()
+        .find(|(_, f)| f.name.to_string() == name)
+        .and_then(|(_, f)| f.doc.clone())
+}
+
+#[test]
+fn doc_comments_attach_to_the_next_item() {
+    let (ast, errors) = test_parse(
+        "/// Adds two numbers.\n///\n///   Indented line.\nfn add(a: i32, b: i32) -> i32 { a + b }\n\
+         /// A point.\nstruct Point {\n    /// Across.\n    x: i32,\n    y: i32,\n}",
+    );
+    assert!(errors.is_empty(), "Errors: {:?}", errors);
+    assert_eq!(
+        doc_of_func(&ast, "add").as_deref(),
+        Some("Adds two numbers.\n\n  Indented line.")
+    );
+    let (_, point) = ast.structs.iter().next().unwrap();
+    assert_eq!(point.doc.as_deref(), Some("A point."));
+    assert_eq!(point.fields[0].doc.as_deref(), Some("Across."));
+    assert_eq!(point.fields[1].doc, None);
+}
+
+#[test]
+fn doc_comments_need_three_slashes_and_no_gap() {
+    let (ast, errors) = test_parse(
+        "// Not a doc.\nfn a() {}\n/// Detached.\n\nfn b() {}\n//// Rule.\nfn c() {}\n\
+         /// Kept.\n// note\nfn d() {}",
+    );
+    assert!(errors.is_empty(), "Errors: {:?}", errors);
+    for name in ["a", "b", "c", "d"] {
+        assert_eq!(doc_of_func(&ast, name), None, "{name}");
+    }
+}
+
+#[test]
+fn a_dot_without_a_name_keeps_what_is_before_it() {
+    // While typing `alloc(10).size`, an editor still needs `alloc(10)` to list fields.
+    let (ast, errors) = test_parse("fn main() { let a = alloc(10).\n}");
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    let calls = ast
+        .exprs
+        .iter()
+        .filter(|(_, e)| matches!(e, som_ast::Expr::Call { .. }))
+        .count();
+    let lets = ast
+        .stmts
+        .iter()
+        .filter(|(_, s)| matches!(s, som_ast::Stmt::Let { .. }))
+        .count();
+    assert_eq!((calls, lets), (1, 1));
+}
+
+#[test]
+fn a_let_without_its_semicolon_is_reported_and_kept() {
+    let (ast, errors) = test_parse("fn main() { let a = 1\n let b = 2; }");
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    let lets = ast
+        .stmts
+        .iter()
+        .filter(|(_, s)| matches!(s, som_ast::Stmt::Let { .. }))
+        .count();
+    assert_eq!(lets, 2);
+}
+
+#[test]
+fn an_unclosed_call_is_reported_and_kept() {
+    let (ast, errors) = test_parse("fn main() { free(alloc(10).\n}");
+    assert!(!errors.is_empty());
+    let calls = ast
+        .exprs
+        .iter()
+        .filter(|(_, e)| matches!(e, som_ast::Expr::Call { .. }))
+        .count();
+    assert_eq!(calls, 2);
+}

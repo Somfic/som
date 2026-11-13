@@ -133,10 +133,13 @@ impl<'a> Lowerer<'a> {
             ret,
             span: self.ast.funcs.span(func).clone(),
             body: None,
-            link_name: ast_func
-                .body
-                .is_none()
-                .then(|| ast_func.name.name.to_string()),
+            link_name: ast_func.body.is_none().then(|| {
+                ast_func
+                    .link_name
+                    .as_deref()
+                    .unwrap_or(&ast_func.name.name)
+                    .to_string()
+            }),
             is_entry,
             variadic: ast_func.variadic,
         });

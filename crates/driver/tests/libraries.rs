@@ -31,7 +31,7 @@ fn shared_library(dir: &Path, name: &str) {
 fn program(dir: &Path, library: &str, function: &str) -> std::path::PathBuf {
     let path = dir.join("main.som");
     let source = format!(
-        "extern \"{library}\" {{ fn {function}(a: i32, b: i32) -> i32; }}\nfn main() -> i32 {{ {function}(40, 2) }}\n"
+        "use extern \"{library}\" {{ fn {function}(a: i32, b: i32) -> i32; }}\nfn main() -> i32 {{ {function}(40, 2) }}\n"
     );
     std::fs::write(&path, source).unwrap();
     path
@@ -98,6 +98,7 @@ fn library_directories_are_searched() {
     ));
     let options = Options {
         library_dirs: vec![libs],
+        ..Options::default()
     };
     assert!(check(&main, &options).is_ok());
 }

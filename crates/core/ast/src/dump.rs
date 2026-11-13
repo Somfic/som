@@ -105,10 +105,16 @@ impl Dumper<'_> {
             }
             Item::Use(u) => self.line(format!("use {}", u.path)),
             Item::Extern(block) => {
-                let header = match &block.library {
+                let mut header = match &block.library {
                     Some(lib) => format!("extern {lib:?}"),
                     None => "extern".into(),
                 };
+                if block.use_module {
+                    header.insert_str(0, "use ");
+                }
+                if let Some((file, _)) = &block.header {
+                    header.push_str(&format!(" from {file:?}"));
+                }
                 self.node(header, |d| block.funcs.iter().for_each(|&f| d.func(f)));
             }
             Item::Impl(block) => self.node(format!("impl {}", block.target), |d| {

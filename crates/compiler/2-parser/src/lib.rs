@@ -91,11 +91,6 @@ impl Parser<'_> {
         self.at(TokenKind::Eof)
     }
 
-    /// The kind of the next non-trivia token after the current one.
-    fn peek_next(&self) -> TokenKind {
-        self.peek_nth(1)
-    }
-
     /// The kind of the nth non-trivia token ahead (0 = current).
     fn peek_nth(&self, n: usize) -> TokenKind {
         self.tokens[self.pos..]
@@ -104,6 +99,31 @@ impl Parser<'_> {
             .nth(n)
             .map(|t| t.kind)
             .unwrap_or(TokenKind::Eof)
+    }
+
+    /// The `///` comment right above the current token: consecutive `///` lines, joined.
+    /// A blank line or an ordinary comment in between ends it.
+    fn doc_comment(&self) -> Option<String> {
+        let mut lines = Vec::new();
+        for token in self.tokens[..self.pos].iter().rev() {
+            match token.kind {
+                TokenKind::Whitespace if token.text.matches('\n').count() <= 1 => continue,
+                TokenKind::Comment
+                    if token.text.starts_with("///") && !token.text.starts_with("////") =>
+                {
+                    let text = &token.text[3..];
+                    lines.push(
+                        text.strip_prefix(' ')
+                            .unwrap_or(text)
+                            .trim_end()
+                            .to_string(),
+                    );
+                }
+                _ => break,
+            }
+        }
+        lines.reverse();
+        (!lines.is_empty()).then(|| lines.join("\n"))
     }
 
     fn current_span(&self) -> Span {
