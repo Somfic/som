@@ -19,6 +19,8 @@ pub enum TypeError {
         lhs: Message,
         rhs: Message,
         span: Span,
+        /// An operand that's optional: as written, a fallback value for it, and where it is.
+        optional: Option<(String, String, Span)>,
     },
     WrongArgCount {
         name: String,
@@ -136,15 +138,36 @@ impl TypeError {
                 }
                 d
             }
-            TypeError::InvalidOperands { op, lhs, rhs, span } => Diagnostic::error(msg![
-                "cannot apply ",
-                code(op),
-                " to ",
-                lhs.clone(),
-                " and ",
-                rhs.clone()
-            ])
-            .with_label(Label::primary(span.clone(), "no such operation")),
+            TypeError::InvalidOperands {
+                op,
+                lhs,
+                rhs,
+                span,
+                optional,
+            } => {
+                let d = Diagnostic::error(msg![
+                    "cannot apply ",
+                    code(op),
+                    " to ",
+                    lhs.clone(),
+                    " and ",
+                    rhs.clone()
+                ]);
+                match optional {
+                    Some((name, fallback, at)) => d
+                        .with_label(Label::primary(
+                            at.clone(),
+                            msg![code(name), " might be ", code("none"), " here"],
+                        ))
+                        .with_hint(msg![
+                            "check it first, as in ",
+                            code(format!("if {name} {{ … }}")),
+                            ", or give a fallback, as in ",
+                            code(format!("({name} else {fallback})")),
+                        ]),
+                    None => d.with_label(Label::primary(span.clone(), "no such operation")),
+                }
+            }
             TypeError::WrongArgCount {
                 name,
                 expected,

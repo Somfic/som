@@ -178,8 +178,13 @@ impl Unifier {
         let id = self.shallow(id);
         match self.table.get(id) {
             // Only reached for a variable inside another type, like `&_`: on its own, the
-            // checker describes it in words instead.
-            Ty::Var(_) => "_".into(),
+            // checker describes it in words instead. A literal's type is shown as what it
+            // becomes if nothing else decides it: `maybe(1)` is an `i32?`.
+            Ty::Var(v) => match self.vars[*v as usize].kind {
+                VarKind::Int => "i32".into(),
+                VarKind::Float => "f64".into(),
+                VarKind::Any => "_".into(),
+            },
             Ty::Ref { mutable, to } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.

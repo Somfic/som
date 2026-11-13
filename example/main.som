@@ -5,7 +5,7 @@ fn maybe<T>(t: T) -> T? {
 let mut a = maybe(1);
 let mut b = maybe(1);
 
-if a and a == b  {
+if a and a == b or a > b {
     a = a + 1;
 }
 

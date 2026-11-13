@@ -326,12 +326,42 @@ impl<'a> Checker<'a> {
     }
 
     fn invalid_operands(&mut self, expr: Id<Expr>, op: BinOp, lhs: TypeId, rhs: TypeId) {
+        // An optional operand is the usual reason: say how to get at its value.
+        let optional = match self.ast.exprs[expr] {
+            Expr::Binary {
+                lhs: lhs_expr,
+                rhs: rhs_expr,
+                ..
+            } => [(lhs_expr, lhs), (rhs_expr, rhs)]
+                .into_iter()
+                .find_map(|(e, ty)| self.optional_operand(e, ty)),
+            _ => None,
+        };
         self.errors.push(TypeError::InvalidOperands {
             op: op.symbol().into(),
             lhs: self.describe(lhs),
             rhs: self.describe(rhs),
             span: self.ast.exprs.span(expr).clone(),
+            optional,
         });
+    }
+
+    /// For an operand `expr` of optional type `ty`: how it's written, a fallback value to
+    /// suggest for it, and where it is.
+    fn optional_operand(&self, expr: Id<Expr>, ty: TypeId) -> Option<(String, String, Span)> {
+        let Ty::Optional(inner) = *self.u.get(self.u.shallow(ty)) else {
+            return None;
+        };
+        let text = self.span(expr).get_text().to_string();
+        if text.len() > 30 || text.contains('\n') {
+            return None;
+        }
+        let fallback = match (self.u.get(self.u.shallow(inner)), self.u.var_kind(inner)) {
+            (_, Some(VarKind::Int)) | (Ty::Int(_), _) => "0",
+            (_, Some(VarKind::Float)) | (Ty::Float(_), _) => "0.0",
+            _ => "…",
+        };
+        Some((text, fallback.to_string(), self.span(expr)))
     }
 
     fn span(&self, expr: Id<Expr>) -> Span {
