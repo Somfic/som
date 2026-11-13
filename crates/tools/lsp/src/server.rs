@@ -243,7 +243,12 @@ impl LanguageServer for SomLanguageServer {
                 }),
                 document_symbol_provider: Some(OneOf::Left(true)),
                 completion_provider: Some(CompletionOptions {
-                    trigger_characters: Some(vec![".".to_string(), ":".to_string()]),
+                    trigger_characters: Some(vec![
+                        ".".to_string(),
+                        ":".to_string(),
+                        "\"".to_string(),
+                        " ".to_string(),
+                    ]),
                     ..Default::default()
                 }),
                 code_lens_provider: Some(CodeLensOptions {
@@ -639,6 +644,46 @@ impl LanguageServer for SomLanguageServer {
         let insert = Insert::at(&cursor.text, cursor.offset);
 
         let mut items = Vec::new();
+        // `extern ` and `extern "ray` list the libraries som can find, but not ones this
+        // file already has an `extern` for, other than the one being edited.
+        if let Some(quoted) = extern_library(&cursor.text, cursor.offset) {
+            let written: HashSet<&str> = (a.ast.modules.iter())
+                .flat_map(|m| &m.items)
+                .filter_map(|item| match item {
+                    Item::Extern(block) => {
+                        Some((block.library.as_deref()?, block.library_span.as_ref()?))
+                    }
+                    _ => None,
+                })
+                .filter(|(_, span)| {
+                    let end = span.start_offset + span.length;
+                    span.source.identifier() == cursor.file
+                        && !(span.start_offset..=end).contains(&cursor.offset)
+                })
+                .map(|(library, _)| library)
+                .collect();
+            let libraries = (project.importable.libraries.iter())
+                .filter(|(name, _)| !written.contains(name.as_str()));
+            for (name, path) in libraries {
+                items.push(CompletionItem {
+                    label: name.clone(),
+                    kind: Some(CompletionItemKind::MODULE),
+                    label_details: Some(CompletionItemLabelDetails {
+                        detail: None,
+                        description: Some(path.display().to_string()),
+                    }),
+                    insert_text: (!quoted).then(|| format!("{name:?}")),
+                    ..Default::default()
+                });
+            }
+            return Ok(Some(CompletionResponse::Array(items)));
+        }
+        // A space or quote only asks for the libraries after `extern`.
+        let trigger = params.context.and_then(|c| c.trigger_character);
+        if matches!(trigger.as_deref(), Some(" " | "\"")) {
+            return Ok(None);
+        }
+
         // `alloc(10).` or `alloc(10).si`: after a dot, with maybe part of a name typed.
         let word_start = cursor.text[..cursor.offset]
             .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
@@ -739,16 +784,12 @@ impl LanguageServer for SomLanguageServer {
                     items.extend(module_items(a, m, Some(&module.name), insert));
                 }
             }
-            // Libraries and modules that aren't imported yet: choosing one adds the import.
+            // Modules that aren't imported yet: choosing one adds the import. Libraries are
+            // offered in `extern "` instead.
             let loaded = |name: &str| a.ast.modules.iter().any(|m| *m.name == *name);
-            let imports = (project.importable.libraries.iter())
+            let imports = (project.importable.modules.iter())
                 .filter(|name| !loaded(name))
-                .map(|name| (name, format!("extern {name:?};")))
-                .chain(
-                    (project.importable.modules.iter())
-                        .filter(|name| !loaded(name))
-                        .map(|name| (name, format!("use {name};"))),
-                );
+                .map(|name| (name, format!("use {name};")));
             for (name, line) in imports {
                 items.push(CompletionItem {
                     label: name.clone(),
@@ -1400,6 +1441,27 @@ fn field_name(field: &str) -> Option<&str> {
     (len > 0 && rest.starts_with(':') && !rest.starts_with("::")).then(|| &field[..len])
 }
 
+/// Whether the cursor is where `extern`'s library name goes: in its string, `extern "ray`
+/// (`Some(true)`), or before the string is opened, `extern ray` (`Some(false)`).
+fn extern_library(text: &str, offset: usize) -> Option<bool> {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let after_extern = |before: &str| {
+        before
+            .strip_suffix("extern")
+            .is_some_and(|rest| !rest.ends_with(word))
+    };
+    let before = text.get(..offset)?;
+    if let Some(quote) = before.rfind('"')
+        && !before[quote + 1..].contains('\n')
+        && after_extern(before[..quote].trim_end())
+    {
+        return Some(true);
+    }
+    let rest = before.trim_end_matches(word);
+    let spaced = rest.ends_with(char::is_whitespace);
+    (spaced && after_extern(rest.trim_end())).then_some(false)
+}
+
 /// The module named right before the word being typed: `raylib` in `raylib::ini`.
 fn qualifier(text: &str, offset: usize) -> Option<&str> {
     let before = text.get(..offset)?;
@@ -1768,6 +1830,22 @@ mod tests {
             .collect();
         // fn f p * i32 g 1 * 2   (`(`, `)`, `:`, `->`, `{`, `}` aren't highlighted)
         assert_eq!(types, [0, 7, 1, 4, 4, 7, 2, 6, 2]);
+    }
+
+    #[test]
+    fn library_names_complete_in_extern_strings() {
+        let at_end = |text: &str| extern_library(text, text.len());
+        assert_eq!(at_end("extern \""), Some(true));
+        assert_eq!(at_end("use std;\nextern \"ray"), Some(true));
+        assert_eq!(at_end("extern\"gc"), Some(true));
+        assert_eq!(at_end("extern "), Some(false));
+        assert_eq!(at_end("use std;\nextern ray"), Some(false));
+        assert_eq!(at_end("extern"), None);
+        assert_eq!(at_end("extern \"raylib\";\n"), None);
+        assert_eq!(at_end("extern \"raylib\" from \"ray"), None);
+        assert_eq!(at_end("my_extern \""), None);
+        assert_eq!(at_end("my_extern ray"), None);
+        assert_eq!(at_end("let s = \"ray"), None);
     }
 
     #[test]

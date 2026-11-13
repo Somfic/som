@@ -396,13 +396,22 @@ fn checking_a_generated_file_checks_its_program() {
 fn importable_lists_libraries_with_headers_and_bundled_modules() {
     let dir = project();
     let found = som_driver::importable(dir.path(), &Options::default());
-    assert!(found.libraries.contains(&"demo".to_string()), "{found:?}");
+    assert!(
+        found
+            .libraries
+            .iter()
+            .any(|(l, path)| l == "demo" && path.is_file()),
+        "{found:?}"
+    );
     assert!(found.modules.contains(&"std".to_string()));
 
     // Without its header, a library can't be imported with `extern "demo";`.
     std::fs::remove_file(dir.path().join("demo.h")).unwrap();
     let found = som_driver::importable(dir.path(), &Options::default());
-    assert!(!found.libraries.contains(&"demo".to_string()), "{found:?}");
+    assert!(
+        !found.libraries.iter().any(|(l, _)| l == "demo"),
+        "{found:?}"
+    );
 }
 
 #[test]

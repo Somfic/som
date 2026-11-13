@@ -133,11 +133,11 @@ pub struct Analysis {
 }
 
 /// What a program can bring in that it hasn't yet: bundled modules (`use std;`) and
-/// libraries with a header (`extern "raylib";`).
+/// libraries with a header (`extern "raylib";`), each with the file it would link.
 #[derive(Debug, Clone, Default)]
 pub struct Importable {
     pub modules: Vec<String>,
-    pub libraries: Vec<String>,
+    pub libraries: Vec<(String, PathBuf)>,
 }
 
 /// `raylib::init_window` without `extern "raylib";`: suggests importing it, when there's
@@ -179,7 +179,7 @@ fn suggest_imports(ast: &Ast, errors: &mut [ResolveError], options: &Options) {
             continue;
         }
         let found = found.get_or_insert_with(|| importable(&ast.modules[0].path, options));
-        let line = if found.libraries.iter().any(|l| l == module) {
+        let line = if found.libraries.iter().any(|(l, _)| l == module) {
             format!("extern {module:?};")
         } else if found.modules.iter().any(|m| m == module) {
             format!("use {module};")

@@ -421,8 +421,9 @@ pub(crate) fn find_header(
 }
 
 /// The libraries `extern "name";` could import for a program in `root`: those with
-/// both a library file (`libraylib.dylib`) and a header (`raylib.h`) where som looks.
-pub fn importable_libraries(root: &Path, library_dirs: &[PathBuf]) -> Vec<String> {
+/// both a library file (`libraylib.dylib`) and a header (`raylib.h`) where som looks,
+/// each with the file it would link.
+pub fn importable_libraries(root: &Path, library_dirs: &[PathBuf]) -> Vec<(String, PathBuf)> {
     let mut names: Vec<String> = libraries::search_dirs(root, library_dirs)
         .iter()
         .filter_map(|dir| std::fs::read_dir(dir).ok())
@@ -441,6 +442,12 @@ pub fn importable_libraries(root: &Path, library_dirs: &[PathBuf]) -> Vec<String
     names.dedup();
     names.retain(|name| find_header(&format!("{name}.h"), root, library_dirs).is_ok());
     names
+        .into_iter()
+        .filter_map(|name| {
+            let path = libraries::find(&name, root, library_dirs).ok()?;
+            Some((name, path))
+        })
+        .collect()
 }
 
 /// Where headers are looked for: the program's directory, then `CPATH` and
