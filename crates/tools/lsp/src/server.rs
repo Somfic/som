@@ -1042,6 +1042,21 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
 
     // What's under the cursor, as som, and its documentation.
     let (text, doc) = match node {
+        // Inside `if x { … }`, an optional `x` is the value it holds.
+        NodeRef::Expr(id) if a.typed.is_narrowed(id) => {
+            let name = match &a.ast.exprs[id] {
+                Expr::Var(path) => format!("{path}"),
+                Expr::Field { field, .. } => format!(".{}", field.name),
+                _ => String::new(),
+            };
+            let ty = ty(a, a.typed.expr(id));
+            let text = if name.is_empty() {
+                ty
+            } else {
+                format!("{name}: {ty}")
+            };
+            (Some(text), None)
+        }
         NodeRef::Expr(id) => match &a.ast.exprs[id] {
             Expr::Var(_) | Expr::Out(_) | Expr::Call { .. } | Expr::Construct { .. } => {
                 match a.names.expr(id) {
