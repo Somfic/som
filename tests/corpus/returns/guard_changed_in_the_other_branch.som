@@ -1,0 +1,11 @@
+// expect: error InvalidOperands
+
+fn maybe() -> i32? { 1 }
+
+fn f() -> i32 {
+    let mut x = maybe();
+    if x == none { return 0; } else { x = none; }
+    x + 1
+}
+
+fn main() -> i32 { 0 }

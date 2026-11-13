@@ -1,0 +1,11 @@
+// expect: exit 6
+
+fn main() -> i32 {
+    let values = [1, none, 5, none];
+    let mut total = 0;
+    for v in values {
+        if v == none { continue; }
+        total = total + v;
+    }
+    total
+}

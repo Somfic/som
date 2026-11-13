@@ -12,6 +12,7 @@ impl Parser<'_> {
             TokenKind::For => self.parse_for(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
+            TokenKind::Return => self.parse_return(),
             TokenKind::If => self.parse_if(),
             _ => {
                 let Some(expr) = self.parse_expr() else {
@@ -82,6 +83,20 @@ impl Parser<'_> {
         self.expect(TokenKind::Semicolon, "a semicolon after break")?;
         let span = self.span_from(&start);
         Some(self.ast.stmts.alloc(Stmt::Break(target), span))
+    }
+
+    /// `return value;` or `return;`
+    fn parse_return(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        self.expect(TokenKind::Return, "a return statement")?;
+        let value = if self.at(TokenKind::Semicolon) {
+            None
+        } else {
+            Some(self.parse_expr()?)
+        };
+        self.expect(TokenKind::Semicolon, "a semicolon after return")?;
+        let span = self.span_from(&start);
+        Some(self.ast.stmts.alloc(Stmt::Return(value), span))
     }
 
     fn parse_continue(&mut self) -> Option<Id<Stmt>> {

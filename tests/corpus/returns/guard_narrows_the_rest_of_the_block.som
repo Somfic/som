@@ -1,0 +1,12 @@
+// expect: exit 30
+
+fn maybe(n: i32) -> i32? { n if n > 0 else none }
+
+fn tripled(n: i32) -> i32 {
+    let v = maybe(n);
+    if v == none { return 0; }
+    // `v` holds a value from here on.
+    v * 3
+}
+
+fn main() -> i32 { tripled(10) + tripled(0 - 4) }

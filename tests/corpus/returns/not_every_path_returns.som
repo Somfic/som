@@ -1,0 +1,7 @@
+// expect: error MissingReturn
+
+fn f(c: bool) -> i32 {
+    if c { return 1; }
+}
+
+fn main() -> i32 { 0 }

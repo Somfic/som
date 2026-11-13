@@ -205,6 +205,8 @@ impl Dumper<'_> {
             Stmt::Break(None) => self.line("break"),
             Stmt::Break(Some(name)) => self.line(format!("break {name}")),
             Stmt::Continue(None) => self.line("continue"),
+            Stmt::Return(None) => self.line("return"),
+            Stmt::Return(Some(value)) => self.node("return", |d| d.expr(*value)),
             Stmt::Continue(Some(name)) => self.line(format!("continue {name}")),
             Stmt::For {
                 name,

@@ -30,6 +30,8 @@ pub(crate) struct Checker<'a> {
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
     sliced: HashMap<Id<Expr>, TypeId>,
     for_loops: HashMap<Id<Stmt>, Loop>,
+    /// The function being checked: its return type, and where that's written.
+    returns: Option<(TypeId, Option<Span>)>,
     /// The next expression inferred is the object of a field access or dereference.
     in_place: bool,
     /// Operators whose operand type wasn't known yet when they were checked.
@@ -59,6 +61,7 @@ impl<'a> Checker<'a> {
             array_methods: HashMap::new(),
             sliced: HashMap::new(),
             for_loops: HashMap::new(),
+            returns: None,
             in_place: false,
             deferred_ops: Vec::new(),
             loops: 0,
@@ -121,7 +124,25 @@ impl<'a> Checker<'a> {
 
     fn check_body(&mut self, id: Id<Func>, func: &Func, body: Id<Expr>) {
         let ret = self.sigs[id.id].ret;
+        let from = func.returns.map(|t| self.ast.types.span(t).clone());
+        self.returns = Some((ret, from.clone()));
         let body_ty = self.infer(body);
+        // A body without a final value is fine if no path gets to its end: every one returns.
+        if let Expr::Block { stmts, value: None } = &self.ast.exprs[body] {
+            if self.leaves(stmts) {
+                return;
+            }
+            // Some path gets to the end with nothing to return.
+            let unit = self.u.table.unit;
+            if self.u.unify(ret, unit).is_err() {
+                self.errors.push(TypeError::MissingReturn {
+                    ty: self.describe(ret),
+                    span: self.ast.exprs.span(body).last_char(),
+                    returns: from,
+                });
+                return;
+            }
+        }
         if !self.coerce(body, ret, body_ty) {
             // Point at the value the body produces, not the whole block.
             let at = match &self.ast.exprs[body] {
@@ -489,6 +510,24 @@ impl<'a> Checker<'a> {
                 }
                 self.check_loop(body);
             }
+            Stmt::Return(value) => {
+                let (ret, from) = self
+                    .returns
+                    .clone()
+                    .expect("statements are inside a function");
+                match value {
+                    Some(value) => self.expect(*value, ret, from),
+                    None => {
+                        let unit = self.u.table.unit;
+                        if self.u.unify(ret, unit).is_err() {
+                            self.errors.push(TypeError::ReturnWithoutValue {
+                                ty: self.describe(ret),
+                                span: self.ast.stmts.span(id).clone(),
+                            });
+                        }
+                    }
+                }
+            }
             Stmt::Break(_) | Stmt::Continue(_) if self.loops == 0 => {
                 self.errors.push(TypeError::BreakOutsideLoop {
                     keyword: if matches!(self.ast.stmts[id], Stmt::Break(_)) {
@@ -506,12 +545,66 @@ impl<'a> Checker<'a> {
                 otherwise,
             } => {
                 let facts = self.check_condition(*condition);
-                self.narrowed_while(facts.when_true, |c| c.check_stmts(then));
-                if let Some(otherwise) = otherwise {
-                    self.narrowed_while(facts.when_false, |c| c.check_stmts(otherwise));
+                let (_, then_kept) = self.narrowed_during(facts.when_true, |c| c.check_stmts(then));
+                let otherwise_kept = match otherwise {
+                    Some(otherwise) => {
+                        self.narrowed_during(facts.when_false, |c| c.check_stmts(otherwise))
+                            .1
+                    }
+                    None => facts.when_false,
+                };
+                // A branch that leaves (`return`, `break`, `continue`) means the rest of the block
+                // only runs after the other: `if v == none { return 0; }` narrows `v` from here
+                // on, until the end of the block.
+                let then_leaves = self.leaves(then);
+                let otherwise_leaves = otherwise.as_ref().is_some_and(|o| self.leaves(o));
+                if then_leaves && !otherwise_leaves {
+                    self.narrowed.extend(otherwise_kept);
+                } else if otherwise_leaves && !then_leaves {
+                    self.narrowed.extend(then_kept);
                 }
             }
         }
+    }
+
+    /// Whether control never gets past the end of `stmts`: the last one returns, breaks or
+    /// continues; or is an `if` whose branches all do; or a `loop` with no `break` in it.
+    fn leaves(&self, stmts: &[Id<Stmt>]) -> bool {
+        let Some(&last) = stmts.last() else {
+            return false;
+        };
+        match &self.ast.stmts[last] {
+            Stmt::Return(_) | Stmt::Break(_) | Stmt::Continue(_) => true,
+            Stmt::If {
+                then,
+                otherwise: Some(otherwise),
+                ..
+            } => self.leaves(then) && self.leaves(otherwise),
+            Stmt::Loop { body } => !self.breaks(body),
+            Stmt::Expr(expr) => match &self.ast.exprs[*expr] {
+                Expr::Block { stmts, value: None } => self.leaves(stmts),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// Whether there's a `break` anywhere in `stmts`, which could leave a `loop` around them.
+    fn breaks(&self, stmts: &[Id<Stmt>]) -> bool {
+        stmts.iter().any(|&stmt| match &self.ast.stmts[stmt] {
+            Stmt::Break(_) => true,
+            Stmt::Loop { body } | Stmt::While { body, .. } | Stmt::For { body, .. } => {
+                self.breaks(body)
+            }
+            Stmt::If {
+                then, otherwise, ..
+            } => self.breaks(then) || otherwise.as_ref().is_some_and(|o| self.breaks(o)),
+            Stmt::Expr(expr) => match &self.ast.exprs[*expr] {
+                Expr::Block { stmts, .. } => self.breaks(stmts),
+                _ => false,
+            },
+            _ => false,
+        })
     }
 
     /// What a `for` loop over `iterable`, of type `ty`, binds each time round, recording how
@@ -699,15 +792,6 @@ impl<'a> Checker<'a> {
             key,
             inner,
         });
-    }
-
-    /// Runs `f` with `narrowing` in effect, if there is one.
-    fn narrowed_while<T>(
-        &mut self,
-        narrowings: Vec<Narrowing>,
-        f: impl FnOnce(&mut Self) -> T,
-    ) -> T {
-        self.narrowed_during(narrowings, f).0
     }
 
     /// Runs `f` with `narrowings` in effect, returning its result and the narrowings it didn't
@@ -922,8 +1006,19 @@ impl<'a> Checker<'a> {
             // A collection: an array, or a slice where one is expected.
             Expr::Array(items) => {
                 let element = self.u.fresh(VarKind::Any);
-                for &item in items {
-                    self.expect(item, element, None);
+                let found: Vec<TypeId> = items.iter().map(|&item| self.infer(item)).collect();
+                // `[1, none, 5]`: with an optional among them, they're all optionals, and the
+                // plain values are wrapped, as in `x if c else none`.
+                if let Some(&optional) = found
+                    .iter()
+                    .find(|&&ty| matches!(self.u.get(self.u.shallow(ty)), Ty::Optional(_)))
+                {
+                    let _ = self.u.unify(element, optional);
+                }
+                for (&item, &ty) in items.iter().zip(&found) {
+                    if !self.coerce(item, element, ty) {
+                        self.mismatch(element, ty, self.span(item), None);
+                    }
                 }
                 self.u.fresh(VarKind::Collection {
                     element,
@@ -1948,6 +2043,11 @@ impl Checker<'_> {
                     self.forget_changed_in(body);
                 }
                 Stmt::Break(_) | Stmt::Continue(_) => {}
+                Stmt::Return(value) => {
+                    if let Some(value) = value {
+                        self.forget_changed_by(*value, false);
+                    }
+                }
                 Stmt::If {
                     condition,
                     then,

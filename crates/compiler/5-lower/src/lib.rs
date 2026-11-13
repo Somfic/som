@@ -282,11 +282,20 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
         let body = func.body.expect("only functions with bodies are lowered");
         let value = self.operand(body);
-        self.assign(Place::local(RETURN), Rvalue::Use(value), span.clone());
-        for arg in 1..=func.params.len() {
-            self.push(StatementKind::StorageDead(Id::new(arg)), span.clone());
+        // A body with no final value that should return one never gets to its end: every path
+        // returns (the type checker made sure). There's nothing to return there.
+        let unit = self.l.mir.types.unit;
+        let reaches_end =
+            !matches!(ast.exprs[body], Expr::Block { value: None, .. }) || ret == unit;
+        if reaches_end {
+            self.assign(Place::local(RETURN), Rvalue::Use(value), span.clone());
+            for arg in 1..=func.params.len() {
+                self.push(StatementKind::StorageDead(Id::new(arg)), span.clone());
+            }
+            self.terminate(TerminatorKind::Return, span.clone());
+        } else {
+            self.terminate(TerminatorKind::Unreachable, span.clone());
         }
-        self.terminate(TerminatorKind::Return, span.clone());
 
         let outs = (func.params.iter().enumerate())
             .filter(|(_, p)| p.out)
@@ -453,6 +462,29 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 iterable,
                 body,
             } => self.for_loop(id, name, *mutable, *iterable, body, span),
+            Stmt::Return(value) => {
+                let value = match value {
+                    Some(value) => self.operand(*value),
+                    None => {
+                        let unit = self.l.mir.types.unit;
+                        self.constant(ConstKind::Unit, unit)
+                    }
+                };
+                self.assign(Place::local(RETURN), Rvalue::Use(value), span.clone());
+                // Every local still alive ends here: each enclosing scope's, then the parameters.
+                let dying: Vec<Local> = (self.scopes.iter().rev())
+                    .flat_map(|scope| scope.iter().rev().copied())
+                    .collect();
+                for local in dying {
+                    self.push(StatementKind::StorageDead(local), span.clone());
+                }
+                for arg in 1..=ast.funcs[self.func].params.len() {
+                    self.push(StatementKind::StorageDead(Id::new(arg)), span.clone());
+                }
+                self.terminate(TerminatorKind::Return, span);
+                // Whatever follows can't be reached.
+                self.current = self.new_block();
+            }
             Stmt::Break(named) | Stmt::Continue(named) => {
                 // The innermost loop, or the `for` loop whose variable is named.
                 let targets = match named {

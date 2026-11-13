@@ -1,0 +1,63 @@
+// expect: exit 42
+
+/// The first number equal to `want`, if there is one.
+fn find(numbers: [i32], want: i32) -> i32? {
+    for n in numbers {
+        if n == want { return n; }      // wrapped into an `i32?`
+    }
+    none
+}
+
+/// Ends in `return` on every path: no final value needed.
+fn sign(n: i32) -> i32 {
+    if n < 0 { return 0 - 1; } else if n > 0 { return 1; } else { return 0; }
+}
+
+/// A guard: after it, `found` holds a value.
+fn doubled_or_zero(numbers: [i32], want: i32) -> i32 {
+    let found = find(numbers, want);
+    if found == none { return 0; }
+    found * 2
+}
+
+/// `continue` as a guard in a loop.
+fn sum_present(values: [i32?; 4]) -> i32 {
+    let mut total = 0;
+    for v in values {
+        if v == none { continue; }
+        total = total + v;
+    }
+    total
+}
+
+/// `return;` in a function returning nothing, from inside nested loops.
+fn first_pair(target: i32) {
+    for x in 0..10 {
+        for y in 0..10 {
+            if x * y == target {
+                return;
+            }
+        }
+    }
+}
+
+/// A `loop` with no `break` never ends, so it needs no value after it.
+fn spin_until(limit: i32) -> i32 {
+    let mut i = 0;
+    loop {
+        i = i + 1;
+        if i == limit { return i; }
+    }
+}
+
+fn main() -> i32 {
+    let numbers = [3, 8, 12];
+    let a = find(&numbers, 8) else 0;                  // 8
+    let b = find(&numbers, 99) else 0;                 // 0
+    let c = sign(0 - 5) + sign(7) + sign(0);           // -1 + 1 + 0 = 0
+    let d = doubled_or_zero(&numbers, 12);             // 24
+    let e = sum_present([1, none, 5, none]);           // 6
+    first_pair(12);                                    // 2*6
+    let f = spin_until(4);                             // 4
+    a + b + c + d + e + f                              // 42
+}

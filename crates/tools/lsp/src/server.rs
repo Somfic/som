@@ -2146,6 +2146,7 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::While
             | TokenKind::Break
             | TokenKind::Continue
+            | TokenKind::Return
             | TokenKind::For
             | TokenKind::In => 0,
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,

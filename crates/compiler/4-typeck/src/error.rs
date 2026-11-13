@@ -111,6 +111,17 @@ pub enum TypeError {
         /// It's text: its bytes can be.
         text: bool,
     },
+    /// A function that returns something, but some path reaches its end without a value.
+    MissingReturn {
+        ty: Message,
+        span: Span,
+        returns: Option<Span>,
+    },
+    /// `return;` in a function that returns something.
+    ReturnWithoutValue {
+        ty: Message,
+        span: Span,
+    },
     /// An integer literal too big for its type: `let x: u8 = 300;`.
     LiteralOutOfRange {
         value: i64,
@@ -328,6 +339,27 @@ impl TypeError {
                     code("cstr"),
                     "; a string literal becomes one"
                 ]),
+            TypeError::MissingReturn { ty, span, returns } => {
+                let d = Diagnostic::error(msg!["not every path returns ", ty.clone()]).with_label(
+                    Label::primary(span.clone(), "this end can be reached without a value"),
+                );
+                let d = match returns {
+                    Some(at) => {
+                        d.with_label(Label::secondary(at.clone(), "declared to return this"))
+                    }
+                    None => d,
+                };
+                d.with_hint(msg![
+                    "end every path in ",
+                    code("return"),
+                    ", or end the function with a value"
+                ])
+            }
+            TypeError::ReturnWithoutValue { ty, span } => {
+                Diagnostic::error(msg![code("return"), " needs a value here"]).with_label(
+                    Label::primary(span.clone(), msg!["the function returns ", ty.clone()]),
+                )
+            }
             TypeError::LiteralOutOfRange {
                 value,
                 ty,

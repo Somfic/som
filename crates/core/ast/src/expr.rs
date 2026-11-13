@@ -124,6 +124,8 @@ pub enum Stmt {
     /// `break;`: leaves the innermost `loop`, `while` or `for`. `break x;` leaves the `for`
     /// loop whose variable is `x`, and every loop inside it.
     Break(Option<Ident>),
+    /// `return value;` or `return;`: leaves the function, with `value` as its result.
+    Return(Option<Id<Expr>>),
     /// `continue;`: goes on with the innermost loop's next time round. `continue x;` goes on
     /// with the next `x` of the `for` loop whose variable it is.
     Continue(Option<Ident>),

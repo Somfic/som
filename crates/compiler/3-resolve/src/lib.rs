@@ -294,6 +294,11 @@ impl<'a> Resolver<'a> {
             }
             Stmt::Expr(expr) => self.resolve_expr(*expr),
             Stmt::Loop { body } => self.resolve_stmts(body),
+            Stmt::Return(value) => {
+                if let Some(value) = value {
+                    self.resolve_expr(*value);
+                }
+            }
             Stmt::Break(target) | Stmt::Continue(target) => {
                 let keyword = match self.ast.stmts[id] {
                     Stmt::Break(_) => "break",

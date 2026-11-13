@@ -1,0 +1,5 @@
+// expect: error ReturnWithoutValue
+
+fn f() -> i32 { return; }
+
+fn main() -> i32 { 0 }

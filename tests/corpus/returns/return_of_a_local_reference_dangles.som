@@ -1,0 +1,8 @@
+// expect: error DanglingReference
+
+fn f() -> &i32 {
+    let x = 1;
+    return &x;
+}
+
+fn main() -> i32 { 0 }

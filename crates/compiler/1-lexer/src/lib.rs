@@ -174,6 +174,8 @@ pub enum TokenKind {
     Break,
     #[token("continue")]
     Continue,
+    #[token("return")]
+    Return,
     #[token("for")]
     For,
     #[token("in")]
@@ -204,6 +206,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::While => write!(f, "while"),
             TokenKind::Break => write!(f, "break"),
             TokenKind::Continue => write!(f, "continue"),
+            TokenKind::Return => write!(f, "return"),
             TokenKind::For => write!(f, "for"),
             TokenKind::In => write!(f, "in"),
             TokenKind::I8 => write!(f, "i8"),
