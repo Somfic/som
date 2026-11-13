@@ -2,8 +2,8 @@
 
 struct Point { x: i32, y: i32 }
 
-// Parameters can be assigned; there's no way to write `mut` on them yet.
-fn double(n: i32) -> i32 {
+// A `mut` parameter can be assigned.
+fn double(mut n: i32) -> i32 {
     n = n * 2;
     n
 }

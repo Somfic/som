@@ -1080,20 +1080,24 @@ impl<'a> Checker<'a> {
         self.errors.push(error);
     }
 
-    /// Why the place `expr` can't be changed, if it can't. Parameters can be, since there's no
-    /// way to write `mut` on them yet; so can `out` variables. Anything that isn't a place, like
-    /// a call's result, is a fresh value.
+    /// Why the place `expr` can't be changed, if it can't. `out` parameters and variables can
+    /// be: being filled in is what they're for. Anything that isn't a place, like a call's
+    /// result, is a fresh value.
     fn immutable(&self, expr: Id<Expr>) -> Option<Immutable> {
         match &self.ast.exprs[expr] {
             Expr::Var(_) => {
                 let def = self.names.expr(expr)?;
-                let DefKind::Local(stmt) = self.names.def(def).kind else {
-                    return None;
+                let mutable = match self.names.def(def).kind {
+                    DefKind::Local(stmt) => {
+                        matches!(self.ast.stmts[stmt], Stmt::Let { mutable: true, .. })
+                    }
+                    DefKind::Param { func, index } => {
+                        let param = &self.ast.funcs[func].params[index];
+                        param.mutable || param.out
+                    }
+                    _ => true,
                 };
-                match self.ast.stmts[stmt] {
-                    Stmt::Let { mutable: false, .. } => Some(Immutable::Variable(def)),
-                    _ => None,
-                }
+                (!mutable).then_some(Immutable::Variable(def))
             }
             // Through a reference, what counts is the reference: `&mut` allows it, even in a
             // variable that isn't `mut`.

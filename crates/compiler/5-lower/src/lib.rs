@@ -251,12 +251,11 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             .zip(self.l.names.params(self.func))
             .zip(params)
         {
-            // There's no syntax for `mut` parameters yet, so all parameters are assignable.
             let ty = self.ty(ty);
             let local = self.new_local(
                 ty,
                 Some(param.name.name.to_string()),
-                true,
+                param.mutable || param.out,
                 param.name.span.clone(),
             );
             self.bindings.insert(def, local);

@@ -258,6 +258,7 @@ impl Parser<'_> {
                 break;
             }
             let out = self.eat(TokenKind::Out);
+            let mutable = !out && self.eat(TokenKind::Mut);
             let name = self.parse_ident("a function parameter name")?;
             let ty = if is_extern {
                 self.expect(TokenKind::Colon, "a colon after function parameter name")?;
@@ -267,7 +268,12 @@ impl Parser<'_> {
             } else {
                 None
             };
-            params.push(Param { name, ty, out });
+            params.push(Param {
+                name,
+                ty,
+                out,
+                mutable,
+            });
             if !self.eat(TokenKind::Comma) {
                 break;
             }

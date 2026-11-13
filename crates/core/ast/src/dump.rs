@@ -146,7 +146,11 @@ impl Dumper<'_> {
             .params
             .iter()
             .map(|p| {
-                let out = if p.out { "out " } else { "" };
+                let out = match (p.out, p.mutable) {
+                    (true, _) => "out ",
+                    (false, true) => "mut ",
+                    (false, false) => "",
+                };
                 match p.ty {
                     Some(ty) => format!("{out}{}: {}", p.name, ast.type_text(ty)),
                     None => format!("{out}{}", p.name),

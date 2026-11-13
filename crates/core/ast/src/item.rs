@@ -65,6 +65,8 @@ pub struct Param {
     /// `out remainder: i32`: the function fills it in, and callers pass `out name`.
     /// Passed as a pointer, like `&mut i32`.
     pub out: bool,
+    /// `mut count: i32`: the function can assign it. An `out` parameter always can.
+    pub mutable: bool,
 }
 
 pub struct Struct {

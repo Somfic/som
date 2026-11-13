@@ -108,7 +108,7 @@ fn a_borrow_kept_across_iterations_conflicts() {
 
 #[test]
 fn diagnostics_name_the_place() {
-    let errors = check("struct P { x: i32 } fn f(p: P) { let r = &mut p.x; let y = p.x; }");
+    let errors = check("struct P { x: i32 } fn f(mut p: P) { let r = &mut p.x; let y = p.x; }");
     match &errors[..] {
         [BorrowError::UseWhileMutBorrowed { name, .. }] => assert_eq!(name, "p.x"),
         other => panic!("{other:?}"),

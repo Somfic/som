@@ -1,8 +1,4 @@
-use std;
-let a: i32? = none;
-
-if a {
-    a = a + 1;
+fn double(mut n: i32) -> i32 {
+    n = n * 2;          // error: `n` is immutable
+    n
 }
-
-std::printf("%d", a);

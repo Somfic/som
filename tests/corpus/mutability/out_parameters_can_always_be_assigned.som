@@ -1,0 +1,8 @@
+// expect: exit 5
+
+fn fill(out r: i32) { r = 5; }
+
+fn main() -> i32 {
+    fill(out v);
+    v
+}

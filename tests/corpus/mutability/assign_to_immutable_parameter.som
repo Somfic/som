@@ -1,0 +1,8 @@
+// expect: error NotMutable
+
+fn double(n: i32) -> i32 {
+    n = n * 2;
+    n
+}
+
+fn main() -> i32 { double(1) }

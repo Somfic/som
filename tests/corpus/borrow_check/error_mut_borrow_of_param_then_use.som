@@ -1,6 +1,6 @@
 // expect: error UseWhileMutBorrowed
 
-fn test(x: i32) {
+fn test(mut x: i32) {
     let r = &mut x;
     let y = x + 1;
 }

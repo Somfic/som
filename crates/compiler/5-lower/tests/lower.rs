@@ -34,8 +34,8 @@ fn simple_function() {
         "\
 fn add(_1: i32, _2: i32) -> i32 {
     let _0: i32;
-    let mut _1: i32; // a
-    let mut _2: i32; // b
+    let _1: i32; // a
+    let _2: i32; // b
     let _3: i32;
 
     bb0: {
