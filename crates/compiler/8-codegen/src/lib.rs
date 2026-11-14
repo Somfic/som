@@ -958,7 +958,14 @@ impl<'a> Emitter<'a> {
             if is_temp && dest.projection.is_empty() {
                 let narrow = self.is_narrow(f.body.local(local).ty);
                 let (assigns, reads) = (f.usage.assigns[local.id], f.usage.reads[local.id]);
-                if assigns == 1 && reads == 1 && f.usage.read_as[local.id].allows(rvalue, narrow) {
+                // A call to an extern returning `void` has no value to put where it's read.
+                let void = matches!(rvalue, Rvalue::Call { func, .. }
+                    if self.ret_ty(self.mir.func(*func)) == "void");
+                if assigns == 1
+                    && reads == 1
+                    && !void
+                    && f.usage.read_as[local.id].allows(rvalue, narrow)
+                {
                     f.pending.insert(local, value);
                     continue;
                 }

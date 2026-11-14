@@ -1,0 +1,13 @@
+// expect: exit 3
+
+extern "c";
+
+fn release(p: *) = c::free(p);
+
+fn release_block(p: *) { c::free(p) }
+
+fn main() -> i32 {
+    release(c::malloc(8));
+    release_block(c::malloc(8));
+    3
+}
