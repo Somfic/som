@@ -1,21 +1,32 @@
-extern "c";
-
-struct Allocation {
-    ptr: *,
-    size: i32,
+struct Alloc<T> {
+    ptr: *T,
+    size: usize
 }
 
-fn alloc(size: i32) -> Allocation {
-    Allocation {
-        ptr: c::malloc(size as u64),
-        size: size,
+impl<T> Alloc<T> {
+    fn new() {
+        Alloc { ptr: null<T>(), size: 0 }
+    }
+
+    fn new(size: usize) {
+        let mut ptr = null<T>();
+        ptr.resize(size);
+        Alloc { ptr, size }
+    }
+
+    fn resize(&mut self, size: usize) {
+        self.ptr.resize(size);
+    }
+
+    fn set(&mut self, at: usize, value: T) {
+        self.ptr.write(at, value)
+    }
+
+    fn push(&mut self, value: T) {
+        self.ptr.
+    }
+
+    fn get(&mut self, at: usize) {
+        self.ptr.read(at)
     }
 }
-
-fn dealloc(allocation: &Allocation) {
-    free(allocation.ptr);
-}
-
-fn malloc(size: i32) -> * = c::malloc(size as u64);
-
-fn free(p: *) = c::free(p);

@@ -1,0 +1,5 @@
+// expect: error Mismatch
+
+fn pick<A, B>(a: A, b: B) -> B { b }
+
+fn main() -> i32 { pick<bool, bool>(true, 4) as i32 }

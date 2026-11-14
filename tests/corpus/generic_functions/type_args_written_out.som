@@ -1,0 +1,25 @@
+// expect: exit 18
+
+/// A generic function's type arguments can be written after its name, when nothing else says
+/// what they are: `size<i32>()`. A method's are its own, after its impl block's.
+struct Box<T> { value: T }
+
+impl<T> Box<T> {
+    fn wrap<U>(u: U) -> Box<U> { Box { value: u } }
+}
+
+fn size<T>() -> i64 { 8 }
+fn pick<A, B>(a: A, b: B) -> B { b }
+
+fn main() -> i32 {
+    let a = 1;
+    let b = 2;
+    let c = 3;
+    let x = size<i32>() as i32;
+    let y = pick<bool, i64>(true, 4) as i32;
+    let w = Box::wrap<i32>(5);
+    // Without a `(` right after the `>`, these are comparisons.
+    let lt = a < b;
+    let p = (a < b) == (b > c);
+    w.value + x + y + (1 if lt else 0) + (1 if p else 0)
+}

@@ -928,6 +928,45 @@ impl<'a> Checker<'a> {
         (sig, args)
     }
 
+    /// A function's own generic parameters: a method's come after its impl block's, which
+    /// the type it's called on decides.
+    fn own_type_params(&self, func: Id<Func>) -> Vec<DefId> {
+        let all = self.names.type_params(func);
+        let inherited = (self.names.impl_of(func))
+            .map_or(0, |i| self.names.impls[i].params.len())
+            .min(all.len());
+        all[inherited..].to_vec()
+    }
+
+    /// `null<i32>()`: the type arguments written for a call of `func`, which stand for its own
+    /// generic parameters, whose fresh variables are the last of `type_args`.
+    fn written_type_args(
+        &mut self,
+        call: Id<Expr>,
+        func: Id<Func>,
+        written: &[Id<TypeExpr>],
+        type_args: &[TypeId],
+    ) {
+        let own = self.own_type_params(func);
+        if written.len() != own.len() {
+            written.iter().for_each(|&a| {
+                self.lower_arg(a, None);
+            });
+            self.errors.push(TypeError::WrongTypeArgCount {
+                name: self.ast.funcs[func].name.name.to_string(),
+                expected: own.len(),
+                found: written.len(),
+                span: self.span(call),
+            });
+            return;
+        }
+        let inherited = type_args.len() - own.len();
+        for ((&arg, &param), &var) in written.iter().zip(&own).zip(&type_args[inherited..]) {
+            let ty = self.lower_arg(arg, Some(param));
+            let _ = self.u.unify(var, ty);
+        }
+    }
+
     fn substitute(&mut self, ty: TypeId, subst: &[(DefId, TypeId)]) -> TypeId {
         // An unwritten return type is a variable its body decided: what it was decided to be.
         let ty = self.u.shallow(ty);
@@ -2015,17 +2054,24 @@ impl<'a> Checker<'a> {
                 unit
             }
 
-            Expr::Call { callee, args } => {
+            Expr::Call {
+                callee,
+                type_args: written,
+                args,
+            } => {
                 let expected = self.expected_here.take();
                 if let Some(def) = self.names.expr(id)
                     && self.names.overloads(def).len() > 1
                 {
-                    return self.overloaded_call(id, callee, def, args, expected);
+                    return self.overloaded_call(id, callee, def, written, args, expected);
                 }
                 match self.names.expr(id).map(|def| &self.names.def(def).kind) {
                     Some(DefKind::Func(func)) => {
                         let func = *func;
                         let (sig, type_args) = self.instantiate(func);
+                        if !written.is_empty() {
+                            self.written_type_args(id, func, written, &type_args);
+                        }
                         // `Vector3::new(…)`: a method of the type the alias stands for.
                         if let Some(owner) = self.owner_type(func, &type_args) {
                             self.fit_alias(id, owner);
@@ -2692,11 +2738,14 @@ impl<'a> Checker<'a> {
         call: Id<Expr>,
         callee: &som_ast::Path,
         first: DefId,
+        written: &[Id<TypeExpr>],
         args: &[Id<Expr>],
         expected: Option<TypeId>,
     ) -> TypeId {
         // The arguments decide which, so they're worked out first, once.
         let found: Vec<TypeId> = args.iter().map(|&a| self.infer(a)).collect();
+        // So are the type arguments written out: only one taking as many fits.
+        let written: Vec<TypeId> = written.iter().map(|&t| self.lower(t)).collect();
         // `Vector3::zero()`: one of the type the alias stands for.
         let aliased = (self.names.expr_alias(call)).map(|alias| self.alias_value(alias));
         let mut fitting = Vec::new();
@@ -2707,6 +2756,15 @@ impl<'a> Checker<'a> {
                     continue;
                 };
                 let (sig, type_args) = self.instantiate(func);
+                if !written.is_empty() {
+                    let inherited = type_args.len() - self.own_type_params(func).len();
+                    if written.len() != type_args.len() - inherited {
+                        continue;
+                    }
+                    for (&var, &ty) in type_args[inherited..].iter().zip(&written) {
+                        let _ = self.u.unify(var, ty);
+                    }
+                }
                 let variadic = self.ast.funcs[func].variadic;
                 let count_ok = match variadic {
                     true => found.len() >= sig.params.len(),

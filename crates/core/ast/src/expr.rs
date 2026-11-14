@@ -54,8 +54,10 @@ pub enum Expr {
         value: Id<Expr>,
     },
     /// `math::add(1, 2)`
+    /// `f(1)`, or `null<i32>()` with the function's type arguments written out.
     Call {
         callee: Path,
+        type_args: Vec<Id<TypeExpr>>,
         args: Vec<Id<Expr>>,
     },
     /// `point.sum(1)`

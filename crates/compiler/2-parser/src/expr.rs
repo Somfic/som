@@ -393,7 +393,23 @@ impl Parser<'_> {
                 if is_constructor && !self.in_condition {
                     return self.parse_constructor();
                 }
-                Expr::Var(self.parse_path("an identifier or constructor name")?)
+                let path = self.parse_path("an identifier or constructor name")?;
+                // `null<i32>()`: type arguments, then the call. Only when `(` follows the `>`,
+                // so `a < b` and `a < b > c` stay comparisons.
+                if self.at(TokenKind::LessThan)
+                    && let Some(n) = self.past_type_args(0)
+                    && self.peek_nth(n) == TokenKind::OpenParen
+                {
+                    let type_args = self.parse_type_args()?;
+                    let args = self.parse_args()?;
+                    Expr::Call {
+                        callee: path,
+                        type_args,
+                        args,
+                    }
+                } else {
+                    Expr::Var(path)
+                }
             }
 
             TokenKind::OpenParen => {
@@ -518,6 +534,7 @@ impl Parser<'_> {
         let expr = match &self.ast.exprs[callee] {
             Expr::Var(path) => Expr::Call {
                 callee: path.clone(),
+                type_args: Vec::new(),
                 args,
             },
             _ => {

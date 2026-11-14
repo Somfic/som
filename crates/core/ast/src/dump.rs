@@ -356,7 +356,9 @@ impl Dumper<'_> {
             Expr::Deref(e) => self.node("deref", |d| d.expr(*e)),
             Expr::Out(name) => self.line(format!("out {name}")),
             Expr::Assign { target, value } => self.node("assign", |d| d.exprs(&[*target, *value])),
-            Expr::Call { callee, args } => self.node(format!("call {callee}"), |d| d.exprs(args)),
+            Expr::Call { callee, args, .. } => {
+                self.node(format!("call {callee}"), |d| d.exprs(args))
+            }
             Expr::MethodCall {
                 receiver,
                 method,

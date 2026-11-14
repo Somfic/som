@@ -1,0 +1,14 @@
+// expect: exit 0
+
+/// `null<T>()`: a null pointer to `T`s, with no annotation needed.
+use som::mem;
+
+fn make<T>() -> *T {
+    let ptr = null<T>();
+    ptr
+}
+
+fn main() -> i32 {
+    let p = make<i32>();
+    if p.is_null() { 0 } else { 1 }
+}
