@@ -52,7 +52,6 @@ impl Grammar {
     pub const AS: u8 = 13;
     pub const UNARY: u8 = 14;
     pub const POSTFIX: u8 = 15;
-    pub const MODULO: u8 = 16;
 
     pub fn infix_op(kind: TokenKind) -> Option<(BinOp, OpInfo)> {
         let (operator, precedence, association) = match kind {
@@ -77,7 +76,8 @@ impl Grammar {
 
             TokenKind::Star => (BinOp::Multiply, Self::MULTIPLICATIVE, Association::Left),
             TokenKind::Slash => (BinOp::Divide, Self::MULTIPLICATIVE, Association::Left),
-            TokenKind::Percentage => (BinOp::Modulo, Self::MODULO, Association::Left),
+            // With `*` and `/`, left to right: `2 * 7 % 4` is `(2 * 7) % 4`.
+            TokenKind::Percentage => (BinOp::Modulo, Self::MULTIPLICATIVE, Association::Left),
 
             TokenKind::Pipe => (BinOp::BitOr, Self::BIT_OR, Association::Left),
             TokenKind::Caret => (BinOp::BitXor, Self::BIT_XOR, Association::Left),

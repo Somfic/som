@@ -1,0 +1,17 @@
+// expect: exit 0
+
+/// `%` is the remainder, with `*` and `/`, left to right: `2 * 7 % 4` is `(2 * 7) % 4`. Its
+/// sign is the left side's, so `a / b * b + a % b` is always `a`.
+fn check(ok: bool, code: i32) -> i32 { if ok { 0 } else { code } }
+fn rem(a: i32, b: i32) -> i32 { a % b }
+
+fn main() -> i32 {
+    let mut failed = 0;
+    failed = failed + check(2 * 7 % 4 == 2, 1);
+    failed = failed + check(20 % 7 * 2 == 12, 2);
+    failed = failed + check(100 / 7 % 3 == 2, 3);
+    failed = failed + check(rem(-7, 3) == -1, 4);
+    failed = failed + check(rem(7, -3) == 1, 5);
+    failed = failed + check(-7 / 3 * 3 + rem(-7, 3) == -7, 6);
+    failed
+}
