@@ -23,8 +23,6 @@ fn main() -> i32 {
     let p = points.pop();
     let y = match p { none => 0, q => q.y };
     let size = numbers.len() as i32;
-    numbers.free();
-    points.free();
     total + last + first + y + size
 }
 

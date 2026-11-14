@@ -2,7 +2,7 @@ use som;
 use som::mem;
 
 /// `T`s one after another, as many as are pushed: room for more is made as it's needed.
-/// Its memory isn't given back by itself yet: call `free` when it's no longer needed.
+/// Dropping it drops its values and gives their room back.
 struct List<T> {
     items: *T,
     len: usize,
@@ -70,14 +70,22 @@ impl<T> List<T> {
         self.items.view_mut(self.len)
     }
 
-    /// Forgets every value, keeping the room for new ones.
+    /// Drops every value, keeping the room for new ones.
     fn clear(self: &mut List<T>) {
+        for i in 0..self.len {
+            self.items.read(i);
+        }
         self.len = 0;
     }
+}
 
-    /// Gives its memory back. The values in it aren't freed themselves.
-    fn free(self: List<T>) {
-        self.items.free()
+impl<T> Drop for List<T> {
+    /// Drops each value, read out of its room, then gives the room back.
+    fn drop(self: &mut List<T>) {
+        for i in 0..self.len {
+            self.items.read(i);
+        }
+        self.items.free();
     }
 }
 

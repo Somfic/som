@@ -46,6 +46,10 @@ fn referenced(body: &Body) -> Vec<FuncId> {
     let mut found = Vec::new();
     for block in &body.blocks {
         for stmt in &block.stmts {
+            if let StatementKind::Drop { glue, .. } = &stmt.kind {
+                found.push(*glue);
+                continue;
+            }
             let StatementKind::Assign(_, rvalue) = &stmt.kind else {
                 continue;
             };

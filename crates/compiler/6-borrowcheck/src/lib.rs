@@ -196,6 +196,7 @@ impl<'a> FnChecker<'a> {
                 }
                 StatementKind::StorageLive(local) => state.release(*local),
                 StatementKind::StorageDead(local) => self.storage_dead(state, *local, &stmt.span),
+                StatementKind::Drop { place, .. } => self.drop(state, place, &stmt.span),
             }
         }
         if let TerminatorKind::Branch { condition, .. } = &block.terminator.kind {
@@ -286,10 +287,25 @@ impl<'a> FnChecker<'a> {
             }
         }
 
+        // What a type that implements `Drop` holds stays for its `drop`.
+        let in_drop_type = (0..place.projection.len()).find_map(|len| {
+            let outer = Place {
+                local: place.local,
+                projection: place.projection[..len].to_vec(),
+            };
+            let ty = self.place_ty(&outer);
+            self.mir.drop_types.contains(&ty).then_some(ty)
+        });
         if moving {
             if place.projection.contains(&Projection::Deref) {
                 self.error(BorrowError::MoveOutOfReference {
                     name: self.name(place),
+                    span: span.clone(),
+                });
+            } else if let Some(ty) = in_drop_type {
+                self.error(BorrowError::MoveOutOfDrop {
+                    name: self.name(place),
+                    ty: self.mir.display_ty(ty),
                     span: span.clone(),
                 });
             } else {
@@ -356,6 +372,32 @@ impl<'a> FnChecker<'a> {
         });
     }
 
+    /// A value dropped at `place`. A named variable's borrows are checked where it stops
+    /// existing, right after; a temporary's, which has no such point, here.
+    fn drop(&mut self, state: &mut State, place: &Place, span: &Span) {
+        if !self.is_temp(place.local) {
+            return;
+        }
+        let held = |state: &State, loan: LoanId| {
+            (state.holds.iter().enumerate())
+                .any(|(holder, loans)| holder != place.local.id && loans.contains(&loan))
+        };
+        let borrowed = state.active().into_iter().find(|&loan| {
+            let l = &self.loans[loan].place;
+            overlaps(l, place) && !l.projection.contains(&Projection::Deref) && held(state, loan)
+        });
+        if let Some(loan) = borrowed {
+            let l = &self.loans[loan];
+            self.error(BorrowError::TemporaryDropped {
+                borrowed_at: l.span.clone(),
+                dropped_at: span.clone(),
+            });
+            for holds in &mut state.holds {
+                holds.remove(&loan);
+            }
+        }
+    }
+
     fn storage_dead(&mut self, state: &mut State, local: Local, span: &Span) {
         let holders_of = |state: &State, loan: LoanId| {
             state
@@ -417,7 +459,9 @@ impl<'a> FnChecker<'a> {
             | BorrowError::AssignWhileBorrowed { span, .. }
             | BorrowError::OutNotAssigned { span, .. }
             | BorrowError::OutReadBeforeAssigned { span, .. }
-            | BorrowError::EndlessRecursion { span, .. } => span,
+            | BorrowError::EndlessRecursion { span, .. }
+            | BorrowError::MoveOutOfDrop { span, .. } => span,
+            BorrowError::TemporaryDropped { borrowed_at, .. } => borrowed_at,
         };
         if self.reported.insert((kind, span.start_offset)) {
             self.errors.push(error);

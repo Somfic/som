@@ -1,0 +1,13 @@
+// expect: error MoveOutOfDrop
+
+struct Inner { id: i32 }
+impl Drop for Inner { fn drop(self: &mut Inner) {} }
+
+struct Outer { inner: Inner }
+impl Drop for Outer { fn drop(self: &mut Outer) {} }
+
+fn main() -> i32 {
+    let outer = Outer { inner: Inner { id: 1 } };
+    let inner = outer.inner;
+    0
+}

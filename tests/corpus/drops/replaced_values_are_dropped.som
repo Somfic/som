@@ -1,0 +1,18 @@
+// expect: exit 12
+
+/// Assigning a variable drops what it held.
+struct Noisy { id: i32, log: *i32 }
+
+impl Drop for Noisy {
+    fn drop(self: &mut Noisy) { self.log.write(0, self.log.read(0) * 10 + self.id); }
+}
+
+fn main() -> i32 {
+    let mut log = 0;
+    let at = &mut log as *i32;
+    {
+        let mut a = Noisy { id: 1, log: at };
+        a = Noisy { id: 2, log: at };
+    }
+    log
+}

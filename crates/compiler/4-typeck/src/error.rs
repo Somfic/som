@@ -277,6 +277,8 @@ pub enum TypeError {
         /// It's a type argument, `Small<300>`, which `as` can't convert.
         type_arg: bool,
     },
+    /// `impl Drop for …` of a type whose values are copied.
+    DropOnCopy { ty: Message, span: Span },
     /// `impl Add for i32`: a type implementing a trait whose operators it has built in.
     BuiltinImpl { ty: Message, trait_: String, span: Span },
     /// `-x` of something that isn't a signed integer or a float.
@@ -905,6 +907,15 @@ impl TypeError {
                     ]),
                 }
             }
+            TypeError::DropOnCopy { ty, span } => Diagnostic::error(msg![
+                ty.clone(),
+                " can't implement ",
+                code("Drop")
+            ])
+            .with_label(Label::primary(
+                span.clone(),
+                "its values are copied, so each copy would be dropped",
+            )),
             TypeError::BuiltinImpl { ty, trait_, span } => Diagnostic::error(msg![
                 ty.clone(),
                 " can't implement ",

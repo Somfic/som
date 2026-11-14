@@ -35,6 +35,5 @@ fn main() -> i32 {
     let list: List = [1, 2, 3];
     let total = a.value + b + c.value + p.length.value + d.value + e + explicit.value
         + (n.len as i32) + (list.len() as i32);
-    list.free();
     total
 }

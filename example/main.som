@@ -1,13 +1,11 @@
+trait Double<T> {
+    fn double(self: T) -> T;
+}
+
 impl Double<i32> for i32 {
     fn double(self: i32) -> i32 {
         self * 2
     }
 }
 
-trait Double<T> {
-    fn double(self: T) -> T;
-}
-
-let a: i32 = 12;
-
-a.double();
+i32::double(2);

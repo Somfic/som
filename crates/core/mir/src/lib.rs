@@ -22,6 +22,8 @@ pub struct Mir {
     pub types: TypeTable,
     pub funcs: Arena<Function>,
     pub structs: Vec<StructDef>,
+    /// The types that implement `Drop` themselves: what's in them can't be moved out.
+    pub drop_types: std::collections::HashSet<TypeId>,
     struct_index: HashMap<(DefId, Vec<TypeId>), usize>,
 }
 
@@ -31,6 +33,7 @@ impl Mir {
             types,
             funcs: Arena::new(),
             structs: Vec::new(),
+            drop_types: std::collections::HashSet::new(),
             struct_index: HashMap::new(),
         }
     }
@@ -240,6 +243,14 @@ pub enum StatementKind {
     StorageLive(Local),
     /// The local's scope ends: it, and anything borrowed from it, is gone.
     StorageDead(Local),
+    /// The value at `place` is dropped: `glue` is called with a reference to it, which runs
+    /// its type's `drop` and its fields'. With `flag`, only if that local is `true`: the
+    /// value was moved on some paths here and not on others.
+    Drop {
+        place: Place,
+        glue: FuncId,
+        flag: Option<Local>,
+    },
 }
 
 pub struct Terminator {

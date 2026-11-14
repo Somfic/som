@@ -23,7 +23,9 @@ fn help(error: &ResolveError) -> Option<String> {
         | ResolveError::UnknownStruct { help, .. }
         | ResolveError::UnknownType { help, .. }
         | ResolveError::UnknownTrait { help, .. } => help.as_ref().map(|h| h.plain()),
-        ResolveError::DuplicateDefinition { .. } | ResolveError::NotALoop { .. } => None,
+        ResolveError::DuplicateDefinition { .. }
+        | ResolveError::NotALoop { .. }
+        | ResolveError::MethodsOnType { .. } => None,
     }
 }
 

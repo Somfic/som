@@ -200,6 +200,7 @@ fn propagate(body: &mut Body) -> bool {
     let mut assigned: Vec<Vec<&Rvalue>> = vec![Vec::new(); body.locals.slots()];
     let mut pinned: HashSet<Local> = body.args().chain([RETURN]).collect();
     pinned.extend(body.outs.iter().copied());
+    pinned.extend(crate::dce::dropped_locals(body));
     for stmt in body.blocks.iter().flat_map(|b| &b.stmts) {
         let StatementKind::Assign(dest, rvalue) = &stmt.kind else {
             continue;

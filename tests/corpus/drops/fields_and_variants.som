@@ -1,0 +1,31 @@
+// expect: exit 123
+
+/// What a value holds is dropped with it, after its own `drop`: fields in order, only the
+/// variant an enum is, what an optional holds, each element of an array. A field moved out
+/// isn't.
+struct Noisy { id: i32, log: *i32 }
+
+impl Drop for Noisy {
+    fn drop(self: &mut Noisy) { self.log.write(0, self.log.read(0) * 10 + self.id); }
+}
+
+struct Pair { a: Noisy, b: Noisy }
+
+enum Holder { Empty, One(Noisy) }
+
+fn take(n: Noisy) {}
+
+fn main() -> i32 {
+    let mut log = 0;
+    let at = &mut log as *i32;
+    {
+        let pair = Pair { a: Noisy { id: 9, log: at }, b: Noisy { id: 3, log: at } };
+        take(pair.a);
+        log = 0;
+        let empty = Holder::Empty;
+        let held: Holder = Holder::One(Noisy { id: 2, log: at });
+        let nothing: Noisy? = none;
+        let items = [Noisy { id: 1, log: at }];
+    }
+    log
+}

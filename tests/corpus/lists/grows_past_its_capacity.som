@@ -11,6 +11,5 @@ fn main() -> i32 {
     let n = xs.len() as i32;
     let last = xs.get(999) else &0;
     let result = n / 5 + *last - 999;
-    xs.free();
     result
 }

@@ -69,6 +69,12 @@ impl Validator<'_> {
                     StatementKind::StorageLive(local) | StatementKind::StorageDead(local) => {
                         self.local_ty(*local);
                     }
+                    StatementKind::Drop { place, flag, .. } => {
+                        self.place_ty(place);
+                        if let Some(flag) = flag {
+                            self.local_ty(*flag);
+                        }
+                    }
                 }
             }
             match &block.terminator.kind {

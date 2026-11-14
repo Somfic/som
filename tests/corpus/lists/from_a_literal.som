@@ -8,7 +8,6 @@ struct Point { x: i32, y: i32 }
 fn total(xs: List<i32>) -> i32 {
     let mut sum = 0;
     for x in xs.as_slice() { sum = sum + x; }
-    xs.free();
     sum
 }
 
@@ -20,6 +19,5 @@ fn main() -> i32 {
     let empty: List<bool> = [];
     let p = points.get(1) else &Point { x: 0, y: 0 };
     let result = total(list) + zeros.len() as i32 + p.y + total([10, 20]) + empty.len() as i32;
-    zeros.free();
     result
 }

@@ -10,6 +10,7 @@
 //!   argument is part of the set: `sum<3>` and `sum<4>` are different functions, and `N`
 //!   is a constant in each.
 
+mod drops;
 mod matching;
 mod traits;
 
@@ -30,6 +31,7 @@ pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
         queue: Vec::new(),
         owners: HashMap::new(),
         trait_methods: HashMap::new(),
+        drop_glues: HashMap::new(),
     };
     lowerer.run();
     lowerer.mir
@@ -48,6 +50,8 @@ struct Lowerer<'a> {
     owners: HashMap<Id<Func>, String>,
     /// A trait's method → the trait, and how many generic parameters the trait has.
     trait_methods: HashMap<Id<Func>, (DefId, usize)>,
+    /// Each type's drop glue, `None` for one with nothing to drop.
+    drop_glues: HashMap<TypeId, Option<FuncId>>,
 }
 
 impl<'a> Lowerer<'a> {
@@ -454,8 +458,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             !matches!(ast.exprs[body], Expr::Block { value: None, .. }) || ret == unit;
         if reaches_end {
             self.assign(Place::local(RETURN), Rvalue::Use(value), span.clone());
-            for arg in 1..=func.params.len() {
-                self.push(StatementKind::StorageDead(Id::new(arg)), span.clone());
+            for arg in (1..=func.params.len()).rev() {
+                self.end_local(Id::new(arg), span.clone());
             }
             self.terminate(TerminatorKind::Return, span.clone());
         } else {
@@ -466,12 +470,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             .filter(|(_, p)| p.out)
             .map(|(i, _)| Id::new(i + 1))
             .collect();
-        Body {
-            locals: self.locals,
+        let mut body = Body {
+            locals: std::mem::take(&mut self.locals),
             arg_count: func.params.len(),
             outs,
-            blocks: self.blocks,
-        }
+            blocks: std::mem::take(&mut self.blocks),
+        };
+        self.elaborate_drops(&mut body);
+        body
     }
 
     // --- Building blocks ---
@@ -548,7 +554,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let result = f(self);
         let locals = self.scopes.pop().expect("scope was pushed");
         for local in locals.into_iter().rev() {
-            self.push(StatementKind::StorageDead(local), span.clone());
+            self.end_local(local, span.clone());
         }
         result
     }
@@ -562,6 +568,20 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn stmt(&mut self, id: Id<Stmt>) {
         let ast = self.l.ast;
         let span = ast.stmts.span(id).clone();
+        let first_new = self.locals.slots();
+        self.stmt_inner(id, span.clone());
+        // The statement's temporaries are done with: dropped, unless they were moved.
+        let temps: Vec<Local> = (first_new..self.locals.slots())
+            .map(Id::new)
+            .filter(|&l| self.locals[l].name.is_none())
+            .collect();
+        for temp in temps {
+            self.drop_local(temp, span.clone());
+        }
+    }
+
+    fn stmt_inner(&mut self, id: Id<Stmt>, span: Span) {
+        let ast = self.l.ast;
         match &ast.stmts[id] {
             Stmt::Let {
                 name,
@@ -590,7 +610,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     && place.local != RETURN
                     && self.locals[place.local].name.is_none()
                 {
-                    self.push(StatementKind::StorageDead(place.local), span);
+                    self.end_local(place.local, span);
                 }
             }
             Stmt::Loop { body } => {
@@ -641,10 +661,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     .flat_map(|scope| scope.iter().rev().copied())
                     .collect();
                 for local in dying {
-                    self.push(StatementKind::StorageDead(local), span.clone());
+                    self.end_local(local, span.clone());
                 }
-                for arg in 1..=ast.funcs[self.func].params.len() {
-                    self.push(StatementKind::StorageDead(Id::new(arg)), span.clone());
+                for arg in (1..=ast.funcs[self.func].params.len()).rev() {
+                    self.end_local(Id::new(arg), span.clone());
                 }
                 self.terminate(TerminatorKind::Return, span);
                 // Whatever follows can't be reached.
@@ -673,7 +693,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     .flat_map(|scope| scope.iter().rev().copied())
                     .collect();
                 for local in dying {
-                    self.push(StatementKind::StorageDead(local), span.clone());
+                    self.end_local(local, span.clone());
                 }
                 let target = match ast.stmts[id] {
                     Stmt::Break(_) => targets.exit,

@@ -133,6 +133,13 @@ impl Mir {
             }
             StatementKind::StorageLive(local) => format!("StorageLive({local})"),
             StatementKind::StorageDead(local) => format!("StorageDead({local})"),
+            StatementKind::Drop { place, glue, flag } => {
+                let glue = &self.funcs[*glue].name;
+                match flag {
+                    Some(flag) => format!("Drop({place}, {glue}) if {flag}"),
+                    None => format!("Drop({place}, {glue})"),
+                }
+            }
         }
     }
 

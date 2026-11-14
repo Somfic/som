@@ -13,6 +13,5 @@ fn main() -> i32 {
     for item in &items {
         printf("%d\n", *item);
     }
-    items.free();
     total
 }

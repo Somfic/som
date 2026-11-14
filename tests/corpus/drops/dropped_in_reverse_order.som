@@ -1,0 +1,18 @@
+// expect: exit 21
+
+/// Values are dropped where their scope ends, the last declared first.
+struct Noisy { id: i32, log: *i32 }
+
+impl Drop for Noisy {
+    fn drop(self: &mut Noisy) { self.log.write(0, self.log.read(0) * 10 + self.id); }
+}
+
+fn main() -> i32 {
+    let mut log = 0;
+    let at = &mut log as *i32;
+    {
+        let a = Noisy { id: 1, log: at };
+        let b = Noisy { id: 2, log: at };
+    }
+    log
+}

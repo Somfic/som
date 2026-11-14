@@ -16,6 +16,5 @@ fn main() -> i32 {
         if first { *first = *first + 1; }
     }
     let total = (xs.as_slice().get(0) else 0) + (xs.as_slice().get(1) else 0);
-    xs.free();
     total + 7
 }

@@ -45,6 +45,7 @@ fn remove_unused(body: &mut Body) -> bool {
         block.stmts.retain(|stmt| match &stmt.kind {
             StatementKind::Assign(dest, rvalue) => used[dest.local.id] || has_effect(dest, rvalue),
             StatementKind::StorageLive(l) | StatementKind::StorageDead(l) => used[l.id],
+            StatementKind::Drop { .. } => true,
         });
         changed |= block.stmts.len() != before;
     }
@@ -62,6 +63,9 @@ fn used_locals(body: &Body) -> Vec<bool> {
         if let TerminatorKind::Branch { condition, .. } = &block.terminator.kind {
             read_operand(condition, |l| used[l.id] = true);
         }
+    }
+    for local in dropped_locals(body) {
+        used[local.id] = true;
     }
     // Each round, a newly used local makes the assignments to it used, and so the
     // locals those read.
@@ -97,6 +101,10 @@ fn remove_dead_stores(body: &mut Body) -> bool {
         if let StatementKind::Assign(_, Rvalue::Ref { place, .. }) = &stmt.kind {
             kept[place.local.id] = true;
         }
+    }
+    // What's dropped is read by the drop, which this doesn't follow either.
+    for local in dropped_locals(body) {
+        kept[local.id] = true;
     }
 
     // Which locals are live on entry to each block: read before they're overwritten.
@@ -193,13 +201,30 @@ fn remove_unmentioned_locals(body: &mut Body) {
                 StatementKind::StorageLive(l) | StatementKind::StorageDead(l) => {
                     mentioned[l.id] = true;
                 }
+                StatementKind::Drop { .. } => {}
             }
         }
         if let TerminatorKind::Branch { condition, .. } = &block.terminator.kind {
             read_operand(condition, |l| mentioned[l.id] = true);
         }
     }
+    for local in dropped_locals(body) {
+        mentioned[local.id] = true;
+    }
     body.locals.retain(|id, _| mentioned[id.id]);
+}
+
+/// The locals drops read: what they drop, the indexes into it, and their flags.
+pub(crate) fn dropped_locals(body: &Body) -> Vec<Local> {
+    let mut locals = Vec::new();
+    for stmt in body.blocks.iter().flat_map(|b| &b.stmts) {
+        if let StatementKind::Drop { place, flag, .. } = &stmt.kind {
+            locals.push(place.local);
+            locals.extend(place.index_locals());
+            locals.extend(*flag);
+        }
+    }
+    locals
 }
 
 // --- Assignments ---

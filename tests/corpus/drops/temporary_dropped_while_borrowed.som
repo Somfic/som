@@ -1,0 +1,16 @@
+// expect: error TemporaryDropped
+
+struct Noisy { id: i32 }
+
+impl Drop for Noisy {
+    fn drop(self: &mut Noisy) {}
+}
+
+impl Noisy {
+    fn id_ref(self: &Noisy) -> &i32 { &self.id }
+}
+
+fn main() -> i32 {
+    let r = Noisy { id: 1 }.id_ref();
+    *r
+}

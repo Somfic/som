@@ -411,6 +411,15 @@ impl Usage {
         };
         for block in &body.blocks {
             for stmt in &block.stmts {
+                // A drop reads what it drops, and its flag.
+                if let StatementKind::Drop { place, flag, .. } = &stmt.kind {
+                    u.read(place.local, Use::Other);
+                    place.index_locals().for_each(|index| u.read(index, Use::Other));
+                    if let Some(flag) = flag {
+                        u.read(*flag, Use::Other);
+                    }
+                    continue;
+                }
                 let StatementKind::Assign(dest, rvalue) = &stmt.kind else {
                     continue;
                 };
@@ -907,6 +916,20 @@ impl<'a> Emitter<'a> {
         let mut returned: Option<(usize, String)> = None;
 
         for stmt in &block.stmts {
+            // `som_drop_T(&x);`, or with a flag, only if it's set.
+            if let StatementKind::Drop { place, glue, flag } = &stmt.kind {
+                self.flush_unless_read(f, &[], code);
+                let call = format!("{}(&{})", self.func_name(*glue), self.place(f, place));
+                code.push(match flag {
+                    Some(flag) => {
+                        *f.mentioned.borrow_mut().entry(*flag).or_default() += 1;
+                        format!("    if ({}) {call};", f.locals[flag.id])
+                    }
+                    None => format!("    {call};"),
+                });
+                returned = None;
+                continue;
+            }
             let StatementKind::Assign(dest, rvalue) = &stmt.kind else {
                 continue;
             };

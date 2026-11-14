@@ -105,6 +105,16 @@ impl Checker<'_> {
                 continue;
             };
             let trait_name = self.names.def(trait_).name.to_string();
+            // A copied value would be dropped once for each copy.
+            if self.names.lang_of(trait_) == Some(LangTrait::Drop)
+                && let Some(target) = self.impls[index].target
+                && self.is_copy(target)
+            {
+                self.errors.push(TypeError::DropOnCopy {
+                    ty: self.describe(target),
+                    span: self.impl_target_span(index),
+                });
+            }
             // `impl Add for i32` would change what `1 + 2` means.
             if let Some(lang) = self.names.lang_of(trait_)
                 && let Some(target) = self.impls[index].target

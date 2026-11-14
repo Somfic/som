@@ -41,8 +41,8 @@ fn add(_1: i32, _2: i32) -> i32 {
     bb0: {
         _3 = Add(copy _1, copy _2);
         _0 = copy _3;
-        StorageDead(_1);
         StorageDead(_2);
+        StorageDead(_1);
         return;
     }
 }

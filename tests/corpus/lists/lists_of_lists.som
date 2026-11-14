@@ -16,6 +16,6 @@ fn main() -> i32 {
     }
     let mut extra = 0;
     let last = rows.pop();
-    if last { extra = last.len() as i32; last.free(); }
+    if last { extra = last.len() as i32; }
     total + extra - 6 + 4
 }

@@ -1,0 +1,23 @@
+// expect: exit 123
+
+/// A list drops its values with itself, and `clear` drops them too.
+use som::data;
+
+struct Noisy { id: i32, log: *i32 }
+
+impl Drop for Noisy {
+    fn drop(self: &mut Noisy) { self.log.write(0, self.log.read(0) * 10 + self.id); }
+}
+
+fn main() -> i32 {
+    let mut log = 0;
+    let at = &mut log as *i32;
+    {
+        let mut xs: List<Noisy> = List::empty();
+        xs.push(Noisy { id: 1, log: at });
+        xs.clear();
+        xs.push(Noisy { id: 2, log: at });
+        xs.push(Noisy { id: 3, log: at });
+    }
+    log
+}

@@ -17,6 +17,5 @@ fn main() -> i32 {
         next = items.pop();
     }
     let empty = 1 if items.is_empty() else 0;
-    items.free();
     total * empty
 }

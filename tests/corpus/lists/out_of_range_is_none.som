@@ -7,6 +7,5 @@ fn main() -> i32 {
     let mut xs: List<i32> = List::empty();
     xs.push(5);
     let result = 9 if xs.get(3) == none else 0;
-    xs.free();
     result
 }

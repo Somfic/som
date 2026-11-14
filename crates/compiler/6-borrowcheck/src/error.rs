@@ -43,6 +43,11 @@ pub enum BorrowError {
     OutNotAssigned { name: String, span: Span },
     /// An `out` parameter read before the function assigned it.
     OutReadBeforeAssigned { name: String, span: Span },
+    /// A reference to a temporary that's still used after the temporary is dropped, at the
+    /// end of its statement: `let r = make().get();`.
+    TemporaryDropped { borrowed_at: Span, dropped_at: Span },
+    /// Moving a value out of one whose type implements `Drop`, which needs it to drop.
+    MoveOutOfDrop { name: String, ty: String, span: Span },
     /// A function that calls itself on every path, so it never returns.
     EndlessRecursion { name: String, span: Span },
 }
@@ -184,6 +189,24 @@ impl BorrowError {
             ])
             .with_label(Label::primary(span.clone(), "read here"))
             .with_hint("callers pass a fresh variable, so it has no value until it's assigned"),
+            BorrowError::TemporaryDropped {
+                borrowed_at,
+                dropped_at,
+            } => Diagnostic::error("temporary value dropped while still borrowed")
+                .with_label(Label::primary(borrowed_at.clone(), "this value is temporary"))
+                .with_label(Label::secondary(
+                    dropped_at.last_char(),
+                    "it's dropped at the end of this statement",
+                ))
+                .with_hint("give it a variable of its own first, so it lives until that ends"),
+            BorrowError::MoveOutOfDrop { name, ty, span } => {
+                Diagnostic::error(msg!["cannot move out of ", code(name)])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![code(ty.clone()), " implements ", code("Drop"), ", which needs it"],
+                    ))
+                    .with_hint(msg!["borrow it instead: ", code(format!("&{name}"))])
+            }
             BorrowError::EndlessRecursion { name, span } => {
                 Diagnostic::error(msg!["infinite recursion"])
                     .with_label(Label::primary(
