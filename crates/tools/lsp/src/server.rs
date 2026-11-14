@@ -1933,12 +1933,12 @@ fn pointer_method_doc(
         ),
         PointerMethod::View => (
             &[("len", "usize")],
-            "[T]",
+            "&[T]",
             "The `len` values starting here, as a slice.",
         ),
         PointerMethod::ViewMut => (
             &[("len", "usize")],
-            "[mut T]",
+            "&mut [T]",
             "The `len` values starting here, as a slice that can change them.",
         ),
         PointerMethod::IsNull => (&[], "bool", "Whether it points to nothing."),
@@ -2236,14 +2236,14 @@ fn array_method_doc(a: &Analysis, method: ArrayMethod, sequence: Sequence) -> Ar
             if is_text {
                 "str?".to_string()
             } else {
-                format!("[{t}]?")
+                format!("&[{t}]?")
             },
             format!("A view of the elements in `range`, {part}"),
         ),
         ArrayMethod::SliceMut => (
             "slice_mut",
             vec![range],
-            format!("[mut {t}]?"),
+            format!("&mut [{t}]?"),
             format!("A view of the elements in `range` that can change them, {part}"),
         ),
         ArrayMethod::Bytes => (

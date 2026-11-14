@@ -7,12 +7,14 @@ use crate::error::TypeError;
 use crate::ty::{IntTy, Ty, TypeId, Value};
 use crate::unify::{Unifier, VarKind};
 use crate::{
-    ArrayMethod, CommonField, Loop, PatternInfo, PointerMethod, Receiver, Signature, Typed,
+    ArrayMethod, CommonField, Loop, PatternInfo, PointerMethod, Receiver, Signature, Take, Typed,
 };
 use som_base::Message;
 use som_base::message;
+use som_base::{Fix, msg};
 
 mod matching;
+mod moves;
 mod traits;
 
 use matching::holds;
@@ -302,6 +304,7 @@ impl<'a> Checker<'a> {
             std::mem::take(&mut self.omitted_args_ok),
         );
         self.check_body(id, func, body);
+        self.check_moves_out(body);
         // After the body, which decides a return type that isn't written.
         if func.prop {
             self.check_prop(id, func);
@@ -323,6 +326,8 @@ impl<'a> Checker<'a> {
         let ret = self.sigs[id.id].ret;
         let from = func.returns.map(|t| self.ast.types.span(t).clone());
         self.returns = Some((ret, from.clone()));
+        // What it returns is what its value is expected to be: it can choose an overload.
+        self.expected = Some(ret);
         let body_ty = self.infer(body);
         // A body without a final value is fine if no path gets to its end: every one returns.
         if let Expr::Block { stmts, value: None } = &self.ast.exprs[body] {
@@ -349,7 +354,7 @@ impl<'a> Checker<'a> {
                 _ => body,
             };
             let from = func.returns.map(|t| self.ast.types.span(t).clone());
-            self.mismatch(ret, body_ty, self.ast.exprs.span(at).clone(), from);
+            self.mismatch_at(at, ret, body_ty, from);
         }
     }
 
@@ -1034,7 +1039,100 @@ impl<'a> Checker<'a> {
             found: self.describe(found),
             span,
             expected_from,
+            fix: None,
         });
+    }
+
+    /// Like `mismatch`, for the value of `expr`: a `&T` where a `T` is expected gets a fix
+    /// dereferencing it.
+    fn mismatch_at(
+        &mut self,
+        expr: Id<Expr>,
+        expected: TypeId,
+        found: TypeId,
+        expected_from: Option<Span>,
+    ) {
+        let fix = self.deref_fix(expr, expected, found);
+        self.errors.push(TypeError::Mismatch {
+            expected: self.describe(expected),
+            found: self.describe(found),
+            span: self.span(expr),
+            expected_from,
+            fix,
+        });
+    }
+
+    /// A fix for `expr`, a reference to what's expected. A value that copies is dereferenced,
+    /// `*expr`. A type parameter is required to copy, `T: Copy`: for a loop's variable that's
+    /// all it takes, as the loop then copies its values, and anything else is dereferenced
+    /// too. A value that moves can't be taken out of a reference at all: no fix.
+    fn deref_fix(&self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> Option<Fix> {
+        let Ty::Ref { to, .. } = *self.u.get(self.u.shallow(found)) else {
+            return None;
+        };
+        if !self.u.could_fit(expected, to) || self.u.could_fit(expected, found) {
+            return None;
+        }
+        let param = matches!(self.u.get(self.u.shallow(to)), Ty::Param(_));
+        if !self.is_copy(to) && !param {
+            return None;
+        }
+        let span = self.span(expr);
+        // A name, or what's read from one, takes a `*` as it is; anything else in parentheses.
+        let deref = match self.ast.exprs[expr] {
+            Expr::Var(_)
+            | Expr::Field { .. }
+            | Expr::Index { .. }
+            | Expr::Call { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Deref(_) => vec![(span.before(), "*".to_string())],
+            _ => vec![
+                (span.before(), "*(".to_string()),
+                (span.after(), ")".to_string()),
+            ],
+        };
+        let deref_title = msg![
+            "dereference it: ",
+            message::code(format!("*{}", span.get_text()))
+        ];
+        if !param || self.is_copy(to) {
+            return Some(Fix {
+                title: deref_title,
+                edits: deref,
+            });
+        }
+        let bound = self.operator_fix(to, LangTrait::Copy)?;
+        if self.lent_loop_variable(expr) {
+            return Some(bound);
+        }
+        let mut edits = bound.edits;
+        edits.extend(deref);
+        Some(Fix {
+            title: msg![bound.title, ", and ", deref_title],
+            edits,
+        })
+    }
+
+    /// Whether `expr` is the variable of a `for` loop that lends its values because they may
+    /// move: one that would copy them if they're required to copy.
+    fn lent_loop_variable(&self, expr: Id<Expr>) -> bool {
+        let Expr::Var(_) = self.ast.exprs[expr] else {
+            return false;
+        };
+        let Some(def) = self.names.expr(expr) else {
+            return false;
+        };
+        let DefKind::Local(stmt) = self.names.def(def).kind else {
+            return false;
+        };
+        matches!(
+            self.for_loops.get(&stmt),
+            Some(Loop::Elements { take: Take::Ref })
+                | Some(Loop::Iterator {
+                    start: crate::Start::Iter,
+                    copied: false
+                })
+        )
     }
 
     fn invalid_operands(&mut self, expr: Id<Expr>, op: BinOp, lhs: TypeId, rhs: TypeId) {
@@ -1348,10 +1446,17 @@ impl<'a> Checker<'a> {
             let _ = self.u.unify(ty, array);
         }
         let shallow = self.u.shallow(ty);
-        let viewed = match *self.u.get(shallow) {
-            Ty::Ref { to, .. } => self.u.shallow(to),
-            _ => shallow,
+        // What's looped over is given up to the loop, or lent: `&value`, `&mut value`.
+        let (viewed, lent) = match *self.u.get(shallow) {
+            Ty::Ref { to, mutable } => (self.u.shallow(to), Some(mutable)),
+            _ => (shallow, None),
         };
+        // `for x in &[1, 2, 3]`: lent, it's an array too.
+        if let Some(VarKind::Collection { element, len }) = self.u.var_kind(viewed) {
+            let array = self.u.intern(Ty::Array { element, len });
+            let _ = self.u.unify(viewed, array);
+        }
+        let viewed = self.u.shallow(viewed);
         let element = match *self.u.get(shallow) {
             Ty::Range(int) => {
                 self.for_loops.insert(stmt, Loop::Range);
@@ -1359,8 +1464,16 @@ impl<'a> Checker<'a> {
             }
             Ty::Error => return error,
             _ => match self.u.get(viewed).clone() {
+                // An array it owns, of values that move: given up, through its iterator.
+                Ty::Array { element, .. } if lent.is_none() && !self.is_copy(element) => {
+                    match self.iterator_loop(stmt, ty) {
+                        Some(element) => return element,
+                        None => element,
+                    }
+                }
                 Ty::Array { element, .. } | Ty::Slice(element) => element,
-                // Anything that's an `Iterator`, or `Iterable`: what it gives.
+                // Anything that's an `Iterator`, `IntoIterator`, `Iterable` or `IterableMut`:
+                // what it gives.
                 _ if let Some(element) = self.iterator_loop(stmt, ty) => return element,
                 _ => {
                     let text = *self.u.get(viewed) == Ty::Str
@@ -1374,16 +1487,20 @@ impl<'a> Checker<'a> {
                 }
             },
         };
-        // Elements that move are lent, not moved out.
-        let by_reference = !self.is_copy(element);
-        self.for_loops.insert(stmt, Loop::Elements { by_reference });
-        if by_reference {
-            self.u.intern(Ty::Ref {
-                mutable: false,
+        // Lent to change: references to change them. Otherwise copies of values that copy,
+        // and references to those that move.
+        let take = match lent {
+            Some(true) => Take::RefMut,
+            _ if self.is_copy(element) => Take::Copy,
+            _ => Take::Ref,
+        };
+        self.for_loops.insert(stmt, Loop::Elements { take });
+        match take {
+            Take::Copy => element,
+            Take::Ref | Take::RefMut => self.u.intern(Ty::Ref {
+                mutable: take == Take::RefMut,
                 to: element,
-            })
-        } else {
-            element
+            }),
         }
     }
 
@@ -1563,7 +1680,7 @@ impl<'a> Checker<'a> {
             });
             return;
         }
-        self.mismatch(expected, found, self.span(expr), expected_from);
+        self.mismatch_at(expr, expected, found, expected_from);
     }
 
     /// Makes `expr`, of type `found`, usable where `expected` is required, returning whether
@@ -2548,13 +2665,18 @@ impl<'a> Checker<'a> {
             }
 
             Expr::Block { stmts, value } => {
+                // What the block is expected to be is what its final value is.
+                let expected = self.expected_here.take();
                 // Like `check_stmts`, but what's narrowed in here lasts into the final value.
                 let outer: HashSet<usize> = self.narrowed.iter().map(|n| n.id).collect();
                 for &stmt in stmts {
                     self.check_stmt(stmt);
                 }
                 let ty = match value {
-                    Some(value) => self.infer(*value),
+                    Some(value) => {
+                        self.expected = expected;
+                        self.infer(*value)
+                    }
                     None => unit,
                 };
                 self.narrowed.retain(|n| outer.contains(&n.id));
@@ -2886,6 +3008,13 @@ impl<'a> Checker<'a> {
                     let Some(cost) = self.receiver_cost(self_ty, receiver_ty) else {
                         continue;
                     };
+                    // The receiver decides the impl's parameters, so `.read()` of an `Alloc<T>`
+                    // gives `T`s, not anything. Only a receiver without unknowns, so the only
+                    // variables bound are this candidate's own.
+                    let (wanted, given) = (self.referent(self_ty), self.referent(receiver_ty));
+                    if !self.has_unknowns(given) {
+                        let _ = self.u.unify(wanted, given);
+                    }
                     let fits = rest.len() == found.len()
                         && self.args_fit(rest, &found, converting)
                         && expected.is_none_or(|e| self.u.could_fit(e, sig.ret));
@@ -2945,10 +3074,27 @@ impl<'a> Checker<'a> {
             if !self.coerce(arg, param, ty) {
                 let declared = &self.ast.funcs[func].params[i + 1];
                 let from = declared.ty.map(|t| self.ast.types.span(t).clone());
-                self.mismatch(param, ty, self.span(arg), from);
+                self.mismatch_at(arg, param, ty, from);
             }
         }
         sig.ret
+    }
+
+    /// What `ty` refers to, if it's a reference; otherwise `ty`.
+    fn referent(&self, ty: TypeId) -> TypeId {
+        match self.u.get(self.u.shallow(ty)) {
+            Ty::Ref { to, .. } => *to,
+            _ => ty,
+        }
+    }
+
+    /// Whether `ty` has a type in it that isn't decided yet.
+    fn has_unknowns(&self, ty: TypeId) -> bool {
+        let ty = self.u.shallow(ty);
+        match self.u.get(ty) {
+            Ty::Var(_) => true,
+            t => t.children().into_iter().any(|c| self.has_unknowns(c)),
+        }
     }
 
     /// How much a receiver of type `found` changes to be a `self` of type `expected`, without
@@ -3067,7 +3213,7 @@ impl<'a> Checker<'a> {
             }
             if !self.coerce(arg, param, ty) {
                 let from = declared.ty.map(|t| self.ast.types.span(t).clone());
-                self.mismatch(param, ty, self.span(arg), from);
+                self.mismatch_at(arg, param, ty, from);
             }
         }
     }
@@ -3307,6 +3453,9 @@ impl<'a> Checker<'a> {
             },
             Ty::Ref { mutable: true, .. } => false,
             Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.is_copy(inner),
+            // Whatever it stands for might move: only copied if it's required to be `Copy`.
+            Ty::Param(def) => (self.names.lang(som_resolve::LangTrait::Copy))
+                .is_some_and(|copy| self.names.bounds(def).contains(&copy)),
             _ => true,
         }
     }

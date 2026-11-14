@@ -1,0 +1,12 @@
+// expect: error UseAfterMove
+
+/// Looping over an array of values that move gives it up: borrow it, `&items`, to keep it.
+struct Point { x: i32 }
+
+fn main() -> i32 {
+    let items = [Point { x: 1 }, Point { x: 2 }];
+    let mut total = 0;
+    for item in items { total = total + item.x; }
+    for item in &items { total = total + item.x; }
+    total
+}

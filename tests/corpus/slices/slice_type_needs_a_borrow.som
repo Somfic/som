@@ -1,0 +1,6 @@
+// expect: error
+
+/// A slice borrows its elements, so its type says so: `&[i32]`, not `[i32]`.
+fn total(values: [i32]) -> i32 { 0 }
+
+fn main() -> i32 { 0 }

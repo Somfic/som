@@ -1,6 +1,6 @@
 // expect: error DanglingReference
 
-struct Window { values: [i32] }
+struct Window { values: &[i32] }
 
 fn make() -> Window {
     let data = [1, 2];

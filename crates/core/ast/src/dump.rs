@@ -86,7 +86,7 @@ impl Ast {
             }
             TypeExpr::Slice { element, mutable } => {
                 let mutability = if *mutable { "mut " } else { "" };
-                format!("[{mutability}{}]", self.type_text(*element))
+                format!("&{mutability}[{}]", self.type_text(*element))
             }
             // `fn() -> i32?` returns an optional.
             TypeExpr::Optional(inner) => match &self.types[*inner] {

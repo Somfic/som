@@ -1,0 +1,19 @@
+// expect: exit 123
+
+/// `for x in array` gives the array up: each element is moved out in turn, and dropped with
+/// the variable. Leaving early drops the ones not reached, once each.
+struct Noisy { id: i32, log: *i32 }
+
+impl Drop for Noisy {
+    fn drop(&mut self) { .log.write(0, .log.read(0) * 10 + .id); }
+}
+
+fn main() -> i32 {
+    let mut log = 0;
+    let at = &mut log as *i32;
+    let items = [Noisy { id: 1, log: at }, Noisy { id: 2, log: at }, Noisy { id: 3, log: at }];
+    for item in items {
+        if item.id == 1 { break; }
+    }
+    log
+}

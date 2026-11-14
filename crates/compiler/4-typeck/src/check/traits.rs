@@ -7,6 +7,7 @@ use som_base::msg;
 use som_resolve::{DefId, DefKind, LangTrait};
 
 use super::Checker;
+use crate::Start;
 use crate::error::TypeError;
 use crate::traits::{self, ImplInfo, find_impl};
 use crate::ty::{Ty, TypeId};
@@ -540,36 +541,50 @@ impl Checker<'_> {
         let iterator = self.names.lang(LangTrait::Iterator)?;
         let item = self.assoc_index(iterator, "Item")?;
         let shallow = self.u.shallow(ty);
-        let viewed = match *self.u.get(shallow) {
-            Ty::Ref { to, .. } => self.u.shallow(to),
-            _ => shallow,
+        let (viewed, lent) = match *self.u.get(shallow) {
+            Ty::Ref { to, mutable } => (self.u.shallow(to), Some(mutable)),
+            _ => (shallow, None),
         };
-        // An iterator itself, by value: `for x in list.iter()`.
-        let (iter_ty, iterable) = if !matches!(self.u.get(shallow), Ty::Ref { .. })
-            && self.implements(shallow, iterator)
-        {
-            (shallow, false)
+        // An iterator itself, by value: `for x in list.iter()`. Otherwise what makes one: a
+        // value given up makes one with `into_iter`, `&value` with `iter`, `&mut value` with
+        // `iter_mut`.
+        let (iter_ty, start) = if lent.is_none() && self.implements(shallow, iterator) {
+            (shallow, Start::Itself)
         } else {
-            let iterable = self.names.lang(LangTrait::Iterable)?;
-            if !self.implements(viewed, iterable) {
+            let (lang, assoc, start) = match lent {
+                None => (LangTrait::IntoIterator, "IntoIter", Start::IntoIter),
+                Some(false) => (LangTrait::Iterable, "Iter", Start::Iter),
+                Some(true) => (LangTrait::IterableMut, "IterMut", Start::IterMut),
+            };
+            let trait_ = self.names.lang(lang)?;
+            if !self.implements(viewed, trait_) {
                 return None;
             }
-            let iter = self.assoc_index(iterable, "Iter")?;
+            let index = self.assoc_index(trait_, assoc)?;
             let assoc = self.u.intern(Ty::Assoc {
                 base: viewed,
-                trait_: iterable,
-                index: iter,
+                trait_,
+                index,
             });
-            (self.normalize_assoc(assoc), true)
+            (self.normalize_assoc(assoc), start)
         };
         let assoc = self.u.intern(Ty::Assoc {
             base: iter_ty,
             trait_: iterator,
             index: item,
         });
-        let element = self.normalize_assoc(assoc);
+        let mut element = self.normalize_assoc(assoc);
+        // Lent values that copy are copied: `for n in &numbers` gives numbers.
+        let mut copied = false;
+        if start == Start::Iter
+            && let Ty::Ref { mutable: false, to } = *self.u.get(self.u.shallow(element))
+            && self.is_copy(to)
+        {
+            element = to;
+            copied = true;
+        }
         self.for_loops
-            .insert(stmt, crate::Loop::Iterator { iterable });
+            .insert(stmt, crate::Loop::Iterator { start, copied });
         Some(element)
     }
 

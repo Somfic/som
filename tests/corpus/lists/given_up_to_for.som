@@ -1,0 +1,24 @@
+// expect: exit 123
+
+/// `for x in list` gives the list up: each value is moved out in turn. Leaving early drops the
+/// ones not reached, once each, and the list can't be used after.
+use som::data;
+
+struct Noisy { id: i32, log: *i32 }
+
+impl Drop for Noisy {
+    fn drop(&mut self) { .log.write(0, .log.read(0) * 10 + .id); }
+}
+
+fn main() -> i32 {
+    let mut log = 0;
+    let at = &mut log as *i32;
+    let mut list: List<Noisy> = List::empty();
+    list.push(Noisy { id: 1, log: at });
+    list.push(Noisy { id: 2, log: at });
+    list.push(Noisy { id: 3, log: at });
+    for item in list {
+        if item.id == 1 { break; }
+    }
+    log
+}

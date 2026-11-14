@@ -18,7 +18,7 @@ use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
 use som_typeck::traits::{ImplInfo, resolve_assoc};
-use som_typeck::{ArrayMethod, Loop, PointerMethod, Receiver, Typed, Value};
+use som_typeck::{ArrayMethod, Loop, PointerMethod, Receiver, Take, Typed, Value};
 use std::collections::{HashMap, HashSet};
 
 pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
@@ -920,8 +920,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let bool = self.l.mir.types.bool;
         let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
         // Through an iterator: a loop of its own.
-        if let Loop::Iterator { iterable: through } = kind {
-            return self.iterator_loop(stmt, name, mutable, iterable, body, span, through);
+        if let Loop::Iterator { start, copied } = kind {
+            return self.iterator_loop(stmt, name, mutable, iterable, body, span, start, copied);
         }
 
         self.in_scope(span.clone(), |b| {
@@ -947,7 +947,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     };
                     (int, first, limit, None)
                 }
-                Loop::Elements { .. } => {
+                Loop::Elements { take } => {
                     let iterable_ty = b.expr_ty(iterable);
                     let mut place = b.place(iterable);
                     // A temporary holding what's gone through, like a call's result, ends with
@@ -963,8 +963,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         place = place.project(Projection::Deref);
                         viewed_ty = to;
                     }
+                    // Borrowed to change, for references to change the elements.
+                    let to_change = take == Take::RefMut;
                     let view_ty = b.l.mir.types.intern(Ty::Ref {
-                        mutable: false,
+                        mutable: to_change,
                         to: viewed_ty,
                     });
                     // Named, so the borrow it holds lasts the whole loop.
@@ -972,7 +974,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     b.scopes.last_mut().expect("in scope").push(view);
                     b.push(StatementKind::StorageLive(view), span.clone());
                     let borrow = Rvalue::Ref {
-                        mutable: false,
+                        mutable: to_change,
                         place,
                     };
                     b.assign(Place::local(view), borrow, span.clone());
@@ -1035,8 +1037,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 b.push(StatementKind::StorageLive(local), span.clone());
                 let value = match (&elements, kind) {
                     (None, _) => Rvalue::Use(Operand::Copy(Place::local(counter))),
-                    (Some(elements), Loop::Elements { by_reference: true }) => Rvalue::Ref {
-                        mutable: false,
+                    (
+                        Some(elements),
+                        Loop::Elements {
+                            take: take @ (Take::Ref | Take::RefMut),
+                        },
+                    ) => Rvalue::Ref {
+                        mutable: take == Take::RefMut,
                         place: elements.clone().project(Projection::Index(counter)),
                     },
                     (Some(elements), _) => Rvalue::Use(Operand::Copy(

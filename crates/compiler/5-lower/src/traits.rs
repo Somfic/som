@@ -5,6 +5,7 @@
 use som_ast::{BinOp, Func, Id, Ident, Span, Stmt};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, LangTrait};
+use som_typeck::Start;
 use som_typeck::traits::{builtin_operator, find_impl};
 
 use super::{FnBuilder, LoopTargets, Lowerer, Subst};
@@ -224,8 +225,9 @@ impl Lowerer<'_> {
 }
 
 impl FnBuilder<'_, '_> {
-    /// `for name in iterable { body }` over an `Iterator`, or with `through_iterable`, an
-    /// `Iterable` whose `iter` makes one: `next` until it gives `none`.
+    /// `for name in iterable { body }` over an `Iterator`, or what makes one, as `start`
+    /// says: `next` until it gives `none`. With `copied`, it gives references to values that
+    /// copy, and the loop's variable is a copy.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn iterator_loop(
         &mut self,
@@ -235,7 +237,8 @@ impl FnBuilder<'_, '_> {
         iterable: Id<som_ast::Expr>,
         body: &[Id<Stmt>],
         span: Span,
-        through_iterable: bool,
+        start: Start,
+        copied: bool,
     ) {
         let names = self.l.names;
         let iterator = names
@@ -250,36 +253,30 @@ impl FnBuilder<'_, '_> {
         self.in_scope(span.clone(), |b| {
             // The iterator: what's looped over, or what its `iter` makes from it.
             let iterable_ty = b.expr_ty(iterable);
-            let (iterator_ty, start) = if through_iterable {
-                let trait_ = names.lang(LangTrait::Iterable).expect("checked");
-                let iter = b.l.trait_method(trait_, "iter");
-                // `iter` borrows what's looped over.
-                let (viewed, receiver) = match *b.l.mir.types.get(iterable_ty) {
-                    Ty::Ref { to, .. } => (to, b.operand(iterable)),
-                    _ => {
-                        let place = b.place(iterable);
-                        let reference = b.l.mir.types.intern(Ty::Ref {
-                            mutable: false,
-                            to: iterable_ty,
-                        });
-                        let temp = b.temp(reference, span.clone());
-                        let borrow = Rvalue::Ref {
-                            mutable: false,
-                            place,
-                        };
-                        b.assign(Place::local(temp), borrow, span.clone());
-                        (iterable_ty, Operand::Copy(Place::local(temp)))
-                    }
-                };
-                let func = b.l.instance(iter, vec![viewed]);
-                let ty = b.l.mir.funcs[func].ret;
-                let call = Rvalue::Call {
-                    func,
-                    args: vec![receiver],
-                };
-                (ty, call)
-            } else {
-                (iterable_ty, Rvalue::Use(b.operand(iterable)))
+            // `into_iter` takes what's looped over; `iter` and `iter_mut` the reference to it.
+            let maker = match start {
+                Start::Itself => None,
+                Start::IntoIter => Some((LangTrait::IntoIterator, "into_iter")),
+                Start::Iter => Some((LangTrait::Iterable, "iter")),
+                Start::IterMut => Some((LangTrait::IterableMut, "iter_mut")),
+            };
+            let (iterator_ty, start) = match maker {
+                None => (iterable_ty, Rvalue::Use(b.operand(iterable))),
+                Some((lang, method)) => {
+                    let trait_ = names.lang(lang).expect("checked: the trait is there");
+                    let method = b.l.trait_method(trait_, method);
+                    let viewed = match *b.l.mir.types.get(iterable_ty) {
+                        Ty::Ref { to, .. } => to,
+                        _ => iterable_ty,
+                    };
+                    let func = b.l.instance(method, vec![viewed]);
+                    let ty = b.l.mir.funcs[func].ret;
+                    let call = Rvalue::Call {
+                        func,
+                        args: vec![b.operand(iterable)],
+                    };
+                    (ty, call)
+                }
             };
             let it = b.new_local(iterator_ty, Some("iterator".into()), true, span.clone());
             b.scopes.last_mut().expect("in scope").push(it);
@@ -338,7 +335,11 @@ impl FnBuilder<'_, '_> {
                 b.bindings.insert(def, local);
                 b.scopes.last_mut().expect("in scope").push(local);
                 b.push(StatementKind::StorageLive(local), span.clone());
-                let value = b.read(Place::local(got).project(Projection::Field(1)), value_ty);
+                let mut item = Place::local(got).project(Projection::Field(1));
+                if copied {
+                    item = item.project(Projection::Deref);
+                }
+                let value = b.read(item, value_ty);
                 b.assign(Place::local(local), Rvalue::Use(value), span.clone());
                 b.stmts(body, span.clone());
             });

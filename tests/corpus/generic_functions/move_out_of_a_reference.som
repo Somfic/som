@@ -1,0 +1,9 @@
+// expect: error MoveOutOfReference
+
+/// Taking a `T` out of a reference is an error where it's written, used or not: `T` may be a
+/// type that moves, and the reference's owner still has it. `T: Copy` allows it.
+struct Pair<T> { a: T, b: T }
+
+fn first<T>(p: &Pair<T>) -> T { p.a }
+
+fn main() -> i32 { 0 }

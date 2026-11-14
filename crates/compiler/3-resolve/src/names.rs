@@ -73,7 +73,12 @@ pub struct Def {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LangTrait {
     Iterator,
+    /// `for x in &list`: lends its values, `iter(&self)`.
     Iterable,
+    /// `for x in &mut list`: lends its values to change, `iter_mut(&mut self)`.
+    IterableMut,
+    /// `for x in list`: gives its values up, `into_iter(self)`.
+    IntoIterator,
     From,
     Eq,
     Add,
@@ -114,15 +119,19 @@ impl LangTrait {
             LangTrait::Compare => "compare",
             LangTrait::Iterator
             | LangTrait::Iterable
+            | LangTrait::IterableMut
+            | LangTrait::IntoIterator
             | LangTrait::From
             | LangTrait::Drop
             | LangTrait::Copy => return None,
         })
     }
 
-    pub const ALL: [LangTrait; 11] = [
+    pub const ALL: [LangTrait; 13] = [
         LangTrait::Iterator,
         LangTrait::Iterable,
+        LangTrait::IterableMut,
+        LangTrait::IntoIterator,
         LangTrait::From,
         LangTrait::Eq,
         LangTrait::Add,
@@ -139,6 +148,8 @@ impl LangTrait {
         match self {
             LangTrait::Iterator => "Iterator",
             LangTrait::Iterable => "Iterable",
+            LangTrait::IterableMut => "IterableMut",
+            LangTrait::IntoIterator => "IntoIterator",
             LangTrait::From => "From",
             LangTrait::Eq => "Eq",
             LangTrait::Add => "Add",
@@ -148,6 +159,25 @@ impl LangTrait {
             LangTrait::Compare => "Compare",
             LangTrait::Drop => "Drop",
             LangTrait::Copy => "Copy",
+        }
+    }
+}
+
+/// A struct the language itself uses, found by its name in the standard library.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LangStruct {
+    /// `Manual<T>`: holds a value that's never dropped on its own. Whatever holds it drops
+    /// what needs dropping, as an array's iterator does with the elements it hasn't given.
+    Manual,
+}
+
+impl LangStruct {
+    pub const ALL: [LangStruct; 1] = [LangStruct::Manual];
+
+    /// Its name in the standard library.
+    pub fn name(self) -> &'static str {
+        match self {
+            LangStruct::Manual => "Manual",
         }
     }
 }
@@ -220,6 +250,8 @@ pub struct Names {
     projection_bases: HashMap<Id<TypeExpr>, DefId>,
     /// The traits the language uses, where the standard library defines them.
     lang: HashMap<LangTrait, DefId>,
+    /// The structs the language uses, where the standard library defines them.
+    lang_structs: HashMap<LangStruct, DefId>,
     /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
     /// name (`Circle(r)`, `Empty`) has none: the type matched decides which enum's it is.
     patterns: Vec<Option<DefId>>,
@@ -254,6 +286,7 @@ impl Names {
             bounds: HashMap::new(),
             projection_bases: HashMap::new(),
             lang: HashMap::new(),
+            lang_structs: HashMap::new(),
             patterns: vec![None; ast.patterns.len()],
             primitives: HashMap::new(),
         }
@@ -281,6 +314,10 @@ impl Names {
 
     pub(crate) fn set_lang(&mut self, lang: LangTrait, def: DefId) {
         self.lang.insert(lang, def);
+    }
+
+    pub(crate) fn set_lang_struct(&mut self, lang: LangStruct, def: DefId) {
+        self.lang_structs.insert(lang, def);
     }
 
     /// Adds `def` to the functions named like `first`.
@@ -513,6 +550,11 @@ impl Names {
     /// The standard library's trait the language uses as `lang`, if it's loaded.
     pub fn lang(&self, lang: LangTrait) -> Option<DefId> {
         self.lang.get(&lang).copied()
+    }
+
+    /// The standard library's struct the language uses as `lang`, if it's loaded.
+    pub fn lang_struct(&self, lang: LangStruct) -> Option<DefId> {
+        self.lang_structs.get(&lang).copied()
     }
 
     /// Which lang trait `def` is, if any.

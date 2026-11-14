@@ -1,0 +1,40 @@
+use som::mem;
+
+/// Goes through an array it owns, `for x in array`: each element is moved out in turn. The
+/// ones not reached when it's dropped, after a `break` say, are dropped with it.
+struct ArrayIntoIter<T, N: usize> {
+    items: Manual<[T; N]>,
+    next: usize,
+}
+
+impl<T, N: usize> IntoIterator for [T; N] {
+    type IntoIter = ArrayIntoIter<T, N>;
+
+    fn into_iter(self) -> ArrayIntoIter<T, N> {
+        ArrayIntoIter { items: Manual { value: self }, next: 0 }
+    }
+}
+
+impl<T, N: usize> Iterator for ArrayIntoIter<T, N> {
+    type Item = T;
+
+    fn next(&mut self) -> T? {
+        if .next == N {
+            return none;
+        }
+        let items = &.items.value as *T;
+        let value = items.read(.next);
+        .next = .next + 1;
+        value
+    }
+}
+
+impl<T, N: usize> Drop for ArrayIntoIter<T, N> {
+    /// Drops the elements it hasn't given away.
+    fn drop(&mut self) {
+        let items = &.items.value as *T;
+        for i in .next..N {
+            drop(items.read(i));
+        }
+    }
+}

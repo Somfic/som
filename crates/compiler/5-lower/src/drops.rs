@@ -43,6 +43,12 @@ impl Lowerer<'_> {
     }
 
     fn build_glue(&mut self, ty: TypeId) -> Option<FuncId> {
+        // What a `Manual` holds is dropped by whatever holds it, not on its own.
+        if let Ty::Struct(def, _) = self.mir.types.get(ty)
+            && self.names.lang_struct(som_resolve::LangStruct::Manual) == Some(*def)
+        {
+            return None;
+        }
         enum Shape {
             Struct {
                 own: Option<FuncId>,

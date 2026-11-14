@@ -1,6 +1,6 @@
 // expect: exit 4
 
-struct Window<T> { values: [T], current: T? }
+struct Window<T> { values: &[T], current: T? }
 
 fn main() -> i32 {
     let data = [1, 2, 3];

@@ -19,6 +19,8 @@ pub enum TypeError {
         found: Message,
         span: Span,
         expected_from: Option<Span>,
+        /// A `&T` where a `T` is expected: dereferencing it.
+        fix: Option<Fix>,
     },
     /// A binary operator applied to types it isn't defined for.
     ///
@@ -355,6 +357,14 @@ pub enum TypeError {
         span: Span,
         parens: Option<Span>,
     },
+    /// `*item` of a `&T`, in generic code where `T` may be a type that moves: taking it would
+    /// leave the reference's owner with a value someone else now owns. `fix` requires `T: Copy`.
+    MoveOutOfReference {
+        place: String,
+        ty: Message,
+        span: Span,
+        fix: Option<Fix>,
+    },
     /// `impl Drop for …` of a type whose values are copied.
     DropOnCopy {
         ty: Message,
@@ -430,6 +440,7 @@ impl TypeError {
                 found,
                 span,
                 expected_from,
+                fix,
             } => {
                 let mut d = Diagnostic::error(msg![
                     "expected ",
@@ -446,6 +457,9 @@ impl TypeError {
                         from.clone(),
                         msg![expected.clone(), " expected because of this"],
                     ));
+                }
+                if let Some(fix) = fix {
+                    d = d.with_fix(fix.clone());
                 }
                 d
             }
@@ -1139,6 +1153,30 @@ impl TypeError {
                         .with_hint(msg!["a property takes no arguments: ", code(name.clone())]),
                 }
             }
+            TypeError::MoveOutOfReference {
+                place,
+                ty,
+                span,
+                fix,
+            } => {
+                let d = Diagnostic::error(msg![
+                    "cannot move ",
+                    code(place.clone()),
+                    " out of a reference"
+                ])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg![ty.clone(), " may be a type that moves, not copies"],
+                ))
+                .with_hint(msg![
+                    "borrow it instead, or require that it copies with ",
+                    code("Copy")
+                ]);
+                match fix {
+                    Some(fix) => d.with_fix(fix.clone()),
+                    None => d,
+                }
+            }
             TypeError::DropOnCopy { ty, span } => {
                 Diagnostic::error(msg![ty.clone(), " can't implement ", code("Drop")]).with_label(
                     Label::primary(
@@ -1235,7 +1273,7 @@ impl TypeError {
             TypeError::ReadOnlySlice { span } => {
                 Diagnostic::error(msg!["cannot change the elements of a ", code("[T]")])
                     .with_label(Label::primary(span.clone(), "this slice can only read"))
-                    .with_hint(msg!["changing them needs a ", code("[mut T]")])
+                    .with_hint(msg!["changing them needs a ", code("&mut [T]")])
             }
             TypeError::NotCopyable { ty, span, repeat } => {
                 let (message, hint) = if *repeat {

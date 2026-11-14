@@ -7,7 +7,7 @@ struct Token { id: i32 }
 
 fn main() -> i32 {
     let tokens = [Token { id: 1 }];
-    let view: [Token] = &tokens;
+    let view: &[Token] = &tokens;
     let list: List<Token> = view;
     0
 }

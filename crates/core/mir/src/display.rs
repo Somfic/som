@@ -28,7 +28,7 @@ impl Mir {
                 match self.types.get(*to) {
                     Ty::Str => "str".into(),
                     Ty::Optional(_) => format!("&{mutability}({})", self.display_ty(*to)),
-                    Ty::Slice(element) => format!("[{mutability}{}]", self.display_ty(*element)),
+                    Ty::Slice(element) => format!("&{mutability}[{}]", self.display_ty(*element)),
                     _ => format!("&{mutability}{}", self.display_ty(*to)),
                 }
             }

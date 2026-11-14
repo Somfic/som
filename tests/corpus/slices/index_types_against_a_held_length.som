@@ -1,6 +1,6 @@
 // expect: exit 111
 
-fn check(numbers: [i32]) -> i32 {
+fn check(numbers: &[i32]) -> i32 {
     let mut r = 0;
     let small: i8 = 2;
     let wide: i128 = 1;

@@ -213,6 +213,17 @@ impl Span {
         )
     }
 
+    /// A zero-width span right before this one: where to insert in front of it.
+    pub fn before(&self) -> Span {
+        Span {
+            start: self.start,
+            end: self.start,
+            start_offset: self.start_offset,
+            length: 0,
+            source: self.source.clone(),
+        }
+    }
+
     /// Create a zero-width span pointing right after this span
     pub fn after(&self) -> Span {
         Span {

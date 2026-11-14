@@ -40,7 +40,7 @@ pub enum TypeExpr {
         lhs: Id<TypeExpr>,
         rhs: Id<TypeExpr>,
     },
-    /// `[T]` or `[mut T]`: a view of some number of values of type `T` that live elsewhere,
+    /// `&[T]` or `&mut [T]`: a view of some number of values of type `T` that live elsewhere,
     /// known at run time. It borrows them; `mut` can change them.
     Slice {
         element: Id<TypeExpr>,

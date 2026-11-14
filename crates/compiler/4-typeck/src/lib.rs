@@ -132,12 +132,36 @@ pub struct PatternInfo {
 pub enum Loop {
     /// Each integer in a range.
     Range,
-    /// Each element of an array or slice: a copy of it, or, for elements that move rather
-    /// than copy, a reference to it.
-    Elements { by_reference: bool },
-    /// Each value an `Iterator` gives, until `next` gives `none`. With `iterable`, what's
-    /// looped over is an `Iterable`, and its `iter` makes the iterator.
-    Iterator { iterable: bool },
+    /// Each element of an array, or of a slice: how it's taken.
+    Elements { take: Take },
+    /// Each value an `Iterator` gives, until `next` gives `none`; `start` says where the
+    /// iterator comes from. With `copied`, it gives references to values that copy, and the
+    /// loop takes copies.
+    Iterator { start: Start, copied: bool },
+}
+
+/// How a `for` loop takes each element of an array or slice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Take {
+    /// A copy: of an array it owns whose elements copy, or one it borrows.
+    Copy,
+    /// A reference, from `&array` or a slice, to elements that move rather than copy.
+    Ref,
+    /// A reference to change it, from `&mut array` or a `&mut [T]`.
+    RefMut,
+}
+
+/// Where a `for` loop's iterator comes from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Start {
+    /// What's looped over is the iterator: `for x in list.iter()`.
+    Itself,
+    /// `for x in &value`: `Iterable::iter` makes it.
+    Iter,
+    /// `for x in &mut value`: `IterableMut::iter_mut` makes it.
+    IterMut,
+    /// `for x in value`: `IntoIterator::into_iter` makes it, from the value given up.
+    IntoIter,
 }
 
 /// A method every array and slice has.

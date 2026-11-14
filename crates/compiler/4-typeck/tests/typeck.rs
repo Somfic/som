@@ -222,3 +222,55 @@ fn unknown_fields_offer_the_properties_of_the_value_type() {
         _ => panic!("{errs:?}"),
     }
 }
+
+/// The edits of the `Mismatch` reported for `source`'s one error.
+fn mismatch_fix(source: &str) -> Option<Vec<String>> {
+    match &errors(source)[..] {
+        [TypeError::Mismatch { fix, .. }] => fix
+            .as_ref()
+            .map(|f| f.edits.iter().map(|(_, text)| text.clone()).collect()),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_reference_to_a_copy_where_the_value_is_expected_can_be_dereferenced() {
+    assert_eq!(
+        mismatch_fix("fn f(x: &i32) -> i32 { x } fn main() {}"),
+        Some(vec!["*".to_string()])
+    );
+    // Anything but a name or what's read from one goes in parentheses.
+    assert_eq!(
+        mismatch_fix("fn f(x: &i32) -> i32 { if true { x } else { x } } fn main() {}"),
+        Some(vec!["*(".to_string(), ")".to_string()])
+    );
+}
+
+#[test]
+fn a_reference_to_a_type_parameter_needs_copy_first() {
+    // Requiring `T: Copy` needs the standard library's `Copy`, which these tests don't load:
+    // without it there's no fix. The corpus has the rest.
+    assert_eq!(mismatch_fix("fn f<T>(x: &T) -> T { x } fn main() {}"), None);
+}
+
+#[test]
+fn a_reference_to_a_value_that_moves_is_not_dereferenced() {
+    // `*x` would move it out of the reference, which never compiles.
+    assert_eq!(
+        mismatch_fix("struct P { v: i32 } fn f(x: &P) -> P { x } fn main() {}"),
+        None
+    );
+}
+
+#[test]
+fn moving_a_type_parameter_out_of_a_reference_is_an_error_even_unused() {
+    let errs = errors("fn f<T>(x: &T) -> T { *x } fn main() {}");
+    assert!(
+        matches!(errs[..], [TypeError::MoveOutOfReference { .. }]),
+        "{errs:?}"
+    );
+    // A borrow is fine. (`T: Copy` is too: see the corpus, which has the standard library.)
+    assert!(
+        errors("struct P<T> { v: T } fn f<T>(p: &P<T>) -> &T { &p.v } fn main() {}").is_empty()
+    );
+}

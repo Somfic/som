@@ -7,12 +7,38 @@ trait Iterator {
     fn next(self: &mut Self) -> Item?;
 }
 
-/// Can be gone through with `for`, which goes through the iterator `iter` makes.
+/// Can be gone through with `for x in &value`, which goes through the iterator `iter` makes:
+/// it lends the values, or copies them if they copy.
 trait Iterable {
     /// The iterator `iter` makes.
     type Iter;
 
     fn iter(self: &Self) -> Iter;
+}
+
+/// Can be gone through with `for x in &mut value`, which goes through the iterator `iter_mut`
+/// makes: it lends the values to change.
+trait IterableMut {
+    /// The iterator `iter_mut` makes.
+    type IterMut;
+
+    fn iter_mut(self: &mut Self) -> IterMut;
+}
+
+/// Can be given up to `for x in value`, which goes through the iterator `into_iter` makes:
+/// it owns the values, and gives each away in turn.
+trait IntoIterator {
+    /// The iterator `into_iter` makes.
+    type IntoIter;
+
+    fn into_iter(self: Self) -> IntoIter;
+}
+
+/// Holds a value that's never dropped on its own: whatever holds the `Manual` drops what
+/// needs dropping. An array's iterator holds the array in one, and drops only the elements it
+/// hasn't given away.
+struct Manual<T> {
+    value: T,
 }
 
 /// Can be made from a `T`, which becomes one wherever it's given and a `Self` is expected:

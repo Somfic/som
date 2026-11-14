@@ -1,14 +1,15 @@
+// A memory allocation for T
 struct Alloc<T> {
     ptr: *T,
     size: usize
 }
 
 impl<T> Alloc<T> {
-    fn new() {
+    fn new() -> Self {
         Alloc { ptr: null<T>(), size: 0 }
     }
 
-    fn new(size: usize) {
+    fn new(size: usize) -> Self {
         let mut ptr = null<T>();
         ptr.resize(size);
         Alloc { ptr, size }
@@ -16,17 +17,36 @@ impl<T> Alloc<T> {
 
     fn resize(&mut self, size: usize) {
         self.ptr.resize(size);
+        self.size = size;
     }
 
-    fn set(&mut self, at: usize, value: T) {
+    fn write(&mut self, at: usize, value: T) {
         self.ptr.write(at, value)
     }
 
-    fn push(&mut self, value: T) {
-        self.ptr.
+    fn read(&mut self, at: usize) -> T {
+        self.ptr.read(at)
     }
 
-    fn get(&mut self, at: usize) {
-        self.ptr.read(at)
+    fn at(&self, at: usize) -> &T {
+        self.ptr.at(at)
+    }
+
+    fn at(&mut self, at: usize) -> &mut T {
+        self.ptr.at_mut(at)
+    }
+
+    fn view(&self, len: usize) -> &[T] {
+        self.ptr.view(len)
+    }
+
+    fn view(&mut self, len: usize) -> &mut [T] {
+        self.ptr.view_mut(len)
+    }
+}
+
+impl<T> Drop for Alloc<T> {
+    fn drop(self: &mut Alloc<T>) {
+        self.ptr.free();
     }
 }

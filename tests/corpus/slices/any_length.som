@@ -1,6 +1,6 @@
 // expect: exit 75
 
-fn sum(numbers: [i32]) -> i32 {
+fn sum(numbers: &[i32]) -> i32 {
     let mut total = 0;
     let mut i = 0;
     while i < numbers.len {

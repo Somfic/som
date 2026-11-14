@@ -20,12 +20,12 @@ impl Add for String {
     fn add(&self, other: &Self) -> Self {
         let mut bytes: List<u8> = List::with_capacity(.len + other.len);
 
-        for byte in .bytes {
-            bytes.push(*byte);
+        for byte in &.bytes {
+            bytes.push(byte);
         }
 
-         for byte in other.bytes {
-            bytes.push(*byte);
+         for byte in &other.bytes {
+            bytes.push(byte);
         }
 
         Self { bytes }

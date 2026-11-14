@@ -1,124 +1,97 @@
 use som::mem;
 
-/// `T`s one after another, as many as are pushed: room for more is made as it's needed.
-/// Dropping it drops its values and gives their room back.
 struct List<T> {
-    alloc: Alloc<T>,
-    capacity: usize,
+    mem: Alloc<T>,
+    len: usize,
 }
 
 impl<T> List<T> {
-    /// An empty list. It takes no memory until something is pushed.
-    fn empty() -> List<T> {
-        List { alloc: Alloc::new(), capacity: 0 }
+    fn empty() -> Self {
+        List { mem: Alloc::new(), len: 0 }
     }
 
-    fn with_capacity(capacity: usize) -> List<T> {
-        List { alloc: Alloc::new(capacity), capacity: capacity }
+    fn with_capacity(capacity: usize) -> Self {
+        List { mem: Alloc::new(capacity), len: 0 }
     }
 
-    prop is_empty: bool = .alloc.size == 0;
-    prop is_full = .alloc.size == .capacity;
+    prop capacity = .mem.size;
+    prop is_empty = .len == 0;
+    prop is_full = .len == .capacity;
 
-    /// Adds `value` at the end.
     fn push(&mut self, value: T) {
         if .is_full {
             let capacity = 4 if .capacity == 0 else .capacity * 2;
-            .alloc.resize(capacity);
-            .capacity = capacity;
+            .mem.resize(capacity);
         }
-        .alloc.set(.alloc.size, value);
+        .mem.write(.len, value);
         .len = .len + 1;
     }
 
-    /// Takes the last value off, or `none` if it's empty.
     fn pop(&mut self) -> T? {
         if .len == 0 {
             return none;
         }
         .len = .len - 1;
-        .items.read(.len)
+        .mem.read(.len)
     }
 
-    /// The value at `index`, or `none` past the end.
-    fn get(self: &List<T>, index: usize) -> &T? {
+    fn get(&self, index: usize) -> &T? {
         if index >= .len {
             return none;
         }
-        .items.at(index)
+        .mem.at(index)
     }
 
-    /// The value at `index`, to change, or `none` past the end.
-    fn get(self: &mut List<T>, index: usize) -> &mut T? {
+    fn get(&mut self, index: usize) -> &mut T? {
         if index >= .len {
             return none;
         }
-        .items.at_mut(index)
+        .mem.at(index)
     }
 
-    /// Its values as a slice: `for x in list.as_slice()`, `list.as_slice().get(0)`.
-    fn as_slice(&self) -> [T] {
-        .items.view(.len)
-    }
+    prop slice = .mem.view(.len);
 
-    /// Its values as a slice that can change them.
-    fn as_slice_mut(&mut self) -> [mut T] {
-        .items.view_mut(.len)
-    }
-
-    /// Drops every value, keeping the room for new ones.
     fn clear(&mut self) {
         for i in 0..self.len {
-            drop(.items.read(i));
+            drop(.mem.read(i));
         }
         .len = 0;
     }
 }
 
-impl<T> Drop for List<T> {
-    /// Drops each value, read out of its room, then gives the room back.
-    fn drop(&mut self) {
-        for i in 0..self.len {
-            drop(.items.read(i));
+impl<T: Copy> List<T> {
+    /// A list of copies of `values`: the slice only lends them.
+    fn of(values: &[T]) -> Self {
+        let mut list: List<T> = List::with_capacity(values.len);
+        for value in values {
+            list.push(value);
         }
-        .items.free();
+        list
     }
 }
 
-// `let list: List<i32> = [1, 2, 3]`: the values moved into a new list.
+impl<T> Drop for List<T> {
+    fn drop(&mut self) {
+        .clear();
+    }
+}
+
 impl<T, N: usize> From<[T; N]> for List<T> {
     fn from(items: [T; N]) -> List<T> {
-        let mut list: List<T> = List::empty();
-        list.items.resize(N);
-        list.capacity = N;
-        let source = &items as *T;
-        for i in 0..N {
-            list.items.write(i, source.read(i));
-        }
-        list.len = N;
-        // Its values are the list's now: the array mustn't drop them too.
-        forget(items);
+        let mut list: List<T> = List::with_capacity(items.len);
+        for item in items { list.push(item); }
         list
     }
 }
 
-// `let list: List<i32> = numbers.as_slice()`: the values copied into a new list. Only for
-// values that are copied, as the slice's still have them.
-impl<T: Copy> From<[T]> for List<T> {
-    fn from(items: [T]) -> List<T> {
-        let mut list: List<T> = List::empty();
-        list.items.resize(items.len);
-        list.capacity = items.len;
-        let source = items as *T;
-        for i in 0..items.len {
-            list.items.write(i, source.read(i));
-        }
-        list.len = items.len;
+impl<T: Copy> From<&[T]> for List<T> {
+     fn from(items: &[T]) -> List<T> {
+        let mut list: List<T> = List::with_capacity(items.len);
+        for item in items { list.push(item); }
         list
     }
 }
 
-/// `for x in list`: each value, by reference.
 impl<T> Iterable for List<T> {
     type Iter = ListIter<T>;
 
@@ -127,7 +100,6 @@ impl<T> Iterable for List<T> {
     }
 }
 
-/// Goes through a list's values, by reference.
 struct ListIter<T> {
     list: &List<T>,
     index: usize,
@@ -140,5 +112,65 @@ impl<T> Iterator for ListIter<T> {
         let item = .list.get(.index);
         .index = .index + 1;
         item
+    }
+}
+
+impl<T> IterableMut for List<T> {
+    type IterMut = ListIterMut<T>;
+
+    fn iter_mut(&mut self) -> ListIterMut<T> {
+        ListIterMut { list: self, index: 0 }
+    }
+}
+
+struct ListIterMut<T> {
+    list: &mut List<T>,
+    index: usize,
+}
+
+impl<T> Iterator for ListIterMut<T> {
+    type Item = &mut T;
+
+    fn next(&mut self) -> &mut T? {
+        let item = .list.get(.index);
+        .index = .index + 1;
+        item
+    }
+}
+
+impl<T> IntoIterator for List<T> {
+    type IntoIter = ListIntoIter<T>;
+
+    fn into_iter(self) -> ListIntoIter<T> {
+        ListIntoIter { list: self, next: 0 }
+    }
+}
+
+struct ListIntoIter<T> {
+    list: List<T>,
+    next: usize,
+}
+
+impl<T> Iterator for ListIntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> T? {
+        if .next == .list.len {
+            return none;
+        }
+        let value = .list.mem.read(.next);
+        .next = .next + 1;
+        value
+    }
+}
+
+impl<T> Drop for ListIntoIter<T> {
+    /// Drops the values it hasn't given away. The list then holds none, so dropping it only
+    /// gives the room back.
+    fn drop(&mut self) {
+        for i in .next..self.list.len {
+            drop(.list.mem.read(i));
+        }
+        .list.len = 0;
     }
 }

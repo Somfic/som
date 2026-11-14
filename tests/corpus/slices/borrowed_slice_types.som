@@ -1,0 +1,22 @@
+// expect: exit 12
+
+/// `&[T]` reads elements it borrows, `&mut [T]` can change them, and `&[T; N]` is a
+/// reference to an array, which can be lent as a slice.
+fn total(values: &[i32]) -> i32 {
+    let mut t = 0;
+    for v in values { t = t + v; }
+    t
+}
+
+fn double(values: &mut [i32]) {
+    let mut i = 0;
+    while i < values.len { values.set(i, (values.get(i) else 0) * 2); i = i + 1; }
+}
+
+fn first(array: &[i32; 3]) -> i32 { array.get(0) else 0 }
+
+fn main() -> i32 {
+    let mut numbers = [1, 2, 2];
+    double(&mut numbers);
+    total(&numbers) + first(&numbers)
+}

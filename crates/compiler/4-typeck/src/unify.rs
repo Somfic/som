@@ -411,7 +411,7 @@ impl Unifier {
                     Ty::Str => "str".into(),
                     Ty::Optional(_) => format!("&{mutability}({})", self.display(*to, names)),
                     Ty::Slice(element) => {
-                        format!("[{mutability}{}]", self.display(*element, names))
+                        format!("&{mutability}[{}]", self.display(*element, names))
                     }
                     _ => format!("&{mutability}{}", self.display(*to, names)),
                 }

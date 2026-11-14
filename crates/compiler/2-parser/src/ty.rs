@@ -152,6 +152,27 @@ impl Parser<'_> {
         Some(self.ast.types.alloc(value, span))
     }
 
+    /// Whether the `[` here starts a slice type, `[T]`, rather than an array type, `[T; N]`:
+    /// whether no `;` comes before its `]`. Only looks ahead.
+    fn slice_ahead(&self) -> bool {
+        let mut depth = 0;
+        for n in 0.. {
+            match self.peek_nth(n) {
+                TokenKind::OpenBracket => depth += 1,
+                TokenKind::CloseBracket => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return true;
+                    }
+                }
+                TokenKind::Semicolon if depth == 1 => return false,
+                TokenKind::Eof => return true,
+                _ => {}
+            }
+        }
+        unreachable!("the token stream ends in `Eof`")
+    }
+
     fn parse_type_without_optional(&mut self) -> Option<Id<TypeExpr>> {
         let start = self.current_span();
 
@@ -164,12 +185,32 @@ impl Parser<'_> {
                     None
                 };
                 let mutable = self.eat(TokenKind::Mut);
-                // A `?` after it is for the reference, not what it points to.
-                let to = self.parse_type_without_optional()?;
-                TypeExpr::Reference {
-                    mutable,
-                    lifetime,
-                    to,
+                // `&[T]` and `&mut [T]`: a slice, which borrows its elements. `&[T; N]` is a
+                // reference to an array.
+                if lifetime.is_none() && self.at(TokenKind::OpenBracket) && self.slice_ahead() {
+                    self.advance();
+                    let inner = self.current_span();
+                    if self.eat(TokenKind::Mut) {
+                        self.error_at(
+                            inner,
+                            "`mut` goes before the brackets",
+                            "a slice that can change its elements is `&mut [T]`",
+                        );
+                    }
+                    let element = self.parse_type()?;
+                    self.expect(
+                        TokenKind::CloseBracket,
+                        "a closing bracket after the slice type",
+                    )?;
+                    TypeExpr::Slice { element, mutable }
+                } else {
+                    // A `?` after it is for the reference, not what it points to.
+                    let to = self.parse_type_without_optional()?;
+                    TypeExpr::Reference {
+                        mutable,
+                        lifetime,
+                        to,
+                    }
                 }
             }
 
@@ -224,7 +265,8 @@ impl Parser<'_> {
                 }
             }
 
-            // `[T; N]`, `[T]` or `[mut T]`
+            // `[T; N]`. A slice is borrowed, `&[T]`: without the `&` it's reported, and read
+            // as one.
             TokenKind::OpenBracket => {
                 self.advance();
                 let mutable = self.eat(TokenKind::Mut);
@@ -234,6 +276,12 @@ impl Parser<'_> {
                         TokenKind::CloseBracket,
                         "a closing bracket after the slice type",
                     )?;
+                    let written = if mutable { "&mut [T]" } else { "&[T]" };
+                    self.error_at(
+                        self.span_from(&start),
+                        "a slice is borrowed",
+                        &format!("write it `{written}`"),
+                    );
                     TypeExpr::Slice { element, mutable }
                 } else {
                     self.expect(TokenKind::Semicolon, "a `;` before the array's length")?;

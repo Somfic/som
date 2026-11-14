@@ -1,6 +1,6 @@
 // expect: error DanglingReference
 
-fn make() -> [i32] {
+fn make() -> &[i32] {
     let a = [1, 2];
     &a
 }

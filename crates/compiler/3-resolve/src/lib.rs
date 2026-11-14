@@ -13,7 +13,7 @@ mod error;
 mod names;
 
 pub use error::ResolveError;
-pub use names::{Def, DefId, DefKind, ImplDef, LangTrait, Names};
+pub use names::{Def, DefId, DefKind, ImplDef, LangStruct, LangTrait, Names};
 
 use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Pattern, PatternFields, Stmt, TypeExpr};
 use som_base::diagnostics::{closest_match, snake_case};
@@ -207,6 +207,13 @@ impl<'a> Resolver<'a> {
                     && matches!(self.names.def(def).kind, DefKind::Trait(_))
                 {
                     self.names.set_lang(lang, def);
+                }
+            }
+            for lang in LangStruct::ALL {
+                if let Some(&def) = self.items[root].get(lang.name())
+                    && matches!(self.names.def(def).kind, DefKind::Struct(_))
+                {
+                    self.names.set_lang_struct(lang, def);
                 }
             }
         }

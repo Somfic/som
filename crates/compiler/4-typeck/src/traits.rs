@@ -151,6 +151,8 @@ pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
         ),
         LangTrait::Iterator
         | LangTrait::Iterable
+        | LangTrait::IterableMut
+        | LangTrait::IntoIterator
         | LangTrait::From
         | LangTrait::Drop
         | LangTrait::Copy => false,

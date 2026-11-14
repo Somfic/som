@@ -4,7 +4,7 @@
 struct Point { x: i32, y: i32 }
 
 /// Works for any number of numbers.
-fn sum(numbers: [i32]) -> i32 {
+fn sum(numbers: &[i32]) -> i32 {
     let mut total = 0;
     let mut i = 0;
     while i < numbers.len {
@@ -15,7 +15,7 @@ fn sum(numbers: [i32]) -> i32 {
 }
 
 /// Changes them in place.
-fn double_all(numbers: [mut i32]) {
+fn double_all(numbers: &mut [i32]) {
     let mut i = 0;
     while i < numbers.len {
         let n = numbers.get_mut(i);
@@ -24,7 +24,7 @@ fn double_all(numbers: [mut i32]) {
     }
 }
 
-fn first_x(points: [Point]) -> i32 {
+fn first_x(points: &[Point]) -> i32 {
     let mut x = 0;
     let p = points.get_ref(0);
     if p { x = p.x; }
@@ -40,7 +40,7 @@ fn main() -> i32 {
     double_all(&mut five);              // the slice was lent, not moved
     let c = sum(&five);                 // 60
     // A `[mut T]` passes where a `[T]` is expected.
-    let view: [mut i32] = &mut five;
+    let view: &mut [i32] = &mut five;
     let d = view.len;
     let e = sum(view);
     let points = [Point { x: 7, y: 0 }];

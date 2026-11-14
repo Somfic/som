@@ -1,7 +1,7 @@
 // expect: exit 42
 
 /// The first number equal to `want`, if there is one.
-fn find(numbers: [i32], want: i32) -> i32? {
+fn find(numbers: &[i32], want: i32) -> i32? {
     for n in numbers {
         if n == want { return n; }      // wrapped into an `i32?`
     }
@@ -14,7 +14,7 @@ fn sign(n: i32) -> i32 {
 }
 
 /// A guard: after it, `found` holds a value.
-fn doubled_or_zero(numbers: [i32], want: i32) -> i32 {
+fn doubled_or_zero(numbers: &[i32], want: i32) -> i32 {
     let found = find(numbers, want);
     if found == none { return 0; }
     found * 2

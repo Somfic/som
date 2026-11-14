@@ -432,7 +432,7 @@ impl TypeTable {
                     }
                     Ty::Slice(element) => {
                         format!(
-                            "[{mutability}{}]",
+                            "&{mutability}[{}]",
                             self.display_with(*element, names, subst)
                         )
                     }
