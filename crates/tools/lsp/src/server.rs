@@ -723,6 +723,38 @@ impl LanguageServer for SomLanguageServer {
             return Ok(None);
         }
 
+        // `use som::`: only modules go in a `use`, the next part of their path.
+        if let Some(prefix) = use_path(&cursor.text, cursor.offset) {
+            // Not what's already in scope: only what's still to `use`, or leads to it.
+            let (here, in_scope) = modules_in_scope(a, &cursor.file, cursor.offset);
+            let used: HashSet<String> = (in_scope.iter())
+                .map(|&m| a.ast.modules[m].name.to_string())
+                .collect();
+            let names: Vec<String> = (a.ast.modules.iter().enumerate())
+                .filter(|&(m, module)| m != here && !module.name.is_empty())
+                .map(|(_, module)| module.name.to_string())
+                .chain(project.importable.modules.iter().cloned())
+                .filter(|name| !used.contains(name))
+                .collect();
+            let mut seen = HashSet::new();
+            for name in &names {
+                let Some(rest) = name.strip_prefix(prefix) else {
+                    continue;
+                };
+                let next = rest.split("::").next().unwrap_or_default();
+                if next.is_empty() || !seen.insert(next.to_string()) {
+                    continue;
+                }
+                items.push(CompletionItem {
+                    label: next.to_string(),
+                    kind: Some(CompletionItemKind::MODULE),
+                    detail: Some(format!("{prefix}{next}")),
+                    ..Default::default()
+                });
+            }
+            return Ok(Some(CompletionResponse::Array(items)));
+        }
+
         // `alloc(10).` or `alloc(10).si`: after a dot, with maybe part of a name typed.
         let word_start = cursor.text[..cursor.offset]
             .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
@@ -941,7 +973,7 @@ impl LanguageServer for SomLanguageServer {
             }
             return Ok(Some(CompletionResponse::Array(items)));
         } else if let Some((path, written)) = struct_literal(&cursor.text, cursor.offset)
-            && let Some(s) = find_struct(a, path, &cursor.file)
+            && let Some(s) = find_struct(a, path, &cursor.file, cursor.offset)
         {
             // `Color { r: 1, ` lists the fields not written yet.
             for (field, &t) in a.ast.structs[s].fields.iter().zip(a.typed.fields(s)) {
@@ -961,7 +993,7 @@ impl LanguageServer for SomLanguageServer {
         } else if let Some(slot) = type_slot(&cursor.text, cursor.offset) {
             // `impl ` lists traits and types, `impl Add for ` types, `<T: ` traits: from the
             // modules in scope by name, others by theirs.
-            let (here, in_scope) = modules_in_scope(a, &cursor.file);
+            let (here, in_scope) = modules_in_scope(a, &cursor.file, cursor.offset);
             let wants_traits = slot != TypeSlot::Type;
             let wants_types = slot != TypeSlot::Trait;
             for (m, module) in a.ast.modules.iter().enumerate() {
@@ -1014,7 +1046,7 @@ impl LanguageServer for SomLanguageServer {
                         ..Default::default()
                     });
                 }
-            } else if let Some(s) = find_struct(a, module, &cursor.file) {
+            } else if let Some(s) = find_struct(a, module, &cursor.file, cursor.offset) {
                 // `Shape::` lists its variants, then its methods.
                 for (i, variant) in a.ast.structs[s].variants().iter().enumerate() {
                     let snippet = variant_snippet(a, s, i, insert);
@@ -1059,7 +1091,7 @@ impl LanguageServer for SomLanguageServer {
             }
             // This file's module, and the modules it `use`s, by bare name; other modules by
             // theirs, so `rayl` finds `raylib::init_window`.
-            let (here, in_scope) = modules_in_scope(a, &cursor.file);
+            let (here, in_scope) = modules_in_scope(a, &cursor.file, cursor.offset);
             for (m, module) in a.ast.modules.iter().enumerate() {
                 if in_scope.contains(&m) {
                     items.extend(module_items(a, m, None, insert));
@@ -2272,7 +2304,7 @@ fn extern_links(a: &Analysis, file: &str) -> Vec<(Span, PathBuf)> {
 
 /// The module `file` is in, and the modules whose names it can use bare: its own and
 /// the ones it `use`s.
-fn modules_in_scope(a: &Analysis, file: &str) -> (usize, Vec<usize>) {
+fn modules_in_scope(a: &Analysis, file: &str, offset: usize) -> (usize, Vec<usize>) {
     let here = a
         .ast
         .modules
@@ -2289,6 +2321,32 @@ fn modules_in_scope(a: &Analysis, file: &str) -> (usize, Vec<usize>) {
             in_scope.push(m);
         }
     }
+    // `use som::data;` inside a block, for the rest of it: if the cursor is there.
+    for (id, stmt) in a.ast.stmts.iter() {
+        let Stmt::Use(u) = stmt else { continue };
+        let at = a.ast.stmts.span(id);
+        if at.source.identifier() != file || at.start_offset + at.length > offset {
+            continue;
+        }
+        // The innermost block around it.
+        let block = (a.ast.exprs.iter())
+            .filter(|(_, e)| matches!(e, Expr::Block { .. }))
+            .map(|(e, _)| a.ast.exprs.span(e))
+            .filter(|b| {
+                b.source.identifier() == file
+                    && b.start_offset <= at.start_offset
+                    && at.start_offset + at.length <= b.start_offset + b.length
+            })
+            .min_by_key(|b| b.length);
+        let inside = block.is_some_and(|b| offset < b.start_offset + b.length);
+        let module = a.ast.modules.iter().position(|m| *m.name == *u.path.to_string());
+        if inside
+            && let Some(m) = module
+            && !in_scope.contains(&m)
+        {
+            in_scope.push(m);
+        }
+    }
     // The standard library's root module is seen from everywhere.
     if let Some(prelude) = a.ast.modules.iter().position(|m| &*m.name == "som")
         && !in_scope.contains(&prelude)
@@ -2300,7 +2358,7 @@ fn modules_in_scope(a: &Analysis, file: &str) -> (usize, Vec<usize>) {
 
 /// The struct a literal names: `raylib::Color` in that module, `Color` in the modules
 /// in scope.
-fn find_struct(a: &Analysis, path: &str, file: &str) -> Option<Id<Struct>> {
+fn find_struct(a: &Analysis, path: &str, file: &str, offset: usize) -> Option<Id<Struct>> {
     let modules = match path.rsplit_once("::") {
         Some((module, _)) => a
             .ast
@@ -2309,7 +2367,7 @@ fn find_struct(a: &Analysis, path: &str, file: &str) -> Option<Id<Struct>> {
             .position(|m| *m.name == *module)
             .into_iter()
             .collect(),
-        None => modules_in_scope(a, file).1,
+        None => modules_in_scope(a, file, offset).1,
     };
     let name = path.rsplit("::").next().unwrap_or(path);
     modules.into_iter().find_map(|m| {
@@ -2429,6 +2487,18 @@ fn extern_library(text: &str, offset: usize) -> Option<bool> {
 }
 
 /// The module named right before the word being typed: `raylib` in `raylib::ini`.
+/// In `use som::da`: the path before the part being typed, `som::`; `""` right after `use`.
+fn use_path(text: &str, offset: usize) -> Option<&str> {
+    let before = text.get(..offset)?;
+    let line = &before[before.rfind('\n').map_or(0, |i| i + 1)..];
+    let path = line.trim_start().strip_prefix("use ")?.trim_start();
+    if !path.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':') {
+        return None;
+    }
+    let typed = path.trim_end_matches(|c: char| c.is_alphanumeric() || c == '_');
+    Some(typed)
+}
+
 fn qualifier(text: &str, offset: usize) -> Option<&str> {
     let before = text.get(..offset)?;
     let word = before.trim_end_matches(|c: char| c.is_alphanumeric() || c == '_');
@@ -3248,6 +3318,19 @@ mod tests {
 
         let out = a.ast.exprs.iter().find(|(_, e)| matches!(e, Expr::Out(_)));
         assert!(!worth_naming(&a, out.unwrap().0, "remainder"));
+    }
+
+    #[test]
+    fn use_paths_are_what_comes_before_the_word() {
+        fn at_end(text: &str) -> Option<&str> {
+            use_path(text, text.len())
+        }
+        assert_eq!(at_end("use "), Some(""));
+        assert_eq!(at_end("use som::"), Some("som::"));
+        assert_eq!(at_end("use som::da"), Some("som::"));
+        assert_eq!(at_end("    use ray"), Some(""));
+        assert_eq!(at_end("let use_it = "), None);
+        assert_eq!(at_end("use som; let x = "), None);
     }
 
     #[test]

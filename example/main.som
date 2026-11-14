@@ -1,10 +1,18 @@
+
+fn test() {
+    let a: String = "hello";
+
+    use som::data;
+
+    let b: String = " ";
+    let c: String = "world";
+
+    let c = a + b + c;
+
+    som::io::printf("%s", c.value.as_slice());
+}
+
+
+
 use som::data;
-use som::
-
-let a: String = "hello";
-let b: String = " ";
-let c: String = "world";
-
-let c = a + b + c;
-
-som::io::printf("%s", c.value.as_slice());
+let a: String = "";

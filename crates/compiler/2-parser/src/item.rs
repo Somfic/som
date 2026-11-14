@@ -324,7 +324,7 @@ impl Parser<'_> {
         Some(block)
     }
 
-    fn parse_use(&mut self) -> Option<Use> {
+    pub(crate) fn parse_use(&mut self) -> Option<Use> {
         self.expect(TokenKind::Use, "a use statement")?;
         let path = self.parse_path("an import path")?;
         self.expect(TokenKind::Semicolon, "a semicolon after the use statement")?;

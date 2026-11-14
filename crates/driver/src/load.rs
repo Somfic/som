@@ -214,6 +214,10 @@ impl Loader {
                 }
                 _ => None,
             })
+            .chain(self.ast.modules[module].block_uses.iter().map(|path| {
+                let folder = path.segments.iter().fold(folder.clone(), |p, s| p.join(&*s.name));
+                (path.to_string(), folder, path.span())
+            }))
             .collect();
 
         for (name, path, span) in uses {

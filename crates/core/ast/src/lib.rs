@@ -40,6 +40,8 @@ pub struct Module {
     pub items: Vec<Item>,
     /// The source files the module was parsed from, in order.
     pub files: Vec<Arc<Source>>,
+    /// The paths `use`d inside its blocks, which are loaded like its own `use`s.
+    pub block_uses: Vec<Path>,
 }
 
 impl Ast {
@@ -50,6 +52,7 @@ impl Ast {
             path,
             items: Vec::new(),
             files: Vec::new(),
+            block_uses: Vec::new(),
         });
         self.modules.len() - 1
     }

@@ -30,6 +30,7 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         modules: HashMap::new(),
         items: vec![HashMap::new(); ast.modules.len()],
         imports: vec![Vec::new(); ast.modules.len()],
+        block_imports: Vec::new(),
         variant_names: vec![HashSet::new(); ast.modules.len()],
         module: 0,
         scopes: Vec::new(),
@@ -75,6 +76,9 @@ struct Resolver<'a> {
     items: Vec<HashMap<&'a str, DefId>>,
     /// Per module: the modules it `use`s, in order.
     imports: Vec<Vec<usize>>,
+    /// The modules `use`d inside the blocks being resolved, with how many scopes deep each
+    /// `use` is: gone when its block ends.
+    block_imports: Vec<(usize, usize)>,
     /// Per module: the names of its enums' variants. A bare name in a pattern that's one of
     /// those, here or in a module this one uses, is that variant rather than a new binding.
     variant_names: Vec<HashSet<&'a str>>,
@@ -476,7 +480,7 @@ impl<'a> Resolver<'a> {
         if let Some(body) = func.body {
             self.resolve_expr(body);
         }
-        self.scopes.pop();
+        self.pop_scope();
     }
 
     fn bind(&mut self, name: &'a Ident, def: DefId) {
@@ -489,7 +493,14 @@ impl<'a> Resolver<'a> {
     fn in_scope(&mut self, f: impl FnOnce(&mut Self)) {
         self.scopes.push(HashMap::new());
         f(self);
+        self.pop_scope();
+    }
+
+    /// Ends the innermost scope, and what its `use`s brought in.
+    fn pop_scope(&mut self) {
         self.scopes.pop();
+        let depth = self.scopes.len();
+        self.block_imports.retain(|&(d, _)| d <= depth);
     }
 
     fn resolve_stmts(&mut self, stmts: &[Id<Stmt>]) {
@@ -498,6 +509,13 @@ impl<'a> Resolver<'a> {
 
     fn resolve_stmt(&mut self, id: Id<Stmt>) {
         match &self.ast.stmts[id] {
+            // A module only the rest of the block sees. One that doesn't exist was reported
+            // when modules were loaded.
+            Stmt::Use(u) => {
+                if let Some(&module) = self.modules.get(u.path.to_string().as_str()) {
+                    self.block_imports.push((self.scopes.len(), module));
+                }
+            }
             Stmt::Let {
                 name, ty, value, ..
             } => {
@@ -731,6 +749,7 @@ impl<'a> Resolver<'a> {
     fn is_variant_name(&self, name: &str) -> bool {
         let prelude = self.modules.get("som").copied();
         std::iter::once(self.module)
+            .chain(self.block_imports.iter().rev().map(|&(_, m)| m))
             .chain(self.imports[self.module].iter().copied())
             .chain(prelude)
             .any(|m| self.variant_names[m].contains(name))
@@ -851,6 +870,7 @@ impl<'a> Resolver<'a> {
         // language uses are there.
         let prelude = self.modules.get("som").copied();
         std::iter::once(self.module)
+            .chain(self.block_imports.iter().rev().map(|&(_, m)| m))
             .chain(self.imports[self.module].iter().copied())
             .chain(prelude)
             .find_map(|m| self.items[m].get(name).copied())

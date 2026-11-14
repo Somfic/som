@@ -1,0 +1,11 @@
+// expect: error UnknownType
+
+/// What a block `use`s isn't seen after the block ends.
+fn main() -> i32 {
+    {
+        use som::data;
+        let xs: List<i32> = [1, 2];
+    }
+    let ys: List<i32> = [3];
+    0
+}

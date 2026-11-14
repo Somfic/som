@@ -7,6 +7,16 @@ use crate::{Parser, RecoveryLevel, StmtOrExpr};
 impl Parser<'_> {
     pub(crate) fn parse_stmt_or_expr(&mut self) -> StmtOrExpr {
         let stmt = match self.peek() {
+            // `use som::data;`, for the rest of the block.
+            TokenKind::Use => {
+                let start = self.current_span();
+                let Some(u) = self.parse_use() else {
+                    return StmtOrExpr::Error;
+                };
+                self.ast.modules[self.module].block_uses.push(u.path.clone());
+                let span = self.span_from(&start);
+                Some(self.ast.stmts.alloc(Stmt::Use(u), span))
+            }
             TokenKind::Let => self.parse_let(),
             TokenKind::Loop => self.parse_loop(),
             TokenKind::While => self.parse_while(),

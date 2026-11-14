@@ -157,6 +157,8 @@ pub enum BinOp {
 }
 
 pub enum Stmt {
+    /// `use som::data;` inside a block: what the module has is in scope until the block ends.
+    Use(crate::Use),
     Let {
         name: Ident,
         mutable: bool,

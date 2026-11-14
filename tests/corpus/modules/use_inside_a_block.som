@@ -1,0 +1,12 @@
+// expect: exit 11
+
+/// `use` inside a block brings a module in for the rest of that block only.
+fn test() -> i32 {
+    use som::data;
+    let a: String = "hello";
+    let b: String = " world";
+    let c = a + b;
+    c.len() as i32
+}
+
+fn main() -> i32 { test() }

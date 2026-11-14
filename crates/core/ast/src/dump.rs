@@ -239,6 +239,7 @@ impl Dumper<'_> {
     fn stmt(&mut self, id: Id<Stmt>) {
         let ast = self.ast;
         match &ast.stmts[id] {
+            Stmt::Use(u) => self.line(format!("use {}", u.path)),
             Stmt::Let {
                 name,
                 mutable,
