@@ -152,6 +152,10 @@ pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryErro
         let (Some(library), Some(span)) = (&block.library, &block.library_span) else {
             continue;
         };
+        // The C library is always linked.
+        if library == crate::headers::LIBC {
+            continue;
+        }
 
         let path = match find(library, &root, extra) {
             Ok(path) => path,

@@ -705,17 +705,21 @@ impl LanguageServer for SomLanguageServer {
                 })
                 .map(|(library, _)| library)
                 .collect();
-            let libraries = (project.importable.libraries.iter())
-                .filter(|(name, _)| !written.contains(name.as_str()));
-            for (name, path) in libraries {
+            // The C library, always there, has no file of its own to find: first.
+            let libc = (!written.contains("c")).then(|| ("c".to_string(), None, Some("0".into())));
+            let found = (project.importable.libraries.iter())
+                .filter(|(name, _)| !written.contains(name.as_str()))
+                .map(|(name, path)| (name.clone(), Some(path.display().to_string()), None));
+            for (name, path, sort_text) in libc.into_iter().chain(found) {
                 items.push(CompletionItem {
-                    label: name.clone(),
+                    insert_text: (!quoted).then(|| format!("{name:?}")),
+                    label: name,
                     kind: Some(CompletionItemKind::MODULE),
                     label_details: Some(CompletionItemLabelDetails {
                         detail: None,
-                        description: Some(path.display().to_string()),
+                        description: Some(path.unwrap_or_else(|| "the C standard library".into())),
                     }),
-                    insert_text: (!quoted).then(|| format!("{name:?}")),
+                    sort_text,
                     ..Default::default()
                 });
             }
@@ -2729,8 +2733,8 @@ fn return_type_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
         // Right after the parameters' `)`, or a property's name: with no return type
         // written, only space comes between it and the body.
         let mut before = at.source.content()[..at.start_offset].trim_end();
-        // `prop x = value;`: before the `=`.
-        if func.prop && let Some(rest) = before.strip_suffix('=') {
+        // `fn f(x: i32) = value;`: before the `=`.
+        if let Some(rest) = before.strip_suffix('=') {
             before = rest.trim_end();
         }
         if !before.ends_with(')') && !func.prop {
@@ -3343,7 +3347,7 @@ mod tests {
         let main = dir.join("main.som");
         let text = "struct Rect { w: i32 }\n\
                     impl Rect {\n    prop area { self.w * 2 }\n}\n\
-                    fn double(x: i32) { x * 2 }\n\
+                    fn double(x: i32) = x * 2;\n\
                     fn written(x: i32) -> i32 { x }\n\
                     fn nothing() { }\n\
                     impl Rect {\n    prop half = self.w / 2;\n    prop pair: Pair = Pair { a: self.w };\n}\n\

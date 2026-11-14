@@ -3,7 +3,7 @@
 struct Vector<N: usize, T> { values: [T; N] }
 
 impl<T> Vector<3, T> {
-    prop y -> T { self.values[1] }
+    prop y: T { self.values[1] }
 }
 
 fn main() -> i32 {

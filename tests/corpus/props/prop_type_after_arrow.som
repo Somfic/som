@@ -1,0 +1,7 @@
+// expect: error
+
+struct Rect { w: i32 }
+
+impl Rect {
+    prop width -> i32 = self.w;
+}

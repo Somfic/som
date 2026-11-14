@@ -3,7 +3,7 @@
 struct Rect { w: i32, h: i32 }
 
 impl Rect {
-    prop area -> i32 { self.w * self.h }
+    prop area: i32 { self.w * self.h }
 }
 
 fn main() -> i32 {

@@ -129,7 +129,12 @@ fn import_header(
     library_dirs: &[PathBuf],
     errors: &mut Vec<LoadError>,
 ) {
-    let path = match find_header(header, root, library_dirs) {
+    let found = match library {
+        // `extern "c";`: the C standard library, from its headers together.
+        Some(LIBC) => libc_header(root).map_err(|_| Vec::new()),
+        _ => find_header(header, root, library_dirs),
+    };
+    let path = match found {
         Ok(path) => path,
         Err(searched) => {
             errors.push(LoadError::HeaderNotFound {
@@ -195,6 +200,36 @@ fn import_header(
             ast.structs.get_mut(*s).copy = true;
         }
     }
+}
+
+/// `extern "c";`: the C standard library, whose functions go in module `c`. It's always
+/// linked, so there's no library file to find, and its functions are spread over several
+/// headers.
+pub(crate) const LIBC: &str = "c";
+
+/// The headers `extern "c";` imports from.
+const LIBC_HEADERS: &[&str] = &[
+    "stdio.h", "stdlib.h", "string.h", "math.h", "ctype.h", "time.h",
+];
+
+/// A header including all of `LIBC_HEADERS`, in `.som/` next to the program, written only
+/// when it changes so the import it's stamped into stays cached.
+fn libc_header(root: &Path) -> std::io::Result<PathBuf> {
+    let root = if root.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        root
+    };
+    let path = root.join(".som").join("c.h");
+    let text: String = LIBC_HEADERS
+        .iter()
+        .map(|h| format!("#include <{h}>\n"))
+        .collect();
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
+        std::fs::create_dir_all(path.parent().expect("in .som"))?;
+        std::fs::write(&path, text)?;
+    }
+    Ok(path)
 }
 
 /// Where each function in a generated file (`.som/raylib.som`) is declared in C: its
@@ -382,7 +417,7 @@ fn compatible(
 }
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 18;
+const GENERATOR_VERSION: u32 = 19;
 
 /// The first line of a cached import: everything it depends on. Any change to the header,
 /// the library or the generator makes it stale.
@@ -559,6 +594,10 @@ fn generate(
             continue;
         };
         if exported.is_some_and(|names| !names.contains(name)) {
+            continue;
+        }
+        // The C library's own internals: `__error`, `_exit`'s relatives.
+        if library == Some(LIBC) && name.starts_with('_') {
             continue;
         }
         // som names are snake_case: `InitWindow` is `init_window`, and links back to it.
@@ -982,6 +1021,7 @@ impl Converter {
     /// points to is `const`. Return values and fields stay `*`: C can hand back NULL,
     /// or memory the caller now owns.
     fn param_ty(&mut self, text: &str) -> Result<String, String> {
+        let text = without_restrict(text);
         // `int *const`: a pointer that can't be changed, to something that can.
         let text = text.trim();
         let text = (text.strip_suffix("const").map(str::trim_end))
@@ -1007,6 +1047,7 @@ impl Converter {
 
     /// The som type for a C type, importing any struct it names.
     fn ty(&mut self, text: &str) -> Result<String, String> {
+        let text = without_restrict(text);
         let text = text.trim();
         let constant = text.starts_with("const ") || text.contains(" const");
         let text = text
@@ -1141,6 +1182,18 @@ fn type_text(ty: &Value) -> &str {
         .unwrap_or_default()
 }
 
+/// `text` without `restrict`, a promise to the C compiler that pointers don't overlap,
+/// which som has no use for: `char *restrict` is `char *`.
+fn without_restrict(text: &str) -> String {
+    text.replace("__restrict", "restrict")
+        .split_inclusive(['*', ' '])
+        .filter(|part| part.trim() != "restrict")
+        .collect::<String>()
+        .replace("*restrict", "*")
+        .trim()
+        .to_string()
+}
+
 /// The return type in a function type like `const char *(int, float)`: everything
 /// before the parenthesised parameter list at the end.
 fn return_type(signature: &str) -> Option<&str> {
@@ -1197,6 +1250,9 @@ mod tests {
         assert_eq!(c.param_ty("int *const").unwrap(), "&mut i32");
         assert_eq!(c.param_ty("struct opaque **").unwrap(), "&mut Opaque");
         assert_eq!(c.param_ty("const char *").unwrap(), "cstr");
+        assert_eq!(c.param_ty("const char *restrict").unwrap(), "cstr");
+        assert_eq!(c.param_ty("FILE *restrict").unwrap(), c.param_ty("FILE *").unwrap());
+        assert_eq!(c.param_ty("void *__restrict").unwrap(), "*");
         assert_eq!(c.param_ty("const char **").unwrap(), "*");
         assert_eq!(c.param_ty("void *").unwrap(), "*");
         assert_eq!(c.param_ty("struct opaque *").unwrap(), "Opaque");

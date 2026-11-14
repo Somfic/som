@@ -35,6 +35,7 @@ pub fn parse_file(source: Arc<Source>, ast: &mut Ast, module: usize) -> Vec<Pars
         errors: Vec::new(),
         in_recovery: false,
         in_condition: false,
+            in_impl: false,
     };
     parser.skip_trivia();
     parser.parse_program();
@@ -70,6 +71,8 @@ struct Parser<'a> {
     /// Parsing the condition of an `if` or `while`, where `name {` starts the body, not a
     /// constructor. Cleared again inside parentheses and blocks.
     in_condition: bool,
+    /// In an `impl` or `trait` block, where methods can take `self`.
+    in_impl: bool,
 }
 
 impl Parser<'_> {
@@ -108,12 +111,18 @@ impl Parser<'_> {
             .unwrap_or(TokenKind::Eof)
     }
 
-    /// Whether the nth non-trivia token ahead (0 = current) is `self`.
-    fn self_ahead(&self, n: usize) -> bool {
+    /// The name the nth non-trivia token ahead (0 = current) is, if it's one.
+    fn ident_ahead(&self, n: usize) -> Option<&str> {
         (self.tokens[self.pos..].iter())
             .filter(|t| !is_trivia(t.kind))
             .nth(n)
-            .is_some_and(|t| t.kind == TokenKind::Ident && &*t.text == "self")
+            .filter(|t| t.kind == TokenKind::Ident)
+            .map(|t| &*t.text)
+    }
+
+    /// Whether the nth non-trivia token ahead (0 = current) is `self`.
+    fn self_ahead(&self, n: usize) -> bool {
+        self.ident_ahead(n) == Some("self")
     }
 
     /// The `///` comment right above the current token: consecutive `///` lines, joined.

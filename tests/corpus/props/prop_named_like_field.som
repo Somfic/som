@@ -3,5 +3,5 @@
 struct Rect { w: i32, h: i32 }
 
 impl Rect {
-    prop w -> i32 { self.w }
+    prop w: i32 { self.w }
 }

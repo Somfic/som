@@ -3,5 +3,5 @@
 struct Rect { w: i32 }
 
 impl Rect {
-    prop scaled -> i32 { self.w * by }
+    prop scaled: i32 { self.w * by }
 }

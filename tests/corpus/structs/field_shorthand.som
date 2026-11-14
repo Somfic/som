@@ -1,0 +1,12 @@
+// expect: exit 34
+
+struct Point { x: i32, y: i32 }
+
+fn make(x: i32, y: i32) -> Point = Point { x, y };
+
+fn main() -> i32 {
+    let y = 4;
+    let p = Point { x: 3, y };
+    let q = make(1, 2);
+    p.x * 10 + p.y + q.x * 0 + q.y * 0
+}

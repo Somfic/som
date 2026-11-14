@@ -23,6 +23,7 @@ impl Parser<'_> {
     }
 
     fn parse_item(&mut self) {
+        self.in_impl = false;
         let item = match self.peek() {
             TokenKind::Fn => self.parse_function().map(Item::Func),
             TokenKind::Extern if self.peek_nth(1) == TokenKind::Struct => {
@@ -167,6 +168,7 @@ impl Parser<'_> {
 
         let mut methods = Vec::new();
         let mut types = Vec::new();
+        self.in_impl = true;
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
             // `type Item = &T;`
             if self.eat(TokenKind::Type) {
@@ -189,6 +191,7 @@ impl Parser<'_> {
             }
         }
 
+        self.in_impl = false;
         self.expect(TokenKind::CloseBrace, "a closing brace after impl block")?;
         let close = self.previous_span();
         // Every method is generic over the impl's parameters, ahead of its own.
@@ -219,6 +222,7 @@ impl Parser<'_> {
         self.expect(TokenKind::OpenBrace, "the trait's methods")?;
         let mut types = Vec::new();
         let mut methods = Vec::new();
+        self.in_impl = true;
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
             if self.at(TokenKind::Type) {
                 let doc = self.doc_comment();
@@ -254,6 +258,7 @@ impl Parser<'_> {
                 self.recover(RecoveryLevel::Member);
             }
         }
+        self.in_impl = false;
         self.expect(TokenKind::CloseBrace, "a closing brace after the trait")?;
         let span = self.span_from(&start);
         Some(self.ast.traits.alloc(
@@ -295,7 +300,7 @@ impl Parser<'_> {
         let body = if self.eat(TokenKind::Semicolon) {
             None
         } else {
-            Some(self.parse_block()?)
+            Some(self.parse_body("method")?)
         };
         let this = som_ast::Generic {
             name: Ident {
@@ -463,8 +468,8 @@ impl Parser<'_> {
         })
     }
 
-    /// `fn name<T>(params) -> Ret { body }`, or in an impl block, `prop name: Ret { body }` or
-    /// `prop name: Ret = value;`.
+    /// `fn name<T>(params) -> Ret { body }` or `fn name<T>(params) -> Ret = value;`, or in an
+    /// impl block, `prop name: Ret { body }` or `prop name: Ret = value;`.
     fn parse_function(&mut self) -> Option<Id<Func>> {
         let doc = self.doc_comment();
         let start = self.current_span();
@@ -480,19 +485,21 @@ impl Parser<'_> {
             false => self.parse_params(false)?,
         };
         // A property's type goes after a `:`, as a field's does: `prop x: i32 = …`.
-        let returns = if self.eat(TokenKind::Arrow) || prop && self.eat(TokenKind::Colon) {
+        let returns = if prop && self.at(TokenKind::Arrow) {
+            let span = self.current_span();
+            self.advance();
+            self.error_at(
+                span,
+                msg!["a property's type goes after a ", code(":")],
+                msg!["as a field's does: ", code(format!("prop {}: …", name.name))],
+            );
+            Some(self.parse_type()?)
+        } else if self.eat(TokenKind::Arrow) || prop && self.eat(TokenKind::Colon) {
             Some(self.parse_type()?)
         } else {
             None
         };
-        // `prop x = self.values[0];`: a property's body can be any expression.
-        let body = if prop && self.eat(TokenKind::Equals) {
-            let value = self.parse_expr()?;
-            self.expect(TokenKind::Semicolon, "a semicolon after the property's value")?;
-            Some(value)
-        } else {
-            Some(self.parse_block()?)
-        };
+        let body = Some(self.parse_body(if prop { "property" } else { "function" })?);
 
         let span = self.span_from(&start);
         let func = Func {
@@ -509,6 +516,21 @@ impl Parser<'_> {
             prop,
         };
         Some(self.ast.funcs.alloc(func, span))
+    }
+
+    /// A function's or property's body: a block, or `= value;`, any expression, as in
+    /// `fn double(x: i32) = x * 2;` and `prop x = self.values[0];`. `what` it's the body of,
+    /// for errors.
+    fn parse_body(&mut self, what: &str) -> Option<Id<Expr>> {
+        if !self.eat(TokenKind::Equals) {
+            return self.parse_block();
+        }
+        let value = self.parse_expr()?;
+        self.expect(
+            TokenKind::Semicolon,
+            format!("a semicolon after the {what}'s value"),
+        )?;
+        Some(value)
     }
 
     /// A property's parameters, which aren't written: just `&self`. Ones written anyway are
@@ -645,6 +667,24 @@ impl Parser<'_> {
             let out = reference.is_none() && self.eat(TokenKind::Out);
             let mutable = reference.is_none() && !out && self.eat(TokenKind::Mut);
             let name = self.parse_ident("a function parameter name")?;
+            let shorthand = reference.is_some() || &*name.name == "self" && !self.at(TokenKind::Colon);
+            if shorthand && !self.in_impl {
+                let span = match &reference {
+                    Some((_, start)) => self.span_from(start),
+                    None => name.span.clone(),
+                };
+                self.error_at(
+                    span,
+                    msg![code("self"), " only exists in methods"],
+                    msg![
+                        "a method is written in an ",
+                        code("impl"),
+                        " or ",
+                        code("trait"),
+                        " block"
+                    ],
+                );
+            }
             let ty = if let Some((mutable, start)) = reference {
                 Some(self.self_type(Some(mutable), self.span_from(&start)))
             } else if is_extern {

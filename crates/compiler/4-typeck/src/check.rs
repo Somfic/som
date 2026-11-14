@@ -3206,21 +3206,37 @@ impl<'a> Checker<'a> {
         if self.impl_target_fits(func, type_args, receiver_ty) {
             return true;
         }
-        let index = self.names.impl_of(func).expect("only methods don't fit");
-        let target = self.impls[index].target.expect("only a known target doesn't fit");
+        self.not_on_impl_target(&[func], receiver_ty, name, what);
+        false
+    }
+
+    /// Reports that none of `funcs`, methods or properties called `name`, is in an impl block
+    /// for `receiver_ty`, naming each block's target.
+    fn not_on_impl_target(
+        &mut self,
+        funcs: &[Id<Func>],
+        receiver_ty: TypeId,
+        name: &som_ast::Ident,
+        what: &'static str,
+    ) {
         let mut found = self.u.shallow(receiver_ty);
         if let Ty::Ref { to, .. } = *self.u.get(found) {
             found = self.u.shallow(to);
         }
+        let targets = (funcs.iter())
+            .filter_map(|&func| {
+                let index = self.names.impl_of(func)?;
+                let target = self.impls[index].target?;
+                Some((self.u.display(target, self.names), self.impl_target_span(index)))
+            })
+            .collect();
         self.errors.push(TypeError::NotOnImplTarget {
             ty: self.describe(found),
             what,
             name: name.name.to_string(),
-            target: self.u.display(target, self.names),
+            targets,
             span: name.span.clone(),
-            impl_span: self.impl_target_span(index),
         });
-        false
     }
 
     /// `values[0]`: the element of an array at an index it's known to have, a number written
@@ -3312,7 +3328,7 @@ impl<'a> Checker<'a> {
         matches!(self.ast.exprs[expr], Expr::Field { .. }) && self.methods.contains_key(&expr)
     }
 
-    /// `list.len` of a property, `prop len -> usize`: a call of it, without
+    /// `list.len` of a property, `prop len: usize`: a call of it, without
     /// parentheses. `None` if `object` has no property `field`; fields are named apart.
     fn prop_access(
         &mut self,
@@ -3332,7 +3348,9 @@ impl<'a> Checker<'a> {
             }
         })?;
         let candidates = self.names.props(owner, &field.name);
-        let first = *candidates.first()?;
+        if candidates.is_empty() {
+            return None;
+        }
         let func_of = |c: &Self, def: DefId| match c.names.def(def).kind {
             DefKind::Func(func) => func,
             _ => unreachable!("properties are functions"),
@@ -3351,17 +3369,11 @@ impl<'a> Checker<'a> {
                 break;
             }
         }
-        let (def, func, sig, type_args) = match chosen {
-            Some(chosen) => chosen,
-            None => {
-                let func = func_of(self, first);
-                let (sig, type_args) = self.instantiate(func);
-                (first, func, sig, type_args)
-            }
-        };
-        if !self.on_impl_target(func, &type_args, object_ty, field, "property") {
+        let Some((def, func, sig, type_args)) = chosen else {
+            let funcs: Vec<Id<Func>> = candidates.iter().map(|&d| func_of(self, d)).collect();
+            self.not_on_impl_target(&funcs, object_ty, field, "property");
             return Some(self.u.table.error);
-        }
+        };
         self.methods.insert(id, def);
         self.require_bounds(func, &type_args, self.span(id));
         if !type_args.is_empty() {

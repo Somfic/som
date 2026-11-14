@@ -1,0 +1,8 @@
+// expect: exit 6
+
+fn main() -> i32 {
+    let items = [1, 2, 3];
+    let mut total = 0;
+    for x in items { total = total + x }
+    total
+}

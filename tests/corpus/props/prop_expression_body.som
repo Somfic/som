@@ -4,9 +4,9 @@ struct Vector<N: usize, T> { values: [T; N] }
 
 impl<T> Vector<3, T> {
     prop x = self.values[0];
-    prop y -> T = self.values[1];
+    prop y: T = self.values[1];
     prop z { self.values[2] }
-    prop sum -> i32 = 0;
+    prop sum: i32 = 0;
 }
 
 impl i32 {

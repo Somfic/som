@@ -6,5 +6,5 @@ struct Rect { w: i32 }
 
 impl Sized2 for Rect {
     fn size(self: &Rect) -> i32 { self.w }
-    prop area -> i32 { self.w }
+    prop area: i32 { self.w }
 }

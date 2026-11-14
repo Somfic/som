@@ -1,3 +1,3 @@
 // expect: error
 
-trait Sized2 { prop size -> i32; }
+trait Sized2 { prop size: i32; }

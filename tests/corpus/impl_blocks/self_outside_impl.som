@@ -1,0 +1,3 @@
+// expect: error
+
+fn get(&self) -> i32 = 1;

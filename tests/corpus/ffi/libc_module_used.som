@@ -1,0 +1,9 @@
+// expect: exit 8
+
+use extern "c";
+
+fn main() -> i32 {
+    let p = c::malloc(8);
+    c::free(p);
+    c::toupper(97) - 57
+}

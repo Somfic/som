@@ -45,7 +45,7 @@ pub enum ResolveError {
         span: Span,
         previous: Span,
     },
-    /// `prop x -> i32` on a struct with a field `x`: `p.x` couldn't say which.
+    /// `prop x: i32` on a struct with a field `x`: `p.x` couldn't say which.
     PropNamedLikeField {
         name: String,
         span: Span,

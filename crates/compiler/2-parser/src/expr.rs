@@ -326,8 +326,19 @@ impl Parser<'_> {
                 if self.peek_nth(n) == TokenKind::LessThan {
                     n = self.past_type_args(n).unwrap_or(n);
                 }
+                // `Pair { a, b: 2 }`: `a` short for `a: a`. Only for a capitalised name, which
+                // a struct's is: `for x in items { x }` is a loop.
+                let capitalised = (n.checked_sub(1).and_then(|last| self.ident_ahead(last)))
+                    .is_some_and(|name| name.starts_with(|c: char| c.is_uppercase()));
+                let shorthand = capitalised
+                    && self.peek_nth(n + 1) == TokenKind::Ident
+                    && matches!(
+                        self.peek_nth(n + 2),
+                        TokenKind::Comma | TokenKind::CloseBrace
+                    );
                 let is_constructor = self.peek_nth(n) == TokenKind::OpenBrace
                     && (self.peek_nth(n + 1) == TokenKind::CloseBrace
+                        || shorthand
                         || (self.peek_nth(n + 1) == TokenKind::Ident
                             && self.peek_nth(n + 2) == TokenKind::Colon));
                 if is_constructor && !self.in_condition {
@@ -667,7 +678,8 @@ impl Parser<'_> {
         Some(PatternFields::Named { fields, rest })
     }
 
-    /// `Point { x: 1, y: 2 }`, or `Pair<i32> { a: 1, b: 2 }`
+    /// `Point { x: 1, y: 2 }`, `Pair<i32> { a: 1, b: 2 }`, or `Point { x, y }` of variables
+    /// named like the fields.
     fn parse_constructor(&mut self) -> Option<Id<Expr>> {
         let start = self.current_span();
         let ty = self.parse_path("a constructor name")?;
@@ -676,8 +688,15 @@ impl Parser<'_> {
         self.expect(TokenKind::OpenBrace, "constructor fields")?;
         let fields = self.parse_comma_list(TokenKind::CloseBrace, |p| {
             let name = p.parse_ident("a constructor field name")?;
-            p.expect(TokenKind::Colon, "a constructor field value")?;
-            let value = p.parse_expr()?;
+            let value = if p.eat(TokenKind::Colon) {
+                p.parse_expr()?
+            } else {
+                // `a` is short for `a: a`.
+                let path = som_ast::Path {
+                    segments: vec![name.clone()],
+                };
+                p.ast.exprs.alloc(Expr::Var(path), name.span.clone())
+            };
             Some((name, value))
         })?;
         self.expect(

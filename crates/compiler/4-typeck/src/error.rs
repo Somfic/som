@@ -308,10 +308,10 @@ pub enum TypeError {
         /// `"method"` or `"property"`.
         what: &'static str,
         name: String,
-        /// The impl block's target, as written in terms of its parameters: `Vector<T, 1>`.
-        target: String,
+        /// Each impl block's target that has one, as written in terms of its parameters
+        /// (`Vector<T, 1>`), and where.
+        targets: Vec<(String, Span)>,
         span: Span,
-        impl_span: Span,
     },
     /// `list.len()` of a property, which is read without parentheses: `list.len`. `parens`
     /// is where the `()` is, when there's nothing in it.
@@ -1003,15 +1003,26 @@ impl TypeError {
                 ty,
                 what,
                 name,
-                target,
+                targets,
                 span,
-                impl_span,
-            } => Diagnostic::error(msg![ty.clone(), " has no ", *what, " ", func(name.clone())])
-                .with_label(Label::primary(
-                    span.clone(),
-                    msg![code(name.clone()), " is only defined for ", code(target.clone())],
-                ))
-                .with_label(Label::secondary(impl_span.clone(), "defined for this")),
+            } => {
+                // `Vector<T, 2>`, `Vector<T, 2> and Vector<T, 3>`, or a list ending in `and`.
+                let mut only = msg![code(name.clone()), " is only defined for "];
+                for (i, (target, _)) in targets.iter().enumerate() {
+                    if i > 0 {
+                        only.push(if i + 1 == targets.len() { " and " } else { ", " });
+                    }
+                    only.push(code(target.clone()));
+                }
+                let mut diagnostic =
+                    Diagnostic::error(msg![ty.clone(), " has no ", *what, " ", func(name.clone())])
+                        .with_label(Label::primary(span.clone(), only));
+                for (_, at) in targets {
+                    diagnostic =
+                        diagnostic.with_label(Label::secondary(at.clone(), "defined for this"));
+                }
+                diagnostic
+            }
             TypeError::PropReturnsNothing { name, span } => {
                 Diagnostic::error(msg!["property ", func(name.clone()), " returns nothing"])
                     .with_label(Label::primary(span.clone(), "a property has to give a value"))
