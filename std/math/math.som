@@ -1,32 +1,32 @@
 extern "c";
 
 impl f32 {
-    fn pow(self, power: f32) {
+    pub fn pow(self, power: f32) {
         c::powf(self, power)
     }
 
-    fn sqrt(self) {
+    pub fn sqrt(self) {
         c::sqrtf(self)
     }
 }
 
 
 impl f64 {
-    fn pow(self, power: f64) {
+    pub fn pow(self, power: f64) {
         c::pow(self, power)
     }
 
-    fn sqrt(self) {
+    pub fn sqrt(self) {
         c::sqrt(self)
     }
 }
 
 impl usize {
-    fn smallest(self, other: usize) -> usize {
+    pub fn smallest(self, other: usize) -> usize {
         self if self <= other else other
     }
 
-     fn biggest(self, other: usize) -> usize {
+     pub fn biggest(self, other: usize) -> usize {
         self if self >= other else other
     }
 }

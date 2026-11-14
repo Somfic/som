@@ -106,15 +106,17 @@ impl LoadError {
 
 /// Loads the program at `path` (a file or a directory) and everything it uses.
 pub fn load(path: &Path, library_dirs: &[PathBuf]) -> (Ast, Vec<LoadError>) {
-    load_with(path, library_dirs, &HashMap::new())
+    load_with(path, library_dirs, &HashMap::new(), None)
 }
 
 /// Like [`load`], reading files in `overlay` from there instead of from disk: an
-/// editor's unsaved changes.
+/// editor's unsaved changes. With `opened`, a file in one of the program's folders, its
+/// module is loaded too, whether anything uses it or not.
 pub fn load_with(
     path: &Path,
     library_dirs: &[PathBuf],
     overlay: &HashMap<PathBuf, String>,
+    opened: Option<&Path>,
 ) -> (Ast, Vec<LoadError>) {
     // `.som/raylib.som` is generated for the program around it, so it's that program that
     // gets loaded. Loaded on its own, it would import its header into `.som/.som/`.
@@ -143,6 +145,18 @@ pub fn load_with(
         }
         loader.import_headers(root);
         loader.load_uses(root);
+        // The open file's module, named after its folder within the program: `help`.
+        if let Some(file) = opened
+            && let Some(folder) = file.parent()
+            && let Ok(within) = folder.strip_prefix(folder_of(path))
+            && !within.as_os_str().is_empty()
+        {
+            let name: Vec<String> = (within.components())
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect();
+            let nowhere = Span::empty(Arc::new(Source::from_raw("")));
+            loader.load_module(name.join("::"), folder, nowhere);
+        }
     }
     // The standard library is always there by its full name, `som::io::printf`, without a
     // `use`; `use som::io;` is for naming what's in it unqualified.

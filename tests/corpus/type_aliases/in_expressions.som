@@ -1,21 +1,21 @@
 // expect: exit 21
 
-struct Vector<N: usize, T> { values: [T; N] }
+pub struct Vector<N: usize, T> { values: [T; N] }
 
 impl<T: Copy> Vector<2, T> {
-    fn of(a: T) { Self { values: [a, a] } }
-    fn first(self: &Self) -> &T { &self.values[0] }
+    pub fn of(a: T) { Self { values: [a, a] } }
+    pub fn first(self: &Self) -> &T { &self.values[0] }
 }
-impl Vector<2, i32> { fn zero() { Self { values: [0, 0] } } }
-impl Vector<3, i32> { fn zero() { Self { values: [1, 1, 1] } } }
+impl Vector<2, i32> { pub fn zero() { Self { values: [0, 0] } } }
+impl Vector<3, i32> { pub fn zero() { Self { values: [1, 1, 1] } } }
 
-enum Shape<T> { Empty, Circle(T), Rect { w: T, h: T } }
+pub enum Shape<T> { Empty, Circle(T), Rect { w: T, h: T } }
 
-type Vector3i = Vector<3, i32>;
-type Vector2<T> = Vector<2, T>;
-type Shapes = Shape<i32>;
+pub type Vector3i = Vector<3, i32>;
+pub type Vector2<T> = Vector<2, T>;
+pub type Shapes = Shape<i32>;
 
-fn area(s: Shapes) -> i32 {
+pub fn area(s: Shapes) -> i32 {
     match s {
         Empty => 0,
         Circle(r) => r,
@@ -23,7 +23,7 @@ fn area(s: Shapes) -> i32 {
     }
 }
 
-fn main() -> i32 {
+pub fn main() -> i32 {
     // The alias picks which `zero`, with nothing else to go on.
     let a = Vector3i::zero();
     let b = Vector2::of(4);

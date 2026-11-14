@@ -1,31 +1,31 @@
-struct Hasher {
+pub struct Hasher {
     state: u64
 }
 
 impl Hasher {
-    fn new() {
+    pub fn new() {
         Hasher { state: 0xcbf2_9ce4_8422_2325 }
     }
 
-    prop finish: u64 = mix(.state);
+    pub prop finish: u64 = mix(.state);
 
-    fn new(seed: u64) {
+    pub fn new(seed: u64) {
         let mut hasher = Hasher::new();
         hasher.write(seed);
         hasher
     }
 
-    fn write(&mut self, byte: u8) {
+    pub fn write(&mut self, byte: u8) {
         .state = (.state ^ byte as u64) * 0x0000_0100_0000_01b3;
     }
 
-    fn write(&mut self, bytes: &[u8]) {
+    pub fn write(&mut self, bytes: &[u8]) {
         for byte in bytes {
             self.write(byte)
         }
     }
 
-     fn write(&mut self, n: u64) {
+     pub fn write(&mut self, n: u64) {
         for i in 0..8 {
             self.write((n >> (i * 8)) as u8);
         }
@@ -40,7 +40,7 @@ fn mix(mut h: u64) -> u64 {
     h ^ (h >> 33)
 }
 
-trait Hash {
+pub trait Hash {
     fn hash(&self, hasher: &mut Hasher);
 }
 

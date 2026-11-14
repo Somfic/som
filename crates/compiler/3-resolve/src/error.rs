@@ -5,6 +5,13 @@ use som_base::{Diagnostic, Fix, Label, Span, msg};
 pub enum ResolveError {
     /// `impl [i32; 3] { … }`: methods for a type that's neither a struct nor a built-in one.
     MethodsOnType { ty: String, span: Span },
+    /// A function, struct, alias or trait used where it can't be seen: private to another
+    /// file or type, or only visible in another module.
+    NotVisible {
+        name: String,
+        span: Span,
+        hidden: crate::visibility::Hidden,
+    },
     UnboundVariable {
         name: String,
         span: Span,
@@ -98,6 +105,9 @@ impl ResolveError {
                 help,
                 fixes,
             } => ("trait", ty(name), span, help, fixes),
+            ResolveError::NotVisible { name, span, hidden } => {
+                return crate::visibility::diagnostic(name, span, hidden);
+            }
             ResolveError::MethodsOnType { ty, span } => {
                 return Diagnostic::error(msg!["cannot add methods to ", code(ty.clone())])
                     .with_label(Label::primary(

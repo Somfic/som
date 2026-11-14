@@ -1,4 +1,4 @@
 // expect: ok
 
 use utils;
-fn main() { utils::print(); }
+pub fn main() { utils::print(); }

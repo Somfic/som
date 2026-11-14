@@ -109,7 +109,27 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
       await run(fileUri);
-    })
+    }),
+
+    // The "N references" lens: the references of what's at `line`:`character`, in a peek.
+    vscode.commands.registerCommand(
+      "som.showReferences",
+      async (uri: string, line: number, character: number) => {
+        const target = vscode.Uri.parse(uri);
+        const position = new vscode.Position(line, character);
+        const locations = await vscode.commands.executeCommand<vscode.Location[]>(
+          "vscode.executeReferenceProvider",
+          target,
+          position
+        );
+        await vscode.commands.executeCommand(
+          "editor.action.showReferences",
+          target,
+          position,
+          locations ?? []
+        );
+      }
+    )
   );
 
   client = await startClient();

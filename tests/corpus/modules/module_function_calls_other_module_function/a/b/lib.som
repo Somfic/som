@@ -1,1 +1,1 @@
-fn value() -> i32 { 99 }
+pub fn value() -> i32 { 99 }

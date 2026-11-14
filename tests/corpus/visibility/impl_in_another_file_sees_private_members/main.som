@@ -1,0 +1,8 @@
+// expect: exit 2
+
+/// An impl block for `Point` sees its private fields and methods, wherever it is.
+impl Point {
+    fn doubled(&self) -> i32 { .x + .secret() }
+}
+
+fn main() -> i32 { Point::make().doubled() }

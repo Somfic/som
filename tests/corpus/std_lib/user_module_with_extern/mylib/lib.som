@@ -1,6 +1,6 @@
 extern {
     fn puts(s: cstr);
 }
-fn greet() {
+pub fn greet() {
     puts("Hello from mylib!");
 }

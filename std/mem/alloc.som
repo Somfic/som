@@ -1,46 +1,46 @@
 // A memory allocation for T
-struct Alloc<T> {
+pub struct Alloc<T> {
     ptr: *T,
-    size: usize
+    pub size: usize
 }
 
 impl<T> Alloc<T> {
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Alloc { ptr: null<T>(), size: 0 }
     }
 
-    fn with_capacity(size: usize) -> Self {
+    pub fn with_capacity(size: usize) -> Self {
         let mut ptr = null<T>();
         ptr.resize(size);
         Alloc { ptr, size }
     }
 
-    fn resize(&mut self, size: usize) {
+    pub fn resize(&mut self, size: usize) {
         self.ptr.resize(size);
         self.size = size;
     }
 
-    fn write(&mut self, index: usize, value: T) {
+    pub fn write(&mut self, index: usize, value: T) {
         self.ptr.write(index, value)
     }
 
-    fn read(&mut self, index: usize) -> T {
+    pub fn read(&mut self, index: usize) -> T {
         self.ptr.read(index)
     }
 
-    fn at(&self, index: usize) -> &T {
+    pub fn at(&self, index: usize) -> &T {
         self.ptr.at(index)
     }
 
-    fn at(&mut self, index: usize) -> &mut T {
+    pub fn at(&mut self, index: usize) -> &mut T {
         self.ptr.at_mut(index)
     }
 
-    fn view(&self, len: usize) -> &[T] {
+    pub fn view(&self, len: usize) -> &[T] {
         self.ptr.view(len)
     }
 
-    fn view(&mut self, len: usize) -> &mut [T] {
+    pub fn view(&mut self, len: usize) -> &mut [T] {
         self.ptr.view_mut(len)
     }
 }
@@ -52,7 +52,7 @@ impl<T> Drop for Alloc<T> {
 }
 
 impl<T: Copy> Alloc<T> {
-    fn with_capacity(size: usize, initial_value: T) -> Self {
+    pub fn with_capacity(size: usize, initial_value: T) -> Self {
         let mut ptr = null<T>();
         ptr.resize(size);
 
@@ -63,7 +63,7 @@ impl<T: Copy> Alloc<T> {
         alloc
     }
 
-    fn write_all(&mut self, value: T) {
+    pub fn write_all(&mut self, value: T) {
         for i in 0..self.size {
             .write(i, value);
         }

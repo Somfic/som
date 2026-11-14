@@ -15,9 +15,21 @@ pub enum Item {
 /// `type Vector3 = Vector<3, f32>;`: another name for a type, which stands for it wherever
 /// it's written. It can have generic parameters, filled in where it's used:
 /// `type Vector3<T> = Vector<3, T>;`.
+/// Who can see an item. `pub`: everyone. `mod`: its module, the folder it's in. Without
+/// either: its own file, and for a field, method or property also its type's `impl` blocks,
+/// wherever they are.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Visibility {
+    #[default]
+    Private,
+    Module,
+    Public,
+}
+
 pub struct Alias {
     /// The `///` comment above it.
     pub doc: Option<String>,
+    pub visibility: Visibility,
     pub name: Ident,
     pub generics: Vec<Generic>,
     pub ty: Id<TypeExpr>,
@@ -72,6 +84,7 @@ pub struct Impl {
 pub struct Trait {
     /// The `///` comment above it.
     pub doc: Option<String>,
+    pub visibility: Visibility,
     pub name: Ident,
     pub generics: Vec<Generic>,
     /// `type Item;`: types each implementation says.
@@ -93,6 +106,8 @@ pub struct AssocType {
 pub struct Func {
     /// The `///` comment above it.
     pub doc: Option<String>,
+    /// For a method in a trait, or a trait's implementation: as visible as the trait.
+    pub visibility: Visibility,
     pub name: Ident,
     pub generics: Vec<Generic>,
     pub params: Vec<Param>,
@@ -138,6 +153,7 @@ pub struct Param {
 pub struct Struct {
     /// The `///` comment above it.
     pub doc: Option<String>,
+    pub visibility: Visibility,
     pub name: Ident,
     /// `struct Pair<T>`, `struct Buffer<N: usize>`: what it's written in terms of, filled in
     /// where it's used.
@@ -202,6 +218,8 @@ pub enum VariantKind {
 pub struct Field {
     /// The `///` comment above it.
     pub doc: Option<String>,
+    /// An enum variant's fields are as visible as the enum.
+    pub visibility: Visibility,
     pub name: Ident,
     pub ty: Id<TypeExpr>,
 }

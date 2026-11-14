@@ -43,6 +43,15 @@ fn teal(text: impl std::fmt::Display) -> String {
     format!("{}", text.to_string().truecolor(TEAL.0, TEAL.1, TEAL.2))
 }
 
+/// A line number in the margin: dim, but upright, unlike `subtext`.
+fn margin(text: impl std::fmt::Display) -> String {
+    format!(
+        "{}",
+        text.to_string()
+            .truecolor(SUBTEXT0.0, SUBTEXT0.1, SUBTEXT0.2)
+    )
+}
+
 fn subtext(text: impl std::fmt::Display) -> String {
     format!(
         "{}",
@@ -332,7 +341,7 @@ fn fmt_label_group(
                 if has_primary || has_secondary {
                     format!("{}", format!("{:>4}", line_num).truecolor(sc.0, sc.1, sc.2))
                 } else {
-                    subtext(format!("{:>4}", line_num))
+                    margin(format!("{:>4}", line_num))
                 }
             };
 
@@ -443,7 +452,7 @@ fn fmt_fix(f: &mut std::fmt::Formatter<'_>, fix: &Fix) -> std::fmt::Result {
                 writeln!(
                     f,
                     "{} {}   {}",
-                    subtext(format!("{n:>4}")),
+                    margin(format!("{n:>4}")),
                     surface("│"),
                     syntax_highlight(next)
                 )?;
@@ -555,9 +564,12 @@ impl Display for Rendered<'_> {
         let d = self.diagnostic;
         writeln!(f, "{}: {}", d.severity, d.message.render(self.color))?;
 
-        // Code snippets get some room; a diagnostic without them stays compact.
-        if !d.labels.is_empty() {
+        // Code snippets and hints get some room from the message; a diagnostic with neither
+        // stays one line.
+        if !d.labels.is_empty() || !d.hints.is_empty() || !d.trace.is_empty() {
             writeln!(f)?;
+        }
+        if !d.labels.is_empty() {
             for group in group_labels_by_source(&d.labels) {
                 fmt_label_group(f, &group, &d.severity, self.color)?;
             }
@@ -567,11 +579,14 @@ impl Display for Rendered<'_> {
         }
 
         for hint in &d.hints {
-            writeln!(f, "{}{} {}", GUTTER, teal("?"), hint.render(self.color))?;
+            let hint = styled(&hint.render(self.color), ITALIC, self.color);
+            writeln!(f, "{}{} {}", GUTTER, teal("┆"), hint)?;
         }
 
+        // Each fix: what it does, then the lines as it leaves them.
         for fix in &d.fixes {
             writeln!(f)?;
+            writeln!(f, "{}{} {}", GUTTER, teal("▪"), fix.title.render(self.color))?;
             fmt_fix(f, fix)?;
         }
 
@@ -580,6 +595,17 @@ impl Display for Rendered<'_> {
         }
 
         Ok(())
+    }
+}
+
+const ITALIC: &str = "\x1b[3m";
+
+/// `text` in `style` (an escape code, like `ITALIC`) throughout, when in `color`: each reset
+/// inside it, after a name in colour, turns the style back on.
+fn styled(text: &str, style: &str, color: bool) -> String {
+    match color {
+        true => format!("{style}{}\x1b[0m", text.replace("\x1b[0m", &format!("\x1b[0m{style}"))),
+        false => text.to_string(),
     }
 }
 

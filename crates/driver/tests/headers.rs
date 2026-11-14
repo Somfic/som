@@ -274,7 +274,7 @@ fn a_header_can_include_others_from_where_it_was_found() {
     check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
     let text = std::fs::read_to_string(dir.path().join(".som").join("demo.som")).unwrap();
     assert!(
-        text.contains("    /// Frees nothing,\n    /// in two lines.\n    fn demo_free();"),
+        text.contains("    /// Frees nothing,\n    /// in two lines.\n    pub fn demo_free();"),
         "documentation comes from the included header:\n{text}"
     );
 }
@@ -431,12 +431,12 @@ fn header_comments_become_doc_comments() {
     let text = std::fs::read_to_string(dir.path().join(".som").join("demo.som")).unwrap();
 
     for expected in [
-        "/// A pair of numbers\nstruct Pair {\n    /// The left one\n    left: i32,\n    /// The right one\n    right: f32,",
-        "    /// Adds two numbers\n    fn add_numbers(",
-        "    /// Frames per second.\n    fn get_fps(",
+        "/// A pair of numbers\npub struct Pair {\n    /// The left one\n    pub left: i32,\n    /// The right one\n    pub right: f32,",
+        "    /// Adds two numbers\n    pub fn add_numbers(",
+        "    /// Frames per second.\n    pub fn get_fps(",
         // A `/* */` block above a macro-prefixed declaration, kept as Markdown.
-        "    /// Makes a size.\n    ///\n    ///     demo_size s = demo_size_of(2);\n    fn demo_size_of(w: i32) -> DemoSize;",
-        "    /// Frees nothing,\n    /// in two lines.\n    fn demo_free();",
+        "    /// Makes a size.\n    ///\n    ///     demo_size s = demo_size_of(2);\n    pub fn demo_size_of(w: i32) -> DemoSize;",
+        "    /// Frees nothing,\n    /// in two lines.\n    pub fn demo_free();",
     ] {
         assert!(text.contains(expected), "missing:\n{expected}\nin:\n{text}");
     }

@@ -30,7 +30,7 @@ fn main() -> i32 {
         let value = map.get(&42) else @unreachable;
         failed = failed + check(*value == 7, 3);
     }
-    failed = failed + check(map.entries.len == 100, 4);
+    failed = failed + check(map.len == 100, 4);
 
     // A key never given.
     {

@@ -1,13 +1,13 @@
-struct String {
+pub struct String {
     bytes: List<u8>
 }
 
 impl String {
-    fn new(string: str) -> Self {
+    pub fn new(string: str) -> Self {
         String { bytes: string.bytes() }
     }
 
-    prop len = .bytes.len;
+    pub prop len = .bytes.len;
 }
 
 impl From<str> for String {

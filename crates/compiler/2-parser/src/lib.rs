@@ -36,6 +36,7 @@ pub fn parse_file(source: Arc<Source>, ast: &mut Ast, module: usize) -> Vec<Pars
         in_recovery: false,
         in_condition: false,
         in_impl: false,
+        visibility: som_ast::Visibility::Private,
     };
     parser.skip_trivia();
     parser.parse_program();
@@ -106,6 +107,8 @@ struct Parser<'a> {
     in_condition: bool,
     /// In an `impl` or `trait` block, where methods can take `self`.
     in_impl: bool,
+    /// The `pub` or `mod` just read, for the item, method or field after it to take.
+    visibility: som_ast::Visibility,
 }
 
 impl Parser<'_> {
@@ -175,6 +178,8 @@ impl Parser<'_> {
         for token in self.tokens[..self.pos].iter().rev() {
             match token.kind {
                 TokenKind::Whitespace if token.text.matches('\n').count() <= 1 => continue,
+                // `/// …` above `pub fn`: the comment is the item's.
+                TokenKind::Pub | TokenKind::Mod => continue,
                 TokenKind::Comment
                     if token.text.starts_with("///") && !token.text.starts_with("////") =>
                 {
@@ -191,6 +196,17 @@ impl Parser<'_> {
         }
         lines.reverse();
         (!lines.is_empty()).then(|| lines.join("\n"))
+    }
+
+    /// `pub` or `mod` before an item, method or field, if it's there: who can see it.
+    fn parse_visibility(&mut self) -> som_ast::Visibility {
+        if self.eat(TokenKind::Pub) {
+            som_ast::Visibility::Public
+        } else if self.eat(TokenKind::Mod) {
+            som_ast::Visibility::Module
+        } else {
+            som_ast::Visibility::Private
+        }
     }
 
     fn current_span(&self) -> Span {
@@ -484,6 +500,8 @@ fn can_start_item(kind: TokenKind) -> bool {
             | TokenKind::Star
             | TokenKind::Bang
             | TokenKind::Tilde
+            | TokenKind::Pub
+            | TokenKind::Mod
     ) || ty::primitive(kind).is_some()
 }
 

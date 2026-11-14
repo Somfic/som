@@ -1,0 +1,4 @@
+// expect: error NotVisible
+
+/// `p.secret()`: a method private to another file.
+fn main() -> i32 { Point::make().secret() }

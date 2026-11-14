@@ -5,7 +5,7 @@
 use som::data;
 use som::io;
 
-fn main() -> i32 {
+pub fn main() -> i32 {
     let items: List = [1, 2, 3, 4];
     let mut total = 0;
     for item in &items {

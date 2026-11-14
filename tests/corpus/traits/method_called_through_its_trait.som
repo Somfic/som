@@ -3,18 +3,18 @@
 /// A trait's method can be called through the trait, `Twice::twice(&p)`, as a type's can
 /// through the type, `P::get(&p)`: `self` is the first argument, written as the method takes
 /// it.
-trait Twice { fn twice(&self) -> i32; }
+pub trait Twice { fn twice(&self) -> i32; }
 
-struct P { x: i32 }
+pub struct P { x: i32 }
 
 impl P {
-    fn get(&self) -> i32 { .x }
-    fn add(&self, n: i32) -> i32 { .x + n }
+    pub fn get(&self) -> i32 { .x }
+    pub fn add(&self, n: i32) -> i32 { .x + n }
 }
 
 impl Twice for P { fn twice(&self) -> i32 { .x * 2 } }
 
-fn main() -> i32 {
+pub fn main() -> i32 {
     let p = P { x: 3 };
     P::get(&p) + P::add(&p, 1) + Twice::twice(&p)
 }

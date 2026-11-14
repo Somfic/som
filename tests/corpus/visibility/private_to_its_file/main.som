@@ -1,0 +1,4 @@
+// expect: error NotVisible
+
+/// A function without `pub` or `mod` is private to its file, even in the same module.
+fn main() -> i32 { secret() }

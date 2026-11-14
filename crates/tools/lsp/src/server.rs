@@ -12,11 +12,13 @@ use som_ast::{BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_base::Source;
 use som_driver::Analysis;
 use som_lexer::{TokenKind, lex};
+use som_resolve::visibility::{self, Viewer};
 use som_resolve::{DefId, DefKind, LangTrait};
 use som_typeck::{ArrayMethod, PointerMethod, Ty};
 
 use crate::convert;
 use crate::index::{AstIndex, NodeRef, items_in_file};
+use crate::references::{self, Occurrence, Symbol};
 
 /// The analysis of one project (a directory of `.som` files).
 struct Project {
@@ -136,12 +138,8 @@ async fn analyze(client: &Client, state: &State, uri: &Url) {
     };
     let opened = SomLanguageServer::file_of(uri).unwrap_or_default();
     let std_root = som_driver::stdlib::root().filter(|_| som_driver::stdlib::contains(&path));
-    let Some(root) = std_root
-        .map(Path::to_path_buf)
-        .or_else(|| path.parent().map(Path::to_path_buf))
-    else {
-        return;
-    };
+    // A file belongs to the program around it: the nearest folder with a `main.som`.
+    let root = std_root.map_or_else(|| som_driver::program_root(&path), Path::to_path_buf);
     analyze_root(client, state, root.clone(), opened).await;
     if std_root.is_some() {
         let others: Vec<PathBuf> = (state.projects.read().await.keys())
@@ -163,6 +161,7 @@ async fn analyze_root(client: &Client, state: &State, root: PathBuf, opened: Str
         overlay: (state.documents.read().await.iter())
             .map(|(file, (_, text))| (PathBuf::from(file), text.clone()))
             .collect(),
+        opened: (!opened.is_empty()).then(|| PathBuf::from(&opened)),
         ..Default::default()
     };
     let analyzed_root = root.clone();
@@ -268,6 +267,13 @@ impl LanguageServer for SomLanguageServer {
                     work_done_progress_options: Default::default(),
                 }),
                 document_symbol_provider: Some(OneOf::Left(true)),
+                workspace_symbol_provider: Some(OneOf::Left(true)),
+                references_provider: Some(OneOf::Left(true)),
+                document_highlight_provider: Some(OneOf::Left(true)),
+                rename_provider: Some(OneOf::Right(RenameOptions {
+                    prepare_provider: Some(true),
+                    work_done_progress_options: Default::default(),
+                })),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(vec![
                         ".".to_string(),
@@ -405,6 +411,12 @@ impl LanguageServer for SomLanguageServer {
                     range: Range::default(),
                 })
             }));
+        }
+        // On a definition's own name: itself. The editor then shows its references instead.
+        if let Some(uses) = uses_at(a, &cursor.file, cursor.offset)
+            && uses.at.definition
+        {
+            return Ok(location(&uses.at.span).map(GotoDefinitionResponse::Scalar));
         }
         let Some(node) = AstIndex::build(&a.ast).find_at(&cursor.file, cursor.offset) else {
             return Ok(None);
@@ -578,6 +590,29 @@ impl LanguageServer for SomLanguageServer {
                         .iter()
                         .map(|&id| func_symbol(id, SymbolKind::FUNCTION)),
                 ),
+                Item::Struct(id) if ast.structs[*id].variants.is_some() => {
+                    let s = &ast.structs[*id];
+                    let variants = (s.variants.iter().flatten().enumerate())
+                        .map(|(i, v)| {
+                            symbol(
+                                v.name.name.to_string(),
+                                Some(variant_text(a, *id, i)),
+                                SymbolKind::ENUM_MEMBER,
+                                &v.name.span,
+                                &v.name.span,
+                                None,
+                            )
+                        })
+                        .collect();
+                    symbols.push(symbol(
+                        s.name.name.to_string(),
+                        None,
+                        SymbolKind::ENUM,
+                        ast.structs.span(*id),
+                        &s.name.span,
+                        Some(variants),
+                    ));
+                }
                 Item::Struct(id) => {
                     let s = &ast.structs[*id];
                     let fields = s
@@ -609,7 +644,14 @@ impl LanguageServer for SomLanguageServer {
                     let methods: Vec<DocumentSymbol> = block
                         .methods
                         .iter()
-                        .map(|&m| func_symbol(m, SymbolKind::METHOD))
+                        .map(|&m| {
+                            let kind = if ast.funcs[m].prop {
+                                SymbolKind::PROPERTY
+                            } else {
+                                SymbolKind::METHOD
+                            };
+                            func_symbol(m, kind)
+                        })
                         .collect();
                     let span = block.methods.last().map_or(block.target.span(), |&m| {
                         block.target.span().merge(ast.funcs.span(m))
@@ -654,6 +696,129 @@ impl LanguageServer for SomLanguageServer {
         Ok(Some(DocumentSymbolResponse::Nested(symbols)))
     }
 
+    async fn references(&self, params: ReferenceParams) -> Result<Option<Vec<Location>>> {
+        let position = &params.text_document_position;
+        let Some(cursor) = self
+            .cursor(&position.text_document.uri, &position.position)
+            .await
+        else {
+            return Ok(None);
+        };
+        let projects = self.state.projects.read().await;
+        let Some(a) = Self::project_for(&projects, &cursor.file) else {
+            return Ok(None);
+        };
+        let Some(uses) = uses_at(a, &cursor.file, cursor.offset) else {
+            return Ok(None);
+        };
+        let declarations = params.context.include_declaration;
+        Ok(Some(
+            (uses.matching.iter())
+                .filter(|o| declarations || !o.definition)
+                .filter_map(|o| location(&o.span))
+                .collect(),
+        ))
+    }
+
+    /// Every other place in this file the symbol under the cursor is named.
+    async fn document_highlight(
+        &self,
+        params: DocumentHighlightParams,
+    ) -> Result<Option<Vec<DocumentHighlight>>> {
+        let position = &params.text_document_position_params;
+        let Some(cursor) = self
+            .cursor(&position.text_document.uri, &position.position)
+            .await
+        else {
+            return Ok(None);
+        };
+        let projects = self.state.projects.read().await;
+        let Some(a) = Self::project_for(&projects, &cursor.file) else {
+            return Ok(None);
+        };
+        let Some(uses) = uses_at(a, &cursor.file, cursor.offset) else {
+            return Ok(None);
+        };
+        Ok(Some(
+            (uses.matching.iter())
+                .filter(|o| o.span.source.identifier() == cursor.file)
+                .map(|o| DocumentHighlight {
+                    range: convert::span_to_range(&o.span),
+                    kind: Some(if o.definition {
+                        DocumentHighlightKind::WRITE
+                    } else {
+                        DocumentHighlightKind::READ
+                    }),
+                })
+                .collect(),
+        ))
+    }
+
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let Some(cursor) = self.cursor(&params.text_document.uri, &params.position).await else {
+            return Ok(None);
+        };
+        let projects = self.state.projects.read().await;
+        let Some(a) = Self::project_for(&projects, &cursor.file) else {
+            return Ok(None);
+        };
+        let Some(uses) = uses_at(a, &cursor.file, cursor.offset) else {
+            return Err(tower_lsp::jsonrpc::Error::invalid_params(
+                "there's nothing to rename here",
+            ));
+        };
+        if let Err(why) = renamable(a, &uses) {
+            return Err(tower_lsp::jsonrpc::Error::invalid_params(why));
+        }
+        Ok(Some(PrepareRenameResponse::Range(convert::span_to_range(
+            &uses.at.span,
+        ))))
+    }
+
+    async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
+        let position = &params.text_document_position;
+        let Some(cursor) = self
+            .cursor(&position.text_document.uri, &position.position)
+            .await
+        else {
+            return Ok(None);
+        };
+        let projects = self.state.projects.read().await;
+        let Some(a) = Self::project_for(&projects, &cursor.file) else {
+            return Ok(None);
+        };
+        let Some(uses) = uses_at(a, &cursor.file, cursor.offset) else {
+            return Ok(None);
+        };
+        let new = params.new_name.trim();
+        if let Err(why) = renamable(a, &uses).and_then(|()| valid_name(new)) {
+            return Err(tower_lsp::jsonrpc::Error::invalid_params(why));
+        }
+        Ok(Some(rename_edit(&uses, new)))
+    }
+
+    /// Every function, type and trait in the program whose name matches what's typed.
+    async fn symbol(
+        &self,
+        params: WorkspaceSymbolParams,
+    ) -> Result<Option<Vec<SymbolInformation>>> {
+        let projects = self.state.projects.read().await;
+        let mut seen = HashSet::new();
+        let mut found = Vec::new();
+        for project in projects.values() {
+            for symbol in workspace_symbols(&project.analysis, &params.query) {
+                let key = (symbol.location.uri.clone(), symbol.location.range.start);
+                if seen.insert((key.0.to_string(), key.1.line, key.1.character)) {
+                    found.push(symbol);
+                }
+            }
+        }
+        Ok(Some(found))
+    }
+
     async fn code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
         let uri = &params.text_document.uri;
         let Some(file) = Self::file_of(uri) else {
@@ -676,20 +841,20 @@ impl LanguageServer for SomLanguageServer {
                 }
                 _ => None,
             });
-        let Some(main) = main else {
-            return Ok(None);
-        };
-
-        let start = convert::span_to_range(a.ast.funcs.span(main)).start;
-        Ok(Some(vec![CodeLens {
-            range: Range { start, end: start },
-            command: Some(Command {
-                title: "$(play) Run".to_string(),
-                command: "som.run".to_string(),
-                arguments: Some(vec![serde_json::Value::String(uri.to_string())]),
-            }),
-            data: None,
-        }]))
+        let mut lenses = reference_lenses(a, &file, uri);
+        if let Some(main) = main {
+            let start = convert::span_to_range(a.ast.funcs.span(main)).start;
+            lenses.push(CodeLens {
+                range: Range { start, end: start },
+                command: Some(Command {
+                    title: "$(play) Run".to_string(),
+                    command: "som.run".to_string(),
+                    arguments: Some(vec![serde_json::Value::String(uri.to_string())]),
+                }),
+                data: None,
+            });
+        }
+        Ok(Some(lenses))
     }
 
     async fn semantic_tokens_full(
@@ -723,6 +888,9 @@ impl LanguageServer for SomLanguageServer {
         };
         let a = &project.analysis;
         let insert = Insert::at(&cursor.text, cursor.offset);
+        // Only what can be used from here: no private fields or methods of another file's type.
+        let viewer = viewer_at(a, &cursor.file, cursor.offset);
+        let visible = |def: DefId| visibility::can_see(&a.ast, &a.names, def, viewer);
 
         let mut items = Vec::new();
         // `@`, `@unr`: the built-ins, replacing what's typed of one, `@` and all.
@@ -948,7 +1116,13 @@ impl LanguageServer for SomLanguageServer {
             {
                 // A generic struct's fields as they are here: `i32`, not `T`.
                 let subst = struct_subst(a, s, a.typed.expr(expr));
-                for (field, t) in readable_fields(a, s) {
+                let enum_ = a.ast.structs[s].is_enum();
+                for (i, (field, t)) in readable_fields(a, s).into_iter().enumerate() {
+                    // An enum's common fields are as visible as it.
+                    if !enum_ && visibility::hidden_field(&a.ast, &a.names, s, i, viewer).is_some()
+                    {
+                        continue;
+                    }
                     items.push(CompletionItem {
                         label: field.name.name.to_string(),
                         kind: Some(CompletionItemKind::FIELD),
@@ -957,8 +1131,11 @@ impl LanguageServer for SomLanguageServer {
                         ..Default::default()
                     });
                 }
-                prop_items(a, owner, a.typed.expr(expr), &mut items);
+                prop_items(a, owner, a.typed.expr(expr), viewer, &mut items);
                 for (name, method) in a.names.methods_of(owner) {
+                    if !visible(method) {
+                        continue;
+                    }
                     // As it is on this receiver: `Vector<i32>`, not `Vector<T>`.
                     let detail = match a.names.def(method).kind {
                         DefKind::Func(f) => {
@@ -992,13 +1169,16 @@ impl LanguageServer for SomLanguageServer {
                 let owner = som_typeck::traits::primitive_of(a.typed.ty(viewed))
                     .and_then(|p| a.names.primitive(p));
                 if let Some(owner) = owner {
-                    prop_items(a, owner, t, &mut items);
+                    prop_items(a, owner, t, viewer, &mut items);
                 }
                 for (name, method) in owner.map(|o| a.names.methods_of(o)).unwrap_or_default() {
                     // Only those taking a `self`: `i32::parse` is called on the type.
                     let DefKind::Func(f) = a.names.def(method).kind else {
                         continue;
                     };
+                    if !visible(method) {
+                        continue;
+                    }
                     if a.ast.funcs[f]
                         .params
                         .first()
@@ -1074,8 +1254,11 @@ impl LanguageServer for SomLanguageServer {
             && let Some(s) = find_struct(a, path, &cursor.file, cursor.offset)
         {
             // `Color { r: 1, ` lists the fields not written yet.
-            for (field, &t) in a.ast.structs[s].fields.iter().zip(a.typed.fields(s)) {
-                if written.contains(&*field.name.name) {
+            let fields = a.ast.structs[s].fields.iter().zip(a.typed.fields(s));
+            for (i, (field, &t)) in fields.enumerate() {
+                if written.contains(&*field.name.name)
+                    || visibility::hidden_field(&a.ast, &a.names, s, i, viewer).is_some()
+                {
                     continue;
                 }
                 items.push(CompletionItem {
@@ -1133,6 +1316,9 @@ impl LanguageServer for SomLanguageServer {
             } else if let Some(owner) = a.names.primitives_named(module) {
                 // `i32::` lists its own functions and methods.
                 for (name, method) in a.names.methods_of(owner) {
+                    if !visible(method) {
+                        continue;
+                    }
                     let DefKind::Func(f) = a.names.def(method).kind else {
                         continue;
                     };
@@ -1181,6 +1367,9 @@ impl LanguageServer for SomLanguageServer {
                 }
                 let owner = a.names.strukt(s);
                 for (name, method) in a.names.methods_of(owner) {
+                    if !visible(method) {
+                        continue;
+                    }
                     let snippet = match a.names.def(method).kind {
                         DefKind::Func(f) => call_snippet(a, f, name, 0, insert),
                         _ => None,
@@ -2053,6 +2242,27 @@ fn method_subst(
     }
 }
 
+/// Who's looking from `offset` in `file`: its module, the file, and the type whose impl
+/// block it's in, if any.
+fn viewer_at<'f>(a: &Analysis, file: &'f str, offset: usize) -> Viewer<'f> {
+    let module = (a.ast.modules.iter())
+        .position(|m| m.files.iter().any(|f| f.identifier() == file))
+        .unwrap_or(usize::MAX);
+    let owner = (a.ast.funcs.iter())
+        .filter(|&(f, _)| {
+            let span = a.ast.funcs.span(f);
+            span.source.identifier() == file
+                && (span.start_offset..=span.start_offset + span.length).contains(&offset)
+        })
+        .find_map(|(f, _)| a.names.impl_of(f))
+        .and_then(|i| a.names.impls[i].owner);
+    Viewer {
+        module,
+        file,
+        owner,
+    }
+}
+
 /// The properties of `owner` a value of type `receiver` has, as completions: `x.len`. Of
 /// several impl blocks with one called the same, only the one for this type, so a
 /// `Vector<3, i32>` gets `Vector<3, T>`'s `x`, not `Vector<2, T>`'s.
@@ -2060,12 +2270,16 @@ fn prop_items(
     a: &Analysis,
     owner: DefId,
     receiver: som_typeck::TypeId,
+    viewer: Viewer,
     items: &mut Vec<CompletionItem>,
 ) {
     for (name, prop) in a.names.props_of(owner) {
         let DefKind::Func(f) = a.names.def(prop).kind else {
             continue;
         };
+        if !visibility::can_see(&a.ast, &a.names, prop, viewer) {
+            continue;
+        }
         let fits = (a.names.impl_of(f))
             .and_then(|i| a.typed.impls[i].target)
             .is_none_or(|target| impl_target_matches(a, target, receiver));
@@ -3448,6 +3662,233 @@ fn type_position(text: &str, offset: usize) -> bool {
     false
 }
 
+/// "N references" above each function, type and trait in `file`, and each method in its
+/// impl blocks: opening them in a peek.
+fn reference_lenses(a: &Analysis, file: &str, uri: &Url) -> Vec<CodeLens> {
+    let all = references::occurrences(a);
+    let mut names: Vec<(Symbol, Span)> = Vec::new();
+    let mut add = |def: DefId, span: &Span| names.push((Symbol::Def(def), span.clone()));
+    for item in items_in_file(&a.ast, file) {
+        match item {
+            Item::Func(f) => add(a.names.func(*f), &a.ast.funcs[*f].name.span),
+            Item::Struct(s) => add(a.names.strukt(*s), &a.ast.structs[*s].name.span),
+            Item::Trait(t) => add(a.names.trait_def(*t), &a.ast.traits[*t].name.span),
+            Item::Impl(block) => {
+                for &m in &block.methods {
+                    add(a.names.func(m), &a.ast.funcs[m].name.span);
+                }
+            }
+            Item::Extern(_) | Item::Alias(_) | Item::Use(_) => {}
+        }
+    }
+    (names.into_iter())
+        .map(|(symbol, span)| {
+            let family = references::family(a, symbol);
+            let count = (all.iter())
+                .filter(|o| family.contains(&o.symbol) && !o.definition)
+                .count();
+            let title = match count {
+                1 => "1 reference".to_string(),
+                n => format!("{n} references"),
+            };
+            let range = convert::span_to_range(&span);
+            CodeLens {
+                range,
+                command: Some(Command {
+                    title,
+                    command: "som.showReferences".to_string(),
+                    arguments: Some(vec![
+                        serde_json::Value::String(uri.to_string()),
+                        range.start.line.into(),
+                        range.start.character.into(),
+                    ]),
+                }),
+                data: None,
+            }
+        })
+        .collect()
+}
+
+/// The symbol named at a place, and every place it, or what shares its name, is named.
+struct Uses {
+    at: Occurrence,
+    matching: Vec<Occurrence>,
+    all: Vec<Occurrence>,
+}
+
+fn uses_at(a: &Analysis, file: &str, offset: usize) -> Option<Uses> {
+    let all = references::occurrences(a);
+    let symbol = references::symbol_at(&all, file, offset)?;
+    let at = (all.iter())
+        .find(|o| {
+            o.symbol == symbol
+                && o.span.source.identifier() == file
+                && (o.span.start_offset..=o.span.start_offset + o.span.length).contains(&offset)
+        })?
+        .clone();
+    let family = references::family(a, symbol);
+    let mut seen = HashSet::new();
+    let matching = (all.iter())
+        .filter(|o| family.contains(&o.symbol))
+        .filter(|o| seen.insert((o.span.source.identifier().to_string(), o.span.start_offset)))
+        .cloned()
+        .collect();
+    Some(Uses { at, matching, all })
+}
+
+/// Why the symbol can't be renamed, if it can't: it's the standard library's, C's, or the
+/// language's own.
+fn renamable(a: &Analysis, uses: &Uses) -> std::result::Result<(), String> {
+    if let Symbol::Def(def) = uses.at.symbol {
+        match a.names.def(def).kind {
+            DefKind::Primitive(_) => return Err("a built-in type can't be renamed".into()),
+            DefKind::SelfType { .. } => {
+                return Err("`Self` can't be renamed: rename the type itself".into());
+            }
+            DefKind::Func(f) => {
+                let func = &a.ast.funcs[f];
+                if func.body.is_none() && !func.in_trait {
+                    return Err(format!(
+                        "`{}` is a C function: its name is C's",
+                        func.name.name
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    if !uses.matching.iter().any(|o| o.definition) {
+        return Err("this isn't defined in your code, so it can't be renamed".into());
+    }
+    let in_std = |o: &Occurrence| {
+        som_driver::stdlib::contains(Path::new(o.span.source.identifier()))
+    };
+    if uses.matching.iter().any(|o| o.definition && in_std(o)) {
+        return Err(format!(
+            "`{}` is the standard library's, so it can't be renamed",
+            references::name_of(a, uses.at.symbol)
+        ));
+    }
+    Ok(())
+}
+
+/// Why `name` can't be a name, if it can't.
+fn valid_name(name: &str) -> std::result::Result<(), String> {
+    let tokens = lex(Arc::new(Source::from_raw(name)));
+    let words: Vec<_> = (tokens.iter())
+        .filter(|t| !matches!(t.kind, TokenKind::Whitespace | TokenKind::Eof))
+        .collect();
+    match words.as_slice() {
+        [word] if word.kind == TokenKind::Ident => Ok(()),
+        [word] if word.text.chars().all(|c| c.is_alphanumeric() || c == '_') => {
+            Err(format!("`{name}` is a keyword, so it can't be a name"))
+        }
+        _ => Err(format!("`{name}` isn't a name: use letters, digits and `_`")),
+    }
+}
+
+/// The edits renaming every one of `uses` to `new`. In `Point { x }` the field and the
+/// variable are named once: renaming one writes both, `Point { y: x }` or `Point { x: y }`.
+fn rename_edit(uses: &Uses, new: &str) -> WorkspaceEdit {
+    let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+    for o in &uses.matching {
+        let Ok(uri) = Url::from_file_path(o.span.source.identifier()) else {
+            continue;
+        };
+        let old = o.span.get_text();
+        let text = if o.shorthand {
+            format!("{new}: {old}")
+        } else if (uses.all.iter()).any(|f| {
+            f.shorthand
+                && f.symbol != o.symbol
+                && f.span.start_offset == o.span.start_offset
+                && f.span.source.identifier() == o.span.source.identifier()
+        }) {
+            format!("{old}: {new}")
+        } else {
+            new.to_string()
+        };
+        changes.entry(uri).or_default().push(TextEdit {
+            range: convert::span_to_range(&o.span),
+            new_text: text,
+        });
+    }
+    WorkspaceEdit {
+        changes: Some(changes),
+        ..Default::default()
+    }
+}
+
+/// The program's functions, types and traits whose names hold `query`'s letters in order,
+/// ignoring case: `mpins` finds `Map::insert`.
+fn workspace_symbols(a: &Analysis, query: &str) -> Vec<SymbolInformation> {
+    let query: Vec<char> = query.to_lowercase().chars().collect();
+    let matches = |name: &str| {
+        let mut wanted = query.iter().peekable();
+        for c in name.to_lowercase().chars() {
+            if wanted.peek() == Some(&&c) {
+                wanted.next();
+            }
+        }
+        wanted.peek().is_none()
+    };
+    let mut found = Vec::new();
+    for (_, def) in a.names.defs.iter_with_ids() {
+        let (kind, container) = match def.kind {
+            DefKind::Func(f) => {
+                let container = (a.names.impl_of(f))
+                    .and_then(|i| a.names.impls[i].owner)
+                    .map(|owner| a.names.def(owner).name.to_string());
+                let kind = if a.ast.funcs[f].prop {
+                    SymbolKind::PROPERTY
+                } else if container.is_some() || a.ast.funcs[f].in_trait {
+                    SymbolKind::METHOD
+                } else {
+                    SymbolKind::FUNCTION
+                };
+                (kind, container)
+            }
+            DefKind::Struct(s) if a.ast.structs[s].variants.is_some() => (SymbolKind::ENUM, None),
+            DefKind::Struct(_) => (SymbolKind::STRUCT, None),
+            DefKind::Variant { strukt, .. } => (
+                SymbolKind::ENUM_MEMBER,
+                Some(a.ast.structs[strukt].name.name.to_string()),
+            ),
+            DefKind::Trait(_) => (SymbolKind::INTERFACE, None),
+            DefKind::Alias { .. } => (SymbolKind::TYPE_PARAMETER, None),
+            _ => continue,
+        };
+        let name = def.name.to_string();
+        let full = match &container {
+            Some(c) => format!("{c}::{name}"),
+            None => name.clone(),
+        };
+        if def.span.length == 0
+            || def.span.source.identifier().starts_with('<')
+            || !matches(&full)
+        {
+            continue;
+        }
+        let Some(location) = location(&def.span) else {
+            continue;
+        };
+        #[allow(deprecated)]
+        found.push(SymbolInformation {
+            name,
+            kind,
+            tags: None,
+            deprecated: None,
+            location,
+            container_name: container,
+        });
+    }
+    // The program's own first, then the standard library's.
+    found.sort_by_key(|s| {
+        (s.location.uri.to_file_path()).is_ok_and(|p| som_driver::stdlib::contains(&p))
+    });
+    found
+}
+
 fn location(span: &Span) -> Option<Location> {
     Some(Location {
         uri: Url::from_file_path(span.source.identifier()).ok()?,
@@ -3511,6 +3952,8 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
         let prev = i.checked_sub(1).map(|p| visible[p].kind);
         let token_type = match token.kind {
             TokenKind::Fn
+            | TokenKind::Pub
+            | TokenKind::Mod
             | TokenKind::Prop
             | TokenKind::SelfValue
             | TokenKind::Extern
@@ -3760,8 +4203,10 @@ mod tests {
             .map(|(s, _)| a.names.strukt(s))
             .next()
             .unwrap();
+        let file = dir.join("main.som").to_string_lossy().into_owned();
+        let viewer = viewer_at(&a, &file, text.len() - 3);
         let mut items = Vec::new();
-        prop_items(&a, owner, a.typed.local(v), &mut items);
+        prop_items(&a, owner, a.typed.local(v), viewer, &mut items);
         let shown: Vec<(String, Option<CompletionItemKind>, Option<String>)> = (items.into_iter())
             .map(|i| (i.label, i.kind, i.detail))
             .collect();
@@ -3774,6 +4219,48 @@ mod tests {
                 ("z".into(), prop, Some("i32".into())),
             ]
         );
+    }
+
+    #[test]
+    fn members_hidden_from_here_are_not_completed() {
+        let dir = std::env::temp_dir().join(format!("som_lsp_hidden_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("helper.som"),
+            "pub struct Hello { private: i32, pub public: i32 }\n\
+             impl Hello {\n    prop secret = .private;\n    pub prop open = .public;\n}\n",
+        )
+        .unwrap();
+        let text = "fn main() -> i32 {\n    let h = Hello { private: 1, public: 2 };\n    h.public\n}\n";
+        std::fs::write(dir.join("main.som"), text).unwrap();
+        let a = som_driver::analyze(&dir, &som_driver::Options::default());
+        let helper = dir.join("helper.som").to_string_lossy().into_owned();
+        let main = dir.join("main.som").to_string_lossy().into_owned();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let s = a.ast.structs.iter().next().unwrap().0;
+        let owner = a.names.strukt(s);
+        let ty = a.typed.local(
+            (a.ast.stmts.iter())
+                .find_map(|(id, stmt)| match stmt {
+                    Stmt::Let { name, .. } if &*name.name == "h" => a.names.local(id),
+                    _ => None,
+                })
+                .unwrap(),
+        );
+        let completed = |file: &str| {
+            let viewer = viewer_at(&a, file, 0);
+            let mut shown: Vec<String> = (0..2)
+                .filter(|&i| visibility::hidden_field(&a.ast, &a.names, s, i, viewer).is_none())
+                .map(|i| a.ast.structs[s].fields[i].name.name.to_string())
+                .collect();
+            let mut items = Vec::new();
+            prop_items(&a, owner, ty, viewer, &mut items);
+            shown.extend(items.into_iter().map(|i| i.label));
+            shown
+        };
+        // Another file sees only what's `pub`; its own file sees everything.
+        assert_eq!(completed(&main), ["public", "open"]);
+        assert_eq!(completed(&helper), ["private", "public", "open", "secret"]);
     }
 
     #[test]
@@ -4073,5 +4560,100 @@ mod tests {
             Some("```som\nfn main()\n```"),
             "no documentation, no gap"
         );
+    }
+
+    fn analyzed(source: &str) -> (tempfile::TempDir, String, Analysis) {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.som");
+        std::fs::write(&main, source).unwrap();
+        let a = som_driver::analyze(&main, &Default::default());
+        (dir, main.to_string_lossy().into_owned(), a)
+    }
+
+    /// Where `uses` are, as the text from each one's start to the end of its line.
+    fn places(source: &str, uses: &[Occurrence]) -> Vec<String> {
+        let mut places: Vec<_> = uses.iter().map(|o| o.span.start_offset).collect();
+        places.sort();
+        (places.into_iter())
+            .map(|at| source[at..].lines().next().unwrap().to_string())
+            .collect()
+    }
+
+    /// The source with `edit` applied, for one file.
+    fn applied(source: &str, edit: &WorkspaceEdit) -> String {
+        let mut edits: Vec<&TextEdit> = edit.changes.as_ref().unwrap().values().flatten().collect();
+        edits.sort_by_key(|e| std::cmp::Reverse((e.range.start.line, e.range.start.character)));
+        let mut text = source.to_string();
+        for e in edits {
+            let start = convert::position_to_offset(&text, &e.range.start).unwrap();
+            let end = convert::position_to_offset(&text, &e.range.end).unwrap();
+            text.replace_range(start..end, &e.new_text);
+        }
+        text
+    }
+
+    const POINTS: &str = "struct Point { pub x: i32, pub y: i32 }\n\
+                          fn make(x: i32) -> Point { Point { x, y: 1 } }\n\
+                          fn main() -> i32 { let p: Point = make(2); p.x + p.y }\n";
+
+    #[test]
+    fn a_field_is_found_where_its_defined_given_and_read() {
+        let (_dir, file, a) = analyzed(POINTS);
+        let uses = uses_at(&a, &file, POINTS.find("x: i32,").unwrap()).unwrap();
+        assert_eq!(
+            places(POINTS, &uses.matching),
+            ["x: i32, pub y: i32 }", "x, y: 1 } }", "x + p.y }"]
+        );
+        // And the type: its definition, the return type, the literal and the annotation.
+        let uses = uses_at(&a, &file, POINTS.find("Point {").unwrap() + 1).unwrap();
+        assert_eq!(uses.matching.len(), 4);
+    }
+
+    #[test]
+    fn renaming_one_side_of_a_shorthand_writes_both() {
+        let (_dir, file, a) = analyzed(POINTS);
+        let field = uses_at(&a, &file, POINTS.find("x: i32,").unwrap()).unwrap();
+        let renamed = applied(POINTS, &rename_edit(&field, "z"));
+        assert!(renamed.contains("struct Point { pub z: i32"), "{renamed}");
+        assert!(renamed.contains("Point { z: x, y: 1 }"), "{renamed}");
+        assert!(renamed.contains("p.z + p.y"), "{renamed}");
+
+        let param = uses_at(&a, &file, POINTS.find("x: i32)").unwrap()).unwrap();
+        let renamed = applied(POINTS, &rename_edit(&param, "n"));
+        assert!(renamed.contains("fn make(n: i32) -> Point { Point { x: n, y: 1 } }"), "{renamed}");
+    }
+
+    #[test]
+    fn a_trait_method_is_renamed_with_its_implementations() {
+        let source = "trait Shape { fn area(self: &Self) -> i32; }\n\
+                      struct Square { side: i32 }\n\
+                      impl Shape for Square { fn area(self: &Square) -> i32 { self.side } }\n\
+                      fn main() -> i32 { let s = Square { side: 2 }; s.area() }\n";
+        let (_dir, file, a) = analyzed(source);
+        let call = uses_at(&a, &file, source.find("area()").unwrap()).unwrap();
+        assert_eq!(call.matching.len(), 3);
+        let renamed = applied(source, &rename_edit(&call, "size"));
+        assert_eq!(renamed.matches("size").count(), 3, "{renamed}");
+        assert!(renamable(&a, &call).is_ok());
+    }
+
+    #[test]
+    fn what_isnt_yours_cant_be_renamed() {
+        let source = "fn main() -> i32 { let x: i32 = 1; x }\n";
+        let (_dir, file, a) = analyzed(source);
+        let builtin = uses_at(&a, &file, source.find("i32 =").unwrap());
+        assert!(builtin.is_none_or(|u| renamable(&a, &u).is_err()));
+        assert!(valid_name("fn").is_err());
+        assert!(valid_name("two words").is_err());
+        assert!(valid_name("fine_name2").is_ok());
+    }
+
+    #[test]
+    fn workspace_symbols_match_letters_in_order() {
+        let (_dir, _file, a) = analyzed(POINTS);
+        let names: Vec<String> = (workspace_symbols(&a, "mke").into_iter())
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(names.first().map(String::as_str), Some("make"), "{names:?}");
     }
 }

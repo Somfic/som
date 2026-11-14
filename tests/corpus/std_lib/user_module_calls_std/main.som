@@ -1,7 +1,7 @@
 // expect: exit 0
 
 use mymod;
-fn main() -> i32 {
+pub fn main() -> i32 {
     mymod::do_print();
     0
 }

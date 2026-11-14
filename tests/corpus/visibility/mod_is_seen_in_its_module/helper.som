@@ -1,0 +1,5 @@
+/// `mod`: every file in this module sees it.
+mod fn shared() -> i32 { 2 }
+
+/// `pub`: everyone sees it.
+pub fn open() -> i32 { 3 }

@@ -38,6 +38,19 @@ pub struct Options {
     pub library_dirs: Vec<PathBuf>,
     /// Files' contents to use instead of what's on disk: an editor's unsaved changes.
     pub overlay: HashMap<PathBuf, String>,
+    /// The file an editor has open: its module is loaded too, even if nothing uses it yet,
+    /// so the file is checked as part of the program.
+    pub opened: Option<PathBuf>,
+}
+
+/// The folder of the program `file` belongs to: the nearest one around it, its own
+/// included, with a `main.som`. A file in none is a program of its own, in its folder.
+pub fn program_root(file: &Path) -> PathBuf {
+    let folder = file.parent().unwrap_or(file);
+    (folder.ancestors())
+        .find(|dir| dir.join("main.som").is_file())
+        .unwrap_or(folder)
+        .to_path_buf()
 }
 
 /// An error from any pass, keeping its pass-specific type.
@@ -274,7 +287,12 @@ pub fn importable(root: &Path, options: &Options) -> Importable {
 /// Loads `path` and runs as many passes as possible. Loading, name resolution and
 /// type checking always run; lowering and borrow checking only if they found nothing.
 pub fn analyze(path: &Path, options: &Options) -> Analysis {
-    let (mut ast, load_errors) = load::load_with(path, &options.library_dirs, &options.overlay);
+    let (mut ast, load_errors) = load::load_with(
+        path,
+        &options.library_dirs,
+        &options.overlay,
+        options.opened.as_deref(),
+    );
     let mut errors: Vec<Error> = load_errors.into_iter().map(Error::Load).collect();
     errors.extend(
         libraries::check(&mut ast, &options.library_dirs)

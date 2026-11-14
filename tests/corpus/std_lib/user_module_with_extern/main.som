@@ -1,7 +1,7 @@
 // expect: exit 0
 
 use mylib;
-fn main() -> i32 {
+pub fn main() -> i32 {
     mylib::greet();
     0
 }

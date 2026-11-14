@@ -2,7 +2,7 @@ use som::mem;
 
 /// Goes through an array it owns, `for x in array`: each element is moved out in turn. The
 /// ones not reached when it's dropped, after a `break` say, are dropped with it.
-struct ArrayIntoIter<T, N: usize> {
+pub struct ArrayIntoIter<T, N: usize> {
     items: Manual<[T; N]>,
     next: usize,
 }

@@ -1,4 +1,4 @@
 // expect: ok
 
 use mylib;
-fn main() { mylib::get_abs(); }
+pub fn main() { mylib::get_abs(); }

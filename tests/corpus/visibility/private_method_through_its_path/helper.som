@@ -1,0 +1,7 @@
+pub struct Counter { n: i32 }
+
+impl Counter {
+    pub fn make() -> Counter { Counter { n: 0 } }
+    fn bump(self: &mut Counter) { .n = .n + 1; }
+    pub fn tick(self: &mut Counter) { Counter::bump(self); }
+}

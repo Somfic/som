@@ -1,2 +1,2 @@
 use b;
-fn call_b() -> i32 { b::value() }
+pub fn call_b() -> i32 { b::value() }

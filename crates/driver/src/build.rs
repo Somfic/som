@@ -12,6 +12,11 @@ use crate::Checked;
 #[derive(Debug)]
 pub enum BuildError {
     Codegen(CodegenError),
+    /// The program has no `main` yet: likely the first thing someone sees, in an empty file.
+    /// `end` is where to start one: the end of the program's own file.
+    NoMain {
+        end: Option<som_base::Span>,
+    },
     Io {
         path: PathBuf,
         message: String,
@@ -32,6 +37,7 @@ impl BuildError {
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
             BuildError::Codegen(e) => Diagnostic::error(e.to_string()),
+            BuildError::NoMain { end } => no_main(end.as_ref()),
             BuildError::Io { path, message } => Diagnostic::error(msg![
                 "could not write ",
                 m::path(path.display()),
@@ -87,7 +93,63 @@ impl Default for BuildOptions {
 
 /// The C source for a checked program.
 pub fn emit_c(checked: &Checked) -> Result<String, BuildError> {
-    som_codegen::emit_c(&checked.mir).map_err(BuildError::Codegen)
+    som_codegen::emit_c(&checked.mir).map_err(|e| match e {
+        CodegenError::NoEntryPoint => BuildError::NoMain {
+            end: program_file(checked).map(|file| {
+                let end = file.content().len();
+                som_base::Span::from_range(end..end, file)
+            }),
+        },
+    })
+}
+
+/// The program's own file, where its `main` would go: its `main.som`, or its first file.
+fn program_file(checked: &Checked) -> Option<std::sync::Arc<som_base::Source>> {
+    let root = checked.ast.modules.iter().find(|m| m.name.is_empty())?;
+    let named_main = root.files.iter().find(|f| {
+        Path::new(f.identifier())
+            .file_name()
+            .and_then(|n| n.to_str())
+            == Some("main.som")
+    });
+    named_main.or(root.files.first()).cloned()
+}
+
+/// A welcome, rather than only an error: a program with no `main` is most likely someone's
+/// very first, so it says how a program starts, and offers a first line.
+fn no_main(end: Option<&som_base::Span>) -> Diagnostic {
+    // The file to write in, by its name: `main.som`.
+    let file = end
+        .and_then(|at| Path::new(at.source.identifier()).file_name())
+        .map(|name| m::code(name.to_string_lossy()));
+    let d = Diagnostic::error(msg!["the program has an no entrypoint "])
+        .with_hint(msg!["welcome to som!"])
+        .with_hint(msg![
+            "to get started, write your first lines in ",
+            file.unwrap_or_else(|| "a `.som` file".into()),
+            ", like ",
+            m::code("println(\"Hello, world!\");")
+        ])
+        .with_hint("")
+        .with_hint(msg!["happy hacking :)"]);
+    let Some(at) = end else {
+        return d;
+    };
+    // Appended as lines of their own, after what's there.
+    let content = at.source.content();
+    let lead = if content.trim().is_empty() || content.ends_with('\n') {
+        ""
+    } else {
+        "\n"
+    };
+    let gap = if content.trim().is_empty() { "" } else { "\n" };
+    d.with_fix(som_base::Fix {
+        title: msg!["print a ", m::code("\"Hello, world!\"")],
+        edits: vec![(
+            at.clone(),
+            format!("{lead}{gap}use som::io;\n\nprintln(\"Hello, world!\");\n"),
+        )],
+    })
 }
 
 /// Compiles a checked program to an executable at `output`. The generated C goes

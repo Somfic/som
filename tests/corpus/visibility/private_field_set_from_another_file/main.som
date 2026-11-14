@@ -1,0 +1,4 @@
+// expect: error ConstructHidden
+
+/// Making a struct sets each of its fields, so each has to be visible, as in Rust.
+fn main() -> i32 { Point { x: 1, y: 2 }.y }

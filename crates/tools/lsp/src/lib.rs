@@ -3,6 +3,7 @@
 
 mod convert;
 mod index;
+mod references;
 mod server;
 
 use server::SomLanguageServer;

@@ -3,7 +3,7 @@
 use geo;
 
 impl geo::Point {
-    fn sum(self: geo::Point) -> i32 { self.x }
+    pub fn sum(self: geo::Point) -> i32 { self.x }
 }
 
-fn main() {}
+pub fn main() {}

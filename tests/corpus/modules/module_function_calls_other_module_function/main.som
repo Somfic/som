@@ -1,4 +1,4 @@
 // expect: ok
 
 use a;
-fn main() { a::call_b(); }
+pub fn main() { a::call_b(); }

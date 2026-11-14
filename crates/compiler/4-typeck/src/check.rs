@@ -1,5 +1,6 @@
 use crate::error::Unused;
 use som_ast::{Ast, BinOp, Expr, Func, Id, Pattern, Primitive, Span, Stmt, TypeExpr, VariantKind};
+use som_resolve::visibility::{self, Hidden, Viewer};
 use som_resolve::{DefId, DefKind, LangTrait, Names};
 use std::collections::{HashMap, HashSet};
 
@@ -1267,6 +1268,93 @@ impl<'a> Checker<'a> {
         self.ast.exprs.span(expr).clone()
     }
 
+    // --- Visibility ---
+
+    /// Who's looking from `at`: its module, its file, and the type whose impl block it's in.
+    fn viewer<'s>(&self, at: &'s Span) -> Viewer<'s> {
+        let file = at.source.identifier();
+        let module = (self.ast.modules.iter())
+            .position(|m| m.files.iter().any(|f| f.identifier() == file))
+            .unwrap_or(usize::MAX);
+        let owner = (self.current_func)
+            .and_then(|f| self.names.impl_of(f))
+            .and_then(|i| self.names.impls[i].owner);
+        Viewer {
+            module,
+            file,
+            owner,
+        }
+    }
+
+    /// Reports `name`, used at `span`, if it's hidden from there.
+    fn report_hidden(&mut self, name: &str, span: &Span, hidden: Option<Hidden>) {
+        if let Some(hidden) = hidden {
+            self.errors.push(TypeError::NotVisible {
+                name: name.to_string(),
+                span: span.clone(),
+                hidden,
+            });
+        }
+    }
+
+    /// Reports method or property `def` if it can't be seen at `span`, where it's used.
+    fn check_visible(&mut self, def: DefId, span: &Span) {
+        let hidden = visibility::hidden(self.ast, self.names, def, self.viewer(span));
+        self.report_hidden(&self.names.def(def).name.clone(), span, hidden);
+    }
+
+    /// The functions of struct `def` that code at `span` can call to make one, like
+    /// `Hello::new` or `List::with_capacity`: those without a `self` that return it. Each as
+    /// a fix replacing `Hello { … }` at `span` with a call to it, its arguments the values
+    /// `given` to fields of the same name, or else the parameters' names.
+    fn makers(
+        &self,
+        def: DefId,
+        path: &str,
+        given: &[(som_ast::Ident, Id<Expr>)],
+        span: &Span,
+    ) -> Vec<Fix> {
+        let viewer = self.viewer(span);
+        let mut fixes = Vec::new();
+        for (name, method) in self.names.methods_of(def) {
+            let DefKind::Func(f) = self.names.def(method).kind else {
+                continue;
+            };
+            let params = &self.ast.funcs[f].params;
+            if params.first().is_some_and(|p| &*p.name.name == "self")
+                || !visibility::can_see(self.ast, self.names, method, viewer)
+            {
+                continue;
+            }
+            let ret = self.u.shallow(self.sigs[f.id].ret);
+            if !matches!(self.u.get(ret), Ty::Struct(d, _) if *d == def) {
+                continue;
+            }
+            let args: Vec<String> = (params.iter())
+                .map(|p| {
+                    (given.iter())
+                        .find(|(field, _)| field.name == p.name.name)
+                        .map_or(p.name.name.to_string(), |(_, value)| {
+                            self.span(*value).get_text().to_string()
+                        })
+                })
+                .collect();
+            let call = format!("{path}::{name}");
+            fixes.push(Fix {
+                title: msg!["call ", message::code(call.clone())],
+                edits: vec![(span.clone(), format!("{call}({})", args.join(", ")))],
+            });
+        }
+        fixes
+    }
+
+    /// Reports field `index` of struct `s` if it can't be seen at `span`, where it's used.
+    fn check_field_visible(&mut self, s: Id<som_ast::Struct>, index: usize, span: &Span) {
+        let hidden = visibility::hidden_field(self.ast, self.names, s, index, self.viewer(span));
+        let name = self.ast.structs[s].fields[index].name.name.clone();
+        self.report_hidden(&name, span, hidden);
+    }
+
     // --- Statements ---
 
     fn check_stmts(&mut self, stmts: &[Id<Stmt>]) {
@@ -2489,6 +2577,7 @@ impl<'a> Checker<'a> {
                     return error;
                 }
                 self.methods.insert(id, def);
+                self.check_visible(def, &method.span);
                 self.require_bounds(func, &type_args, self.span(id));
                 if !type_args.is_empty() {
                     self.type_args.insert(id, type_args);
@@ -2579,6 +2668,7 @@ impl<'a> Checker<'a> {
                 match fields.iter().position(|f| f.name.name == field.name) {
                     Some(index) => {
                         self.fields.insert(id, index);
+                        self.check_field_visible(s, index, &field.span);
                         // Written in terms of the struct's type parameters: fill in its arguments.
                         let subst = self.struct_subst(s, &args);
                         self.substitute(self.structs[s.id][index], &subst)
@@ -2712,6 +2802,17 @@ impl<'a> Checker<'a> {
                     });
                     return ty;
                 }
+                // Fields this code can't see: it can't set them, so it can't make one.
+                let at = self.span(id);
+                let hidden: Vec<usize> = match variant {
+                    Some(_) => Vec::new(),
+                    None => (0..declared.len())
+                        .filter(|&i| {
+                            let viewer = self.viewer(&at);
+                            visibility::hidden_field(self.ast, self.names, s, i, viewer).is_some()
+                        })
+                        .collect(),
+                };
                 let mut seen = vec![false; declared.len()];
                 for (name, value) in given {
                     match declared.iter().position(|f| f.name.name == name.name) {
@@ -2742,6 +2843,20 @@ impl<'a> Checker<'a> {
                             self.infer(*value);
                         }
                     }
+                }
+                if !hidden.is_empty() {
+                    self.errors.push(TypeError::ConstructHidden {
+                        ty: struct_name,
+                        fields: (hidden.iter())
+                            .map(|&i| {
+                                let name = &declared[i].name;
+                                (name.name.to_string(), name.span.clone())
+                            })
+                            .collect(),
+                        span: path.span(),
+                        fixes: self.makers(def, &path.to_string(), given, &at),
+                    });
+                    return ty;
                 }
                 for (field, _) in declared.iter().zip(&seen).filter(|(_, seen)| !**seen) {
                     self.errors.push(TypeError::MissingField {
@@ -3200,6 +3315,9 @@ impl<'a> Checker<'a> {
         }
         let (_, def, func, sig, type_args) = fitting.pop().expect("exactly one");
         self.methods.insert(call, def);
+        if let Expr::MethodCall { method, .. } = &self.ast.exprs[call] {
+            self.check_visible(def, &method.span);
+        }
         self.require_bounds(func, &type_args, self.span(call));
         if !type_args.is_empty() {
             self.type_args.insert(call, type_args);
@@ -4078,6 +4196,7 @@ impl<'a> Checker<'a> {
             return Some(self.u.table.error);
         };
         self.methods.insert(id, def);
+        self.check_visible(def, &field.span);
         self.require_bounds(func, &type_args, self.span(id));
         if !type_args.is_empty() {
             self.type_args.insert(id, type_args);

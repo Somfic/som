@@ -1,12 +1,12 @@
-fn null() -> * {
+pub fn null() -> * {
     leave(out p);
     p
 }
 
-fn null<T>() -> *T {
+pub fn null<T>() -> *T {
     null() as *T
 }
 
-fn leave(p: &mut *) {}
+pub fn leave(p: &mut *) {}
 
-fn forget<T>(value: T) {}
+pub fn forget<T>(value: T) {}

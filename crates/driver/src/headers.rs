@@ -417,7 +417,7 @@ fn compatible(
 }
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 21;
+const GENERATOR_VERSION: u32 = 22;
 
 /// The first line of a cached import: everything it depends on. Any change to the header,
 /// the library or the generator makes it stale.
@@ -557,7 +557,7 @@ const SOM_KEYWORDS: &[&str] = &[
     "break", "for", "true", "false", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16",
     "u32", "u64", "u128", "usize", "f32", "f64", "bool", "char", "str", "cstr", "none", "and",
     "or", "in", "continue", "as", "return", "enum", "match", "trait", "type", "prop", "self",
-    "Self",
+    "Self", "pub", "mod",
 ];
 
 fn identifier(name: &str) -> String {
@@ -648,7 +648,7 @@ fn generate(
                 let _ = writeln!(origins, "{name}\t{file}\t{line}");
             }
         }
-        let _ = writeln!(out, "struct {name} {{");
+        let _ = writeln!(out, "pub struct {name} {{");
         // Fields are snake_case too: `sampleRate` is `sample_rate`. Only the layout has to
         // match C's, so the names are free; one that would clash keeps its C name.
         let snake: Vec<String> = fields.iter().map(|(f, _)| snake_case(f)).collect();
@@ -659,7 +659,7 @@ fn generate(
             let clashes = snake.iter().filter(|s| **s == snake[i]).count() > 1
                 || fields.iter().any(|(f, _)| *f == snake[i] && f != field);
             let name = if clashes { field } else { &snake[i] };
-            let _ = writeln!(out, "    {}: {ty},", identifier(name));
+            let _ = writeln!(out, "    pub {}: {ty},", identifier(name));
         }
         out.push_str("}\n\n");
     }
@@ -673,7 +673,7 @@ fn generate(
                 let _ = writeln!(origins, "{name}\t{file}\t{line}");
             }
         }
-        let _ = writeln!(out, "extern struct {name};\n");
+        let _ = writeln!(out, "pub extern struct {name};\n");
     }
     // Naming the header marks these as coming from it, so they aren't checked against it again.
     match library {
@@ -1014,7 +1014,8 @@ impl Converter {
 
     /// `fn name(a: i32, b: &str) -> f32;`
     fn function(&mut self, decl: &Value, name: &str) -> Result<String, String> {
-        Ok(format!("{};", self.signature(decl)?.text(name)))
+        // Everything a header declares is there to be used: `pub`.
+        Ok(format!("pub {};", self.signature(decl)?.text(name)))
     }
 
     /// The som type for a parameter: like [`Converter::ty`], except that a pointer to

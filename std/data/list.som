@@ -1,24 +1,24 @@
 use som::mem;
 
-struct List<T> {
+pub struct List<T> {
     mem: Alloc<T>,
-    len: usize,
+    pub len: usize,
 }
 
 impl<T> List<T> {
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         List { mem: Alloc::empty(), len: 0 }
     }
 
-    fn with_capacity(capacity: usize) -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
         List { mem: Alloc::with_capacity(capacity), len: 0 }
     }
 
-    prop capacity = .mem.size;
-    prop is_empty = .len == 0;
-    prop is_full = .len == .capacity;
+    pub prop capacity = .mem.size;
+    pub prop is_empty = .len == 0;
+    pub prop is_full = .len == .capacity;
 
-    fn push(&mut self, value: T) {
+    pub fn push(&mut self, value: T) {
         if .is_full {
             let capacity = 4 if .capacity == 0 else .capacity * 2;
             .mem.resize(capacity);
@@ -27,7 +27,7 @@ impl<T> List<T> {
         .len = .len + 1;
     }
 
-    fn pop(&mut self) -> T? {
+    pub fn pop(&mut self) -> T? {
         if .len == 0 {
             return none;
         }
@@ -35,31 +35,31 @@ impl<T> List<T> {
         .mem.read(.len)
     }
 
-    fn get(&self, index: usize) -> &T? {
+    pub fn get(&self, index: usize) -> &T? {
         if index >= .len {
             return none;
         }
         .mem.at(index)
     }
 
-    fn get_mut(&mut self, index: usize) -> &mut T? {
+    pub fn get_mut(&mut self, index: usize) -> &mut T? {
         if index >= .len {
             return none;
         }
         .mem.at(index)
     }
 
-    prop slice = .mem.view(.len);
+    pub prop slice = .mem.view(.len);
 
-    fn as_slice(&self) -> &[T] {
+    pub fn as_slice(&self) -> &[T] {
         .mem.view(.len)
     }
 
-    fn as_slice(&mut self) -> &mut [T] {
+    pub fn as_slice(&mut self) -> &mut [T] {
         .mem.view(.len)
     }
 
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         for i in 0..self.len {
             drop(.mem.read(i));
         }
@@ -68,7 +68,7 @@ impl<T> List<T> {
 }
 
 impl<T: Copy> List<T> {
-    fn of(values: &[T]) -> Self {
+    pub fn of(values: &[T]) -> Self {
         let mut list: List<T> = List::with_capacity(values.len);
         for value in values {
             list.push(value);
@@ -107,7 +107,7 @@ impl<T> Iterable for List<T> {
     }
 }
 
-struct ListIter<T> {
+pub struct ListIter<T> {
     list: &List<T>,
     index: usize,
 }
@@ -130,7 +130,7 @@ impl<T> IterableMut for List<T> {
     }
 }
 
-struct ListIterMut<T> {
+pub struct ListIterMut<T> {
     list: &mut List<T>,
     index: usize,
 }
@@ -153,7 +153,7 @@ impl<T> IntoIterator for List<T> {
     }
 }
 
-struct ListIntoIter<T> {
+pub struct ListIntoIter<T> {
     list: List<T>,
     next: usize,
 }

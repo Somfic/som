@@ -1,1 +1,1 @@
-fn print() {}
+pub fn print() {}

@@ -1,4 +1,5 @@
 use som_ast::{
+    Visibility,
     Alias, AssocType, Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Trait, Use,
     Variant, VariantKind,
 };
@@ -10,8 +11,13 @@ use crate::{Parser, RecoveryLevel, StmtOrExpr};
 
 impl Parser<'_> {
     fn at_item(&self) -> bool {
+        // `pub fn …`: who can see it, then the item.
+        let at = match self.peek() {
+            TokenKind::Pub | TokenKind::Mod => 1,
+            _ => 0,
+        };
         matches!(
-            self.peek(),
+            self.peek_nth(at),
             TokenKind::Fn
                 | TokenKind::Extern
                 | TokenKind::Struct
@@ -25,6 +31,23 @@ impl Parser<'_> {
 
     fn parse_item(&mut self) {
         self.in_impl = false;
+        let at = self.current_span();
+        self.visibility = self.parse_visibility();
+        // Who can see `use`, an `impl` block or an `extern` block is said on what's in it.
+        if self.visibility != Visibility::Private
+            && matches!(
+                self.peek(),
+                TokenKind::Use | TokenKind::Impl | TokenKind::Extern
+            )
+            && self.peek_nth(1) != TokenKind::Struct
+        {
+            self.error_at(
+                at,
+                msg!["a ", code(self.peek().to_string()), " can't be ", code("pub"), " or ", code("mod")],
+                "who can see something is said on each item inside it",
+            );
+            self.visibility = Visibility::Private;
+        }
         let item = match self.peek() {
             TokenKind::Fn => self.parse_function().map(Item::Func),
             TokenKind::Extern if self.peek_nth(1) == TokenKind::Struct => {
@@ -96,6 +119,7 @@ impl Parser<'_> {
         };
         let func = Func {
             doc: None,
+            visibility: Visibility::Private,
             name,
             generics: Vec::new(),
             params: Vec::new(),
@@ -176,6 +200,8 @@ impl Parser<'_> {
         let mut types = Vec::new();
         self.in_impl = true;
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            // `pub fn …`, `mod prop …`: who can see the method.
+            self.visibility = self.parse_visibility();
             // `type Item = &T;`
             if self.eat(TokenKind::Type) {
                 let Some(name) = self.parse_ident("an associated type name") else {
@@ -221,6 +247,7 @@ impl Parser<'_> {
     /// body ends in `;`.
     fn parse_trait(&mut self) -> Option<Id<Trait>> {
         let doc = self.doc_comment();
+        let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         self.expect(TokenKind::Trait, "a trait declaration")?;
         let name = self.parse_ident("a trait name")?;
@@ -270,6 +297,7 @@ impl Parser<'_> {
         Some(self.ast.traits.alloc(
             Trait {
                 doc,
+                visibility,
                 name,
                 generics,
                 types,
@@ -325,6 +353,8 @@ impl Parser<'_> {
         let span = self.span_from(&start);
         let func = Func {
             doc,
+            // As visible as the trait.
+            visibility: Visibility::Public,
             name,
             generics,
             params,
@@ -366,6 +396,7 @@ impl Parser<'_> {
         self.expect(TokenKind::Semicolon, "a semicolon after the type alias")?;
         Some(Alias {
             doc,
+            visibility: std::mem::take(&mut self.visibility),
             name,
             generics,
             ty,
@@ -383,6 +414,7 @@ impl Parser<'_> {
     /// sees inside, used through handles to one.
     fn parse_struct(&mut self) -> Option<Id<Struct>> {
         let doc = self.doc_comment();
+        let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         let handle = self.eat(TokenKind::Extern);
         self.expect(TokenKind::Struct, "a struct declaration")?;
@@ -396,10 +428,16 @@ impl Parser<'_> {
             self.expect(TokenKind::OpenBrace, "a list of struct fields")?;
             let fields = self.parse_comma_list(TokenKind::CloseBrace, |p| {
                 let doc = p.doc_comment();
+                let visibility = p.parse_visibility();
                 let name = p.parse_ident("a struct field name")?;
                 p.expect(TokenKind::Colon, "a struct field type")?;
                 let ty = p.parse_type()?;
-                Some(Field { doc, name, ty })
+                Some(Field {
+                    doc,
+                    visibility,
+                    name,
+                    ty,
+                })
             })?;
             self.expect(TokenKind::CloseBrace, "a closing brace after struct fields")?;
             fields
@@ -409,6 +447,7 @@ impl Parser<'_> {
         Some(self.ast.structs.alloc(
             Struct {
                 doc,
+                visibility,
                 name,
                 generics,
                 fields,
@@ -425,6 +464,7 @@ impl Parser<'_> {
     /// each one of its variants.
     fn parse_enum(&mut self) -> Option<Id<Struct>> {
         let doc = self.doc_comment();
+        let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         self.expect(TokenKind::Enum, "an enum declaration")?;
         let name = self.parse_ident("an enum name")?;
@@ -438,6 +478,7 @@ impl Parser<'_> {
         Some(self.ast.structs.alloc(
             Struct {
                 doc,
+                visibility,
                 name,
                 generics,
                 fields: Vec::new(),
@@ -462,6 +503,7 @@ impl Parser<'_> {
             let fields = (types.into_iter().enumerate())
                 .map(|(i, ty)| Field {
                     doc: None,
+                    visibility: Visibility::Public,
                     name: Ident {
                         name: i.to_string().into(),
                         span: self.ast.types.span(ty).clone(),
@@ -476,7 +518,13 @@ impl Parser<'_> {
                 let name = p.parse_ident("a field name")?;
                 p.expect(TokenKind::Colon, "a field type")?;
                 let ty = p.parse_type()?;
-                Some(Field { doc, name, ty })
+                // As visible as the enum.
+                Some(Field {
+                    doc,
+                    visibility: Visibility::Public,
+                    name,
+                    ty,
+                })
             })?;
             self.expect(TokenKind::CloseBrace, "a closing brace after the fields")?;
             (VariantKind::Named, fields)
@@ -495,6 +543,7 @@ impl Parser<'_> {
     /// impl block, `prop name: Ret { body }` or `prop name: Ret = value;`.
     fn parse_function(&mut self) -> Option<Id<Func>> {
         let doc = self.doc_comment();
+        let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         let prop = self.eat(TokenKind::Prop);
         if !prop {
@@ -530,6 +579,7 @@ impl Parser<'_> {
         let span = self.span_from(&start);
         let func = Func {
             doc,
+            visibility,
             name,
             generics,
             params,
@@ -806,6 +856,7 @@ impl Parser<'_> {
         )?;
         let mut funcs = Vec::new();
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            self.visibility = self.parse_visibility();
             if self.at(TokenKind::Fn) {
                 match self.parse_extern_func() {
                     Some(id) => funcs.push(id),
@@ -834,6 +885,7 @@ impl Parser<'_> {
     /// `fn name(params) -> Ret;`
     fn parse_extern_func(&mut self) -> Option<Id<Func>> {
         let doc = self.doc_comment();
+        let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         self.expect(TokenKind::Fn, "a function declaration")?;
         let name = self.parse_ident("a function name")?;
@@ -851,6 +903,7 @@ impl Parser<'_> {
         let span = self.span_from(&start);
         let func = Func {
             doc,
+            visibility,
             name,
             generics: Vec::new(),
             params,

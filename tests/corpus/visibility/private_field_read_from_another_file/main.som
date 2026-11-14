@@ -1,0 +1,4 @@
+// expect: error NotVisible
+
+/// Reading a field private to another file.
+fn main() -> i32 { Point::make().x }

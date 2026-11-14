@@ -1,2 +1,2 @@
-fn inner() -> i32 { 42 }
-fn outer() -> i32 { inner() }
+pub fn inner() -> i32 { 42 }
+pub fn outer() -> i32 { inner() }

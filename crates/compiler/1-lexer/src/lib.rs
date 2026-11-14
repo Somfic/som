@@ -34,6 +34,12 @@ pub enum TokenKind {
     Struct,
     #[token("impl")]
     Impl,
+    /// `pub fn …`: visible everywhere.
+    #[token("pub")]
+    Pub,
+    /// `mod fn …`: visible in its module, the folder it's in.
+    #[token("mod")]
+    Mod,
     #[token("enum")]
     Enum,
     #[token("trait")]
@@ -316,6 +322,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Eof => write!(f, "end of file"),
             TokenKind::Percentage => write!(f, "%"),
             TokenKind::Caret => write!(f, "^"),
+            TokenKind::Pub => write!(f, "pub"),
+            TokenKind::Mod => write!(f, "mod"),
             TokenKind::Builtin => write!(f, "built-in"),
             TokenKind::Pipe => write!(f, "|"),
             TokenKind::Tilde => write!(f, "~"),

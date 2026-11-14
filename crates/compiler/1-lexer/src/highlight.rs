@@ -9,6 +9,8 @@ use crate::{TokenKind, lex};
 fn token_color(kind: TokenKind) -> Rgb {
     match kind {
         TokenKind::Fn
+        | TokenKind::Pub
+        | TokenKind::Mod
         | TokenKind::Prop
         | TokenKind::SelfValue
         | TokenKind::Extern

@@ -1,1 +1,1 @@
-fn assist() -> i32 { 1 }
+pub fn assist() -> i32 { 1 }

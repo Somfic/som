@@ -1,6 +1,6 @@
 // expect: ok
 
 use mymod;
-fn main() {
+pub fn main() {
     mymod::outer();
 }

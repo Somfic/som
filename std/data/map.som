@@ -1,21 +1,21 @@
-type Set<T> = Map<T, ()>;
+pub type Set<T> = Map<T, ()>;
 
-struct Pair<K, V> {
+pub struct Pair<K, V> {
     key: K,
     value: V
 }
 
-struct Map<K, V> {
+pub struct Map<K, V> {
     keys: Alloc<usize?>,
     entries: List<Pair<K, V>>,
 }
 
 impl<K: Eq + Hash, V> Map<K, V> {
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Self::with_capacity(0)
     }
 
-    fn with_capacity(size: usize) -> Self {
+    pub fn with_capacity(size: usize) -> Self {
         // min/starting capacity is 16
         let size = usize::biggest(16, size);
 
@@ -26,7 +26,10 @@ impl<K: Eq + Hash, V> Map<K, V> {
         Self { keys, entries }
     }
 
-    fn get_pair(&self, key: &K) -> &Pair<K, V>? {
+    /// How many entries it holds.
+    pub prop len = .entries.len;
+
+    pub fn get_pair(&self, key: &K) -> &Pair<K, V>? {
         let slot = .find_slot(key);
         let entry_index = *.keys.at(slot);
 
@@ -37,7 +40,7 @@ impl<K: Eq + Hash, V> Map<K, V> {
         }
     }
 
-    fn get_pair_mut(&mut self, key: &K) -> &mut Pair<K, V>? {
+    pub fn get_pair_mut(&mut self, key: &K) -> &mut Pair<K, V>? {
         let slot = .find_slot(key);
         let entry_index = *.keys.at(slot);
 
@@ -48,7 +51,7 @@ impl<K: Eq + Hash, V> Map<K, V> {
         }
     }
 
-    fn get(&self, key: &K) -> &V? {
+    pub fn get(&self, key: &K) -> &V? {
         let pair = .get_pair(key);
         if pair {
             &pair.value
@@ -57,7 +60,7 @@ impl<K: Eq + Hash, V> Map<K, V> {
         }
     }
 
-    fn get_mut(&mut self, key: &K) -> &mut V? {
+    pub fn get_mut(&mut self, key: &K) -> &mut V? {
         let pair = .get_pair_mut(key);
         if pair {
             &mut pair.value
@@ -78,7 +81,7 @@ impl<K: Eq + Hash, V> Map<K, V> {
         }
     }
 
-    fn insert(&mut self, key: K, value: V) {
+    pub fn insert(&mut self, key: K, value: V) {
         // grow if needed
         let rehash_treshold = (.keys.size as f32 * 0.75) as usize;
         if .entries.len > rehash_treshold {

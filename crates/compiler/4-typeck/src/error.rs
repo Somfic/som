@@ -13,6 +13,22 @@ pub enum Unused {
 
 #[derive(Debug, Clone)]
 pub enum TypeError {
+    /// A field, method or property used where it can't be seen: private to its type, or only
+    /// visible in its module.
+    NotVisible {
+        name: String,
+        span: Span,
+        hidden: som_resolve::visibility::Hidden,
+    },
+    /// `Hello { … }` where some of `Hello`'s fields can't be seen: only its own functions can
+    /// make one, which `fixes` call.
+    ConstructHidden {
+        ty: String,
+        /// The fields it can't see, and where each is defined.
+        fields: Vec<(String, Span)>,
+        span: Span,
+        fixes: Vec<Fix>,
+    },
     /// `found` was used where `expected` is required. `expected_from` points at what required it.
     /// `f(key)` where `f` takes a reference, `&K`: the value has to be borrowed. `expected` is
     /// the reference type written out, `&K`, even where the call hadn't worked it out yet.
@@ -468,6 +484,43 @@ pub enum TypeError {
 impl TypeError {
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
+            TypeError::NotVisible { name, span, hidden } => {
+                som_resolve::visibility::diagnostic(name, span, hidden)
+            }
+            TypeError::ConstructHidden {
+                ty,
+                fields,
+                span,
+                fixes,
+            } => {
+                let mut hint = msg![struct_name(ty.clone()), " has private fields: "];
+                for (i, (name, _)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        hint.0.push(if i + 1 == fields.len() { " and " } else { ", " }.into());
+                    }
+                    hint.0.push(field(name.clone()));
+                }
+                let mut d = Diagnostic::error(msg![
+                    "cannot construct ",
+                    struct_name(ty.clone()),
+                    " here"
+                ])
+                .with_label(Label::primary(span.clone(), "not all of its fields can be set here"));
+                for (name, at) in fields {
+                    d = d.with_label(Label::secondary(
+                        at.clone(),
+                        msg![field(name.clone()), " can't be seen from here"],
+                    ));
+                }
+                d = d.with_hint(hint);
+                if fixes.is_empty() {
+                    d = d.with_hint("only its own functions can make one");
+                }
+                for fix in fixes {
+                    d = d.with_fix(fix.clone());
+                }
+                d
+            }
             TypeError::NotBorrowed {
                 expected,
                 found,

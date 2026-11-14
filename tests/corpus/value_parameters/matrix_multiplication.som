@@ -1,25 +1,25 @@
 // expect: exit 154
 
 /// `R` rows of `C` numbers, stored row after row: `R * C` of them.
-struct Matrix<R: usize, C: usize> {
+pub struct Matrix<R: usize, C: usize> {
     cells: [i32; R * C]
 }
 
 impl<R: usize, C: usize> Matrix<R, C> {
-    fn zero() -> Matrix<R, C> { Matrix { cells: [0; R * C] } }
+    pub fn zero() -> Matrix<R, C> { Matrix { cells: [0; R * C] } }
 
-    fn at(self: &Matrix<R, C>, row: usize, col: usize) -> i32 {
+    pub fn at(self: &Matrix<R, C>, row: usize, col: usize) -> i32 {
         self.cells.get(row * C + col) else 0
     }
 
-    fn put(self: &mut Matrix<R, C>, row: usize, col: usize, value: i32) {
+    pub fn put(self: &mut Matrix<R, C>, row: usize, col: usize, value: i32) {
         self.cells.set(row * C + col, value);
     }
 }
 
 /// Only an `A`×`B` matrix and a `B`×`C` one can be multiplied, and that makes an `A`×`C`.
 /// Anything else doesn't type check, so there's no size to check at run time.
-fn mul<A: usize, B: usize, C: usize>(x: &Matrix<A, B>, y: &Matrix<B, C>) -> Matrix<A, C> {
+pub fn mul<A: usize, B: usize, C: usize>(x: &Matrix<A, B>, y: &Matrix<B, C>) -> Matrix<A, C> {
     let mut result: Matrix<A, C> = Matrix::zero();
     for i in 0..A {
         for j in 0..C {
@@ -33,7 +33,7 @@ fn mul<A: usize, B: usize, C: usize>(x: &Matrix<A, B>, y: &Matrix<B, C>) -> Matr
     result
 }
 
-fn main() -> i32 {
+pub fn main() -> i32 {
     // [1 2 3]   [ 7  8]   [ 58  64]
     // [4 5 6] × [ 9 10] = [139 154]
     //           [11 12]

@@ -1,4 +1,4 @@
 // expect: ok
 
 use mymod;
-fn main() { mymod::greet(); }
+pub fn main() { mymod::greet(); }

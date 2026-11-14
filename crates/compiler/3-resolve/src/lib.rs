@@ -11,6 +11,7 @@
 
 mod error;
 mod names;
+pub mod visibility;
 
 pub use error::ResolveError;
 pub use names::{Def, DefId, DefKind, ImplDef, LangStruct, LangTrait, Names, UNREACHABLE};
@@ -37,6 +38,7 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         type_params: Vec::new(),
         block_types: Vec::new(),
         through_alias: std::cell::Cell::new(None),
+        owner: None,
     };
     resolver.collect_modules();
     resolver.collect_items();
@@ -94,6 +96,8 @@ struct Resolver<'a> {
     block_types: Vec<(&'a str, DefId)>,
     /// The alias the last path looked up named its struct through, if it did.
     through_alias: std::cell::Cell<Option<DefId>>,
+    /// The type whose impl block is being resolved: what its members' privacy is to.
+    owner: Option<DefId>,
 }
 
 impl<'a> Resolver<'a> {
@@ -520,7 +524,9 @@ impl<'a> Resolver<'a> {
                     .map(|((n, _), d)| (&*n.name, d)),
             )
             .collect();
+        let outer = std::mem::replace(&mut self.owner, self.names.impls[index].owner);
         block.methods.iter().for_each(|&id| self.resolve_func(id));
+        self.owner = outer;
         self.block_types.clear();
     }
 
@@ -995,6 +1001,22 @@ impl<'a> Resolver<'a> {
             let error = self.not_found(path, expect);
             self.errors.push(error);
         }
+        // Found, but not to be seen from here: `pub` or `mod` would let it be.
+        if let Some(def) = found {
+            let span = path.span();
+            let viewer = visibility::Viewer {
+                module: self.module,
+                file: span.source.identifier(),
+                owner: self.owner,
+            };
+            if let Some(hidden) = visibility::hidden(self.ast, &self.names, def, viewer) {
+                self.errors.push(ResolveError::NotVisible {
+                    name: path.to_string(),
+                    span: span.clone(),
+                    hidden,
+                });
+            }
+        }
         found
     }
 
@@ -1270,9 +1292,9 @@ impl<'a> Resolver<'a> {
                 expect.name(found),
                 " is defined in module ",
                 message::module(m),
-                ": write ",
+                " but not is accesable from here. try ",
                 code(&qualified),
-                " or add ",
+                " or ",
                 code(&import),
             ];
             let mut fixes = change_to(qualified);

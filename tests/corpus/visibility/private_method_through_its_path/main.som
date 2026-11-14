@@ -1,0 +1,10 @@
+// expect: error NotVisible
+
+/// A method without `pub` or `mod` is private to its file and its type's impl blocks:
+/// `helper.som` defines it, so this file can't call it.
+fn main() -> i32 {
+    let mut c = Counter::make();
+    c.tick();
+    Counter::bump(&mut c);
+    0
+}

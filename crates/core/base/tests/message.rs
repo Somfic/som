@@ -53,7 +53,7 @@ fn diagnostics_render_plain_by_default() {
     ]);
     assert_eq!(
         d.to_string(),
-        "error: cannot find `helpr`\n     ? did you mean `helper`?\n"
+        "error: cannot find `helpr`\n\n     ┆ did you mean `helper`?\n"
     );
     assert!(d.render(true).contains('\x1b'));
 }

@@ -1,0 +1,4 @@
+// expect: exit 5
+
+/// `mod` items are seen by the module's other files, `pub` ones by everyone.
+fn main() -> i32 { shared() + open() }

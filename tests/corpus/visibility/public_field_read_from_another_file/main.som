@@ -1,0 +1,4 @@
+// expect: exit 2
+
+/// A `pub` field is seen everywhere.
+fn main() -> i32 { Point::make().y }

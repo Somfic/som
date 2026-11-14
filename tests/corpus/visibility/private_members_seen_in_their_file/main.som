@@ -1,0 +1,13 @@
+// expect: exit 3
+
+/// Without `pub` or `mod`, a field or method is seen in its own file.
+struct Point { x: i32, y: i32 }
+
+impl Point {
+    fn sum(&self) -> i32 { .x + .y }
+}
+
+fn main() -> i32 {
+    let p = Point { x: 1, y: 2 };
+    p.sum() + p.x - p.x
+}

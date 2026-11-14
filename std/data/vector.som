@@ -1,18 +1,18 @@
-type Vector2i = Vector<2, i32>;
-type Vector3i = Vector<3, i32>;
+pub type Vector2i = Vector<2, i32>;
+pub type Vector3i = Vector<3, i32>;
 
-type Vector2f = Vector<2, f32>;
-type Vector3f = Vector<3, f32>;
+pub type Vector2f = Vector<2, f32>;
+pub type Vector3f = Vector<3, f32>;
 
-type Vector2d = Vector<2, f64>;
-type Vector3d = Vector<3, f64>;
+pub type Vector2d = Vector<2, f64>;
+pub type Vector3d = Vector<3, f64>;
 
-struct Vector<N: usize, T> {
+pub struct Vector<N: usize, T> {
     components: [T; N]
 }
 
 impl<N: usize, T> Vector<N, T> {
-    fn new(components: [T; N]) {
+    pub fn new(components: [T; N]) {
         Vector { components }
     }
 
@@ -20,105 +20,105 @@ impl<N: usize, T> Vector<N, T> {
 
 impl<N: usize, T: Copy> Vector<N, T> {
     /// Every component a copy of `value`.
-    fn empty(empty: T) {
+    pub fn empty(empty: T) {
         Vector { components: [empty; N] }
     }
 }
 
 impl<T: Copy> Vector<2, T> {
-    prop x = .components[0];
-    prop y = .components[1];
+    pub prop x = .components[0];
+    pub prop y = .components[1];
 }
 
 impl Vector<2, i32> {
-    fn zero() {
+    pub fn zero() {
         Self { components: [ 0, 0 ]}
     }
 }
 
 impl Vector<2, i64> {
-    fn zero() {
+    pub fn zero() {
         Self { components: [ 0, 0 ]}
     }
 }
 
 impl Vector<2, f32> {
-    prop magintude = f32::sqrt(.x * .x + .y * .y);
-    prop normalized {
+    pub prop magintude = f32::sqrt(.x * .x + .y * .y);
+    pub prop normalized {
         Self { components: [ .x / .magintude, .y / .magintude ] }
     }
 
-    fn zero() {
+    pub fn zero() {
         Self { components: [ 0.0, 0.0 ]}
     }
 }
 
 impl Vector<2, f64> {
-    prop magintude = f64::sqrt(.x * .x + .y * .y);
-    prop normalized {
+    pub prop magintude = f64::sqrt(.x * .x + .y * .y);
+    pub prop normalized {
         Self { components: [ .x / .magintude, .y / .magintude ] }
     }
 
-    fn zero() {
+    pub fn zero() {
         Self { components: [ 0.0, 0.0 ]}
     }
 }
 
 impl Vector<3, i32> {
-    fn zero() {
+    pub fn zero() {
         Self { components: [ 0, 0, 0 ]}
     }
 }
 
 impl Vector<3, i64> {
-    fn zero() {
+    pub fn zero() {
         Self { components: [ 0, 0, 0 ]}
     }
 }
 
 impl Vector<3, f32> {
-    prop magintude = f32::sqrt(.x * .x + .y * .y + .z * .z);
-    prop normalized {
+    pub prop magintude = f32::sqrt(.x * .x + .y * .y + .z * .z);
+    pub prop normalized {
         Self { components: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
     }
 
-    fn zero() {
+    pub fn zero() {
         Self { components: [ 0.0, 0.0, 0.0 ]}
     }
 }
 
 impl Vector<3, f64> {
-    prop magintude = f64::sqrt(.x * .x + .y * .y + .z * .z);
-    prop normalized {
+    pub prop magintude = f64::sqrt(.x * .x + .y * .y + .z * .z);
+    pub prop normalized {
         Self { components: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
     }
 
-    fn zero() {
+    pub fn zero() {
         Self { components: [ 0.0, 0.0, 0.0 ]}
     }
 }
 
 impl<T: Copy> Vector<3, T> {
-    prop x = .components[0];
-    prop y = .components[1];
-    prop z = .components[2];
+    pub prop x = .components[0];
+    pub prop y = .components[1];
+    pub prop z = .components[2];
 
-    prop xy: Vector = [.x, .y];
-    prop yz: Vector = [.y, .z];
-    prop xz: Vector = [.x, .z];
+    pub prop xy: Vector = [.x, .y];
+    pub prop yz: Vector = [.y, .z];
+    pub prop xz: Vector = [.x, .z];
 }
 
 impl<T: Copy> Vector<4, T> {
-    prop x = .components[0];
-    prop y = .components[1];
-    prop z = .components[2];
-    prop w = .components[3];
+    pub prop x = .components[0];
+    pub prop y = .components[1];
+    pub prop z = .components[2];
+    pub prop w = .components[3];
 
-    prop xy: Vector = [.x, .y];
-    prop yz: Vector = [.y, .z];
-    prop xz: Vector = [.x, .z];
+    pub prop xy: Vector = [.x, .y];
+    pub prop yz: Vector = [.y, .z];
+    pub prop xz: Vector = [.x, .z];
 
-    prop xyz: Vector = [.x, .y, .z];
+    pub prop xyz: Vector = [.x, .y, .z];
 }
 
 impl<N: usize, T> From<[T; N]> for Vector<N, T> {

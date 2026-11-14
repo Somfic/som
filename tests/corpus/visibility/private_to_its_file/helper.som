@@ -1,0 +1,2 @@
+/// Without `pub` or `mod`, only this file sees it.
+fn secret() -> i32 { 1 }
