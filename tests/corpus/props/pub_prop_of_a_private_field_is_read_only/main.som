@@ -1,0 +1,8 @@
+// expect: error AssignToProp
+
+/// `c.n` here is the prop, which can't be assigned to.
+fn main() -> i32 {
+    let mut c = Counter::make();
+    c.n = 5;
+    c.n
+}

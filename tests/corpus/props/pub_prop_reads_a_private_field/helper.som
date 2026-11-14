@@ -1,0 +1,8 @@
+/// `n` is private: its own code changes it, everyone else reads it through the prop.
+pub struct Counter { n: i32 }
+
+impl Counter {
+    pub fn make() -> Counter { Counter { n: 0 } }
+    pub prop n = .n;
+    pub fn bump(&mut self) { .n = .n + 1; }
+}

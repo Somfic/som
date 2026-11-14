@@ -1,15 +1,1 @@
-pub struct Hello {
-    private: usize,
-    mod module: usize,
-    pub public: usize
-}
-
-impl Hello {
-    pub fn new() {
-        Hello { private: 0, module: 0, public: 0 }
-    }
-}
-
-fn test() {
-    Hello { module: 0, private: 0, public: 0 }
-}
+let mem = som::mem::Alloc<i32>::with_capacity(10);

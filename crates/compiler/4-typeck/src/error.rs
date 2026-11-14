@@ -130,6 +130,13 @@ pub enum TypeError {
     InvalidAssignTarget {
         span: Span,
     },
+    /// `c.n = 5` where `n` is a property: it's computed, not stored. `field` is the struct's
+    /// name and its field of the same name, private from here, that the property reads.
+    AssignToProp {
+        name: String,
+        span: Span,
+        field: Option<(String, som_resolve::visibility::Hidden)>,
+    },
     /// Assigning to a variable declared without `mut`, or to one of its fields, or `&mut` of it.
     NotMutable {
         name: String,
@@ -1540,6 +1547,29 @@ impl TypeError {
                     ))
                     .with_hint(msg!["changing it needs a ", code("&mut"), " reference"])
             }
+            TypeError::AssignToProp { name, span, field: hidden } => match hidden {
+                Some((owner, hidden)) => Diagnostic::error(msg![
+                    "cannot assign to ",
+                    field(name.clone()),
+                    ": it's read-only here"
+                ])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg!["this is the property ", field(name.clone())],
+                ))
+                .with_label(Label::secondary(
+                    hidden.defined_at.clone(),
+                    msg!["the field ", field(name.clone()), " can't be seen from here"],
+                ))
+                .with_hint(msg![
+                    "change it through one of ",
+                    struct_name(owner.clone()),
+                    "'s methods"
+                ]),
+                None => Diagnostic::error(msg!["cannot assign to property ", field(name.clone())])
+                    .with_label(Label::primary(span.clone(), "this is a property"))
+                    .with_hint("a property is worked out when it's read; there's nothing to assign to"),
+            },
             TypeError::InvalidAssignTarget { span } => {
                 Diagnostic::error("cannot assign to this expression").with_label(Label::primary(
                     span.clone(),

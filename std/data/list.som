@@ -2,7 +2,7 @@ use som::mem;
 
 pub struct List<T> {
     mem: Alloc<T>,
-    pub len: usize,
+    len: usize,
 }
 
 impl<T> List<T> {
@@ -14,6 +14,8 @@ impl<T> List<T> {
         List { mem: Alloc::with_capacity(capacity), len: 0 }
     }
 
+    /// How many values it holds.
+    pub prop len = .len;
     pub prop capacity = .mem.size;
     pub prop is_empty = .len == 0;
     pub prop is_full = .len == .capacity;

@@ -1,4 +1,4 @@
-// expect: error InvalidAssignTarget
+// expect: error AssignToProp
 
 struct Rect { w: i32 }
 

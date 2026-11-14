@@ -1348,6 +1348,55 @@ impl<'a> Checker<'a> {
         fixes
     }
 
+    /// The field of a value of type `object_ty` called `field` that a property of its name
+    /// stands in for, where the field can't be seen: its type's name, and why it's hidden.
+    fn hidden_field_named(
+        &self,
+        object_ty: TypeId,
+        field: &som_ast::Ident,
+    ) -> Option<(String, Hidden)> {
+        let mut ty = self.u.shallow(object_ty);
+        if let Ty::Ref { to, .. } = self.u.get(ty) {
+            ty = self.u.shallow(*to);
+        }
+        let Ty::Struct(def, _) = self.u.get(ty) else {
+            return None;
+        };
+        let DefKind::Struct(s) = self.names.def(*def).kind else {
+            return None;
+        };
+        let strukt = &self.ast.structs[s];
+        let i = (!strukt.is_enum())
+            .then(|| strukt.fields.iter().position(|f| f.name.name == field.name))??;
+        let hidden = visibility::hidden_field(self.ast, self.names, s, i, self.viewer(&field.span))?;
+        Some((self.names.def(*def).name.to_string(), hidden))
+    }
+
+    /// Whether a value of type `object_ty`, maybe through a reference, is a struct with a
+    /// field called `field` that can be seen where it's written.
+    fn field_seen(&self, object_ty: TypeId, field: &som_ast::Ident) -> bool {
+        let mut ty = self.u.shallow(object_ty);
+        if let Ty::Ref { to, .. } = self.u.get(ty) {
+            ty = self.u.shallow(*to);
+        }
+        let Ty::Struct(def, _) = self.u.get(ty) else {
+            return false;
+        };
+        let DefKind::Struct(s) = self.names.def(*def).kind else {
+            return false;
+        };
+        let strukt = &self.ast.structs[s];
+        if strukt.is_enum() {
+            return false;
+        }
+        (strukt.fields.iter())
+            .position(|f| f.name.name == field.name)
+            .is_some_and(|i| {
+                let viewer = self.viewer(&field.span);
+                visibility::hidden_field(self.ast, self.names, s, i, viewer).is_none()
+            })
+    }
+
     /// Reports field `index` of struct `s` if it can't be seen at `span`, where it's used.
     fn check_field_visible(&mut self, s: Id<som_ast::Struct>, index: usize, span: &Span) {
         let hidden = visibility::hidden_field(self.ast, self.names, s, index, self.viewer(span));
@@ -2356,7 +2405,16 @@ impl<'a> Checker<'a> {
                 self.narrowed = kept;
                 let target_ty = self.infer(*target);
                 // After inferring it: whether `p.x` is a field or a property depends on `p`.
-                if !self.is_place(*target) {
+                if let Expr::Field { object, field } = &self.ast.exprs[*target]
+                    && self.is_prop(*target)
+                {
+                    let object_ty = self.exprs[object.id].unwrap_or(self.u.table.error);
+                    self.errors.push(TypeError::AssignToProp {
+                        name: field.name.to_string(),
+                        span: self.span(*target),
+                        field: self.hidden_field_named(object_ty, field),
+                    });
+                } else if !self.is_place(*target) {
                     self.errors.push(TypeError::InvalidAssignTarget {
                         span: self.span(*target),
                     });
@@ -2610,7 +2668,11 @@ impl<'a> Checker<'a> {
 
             Expr::Field { object, field } => {
                 let object_ty = self.infer_object(*object);
-                if let Some(ty) = self.prop_access(id, *object, object_ty, field) {
+                // `list.len`, with a private field and a `pub prop` both called `len`: the
+                // field where it's seen, so its own code can change it, the prop elsewhere.
+                if !self.field_seen(object_ty, field)
+                    && let Some(ty) = self.prop_access(id, *object, object_ty, field)
+                {
                     return ty;
                 }
                 // `items.len`: the length of an array, slice or text.

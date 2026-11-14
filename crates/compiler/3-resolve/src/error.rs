@@ -52,7 +52,7 @@ pub enum ResolveError {
         span: Span,
         previous: Span,
     },
-    /// `prop x: i32` on a struct with a field `x`: `p.x` couldn't say which.
+    /// `prop x: i32` on a struct with a field `x` as visible: `p.x` couldn't say which.
     PropNamedLikeField {
         name: String,
         span: Span,
@@ -136,7 +136,7 @@ impl ResolveError {
                 .with_hint(msg![
                     "both are read as ",
                     code(format!("x.{name}")),
-                    "; rename one, or make the property a method"
+                    "; rename one, or make the property more visible than the field, so code that can't see the field reads the property"
                 ]);
             }
             ResolveError::PropGenerics { span } => {

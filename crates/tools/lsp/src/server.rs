@@ -1117,12 +1117,14 @@ impl LanguageServer for SomLanguageServer {
                 // A generic struct's fields as they are here: `i32`, not `T`.
                 let subst = struct_subst(a, s, a.typed.expr(expr));
                 let enum_ = a.ast.structs[s].is_enum();
+                let mut fields_here = HashSet::new();
                 for (i, (field, t)) in readable_fields(a, s).into_iter().enumerate() {
                     // An enum's common fields are as visible as it.
                     if !enum_ && visibility::hidden_field(&a.ast, &a.names, s, i, viewer).is_some()
                     {
                         continue;
                     }
+                    fields_here.insert(field.name.name.to_string());
                     items.push(CompletionItem {
                         label: field.name.name.to_string(),
                         kind: Some(CompletionItemKind::FIELD),
@@ -1131,7 +1133,10 @@ impl LanguageServer for SomLanguageServer {
                         ..Default::default()
                     });
                 }
-                prop_items(a, owner, a.typed.expr(expr), viewer, &mut items);
+                // A prop named like a field seen here isn't what `x.name` reads here.
+                let mut props = Vec::new();
+                prop_items(a, owner, a.typed.expr(expr), viewer, &mut props);
+                items.extend(props.into_iter().filter(|p| !fields_here.contains(&p.label)));
                 for (name, method) in a.names.methods_of(owner) {
                     if !visible(method) {
                         continue;

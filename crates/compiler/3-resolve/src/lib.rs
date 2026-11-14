@@ -353,7 +353,7 @@ impl<'a> Resolver<'a> {
     }
 
     /// Adds property `prop` to `owner`, checking it's one: no type parameters of its own, and
-    /// no field named like it. Its only parameter, `&self`, isn't written.
+    /// no field named like it, unless the field is less visible. Its only parameter, `&self`, isn't written.
     fn collect_prop(&mut self, owner: DefId, block: &som_ast::Impl, prop: Id<Func>, def: DefId) {
         let ast = self.ast;
         let func = &ast.funcs[prop];
@@ -371,8 +371,12 @@ impl<'a> Resolver<'a> {
         }
         if let DefKind::Struct(s) = self.names.def(owner).kind {
             let strukt = &ast.structs[s];
-            let field =
-                (strukt.fields.iter().chain(strukt.payload())).find(|f| f.name.name == name.name);
+            // A private field and a `pub prop` of its name is a field only some code can
+            // change: that code reads the field, the rest the property. As visible as the
+            // field, the property could never be reached.
+            let field = (strukt.fields.iter().chain(strukt.payload()))
+                .find(|f| f.name.name == name.name)
+                .filter(|f| strukt.is_enum() || f.visibility >= func.visibility);
             if let Some(field) = field {
                 self.errors.push(ResolveError::PropNamedLikeField {
                     name: name.name.to_string(),

@@ -1,0 +1,9 @@
+// expect: exit 2
+
+/// Another file reads `c.n` through the prop, which shares the field's name.
+fn main() -> i32 {
+    let mut c = Counter::make();
+    c.bump();
+    c.bump();
+    c.n
+}

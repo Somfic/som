@@ -1,13 +1,16 @@
 // A memory allocation for T
 pub struct Alloc<T> {
     ptr: *T,
-    pub size: usize
+    size: usize
 }
 
 impl<T> Alloc<T> {
     pub fn empty() -> Self {
         Alloc { ptr: null<T>(), size: 0 }
     }
+
+    /// How many values it has room for.
+    pub prop size = .size;
 
     pub fn with_capacity(size: usize) -> Self {
         let mut ptr = null<T>();

@@ -1,0 +1,10 @@
+// expect: error PropNamedLikeField
+
+/// A prop named like a field must be more visible than it, or nothing would ever read it.
+pub struct Rect { pub w: i32 }
+
+impl Rect {
+    pub prop w: i32 { self.w }
+}
+
+fn main() -> i32 { 0 }
