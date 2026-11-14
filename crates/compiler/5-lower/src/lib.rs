@@ -981,7 +981,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     let limit = match *b.l.mir.types.get(viewed_ty) {
                         Ty::Array { len, .. } => {
                             let len = b.l.mir.types.len(len);
-                            b.constant(ConstKind::Int(len as i64), usize)
+                            b.constant(ConstKind::Int(len as i128), usize)
                         }
                         _ => Operand::Copy(Place::local(view).project(Projection::Field(1))),
                     };
@@ -1238,7 +1238,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         let param = self.l.mir.types.intern(Ty::Param(def));
                         let value = self.value_of(param);
                         let kind = match *self.l.mir.types.get(value) {
-                            Ty::Value(Value::Int(n)) => ConstKind::Int(n as i64),
+                            Ty::Value(Value::Int(n)) => ConstKind::Int(n as i128),
                             Ty::Value(Value::Bool(b)) => ConstKind::Bool(b),
                             _ => unreachable!("value parameters stand for values"),
                         };
@@ -1837,7 +1837,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         }
         if method == ArrayMethod::Len {
             return match len {
-                Length::Fixed(len) => self.constant(ConstKind::Int(len as i64), ty),
+                Length::Fixed(len) => self.constant(ConstKind::Int(len as i128), ty),
                 Length::Held(count) if ty == usize => count,
                 // Any integer type: converted, like any other.
                 Length::Held(count) => {
@@ -1954,7 +1954,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
         // Where the range stops: its end, or the elements' own.
         let stop = end.clone().unwrap_or_else(|| match &len {
-            Length::Fixed(n) => self.constant(ConstKind::Int(*n as i64), usize),
+            Length::Fixed(n) => self.constant(ConstKind::Int(*n as i128), usize),
             Length::Held(count) => count.clone(),
         });
         let to_usize = |b: &mut Self, value: Operand, from: TypeId| -> Operand {
@@ -2002,7 +2002,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             None => first.clone(),
         };
         let len_usize = match &len {
-            Length::Fixed(n) => self.constant(ConstKind::Int(*n as i64), usize),
+            Length::Fixed(n) => self.constant(ConstKind::Int(*n as i128), usize),
             Length::Held(count) => count.clone(),
         };
         checks.push(Rvalue::Binary {
@@ -2144,7 +2144,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         }
         match len {
             Length::Fixed(len) if (*len as u128) <= max => {
-                let len = self.constant(ConstKind::Int(*len as i64), index_ty);
+                let len = self.constant(ConstKind::Int(*len as i128), index_ty);
                 checks.push(Rvalue::Binary {
                     op: BinOp::LessThan,
                     lhs: index,

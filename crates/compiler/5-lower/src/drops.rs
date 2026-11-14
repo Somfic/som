@@ -164,7 +164,7 @@ impl Lowerer<'_> {
                     let is = g.local(bool);
                     let tag = Operand::Copy(this.clone().project(Projection::Field(0)));
                     let value = Operand::Const(Const {
-                        kind: ConstKind::Int(v as i64),
+                        kind: ConstKind::Int(v as i128),
                         ty: u32,
                     });
                     g.assign(
@@ -200,7 +200,7 @@ impl Lowerer<'_> {
                     _ => unreachable!("an array's glue"),
                 };
                 let i = g.local(usize);
-                let int = |n: i64| {
+                let int = |n: i128| {
                     Operand::Const(Const {
                         kind: ConstKind::Int(n),
                         ty: usize,
@@ -216,7 +216,7 @@ impl Lowerer<'_> {
                     Rvalue::Binary {
                         op: BinOp::LessThan,
                         lhs: Operand::Copy(Place::local(i)),
-                        rhs: int(len as i64),
+                        rhs: int(len as i128),
                     },
                 );
                 g.branch(Operand::Copy(Place::local(more)), body, exit);

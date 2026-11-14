@@ -1497,7 +1497,7 @@ impl<'a> Emitter<'a> {
             Operand::Const(c) => Expr::atom(match &c.kind {
                 // C gives a literal a type wide enough for its value, and converts it to
                 // whatever it's combined with, so no cast is needed.
-                ConstKind::Int(n) => n.to_string(),
+                ConstKind::Int(n) => self.int_literal(*n, c.ty),
                 ConstKind::Float(x) => match self.mir.types.get(c.ty) {
                     Ty::Float(FloatTy::F32) => format!("{x:?}f"),
                     _ => format!("{x:?}"),
@@ -1519,6 +1519,28 @@ impl<'a> Emitter<'a> {
                 ConstKind::Zeroed => format!("({}){{0}}", self.ty(c.ty)),
             }),
         }
+    }
+
+    /// `n` as a C literal of type `ty`. C has no literal past 64 bits, and none for the
+    /// smallest `long long`: `-9223372036854775808` is `-` applied to a number too big for
+    /// one. Above the largest `long long`, it's unsigned.
+    fn int_literal(&self, n: i128, ty: TypeId) -> String {
+        if n == i64::MIN as i128 {
+            return "(-9223372036854775807LL - 1)".into();
+        }
+        if i64::try_from(n).is_ok() {
+            return n.to_string();
+        }
+        if u64::try_from(n).is_ok() {
+            return format!("{n}ULL");
+        }
+        // Past 64 bits: its two halves, put together.
+        let bits = n as u128;
+        let (high, low) = ((bits >> 64) as u64, bits as u64);
+        format!(
+            "(({})(((unsigned __int128){high}ULL << 64) | {low}ULL))",
+            self.ty(ty)
+        )
     }
 
     /// A place as a C lvalue: `x`, `p.x`, `self->x`, `(*r)`.

@@ -1,9 +1,1 @@
-use som::data;
-
-let items = [ 1, 2, 3];
-
-for item in &items {
-    c::printf("%d\n", item)
-}
-
-c::printf("\n%d", items.len)
+let value: u64 = 18446744073709551615;

@@ -238,13 +238,13 @@ impl Parser<'_> {
             TokenKind::Int => {
                 let text = self.peek_token().text.clone();
                 self.advance();
-                match text.parse() {
+                match text.parse::<i128>() {
                     Ok(value) => Expr::Int(value),
                     Err(_) => {
                         self.error_at(
                             start.clone(),
                             "integer literal is too large",
-                            "this does not fit in 64 bits",
+                            "this does not fit in 128 bits",
                         );
                         Expr::Hole
                     }
@@ -645,13 +645,13 @@ impl Parser<'_> {
                 let negative = self.eat(TokenKind::Minus);
                 let span = self.current_span();
                 let count = self.parse_count("a number")?;
-                match i64::try_from(count) {
+                match i128::try_from(count) {
                     Ok(n) => Pattern::Int(if negative { -n } else { n }),
                     Err(_) => {
                         self.error_at(
                             span,
                             "integer literal is too large",
-                            "this does not fit in 64 bits",
+                            "this does not fit in 128 bits",
                         );
                         Pattern::Wildcard
                     }

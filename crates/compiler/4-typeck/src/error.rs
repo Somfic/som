@@ -287,7 +287,7 @@ pub enum TypeError {
     },
     /// An integer literal too big for its type: `let x: u8 = 300;`.
     LiteralOutOfRange {
-        value: i64,
+        value: i128,
         ty: String,
         max: u128,
         min: i128,

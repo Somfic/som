@@ -3,7 +3,7 @@ use crate::{Id, Ident, Path, TypeExpr};
 pub enum Expr {
     /// Placeholder for code that failed to parse.
     Hole,
-    Int(i64),
+    Int(i128),
     Float(f64),
     Bool(bool),
     Str(Box<str>),
@@ -123,7 +123,7 @@ pub enum Pattern {
     /// variants, like `Empty`, is that variant instead; the resolver tells them apart.
     Binding { name: Ident, mutable: bool },
     /// `3`, `-1`
-    Int(i64),
+    Int(i128),
     /// `true` or `false`
     Bool(bool),
     /// `none`: an optional without a value. Any other pattern matched against an optional

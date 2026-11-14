@@ -89,9 +89,11 @@ fn binary(types: &TypeTable, op: BinOp, lhs: &Const, rhs: &Const) -> Option<Cons
         (ConstKind::Int(a), ConstKind::Int(b), Ty::Int(int)) => {
             let (a, b) = (value(*a, *int)?, value(*b, *int)?);
             match op {
-                BinOp::Add => arithmetic(ConstKind::Int(wrap(a + b, *int)?)),
-                BinOp::Subtract => arithmetic(ConstKind::Int(wrap(a - b, *int)?)),
-                BinOp::Multiply => arithmetic(ConstKind::Int(wrap(a * b, *int)?)),
+                // Wrapping at 128 bits keeps every narrower width's result: those widths divide
+                // it. `wrap` then takes it to the type's.
+                BinOp::Add => arithmetic(ConstKind::Int(wrap(a.wrapping_add(b), *int)?)),
+                BinOp::Subtract => arithmetic(ConstKind::Int(wrap(a.wrapping_sub(b), *int)?)),
+                BinOp::Multiply => arithmetic(ConstKind::Int(wrap(a.wrapping_mul(b), *int)?)),
                 // Dividing by zero, and `MIN / -1`, trap at run time.
                 BinOp::Divide | BinOp::Modulo if b == 0 || traps(a, b, *int) => None,
                 // Both truncate towards zero.
@@ -151,8 +153,8 @@ fn binary(types: &TypeTable, op: BinOp, lhs: &Const, rhs: &Const) -> Option<Cons
 }
 
 /// The value of the literal `n` as an `int`: `-1` as a `u8` is 255.
-fn value(n: i64, int: IntTy) -> Option<i128> {
-    wrap(n as i128, int).map(i128::from)
+fn value(n: i128, int: IntTy) -> Option<i128> {
+    wrap(n, int)
 }
 
 /// Whether `a / b` is `MIN / -1` in a signed type, which traps on most CPUs. C widens
@@ -168,9 +170,9 @@ fn traps(a: i128, b: i128, int: IntTy) -> bool {
     a == min && b == -1
 }
 
-/// `n` as a value of type `int`, wrapped to its width, or `None` if `ConstKind::Int`
-/// can't hold it.
-fn wrap(n: i128, int: IntTy) -> Option<i64> {
+/// `n` as a value of type `int`, wrapped to its width; `None` for the 128-bit types, which
+/// are left to C, and anything the narrowest pointer width can't hold.
+fn wrap(n: i128, int: IntTy) -> Option<i128> {
     let (bits, signed) = match int {
         IntTy::I8 => (8, true),
         IntTy::I16 => (16, true),
@@ -181,16 +183,13 @@ fn wrap(n: i128, int: IntTy) -> Option<i64> {
         IntTy::U32 => (32, false),
         IntTy::U64 => (64, false),
         // Their width depends on the target: only fold what fits in the narrowest.
-        IntTy::ISize => return i32::try_from(n).ok().map(i64::from),
-        IntTy::USize => return u32::try_from(n).ok().map(i64::from),
+        IntTy::ISize => return i32::try_from(n).ok().map(i128::from),
+        IntTy::USize => return u32::try_from(n).ok().map(i128::from),
         IntTy::I128 | IntTy::U128 => return None,
     };
     let modulus = 1i128 << bits;
     let min = if signed { -modulus / 2 } else { 0 };
-    let wrapped = (n - min).rem_euclid(modulus) + min;
-    // The C backend can't write `i64::MIN`: `-9223372036854775808` is `-` applied to a
-    // number too big for `i64`.
-    i64::try_from(wrapped).ok().filter(|&n| n != i64::MIN)
+    Some(n.wrapping_sub(min).rem_euclid(modulus) + min)
 }
 
 // --- Locals ---

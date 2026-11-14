@@ -437,7 +437,7 @@ pub struct Const {
 
 #[derive(Clone)]
 pub enum ConstKind {
-    Int(i64),
+    Int(i128),
     Float(f64),
     Bool(bool),
     Str(String),

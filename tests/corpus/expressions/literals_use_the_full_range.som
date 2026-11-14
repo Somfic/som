@@ -1,0 +1,17 @@
+// expect: exit 43
+
+/// An integer literal can be any value of its type: the largest `u64`, the smallest `i64`, a
+/// `u128` past 64 bits. Constants are worked out at their own width.
+fn main() -> i32 {
+    let basis: u64 = 14695981039346656037;
+    let max: u64 = 18446744073709551615;
+    let min: i64 = -9223372036854775808;
+    let wide: u128 = 18446744073709551616 * 5;
+    // Worked out while compiling, wrapping like at run time: 2.
+    let wrapped: u64 = 18446744073709551615 + 3;
+    let a = if basis % 1000 == 37 { 1 } else { 0 };
+    let b = if max / 2 == 9223372036854775807 { 10 } else { 0 };
+    let c = if min < 0 - 9223372036854775807 { 20 } else { 0 };
+    let d = (wide / 18446744073709551616) as i32;
+    a + b + c + d + wrapped as i32 + 5
+}

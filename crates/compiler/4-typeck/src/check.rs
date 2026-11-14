@@ -381,25 +381,21 @@ impl<'a> Checker<'a> {
             let Ty::Int(int) = *self.u.table.get(types[id.id]) else {
                 continue;
             };
-            let max: u128 = match int {
-                IntTy::I8 => i8::MAX as u128,
-                IntTy::I16 => i16::MAX as u128,
-                IntTy::I32 => i32::MAX as u128,
-                IntTy::I64 | IntTy::ISize => i64::MAX as u128,
-                IntTy::U8 => u8::MAX as u128,
-                IntTy::U16 => u16::MAX as u128,
-                IntTy::U32 => u32::MAX as u128,
-                IntTy::U64 | IntTy::USize | IntTy::I128 | IntTy::U128 => continue,
-            };
-            let min: i128 = match int {
-                IntTy::I8 => i8::MIN as i128,
-                IntTy::I16 => i16::MIN as i128,
-                IntTy::I32 => i32::MIN as i128,
-                _ if int.is_signed() => i64::MIN as i128,
-                _ => 0,
+            // `isize` and `usize` are as wide as a pointer: 64 bits is the widest they can be.
+            let (min, max): (i128, u128) = match int {
+                IntTy::I8 => (i8::MIN.into(), i8::MAX as u128),
+                IntTy::I16 => (i16::MIN.into(), i16::MAX as u128),
+                IntTy::I32 => (i32::MIN.into(), i32::MAX as u128),
+                IntTy::I64 | IntTy::ISize => (i64::MIN.into(), i64::MAX as u128),
+                IntTy::I128 => (i128::MIN, i128::MAX as u128),
+                IntTy::U8 => (0, u8::MAX.into()),
+                IntTy::U16 => (0, u16::MAX.into()),
+                IntTy::U32 => (0, u32::MAX.into()),
+                IntTy::U64 | IntTy::USize => (0, u64::MAX.into()),
+                IntTy::U128 => (0, u128::MAX),
             };
             let fits = match *n < 0 {
-                true => *n as i128 >= min,
+                true => *n >= min,
                 false => *n as u128 <= max,
             };
             if !fits {
@@ -807,7 +803,7 @@ impl<'a> Checker<'a> {
                         };
                         if n > max {
                             self.errors.push(TypeError::LiteralOutOfRange {
-                                value: n.min(i64::MAX as u128) as i64,
+                                value: n.min(i128::MAX as u128) as i128,
                                 ty: format!("{int_ty:?}").to_lowercase(),
                                 max,
                                 min: 0,
@@ -1889,6 +1885,15 @@ impl<'a> Checker<'a> {
             Expr::Cast { value, ty } => {
                 let target = self.lower(*ty);
                 let found = self.infer(*value);
+                // A literal converted to an integer type is read in full, as an `i128`, then
+                // wrapped: `18446744073709551617 as u64` is 1, `-1 as u64` the largest.
+                if matches!(self.ast.exprs[*value], Expr::Int(_))
+                    && self.u.var_kind(found) == Some(VarKind::Int)
+                    && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_))
+                {
+                    let i128 = self.u.intern(Ty::Int(IntTy::I128));
+                    let _ = self.u.unify(found, i128);
+                }
                 // The value converts at run time: `300 as u8` is the `i32` 300, wrapped to 44.
                 let number = |c: &Self, ty: TypeId| {
                     matches!(

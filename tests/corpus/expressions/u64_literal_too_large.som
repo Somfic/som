@@ -1,0 +1,7 @@
+// expect: error LiteralOutOfRange
+
+/// One past the largest `u64` doesn't fit it.
+fn main() -> i32 {
+    let x: u64 = 18446744073709551616;
+    0
+}

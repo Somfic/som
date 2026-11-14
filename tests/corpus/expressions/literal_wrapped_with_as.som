@@ -1,0 +1,10 @@
+// expect: exit 16
+
+/// `as` converts a literal that doesn't fit on purpose, wrapping it: the literal is read in
+/// full first.
+fn main() -> i32 {
+    let a = 18446744073709551617 as u64;
+    let b = -1 as u64;
+    let c = 256 as u8;
+    (a + (b - 18446744073709551600) + c as u64) as i32
+}

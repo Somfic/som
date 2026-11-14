@@ -13,7 +13,7 @@ use crate::ty::TypeId;
 pub(crate) enum Ctor {
     Variant(usize),
     Bool(bool),
-    Int(i64),
+    Int(i128),
     None,
     Some,
 }

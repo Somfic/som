@@ -164,7 +164,7 @@ impl FnBuilder<'_, '_> {
         let bool = self.l.mir.types.bool;
         let tag_place = place.clone().project(Projection::Field(0));
         let tag_ty = self.place_ty(&tag_place);
-        let wanted = self.constant(ConstKind::Int(variant as i64), tag_ty);
+        let wanted = self.constant(ConstKind::Int(variant as i128), tag_ty);
         let is_variant = self.compute(
             Rvalue::Binary {
                 op: BinOp::Equals,
