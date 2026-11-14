@@ -1,20 +1,13 @@
-let a = true;
-let b = false;
-
-struct Hello {
-    a: i32
-}
-
-impl Compare for Hello {
-    fn compare(self: &Hello, other: &Hello) -> Ordering {
-        self.compare(other)
+impl Double<i32> for i32 {
+    fn double(self: i32) -> i32 {
+        self * 2
     }
 }
 
-impl Eq for Hello {
-    fn eq(self: &Hello, other: &Hello) -> bool {
-        self.a == other.a
-    }
+trait Double<T> {
+    fn double(self: T) -> T;
 }
 
-Hello { a: 1 } > Hello { a: 1 }
+let a: i32 = 12;
+
+a.double();

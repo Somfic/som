@@ -1,0 +1,32 @@
+// expect: exit 36
+
+/// Built-in types have methods of their own too: `impl i32 { … }`. Called on a value, or by
+/// the type's name when there's no `self`.
+impl i32 {
+    fn hello() -> i32 { 7 }
+    fn double(self: i32) -> i32 { self * 2 }
+    fn bump(self: &mut i32) { *self = *self + 1; }
+    fn clamp(self: &i32, low: i32, high: i32) -> i32 {
+        if *self < low { low } else if *self > high { high } else { *self }
+    }
+}
+
+impl bool {
+    fn to_int(self: bool) -> i32 { if self { 1 } else { 0 } }
+}
+
+impl str {
+    fn first_len(self: str) -> usize { self.len() }
+}
+
+fn main() -> i32 {
+    let mut x = 5;
+    x.bump();
+    let a = x.double();
+    let b = i32::hello();
+    let c = 50.clamp(0, 10);
+    let d = true.to_int();
+    let e = "hey".first_len() as i32;
+    let f = "hey".len() as i32;
+    a + b + c + d + e + f
+}

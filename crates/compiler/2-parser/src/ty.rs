@@ -291,7 +291,7 @@ impl Parser<'_> {
     }
 }
 
-fn primitive(kind: TokenKind) -> Option<Primitive> {
+pub(crate) fn primitive(kind: TokenKind) -> Option<Primitive> {
     Some(match kind {
         TokenKind::I8 => Primitive::I8,
         TokenKind::I16 => Primitive::I16,

@@ -1,0 +1,12 @@
+// expect: error DuplicateOverload
+
+/// Two impls giving `i32` the same method, as for a struct.
+impl i32 {
+    fn twice(self: i32) -> i32 { self * 2 }
+}
+
+impl i32 {
+    fn twice(self: i32) -> i32 { self + self }
+}
+
+fn main() -> i32 { 3.twice() }

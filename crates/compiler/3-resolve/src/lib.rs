@@ -245,6 +245,19 @@ impl<'a> Resolver<'a> {
                 // Only a struct has methods of its own; an implementation for `bool` is found
                 // through its trait.
                 let owner = match block.target_ty {
+                    // `impl i32 { … }`: a built-in type's own methods.
+                    Some(ty) if block.trait_.is_none() => match ast.types[ty] {
+                        som_ast::TypeExpr::Primitive(p) => {
+                            Some(self.names.primitive_or_define(p, block.target.span(), m))
+                        }
+                        _ => {
+                            self.errors.push(ResolveError::MethodsOnType {
+                                ty: block.target.to_string(),
+                                span: block.target.span(),
+                            });
+                            None
+                        }
+                    },
                     Some(_) => None,
                     None => self.resolve_path(&block.target, Expect::Struct),
                 };
@@ -869,18 +882,27 @@ impl<'a> Resolver<'a> {
                 (self.items[m].get(&*rest[0].name).copied()?, &rest[1..])
             }
             None => (
-                self.lookup(&segments[0].name, Expect::Struct)?,
+                self.lookup(&segments[0].name, Expect::Struct)
+                    .or_else(|| self.primitive_named(&segments[0].name))?,
                 &segments[1..],
             ),
         };
 
         match rest {
+            [name] if matches!(self.names.def(owner).kind, DefKind::Primitive(_)) => {
+                self.names.method(owner, &name.name).filter(|&d| self.fits(d, expect))
+            }
             [name] if matches!(self.names.def(owner).kind, DefKind::Struct(_)) => (self.names)
                 .variant(owner, &name.name)
                 .or_else(|| self.names.method(owner, &name.name))
                 .filter(|&d| self.fits(d, expect)),
             _ => None,
         }
+    }
+
+    /// The definition of the built-in type called `name`, if it has methods of its own.
+    fn primitive_named(&self, name: &str) -> Option<DefId> {
+        self.names.primitives_named(name)
     }
 
     /// Whether `def` is something `expect` accepts.

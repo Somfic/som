@@ -241,6 +241,10 @@ impl<'a> Lowerer<'a> {
         if let Some((method, args)) = self.dispatch(func, &type_args) {
             return self.instance(method, args);
         }
+        // Or one numbers have built in: `compare` of `i32`.
+        if let Some(id) = self.builtin_method(func, &type_args) {
+            return id;
+        }
         let key = (func, type_args);
         if let Some(&id) = self.instances.get(&key) {
             return id;

@@ -111,6 +111,11 @@ impl Parser<'_> {
     fn parse_impl(&mut self) -> Option<Impl> {
         self.expect(TokenKind::Impl, "an impl block")?;
         let generics = self.parse_generics()?;
+        // `impl i32 { … }`: methods for a built-in type.
+        if !self.at(TokenKind::Ident) {
+            let ty = self.parse_type()?;
+            return self.parse_impl_body(generics, None, None, Vec::new(), Some(ty));
+        }
         let first = self.parse_path("a struct or trait name")?;
         let first_args = self.parse_type_args()?;
         // `Iterator for ListIter<T>`: what came first was the trait.
@@ -134,6 +139,29 @@ impl Parser<'_> {
         } else {
             (None, first, first_args, None)
         };
+        self.parse_impl_body(generics, trait_, Some(target), target_args, target_ty)
+    }
+
+    /// An impl block's `{ … }`, after its header. `target` is `None` for a type that isn't a
+    /// struct, named by `target_ty` alone.
+    fn parse_impl_body(
+        &mut self,
+        generics: Vec<som_ast::Generic>,
+        trait_: Option<(som_ast::Path, Vec<Id<som_ast::TypeExpr>>)>,
+        target: Option<som_ast::Path>,
+        target_args: Vec<Id<som_ast::TypeExpr>>,
+        target_ty: Option<Id<som_ast::TypeExpr>>,
+    ) -> Option<Impl> {
+        // A built-in type's is named by its text, for showing.
+        let target = target.unwrap_or_else(|| {
+            let span = self.ast.types.span(target_ty.expect("a type if not a path")).clone();
+            som_ast::Path {
+                segments: vec![som_ast::Ident {
+                    name: span.get_text().as_ref().into(),
+                    span,
+                }],
+            }
+        });
         self.expect(TokenKind::OpenBrace, "an impl block")?;
 
         let mut methods = Vec::new();

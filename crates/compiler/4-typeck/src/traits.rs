@@ -152,3 +152,32 @@ pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
         LangTrait::Iterator | LangTrait::Iterable | LangTrait::From => false,
     }
 }
+
+/// The built-in type `ty` is, as it's written: `i32`, `bool`, `str`.
+pub fn primitive_of(ty: &Ty) -> Option<som_ast::Primitive> {
+    use crate::ty::{FloatTy, IntTy};
+    use som_ast::Primitive as P;
+    Some(match ty {
+        Ty::Int(int) => match int {
+            IntTy::I8 => P::I8,
+            IntTy::I16 => P::I16,
+            IntTy::I32 => P::I32,
+            IntTy::I64 => P::I64,
+            IntTy::I128 => P::I128,
+            IntTy::ISize => P::ISize,
+            IntTy::U8 => P::U8,
+            IntTy::U16 => P::U16,
+            IntTy::U32 => P::U32,
+            IntTy::U64 => P::U64,
+            IntTy::U128 => P::U128,
+            IntTy::USize => P::USize,
+        },
+        Ty::Float(FloatTy::F32) => P::F32,
+        Ty::Float(FloatTy::F64) => P::F64,
+        Ty::Bool => P::Bool,
+        Ty::Char => P::Char,
+        Ty::Str => P::Str,
+        Ty::CStr => P::CStr,
+        _ => return None,
+    })
+}

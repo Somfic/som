@@ -12,7 +12,7 @@ use som_ast::{BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_base::Source;
 use som_driver::Analysis;
 use som_lexer::{TokenKind, lex};
-use som_resolve::{DefId, DefKind};
+use som_resolve::{DefId, DefKind, LangTrait};
 use som_typeck::{ArrayMethod, PointerMethod, Ty};
 
 use crate::convert;
@@ -858,6 +858,48 @@ impl LanguageServer for SomLanguageServer {
                         ..Default::default()
                     });
                 }
+            } else if let Some(expr) = receiver {
+                // Any other type: its own methods, from `impl i32 { … }`, then the methods of
+                // the traits it has, `12.compare(&other)`.
+                let t = a.typed.expr(expr);
+                let viewed = match *a.typed.ty(t) {
+                    Ty::Ref { to, .. } => to,
+                    _ => t,
+                };
+                let owner = som_typeck::traits::primitive_of(a.typed.ty(viewed))
+                    .and_then(|p| a.names.primitive(p));
+                for (name, method) in owner.map(|o| a.names.methods_of(o)).unwrap_or_default() {
+                    // Only those taking a `self`: `i32::parse` is called on the type.
+                    let DefKind::Func(f) = a.names.def(method).kind else {
+                        continue;
+                    };
+                    if a.ast.funcs[f].params.first().is_none_or(|p| &*p.name.name != "self") {
+                        continue;
+                    }
+                    let snippet = call_snippet(a, f, name, 1, insert);
+                    items.push(CompletionItem {
+                        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
+                        insert_text: snippet,
+                        label: name.to_string(),
+                        kind: Some(CompletionItemKind::METHOD),
+                        detail: Some(signature(a, f)),
+                        documentation: markdown(doc_of(a, method)),
+                        ..Default::default()
+                    });
+                }
+                for (method, signature) in trait_methods_of(a, t) {
+                    let name = a.ast.funcs[method].name.name.to_string();
+                    let snippet = call_snippet(a, method, &name, 1, insert);
+                    items.push(CompletionItem {
+                        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
+                        insert_text: snippet,
+                        label: name,
+                        kind: Some(CompletionItemKind::METHOD),
+                        detail: Some(signature),
+                        documentation: markdown(a.ast.funcs[method].doc.clone()),
+                        ..Default::default()
+                    });
+                }
             }
         } else if let Some((stubs, start)) =
             impl_stubs(a, &cursor.file, &cursor.text, cursor.offset)
@@ -892,11 +934,10 @@ impl LanguageServer for SomLanguageServer {
                 });
             }
             return Ok(Some(CompletionResponse::Array(items)));
-        } else if let Some((path, written)) = struct_literal(&cursor.text, cursor.offset) {
+        } else if let Some((path, written)) = struct_literal(&cursor.text, cursor.offset)
+            && let Some(s) = find_struct(a, path, &cursor.file)
+        {
             // `Color { r: 1, ` lists the fields not written yet.
-            let Some(s) = find_struct(a, path, &cursor.file) else {
-                return Ok(None);
-            };
             for (field, &t) in a.ast.structs[s].fields.iter().zip(a.typed.fields(s)) {
                 if written.contains(&*field.name.name) {
                     continue;
@@ -950,6 +991,23 @@ impl LanguageServer for SomLanguageServer {
             // `raylib::` lists what's in `raylib`.
             if let Some(m) = a.ast.modules.iter().position(|m| *m.name == *module) {
                 items.extend(module_items(a, m, None, insert));
+            } else if let Some(owner) = a.names.primitives_named(module) {
+                // `i32::` lists its own functions and methods.
+                for (name, method) in a.names.methods_of(owner) {
+                    let DefKind::Func(f) = a.names.def(method).kind else {
+                        continue;
+                    };
+                    let snippet = call_snippet(a, f, name, 0, insert);
+                    items.push(CompletionItem {
+                        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
+                        insert_text: snippet,
+                        label: name.to_string(),
+                        kind: Some(CompletionItemKind::METHOD),
+                        detail: Some(signature(a, f)),
+                        documentation: markdown(doc_of(a, method)),
+                        ..Default::default()
+                    });
+                }
             } else if let Some(s) = find_struct(a, module, &cursor.file) {
                 // `Shape::` lists its variants, then its methods.
                 for (i, variant) in a.ast.structs[s].variants().iter().enumerate() {
@@ -1324,6 +1382,7 @@ fn describe(a: &Analysis, def: DefId) -> String {
     match &d.kind {
         DefKind::Func(f) => signature(a, *f),
         DefKind::Struct(s) => struct_text(a, *s),
+        DefKind::Primitive(_) => d.name.to_string(),
         DefKind::Param { func, index } if a.ast.funcs[*func].params[*index].out => {
             let param = &a.ast.funcs[*func].params[*index];
             match a.typed.try_local(def) {
@@ -2292,7 +2351,8 @@ fn struct_literal(text: &str, offset: usize) -> Option<(&str, HashSet<&str>)> {
         .rsplit(|c: char| !word(c))
         .next()
         .unwrap_or_default();
-    if matches!(keyword, "struct" | "impl" | "fn") {
+    // `fn f() -> i32 {` is a body, not a literal.
+    if matches!(keyword, "struct" | "impl" | "fn") || before[..start].trim_end().ends_with("->") {
         return None;
     }
 
@@ -2658,6 +2718,56 @@ fn impl_stubs(
         return (!stubs.is_empty()).then_some((stubs, start));
     }
     None
+}
+
+/// The methods of the traits values of type `t` have, each a trait's method with its
+/// signature for `t`: the language's traits it has built in (`compare` of a number), then
+/// the traits implemented for it.
+fn trait_methods_of(a: &Analysis, t: som_typeck::TypeId) -> Vec<(Id<Func>, String)> {
+    // Each trait with what its parameters are for `t`: `Double<i32>` gives `T` as `i32`.
+    let mut traits: Vec<(Id<som_ast::Trait>, Vec<String>)> = Vec::new();
+    let mut add = |def, args: Vec<String>| {
+        if let DefKind::Trait(tr) = a.names.def(def).kind
+            && !traits.iter().any(|(t, a)| *t == tr && *a == args)
+        {
+            traits.push((tr, args));
+        }
+    };
+    for lang in LangTrait::ALL {
+        if som_typeck::traits::builtin_operator(a.typed.ty(t), lang)
+            && let Some(def) = a.names.lang(lang)
+        {
+            add(def, Vec::new());
+        }
+    }
+    for (i, info) in a.typed.impls.iter().enumerate() {
+        let Some(trait_) = info.trait_ else { continue };
+        let this = std::slice::from_ref(&a.typed.impls[i]);
+        let Some((_, args)) =
+            som_typeck::traits::find_impl(this, &a.typed.table, trait_, t, &[], &|x| x)
+        else {
+            continue;
+        };
+        // The trait's arguments as this implementation gives them, for `t`.
+        let subst: Vec<_> = info.params.iter().copied().zip(args).collect();
+        let shown = (info.trait_args.iter())
+            .map(|&arg| a.typed.table.display_with(arg, &a.names, &subst))
+            .collect();
+        add(trait_, shown);
+    }
+    let shown = ty(a, t);
+    let mut methods = Vec::new();
+    for (tr, args) in traits {
+        let stubs = som_typeck::stubs::stubs(&a.ast, tr, &shown, &args, &|_, _| false);
+        for &method in &a.ast.traits[tr].methods {
+            let name = &a.ast.funcs[method].name.name;
+            let signature = (stubs.iter())
+                .find(|s| !s.is_type && *s.name == **name)
+                .map_or_else(|| format!("fn {name}"), |s| s.signature.clone());
+            methods.push((method, signature));
+        }
+    }
+    methods
 }
 
 /// What can be written at the cursor in an `impl` header or a generic's bounds.

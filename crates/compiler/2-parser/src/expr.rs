@@ -286,6 +286,21 @@ impl Parser<'_> {
                 Expr::Str(self.unescape(&text[1..text.len() - 1], &start).into())
             }
 
+            // `i32::parse(…)`: a built-in type's own function.
+            kind if crate::ty::primitive(kind).is_some()
+                && self.peek_nth(1) == TokenKind::DoubleColon =>
+            {
+                let token = self.peek_token().clone();
+                self.advance();
+                let mut segments = vec![som_ast::Ident {
+                    name: token.text.as_ref().into(),
+                    span: token.span.clone(),
+                }];
+                while self.eat(TokenKind::DoubleColon) {
+                    segments.push(self.parse_ident("a function name")?);
+                }
+                Expr::Var(som_ast::Path { segments })
+            }
             TokenKind::Ident => {
                 // `Name { field: ...` or `Name {}` is a constructor, and so is
                 // `module::Name { ... }`; `name { ... }` is not.

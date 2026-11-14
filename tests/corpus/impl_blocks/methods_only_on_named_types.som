@@ -1,0 +1,8 @@
+// expect: error MethodsOnType
+
+/// An array has no methods of its own to add to; a trait can still be implemented for it.
+impl [i32; 3] {
+    fn first(self: [i32; 3]) -> i32 { 0 }
+}
+
+fn main() -> i32 { 0 }

@@ -9,6 +9,8 @@ pub type DefId = Id<Def>;
 pub enum DefKind {
     /// A function, method or extern function.
     Func(Id<Func>),
+    /// A built-in type with methods of its own: `i32` in `impl i32 { … }`.
+    Primitive(som_ast::Primitive),
     /// A struct, or an enum.
     Struct(Id<Struct>),
     /// The `index`th variant of enum `strukt`: `Shape::Circle`.
@@ -195,6 +197,8 @@ pub struct Names {
     /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
     /// name (`Circle(r)`, `Empty`) has none: the type matched decides which enum's it is.
     patterns: Vec<Option<DefId>>,
+    /// Built-in types with methods of their own, from `impl i32 { … }`.
+    primitives: HashMap<som_ast::Primitive, DefId>,
 }
 
 impl Names {
@@ -221,6 +225,7 @@ impl Names {
             projection_bases: HashMap::new(),
             lang: HashMap::new(),
             patterns: vec![None; ast.patterns.len()],
+            primitives: HashMap::new(),
         }
     }
 
@@ -463,5 +468,34 @@ impl Names {
     /// The method `name` defined on `owner` by an `impl` block.
     pub fn method(&self, owner: DefId, name: &str) -> Option<DefId> {
         self.methods.get(&(owner, name.into())).copied()
+    }
+
+    /// The definition built-in type `primitive`'s own methods are attached to, if an
+    /// `impl` gives it any.
+    pub fn primitive(&self, primitive: som_ast::Primitive) -> Option<DefId> {
+        self.primitives.get(&primitive).copied()
+    }
+
+    /// The definition of the built-in type called `name` (`i32`), if it has methods.
+    pub fn primitives_named(&self, name: &str) -> Option<DefId> {
+        (self.primitives.iter())
+            .find(|(p, _)| format!("{p:?}").to_lowercase() == name)
+            .map(|(_, &d)| d)
+    }
+
+    /// The definition for built-in type `primitive`'s methods, made the first time.
+    pub(crate) fn primitive_or_define(
+        &mut self,
+        primitive: som_ast::Primitive,
+        span: som_base::Span,
+        module: usize,
+    ) -> DefId {
+        if let Some(&def) = self.primitives.get(&primitive) {
+            return def;
+        }
+        let name = format!("{primitive:?}").to_lowercase();
+        let def = self.define(&name, DefKind::Primitive(primitive), span, module);
+        self.primitives.insert(primitive, def);
+        def
     }
 }

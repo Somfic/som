@@ -396,8 +396,9 @@ impl Checker<'_> {
     }
 
     /// `receiver.method(args)` of a trait's method: on a type parameter, one of its bounds'
-    /// methods; on a struct without a method of that name, a method with a body of a trait it
-    /// implements. Returns the call's type, if it's one.
+    /// methods; on a struct without a method of that name, a trait's it implements; on any
+    /// other type, a trait's it implements or has built in, as numbers have `compare`. Returns
+    /// the call's type, if it's one.
     pub(super) fn trait_method_call(
         &mut self,
         call: Id<Expr>,
@@ -410,15 +411,42 @@ impl Checker<'_> {
         if let Ty::Ref { to, .. } = *self.u.get(base) {
             base = self.u.shallow(to);
         }
+        let implemented = |c: &Self| -> Vec<DefId> {
+            (c.impls.iter())
+                .filter_map(|info| info.trait_)
+                .filter(|&t| c.implements(base, t))
+                .collect()
+        };
         let traits: Vec<DefId> = match self.u.get(base).clone() {
             Ty::Param(def) => self.names.bounds(def).to_vec(),
             Ty::Struct(owner, _) if self.names.method(owner, &method.name).is_none() => {
-                (self.impls.iter())
-                    .filter_map(|info| info.trait_)
-                    .filter(|&t| self.implements(base, t))
-                    .collect()
+                implemented(self)
             }
-            _ => return None,
+            Ty::Struct(..) | Ty::Error => return None,
+            // A number not settled yet has the numbers' built-in traits.
+            Ty::Var(_) => match self.u.var_kind(base) {
+                Some(VarKind::Int | VarKind::Float) => [
+                    LangTrait::Add,
+                    LangTrait::Subtract,
+                    LangTrait::Multiply,
+                    LangTrait::Divide,
+                    LangTrait::Compare,
+                    LangTrait::Eq,
+                ]
+                .into_iter()
+                .filter_map(|l| self.names.lang(l))
+                .collect(),
+                _ => return None,
+            },
+            _ => {
+                let mut traits = implemented(self);
+                traits.extend(
+                    (LangTrait::ALL.into_iter())
+                        .filter(|&l| self.has_builtin(base, l))
+                        .filter_map(|l| self.names.lang(l)),
+                );
+                traits
+            }
         };
         let func = traits
             .iter()

@@ -7,7 +7,7 @@ use som_mir::*;
 use som_resolve::{DefId, DefKind, LangTrait};
 use som_typeck::traits::{builtin_operator, find_impl};
 
-use super::{FnBuilder, LoopTargets, Lowerer};
+use super::{FnBuilder, LoopTargets, Lowerer, Subst};
 
 impl Lowerer<'_> {
     /// Trait `trait_`'s method called `name`.
@@ -42,6 +42,167 @@ impl Lowerer<'_> {
             method,
             impl_args.into_iter().chain(own.iter().copied()).collect(),
         ))
+    }
+}
+
+impl Lowerer<'_> {
+    /// For trait method `func` of a language trait, with `Self` a type that has its operator
+    /// built in: a function doing it, `*a + *b` for `add`, the `Ordering` for `compare`.
+    pub(super) fn builtin_method(&mut self, func: Id<Func>, type_args: &[TypeId]) -> Option<FuncId> {
+        let &(trait_, _) = self.trait_methods.get(&func)?;
+        let lang = self.names.lang_of(trait_)?;
+        let &this = type_args.first()?;
+        if !builtin_operator(self.mir.types.get(this), lang) {
+            return None;
+        }
+        let key = (func, type_args.to_vec());
+        if let Some(&id) = self.instances.get(&key) {
+            return Some(id);
+        }
+        let span = self.ast.funcs.span(func).clone();
+        let reference = self.mir.types.intern(Ty::Ref {
+            mutable: false,
+            to: this,
+        });
+        let bool = self.mir.types.bool;
+        let ret = match lang {
+            LangTrait::Eq => bool,
+            LangTrait::Compare => {
+                let ret = self.typed.func(func).ret;
+                let ordering = Subst::new(self.names.type_params(func), type_args, &self.typed.impls)
+                    .apply(&mut self.mir.types, ret);
+                self.make_structs_in(ordering);
+                ordering
+            }
+            _ => this,
+        };
+        let name: String = format!(
+            "{}::{}",
+            self.mir.display_ty(this),
+            self.ast.funcs[func].name.name
+        )
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == ':' { c } else { '_' })
+        .collect();
+
+        let mut locals = Arena::new();
+        let local = |locals: &mut Arena<LocalDecl>, ty, name: Option<&str>| {
+            locals.alloc(LocalDecl {
+                ty,
+                name: name.map(str::to_string),
+                mutable: false,
+                span: span.clone(),
+            })
+        };
+        local(&mut locals, ret, None);
+        let a = local(&mut locals, reference, Some("self"));
+        let b = local(&mut locals, reference, Some("other"));
+        let value = |l: Local| Operand::Copy(Place::local(l).project(Projection::Deref));
+        let stmt = |kind| Statement {
+            kind,
+            span: span.clone(),
+        };
+        let end = |kind| Terminator {
+            kind,
+            span: span.clone(),
+        };
+        let mut blocks = Arena::new();
+        let op = match lang {
+            LangTrait::Add => Some(BinOp::Add),
+            LangTrait::Subtract => Some(BinOp::Subtract),
+            LangTrait::Multiply => Some(BinOp::Multiply),
+            LangTrait::Divide => Some(BinOp::Divide),
+            LangTrait::Eq => Some(BinOp::Equals),
+            _ => None,
+        };
+        match op {
+            Some(op) => {
+                let result = Rvalue::Binary {
+                    op,
+                    lhs: value(a),
+                    rhs: value(b),
+                };
+                blocks.alloc(Block {
+                    stmts: vec![stmt(StatementKind::Assign(Place::local(RETURN), result))],
+                    terminator: end(TerminatorKind::Return),
+                });
+            }
+            // Less if `<`, else Equal if `==`, else Greater.
+            None => {
+                let less = local(&mut locals, bool, None);
+                let equal = local(&mut locals, bool, None);
+                let variant = |index| {
+                    stmt(StatementKind::Assign(
+                        Place::local(RETURN),
+                        Rvalue::Struct {
+                            ty: ret,
+                            variant: Some(index),
+                            fields: Vec::new(),
+                        },
+                    ))
+                };
+                let test = |into: Local, op| {
+                    vec![
+                        stmt(StatementKind::StorageLive(into)),
+                        stmt(StatementKind::Assign(
+                            Place::local(into),
+                            Rvalue::Binary {
+                                op,
+                                lhs: value(a),
+                                rhs: value(b),
+                            },
+                        )),
+                    ]
+                };
+                let ids: Vec<BlockId> = (0..5).map(|i| Id::new(i)).collect();
+                blocks.alloc(Block {
+                    stmts: test(less, BinOp::LessThan),
+                    terminator: end(TerminatorKind::Branch {
+                        condition: Operand::Copy(Place::local(less)),
+                        then: ids[1],
+                        otherwise: ids[2],
+                    }),
+                });
+                blocks.alloc(Block {
+                    stmts: vec![variant(0)],
+                    terminator: end(TerminatorKind::Return),
+                });
+                blocks.alloc(Block {
+                    stmts: test(equal, BinOp::Equals),
+                    terminator: end(TerminatorKind::Branch {
+                        condition: Operand::Copy(Place::local(equal)),
+                        then: ids[3],
+                        otherwise: ids[4],
+                    }),
+                });
+                blocks.alloc(Block {
+                    stmts: vec![variant(1)],
+                    terminator: end(TerminatorKind::Return),
+                });
+                blocks.alloc(Block {
+                    stmts: vec![variant(2)],
+                    terminator: end(TerminatorKind::Return),
+                });
+            }
+        }
+        let id = self.mir.funcs.alloc(Function {
+            name,
+            params: vec![reference, reference],
+            ret,
+            span,
+            body: Some(Body {
+                locals,
+                arg_count: 2,
+                outs: Vec::new(),
+                blocks,
+            }),
+            link_name: None,
+            library: None,
+            is_entry: false,
+            variadic: false,
+        });
+        self.instances.insert(key, id);
+        Some(id)
     }
 }
 

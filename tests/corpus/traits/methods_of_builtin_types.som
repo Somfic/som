@@ -1,0 +1,35 @@
+// expect: exit 16
+
+/// Built-in types have their traits' methods: `x.compare(&y)` on numbers, also through a
+/// bound like `T: Compare`, and the methods of a trait implemented for one.
+struct Hello { a: i32, b: f64 }
+
+impl Compare for Hello {
+    fn compare(self: &Hello, other: &Hello) -> Ordering {
+        self.a.compare(&other.a)
+    }
+}
+
+impl Add for bool {
+    fn add(self: &bool, other: &bool) -> bool { *self or *other }
+}
+
+fn order<T: Compare>(a: T, b: T) -> Ordering { a.compare(&b) }
+fn total<T: Add>(a: T, b: T) -> T { a.add(&b) }
+fn same<T: Eq>(a: T, b: T) -> bool { a.eq(&b) }
+
+fn rank(o: Ordering) -> i32 { match o { Less => 1, Equal => 2, Greater => 3 } }
+
+fn main() -> i32 {
+    let x = 3;
+    let mut r = rank(x.compare(&4));
+    r = r * 10 + rank(order(5, 5));
+    r = r * 10 + rank(order(2.5, 1.0));
+    r = r * 10 + rank(Hello { a: 1, b: 0.0 }.compare(&Hello { a: 0, b: 0.0 }));
+    let s = total(20, 22) + 7.multiply(&3);
+    let t = true.add(&false);
+    let f = 1.5;
+    let u = same(true, true) and x.eq(&3) and !f.eq(&2.0);
+    if t and u and (Hello { a: 1, b: 0.0 } < Hello { a: 2, b: 0.0 }) { r = r + s; }
+    r
+}

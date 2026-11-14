@@ -3,6 +3,8 @@ use som_base::{Diagnostic, Fix, Label, Span, msg};
 
 #[derive(Debug, Clone)]
 pub enum ResolveError {
+    /// `impl [i32; 3] { … }`: methods for a type that's neither a struct nor a built-in one.
+    MethodsOnType { ty: String, span: Span },
     UnboundVariable {
         name: String,
         span: Span,
@@ -86,6 +88,14 @@ impl ResolveError {
                 help,
                 fixes,
             } => ("trait", ty(name), span, help, fixes),
+            ResolveError::MethodsOnType { ty, span } => {
+                return Diagnostic::error(msg!["cannot add methods to ", code(ty.clone())])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "only structs and built-in types like `i32` have methods of their own",
+                    ))
+                    .with_hint("a trait can still be implemented for it");
+            }
             ResolveError::DuplicateDefinition {
                 name,
                 span,

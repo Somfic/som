@@ -1776,20 +1776,60 @@ impl<'a> Checker<'a> {
             } => {
                 let expected = self.expected_here.take();
                 let receiver_ty = self.infer(*receiver);
-                if let Some(ty) = self.array_method(id, *receiver, receiver_ty, method, args) {
-                    return ty;
-                }
-                if let Some(ty) = self.pointer_method(id, receiver_ty, method, args) {
-                    return ty;
-                }
+                // A trait's method the type has, `x.compare(&y)`, before an array's or a
+                // pointer's own.
                 if let Some(ty) = self.trait_method_call(id, *receiver, receiver_ty, method, args) {
                     return ty;
                 }
-                let Some((owner, _)) = self.struct_of(receiver_ty, *receiver) else {
+                // A built-in type's own method, from `impl i32 { … }`.
+                let primitive = self
+                    .primitive_owner(receiver_ty)
+                    .filter(|&owner| self.names.method(owner, &method.name).is_some());
+                if primitive.is_none() {
+                    if let Some(ty) = self.array_method(id, *receiver, receiver_ty, method, args)
+                    {
+                        return ty;
+                    }
+                    if let Some(ty) = self.pointer_method(id, receiver_ty, method, args) {
+                        return ty;
+                    }
+                }
+                // Text written in quotes is a `str` here.
+                if primitive.is_some() && self.u.var_kind(receiver_ty) == Some(VarKind::Text) {
+                    let _ = self.u.unify(receiver_ty, self.u.table.str_ref);
+                }
+                // Any type can have methods now: one that isn't a struct just lacks this one.
+                let viewed = {
+                    let shallow = self.u.shallow(receiver_ty);
+                    match self.u.get(shallow) {
+                        Ty::Ref { to, .. } => self.u.shallow(*to),
+                        _ => shallow,
+                    }
+                };
+                let lacks = !matches!(self.u.get(viewed), Ty::Struct(..) | Ty::Error)
+                    && !matches!(self.u.var_kind(viewed), Some(VarKind::Any));
+                if primitive.is_none() && lacks {
+                    self.errors.push(TypeError::UnknownMethod {
+                        ty: self.describe(receiver_ty),
+                        method: method.name.to_string(),
+                        span: method.span.clone(),
+                    });
                     args.iter().for_each(|&a| {
                         self.infer(a);
                     });
                     return error;
+                }
+                let owner = match primitive {
+                    Some(owner) => owner,
+                    None => match self.struct_of(receiver_ty, *receiver) {
+                        Some((owner, _)) => owner,
+                        None => {
+                            args.iter().for_each(|&a| {
+                                self.infer(a);
+                            });
+                            return error;
+                        }
+                    },
                 };
                 let Some(def) = self.names.method(owner, &method.name) else {
                     let ty = self.describe(receiver_ty);
@@ -2832,6 +2872,22 @@ impl<'a> Checker<'a> {
 
     /// The struct `ty` is, looking through one reference, and its type arguments. Reports an
     /// error if it isn't one.
+    /// The definition built-in type `ty`'s own methods hang on, looking through a reference;
+    /// an integer not settled yet is an `i32`'s, a float an `f64`'s.
+    fn primitive_owner(&self, ty: TypeId) -> Option<DefId> {
+        let mut ty = self.u.shallow(ty);
+        if let Ty::Ref { to, .. } = self.u.get(ty) {
+            ty = self.u.shallow(*to);
+        }
+        let primitive = match self.u.var_kind(ty) {
+            Some(VarKind::Int) => som_ast::Primitive::I32,
+            Some(VarKind::Float) => som_ast::Primitive::F64,
+            Some(VarKind::Text) => som_ast::Primitive::Str,
+            _ => crate::traits::primitive_of(self.u.get(ty))?,
+        };
+        self.names.primitive(primitive)
+    }
+
     fn struct_of(&mut self, ty: TypeId, expr: Id<Expr>) -> Option<(DefId, Vec<TypeId>)> {
         let mut ty = self.u.shallow(ty);
         if let Ty::Ref { to, .. } = self.u.get(ty) {
