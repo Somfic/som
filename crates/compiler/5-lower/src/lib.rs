@@ -1679,6 +1679,23 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 );
                 (self.read(Place::local(temp), reference), reference, span)
             }
+            Some(Receiver::Share) => {
+                let place = self.place(receiver).project(Projection::Deref);
+                let Ty::Ref { to, .. } = *self.l.mir.types.get(ty) else {
+                    unreachable!("checked: only references are lent on")
+                };
+                let reference = self.l.mir.types.intern(Ty::Ref { mutable: false, to });
+                let temp = self.temp(reference, span.clone());
+                self.assign(
+                    Place::local(temp),
+                    Rvalue::Ref {
+                        mutable: false,
+                        place,
+                    },
+                    span.clone(),
+                );
+                (self.read(Place::local(temp), reference), reference, span)
+            }
             Some(Receiver::Deref) => {
                 let place = self.place(receiver).project(Projection::Deref);
                 let Ty::Ref { to, .. } = *self.l.mir.types.get(ty) else {

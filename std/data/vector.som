@@ -13,49 +13,59 @@ impl<N: usize, T> Vector<N, T> {
 }
 
 impl<T> Vector<2, T> {
-    prop x = self.values[0];
-    prop y = self.values[1];
+    prop x = .values[0];
+    prop y = .values[1];
 }
 
 impl Vector<2, f32> {
-    prop magintude = f32::sqrt(self.x * self.x + self.y * self.y);
+    prop magintude = f32::sqrt(.x * .x + .y * .y);
     prop normalized {
-        let magnitude = self.magintude;
+        Self { values: [ .x / .magintude, .y / .magintude ] }
+    }
+}
 
-        Self { values: [ self.x / magnitude, self.y / magnitude ] }
+impl Vector<2, f64> {
+    prop magintude = f64::sqrt(.x * .x + .y * .y);
+    prop normalized {
+        Self { values: [ .x / .magintude, .y / .magintude ] }
     }
 }
 
 impl Vector<3, f32> {
-    prop magintude = f32::sqrt(self.x * self.x + self.y * self.y + self.z * self.z);
+    prop magintude = f32::sqrt(.x * .x + .y * .y + .z * .z);
     prop normalized {
-        let magnitude = self.magintude;
+        Self { values: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
+    }
+}
 
-        Self { values: [ self.x / magnitude, self.y / magnitude, self.z / magnitude ] }
+impl Vector<3, f64> {
+    prop magintude = f64::sqrt(.x * .x + .y * .y + .z * .z);
+    prop normalized {
+        Self { values: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
     }
 }
 
 impl<T> Vector<3, T> {
-    prop x = self.values[0];
-    prop y = self.values[1];
-    prop z = self.values[2];
+    prop x = .values[0];
+    prop y = .values[1];
+    prop z = .values[2];
 
-    prop xy: Vector = [self.x, self.y];
-    prop yz: Vector = [self.y, self.z];
-    prop xz: Vector = [self.x, self.z];
+    prop xy: Vector = [.x, .y];
+    prop yz: Vector = [.y, .z];
+    prop xz: Vector = [.x, .z];
 }
 
 impl<T> Vector<4, T> {
-    prop x = self.values[0];
-    prop y = self.values[1];
-    prop z = self.values[2];
-    prop w = self.values[3];
+    prop x = .values[0];
+    prop y = .values[1];
+    prop z = .values[2];
+    prop w = .values[3];
 
-    prop xy: Vector = [self.x, self.y];
-    prop yz: Vector = [self.y, self.z];
-    prop xz: Vector = [self.x, self.z];
+    prop xy: Vector = [.x, .y];
+    prop yz: Vector = [.y, .z];
+    prop xz: Vector = [.x, .z];
 
-    prop xyz: Vector = [self.x, self.y, self.z];
+    prop xyz: Vector = [.x, .y, .z];
 }
 
 impl<N: usize, T> From<[T; N]> for Vector<N, T> {

@@ -298,6 +298,33 @@ impl std::fmt::Display for TokenKind {
 }
 
 impl TokenKind {
+    /// Whether a value can end with this token: a name, a literal, `self`, a closing `)` or
+    /// `]`. A `.` after one reads a field (`v.len`); after anything else, it's short for
+    /// `self.` (`.len`). A `}` ends a statement, so `.len` after one is `self`'s too.
+    pub fn ends_value(self) -> bool {
+        matches!(
+            self,
+            TokenKind::Ident
+                | TokenKind::SelfValue
+                | TokenKind::SelfType
+                | TokenKind::Int
+                | TokenKind::Float
+                | TokenKind::Text
+                | TokenKind::True
+                | TokenKind::False
+                | TokenKind::None
+                | TokenKind::CloseParen
+                | TokenKind::CloseBracket
+                | TokenKind::Question
+        )
+    }
+
+    /// Whether a `.` between `prev` and `next` (the tokens around it, whitespace and
+    /// comments left out) is short for `self.`: `.len`, not `v.len`.
+    pub fn is_self_dot(prev: Option<TokenKind>, next: Option<TokenKind>) -> bool {
+        next == Some(TokenKind::Ident) && !prev.is_some_and(TokenKind::ends_value)
+    }
+
     /// The token for a diagnostic: literal tokens (`fn`, `;`) as code, the
     /// rest (identifier, end of file) as words.
     pub fn part(self) -> Part {

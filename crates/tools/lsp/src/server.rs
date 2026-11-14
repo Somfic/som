@@ -823,6 +823,18 @@ impl LanguageServer for SomLanguageServer {
                     None => break None,
                 }
             };
+            // `.x`, short for `self.x`: the `self` is at the dot.
+            let receiver = receiver.or_else(|| {
+                (a.ast.exprs.iter())
+                    .find(|&(id, expr)| {
+                        let span = a.ast.exprs.span(id);
+                        matches!(expr, Expr::Var(path) if &*path.to_string() == "self")
+                            && span.source.identifier() == cursor.file
+                            && span.start_offset == dot
+                            && span.length == 1
+                    })
+                    .map(|(id, _)| id)
+            });
             if let Some(expr) = receiver
                 && let Some(sequence) = array_of(a, a.typed.expr(expr))
             {
@@ -3283,6 +3295,8 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::Return
             | TokenKind::For
             | TokenKind::In => 0,
+            // `.len`, short for `self.len`: the dot is coloured like `self`.
+            TokenKind::Dot if TokenKind::is_self_dot(prev, next) => 0,
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
             TokenKind::Ident if token.text.starts_with(char::is_uppercase) => 8,
             // `Self` is a struct like any named one: the one an impl block is for.
@@ -3384,6 +3398,18 @@ mod tests {
         let keyword = at[&0];
         assert_eq!(at[&(text.find("self").unwrap() as u32)], keyword);
         assert_eq!(at[&(text.rfind("self").unwrap() as u32)], keyword);
+        // `.x` is `self.x`: its dot is coloured like `self`. The dot in `self.x` isn't.
+        let dotted = "fn f(self) = .x + self.y;";
+        let tokens = semantic_tokens(Arc::new(Source::from_raw(dotted)));
+        let mut column = 0;
+        let dots: HashMap<u32, u32> = (tokens.iter())
+            .map(|t| {
+                column += t.delta_start;
+                (column, t.token_type)
+            })
+            .collect();
+        assert_eq!(dots.get(&(dotted.find(".x").unwrap() as u32)), Some(&keyword));
+        assert_eq!(dots.get(&(dotted.find(".y").unwrap() as u32)), None);
         // `Self` is coloured like a struct's name.
         assert_eq!(at[&(text.find("Self").unwrap() as u32)], at[&(text.find("Point").unwrap() as u32)]);
     }

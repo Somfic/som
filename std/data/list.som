@@ -23,65 +23,65 @@ impl<T> List<T> {
 
     /// How many values it holds.
     fn len(self: &List<T>) -> usize {
-        self.len
+        .len
     }
 
     fn is_empty(self: &List<T>) -> bool {
-        self.len == 0
+        .len == 0
     }
 
     /// Adds `value` at the end.
     fn push(self: &mut List<T>, value: T) {
-        if self.len == self.capacity {
-            let capacity = 4 if self.capacity == 0 else self.capacity * 2;
-            self.items.resize(capacity);
-            self.capacity = capacity;
+        if .len == .capacity {
+            let capacity = 4 if .capacity == 0 else .capacity * 2;
+            .items.resize(capacity);
+            .capacity = capacity;
         }
-        self.items.write(self.len, value);
-        self.len = self.len + 1;
+        .items.write(.len, value);
+        .len = .len + 1;
     }
 
     /// Takes the last value off, or `none` if it's empty.
     fn pop(self: &mut List<T>) -> T? {
-        if self.len == 0 {
+        if .len == 0 {
             return none;
         }
-        self.len = self.len - 1;
-        self.items.read(self.len)
+        .len = .len - 1;
+        .items.read(.len)
     }
 
     /// The value at `index`, or `none` past the end.
     fn get(self: &List<T>, index: usize) -> &T? {
-        if index >= self.len {
+        if index >= .len {
             return none;
         }
-        self.items.at(index)
+        .items.at(index)
     }
 
     /// The value at `index`, to change, or `none` past the end.
     fn get(self: &mut List<T>, index: usize) -> &mut T? {
-        if index >= self.len {
+        if index >= .len {
             return none;
         }
-        self.items.at_mut(index)
+        .items.at_mut(index)
     }
 
     /// Its values as a slice: `for x in list.as_slice()`, `list.as_slice().get(0)`.
     fn as_slice(self: &List<T>) -> [T] {
-        self.items.view(self.len)
+        .items.view(.len)
     }
 
     /// Its values as a slice that can change them.
     fn as_slice_mut(self: &mut List<T>) -> [mut T] {
-        self.items.view_mut(self.len)
+        .items.view_mut(.len)
     }
 
     /// Drops every value, keeping the room for new ones.
     fn clear(self: &mut List<T>) {
         for i in 0..self.len {
-            drop(self.items.read(i));
+            drop(.items.read(i));
         }
-        self.len = 0;
+        .len = 0;
     }
 }
 
@@ -89,9 +89,9 @@ impl<T> Drop for List<T> {
     /// Drops each value, read out of its room, then gives the room back.
     fn drop(self: &mut List<T>) {
         for i in 0..self.len {
-            drop(self.items.read(i));
+            drop(.items.read(i));
         }
-        self.items.free();
+        .items.free();
     }
 }
 
@@ -147,8 +147,8 @@ impl<T> Iterator for ListIter<T> {
     type Item = &T;
 
     fn next(self: &mut ListIter<T>) -> &T? {
-        let item = self.list.get(self.index);
-        self.index = self.index + 1;
+        let item = .list.get(.index);
+        .index = .index + 1;
         item
     }
 }

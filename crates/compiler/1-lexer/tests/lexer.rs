@@ -218,3 +218,17 @@ fn self_is_a_keyword_but_names_starting_with_it_are_not() {
         ]
     );
 }
+
+#[test]
+fn a_dot_after_no_value_is_short_for_self() {
+    use TokenKind as K;
+    let name = Some(K::Ident);
+    assert!(K::is_self_dot(None, name));
+    assert!(K::is_self_dot(Some(K::Equals), name));
+    assert!(K::is_self_dot(Some(K::Star), name));
+    assert!(K::is_self_dot(Some(K::CloseBrace), name));
+    assert!(!K::is_self_dot(Some(K::Ident), name));
+    assert!(!K::is_self_dot(Some(K::SelfValue), name));
+    assert!(!K::is_self_dot(Some(K::CloseParen), name));
+    assert!(!K::is_self_dot(Some(K::Equals), Some(K::Int)));
+}

@@ -2968,6 +2968,22 @@ impl<'a> Checker<'a> {
                 }
                 Receiver::Borrow { mutable }
             }
+            // `self.get()` with `&mut self`, for `fn get(&self)`: lent as `&`.
+            (
+                Ty::Ref {
+                    mutable: false,
+                    to: wanted,
+                },
+                Ty::Ref {
+                    mutable: true,
+                    to: given,
+                },
+            ) => {
+                if self.u.unify(wanted, given).is_err() {
+                    return false;
+                }
+                Receiver::Share
+            }
             (wanted, Ty::Ref { to, .. }) if !matches!(wanted, Ty::Ref { .. } | Ty::Var(_)) => {
                 if self.u.unify(expected, to).is_err() {
                     return false;

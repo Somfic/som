@@ -298,6 +298,43 @@ impl Parser<'_> {
                 Expr::Str(self.unescape(&text[1..text.len() - 1], &start).into())
             }
 
+            // `.x` and `.len()` are short for `self.x` and `self.len()`. The `self` they mean
+            // is at the dot, which is where an editor finds it while the name is typed.
+            TokenKind::Dot => {
+                let dot = self.current_span();
+                if !self.in_impl {
+                    self.error_at(
+                        dot.clone(),
+                        msg![code(".name"), " is short for ", code("self.name")],
+                        msg![code("self"), " only exists in methods"],
+                    );
+                }
+                self.advance();
+                let path = som_ast::Path {
+                    segments: vec![som_ast::Ident {
+                        name: "self".into(),
+                        span: dot.clone(),
+                    }],
+                };
+                let receiver = self.ast.exprs.alloc(Expr::Var(path), dot);
+                let Some(name) = self.parse_ident("a field or method name") else {
+                    return Some(receiver);
+                };
+                if self.at(TokenKind::OpenParen) {
+                    let args = self.parse_args()?;
+                    Expr::MethodCall {
+                        receiver,
+                        method: name,
+                        args,
+                    }
+                } else {
+                    Expr::Field {
+                        object: receiver,
+                        field: name,
+                    }
+                }
+            }
+
             // `self`, in a method.
             TokenKind::SelfValue => {
                 let name = self.parse_self();

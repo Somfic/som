@@ -26,10 +26,12 @@ impl Ast {
             depth: 0,
         };
         // The standard library (`som`, `som::io`) is part of every program, and imported C
-        // headers (`<c>`) are generated: neither is shown.
+        // headers (`<c>`, or read from `.som/c.som`) are generated: neither is shown.
         let shown = |m: &&crate::Module| {
             let std = &*m.name == "som" || m.name.starts_with("som::");
-            !std && !m.path.to_string_lossy().starts_with('<')
+            let generated = m.path.to_string_lossy().starts_with('<')
+                || m.path.file_name().is_some_and(|n| n == ".som");
+            !std && !generated
         };
         for module in self.modules.iter().filter(shown) {
             d.line(format!("module {:?}", &*module.name));

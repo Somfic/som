@@ -9,3 +9,14 @@ impl f32 {
         c::sqrtf(self)
     }
 }
+
+
+impl f64 {
+    fn pow(self, power: f64) {
+        c::pow(self, power)
+    }
+
+    fn sqrt(self) {
+        c::sqrt(self)
+    }
+}

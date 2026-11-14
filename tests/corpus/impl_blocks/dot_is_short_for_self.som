@@ -1,0 +1,18 @@
+// expect: exit 42
+
+struct Rect { w: i32, h: i32 }
+
+impl Rect {
+    prop area = .w * .h;
+    fn grow(&mut self, by: i32) { .w = .w + by; }
+    fn grown_area(&mut self) -> i32 {
+        .grow(1);
+        .area
+    }
+    prop half = -.w / -2;
+}
+
+fn main() -> i32 {
+    let mut r = Rect { w: 5, h: 7 };
+    r.grown_area() + r.half - 3
+}

@@ -107,6 +107,9 @@ pub enum Receiver {
     /// Copied out of the reference it is: `r.area()` for `fn area(self: Point)`, with `r` a
     /// `&Point`, is `(*r).area()`.
     Deref,
+    /// A `&mut` lent as a `&`: `self.get()` for `fn get(&self)`, inside a method with
+    /// `&mut self`, is `(&*self).get()`.
+    Share,
 }
 
 /// What a pattern in a `match` arm turned out to be, once the type it matches was known.

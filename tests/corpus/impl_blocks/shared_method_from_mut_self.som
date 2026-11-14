@@ -1,0 +1,16 @@
+// expect: exit 2
+
+struct C { n: i32 }
+
+impl C {
+    fn get(&self) -> i32 = self.n;
+    fn bump(&mut self) -> i32 {
+        self.n = self.n + 1;
+        self.get()
+    }
+}
+
+fn main() -> i32 {
+    let mut c = C { n: 1 };
+    c.bump()
+}

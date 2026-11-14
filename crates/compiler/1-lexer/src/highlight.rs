@@ -115,13 +115,29 @@ pub fn highlight(line: &str) -> String {
     let tokens = lex(source);
 
     let mut result = String::new();
+    let visible: Vec<TokenKind> = (tokens.iter())
+        .map(|t| t.kind)
+        .filter(|k| !matches!(k, TokenKind::Whitespace | TokenKind::Comment))
+        .collect();
+    let mut seen: usize = 0;
 
     for token in tokens {
         if token.kind == TokenKind::Eof {
             break;
         }
 
-        let color = token_color(token.kind);
+        let mut color = token_color(token.kind);
+        if !matches!(token.kind, TokenKind::Whitespace | TokenKind::Comment) {
+            let (prev, next) = (
+                seen.checked_sub(1).map(|i| visible[i]),
+                visible.get(seen + 1).copied(),
+            );
+            // `.len`, short for `self.len`: the dot is coloured like `self`.
+            if token.kind == TokenKind::Dot && TokenKind::is_self_dot(prev, next) {
+                color = token_color(TokenKind::SelfValue);
+            }
+            seen += 1;
+        }
         let colored_text = if is_italic(token.kind) {
             format!(
                 "{}",

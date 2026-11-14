@@ -1,11 +1,5 @@
-use som::data;
-extern "raylib";
+let vec: som::data::Vector = [ 1.0, 2.0 ];
+c::printf("%f, %f\n", vec.x, vec.y);
 
-let xyz: Vector = [ 0, 0, 0, 0 ];
-let x = xyz.xz;
-
-////////////////////////////////////////////////////
-
-// extern "raylib";
-// let title: String = "Hello!";
-// raylib::init_window(400, 400, title);
+let vec = vec.normalized;
+c::printf("%f, %f", vec.x, vec.y);
