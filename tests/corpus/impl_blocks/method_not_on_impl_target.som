@@ -1,0 +1,12 @@
+// expect: error NotOnImplTarget
+
+struct Vector<T, N: usize> { values: [T; N] }
+
+impl<T> Vector<T, 1> {
+    fn x(self: &Vector<T, 1>) -> i32 { 4 }
+}
+
+fn main() -> i32 {
+    let v: Vector<i32, 3> = Vector { values: [1, 2, 3] };
+    v.x()
+}

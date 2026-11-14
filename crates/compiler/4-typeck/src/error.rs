@@ -290,6 +290,35 @@ pub enum TypeError {
     CopyWithMovedField { ty: Message, field: String, field_ty: Message, span: Span },
     /// `x.len` of an array, slice or text, which has a method called that, not a field.
     FieldIsMethod { ty: Message, name: String, span: Span },
+    /// `prop reset(self: &Counter)`: a property that gives nothing back only does something.
+    PropReturnsNothing { name: String, span: Span },
+    /// `prop sum(self: Point)` of a `Point` that's moved: reading `p.sum` would use `p` up.
+    PropConsumesSelf {
+        ty: Message,
+        /// The parameter's type, borrowed: `&Point`.
+        borrowed: String,
+        span: Span,
+    },
+    /// `v.x` of a `Vector<i32, 3>`, where `x` is in `impl<T> Vector<T, 1>`: a method or
+    /// property only some of the struct's types have.
+    NotOnImplTarget {
+        ty: Message,
+        /// `"method"` or `"property"`.
+        what: &'static str,
+        name: String,
+        /// The impl block's target, as written in terms of its parameters: `Vector<T, 1>`.
+        target: String,
+        span: Span,
+        impl_span: Span,
+    },
+    /// `list.len()` of a property, which is read without parentheses: `list.len`. `parens`
+    /// is where the `()` is, when there's nothing in it.
+    MethodIsProp {
+        ty: Message,
+        name: String,
+        span: Span,
+        parens: Option<Span>,
+    },
     /// `impl Drop for …` of a type whose values are copied.
     DropOnCopy { ty: Message, span: Span },
     /// `impl Add for i32`: a type implementing a trait whose operators it has built in.
@@ -939,6 +968,53 @@ impl TypeError {
                         title: msg!["call it: ", code(format!("{name}()"))],
                         edits: vec![(span.after(), "()".to_string())],
                     })
+            }
+            TypeError::NotOnImplTarget {
+                ty,
+                what,
+                name,
+                target,
+                span,
+                impl_span,
+            } => Diagnostic::error(msg![ty.clone(), " has no ", *what, " ", func(name.clone())])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg![code(name.clone()), " is only defined for ", code(target.clone())],
+                ))
+                .with_label(Label::secondary(impl_span.clone(), "defined for this")),
+            TypeError::PropReturnsNothing { name, span } => {
+                Diagnostic::error(msg!["property ", func(name.clone()), " returns nothing"])
+                    .with_label(Label::primary(span.clone(), "a property has to give a value"))
+                    .with_hint(msg![
+                        "one that only does something is a method: ",
+                        code(format!("fn {name}"))
+                    ])
+            }
+            TypeError::PropConsumesSelf { ty, borrowed, span } => {
+                Diagnostic::error(msg!["a property can't take ", ty.clone(), " by value"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "reading it would move the value it's read from",
+                    ))
+                    .with_hint(msg!["borrow it instead: ", code(borrowed.clone())])
+            }
+            TypeError::MethodIsProp {
+                ty,
+                name,
+                span,
+                parens,
+            } => {
+                let diagnostic =
+                    Diagnostic::error(msg![ty.clone(), " has no method ", func(name.clone())])
+                        .with_label(Label::primary(span.clone(), "it's a property"));
+                match parens {
+                    Some(parens) => diagnostic.with_fix(Fix {
+                        title: msg!["read it without parentheses: ", code(name.clone())],
+                        edits: vec![(parens.clone(), String::new())],
+                    }),
+                    None => diagnostic
+                        .with_hint(msg!["a property takes no arguments: ", code(name.clone())]),
+                }
             }
             TypeError::DropOnCopy { ty, span } => Diagnostic::error(msg![
                 ty.clone(),

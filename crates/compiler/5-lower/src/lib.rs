@@ -1240,7 +1240,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }
 
-            Expr::Field { .. } | Expr::Deref(_) => {
+            Expr::Field { .. } | Expr::Deref(_) if !self.is_prop(expr) => {
                 let place = self.place(expr);
                 self.read(place, ty)
             }
@@ -1612,8 +1612,20 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 };
                 self.call(expr, func, Some(*receiver), args)
             }
+            // `list.len`: property `len`, called with `list` as its `self`.
+            Expr::Field { object, .. } if let Some(def) = self.l.typed.method(expr) => {
+                let DefKind::Func(func) = self.l.names.def(def).kind else {
+                    unreachable!("properties are functions")
+                };
+                self.call(expr, func, Some(*object), &[])
+            }
             _ => Rvalue::Use(self.operand_unwrapped(expr)),
         }
+    }
+
+    /// Whether `expr` reads a property, `list.len`, which is a call, rather than a field.
+    fn is_prop(&self, expr: Id<Expr>) -> bool {
+        matches!(self.l.ast.exprs[expr], Expr::Field { .. }) && self.l.typed.method(expr).is_some()
     }
 
     fn call(
@@ -2185,7 +2197,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     return place;
                 }
             }
-            Expr::Field { object, .. } => {
+            Expr::Field { object, .. } if !self.is_prop(expr) => {
                 let index = self
                     .l
                     .typed

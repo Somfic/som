@@ -1,0 +1,3 @@
+// expect: error
+
+trait Sized2 { prop size(self: &Self) -> i32; }

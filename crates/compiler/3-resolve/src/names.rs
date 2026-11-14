@@ -185,6 +185,9 @@ pub struct Names {
     structs: Vec<Option<DefId>>,
     /// `(struct, method name)` → the method, for `impl` blocks.
     methods: HashMap<(DefId, Box<str>), DefId>,
+    /// `(struct, property name)` → the property: methods read without parentheses, named
+    /// apart from methods.
+    props: HashMap<(DefId, Box<str>), DefId>,
     /// Each enum's variants, in order.
     variants: Vec<Vec<DefId>>,
     /// Functions sharing a name in a module: the first one's definition → all of them, in
@@ -225,6 +228,7 @@ impl Names {
             struct_params: vec![Vec::new(); ast.structs.len()],
             structs: vec![None; ast.structs.len()],
             methods: HashMap::new(),
+            props: HashMap::new(),
             variants: vec![Vec::new(); ast.structs.len()],
             overloads: HashMap::new(),
             traits: vec![None; ast.traits.len()],
@@ -326,6 +330,17 @@ impl Names {
             std::collections::hash_map::Entry::Occupied(e) => Some(*e.get()),
             std::collections::hash_map::Entry::Vacant(e) => {
                 e.insert(method);
+                None
+            }
+        }
+    }
+
+    /// Returns the existing property if one with this name is already defined.
+    pub(crate) fn add_prop(&mut self, owner: DefId, name: &str, prop: DefId) -> Option<DefId> {
+        match self.props.entry((owner, name.into())) {
+            std::collections::hash_map::Entry::Occupied(e) => Some(*e.get()),
+            std::collections::hash_map::Entry::Vacant(e) => {
+                e.insert(prop);
                 None
             }
         }
@@ -478,6 +493,21 @@ impl Names {
     /// The method `name` defined on `owner` by an `impl` block.
     pub fn method(&self, owner: DefId, name: &str) -> Option<DefId> {
         self.methods.get(&(owner, name.into())).copied()
+    }
+
+    /// The property `name` defined on `owner` by an `impl` block.
+    pub fn prop(&self, owner: DefId, name: &str) -> Option<DefId> {
+        self.props.get(&(owner, name.into())).copied()
+    }
+
+    /// Every property defined on `owner`, by name.
+    pub fn props_of(&self, owner: DefId) -> Vec<(&str, DefId)> {
+        let mut props: Vec<(&str, DefId)> = (self.props.iter())
+            .filter(|((o, _), _)| *o == owner)
+            .map(|((_, name), &def)| (&**name, def))
+            .collect();
+        props.sort();
+        props
     }
 
     /// The definition built-in type `primitive`'s own methods are attached to, if an

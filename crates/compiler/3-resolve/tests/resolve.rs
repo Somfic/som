@@ -25,7 +25,12 @@ fn help(error: &ResolveError) -> Option<String> {
         | ResolveError::UnknownTrait { help, .. } => help.as_ref().map(|h| h.plain()),
         ResolveError::DuplicateDefinition { .. }
         | ResolveError::NotALoop { .. }
-        | ResolveError::MethodsOnType { .. } => None,
+        | ResolveError::MethodsOnType { .. }
+        | ResolveError::PropNamedLikeField { .. }
+        | ResolveError::PropParams { .. }
+        | ResolveError::PropGenerics { .. }
+        | ResolveError::PropMutSelf { .. }
+        | ResolveError::PropInTraitImpl { .. } => None,
     }
 }
 

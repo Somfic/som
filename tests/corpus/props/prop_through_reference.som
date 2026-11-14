@@ -1,0 +1,14 @@
+// expect: exit 5
+
+struct Counter { n: i32 }
+
+impl Counter {
+    prop value(self: &Counter) -> i32 { self.n }
+}
+
+fn read(c: &Counter) -> i32 { c.value }
+
+fn main() -> i32 {
+    let c = Counter { n: 5 };
+    read(&c)
+}

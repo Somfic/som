@@ -11,6 +11,8 @@ pub enum TokenKind {
     // Keywords
     #[token("fn")]
     Fn,
+    #[token("prop")]
+    Prop,
     #[token("extern")]
     Extern,
     #[token("struct")]
@@ -198,6 +200,7 @@ impl std::fmt::Display for TokenKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             TokenKind::Fn => write!(f, "fn"),
+            TokenKind::Prop => write!(f, "prop"),
             TokenKind::Extern => write!(f, "extern"),
             TokenKind::Struct => write!(f, "struct"),
             TokenKind::Impl => write!(f, "impl"),

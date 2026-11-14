@@ -389,7 +389,11 @@ impl LanguageServer for SomLanguageServer {
                     .callee(id, &a.names)
                     .map(|d| a.names.def(d).span.clone()),
                 Expr::MethodCall { .. } => a.typed.method(id).map(|d| a.names.def(d).span.clone()),
-                Expr::Field { object, .. } => field_definition(a, *object, a.typed.field(id)),
+                Expr::Field { object, .. } => match a.typed.method(id) {
+                    // A property, `list.len`.
+                    Some(d) => Some(a.names.def(d).span.clone()),
+                    None => field_definition(a, *object, a.typed.field(id)),
+                },
                 _ => None,
             },
             NodeRef::Type(id) => a.names.ty(id).map(|d| a.names.def(d).span.clone()),
@@ -447,7 +451,7 @@ impl LanguageServer for SomLanguageServer {
             Some(NodeRef::Struct(id)) => origin_of(&a.ast.structs[id].name),
             Some(NodeRef::Expr(id)) => {
                 let def = match &a.ast.exprs[id] {
-                    Expr::MethodCall { .. } => a.typed.method(id),
+                    Expr::MethodCall { .. } | Expr::Field { .. } => a.typed.method(id),
                     _ => a.names.expr(id),
                 };
                 def.and_then(|d| def_origin(a, d))
@@ -3055,6 +3059,7 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
         let prev = i.checked_sub(1).map(|p| visible[p].kind);
         let token_type = match token.kind {
             TokenKind::Fn
+            | TokenKind::Prop
             | TokenKind::Extern
             | TokenKind::Struct
             | TokenKind::Enum

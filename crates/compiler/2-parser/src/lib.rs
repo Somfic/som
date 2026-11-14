@@ -249,7 +249,7 @@ impl Parser<'_> {
                 TokenKind::If,
                 TokenKind::Fn,
             ],
-            RecoveryLevel::Member => &[TokenKind::Fn, TokenKind::Type, TokenKind::CloseBrace],
+            RecoveryLevel::Member => &[TokenKind::Fn, TokenKind::Prop, TokenKind::Type, TokenKind::CloseBrace],
             RecoveryLevel::Declaration => &[
                 TokenKind::Fn,
                 TokenKind::Extern,

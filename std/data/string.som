@@ -33,16 +33,3 @@ impl Add for String {
         String { value: bytes }
     }
 }
-
-impl From<i32> for usize {
-    fn from(value: i32) -> usize {
-        value as usize
-    }
-}
-
-impl From<usize> for i32 {
-    fn from(value: usize) -> i32 {
-        value as i32
-    }
-}
-

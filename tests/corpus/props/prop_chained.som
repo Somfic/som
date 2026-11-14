@@ -1,0 +1,13 @@
+// expect: exit 12
+
+struct Point { x: i32, y: i32 }
+
+impl Point {
+    prop doubled(self: &Point) -> Point { Point { x: self.x * 2, y: self.y * 2 } }
+    prop sum(self: &Point) -> i32 { self.x + self.y }
+}
+
+fn main() -> i32 {
+    let p = Point { x: 1, y: 2 };
+    p.doubled.doubled.sum
+}

@@ -1,0 +1,13 @@
+// expect: error InvalidAssignTarget
+
+struct Rect { w: i32 }
+
+impl Rect {
+    prop area(self: &Rect) -> i32 { self.w }
+}
+
+fn main() -> i32 {
+    let mut r = Rect { w: 1 };
+    r.area = 5;
+    0
+}

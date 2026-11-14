@@ -302,6 +302,10 @@ impl<'a> Resolver<'a> {
                 for &method in &block.methods {
                     let name = &ast.funcs[method].name;
                     let def = self.names.func(method);
+                    if ast.funcs[method].prop {
+                        self.collect_prop(owner, block, method, def);
+                        continue;
+                    }
                     // Methods can share a name, like functions: `get` taking `&self` and
                     // `&mut self`. The type checker picks the one that fits.
                     if let Some(previous) = self.names.add_method(owner, &name.name, def) {
@@ -309,6 +313,58 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
+        }
+    }
+
+    /// Adds property `prop` to `owner`, checking it's one: only `self`, which isn't
+    /// `&mut`, and no field named like it.
+    fn collect_prop(&mut self, owner: DefId, block: &som_ast::Impl, prop: Id<Func>, def: DefId) {
+        let ast = self.ast;
+        let func = &ast.funcs[prop];
+        let name = &func.name;
+        if block.trait_.is_some() {
+            self.errors.push(ResolveError::PropInTraitImpl {
+                span: name.span.clone(),
+            });
+            return;
+        }
+        if func.generics.len() > block.generics.len() {
+            let own = &func.generics[block.generics.len()..];
+            let span = own[0].name.span.merge(&own[own.len() - 1].name.span);
+            self.errors.push(ResolveError::PropGenerics { span });
+        }
+        match func.params.split_first() {
+            Some((this, [])) if &*this.name.name == "self" => {
+                if let Some(ty) = this.ty
+                    && let TypeExpr::Reference { mutable: true, .. } = ast.types[ty]
+                {
+                    self.errors.push(ResolveError::PropMutSelf {
+                        span: ast.types.span(ty).clone(),
+                    });
+                }
+            }
+            _ => self.errors.push(ResolveError::PropParams {
+                span: name.span.clone(),
+            }),
+        }
+        if let DefKind::Struct(s) = self.names.def(owner).kind {
+            let strukt = &ast.structs[s];
+            let field = (strukt.fields.iter().chain(strukt.payload()))
+                .find(|f| f.name.name == name.name);
+            if let Some(field) = field {
+                self.errors.push(ResolveError::PropNamedLikeField {
+                    name: name.name.to_string(),
+                    span: name.span.clone(),
+                    field: field.name.span.clone(),
+                });
+            }
+        }
+        if let Some(previous) = self.names.add_prop(owner, &name.name, def) {
+            self.errors.push(ResolveError::DuplicateDefinition {
+                name: name.name.to_string(),
+                span: name.span.clone(),
+                previous: self.names.def(previous).span.clone(),
+            });
         }
     }
 

@@ -1,18 +1,34 @@
-
-fn test() {
-    let a: String = "hello";
-
-    use som::data;
-
-    let b: String = " ";
-    let c: String = "world";
-
-    let c = a + b + c;
-
-    som::io::printf("%s", c.value.as_slice());
+use som::data;
+struct Vector<N: usize, T> {
+    values: [T; N]
 }
 
+impl<N: usize, T> Vector<N, T> {
+    fn empty(empty: T) -> Vector<N, T> {
+        Vector { values: [empty; N] }
+    }
+}
+
+impl<T> Vector<3, T> {
+    prop x(self: &Vector<3, T>) {
+        self.values.get(0)
+    }
+
+    prop y(self: &Vector<3, T>) {
+        self.values.get(1)
+    }
+
+    prop z(self: &Vector<3, T>) {
+        self.values.get(2)
+    }
+}
+
+let v: Vector<3, i32> = Vector::empty(0);
+let a = v.y;
 
 
-use som::data;
-let a: String = "";
+////////////////////////////////////////////////////
+
+// extern "raylib";
+// let title: String = "Hello!";
+// raylib::init_window(400, 400, title);

@@ -1,0 +1,14 @@
+// expect: exit 7
+
+struct Box { n: i32 }
+
+impl Box {
+    prop size(self: &Box) -> i32 { self.n }
+    fn size(self: &Box) -> i32 { self.n * 2 }
+}
+
+fn main() -> i32 {
+    let b = Box { n: 1 };
+    // 1 + 2 * 2 + 2
+    b.size + b.size() * 2 + b.size()
+}

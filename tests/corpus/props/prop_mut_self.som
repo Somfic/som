@@ -1,0 +1,7 @@
+// expect: error PropMutSelf
+
+struct Counter { n: i32 }
+
+impl Counter {
+    prop bump(self: &mut Counter) -> i32 { self.n = self.n + 1; self.n }
+}

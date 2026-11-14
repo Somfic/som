@@ -1,0 +1,10 @@
+// expect: error PropInTraitImpl
+
+trait Sized2 { fn size(self: &Self) -> i32; }
+
+struct Rect { w: i32 }
+
+impl Sized2 for Rect {
+    fn size(self: &Rect) -> i32 { self.w }
+    prop area(self: &Rect) -> i32 { self.w }
+}

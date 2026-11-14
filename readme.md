@@ -73,6 +73,7 @@ let int_pair: Pair<int, int> = { first: 1, second: 2 }
 - Enums with data, and `match` that checks every case is covered
 - Fields every variant of an enum has are reachable without a `match`
 - Method receivers are borrowed automatically: `list.push(1)` for `self: &mut List`
+- Props on structs
 
 
 ## Todo

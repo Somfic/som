@@ -216,6 +216,10 @@ impl<'a> Checker<'a> {
             if let Some(body) = func.body {
                 self.check_body(id, func, body);
                 self.settle(func.name.span.clone());
+                // After the body, which decides a return type that isn't written.
+                if func.prop {
+                    self.check_prop(id, func);
+                }
             }
         }
 
@@ -269,6 +273,36 @@ impl<'a> Checker<'a> {
             };
             let from = func.returns.map(|t| self.ast.types.span(t).clone());
             self.mismatch(ret, body_ty, self.ast.exprs.span(at).clone(), from);
+        }
+    }
+
+    /// A property is read like a field, so it has to act like one: give a value, and leave
+    /// what it's read from usable, borrowing `self` unless it's copied.
+    fn check_prop(&mut self, id: Id<Func>, func: &Func) {
+        let ret = self.sigs[id.id].ret;
+        if matches!(self.u.get(self.u.shallow(ret)), Ty::Unit) {
+            let span = match func.returns {
+                Some(ty) => self.ast.types.span(ty).clone(),
+                None => func.name.span.clone(),
+            };
+            self.errors.push(TypeError::PropReturnsNothing {
+                name: func.name.name.to_string(),
+                span,
+            });
+        }
+        if let (Some(&this), Some(param)) = (self.sigs[id.id].params.first(), func.params.first())
+            && !matches!(self.u.get(self.u.shallow(this)), Ty::Ref { .. })
+            && !self.is_copy(this)
+        {
+            let span = match param.ty {
+                Some(ty) => self.ast.types.span(ty).clone(),
+                None => param.name.span.clone(),
+            };
+            self.errors.push(TypeError::PropConsumesSelf {
+                ty: self.describe(this),
+                borrowed: format!("&{}", span.get_text()),
+                span,
+            });
         }
     }
 
@@ -1737,11 +1771,6 @@ impl<'a> Checker<'a> {
             }
 
             Expr::Assign { target, value } => {
-                if !self.is_place(*target) {
-                    self.errors.push(TypeError::InvalidAssignTarget {
-                        span: self.span(*target),
-                    });
-                }
                 // The target is the optional itself, not the value it held: `x = none` is fine.
                 let assigned = self.key(*target);
                 let (lifted, kept) = std::mem::take(&mut self.narrowed)
@@ -1749,6 +1778,12 @@ impl<'a> Checker<'a> {
                     .partition(|n| assigned.as_ref().is_some_and(|a| n.key.same(a)));
                 self.narrowed = kept;
                 let target_ty = self.infer(*target);
+                // After inferring it: whether `p.x` is a field or a property depends on `p`.
+                if !self.is_place(*target) {
+                    self.errors.push(TypeError::InvalidAssignTarget {
+                        span: self.span(*target),
+                    });
+                }
                 self.check_mutable(*target, false);
                 // The value is worked out first, while the target still holds what it did:
                 // `x = x + 1` reads the narrowed `x`.
@@ -1890,6 +1925,19 @@ impl<'a> Checker<'a> {
                 };
                 let Some(def) = self.names.method(owner, &method.name) else {
                     let ty = self.describe(receiver_ty);
+                    if self.names.prop(owner, &method.name).is_some() {
+                        let span = self.span(id);
+                        self.errors.push(TypeError::MethodIsProp {
+                            ty,
+                            name: method.name.to_string(),
+                            span: method.span.clone(),
+                            parens: args.is_empty().then(|| method.span.after().merge(&span.after())),
+                        });
+                        args.iter().for_each(|&a| {
+                            self.infer(a);
+                        });
+                        return error;
+                    }
                     self.errors.push(TypeError::UnknownMethod {
                         ty,
                         method: method.name.to_string(),
@@ -1915,9 +1963,14 @@ impl<'a> Checker<'a> {
                 let DefKind::Func(func) = self.names.def(def).kind else {
                     unreachable!("methods are functions")
                 };
-                self.methods.insert(id, def);
-
                 let (sig, type_args) = self.instantiate(func);
+                if !self.on_impl_target(func, &type_args, receiver_ty, method, "method") {
+                    args.iter().for_each(|&a| {
+                        self.infer(a);
+                    });
+                    return error;
+                }
+                self.methods.insert(id, def);
                 self.require_bounds(func, &type_args, self.span(id));
                 if !type_args.is_empty() {
                     self.type_args.insert(id, type_args);
@@ -1950,6 +2003,9 @@ impl<'a> Checker<'a> {
 
             Expr::Field { object, field } => {
                 let object_ty = self.infer_object(*object);
+                if let Some(ty) = self.prop_access(id, *object, object_ty, field) {
+                    return ty;
+                }
                 // A range's two ends.
                 let mut viewed = self.u.shallow(object_ty);
                 if let Ty::Ref { to, .. } = *self.u.get(viewed) {
@@ -1999,6 +2055,14 @@ impl<'a> Checker<'a> {
                         // Written in terms of the struct's type parameters: fill in its arguments.
                         let subst = self.struct_subst(s, &args);
                         self.substitute(self.structs[s.id][index], &subst)
+                    }
+                    None if self.names.method(owner, &field.name).is_some() => {
+                        self.errors.push(TypeError::FieldIsMethod {
+                            ty: self.describe(object_ty),
+                            name: field.name.to_string(),
+                            span: field.span.clone(),
+                        });
+                        error
                     }
                     None => {
                         self.errors.push(TypeError::UnknownField {
@@ -3034,6 +3098,7 @@ impl<'a> Checker<'a> {
             }
             // Through a reference, what counts is the reference: `&mut` allows it, even in a
             // variable that isn't `mut`.
+            Expr::Field { .. } if self.is_prop(expr) => None,
             Expr::Field { object, .. } => match self.reference(*object) {
                 Some(true) => None,
                 Some(false) => Some(Immutable::BehindSharedReference),
@@ -3068,10 +3133,106 @@ impl<'a> Checker<'a> {
                         | DefKind::Binding(_)
                 )
             }),
-            Expr::Field { object, .. } => self.is_place(*object),
+            Expr::Field { object, .. } => !self.is_prop(expr) && self.is_place(*object),
             Expr::Deref(_) => true,
             _ => false,
         }
+    }
+
+    /// Whether `receiver_ty`, looking through a reference, could be what the impl block of
+    /// method `func` is for, with `type_args` its instantiation. A `Vector<i32, 3>` isn't the
+    /// `Vector<T, 1>` of `impl<T> Vector<T, 1>`: reported as that, before its `self` is
+    /// compared and the difference gets lost in a mismatch about borrowing.
+    fn on_impl_target(
+        &mut self,
+        func: Id<Func>,
+        type_args: &[TypeId],
+        receiver_ty: TypeId,
+        name: &som_ast::Ident,
+        what: &'static str,
+    ) -> bool {
+        let Some(index) = self.names.impl_of(func) else {
+            return true;
+        };
+        let Some(target) = self.impls[index].target else {
+            return true;
+        };
+        let params = self.impls[index].params.clone();
+        let Some(args) = type_args.get(..params.len()) else {
+            return true;
+        };
+        let wanted = crate::traits::substitute(&mut self.u.table, target, &params, args);
+        let wanted = self.u.normalize(wanted);
+        // Through a reference on either side: a `str` is one already.
+        let unref = |u: &Unifier, ty: TypeId| match *u.get(u.shallow(ty)) {
+            Ty::Ref { to, .. } => u.shallow(to),
+            _ => u.shallow(ty),
+        };
+        let found = unref(&self.u, receiver_ty);
+        if self.u.could_fit(unref(&self.u, wanted), found) {
+            return true;
+        }
+        self.errors.push(TypeError::NotOnImplTarget {
+            ty: self.describe(found),
+            what,
+            name: name.name.to_string(),
+            target: self.u.display(target, self.names),
+            span: name.span.clone(),
+            impl_span: self.impl_target_span(index),
+        });
+        false
+    }
+
+    /// Whether `expr` reads a property, `list.len`, rather than a field. Known once it's
+    /// inferred.
+    fn is_prop(&self, expr: Id<Expr>) -> bool {
+        matches!(self.ast.exprs[expr], Expr::Field { .. }) && self.methods.contains_key(&expr)
+    }
+
+    /// `list.len` of a property, `prop len(self: &List) -> usize`: a call of it, without
+    /// parentheses. `None` if `object` has no property `field`; fields are named apart.
+    fn prop_access(
+        &mut self,
+        id: Id<Expr>,
+        object: Id<Expr>,
+        object_ty: TypeId,
+        field: &som_ast::Ident,
+    ) -> Option<TypeId> {
+        let owner = self.primitive_owner(object_ty).or_else(|| {
+            let mut ty = self.u.shallow(object_ty);
+            if let Ty::Ref { to, .. } = self.u.get(ty) {
+                ty = self.u.shallow(*to);
+            }
+            match self.u.get(ty) {
+                Ty::Struct(def, _) => Some(*def),
+                _ => None,
+            }
+        })?;
+        let def = self.names.prop(owner, &field.name)?;
+        let DefKind::Func(func) = self.names.def(def).kind else {
+            unreachable!("properties are functions")
+        };
+        // Text written in quotes is a `str` here.
+        if self.u.var_kind(object_ty) == Some(VarKind::Text) {
+            let _ = self.u.unify(object_ty, self.u.table.str_ref);
+        }
+        let (sig, type_args) = self.instantiate(func);
+        if !self.on_impl_target(func, &type_args, object_ty, field, "property") {
+            return Some(self.u.table.error);
+        }
+        self.methods.insert(id, def);
+        self.require_bounds(func, &type_args, self.span(id));
+        if !type_args.is_empty() {
+            self.type_args.insert(id, type_args);
+        }
+        // `self` is its only parameter; the resolver reports it if that's not so.
+        if let Some(&self_ty) = sig.params.first()
+            && !self.receive(object, self_ty, object_ty)
+        {
+            let from = (self.ast.funcs[func].params[0].ty).map(|t| self.ast.types.span(t).clone());
+            self.mismatch(self_ty, object_ty, self.span(object), from);
+        }
+        Some(sig.ret)
     }
 
     // --- Operators ---
@@ -3272,6 +3433,7 @@ impl Checker<'_> {
                     path: Vec::new(),
                 })
             }
+            Expr::Field { .. } if self.is_prop(expr) => None,
             Expr::Field { object, field } => {
                 let mut key = self.key(*object)?;
                 key.path.push(Step::Field(field.name.clone()));

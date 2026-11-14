@@ -9,6 +9,7 @@ use crate::{TokenKind, lex};
 fn token_color(kind: TokenKind) -> Rgb {
     match kind {
         TokenKind::Fn
+        | TokenKind::Prop
         | TokenKind::Extern
         | TokenKind::Let
         | TokenKind::If
@@ -98,7 +99,7 @@ fn token_color(kind: TokenKind) -> Rgb {
 fn is_italic(kind: TokenKind) -> bool {
     matches!(
         kind,
-        TokenKind::Fn | TokenKind::Let | TokenKind::If | TokenKind::Else | TokenKind::Mut | TokenKind::Out | TokenKind::Extern | // Keywords
+        TokenKind::Fn | TokenKind::Prop | TokenKind::Let | TokenKind::If | TokenKind::Else | TokenKind::Mut | TokenKind::Out | TokenKind::Extern | // Keywords
         TokenKind::Comment // Comments
     )
 }

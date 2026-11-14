@@ -102,6 +102,7 @@ impl Parser<'_> {
             link_name: None,
             library: None,
             in_trait: false,
+            prop: false,
         };
         let id = self.ast.funcs.alloc(func, span);
         self.add_item(Item::Func(id));
@@ -177,7 +178,7 @@ impl Parser<'_> {
                 let ty = self.parse_type()?;
                 self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
                 types.push((name, ty));
-            } else if self.at(TokenKind::Fn) {
+            } else if self.at(TokenKind::Fn) || self.at(TokenKind::Prop) {
                 match self.parse_function() {
                     Some(id) => methods.push(id),
                     None => self.recover(RecoveryLevel::Member),
@@ -228,6 +229,18 @@ impl Parser<'_> {
                 };
                 self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
                 types.push(AssocType { doc, name });
+            } else if self.at(TokenKind::Prop) {
+                let span = self.current_span();
+                self.error_at(
+                    span,
+                    "traits can't have properties yet",
+                    msg!["use a method, ", code("fn"), ", instead"],
+                );
+                // Read as a method, to carry on after it.
+                match self.parse_trait_method(&name, &generics) {
+                    Some(id) => methods.push(id),
+                    None => self.recover(RecoveryLevel::Member),
+                }
             } else if self.at(TokenKind::Fn) {
                 match self.parse_trait_method(&name, &generics) {
                     Some(id) => methods.push(id),
@@ -264,7 +277,9 @@ impl Parser<'_> {
     ) -> Option<Id<Func>> {
         let doc = self.doc_comment();
         let start = self.current_span();
-        self.expect(TokenKind::Fn, "a method declaration")?;
+        if !self.eat(TokenKind::Prop) {
+            self.expect(TokenKind::Fn, "a method declaration")?;
+        }
         let name = self.parse_ident("a method name")?;
         let own = self.parse_generics()?;
         let (params, variadic) = self.parse_params(false)?;
@@ -304,6 +319,7 @@ impl Parser<'_> {
             link_name: None,
             library: None,
             in_trait: true,
+            prop: false,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -443,11 +459,15 @@ impl Parser<'_> {
         })
     }
 
-    /// `fn name<T>(params) -> Ret { body }`
+    /// `fn name<T>(params) -> Ret { body }`, or in an impl block, `prop name(self: &T) -> Ret
+    /// { body }`.
     fn parse_function(&mut self) -> Option<Id<Func>> {
         let doc = self.doc_comment();
         let start = self.current_span();
-        self.expect(TokenKind::Fn, "a function declaration")?;
+        let prop = self.eat(TokenKind::Prop);
+        if !prop {
+            self.expect(TokenKind::Fn, "a function declaration")?;
+        }
         let name = self.parse_ident("a function name")?;
 
         let generics = self.parse_generics()?;
@@ -471,6 +491,7 @@ impl Parser<'_> {
             link_name: None,
             library: None,
             in_trait: false,
+            prop,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -679,6 +700,7 @@ impl Parser<'_> {
             link_name: None,
             library: None,
             in_trait: false,
+            prop: false,
         };
         Some(self.ast.funcs.alloc(func, span))
     }

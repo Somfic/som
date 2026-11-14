@@ -200,8 +200,19 @@ impl Checker<'_> {
     }
 
     /// Where impl block `index` names what it's for.
-    fn impl_target_span(&self, index: usize) -> Span {
-        impl_block(self.ast, index).target.span()
+    pub(super) fn impl_target_span(&self, index: usize) -> Span {
+        let block = impl_block(self.ast, index);
+        let target = block.target.span();
+        // With its arguments: `Vector<T, 1>`.
+        let Some(&last) = block.target_args.last() else {
+            return target;
+        };
+        let last = self.ast.types.span(last);
+        let end = last.start_offset + last.length;
+        // Through the `>` after the last one.
+        let text = &target.source.content()[end..];
+        let close = end + text.find('>').map_or(0, |i| i + 1);
+        Span::from_range(target.start_offset..close, target.source.clone())
     }
 
     /// Checks impl method `written`, of impl block `index`, has the types trait method

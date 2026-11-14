@@ -1,0 +1,7 @@
+// expect: error PropReturnsNothing
+
+struct Counter { n: i32 }
+
+impl Counter {
+    prop log(self: &Counter) { }
+}

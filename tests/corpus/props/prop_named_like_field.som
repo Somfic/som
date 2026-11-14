@@ -1,0 +1,7 @@
+// expect: error PropNamedLikeField
+
+struct Rect { w: i32, h: i32 }
+
+impl Rect {
+    prop w(self: &Rect) -> i32 { self.w }
+}

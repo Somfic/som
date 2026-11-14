@@ -1,0 +1,10 @@
+// expect: exit 9
+
+impl i32 {
+    prop squared(self: i32) -> i32 { self * self }
+}
+
+fn main() -> i32 {
+    let x: i32 = 3;
+    x.squared
+}
