@@ -41,6 +41,9 @@ pub struct Impl {
     pub target: Path,
     /// The target's type arguments as written: `T` in `ListIter<T>`, `i32` in `List<i32>`.
     pub target_args: Vec<Id<TypeExpr>>,
+    /// A trait's implementation for a type that isn't a struct: `bool` in `impl Add for bool`,
+    /// `[T; N]`, `&T`. `target` is then just its text, for showing.
+    pub target_ty: Option<Id<TypeExpr>>,
     /// `impl Iterator for …`: the trait implemented, and its type arguments.
     pub trait_: Option<(Path, Vec<Id<TypeExpr>>)>,
     /// `type Item = &T;`: what the trait's associated types are, for the target.
@@ -48,6 +51,8 @@ pub struct Impl {
     /// `impl<T> Pair<T>`: generic parameters every method gets, ahead of its own.
     pub generics: Vec<Generic>,
     pub methods: Vec<Id<Func>>,
+    /// Its closing brace, where missing methods go.
+    pub close: som_base::Span,
 }
 
 /// `trait Iterator { type Item; fn next(self: &mut Self) -> Item?; }`: what a type can do,

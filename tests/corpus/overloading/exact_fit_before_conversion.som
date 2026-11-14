@@ -1,0 +1,19 @@
+// expect: exit 21
+
+/// A function the arguments fit as they are wins over one they'd fit converted; only without
+/// one does a conversion count.
+struct Meters { value: i32 }
+
+impl From<i32> for Meters {
+    fn from(value: i32) -> Meters { Meters { value: value } }
+}
+
+fn pick(m: Meters) -> i32 { 1 }
+fn pick(m: i64) -> i32 { 2 }
+
+fn only(m: Meters) -> i32 { m.value }
+fn only(m: bool) -> i32 { 0 }
+
+fn main() -> i32 {
+    pick(5) * 10 + pick(Meters { value: 0 }) + only(0)
+}

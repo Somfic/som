@@ -1,0 +1,14 @@
+// expect: error InvalidOperands
+
+/// Operators don't convert: `a + 1` doesn't make a `Meters` of the `1`.
+struct Meters { value: i32 }
+
+impl From<i32> for Meters {
+    fn from(value: i32) -> Meters { Meters { value: value } }
+}
+
+fn main() -> i32 {
+    let a: Meters = 5;
+    let b = a + 1;
+    0
+}

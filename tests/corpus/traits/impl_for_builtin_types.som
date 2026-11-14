@@ -1,0 +1,39 @@
+// expect: exit 78
+
+/// Built-in types implement traits too: `+` for `bool`, `+` for an array, a `From` into
+/// `i32`. Only where the type has no such operator of its own.
+impl Add for bool {
+    fn add(self: &bool, other: &bool) -> bool { *self or *other }
+}
+impl Multiply for bool {
+    fn multiply(self: &bool, other: &bool) -> bool { *self and *other }
+}
+impl Compare for bool {
+    fn compare(self: &bool, other: &bool) -> Ordering {
+        if *self == *other { Ordering::Equal } else if *other { Ordering::Less } else { Ordering::Greater }
+    }
+}
+impl Add for [i32; 2] {
+    fn add(self: &[i32; 2], other: &[i32; 2]) -> [i32; 2] {
+        [(self.get(0) else 0) + (other.get(0) else 0), (self.get(1) else 0) + (other.get(1) else 0)]
+    }
+}
+struct Celsius { degrees: i32 }
+impl From<Celsius> for i32 {
+    fn from(c: Celsius) -> i32 { c.degrees }
+}
+fn any<T: Add>(a: T, b: T) -> T { a + b }
+fn main() -> i32 {
+    let a = true;
+    let b = false;
+    let mut r = 0;
+    if a + b { r = r + 1; }
+    if !(a * b) { r = r + 2; }
+    if b < a { r = r + 4; }
+    if any(false, true) { r = r + 8; }
+    let x: [i32; 2] = [1, 2];
+    let y: [i32; 2] = [10, 20];
+    let v = x + y;
+    let t: i32 = Celsius { degrees: 30 };
+    r + (v.get(0) else 0) + (v.get(1) else 0) + t
+}

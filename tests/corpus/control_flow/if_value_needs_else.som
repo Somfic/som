@@ -1,0 +1,6 @@
+// expect: error Parse
+
+fn main() -> i32 {
+    let a = if true { 3 };
+    a
+}

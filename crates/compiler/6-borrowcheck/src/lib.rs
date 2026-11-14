@@ -19,6 +19,7 @@
 
 mod error;
 mod outs;
+mod recursion;
 
 pub use error::BorrowError;
 
@@ -28,12 +29,21 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 pub fn check(mir: &Mir) -> Vec<BorrowError> {
     let mut errors = Vec::new();
-    for func in &mir.funcs {
+    for (id, func) in mir.funcs.iter_with_ids() {
         if let Some(body) = &func.body {
             FnChecker::new(mir, body).run(&mut errors);
             outs::check(body, &mut errors);
+            recursion::check(id, func, body, &mut errors);
         }
     }
+    // A generic function's copies are the same code: once is enough.
+    let mut reported = std::collections::HashSet::new();
+    errors.retain(|e| match e {
+        BorrowError::EndlessRecursion { span, .. } => {
+            reported.insert((span.source.identifier().to_string(), span.start_offset))
+        }
+        _ => true,
+    });
     errors
 }
 
@@ -406,7 +416,8 @@ impl<'a> FnChecker<'a> {
             | BorrowError::UseWhileMutBorrowed { span, .. }
             | BorrowError::AssignWhileBorrowed { span, .. }
             | BorrowError::OutNotAssigned { span, .. }
-            | BorrowError::OutReadBeforeAssigned { span, .. } => span,
+            | BorrowError::OutReadBeforeAssigned { span, .. }
+            | BorrowError::EndlessRecursion { span, .. } => span,
         };
         if self.reported.insert((kind, span.start_offset)) {
             self.errors.push(error);

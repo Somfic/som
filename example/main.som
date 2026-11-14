@@ -1,8 +1,20 @@
-use som::io;
-use som::data;
+let a = true;
+let b = false;
 
-let items: List = [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ];
-
-for item in items {
-    printf("%d\n", item)
+struct Hello {
+    a: i32
 }
+
+impl Compare for Hello {
+    fn compare(self: &Hello, other: &Hello) -> Ordering {
+        self.compare(other)
+    }
+}
+
+impl Eq for Hello {
+    fn eq(self: &Hello, other: &Hello) -> bool {
+        self.a == other.a
+    }
+}
+
+Hello { a: 1 } > Hello { a: 1 }

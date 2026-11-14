@@ -1,0 +1,6 @@
+// expect: error Mismatch
+
+fn main() -> i32 {
+    let b = if true { 3 } else { false };
+    0
+}

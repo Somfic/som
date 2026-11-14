@@ -36,6 +36,8 @@ pub enum Expr {
     },
     /// `!expr`
     Not(Id<Expr>),
+    /// `-expr`. A literal's minus is part of it: `-1` is `Int(-1)`.
+    Neg(Id<Expr>),
     /// `&expr` or `&mut expr`
     Borrow {
         mutable: bool,

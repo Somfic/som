@@ -4,7 +4,7 @@ use som::data;
 use som::mem;
 
 fn main() -> i32 {
-    let mut xs: List<i32> = List::new();
+    let mut xs: List<i32> = List::empty();
     xs.push(5);
     let result = 9 if xs.get(3) == none else 0;
     xs.free();

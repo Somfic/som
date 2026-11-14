@@ -654,15 +654,16 @@ impl LanguageServer for SomLanguageServer {
         &self,
         params: SemanticTokensParams,
     ) -> Result<Option<SemanticTokensResult>> {
-        let Ok(path) = params.text_document.uri.to_file_path() else {
+        // The editor's text, not the file on disk: unsaved edits would shift every token.
+        let Some(file) = Self::file_of(&params.text_document.uri) else {
             return Ok(None);
         };
-        let Ok(source) = Source::from_file(&path) else {
+        let Some(text) = self.text_of(&file).await else {
             return Ok(None);
         };
         Ok(Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
-            data: semantic_tokens(Arc::new(source)),
+            data: semantic_tokens(Arc::new(Source::from_raw_at(text, file))),
         })))
     }
 
@@ -858,6 +859,39 @@ impl LanguageServer for SomLanguageServer {
                     });
                 }
             }
+        } else if let Some((stubs, start)) =
+            impl_stubs(a, &cursor.file, &cursor.text, cursor.offset)
+        {
+            // In `impl Eq for Hello { … }`: what it still has to write, replacing the `fn e`
+            // typed so far.
+            let typed = cursor.offset - start;
+            let range = Range {
+                start: Position {
+                    line: position.position.line,
+                    character: position.position.character.saturating_sub(typed as u32),
+                },
+                end: position.position,
+            };
+            for stub in stubs {
+                let keyword = if stub.is_type { "type" } else { "fn" };
+                items.push(CompletionItem {
+                    label: stub.signature.clone(),
+                    kind: Some(match stub.is_type {
+                        true => CompletionItemKind::TYPE_PARAMETER,
+                        false => CompletionItemKind::METHOD,
+                    }),
+                    detail: Some("not written yet".into()),
+                    filter_text: Some(format!("{keyword} {}", stub.name)),
+                    insert_text_format: Some(InsertTextFormat::SNIPPET),
+                    text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                        range,
+                        new_text: stub.snippet,
+                    })),
+                    preselect: Some(true),
+                    ..Default::default()
+                });
+            }
+            return Ok(Some(CompletionResponse::Array(items)));
         } else if let Some((path, written)) = struct_literal(&cursor.text, cursor.offset) {
             // `Color { r: 1, ` lists the fields not written yet.
             let Some(s) = find_struct(a, path, &cursor.file) else {
@@ -875,6 +909,41 @@ impl LanguageServer for SomLanguageServer {
                     insert_text: Some(format!("{}: ", field.name.name)),
                     ..Default::default()
                 });
+            }
+            return Ok(Some(CompletionResponse::Array(items)));
+        } else if let Some(slot) = type_slot(&cursor.text, cursor.offset) {
+            // `impl ` lists traits and types, `impl Add for ` types, `<T: ` traits: from the
+            // modules in scope by name, others by theirs.
+            let (here, in_scope) = modules_in_scope(a, &cursor.file);
+            let wants_traits = slot != TypeSlot::Type;
+            let wants_types = slot != TypeSlot::Trait;
+            for (m, module) in a.ast.modules.iter().enumerate() {
+                let qualify = (!in_scope.contains(&m) && m != here && !module.name.is_empty())
+                    .then_some(&*module.name);
+                let name = |n: &str| match qualify {
+                    Some(module) => format!("{module}::{n}"),
+                    None => n.to_string(),
+                };
+                for item in &module.items {
+                    match item {
+                        Item::Trait(t) if wants_traits => {
+                            items.push(trait_item(a, *t, name(&a.ast.traits[*t].name.name)));
+                        }
+                        Item::Struct(s) if wants_types => {
+                            let st = &a.ast.structs[*s];
+                            items.push(CompletionItem {
+                                label: name(&st.name.name),
+                                kind: Some(match st.is_enum() {
+                                    true => CompletionItemKind::ENUM,
+                                    false => CompletionItemKind::STRUCT,
+                                }),
+                                documentation: markdown(st.doc.clone()),
+                                ..Default::default()
+                            });
+                        }
+                        _ => {}
+                    }
+                }
             }
             return Ok(Some(CompletionResponse::Array(items)));
         } else if let Some(module) = qualifier(&cursor.text, cursor.offset) {
@@ -1109,6 +1178,41 @@ impl LanguageServer for SomLanguageServer {
                     tooltip: None,
                     padding_left: None,
                     padding_right: Some(true),
+                    data: None,
+                });
+            }
+        }
+        // A value converted through `From`, which the source doesn't show: `List::from([1, 2])`.
+        // After the parameter names, which go before it at the same place.
+        for (id, _) in a.ast.exprs.iter() {
+            let Some((_, &[target, source, ..])) = a.typed.conversion(id) else {
+                continue;
+            };
+            let span = a.ast.exprs.span(id);
+            if span.source.identifier() != file {
+                continue;
+            }
+            let Ty::Struct(def, _) = a.typed.ty(target) else {
+                continue;
+            };
+            let tooltip = format!(
+                "converted to `{}` by its `From<{}>`",
+                ty(a, target),
+                ty(a, source)
+            );
+            let range = convert::span_to_range(span);
+            for (position, label) in [
+                (range.start, format!("{}::from(", a.names.def(*def).name)),
+                (range.end, ")".to_string()),
+            ] {
+                hints.push(InlayHint {
+                    position,
+                    label: InlayHintLabel::String(label),
+                    kind: None,
+                    text_edits: None,
+                    tooltip: Some(InlayHintTooltip::String(tooltip.clone())),
+                    padding_left: None,
+                    padding_right: None,
                     data: None,
                 });
             }
@@ -2120,6 +2224,12 @@ fn modules_in_scope(a: &Analysis, file: &str) -> (usize, Vec<usize>) {
             in_scope.push(m);
         }
     }
+    // The standard library's root module is seen from everywhere.
+    if let Some(prelude) = a.ast.modules.iter().position(|m| &*m.name == "som")
+        && !in_scope.contains(&prelude)
+    {
+        in_scope.push(prelude);
+    }
     (here, in_scope)
 }
 
@@ -2289,6 +2399,7 @@ fn module_items(
                 name(&a.ast.structs[*id].name.name),
                 insert,
             )),
+            Item::Trait(id) => items.push(trait_item(a, *id, name(&a.ast.traits[*id].name.name))),
             _ => {}
         }
     }
@@ -2326,6 +2437,7 @@ fn can_have_dot(a: &Analysis, expr: Id<Expr>) -> bool {
     match &a.ast.exprs[expr] {
         Expr::Binary { .. }
         | Expr::Not(_)
+        | Expr::Neg(_)
         | Expr::Borrow { .. }
         | Expr::Deref(_)
         | Expr::Assign { .. }
@@ -2494,6 +2606,130 @@ fn variant_snippet(a: &Analysis, s: Id<Struct>, index: usize, insert: Insert) ->
 
 /// `Color { r: $1, g: $2, b: $3, a: $4 }` where a value goes; just the name in a type.
 /// A struct with many fields gets empty braces, and field completion inside them.
+fn trait_item(a: &Analysis, t: Id<som_ast::Trait>, label: String) -> CompletionItem {
+    CompletionItem {
+        label,
+        kind: Some(CompletionItemKind::INTERFACE),
+        detail: Some(format!("trait {}", a.ast.traits[t].name.name)),
+        documentation: markdown(a.ast.traits[t].doc.clone()),
+        ..Default::default()
+    }
+}
+
+/// Inside a trait's impl block, where an item starts, with maybe `fn` or `type` and part of a
+/// name typed: what the block still has to write, and where what's typed of it starts.
+fn impl_stubs(
+    a: &Analysis,
+    file: &str,
+    text: &str,
+    offset: usize,
+) -> Option<(Vec<som_typeck::stubs::Stub>, usize)> {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let word_start = text[..offset].trim_end_matches(word).len();
+    let line_start = text[..word_start].rfind('\n').map_or(0, |i| i + 1);
+    let indent = text[line_start..word_start].len() - text[line_start..word_start].trim_start().len();
+    let start = match text[line_start..word_start].trim() {
+        "" => word_start,
+        "fn" | "type" => line_start + indent,
+        _ => return None,
+    };
+    let blocks = (a.ast.modules.iter())
+        .flat_map(|m| &m.items)
+        .filter_map(|item| match item {
+            Item::Impl(block) => Some(block),
+            _ => None,
+        });
+    for (index, block) in blocks.enumerate() {
+        let header = block.target.span();
+        if block.trait_.is_none()
+            || block.close.source.identifier() != file
+            || !(header.start_offset + header.length < offset && offset <= block.close.start_offset)
+        {
+            continue;
+        }
+        let in_method = block.methods.iter().any(|&m| {
+            let span = a.ast.funcs.span(m);
+            span.start_offset < start && offset <= span.start_offset + span.length
+        });
+        if in_method {
+            return None;
+        }
+        let stubs = som_typeck::stubs::missing(&a.ast, &a.names, index, block);
+        return (!stubs.is_empty()).then_some((stubs, start));
+    }
+    None
+}
+
+/// What can be written at the cursor in an `impl` header or a generic's bounds.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TypeSlot {
+    /// `impl ` or `impl<T> `: a trait, or the type the methods are for.
+    TraitOrType,
+    /// `impl Add for `: the type.
+    Type,
+    /// `fn f<T: ` or `T: Eq + `: a trait.
+    Trait,
+}
+
+/// Whether the cursor is in an `impl` header or a generic's bounds, and what goes there.
+fn type_slot(text: &str, offset: usize) -> Option<TypeSlot> {
+    let word = |c: char| c.is_alphanumeric() || c == '_';
+    let before = text[..offset].trim_end_matches(word);
+    let line = &before[before.rfind('\n').map_or(0, |i| i + 1)..];
+    let trimmed = line.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("impl")
+        && !rest.starts_with(word)
+    {
+        // Past `<T, N: usize>`.
+        let rest = match rest.trim_start().strip_prefix('<') {
+            Some(generics) => match generics.find('>') {
+                Some(end) => &generics[end + 1..],
+                None => return bound_slot(line),
+            },
+            None => rest,
+        };
+        let rest = rest.trim();
+        if rest.is_empty() {
+            return Some(TypeSlot::TraitOrType);
+        }
+        if rest.ends_with(" for") || rest == "for" {
+            return Some(TypeSlot::Type);
+        }
+        return None;
+    }
+    bound_slot(line)
+}
+
+/// In `fn f<T: ` or `struct S<K: Hash + `: after a `:` or `+` inside the `<…>` of a
+/// declaration's generics.
+fn bound_slot(line: &str) -> Option<TypeSlot> {
+    let trimmed = line.trim_end();
+    if !(trimmed.ends_with(':') && !trimmed.ends_with("::") || trimmed.ends_with('+')) {
+        return None;
+    }
+    let mut depth = 0;
+    for (i, c) in trimmed.char_indices().rev() {
+        match c {
+            '>' => depth += 1,
+            '<' if depth > 0 => depth -= 1,
+            '<' => {
+                let head = trimmed[..i].trim_end();
+                let keyword = head
+                    .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
+                    .trim_end();
+                let declares = ["fn", "struct", "enum", "trait"]
+                    .iter()
+                    .any(|k| keyword.ends_with(k))
+                    || head.ends_with("impl");
+                return declares.then_some(TypeSlot::Trait);
+            }
+            '(' | ')' | '{' | '}' | ';' | '=' => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
 fn struct_item(a: &Analysis, s: Id<Struct>, label: String, insert: Insert) -> CompletionItem {
     let st = &a.ast.structs[s];
     let snippet = insert.value.then(|| {
@@ -2804,6 +3040,27 @@ mod tests {
             ("f(Col", false),
         ] {
             assert_eq!(type_position(text, text.len()), is_type, "{text}");
+        }
+    }
+
+    #[test]
+    fn impl_headers_and_bounds_take_traits_and_types() {
+        for (text, slot) in [
+            ("impl ", Some(TypeSlot::TraitOrType)),
+            ("impl Ad", Some(TypeSlot::TraitOrType)),
+            ("impl<T> Ite", Some(TypeSlot::TraitOrType)),
+            ("impl Add for ", Some(TypeSlot::Type)),
+            ("impl<T> From<[T; 3]> for Li", Some(TypeSlot::Type)),
+            ("fn sum<T: ", Some(TypeSlot::Trait)),
+            ("fn sum<T: Add + Co", Some(TypeSlot::Trait)),
+            ("impl<T: Eq", Some(TypeSlot::Trait)),
+            ("struct Map<K: Ha", Some(TypeSlot::Trait)),
+            ("let x: ", None),
+            ("    impl_thing", None),
+            ("impl Add for V { fn ", None),
+            ("let y = a < b + ", None),
+        ] {
+            assert_eq!(type_slot(text, text.len()), slot, "{text}");
         }
     }
 

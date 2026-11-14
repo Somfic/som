@@ -100,6 +100,16 @@ pub enum IntTy {
     USize,
 }
 
+impl IntTy {
+    /// Whether it can be negative.
+    pub fn is_signed(self) -> bool {
+        matches!(
+            self,
+            IntTy::I8 | IntTy::I16 | IntTy::I32 | IntTy::I64 | IntTy::I128 | IntTy::ISize
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FloatTy {
     F32,

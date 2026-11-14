@@ -62,22 +62,62 @@ pub struct Def {
 }
 
 /// A trait the language itself uses, found by its name in the standard library: `for` loops
-/// go through `Iterable` and `Iterator`, a collection literal becomes a `FromArray`, `==` is
-/// `Eq`'s. Adding one is adding a case here, and the hook where the language uses it.
+/// go through `Iterable` and `Iterator`, a value becomes another type through `From`, `==` is
+/// `Eq`'s, `+` is `Add`'s, `<` is `Compare`'s. Adding one is adding a case here, and the hook where the language uses it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LangTrait {
     Iterator,
     Iterable,
-    FromArray,
+    From,
     Eq,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Compare,
 }
 
 impl LangTrait {
-    pub const ALL: [LangTrait; 4] = [
+    /// The trait operator `op` goes through, for values of a type that implements it.
+    pub fn of_operator(op: som_ast::BinOp) -> Option<LangTrait> {
+        use som_ast::BinOp;
+        Some(match op {
+            BinOp::Equals | BinOp::NotEquals => LangTrait::Eq,
+            BinOp::Add => LangTrait::Add,
+            BinOp::Subtract => LangTrait::Subtract,
+            BinOp::Multiply => LangTrait::Multiply,
+            BinOp::Divide => LangTrait::Divide,
+            BinOp::LessThan
+            | BinOp::GreaterThan
+            | BinOp::LessThanOrEqual
+            | BinOp::GreaterThanOrEqual => LangTrait::Compare,
+            BinOp::Modulo | BinOp::And | BinOp::Or => return None,
+        })
+    }
+
+    /// The method of it an operator calls.
+    pub fn operator_method(self) -> Option<&'static str> {
+        Some(match self {
+            LangTrait::Eq => "eq",
+            LangTrait::Add => "add",
+            LangTrait::Subtract => "subtract",
+            LangTrait::Multiply => "multiply",
+            LangTrait::Divide => "divide",
+            LangTrait::Compare => "compare",
+            LangTrait::Iterator | LangTrait::Iterable | LangTrait::From => return None,
+        })
+    }
+
+    pub const ALL: [LangTrait; 9] = [
         LangTrait::Iterator,
         LangTrait::Iterable,
-        LangTrait::FromArray,
+        LangTrait::From,
         LangTrait::Eq,
+        LangTrait::Add,
+        LangTrait::Subtract,
+        LangTrait::Multiply,
+        LangTrait::Divide,
+        LangTrait::Compare,
     ];
 
     /// Its name in the standard library.
@@ -85,8 +125,13 @@ impl LangTrait {
         match self {
             LangTrait::Iterator => "Iterator",
             LangTrait::Iterable => "Iterable",
-            LangTrait::FromArray => "FromArray",
+            LangTrait::From => "From",
             LangTrait::Eq => "Eq",
+            LangTrait::Add => "Add",
+            LangTrait::Subtract => "Subtract",
+            LangTrait::Multiply => "Multiply",
+            LangTrait::Divide => "Divide",
+            LangTrait::Compare => "Compare",
         }
     }
 }
@@ -314,6 +359,12 @@ impl Names {
     /// The definition of a function. Every function in the AST has one.
     pub fn func(&self, func: Id<Func>) -> DefId {
         self.funcs[func.id].expect("every function is defined")
+    }
+
+    /// The definition of a function, if it got one: one the parser gave up on part way, like
+    /// `fn n` while it's typed, didn't.
+    pub fn try_func(&self, func: Id<Func>) -> Option<DefId> {
+        self.funcs[func.id]
     }
 
     pub fn params(&self, func: Id<Func>) -> &[DefId] {

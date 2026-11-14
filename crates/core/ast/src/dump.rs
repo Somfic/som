@@ -325,6 +325,7 @@ impl Dumper<'_> {
                 d.exprs(&[*lhs, *rhs])
             }),
             Expr::Not(e) => self.node("not", |d| d.expr(*e)),
+            Expr::Neg(e) => self.node("neg", |d| d.expr(*e)),
             Expr::Borrow { mutable, expr } => self
                 .node(if *mutable { "borrow mut" } else { "borrow" }, |d| {
                     d.expr(*expr)

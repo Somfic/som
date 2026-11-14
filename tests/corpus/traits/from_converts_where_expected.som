@@ -1,0 +1,40 @@
+// expect: exit 155
+
+/// A type implementing `From<T>` is made from a `T` wherever one is given and it's expected:
+/// in a `let`, an argument, a `return`, a field, an assignment.
+use som::data;
+
+struct Meters { value: i32 }
+
+impl From<i32> for Meters {
+    fn from(value: i32) -> Meters { Meters { value: value } }
+}
+
+struct Name { len: usize }
+
+impl From<str> for Name {
+    fn from(value: str) -> Name { Name { len: value.len() } }
+}
+
+struct Path { length: Meters }
+
+fn walk(distance: Meters) -> i32 { distance.value }
+fn make() -> Meters { 7 }
+
+fn main() -> i32 {
+    let a: Meters = 5;
+    let b = walk(10);
+    let c = make();
+    let p = Path { length: 20 };
+    let mut d: Meters = 1;
+    d = 2;
+    let x: i32 = 3;
+    let e = walk(x);
+    let explicit = Meters::from(100);
+    let n: Name = "hello";
+    let list: List = [1, 2, 3];
+    let total = a.value + b + c.value + p.length.value + d.value + e + explicit.value
+        + (n.len as i32) + (list.len() as i32);
+    list.free();
+    total
+}

@@ -242,7 +242,12 @@ impl<'a> Resolver<'a> {
             for item in &module.items {
                 let Item::Impl(block) = item else { continue };
                 let index = self.names.impls.len();
-                let owner = self.resolve_path(&block.target, Expect::Struct);
+                // Only a struct has methods of its own; an implementation for `bool` is found
+                // through its trait.
+                let owner = match block.target_ty {
+                    Some(_) => None,
+                    None => self.resolve_path(&block.target, Expect::Struct),
+                };
                 let trait_ = (block.trait_.as_ref())
                     .and_then(|(path, _)| self.resolve_path(path, Expect::Trait));
                 let params = (block.generics.iter().enumerate())
@@ -361,6 +366,7 @@ impl<'a> Resolver<'a> {
             self.resolve_bounds(g, def);
         }
         let written = (block.target_args.iter())
+            .chain(&block.target_ty)
             .chain(block.trait_.iter().flat_map(|(_, args)| args))
             .chain(block.types.iter().map(|(_, ty)| ty));
         for &ty in written {
@@ -601,7 +607,10 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(*lhs);
                 self.resolve_expr(*rhs);
             }
-            Expr::Not(inner) | Expr::Deref(inner) | Expr::Borrow { expr: inner, .. } => {
+            Expr::Not(inner)
+            | Expr::Neg(inner)
+            | Expr::Deref(inner)
+            | Expr::Borrow { expr: inner, .. } => {
                 self.resolve_expr(*inner)
             }
             Expr::ArrayRepeat { value, count } => {
@@ -703,10 +712,13 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    /// Whether `name` is a variant of an enum in the current module or one it uses.
+    /// Whether `name` is a variant of an enum in the current module, one it uses, or the
+    /// prelude: `Less` of `Ordering`.
     fn is_variant_name(&self, name: &str) -> bool {
+        let prelude = self.modules.get("som").copied();
         std::iter::once(self.module)
             .chain(self.imports[self.module].iter().copied())
+            .chain(prelude)
             .any(|m| self.variant_names[m].contains(name))
     }
 

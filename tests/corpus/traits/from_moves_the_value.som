@@ -1,0 +1,17 @@
+// expect: error UseAfterMove
+
+/// Converting passes the value to `from`: it's moved.
+use som::data;
+
+struct Bag { items: List<i32> }
+
+impl From<List<i32>> for Bag {
+    fn from(items: List<i32>) -> Bag { Bag { items: items } }
+}
+
+fn main() -> i32 {
+    let list: List = [1, 2];
+    let bag: Bag = list;
+    let n = list.len();
+    0
+}

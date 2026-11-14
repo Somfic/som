@@ -5,7 +5,7 @@
 use som_ast::{BinOp, Func, Id, Ident, Span, Stmt};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, LangTrait};
-use som_typeck::traits::find_impl;
+use som_typeck::traits::{builtin_operator, find_impl};
 
 use super::{FnBuilder, LoopTargets, Lowerer};
 
@@ -30,8 +30,9 @@ impl Lowerer<'_> {
     ) -> Option<(Id<Func>, Vec<TypeId>)> {
         let &(trait_, trait_generics) = self.trait_methods.get(&func)?;
         let &this = type_args.first()?;
+        let trait_args = type_args.get(1..1 + trait_generics).unwrap_or(&[]);
         let (index, impl_args) =
-            find_impl(&self.typed.impls, &self.mir.types, trait_, this, &|t| t)?;
+            find_impl(&self.typed.impls, &self.mir.types, trait_, this, trait_args, &|t| t)?;
         let name = &self.ast.funcs[func].name.name;
         let method = (self.typed.impls[index].methods.iter().copied())
             .find(|&m| self.ast.funcs[m].name.name == *name)?;
@@ -169,21 +170,24 @@ impl FnBuilder<'_, '_> {
         });
     }
 
-    /// `lhs == rhs`, or with `op` `!=`, through `Eq`'s `eq`: `eq(&lhs, &rhs)`.
-    pub(super) fn eq_call(
+    /// `lhs op rhs` through the method of trait `lang`, with both borrowed: `lhs == rhs` is
+    /// `eq(&lhs, &rhs)`, `lhs < rhs` is `compare(&lhs, &rhs)` being `Less`. `None` if the
+    /// values are numbers after all, as a `T: Add` can turn out to be, which have it built in.
+    pub(super) fn operator_call(
         &mut self,
+        lang: LangTrait,
         op: BinOp,
         lhs: Id<som_ast::Expr>,
         rhs: Id<som_ast::Expr>,
         span: Span,
-    ) -> Rvalue {
-        let eq = self
-            .l
-            .names
-            .lang(LangTrait::Eq)
-            .expect("checked: there's an Eq");
-        let eq = self.l.trait_method(eq, "eq");
+    ) -> Option<Rvalue> {
         let ty = self.expr_ty(lhs);
+        if builtin_operator(self.l.mir.types.get(ty), lang) {
+            return None;
+        }
+        let trait_ = self.l.names.lang(lang).expect("checked: the trait is there");
+        let method = lang.operator_method().expect("an operator's trait");
+        let method = self.l.trait_method(trait_, method);
         let reference = self.l.mir.types.intern(Ty::Ref {
             mutable: false,
             to: ty,
@@ -199,14 +203,32 @@ impl FnBuilder<'_, '_> {
             self.assign(Place::local(temp), borrow, span.clone());
             args.push(Operand::Copy(Place::local(temp)));
         }
-        let func = self.l.instance(eq, vec![ty]);
+        let func = self.l.instance(method, vec![ty]);
         let call = Rvalue::Call { func, args };
-        if op == BinOp::Equals {
-            return call;
-        }
-        let bool = self.l.mir.types.bool;
-        let equal = self.temp(bool, span.clone());
-        self.assign(Place::local(equal), call, span);
-        Rvalue::Not(Operand::Copy(Place::local(equal)))
+        let result_ty = self.l.mir.funcs[func].ret;
+        // What's asked of the result: `!=` is not `eq`; `<` is `compare` giving `Less`, the
+        // `Ordering` variant at that index.
+        let (test, variant) = match op {
+            BinOp::NotEquals => (BinOp::Equals, None),
+            BinOp::LessThan => (BinOp::Equals, Some(0)),
+            BinOp::GreaterThan => (BinOp::Equals, Some(2)),
+            BinOp::LessThanOrEqual => (BinOp::NotEquals, Some(2)),
+            BinOp::GreaterThanOrEqual => (BinOp::NotEquals, Some(0)),
+            _ => return Some(call),
+        };
+        let result = self.temp(result_ty, span.clone());
+        self.assign(Place::local(result), call, span);
+        Some(match variant {
+            None => Rvalue::Not(Operand::Copy(Place::local(result))),
+            Some(index) => {
+                let tag = Place::local(result).project(Projection::Field(0));
+                let tag_ty = self.place_ty(&tag);
+                Rvalue::Binary {
+                    op: test,
+                    lhs: Operand::Copy(tag),
+                    rhs: self.constant(ConstKind::Int(index), tag_ty),
+                }
+            }
+        })
     }
 }

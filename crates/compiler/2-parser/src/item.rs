@@ -114,12 +114,25 @@ impl Parser<'_> {
         let first = self.parse_path("a struct or trait name")?;
         let first_args = self.parse_type_args()?;
         // `Iterator for ListIter<T>`: what came first was the trait.
-        let (trait_, target, target_args) = if self.eat(TokenKind::For) {
-            let target = self.parse_path("a struct name")?;
-            let target_args = self.parse_type_args()?;
-            (Some((first, first_args)), target, target_args)
+        let (trait_, target, target_args, target_ty) = if self.eat(TokenKind::For) {
+            if self.at(TokenKind::Ident) {
+                let target = self.parse_path("a struct name")?;
+                let target_args = self.parse_type_args()?;
+                (Some((first, first_args)), target, target_args, None)
+            } else {
+                // A type that isn't a struct: `bool`, `[T; N]`, `&T`.
+                let ty = self.parse_type()?;
+                let span = self.ast.types.span(ty).clone();
+                let target = som_ast::Path {
+                    segments: vec![som_ast::Ident {
+                        name: span.get_text().as_ref().into(),
+                        span,
+                    }],
+                };
+                (Some((first, first_args)), target, Vec::new(), Some(ty))
+            }
         } else {
-            (None, first, first_args)
+            (None, first, first_args, None)
         };
         self.expect(TokenKind::OpenBrace, "an impl block")?;
 
@@ -129,7 +142,7 @@ impl Parser<'_> {
             // `type Item = &T;`
             if self.eat(TokenKind::Type) {
                 let Some(name) = self.parse_ident("an associated type name") else {
-                    self.recover(RecoveryLevel::Declaration);
+                    self.recover(RecoveryLevel::Member);
                     continue;
                 };
                 self.expect(TokenKind::Equals, "`=` and the type")?;
@@ -139,15 +152,16 @@ impl Parser<'_> {
             } else if self.at(TokenKind::Fn) {
                 match self.parse_function() {
                     Some(id) => methods.push(id),
-                    None => self.recover(RecoveryLevel::Declaration),
+                    None => self.recover(RecoveryLevel::Member),
                 }
             } else {
                 self.error_missing("expected method declaration", "a method declaration");
-                self.recover(RecoveryLevel::Declaration);
+                self.recover(RecoveryLevel::Member);
             }
         }
 
         self.expect(TokenKind::CloseBrace, "a closing brace after impl block")?;
+        let close = self.previous_span();
         // Every method is generic over the impl's parameters, ahead of its own.
         for &method in &methods {
             let own = std::mem::take(&mut self.ast.funcs.get_mut(method).generics);
@@ -156,10 +170,12 @@ impl Parser<'_> {
         Some(Impl {
             target,
             target_args,
+            target_ty,
             trait_,
             types,
             generics,
             methods,
+            close,
         })
     }
 
@@ -179,7 +195,7 @@ impl Parser<'_> {
                 let doc = self.doc_comment();
                 self.advance();
                 let Some(name) = self.parse_ident("an associated type name") else {
-                    self.recover(RecoveryLevel::Declaration);
+                    self.recover(RecoveryLevel::Member);
                     continue;
                 };
                 self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
@@ -187,14 +203,14 @@ impl Parser<'_> {
             } else if self.at(TokenKind::Fn) {
                 match self.parse_trait_method(&name, &generics) {
                     Some(id) => methods.push(id),
-                    None => self.recover(RecoveryLevel::Declaration),
+                    None => self.recover(RecoveryLevel::Member),
                 }
             } else {
                 self.error_missing(
                     "expected a method or `type` declaration",
                     "a method or associated type",
                 );
-                self.recover(RecoveryLevel::Declaration);
+                self.recover(RecoveryLevel::Member);
             }
         }
         self.expect(TokenKind::CloseBrace, "a closing brace after the trait")?;

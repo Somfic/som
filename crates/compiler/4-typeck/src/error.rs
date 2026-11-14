@@ -21,6 +21,11 @@ pub enum TypeError {
         span: Span,
         /// An operand that's optional: as written, a fallback value for it, and where it is.
         optional: Option<(String, String, Span)>,
+        /// The trait the operands' type could implement to have the operator: `Add` for `+`;
+        /// with the type parameter's name if it's one, which can require it instead.
+        implement: Option<(&'static str, Option<String>)>,
+        /// Writing the implementation, or the bound.
+        fix: Option<Fix>,
     },
     WrongArgCount {
         name: String,
@@ -186,10 +191,12 @@ pub enum TypeError {
     },
     /// An `impl Trait for …` without one of the trait's methods or associated types.
     MissingTraitItem {
-        what: &'static str,
-        name: String,
+        /// Each item missing, as it's declared: `fn eq(self: &Hello, other: &Hello) -> bool`.
+        missing: Vec<String>,
         trait_: String,
         span: Span,
+        /// Where to write them, and their text.
+        fix: (Span, String),
     },
     /// An `impl Trait for …` with a method or associated type the trait doesn't have.
     NotInTrait {
@@ -265,10 +272,15 @@ pub enum TypeError {
         value: i64,
         ty: String,
         max: u128,
+        min: i128,
         span: Span,
         /// It's a type argument, `Small<300>`, which `as` can't convert.
         type_arg: bool,
     },
+    /// `impl Add for i32`: a type implementing a trait whose operators it has built in.
+    BuiltinImpl { ty: Message, trait_: String, span: Span },
+    /// `-x` of something that isn't a signed integer or a float.
+    CannotNegate { ty: Message, span: Span },
     /// `value as T` where they aren't both numbers.
     InvalidCast {
         from: Message,
@@ -348,6 +360,8 @@ impl TypeError {
                 rhs,
                 span,
                 optional,
+                implement,
+                fix,
             } => {
                 let d = Diagnostic::error(msg![
                     "cannot apply ",
@@ -369,14 +383,29 @@ impl TypeError {
                             ", or give a fallback, as in ",
                             code(format!("({name} else {fallback})")),
                         ]),
-                    // Comparing values of a type that could say how: `impl Eq for …`.
-                    None if matches!(op.as_str(), "==" | "!=") => d
-                        .with_label(Label::primary(span.clone(), "no such operation"))
-                        .with_hint(msg![
-                            "to compare them, implement ",
-                            code("Eq"),
-                            " for the type"
-                        ]),
+                    // Values of a type that could say how: `impl Add for …`.
+                    None if let Some((trait_, param)) = implement => {
+                        let mut d =
+                            d.with_label(Label::primary(span.clone(), "no such operation"));
+                        if let Some(fix) = fix {
+                            d = d.with_fix(fix.clone());
+                        }
+                        match param {
+                            Some(param) => d.with_hint(msg![
+                                "to use ",
+                                code(op),
+                                ", require it: ",
+                                code(format!("{param}: {trait_}"))
+                            ]),
+                            None => d.with_hint(msg![
+                                "to give it ",
+                                code(op),
+                                ", implement ",
+                                code(*trait_),
+                                " for the type"
+                            ]),
+                        }
+                    }
                     None => d.with_label(Label::primary(span.clone(), "no such operation")),
                 }
             }
@@ -650,20 +679,36 @@ impl TypeError {
                 "was already defined here",
             )),
             TypeError::MissingTraitItem {
-                what,
-                name,
+                missing,
                 trait_,
                 span,
-            } => Diagnostic::error(msg![
-                "this implementation of ",
-                code(trait_),
-                format!(" is missing {what} "),
-                code(name)
-            ])
-            .with_label(Label::primary(
-                span.clone(),
-                format!("`{name}` isn't written here"),
-            )),
+                fix,
+            } => {
+                let first = missing.first().cloned().unwrap_or_default();
+                let more = match missing.len() {
+                    0 | 1 => String::new(),
+                    n => format!(" and {} more", n - 1),
+                };
+                let items = if missing.len() == 1 { "it" } else { "them" };
+                let mut d = Diagnostic::error(msg![
+                    "this implementation of ",
+                    code(trait_),
+                    " is missing ",
+                    code(first),
+                    more
+                ])
+                .with_label(Label::primary(span.clone(), "not everything is written"))
+                .with_fix(Fix {
+                    title: msg![format!("write {items}")],
+                    edits: vec![fix.clone()],
+                });
+                if missing.len() > 1 {
+                    let rest: Vec<String> =
+                        missing.iter().skip(1).map(|m| format!("`{m}`")).collect();
+                    d = d.with_hint(format!("also missing {}", rest.join(", ")));
+                }
+                d
+            }
             TypeError::NotInTrait {
                 what,
                 name,
@@ -841,15 +886,17 @@ impl TypeError {
                 value,
                 ty,
                 max,
+                min,
                 span,
                 type_arg,
             } => {
+                let limit = match *value < 0 {
+                    true => msg!["the smallest ", code(ty), " is ", code(min.to_string())],
+                    false => msg!["the largest ", code(ty), " is ", code(max.to_string())],
+                };
                 let error =
                     Diagnostic::error(msg![code(value.to_string()), " doesn't fit in ", code(ty)])
-                        .with_label(Label::primary(
-                            span.clone(),
-                            msg!["the largest ", code(ty), " is ", code(max.to_string())],
-                        ));
+                        .with_label(Label::primary(span.clone(), limit));
                 match type_arg {
                     true => error,
                     false => error.with_hint(msg![
@@ -857,6 +904,18 @@ impl TypeError {
                         code(format!("{value} as {ty}"))
                     ]),
                 }
+            }
+            TypeError::BuiltinImpl { ty, trait_, span } => Diagnostic::error(msg![
+                ty.clone(),
+                " can't implement ",
+                code(trait_)
+            ])
+            .with_label(Label::primary(span.clone(), "its operators are built in")),
+            TypeError::CannotNegate { ty, span } => {
+                Diagnostic::error(msg!["cannot negate ", ty.clone()]).with_label(Label::primary(
+                    span.clone(),
+                    "only signed integers and floats have a `-`",
+                ))
             }
             TypeError::InvalidCast { from, to, span } => {
                 Diagnostic::error(msg!["cannot convert ", from.clone(), " to ", to.clone()])

@@ -15,12 +15,38 @@ trait Iterable {
     fn iter(self: &Self) -> Iter;
 }
 
-/// Can be made from a collection literal: `let list: List<i32> = [1, 2, 3]`.
-trait FromArray {
-    /// What the literal's elements are.
-    type Element;
+/// Can be made from a `T`, which becomes one wherever it's given and a `Self` is expected:
+/// `let list: List<i32> = [1, 2, 3]` is `List::from([1, 2, 3])`.
+trait From<T> {
+    fn from(value: T) -> Self;
+}
 
-    fn from_array<N: usize>(items: [Element; N]) -> Self;
+/// `a + b`.
+trait Add {
+    fn add(self: &Self, other: &Self) -> Self;
+}
+
+/// `a - b`.
+trait Subtract {
+    fn subtract(self: &Self, other: &Self) -> Self;
+}
+
+/// `a * b`.
+trait Multiply {
+    fn multiply(self: &Self, other: &Self) -> Self;
+}
+
+/// `a / b`.
+trait Divide {
+    fn divide(self: &Self, other: &Self) -> Self;
+}
+
+/// Which of two values comes first. The language relies on the variants' order.
+enum Ordering { Less, Equal, Greater }
+
+/// Can be compared with `<`, `>`, `<=` and `>=`: `a < b` is `a.compare(&b) == Less`.
+trait Compare {
+    fn compare(self: &Self, other: &Self) -> Ordering;
 }
 
 /// Can be compared with `==` and `!=`.

@@ -1,0 +1,13 @@
+// expect: error Mismatch
+
+/// Without a `From` that takes it, a value isn't converted.
+struct Meters { value: i32 }
+
+impl From<i32> for Meters {
+    fn from(value: i32) -> Meters { Meters { value: value } }
+}
+
+fn main() -> i32 {
+    let m: Meters = true;
+    0
+}

@@ -1,0 +1,6 @@
+// expect: error InvalidOperands
+
+/// A type parameter has `+` only if it's required to: `T: Add`.
+fn twice<T>(a: T) -> T { a + a }
+
+fn main() -> i32 { twice(1) }

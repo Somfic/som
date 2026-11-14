@@ -1,0 +1,10 @@
+// expect: error InvalidOperands
+
+/// Without `Add`, a struct has no `+`.
+struct P { x: i32 }
+
+fn main() -> i32 {
+    let a = P { x: 1 };
+    let b = a + a;
+    0
+}

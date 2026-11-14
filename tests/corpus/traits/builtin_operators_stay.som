@@ -1,0 +1,8 @@
+// expect: error BuiltinImpl
+
+/// A type with `+` built in can't implement `Add`: `1 + 2` means the same everywhere.
+impl Add for i32 {
+    fn add(self: &i32, other: &i32) -> i32 { 0 }
+}
+
+fn main() -> i32 { 1 + 2 }

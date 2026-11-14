@@ -1,0 +1,15 @@
+// expect: error EndlessRecursion
+
+/// A function that calls itself on every path never returns.
+struct Hello { a: i32 }
+
+impl Compare for Hello {
+    fn compare(self: &Hello, other: &Hello) -> Ordering {
+        self.compare(other)
+    }
+}
+
+fn main() -> i32 {
+    let x = Hello { a: 1 } < Hello { a: 2 };
+    0
+}

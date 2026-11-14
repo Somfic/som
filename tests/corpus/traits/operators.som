@@ -1,0 +1,48 @@
+// expect: exit 195
+
+/// A struct gets `+`, `-`, `*` and `/` by implementing `Add`, `Subtract`, `Multiply` and
+/// `Divide`, and `<`, `>`, `<=` and `>=` by implementing `Compare`. A bound on them works for
+/// numbers too, which have them built in.
+struct V { x: i32, y: i32 }
+
+impl Add for V { fn add(self: &V, other: &V) -> V { V { x: self.x + other.x, y: self.y + other.y } } }
+impl Subtract for V { fn subtract(self: &V, other: &V) -> V { V { x: self.x - other.x, y: self.y - other.y } } }
+impl Multiply for V { fn multiply(self: &V, other: &V) -> V { V { x: self.x * other.x, y: self.y * other.y } } }
+impl Divide for V { fn divide(self: &V, other: &V) -> V { V { x: self.x / other.x, y: self.y / other.y } } }
+impl Eq for V { fn eq(self: &V, other: &V) -> bool { self.x == other.x and self.y == other.y } }
+impl Compare for V {
+    fn compare(self: &V, other: &V) -> Ordering {
+        let a = self.x + self.y;
+        let b = other.x + other.y;
+        if a < b { Ordering::Less } else if a == b { Ordering::Equal } else { Ordering::Greater }
+    }
+}
+
+fn sum<T: Add>(a: T, b: T) -> T { a + b }
+fn biggest<T: Compare>(a: T, b: T) -> T { if a > b { a } else { b } }
+
+fn main() -> i32 {
+    let a = V { x: 1, y: 2 };
+    let b = V { x: 3, y: 4 };
+    let c = a + b;
+    let d = b - a;
+    let e = c * d;
+    let f = e / d;
+    let mut r = 0;
+    if f == c { r = r + 1; }
+    if a != b { r = r + 2; }
+    if a < b { r = r + 4; }
+    if b > a { r = r + 8; }
+    if a <= a { r = r + 16; }
+    if b >= a { r = r + 32; }
+    if !(b < a) { r = r + 64; }
+    let order = describe(&a, &b);
+    let s = sum(c, d);
+    let n = sum(20, 22);
+    let m = biggest(3, 9);
+    let big = biggest(a, b);
+    r + s.x + s.y + n + m + big.x + order - 1
+}
+fn describe(a: &V, b: &V) -> i32 {
+    match a.compare(b) { Less => 1, Equal => 2, Greater => 3 }
+}

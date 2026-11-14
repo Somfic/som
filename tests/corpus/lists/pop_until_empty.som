@@ -6,7 +6,7 @@ use som::mem;
 struct Item { value: i32 }
 
 fn main() -> i32 {
-    let mut items: List<Item> = List::new();
+    let mut items: List<Item> = List::empty();
     items.push(Item { value: 1 });
     items.push(Item { value: 2 });
     items.push(Item { value: 3 });

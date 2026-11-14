@@ -43,6 +43,8 @@ pub enum BorrowError {
     OutNotAssigned { name: String, span: Span },
     /// An `out` parameter read before the function assigned it.
     OutReadBeforeAssigned { name: String, span: Span },
+    /// A function that calls itself on every path, so it never returns.
+    EndlessRecursion { name: String, span: Span },
 }
 
 fn kind(mutable: bool) -> &'static str {
@@ -182,6 +184,14 @@ impl BorrowError {
             ])
             .with_label(Label::primary(span.clone(), "read here"))
             .with_hint("callers pass a fresh variable, so it has no value until it's assigned"),
+            BorrowError::EndlessRecursion { name, span } => {
+                Diagnostic::error(msg!["infinite recursion"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "every path gets here before it can return",
+                    ))
+                    .with_hint("it never returns: give it a way to finish without this call")
+            }
         }
     }
 }

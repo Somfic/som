@@ -1,5 +1,5 @@
 use som_ast::{Ast, BinOp, Expr, Func, Id, Pattern, Primitive, Span, Stmt, TypeExpr, VariantKind};
-use som_resolve::{DefId, DefKind, Names};
+use som_resolve::{DefId, DefKind, LangTrait, Names};
 use std::collections::{HashMap, HashSet};
 
 use crate::error::TypeError;
@@ -66,7 +66,7 @@ pub(crate) struct Checker<'a> {
     /// Lowering a `let` annotation, where a generic struct's type arguments can be left out:
     /// `let list: List = [1, 2]`.
     omitted_args_ok: bool,
-    /// Collection literals that become a struct through its `from_array` method: the method
+    /// Values that become a struct through its `From` implementation: the trait's `from`
     /// and its type arguments.
     conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
     /// Every `impl` block, indexed like `Names::impls`.
@@ -76,7 +76,7 @@ pub(crate) struct Checker<'a> {
     /// Types that have to implement a trait, to check once they're known, and where.
     obligations: Vec<(TypeId, DefId, Span)>,
     /// `==` and `!=` comparing with `Eq`'s `eq`.
-    eq_ops: HashSet<Id<Expr>>,
+    trait_ops: HashMap<Id<Expr>, LangTrait>,
     /// Calls that more than one function fits, decided once the rest of the program says more
     /// about what their result has to be.
     pending_calls: Vec<PendingCall>,
@@ -123,7 +123,7 @@ impl<'a> Checker<'a> {
             impls: Vec::new(),
             current_func: None,
             obligations: Vec::new(),
-            eq_ops: HashSet::new(),
+            trait_ops: HashMap::new(),
             conversions: HashMap::new(),
         }
     }
@@ -225,6 +225,9 @@ impl<'a> Checker<'a> {
         self.check_obligations();
 
         for (expr, op, lhs, rhs) in std::mem::take(&mut self.deferred_ops) {
+            if self.trait_op(expr, op, lhs) {
+                continue;
+            }
             if self.operand_ok(op, lhs) == Some(false) || self.u.var_kind(lhs) == Some(VarKind::Any)
             {
                 self.invalid_operands(expr, op, lhs, rhs);
@@ -286,11 +289,23 @@ impl<'a> Checker<'a> {
                 IntTy::U32 => u32::MAX as u128,
                 IntTy::U64 | IntTy::USize | IntTy::I128 | IntTy::U128 => continue,
             };
-            if *n as u128 > max {
+            let min: i128 = match int {
+                IntTy::I8 => i8::MIN as i128,
+                IntTy::I16 => i16::MIN as i128,
+                IntTy::I32 => i32::MIN as i128,
+                _ if int.is_signed() => i64::MIN as i128,
+                _ => 0,
+            };
+            let fits = match *n < 0 {
+                true => *n as i128 >= min,
+                false => *n as u128 <= max,
+            };
+            if !fits {
                 self.errors.push(TypeError::LiteralOutOfRange {
                     value: *n,
                     ty: format!("{int:?}").to_lowercase(),
                     max,
+                    min,
                     span: self.span(id),
                     type_arg: false,
                 });
@@ -398,7 +413,7 @@ impl<'a> Checker<'a> {
             callees: self.callees,
             conversions,
             impls: self.impls,
-            eq_ops: self.eq_ops,
+            trait_ops: self.trait_ops,
             common: self.common,
             diverging: self.diverging,
         };
@@ -563,6 +578,7 @@ impl<'a> Checker<'a> {
                                 value: n.min(i64::MAX as u128) as i64,
                                 ty: format!("{int_ty:?}").to_lowercase(),
                                 max,
+                                min: 0,
                                 span,
                                 type_arg: true,
                             });
@@ -746,12 +762,28 @@ impl<'a> Checker<'a> {
                 .find_map(|(e, ty)| self.optional_operand(e, ty)),
             _ => None,
         };
+        // A struct's operators are its traits': say which to implement, or for a type
+        // parameter, to require.
+        let implement = LangTrait::of_operator(op).and_then(|lang| {
+            let ty = self.u.get(self.u.shallow(lhs));
+            match ty {
+                Ty::Param(def) => Some((lang.name(), Some(self.names.def(*def).name.to_string()))),
+                Ty::Var(_) | Ty::Error | Ty::Optional(_) => None,
+                _ if self.has_builtin(lhs, lang) => None,
+                _ => Some((lang.name(), None)),
+            }
+        });
+        let fix = LangTrait::of_operator(op)
+            .filter(|_| implement.is_some())
+            .and_then(|lang| self.operator_fix(lhs, lang));
         self.errors.push(TypeError::InvalidOperands {
             op: op.symbol().into(),
             lhs: self.describe(lhs),
             rhs: self.describe(rhs),
             span: self.ast.exprs.span(expr).clone(),
             optional,
+            implement,
+            fix,
         });
     }
 
@@ -927,6 +959,9 @@ impl<'a> Checker<'a> {
             Expr::Match { arms, .. } => {
                 !arms.is_empty() && arms.iter().all(|arm| self.expr_leaves(arm.body))
             }
+            Expr::Conditional { then, otherwise, .. } => {
+                self.expr_leaves(*then) && self.expr_leaves(*otherwise)
+            }
             _ => false,
         }
     }
@@ -951,6 +986,9 @@ impl<'a> Checker<'a> {
         match &self.ast.exprs[expr] {
             Expr::Block { stmts, .. } => self.breaks(stmts),
             Expr::Match { arms, .. } => arms.iter().any(|arm| self.expr_breaks(arm.body)),
+            Expr::Conditional { then, otherwise, .. } => {
+                self.expr_breaks(*then) || self.expr_breaks(*otherwise)
+            }
             _ => false,
         }
     }
@@ -1207,7 +1245,7 @@ impl<'a> Checker<'a> {
                 return true;
             }
         }
-        if self.converts(expr, expected, found) {
+        if self.from_conversion(expr, expected, found) {
             return true;
         }
         // `&x` of a narrowed `x` borrows the value, but where a reference to the optional is
@@ -1238,15 +1276,6 @@ impl<'a> Checker<'a> {
         false
     }
 
-    /// Whether collection literal `expr`, of type `found`, becomes the struct `expected` through
-    /// its `from_array` method: `let list: List<i32> = [1, 2, 3]` is
-    /// `List::from_array([1, 2, 3])`. Records it if so.
-    fn converts(&mut self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> bool {
-        let Some(VarKind::Collection { element, len }) = self.u.var_kind(found) else {
-            return false;
-        };
-        self.from_array(expr, expected, found, element, len)
-    }
 
     /// Whether a value of type `found` becomes the slice `expected`: a reference to an array of
     /// the same elements (`&numbers` for a `[i32]`, `&mut numbers` for a `[mut i32]`), or a
@@ -1573,6 +1602,26 @@ impl<'a> Checker<'a> {
             Expr::Not(_) => {
                 self.check_condition(id);
                 bool
+            }
+
+            // `-x`: a signed integer or a float, the same type back.
+            Expr::Neg(inner) => {
+                let ty = self.infer(*inner);
+                let shallow = self.u.shallow(ty);
+                let negatable = match (self.u.get(shallow), self.u.var_kind(shallow)) {
+                    (Ty::Int(int), _) => int.is_signed(),
+                    (Ty::Float(_) | Ty::Error, _) => true,
+                    (_, Some(VarKind::Int | VarKind::Float)) => true,
+                    _ => false,
+                };
+                if !negatable {
+                    self.errors.push(TypeError::CannotNegate {
+                        ty: self.describe(ty),
+                        span: self.span(id),
+                    });
+                    return self.u.table.error;
+                }
+                ty
             }
 
             Expr::Borrow { mutable, expr } => {
@@ -1986,9 +2035,25 @@ impl<'a> Checker<'a> {
                 then,
                 otherwise,
             } => {
-                self.expect(*condition, bool, None);
-                let then_ty = self.infer(*then);
-                let otherwise_ty = self.infer(*otherwise);
+                // Like an `if` statement's: an optional is narrowed in the branch it holds in.
+                let facts = self.check_condition(*condition);
+                let (then_ty, _) = self.narrowed_during(facts.when_true, |c| c.infer(*then));
+                let (otherwise_ty, _) =
+                    self.narrowed_during(facts.when_false, |c| c.infer(*otherwise));
+                // A branch that never finishes (`return`) has no value: the other's is it.
+                let (then_leaves, otherwise_leaves) =
+                    (self.expr_leaves(*then), self.expr_leaves(*otherwise));
+                for (branch, leaves) in [(*then, then_leaves), (*otherwise, otherwise_leaves)] {
+                    if leaves {
+                        self.diverging.insert(branch);
+                    }
+                }
+                match (then_leaves, otherwise_leaves) {
+                    (true, true) => return self.u.fresh(VarKind::Any),
+                    (true, false) => return otherwise_ty,
+                    (false, true) => return then_ty,
+                    (false, false) => {}
+                }
                 // `x if c else none`: either branch can be the optional the other is wrapped in.
                 if self.coerce(*otherwise, then_ty, otherwise_ty) {
                     then_ty
@@ -2189,25 +2254,27 @@ impl<'a> Checker<'a> {
         // The arguments decide which, so they're worked out first, once.
         let found: Vec<TypeId> = args.iter().map(|&a| self.infer(a)).collect();
         let mut fitting = Vec::new();
-        for def in self.names.overloads(first) {
-            let DefKind::Func(func) = self.names.def(def).kind else {
-                continue;
-            };
-            let (sig, type_args) = self.instantiate(func);
-            let variadic = self.ast.funcs[func].variadic;
-            let count_ok = match variadic {
-                true => found.len() >= sig.params.len(),
-                false => found.len() == sig.params.len(),
-            };
-            let fits = count_ok
-                && sig
-                    .params
-                    .iter()
-                    .zip(&found)
-                    .all(|(&p, &a)| self.u.could_fit(p, a))
-                && expected.is_none_or(|e| self.u.could_fit(e, sig.ret));
-            if fits {
-                fitting.push((def, func, sig, type_args));
+        // Ones the arguments fit as they are; only if there are none, ones they fit converted.
+        for converting in [false, true] {
+            for def in self.names.overloads(first) {
+                let DefKind::Func(func) = self.names.def(def).kind else {
+                    continue;
+                };
+                let (sig, type_args) = self.instantiate(func);
+                let variadic = self.ast.funcs[func].variadic;
+                let count_ok = match variadic {
+                    true => found.len() >= sig.params.len(),
+                    false => found.len() == sig.params.len(),
+                };
+                let fits = count_ok
+                    && self.args_fit(&sig.params, &found, converting)
+                    && expected.is_none_or(|e| self.u.could_fit(e, sig.ret));
+                if fits {
+                    fitting.push((def, func, sig, type_args));
+                }
+            }
+            if !fitting.is_empty() {
+                break;
             }
         }
         // Of several, one that isn't generic fits most closely.
@@ -2255,6 +2322,14 @@ impl<'a> Checker<'a> {
         sig.ret
     }
 
+    /// Whether arguments of types `found` fit parameters `params` as they are, or with
+    /// `converting`, also through `From`.
+    fn args_fit(&mut self, params: &[TypeId], found: &[TypeId], converting: bool) -> bool {
+        (params.iter().zip(found)).all(|(&p, &a)| {
+            self.u.could_fit(p, a) || (converting && self.could_convert(p, a))
+        })
+    }
+
     /// A method call `receiver.name(args)` where several methods have that name: the one
     /// whose `self` takes the receiver, whose other parameters fit the arguments and whose
     /// result fits `expected`. Of several, the one taking the receiver as it is, then by `&`,
@@ -2274,25 +2349,28 @@ impl<'a> Checker<'a> {
         // Each fitting method, and how much the receiver has to change for it: 0 as it is,
         // 1 borrowed, 2 borrowed as `&mut`.
         let mut fitting = Vec::new();
-        for def in self.names.overloads(first) {
-            let DefKind::Func(func) = self.names.def(def).kind else {
-                continue;
-            };
-            let (sig, type_args) = self.instantiate(func);
-            let Some((&self_ty, rest)) = sig.params.split_first() else {
-                continue;
-            };
-            let Some(cost) = self.receiver_cost(self_ty, receiver_ty) else {
-                continue;
-            };
-            let fits = rest.len() == found.len()
-                && rest
-                    .iter()
-                    .zip(&found)
-                    .all(|(&p, &a)| self.u.could_fit(p, a))
-                && expected.is_none_or(|e| self.u.could_fit(e, sig.ret));
-            if fits {
-                fitting.push((cost, def, func, sig, type_args));
+        // Ones the arguments fit as they are; only if there are none, ones they fit converted.
+        for converting in [false, true] {
+            for def in self.names.overloads(first) {
+                let DefKind::Func(func) = self.names.def(def).kind else {
+                    continue;
+                };
+                let (sig, type_args) = self.instantiate(func);
+                let Some((&self_ty, rest)) = sig.params.split_first() else {
+                    continue;
+                };
+                let Some(cost) = self.receiver_cost(self_ty, receiver_ty) else {
+                    continue;
+                };
+                let fits = rest.len() == found.len()
+                    && self.args_fit(rest, &found, converting)
+                    && expected.is_none_or(|e| self.u.could_fit(e, sig.ret));
+                if fits {
+                    fitting.push((cost, def, func, sig, type_args));
+                }
+            }
+            if !fitting.is_empty() {
+                break;
             }
         }
         if let Some(cheapest) = fitting.iter().map(|f| f.0).min() {
@@ -2507,7 +2585,7 @@ impl<'a> Checker<'a> {
     /// and giving the same types.
     fn check_overloads(&mut self) {
         let firsts: Vec<DefId> = (self.ast.funcs.iter())
-            .map(|(id, _)| self.names.func(id))
+            .filter_map(|(id, _)| self.names.try_func(id))
             .filter(|&def| self.names.overloads(def).len() > 1)
             .collect::<HashSet<_>>()
             .into_iter()
@@ -2893,9 +2971,9 @@ impl<'a> Checker<'a> {
             self.invalid_operands(id, op, lhs, rhs);
             return if is_arithmetic(op) { error } else { bool };
         }
-        // Values of a type implementing `Eq` compare with its `eq`.
-        if matches!(op, BinOp::Equals | BinOp::NotEquals) && self.eq_op(id, lhs) {
-            return bool;
+        // Values of a type implementing `Eq` compare with its `eq`, `Add` add with its `add`.
+        if self.trait_op(id, op, lhs) {
+            return result;
         }
         match self.operand_ok(op, lhs) {
             Some(true) => {}
@@ -3176,7 +3254,10 @@ impl Checker<'_> {
                 self.forget_changed_by(*target, true);
                 self.forget_changed_by(*value, false);
             }
-            Expr::Not(e) | Expr::ArrayRepeat { value: e, .. } | Expr::Cast { value: e, .. } => {
+            Expr::Not(e)
+            | Expr::Neg(e)
+            | Expr::ArrayRepeat { value: e, .. }
+            | Expr::Cast { value: e, .. } => {
                 self.forget_changed_by(*e, false)
             }
             Expr::Range { start, end } => {

@@ -1,4 +1,5 @@
-use som_ast::{Id, Stmt};
+use som_ast::{Expr, Id, Stmt};
+use som_base::Span;
 use som_lexer::TokenKind;
 
 use crate::{Parser, RecoveryLevel, StmtOrExpr};
@@ -13,7 +14,17 @@ impl Parser<'_> {
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Return => self.parse_return(),
-            TokenKind::If => self.parse_if(),
+            // An `if` ending a block, each branch ending in a value, gives that value.
+            TokenKind::If => {
+                let Some(parts) = self.parse_if_parts() else {
+                    return StmtOrExpr::Error;
+                };
+                let ends_block = self.at(TokenKind::CloseBrace) || self.at_eof();
+                if ends_block && parts.gives_value() {
+                    return StmtOrExpr::Expr(self.if_expr(parts));
+                }
+                Some(self.if_stmt(parts))
+            }
             // Like `if`, a `match` or block that starts a statement ends at its brace: no `;`
             // needed.
             TokenKind::Match | TokenKind::OpenBrace => {
@@ -167,33 +178,86 @@ impl Parser<'_> {
         ))
     }
 
-    fn parse_if(&mut self) -> Option<Id<Stmt>> {
+    /// `if condition { … } else …`, before it's known whether it's a statement or gives a
+    /// value.
+    pub(crate) fn parse_if_parts(&mut self) -> Option<IfParts> {
         let start = self.current_span();
-        self.expect(TokenKind::If, "an if statement")?;
+        self.expect(TokenKind::If, "an if")?;
         let condition = self.parse_condition()?;
-        let then = self.parse_stmt_block("the if body")?;
-        let otherwise = self.parse_else()?;
+        let then = self.parse_block_parts("the if body")?;
+        let otherwise = if !self.eat(TokenKind::Else) {
+            None
+        } else if self.at(TokenKind::If) {
+            Some(Else::If(Box::new(self.parse_if_parts()?)))
+        } else {
+            Some(Else::Block(self.parse_block_parts("the else body")?))
+        };
+        Some(IfParts {
+            condition,
+            then,
+            otherwise,
+            span: self.span_from(&start),
+        })
+    }
 
-        let span = self.span_from(&start);
-        Some(self.ast.stmts.alloc(
+    /// An `if` as a statement: values its branches end in are statements too.
+    fn if_stmt(&mut self, parts: IfParts) -> Id<Stmt> {
+        let then = self.block_stmts(parts.then);
+        let otherwise = parts.otherwise.map(|o| match o {
+            Else::Block(block) => self.block_stmts(block),
+            Else::If(inner) => vec![self.if_stmt(*inner)],
+        });
+        self.ast.stmts.alloc(
             Stmt::If {
-                condition,
+                condition: parts.condition,
                 then,
                 otherwise,
             },
-            span,
-        ))
+            parts.span,
+        )
     }
 
-    /// An optional `else { … }` or `else if …`.
-    fn parse_else(&mut self) -> Option<Option<Vec<Id<Stmt>>>> {
-        Some(if !self.eat(TokenKind::Else) {
-            None
-        } else if self.at(TokenKind::If) {
-            Some(vec![self.parse_if()?])
-        } else {
-            Some(self.parse_stmt_block("the else body")?)
-        })
+    /// An `if` that gives a value: `then if condition else otherwise`, with blocks.
+    pub(crate) fn if_expr(&mut self, parts: IfParts) -> Id<Expr> {
+        let then = self.block_expr(parts.then);
+        let otherwise = match parts.otherwise {
+            Some(Else::Block(block)) => self.block_expr(block),
+            Some(Else::If(inner)) => self.if_expr(*inner),
+            None => {
+                let end = parts.span.after();
+                self.error_at(
+                    end.clone(),
+                    "an `if` that gives a value needs an `else`",
+                    "the value when the condition is false goes here",
+                );
+                self.ast.exprs.alloc(Expr::Hole, end)
+            }
+        };
+        self.ast.exprs.alloc(
+            Expr::Conditional {
+                condition: parts.condition,
+                then,
+                otherwise,
+            },
+            parts.span,
+        )
+    }
+
+    fn block_stmts(&mut self, block: BlockParts) -> Vec<Id<Stmt>> {
+        let mut stmts = block.stmts;
+        if let Some(value) = block.value {
+            let span = self.ast.exprs.span(value).clone();
+            stmts.push(self.ast.stmts.alloc(Stmt::Expr(value), span));
+        }
+        stmts
+    }
+
+    pub(crate) fn block_expr(&mut self, block: BlockParts) -> Id<Expr> {
+        let expr = Expr::Block {
+            stmts: block.stmts,
+            value: block.value,
+        };
+        self.ast.exprs.alloc(expr, block.span)
     }
 
     /// After an expression missing its `;` (reported already), whether to go on parsing the
@@ -216,17 +280,22 @@ impl Parser<'_> {
 
     /// `{ stmt; stmt; expr }` where a trailing expression becomes an expression statement.
     fn parse_stmt_block(&mut self, what: &str) -> Option<Vec<Id<Stmt>>> {
+        let block = self.parse_block_parts(what)?;
+        Some(self.block_stmts(block))
+    }
+
+    /// `{ stmt; stmt; value }`: the statements, and the value it ends with if it does.
+    pub(crate) fn parse_block_parts(&mut self, what: &str) -> Option<BlockParts> {
+        let start = self.current_span();
         self.expect(TokenKind::OpenBrace, format!("an opening brace for {what}"))?;
 
         let mut stmts = Vec::new();
+        let mut value = None;
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
             let before = self.pos;
             match self.parse_stmt_or_expr() {
                 StmtOrExpr::Stmt(stmt) => stmts.push(stmt),
-                StmtOrExpr::Expr(expr) if self.at(TokenKind::CloseBrace) => {
-                    let span = self.ast.exprs.span(expr).clone();
-                    stmts.push(self.ast.stmts.alloc(Stmt::Expr(expr), span));
-                }
+                StmtOrExpr::Expr(expr) if self.at(TokenKind::CloseBrace) => value = Some(expr),
                 StmtOrExpr::Expr(expr) => {
                     self.error_missing("expected `;` or `}`", "a semicolon or closing brace");
                     if !self.keep_unterminated(expr, before, &mut stmts) {
@@ -238,6 +307,42 @@ impl Parser<'_> {
         }
 
         self.expect(TokenKind::CloseBrace, format!("a closing brace for {what}"))?;
-        Some(stmts)
+        Some(BlockParts {
+            stmts,
+            value,
+            span: self.span_from(&start),
+        })
+    }
+}
+
+/// A block's statements, the value it ends with if it does, and where it is.
+pub(crate) struct BlockParts {
+    stmts: Vec<Id<Stmt>>,
+    value: Option<Id<Expr>>,
+    span: Span,
+}
+
+/// An `if`, parsed before it's known whether it's a statement or gives a value.
+pub(crate) struct IfParts {
+    condition: Id<Expr>,
+    then: BlockParts,
+    otherwise: Option<Else>,
+    span: Span,
+}
+
+enum Else {
+    Block(BlockParts),
+    If(Box<IfParts>),
+}
+
+impl IfParts {
+    /// Whether every branch ends in a value, and there's an `else`.
+    fn gives_value(&self) -> bool {
+        self.then.value.is_some()
+            && match &self.otherwise {
+                Some(Else::Block(block)) => block.value.is_some(),
+                Some(Else::If(inner)) => inner.gives_value(),
+                None => false,
+            }
     }
 }

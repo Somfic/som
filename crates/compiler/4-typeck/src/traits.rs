@@ -3,7 +3,7 @@
 //! concrete types.
 
 use som_ast::{Func, Id};
-use som_resolve::DefId;
+use som_resolve::{DefId, LangTrait};
 
 use crate::ty::{Ty, TypeId, TypeTable};
 
@@ -17,6 +17,8 @@ pub struct ImplInfo {
     pub params: Vec<DefId>,
     /// What it's for: `ListIter<T>`. `None` if that didn't resolve.
     pub target: Option<TypeId>,
+    /// The trait's type arguments: `[T; N]` in `impl<T, N: usize> From<[T; N]> for List<T>`.
+    pub trait_args: Vec<TypeId>,
     /// What the trait's associated types are for `target`, in the trait's order.
     pub types: Vec<Option<TypeId>>,
     /// The associated types as written, in the order written.
@@ -65,18 +67,24 @@ fn same(table: &TypeTable, a: TypeId, b: TypeId, resolve: &dyn Fn(TypeId) -> Typ
 }
 
 /// The implementation of trait `trait_` for `ty`, among `impls`: its index, and what each of
-/// its parameters is for `ty` (the error type if `ty` doesn't say).
+/// its parameters is for `ty` (the error type if `ty` doesn't say). With `trait_args`, the
+/// trait's type arguments have to be those too: `From<[i32; 3]>`, not any `From`.
 pub fn find_impl(
     impls: &[ImplInfo],
     table: &TypeTable,
     trait_: DefId,
     ty: TypeId,
+    trait_args: &[TypeId],
     resolve: &dyn Fn(TypeId) -> TypeId,
 ) -> Option<(usize, Vec<TypeId>)> {
     impls.iter().enumerate().find_map(|(i, info)| {
         let target = info.target.filter(|_| info.trait_ == Some(trait_))?;
         let mut bound = vec![None; info.params.len()];
-        match_type(table, target, ty, &info.params, &mut bound, resolve).then(|| {
+        let fits = match_type(table, target, ty, &info.params, &mut bound, resolve)
+            && (info.trait_args.iter().zip(trait_args)).all(|(&pattern, &arg)| {
+                match_type(table, pattern, arg, &info.params, &mut bound, resolve)
+            });
+        fits.then(|| {
             let args = bound
                 .into_iter()
                 .map(|b| b.unwrap_or(table.error))
@@ -118,7 +126,7 @@ pub fn resolve_assoc(table: &mut TypeTable, impls: &[ImplInfo], ty: TypeId) -> T
     else {
         return inner;
     };
-    let Some((i, args)) = find_impl(impls, table, trait_, base, &|t| t) else {
+    let Some((i, args)) = find_impl(impls, table, trait_, base, &[], &|t| t) else {
         return inner;
     };
     let Some(written) = impls[i].types.get(index).copied().flatten() else {
@@ -127,4 +135,20 @@ pub fn resolve_assoc(table: &mut TypeTable, impls: &[ImplInfo], ty: TypeId) -> T
     let params = impls[i].params.clone();
     let found = substitute(table, written, &params, &args);
     resolve_assoc(table, impls, found)
+}
+
+/// Whether values of type `ty` have the operators of trait `lang` built in, as numbers have
+/// `+` and `<`: they meet a bound of it, and can't implement it themselves.
+pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
+    match lang {
+        LangTrait::Add | LangTrait::Subtract | LangTrait::Multiply | LangTrait::Divide => {
+            matches!(ty, Ty::Int(_) | Ty::Float(_))
+        }
+        LangTrait::Compare => matches!(ty, Ty::Int(_) | Ty::Float(_) | Ty::Char),
+        LangTrait::Eq => matches!(
+            ty,
+            Ty::Int(_) | Ty::Float(_) | Ty::Char | Ty::Bool | Ty::Pointer
+        ),
+        LangTrait::Iterator | LangTrait::Iterable | LangTrait::From => false,
+    }
 }

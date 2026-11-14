@@ -63,8 +63,11 @@ impl<'a> Lowerer<'a> {
             for item in &module.items {
                 if let Item::Impl(block) = item {
                     for &method in &block.methods {
-                        self.owners
-                            .insert(method, block.target.name().name.to_string());
+                        // A name C can have: `bool`, or `_i32__3_` for `[i32; 3]`.
+                        let owner = (block.target.name().name.chars())
+                            .map(|c| if c.is_alphanumeric() { c } else { '_' })
+                            .collect();
+                        self.owners.insert(method, owner);
                     }
                 }
             }
@@ -1053,8 +1056,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         self.read(Place::local(temp), ty)
     }
 
-    /// A collection literal made into a struct by its `from_array` method `method`, with type
-    /// arguments `type_args`: the array, passed to it.
+    /// `expr` made into a struct by `From`'s `from`, `method`, with type arguments
+    /// `type_args`: the value, passed to it.
     fn convert(&mut self, expr: Id<Expr>, method: DefId, type_args: Vec<TypeId>) -> Operand {
         let DefKind::Func(func) = self.l.names.def(method).kind else {
             unreachable!("methods are functions")
@@ -1290,7 +1293,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 otherwise,
             } => {
                 let result = self.temp(ty, span.clone());
-                let condition = self.operand(*condition);
+                let condition = self.condition(*condition);
                 let (then_block, else_block, join) =
                     (self.new_block(), self.new_block(), self.new_block());
                 self.terminate(
@@ -1304,6 +1307,11 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 for (block, branch) in [(then_block, *then), (else_block, *otherwise)] {
                     self.current = block;
                     let value = self.operand(branch);
+                    // A branch that never finishes (`{ return 0; }`) doesn't get to the end.
+                    if self.l.typed.diverges(branch) {
+                        self.terminate(TerminatorKind::Unreachable, span.clone());
+                        continue;
+                    }
                     self.assign(Place::local(result), Rvalue::Use(value), span.clone());
                     self.terminate(TerminatorKind::Goto(join), span.clone());
                 }
@@ -1357,8 +1365,11 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }
             // Values of a type implementing `Eq` compare with its `eq`.
-            Expr::Binary { op, lhs, rhs } if self.l.typed.uses_eq(expr) => {
-                self.eq_call(*op, *lhs, *rhs, self.span(expr))
+            Expr::Binary { op, lhs, rhs }
+                if let Some(lang) = self.l.typed.operator_trait(expr)
+                    && let Some(call) = self.operator_call(lang, *op, *lhs, *rhs, self.span(expr)) =>
+            {
+                call
             }
             Expr::Binary { op, lhs, rhs } => Rvalue::Binary {
                 op: *op,
@@ -1366,6 +1377,19 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 rhs: self.number(*rhs),
             },
             Expr::Not(inner) => Rvalue::Not(self.condition(*inner)),
+            // `-x` is `0 - x`.
+            Expr::Neg(inner) => {
+                let ty = self.expr_ty(*inner);
+                let zero = match self.l.mir.types.get(ty) {
+                    Ty::Float(_) => ConstKind::Float(0.0),
+                    _ => ConstKind::Int(0),
+                };
+                Rvalue::Binary {
+                    op: BinOp::Subtract,
+                    lhs: self.constant(zero, ty),
+                    rhs: self.operand(*inner),
+                }
+            }
             Expr::Borrow {
                 mutable,
                 expr: inner,

@@ -4,9 +4,9 @@ use som::data;
 use som::mem;
 
 fn main() -> i32 {
-    let mut rows: List<List<i32>> = List::new();
+    let mut rows: List<List<i32>> = List::empty();
     for r in 0..4 {
-        let mut row: List<i32> = List::new();
+        let mut row: List<i32> = List::empty();
         for c in 0..r { row.push(c); }
         rows.push(row);
     }

@@ -4,7 +4,7 @@ use som_base::msg;
 use som_lexer::TokenKind;
 
 use crate::grammar::Grammar;
-use crate::{Parser, RecoveryLevel, StmtOrExpr};
+use crate::Parser;
 
 impl Parser<'_> {
     pub(crate) fn parse_expr(&mut self) -> Option<Id<Expr>> {
@@ -188,7 +188,7 @@ impl Parser<'_> {
             return Some(self.alloc_expr(Expr::Range { start: None, end }, &start));
         }
 
-        let Some(bp) = Grammar::prefix_bp(kind).filter(|_| kind != TokenKind::Minus) else {
+        let Some(bp) = Grammar::prefix_bp(kind) else {
             return self.parse_atom();
         };
 
@@ -199,6 +199,17 @@ impl Parser<'_> {
             TokenKind::Bang => Expr::Not(expr),
             TokenKind::Ampersand => Expr::Borrow { mutable, expr },
             TokenKind::Star => Expr::Deref(expr),
+            // `-1` is the literal `-1`, not `1` negated: so it can be the smallest `i64`, and
+            // a `u8` can't be it.
+            TokenKind::Minus => match self.ast.exprs[expr] {
+                Expr::Int(n) if self.ast.exprs.span(expr).start_offset == start.start_offset + 1 => {
+                    Expr::Int(n.wrapping_neg())
+                }
+                Expr::Float(x) if self.ast.exprs.span(expr).start_offset == start.start_offset + 1 => {
+                    Expr::Float(-x)
+                }
+                _ => Expr::Neg(expr),
+            },
             _ => unreachable!("prefix_bp only accepts prefix operators"),
         };
         Some(self.alloc_expr(expr, &start))
@@ -308,6 +319,11 @@ impl Parser<'_> {
             TokenKind::OpenBrace => return self.with_condition(false, |p| p.parse_block()),
 
             TokenKind::Match => return self.parse_match(),
+            // `if c { a } else { b }`, giving a value.
+            TokenKind::If => {
+                let parts = self.parse_if_parts()?;
+                return Some(self.if_expr(parts));
+            }
 
             _ => {
                 self.error_missing("expected expression", "an expression");
@@ -431,28 +447,8 @@ impl Parser<'_> {
 
     /// `{ stmts; value }`
     pub(crate) fn parse_block(&mut self) -> Option<Id<Expr>> {
-        let start = self.current_span();
-        self.expect(TokenKind::OpenBrace, "an opening brace for the block")?;
-
-        let mut stmts = Vec::new();
-        let mut value = None;
-        while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
-            let before = self.pos;
-            match self.parse_stmt_or_expr() {
-                StmtOrExpr::Stmt(stmt) => stmts.push(stmt),
-                StmtOrExpr::Expr(expr) if self.at(TokenKind::CloseBrace) => value = Some(expr),
-                StmtOrExpr::Expr(expr) => {
-                    self.error_missing("expected `;` or `}`", "a semicolon or closing brace");
-                    if !self.keep_unterminated(expr, before, &mut stmts) {
-                        break;
-                    }
-                }
-                StmtOrExpr::Error => self.recover(RecoveryLevel::Statement),
-            }
-        }
-
-        self.expect(TokenKind::CloseBrace, "a closing brace after the block")?;
-        Some(self.alloc_expr(Expr::Block { stmts, value }, &start))
+        let block = self.parse_block_parts("the block")?;
+        Some(self.block_expr(block))
     }
 
     /// How far ahead the `>` closing type arguments that open at `n` (a `<`) is, plus one; `None`

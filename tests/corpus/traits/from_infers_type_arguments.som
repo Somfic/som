@@ -1,0 +1,18 @@
+// expect: exit 14
+
+/// The implementation says what the struct's type arguments are: a `Boxed` from an integer.
+struct Boxed<T> { value: T }
+
+impl<T> From<T> for Boxed<T> {
+    fn from(value: T) -> Boxed<T> { Boxed { value: value } }
+}
+
+fn take(b: Boxed<i64>) -> i64 { b.value }
+
+fn main() -> i32 {
+    let a: Boxed = 5;
+    let b: Boxed<bool> = true;
+    let c = take(9);
+    if !b.value { return 0; }
+    (a.value + c) as i32
+}

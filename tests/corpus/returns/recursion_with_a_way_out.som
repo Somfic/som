@@ -1,0 +1,9 @@
+// expect: exit 120
+
+/// Recursion that can stop is fine.
+fn fact(n: i32) -> i32 {
+    if n <= 1 { return 1; }
+    n * fact(n - 1)
+}
+
+fn main() -> i32 { fact(5) }

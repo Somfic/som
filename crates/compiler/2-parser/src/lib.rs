@@ -48,6 +48,9 @@ enum RecoveryLevel {
     Statement,
     /// Sync at `fn`, `extern`, `struct`
     Declaration,
+    /// Inside an `impl` or `trait` block: sync at `fn`, `type`, or the block's `}`, which is
+    /// left for the block.
+    Member,
 }
 
 /// Something that could be either a statement or a trailing (value) expression.
@@ -246,6 +249,7 @@ impl Parser<'_> {
                 TokenKind::If,
                 TokenKind::Fn,
             ],
+            RecoveryLevel::Member => &[TokenKind::Fn, TokenKind::Type, TokenKind::CloseBrace],
             RecoveryLevel::Declaration => &[
                 TokenKind::Fn,
                 TokenKind::Extern,

@@ -1,0 +1,7 @@
+// expect: error CannotNegate
+
+fn main() -> i32 {
+    let u: u8 = 3;
+    let a = -u;
+    0
+}

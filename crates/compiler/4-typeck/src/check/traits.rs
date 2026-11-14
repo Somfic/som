@@ -3,12 +3,14 @@
 //! uses (`LangTrait`).
 
 use som_ast::{Expr, Func, Id, Item, Span};
+use som_base::msg;
 use som_resolve::{DefId, DefKind, LangTrait};
 
 use super::Checker;
 use crate::error::TypeError;
 use crate::traits::{self, ImplInfo, find_impl};
 use crate::ty::{Ty, TypeId};
+use crate::unify::VarKind;
 
 impl Checker<'_> {
     // --- Impl blocks ---
@@ -30,9 +32,9 @@ impl Checker<'_> {
             let def = &self.names.impls[index];
             let params = def.params.clone();
             let trait_ = def.trait_;
-            let target = def
-                .owner
-                .and_then(|owner| match self.names.def(owner).kind {
+            let target = match block.target_ty {
+                Some(ty) => Some(self.lower(ty)),
+                None => def.owner.and_then(|owner| match self.names.def(owner).kind {
                     DefKind::Struct(s) => {
                         // `impl<T> Pair<T>` written as `impl Pair`: its parameters, in order.
                         let expected = self.names.struct_params(s).len();
@@ -49,24 +51,22 @@ impl Checker<'_> {
                         Some(self.u.intern(Ty::Struct(owner, args)))
                     }
                     _ => None,
-                });
+                }),
+            };
+            let trait_args: Vec<TypeId> = (block.trait_.iter())
+                .flat_map(|(_, args)| args)
+                .map(|&ty| self.lower(ty))
+                .collect();
             let written: Vec<TypeId> = block.types.iter().map(|&(_, ty)| self.lower(ty)).collect();
             let mut types = Vec::new();
             if let Some(trait_) = trait_
                 && let DefKind::Trait(t) = self.names.def(trait_).kind
             {
                 let trait_name = self.names.def(trait_).name.to_string();
+                // Missing ones are reported with the methods, in `check_impls`.
                 for &assoc in self.names.trait_types(t) {
                     let name = &self.names.def(assoc).name;
                     let found = block.types.iter().position(|(n, _)| n.name == *name);
-                    if found.is_none() {
-                        self.errors.push(TypeError::MissingTraitItem {
-                            what: "type",
-                            name: name.to_string(),
-                            trait_: trait_name.clone(),
-                            span: block.target.span(),
-                        });
-                    }
                     types.push(found.map(|i| written[i]));
                 }
                 for (name, _) in &block.types {
@@ -86,6 +86,7 @@ impl Checker<'_> {
                 trait_,
                 params,
                 target,
+                trait_args,
                 types,
                 written_types: written,
                 methods: block.methods.clone(),
@@ -104,6 +105,17 @@ impl Checker<'_> {
                 continue;
             };
             let trait_name = self.names.def(trait_).name.to_string();
+            // `impl Add for i32` would change what `1 + 2` means.
+            if let Some(lang) = self.names.lang_of(trait_)
+                && let Some(target) = self.impls[index].target
+                && self.has_builtin(target, lang)
+            {
+                self.errors.push(TypeError::BuiltinImpl {
+                    ty: self.describe(target),
+                    trait_: trait_name.clone(),
+                    span: self.impl_target_span(index),
+                });
+            }
             let wanted = self.ast.traits[t].methods.clone();
             let written = self.impls[index].methods.clone();
             for &method in &wanted {
@@ -111,24 +123,11 @@ impl Checker<'_> {
                 let found = written
                     .iter()
                     .find(|&&m| self.ast.funcs[m].name.name == *name);
-                match found {
-                    Some(&m) => self.check_impl_method(index, method, m),
-                    // A method with a body is what implementations get unless they write one.
-                    None if self.ast.funcs[method].body.is_some() => {}
-                    None => {
-                        let span = self.names.impls[index]
-                            .owner
-                            .map(|o| self.names.def(o).span.clone())
-                            .unwrap_or_else(|| self.ast.funcs.span(method).clone());
-                        self.errors.push(TypeError::MissingTraitItem {
-                            what: "method",
-                            name: name.to_string(),
-                            trait_: trait_name.clone(),
-                            span,
-                        });
-                    }
+                if let Some(&m) = found {
+                    self.check_impl_method(index, method, m);
                 }
             }
+            self.report_missing(index, &trait_name);
             for &m in &written {
                 let name = &self.ast.funcs[m].name;
                 if !wanted
@@ -146,6 +145,35 @@ impl Checker<'_> {
         }
     }
 
+    /// Reports the associated types and methods impl block `index` doesn't write, with a fix
+    /// writing them, at the trait it names.
+    fn report_missing(&mut self, index: usize, trait_name: &str) {
+        let block = impl_block(self.ast, index);
+        let missing = crate::stubs::missing(self.ast, self.names, index, block);
+        if missing.is_empty() {
+            return;
+        }
+        let span = (block.trait_.as_ref()).map_or(block.target.span(), |(path, _)| path.span());
+        // Each on lines of its own, before the closing brace, in place of the spaces there.
+        let close = &block.close;
+        let before = &close.source.content()[..close.start_offset];
+        let kept = before.trim_end_matches([' ', '\t']);
+        let opener = if kept.ends_with('\n') { "" } else { "\n" };
+        let text: String = missing.iter().map(|m| m.text.as_str()).collect();
+        let at = Span::from_range(kept.len()..close.start_offset, close.source.clone());
+        self.errors.push(TypeError::MissingTraitItem {
+            missing: missing.iter().map(|m| m.signature.clone()).collect(),
+            trait_: trait_name.to_string(),
+            span,
+            fix: (at, format!("{opener}{text}")),
+        });
+    }
+
+    /// Where impl block `index` names what it's for.
+    fn impl_target_span(&self, index: usize) -> Span {
+        impl_block(self.ast, index).target.span()
+    }
+
     /// Checks impl method `written`, of impl block `index`, has the types trait method
     /// `wanted` says, with `Self` its target and the associated types it says.
     fn check_impl_method(&mut self, index: usize, wanted: Id<Func>, written: Id<Func>) {
@@ -154,6 +182,12 @@ impl Checker<'_> {
         if let (Some(&this), Some(target)) = (type_args.first(), self.impls[index].target) {
             let target = self.in_method_terms(index, target);
             let _ = self.u.unify(this, target);
+        }
+        // The trait's own parameters come after `Self`: what the implementation says they are.
+        let trait_args = self.impls[index].trait_args.clone();
+        for (&param, &arg) in type_args.iter().skip(1).zip(&trait_args) {
+            let arg = self.in_method_terms(index, arg);
+            let _ = self.u.unify(param, arg);
         }
         let (params, ret): (Vec<TypeId>, TypeId) = (
             sig.params
@@ -275,7 +309,7 @@ impl Checker<'_> {
         };
         let found = {
             let u = &self.u;
-            find_impl(&self.impls, &u.table, trait_, base, &|t| u.shallow(t))
+            find_impl(&self.impls, &u.table, trait_, base, &[], &|t| u.shallow(t))
         };
         let Some((i, args)) = found else {
             return inner;
@@ -294,12 +328,17 @@ impl Checker<'_> {
     /// anything else if an `impl` says so.
     pub(super) fn implements(&self, ty: TypeId, trait_: DefId) -> bool {
         let ty = self.u.shallow(ty);
+        if let Some(lang) = self.names.lang_of(trait_)
+            && self.has_builtin(ty, lang)
+        {
+            return true;
+        }
         match self.u.get(ty) {
             Ty::Error => true,
             Ty::Param(def) => self.names.bounds(*def).contains(&trait_),
             _ => {
                 let u = &self.u;
-                find_impl(&self.impls, &u.table, trait_, ty, &|t| u.shallow(t)).is_some()
+                find_impl(&self.impls, &u.table, trait_, ty, &[], &|t| u.shallow(t)).is_some()
             }
         }
     }
@@ -457,54 +496,182 @@ impl Checker<'_> {
         Some(element)
     }
 
-    /// For `==` or `!=` between values of type `ty`: whether it's `Eq`'s `eq`, recording it
-    /// for `expr` if so.
-    pub(super) fn eq_op(&mut self, expr: Id<Expr>, ty: TypeId) -> bool {
+    /// For operator `op` between values of type `ty`: whether it's a trait's method, `Eq`'s
+    /// `eq` for `==` or `Add`'s `add` for `+`, recording it for `expr` if so.
+    pub(super) fn trait_op(&mut self, expr: Id<Expr>, op: som_ast::BinOp, ty: TypeId) -> bool {
+        let Some(lang) = LangTrait::of_operator(op) else {
+            return false;
+        };
         let shallow = self.u.shallow(ty);
-        if !matches!(self.u.get(shallow), Ty::Struct(..) | Ty::Param(_))
-            || !self.implements_lang(shallow, LangTrait::Eq)
+        // Numbers' own `+`; an unknown, once it's known.
+        if self.has_builtin(shallow, lang)
+            || matches!(self.u.get(shallow), Ty::Var(_) | Ty::Error)
+            || !self.implements_lang(shallow, lang)
         {
             return false;
         }
-        self.eq_ops.insert(expr);
+        self.trait_ops.insert(expr, lang);
         true
     }
 
-    /// Whether collection literal `expr`, of type `found` (`element`s, `len` of them), becomes
-    /// `expected` through its `FromArray` implementation. Records it if so.
-    pub(super) fn from_array(
-        &mut self,
-        expr: Id<Expr>,
-        expected: TypeId,
-        found: TypeId,
-        element: TypeId,
-        len: TypeId,
-    ) -> bool {
-        let Some(from_array) = self.names.lang(LangTrait::FromArray) else {
+    /// For an operator values of `ty` don't have: a fix giving it them, through trait `lang`.
+    /// For a struct, an implementation after it; for a type parameter, the bound.
+    pub(super) fn operator_fix(&self, ty: TypeId, lang: LangTrait) -> Option<som_base::Fix> {
+        let trait_ = self.names.lang(lang)?;
+        let DefKind::Trait(t) = self.names.def(trait_).kind else {
+            return None;
+        };
+        let trait_name = lang.name();
+        match self.u.get(self.u.shallow(ty)).clone() {
+            // `fn f<T>` gets `<T: Compare>`, `<T: Eq>` gets `<T: Eq + Compare>`.
+            Ty::Param(def) => {
+                let DefKind::TypeParam { func, index, .. } = self.names.def(def).kind else {
+                    return None;
+                };
+                let generic = self.ast.funcs[func].generics.get(index)?;
+                let (end, text) = match generic.bounds.last() {
+                    Some(last) => (last.span(), format!(" + {trait_name}")),
+                    None => (generic.name.span.clone(), format!(": {trait_name}")),
+                };
+                let at = end.after();
+                let title = msg![
+                    "require ",
+                    som_base::message::code(format!("{}: {trait_name}", generic.name.name))
+                ];
+                Some(som_base::Fix {
+                    title,
+                    edits: vec![(at, text)],
+                })
+            }
+            // After `struct Hello { … }`: `impl Compare for Hello { … }`, with its methods.
+            Ty::Struct(owner, _) => {
+                let DefKind::Struct(s) = self.names.def(owner).kind else {
+                    return None;
+                };
+                let span = self.ast.structs.span(s);
+                // Not in the standard library, which can't be changed from here.
+                if span.source.identifier().starts_with('<') {
+                    return None;
+                }
+                let st = &self.ast.structs[s];
+                let params: Vec<&str> = st.generics.iter().map(|g| &*g.name.name).collect();
+                let (generics, target) = match params.is_empty() {
+                    true => (String::new(), st.name.name.to_string()),
+                    false => (
+                        format!("<{}>", params.join(", ")),
+                        format!("{}<{}>", st.name.name, params.join(", ")),
+                    ),
+                };
+                let stubs = crate::stubs::stubs(self.ast, t, &target, &[], &|_, _| false);
+                let body: String = stubs.iter().map(|s| s.text.as_str()).collect();
+                let text =
+                    format!("\n\nimpl{generics} {trait_name} for {target} {{\n{body}}}");
+                let title = msg![
+                    "implement ",
+                    som_base::message::code(trait_name),
+                    " for ",
+                    som_base::message::code(target.clone())
+                ];
+                Some(som_base::Fix {
+                    title,
+                    edits: vec![(span.after(), text)],
+                })
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether values of `ty` have the operators of `lang` built in, as numbers have `+`.
+    pub(super) fn has_builtin(&self, ty: TypeId, lang: LangTrait) -> bool {
+        traits::builtin_operator(self.u.get(self.u.shallow(ty)), lang)
+    }
+
+    /// Whether `expr`, of type `found`, becomes the struct `expected` through its `From`
+    /// implementation: `let list: List<i32> = [1, 2, 3]` is `List::from([1, 2, 3])`. Records it
+    /// if so. Only one step, only into a struct that's known, and only when exactly one
+    /// implementation could take `found`; the struct's type arguments can follow from it.
+    pub(super) fn from_conversion(&mut self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> bool {
+        let Some((from, source, fitting)) = self.from_impls(expected, found) else {
             return false;
         };
-        let expected_shallow = self.u.shallow(expected);
-        if !matches!(self.u.get(expected_shallow), Ty::Struct(..))
-            || !self.implements(expected_shallow, from_array)
-        {
+        let [(target, arg)] = fitting[..] else {
+            return false;
+        };
+        let (expected, shallow) = (self.u.shallow(expected), self.u.shallow(found));
+        if self.u.unify(target, expected).is_err() || self.u.unify(arg, source).is_err() {
             return false;
         }
-        let Some(func) = self.trait_method(from_array, "from_array") else {
-            return false;
-        };
-        let (sig, type_args) = self.instantiate(func);
-        let _ = self.u.unify(type_args[0], expected);
-        let Some(&param) = sig.params.first() else {
-            return false;
-        };
-        let param = self.normalize_assoc(param);
-        let array = self.u.intern(Ty::Array { element, len });
-        if !self.u.could_fit(param, array) || self.u.unify(param, array).is_err() {
-            return false;
+        if source != shallow {
+            let _ = self.u.unify(shallow, source);
         }
-        let _ = self.u.unify(found, array);
+        let Some(func) = self.trait_method(from, "from") else {
+            return false;
+        };
         self.conversions
-            .insert(expr, (self.names.func(func), type_args));
+            .insert(expr, (self.names.func(func), vec![expected, source]));
         true
     }
+
+    /// Whether a `found` would become the struct `expected` through `From`, without changing
+    /// anything. For choosing between functions with the same name.
+    pub(super) fn could_convert(&mut self, expected: TypeId, found: TypeId) -> bool {
+        self.from_impls(expected, found)
+            .is_some_and(|(.., fitting)| fitting.len() == 1)
+    }
+
+    /// The `From` implementations that could make a `found` into the struct `expected`, each
+    /// as its target and source with its parameters fresh unknowns; with the trait, and what
+    /// `found` counts as (a collection literal as an array). `None` if `expected` isn't a
+    /// struct or `found` isn't known well enough to say.
+    fn from_impls(
+        &mut self,
+        expected: TypeId,
+        found: TypeId,
+    ) -> Option<(DefId, TypeId, Vec<(TypeId, TypeId)>)> {
+        let from = self.names.lang(LangTrait::From)?;
+        let expected = self.u.shallow(expected);
+        if matches!(self.u.get(expected), Ty::Var(_) | Ty::Error) {
+            return None;
+        }
+        let shallow = self.u.shallow(found);
+        // A collection literal is an array, unless something says otherwise.
+        let source = match (self.u.get(shallow), self.u.var_kind(shallow)) {
+            (Ty::Error, _) => return None,
+            (_, Some(VarKind::Collection { element, len })) => {
+                self.u.intern(Ty::Array { element, len })
+            }
+            (_, Some(VarKind::Any)) => return None,
+            _ => shallow,
+        };
+        let mut fitting = Vec::new();
+        for index in 0..self.impls.len() {
+            let info = &self.impls[index];
+            if info.trait_ != Some(from) {
+                continue;
+            }
+            let (Some(target), Some(&arg)) = (info.target, info.trait_args.first()) else {
+                continue;
+            };
+            let params = info.params.clone();
+            let fresh: Vec<TypeId> = params.iter().map(|_| self.u.fresh(VarKind::Any)).collect();
+            let target = traits::substitute(&mut self.u.table, target, &params, &fresh);
+            let arg = traits::substitute(&mut self.u.table, arg, &params, &fresh);
+            if self.u.could_fit(target, expected) && self.u.could_fit(arg, source) {
+                fitting.push((target, arg));
+            }
+        }
+        Some((from, source, fitting))
+    }
+}
+
+/// Impl block `index`, counting them in every module in order, as `Names::impls` does.
+fn impl_block(ast: &som_ast::Ast, index: usize) -> &som_ast::Impl {
+    (ast.modules.iter())
+        .flat_map(|m| &m.items)
+        .filter_map(|item| match item {
+            Item::Impl(block) => Some(block),
+            _ => None,
+        })
+        .nth(index)
+        .expect("an impl block for each index")
 }

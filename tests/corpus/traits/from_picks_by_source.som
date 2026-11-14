@@ -1,0 +1,18 @@
+// expect: exit 6
+
+/// A type can be made from several types: the one given decides which `from`.
+struct Wrapper { value: i64 }
+
+impl From<i32> for Wrapper {
+    fn from(value: i32) -> Wrapper { Wrapper { value: value as i64 } }
+}
+
+impl From<bool> for Wrapper {
+    fn from(value: bool) -> Wrapper { Wrapper { value: 1 } }
+}
+
+fn main() -> i32 {
+    let a: Wrapper = 5;
+    let b: Wrapper = true;
+    (a.value + b.value) as i32
+}

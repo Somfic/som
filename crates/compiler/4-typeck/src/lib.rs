@@ -10,6 +10,7 @@
 mod check;
 mod error;
 mod exhaustive;
+pub mod stubs;
 pub mod traits;
 mod ty;
 mod unify;
@@ -51,13 +52,13 @@ pub struct Typed {
     /// Calls and function values naming a function that shares its name with others → the
     /// one they name.
     callees: HashMap<Id<Expr>, DefId>,
-    /// Collection literals that become a struct → its `from_array` method and the method's
+    /// Values that become a struct → `From`'s `from` and its
     /// type arguments.
     conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
     /// Every `impl` block, indexed like `Names::impls`.
     pub impls: Vec<traits::ImplInfo>,
     /// `==` and `!=` that compare with `Eq`'s `eq`.
-    eq_ops: HashSet<Id<Expr>>,
+    trait_ops: HashMap<Id<Expr>, som_resolve::LangTrait>,
     /// `match` arms that never finish, like `{ return 0; }`: they have no value to give.
     diverging: HashSet<Id<Expr>>,
     /// `[value; N]` → `N`, as an array type's length.
@@ -296,13 +297,14 @@ impl Typed {
             .or_else(|| names.expr(expr))
     }
 
-    /// Whether `==` or `!=` expression `expr` compares with `Eq`'s `eq`.
-    pub fn uses_eq(&self, expr: Id<Expr>) -> bool {
-        self.eq_ops.contains(&expr)
+    /// The trait operator expression `expr` goes through: `Eq` for `==` on a struct
+    /// implementing it, `Add` for `+`.
+    pub fn operator_trait(&self, expr: Id<Expr>) -> Option<som_resolve::LangTrait> {
+        self.trait_ops.get(&expr).copied()
     }
 
-    /// The `from_array` method collection literal `expr` is passed to, to become the struct
-    /// expected where it's used, with the method's type arguments.
+    /// `From`'s `from`, which `expr` is passed to to become the struct expected where it's
+    /// used, with its type arguments: the struct, then `expr`'s type.
     pub fn conversion(&self, expr: Id<Expr>) -> Option<(DefId, &[TypeId])> {
         self.conversions
             .get(&expr)

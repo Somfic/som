@@ -11,7 +11,7 @@ struct List<T> {
 
 impl<T> List<T> {
     /// An empty list. It takes no memory until something is pushed.
-    fn new() -> List<T> {
+    fn empty() -> List<T> {
         List { items: null(), len: 0, capacity: 0 }
     }
 
@@ -82,11 +82,9 @@ impl<T> List<T> {
 }
 
 // `let list: List<i32> = [1, 2, 3]`: the values moved into a new list.
-impl<T> FromArray for List<T> {
-    type Element = T;
-
-    fn from_array<N: usize>(items: [T; N]) -> List<T> {
-        let mut list: List<T> = List::new();
+impl<T, N: usize> From<[T; N]> for List<T> {
+    fn from(items: [T; N]) -> List<T> {
+        let mut list: List<T> = List::empty();
         list.items = list.items.resize(N);
         list.capacity = N;
         let source = &items as *T;
@@ -98,14 +96,14 @@ impl<T> FromArray for List<T> {
     }
 }
 
-// /// `for x in list`: each value, by reference.
-// impl<T> Iterable for List<T> {
-//     type Iter = ListIter<T>;
+/// `for x in list`: each value, by reference.
+impl<T> Iterable for List<T> {
+    type Iter = ListIter<T>;
 
-//     fn iter(self: &List<T>) -> ListIter<T> {
-//         ListIter { list: self, index: 0 }
-//     }
-// }
+    fn iter(self: &List<T>) -> ListIter<T> {
+        ListIter { list: self, index: 0 }
+    }
+}
 
 /// Goes through a list's values, by reference.
 struct ListIter<T> {
