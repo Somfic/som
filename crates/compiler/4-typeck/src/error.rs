@@ -86,6 +86,13 @@ pub enum TypeError {
         ty: Message,
         span: Span,
     },
+    /// `entry.value` of an `entry` that's a reference to a reference, `&mut &Pair`: a field is
+    /// reached through one reference, so the extra one is likely a mistake.
+    ReferenceToReference {
+        object: String,
+        ty: Message,
+        span: Span,
+    },
     /// `get(i).value`: a field or method of an optional, which may hold nothing. `object` is
     /// what's written for it; `variable`, whether that's a variable `if` can check as it is.
     MemberOfOptional {
@@ -702,6 +709,28 @@ impl TypeError {
                         code("none"),
                         ": ",
                         code(format!("{object} else …"))
+                    ])
+            }
+            TypeError::ReferenceToReference { object, ty, span } => {
+                Diagnostic::error(msg![code(object.clone()), " is a reference to a reference"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![
+                            "this is ",
+                            ty.clone(),
+                            ": fields are reached through one reference"
+                        ],
+                    ))
+                    .with_hint(msg![
+                        "it was likely made with ",
+                        code("&"),
+                        " or ",
+                        code("&mut"),
+                        " of something that was a reference already: leave that out"
+                    ])
+                    .with_hint(msg![
+                        "to get a mutable reference from a call, give the variable its type: ",
+                        code("let x: &mut T = …")
                     ])
             }
             TypeError::NotAStruct { ty: found, span } => {

@@ -2034,6 +2034,11 @@ impl<'a> Checker<'a> {
                 self.u.fresh(VarKind::Collection { element, len })
             }
             Expr::Fallback { optional, fallback } => {
+                // What's expected of the whole, `&mut Pair`, is expected of the optional
+                // wrapped: so `get(i) else …` picks the `get` giving a `&mut Pair?`.
+                if let Some(expected) = self.expected_here.take() {
+                    self.expected = Some(self.u.intern(Ty::Optional(expected)));
+                }
                 let ty = self.infer_optional(*optional);
                 let inner = self.optional_inner(ty, *optional);
                 let from = self.span(*optional);
@@ -3680,9 +3685,22 @@ impl<'a> Checker<'a> {
     }
 
     fn struct_of(&mut self, ty: TypeId, expr: Id<Expr>) -> Option<(DefId, Vec<TypeId>)> {
-        let mut ty = self.u.shallow(ty);
+        let outer = self.u.shallow(ty);
+        let mut ty = outer;
         if let Ty::Ref { to, .. } = self.u.get(ty) {
             ty = self.u.shallow(*to);
+        }
+        // `&mut x` of an `x` that's already a reference: say so, not that it isn't a struct.
+        if let Ty::Ref { to, .. } = *self.u.get(ty)
+            && matches!(self.u.get(self.u.shallow(to)), Ty::Struct(..))
+        {
+            let span = self.span(expr);
+            self.errors.push(TypeError::ReferenceToReference {
+                object: span.get_text().to_string(),
+                ty: self.describe(outer),
+                span,
+            });
+            return None;
         }
         match self.u.get(ty) {
             Ty::Struct(def, args) => Some((*def, args.clone())),

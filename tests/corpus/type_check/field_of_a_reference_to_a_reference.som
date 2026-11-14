@@ -1,0 +1,12 @@
+// expect: error ReferenceToReference
+
+/// `&mut` of something that's already a reference makes a reference to a reference, whose
+/// fields aren't reached through: the extra `&` is the mistake.
+struct P { v: i32 }
+
+fn main() -> i32 {
+    let p = P { v: 1 };
+    let r = &p;
+    let rr = &r;
+    rr.v
+}
