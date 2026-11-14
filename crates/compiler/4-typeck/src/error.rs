@@ -294,20 +294,47 @@ pub enum TypeError {
         type_arg: bool,
     },
     /// `impl Copy for …` of a struct with a field that's moved, not copied.
-    CopyWithMovedField { ty: Message, field: String, field_ty: Message, span: Span },
+    CopyWithMovedField {
+        ty: Message,
+        field: String,
+        field_ty: Message,
+        span: Span,
+    },
     /// `x.len` of an array, slice or text, which has a method called that, not a field.
-    FieldIsMethod { ty: Message, name: String, span: Span },
+    FieldIsMethod {
+        ty: Message,
+        name: String,
+        span: Span,
+    },
     /// `items[0]` of something that isn't an array: a slice's length isn't known, so only
     /// `get` can say whether it has the element.
-    IndexNotArray { ty: Message, span: Span, get: String },
+    IndexNotArray {
+        ty: Message,
+        span: Span,
+        get: String,
+    },
     /// `values[i]` of an index that isn't a number written out, so may be out of bounds.
-    IndexNotConstant { span: Span, get: String },
+    IndexNotConstant {
+        span: Span,
+        get: String,
+    },
     /// `values[3]` of a `[T; 3]`.
-    IndexOutOfBounds { index: u128, len: u128, span: Span },
+    IndexOutOfBounds {
+        index: u128,
+        len: u128,
+        span: Span,
+    },
     /// `values[0]` of a `[T; N]` whose `N` isn't known here, so might be 0.
-    IndexUnknownLength { len: String, span: Span, get: String },
+    IndexUnknownLength {
+        len: String,
+        span: Span,
+        get: String,
+    },
     /// `prop reset { … }`: a property that gives nothing back only does something.
-    PropReturnsNothing { name: String, span: Span },
+    PropReturnsNothing {
+        name: String,
+        span: Span,
+    },
     /// `v.x` of a `Vector<i32, 3>`, where `x` is in `impl<T> Vector<T, 1>`: a method or
     /// property only some of the struct's types have.
     NotOnImplTarget {
@@ -329,13 +356,26 @@ pub enum TypeError {
         parens: Option<Span>,
     },
     /// `impl Drop for …` of a type whose values are copied.
-    DropOnCopy { ty: Message, span: Span },
+    DropOnCopy {
+        ty: Message,
+        span: Span,
+    },
     /// `impl Add for i32`: a type implementing a trait whose operators it has built in.
-    BuiltinImpl { ty: Message, trait_: String, span: Span },
+    BuiltinImpl {
+        ty: Message,
+        trait_: String,
+        span: Span,
+    },
     /// A statement whose value is thrown away, when working it out does nothing else.
-    UnusedValue { kind: Unused, span: Span },
+    UnusedValue {
+        kind: Unused,
+        span: Span,
+    },
     /// `-x` of something that isn't a signed integer or a float.
-    CannotNegate { ty: Message, span: Span },
+    CannotNegate {
+        ty: Message,
+        span: Span,
+    },
     /// `value as T` where they aren't both numbers.
     InvalidCast {
         from: Message,
@@ -440,8 +480,7 @@ impl TypeError {
                         ]),
                     // Values of a type that could say how: `impl Add for …`.
                     None if let Some((trait_, param)) = implement => {
-                        let mut d =
-                            d.with_label(Label::primary(span.clone(), "no such operation"));
+                        let mut d = d.with_label(Label::primary(span.clone(), "no such operation"));
                         if let Some(fix) = fix {
                             d = d.with_fix(fix.clone());
                         }
@@ -518,7 +557,11 @@ impl TypeError {
                         list(&mut hint, available);
                     }
                     if !props.is_empty() {
-                        let start = if available.is_empty() { "properties: " } else { "; properties: " };
+                        let start = if available.is_empty() {
+                            "properties: "
+                        } else {
+                            "; properties: "
+                        };
                         hint.0.push(start.into());
                         list(&mut hint, props);
                     }
@@ -624,7 +667,9 @@ impl TypeError {
             TypeError::AliasCycle { name, span } => {
                 Diagnostic::error(msg!["type alias ", struct_name(name), " refers to itself"])
                     .with_label(Label::primary(span.clone(), "used in its own definition"))
-                    .with_hint(msg!["an alias stands for its type everywhere, so it can't contain itself"])
+                    .with_hint(msg![
+                        "an alias stands for its type everywhere, so it can't contain itself"
+                    ])
             }
             TypeError::ValueAsType { what, span } => {
                 Diagnostic::error(msg![what.clone(), " is a value, not a type"])
@@ -983,11 +1028,17 @@ impl TypeError {
                 field,
                 field_ty,
                 span,
-            } => Diagnostic::error(msg![ty.clone(), " can't implement ", code("Copy")])
-                .with_label(Label::primary(
+            } => Diagnostic::error(msg![ty.clone(), " can't implement ", code("Copy")]).with_label(
+                Label::primary(
                     span.clone(),
-                    msg![code(field.clone()), " is a ", field_ty.clone(), ", which is moved, not copied"],
-                )),
+                    msg![
+                        code(field.clone()),
+                        " is a ",
+                        field_ty.clone(),
+                        ", which is moved, not copied"
+                    ],
+                ),
+            ),
             TypeError::FieldIsMethod { ty, name, span } => {
                 Diagnostic::error(msg![ty.clone(), " has no field ", code(name.clone())])
                     .with_label(Label::primary(span.clone(), "it's a method"))
@@ -1013,14 +1064,21 @@ impl TypeError {
                 Diagnostic::error(msg!["index ", code(index.to_string()), " is out of bounds"])
                     .with_label(Label::primary(
                         span.clone(),
-                        format!("the array has {len} element{}", if *len == 1 { "" } else { "s" }),
+                        format!(
+                            "the array has {len} element{}",
+                            if *len == 1 { "" } else { "s" }
+                        ),
                     ))
             }
             TypeError::IndexUnknownLength { len, span, get } => {
                 Diagnostic::error("cannot tell this index is in bounds")
                     .with_label(Label::primary(
                         span.clone(),
-                        msg!["the array's length, ", code(len.clone()), ", isn't known here"],
+                        msg![
+                            "the array's length, ",
+                            code(len.clone()),
+                            ", isn't known here"
+                        ],
                     ))
                     .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
             }
@@ -1035,7 +1093,11 @@ impl TypeError {
                 let mut only = msg![code(name.clone()), " is only defined for "];
                 for (i, (target, _)) in targets.iter().enumerate() {
                     if i > 0 {
-                        only.push(if i + 1 == targets.len() { " and " } else { ", " });
+                        only.push(if i + 1 == targets.len() {
+                            " and "
+                        } else {
+                            ", "
+                        });
                     }
                     only.push(code(target.clone()));
                 }
@@ -1050,7 +1112,10 @@ impl TypeError {
             }
             TypeError::PropReturnsNothing { name, span } => {
                 Diagnostic::error(msg!["property ", func(name.clone()), " returns nothing"])
-                    .with_label(Label::primary(span.clone(), "a property has to give a value"))
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "a property has to give a value",
+                    ))
                     .with_hint(msg![
                         "one that only does something is a method: ",
                         code(format!("fn {name}"))
@@ -1074,25 +1139,25 @@ impl TypeError {
                         .with_hint(msg!["a property takes no arguments: ", code(name.clone())]),
                 }
             }
-            TypeError::DropOnCopy { ty, span } => Diagnostic::error(msg![
-                ty.clone(),
-                " can't implement ",
-                code("Drop")
-            ])
-            .with_label(Label::primary(
-                span.clone(),
-                "its values are copied, so each copy would be dropped",
-            )),
-            TypeError::BuiltinImpl { ty, trait_, span } => Diagnostic::error(msg![
-                ty.clone(),
-                " can't implement ",
-                code(trait_)
-            ])
-            .with_label(Label::primary(span.clone(), "its operators are built in")),
+            TypeError::DropOnCopy { ty, span } => {
+                Diagnostic::error(msg![ty.clone(), " can't implement ", code("Drop")]).with_label(
+                    Label::primary(
+                        span.clone(),
+                        "its values are copied, so each copy would be dropped",
+                    ),
+                )
+            }
+            TypeError::BuiltinImpl { ty, trait_, span } => {
+                Diagnostic::error(msg![ty.clone(), " can't implement ", code(trait_)])
+                    .with_label(Label::primary(span.clone(), "its operators are built in"))
+            }
             TypeError::UnusedValue { kind, span } => match kind {
                 Unused::Comparison(assignment) => {
                     Diagnostic::error("the comparison's result is unused")
-                        .with_label(Label::primary(span.clone(), "this compares, it doesn't assign"))
+                        .with_label(Label::primary(
+                            span.clone(),
+                            "this compares, it doesn't assign",
+                        ))
                         .with_fix(Fix::replace(
                             msg!["assign instead: ", code(assignment.clone())],
                             span.clone(),
@@ -1100,7 +1165,10 @@ impl TypeError {
                         ))
                 }
                 Unused::Value => Diagnostic::error("this value is unused")
-                    .with_label(Label::primary(span.clone(), "working it out does nothing else"))
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "working it out does nothing else",
+                    ))
                     .with_hint(msg![
                         "use it, or if dropping it is the point, ",
                         code("drop(…)"),

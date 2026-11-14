@@ -24,7 +24,7 @@ impl<T> List<T> {
     prop is_full = .len == .capacity;
 
     /// Adds `value` at the end.
-    fn push(self: &mut List<T>, value: T) {
+    fn push(&mut self, value: T) {
         if .is_full {
             let capacity = 4 if .capacity == 0 else .capacity * 2;
             .items.resize(capacity);
@@ -35,7 +35,7 @@ impl<T> List<T> {
     }
 
     /// Takes the last value off, or `none` if it's empty.
-    fn pop(self: &mut List<T>) -> T? {
+    fn pop(&mut self) -> T? {
         if .len == 0 {
             return none;
         }
@@ -60,17 +60,17 @@ impl<T> List<T> {
     }
 
     /// Its values as a slice: `for x in list.as_slice()`, `list.as_slice().get(0)`.
-    fn as_slice(self: &List<T>) -> [T] {
+    fn as_slice(&self) -> [T] {
         .items.view(.len)
     }
 
     /// Its values as a slice that can change them.
-    fn as_slice_mut(self: &mut List<T>) -> [mut T] {
+    fn as_slice_mut(&mut self) -> [mut T] {
         .items.view_mut(.len)
     }
 
     /// Drops every value, keeping the room for new ones.
-    fn clear(self: &mut List<T>) {
+    fn clear(&mut self) {
         for i in 0..self.len {
             drop(.items.read(i));
         }
@@ -80,7 +80,7 @@ impl<T> List<T> {
 
 impl<T> Drop for List<T> {
     /// Drops each value, read out of its room, then gives the room back.
-    fn drop(self: &mut List<T>) {
+    fn drop(&mut self) {
         for i in 0..self.len {
             drop(.items.read(i));
         }
@@ -110,13 +110,13 @@ impl<T, N: usize> From<[T; N]> for List<T> {
 impl<T: Copy> From<[T]> for List<T> {
     fn from(items: [T]) -> List<T> {
         let mut list: List<T> = List::empty();
-        list.items.resize(items.len());
-        list.capacity = items.len();
+        list.items.resize(items.len);
+        list.capacity = items.len;
         let source = items as *T;
-        for i in 0..items.len() {
+        for i in 0..items.len {
             list.items.write(i, source.read(i));
         }
-        list.len = items.len();
+        list.len = items.len;
         list
     }
 }

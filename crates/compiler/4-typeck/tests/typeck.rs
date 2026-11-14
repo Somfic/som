@@ -207,7 +207,14 @@ fn unknown_fields_offer_the_properties_of_the_value_type() {
     );
     // Each name once, and not `w`, which a `V<3>` doesn't have.
     match &errs[..] {
-        [TypeError::UnknownField { field, available, props, .. }] => {
+        [
+            TypeError::UnknownField {
+                field,
+                available,
+                props,
+                ..
+            },
+        ] => {
             assert_eq!(field, "manitude");
             assert_eq!(available, &["values"]);
             assert_eq!(props, &["magnitude", "z"]);

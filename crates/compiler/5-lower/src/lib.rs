@@ -151,9 +151,9 @@ impl<'a> Lowerer<'a> {
         };
         (self.typed.impls.iter()).any(|info| {
             info.trait_ == Some(copy)
-                && info.target.is_some_and(
-                    |t| matches!(self.mir.types.get(t), Ty::Struct(d, _) if *d == def),
-                )
+                && info
+                    .target
+                    .is_some_and(|t| matches!(self.mir.types.get(t), Ty::Struct(d, _) if *d == def))
         })
     }
 
@@ -1413,7 +1413,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             // Values of a type implementing `Eq` compare with its `eq`.
             Expr::Binary { op, lhs, rhs }
                 if let Some(lang) = self.l.typed.operator_trait(expr)
-                    && let Some(call) = self.operator_call(lang, *op, *lhs, *rhs, self.span(expr)) =>
+                    && let Some(call) =
+                        self.operator_call(lang, *op, *lhs, *rhs, self.span(expr)) =>
             {
                 call
             }
@@ -1620,6 +1621,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 };
                 self.call(expr, func, Some(*receiver), args)
             }
+            // `items.len` of an array, slice or text.
+            Expr::Field { object, .. } if let Some(method) = self.l.typed.array_method(expr) => {
+                Rvalue::Use(self.array_method(expr, method, *object, &[]))
+            }
             // `list.len`: property `len`, called with `list` as its `self`.
             Expr::Field { object, .. } if let Some(def) = self.l.typed.method(expr) => {
                 let DefKind::Func(func) = self.l.names.def(def).kind else {
@@ -1631,9 +1636,11 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         }
     }
 
-    /// Whether `expr` reads a property, `list.len`, which is a call, rather than a field.
+    /// Whether `expr` reads a property, `list.len`, which is a call, rather than a field;
+    /// or an array's length, `items.len`.
     fn is_prop(&self, expr: Id<Expr>) -> bool {
-        matches!(self.l.ast.exprs[expr], Expr::Field { .. }) && self.l.typed.method(expr).is_some()
+        matches!(self.l.ast.exprs[expr], Expr::Field { .. })
+            && (self.l.typed.method(expr).is_some() || self.l.typed.array_method(expr).is_some())
     }
 
     fn call(

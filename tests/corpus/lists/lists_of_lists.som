@@ -12,10 +12,10 @@ fn main() -> i32 {
     }
     let mut total = 0;
     for row in rows.as_slice() {
-        total = total + row.len() as i32;
+        total = total + row.len as i32;
     }
     let mut extra = 0;
     let last = rows.pop();
-    if last { extra = last.len() as i32; }
+    if last { extra = last.len as i32; }
     total + extra - 6 + 4
 }

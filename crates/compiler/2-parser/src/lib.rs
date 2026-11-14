@@ -35,7 +35,7 @@ pub fn parse_file(source: Arc<Source>, ast: &mut Ast, module: usize) -> Vec<Pars
         errors: Vec::new(),
         in_recovery: false,
         in_condition: false,
-            in_impl: false,
+        in_impl: false,
     };
     parser.skip_trivia();
     parser.parse_program();
@@ -276,7 +276,12 @@ impl Parser<'_> {
                 TokenKind::If,
                 TokenKind::Fn,
             ],
-            RecoveryLevel::Member => &[TokenKind::Fn, TokenKind::Prop, TokenKind::Type, TokenKind::CloseBrace],
+            RecoveryLevel::Member => &[
+                TokenKind::Fn,
+                TokenKind::Prop,
+                TokenKind::Type,
+                TokenKind::CloseBrace,
+            ],
             RecoveryLevel::Declaration => &[
                 TokenKind::Fn,
                 TokenKind::Extern,

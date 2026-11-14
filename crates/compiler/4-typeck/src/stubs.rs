@@ -34,7 +34,9 @@ pub fn missing(ast: &Ast, names: &Names, index: usize, block: &Impl) -> Vec<Stub
         false => format!(
             "{}<{}>",
             block.target,
-            (block.target_args.iter().map(|&a| ast.type_text(a))).collect::<Vec<_>>().join(", ")
+            (block.target_args.iter().map(|&a| ast.type_text(a)))
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
     };
     let trait_args: Vec<String> = (block.trait_.iter())
@@ -110,7 +112,10 @@ pub fn stubs(
         let params: Vec<(String, String)> = (func.params.iter())
             .map(|p| (p.name.name.to_string(), p.ty.map(fill).unwrap_or_default()))
             .collect();
-        let ret = func.returns.map(|r| format!(" -> {}", fill(r))).unwrap_or_default();
+        let ret = func
+            .returns
+            .map(|r| format!(" -> {}", fill(r)))
+            .unwrap_or_default();
         let shown: Vec<String> = params.iter().map(|(n, t)| format!("{n}: {t}")).collect();
         let signature = format!("fn {name}{generics}({}){ret}", shown.join(", "));
         // `self` keeps its name; the others are tab stops, then the body.

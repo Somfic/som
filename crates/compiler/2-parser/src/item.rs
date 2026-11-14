@@ -158,7 +158,11 @@ impl Parser<'_> {
     ) -> Option<Impl> {
         // A built-in type's is named by its text, for showing.
         let target = target.unwrap_or_else(|| {
-            let span = self.ast.types.span(target_ty.expect("a type if not a path")).clone();
+            let span = self
+                .ast
+                .types
+                .span(target_ty.expect("a type if not a path"))
+                .clone();
             som_ast::Path {
                 segments: vec![som_ast::Ident {
                     name: span.get_text().as_ref().into(),
@@ -510,7 +514,10 @@ impl Parser<'_> {
             self.error_at(
                 span,
                 msg!["a property's type goes after a ", code(":")],
-                msg!["as a field's does: ", code(format!("prop {}: …", name.name))],
+                msg![
+                    "as a field's does: ",
+                    code(format!("prop {}: …", name.name))
+                ],
             );
             Some(self.parse_type()?)
         } else if self.eat(TokenKind::Arrow) || prop && self.eat(TokenKind::Colon) {
@@ -584,7 +591,11 @@ impl Parser<'_> {
 
     /// `Self`, or with `reference` saying whether it's mutable, `&Self` or `&mut Self`: the
     /// type of a `self`, `&self` or `&mut self` parameter, written at `span`.
-    fn self_type(&mut self, reference: Option<bool>, span: som_base::Span) -> Id<som_ast::TypeExpr> {
+    fn self_type(
+        &mut self,
+        reference: Option<bool>,
+        span: som_base::Span,
+    ) -> Id<som_ast::TypeExpr> {
         let path = som_ast::Path {
             segments: vec![Ident {
                 name: "Self".into(),
@@ -689,7 +700,8 @@ impl Parser<'_> {
                 true => self.parse_self(),
                 false => self.parse_ident("a function parameter name")?,
             };
-            let shorthand = reference.is_some() || &*name.name == "self" && !self.at(TokenKind::Colon);
+            let shorthand =
+                reference.is_some() || &*name.name == "self" && !self.at(TokenKind::Colon);
             if shorthand && !self.in_impl {
                 let span = match &reference {
                     Some((_, start)) => self.span_from(start),

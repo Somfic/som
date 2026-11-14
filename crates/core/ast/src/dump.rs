@@ -163,7 +163,11 @@ impl Dumper<'_> {
                         format!("<{}>", names.join(", "))
                     }
                 };
-                self.line(format!("type {}{generics} = {}", a.name, ast.type_text(a.ty)))
+                self.line(format!(
+                    "type {}{generics} = {}",
+                    a.name,
+                    ast.type_text(a.ty)
+                ))
             }
             Item::Extern(block) => {
                 let mut header = match &block.library {

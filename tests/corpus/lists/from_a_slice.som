@@ -9,5 +9,5 @@ fn main() -> i32 {
     let copied: List<i32> = view;
     let mut total = 0;
     for x in copied { total = total + *x; }
-    total + (copied.len() as i32) - 1
+    total + (copied.len as i32) - 1
 }

@@ -5,5 +5,5 @@ fn main() -> i32 {
     let a = [1, 2, 3];
     let b = a;
     let s: [i32] = &a;
-    s.len() + b.len() - 1
+    s.len + b.len - 1
 }

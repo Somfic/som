@@ -13,7 +13,9 @@ impl Parser<'_> {
                 let Some(u) = self.parse_use() else {
                     return StmtOrExpr::Error;
                 };
-                self.ast.modules[self.module].block_uses.push(u.path.clone());
+                self.ast.modules[self.module]
+                    .block_uses
+                    .push(u.path.clone());
                 let span = self.span_from(&start);
                 Some(self.ast.stmts.alloc(Stmt::Use(u), span))
             }

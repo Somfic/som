@@ -12,6 +12,6 @@ impl From<List<i32>> for Bag {
 fn main() -> i32 {
     let list: List = [1, 2];
     let bag: Bag = list;
-    let n = list.len();
+    let n = list.len;
     0
 }

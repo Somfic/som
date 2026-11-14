@@ -20,8 +20,12 @@ pub const ROOT_MODULE: &str = "som";
 /// The standard library's folder, if it can be found.
 pub fn root() -> Option<&'static Path> {
     static ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
-    ROOT.get_or_init(|| candidates().into_iter().find_map(|dir| dir.canonicalize().ok()))
-        .as_deref()
+    ROOT.get_or_init(|| {
+        candidates()
+            .into_iter()
+            .find_map(|dir| dir.canonicalize().ok())
+    })
+    .as_deref()
 }
 
 /// Where the standard library is looked for, in order.
@@ -30,7 +34,10 @@ pub fn candidates() -> Vec<PathBuf> {
     if let Some(dir) = std::env::var_os("SOM_STD") {
         dirs.push(PathBuf::from(dir));
     }
-    if let Some(bin) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
+    if let Some(bin) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(Path::to_path_buf))
+    {
         dirs.push(bin.join("../lib/som/std"));
     }
     dirs.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../std"));

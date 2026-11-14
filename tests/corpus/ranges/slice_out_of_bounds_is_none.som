@@ -7,6 +7,6 @@ fn main() -> i32 {
     if a.slice(2..1) == none { r = r + 10; }
     // Empty, right at the end: allowed.
     let empty = a.slice(3..);
-    if empty { if empty.len() == 0 { r = r + 100; } }
+    if empty { if empty.len == 0 { r = r + 100; } }
     r
 }

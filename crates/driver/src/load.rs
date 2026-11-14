@@ -130,9 +130,10 @@ pub fn load_with(
     // library itself, loaded once, as `som`, around an empty program in its folder (where
     // imported headers are cached, in `.som/`).
     let in_std = stdlib::contains(path).then(stdlib::root).flatten();
-    let root = loader
-        .ast
-        .add_module("", in_std.map_or_else(|| folder_of(path), Path::to_path_buf));
+    let root = loader.ast.add_module(
+        "",
+        in_std.map_or_else(|| folder_of(path), Path::to_path_buf),
+    );
 
     if in_std.is_none() {
         if path.is_dir() {
@@ -240,7 +241,10 @@ impl Loader {
                 _ => None,
             })
             .chain(self.ast.modules[module].block_uses.iter().map(|path| {
-                let folder = path.segments.iter().fold(folder.clone(), |p, s| p.join(&*s.name));
+                let folder = path
+                    .segments
+                    .iter()
+                    .fold(folder.clone(), |p, s| p.join(&*s.name));
                 (path.to_string(), folder, path.span())
             }))
             .collect();

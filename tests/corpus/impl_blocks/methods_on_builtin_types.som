@@ -16,7 +16,7 @@ impl bool {
 }
 
 impl str {
-    fn first_len(self: str) -> usize { self.len() }
+    fn first_len(self: str) -> usize { self.len }
 }
 
 fn main() -> i32 {
@@ -27,6 +27,6 @@ fn main() -> i32 {
     let c = 50.clamp(0, 10);
     let d = true.to_int();
     let e = "hey".first_len() as i32;
-    let f = "hey".len() as i32;
+    let f = "hey".len as i32;
     a + b + c + d + e + f
 }

@@ -2,7 +2,7 @@
 
 fn double_all(numbers: [mut i32]) {
     let mut i = 0;
-    while i < numbers.len() {
+    while i < numbers.len {
         let n = numbers.get_mut(i);
         if n { *n = *n * 2; }
         i = i + 1;

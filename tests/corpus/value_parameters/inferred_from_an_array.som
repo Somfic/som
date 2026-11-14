@@ -6,5 +6,5 @@ fn zeroed<N: usize>() -> [u8; N] { [0; N] }
 
 fn main() -> i32 {
     let three: [u8; 3] = zeroed();
-    (count([true, false]) + count([true; 3])) as i32 + three.len()
+    (count([true, false]) + count([true; 3])) as i32 + three.len
 }

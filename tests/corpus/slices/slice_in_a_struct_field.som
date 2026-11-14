@@ -2,7 +2,7 @@
 
 struct Window { values: [i32], label: i32 }
 
-fn total(w: Window) -> i32 { w.values.len() + w.label }
+fn total(w: Window) -> i32 { w.values.len + w.label }
 
 fn main() -> i32 {
     let data = [1, 2, 3, 4];

@@ -6,7 +6,7 @@ fn test() -> i32 {
     let a: String = "hello";
     let b: String = " world";
     let c = a + b;
-    c.len() as i32
+    c.len as i32
 }
 
 fn main() -> i32 { test() }

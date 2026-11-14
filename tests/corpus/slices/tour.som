@@ -7,7 +7,7 @@ struct Point { x: i32, y: i32 }
 fn sum(numbers: [i32]) -> i32 {
     let mut total = 0;
     let mut i = 0;
-    while i < numbers.len() {
+    while i < numbers.len {
         total = total + (numbers.get(i) else 0);
         i = i + 1;
     }
@@ -17,7 +17,7 @@ fn sum(numbers: [i32]) -> i32 {
 /// Changes them in place.
 fn double_all(numbers: [mut i32]) {
     let mut i = 0;
-    while i < numbers.len() {
+    while i < numbers.len {
         let n = numbers.get_mut(i);
         if n { *n = *n * 2; }
         i = i + 1;
@@ -41,7 +41,7 @@ fn main() -> i32 {
     let c = sum(&five);                 // 60
     // A `[mut T]` passes where a `[T]` is expected.
     let view: [mut i32] = &mut five;
-    let d = view.len();
+    let d = view.len;
     let e = sum(view);
     let points = [Point { x: 7, y: 0 }];
     let f = first_x(&points);

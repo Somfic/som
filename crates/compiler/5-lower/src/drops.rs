@@ -50,7 +50,10 @@ impl Lowerer<'_> {
                 common: Vec<(usize, FuncId)>,
                 variants: Vec<Vec<(usize, FuncId)>>,
             },
-            Array { len: u64, element: FuncId },
+            Array {
+                len: u64,
+                element: FuncId,
+            },
             Optional(FuncId),
         }
         let shape = match self.mir.types.get(ty).clone() {
@@ -69,7 +72,9 @@ impl Lowerer<'_> {
                     }
                 }
                 let with_glue = |indexes: &mut dyn Iterator<Item = usize>| -> Vec<(usize, FuncId)> {
-                    indexes.filter_map(|i| glues.get(&i).map(|&g| (i, g))).collect()
+                    indexes
+                        .filter_map(|i| glues.get(&i).map(|&g| (i, g)))
+                        .collect()
                 };
                 match variants {
                     // The tag, then fields in every variant, then each variant's own.
@@ -78,10 +83,13 @@ impl Lowerer<'_> {
                             .filter(|i| variants.iter().all(|v| v.contains(i)))
                             .collect();
                         let own: Vec<Vec<(usize, FuncId)>> = (variants.iter())
-                            .map(|v| with_glue(&mut v.iter().copied().filter(|i| !common.contains(i))))
+                            .map(|v| {
+                                with_glue(&mut v.iter().copied().filter(|i| !common.contains(i)))
+                            })
                             .collect();
                         let common = with_glue(&mut common.into_iter());
-                        if own_drop.is_none() && common.is_empty() && own.iter().all(Vec::is_empty) {
+                        if own_drop.is_none() && common.is_empty() && own.iter().all(Vec::is_empty)
+                        {
                             return None;
                         }
                         Shape::Struct {
@@ -133,7 +141,12 @@ impl Lowerer<'_> {
                 }
                 for (i, glue) in common {
                     let field = self.field_ty(ty, i);
-                    g.drop_field(glue, this.clone().project(Projection::Field(i)), field, &mut self.mir.types);
+                    g.drop_field(
+                        glue,
+                        this.clone().project(Projection::Field(i)),
+                        field,
+                        &mut self.mir.types,
+                    );
                 }
                 // Only the variant the tag says holds anything.
                 let u32 = self.mir.types.intern(Ty::Int(IntTy::U32));
@@ -161,7 +174,12 @@ impl Lowerer<'_> {
                     g.current = then;
                     for (i, glue) in fields {
                         let field = self.field_ty(ty, i);
-                        g.drop_field(glue, this.clone().project(Projection::Field(i)), field, &mut self.mir.types);
+                        g.drop_field(
+                            glue,
+                            this.clone().project(Projection::Field(i)),
+                            field,
+                            &mut self.mir.types,
+                        );
                     }
                     g.goto(after);
                     g.current = after;
@@ -217,9 +235,18 @@ impl Lowerer<'_> {
                     _ => unreachable!("an optional's glue"),
                 };
                 let (then, after) = (g.block(), g.block());
-                g.branch(Operand::Copy(this.clone().project(Projection::Field(0))), then, after);
+                g.branch(
+                    Operand::Copy(this.clone().project(Projection::Field(0))),
+                    then,
+                    after,
+                );
                 g.current = then;
-                g.drop_field(inner, this.clone().project(Projection::Field(1)), inner_ty, &mut self.mir.types);
+                g.drop_field(
+                    inner,
+                    this.clone().project(Projection::Field(1)),
+                    inner_ty,
+                    &mut self.mir.types,
+                );
                 g.goto(after);
                 g.current = after;
             }
@@ -400,7 +427,8 @@ impl State {
     }
 
     fn set(&mut self, place: &Place, init: Init) {
-        self.0.retain(|p, _| !(p.local == place.local && within(p, place) && p != place));
+        self.0
+            .retain(|p, _| !(p.local == place.local && within(p, place) && p != place));
         self.0.insert(place.clone(), init);
     }
 
@@ -430,8 +458,7 @@ fn within(inner: &Place, outer: &Place) -> bool {
 
 /// Whether `place` is a variable or a field of one, whose being there is followed.
 fn followed(place: &Place) -> bool {
-    place.local != RETURN
-        && (place.projection.iter()).all(|p| matches!(p, Projection::Field(_)))
+    place.local != RETURN && (place.projection.iter()).all(|p| matches!(p, Projection::Field(_)))
 }
 
 /// The places an rvalue moves out of.
@@ -604,7 +631,14 @@ impl FnBuilder<'_, '_> {
             for stmt in stmts {
                 match stmt.kind {
                     StatementKind::Drop { place, .. } => {
-                        self.drops_of(&mut body.locals, &state, &place, &mut flags, &stmt.span, &mut out);
+                        self.drops_of(
+                            &mut body.locals,
+                            &state,
+                            &place,
+                            &mut flags,
+                            &stmt.span,
+                            &mut out,
+                        );
                         if followed(&place) {
                             state.set(&place, Init::No);
                         }
@@ -624,7 +658,14 @@ impl FnBuilder<'_, '_> {
                         let mut drops = Vec::new();
                         if replaced {
                             if followed(&dest) {
-                                self.drops_of(&mut body.locals, &after_moves, &dest, &mut flags, &stmt.span, &mut drops);
+                                self.drops_of(
+                                    &mut body.locals,
+                                    &after_moves,
+                                    &dest,
+                                    &mut flags,
+                                    &stmt.span,
+                                    &mut drops,
+                                );
                             } else if let Some(glue) = self.l.drop_glue(ty) {
                                 drops.push(Statement {
                                     kind: StatementKind::Drop {
@@ -646,7 +687,9 @@ impl FnBuilder<'_, '_> {
                             continue;
                         }
                         // `new = value; drop(dest); dest = new`.
-                        let StatementKind::Assign(_, rvalue) = kind else { unreachable!() };
+                        let StatementKind::Assign(_, rvalue) = kind else {
+                            unreachable!()
+                        };
                         let new = body.locals.alloc(LocalDecl {
                             ty,
                             name: None,
@@ -798,7 +841,12 @@ impl FnBuilder<'_, '_> {
     }
 }
 
-fn drop_statement(place: Place, glue: FuncId, flag: Option<Local>, span: &som_base::Span) -> Statement {
+fn drop_statement(
+    place: Place,
+    glue: FuncId,
+    flag: Option<Local>,
+    span: &som_base::Span,
+) -> Statement {
     Statement {
         kind: StatementKind::Drop { place, glue, flag },
         span: span.clone(),

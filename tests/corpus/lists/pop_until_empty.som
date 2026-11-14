@@ -16,6 +16,6 @@ fn main() -> i32 {
         total = total + (match next { none => 0, item => item.value });
         next = items.pop();
     }
-    let empty = 1 if items.is_empty() else 0;
+    let empty = 1 if items.is_empty else 0;
     total * empty
 }

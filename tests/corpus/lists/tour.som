@@ -22,7 +22,7 @@ fn main() -> i32 {
     if let_ok(&points) { total = total + 1000; }
     let p = points.pop();
     let y = match p { none => 0, q => q.y };
-    let size = numbers.len() as i32;
+    let size = numbers.len as i32;
     total + last + first + y + size
 }
 

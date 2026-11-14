@@ -181,12 +181,8 @@ impl<'a> Resolver<'a> {
                     }
                     Item::Alias(alias) => {
                         let kind = DefKind::Alias { ty: alias.ty };
-                        let def = (self.names).define(
-                            &alias.name.name,
-                            kind,
-                            alias.name.span.clone(),
-                            m,
-                        );
+                        let def =
+                            (self.names).define(&alias.name.name, kind, alias.name.span.clone(), m);
                         let params = (alias.generics.iter().enumerate())
                             .map(|(index, g)| {
                                 let kind = DefKind::AliasParam {
@@ -359,8 +355,8 @@ impl<'a> Resolver<'a> {
         }
         if let DefKind::Struct(s) = self.names.def(owner).kind {
             let strukt = &ast.structs[s];
-            let field = (strukt.fields.iter().chain(strukt.payload()))
-                .find(|f| f.name.name == name.name);
+            let field =
+                (strukt.fields.iter().chain(strukt.payload())).find(|f| f.name.name == name.name);
             if let Some(field) = field {
                 self.errors.push(ResolveError::PropNamedLikeField {
                     name: name.name.to_string(),
@@ -369,7 +365,10 @@ impl<'a> Resolver<'a> {
                 });
             }
         }
-        let block = self.names.impl_of(prop).expect("properties are in impl blocks");
+        let block = self
+            .names
+            .impl_of(prop)
+            .expect("properties are in impl blocks");
         if let Some(previous) = self.names.add_prop(owner, &name.name, block, def) {
             self.errors.push(ResolveError::DuplicateDefinition {
                 name: name.name.to_string(),
@@ -743,9 +742,7 @@ impl<'a> Resolver<'a> {
             Expr::Not(inner)
             | Expr::Neg(inner)
             | Expr::Deref(inner)
-            | Expr::Borrow { expr: inner, .. } => {
-                self.resolve_expr(*inner)
-            }
+            | Expr::Borrow { expr: inner, .. } => self.resolve_expr(*inner),
             Expr::ArrayRepeat { value, count } => {
                 self.resolve_expr(*value);
                 self.resolve_type(*count);
@@ -1045,7 +1042,10 @@ impl<'a> Resolver<'a> {
                         .and_then(|d| self.fitting(d, expect));
                 }
                 let owner = self.items[m].get(&*rest[0].name).copied()?;
-                (self.fitting(owner, Expect::Struct).unwrap_or(owner), &rest[1..])
+                (
+                    self.fitting(owner, Expect::Struct).unwrap_or(owner),
+                    &rest[1..],
+                )
             }
             None => (
                 self.lookup(&segments[0].name, Expect::Struct)
@@ -1055,9 +1055,10 @@ impl<'a> Resolver<'a> {
         };
 
         match rest {
-            [name] if matches!(self.names.def(owner).kind, DefKind::Primitive(_)) => {
-                self.names.method(owner, &name.name).filter(|&d| self.fits(d, expect))
-            }
+            [name] if matches!(self.names.def(owner).kind, DefKind::Primitive(_)) => self
+                .names
+                .method(owner, &name.name)
+                .filter(|&d| self.fits(d, expect)),
             [name] if matches!(self.names.def(owner).kind, DefKind::Struct(_)) => (self.names)
                 .variant(owner, &name.name)
                 .or_else(|| self.names.method(owner, &name.name))

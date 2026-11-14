@@ -34,24 +34,26 @@ impl Checker<'_> {
             let trait_ = def.trait_;
             let target = match block.target_ty {
                 Some(ty) => Some(self.lower(ty)),
-                None => def.owner.and_then(|owner| match self.names.def(owner).kind {
-                    DefKind::Struct(s) => {
-                        // `impl<T> Pair<T>` written as `impl Pair`: its parameters, in order.
-                        let expected = self.names.struct_params(s).len();
-                        let args = if block.target_args.is_empty() && block.trait_.is_none() {
-                            (0..expected)
-                                .map(|i| match params.get(i) {
-                                    Some(&p) => self.u.intern(Ty::Param(p)),
-                                    None => self.u.table.error,
-                                })
-                                .collect()
-                        } else {
-                            self.lower_args(owner, s, &block.target_args, block.target.span())
-                        };
-                        Some(self.u.intern(Ty::Struct(owner, args)))
-                    }
-                    _ => None,
-                }),
+                None => def
+                    .owner
+                    .and_then(|owner| match self.names.def(owner).kind {
+                        DefKind::Struct(s) => {
+                            // `impl<T> Pair<T>` written as `impl Pair`: its parameters, in order.
+                            let expected = self.names.struct_params(s).len();
+                            let args = if block.target_args.is_empty() && block.trait_.is_none() {
+                                (0..expected)
+                                    .map(|i| match params.get(i) {
+                                        Some(&p) => self.u.intern(Ty::Param(p)),
+                                        None => self.u.table.error,
+                                    })
+                                    .collect()
+                            } else {
+                                self.lower_args(owner, s, &block.target_args, block.target.span())
+                            };
+                            Some(self.u.intern(Ty::Struct(owner, args)))
+                        }
+                        _ => None,
+                    }),
             };
             let trait_args: Vec<TypeId> = (block.trait_.iter())
                 .flat_map(|(_, args)| args)
@@ -639,8 +641,7 @@ impl Checker<'_> {
                 };
                 let stubs = crate::stubs::stubs(self.ast, t, &target, &[], &|_, _| false);
                 let body: String = stubs.iter().map(|s| s.text.as_str()).collect();
-                let text =
-                    format!("\n\nimpl{generics} {trait_name} for {target} {{\n{body}}}");
+                let text = format!("\n\nimpl{generics} {trait_name} for {target} {{\n{body}}}");
                 let title = msg![
                     "implement ",
                     som_base::message::code(trait_name),
@@ -678,7 +679,12 @@ impl Checker<'_> {
     /// implementation: `let list: List<i32> = [1, 2, 3]` is `List::from([1, 2, 3])`. Records it
     /// if so. Only one step, only into a struct that's known, and only when exactly one
     /// implementation could take `found`; the struct's type arguments can follow from it.
-    pub(super) fn from_conversion(&mut self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> bool {
+    pub(super) fn from_conversion(
+        &mut self,
+        expr: Id<Expr>,
+        expected: TypeId,
+        found: TypeId,
+    ) -> bool {
         let Some((from, source, fitting)) = self.from_impls(expected, found) else {
             return false;
         };

@@ -1,10 +1,10 @@
 //! Runs the compiler: loads a program, then hands it through each pass in order.
 
 mod build;
-pub mod stdlib;
 mod headers;
 mod libraries;
 mod load;
+pub mod stdlib;
 
 pub use build::{BuildError, BuildOptions, build, emit_c, run};
 pub use headers::origins;

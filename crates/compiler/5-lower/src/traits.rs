@@ -31,8 +31,14 @@ impl Lowerer<'_> {
         let &(trait_, trait_generics) = self.trait_methods.get(&func)?;
         let &this = type_args.first()?;
         let trait_args = type_args.get(1..1 + trait_generics).unwrap_or(&[]);
-        let (index, impl_args) =
-            find_impl(&self.typed.impls, &self.mir.types, trait_, this, trait_args, &|t| t)?;
+        let (index, impl_args) = find_impl(
+            &self.typed.impls,
+            &self.mir.types,
+            trait_,
+            this,
+            trait_args,
+            &|t| t,
+        )?;
         let name = &self.ast.funcs[func].name.name;
         let method = (self.typed.impls[index].methods.iter().copied())
             .find(|&m| self.ast.funcs[m].name.name == *name)?;
@@ -48,7 +54,11 @@ impl Lowerer<'_> {
 impl Lowerer<'_> {
     /// For trait method `func` of a language trait, with `Self` a type that has its operator
     /// built in: a function doing it, `*a + *b` for `add`, the `Ordering` for `compare`.
-    pub(super) fn builtin_method(&mut self, func: Id<Func>, type_args: &[TypeId]) -> Option<FuncId> {
+    pub(super) fn builtin_method(
+        &mut self,
+        func: Id<Func>,
+        type_args: &[TypeId],
+    ) -> Option<FuncId> {
         let &(trait_, _) = self.trait_methods.get(&func)?;
         let lang = self.names.lang_of(trait_)?;
         let &this = type_args.first()?;
@@ -69,8 +79,9 @@ impl Lowerer<'_> {
             LangTrait::Eq => bool,
             LangTrait::Compare => {
                 let ret = self.typed.func(func).ret;
-                let ordering = Subst::new(self.names.type_params(func), type_args, &self.typed.impls)
-                    .apply(&mut self.mir.types, ret);
+                let ordering =
+                    Subst::new(self.names.type_params(func), type_args, &self.typed.impls)
+                        .apply(&mut self.mir.types, ret);
                 self.make_structs_in(ordering);
                 ordering
             }
@@ -82,7 +93,13 @@ impl Lowerer<'_> {
             self.ast.funcs[func].name.name
         )
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == ':' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == ':' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
 
         let mut locals = Arena::new();
@@ -346,7 +363,11 @@ impl FnBuilder<'_, '_> {
         if builtin_operator(self.l.mir.types.get(ty), lang) {
             return None;
         }
-        let trait_ = self.l.names.lang(lang).expect("checked: the trait is there");
+        let trait_ = self
+            .l
+            .names
+            .lang(lang)
+            .expect("checked: the trait is there");
         let method = lang.operator_method().expect("an operator's trait");
         let method = self.l.trait_method(trait_, method);
         let reference = self.l.mir.types.intern(Ty::Ref {

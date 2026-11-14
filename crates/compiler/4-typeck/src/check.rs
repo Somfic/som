@@ -625,8 +625,7 @@ impl<'a> Checker<'a> {
         let params = self.names.alias_params(def).to_vec();
         let span = self.ast.types.span(id).clone();
         // `Vector3` in a `let` annotation: what its arguments are is worked out from the value.
-        let args: Vec<TypeId> = if args.is_empty() && !params.is_empty() && self.omitted_args_ok
-        {
+        let args: Vec<TypeId> = if args.is_empty() && !params.is_empty() && self.omitted_args_ok {
             (0..params.len())
                 .map(|_| self.u.fresh(VarKind::Any))
                 .collect()
@@ -718,7 +717,12 @@ impl<'a> Checker<'a> {
         let info = self.impls.get(index)?;
         let (target, params) = (info.target?, info.params.clone());
         let args = type_args.get(..params.len())?;
-        Some(crate::traits::substitute(&mut self.u.table, target, &params, args))
+        Some(crate::traits::substitute(
+            &mut self.u.table,
+            target,
+            &params,
+            args,
+        ))
     }
 
     /// `ty`, of expression `id`, has to be the type of the alias its path names a struct
@@ -1199,12 +1203,14 @@ impl<'a> Checker<'a> {
                 Unused::Comparison(text)
             }
             Expr::MethodCall { .. } => {
-                let pure_pointer = self.pointer_methods.get(&expr).is_some_and(|m| {
-                    !matches!(m, PointerMethod::Free | PointerMethod::Write)
-                });
-                let pure_array = self.array_methods.get(&expr).is_some_and(|m| {
-                    !matches!(m, ArrayMethod::Set)
-                });
+                let pure_pointer = self
+                    .pointer_methods
+                    .get(&expr)
+                    .is_some_and(|m| !matches!(m, PointerMethod::Free | PointerMethod::Write));
+                let pure_array = self
+                    .array_methods
+                    .get(&expr)
+                    .is_some_and(|m| !matches!(m, ArrayMethod::Set));
                 if !pure_pointer && !pure_array {
                     return;
                 }
@@ -1259,9 +1265,9 @@ impl<'a> Checker<'a> {
             Expr::Match { arms, .. } => {
                 !arms.is_empty() && arms.iter().all(|arm| self.expr_leaves(arm.body))
             }
-            Expr::Conditional { then, otherwise, .. } => {
-                self.expr_leaves(*then) && self.expr_leaves(*otherwise)
-            }
+            Expr::Conditional {
+                then, otherwise, ..
+            } => self.expr_leaves(*then) && self.expr_leaves(*otherwise),
             _ => false,
         }
     }
@@ -1286,9 +1292,9 @@ impl<'a> Checker<'a> {
         match &self.ast.exprs[expr] {
             Expr::Block { stmts, .. } => self.breaks(stmts),
             Expr::Match { arms, .. } => arms.iter().any(|arm| self.expr_breaks(arm.body)),
-            Expr::Conditional { then, otherwise, .. } => {
-                self.expr_breaks(*then) || self.expr_breaks(*otherwise)
-            }
+            Expr::Conditional {
+                then, otherwise, ..
+            } => self.expr_breaks(*then) || self.expr_breaks(*otherwise),
             _ => false,
         }
     }
@@ -1575,7 +1581,6 @@ impl<'a> Checker<'a> {
         }
         false
     }
-
 
     /// Whether a value of type `found` becomes the slice `expected`: a reference to an array of
     /// the same elements (`&numbers` for a `[i32]`, `&mut numbers` for a `[mut i32]`), or a
@@ -2095,7 +2100,8 @@ impl<'a> Checker<'a> {
                     .primitive_owner(receiver_ty)
                     .filter(|&owner| self.names.method(owner, &method.name).is_some());
                 if primitive.is_none() {
-                    if let Some(ty) = self.array_method(id, *receiver, receiver_ty, method, args)
+                    if let Some(ty) =
+                        self.array_method(id, *receiver, receiver_ty, method, args, false)
                     {
                         return ty;
                     }
@@ -2148,7 +2154,9 @@ impl<'a> Checker<'a> {
                             ty,
                             name: method.name.to_string(),
                             span: method.span.clone(),
-                            parens: args.is_empty().then(|| method.span.after().merge(&span.after())),
+                            parens: args
+                                .is_empty()
+                                .then(|| method.span.after().merge(&span.after())),
                         });
                         args.iter().for_each(|&a| {
                             self.infer(a);
@@ -2223,14 +2231,22 @@ impl<'a> Checker<'a> {
                 if let Some(ty) = self.prop_access(id, *object, object_ty, field) {
                     return ty;
                 }
+                // `items.len`: the length of an array, slice or text.
+                if &*field.name == "len"
+                    && let Some(ty) = self.array_method(id, *object, object_ty, field, &[], true)
+                {
+                    return ty;
+                }
                 // A range's two ends.
                 let mut viewed = self.u.shallow(object_ty);
                 if let Ty::Ref { to, .. } = *self.u.get(viewed) {
                     viewed = self.u.shallow(to);
                 }
                 // `items.len` of something with a method of that name, not a field.
-                if matches!(self.u.get(viewed), Ty::Array { .. } | Ty::Slice(_) | Ty::Str)
-                    && ArrayMethod::from_name(&field.name).is_some()
+                if matches!(
+                    self.u.get(viewed),
+                    Ty::Array { .. } | Ty::Slice(_) | Ty::Str
+                ) && ArrayMethod::from_name(&field.name).is_some()
                 {
                     self.errors.push(TypeError::FieldIsMethod {
                         ty: self.describe(object_ty),
@@ -2327,7 +2343,11 @@ impl<'a> Checker<'a> {
                     .flatten()
                     .map(|index| self.self_type(index))
                     // `Vector3 { … }`: the type the alias stands for.
-                    .or_else(|| self.names.expr_alias(id).map(|alias| self.alias_value(alias)))
+                    .or_else(|| {
+                        self.names
+                            .expr_alias(id)
+                            .map(|alias| self.alias_value(alias))
+                    })
                     .and_then(|t| match self.u.get(self.u.shallow(t)) {
                         Ty::Struct(d, args) if *d == def => Some(args.clone()),
                         _ => None,
@@ -2506,6 +2526,7 @@ impl<'a> Checker<'a> {
         receiver_ty: TypeId,
         method: &som_ast::Ident,
         args: &[Id<Expr>],
+        as_prop: bool,
     ) -> Option<TypeId> {
         let error = self.u.table.error;
         // `[1, 2, 3].len()`: a collection nothing else decides is an array, and a string a `str`.
@@ -2550,6 +2571,19 @@ impl<'a> Checker<'a> {
             infer_args(self);
             return Some(error);
         };
+        // `len` is read as a property, `items.len`.
+        if kind == ArrayMethod::Len && !as_prop {
+            self.errors.push(TypeError::MethodIsProp {
+                ty: self.describe(array),
+                name: method.name.to_string(),
+                span: method.span.clone(),
+                parens: args
+                    .is_empty()
+                    .then(|| method.span.after().merge(&self.span(call).after())),
+            });
+            infer_args(self);
+            return Some(error);
+        }
         if args.len() != kind.arity() {
             self.errors.push(TypeError::WrongArgCount {
                 name: method.name.to_string(),
@@ -2745,9 +2779,8 @@ impl<'a> Checker<'a> {
     /// Whether arguments of types `found` fit parameters `params` as they are, or with
     /// `converting`, also through `From`.
     fn args_fit(&mut self, params: &[TypeId], found: &[TypeId], converting: bool) -> bool {
-        (params.iter().zip(found)).all(|(&p, &a)| {
-            self.u.could_fit(p, a) || (converting && self.could_convert(p, a))
-        })
+        (params.iter().zip(found))
+            .all(|(&p, &a)| self.u.could_fit(p, a) || (converting && self.could_convert(p, a)))
     }
 
     /// A method call `receiver.name(args)` where several methods have that name: the one
@@ -3380,11 +3413,13 @@ impl<'a> Checker<'a> {
             // Through a reference, what counts is the reference: `&mut` allows it, even in a
             // variable that isn't `mut`.
             Expr::Field { .. } if self.is_prop(expr) => None,
-            Expr::Field { object, .. } | Expr::Index { object, .. } => match self.reference(*object) {
-                Some(true) => None,
-                Some(false) => Some(Immutable::BehindSharedReference),
-                None => self.immutable(*object),
-            },
+            Expr::Field { object, .. } | Expr::Index { object, .. } => {
+                match self.reference(*object) {
+                    Some(true) => None,
+                    Some(false) => Some(Immutable::BehindSharedReference),
+                    None => self.immutable(*object),
+                }
+            }
             Expr::Deref(inner) => match self.reference(*inner) {
                 Some(false) => Some(Immutable::BehindSharedReference),
                 _ => None,
@@ -3457,7 +3492,10 @@ impl<'a> Checker<'a> {
             .filter_map(|&func| {
                 let index = self.names.impl_of(func)?;
                 let target = self.impls[index].target?;
-                Some((self.u.display(target, self.names), self.impl_target_span(index)))
+                Some((
+                    self.u.display(target, self.names),
+                    self.impl_target_span(index),
+                ))
             })
             .collect();
         self.errors.push(TypeError::NotOnImplTarget {
@@ -3525,7 +3563,11 @@ impl<'a> Checker<'a> {
 
     /// `values.get(i)` for `values[i]`, to suggest instead.
     fn get_suggestion(&self, object: Id<Expr>, index: Id<Expr>) -> String {
-        format!("{}.get({})", self.span(object).get_text(), self.span(index).get_text())
+        format!(
+            "{}.get({})",
+            self.span(object).get_text(),
+            self.span(index).get_text()
+        )
     }
 
     /// Whether `receiver_ty`, looking through a reference, could be what the impl block of
@@ -3549,7 +3591,12 @@ impl<'a> Checker<'a> {
         names
     }
 
-    fn impl_target_fits(&mut self, func: Id<Func>, type_args: &[TypeId], receiver_ty: TypeId) -> bool {
+    fn impl_target_fits(
+        &mut self,
+        func: Id<Func>,
+        type_args: &[TypeId],
+        receiver_ty: TypeId,
+    ) -> bool {
         let Some(index) = self.names.impl_of(func) else {
             return true;
         };
@@ -4011,9 +4058,7 @@ impl Checker<'_> {
             Expr::Not(e)
             | Expr::Neg(e)
             | Expr::ArrayRepeat { value: e, .. }
-            | Expr::Cast { value: e, .. } => {
-                self.forget_changed_by(*e, false)
-            }
+            | Expr::Cast { value: e, .. } => self.forget_changed_by(*e, false),
             Expr::Range { start, end } => {
                 for &bound in start.iter().chain(end) {
                     self.forget_changed_by(bound, false);

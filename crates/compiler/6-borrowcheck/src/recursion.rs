@@ -39,7 +39,12 @@ pub(crate) fn check(id: FuncId, func: &Function, body: &Body, errors: &mut Vec<B
     }
     if let Some(span) = first_call {
         // `gen`, not the copy for `i32`, `gen<i32>`.
-        let name = func.name.split('<').next().unwrap_or(&func.name).to_string();
+        let name = func
+            .name
+            .split('<')
+            .next()
+            .unwrap_or(&func.name)
+            .to_string();
         errors.push(BorrowError::EndlessRecursion { name, span });
     }
 }

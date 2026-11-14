@@ -132,7 +132,10 @@ impl ResolveError {
             ResolveError::PropGenerics { span } => {
                 return Diagnostic::error("a property can't have type parameters")
                     .with_label(Label::primary(span.clone(), "type parameters here"))
-                    .with_hint(msg!["for one with type parameters, use a method: ", code("fn")]);
+                    .with_hint(msg![
+                        "for one with type parameters, use a method: ",
+                        code("fn")
+                    ]);
             }
             ResolveError::PropInTraitImpl { span } => {
                 return Diagnostic::error("traits can't have properties yet")

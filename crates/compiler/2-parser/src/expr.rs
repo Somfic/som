@@ -3,8 +3,8 @@ use som_base::message::code;
 use som_base::msg;
 use som_lexer::TokenKind;
 
-use crate::grammar::Grammar;
 use crate::Parser;
+use crate::grammar::Grammar;
 
 impl Parser<'_> {
     pub(crate) fn parse_expr(&mut self) -> Option<Id<Expr>> {
@@ -214,10 +214,14 @@ impl Parser<'_> {
             // `-1` is the literal `-1`, not `1` negated: so it can be the smallest `i64`, and
             // a `u8` can't be it.
             TokenKind::Minus => match self.ast.exprs[expr] {
-                Expr::Int(n) if self.ast.exprs.span(expr).start_offset == start.start_offset + 1 => {
+                Expr::Int(n)
+                    if self.ast.exprs.span(expr).start_offset == start.start_offset + 1 =>
+                {
                     Expr::Int(n.wrapping_neg())
                 }
-                Expr::Float(x) if self.ast.exprs.span(expr).start_offset == start.start_offset + 1 => {
+                Expr::Float(x)
+                    if self.ast.exprs.span(expr).start_offset == start.start_offset + 1 =>
+                {
                     Expr::Float(-x)
                 }
                 _ => Expr::Neg(expr),

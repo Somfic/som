@@ -1,6 +1,6 @@
 // expect: exit 9
 
-fn count(values: [u8]) -> i32 { values.len() }
+fn count(values: [u8]) -> i32 { values.len }
 
 fn first(values: [u8]) -> u8 { values.get(0) else 0 }
 

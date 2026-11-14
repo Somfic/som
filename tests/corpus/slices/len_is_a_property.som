@@ -1,0 +1,8 @@
+// expect: error MethodIsProp
+
+/// A slice's length is a property, read without parentheses: `view.len`.
+fn main() -> i32 {
+    let numbers = [1, 2, 3];
+    let view: [i32] = &numbers;
+    view.len() as i32
+}

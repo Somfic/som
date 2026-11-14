@@ -92,7 +92,8 @@ impl SomLanguageServer {
 
     fn project_of<'a>(projects: &'a HashMap<PathBuf, Project>, file: &str) -> Option<&'a Project> {
         // The standard library's files are one project, the standard library.
-        let std = som_driver::stdlib::root().filter(|_| som_driver::stdlib::contains(Path::new(file)));
+        let std =
+            som_driver::stdlib::root().filter(|_| som_driver::stdlib::contains(Path::new(file)));
         if let Some(project) = std.and_then(|root| projects.get(root)) {
             return Some(project);
         }
@@ -863,9 +864,14 @@ impl LanguageServer for SomLanguageServer {
                         continue;
                     }
                     let doc = array_method_doc(a, method, sequence);
+                    let kind = if method == ArrayMethod::Len {
+                        CompletionItemKind::PROPERTY
+                    } else {
+                        CompletionItemKind::METHOD
+                    };
                     items.push(CompletionItem {
                         label: doc.name.to_string(),
-                        kind: Some(CompletionItemKind::METHOD),
+                        kind: Some(kind),
                         detail: Some(doc.signature),
                         documentation: markdown(Some(doc.doc)),
                         ..Default::default()
@@ -1578,6 +1584,14 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
                     _ => (None, None),
                 },
             },
+            // `items.len` of an array, slice or text.
+            Expr::Field { object, .. }
+                if let Some(method) = a.typed.array_method(id)
+                    && let Some(sequence) = array_of(a, a.typed.expr(*object)) =>
+            {
+                let doc = array_method_doc(a, method, sequence);
+                (Some(doc.signature), Some(doc.doc))
+            }
             Expr::Field { object, field } => (
                 Some(format!(".{}: {}", field.name, ty(a, a.typed.expr(id)))),
                 field_doc(a, *object, a.typed.field(id)),
@@ -2013,7 +2027,10 @@ fn prop_items(
             continue;
         }
         let ret = a.typed.func(f).ret;
-        let shown = a.typed.table.display_with(ret, &a.names, &method_subst(a, f, receiver));
+        let shown = a
+            .typed
+            .table
+            .display_with(ret, &a.names, &method_subst(a, f, receiver));
         items.push(CompletionItem {
             label: name.to_string(),
             kind: Some(CompletionItemKind::PROPERTY),
@@ -2244,9 +2261,15 @@ fn array_method_doc(a: &Analysis, method: ArrayMethod, sequence: Sequence) -> Ar
                 .to_string(),
         ),
     };
+    // `len` is a property: `items.len`.
+    let signature = if method == ArrayMethod::Len {
+        format!("{name}: {returns}")
+    } else {
+        format!("fn {name}({}) -> {returns}", params.join(", "))
+    };
     ArrayMethodDoc {
         name,
-        signature: format!("fn {name}({}) -> {returns}", params.join(", ")),
+        signature,
         params,
         doc,
     }
@@ -2522,7 +2545,11 @@ fn alias_items(
     label: String,
     insert: Option<Insert>,
 ) -> Vec<CompletionItem> {
-    let detail = Some(format!("type {} = {}", alias.name.name, a.ast.type_text(alias.ty)));
+    let detail = Some(format!(
+        "type {} = {}",
+        alias.name.name,
+        a.ast.type_text(alias.ty)
+    ));
     let documentation = markdown(alias.doc.clone());
     match (insert, aliased_struct(a, alias.ty)) {
         (Some(insert), Some(s)) => (struct_items(a, s, label, insert).into_iter())
@@ -3575,10 +3602,16 @@ mod tests {
                 (column, t.token_type)
             })
             .collect();
-        assert_eq!(dots.get(&(dotted.find(".x").unwrap() as u32)), Some(&keyword));
+        assert_eq!(
+            dots.get(&(dotted.find(".x").unwrap() as u32)),
+            Some(&keyword)
+        );
         assert_eq!(dots.get(&(dotted.find(".y").unwrap() as u32)), None);
         // `Self` is coloured like a struct's name.
-        assert_eq!(at[&(text.find("Self").unwrap() as u32)], at[&(text.find("Point").unwrap() as u32)]);
+        assert_eq!(
+            at[&(text.find("Self").unwrap() as u32)],
+            at[&(text.find("Point").unwrap() as u32)]
+        );
     }
 
     #[test]
@@ -3651,7 +3684,10 @@ mod tests {
         // `Vector3`'s own parameter, not `Vector`'s two.
         assert_eq!(
             labels,
-            [(6, 14, "<i32>".to_string()), (8, 13, "<1, bool>".to_string())]
+            [
+                (6, 14, "<i32>".to_string()),
+                (8, 13, "<1, bool>".to_string())
+            ]
         );
     }
 
@@ -3672,11 +3708,15 @@ mod tests {
                 _ => None,
             })
             .unwrap();
-        let owner = (a.ast.structs.iter()).map(|(s, _)| a.names.strukt(s)).next().unwrap();
+        let owner = (a.ast.structs.iter())
+            .map(|(s, _)| a.names.strukt(s))
+            .next()
+            .unwrap();
         let mut items = Vec::new();
         prop_items(&a, owner, a.typed.local(v), &mut items);
-        let shown: Vec<(String, Option<CompletionItemKind>, Option<String>)> =
-            (items.into_iter()).map(|i| (i.label, i.kind, i.detail)).collect();
+        let shown: Vec<(String, Option<CompletionItemKind>, Option<String>)> = (items.into_iter())
+            .map(|i| (i.label, i.kind, i.detail))
+            .collect();
         // Not `x`, which `Vector<2, T>` has.
         let prop = Some(CompletionItemKind::PROPERTY);
         assert_eq!(
@@ -3701,14 +3741,20 @@ mod tests {
         std::fs::write(&main, text).unwrap();
         let a = som_driver::analyze(&dir, &som_driver::Options::default());
         let file = main.to_string_lossy().to_string();
-        let insert = Insert { value: true, call_follows: false };
+        let insert = Insert {
+            value: true,
+            call_follows: false,
+        };
         let shown: Vec<(String, Option<String>, Option<String>)> =
             (module_items(&a, 0, None, insert).into_iter())
                 .filter(|i| !i.label.starts_with("Vector "))
                 .map(|i| (i.label, i.detail, i.insert_text))
                 .collect();
         let vector = find_struct(&a, "Vector", &file, 0);
-        let through_aliases = (find_struct(&a, "Vector3d", &file, 0), find_struct(&a, "Also", &file, 0));
+        let through_aliases = (
+            find_struct(&a, "Vector3d", &file, 0),
+            find_struct(&a, "Also", &file, 0),
+        );
         let number = find_struct(&a, "Number", &file, 0);
         std::fs::remove_dir_all(&dir).unwrap();
         // The name alone, which can go on to `::new()`, then the literal.
@@ -3719,9 +3765,17 @@ mod tests {
             [
                 ("Vector".into(), None, None),
                 ("Vector3d".into(), alias("Vector3d", "Vector<3, f64>"), None),
-                ("Vector3d { … }".into(), alias("Vector3d", "Vector<3, f64>"), literal("Vector3d")),
+                (
+                    "Vector3d { … }".into(),
+                    alias("Vector3d", "Vector<3, f64>"),
+                    literal("Vector3d")
+                ),
                 ("Also".into(), alias("Also", "Vector3d"), None),
-                ("Also { … }".into(), alias("Also", "Vector3d"), literal("Also")),
+                (
+                    "Also { … }".into(),
+                    alias("Also", "Vector3d"),
+                    literal("Also")
+                ),
                 ("Number".into(), alias("Number", "i32"), None),
             ]
         );
@@ -3735,14 +3789,23 @@ mod tests {
     fn a_library_used_from_two_files_lists_its_functions_once() {
         let dir = std::env::temp_dir().join(format!("som_lsp_libc_twice_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("main.som"), "extern \"c\";\nfn main() -> i32 = c::abs(-1);\n")
-            .unwrap();
-        std::fs::write(dir.join("more.som"), "extern \"c\";\nfn other() -> i32 = c::abs(2);\n")
-            .unwrap();
+        std::fs::write(
+            dir.join("main.som"),
+            "extern \"c\";\nfn main() -> i32 = c::abs(-1);\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("more.som"),
+            "extern \"c\";\nfn other() -> i32 = c::abs(2);\n",
+        )
+        .unwrap();
         let a = som_driver::analyze(&dir, &som_driver::Options::default());
         std::fs::remove_dir_all(&dir).unwrap();
         let c = a.ast.modules.iter().position(|m| &*m.name == "c").unwrap();
-        let insert = Insert { value: true, call_follows: false };
+        let insert = Insert {
+            value: true,
+            call_follows: false,
+        };
         let labels: Vec<String> = (module_items(&a, c, Some("c"), insert).into_iter())
             .map(|i| i.label)
             .filter(|l| l == "c::abs")

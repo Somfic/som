@@ -556,7 +556,8 @@ const SOM_KEYWORDS: &[&str] = &[
     "fn", "extern", "struct", "impl", "let", "if", "else", "mut", "out", "use", "loop", "while",
     "break", "for", "true", "false", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16",
     "u32", "u64", "u128", "usize", "f32", "f64", "bool", "char", "str", "cstr", "none", "and",
-    "or", "in", "continue", "as", "return", "enum", "match", "trait", "type", "prop", "self", "Self",
+    "or", "in", "continue", "as", "return", "enum", "match", "trait", "type", "prop", "self",
+    "Self",
 ];
 
 fn identifier(name: &str) -> String {
@@ -1251,7 +1252,10 @@ mod tests {
         assert_eq!(c.param_ty("struct opaque **").unwrap(), "&mut Opaque");
         assert_eq!(c.param_ty("const char *").unwrap(), "cstr");
         assert_eq!(c.param_ty("const char *restrict").unwrap(), "cstr");
-        assert_eq!(c.param_ty("FILE *restrict").unwrap(), c.param_ty("FILE *").unwrap());
+        assert_eq!(
+            c.param_ty("FILE *restrict").unwrap(),
+            c.param_ty("FILE *").unwrap()
+        );
         assert_eq!(c.param_ty("void *__restrict").unwrap(), "*");
         assert_eq!(c.param_ty("const char **").unwrap(), "*");
         assert_eq!(c.param_ty("void *").unwrap(), "*");
