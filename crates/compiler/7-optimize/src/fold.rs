@@ -63,6 +63,17 @@ fn fold_rvalues(types: &TypeTable, body: &mut Body) -> bool {
                     kind: ConstKind::Bool(!*b),
                     ty: *ty,
                 }),
+                // `~n`: every bit flipped, which is `-n - 1`, at the type's width.
+                Rvalue::Not(Operand::Const(Const {
+                    kind: ConstKind::Int(n),
+                    ty,
+                })) => match types.get(*ty) {
+                    Ty::Int(int) => wrap(!*n, *int).map(|n| Const {
+                        kind: ConstKind::Int(n),
+                        ty: *ty,
+                    }),
+                    _ => None,
+                },
                 _ => None,
             };
             if let Some(c) = folded {
@@ -86,9 +97,20 @@ fn binary(types: &TypeTable, op: BinOp, lhs: &Const, rhs: &Const) -> Option<Cons
         })
     };
     match (&lhs.kind, &rhs.kind, types.get(ty)) {
+        // A shift's amount can be of another type: it's taken as the number it is.
+        (ConstKind::Int(a), ConstKind::Int(b), Ty::Int(int))
+            if matches!(op, BinOp::ShiftLeft | BinOp::ShiftRight) =>
+        {
+            let a = value(*a, *int)?;
+            arithmetic(ConstKind::Int(shift(op, a, *b, *int)?))
+        }
         (ConstKind::Int(a), ConstKind::Int(b), Ty::Int(int)) => {
             let (a, b) = (value(*a, *int)?, value(*b, *int)?);
             match op {
+                BinOp::BitAnd => arithmetic(ConstKind::Int(wrap(a & b, *int)?)),
+                BinOp::BitOr => arithmetic(ConstKind::Int(wrap(a | b, *int)?)),
+                BinOp::BitXor => arithmetic(ConstKind::Int(wrap(a ^ b, *int)?)),
+                BinOp::ShiftLeft | BinOp::ShiftRight => unreachable!("folded above"),
                 // Wrapping at 128 bits keeps every narrower width's result: those widths divide
                 // it. `wrap` then takes it to the type's.
                 BinOp::Add => arithmetic(ConstKind::Int(wrap(a.wrapping_add(b), *int)?)),
@@ -137,8 +159,19 @@ fn binary(types: &TypeTable, op: BinOp, lhs: &Const, rhs: &Const) -> Option<Cons
                 (BinOp::GreaterThanOrEqual, _) => compare(a >= b),
                 (BinOp::Equals, _) => compare(a == b),
                 (BinOp::NotEquals, _) => compare(a != b),
-                // The C backend has no `%` on floats; leave it for C to report.
-                (BinOp::Modulo | BinOp::And | BinOp::Or, _) => None,
+                // The C backend has no `%` on floats; leave it for C to report. The type checker
+                // only lets integers have bits.
+                (
+                    BinOp::Modulo
+                    | BinOp::And
+                    | BinOp::Or
+                    | BinOp::BitAnd
+                    | BinOp::BitOr
+                    | BinOp::BitXor
+                    | BinOp::ShiftLeft
+                    | BinOp::ShiftRight,
+                    _,
+                ) => None,
             }
         }
         (ConstKind::Bool(a), ConstKind::Bool(b), _) => match op {
@@ -150,6 +183,35 @@ fn binary(types: &TypeTable, op: BinOp, lhs: &Const, rhs: &Const) -> Option<Cons
         },
         _ => None,
     }
+}
+
+/// `a << n` or `a >> n` of type `int`: moved its width or more, or a negative amount, none of
+/// `a`'s bits are left, so `0`, or for `>>` of a negative `a`, `-1`. `None` where the width
+/// depends on the target and matters.
+fn shift(op: BinOp, a: i128, n: i128, int: IntTy) -> Option<i128> {
+    let bits: i128 = match int {
+        IntTy::I8 | IntTy::U8 => 8,
+        IntTy::I16 | IntTy::U16 => 16,
+        IntTy::I32 | IntTy::U32 => 32,
+        IntTy::I64 | IntTy::U64 => 64,
+        // At least 32 bits: below that, the same everywhere.
+        IntTy::ISize | IntTy::USize if (0..32).contains(&n) => 32,
+        IntTy::ISize | IntTy::USize | IntTy::I128 | IntTy::U128 => return None,
+    };
+    if !(0..bits).contains(&n) {
+        return Some(if op == BinOp::ShiftRight && a < 0 {
+            -1
+        } else {
+            0
+        });
+    }
+    let moved = match op {
+        // Through `u128`, so bits moved past the top are dropped, not an overflow.
+        BinOp::ShiftLeft => ((a as u128) << n) as i128,
+        // `a` is the number it is: `>>` of a negative one keeps it negative.
+        _ => a >> n,
+    };
+    wrap(moved, int)
 }
 
 /// The value of the literal `n` as an `int`: `-1` as a `u8` is 255.

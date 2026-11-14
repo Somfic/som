@@ -349,6 +349,7 @@ impl Dumper<'_> {
             }),
             Expr::Not(e) => self.node("not", |d| d.expr(*e)),
             Expr::Neg(e) => self.node("neg", |d| d.expr(*e)),
+            Expr::BitNot(e) => self.node("bitnot", |d| d.expr(*e)),
             Expr::Borrow { mutable, expr } => self
                 .node(if *mutable { "borrow mut" } else { "borrow" }, |d| {
                     d.expr(*expr)
@@ -457,6 +458,11 @@ impl BinOp {
             BinOp::NotEquals => "!=",
             BinOp::And => "and",
             BinOp::Or => "or",
+            BinOp::BitAnd => "&",
+            BinOp::BitOr => "|",
+            BinOp::BitXor => "^",
+            BinOp::ShiftLeft => "<<",
+            BinOp::ShiftRight => ">>",
         }
     }
 }

@@ -1431,6 +1431,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 rhs: self.number(*rhs),
             },
             Expr::Not(inner) => Rvalue::Not(self.condition(*inner)),
+            // `~x`: `Not` of an integer flips its bits.
+            Expr::BitNot(inner) => Rvalue::Not(self.number(*inner)),
             // `-x` is `0 - x`.
             Expr::Neg(inner) => {
                 let ty = self.expr_ty(*inner);

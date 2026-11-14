@@ -2771,6 +2771,7 @@ fn can_have_dot(a: &Analysis, expr: Id<Expr>) -> bool {
         Expr::Binary { .. }
         | Expr::Not(_)
         | Expr::Neg(_)
+        | Expr::BitNot(_)
         | Expr::Borrow { .. }
         | Expr::Deref(_)
         | Expr::Assign { .. }

@@ -40,13 +40,19 @@ impl Grammar {
     pub const RANGE: u8 = 4;
     pub const EQUALITY: u8 = 5;
     pub const COMPARISON: u8 = 6;
-    pub const ADDITIVE: u8 = 7;
-    pub const MULTIPLICATIVE: u8 = 8;
+    /// `|`, `^`, `&`, then `<<` and `>>`: tighter than comparisons, unlike C, so
+    /// `x & 1 == 0` is `(x & 1) == 0`.
+    pub const BIT_OR: u8 = 7;
+    pub const BIT_XOR: u8 = 8;
+    pub const BIT_AND: u8 = 9;
+    pub const SHIFT: u8 = 10;
+    pub const ADDITIVE: u8 = 11;
+    pub const MULTIPLICATIVE: u8 = 12;
     /// `x as T`: tighter than `*`, looser than unary operators, so `-x as u8` converts `-x`.
-    pub const AS: u8 = 9;
-    pub const UNARY: u8 = 10;
-    pub const POSTFIX: u8 = 11;
-    pub const MODULO: u8 = 12;
+    pub const AS: u8 = 13;
+    pub const UNARY: u8 = 14;
+    pub const POSTFIX: u8 = 15;
+    pub const MODULO: u8 = 16;
 
     pub fn infix_op(kind: TokenKind) -> Option<(BinOp, OpInfo)> {
         let (operator, precedence, association) = match kind {
@@ -73,6 +79,10 @@ impl Grammar {
             TokenKind::Slash => (BinOp::Divide, Self::MULTIPLICATIVE, Association::Left),
             TokenKind::Percentage => (BinOp::Modulo, Self::MODULO, Association::Left),
 
+            TokenKind::Pipe => (BinOp::BitOr, Self::BIT_OR, Association::Left),
+            TokenKind::Caret => (BinOp::BitXor, Self::BIT_XOR, Association::Left),
+            TokenKind::Ampersand => (BinOp::BitAnd, Self::BIT_AND, Association::Left),
+
             _ => return None,
         };
 
@@ -87,9 +97,11 @@ impl Grammar {
 
     pub fn prefix_bp(kind: TokenKind) -> Option<u8> {
         match kind {
-            TokenKind::Bang | TokenKind::Minus | TokenKind::Ampersand | TokenKind::Star => {
-                Some(Self::UNARY * 2 + 1)
-            }
+            TokenKind::Bang
+            | TokenKind::Minus
+            | TokenKind::Ampersand
+            | TokenKind::Star
+            | TokenKind::Tilde => Some(Self::UNARY * 2 + 1),
             _ => None,
         }
     }

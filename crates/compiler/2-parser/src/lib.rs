@@ -42,6 +42,18 @@ pub fn parse_file(source: Arc<Source>, ast: &mut Ast, module: usize) -> Vec<Pars
     parser.errors
 }
 
+/// The value an integer literal is written as: decimal, `0x` hexadecimal or `0b` binary, with
+/// `_` between digits ignored. `None` if it doesn't fit in 128 bits.
+pub(crate) fn int_value(text: &str) -> Option<u128> {
+    let (digits, radix) = match text.get(..2) {
+        Some("0x") => (&text[2..], 16),
+        Some("0b") => (&text[2..], 2),
+        _ => (text, 10),
+    };
+    let digits: String = digits.chars().filter(|&c| c != '_').collect();
+    u128::from_str_radix(&digits, radix).ok()
+}
+
 /// How far to skip ahead when recovering from a parse error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RecoveryLevel {

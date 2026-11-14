@@ -29,7 +29,7 @@
 
 use som_mir::*;
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,16 +58,23 @@ pub fn emit_c(mir: &Mir) -> Result<String, CodegenError> {
         mir,
         names,
         out: String::new(),
+        helpers: RefCell::new(BTreeMap::new()),
     };
     c.prelude();
     c.structs();
     c.declarations();
+    // The helpers the functions use go before them, once they're known.
+    let helpers_at = c.out.len();
     for (id, func) in mir.funcs.iter_with_ids() {
         if let Some(body) = &func.body {
             c.function(id, func, body);
         }
     }
     c.main(entry);
+    let helpers: String = c.helpers.borrow().values().cloned().collect();
+    if !helpers.is_empty() {
+        c.out.insert_str(helpers_at, &format!("{helpers}\n"));
+    }
     Ok(c.out)
 }
 
@@ -413,10 +420,21 @@ impl Use {
     }
 }
 
+/// Whether `op` gives a number of its operands' type, which C works out in `int` for the
+/// small integer types.
 fn is_arithmetic(op: BinOp) -> bool {
     matches!(
         op,
-        BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
+        BinOp::Add
+            | BinOp::Subtract
+            | BinOp::Multiply
+            | BinOp::Divide
+            | BinOp::Modulo
+            | BinOp::BitAnd
+            | BinOp::BitOr
+            | BinOp::BitXor
+            | BinOp::ShiftLeft
+            | BinOp::ShiftRight
     )
 }
 
@@ -540,8 +558,12 @@ enum Prec {
     Other,
     Or,
     And,
+    BitOr,
+    BitXor,
+    BitAnd,
     Equality,
     Relational,
+    Shift,
     Additive,
     Multiplicative,
     Atom,
@@ -559,7 +581,19 @@ impl Prec {
             | BinOp::GreaterThanOrEqual => Prec::Relational,
             BinOp::Add | BinOp::Subtract => Prec::Additive,
             BinOp::Multiply | BinOp::Divide | BinOp::Modulo => Prec::Multiplicative,
+            BinOp::BitAnd => Prec::BitAnd,
+            BinOp::BitOr => Prec::BitOr,
+            BinOp::BitXor => Prec::BitXor,
+            BinOp::ShiftLeft | BinOp::ShiftRight => Prec::Shift,
         }
+    }
+
+    /// `&`, `|` and `^`, which C ranks below `==`: they're always grouped explicitly.
+    fn is_bitwise(self) -> bool {
+        matches!(
+            self,
+            Prec::BitAnd | Prec::BitOr | Prec::BitXor | Prec::Shift
+        )
     }
 
     fn is_arithmetic(self) -> bool {
@@ -609,8 +643,15 @@ impl Expr {
         let parent = Prec::of(op);
         let bare = match self.prec {
             Prec::Atom => true,
-            child if child == parent => left && (child.is_arithmetic() || child.is_logical()),
-            child if child.is_arithmetic() => child > parent && !parent.is_logical(),
+            // `a & b & c`; but `a << b << c` reads better grouped.
+            child if child == parent => {
+                left && (child.is_arithmetic()
+                    || child.is_logical()
+                    || matches!(child, Prec::BitAnd | Prec::BitOr | Prec::BitXor))
+            }
+            child if child.is_arithmetic() => {
+                child > parent && !parent.is_logical() && !parent.is_bitwise()
+            }
             Prec::Equality | Prec::Relational => parent.is_logical(),
             _ => false,
         };
@@ -640,6 +681,8 @@ struct Emitter<'a> {
     mir: &'a Mir,
     names: Names,
     out: String,
+    /// Functions the code needs besides the program's, by name: shifts by any amount.
+    helpers: RefCell<BTreeMap<String, String>>,
 }
 
 /// The state while emitting one function.
@@ -1277,7 +1320,19 @@ impl<'a> Emitter<'a> {
                 Expr::atom(self.place(f, &inner))
             }
             Rvalue::Ref { place, .. } => Expr::compound(format!("&{}", self.place(f, place))),
-            Rvalue::Not(op) => Expr::compound(format!("!{}", self.operand(f, op).operand())),
+            // `!` of a `bool`; of an integer, `~`, each bit flipped. C flips a small integer's
+            // as an `int`'s, so it's cut back to its own type.
+            Rvalue::Not(op) => {
+                let ty = self.operand_ty(f, op);
+                let value = self.operand(f, op).operand();
+                match self.mir.types.get(ty) {
+                    Ty::Int(_) if self.is_narrow(ty) => {
+                        Expr::compound(format!("({})~{value}", self.ty(ty)))
+                    }
+                    Ty::Int(_) => Expr::compound(format!("~{value}")),
+                    _ => Expr::compound(format!("!{value}")),
+                }
+            }
             Rvalue::Array { ty, items } => {
                 let items: Vec<String> = items.iter().map(|op| self.operand(f, op).text).collect();
                 let items = if items.is_empty() {
@@ -1343,6 +1398,9 @@ impl<'a> Emitter<'a> {
                 if pointer {
                     let (l, r) = (l.operand(), r.operand());
                     return Expr::compound(format!("(void*)((uint8_t*){l} + {r})"));
+                }
+                if matches!(op, BinOp::ShiftLeft | BinOp::ShiftRight) {
+                    return self.shift(f, *op, lhs, rhs, l, r);
                 }
                 let (l, r) = (l.operand_of(*op, true), r.operand_of(*op, false));
                 let symbol = match op {
@@ -1521,6 +1579,80 @@ impl<'a> Emitter<'a> {
         }
     }
 
+    /// `x << n` or `x >> n`. By a constant less than `x`'s width, C's own shift, through the
+    /// unsigned type for a signed `<<`, which C leaves undefined for negative values.
+    /// Otherwise a helper that gives `0`, or `-1` for `>>` of a negative `x`, once `n` is
+    /// negative or at least the width, which C leaves undefined too.
+    fn shift(
+        &self,
+        f: &FnState,
+        op: BinOp,
+        x_op: &Operand,
+        n_op: &Operand,
+        x: Expr,
+        n: Expr,
+    ) -> Expr {
+        let x_ty = self.operand_ty(f, x_op);
+        let n_ty = self.operand_ty(f, n_op);
+        let Ty::Int(int) = *self.mir.types.get(x_ty) else {
+            unreachable!("checked: only integers shift")
+        };
+        // The width every target agrees on: `isize` and `usize` are at least 32 bits.
+        let width: i128 = match int {
+            IntTy::I8 | IntTy::U8 => 8,
+            IntTy::I16 | IntTy::U16 => 16,
+            IntTy::I32 | IntTy::U32 | IntTy::ISize | IntTy::USize => 32,
+            IntTy::I64 | IntTy::U64 => 64,
+            IntTy::I128 | IntTy::U128 => 128,
+        };
+        let c_ty = self.ty(x_ty);
+        let unsigned = c_unsigned(int);
+        if let Operand::Const(Const {
+            kind: ConstKind::Int(amount),
+            ..
+        }) = n_op
+            && (0..width).contains(amount)
+        {
+            let n = n.text;
+            let text = match (op, int.is_signed()) {
+                (BinOp::ShiftLeft, true) => {
+                    format!("({c_ty})(({unsigned}){} << {n})", x.operand())
+                }
+                (BinOp::ShiftLeft, false) => format!("{} << {n}", x.operand_of(op, true)),
+                _ => format!("{} >> {n}", x.operand_of(op, true)),
+            };
+            // A small type's shift is worked out as an `int`: it's cut back where it's used.
+            let prec = if self.is_narrow(x_ty) || int.is_signed() && op == BinOp::ShiftLeft {
+                Prec::Other
+            } else {
+                Prec::Shift
+            };
+            return Expr { text, prec };
+        }
+        let n_c_ty = self.ty(n_ty);
+        let name = format!(
+            "som_{}_{}_{}",
+            if op == BinOp::ShiftLeft { "shl" } else { "shr" },
+            identifier(&self.mir.display_ty(x_ty)),
+            identifier(&self.mir.display_ty(n_ty))
+        );
+        let width_c = format!("(sizeof({c_ty}) * 8)");
+        let body = match (op, int.is_signed()) {
+            (BinOp::ShiftLeft, _) => {
+                format!("return n < 0 || n >= {width_c} ? 0 : ({c_ty})(({unsigned})x << n);")
+            }
+            (_, true) => format!("return n < 0 || n >= {width_c} ? (x < 0 ? -1 : 0) : x >> n;"),
+            (_, false) => format!("return n < 0 || n >= {width_c} ? 0 : x >> n;"),
+        };
+        self.helpers
+            .borrow_mut()
+            .entry(name.clone())
+            .or_insert_with(|| {
+                format!("static {c_ty} {name}({c_ty} x, {n_c_ty} n) {{ {body} }}\n")
+            });
+        Expr::atom(format!("{name}({}, {})", x.text, n.text))
+    }
+
     /// `n` as a C literal of type `ty`. C has no literal past 64 bits, and none for the
     /// smallest `long long`: `-9223372036854775808` is `-` applied to a number too big for
     /// one. Above the largest `long long`, it's unsigned.
@@ -1609,6 +1741,18 @@ impl<'a> Emitter<'a> {
             Ty::Ref { .. } => "len",
             _ => unreachable!("fields belong to structs and optionals"),
         }
+    }
+}
+
+/// The unsigned C type as wide as `int`.
+fn c_unsigned(int: IntTy) -> &'static str {
+    match int {
+        IntTy::I8 | IntTy::U8 => "uint8_t",
+        IntTy::I16 | IntTy::U16 => "uint16_t",
+        IntTy::I32 | IntTy::U32 => "uint32_t",
+        IntTy::I64 | IntTy::U64 => "uint64_t",
+        IntTy::ISize | IntTy::USize => "uintptr_t",
+        IntTy::I128 | IntTy::U128 => "unsigned __int128",
     }
 }
 

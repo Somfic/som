@@ -1,0 +1,23 @@
+// expect: exit 0
+
+/// Shifting by an integer's width or more, or by a negative amount, leaves none of its bits:
+/// `0`, or for `>>` of a negative number, `-1`. Whether the amount is known while compiling
+/// or not.
+fn check(ok: bool, code: i32) -> i32 { if ok { 0 } else { code } }
+fn shl(x: u64, n: i32) -> u64 { x << n }
+fn shr(x: i32, n: u8) -> i32 { x >> n }
+
+fn main() -> i32 {
+    let mut failed = 0;
+    failed = failed + check(shl(1, 63) == 0x8000_0000_0000_0000, 1);
+    failed = failed + check(shl(1, 64) == 0, 2);
+    failed = failed + check(shl(1, -1) == 0, 3);
+    failed = failed + check(shr(-16, 2) == -4, 4);
+    failed = failed + check(shr(-16, 40) == -1, 5);
+    failed = failed + check(shr(16, 40) == 0, 6);
+    let wide: u64 = 1 << 64;
+    failed = failed + check(wide == 0, 7);
+    let negative: i32 = -16 >> 40;
+    failed = failed + check(negative == -1, 8);
+    failed
+}

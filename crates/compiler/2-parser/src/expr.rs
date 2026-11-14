@@ -4,7 +4,8 @@ use som_base::msg;
 use som_lexer::TokenKind;
 
 use crate::Parser;
-use crate::grammar::Grammar;
+use crate::grammar::{Association, Grammar, OpInfo};
+use som_ast::BinOp;
 
 impl Parser<'_> {
     pub(crate) fn parse_expr(&mut self) -> Option<Id<Expr>> {
@@ -170,12 +171,33 @@ impl Parser<'_> {
                 continue;
             }
 
-            let Some((op, info)) = Grammar::infix_op(self.peek()) else {
-                break;
+            // `<<` and `>>` are two `<` or `>` right next to each other: one token would end
+            // `List<List<i32>>` too soon.
+            let shift = match self.peek() {
+                TokenKind::LessThan => Some(BinOp::ShiftLeft),
+                TokenKind::GreaterThan => Some(BinOp::ShiftRight),
+                _ => None,
+            }
+            .filter(|_| self.tokens.get(self.pos + 1).map(|t| t.kind) == Some(self.peek()));
+            let (op, info) = match shift {
+                Some(op) => (
+                    op,
+                    OpInfo {
+                        precedence: Grammar::SHIFT,
+                        association: Association::Left,
+                    },
+                ),
+                None => match Grammar::infix_op(self.peek()) {
+                    Some(found) => found,
+                    None => break,
+                },
             };
             let (lbp, rbp) = info.binding_power();
             if lbp < min_bp {
                 break;
+            }
+            if shift.is_some() {
+                self.advance();
             }
             self.advance();
             let rhs = self.parse_expr_bp(rbp)?;
@@ -209,6 +231,7 @@ impl Parser<'_> {
         let expr = self.parse_expr_bp(bp)?;
         let expr = match kind {
             TokenKind::Bang => Expr::Not(expr),
+            TokenKind::Tilde => Expr::BitNot(expr),
             TokenKind::Ampersand => Expr::Borrow { mutable, expr },
             TokenKind::Star => Expr::Deref(expr),
             // `-1` is the literal `-1`, not `1` negated: so it can be the smallest `i64`, and
@@ -238,9 +261,20 @@ impl Parser<'_> {
             TokenKind::Int => {
                 let text = self.peek_token().text.clone();
                 self.advance();
-                match text.parse::<i128>() {
-                    Ok(value) => Expr::Int(value),
-                    Err(_) => {
+                // `0x` or `0b` alone: the digits are missing, not too many.
+                if !text.chars().skip(2).any(|c| c.is_ascii_alphanumeric())
+                    && matches!(text.get(..2), Some("0x" | "0b"))
+                {
+                    self.error_at(
+                        start.clone(),
+                        "number without digits",
+                        &format!("`{}` needs digits after it", &text[..2]),
+                    );
+                    return Some(self.alloc_expr(Expr::Hole, &start));
+                }
+                match crate::int_value(&text).and_then(|n| i128::try_from(n).ok()) {
+                    Some(value) => Expr::Int(value),
+                    None => {
                         self.error_at(
                             start.clone(),
                             "integer literal is too large",
@@ -461,9 +495,9 @@ impl Parser<'_> {
         }
         let text = self.peek_token().text.clone();
         self.advance();
-        match text.parse() {
-            Ok(count) => Some(count),
-            Err(_) => {
+        match crate::int_value(&text) {
+            Some(count) => Some(count),
+            None => {
                 self.error_at(span, "count is too large", "this does not fit in 128 bits");
                 None
             }

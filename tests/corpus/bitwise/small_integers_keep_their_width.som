@@ -1,0 +1,18 @@
+// expect: exit 0
+
+/// The bits of a `u8` or `i16` are only its own: `~` and `<<` don't reach past them.
+fn check(ok: bool, code: i32) -> i32 { if ok { 0 } else { code } }
+fn flip(x: u8) -> u8 { ~x }
+fn twice(x: u8, n: u32) -> u8 { x << n }
+
+fn main() -> i32 {
+    let mut failed = 0;
+    let all: u8 = 0xff;
+    failed = failed + check(~all == 0, 1);
+    failed = failed + check(flip(0x0f) == 0xf0, 2);
+    failed = failed + check(twice(0x81, 1) == 2, 3);
+    failed = failed + check(twice(1, 8) == 0, 4);
+    let signed: i16 = -1;
+    failed = failed + check(signed << 15 == -32768, 5);
+    failed
+}

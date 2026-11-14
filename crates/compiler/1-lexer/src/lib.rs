@@ -93,7 +93,8 @@ pub enum TokenKind {
     // Literals and identifiers
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
     Ident,
-    #[regex(r"[0-9]+")]
+    /// `42`, `0xff`, `0b1010`, with `_` anywhere after the first digit: `1_000`, `0xffff_ffff`.
+    #[regex(r"[0-9][0-9_]*|0x[0-9a-fA-F_]+|0b[01_]+")]
     Int,
     #[regex(r"[0-9]*\.[0-9]+")]
     Float,
@@ -133,6 +134,15 @@ pub enum TokenKind {
     GreaterThanOrEqual,
     #[token("%")]
     Percentage,
+    /// `a ^ b`: bitwise exclusive or.
+    #[token("^")]
+    Caret,
+    /// `a | b`: bitwise or.
+    #[token("|")]
+    Pipe,
+    /// `~a`: each bit flipped.
+    #[token("~")]
+    Tilde,
 
     // Delimiters
     #[token("(")]
@@ -293,6 +303,9 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Error => write!(f, "unexpected character"),
             TokenKind::Eof => write!(f, "end of file"),
             TokenKind::Percentage => write!(f, "%"),
+            TokenKind::Caret => write!(f, "^"),
+            TokenKind::Pipe => write!(f, "|"),
+            TokenKind::Tilde => write!(f, "~"),
         }
     }
 }

@@ -386,6 +386,11 @@ pub enum TypeError {
         ty: Message,
         span: Span,
     },
+    /// `~x` of something other than an integer.
+    CannotFlipBits {
+        ty: Message,
+        span: Span,
+    },
     /// `value as T` where they aren't both numbers.
     InvalidCast {
         from: Message,
@@ -1218,6 +1223,10 @@ impl TypeError {
                     span.clone(),
                     "only signed integers and floats have a `-`",
                 ))
+            }
+            TypeError::CannotFlipBits { ty, span } => {
+                Diagnostic::error(msg!["cannot flip the bits of ", ty.clone()])
+                    .with_label(Label::primary(span.clone(), "only integers have a `~`"))
             }
             TypeError::InvalidCast { from, to, span } => {
                 Diagnostic::error(msg!["cannot convert ", from.clone(), " to ", to.clone()])

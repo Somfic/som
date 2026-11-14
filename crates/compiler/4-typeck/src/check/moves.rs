@@ -63,7 +63,9 @@ impl Checker<'_> {
             Expr::Cast { value, .. } | Expr::ArrayRepeat { value, .. } => {
                 self.moves_in(*value, true)
             }
-            Expr::Not(inner) | Expr::Neg(inner) => self.moves_in(*inner, true),
+            Expr::Not(inner) | Expr::Neg(inner) | Expr::BitNot(inner) => {
+                self.moves_in(*inner, true)
+            }
             Expr::Range { start, end } => {
                 for &bound in start.iter().chain(end) {
                     self.moves_in(bound, true);

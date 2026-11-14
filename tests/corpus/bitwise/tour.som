@@ -1,0 +1,22 @@
+// expect: exit 0
+
+/// `&`, `|`, `^`, `~`, `<<` and `>>` work on integers' bits. They bind tighter than
+/// comparisons: `x & 1 == 0` is `(x & 1) == 0`. Hexadecimal and binary literals, with `_`
+/// between digits, write masks.
+fn check(ok: bool, code: i32) -> i32 { if ok { 0 } else { code } }
+
+fn main() -> i32 {
+    let a: u32 = 0xff;
+    let b: u32 = 0b1010_1010;
+    let mut failed = 0;
+    failed = failed + check(a & b == 0xaa, 1);
+    failed = failed + check(a | b == 0xff, 2);
+    failed = failed + check(a ^ b == 0x55, 3);
+    failed = failed + check(~a == 0xffff_ff00, 4);
+    failed = failed + check(a << 4 == 0xff0, 5);
+    failed = failed + check(a >> 4 == 0xf, 6);
+    failed = failed + check(6 & 1 == 0, 7);
+    failed = failed + check(1 + 2 << 3 == 24, 8);
+    failed = failed + check(1_000_000 == 1000000, 9);
+    failed
+}

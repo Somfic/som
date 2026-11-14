@@ -165,10 +165,23 @@ impl Validator<'_> {
                 let (lhs, rhs) = (self.operand_ty(lhs)?, self.operand_ty(rhs)?);
                 let arithmetic = matches!(
                     op,
-                    BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
+                    BinOp::Add
+                        | BinOp::Subtract
+                        | BinOp::Multiply
+                        | BinOp::Divide
+                        | BinOp::Modulo
+                        | BinOp::BitAnd
+                        | BinOp::BitOr
+                        | BinOp::BitXor
+                        | BinOp::ShiftLeft
+                        | BinOp::ShiftRight
                 );
                 let pointer_offset = *op == BinOp::Add && lhs == types.pointer;
-                if !pointer_offset && !self.same(lhs, rhs) {
+                // A shift's amount is any integer.
+                let shift = matches!(op, BinOp::ShiftLeft | BinOp::ShiftRight)
+                    && matches!(self.mir.types.get(lhs), Ty::Int(_))
+                    && matches!(self.mir.types.get(rhs), Ty::Int(_));
+                if !pointer_offset && !shift && !self.same(lhs, rhs) {
                     self.problem(format!(
                         "{op:?} on {} and {}",
                         self.mir.display_ty(lhs),
@@ -177,9 +190,13 @@ impl Validator<'_> {
                 }
                 Some(if arithmetic { lhs } else { self.mir.types.bool })
             }
+            // `!` of a `bool`, or `~` of an integer, which gives the integer's type.
             Rvalue::Not(op) => {
-                self.operand_ty(op);
-                Some(types.bool)
+                let ty = self.operand_ty(op)?;
+                Some(match self.mir.types.get(ty) {
+                    Ty::Int(_) => ty,
+                    _ => types.bool,
+                })
             }
             Rvalue::Array { ty, items } => {
                 let Ty::Array { element, len } = *self.mir.types.get(*ty) else {

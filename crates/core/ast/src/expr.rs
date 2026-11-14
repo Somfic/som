@@ -38,6 +38,8 @@ pub enum Expr {
     Not(Id<Expr>),
     /// `-expr`. A literal's minus is part of it: `-1` is `Int(-1)`.
     Neg(Id<Expr>),
+    /// `~expr`: an integer with each bit flipped.
+    BitNot(Id<Expr>),
     /// `&expr` or `&mut expr`
     Borrow {
         mutable: bool,
@@ -162,6 +164,14 @@ pub enum BinOp {
     NotEquals,
     And,
     Or,
+    /// `a & b`, `a | b`, `a ^ b`: of two integers of the same type, bit by bit.
+    BitAnd,
+    BitOr,
+    BitXor,
+    /// `a << n`, `a >> n`: `a`'s bits moved `n` places, `n` any integer. Moved `a`'s width or
+    /// more, none are left: `0`, or for `>>` of a negative number, `-1`.
+    ShiftLeft,
+    ShiftRight,
 }
 
 pub enum Stmt {

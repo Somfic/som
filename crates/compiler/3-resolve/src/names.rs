@@ -104,7 +104,14 @@ impl LangTrait {
             | BinOp::GreaterThan
             | BinOp::LessThanOrEqual
             | BinOp::GreaterThanOrEqual => LangTrait::Compare,
-            BinOp::Modulo | BinOp::And | BinOp::Or => return None,
+            BinOp::Modulo
+            | BinOp::And
+            | BinOp::Or
+            | BinOp::BitAnd
+            | BinOp::BitOr
+            | BinOp::BitXor
+            | BinOp::ShiftLeft
+            | BinOp::ShiftRight => return None,
         })
     }
 

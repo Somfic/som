@@ -1369,7 +1369,8 @@ impl<'a> Checker<'a> {
             | Expr::Construct { .. }
             | Expr::Binary { .. }
             | Expr::Not(_)
-            | Expr::Neg(_) => Unused::Value,
+            | Expr::Neg(_)
+            | Expr::BitNot(_) => Unused::Value,
             _ => return,
         };
         self.errors.push(TypeError::UnusedValue { kind, span });
@@ -2075,6 +2076,22 @@ impl<'a> Checker<'a> {
             Expr::Not(_) => {
                 self.check_condition(id);
                 bool
+            }
+
+            // `~x`: an integer, the same type back.
+            Expr::BitNot(inner) => {
+                let ty = self.infer(*inner);
+                let shallow = self.u.shallow(ty);
+                let integer = matches!(self.u.get(shallow), Ty::Int(_) | Ty::Error)
+                    || self.u.var_kind(shallow) == Some(VarKind::Int);
+                if !integer {
+                    self.errors.push(TypeError::CannotFlipBits {
+                        ty: self.describe(ty),
+                        span: self.span(id),
+                    });
+                    return self.u.table.error;
+                }
+                ty
             }
 
             // `-x`: a signed integer or a float, the same type back.
@@ -3962,6 +3979,21 @@ impl<'a> Checker<'a> {
             return bool;
         }
 
+        // `a << n`: an integer `a`, moved by any integer `n`.
+        if matches!(op, BinOp::ShiftLeft | BinOp::ShiftRight) {
+            let amount = self.u.fresh(VarKind::Int);
+            if self.u.unify(amount, rhs).is_err() {
+                self.invalid_operands(id, op, lhs, rhs);
+                return error;
+            }
+            match self.operand_ok(op, lhs) {
+                Some(true) => {}
+                Some(false) => self.invalid_operands(id, op, lhs, rhs),
+                None => self.deferred_ops.push((id, op, lhs, lhs)),
+            }
+            return lhs;
+        }
+
         let result = if is_arithmetic(op) { lhs } else { bool };
         if self.u.unify(lhs, rhs).is_err() {
             self.invalid_operands(id, op, lhs, rhs);
@@ -4015,7 +4047,8 @@ impl<'a> Checker<'a> {
         if let Some(kind) = self.u.var_kind(ty) {
             return match kind {
                 VarKind::Any => None,
-                VarKind::Int | VarKind::Float => Some(true),
+                VarKind::Int => Some(true),
+                VarKind::Float => Some(!is_bitwise(op)),
                 VarKind::Collection { .. } | VarKind::Text => Some(false),
             };
         }
@@ -4038,14 +4071,26 @@ impl<'a> Checker<'a> {
                 ) || self.is_plain_enum(ty)
             }
             BinOp::And | BinOp::Or => matches!(ty, Ty::Bool),
+            BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::ShiftLeft | BinOp::ShiftRight => {
+                matches!(ty, Ty::Int(_))
+            }
         })
     }
 }
 
+/// Whether `op` gives a value of its operands' type, rather than a `bool`.
 fn is_arithmetic(op: BinOp) -> bool {
     matches!(
         op,
         BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
+    ) || is_bitwise(op)
+}
+
+/// Whether `op` works on an integer's bits: `&`, `|`, `^`, `<<`, `>>`.
+fn is_bitwise(op: BinOp) -> bool {
+    matches!(
+        op,
+        BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::ShiftLeft | BinOp::ShiftRight
     )
 }
 
@@ -4273,6 +4318,7 @@ impl Checker<'_> {
             }
             Expr::Not(e)
             | Expr::Neg(e)
+            | Expr::BitNot(e)
             | Expr::ArrayRepeat { value: e, .. }
             | Expr::Cast { value: e, .. } => self.forget_changed_by(*e, false),
             Expr::Range { start, end } => {

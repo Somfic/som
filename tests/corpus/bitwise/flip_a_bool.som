@@ -1,0 +1,7 @@
+// expect: error CannotFlipBits
+
+/// `~` flips an integer's bits; a `bool` is flipped with `!`.
+fn main() -> i32 {
+    let x = ~true;
+    0
+}

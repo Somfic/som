@@ -748,6 +748,7 @@ impl<'a> Resolver<'a> {
             }
             Expr::Not(inner)
             | Expr::Neg(inner)
+            | Expr::BitNot(inner)
             | Expr::Deref(inner)
             | Expr::Borrow { expr: inner, .. } => self.resolve_expr(*inner),
             Expr::ArrayRepeat { value, count } => {
