@@ -905,6 +905,14 @@ impl<'a> Resolver<'a> {
         {
             return Some(def);
         }
+        // `Self { … }` and `Self::new()` in an impl block: the struct or built-in type it's for.
+        if expect == Expect::Struct
+            && name == "Self"
+            && let Some(&(_, def)) = self.block_types.iter().find(|(n, _)| *n == name)
+            && let DefKind::SelfType { impl_ } = self.names.def(def).kind
+        {
+            return self.names.impls[impl_].owner;
+        }
         // A value parameter is a value too: `N` in `struct Buffer<N: usize>`.
         if let Some(&(_, def)) = self.type_params.iter().find(|(n, _)| *n == name)
             && (expect == Expect::Type

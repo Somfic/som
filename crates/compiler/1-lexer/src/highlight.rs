@@ -10,6 +10,7 @@ fn token_color(kind: TokenKind) -> Rgb {
     match kind {
         TokenKind::Fn
         | TokenKind::Prop
+        | TokenKind::SelfValue
         | TokenKind::Extern
         | TokenKind::Let
         | TokenKind::If
@@ -50,7 +51,9 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Bool
         | TokenKind::Char
         | TokenKind::Str
-        | TokenKind::CStr => YELLOW,
+        | TokenKind::CStr
+        // `Self` is a type: the one an impl block is for.
+        | TokenKind::SelfType => YELLOW,
         TokenKind::Int
         | TokenKind::Float
         | TokenKind::Text

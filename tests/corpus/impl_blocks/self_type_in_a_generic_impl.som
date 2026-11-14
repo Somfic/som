@@ -1,0 +1,13 @@
+// expect: exit 21
+
+struct Pair<T> { a: T, b: T }
+
+impl<T> Pair<T> {
+    fn of(a: T, b: T) -> Self = Self { a, b };
+    fn swapped(self) -> Self = Self::of(self.b, self.a);
+}
+
+fn main() -> i32 {
+    let p = Pair::of(1, 2).swapped();
+    p.a * 10 + p.b
+}

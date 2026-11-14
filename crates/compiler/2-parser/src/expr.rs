@@ -298,6 +298,14 @@ impl Parser<'_> {
                 Expr::Str(self.unescape(&text[1..text.len() - 1], &start).into())
             }
 
+            // `self`, in a method.
+            TokenKind::SelfValue => {
+                let name = self.parse_self();
+                Expr::Var(som_ast::Path {
+                    segments: vec![name],
+                })
+            }
+
             // `i32::parse(…)`: a built-in type's own function.
             kind if crate::ty::primitive(kind).is_some()
                 && self.peek_nth(1) == TokenKind::DoubleColon =>
@@ -313,9 +321,9 @@ impl Parser<'_> {
                 }
                 Expr::Var(som_ast::Path { segments })
             }
-            TokenKind::Ident => {
+            TokenKind::Ident | TokenKind::SelfType => {
                 // `Name { field: ...` or `Name {}` is a constructor, and so is
-                // `module::Name { ... }`; `name { ... }` is not.
+                // `module::Name { ... }` and `Self { ... }`; `name { ... }` is not.
                 let mut n = 1;
                 while self.peek_nth(n) == TokenKind::DoubleColon
                     && self.peek_nth(n + 1) == TokenKind::Ident

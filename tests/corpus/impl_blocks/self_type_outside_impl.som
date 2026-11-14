@@ -1,0 +1,6 @@
+// expect: error
+
+fn main() -> i32 {
+    let p = Self { x: 1 };
+    0
+}

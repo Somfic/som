@@ -195,6 +195,7 @@ impl Parser<'_> {
                 let pointee = matches!(
                     self.peek(),
                     TokenKind::Ident
+                        | TokenKind::SelfType
                         | TokenKind::Star
                         | TokenKind::Ampersand
                         | TokenKind::OpenBracket
@@ -245,8 +246,8 @@ impl Parser<'_> {
                 }
             }
 
-            // `Point`, or `Pair<i32>`
-            TokenKind::Ident => {
+            // `Point`, `Pair<i32>`, or `Self`
+            TokenKind::Ident | TokenKind::SelfType => {
                 let path = self.parse_path("a type name")?;
                 let args = self.parse_type_args()?;
                 TypeExpr::Named { path, args }

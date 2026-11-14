@@ -3259,6 +3259,7 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
         let token_type = match token.kind {
             TokenKind::Fn
             | TokenKind::Prop
+            | TokenKind::SelfValue
             | TokenKind::Extern
             | TokenKind::Struct
             | TokenKind::Enum
@@ -3284,6 +3285,8 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::In => 0,
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
             TokenKind::Ident if token.text.starts_with(char::is_uppercase) => 8,
+            // `Self` is a struct like any named one: the one an impl block is for.
+            TokenKind::SelfType => 8,
             TokenKind::Ident => 1,
             TokenKind::Int
             | TokenKind::Float
@@ -3363,6 +3366,26 @@ mod tests {
             .collect();
         // fn f p * i32 g 1 * 2   (`(`, `)`, `:`, `->`, `{`, `}` aren't highlighted)
         assert_eq!(types, [0, 7, 1, 4, 4, 7, 2, 6, 2]);
+    }
+
+    #[test]
+    fn self_is_a_keyword_and_self_type_a_struct() {
+        let text = "fn f(self) -> Self = Point { x: self.x };";
+        let tokens = semantic_tokens(Arc::new(Source::from_raw(text)));
+        // Each token's column, from the distances between them (all on one line).
+        let mut column = 0;
+        let at: HashMap<u32, u32> = (tokens.iter())
+            .map(|t| {
+                column += t.delta_start;
+                (column, t.token_type)
+            })
+            .collect();
+        // Both `self`s are keywords, like `fn`.
+        let keyword = at[&0];
+        assert_eq!(at[&(text.find("self").unwrap() as u32)], keyword);
+        assert_eq!(at[&(text.rfind("self").unwrap() as u32)], keyword);
+        // `Self` is coloured like a struct's name.
+        assert_eq!(at[&(text.find("Self").unwrap() as u32)], at[&(text.find("Point").unwrap() as u32)]);
     }
 
     #[test]

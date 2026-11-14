@@ -111,18 +111,28 @@ impl Parser<'_> {
             .unwrap_or(TokenKind::Eof)
     }
 
-    /// The name the nth non-trivia token ahead (0 = current) is, if it's one.
+    /// The name the nth non-trivia token ahead (0 = current) is, if it's one: `Self` too.
     fn ident_ahead(&self, n: usize) -> Option<&str> {
         (self.tokens[self.pos..].iter())
             .filter(|t| !is_trivia(t.kind))
             .nth(n)
-            .filter(|t| t.kind == TokenKind::Ident)
+            .filter(|t| matches!(t.kind, TokenKind::Ident | TokenKind::SelfType))
             .map(|t| &*t.text)
     }
 
     /// Whether the nth non-trivia token ahead (0 = current) is `self`.
     fn self_ahead(&self, n: usize) -> bool {
-        self.ident_ahead(n) == Some("self")
+        self.peek_nth(n) == TokenKind::SelfValue
+    }
+
+    /// `self` as a name: a method's first parameter, or the value it's called on.
+    fn parse_self(&mut self) -> Ident {
+        let span = self.current_span();
+        self.advance();
+        Ident {
+            name: "self".into(),
+            span,
+        }
     }
 
     /// The `///` comment right above the current token: consecutive `///` lines, joined.
@@ -339,7 +349,19 @@ impl Parser<'_> {
 
     fn parse_path(&mut self, expected: impl Into<String>) -> Option<Path> {
         let expected = expected.into();
-        let mut segments = vec![self.parse_ident(expected.clone())?];
+        // `Self::new`, `Self::Item`: `Self` can start one.
+        let first = match self.at(TokenKind::SelfType) {
+            true => {
+                let span = self.current_span();
+                self.advance();
+                Ident {
+                    name: "Self".into(),
+                    span,
+                }
+            }
+            false => self.parse_ident(expected.clone())?,
+        };
+        let mut segments = vec![first];
         while self.eat(TokenKind::DoubleColon) {
             segments.push(self.parse_ident(expected.clone())?);
         }

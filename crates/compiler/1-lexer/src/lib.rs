@@ -13,6 +13,12 @@ pub enum TokenKind {
     Fn,
     #[token("prop")]
     Prop,
+    /// `self`: the value a method is called on.
+    #[token("self")]
+    SelfValue,
+    /// `Self`: in an impl block, the type it's for; in a trait, the type implementing it.
+    #[token("Self")]
+    SelfType,
     #[token("extern")]
     Extern,
     #[token("struct")]
@@ -201,6 +207,8 @@ impl std::fmt::Display for TokenKind {
         match self {
             TokenKind::Fn => write!(f, "fn"),
             TokenKind::Prop => write!(f, "prop"),
+            TokenKind::SelfValue => write!(f, "self"),
+            TokenKind::SelfType => write!(f, "Self"),
             TokenKind::Extern => write!(f, "extern"),
             TokenKind::Struct => write!(f, "struct"),
             TokenKind::Impl => write!(f, "impl"),

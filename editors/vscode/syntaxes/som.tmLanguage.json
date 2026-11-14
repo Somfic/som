@@ -45,7 +45,7 @@
         },
         {
           "name": "keyword.other.som",
-          "match": "\\b(fn|extern|struct|enum|impl|trait|type|let|mut|out)\\b"
+          "match": "\\b(fn|prop|extern|struct|enum|impl|trait|type|let|mut|out|self)\\b"
         },
         {
           "name": "constant.language.boolean.som",
@@ -60,6 +60,11 @@
           "match": "\\b(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|bool|char|str|cstr)\\b"
         },
         {
+          "comment": "Self, the type an impl block is for",
+          "name": "entity.name.type.struct.som",
+          "match": "\\bSelf\\b"
+        },
+        {
           "comment": "Raw pointer type after -> or :",
           "match": "(?<=->\\s)\\*|(?<=->)\\*|(?<=:\\s)\\*|(?<=:)\\*",
           "name": "entity.name.type.primitive.som"
@@ -69,7 +74,7 @@
     "function-definition": {
       "patterns": [
         {
-          "match": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+          "match": "\\b(fn|prop)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
             "1": { "name": "keyword.other.som" },
             "2": { "name": "entity.name.function.som" }

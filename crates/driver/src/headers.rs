@@ -417,7 +417,7 @@ fn compatible(
 }
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 19;
+const GENERATOR_VERSION: u32 = 21;
 
 /// The first line of a cached import: everything it depends on. Any change to the header,
 /// the library or the generator makes it stale.
@@ -556,7 +556,7 @@ const SOM_KEYWORDS: &[&str] = &[
     "fn", "extern", "struct", "impl", "let", "if", "else", "mut", "out", "use", "loop", "while",
     "break", "for", "true", "false", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16",
     "u32", "u64", "u128", "usize", "f32", "f64", "bool", "char", "str", "cstr", "none", "and",
-    "or", "in", "continue", "as", "return", "enum", "match", "trait", "type",
+    "or", "in", "continue", "as", "return", "enum", "match", "trait", "type", "prop", "self", "Self",
 ];
 
 fn identifier(name: &str) -> String {

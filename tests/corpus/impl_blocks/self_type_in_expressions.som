@@ -1,0 +1,19 @@
+// expect: exit 8
+
+struct P { x: i32 }
+
+impl P {
+    fn new(x: i32) -> Self = P { x };
+    fn make() -> Self = Self::new(3);
+    fn lit() -> Self = Self { x: 4 };
+    fn same(&self) -> &Self = self;
+}
+
+trait Make { type Item; fn item(&self) -> Self::Item; }
+
+impl Make for P {
+    type Item = i32;
+    fn item(&self) -> Self::Item = self.x;
+}
+
+fn main() -> i32 = P::make().x + P::lit().same().x + P::new(1).item();

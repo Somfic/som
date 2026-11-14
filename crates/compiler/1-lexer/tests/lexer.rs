@@ -200,3 +200,21 @@ fn positions_count_lines_and_characters() {
     // `é` is one character but two bytes; `b` is still in column 5.
     assert_eq!(&tokens[..4], [(1, 1), (2, 3), (2, 5), (3, 1)]);
 }
+
+#[test]
+fn self_is_a_keyword_but_names_starting_with_it_are_not() {
+    let tokens = test_lex("self selfish self_ prop Self Selfie");
+    let kinds: Vec<TokenKind> = filter_whitespace(&tokens).iter().map(|t| t.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            TokenKind::SelfValue,
+            TokenKind::Ident,
+            TokenKind::Ident,
+            TokenKind::Prop,
+            TokenKind::SelfType,
+            TokenKind::Ident,
+            TokenKind::Eof
+        ]
+    );
+}

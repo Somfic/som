@@ -12,16 +12,26 @@ impl<N: usize, T> Vector<N, T> {
     }
 }
 
-impl<T> Vector<1, T> {
-    prop x = self.values[0];
-}
-
 impl<T> Vector<2, T> {
     prop x = self.values[0];
     prop y = self.values[1];
+}
 
+impl Vector<2, f32> {
+    prop magintude = f32::sqrt(self.x * self.x + self.y * self.y);
     prop normalized {
-        0.0
+        let magnitude = self.magintude;
+
+        Self { values: [ self.x / magnitude, self.y / magnitude ] }
+    }
+}
+
+impl Vector<3, f32> {
+    prop magintude = f32::sqrt(self.x * self.x + self.y * self.y + self.z * self.z);
+    prop normalized {
+        let magnitude = self.magintude;
+
+        Self { values: [ self.x / magnitude, self.y / magnitude ] }
     }
 }
 

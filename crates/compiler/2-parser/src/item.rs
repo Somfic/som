@@ -666,7 +666,10 @@ impl Parser<'_> {
             });
             let out = reference.is_none() && self.eat(TokenKind::Out);
             let mutable = reference.is_none() && !out && self.eat(TokenKind::Mut);
-            let name = self.parse_ident("a function parameter name")?;
+            let name = match self.at(TokenKind::SelfValue) {
+                true => self.parse_self(),
+                false => self.parse_ident("a function parameter name")?,
+            };
             let shorthand = reference.is_some() || &*name.name == "self" && !self.at(TokenKind::Colon);
             if shorthand && !self.in_impl {
                 let span = match &reference {

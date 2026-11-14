@@ -13,5 +13,9 @@ fn alloc(size: i32) -> Allocation {
 }
 
 fn dealloc(allocation: &Allocation) {
-    c::free(allocation.ptr);
+    free(allocation.ptr);
 }
+
+fn malloc(size: i32) -> * = c::malloc(size as u64);
+
+fn free(p: *) = c::free(p);
