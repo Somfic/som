@@ -160,9 +160,27 @@ impl Dumper<'_> {
                 }
                 self.node(header, |d| block.funcs.iter().for_each(|&f| d.func(f)));
             }
-            Item::Impl(block) => self.node(format!("impl {}", block.target), |d| {
-                block.methods.iter().for_each(|&f| d.func(f))
-            }),
+            Item::Impl(block) => {
+                let header = match &block.trait_ {
+                    Some((name, _)) => format!("impl {name} for {}", block.target),
+                    None => format!("impl {}", block.target),
+                };
+                self.node(header, |d| {
+                    for (name, ty) in &block.types {
+                        d.line(format!("type {name} = {}", ast.type_text(*ty)));
+                    }
+                    block.methods.iter().for_each(|&f| d.func(f))
+                })
+            }
+            Item::Trait(id) => {
+                let t = &ast.traits[*id];
+                self.node(format!("trait {}", t.name), |d| {
+                    for assoc in &t.types {
+                        d.line(format!("type {}", assoc.name));
+                    }
+                    t.methods.iter().for_each(|&f| d.func(f))
+                })
+            }
         }
     }
 

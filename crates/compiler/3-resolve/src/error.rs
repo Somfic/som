@@ -31,6 +31,13 @@ pub enum ResolveError {
         /// Changes that would fix it: the suggested name, or a `use`.
         fixes: Vec<Fix>,
     },
+    UnknownTrait {
+        name: String,
+        span: Span,
+        help: Option<Message>,
+        /// Changes that would fix it: the suggested name, or a `use`.
+        fixes: Vec<Fix>,
+    },
     DuplicateDefinition {
         name: String,
         span: Span,
@@ -73,6 +80,12 @@ impl ResolveError {
                 help,
                 fixes,
             } => ("type", ty(name), span, help, fixes),
+            ResolveError::UnknownTrait {
+                name,
+                span,
+                help,
+                fixes,
+            } => ("trait", ty(name), span, help, fixes),
             ResolveError::DuplicateDefinition {
                 name,
                 span,

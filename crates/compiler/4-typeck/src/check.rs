@@ -12,6 +12,7 @@ use som_base::Message;
 use som_base::message;
 
 mod matching;
+mod traits;
 
 use matching::holds;
 
@@ -68,6 +69,14 @@ pub(crate) struct Checker<'a> {
     /// Collection literals that become a struct through its `from_array` method: the method
     /// and its type arguments.
     conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
+    /// Every `impl` block, indexed like `Names::impls`.
+    impls: Vec<crate::traits::ImplInfo>,
+    /// The function whose signature or body is being checked.
+    current_func: Option<Id<Func>>,
+    /// Types that have to implement a trait, to check once they're known, and where.
+    obligations: Vec<(TypeId, DefId, Span)>,
+    /// `==` and `!=` comparing with `Eq`'s `eq`.
+    eq_ops: HashSet<Id<Expr>>,
     /// Calls that more than one function fits, decided once the rest of the program says more
     /// about what their result has to be.
     pending_calls: Vec<PendingCall>,
@@ -111,6 +120,10 @@ impl<'a> Checker<'a> {
             callees: HashMap::new(),
             pending_calls: Vec::new(),
             omitted_args_ok: false,
+            impls: Vec::new(),
+            current_func: None,
+            obligations: Vec::new(),
+            eq_ops: HashSet::new(),
             conversions: HashMap::new(),
         }
     }
@@ -119,8 +132,20 @@ impl<'a> Checker<'a> {
         let ast = self.ast;
 
         // The types of value parameters, which the types of fields and parameters can use.
+        let impl_blocks =
+            (ast.modules.iter())
+                .flat_map(|m| &m.items)
+                .filter_map(|item| match item {
+                    som_ast::Item::Impl(block) => Some(block),
+                    _ => None,
+                });
         let generics = (ast.structs.iter())
             .flat_map(|(id, s)| s.generics.iter().zip(self.names.struct_params(id)))
+            .chain(
+                impl_blocks
+                    .zip(&self.names.impls)
+                    .flat_map(|(block, def)| block.generics.iter().zip(&def.params)),
+            )
             .chain(
                 (ast.funcs.iter())
                     .flat_map(|(id, f)| f.generics.iter().zip(self.names.type_params(id))),
@@ -150,7 +175,10 @@ impl<'a> Checker<'a> {
             let common = self.common_fields(id, s);
             self.common.push(common);
         }
+        // Impl blocks' targets and associated types, which signatures can name.
+        self.build_impls();
         for (id, func) in ast.funcs.iter() {
+            self.current_func = Some(id);
             let params = func
                 .params
                 .iter()
@@ -180,7 +208,10 @@ impl<'a> Checker<'a> {
             }
         }
 
+        self.current_func = None;
+        self.check_impls();
         for (id, func) in ast.funcs.iter() {
+            self.current_func = Some(id);
             if let Some(body) = func.body {
                 self.check_body(id, func, body);
                 self.settle(func.name.span.clone());
@@ -188,8 +219,10 @@ impl<'a> Checker<'a> {
         }
 
         // After the bodies, which decide unwritten return types and what results are used as.
+        self.current_func = None;
         self.resolve_pending_calls();
         self.check_overloads();
+        self.check_obligations();
 
         for (expr, op, lhs, rhs) in std::mem::take(&mut self.deferred_ops) {
             if self.operand_ok(op, lhs) == Some(false) || self.u.var_kind(lhs) == Some(VarKind::Any)
@@ -364,6 +397,8 @@ impl<'a> Checker<'a> {
             receivers: self.receivers,
             callees: self.callees,
             conversions,
+            impls: self.impls,
+            eq_ops: self.eq_ops,
             common: self.common,
             diverging: self.diverging,
         };
@@ -400,6 +435,15 @@ impl<'a> Checker<'a> {
                 }
                 Some((def, DefKind::TypeParam { .. } | DefKind::StructParam { .. })) => {
                     Ty::Param(def)
+                }
+                Some((def, DefKind::ImplParam { .. })) => Ty::Param(def),
+                Some((_, DefKind::SelfType { impl_ })) => return self.self_type(impl_),
+                Some((_, DefKind::ImplType { impl_, index })) => {
+                    return self.impl_type(impl_, index);
+                }
+                Some((_, DefKind::AssocType { trait_, index })) => {
+                    let base = self.names.projection_base(id);
+                    return self.assoc_type(base, trait_, index);
                 }
                 _ => Ty::Error, // already reported by the resolver
             },
@@ -632,8 +676,10 @@ impl<'a> Checker<'a> {
             other => {
                 let substituted = other.map_children(|child| self.substitute(child, subst));
                 let substituted = self.u.intern(substituted);
-                // `N + 1` with `N` filled in may add up: `3 + 1` is `4`.
-                self.u.normalize(substituted)
+                // `N + 1` with `N` filled in may add up: `3 + 1` is `4`; and `I::Item` with
+                // `I` filled in may be known.
+                let substituted = self.u.normalize(substituted);
+                self.normalize_assoc(substituted)
             }
         }
     }
@@ -929,8 +975,10 @@ impl<'a> Checker<'a> {
                 return int;
             }
             Ty::Error => return error,
-            _ => match *self.u.get(viewed) {
+            _ => match self.u.get(viewed).clone() {
                 Ty::Array { element, .. } | Ty::Slice(element) => element,
+                // Anything that's an `Iterator`, or `Iterable`: what it gives.
+                _ if let Some(element) = self.iterator_loop(stmt, ty) => return element,
                 _ => {
                     let text = *self.u.get(viewed) == Ty::Str
                         || self.u.var_kind(ty) == Some(VarKind::Text);
@@ -1138,6 +1186,8 @@ impl<'a> Checker<'a> {
     /// Makes `expr`, of type `found`, usable where `expected` is required, returning whether
     /// it is. A `T` is also usable as a `T?`: it's wrapped.
     fn coerce(&mut self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> bool {
+        // `I::Item` of an `I` that's known by now is what its implementation says.
+        let (expected, found) = (self.normalize_assoc(expected), self.normalize_assoc(found));
         if self.u.unify(expected, found).is_ok() {
             return true;
         }
@@ -1195,36 +1245,7 @@ impl<'a> Checker<'a> {
         let Some(VarKind::Collection { element, len }) = self.u.var_kind(found) else {
             return false;
         };
-        let Ty::Struct(owner, _) = *self.u.get(self.u.shallow(expected)) else {
-            return false;
-        };
-        let Some(method) = self.names.method(owner, "from_array") else {
-            return false;
-        };
-        let DefKind::Func(func) = self.names.def(method).kind else {
-            return false;
-        };
-        let (sig, type_args) = self.instantiate(func);
-        let array = self.u.intern(Ty::Array { element, len });
-        let fits = sig.params.len() == 1
-            && self.u.could_fit(sig.params[0], array)
-            && self.u.could_fit(expected, sig.ret);
-        if !fits {
-            return false;
-        }
-        // The method takes the array the literal is, and gives what's expected. Its type
-        // parameters are its own, fresh, so tying them to the array changes nothing else.
-        if self.u.unify(sig.params[0], array).is_err() || !self.u.could_fit(expected, sig.ret) {
-            return false;
-        }
-        // A literal inside, `[[1]]` for a `List<List<i32>>`, stays an array: not what's
-        // expected.
-        if self.u.unify(expected, sig.ret).is_err() {
-            return false;
-        }
-        let _ = self.u.unify(found, array);
-        self.conversions.insert(expr, (method, type_args));
-        true
+        self.from_array(expr, expected, found, element, len)
     }
 
     /// Whether a value of type `found` becomes the slice `expected`: a reference to an array of
@@ -1291,6 +1312,8 @@ impl<'a> Checker<'a> {
         let in_place = std::mem::replace(&mut self.in_place, false);
         self.expected_here = self.expected.take();
         let mut ty = self.infer_inner(id, in_place);
+        // `I::Item` of an `I` the expression's arguments decided: what its implementation says.
+        ty = self.normalize_assoc(ty);
         if let Some(inner) = self.narrowed_type(id) {
             self.narrowed_reads.insert(id);
             ty = inner;
@@ -1388,7 +1411,8 @@ impl<'a> Checker<'a> {
                 };
                 let reference =
                     |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::Ref { .. });
-                let pointers = (pointer(self, found) || reference(self, found)) && pointer(self, target);
+                let pointers =
+                    (pointer(self, found) || reference(self, found)) && pointer(self, target);
                 if !plain_enum && !pointers && (!number(self, found) || !number(self, target)) {
                     self.errors.push(TypeError::InvalidCast {
                         from: self.describe(found),
@@ -1481,6 +1505,7 @@ impl<'a> Checker<'a> {
                     let expected = self.expected_here.take();
                     let func = self.pick_function(id, def, expected).unwrap_or(*func);
                     let (sig, args) = self.instantiate(func);
+                    self.require_bounds(func, &args, self.span(id));
                     if !args.is_empty() {
                         self.type_args.insert(id, args);
                     }
@@ -1643,6 +1668,7 @@ impl<'a> Checker<'a> {
                     Some(DefKind::Func(func)) => {
                         let func = *func;
                         let (sig, type_args) = self.instantiate(func);
+                        self.require_bounds(func, &type_args, self.span(id));
                         if !type_args.is_empty() {
                             self.type_args.insert(id, type_args);
                         }
@@ -1707,6 +1733,9 @@ impl<'a> Checker<'a> {
                 if let Some(ty) = self.pointer_method(id, receiver_ty, method, args) {
                     return ty;
                 }
+                if let Some(ty) = self.trait_method_call(id, *receiver, receiver_ty, method, args) {
+                    return ty;
+                }
                 let Some((owner, _)) = self.struct_of(receiver_ty, *receiver) else {
                     args.iter().for_each(|&a| {
                         self.infer(a);
@@ -1743,6 +1772,7 @@ impl<'a> Checker<'a> {
                 self.methods.insert(id, def);
 
                 let (sig, type_args) = self.instantiate(func);
+                self.require_bounds(func, &type_args, self.span(id));
                 if !type_args.is_empty() {
                     self.type_args.insert(id, type_args);
                 }
@@ -2298,6 +2328,7 @@ impl<'a> Checker<'a> {
         }
         let (_, def, func, sig, type_args) = fitting.pop().expect("exactly one");
         self.methods.insert(call, def);
+        self.require_bounds(func, &type_args, self.span(call));
         if !type_args.is_empty() {
             self.type_args.insert(call, type_args);
         }
@@ -2384,7 +2415,10 @@ impl<'a> Checker<'a> {
         for p in pending {
             let candidates = (p.fitting.iter())
                 .map(|(def, func, ..)| {
-                    (self.signature_text(*func), self.names.def(*def).span.clone())
+                    (
+                        self.signature_text(*func),
+                        self.names.def(*def).span.clone(),
+                    )
                 })
                 .collect();
             self.errors.push(TypeError::AmbiguousCall {
@@ -2411,6 +2445,7 @@ impl<'a> Checker<'a> {
         found: &[TypeId],
     ) {
         self.callees.insert(call, def);
+        self.require_bounds(func, &type_args, self.span(call));
         if !type_args.is_empty() {
             self.type_args.insert(call, type_args);
         }
@@ -2857,6 +2892,10 @@ impl<'a> Checker<'a> {
         if self.u.unify(lhs, rhs).is_err() {
             self.invalid_operands(id, op, lhs, rhs);
             return if is_arithmetic(op) { error } else { bool };
+        }
+        // Values of a type implementing `Eq` compare with its `eq`.
+        if matches!(op, BinOp::Equals | BinOp::NotEquals) && self.eq_op(id, lhs) {
+            return bool;
         }
         match self.operand_ok(op, lhs) {
             Some(true) => {}

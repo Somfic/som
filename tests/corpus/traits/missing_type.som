@@ -1,0 +1,9 @@
+// expect: error MissingTraitItem
+
+struct Count { n: i32 }
+
+impl Iterator for Count {
+    fn next(self: &mut Count) -> i32? { none }
+}
+
+fn main() -> i32 { 0 }

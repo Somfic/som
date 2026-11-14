@@ -11,10 +11,12 @@
 //!   is a constant in each.
 
 mod matching;
+mod traits;
 
 use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
+use som_typeck::traits::{ImplInfo, resolve_assoc};
 use som_typeck::{ArrayMethod, Loop, PointerMethod, Receiver, Typed, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -27,6 +29,7 @@ pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
         instances: HashMap::new(),
         queue: Vec::new(),
         owners: HashMap::new(),
+        trait_methods: HashMap::new(),
     };
     lowerer.run();
     lowerer.mir
@@ -43,11 +46,19 @@ struct Lowerer<'a> {
     queue: Vec<(FuncId, Id<Func>, Vec<TypeId>)>,
     /// Method → the name of the struct its `impl` block is for.
     owners: HashMap<Id<Func>, String>,
+    /// A trait's method → the trait, and how many generic parameters the trait has.
+    trait_methods: HashMap<Id<Func>, (DefId, usize)>,
 }
 
 impl<'a> Lowerer<'a> {
     fn run(&mut self) {
         let ast = self.ast;
+        for (id, t) in ast.traits.iter() {
+            let def = self.names.trait_def(id);
+            for &method in &t.methods {
+                self.trait_methods.insert(method, (def, t.generics.len()));
+            }
+        }
         for module in &ast.modules {
             for item in &module.items {
                 if let Item::Impl(block) = item {
@@ -150,7 +161,7 @@ impl<'a> Lowerer<'a> {
         }
         let ast_struct = &self.ast.structs[s];
         let def = self.names.strukt(s);
-        let subst = Subst::new(self.names.struct_params(s), &args);
+        let subst = Subst::new(self.names.struct_params(s), &args, &self.typed.impls);
         let mut fields: Vec<(String, TypeId)> = (ast_struct.fields.iter())
             .zip(self.typed.fields(s))
             .map(|(f, &ty)| {
@@ -223,6 +234,10 @@ impl<'a> Lowerer<'a> {
 
     /// The MIR function for `func` instantiated with `type_args`, creating it if needed.
     fn instance(&mut self, func: Id<Func>, type_args: Vec<TypeId>) -> FuncId {
+        // A trait's method, for a known `Self`: the method its implementation has.
+        if let Some((method, args)) = self.dispatch(func, &type_args) {
+            return self.instance(method, args);
+        }
         let key = (func, type_args);
         if let Some(&id) = self.instances.get(&key) {
             return id;
@@ -231,7 +246,7 @@ impl<'a> Lowerer<'a> {
         let ast_func = &self.ast.funcs[func];
         let def = self.names.func(func);
 
-        let subst = Subst::new(self.names.type_params(func), type_args);
+        let subst = Subst::new(self.names.type_params(func), type_args, &self.typed.impls);
         let sig = self.typed.func(func);
         let params = sig
             .params
@@ -320,19 +335,27 @@ fn concrete(types: &TypeTable, ty: TypeId) -> bool {
     }
 }
 
-/// Replaces a generic function's type parameters with concrete types.
-struct Subst {
+/// Replaces a generic function's type parameters with concrete types, and works out the
+/// associated types that makes known: `I::Item` with `I` a `ListIter<i32>` is `&i32`.
+struct Subst<'a> {
     map: Vec<(DefId, TypeId)>,
+    impls: &'a [ImplInfo],
 }
 
-impl Subst {
-    fn new(params: &[DefId], args: &[TypeId]) -> Subst {
+impl<'a> Subst<'a> {
+    fn new(params: &[DefId], args: &[TypeId], impls: &'a [ImplInfo]) -> Subst<'a> {
         Subst {
             map: params.iter().copied().zip(args.iter().copied()).collect(),
+            impls,
         }
     }
 
     fn apply(&self, types: &mut TypeTable, ty: TypeId) -> TypeId {
+        let replaced = self.replace(types, ty);
+        resolve_assoc(types, self.impls, replaced)
+    }
+
+    fn replace(&self, types: &mut TypeTable, ty: TypeId) -> TypeId {
         if self.map.is_empty() {
             return ty;
         }
@@ -344,7 +367,7 @@ impl Subst {
                 .map_or(ty, |(_, t)| *t),
             other if other.children().is_empty() => ty,
             other => {
-                let applied = other.map_children(|child| self.apply(types, child));
+                let applied = other.map_children(|child| self.replace(types, child));
                 let applied = types.intern(applied);
                 // `N + 1` with `N` filled in adds up: `3 + 1` is `4`.
                 types.normalize(applied)
@@ -357,7 +380,7 @@ impl Subst {
 struct FnBuilder<'l, 'a> {
     l: &'l mut Lowerer<'a>,
     func: Id<Func>,
-    subst: Subst,
+    subst: Subst<'a>,
     locals: Arena<LocalDecl>,
     /// Each starts out `Unreachable`, and stays that way if nothing terminates it.
     blocks: Arena<Block>,
@@ -373,7 +396,7 @@ struct FnBuilder<'l, 'a> {
 
 impl<'l, 'a> FnBuilder<'l, 'a> {
     fn new(l: &'l mut Lowerer<'a>, func: Id<Func>, type_args: Vec<TypeId>) -> Self {
-        let subst = Subst::new(l.names.type_params(func), &type_args);
+        let subst = Subst::new(l.names.type_params(func), &type_args, &l.typed.impls);
         let mut builder = FnBuilder {
             l,
             func,
@@ -855,6 +878,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let value_ty = self.ty(value_ty);
         let bool = self.l.mir.types.bool;
         let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
+        // Through an iterator: a loop of its own.
+        if let Loop::Iterator { iterable: through } = kind {
+            return self.iterator_loop(stmt, name, mutable, iterable, body, span, through);
+        }
 
         self.in_scope(span.clone(), |b| {
             // What to go through: a counter's type, where it starts, where it stops, and the
@@ -919,6 +946,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     let elements = Place::local(view).project(Projection::Deref);
                     (usize, first, limit, Some(elements))
                 }
+                Loop::Iterator { .. } => unreachable!("lowered as an iterator loop above"),
             };
             let counter = b.temp(counter_ty, span.clone());
             b.assign(Place::local(counter), Rvalue::Use(first), span.clone());
@@ -1327,6 +1355,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     BinOp::Equals => Rvalue::Use(equal),
                     _ => Rvalue::Not(equal),
                 }
+            }
+            // Values of a type implementing `Eq` compare with its `eq`.
+            Expr::Binary { op, lhs, rhs } if self.l.typed.uses_eq(expr) => {
+                self.eq_call(*op, *lhs, *rhs, self.span(expr))
             }
             Expr::Binary { op, lhs, rhs } => Rvalue::Binary {
                 op: *op,

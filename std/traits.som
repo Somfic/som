@@ -1,0 +1,29 @@
+/// Gives values one at a time: each `next` is the next one, or `none` once there are no more.
+/// `for x in it` goes through them.
+trait Iterator {
+    /// What it gives.
+    type Item;
+
+    fn next(self: &mut Self) -> Item?;
+}
+
+/// Can be gone through with `for`, which goes through the iterator `iter` makes.
+trait Iterable {
+    /// The iterator `iter` makes.
+    type Iter;
+
+    fn iter(self: &Self) -> Iter;
+}
+
+/// Can be made from a collection literal: `let list: List<i32> = [1, 2, 3]`.
+trait FromArray {
+    /// What the literal's elements are.
+    type Element;
+
+    fn from_array<N: usize>(items: [Element; N]) -> Self;
+}
+
+/// Can be compared with `==` and `!=`.
+trait Eq {
+    fn eq(self: &Self, other: &Self) -> bool;
+}

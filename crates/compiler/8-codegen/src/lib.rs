@@ -602,7 +602,13 @@ impl<'a> Emitter<'a> {
             Ty::Optional(_) | Ty::Array { .. } | Ty::Slice(_) | Ty::Range(_) => {
                 format!("struct {}", self.names.generated[&ty])
             }
-            Ty::Error | Ty::Param(_) | Ty::Var(_) | Ty::Value(_) | Ty::Add(..) | Ty::Mul(..) => {
+            Ty::Error
+            | Ty::Param(_)
+            | Ty::Var(_)
+            | Ty::Value(_)
+            | Ty::Add(..)
+            | Ty::Mul(..)
+            | Ty::Assoc { .. } => {
                 unreachable!("codegen only sees checked, concrete types")
             }
         }

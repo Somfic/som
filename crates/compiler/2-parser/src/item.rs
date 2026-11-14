@@ -1,5 +1,6 @@
 use som_ast::{
-    Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Use, Variant, VariantKind,
+    AssocType, Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Trait, Use,
+    Variant, VariantKind,
 };
 use som_base::message::code;
 use som_base::msg;
@@ -15,6 +16,7 @@ impl Parser<'_> {
                 | TokenKind::Extern
                 | TokenKind::Struct
                 | TokenKind::Enum
+                | TokenKind::Trait
                 | TokenKind::Use
                 | TokenKind::Impl
         )
@@ -29,6 +31,7 @@ impl Parser<'_> {
             TokenKind::Extern => self.parse_extern().map(Item::Extern),
             TokenKind::Struct => self.parse_struct().map(Item::Struct),
             TokenKind::Enum => self.parse_enum().map(Item::Struct),
+            TokenKind::Trait => self.parse_trait().map(Item::Trait),
             TokenKind::Use if self.peek_nth(1) == TokenKind::Extern => {
                 self.parse_use_extern().map(Item::Extern)
             }
@@ -98,22 +101,42 @@ impl Parser<'_> {
             variadic: false,
             link_name: None,
             library: None,
+            in_trait: false,
         };
         let id = self.ast.funcs.alloc(func, span);
         self.add_item(Item::Func(id));
     }
 
+    /// `impl<T> Pair<T> { … }`, or `impl<T> Iterator for ListIter<T> { type Item = &T; … }`.
     fn parse_impl(&mut self) -> Option<Impl> {
         self.expect(TokenKind::Impl, "an impl block")?;
         let generics = self.parse_generics()?;
-        let target = self.parse_path("a struct name")?;
-        // `Pair<T>`: the struct's own parameters, which `impl<T>` declared.
-        self.parse_type_args()?;
+        let first = self.parse_path("a struct or trait name")?;
+        let first_args = self.parse_type_args()?;
+        // `Iterator for ListIter<T>`: what came first was the trait.
+        let (trait_, target, target_args) = if self.eat(TokenKind::For) {
+            let target = self.parse_path("a struct name")?;
+            let target_args = self.parse_type_args()?;
+            (Some((first, first_args)), target, target_args)
+        } else {
+            (None, first, first_args)
+        };
         self.expect(TokenKind::OpenBrace, "an impl block")?;
 
         let mut methods = Vec::new();
+        let mut types = Vec::new();
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
-            if self.at(TokenKind::Fn) {
+            // `type Item = &T;`
+            if self.eat(TokenKind::Type) {
+                let Some(name) = self.parse_ident("an associated type name") else {
+                    self.recover(RecoveryLevel::Declaration);
+                    continue;
+                };
+                self.expect(TokenKind::Equals, "`=` and the type")?;
+                let ty = self.parse_type()?;
+                self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
+                types.push((name, ty));
+            } else if self.at(TokenKind::Fn) {
                 match self.parse_function() {
                     Some(id) => methods.push(id),
                     None => self.recover(RecoveryLevel::Declaration),
@@ -132,9 +155,113 @@ impl Parser<'_> {
         }
         Some(Impl {
             target,
+            target_args,
+            trait_,
+            types,
             generics,
             methods,
         })
+    }
+
+    /// `trait Iterator { type Item; fn next(self: &mut Self) -> Item?; }`. A method without a
+    /// body ends in `;`.
+    fn parse_trait(&mut self) -> Option<Id<Trait>> {
+        let doc = self.doc_comment();
+        let start = self.current_span();
+        self.expect(TokenKind::Trait, "a trait declaration")?;
+        let name = self.parse_ident("a trait name")?;
+        let generics = self.parse_generics()?;
+        self.expect(TokenKind::OpenBrace, "the trait's methods")?;
+        let mut types = Vec::new();
+        let mut methods = Vec::new();
+        while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            if self.at(TokenKind::Type) {
+                let doc = self.doc_comment();
+                self.advance();
+                let Some(name) = self.parse_ident("an associated type name") else {
+                    self.recover(RecoveryLevel::Declaration);
+                    continue;
+                };
+                self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
+                types.push(AssocType { doc, name });
+            } else if self.at(TokenKind::Fn) {
+                match self.parse_trait_method(&name, &generics) {
+                    Some(id) => methods.push(id),
+                    None => self.recover(RecoveryLevel::Declaration),
+                }
+            } else {
+                self.error_missing(
+                    "expected a method or `type` declaration",
+                    "a method or associated type",
+                );
+                self.recover(RecoveryLevel::Declaration);
+            }
+        }
+        self.expect(TokenKind::CloseBrace, "a closing brace after the trait")?;
+        let span = self.span_from(&start);
+        Some(self.ast.traits.alloc(
+            Trait {
+                doc,
+                name,
+                generics,
+                types,
+                methods,
+            },
+            span,
+        ))
+    }
+
+    /// A trait's method: a signature ending in `;`, or with a body. It's generic over `Self`,
+    /// the type implementing it, then the trait's generics, then its own.
+    fn parse_trait_method(
+        &mut self,
+        trait_name: &Ident,
+        trait_generics: &[som_ast::Generic],
+    ) -> Option<Id<Func>> {
+        let doc = self.doc_comment();
+        let start = self.current_span();
+        self.expect(TokenKind::Fn, "a method declaration")?;
+        let name = self.parse_ident("a method name")?;
+        let own = self.parse_generics()?;
+        let (params, variadic) = self.parse_params(false)?;
+        let returns = if self.eat(TokenKind::Arrow) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+        let body = if self.eat(TokenKind::Semicolon) {
+            None
+        } else {
+            Some(self.parse_block()?)
+        };
+        let this = som_ast::Generic {
+            name: Ident {
+                name: "Self".into(),
+                span: trait_name.span.clone(),
+            },
+            ty: None,
+            bounds: vec![som_ast::Path {
+                segments: vec![trait_name.clone()],
+            }],
+        };
+        let generics = std::iter::once(this)
+            .chain(trait_generics.iter().cloned())
+            .chain(own)
+            .collect();
+        let span = self.span_from(&start);
+        let func = Func {
+            doc,
+            name,
+            generics,
+            params,
+            returns,
+            body,
+            variadic,
+            link_name: None,
+            library: None,
+            in_trait: true,
+        };
+        Some(self.ast.funcs.alloc(func, span))
     }
 
     /// `use extern "raylib" …`: an extern block whose library module is also `use`d.
@@ -299,6 +426,7 @@ impl Parser<'_> {
             variadic,
             link_name: None,
             library: None,
+            in_trait: false,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -311,12 +439,21 @@ impl Parser<'_> {
         }
         let params = self.parse_comma_list(TokenKind::GreaterThan, |p| {
             let name = p.parse_ident("a generic parameter name")?;
-            let ty = if p.eat(TokenKind::Colon) {
-                Some(p.parse_type()?)
-            } else {
-                None
-            };
-            Some(som_ast::Generic { name, ty })
+            let (mut ty, mut bounds) = (None, Vec::new());
+            if p.eat(TokenKind::Colon) {
+                // `N: usize` is a value parameter; `T: Hash + Eq` a type that has to implement
+                // traits.
+                let primitive = p.at_primitive_type();
+                if primitive {
+                    ty = Some(p.parse_type()?);
+                } else {
+                    bounds.push(p.parse_path("a trait")?);
+                    while p.eat(TokenKind::Plus) {
+                        bounds.push(p.parse_path("a trait")?);
+                    }
+                }
+            }
+            Some(som_ast::Generic { name, ty, bounds })
         })?;
         self.expect(
             TokenKind::GreaterThan,
@@ -497,6 +634,7 @@ impl Parser<'_> {
             variadic,
             link_name: None,
             library: None,
+            in_trait: false,
         };
         Some(self.ast.funcs.alloc(func, span))
     }

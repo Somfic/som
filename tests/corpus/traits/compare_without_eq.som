@@ -1,0 +1,5 @@
+// expect: error InvalidOperands
+
+struct Circle { r: i32 }
+
+fn main() -> i32 { 1 if Circle { r: 1 } == Circle { r: 1 } else 0 }

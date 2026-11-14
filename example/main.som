@@ -1,3 +1,8 @@
+use som::io;
 use som::data;
 
-let a = [ [ 1, 2 ], [ 3, 4 ] ];
+let items: List = [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ];
+
+for item in items {
+    printf("%d\n", item)
+}

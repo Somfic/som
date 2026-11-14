@@ -21,7 +21,8 @@ fn help(error: &ResolveError) -> Option<String> {
         ResolveError::UnboundVariable { help, .. }
         | ResolveError::UnknownFunction { help, .. }
         | ResolveError::UnknownStruct { help, .. }
-        | ResolveError::UnknownType { help, .. } => help.as_ref().map(|h| h.plain()),
+        | ResolveError::UnknownType { help, .. }
+        | ResolveError::UnknownTrait { help, .. } => help.as_ref().map(|h| h.plain()),
         ResolveError::DuplicateDefinition { .. } | ResolveError::NotALoop { .. } => None,
     }
 }

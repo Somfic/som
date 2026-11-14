@@ -1,0 +1,9 @@
+// expect: error MissingTraitItem
+
+trait Shape { fn area(self: &Self) -> i32; }
+
+struct Square { side: i32 }
+
+impl Shape for Square {}
+
+fn main() -> i32 { 0 }

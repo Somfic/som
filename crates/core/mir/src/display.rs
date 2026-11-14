@@ -57,7 +57,7 @@ impl Mir {
             Ty::Float(float) => format!("{float:?}").to_lowercase(),
             Ty::Pointer => "*".into(),
             Ty::Ptr(to) => format!("*{}", self.display_ty(*to)),
-            Ty::Param(_) | Ty::Var(_) | Ty::Add(..) | Ty::Mul(..) => {
+            Ty::Param(_) | Ty::Var(_) | Ty::Add(..) | Ty::Mul(..) | Ty::Assoc { .. } => {
                 unreachable!("MIR only has concrete types")
             }
         }

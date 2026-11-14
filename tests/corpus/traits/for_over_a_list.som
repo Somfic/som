@@ -1,0 +1,18 @@
+// expect: exit 10
+
+/// `for` goes through anything `Iterable`: a `List` gives references to its values.
+use som::data;
+use som::io;
+
+fn main() -> i32 {
+    let items: List = [1, 2, 3, 4];
+    let mut total = 0;
+    for item in items {
+        total = total + *item;
+    }
+    for item in &items {
+        printf("%d\n", *item);
+    }
+    items.free();
+    total
+}

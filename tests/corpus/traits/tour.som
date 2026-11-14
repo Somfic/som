@@ -1,0 +1,47 @@
+// expect: exit 255
+
+/// Trait methods on a bounded type parameter, default methods, `Self`, and `==` through `Eq`.
+use som::data;
+
+trait Shape {
+    fn area(self: &Self) -> i32;
+    /// A default: twice the area.
+    fn double(self: &Self) -> i32 { self.area() * 2 }
+}
+
+struct Square { side: i32 }
+struct Rect { w: i32, h: i32 }
+
+impl Shape for Square {
+    fn area(self: &Square) -> i32 { self.side * self.side }
+}
+
+impl Shape for Rect {
+    fn area(self: &Self) -> i32 { self.w * self.h }
+    fn double(self: &Self) -> i32 { 1000 }
+}
+
+fn total_area<S: Shape>(shapes: &List<S>) -> i32 {
+    let mut total = 0;
+    for s in shapes {
+        total = total + s.area();
+    }
+    total
+}
+
+impl Eq for Square {
+    fn eq(self: &Square, other: &Square) -> bool { self.side == other.side }
+}
+
+/// Sums anything iterable whose items are i32 references.
+fn sum_refs<I: Iterator>(it: I) -> i32 { 0 }
+
+fn main() -> i32 {
+    let squares: List<Square> = [Square { side: 2 }, Square { side: 3 }];
+    let a = total_area(&squares);
+    let b = Square { side: 2 }.double();
+    let c = Rect { w: 1, h: 1 }.double();
+    let same = 1 if Square { side: 4 } == Square { side: 4 } else 0;
+    let differ = 1 if Square { side: 4 } != Square { side: 5 } else 0;
+    a + b + c + same + differ
+}

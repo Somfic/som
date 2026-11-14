@@ -45,7 +45,7 @@
         },
         {
           "name": "keyword.other.som",
-          "match": "\\b(fn|extern|struct|enum|impl|let|mut|out)\\b"
+          "match": "\\b(fn|extern|struct|enum|impl|trait|type|let|mut|out)\\b"
         },
         {
           "name": "constant.language.boolean.som",
@@ -80,7 +80,7 @@
     "struct-definition": {
       "patterns": [
         {
-          "match": "\\b(struct|enum)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+          "match": "\\b(struct|enum|trait)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
           "captures": {
             "1": { "name": "keyword.other.som" },
             "2": { "name": "entity.name.type.struct.som" }

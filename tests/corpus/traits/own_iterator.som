@@ -1,0 +1,22 @@
+// expect: exit 15
+
+/// Anything implementing `Iterator` can be looped over directly.
+struct Countdown { n: i32 }
+
+impl Iterator for Countdown {
+    type Item = i32;
+
+    fn next(self: &mut Countdown) -> i32? {
+        if self.n == 0 { return none; }
+        self.n = self.n - 1;
+        self.n + 1
+    }
+}
+
+fn main() -> i32 {
+    let mut total = 0;
+    for n in (Countdown { n: 5 }) {
+        total = total + n;
+    }
+    total
+}

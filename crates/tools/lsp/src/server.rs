@@ -592,6 +592,20 @@ impl LanguageServer for SomLanguageServer {
                         Some(methods),
                     ));
                 }
+                Item::Trait(id) => {
+                    let t = &ast.traits[*id];
+                    let methods: Vec<DocumentSymbol> = (t.methods.iter())
+                        .map(|&m| func_symbol(m, SymbolKind::METHOD))
+                        .collect();
+                    symbols.push(symbol(
+                        t.name.name.to_string(),
+                        None,
+                        SymbolKind::INTERFACE,
+                        ast.traits.span(*id),
+                        &t.name.span,
+                        Some(methods),
+                    ));
+                }
                 Item::Use(_) => {}
             }
         }
@@ -956,7 +970,7 @@ impl LanguageServer for SomLanguageServer {
             }
             for keyword in [
                 "fn", "let", "mut", "if", "else", "struct", "impl", "extern", "loop", "while",
-                "break", "use", "out", "true", "false", "enum", "match",
+                "break", "use", "out", "true", "false", "enum", "match", "trait", "type",
             ] {
                 items.push(CompletionItem {
                     label: keyword.to_string(),
@@ -1223,9 +1237,26 @@ fn describe(a: &Analysis, def: DefId) -> String {
                 None => d.name.to_string(),
             }
         }
-        DefKind::TypeParam { .. } | DefKind::StructParam { .. } => {
+        DefKind::TypeParam { .. } | DefKind::StructParam { .. } | DefKind::ImplParam { .. } => {
             format!("type parameter {}", d.name)
         }
+        DefKind::Trait(t) => {
+            let t = &a.ast.traits[*t];
+            let mut lines: Vec<String> = (t.types.iter())
+                .map(|assoc| format!("    type {};", assoc.name))
+                .collect();
+            lines.extend(
+                t.methods
+                    .iter()
+                    .map(|&m| format!("    {};", signature(a, m))),
+            );
+            format!("trait {} {{\n{}\n}}", t.name, lines.join("\n"))
+        }
+        DefKind::AssocType { .. } | DefKind::ImplType { .. } => format!("type {}", d.name),
+        DefKind::SelfType { impl_ } => match a.names.impls[*impl_].owner {
+            Some(owner) => format!("Self = {}", a.names.def(owner).name),
+            None => "Self".to_string(),
+        },
     }
 }
 
@@ -2339,7 +2370,12 @@ fn omitted_args_hints(
         }
         (TypeExpr::Optional(inner), Ty::Optional(actual))
         | (TypeExpr::Reference { to: inner, .. }, Ty::Ref { to: actual, .. })
-        | (TypeExpr::Array { element: inner, .. }, Ty::Array { element: actual, .. }) => {
+        | (
+            TypeExpr::Array { element: inner, .. },
+            Ty::Array {
+                element: actual, ..
+            },
+        ) => {
             omitted_args_hints(a, *inner, *actual, hints);
         }
         _ => {}
@@ -2600,6 +2636,8 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::Extern
             | TokenKind::Struct
             | TokenKind::Enum
+            | TokenKind::Trait
+            | TokenKind::Type
             | TokenKind::Match
             | TokenKind::Impl
             | TokenKind::Let

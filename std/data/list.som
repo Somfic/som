@@ -1,3 +1,4 @@
+use som;
 use som::mem;
 
 /// `T`s one after another, as many as are pushed: room for more is made as it's needed.
@@ -12,19 +13,6 @@ impl<T> List<T> {
     /// An empty list. It takes no memory until something is pushed.
     fn new() -> List<T> {
         List { items: null(), len: 0, capacity: 0 }
-    }
-
-    /// A list of `items`, moved into it: what `let list: List<i32> = [1, 2, 3]` calls.
-    fn from_array<N: usize>(items: [T; N]) -> List<T> {
-        let mut list: List<T> = List::new();
-        list.items = list.items.resize(N);
-        list.capacity = N;
-        let source = &items as *T;
-        for i in 0..N {
-            list.items.write(i, source.read(i));
-        }
-        list.len = N;
-        list
     }
 
     /// How many values it holds.
@@ -90,5 +78,47 @@ impl<T> List<T> {
     /// Gives its memory back. The values in it aren't freed themselves.
     fn free(self: List<T>) {
         self.items.free()
+    }
+}
+
+// `let list: List<i32> = [1, 2, 3]`: the values moved into a new list.
+impl<T> FromArray for List<T> {
+    type Element = T;
+
+    fn from_array<N: usize>(items: [T; N]) -> List<T> {
+        let mut list: List<T> = List::new();
+        list.items = list.items.resize(N);
+        list.capacity = N;
+        let source = &items as *T;
+        for i in 0..N {
+            list.items.write(i, source.read(i));
+        }
+        list.len = N;
+        list
+    }
+}
+
+// /// `for x in list`: each value, by reference.
+// impl<T> Iterable for List<T> {
+//     type Iter = ListIter<T>;
+
+//     fn iter(self: &List<T>) -> ListIter<T> {
+//         ListIter { list: self, index: 0 }
+//     }
+// }
+
+/// Goes through a list's values, by reference.
+struct ListIter<T> {
+    list: &List<T>,
+    index: usize,
+}
+
+impl<T> Iterator for ListIter<T> {
+    type Item = &T;
+
+    fn next(self: &mut ListIter<T>) -> &T? {
+        let item = self.list.get(self.index);
+        self.index = self.index + 1;
+        item
     }
 }

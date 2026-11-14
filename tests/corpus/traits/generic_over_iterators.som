@@ -1,0 +1,25 @@
+// expect: exit 6
+
+/// `I::Item` names what an iterator gives, in code generic over it.
+struct Countdown { n: i32 }
+
+impl Iterator for Countdown {
+    type Item = i32;
+
+    fn next(self: &mut Countdown) -> i32? {
+        if self.n == 0 { return none; }
+        self.n = self.n - 1;
+        self.n + 1
+    }
+}
+
+fn first<I: Iterator>(it: I) -> I::Item? {
+    let mut it = it;
+    it.next()
+}
+
+fn main() -> i32 {
+    let a = first(Countdown { n: 3 }) else 0;
+    let b = first(Countdown { n: 3 }) else 0;
+    a + b
+}

@@ -13,7 +13,7 @@ mod error;
 mod names;
 
 pub use error::ResolveError;
-pub use names::{Def, DefId, DefKind, Names};
+pub use names::{Def, DefId, DefKind, ImplDef, LangTrait, Names};
 
 use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Pattern, PatternFields, Stmt, TypeExpr};
 use som_base::diagnostics::{closest_match, snake_case};
@@ -34,6 +34,7 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         module: 0,
         scopes: Vec::new(),
         type_params: Vec::new(),
+        block_types: Vec::new(),
     };
     resolver.collect_modules();
     resolver.collect_items();
@@ -49,6 +50,7 @@ enum Expect {
     Func,
     Struct,
     Type,
+    Trait,
 }
 
 impl Expect {
@@ -58,7 +60,7 @@ impl Expect {
             Expect::Value => message::var(name),
             Expect::Func => message::func(name),
             Expect::Struct => message::struct_name(name),
-            Expect::Type => message::ty(name),
+            Expect::Type | Expect::Trait => message::ty(name),
         }
     }
 }
@@ -82,6 +84,9 @@ struct Resolver<'a> {
     scopes: Vec<HashMap<&'a str, DefId>>,
     /// Type parameters of the function being resolved.
     type_params: Vec<(&'a str, DefId)>,
+    /// Types named inside a trait or impl block besides its parameters: `Self`, and its
+    /// associated types, `Item`.
+    block_types: Vec<(&'a str, DefId)>,
 }
 
 impl<'a> Resolver<'a> {
@@ -135,6 +140,32 @@ impl<'a> Resolver<'a> {
                             self.variant_names[m].insert(&v.name.name);
                         }
                     }
+                    Item::Trait(id) => {
+                        let t = &ast.traits[*id];
+                        let def = (self.names).define(
+                            &t.name.name,
+                            DefKind::Trait(*id),
+                            t.name.span.clone(),
+                            m,
+                        );
+                        let types = (t.types.iter().enumerate())
+                            .map(|(index, assoc)| {
+                                let kind = DefKind::AssocType { trait_: *id, index };
+                                self.names.define(
+                                    &assoc.name.name,
+                                    kind,
+                                    assoc.name.span.clone(),
+                                    m,
+                                )
+                            })
+                            .collect();
+                        self.names.set_trait(*id, def, types);
+                        self.add_item(m, &t.name, def);
+                        // Its methods are only reached through types implementing it.
+                        for &method in &t.methods {
+                            self.define_func(method, m, false);
+                        }
+                    }
                     Item::Impl(block) => {
                         // Methods aren't visible by name in the module; they're attached in `collect_methods`.
                         for &id in &block.methods {
@@ -142,6 +173,16 @@ impl<'a> Resolver<'a> {
                         }
                     }
                     Item::Use(_) => {}
+                }
+            }
+        }
+        // The traits the language uses, from the standard library's root module.
+        if let Some(&root) = self.modules.get("som") {
+            for lang in LangTrait::ALL {
+                if let Some(&def) = self.items[root].get(lang.name())
+                    && matches!(self.names.def(def).kind, DefKind::Trait(_))
+                {
+                    self.names.set_lang(lang, def);
                 }
             }
         }
@@ -200,7 +241,39 @@ impl<'a> Resolver<'a> {
             self.module = m;
             for item in &module.items {
                 let Item::Impl(block) = item else { continue };
-                let Some(owner) = self.resolve_path(&block.target, Expect::Struct) else {
+                let index = self.names.impls.len();
+                let owner = self.resolve_path(&block.target, Expect::Struct);
+                let trait_ = (block.trait_.as_ref())
+                    .and_then(|(path, _)| self.resolve_path(path, Expect::Trait));
+                let params = (block.generics.iter().enumerate())
+                    .map(|(i, g)| {
+                        let kind = DefKind::ImplParam {
+                            impl_: index,
+                            index: i,
+                            value: g.ty.is_some(),
+                        };
+                        self.names
+                            .define(&g.name.name, kind, g.name.span.clone(), m)
+                    })
+                    .collect();
+                let types = (block.types.iter().enumerate())
+                    .map(|(i, (name, _))| {
+                        let kind = DefKind::ImplType {
+                            impl_: index,
+                            index: i,
+                        };
+                        self.names.define(&name.name, kind, name.span.clone(), m)
+                    })
+                    .collect();
+                self.names.add_impl(ImplDef {
+                    module: m,
+                    trait_,
+                    owner,
+                    params,
+                    methods: block.methods.clone(),
+                    types,
+                });
+                let Some(owner) = owner else {
                     continue;
                 };
                 for &method in &block.methods {
@@ -220,13 +293,20 @@ impl<'a> Resolver<'a> {
 
     fn resolve_bodies(&mut self) {
         let ast = self.ast;
+        // Impl blocks, counted in the order `collect_methods` saw them.
+        let mut impl_index = 0;
         for (m, module) in ast.modules.iter().enumerate() {
             self.module = m;
             for item in &module.items {
                 match item {
                     Item::Func(id) => self.resolve_func(*id),
                     Item::Extern(block) => block.funcs.iter().for_each(|&id| self.resolve_func(id)),
-                    Item::Impl(block) => block.methods.iter().for_each(|&id| self.resolve_func(id)),
+                    Item::Impl(block) => {
+                        let index = impl_index;
+                        impl_index += 1;
+                        self.resolve_impl(index, block);
+                    }
+                    Item::Trait(id) => self.resolve_trait(*id),
                     Item::Struct(id) => {
                         // Its fields can be written in terms of its type parameters.
                         self.type_params.clear();
@@ -245,10 +325,12 @@ impl<'a> Resolver<'a> {
                             self.names.push_struct_param(*id, def);
                             self.type_params.push((&param.name.name, def));
                         }
-                        for param in &ast.structs[*id].generics {
+                        let defs = self.names.struct_params(*id).to_vec();
+                        for (param, def) in ast.structs[*id].generics.iter().zip(defs) {
                             if let Some(ty) = param.ty {
                                 self.resolve_type(ty);
                             }
+                            self.resolve_bounds(param, def);
                         }
                         for field in ast.structs[*id]
                             .fields
@@ -262,6 +344,68 @@ impl<'a> Resolver<'a> {
                     Item::Use(_) => {}
                 }
             }
+        }
+    }
+
+    /// An impl block's target, trait and associated types, in terms of its parameters; then
+    /// its methods, which can name `Self` and the associated types.
+    fn resolve_impl(&mut self, index: usize, block: &'a som_ast::Impl) {
+        let params = self.names.impls[index].params.clone();
+        self.type_params = (block.generics.iter().zip(&params))
+            .map(|(g, &def)| (&*g.name.name, def))
+            .collect();
+        for (g, &def) in block.generics.iter().zip(&params) {
+            if let Some(ty) = g.ty {
+                self.resolve_type(ty);
+            }
+            self.resolve_bounds(g, def);
+        }
+        let written = (block.target_args.iter())
+            .chain(block.trait_.iter().flat_map(|(_, args)| args))
+            .chain(block.types.iter().map(|(_, ty)| ty));
+        for &ty in written {
+            self.resolve_type(ty);
+        }
+        self.type_params.clear();
+
+        let self_type = self.names.define(
+            "Self",
+            DefKind::SelfType { impl_: index },
+            block.target.span(),
+            self.module,
+        );
+        let types = self.names.impls[index].types.clone();
+        self.block_types = std::iter::once(("Self", self_type))
+            .chain(
+                block
+                    .types
+                    .iter()
+                    .zip(types)
+                    .map(|((n, _), d)| (&*n.name, d)),
+            )
+            .collect();
+        block.methods.iter().for_each(|&id| self.resolve_func(id));
+        self.block_types.clear();
+    }
+
+    /// A trait's methods, which can name its associated types; `Self` is a generic of each.
+    fn resolve_trait(&mut self, id: Id<som_ast::Trait>) {
+        let t = &self.ast.traits[id];
+        let types = self.names.trait_types(id).to_vec();
+        self.block_types = (t.types.iter().zip(types))
+            .map(|(assoc, def)| (&*assoc.name.name, def))
+            .collect();
+        t.methods.iter().for_each(|&m| self.resolve_func(m));
+        self.block_types.clear();
+    }
+
+    /// The traits generic parameter `generic`, defined as `def`, has to implement.
+    fn resolve_bounds(&mut self, generic: &'a som_ast::Generic, def: DefId) {
+        let traits = (generic.bounds.iter())
+            .filter_map(|path| self.resolve_path(path, Expect::Trait))
+            .collect::<Vec<_>>();
+        if !traits.is_empty() {
+            self.names.set_bounds(def, traits);
         }
     }
 
@@ -281,10 +425,15 @@ impl<'a> Resolver<'a> {
             self.names.push_type_param(id, def);
             self.type_params.push((&param.name.name, def));
         }
-        for param in &func.generics {
+        for (param, &def) in func
+            .generics
+            .iter()
+            .zip(self.names.type_params(id).to_vec().iter())
+        {
             if let Some(ty) = param.ty {
                 self.resolve_type(ty);
             }
+            self.resolve_bounds(param, def);
         }
 
         self.scopes.push(HashMap::new());
@@ -569,6 +718,18 @@ impl<'a> Resolver<'a> {
 
     fn resolve_type(&mut self, id: Id<TypeExpr>) {
         match &self.ast.types[id] {
+            // `T::Item`, `Self::Item`: an associated type of a type parameter's trait.
+            TypeExpr::Named { path, args }
+                if path.segments.len() == 2
+                    && let Some(base) = self.lookup(&path.segments[0].name, Expect::Type)
+                    && let Some(assoc) = self.associated(base, &path.segments[1].name) =>
+            {
+                self.names.set_type(id, assoc);
+                if !matches!(self.names.def(assoc).kind, DefKind::ImplType { .. }) {
+                    self.names.set_projection_base(id, base);
+                }
+                args.iter().for_each(|&arg| self.resolve_type(arg));
+            }
             TypeExpr::Named { path, args } => {
                 if let Some(def) = self.resolve_path(path, Expect::Type) {
                     self.names.set_type(id, def);
@@ -601,6 +762,29 @@ impl<'a> Resolver<'a> {
         }
     }
 
+    /// The associated type `name` of what `base` names: of a trait a type parameter has to
+    /// implement, or the one an impl block says, for its `Self`.
+    fn associated(&self, base: DefId, name: &str) -> Option<DefId> {
+        let named = |defs: &[DefId]| {
+            defs.iter()
+                .copied()
+                .find(|&d| &*self.names.def(d).name == name)
+        };
+        match self.names.def(base).kind {
+            DefKind::SelfType { impl_ } => named(&self.names.impls[impl_].types),
+            DefKind::TypeParam { .. } | DefKind::StructParam { .. } | DefKind::ImplParam { .. } => {
+                self.names
+                    .bounds(base)
+                    .iter()
+                    .find_map(|&t| match self.names.def(t).kind {
+                        DefKind::Trait(t) => named(self.names.trait_types(t)),
+                        _ => None,
+                    })
+            }
+            _ => None,
+        }
+    }
+
     // --- Lookup ---
 
     /// Resolves `path`, reporting an error and returning `None` if it doesn't name an `expect`.
@@ -623,6 +807,12 @@ impl<'a> Resolver<'a> {
         {
             return Some(def);
         }
+        // `Self` and associated types inside a trait or impl block.
+        if expect == Expect::Type
+            && let Some(&(_, def)) = self.block_types.iter().find(|(n, _)| *n == name)
+        {
+            return Some(def);
+        }
         // A value parameter is a value too: `N` in `struct Buffer<N: usize>`.
         if let Some(&(_, def)) = self.type_params.iter().find(|(n, _)| *n == name)
             && (expect == Expect::Type
@@ -631,8 +821,12 @@ impl<'a> Resolver<'a> {
             return Some(def);
         }
 
+        // The standard library's root module, `som`, is seen from everywhere: the traits the
+        // language uses are there.
+        let prelude = self.modules.get("som").copied();
         std::iter::once(self.module)
             .chain(self.imports[self.module].iter().copied())
+            .chain(prelude)
             .find_map(|m| self.items[m].get(name).copied())
             .filter(|&def| self.fits(def, expect))
     }
@@ -683,15 +877,29 @@ impl<'a> Resolver<'a> {
         match expect {
             Expect::Value => !matches!(
                 kind,
-                DefKind::Struct(_) | DefKind::TypeParam { .. } | DefKind::StructParam { .. }
+                DefKind::Struct(_)
+                    | DefKind::TypeParam { .. }
+                    | DefKind::StructParam { .. }
+                    | DefKind::Trait(_)
+                    | DefKind::AssocType { .. }
+                    | DefKind::ImplParam { .. }
+                    | DefKind::SelfType { .. }
+                    | DefKind::ImplType { .. }
             ),
             // `Shape::Circle(1.0)` and `Shape::Rect { … }` make a variant.
             Expect::Func => matches!(kind, DefKind::Func(_) | DefKind::Variant { .. }),
             Expect::Struct => matches!(kind, DefKind::Struct(_) | DefKind::Variant { .. }),
             Expect::Type => matches!(
                 kind,
-                DefKind::Struct(_) | DefKind::TypeParam { .. } | DefKind::StructParam { .. }
+                DefKind::Struct(_)
+                    | DefKind::TypeParam { .. }
+                    | DefKind::StructParam { .. }
+                    | DefKind::AssocType { .. }
+                    | DefKind::ImplParam { .. }
+                    | DefKind::SelfType { .. }
+                    | DefKind::ImplType { .. }
             ),
+            Expect::Trait => matches!(kind, DefKind::Trait(_)),
         }
     }
 
@@ -722,6 +930,12 @@ impl<'a> Resolver<'a> {
                 fixes,
             },
             Expect::Type => ResolveError::UnknownType {
+                name,
+                span,
+                help,
+                fixes,
+            },
+            Expect::Trait => ResolveError::UnknownTrait {
                 name,
                 span,
                 help,

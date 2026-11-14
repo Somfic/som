@@ -16,6 +16,31 @@ impl Parser<'_> {
         Some(ty)
     }
 
+    /// Whether a primitive type's name is next: `usize` in `N: usize`.
+    pub(crate) fn at_primitive_type(&self) -> bool {
+        matches!(
+            self.peek(),
+            TokenKind::I8
+                | TokenKind::I16
+                | TokenKind::I32
+                | TokenKind::I64
+                | TokenKind::I128
+                | TokenKind::ISize
+                | TokenKind::U8
+                | TokenKind::U16
+                | TokenKind::U32
+                | TokenKind::U64
+                | TokenKind::U128
+                | TokenKind::USize
+                | TokenKind::F32
+                | TokenKind::F64
+                | TokenKind::Bool
+                | TokenKind::Char
+                | TokenKind::Str
+                | TokenKind::CStr
+        )
+    }
+
     /// `<A, B>` after a struct's name in a type, if it's there. An argument is a type, or a
     /// value: `Buffer<64>`, `Socket<true>`.
     pub(crate) fn parse_type_args(&mut self) -> Option<Vec<Id<TypeExpr>>> {

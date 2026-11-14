@@ -240,6 +240,10 @@ impl Loader {
             return;
         }
         if self.loading.contains(&name) {
+            // The standard library's modules use each other; names resolve whatever the order.
+            if bundled(&name).is_some() {
+                return;
+            }
             self.errors
                 .push(LoadError::CircularDependency { name, span });
             return;

@@ -184,6 +184,33 @@ pub enum TypeError {
         span: Span,
         previous: Span,
     },
+    /// An `impl Trait for …` without one of the trait's methods or associated types.
+    MissingTraitItem {
+        what: &'static str,
+        name: String,
+        trait_: String,
+        span: Span,
+    },
+    /// An `impl Trait for …` with a method or associated type the trait doesn't have.
+    NotInTrait {
+        what: &'static str,
+        name: String,
+        trait_: String,
+        span: Span,
+    },
+    /// A trait's method implemented with other types than the trait says.
+    ImplSignatureMismatch {
+        name: String,
+        expected: String,
+        span: Span,
+        declared_at: Span,
+    },
+    /// A type used where a trait is required, that doesn't implement it.
+    DoesNotImplement {
+        ty: Message,
+        trait_: String,
+        span: Span,
+    },
     /// A pattern names a variant the enum doesn't have.
     UnknownVariant {
         ty: String,
@@ -341,6 +368,14 @@ impl TypeError {
                             code(format!("if {name} {{ … }}")),
                             ", or give a fallback, as in ",
                             code(format!("({name} else {fallback})")),
+                        ]),
+                    // Comparing values of a type that could say how: `impl Eq for …`.
+                    None if matches!(op.as_str(), "==" | "!=") => d
+                        .with_label(Label::primary(span.clone(), "no such operation"))
+                        .with_hint(msg![
+                            "to compare them, implement ",
+                            code("Eq"),
+                            " for the type"
                         ]),
                     None => d.with_label(Label::primary(span.clone(), "no such operation")),
                 }
@@ -614,6 +649,53 @@ impl TypeError {
                 previous.clone(),
                 "was already defined here",
             )),
+            TypeError::MissingTraitItem {
+                what,
+                name,
+                trait_,
+                span,
+            } => Diagnostic::error(msg![
+                "this implementation of ",
+                code(trait_),
+                format!(" is missing {what} "),
+                code(name)
+            ])
+            .with_label(Label::primary(
+                span.clone(),
+                format!("`{name}` isn't written here"),
+            )),
+            TypeError::NotInTrait {
+                what,
+                name,
+                trait_,
+                span,
+            } => Diagnostic::error(msg![
+                code(name),
+                format!(" isn't a {what} of "),
+                code(trait_)
+            ])
+            .with_label(Label::primary(span.clone(), "not in the trait"))
+            .with_hint(msg![
+                "put it in an ",
+                code("impl"),
+                " of its own, without the trait"
+            ]),
+            TypeError::ImplSignatureMismatch {
+                name,
+                expected,
+                span,
+                declared_at,
+            } => Diagnostic::error(msg![code(name), " doesn't match the trait"])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg!["the trait wants ", code(expected)],
+                ))
+                .with_label(Label::secondary(declared_at.clone(), "declared here")),
+            TypeError::DoesNotImplement { ty, trait_, span } => {
+                Diagnostic::error(msg![ty.clone(), " doesn't implement ", code(trait_)]).with_label(
+                    Label::primary(span.clone(), msg![code(trait_), " is needed here"]),
+                )
+            }
             TypeError::UnknownVariant {
                 ty: owner,
                 variant,
@@ -785,7 +867,16 @@ impl TypeError {
             }
             TypeError::NotIterable { ty, span, text } => {
                 let d = Diagnostic::error(msg!["cannot loop over ", ty.clone()]).with_label(
-                    Label::primary(span.clone(), "`for` goes through ranges, arrays and slices"),
+                    Label::primary(
+                        span.clone(),
+                        msg![
+                            code("for"),
+                            " goes through ranges, arrays, slices and what implements ",
+                            code("Iterable"),
+                            " or ",
+                            code("Iterator")
+                        ],
+                    ),
                 );
                 if *text {
                     d.with_hint(msg![

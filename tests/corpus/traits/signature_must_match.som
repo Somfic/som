@@ -1,0 +1,11 @@
+// expect: error ImplSignatureMismatch
+
+trait Shape { fn area(self: &Self) -> i32; }
+
+struct Square { side: i32 }
+
+impl Shape for Square {
+    fn area(self: &Square) -> bool { true }
+}
+
+fn main() -> i32 { 0 }

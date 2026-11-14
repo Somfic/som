@@ -251,6 +251,8 @@ impl Parser<'_> {
                 TokenKind::Extern,
                 TokenKind::Struct,
                 TokenKind::Enum,
+                TokenKind::Trait,
+                TokenKind::Impl,
             ],
         };
 

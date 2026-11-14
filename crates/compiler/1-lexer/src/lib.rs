@@ -19,6 +19,10 @@ pub enum TokenKind {
     Impl,
     #[token("enum")]
     Enum,
+    #[token("trait")]
+    Trait,
+    #[token("type")]
+    Type,
     #[token("match")]
     Match,
     #[token("let")]
@@ -198,6 +202,8 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Struct => write!(f, "struct"),
             TokenKind::Impl => write!(f, "impl"),
             TokenKind::Enum => write!(f, "enum"),
+            TokenKind::Trait => write!(f, "trait"),
+            TokenKind::Type => write!(f, "type"),
             TokenKind::Match => write!(f, "match"),
             TokenKind::Let => write!(f, "let"),
             TokenKind::If => write!(f, "if"),

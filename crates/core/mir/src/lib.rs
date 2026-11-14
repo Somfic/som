@@ -60,8 +60,14 @@ impl Mir {
     /// The struct a `Ty::Struct(def, args)` refers to: one copy per set of type arguments.
     pub fn struct_def(&self, def: DefId, args: &[TypeId]) -> &StructDef {
         let Some(&index) = self.struct_index.get(&(def, args.to_vec())) else {
-            let args: Vec<String> = args.iter().map(|&a| format!("{:?}", self.types.get(a))).collect();
-            panic!("no copy of struct {def:?} for type arguments [{}]", args.join(", "));
+            let args: Vec<String> = args
+                .iter()
+                .map(|&a| format!("{:?}", self.types.get(a)))
+                .collect();
+            panic!(
+                "no copy of struct {def:?} for type arguments [{}]",
+                args.join(", ")
+            );
         };
         &self.structs[index]
     }

@@ -395,6 +395,15 @@ impl Unifier {
                 }
             },
             Ty::Ptr(to) => format!("*{}", self.display(*to, names)),
+            Ty::Assoc {
+                base,
+                trait_,
+                index,
+            } => format!(
+                "{}::{}",
+                self.display(*base, names),
+                crate::ty::assoc_name(names, *trait_, *index)
+            ),
             Ty::Ref { mutable, to } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.

@@ -8,6 +8,7 @@ pub enum Item {
     Use(Use),
     Extern(Extern),
     Impl(Impl),
+    Trait(Id<Trait>),
 }
 
 /// `use math;` or `use std::io;`
@@ -33,13 +34,42 @@ pub struct Extern {
     pub funcs: Vec<Id<Func>>,
 }
 
-/// `impl Point { fn sum(self: Point) -> i32 { ... } }`
+/// `impl Point { fn sum(self: Point) -> i32 { ... } }`, or with a trait,
+/// `impl<T> Iterator for ListIter<T> { type Item = &T; fn next(…) … }`.
 pub struct Impl {
     /// The struct the methods are for: `Point`, or one from another module, `box2d::B2Vec2`.
     pub target: Path,
+    /// The target's type arguments as written: `T` in `ListIter<T>`, `i32` in `List<i32>`.
+    pub target_args: Vec<Id<TypeExpr>>,
+    /// `impl Iterator for …`: the trait implemented, and its type arguments.
+    pub trait_: Option<(Path, Vec<Id<TypeExpr>>)>,
+    /// `type Item = &T;`: what the trait's associated types are, for the target.
+    pub types: Vec<(Ident, Id<TypeExpr>)>,
     /// `impl<T> Pair<T>`: generic parameters every method gets, ahead of its own.
     pub generics: Vec<Generic>,
     pub methods: Vec<Id<Func>>,
+}
+
+/// `trait Iterator { type Item; fn next(self: &mut Self) -> Item?; }`: what a type can do,
+/// which `impl Iterator for …` gives it, and a type parameter can require: `I: Iterator`.
+pub struct Trait {
+    /// The `///` comment above it.
+    pub doc: Option<String>,
+    pub name: Ident,
+    pub generics: Vec<Generic>,
+    /// `type Item;`: types each implementation says.
+    pub types: Vec<AssocType>,
+    /// Each method's signature, generic over `Self` (the implementing type) first, then the
+    /// trait's own generics, then its own. One with a body is what implementations get if
+    /// they don't write it.
+    pub methods: Vec<Id<Func>>,
+}
+
+/// `type Item;` in a trait.
+pub struct AssocType {
+    /// The `///` comment above it.
+    pub doc: Option<String>,
+    pub name: Ident,
 }
 
 /// A function, method, or extern declaration (which has no `body`).
@@ -59,15 +89,19 @@ pub struct Func {
     /// For a function in an `extern "lib"` block, the library file it's linked from.
     /// Worked out while checking.
     pub library: Option<PathBuf>,
+    /// A method of a trait: a signature implementations follow, not a function of its own.
+    pub in_trait: bool,
 }
 
 /// A generic parameter: a type, `T` in `struct Pair<T>`, or a value of a type, `N: usize` in
-/// `struct Buffer<N: usize>`.
+/// `struct Buffer<N: usize>`. A type can have to implement traits: `T: Hash + Eq`.
 #[derive(Clone)]
 pub struct Generic {
     pub name: Ident,
-    /// The value's type, for a value parameter.
+    /// The value's type, for a value parameter: a primitive type after the `:`.
     pub ty: Option<Id<TypeExpr>>,
+    /// The traits a type parameter has to implement: anything else after the `:`.
+    pub bounds: Vec<Path>,
 }
 
 pub struct Param {

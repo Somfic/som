@@ -83,6 +83,7 @@ pub fn items_in_file<'a>(ast: &'a Ast, file: &str) -> Vec<&'a Item> {
                 .first()
                 .is_some_and(|&f| in_file(ast.funcs.span(f))),
             Item::Impl(block) => in_file(&block.target.span()),
+            Item::Trait(id) => in_file(ast.traits.span(*id)),
             Item::Use(u) => in_file(&u.path.span()),
         })
         .collect()

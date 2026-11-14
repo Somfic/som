@@ -1,0 +1,9 @@
+// expect: error DoesNotImplement
+
+trait Shape { fn area(self: &Self) -> i32; }
+
+struct Circle { r: i32 }
+
+fn measure<S: Shape>(s: &S) -> i32 { s.area() }
+
+fn main() -> i32 { measure(&Circle { r: 1 }) }

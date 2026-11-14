@@ -53,6 +53,13 @@ pub enum Ty {
     Range(TypeId),
     /// A type parameter, inside the generic function that declares it.
     Param(DefId),
+    /// An associated type of `base`'s implementation of trait `trait_`, the `index`th it
+    /// declares: `I::Item`. Worked out through the implementation once `base` is known.
+    Assoc {
+        base: TypeId,
+        trait_: DefId,
+        index: usize,
+    },
     Fn {
         params: Vec<TypeId>,
         ret: TypeId,
@@ -109,6 +116,7 @@ impl Ty {
     pub fn children(&self) -> Vec<TypeId> {
         match self {
             Ty::Ref { to: inner, .. }
+            | Ty::Assoc { base: inner, .. }
             | Ty::Ptr(inner)
             | Ty::Optional(inner)
             | Ty::Slice(inner)
@@ -141,6 +149,15 @@ impl Ty {
             },
             Ty::Optional(inner) => Ty::Optional(f(*inner)),
             Ty::Ptr(to) => Ty::Ptr(f(*to)),
+            Ty::Assoc {
+                base,
+                trait_,
+                index,
+            } => Ty::Assoc {
+                base: f(*base),
+                trait_: *trait_,
+                index: *index,
+            },
             Ty::Slice(element) => Ty::Slice(f(*element)),
             Ty::Range(int) => Ty::Range(f(*int)),
             Ty::Array { element, len } => Ty::Array {
@@ -386,6 +403,15 @@ impl TypeTable {
             Ty::Float(float) => format!("{float:?}").to_lowercase(),
             Ty::Pointer => "*".into(),
             Ty::Ptr(to) => format!("*{}", self.display_with(*to, names, subst)),
+            Ty::Assoc {
+                base,
+                trait_,
+                index,
+            } => format!(
+                "{}::{}",
+                self.display_with(*base, names, subst),
+                assoc_name(names, *trait_, *index)
+            ),
             Ty::Ref { mutable, to } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.
@@ -451,5 +477,17 @@ impl TypeTable {
             }
             Ty::Var(_) => "_".into(),
         }
+    }
+}
+
+/// The name of trait `trait_`'s `index`th associated type: `Item`.
+pub fn assoc_name(names: &Names, trait_: DefId, index: usize) -> String {
+    match names.def(trait_).kind {
+        som_resolve::DefKind::Trait(t) => names
+            .trait_types(t)
+            .get(index)
+            .map(|&d| names.def(d).name.to_string())
+            .unwrap_or_default(),
+        _ => String::new(),
     }
 }
