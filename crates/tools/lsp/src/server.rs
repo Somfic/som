@@ -112,6 +112,27 @@ impl SomLanguageServer {
         analyze(&self.client, &self.state, uri).await;
     }
 
+    /// An analysis of the program `file` is in, with `text` in place of its own: for an
+    /// answer that can't wait for the next one. Its diagnostics aren't published.
+    async fn analyze_with(&self, file: &str, text: String) -> Option<Analysis> {
+        let path = PathBuf::from(file);
+        let root = som_driver::stdlib::root()
+            .filter(|_| som_driver::stdlib::contains(&path))
+            .map_or_else(|| som_driver::program_root(&path), Path::to_path_buf);
+        let mut overlay: HashMap<PathBuf, String> = (self.state.documents.read().await.iter())
+            .map(|(file, (_, text))| (PathBuf::from(file), text.clone()))
+            .collect();
+        overlay.insert(path.clone(), text);
+        let options = som_driver::Options {
+            overlay: overlay.into_iter().collect(),
+            opened: Some(path),
+            ..Default::default()
+        };
+        tokio::task::spawn_blocking(move || som_driver::analyze(&root, &options))
+            .await
+            .ok()
+    }
+
     /// Analyzes again once typing pauses: unless another change comes first.
     fn analyze_soon(&self, uri: Url, version: i32) {
         let (client, state) = (self.client.clone(), self.state.clone());
@@ -886,7 +907,26 @@ impl LanguageServer for SomLanguageServer {
         let Some(project) = Self::project_of(&projects, &cursor.file) else {
             return Ok(None);
         };
-        let a = &project.analysis;
+        // Right after a dot, the last analysis may be from before what's in front of it was
+        // typed: it's only redone once typing pauses. Then it's done now, of the text
+        // without the dot and what's typed after it, so what's before it still parses.
+        let word_start = cursor.text[..cursor.offset]
+            .trim_end_matches(|c: char| c.is_alphanumeric() || c == '_')
+            .len();
+        let dot = (cursor.text[..word_start].ends_with('.')
+            && !cursor.text[..word_start].ends_with(".."))
+        .then(|| word_start - 1);
+        let fresh = match dot {
+            Some(dot)
+                if receiver_before(&project.analysis, &cursor.file, &cursor.text, dot)
+                    .is_none() =>
+            {
+                let text = format!("{}{}", &cursor.text[..dot], &cursor.text[cursor.offset..]);
+                self.analyze_with(&cursor.file, text).await
+            }
+            _ => None,
+        };
+        let a = fresh.as_ref().unwrap_or(&project.analysis);
         let insert = Insert::at(&cursor.text, cursor.offset);
         // Only what can be used from here: no private fields or methods of another file's type.
         let viewer = viewer_at(a, &cursor.file, cursor.offset);
@@ -1007,42 +1047,7 @@ impl LanguageServer for SomLanguageServer {
             // Fields and methods of the struct before the dot: the outermost expression
             // ending there. A parenthesized one, `(a + b).`, ends before its `)`.
             let dot = word_start - 1;
-            let ending_at = |end: usize, parenthesized: bool| {
-                a.ast
-                    .exprs
-                    .iter()
-                    .map(|(id, _)| (id, a.ast.exprs.span(id)))
-                    .filter(|&(id, span)| {
-                        span.source.identifier() == cursor.file
-                            && span.start_offset + span.length == end
-                            && (parenthesized || can_have_dot(a, id))
-                    })
-                    .max_by_key(|(_, span)| span.length)
-                    .map(|(id, _)| id)
-            };
-            let mut before = cursor.text[..dot].trim_end();
-            let mut parenthesized = false;
-            let receiver = loop {
-                if let Some(expr) = ending_at(before.len(), parenthesized) {
-                    break Some(expr);
-                }
-                match before.strip_suffix(')') {
-                    Some(inner) => (before, parenthesized) = (inner.trim_end(), true),
-                    None => break None,
-                }
-            };
-            // `.x`, short for `self.x`: the `self` is at the dot.
-            let receiver = receiver.or_else(|| {
-                (a.ast.exprs.iter())
-                    .find(|&(id, expr)| {
-                        let span = a.ast.exprs.span(id);
-                        matches!(expr, Expr::Var(path) if &*path.to_string() == "self")
-                            && span.source.identifier() == cursor.file
-                            && span.start_offset == dot
-                            && span.length == 1
-                    })
-                    .map(|(id, _)| id)
-            });
+            let receiver = receiver_before(a, &cursor.file, &cursor.text, dot);
             if let Some(expr) = receiver
                 && let Some(sequence) = array_of(a, a.typed.expr(expr))
             {
@@ -3027,6 +3032,47 @@ fn module_items(
 /// Whether `expr` can be what's before a `.` without parentheses: not `a + b` (the dot
 /// goes with `b`), and not a call missing its `)` (`free(alloc(10).`: the dot goes with
 /// the argument).
+/// The expression a dot at `dot` in `file`, whose text is `text`, is written after: the
+/// outermost one ending there. A parenthesized one, `(a + b).`, ends before its `)`. Or
+/// for `.x`, short for `self.x`, the `self` at the dot.
+fn receiver_before(a: &Analysis, file: &str, text: &str, dot: usize) -> Option<Id<Expr>> {
+    let ending_at = |end: usize, parenthesized: bool| {
+        a.ast
+            .exprs
+            .iter()
+            .map(|(id, _)| (id, a.ast.exprs.span(id)))
+            .filter(|&(id, span)| {
+                span.source.identifier() == file
+                    && span.start_offset + span.length == end
+                    && (parenthesized || can_have_dot(a, id))
+            })
+            .max_by_key(|(_, span)| span.length)
+            .map(|(id, _)| id)
+    };
+    let mut before = text[..dot].trim_end();
+    let mut parenthesized = false;
+    let receiver = loop {
+        if let Some(expr) = ending_at(before.len(), parenthesized) {
+            break Some(expr);
+        }
+        match before.strip_suffix(')') {
+            Some(inner) => (before, parenthesized) = (inner.trim_end(), true),
+            None => break None,
+        }
+    };
+    receiver.or_else(|| {
+        (a.ast.exprs.iter())
+            .find(|&(id, expr)| {
+                let span = a.ast.exprs.span(id);
+                matches!(expr, Expr::Var(path) if &*path.to_string() == "self")
+                    && span.source.identifier() == file
+                    && span.start_offset == dot
+                    && span.length == 1
+            })
+            .map(|(id, _)| id)
+    })
+}
+
 fn can_have_dot(a: &Analysis, expr: Id<Expr>) -> bool {
     let end = |id: Id<Expr>| {
         let span = a.ast.exprs.span(id);

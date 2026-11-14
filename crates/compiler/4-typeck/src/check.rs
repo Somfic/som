@@ -737,6 +737,64 @@ impl<'a> Checker<'a> {
         ))
     }
 
+    /// `Alloc<i32>::with_capacity(10)`: the type `func` is a function of, with the arguments
+    /// written for it, has to be the type its impl block is for.
+    fn fit_owner_args(
+        &mut self,
+        id: Id<Expr>,
+        callee: &som_ast::Path,
+        func: Id<Func>,
+        type_args: &[TypeId],
+        written: &[Id<TypeExpr>],
+    ) {
+        let def = self.names.func(func);
+        if let Some(ty) = self.owner_written(id, callee, def, written)
+            && let Some(target) = self.owner_type(func, type_args)
+            && self.u.unify(target, ty).is_err()
+        {
+            self.mismatch(target, ty, self.span(id), None);
+        }
+    }
+
+    /// The type written before the name of `def`, a function of it, in call `id`: `Alloc<i32>`
+    /// in `Alloc<i32>::with_capacity(10)`. `None` if none is written, or, with an error, if
+    /// it isn't a struct's function.
+    fn owner_written(
+        &mut self,
+        id: Id<Expr>,
+        callee: &som_ast::Path,
+        def: DefId,
+        written: &[Id<TypeExpr>],
+    ) -> Option<TypeId> {
+        if written.is_empty() {
+            return None;
+        }
+        let DefKind::Func(func) = self.names.def(def).kind else {
+            return None;
+        };
+        let owner = (self.names.impl_of(func))
+            .and_then(|i| self.names.impls[i].owner)
+            .filter(|&def| matches!(self.names.def(def).kind, DefKind::Struct(_)));
+        let Some(owner) = owner else {
+            written.iter().for_each(|&t| {
+                self.lower_arg(t, None);
+            });
+            let path = &callee.segments[..callee.segments.len() - 1];
+            self.errors.push(TypeError::WrongTypeArgCount {
+                name: path.iter().map(|s| &*s.name).collect::<Vec<_>>().join("::"),
+                expected: 0,
+                found: written.len(),
+                span: self.span(id),
+            });
+            return None;
+        };
+        let DefKind::Struct(s) = self.names.def(owner).kind else {
+            unreachable!("filtered to structs")
+        };
+        let args = self.lower_args(owner, s, written, self.span(id));
+        Some(self.u.intern(Ty::Struct(owner, args)))
+    }
+
     /// `ty`, of expression `id`, has to be the type of the alias its path names a struct
     /// through, if it does: `Vector3::zero()` is a `Vector<3, f32>`.
     fn fit_alias(&mut self, id: Id<Expr>, ty: TypeId) {
@@ -2435,6 +2493,7 @@ impl<'a> Checker<'a> {
 
             Expr::Call {
                 callee,
+                owner_args,
                 type_args: written,
                 args,
             } => {
@@ -2442,7 +2501,9 @@ impl<'a> Checker<'a> {
                 if let Some(def) = self.names.expr(id)
                     && self.names.overloads(def).len() > 1
                 {
-                    return self.overloaded_call(id, callee, def, written, args, expected);
+                    return self.overloaded_call(
+                        id, callee, def, owner_args, written, args, expected,
+                    );
                 }
                 match self.names.expr(id).map(|def| &self.names.def(def).kind) {
                     Some(DefKind::Func(func)) => {
@@ -2454,6 +2515,9 @@ impl<'a> Checker<'a> {
                         // `Vector3::new(…)`: a method of the type the alias stands for.
                         if let Some(owner) = self.owner_type(func, &type_args) {
                             self.fit_alias(id, owner);
+                        }
+                        if !owner_args.is_empty() {
+                            self.fit_owner_args(id, callee, func, &type_args, owner_args);
                         }
                         self.require_bounds(func, &type_args, self.span(id));
                         if !type_args.is_empty() {
@@ -3174,6 +3238,7 @@ impl<'a> Checker<'a> {
         call: Id<Expr>,
         callee: &som_ast::Path,
         first: DefId,
+        owner_args: &[Id<TypeExpr>],
         written: &[Id<TypeExpr>],
         args: &[Id<Expr>],
         expected: Option<TypeId>,
@@ -3184,6 +3249,9 @@ impl<'a> Checker<'a> {
         let written: Vec<TypeId> = written.iter().map(|&t| self.lower(t)).collect();
         // `Vector3::zero()`: one of the type the alias stands for.
         let aliased = (self.names.expr_alias(call)).map(|alias| self.alias_value(alias));
+        // `Alloc<i32>::with_capacity(10)`: one of the type with the arguments written.
+        let owner_written = self.owner_written(call, callee, first, owner_args);
+        let aliased = aliased.or(owner_written);
         let mut fitting = Vec::new();
         // Ones the arguments fit as they are; only if there are none, ones they fit converted.
         for converting in [false, true] {
@@ -3265,6 +3333,11 @@ impl<'a> Checker<'a> {
         let (def, func, sig, type_args) = fitting.pop().expect("exactly one");
         if let Some(owner) = self.owner_type(func, &type_args) {
             self.fit_alias(call, owner);
+            if let Some(written) = owner_written
+                && self.u.unify(owner, written).is_err()
+            {
+                self.mismatch(owner, written, self.span(call), None);
+            }
         }
         self.finish_call(call, def, func, &sig, type_args, args, &found);
         sig.ret

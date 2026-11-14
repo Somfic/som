@@ -785,11 +785,12 @@ impl<'a> Resolver<'a> {
             }
             Expr::Call {
                 callee,
+                owner_args,
                 type_args,
                 args,
             } => {
                 self.bind_expr(id, callee, Expect::Func);
-                type_args.iter().for_each(|&t| self.resolve_type(t));
+                (owner_args.iter().chain(type_args)).for_each(|&t| self.resolve_type(t));
                 args.iter().for_each(|&a| self.resolve_expr(a));
             }
             // The method itself depends on the receiver's type, so the type checker finds it.

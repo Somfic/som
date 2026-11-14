@@ -468,17 +468,35 @@ impl Parser<'_> {
                 if is_constructor && !self.in_condition {
                     return self.parse_constructor();
                 }
-                let path = self.parse_path("an identifier or constructor name")?;
-                // `null<i32>()`: type arguments, then the call. Only when `(` follows the `>`,
-                // so `a < b` and `a < b > c` stay comparisons.
+                let mut path = self.parse_path("an identifier or constructor name")?;
+                // `Alloc<i32>::with_capacity(10)`: the type's arguments, then its function's
+                // name. Only when `::` follows the `>`, so a comparison stays one.
+                let mut owner_args = Vec::new();
                 if self.at(TokenKind::LessThan)
                     && let Some(n) = self.past_type_args(0)
-                    && self.peek_nth(n) == TokenKind::OpenParen
+                    && self.peek_nth(n) == TokenKind::DoubleColon
                 {
-                    let type_args = self.parse_type_args()?;
+                    owner_args = self.parse_type_args()?;
+                    while self.eat(TokenKind::DoubleColon) {
+                        path.segments.push(self.parse_ident("a function name")?);
+                    }
+                }
+                // `null<i32>()`: type arguments, then the call. Only when `(` follows the `>`,
+                // so `a < b` and `a < b > c` stay comparisons.
+                let type_args = self.at(TokenKind::LessThan)
+                    && self
+                        .past_type_args(0)
+                        .is_some_and(|n| self.peek_nth(n) == TokenKind::OpenParen);
+                if type_args || !owner_args.is_empty() {
+                    let type_args = match type_args {
+                        true => self.parse_type_args()?,
+                        false => Vec::new(),
+                    };
+                    // A type's arguments are only written to call one of its functions.
                     let args = self.parse_args()?;
                     Expr::Call {
                         callee: path,
+                        owner_args,
                         type_args,
                         args,
                     }
@@ -609,6 +627,7 @@ impl Parser<'_> {
         let expr = match &self.ast.exprs[callee] {
             Expr::Var(path) => Expr::Call {
                 callee: path.clone(),
+                owner_args: Vec::new(),
                 type_args: Vec::new(),
                 args,
             },

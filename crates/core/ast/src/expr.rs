@@ -62,6 +62,9 @@ pub enum Expr {
     /// `f(1)`, or `null<i32>()` with the function's type arguments written out.
     Call {
         callee: Path,
+        /// The arguments of the type whose function it is, written before its name:
+        /// `Alloc<i32>::with_capacity(10)`.
+        owner_args: Vec<Id<TypeExpr>>,
         type_args: Vec<Id<TypeExpr>>,
         args: Vec<Id<Expr>>,
     },
