@@ -1,0 +1,13 @@
+// expect: exit 2
+
+/// As a statement, nothing decides its type: it's `()`, and nothing after it runs.
+fn pick(first: bool) -> i32 {
+    if first {
+        return 1;
+    } else {
+        return 2;
+    }
+    @unreachable;
+}
+
+fn main() -> i32 { pick(false) }

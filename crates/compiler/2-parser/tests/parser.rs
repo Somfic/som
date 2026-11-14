@@ -391,3 +391,40 @@ fn an_unclosed_call_is_reported_and_kept() {
         .count();
     assert_eq!(calls, 2);
 }
+
+/// What each parse error's fix would put in, error by error.
+fn insertions(source: &str) -> Vec<Option<String>> {
+    let (_, errors) = test_parse(source);
+    errors
+        .iter()
+        .map(|e| {
+            e.fix
+                .as_ref()
+                .map(|fix| fix.edits.iter().map(|(_, text)| text.as_str()).collect())
+        })
+        .collect()
+}
+
+#[test]
+fn a_missing_comma_between_items_is_put_in() {
+    // Fields, parameters, array elements and arguments: each missing `,` once.
+    let errors =
+        insertions("struct P { x: i32 y: i32 } fn f(a: i32 b: i32) { let v = [1, 2 3]; f(1 2); }");
+    assert_eq!(errors, vec![Some(",".to_string()); 4]);
+}
+
+#[test]
+fn a_missing_closing_bracket_is_put_in() {
+    // `->` can't start a parameter, so it's the `)` that's missing, not a `,`.
+    assert_eq!(
+        insertions("fn f(a: i32 -> i32 { a }"),
+        vec![Some(")".to_string())]
+    );
+}
+
+#[test]
+fn an_if_on_its_own_line_is_a_statement_after_a_missing_semicolon() {
+    // Not `get() if x { … }`, a conditional missing its `else`.
+    let errors = insertions("fn f() { let a = get()\n    if a { } }");
+    assert_eq!(errors, vec![Some(";".to_string())]);
+}

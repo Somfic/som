@@ -1433,6 +1433,33 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::Not(inner) => Rvalue::Not(self.condition(*inner)),
             // `~x`: `Not` of an integer flips its bits.
             Expr::BitNot(inner) => Rvalue::Not(self.number(*inner)),
+            // `@unreachable`: the standard library's function says where it is and stops the
+            // program. Nothing after it runs, so its value is never read: zeroes stand in.
+            Expr::Unreachable => {
+                let span = self.span(expr);
+                if let Some(def) = self.l.names.unreachable()
+                    && let DefKind::Func(func) = self.l.names.def(def).kind
+                {
+                    let file = std::path::Path::new(span.source.identifier())
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_default();
+                    let at = format!("{file}:{}", span.start.line);
+                    let cstr = self.l.mir.types.cstr;
+                    let unit = self.l.mir.types.unit;
+                    let id = self.l.instance(func, Vec::new());
+                    let called = self.temp(unit, span.clone());
+                    let call = Rvalue::Call {
+                        func: id,
+                        args: vec![self.constant(ConstKind::Str(at.into()), cstr)],
+                    };
+                    self.assign(Place::local(called), call, span.clone());
+                }
+                self.terminate(TerminatorKind::Unreachable, span);
+                self.current = self.new_block();
+                let ty = self.expr_ty(expr);
+                Rvalue::Use(self.constant(ConstKind::Zeroed, ty))
+            }
             // `-x` is `0 - x`.
             Expr::Neg(inner) => {
                 let ty = self.expr_ty(*inner);

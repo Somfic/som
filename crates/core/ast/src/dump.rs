@@ -350,6 +350,7 @@ impl Dumper<'_> {
             Expr::Not(e) => self.node("not", |d| d.expr(*e)),
             Expr::Neg(e) => self.node("neg", |d| d.expr(*e)),
             Expr::BitNot(e) => self.node("bitnot", |d| d.expr(*e)),
+            Expr::Unreachable => self.line("unreachable".to_string()),
             Expr::Borrow { mutable, expr } => self
                 .node(if *mutable { "borrow mut" } else { "borrow" }, |d| {
                     d.expr(*expr)

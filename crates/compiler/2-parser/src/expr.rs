@@ -90,9 +90,10 @@ impl Parser<'_> {
                 continue;
             }
 
-            // `then if condition else otherwise`
+            // `then if condition else otherwise`, on one line: an `if` starting a line is a
+            // statement of its own, after a forgotten `;`.
             if self.at(TokenKind::If) {
-                if 1 < min_bp {
+                if 1 < min_bp || self.current_span().start.line > self.previous_span().end.line {
                     break;
                 }
                 self.advance();
@@ -312,7 +313,9 @@ impl Parser<'_> {
                         }
                     } else {
                         let mut items = vec![first];
-                        while self.eat(TokenKind::Comma) && !self.at(TokenKind::CloseBracket) {
+                        while self.list_continues(TokenKind::CloseBracket)
+                            && !self.at(TokenKind::CloseBracket)
+                        {
                             items.push(self.with_condition(false, |p| p.parse_expr())?);
                         }
                         self.expect(
@@ -320,6 +323,24 @@ impl Parser<'_> {
                             "a closing bracket after the elements",
                         )?;
                         Expr::Array(items)
+                    }
+                }
+            }
+
+            // `@unreachable`, the only built-in so far.
+            TokenKind::Builtin => {
+                let text = self.peek_token().text.clone();
+                self.advance();
+                match &*text {
+                    "@unreachable" => Expr::Unreachable,
+                    _ => {
+                        let known: Vec<&str> = som_lexer::BUILTINS.iter().map(|b| b.0).collect();
+                        self.error_at(
+                            start.clone(),
+                            msg!["unknown built-in ", code(text.to_string())],
+                            msg!["the built-ins are ", code(known.join(", "))],
+                        );
+                        Expr::Hole
                     }
                 }
             }
@@ -770,7 +791,7 @@ impl Parser<'_> {
                 self.ast.patterns.alloc(binding, name.span.clone())
             };
             fields.push((name, pattern));
-            if !self.eat(TokenKind::Comma) {
+            if !self.list_continues(TokenKind::CloseBrace) {
                 break;
             }
         }

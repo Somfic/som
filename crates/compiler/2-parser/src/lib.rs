@@ -54,6 +54,27 @@ pub(crate) fn int_value(text: &str) -> Option<u128> {
     u128::from_str_radix(&digits, radix).ok()
 }
 
+/// A fix putting the missing `kind` in at `at`, for punctuation, which is always written the
+/// same way: a forgotten `;`, `,` or `)`.
+fn insertion(kind: TokenKind, at: &Span) -> Option<som_base::Fix> {
+    let text = match kind {
+        TokenKind::Semicolon => ";",
+        TokenKind::Comma => ",",
+        TokenKind::Colon => ":",
+        TokenKind::CloseParen => ")",
+        TokenKind::CloseBracket => "]",
+        TokenKind::CloseBrace => "}",
+        TokenKind::GreaterThan => ">",
+        TokenKind::FatArrow => " =>",
+        TokenKind::Equals => " =",
+        _ => return None,
+    };
+    Some(som_base::Fix {
+        title: msg!["add the missing ", som_base::message::code(text.trim())],
+        edits: vec![(at.before(), text.to_string())],
+    })
+}
+
 /// How far to skip ahead when recovering from a parse error.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RecoveryLevel {
@@ -222,10 +243,12 @@ impl Parser<'_> {
             Some(span)
         } else {
             if !self.in_recovery {
+                let span = self.previous_span().after();
                 self.errors.push(ParseError {
                     message: msg!["missing ", kind.part()],
                     hint: msg!["expected ", expected.into()],
-                    span: self.previous_span().after(),
+                    fix: insertion(kind, &span),
+                    span,
                 });
             }
             self.in_recovery = true;
@@ -236,11 +259,24 @@ impl Parser<'_> {
     // --- Errors ---
 
     fn error_missing(&mut self, message: impl Into<Message>, expected: impl Into<String>) {
+        self.error_missing_token(message, expected, None);
+    }
+
+    /// Like `error_missing`, for a missing token `missing`: the fix puts it in, if it's one
+    /// that's always written the same way.
+    fn error_missing_token(
+        &mut self,
+        message: impl Into<Message>,
+        expected: impl Into<String>,
+        missing: Option<TokenKind>,
+    ) {
         if !self.in_recovery {
+            let span = self.previous_span().after();
             self.errors.push(ParseError {
                 message: message.into(),
                 hint: msg!["expected ", expected.into()],
-                span: self.previous_span().after(),
+                fix: missing.and_then(|kind| insertion(kind, &span)),
+                span,
             });
         }
         self.in_recovery = true;
@@ -263,7 +299,11 @@ impl Parser<'_> {
         };
         message.0.push(", found ".into());
         message.0.push(found.part());
-        self.error_missing(message, expected_desc);
+        let missing = match expected {
+            [one] => Some(*one),
+            _ => None,
+        };
+        self.error_missing_token(message, expected_desc, missing);
     }
 
     fn error_at(&mut self, span: Span, message: impl Into<Message>, hint: impl Into<Message>) {
@@ -271,6 +311,7 @@ impl Parser<'_> {
             message: message.into(),
             hint: hint.into(),
             span,
+            fix: None,
         });
     }
 
@@ -394,12 +435,56 @@ impl Parser<'_> {
         let mut items = Vec::new();
         while !self.at(close) && !self.at_eof() {
             items.push(parse_item(self)?);
-            if !self.eat(TokenKind::Comma) {
+            if !self.list_continues(close) {
                 break;
             }
         }
         Some(items)
     }
+
+    /// After an item of a list ending in `close`: whether another follows, past its `,`. One
+    /// that starts without the `,` before it, `[1, 2 3]`, is reported, with a fix putting the
+    /// `,` in, and read as the next item.
+    fn list_continues(&mut self, close: TokenKind) -> bool {
+        if self.eat(TokenKind::Comma) {
+            return true;
+        }
+        if self.at(close) || !can_start_item(self.peek()) {
+            return false;
+        }
+        self.error_missing_token(
+            msg!["missing ", TokenKind::Comma.part()],
+            "a comma between the items",
+            Some(TokenKind::Comma),
+        );
+        self.in_recovery = false;
+        true
+    }
+}
+
+/// Whether an item of a list (an expression, a field, a parameter, a type) can start with
+/// `kind`: what tells a missing `,` from a missing closing bracket.
+fn can_start_item(kind: TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Ident
+            | TokenKind::Int
+            | TokenKind::Float
+            | TokenKind::Text
+            | TokenKind::True
+            | TokenKind::False
+            | TokenKind::None
+            | TokenKind::SelfValue
+            | TokenKind::SelfType
+            | TokenKind::Mut
+            | TokenKind::OpenParen
+            | TokenKind::OpenBracket
+            | TokenKind::Minus
+            | TokenKind::Ampersand
+            | TokenKind::Star
+            | TokenKind::Bang
+            | TokenKind::Tilde
+    ) || ty::primitive(kind).is_some()
 }
 
 fn is_trivia(kind: TokenKind) -> bool {

@@ -6,6 +6,15 @@ use som_base::message::{Part, code};
 use som_base::{Source, Span};
 use std::sync::Arc;
 
+/// The compiler's own built-ins, written with an `@`, and what each does: for the parser,
+/// and an editor's suggestions.
+pub const BUILTINS: &[(&str, &str)] = &[(
+    "@unreachable",
+    "A place the program can't get to, standing for a value of whatever type is expected \
+     there: `get(i) else @unreachable`. If it's reached after all, it says where, then \
+     stops the program.",
+)];
+
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {
     // Keywords
@@ -100,6 +109,9 @@ pub enum TokenKind {
     Float,
     #[regex(r#""([^"\\]|\\.)*""#)]
     Text,
+    /// `@unreachable`: something the compiler itself provides.
+    #[regex(r"@[a-zA-Z_][a-zA-Z0-9_]*")]
+    Builtin,
     #[regex(r"true")]
     True,
     #[regex(r"false")]
@@ -304,6 +316,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Eof => write!(f, "end of file"),
             TokenKind::Percentage => write!(f, "%"),
             TokenKind::Caret => write!(f, "^"),
+            TokenKind::Builtin => write!(f, "built-in"),
             TokenKind::Pipe => write!(f, "|"),
             TokenKind::Tilde => write!(f, "~"),
         }

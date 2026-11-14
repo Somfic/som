@@ -89,6 +89,8 @@ pub(crate) struct Checker<'a> {
     obligations: Vec<(TypeId, DefId, Span)>,
     /// `==` and `!=` comparing with `Eq`'s `eq`.
     trait_ops: HashMap<Id<Expr>, LangTrait>,
+    /// The types of the `@unreachable`s: what they're used as, or `()`.
+    unreachables: Vec<TypeId>,
     /// Calls that more than one function fits, decided once the rest of the program says more
     /// about what their result has to be.
     pending_calls: Vec<PendingCall>,
@@ -143,6 +145,7 @@ impl<'a> Checker<'a> {
             current_func: None,
             obligations: Vec::new(),
             trait_ops: HashMap::new(),
+            unreachables: Vec::new(),
             conversions: HashMap::new(),
         }
     }
@@ -415,6 +418,13 @@ impl<'a> Checker<'a> {
     fn finish(mut self) -> (Typed, Vec<TypeError>) {
         let mut reported = HashSet::new();
         let error = self.u.table.error;
+        // `@unreachable` where nothing decided a type: as a statement, it's `()`.
+        for ty in std::mem::take(&mut self.unreachables) {
+            if self.u.var_kind(ty) == Some(VarKind::Any) {
+                let unit = self.u.table.unit;
+                let _ = self.u.unify(ty, unit);
+            }
+        }
 
         let mut exprs = Vec::with_capacity(self.exprs.len());
         for (index, ty) in std::mem::take(&mut self.exprs).into_iter().enumerate() {
@@ -1076,18 +1086,25 @@ impl<'a> Checker<'a> {
         found: TypeId,
         expected_from: Option<Span>,
     ) -> Option<TypeError> {
-        let Ty::Ref { mutable, to } = *self.u.get(self.u.shallow(expected)) else {
+        // A reference, or an optional one, `&V?`, which a reference is wrapped into.
+        let shallow = self.u.shallow(expected);
+        let (reference, optional) = match *self.u.get(shallow) {
+            Ty::Optional(inner) => (self.u.shallow(inner), true),
+            _ => (shallow, false),
+        };
+        let Ty::Ref { mutable, to } = *self.u.get(reference) else {
             return None;
         };
         if matches!(
             self.u.get(self.u.shallow(found)),
-            Ty::Ref { .. } | Ty::Error
+            Ty::Ref { .. } | Ty::Optional(_) | Ty::Error
         ) || !self.u.could_fit(to, found)
         {
             return None;
         }
         let borrow = if mutable { "&mut " } else { "&" };
         let found_text = self.u.display(found, self.names);
+        let question = if optional { "?" } else { "" };
         let span = self.span(expr);
         // `&a.b` and `&f()` borrow as they are; anything looser, in parentheses.
         let edits = match self.ast.exprs[expr] {
@@ -1103,7 +1120,8 @@ impl<'a> Checker<'a> {
             ],
         };
         Some(TypeError::NotBorrowed {
-            expected: message::code(format!("{borrow}{found_text}")).into(),
+            expected: message::code(format!("{borrow}{found_text}{question}")).into(),
+            field: matches!(self.ast.exprs[expr], Expr::Field { .. }),
             found: self.describe(found),
             span: span.clone(),
             expected_from,
@@ -1454,7 +1472,12 @@ impl<'a> Checker<'a> {
     /// `match` all of whose arms do.
     fn expr_leaves(&self, expr: Id<Expr>) -> bool {
         match &self.ast.exprs[expr] {
+            Expr::Unreachable => true,
             Expr::Block { stmts, value: None } => self.leaves(stmts),
+            Expr::Block {
+                stmts,
+                value: Some(value),
+            } => self.leaves(stmts) || self.expr_leaves(*value),
             Expr::Match { arms, .. } => {
                 !arms.is_empty() && arms.iter().all(|arm| self.expr_leaves(arm.body))
             }
@@ -1909,6 +1932,13 @@ impl<'a> Checker<'a> {
 
         match &self.ast.exprs[id] {
             Expr::Hole => error,
+            // Never gets a value: it's whatever's expected here, or if nothing decides,
+            // `()` once checking is done.
+            Expr::Unreachable => {
+                let ty = (self.expected_here.take()).unwrap_or_else(|| self.u.fresh(VarKind::Any));
+                self.unreachables.push(ty);
+                ty
+            }
             Expr::Int(_) => self.u.fresh(VarKind::Int),
             Expr::Float(_) => self.u.fresh(VarKind::Float),
             Expr::Bool(_) => bool,
@@ -4361,6 +4391,7 @@ impl Checker<'_> {
     fn forget_changed_by(&mut self, expr: Id<Expr>, in_place: bool) {
         match &self.ast.exprs[expr] {
             Expr::Hole
+            | Expr::Unreachable
             | Expr::Int(_)
             | Expr::Float(_)
             | Expr::Bool(_)

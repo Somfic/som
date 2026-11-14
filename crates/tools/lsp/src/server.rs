@@ -274,6 +274,7 @@ impl LanguageServer for SomLanguageServer {
                         ":".to_string(),
                         "\"".to_string(),
                         " ".to_string(),
+                        "@".to_string(),
                     ]),
                     ..Default::default()
                 }),
@@ -724,6 +725,33 @@ impl LanguageServer for SomLanguageServer {
         let insert = Insert::at(&cursor.text, cursor.offset);
 
         let mut items = Vec::new();
+        // `@`, `@unr`: the built-ins, replacing what's typed of one, `@` and all.
+        let before = &cursor.text[..cursor.offset];
+        let word = before
+            .trim_end_matches(|c: char| c.is_ascii_alphanumeric() || c == '_')
+            .len();
+        if before[..word].ends_with('@') {
+            let typed = (cursor.offset - (word - 1)) as u32;
+            let at = position.position;
+            let range = Range::new(
+                Position::new(at.line, at.character.saturating_sub(typed)),
+                at,
+            );
+            for &(name, doc) in som_lexer::BUILTINS {
+                items.push(CompletionItem {
+                    label: name.to_string(),
+                    kind: Some(CompletionItemKind::KEYWORD),
+                    filter_text: Some(name.to_string()),
+                    text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                        range,
+                        new_text: name.to_string(),
+                    })),
+                    documentation: markdown(Some(doc.to_string())),
+                    ..Default::default()
+                });
+            }
+            return Ok(Some(CompletionResponse::Array(items)));
+        }
         // `extern ` and `extern "ray` list the libraries som can find, but not ones this
         // file already has an `extern` for, other than the one being edited.
         if let Some(quoted) = extern_library(&cursor.text, cursor.offset) {
@@ -3512,8 +3540,9 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             TokenKind::Dot if TokenKind::is_self_dot(prev, next) => 0,
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
             TokenKind::Ident if token.text.starts_with(char::is_uppercase) => 8,
-            // `Self` is a struct like any named one: the one an impl block is for.
-            TokenKind::SelfType => 8,
+            // `Self` is a struct like any named one: the one an impl block is for. A built-in,
+            // `@unreachable`, is coloured the same.
+            TokenKind::SelfType | TokenKind::Builtin => 8,
             TokenKind::Ident => 1,
             TokenKind::Int
             | TokenKind::Float

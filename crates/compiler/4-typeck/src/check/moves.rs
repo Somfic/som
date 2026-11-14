@@ -21,6 +21,7 @@ impl Checker<'_> {
     fn moves_in(&mut self, id: Id<Expr>, by_value: bool) {
         match &self.ast.exprs[id] {
             Expr::Hole
+            | Expr::Unreachable
             | Expr::Int(_)
             | Expr::Float(_)
             | Expr::Bool(_)

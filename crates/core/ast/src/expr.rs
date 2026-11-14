@@ -40,6 +40,9 @@ pub enum Expr {
     Neg(Id<Expr>),
     /// `~expr`: an integer with each bit flipped.
     BitNot(Id<Expr>),
+    /// `@unreachable`: a place the program can't get to. If it does after all, it says where
+    /// and stops. A value of whatever type is expected there, as it's never used.
+    Unreachable,
     /// `&expr` or `&mut expr`
     Borrow {
         mutable: bool,

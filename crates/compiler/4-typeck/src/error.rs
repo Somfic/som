@@ -19,6 +19,9 @@ pub enum TypeError {
     NotBorrowed {
         expected: Message,
         found: Message,
+        /// It's a field, `entry.value`: the field itself, reached through `entry`, not a
+        /// reference to it.
+        field: bool,
         span: Span,
         expected_from: Option<Span>,
         /// `&key` or `&mut key`.
@@ -461,24 +464,31 @@ impl TypeError {
             TypeError::NotBorrowed {
                 expected,
                 found,
+                field,
                 span,
                 expected_from,
                 fix,
             } => {
+                let label = if *field {
+                    msg![
+                        "this is the field itself, ",
+                        found.clone(),
+                        "; a reference to it is expected"
+                    ]
+                } else {
+                    msg![
+                        "this is ",
+                        found.clone(),
+                        "; a reference to one is expected"
+                    ]
+                };
                 let mut d = Diagnostic::error(msg![
                     "expected ",
                     expected.clone(),
                     ", found ",
                     found.clone()
                 ])
-                .with_label(Label::primary(
-                    span.clone(),
-                    msg![
-                        "this is ",
-                        found.clone(),
-                        "; a reference to one is expected"
-                    ],
-                ));
+                .with_label(Label::primary(span.clone(), label));
                 if let Some(from) = expected_from {
                     d = d.with_label(Label::secondary(
                         from.clone(),

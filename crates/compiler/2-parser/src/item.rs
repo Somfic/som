@@ -738,7 +738,7 @@ impl Parser<'_> {
                 out,
                 mutable,
             });
-            if !self.eat(TokenKind::Comma) {
+            if !self.list_continues(TokenKind::CloseParen) {
                 break;
             }
         }

@@ -65,6 +65,11 @@
           "match": "\\bSelf\\b"
         },
         {
+          "comment": "A built-in, like @unreachable: coloured like a type",
+          "name": "entity.name.type.struct.som",
+          "match": "@[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
           "comment": "Raw pointer type after -> or :",
           "match": "(?<=->\\s)\\*|(?<=->)\\*|(?<=:\\s)\\*|(?<=:)\\*",
           "name": "entity.name.type.primitive.som"

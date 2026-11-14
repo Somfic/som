@@ -189,6 +189,10 @@ impl LangStruct {
     }
 }
 
+/// The standard library's function `@unreachable` calls, with where it is: it says so, then
+/// stops the program.
+pub const UNREACHABLE: &str = "reached_unreachable";
+
 /// An `impl` block, by its index in `Names::impls`.
 pub struct ImplDef {
     pub module: usize,
@@ -259,6 +263,8 @@ pub struct Names {
     lang: HashMap<LangTrait, DefId>,
     /// The structs the language uses, where the standard library defines them.
     lang_structs: HashMap<LangStruct, DefId>,
+    /// What `@unreachable` calls, where the standard library defines it.
+    unreachable: Option<DefId>,
     /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
     /// name (`Circle(r)`, `Empty`) has none: the type matched decides which enum's it is.
     patterns: Vec<Option<DefId>>,
@@ -294,6 +300,7 @@ impl Names {
             projection_bases: HashMap::new(),
             lang: HashMap::new(),
             lang_structs: HashMap::new(),
+            unreachable: None,
             patterns: vec![None; ast.patterns.len()],
             primitives: HashMap::new(),
         }
@@ -325,6 +332,10 @@ impl Names {
 
     pub(crate) fn set_lang_struct(&mut self, lang: LangStruct, def: DefId) {
         self.lang_structs.insert(lang, def);
+    }
+
+    pub(crate) fn set_unreachable(&mut self, def: DefId) {
+        self.unreachable = Some(def);
     }
 
     /// Adds `def` to the functions named like `first`.
@@ -562,6 +573,11 @@ impl Names {
     /// The standard library's struct the language uses as `lang`, if it's loaded.
     pub fn lang_struct(&self, lang: LangStruct) -> Option<DefId> {
         self.lang_structs.get(&lang).copied()
+    }
+
+    /// What `@unreachable` calls, if the standard library is loaded.
+    pub fn unreachable(&self) -> Option<DefId> {
+        self.unreachable
     }
 
     /// Which lang trait `def` is, if any.

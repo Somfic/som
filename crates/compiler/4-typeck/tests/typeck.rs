@@ -302,3 +302,12 @@ fn a_value_where_a_reference_is_expected_can_be_borrowed() {
         ["&(", ")"]
     );
 }
+
+#[test]
+fn a_field_where_an_optional_reference_is_expected_can_be_borrowed() {
+    // `&i32?` takes a reference too: the field is borrowed as it is.
+    assert_eq!(
+        borrow_fix("struct P { v: i32 } fn f(p: &P) -> &i32? { p.v } fn main() {}"),
+        ["&"]
+    );
+}

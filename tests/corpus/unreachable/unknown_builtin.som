@@ -1,0 +1,6 @@
+// expect: error
+
+/// Only the compiler's own built-ins start with `@`.
+fn main() -> i32 {
+    @unreachble
+}

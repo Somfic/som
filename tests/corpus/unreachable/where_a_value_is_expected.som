@@ -1,0 +1,19 @@
+// expect: exit 9
+
+/// `@unreachable` marks a place the program can't get to. It stands for a value of whatever
+/// type is expected there: after `else`, as a branch, or the end of a function that returns
+/// on every path before it.
+fn find(n: i32) -> i32? { if n > 0 { n } else { none } }
+
+fn sign(n: i32) -> i32 {
+    if n > 0 { return 1; }
+    if n < 0 { return -1; }
+    if n == 0 { return 0; }
+    @unreachable
+}
+
+fn main() -> i32 {
+    let a = find(5) else @unreachable;
+    let b: i32 = if a > 0 { a } else { @unreachable };
+    a + b + sign(-3)
+}

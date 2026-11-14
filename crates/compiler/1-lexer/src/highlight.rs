@@ -53,7 +53,9 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Str
         | TokenKind::CStr
         // `Self` is a type: the one an impl block is for.
-        | TokenKind::SelfType => YELLOW,
+        | TokenKind::SelfType
+        // `@unreachable`: coloured like a type, the compiler's own.
+        | TokenKind::Builtin => YELLOW,
         TokenKind::Int
         | TokenKind::Float
         | TokenKind::Text
