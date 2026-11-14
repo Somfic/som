@@ -25,8 +25,13 @@ impl Ast {
             out: String::new(),
             depth: 0,
         };
-        // The bundled standard library (`<som::io>`) is part of every program; it isn't shown.
-        for module in (self.modules.iter()).filter(|m| !m.path.to_string_lossy().starts_with('<')) {
+        // The standard library (`som`, `som::io`) is part of every program, and imported C
+        // headers (`<c>`) are generated: neither is shown.
+        let shown = |m: &&crate::Module| {
+            let std = &*m.name == "som" || m.name.starts_with("som::");
+            !std && !m.path.to_string_lossy().starts_with('<')
+        };
+        for module in self.modules.iter().filter(shown) {
             d.line(format!("module {:?}", &*module.name));
             d.nested(|d| module.items.iter().for_each(|item| d.item(item)));
         }

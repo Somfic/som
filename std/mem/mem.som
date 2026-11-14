@@ -1,11 +1,3 @@
-extern {
-    fn malloc(size: i32) -> *;
-    fn free(p: *);
-    fn realloc(p: *, size: i32) -> *;
-    fn memcpy(dest: *, src: *, n: i32) -> *;
-    fn memset(s: *, c: i32, n: i32) -> *;
-}
-
 fn null() -> * {
     leave(out p);
     p
@@ -17,6 +9,4 @@ fn null<T>() -> *T {
 
 fn leave(p: &mut *) {}
 
-/// Takes `value` and never drops it: for a value whose insides were moved out by hand, as
-/// reading each element out of an array through a pointer does.
 fn forget<T>(value: T) {}

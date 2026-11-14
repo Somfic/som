@@ -1,7 +1,7 @@
 //! Runs the compiler: loads a program, then hands it through each pass in order.
 
 mod build;
-mod bundled;
+pub mod stdlib;
 mod headers;
 mod libraries;
 mod load;
@@ -141,7 +141,7 @@ pub struct Analysis {
     pub errors: Vec<Error>,
 }
 
-/// What a program can bring in that it hasn't yet: bundled modules (`use std;`) and
+/// What a program can bring in that it hasn't yet: the standard library's modules (`use som;`) and
 /// libraries with a header (`extern "raylib";`), each with the file it would link.
 #[derive(Debug, Clone, Default)]
 pub struct Importable {
@@ -150,7 +150,7 @@ pub struct Importable {
 }
 
 /// `raylib::init_window` without `extern "raylib";`: suggests importing it, when there's
-/// a library or bundled module by that name.
+/// a library or standard library module by that name.
 fn suggest_imports(ast: &Ast, errors: &mut [ResolveError], options: &Options) {
     let mut found: Option<Importable> = None; // only read the directories when needed
     for error in errors {
@@ -233,10 +233,7 @@ pub fn importable(root: &Path, options: &Options) -> Importable {
         root.parent().unwrap_or(Path::new("."))
     };
     Importable {
-        modules: bundled::BUNDLED
-            .iter()
-            .map(|m| m.name.to_string())
-            .collect(),
+        modules: stdlib::modules(),
         libraries: headers::importable_libraries(root, &options.library_dirs),
     }
 }

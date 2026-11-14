@@ -20,10 +20,6 @@ impl<T> Vector<2, T> {
     prop x = self.values[0];
     prop y = self.values[1];
 
-    // prop magintude {
-
-    // }
-
     prop normalized {
         0.0
     }

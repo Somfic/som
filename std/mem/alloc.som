@@ -1,8 +1,4 @@
-extern {
-    fn malloc(size: i32) -> *;
-    fn free(p: *);
-    fn realloc(p: *, size: i32) -> *;
-}
+extern "c";
 
 struct Allocation {
     ptr: *,
@@ -11,11 +7,11 @@ struct Allocation {
 
 fn alloc(size: i32) -> Allocation {
     Allocation {
-        ptr: malloc(size),
+        ptr: c::malloc(size as u64),
         size: size,
     }
 }
 
 fn dealloc(allocation: &Allocation) {
-    free(allocation.ptr);
+    c::free(allocation.ptr);
 }

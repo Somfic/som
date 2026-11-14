@@ -1,0 +1,11 @@
+extern "c";
+
+impl f32 {
+    fn pow(self, power: f32) {
+        c::powf(self, power)
+    }
+
+    fn sqrt(self) {
+        c::sqrtf(self)
+    }
+}

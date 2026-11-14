@@ -1,9 +1,8 @@
 //! Finds and parses every module a program uses.
 //!
 //! A program is either a single `.som` file or a directory of them. Each `use a::b;`
-//! loads module `a::b`: the bundled module of that name if there is one (with the bundled
-//! modules inside it), otherwise
-//! the `.som` files in `<folder of the using module>/a/b/`. Modules are identified by
+//! loads module `a::b`: the standard library's module of that name if there is one (with
+//! the modules inside it), otherwise the `.som` files in `<folder of the using module>/a/b/`. Modules are identified by
 //! name, so every `use b;` in a program refers to the same module.
 
 use som_ast::{Ast, Item, Span};
@@ -14,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::bundled::bundled;
+use crate::stdlib;
 
 #[derive(Debug)]
 pub enum LoadError {
@@ -38,6 +37,11 @@ pub enum LoadError {
         name: String,
         span: Span,
     },
+    /// The standard library's folder isn't in any of the places it's looked for.
+    NoStandardLibrary {
+        searched: Vec<PathBuf>,
+        span: Span,
+    },
     Io {
         path: PathBuf,
         message: String,
@@ -52,6 +56,19 @@ impl LoadError {
                 Diagnostic::error(msg!["module ", m::module(name), " not found"]).with_label(
                     Label::primary(span.clone(), msg!["looked in ", m::path(path.display())]),
                 )
+            }
+            LoadError::NoStandardLibrary { searched, span } => {
+                let searched: Vec<String> =
+                    searched.iter().map(|p| p.display().to_string()).collect();
+                Diagnostic::error("cannot find the standard library")
+                    .with_label(Label::primary(span.clone(), "needed here"))
+                    .with_hint(msg![
+                        "looked in ",
+                        searched.join(", "),
+                        "; set ",
+                        m::code("SOM_STD"),
+                        " to its folder"
+                    ])
             }
             LoadError::CircularDependency { name, span } => {
                 Diagnostic::error(msg!["module ", m::module(name), " uses itself"])
@@ -109,15 +126,23 @@ pub fn load_with(
         overlay: overlay.clone(),
         ..Loader::default()
     };
-    let root = loader.ast.add_module("", folder_of(path));
+    // A file in the standard library is checked as part of it: the program is the standard
+    // library itself, loaded once, as `som`, around an empty program in its folder (where
+    // imported headers are cached, in `.som/`).
+    let in_std = stdlib::contains(path).then(stdlib::root).flatten();
+    let root = loader
+        .ast
+        .add_module("", in_std.map_or_else(|| folder_of(path), Path::to_path_buf));
 
-    if path.is_dir() {
-        loader.load_dir(root, path);
-    } else {
-        loader.load_file(root, path);
+    if in_std.is_none() {
+        if path.is_dir() {
+            loader.load_dir(root, path);
+        } else {
+            loader.load_file(root, path);
+        }
+        loader.import_headers(root);
+        loader.load_uses(root);
     }
-    loader.import_headers(root);
-    loader.load_uses(root);
     // The standard library is always there by its full name, `som::io::printf`, without a
     // `use`; `use som::io;` is for naming what's in it unqualified.
     if !loader.loaded.contains("som") {
@@ -245,7 +270,7 @@ impl Loader {
         }
         if self.loading.contains(&name) {
             // The standard library's modules use each other; names resolve whatever the order.
-            if bundled(&name).is_some() {
+            if stdlib::is_std_module(&name) {
                 return;
             }
             self.errors
@@ -253,15 +278,16 @@ impl Loader {
             return;
         }
 
-        let module = if let Some(bundled) = bundled(&name) {
-            let module = self
-                .ast
-                .add_module(name.as_str(), PathBuf::from(format!("<{name}>")));
-            for (file, content) in bundled.files {
-                let source = Source::from_raw_at(*content, format!("<{name}>/{file}"));
-                self.parse(module, source);
-            }
+        let module = if let Some(folder) = stdlib::folder(&name) {
+            let module = self.ast.add_module(name.as_str(), folder.clone());
+            self.load_dir(module, &folder);
             module
+        } else if stdlib::is_std_module(&name) && stdlib::root().is_none() {
+            self.errors.push(LoadError::NoStandardLibrary {
+                searched: stdlib::candidates(),
+                span,
+            });
+            return;
         } else if folder.is_dir() {
             let module = self.ast.add_module(name.as_str(), folder.to_path_buf());
             self.load_dir(module, folder);
@@ -280,9 +306,10 @@ impl Loader {
         self.load_uses(module);
         self.loading.remove(&name);
         self.loaded.insert(name.clone());
-        // A bundled module comes with the ones inside it: `use som;` gives `som::data::String`.
-        for child in crate::bundled::submodules(&name) {
-            self.load_module(child.name.to_string(), folder, span.clone());
+        // A standard library module comes with the ones inside it: `use som;` gives
+        // `som::data::String`.
+        for child in stdlib::submodules(&name) {
+            self.load_module(child, folder, span.clone());
         }
     }
 }

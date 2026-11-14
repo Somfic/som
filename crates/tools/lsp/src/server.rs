@@ -91,6 +91,11 @@ impl SomLanguageServer {
     }
 
     fn project_of<'a>(projects: &'a HashMap<PathBuf, Project>, file: &str) -> Option<&'a Project> {
+        // The standard library's files are one project, the standard library.
+        let std = som_driver::stdlib::root().filter(|_| som_driver::stdlib::contains(Path::new(file)));
+        if let Some(project) = std.and_then(|root| projects.get(root)) {
+            return Some(project);
+        }
         let dir = Path::new(file).parent()?;
         projects.get(dir).or_else(|| {
             projects
@@ -121,17 +126,37 @@ impl SomLanguageServer {
 }
 
 /// Analyzes the project containing `uri`, with the open files' unsaved text, and
-/// publishes its diagnostics.
+/// publishes its diagnostics. A file in the standard library belongs to it as a whole, and
+/// a change to one is also a change to every other project, which uses it: they're
+/// analyzed again too.
 async fn analyze(client: &Client, state: &State, uri: &Url) {
-    let _one_at_a_time = state.analyzing.lock().await;
-    let Some(root) = uri
-        .to_file_path()
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
-    else {
+    let Ok(path) = uri.to_file_path() else {
         return;
     };
     let opened = SomLanguageServer::file_of(uri).unwrap_or_default();
+    let std_root = som_driver::stdlib::root().filter(|_| som_driver::stdlib::contains(&path));
+    let Some(root) = std_root
+        .map(Path::to_path_buf)
+        .or_else(|| path.parent().map(Path::to_path_buf))
+    else {
+        return;
+    };
+    analyze_root(client, state, root.clone(), opened).await;
+    if std_root.is_some() {
+        let others: Vec<PathBuf> = (state.projects.read().await.keys())
+            .filter(|r| **r != root)
+            .cloned()
+            .collect();
+        for other in others {
+            analyze_root(client, state, other, String::new()).await;
+        }
+    }
+}
+
+/// Analyzes the project at `root` and publishes its diagnostics; `opened` is the file the
+/// editor asked about, which gets the errors that have no place of their own.
+async fn analyze_root(client: &Client, state: &State, root: PathBuf, opened: String) {
+    let _one_at_a_time = state.analyzing.lock().await;
 
     let options = som_driver::Options {
         overlay: (state.documents.read().await.iter())
@@ -3411,6 +3436,25 @@ mod tests {
                 ("z".into(), prop, Some("i32".into())),
             ]
         );
+    }
+
+    #[test]
+    fn a_library_used_from_two_files_lists_its_functions_once() {
+        let dir = std::env::temp_dir().join(format!("som_lsp_libc_twice_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("main.som"), "extern \"c\";\nfn main() -> i32 = c::abs(-1);\n")
+            .unwrap();
+        std::fs::write(dir.join("more.som"), "extern \"c\";\nfn other() -> i32 = c::abs(2);\n")
+            .unwrap();
+        let a = som_driver::analyze(&dir, &som_driver::Options::default());
+        std::fs::remove_dir_all(&dir).unwrap();
+        let c = a.ast.modules.iter().position(|m| &*m.name == "c").unwrap();
+        let insert = Insert { value: true, call_follows: false };
+        let labels: Vec<String> = (module_items(&a, c, Some("c"), insert).into_iter())
+            .map(|i| i.label)
+            .filter(|l| l == "c::abs")
+            .collect();
+        assert_eq!(labels, ["c::abs"]);
     }
 
     #[test]
