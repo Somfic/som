@@ -290,6 +290,15 @@ pub enum TypeError {
     CopyWithMovedField { ty: Message, field: String, field_ty: Message, span: Span },
     /// `x.len` of an array, slice or text, which has a method called that, not a field.
     FieldIsMethod { ty: Message, name: String, span: Span },
+    /// `items[0]` of something that isn't an array: a slice's length isn't known, so only
+    /// `get` can say whether it has the element.
+    IndexNotArray { ty: Message, span: Span, get: String },
+    /// `values[i]` of an index that isn't a number written out, so may be out of bounds.
+    IndexNotConstant { span: Span, get: String },
+    /// `values[3]` of a `[T; 3]`.
+    IndexOutOfBounds { index: u128, len: u128, span: Span },
+    /// `values[0]` of a `[T; N]` whose `N` isn't known here, so might be 0.
+    IndexUnknownLength { len: String, span: Span, get: String },
     /// `prop reset(self: &Counter)`: a property that gives nothing back only does something.
     PropReturnsNothing { name: String, span: Span },
     /// `prop sum(self: Point)` of a `Point` that's moved: reading `p.sum` would use `p` up.
@@ -968,6 +977,34 @@ impl TypeError {
                         title: msg!["call it: ", code(format!("{name}()"))],
                         edits: vec![(span.after(), "()".to_string())],
                     })
+            }
+            TypeError::IndexNotArray { ty, span, get } => {
+                Diagnostic::error(msg!["cannot index ", ty.clone(), " with ", code("[]")])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "only an array's length is known, so only arrays are indexed",
+                    ))
+                    .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
+            }
+            TypeError::IndexNotConstant { span, get } => {
+                Diagnostic::error("an index has to be a number written out")
+                    .with_label(Label::primary(span.clone(), "this might be out of bounds"))
+                    .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
+            }
+            TypeError::IndexOutOfBounds { index, len, span } => {
+                Diagnostic::error(msg!["index ", code(index.to_string()), " is out of bounds"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        format!("the array has {len} element{}", if *len == 1 { "" } else { "s" }),
+                    ))
+            }
+            TypeError::IndexUnknownLength { len, span, get } => {
+                Diagnostic::error("cannot tell this index is in bounds")
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg!["the array's length, ", code(len.clone()), ", isn't known here"],
+                    ))
+                    .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
             }
             TypeError::NotOnImplTarget {
                 ty,

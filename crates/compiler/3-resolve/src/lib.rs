@@ -727,6 +727,10 @@ impl<'a> Resolver<'a> {
                 args.iter().for_each(|&a| self.resolve_expr(a));
             }
             Expr::Field { object, .. } => self.resolve_expr(*object),
+            Expr::Index { object, index } => {
+                self.resolve_expr(*object);
+                self.resolve_expr(*index);
+            }
             Expr::Construct { ty, args, fields } => {
                 self.bind_expr(id, ty, Expect::Struct);
                 args.iter().for_each(|&arg| self.resolve_type(arg));

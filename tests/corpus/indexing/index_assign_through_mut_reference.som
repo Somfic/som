@@ -1,0 +1,9 @@
+// expect: exit 9
+
+fn set(values: &mut [i32; 2]) { values[0] = 9; }
+
+fn main() -> i32 {
+    let mut values = [1, 2];
+    set(&mut values);
+    values[0]
+}

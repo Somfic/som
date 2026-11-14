@@ -2076,6 +2076,8 @@ impl<'a> Checker<'a> {
                 }
             }
 
+            Expr::Index { object, index } => self.index(*object, *index),
+
             Expr::Construct {
                 args: written,
                 fields: given,
@@ -3099,7 +3101,7 @@ impl<'a> Checker<'a> {
             // Through a reference, what counts is the reference: `&mut` allows it, even in a
             // variable that isn't `mut`.
             Expr::Field { .. } if self.is_prop(expr) => None,
-            Expr::Field { object, .. } => match self.reference(*object) {
+            Expr::Field { object, .. } | Expr::Index { object, .. } => match self.reference(*object) {
                 Some(true) => None,
                 Some(false) => Some(Immutable::BehindSharedReference),
                 None => self.immutable(*object),
@@ -3134,6 +3136,7 @@ impl<'a> Checker<'a> {
                 )
             }),
             Expr::Field { object, .. } => !self.is_prop(expr) && self.is_place(*object),
+            Expr::Index { object, .. } => self.is_place(*object),
             Expr::Deref(_) => true,
             _ => false,
         }
@@ -3181,6 +3184,65 @@ impl<'a> Checker<'a> {
             impl_span: self.impl_target_span(index),
         });
         false
+    }
+
+    /// `values[0]`: the element of an array at an index it's known to have, a number written
+    /// out that's less than its length. Anything that might be out of bounds is `get`'s.
+    fn index(&mut self, object: Id<Expr>, index: Id<Expr>) -> TypeId {
+        let error = self.u.table.error;
+        let object_ty = self.infer_object(object);
+        let usize = self.u.table.usize;
+        self.expect(index, usize, None);
+        // `[1, 2, 3][0]`: a collection nothing else decides is an array.
+        if let Some(VarKind::Collection { element, len }) = self.u.var_kind(object_ty) {
+            let array = self.u.intern(Ty::Array { element, len });
+            let _ = self.u.unify(object_ty, array);
+        }
+        // Elements are reachable through one reference, as fields are.
+        let mut viewed = self.u.shallow(object_ty);
+        if let Ty::Ref { to, .. } = *self.u.get(viewed) {
+            viewed = self.u.shallow(to);
+        }
+        let (element, len) = match *self.u.get(viewed) {
+            Ty::Array { element, len } => (element, len),
+            Ty::Error => return error,
+            _ => {
+                self.errors.push(TypeError::IndexNotArray {
+                    ty: self.describe(object_ty),
+                    span: self.span(object),
+                    get: self.get_suggestion(object, index),
+                });
+                return error;
+            }
+        };
+        let Expr::Int(at) = self.ast.exprs[index] else {
+            self.errors.push(TypeError::IndexNotConstant {
+                span: self.span(index),
+                get: self.get_suggestion(object, index),
+            });
+            return element;
+        };
+        let len_ty = self.u.normalize(len);
+        match *self.u.get(self.u.shallow(len_ty)) {
+            Ty::Value(Value::Int(n)) if (at as u128) < n => {}
+            Ty::Value(Value::Int(n)) => self.errors.push(TypeError::IndexOutOfBounds {
+                index: at as u128,
+                len: n,
+                span: self.span(index),
+            }),
+            Ty::Error => {}
+            _ => self.errors.push(TypeError::IndexUnknownLength {
+                len: self.u.display(len_ty, self.names),
+                span: self.span(index),
+                get: self.get_suggestion(object, index),
+            }),
+        }
+        element
+    }
+
+    /// `values.get(i)` for `values[i]`, to suggest instead.
+    fn get_suggestion(&self, object: Id<Expr>, index: Id<Expr>) -> String {
+        format!("{}.get({})", self.span(object).get_text(), self.span(index).get_text())
     }
 
     /// Whether `expr` reads a property, `list.len`, rather than a field. Known once it's
@@ -3532,6 +3594,10 @@ impl Checker<'_> {
             }
             Expr::Field { object, .. } | Expr::Deref(object) => {
                 self.forget_changed_by(*object, true)
+            }
+            Expr::Index { object, index } => {
+                self.forget_changed_by(*object, true);
+                self.forget_changed_by(*index, false);
             }
             Expr::Borrow { mutable, expr } => {
                 if *mutable && let Some(borrowed) = self.key(*expr) {

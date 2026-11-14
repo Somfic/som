@@ -1,0 +1,6 @@
+// expect: error IndexOutOfBounds
+
+fn main() -> i32 {
+    let values = [1, 2, 3];
+    values[3]
+}

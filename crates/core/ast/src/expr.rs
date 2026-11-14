@@ -69,6 +69,12 @@ pub enum Expr {
         object: Id<Expr>,
         field: Ident,
     },
+    /// `values[0]`: an array's element, at an index known to be in its bounds: a number
+    /// written out, less than the array's length.
+    Index {
+        object: Id<Expr>,
+        index: Id<Expr>,
+    },
     /// `Point { x: 1, y: 2 }`, or `Pair<i32> { a: 1, b: 2 }`
     Construct {
         ty: Path,

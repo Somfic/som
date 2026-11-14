@@ -68,6 +68,18 @@ impl Parser<'_> {
                 continue;
             }
 
+            // `values[0]`
+            if self.at(TokenKind::OpenBracket) {
+                if Grammar::POSTFIX * 2 < min_bp {
+                    break;
+                }
+                self.advance();
+                let index = self.parse_expr()?;
+                self.expect(TokenKind::CloseBracket, "a closing bracket after the index")?;
+                lhs = self.alloc_expr(Expr::Index { object: lhs, index }, &start);
+                continue;
+            }
+
             // `callee(args)`
             if self.at(TokenKind::OpenParen) {
                 if Grammar::POSTFIX * 2 < min_bp {

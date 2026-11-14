@@ -1,0 +1,7 @@
+// expect: exit 2
+
+fn main() -> i32 {
+    let values = [1, 2, 3];
+    let second = &values[1];
+    *second
+}

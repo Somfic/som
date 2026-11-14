@@ -1,0 +1,3 @@
+// expect: error IndexUnknownLength
+
+fn first<N: usize>(values: &[i32; N]) -> i32 { values[0] }

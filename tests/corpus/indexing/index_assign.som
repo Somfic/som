@@ -1,0 +1,7 @@
+// expect: exit 7
+
+fn main() -> i32 {
+    let mut values = [1, 2, 3];
+    values[2] = 7;
+    values[2]
+}

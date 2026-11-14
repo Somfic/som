@@ -346,6 +346,10 @@ impl Dumper<'_> {
             Expr::Field { object, field } => {
                 self.node(format!("field {field}"), |d| d.expr(*object))
             }
+            Expr::Index { object, index } => self.node("index", |d| {
+                d.expr(*object);
+                d.expr(*index);
+            }),
             Expr::Construct { ty, fields, .. } => self.node(format!("construct {ty}"), |d| {
                 for (name, value) in fields {
                     d.node(format!("{name}:"), |d| d.expr(*value));

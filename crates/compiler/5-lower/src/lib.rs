@@ -1240,7 +1240,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }
 
-            Expr::Field { .. } | Expr::Deref(_) if !self.is_prop(expr) => {
+            Expr::Field { .. } | Expr::Deref(_) | Expr::Index { .. } if !self.is_prop(expr) => {
                 let place = self.place(expr);
                 self.read(place, ty)
             }
@@ -2216,6 +2216,21 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         DefKind::Struct(s) if self.l.ast.structs[s].is_enum()));
                 let index = if is_enum { index + 1 } else { index };
                 return place.project(Projection::Field(index));
+            }
+            // `values[0]`: checked to be in bounds.
+            Expr::Index { object, index } => {
+                let mut place = self.place(*object);
+                // Elements are reachable through one reference.
+                let object_ty = self.expr_ty(*object);
+                if let Ty::Ref { .. } = *self.l.mir.types.get(object_ty) {
+                    place = place.project(Projection::Deref);
+                }
+                let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
+                let span = self.span(*index);
+                let position = self.temp(usize, span.clone());
+                let at = self.operand(*index);
+                self.assign(Place::local(position), Rvalue::Use(at), span);
+                return place.project(Projection::Index(position));
             }
             Expr::Deref(inner) => return self.place(*inner).project(Projection::Deref),
             _ => {}

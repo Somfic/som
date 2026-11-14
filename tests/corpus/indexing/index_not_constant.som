@@ -1,0 +1,7 @@
+// expect: error IndexNotConstant
+
+fn main() -> i32 {
+    let values = [1, 2, 3];
+    let i: usize = 1;
+    values[i]
+}

@@ -1,4 +1,5 @@
 use som::data;
+
 struct Vector<N: usize, T> {
     values: [T; N]
 }
@@ -11,21 +12,20 @@ impl<N: usize, T> Vector<N, T> {
 
 impl<T> Vector<3, T> {
     prop x(self: &Vector<3, T>) {
-        self.values.get(0)
+        self.values[0]
     }
 
     prop y(self: &Vector<3, T>) {
-        self.values.get(1)
+        self.values[1]
     }
 
     prop z(self: &Vector<3, T>) {
-        self.values.get(2)
+        self.values[2]
     }
 }
 
-let v: Vector<3, i32> = Vector::empty(0);
-let a = v.y;
-
+let v = Vector::empty(0);
+let a = v.x;
 
 ////////////////////////////////////////////////////
 

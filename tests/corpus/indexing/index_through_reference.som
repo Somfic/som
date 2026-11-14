@@ -1,0 +1,8 @@
+// expect: exit 3
+
+fn last(values: &[i32; 3]) -> i32 { values[2] }
+
+fn main() -> i32 {
+    let values = [1, 2, 3];
+    last(&values)
+}
