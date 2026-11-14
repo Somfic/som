@@ -39,6 +39,8 @@ pub(crate) struct Checker<'a> {
     next_narrowing: usize,
     /// Reads of narrowed places: they read the value, not the optional.
     narrowed_reads: HashSet<Id<Expr>>,
+    /// Operands read through the reference they are: `self * self` of a `&i32`.
+    read_through: HashSet<Id<Expr>>,
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
     pointer_methods: HashMap<Id<Expr>, PointerMethod>,
     sliced: HashMap<Id<Expr>, TypeId>,
@@ -105,6 +107,7 @@ impl<'a> Checker<'a> {
             narrowed: Vec::new(),
             next_narrowing: 0,
             narrowed_reads: HashSet::new(),
+            read_through: HashSet::new(),
             array_methods: HashMap::new(),
             pointer_methods: HashMap::new(),
             sliced: HashMap::new(),
@@ -202,6 +205,14 @@ impl<'a> Checker<'a> {
                 })
                 .collect();
             let ret = match (func.returns, func.body) {
+                // `prop xy: Vector = …`: a property's type can leave its arguments to its value,
+                // as a `let`'s can.
+                (Some(ty), _) if func.prop => {
+                    self.omitted_args_ok = true;
+                    let ret = self.lower(ty);
+                    self.omitted_args_ok = false;
+                    ret
+                }
                 (Some(ty), _) => self.lower(ty),
                 (None, None) => self.u.table.unit,
                 (None, Some(_)) => self.u.fresh(VarKind::Any),
@@ -313,8 +324,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    /// A property is read like a field, so it has to act like one: give a value, and leave
-    /// what it's read from usable, borrowing `self` unless it's copied.
+    /// A property is read like a field, so it has to give a value.
     fn check_prop(&mut self, id: Id<Func>, func: &Func) {
         let ret = self.sigs[id.id].ret;
         if matches!(self.u.get(self.u.shallow(ret)), Ty::Unit) {
@@ -324,20 +334,6 @@ impl<'a> Checker<'a> {
             };
             self.errors.push(TypeError::PropReturnsNothing {
                 name: func.name.name.to_string(),
-                span,
-            });
-        }
-        if let (Some(&this), Some(param)) = (self.sigs[id.id].params.first(), func.params.first())
-            && !matches!(self.u.get(self.u.shallow(this)), Ty::Ref { .. })
-            && !self.is_copy(this)
-        {
-            let span = match param.ty {
-                Some(ty) => self.ast.types.span(ty).clone(),
-                None => param.name.span.clone(),
-            };
-            self.errors.push(TypeError::PropConsumesSelf {
-                ty: self.describe(this),
-                borrowed: format!("&{}", span.get_text()),
                 span,
             });
         }
@@ -476,6 +472,7 @@ impl<'a> Checker<'a> {
             type_args,
             wrapped: self.wrapped,
             narrowed_reads: self.narrowed_reads,
+            read_through: self.read_through,
             array_methods: self.array_methods,
             pointer_methods: self.pointer_methods,
             sliced,
@@ -729,8 +726,9 @@ impl<'a> Checker<'a> {
 
     /// A function's signature with its type parameters replaced by fresh variables.
     fn instantiate(&mut self, func: Id<Func>) -> (Signature, Vec<TypeId>) {
-        // A return type that isn't written is what the body decides: check it first.
-        if self.ast.funcs[func].returns.is_none() {
+        // A return type that isn't written, or a property's that leaves out arguments, is what
+        // the body decides: check it first.
+        if self.ast.funcs[func].returns.is_none() || self.ast.funcs[func].prop {
             self.check_func(func);
         }
         let mut sig = self.sigs[func.id].clone();
@@ -1735,6 +1733,8 @@ impl<'a> Checker<'a> {
                     }
                     return bool;
                 }
+                let lhs_ty = self.through_reference(*lhs, lhs_ty);
+                let rhs_ty = self.through_reference(*rhs, rhs_ty);
                 self.binary(id, *op, lhs_ty, rhs_ty)
             }
 
@@ -1974,7 +1974,7 @@ impl<'a> Checker<'a> {
                 };
                 let Some(def) = self.names.method(owner, &method.name) else {
                     let ty = self.describe(receiver_ty);
-                    if self.names.prop(owner, &method.name).is_some() {
+                    if !self.names.props(owner, &method.name).is_empty() {
                         let span = self.span(id);
                         self.errors.push(TypeError::MethodIsProp {
                             ty,
@@ -3203,26 +3203,14 @@ impl<'a> Checker<'a> {
         name: &som_ast::Ident,
         what: &'static str,
     ) -> bool {
-        let Some(index) = self.names.impl_of(func) else {
+        if self.impl_target_fits(func, type_args, receiver_ty) {
             return true;
-        };
-        let Some(target) = self.impls[index].target else {
-            return true;
-        };
-        let params = self.impls[index].params.clone();
-        let Some(args) = type_args.get(..params.len()) else {
-            return true;
-        };
-        let wanted = crate::traits::substitute(&mut self.u.table, target, &params, args);
-        let wanted = self.u.normalize(wanted);
-        // Through a reference on either side: a `str` is one already.
-        let unref = |u: &Unifier, ty: TypeId| match *u.get(u.shallow(ty)) {
-            Ty::Ref { to, .. } => u.shallow(to),
-            _ => u.shallow(ty),
-        };
-        let found = unref(&self.u, receiver_ty);
-        if self.u.could_fit(unref(&self.u, wanted), found) {
-            return true;
+        }
+        let index = self.names.impl_of(func).expect("only methods don't fit");
+        let target = self.impls[index].target.expect("only a known target doesn't fit");
+        let mut found = self.u.shallow(receiver_ty);
+        if let Ty::Ref { to, .. } = *self.u.get(found) {
+            found = self.u.shallow(to);
         }
         self.errors.push(TypeError::NotOnImplTarget {
             ty: self.describe(found),
@@ -3294,13 +3282,37 @@ impl<'a> Checker<'a> {
         format!("{}.get({})", self.span(object).get_text(), self.span(index).get_text())
     }
 
+    /// Whether `receiver_ty`, looking through a reference, could be what the impl block of
+    /// method `func` is for, with `type_args` its instantiation. True when that's not known.
+    fn impl_target_fits(&mut self, func: Id<Func>, type_args: &[TypeId], receiver_ty: TypeId) -> bool {
+        let Some(index) = self.names.impl_of(func) else {
+            return true;
+        };
+        let Some(target) = self.impls[index].target else {
+            return true;
+        };
+        let params = self.impls[index].params.clone();
+        let Some(args) = type_args.get(..params.len()) else {
+            return true;
+        };
+        let wanted = crate::traits::substitute(&mut self.u.table, target, &params, args);
+        let wanted = self.u.normalize(wanted);
+        // Through a reference on either side: a `str` is one already.
+        let unref = |u: &Unifier, ty: TypeId| match *u.get(u.shallow(ty)) {
+            Ty::Ref { to, .. } => u.shallow(to),
+            _ => u.shallow(ty),
+        };
+        let found = unref(&self.u, receiver_ty);
+        self.u.could_fit(unref(&self.u, wanted), found)
+    }
+
     /// Whether `expr` reads a property, `list.len`, rather than a field. Known once it's
     /// inferred.
     fn is_prop(&self, expr: Id<Expr>) -> bool {
         matches!(self.ast.exprs[expr], Expr::Field { .. }) && self.methods.contains_key(&expr)
     }
 
-    /// `list.len` of a property, `prop len(self: &List) -> usize`: a call of it, without
+    /// `list.len` of a property, `prop len -> usize`: a call of it, without
     /// parentheses. `None` if `object` has no property `field`; fields are named apart.
     fn prop_access(
         &mut self,
@@ -3319,15 +3331,34 @@ impl<'a> Checker<'a> {
                 _ => None,
             }
         })?;
-        let def = self.names.prop(owner, &field.name)?;
-        let DefKind::Func(func) = self.names.def(def).kind else {
-            unreachable!("properties are functions")
+        let candidates = self.names.props(owner, &field.name);
+        let first = *candidates.first()?;
+        let func_of = |c: &Self, def: DefId| match c.names.def(def).kind {
+            DefKind::Func(func) => func,
+            _ => unreachable!("properties are functions"),
         };
         // Text written in quotes is a `str` here.
         if self.u.var_kind(object_ty) == Some(VarKind::Text) {
             let _ = self.u.unify(object_ty, self.u.table.str_ref);
         }
-        let (sig, type_args) = self.instantiate(func);
+        // Of the impl blocks with one, the one for the value's type: `x` of a `Vector<3, T>`.
+        let mut chosen = None;
+        for &def in &candidates {
+            let func = func_of(self, def);
+            let (sig, type_args) = self.instantiate(func);
+            if self.impl_target_fits(func, &type_args, object_ty) {
+                chosen = Some((def, func, sig, type_args));
+                break;
+            }
+        }
+        let (def, func, sig, type_args) = match chosen {
+            Some(chosen) => chosen,
+            None => {
+                let func = func_of(self, first);
+                let (sig, type_args) = self.instantiate(func);
+                (first, func, sig, type_args)
+            }
+        };
         if !self.on_impl_target(func, &type_args, object_ty, field, "property") {
             return Some(self.u.table.error);
         }
@@ -3383,6 +3414,22 @@ impl<'a> Checker<'a> {
             None => self.deferred_ops.push((id, op, lhs, rhs)),
         }
         result
+    }
+
+    /// An operand of an arithmetic or comparison operator, of type `ty`: a reference to a
+    /// number or `bool` is read through, so `self * self` works for a `&i32`.
+    fn through_reference(&mut self, operand: Id<Expr>, ty: TypeId) -> TypeId {
+        let Ty::Ref { to, .. } = *self.u.get(self.u.shallow(ty)) else {
+            return ty;
+        };
+        let to = self.u.shallow(to);
+        let number = matches!(self.u.get(to), Ty::Int(_) | Ty::Float(_) | Ty::Bool)
+            || matches!(self.u.var_kind(to), Some(VarKind::Int | VarKind::Float));
+        if !number {
+            return ty;
+        }
+        self.read_through.insert(operand);
+        to
     }
 
     /// Whether `ty` is an enum whose variants hold nothing: a number, really, which can be

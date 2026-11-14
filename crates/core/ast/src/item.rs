@@ -96,8 +96,9 @@ pub struct Func {
     pub library: Option<PathBuf>,
     /// A method of a trait: a signature implementations follow, not a function of its own.
     pub in_trait: bool,
-    /// `prop len(self: &List) -> usize`: a property, read without parentheses as `list.len`.
-    /// Properties are named apart from methods, so a type can have a `len` of each.
+    /// `prop len -> usize`: a property, read without parentheses as `list.len`. It takes
+    /// `&self`, which isn't written. Properties are named apart from methods, so a type can
+    /// have a `len` of each.
     pub prop: bool,
 }
 

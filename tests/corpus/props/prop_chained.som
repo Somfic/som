@@ -3,8 +3,8 @@
 struct Point { x: i32, y: i32 }
 
 impl Point {
-    prop doubled(self: &Point) -> Point { Point { x: self.x * 2, y: self.y * 2 } }
-    prop sum(self: &Point) -> i32 { self.x + self.y }
+    prop doubled -> Point { Point { x: self.x * 2, y: self.y * 2 } }
+    prop sum -> i32 { self.x + self.y }
 }
 
 fn main() -> i32 {

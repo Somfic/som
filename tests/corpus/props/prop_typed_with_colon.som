@@ -1,0 +1,13 @@
+// expect: exit 12
+
+struct Rect { w: i32, h: i32 }
+
+impl Rect {
+    prop area: i32 = self.w * self.h;
+    prop half: i32 { self.area / 2 }
+}
+
+fn main() -> i32 {
+    let r = Rect { w: 4, h: 3 };
+    r.half * 2
+}

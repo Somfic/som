@@ -1,0 +1,8 @@
+// expect: error
+
+struct Rect { w: i32 }
+
+impl Rect {
+    prop half = self.w / 2
+    prop double = self.w * 2;
+}

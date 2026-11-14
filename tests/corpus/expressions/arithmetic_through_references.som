@@ -1,0 +1,12 @@
+// expect: exit 15
+
+fn add(a: &i32, b: &i32) -> i32 { a + b }
+
+fn main() -> i32 {
+    let x = 4;
+    let y = 6;
+    let big = &x < &y and &y == &6;
+    let f: f64 = 2.5;
+    let r = &f;
+    if big and r * 2.0 > 4.0 { add(&x, &y) + 5 } else { 0 }
+}

@@ -3,7 +3,7 @@
 struct Box { n: i32 }
 
 impl Box {
-    prop size(self: &Box) -> i32 { self.n }
+    prop size -> i32 { self.n }
     fn size(self: &Box) -> i32 { self.n * 2 }
 }
 

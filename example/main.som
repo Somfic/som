@@ -11,22 +11,33 @@ impl<N: usize, T> Vector<N, T> {
     }
 }
 
-impl<T> Vector<3, T> {
-    prop x(&self) {
-        self.values[0]
-    }
-
-    prop y(&self) {
-        self.values[1]
-    }
-
-    prop z(&self) {
-        self.values[2]
+impl<N: usize, T> From<[T; N]> for Vector<N, T> {
+    fn from(values: [T; N]) -> Self {
+        Vector { values: values }
     }
 }
 
-let v = Vector::empty(0);
-let a = v.x;
+impl<T> Vector<1, T> {
+    prop x = self.values[0];
+}
+
+impl<T> Vector<2, T> {
+    prop x = self.values[0];
+    prop y = self.values[1];
+}
+
+impl<T> Vector<3, T> {
+    prop x = self.values[0];
+    prop y = self.values[1];
+    prop z = self.values[2];
+
+    prop xy: Vector = [self.x, self.y];
+    prop yz: Vector = [self.y, self.z];
+    prop xz: Vector = [self.x, self.z];
+}
+
+let xyz: Vector = [ 0, 0, 0 ];
+let x = xyz.x;
 
 ////////////////////////////////////////////////////
 

@@ -45,18 +45,14 @@ pub enum ResolveError {
         span: Span,
         previous: Span,
     },
-    /// `prop x(self: &Point)` on a struct with a field `x`: `p.x` couldn't say which.
+    /// `prop x -> i32` on a struct with a field `x`: `p.x` couldn't say which.
     PropNamedLikeField {
         name: String,
         span: Span,
         field: Span,
     },
-    /// `prop len(self: &List, extra: i32)`: a property takes `self` and nothing else.
-    PropParams { span: Span },
-    /// `prop len<T>(…)`: a property can't have type parameters of its own.
+    /// `prop len<T> -> …`: a property can't have type parameters of its own.
     PropGenerics { span: Span },
-    /// `prop next(self: &mut Iter)`: reading a property doesn't change what it's read from.
-    PropMutSelf { span: Span },
     /// `prop` in `impl Trait for …`: traits only have methods.
     PropInTraitImpl { span: Span },
     /// `break x;` or `continue x;` where `x` isn't a `for` loop's variable.
@@ -133,23 +129,10 @@ impl ResolveError {
                     "; rename one, or make the property a method"
                 ]);
             }
-            ResolveError::PropParams { span } => {
-                return Diagnostic::error("a property takes only `self`")
-                    .with_label(Label::primary(span.clone(), "parameters here"))
-                    .with_hint(msg!["for one with arguments, use a method: ", code("fn")]);
-            }
             ResolveError::PropGenerics { span } => {
                 return Diagnostic::error("a property can't have type parameters")
                     .with_label(Label::primary(span.clone(), "type parameters here"))
                     .with_hint(msg!["for one with type parameters, use a method: ", code("fn")]);
-            }
-            ResolveError::PropMutSelf { span } => {
-                return Diagnostic::error(msg!["a property can't take ", code("&mut self")])
-                    .with_label(Label::primary(span.clone(), "takes it mutably here"))
-                    .with_hint(msg![
-                        "reading a property shouldn't change anything; use a method: ",
-                        code("fn")
-                    ]);
             }
             ResolveError::PropInTraitImpl { span } => {
                 return Diagnostic::error("traits can't have properties yet")

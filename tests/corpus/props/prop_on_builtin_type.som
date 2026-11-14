@@ -1,7 +1,7 @@
 // expect: exit 9
 
 impl i32 {
-    prop squared(self: i32) -> i32 { self * self }
+    prop squared -> i32 { self * self }
 }
 
 fn main() -> i32 {

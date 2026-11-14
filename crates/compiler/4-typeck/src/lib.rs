@@ -75,6 +75,8 @@ pub struct Typed {
     wrapped: HashSet<Id<Expr>>,
     /// Reads of an optional place inside `if x { … }`: they read the value it holds.
     narrowed_reads: HashSet<Id<Expr>>,
+    /// Operands read through the reference they are: `self * self` of a `&i32`.
+    read_through: HashSet<Id<Expr>>,
     /// References to arrays used where a slice is expected (`&numbers` for a `[i32]`), and
     /// `[mut T]`s used where a `[T]` is.
     sliced: HashMap<Id<Expr>, TypeId>,
@@ -371,6 +373,12 @@ impl Typed {
     /// Whether `expr` reads the value a narrowed optional holds, rather than the optional.
     pub fn is_narrowed(&self, expr: Id<Expr>) -> bool {
         self.narrowed_reads.contains(&expr)
+    }
+
+    /// Whether operand `expr`, a reference to a number or `bool`, is read through: `self *
+    /// self` of a `&i32` multiplies the numbers.
+    pub fn is_read_through(&self, expr: Id<Expr>) -> bool {
+        self.read_through.contains(&expr)
     }
 
     /// Whether `expr`'s value is wrapped in an optional where it's used.

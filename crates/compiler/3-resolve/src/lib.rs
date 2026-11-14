@@ -316,8 +316,8 @@ impl<'a> Resolver<'a> {
         }
     }
 
-    /// Adds property `prop` to `owner`, checking it's one: only `self`, which isn't
-    /// `&mut`, and no field named like it.
+    /// Adds property `prop` to `owner`, checking it's one: no type parameters of its own, and
+    /// no field named like it. Its only parameter, `&self`, isn't written.
     fn collect_prop(&mut self, owner: DefId, block: &som_ast::Impl, prop: Id<Func>, def: DefId) {
         let ast = self.ast;
         let func = &ast.funcs[prop];
@@ -333,20 +333,6 @@ impl<'a> Resolver<'a> {
             let span = own[0].name.span.merge(&own[own.len() - 1].name.span);
             self.errors.push(ResolveError::PropGenerics { span });
         }
-        match func.params.split_first() {
-            Some((this, [])) if &*this.name.name == "self" => {
-                if let Some(ty) = this.ty
-                    && let TypeExpr::Reference { mutable: true, .. } = ast.types[ty]
-                {
-                    self.errors.push(ResolveError::PropMutSelf {
-                        span: ast.types.span(ty).clone(),
-                    });
-                }
-            }
-            _ => self.errors.push(ResolveError::PropParams {
-                span: name.span.clone(),
-            }),
-        }
         if let DefKind::Struct(s) = self.names.def(owner).kind {
             let strukt = &ast.structs[s];
             let field = (strukt.fields.iter().chain(strukt.payload()))
@@ -359,7 +345,8 @@ impl<'a> Resolver<'a> {
                 });
             }
         }
-        if let Some(previous) = self.names.add_prop(owner, &name.name, def) {
+        let block = self.names.impl_of(prop).expect("properties are in impl blocks");
+        if let Some(previous) = self.names.add_prop(owner, &name.name, block, def) {
             self.errors.push(ResolveError::DuplicateDefinition {
                 name: name.name.to_string(),
                 span: name.span.clone(),

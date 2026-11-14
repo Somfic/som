@@ -277,12 +277,16 @@ impl Parser<'_> {
     ) -> Option<Id<Func>> {
         let doc = self.doc_comment();
         let start = self.current_span();
-        if !self.eat(TokenKind::Prop) {
+        let prop = self.eat(TokenKind::Prop);
+        if !prop {
             self.expect(TokenKind::Fn, "a method declaration")?;
         }
         let name = self.parse_ident("a method name")?;
         let own = self.parse_generics()?;
-        let (params, variadic) = self.parse_params(false)?;
+        let (params, variadic) = match prop {
+            true => (self.prop_params(&name)?, false),
+            false => self.parse_params(false)?,
+        };
         let returns = if self.eat(TokenKind::Arrow) {
             Some(self.parse_type()?)
         } else {
@@ -459,8 +463,8 @@ impl Parser<'_> {
         })
     }
 
-    /// `fn name<T>(params) -> Ret { body }`, or in an impl block, `prop name(self: &T) -> Ret
-    /// { body }`.
+    /// `fn name<T>(params) -> Ret { body }`, or in an impl block, `prop name: Ret { body }` or
+    /// `prop name: Ret = value;`.
     fn parse_function(&mut self) -> Option<Id<Func>> {
         let doc = self.doc_comment();
         let start = self.current_span();
@@ -471,13 +475,24 @@ impl Parser<'_> {
         let name = self.parse_ident("a function name")?;
 
         let generics = self.parse_generics()?;
-        let (params, variadic) = self.parse_params(false)?;
-        let returns = if self.eat(TokenKind::Arrow) {
+        let (params, variadic) = match prop {
+            true => (self.prop_params(&name)?, false),
+            false => self.parse_params(false)?,
+        };
+        // A property's type goes after a `:`, as a field's does: `prop x: i32 = …`.
+        let returns = if self.eat(TokenKind::Arrow) || prop && self.eat(TokenKind::Colon) {
             Some(self.parse_type()?)
         } else {
             None
         };
-        let body = Some(self.parse_block()?);
+        // `prop x = self.values[0];`: a property's body can be any expression.
+        let body = if prop && self.eat(TokenKind::Equals) {
+            let value = self.parse_expr()?;
+            self.expect(TokenKind::Semicolon, "a semicolon after the property's value")?;
+            Some(value)
+        } else {
+            Some(self.parse_block()?)
+        };
 
         let span = self.span_from(&start);
         let func = Func {
@@ -494,6 +509,36 @@ impl Parser<'_> {
             prop,
         };
         Some(self.ast.funcs.alloc(func, span))
+    }
+
+    /// A property's parameters, which aren't written: just `&self`. Ones written anyway are
+    /// reported and skipped.
+    fn prop_params(&mut self, name: &Ident) -> Option<Vec<Param>> {
+        if self.at(TokenKind::OpenParen) {
+            let start = self.current_span();
+            self.parse_params(false)?;
+            let span = self.span_from(&start);
+            self.error_at(
+                span,
+                "a property has no parameters",
+                msg![
+                    "its ",
+                    code("self"),
+                    " is always borrowed: ",
+                    code(format!("prop {} -> …", name.name))
+                ],
+            );
+        }
+        let ty = self.self_type(Some(false), name.span.clone());
+        Some(vec![Param {
+            name: Ident {
+                name: "self".into(),
+                span: name.span.clone(),
+            },
+            ty: Some(ty),
+            out: false,
+            mutable: false,
+        }])
     }
 
     /// `Self`, or with `reference` saying whether it's mutable, `&Self` or `&mut Self`: the

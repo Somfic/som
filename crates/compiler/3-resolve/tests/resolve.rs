@@ -27,9 +27,7 @@ fn help(error: &ResolveError) -> Option<String> {
         | ResolveError::NotALoop { .. }
         | ResolveError::MethodsOnType { .. }
         | ResolveError::PropNamedLikeField { .. }
-        | ResolveError::PropParams { .. }
         | ResolveError::PropGenerics { .. }
-        | ResolveError::PropMutSelf { .. }
         | ResolveError::PropInTraitImpl { .. } => None,
     }
 }

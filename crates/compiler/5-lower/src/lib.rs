@@ -1118,6 +1118,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// its tag is: what `==` compares and `as` converts.
     fn number(&mut self, expr: Id<Expr>) -> Operand {
         let ty = self.expr_ty(expr);
+        // `self * self` of a `&i32`: the numbers it refers to.
+        if self.l.typed.is_read_through(expr) {
+            let Ty::Ref { to, .. } = *self.l.mir.types.get(ty) else {
+                unreachable!("checked: only references are read through")
+            };
+            let place = self.place(expr).project(Projection::Deref);
+            return self.read(place, to);
+        }
         let is_enum = match self.l.mir.types.get(ty) {
             Ty::Struct(def, _) => matches!(
                 self.l.names.def(*def).kind,

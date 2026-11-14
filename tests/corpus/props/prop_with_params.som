@@ -1,7 +1,7 @@
-// expect: error PropParams
+// expect: error
 
 struct Rect { w: i32 }
 
 impl Rect {
-    prop scaled(self: &Rect, by: i32) -> i32 { self.w * by }
+    prop scaled -> i32 { self.w * by }
 }

@@ -3,5 +3,5 @@
 struct Counter { n: i32 }
 
 impl Counter {
-    prop log(self: &Counter) { }
+    prop log { }
 }

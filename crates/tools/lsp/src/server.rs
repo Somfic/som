@@ -871,6 +871,7 @@ impl LanguageServer for SomLanguageServer {
                         ..Default::default()
                     });
                 }
+                prop_items(a, owner, a.typed.expr(expr), &mut items);
                 for (name, method) in a.names.methods_of(owner) {
                     // As it is on this receiver: `Vector<i32>`, not `Vector<T>`.
                     let detail = match a.names.def(method).kind {
@@ -904,6 +905,9 @@ impl LanguageServer for SomLanguageServer {
                 };
                 let owner = som_typeck::traits::primitive_of(a.typed.ty(viewed))
                     .and_then(|p| a.names.primitive(p));
+                if let Some(owner) = owner {
+                    prop_items(a, owner, t, &mut items);
+                }
                 for (name, method) in owner.map(|o| a.names.methods_of(o)).unwrap_or_default() {
                     // Only those taking a `self`: `i32::parse` is called on the type.
                     let DefKind::Func(f) = a.names.def(method).kind else {
@@ -1936,6 +1940,57 @@ fn method_subst(
     }
 }
 
+/// The properties of `owner` a value of type `receiver` has, as completions: `x.len`. Of
+/// several impl blocks with one called the same, only the one for this type, so a
+/// `Vector<3, i32>` gets `Vector<3, T>`'s `x`, not `Vector<2, T>`'s.
+fn prop_items(
+    a: &Analysis,
+    owner: DefId,
+    receiver: som_typeck::TypeId,
+    items: &mut Vec<CompletionItem>,
+) {
+    for (name, prop) in a.names.props_of(owner) {
+        let DefKind::Func(f) = a.names.def(prop).kind else {
+            continue;
+        };
+        let fits = (a.names.impl_of(f))
+            .and_then(|i| a.typed.impls[i].target)
+            .is_none_or(|target| impl_target_matches(a, target, receiver));
+        if !fits {
+            continue;
+        }
+        let ret = a.typed.func(f).ret;
+        let shown = a.typed.table.display_with(ret, &a.names, &method_subst(a, f, receiver));
+        items.push(CompletionItem {
+            label: name.to_string(),
+            kind: Some(CompletionItemKind::PROPERTY),
+            detail: Some(shown),
+            documentation: markdown(doc_of(a, prop)),
+            ..Default::default()
+        });
+    }
+}
+
+/// Whether a value of type `ty` could be what an impl block for `target` is for, looking
+/// through a reference: `Vector<3, i32>` is `Vector<3, T>`'s, not `Vector<2, T>`'s. The
+/// block's parameters match anything.
+fn impl_target_matches(a: &Analysis, target: som_typeck::TypeId, ty: som_typeck::TypeId) -> bool {
+    let unref = |t: som_typeck::TypeId| match a.typed.ty(t) {
+        Ty::Ref { to, .. } => *to,
+        _ => t,
+    };
+    let (target, ty) = (unref(target), unref(ty));
+    match (a.typed.ty(target), a.typed.ty(ty)) {
+        (Ty::Param(_), _) | (_, Ty::Error) => true,
+        (Ty::Struct(d, xs), Ty::Struct(e, ys)) => {
+            d == e
+                && xs.len() == ys.len()
+                && (xs.iter().zip(ys)).all(|(&x, &y)| impl_target_matches(a, x, y))
+        }
+        _ => target == ty,
+    }
+}
+
 /// `fn name<T>(a: i32, b: T) -> i32`, or `extern fn ...` for externs.
 fn signature(a: &Analysis, f: Id<Func>) -> String {
     signature_with(a, f, &[])
@@ -2653,6 +2708,13 @@ fn omitted_args_hints(
 fn return_type_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
     let mut hints = Vec::new();
     for (id, func) in a.ast.funcs.iter() {
+        // `prop xy: Vector = …`: the type arguments its value gave, `<2, T>`, as for a `let`.
+        if func.prop
+            && let Some(written) = func.returns
+            && a.ast.types.span(written).source.identifier() == file
+        {
+            omitted_args_hints(a, written, a.typed.func(id).ret, &mut hints);
+        }
         let (None, Some(body)) = (func.returns, func.body) else {
             continue;
         };
@@ -2664,17 +2726,26 @@ fn return_type_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
         if matches!(a.typed.ty(ret), Ty::Unit | Ty::Error) {
             continue;
         }
-        // Right after the parameters' `)`: with no return type written, only space comes
-        // between it and the body.
-        let before = at.source.content()[..at.start_offset].trim_end();
-        if !before.ends_with(')') {
+        // Right after the parameters' `)`, or a property's name: with no return type
+        // written, only space comes between it and the body.
+        let mut before = at.source.content()[..at.start_offset].trim_end();
+        // `prop x = value;`: before the `=`.
+        if func.prop && let Some(rest) = before.strip_suffix('=') {
+            before = rest.trim_end();
+        }
+        if !before.ends_with(')') && !func.prop {
             continue;
         }
         let close = Span::from_range(before.len()..before.len(), at.source.clone());
         let position = convert::span_to_range(&close).start;
-        let text = match is_self(a, id, ret) {
-            true => " -> Self".to_string(),
-            false => format!(" -> {}", ty(a, ret)),
+        let shown = match is_self(a, id, ret) {
+            true => "Self".to_string(),
+            false => ty(a, ret),
+        };
+        // A property's type goes after a `:`, as a field's does.
+        let text = match func.prop {
+            true => format!(": {shown}"),
+            false => format!(" -> {shown}"),
         };
         hints.push(InlayHint {
             position,
@@ -3271,10 +3342,11 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let main = dir.join("main.som");
         let text = "struct Rect { w: i32 }\n\
-                    impl Rect {\n    prop area(self: &Rect) { self.w * 2 }\n}\n\
+                    impl Rect {\n    prop area { self.w * 2 }\n}\n\
                     fn double(x: i32) { x * 2 }\n\
                     fn written(x: i32) -> i32 { x }\n\
                     fn nothing() { }\n\
+                    impl Rect {\n    prop half = self.w / 2;\n    prop pair: Pair = Pair { a: self.w };\n}\n\
                     struct Pair<T> { a: T }\n\
                     impl<T> Pair<T> {\n    fn of(a: T) { Pair { a: a } }\n    fn other(self) { Pair { a: 1 } }\n}\n\
                     fn main() -> i32 { double(Rect { w: 1 }.area) }\n";
@@ -3294,10 +3366,45 @@ mod tests {
         assert_eq!(
             labels,
             [
-                (2, 26, " -> i32".to_string()),
+                (2, 13, ": i32".to_string()),
                 (4, 17, " -> i32".to_string()),
-                (9, 15, " -> Self".to_string()),
-                (10, 18, " -> Pair<i32>".to_string())
+                (8, 13, ": i32".to_string()),
+                (9, 19, "<i32>".to_string()),
+                (13, 15, " -> Self".to_string()),
+                (14, 18, " -> Pair<i32>".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn props_complete_for_the_type_their_block_is_for() {
+        let dir = std::env::temp_dir().join(format!("som_lsp_prop_items_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let text = "struct Vector<N: usize, T> { values: [T; N] }\n\
+                    impl<T> Vector<2, T> {\n    prop x = self.values[0];\n}\n\
+                    impl<T> Vector<3, T> {\n    prop z = self.values[2];\n    prop first: T = self.values[0];\n}\n\
+                    fn main() -> i32 {\n    let v: Vector<3, i32> = Vector { values: [1, 2, 3] };\n    v.z\n}\n";
+        std::fs::write(dir.join("main.som"), text).unwrap();
+        let a = som_driver::analyze(&dir, &som_driver::Options::default());
+        std::fs::remove_dir_all(&dir).unwrap();
+        let v = (a.ast.stmts.iter())
+            .find_map(|(id, stmt)| match stmt {
+                Stmt::Let { name, .. } if &*name.name == "v" => a.names.local(id),
+                _ => None,
+            })
+            .unwrap();
+        let owner = (a.ast.structs.iter()).map(|(s, _)| a.names.strukt(s)).next().unwrap();
+        let mut items = Vec::new();
+        prop_items(&a, owner, a.typed.local(v), &mut items);
+        let shown: Vec<(String, Option<CompletionItemKind>, Option<String>)> =
+            (items.into_iter()).map(|i| (i.label, i.kind, i.detail)).collect();
+        // Not `x`, which `Vector<2, T>` has.
+        let prop = Some(CompletionItemKind::PROPERTY);
+        assert_eq!(
+            shown,
+            [
+                ("first".into(), prop, Some("i32".into())),
+                ("z".into(), prop, Some("i32".into())),
             ]
         );
     }

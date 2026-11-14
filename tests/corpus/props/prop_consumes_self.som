@@ -1,7 +1,0 @@
-// expect: error PropConsumesSelf
-
-struct Name { n: i32 }
-
-impl Name {
-    prop length(self: Name) -> i32 { 0 }
-}

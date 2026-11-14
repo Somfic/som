@@ -1,0 +1,30 @@
+// expect: exit 45
+
+struct Vector<N: usize, T> {
+    values: [T; N]
+}
+
+impl<N: usize, T> From<[T; N]> for Vector<N, T> {
+    fn from(values: [T; N]) -> Vector<N, T> {
+        Vector { values: values }
+    }
+}
+
+impl<T> Vector<2, T> {
+    prop x = self.values[0];
+    prop y = self.values[1];
+}
+
+impl<T> Vector<3, T> {
+    prop x = self.values[0];
+    prop y = self.values[1];
+    prop z = self.values[2];
+
+    prop xy: Vector = [self.x, self.y];
+}
+
+fn main() -> i32 {
+    let v: Vector = [4, 5, 6];
+    let xy = v.xy;
+    xy.x * 10 + xy.y
+}

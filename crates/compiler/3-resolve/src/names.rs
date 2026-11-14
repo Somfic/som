@@ -185,9 +185,11 @@ pub struct Names {
     structs: Vec<Option<DefId>>,
     /// `(struct, method name)` → the method, for `impl` blocks.
     methods: HashMap<(DefId, Box<str>), DefId>,
-    /// `(struct, property name)` → the property: methods read without parentheses, named
-    /// apart from methods.
-    props: HashMap<(DefId, Box<str>), DefId>,
+    /// `(struct, property name)` → the properties, with the impl block each is in: methods
+    /// read without parentheses, named apart from methods. Impl blocks for different types of
+    /// a generic struct can each have one, `x` of `Vector<2, T>` and of `Vector<3, T>`; the
+    /// type checker picks the one whose block the value's type is for.
+    props: HashMap<(DefId, Box<str>), Vec<(usize, DefId)>>,
     /// Each enum's variants, in order.
     variants: Vec<Vec<DefId>>,
     /// Functions sharing a name in a module: the first one's definition → all of them, in
@@ -335,15 +337,21 @@ impl Names {
         }
     }
 
-    /// Returns the existing property if one with this name is already defined.
-    pub(crate) fn add_prop(&mut self, owner: DefId, name: &str, prop: DefId) -> Option<DefId> {
-        match self.props.entry((owner, name.into())) {
-            std::collections::hash_map::Entry::Occupied(e) => Some(*e.get()),
-            std::collections::hash_map::Entry::Vacant(e) => {
-                e.insert(prop);
-                None
-            }
+    /// Adds property `prop`, in impl block `block`. Returns the existing one if that block
+    /// already has one with this name.
+    pub(crate) fn add_prop(
+        &mut self,
+        owner: DefId,
+        name: &str,
+        block: usize,
+        prop: DefId,
+    ) -> Option<DefId> {
+        let props = self.props.entry((owner, name.into())).or_default();
+        if let Some(&(_, previous)) = props.iter().find(|&&(b, _)| b == block) {
+            return Some(previous);
         }
+        props.push((block, prop));
+        None
     }
 
     // --- Queries ---
@@ -495,16 +503,18 @@ impl Names {
         self.methods.get(&(owner, name.into())).copied()
     }
 
-    /// The property `name` defined on `owner` by an `impl` block.
-    pub fn prop(&self, owner: DefId, name: &str) -> Option<DefId> {
-        self.props.get(&(owner, name.into())).copied()
+    /// The properties called `name` defined on `owner` by `impl` blocks, one per block.
+    pub fn props(&self, owner: DefId, name: &str) -> Vec<DefId> {
+        (self.props.get(&(owner, name.into())).into_iter().flatten())
+            .map(|&(_, def)| def)
+            .collect()
     }
 
     /// Every property defined on `owner`, by name.
     pub fn props_of(&self, owner: DefId) -> Vec<(&str, DefId)> {
         let mut props: Vec<(&str, DefId)> = (self.props.iter())
             .filter(|((o, _), _)| *o == owner)
-            .map(|((_, name), &def)| (&**name, def))
+            .flat_map(|((_, name), all)| all.iter().map(|&(_, def)| (&**name, def)))
             .collect();
         props.sort();
         props

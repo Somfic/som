@@ -3,6 +3,6 @@
 struct Rect { w: i32 }
 
 impl Rect {
-    prop area(self: &Rect) -> i32 { self.w }
-    prop area(self: &Rect) -> i32 { self.w * 2 }
+    prop area -> i32 { self.w }
+    prop area -> i32 { self.w * 2 }
 }

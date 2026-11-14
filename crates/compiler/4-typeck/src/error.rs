@@ -299,15 +299,8 @@ pub enum TypeError {
     IndexOutOfBounds { index: u128, len: u128, span: Span },
     /// `values[0]` of a `[T; N]` whose `N` isn't known here, so might be 0.
     IndexUnknownLength { len: String, span: Span, get: String },
-    /// `prop reset(self: &Counter)`: a property that gives nothing back only does something.
+    /// `prop reset { … }`: a property that gives nothing back only does something.
     PropReturnsNothing { name: String, span: Span },
-    /// `prop sum(self: Point)` of a `Point` that's moved: reading `p.sum` would use `p` up.
-    PropConsumesSelf {
-        ty: Message,
-        /// The parameter's type, borrowed: `&Point`.
-        borrowed: String,
-        span: Span,
-    },
     /// `v.x` of a `Vector<i32, 3>`, where `x` is in `impl<T> Vector<T, 1>`: a method or
     /// property only some of the struct's types have.
     NotOnImplTarget {
@@ -1026,18 +1019,6 @@ impl TypeError {
                         "one that only does something is a method: ",
                         code(format!("fn {name}"))
                     ])
-            }
-            TypeError::PropConsumesSelf { ty, borrowed, span } => {
-                Diagnostic::error(msg!["a property can't take ", ty.clone(), " by value"])
-                    .with_label(Label::primary(
-                        span.clone(),
-                        "reading it would move the value it's read from",
-                    ))
-                    .with_fix(Fix::replace(
-                        msg!["borrow it instead: ", code(borrowed.clone())],
-                        span.clone(),
-                        borrowed.clone(),
-                    ))
             }
             TypeError::MethodIsProp {
                 ty,
