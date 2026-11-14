@@ -114,8 +114,8 @@ fn locals_keep_their_som_names() {
         c.contains("static int32_t add(int32_t left, int32_t right) {"),
         "{c}"
     );
-    assert!(c.contains("    int32_t sum;\n"), "{c}");
-    assert!(c.contains("    sum = left + right;\n"), "{c}");
+    // Declared where it's assigned.
+    assert!(c.contains("    int32_t sum = left + right;\n"), "{c}");
 }
 
 #[test]
@@ -124,14 +124,14 @@ fn clashing_local_names_get_a_suffix() {
                fn main() -> i32 { let int = 1; let int = int + 1; let abs = abs(int); let _1 = abs; _1 }")
     .unwrap();
     for declaration in [
-        "int32_t int_2;",
-        "int32_t int_3;",
-        "int32_t abs_2;",
-        "int32_t v_1;",
+        "int32_t int_2 = ",
+        "int32_t int_3 = ",
+        "int32_t abs_2 = ",
+        "int32_t v_1 = ",
     ] {
         assert!(c.contains(declaration), "missing `{declaration}` in\n{c}");
     }
-    assert!(!c.contains("int32_t int;"), "{c}");
+    assert!(!c.contains("int32_t int "), "{c}");
 }
 
 #[test]
@@ -148,4 +148,57 @@ fn mut_ref_parameters_are_restrict() {
         c.contains("memset(uint8_t*, int32_t, uintptr_t)"),
         "extern signatures stay as C declares them:\n{c}"
     );
+}
+
+#[test]
+fn call_results_are_named_after_the_function() {
+    let c = c("fn width() -> i32 { 2 } fn height() -> i32 { 3 }
+               fn main() -> i32 { width() * height() }")
+    .unwrap();
+    // Calls stay out of `*`, since C doesn't fix which side is evaluated first.
+    assert!(c.contains("    int32_t width_2 = width();\n"), "{c}");
+    assert!(c.contains("    int32_t height_2 = height();\n"), "{c}");
+    assert!(c.contains("    return width_2 * height_2;\n"), "{c}");
+}
+
+#[test]
+fn pure_temporaries_fold_past_calls() {
+    let c = c("fn f() -> i32 { 2 }
+               fn main() -> i32 { let a = 1; let b = 2; a * b + f() }")
+    .unwrap();
+    // `a * b` reads nothing the call can change, so it waits for `+`.
+    assert!(c.contains("return a * b + f_2;"), "{c}");
+}
+
+#[test]
+fn temporaries_wait_for_assignments_to_what_they_read() {
+    let c = c("fn main() -> i32 { let mut a = 1; let b = a * 2; a = 5; b + a }").unwrap();
+    assert!(c.contains("int32_t b = a * 2;"), "{c}");
+    assert!(c.contains("return b + a;"), "{c}");
+}
+
+#[test]
+fn parentheses_only_where_precedence_needs_them() {
+    let c = c(
+        "fn f(a: i32, b: i32, c: i32) -> bool { a * b + c < a - (b - c) and a == b }
+               fn main() -> i32 { 0 }",
+    )
+    .unwrap();
+    assert!(c.contains("if (a * b + c < a - (b - c)) goto"), "{c}");
+}
+
+#[test]
+fn indexes_fold_into_the_brackets() {
+    let c = c("fn second(xs: &[i32; 3]) -> i32 { xs[1] } fn main() -> i32 { 0 }").unwrap();
+    assert!(c.contains("xs->items[1]"), "{c}");
+}
+
+#[test]
+fn externs_come_before_the_programs_functions() {
+    let c = c("extern { fn abs(x: i32) -> i32; } fn main() -> i32 { abs(1) }").unwrap();
+    let (externs, own) = (
+        c.find("int32_t abs(int32_t);\n").unwrap(),
+        c.find("som_main(void);").unwrap(),
+    );
+    assert!(externs < own, "{c}");
 }

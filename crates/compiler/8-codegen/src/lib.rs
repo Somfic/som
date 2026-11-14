@@ -8,22 +8,27 @@
 //! | struct `geo::Point`         | `struct geo_Point { int32_t x; int32_t y; }`           |
 //! | function `Point::sum`       | `static int32_t Point_sum(struct Point* self)`         |
 //! | `&mut T` parameter          | `T* restrict`                                          |
-//! | local                       | a variable named after its som name; temporaries `_N`  |
+//! | local                       | its som name, declared where first assigned            |
+//! | temporary holding a call    | named after the function: `x = Vector_x(&v)`           |
+//! | other temporary             | `_N`, if it isn't folded away                          |
 //! | block `bbN`                 | a label, if anything jumps to it                       |
 //! | place `(*self).0`           | `self->x`                                              |
 //! | `StorageLive`/`StorageDead` | nothing                                                |
 //!
-//! A temporary that's used once, by the very next statement, is folded into
-//! that use: `_2 = a + b; _0 = _2; return _0;` becomes `return a + b;`. C
-//! leaves the order of evaluation within an expression open, and does
-//! arithmetic on small integer types in `int`, so folding is limited to where
-//! neither can change the meaning (see [`Use::allows`]).
+//! A temporary that's used once is folded into that use: `_2 = a + b; _0 = _2;
+//! return _0;` becomes `return a + b;`. It can wait past statements that don't
+//! assign what it reads or write memory it reads; one holding a call can't
+//! wait at all, so effects stay in order. C leaves the order of evaluation
+//! within an expression open, and does arithmetic on small integer types in
+//! `int`, so folding is limited to where neither can change the meaning (see
+//! [`Use::allows`]). Operands are parenthesized only where C's precedence
+//! would group them differently.
 //!
 //! The C compiler lays out structs and handles calling conventions, so neither
 //! appears here.
 
 use som_mir::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
@@ -321,25 +326,44 @@ fn used_generated(mir: &Mir) -> Vec<TypeId> {
 }
 
 /// C names for a function's locals: the som name where possible, so the C reads like the
-/// source. The return value is `_0` and temporaries are `_N`. A name that would clash (a C
-/// keyword, a function, a shadowed `let`, or one of the `_N` names) gets a `_2`, `_3`...
+/// source. A temporary holding what a call returns is named after the function, `Vector::x`
+/// as `x`; the return value is `_0` and other temporaries are `_N`. A name that would clash
+/// (a C keyword, a function, a shadowed `let`, or one of the `_N` names) gets a `_2`, `_3`...
 /// Indexed by local id; removed locals get an empty name.
-fn local_names(body: &Body, functions: &HashSet<String>) -> Vec<String> {
+fn local_names(mir: &Mir, body: &Body, functions: &HashSet<String>) -> Vec<String> {
+    let mut callees: HashMap<Local, &str> = HashMap::new();
+    for stmt in body.blocks.iter().flat_map(|b| &b.stmts) {
+        if let StatementKind::Assign(dest, Rvalue::Call { func, .. }) = &stmt.kind
+            && dest.projection.is_empty()
+        {
+            callees.entry(dest.local).or_insert(&mir.func(*func).name);
+        }
+    }
+    let temp = |id: Local, local: &LocalDecl| id != RETURN && local.name.is_none();
     let mut taken: HashSet<String> = HashSet::new();
     let mut names = vec![String::new(); body.locals.slots()];
     for (id, local) in body.locals.iter_with_ids() {
-        if id == RETURN || local.name.is_none() {
+        if id == RETURN || temp(id, local) && !callees.contains_key(&id) {
             names[id.id] = format!("_{}", id.id);
             taken.insert(names[id.id].clone());
         }
     }
+    let reserved = |n: &str| functions.contains(n) || n.starts_with("som_");
     for (id, local) in body.locals.iter_with_ids() {
         if let Some(source) = &local.name
             && names[id.id].is_empty()
         {
-            names[id.id] = unique(source, "v", &mut taken, |n| {
-                functions.contains(n) || n.starts_with("som_")
-            });
+            names[id.id] = unique(source, "v", &mut taken, reserved);
+        }
+    }
+    for (id, local) in body.locals.iter_with_ids() {
+        if temp(id, local)
+            && let Some(callee) = callees.get(&id)
+        {
+            // `som::data::Vector::x<f64>` is `x`.
+            let callee = callee.split('<').next().unwrap_or(callee);
+            let callee = callee.rsplit("::").next().unwrap_or(callee);
+            names[id.id] = unique(&identifier(callee), "v", &mut taken, reserved);
         }
     }
     names
@@ -360,6 +384,8 @@ enum Use {
     Operand,
     /// The condition of a branch.
     Branch,
+    /// An array index: `items[_3]`.
+    Index,
     /// Anything else: borrowed, written through, or read through a projection.
     Other,
 }
@@ -414,7 +440,9 @@ impl Usage {
                 // A drop reads what it drops, and its flag.
                 if let StatementKind::Drop { place, flag, .. } = &stmt.kind {
                     u.read(place.local, Use::Other);
-                    place.index_locals().for_each(|index| u.read(index, Use::Other));
+                    place
+                        .index_locals()
+                        .for_each(|index| u.read(index, Use::Other));
                     if let Some(flag) = flag {
                         u.read(*flag, Use::Other);
                     }
@@ -429,11 +457,14 @@ impl Usage {
                     u.read(dest.local, Use::Other);
                 }
                 dest.index_locals()
-                    .for_each(|index| u.read(index, Use::Other));
+                    .for_each(|index| u.read(index, Use::Index));
                 match rvalue {
                     Rvalue::Use(op) => u.operand(op, Use::Assign),
                     Rvalue::Ref { place, .. } => {
-                        place.locals().for_each(|local| u.read(local, Use::Other))
+                        u.read(place.local, Use::Other);
+                        place
+                            .index_locals()
+                            .for_each(|index| u.read(index, Use::Index));
                     }
                     Rvalue::Not(op) => u.operand(op, Use::Operand),
                     // A field of the compound literal it becomes.
@@ -492,7 +523,7 @@ impl Usage {
             );
             place
                 .index_locals()
-                .for_each(|index| self.read(index, Use::Other));
+                .for_each(|index| self.read(index, Use::Index));
         }
     }
 
@@ -502,33 +533,105 @@ impl Usage {
     }
 }
 
-/// A C expression, and whether it can be used as an operand without parentheses.
+/// How tightly a C expression binds, loosest first. `Other` is anything that's always
+/// parenthesized as an operand: casts, `!`, `&`.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum Prec {
+    Other,
+    Or,
+    And,
+    Equality,
+    Relational,
+    Additive,
+    Multiplicative,
+    Atom,
+}
+
+impl Prec {
+    fn of(op: BinOp) -> Prec {
+        match op {
+            BinOp::Or => Prec::Or,
+            BinOp::And => Prec::And,
+            BinOp::Equals | BinOp::NotEquals => Prec::Equality,
+            BinOp::LessThan
+            | BinOp::GreaterThan
+            | BinOp::LessThanOrEqual
+            | BinOp::GreaterThanOrEqual => Prec::Relational,
+            BinOp::Add | BinOp::Subtract => Prec::Additive,
+            BinOp::Multiply | BinOp::Divide | BinOp::Modulo => Prec::Multiplicative,
+        }
+    }
+
+    fn is_arithmetic(self) -> bool {
+        matches!(self, Prec::Additive | Prec::Multiplicative)
+    }
+
+    fn is_logical(self) -> bool {
+        matches!(self, Prec::And | Prec::Or)
+    }
+}
+
+/// A C expression, and how tightly it binds.
 #[derive(Clone)]
 struct Expr {
     text: String,
-    atomic: bool,
+    prec: Prec,
 }
 
 impl Expr {
     fn atom(text: String) -> Expr {
-        Expr { text, atomic: true }
+        Expr {
+            text,
+            prec: Prec::Atom,
+        }
     }
 
     fn compound(text: String) -> Expr {
         Expr {
             text,
-            atomic: false,
+            prec: Prec::Other,
         }
     }
 
-    /// The expression as an operand of an operator.
+    /// The expression as an operand of a unary operator or cast.
     fn operand(self) -> String {
-        if self.atomic {
+        if self.prec == Prec::Atom {
             self.text
         } else {
             format!("({})", self.text)
         }
     }
+
+    /// The expression as the left or right operand of `op`. Parentheses are left out only
+    /// where C's precedence gives the same grouping and compilers don't warn about mixing:
+    /// `a * b + c`, `a - b + c`, `a + b < c`, `a < b && c`.
+    fn operand_of(self, op: BinOp, left: bool) -> String {
+        let parent = Prec::of(op);
+        let bare = match self.prec {
+            Prec::Atom => true,
+            child if child == parent => left && (child.is_arithmetic() || child.is_logical()),
+            child if child.is_arithmetic() => child > parent && !parent.is_logical(),
+            Prec::Equality | Prec::Relational => parent.is_logical(),
+            _ => false,
+        };
+        if bare {
+            self.text
+        } else {
+            format!("({})", self.text)
+        }
+    }
+}
+
+/// A temporary computed but not yet written out, waiting to be folded into where it's read.
+struct Pending {
+    expr: Expr,
+    /// The locals its value depends on: if one is assigned, it has to be written out first.
+    reads: HashSet<Local>,
+    /// Whether it reads memory something else could change: through a reference, or a local
+    /// whose address is taken.
+    memory: bool,
+    /// Whether it has an effect, a call: then it can't move past anything.
+    effect: bool,
 }
 
 // --- Emitting ---
@@ -545,9 +648,38 @@ struct FnState<'a> {
     locals: Vec<String>,
     usage: Usage,
     /// Temporaries computed but not yet written out, waiting to be folded into their use.
-    pending: HashMap<Local, Expr>,
+    pending: RefCell<HashMap<Local, Pending>>,
+    /// What the temporaries folded into the expression being built depend on: their reads,
+    /// whether they read memory, and whether they have an effect.
+    folded: RefCell<(HashSet<Local>, bool, bool)>,
+    /// Locals whose address is taken, so a write through a reference can change them.
+    address_taken: HashSet<Local>,
     /// How often the emitted code mentions each local, so only those mentioned get declared.
     mentioned: RefCell<HashMap<Local, u32>>,
+    /// The line of code each local is first mentioned on, where it can be declared.
+    first: RefCell<HashMap<Local, usize>>,
+    /// The line of code being written.
+    line: Cell<usize>,
+}
+
+impl FnState<'_> {
+    fn mention(&self, local: Local) {
+        *self.mentioned.borrow_mut().entry(local).or_default() += 1;
+        self.first
+            .borrow_mut()
+            .entry(local)
+            .or_insert(self.line.get());
+    }
+
+    /// Takes the pending temporary `local`, to fold it into the expression being built.
+    fn fold(&self, local: Local) -> Option<Expr> {
+        let p = self.pending.borrow_mut().remove(&local)?;
+        let mut folded = self.folded.borrow_mut();
+        folded.0.extend(p.reads);
+        folded.1 |= p.memory;
+        folded.2 |= p.effect;
+        Some(p.expr)
+    }
 }
 
 impl<'a> Emitter<'a> {
@@ -834,18 +966,29 @@ impl<'a> Emitter<'a> {
         )
     }
 
+    /// The C functions the program calls, then its own functions, each with its som name.
     fn declarations(&mut self) {
         let mir = self.mir;
         let mut externs = HashSet::new();
+        let mut any = false;
         for (id, func) in mir.funcs.iter_with_ids() {
             // Two modules can declare the same C function; declare it once.
             if let Some(link) = &func.link_name
-                && !externs.insert(link.clone())
+                && externs.insert(link.clone())
             {
-                continue;
+                let decl = self.signature(id, func, None);
+                self.line(format!("{decl};"));
+                any = true;
             }
-            let decl = self.signature(id, func, None);
-            self.line(format!("{decl}; // {}", func.name));
+        }
+        if any {
+            self.line("");
+        }
+        for (id, func) in mir.funcs.iter_with_ids() {
+            if func.link_name.is_none() {
+                let decl = self.signature(id, func, None);
+                self.line(format!("{decl}; // {}", func.name));
+            }
         }
         self.line("");
     }
@@ -869,10 +1012,14 @@ impl<'a> Emitter<'a> {
         let functions: HashSet<String> = self.names.funcs.values().cloned().collect();
         let mut f = FnState {
             body,
-            locals: local_names(body, &functions),
+            locals: local_names(self.mir, body, &functions),
             usage: Usage::of(self.mir, body),
-            pending: HashMap::new(),
+            pending: RefCell::new(HashMap::new()),
+            folded: RefCell::default(),
+            address_taken: address_taken(body),
             mentioned: RefCell::new(HashMap::new()),
+            first: RefCell::default(),
+            line: Cell::new(0),
         };
 
         // Only blocks something jumps to need a label. Every block ends in a jump or a
@@ -893,15 +1040,30 @@ impl<'a> Emitter<'a> {
         let signature = self.signature(id, func, Some(&f.locals));
         self.line(format!("// {}", func.name));
         self.line(format!("{signature} {{"));
+        // A local is declared where it's first assigned, if that's the first time it's
+        // mentioned: everything after is in its scope, as a function is one flat scope, and C
+        // allows jumping past a declaration. Before C23 a label can't come right before one,
+        // and anything else is declared at the top.
         let mentioned = f.mentioned.borrow();
+        let first = f.first.borrow();
         for (id, local) in body
             .locals
             .iter_with_ids()
             .skip(body.arg_count + 1)
             .chain([(RETURN, &body.locals[RETURN])])
         {
-            if mentioned.get(&id).is_some_and(|&n| n > 0) {
-                self.line(format!("    {} {};", self.ty(local.ty), f.locals[id.id]));
+            if !mentioned.get(&id).is_some_and(|&n| n > 0) {
+                continue;
+            }
+            let (ty, name) = (self.ty(local.ty), &f.locals[id.id]);
+            let assign = format!("    {name} = ");
+            if let Some(&line) = first.get(&id)
+                && code.get(line).is_some_and(|l| l.starts_with(&assign))
+                && (line == 0 || !code[line - 1].ends_with(':'))
+            {
+                code[line] = format!("    {ty} {}", &code[line][4..]);
+            } else {
+                self.line(format!("    {ty} {name};"));
             }
         }
         for line in code {
@@ -918,11 +1080,12 @@ impl<'a> Emitter<'a> {
         for stmt in &block.stmts {
             // `som_drop_T(&x);`, or with a flag, only if it's set.
             if let StatementKind::Drop { place, glue, flag } = &stmt.kind {
-                self.flush_unless_read(f, &[], code);
+                self.flush_except(f, &[], code);
+                f.line.set(code.len());
                 let call = format!("{}(&{})", self.func_name(*glue), self.place(f, place));
                 code.push(match flag {
                     Some(flag) => {
-                        *f.mentioned.borrow_mut().entry(*flag).or_default() += 1;
+                        f.mention(*flag);
                         format!("    if ({}) {call};", f.locals[flag.id])
                     }
                     None => format!("    {call};"),
@@ -933,7 +1096,9 @@ impl<'a> Emitter<'a> {
             let StatementKind::Assign(dest, rvalue) = &stmt.kind else {
                 continue;
             };
-            self.flush_unless_read(f, &reads(rvalue), code);
+            self.flush_before(f, dest, rvalue, code);
+            *f.folded.borrow_mut() = Default::default();
+            f.line.set(code.len());
 
             // `[value; N]`: C has no expression for that, so a loop fills it in.
             if let Rvalue::Repeat { ty, operand } = rvalue
@@ -966,7 +1131,8 @@ impl<'a> Emitter<'a> {
                     && !void
                     && f.usage.read_as[local.id].allows(rvalue, narrow)
                 {
-                    f.pending.insert(local, value);
+                    let pending = self.pending(f, rvalue, value);
+                    f.pending.borrow_mut().insert(local, pending);
                     continue;
                 }
                 // Nothing reads it: a call is kept for what it does, anything else dropped.
@@ -1002,12 +1168,13 @@ impl<'a> Emitter<'a> {
             TerminatorKind::Branch { condition, .. } => vec![operand_local(condition)],
             _ => vec![],
         };
-        self.flush_unless_read(
+        self.flush_except(
             f,
             &condition.into_iter().flatten().collect::<Vec<_>>(),
             code,
         );
 
+        f.line.set(code.len());
         match &block.terminator.kind {
             TerminatorKind::Goto(target) => code.push(format!("    goto {target};")),
             TerminatorKind::Branch {
@@ -1027,7 +1194,8 @@ impl<'a> Emitter<'a> {
                     *f.mentioned.borrow_mut().entry(RETURN).or_default() -= 1;
                 }
                 _ => {
-                    *f.mentioned.borrow_mut().entry(RETURN).or_default() += 1;
+                    f.line.set(code.len());
+                    f.mention(RETURN);
                     code.push(format!("    return {};", f.locals[0]));
                 }
             },
@@ -1035,20 +1203,67 @@ impl<'a> Emitter<'a> {
         }
     }
 
-    /// Writes out every pending temporary that the next statement doesn't read, so that
-    /// temporaries are only ever folded into the statement right after them.
-    fn flush_unless_read(&self, f: &mut FnState, read: &[Local], code: &mut Vec<String>) {
-        let mut flush: Vec<Local> = f
-            .pending
-            .keys()
-            .filter(|l| !read.contains(l))
+    /// The temporary assigned `rvalue`, written as `expr`, waiting to be folded: what it
+    /// depends on, including the temporaries already folded into it.
+    fn pending(&self, f: &FnState, rvalue: &Rvalue, expr: Expr) -> Pending {
+        let (mut reads, mut memory, mut effect) = f.folded.take();
+        for place in places(rvalue) {
+            reads.extend(place.locals());
+            memory |= place.projection.contains(&Projection::Deref);
+        }
+        memory |= reads.iter().any(|l| f.address_taken.contains(l));
+        match rvalue {
+            Rvalue::Call { .. } => effect = true,
+            Rvalue::Intrinsic { intrinsic, .. } => {
+                memory = true;
+                effect |= intrinsic.has_effect();
+            }
+            _ => {}
+        }
+        Pending {
+            expr,
+            reads,
+            memory,
+            effect,
+        }
+    }
+
+    /// Before `dest = rvalue`, writes out the pending temporaries it doesn't read and would
+    /// change the value of: those that read a local it assigns, or memory it may write. A
+    /// temporary with an effect is written out unless read right away, so effects stay in
+    /// order.
+    fn flush_before(&self, f: &FnState, dest: &Place, rvalue: &Rvalue, code: &mut Vec<String>) {
+        let read = statement_reads(dest, rvalue);
+        let pending = f.pending.borrow();
+        let effect = matches!(rvalue, Rvalue::Call { .. })
+            || matches!(rvalue, Rvalue::Intrinsic { intrinsic, .. } if intrinsic.has_effect())
+            || read
+                .iter()
+                .any(|l| pending.get(l).is_some_and(|p| p.effect));
+        let writes_memory = effect || !dest.projection.is_empty();
+        let keep: Vec<Local> = (pending.iter())
+            .filter(|(local, p)| {
+                read.contains(local)
+                    || !(p.effect || p.reads.contains(&dest.local) || p.memory && writes_memory)
+            })
+            .map(|(&local, _)| local)
+            .collect();
+        drop(pending);
+        self.flush_except(f, &keep, code);
+    }
+
+    /// Writes out every pending temporary but those in `keep`.
+    fn flush_except(&self, f: &FnState, keep: &[Local], code: &mut Vec<String>) {
+        let mut flush: Vec<Local> = (f.pending.borrow().keys())
+            .filter(|l| !keep.contains(l))
             .copied()
             .collect();
         flush.sort();
         for local in flush {
-            let value = f.pending.remove(&local).expect("pending");
-            *f.mentioned.borrow_mut().entry(local).or_default() += 1;
-            code.push(format!("    {} = {};", f.locals[local.id], value.text));
+            let value = f.pending.borrow_mut().remove(&local).expect("pending");
+            f.line.set(code.len());
+            f.mention(local);
+            code.push(format!("    {} = {};", f.locals[local.id], value.expr.text));
         }
     }
 
@@ -1123,20 +1338,22 @@ impl<'a> Emitter<'a> {
             Rvalue::Binary { op, lhs, rhs } => {
                 let pointer =
                     *op == BinOp::Add && self.operand_ty(f, lhs) == self.mir.types.pointer;
-                let (l, r) = (
-                    self.operand(f, lhs).operand(),
-                    self.operand(f, rhs).operand(),
-                );
+                let (l, r) = (self.operand(f, lhs), self.operand(f, rhs));
                 // `ptr + n` offsets by `n` bytes.
                 if pointer {
+                    let (l, r) = (l.operand(), r.operand());
                     return Expr::compound(format!("(void*)((uint8_t*){l} + {r})"));
                 }
+                let (l, r) = (l.operand_of(*op, true), r.operand_of(*op, false));
                 let symbol = match op {
                     BinOp::And => "&&",
                     BinOp::Or => "||",
                     op => op.symbol(),
                 };
-                Expr::compound(format!("{l} {symbol} {r}"))
+                Expr {
+                    text: format!("{l} {symbol} {r}"),
+                    prec: Prec::of(*op),
+                }
             }
             Rvalue::Struct {
                 ty,
@@ -1270,7 +1487,7 @@ impl<'a> Emitter<'a> {
         match op {
             // A temporary computed by the previous statement is folded in here.
             Operand::Copy(place) | Operand::Move(place) if place.projection.is_empty() => {
-                match f.pending.remove(&place.local) {
+                match f.fold(place.local) {
                     Some(value) => value,
                     None => Expr::atom(self.place(f, place)),
                 }
@@ -1306,7 +1523,7 @@ impl<'a> Emitter<'a> {
 
     /// A place as a C lvalue: `x`, `p.x`, `self->x`, `(*r)`.
     fn place(&self, f: &FnState, place: &Place) -> String {
-        *f.mentioned.borrow_mut().entry(place.local).or_default() += 1;
+        f.mention(place.local);
         let mut s = f.locals[place.local.id].clone();
         let mut ty = f.body.local(place.local).ty;
         let mut projections = place.projection.iter().peekable();
@@ -1321,8 +1538,7 @@ impl<'a> Emitter<'a> {
                 s = match (self.mir.types.get(viewed), next) {
                     // `(*s)[i]` of a slice is `s.ptr[i]`.
                     (Ty::Slice(_) | Ty::Str, Projection::Index(index)) => {
-                        *f.mentioned.borrow_mut().entry(index).or_default() += 1;
-                        format!("{s}.ptr[{}]", f.locals[index.id])
+                        format!("{s}.ptr[{}]", self.index(f, index))
                     }
                     _ => format!("{s}->{}", self.member(f, viewed, next)),
                 };
@@ -1344,11 +1560,19 @@ impl<'a> Emitter<'a> {
     fn member(&self, f: &FnState, ty: TypeId, projection: Projection) -> String {
         match projection {
             Projection::Field(i) => self.field_name(ty, i).to_string(),
-            Projection::Index(index) => {
-                *f.mentioned.borrow_mut().entry(index).or_default() += 1;
-                format!("items[{}]", f.locals[index.id])
-            }
+            Projection::Index(index) => format!("items[{}]", self.index(f, index)),
             Projection::Deref => unreachable!("a dereference isn't a member"),
+        }
+    }
+
+    /// An array index: the local holding it, or the temporary folded in.
+    fn index(&self, f: &FnState, index: Local) -> String {
+        match f.fold(index) {
+            Some(expr) => expr.text,
+            None => {
+                f.mention(index);
+                f.locals[index.id].clone()
+            }
         }
     }
 
@@ -1390,14 +1614,14 @@ fn operand_local(op: &Operand) -> Option<Local> {
     }
 }
 
-/// The whole locals an rvalue reads, which pending temporaries can be folded into.
-fn reads(rvalue: &Rvalue) -> Vec<Local> {
-    match rvalue {
+/// The places an rvalue reads, or takes the address of.
+fn places(rvalue: &Rvalue) -> Vec<&Place> {
+    let ops: Vec<&Operand> = match rvalue {
         Rvalue::Use(op)
         | Rvalue::Not(op)
         | Rvalue::Some(op)
         | Rvalue::Repeat { operand: op, .. }
-        | Rvalue::Cast { operand: op, .. } => operand_local(op).into_iter().collect(),
+        | Rvalue::Cast { operand: op, .. } => vec![op],
         Rvalue::Binary { lhs, rhs, .. }
         | Rvalue::Range {
             start: lhs,
@@ -1408,13 +1632,49 @@ fn reads(rvalue: &Rvalue) -> Vec<Local> {
             start: lhs,
             len: rhs,
             ..
-        } => [lhs, rhs].into_iter().filter_map(operand_local).collect(),
+        } => vec![lhs, rhs],
         Rvalue::Struct { fields: ops, .. }
         | Rvalue::Array { items: ops, .. }
         | Rvalue::Call { args: ops, .. }
-        | Rvalue::Intrinsic { args: ops, .. } => ops.iter().filter_map(operand_local).collect(),
-        Rvalue::Ref { .. } => Vec::new(),
+        | Rvalue::Intrinsic { args: ops, .. } => ops.iter().collect(),
+        Rvalue::Ref { place, .. } => return vec![place],
+    };
+    ops.into_iter()
+        .filter_map(|op| match op {
+            Operand::Copy(place) | Operand::Move(place) => Some(place),
+            Operand::Const(_) => None,
+        })
+        .collect()
+}
+
+/// The locals `dest = rvalue` could fold pending temporaries into: whole operands, and
+/// indexes.
+fn statement_reads(dest: &Place, rvalue: &Rvalue) -> Vec<Local> {
+    let mut read: Vec<Local> = dest.index_locals().collect();
+    for place in places(rvalue) {
+        if place.projection.is_empty() && !matches!(rvalue, Rvalue::Ref { .. }) {
+            read.push(place.local);
+        }
+        read.extend(place.index_locals());
     }
+    read
+}
+
+/// The locals whose address is taken somewhere in `body`.
+fn address_taken(body: &Body) -> HashSet<Local> {
+    let mut taken = HashSet::new();
+    for stmt in body.blocks.iter().flat_map(|b| &b.stmts) {
+        match &stmt.kind {
+            StatementKind::Assign(_, Rvalue::Ref { place, .. }) => {
+                taken.insert(place.local);
+            }
+            StatementKind::Drop { place, .. } => {
+                taken.insert(place.local);
+            }
+            _ => {}
+        }
+    }
+    taken
 }
 
 /// A C string literal with the same bytes as `s`.
