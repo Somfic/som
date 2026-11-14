@@ -909,12 +909,16 @@ impl LanguageServer for SomLanguageServer {
                     let DefKind::Func(f) = a.names.def(method).kind else {
                         continue;
                     };
-                    if a.ast.funcs[f].params.first().is_none_or(|p| &*p.name.name != "self") {
+                    if a.ast.funcs[f]
+                        .params
+                        .first()
+                        .is_none_or(|p| &*p.name.name != "self")
+                    {
                         continue;
                     }
                     // A trait's, which comes with the trait methods below.
-                    let from_trait = (a.names.impl_of(f))
-                        .is_some_and(|i| a.names.impls[i].trait_.is_some());
+                    let from_trait =
+                        (a.names.impl_of(f)).is_some_and(|i| a.names.impls[i].trait_.is_some());
                     if from_trait {
                         continue;
                     }
@@ -1178,6 +1182,7 @@ impl LanguageServer for SomLanguageServer {
             }
             hints.push(type_hint(&name.span, ty(a, t)));
         }
+        hints.extend(return_type_hints(a, &file));
         // `let list: List = [1, 2]`: the type arguments left out, after the name.
         for (id, stmt) in a.ast.stmts.iter() {
             let Stmt::Let {
@@ -2343,7 +2348,11 @@ fn modules_in_scope(a: &Analysis, file: &str, offset: usize) -> (usize, Vec<usiz
             })
             .min_by_key(|b| b.length);
         let inside = block.is_some_and(|b| offset < b.start_offset + b.length);
-        let module = a.ast.modules.iter().position(|m| *m.name == *u.path.to_string());
+        let module = a
+            .ast
+            .modules
+            .iter()
+            .position(|m| *m.name == *u.path.to_string());
         if inside
             && let Some(m) = module
             && !in_scope.contains(&m)
@@ -2496,7 +2505,10 @@ fn use_path(text: &str, offset: usize) -> Option<&str> {
     let before = text.get(..offset)?;
     let line = &before[before.rfind('\n').map_or(0, |i| i + 1)..];
     let path = line.trim_start().strip_prefix("use ")?.trim_start();
-    if !path.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':') {
+    if !path
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+    {
         return None;
     }
     let typed = path.trim_end_matches(|c: char| c.is_alphanumeric() || c == '_');
@@ -2635,6 +2647,49 @@ fn omitted_args_hints(
 }
 
 /// `: i32` after the name a variable is declared with.
+/// The inferred return type of each function, method or property in `file` that doesn't
+/// write one, right after its parameters: `fn double(x: i32) -> i32`. Double-clicking writes
+/// it in.
+fn return_type_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
+    let mut hints = Vec::new();
+    for (id, func) in a.ast.funcs.iter() {
+        let (None, Some(body)) = (func.returns, func.body) else {
+            continue;
+        };
+        let at = a.ast.exprs.span(body);
+        if at.source.identifier() != file {
+            continue;
+        }
+        let ret = a.typed.func(id).ret;
+        if matches!(a.typed.ty(ret), Ty::Unit | Ty::Error) {
+            continue;
+        }
+        // Right after the parameters' `)`: with no return type written, only space comes
+        // between it and the body.
+        let before = at.source.content()[..at.start_offset].trim_end();
+        if !before.ends_with(')') {
+            continue;
+        }
+        let close = Span::from_range(before.len()..before.len(), at.source.clone());
+        let position = convert::span_to_range(&close).start;
+        let text = format!(" -> {}", ty(a, ret));
+        hints.push(InlayHint {
+            position,
+            label: InlayHintLabel::String(text.clone()),
+            kind: Some(InlayHintKind::TYPE),
+            text_edits: Some(vec![TextEdit {
+                range: Range::new(position, position),
+                new_text: text.clone(),
+            }]),
+            tooltip: None,
+            padding_left: None,
+            padding_right: None,
+            data: None,
+        });
+    }
+    hints
+}
+
 fn type_hint(name: &Span, ty: String) -> InlayHint {
     InlayHint {
         position: convert::span_to_range(name).end,
@@ -2767,7 +2822,8 @@ fn impl_stubs(
     let word = |c: char| c.is_alphanumeric() || c == '_';
     let word_start = text[..offset].trim_end_matches(word).len();
     let line_start = text[..word_start].rfind('\n').map_or(0, |i| i + 1);
-    let indent = text[line_start..word_start].len() - text[line_start..word_start].trim_start().len();
+    let indent =
+        text[line_start..word_start].len() - text[line_start..word_start].trim_start().len();
     let start = match text[line_start..word_start].trim() {
         "" => word_start,
         "fn" | "type" => line_start + indent,
@@ -3164,6 +3220,39 @@ mod tests {
             .collect();
         // fn f p * i32 g 1 * 2   (`(`, `)`, `:`, `->`, `{`, `}` aren't highlighted)
         assert_eq!(types, [0, 7, 1, 4, 4, 7, 2, 6, 2]);
+    }
+
+    #[test]
+    fn inferred_return_types_are_hinted_after_the_parameters() {
+        let dir = std::env::temp_dir().join(format!("som_lsp_return_hints_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("main.som");
+        let text = "struct Rect { w: i32 }\n\
+                    impl Rect {\n    prop area(self: &Rect) { self.w * 2 }\n}\n\
+                    fn double(x: i32) { x * 2 }\n\
+                    fn written(x: i32) -> i32 { x }\n\
+                    fn nothing() { }\n\
+                    fn main() -> i32 { double(Rect { w: 1 }.area) }\n";
+        std::fs::write(&main, text).unwrap();
+        let analysis = som_driver::analyze(&dir, &som_driver::Options::default());
+        let file = main.to_string_lossy();
+        let labels: Vec<(u32, u32, String)> = return_type_hints(&analysis, &file)
+            .into_iter()
+            .map(|h| match h.label {
+                InlayHintLabel::String(label) => (h.position.line, h.position.character, label),
+                InlayHintLabel::LabelParts(_) => unreachable!(),
+            })
+            .collect();
+        std::fs::remove_dir_all(&dir).unwrap();
+        // Right after the `)`. Not `written`, which says it, nor `nothing`, which gives
+        // nothing back.
+        assert_eq!(
+            labels,
+            [
+                (2, 26, " -> i32".to_string()),
+                (4, 17, " -> i32".to_string())
+            ]
+        );
     }
 
     #[test]

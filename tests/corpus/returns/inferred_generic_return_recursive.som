@@ -1,0 +1,4 @@
+// expect: exit 5
+
+fn count<T>(n: i32, x: T) { if n == 0 { 0 } else { 1 + count(n - 1, x) } }
+fn main() -> i32 { count(5, true) }

@@ -81,6 +81,8 @@ pub(crate) struct Checker<'a> {
     /// Calls that more than one function fits, decided once the rest of the program says more
     /// about what their result has to be.
     pending_calls: Vec<PendingCall>,
+    /// Functions whose bodies have been checked, or are being.
+    checked: HashSet<Id<Func>>,
 }
 
 impl<'a> Checker<'a> {
@@ -120,6 +122,7 @@ impl<'a> Checker<'a> {
             expected_here: None,
             callees: HashMap::new(),
             pending_calls: Vec::new(),
+            checked: HashSet::new(),
             omitted_args_ok: false,
             impls: Vec::new(),
             current_func: None,
@@ -212,16 +215,12 @@ impl<'a> Checker<'a> {
         self.current_func = None;
         self.check_impls();
         for (id, func) in ast.funcs.iter() {
-            self.current_func = Some(id);
-            if let Some(body) = func.body {
-                self.check_body(id, func, body);
+            if func.body.is_some() {
+                self.check_func(id);
                 self.settle(func.name.span.clone());
-                // After the body, which decides a return type that isn't written.
-                if func.prop {
-                    self.check_prop(id, func);
-                }
             }
         }
+        self.current_func = None;
 
         // After the bodies, which decide unwritten return types and what results are used as.
         self.current_func = None;
@@ -240,6 +239,44 @@ impl<'a> Checker<'a> {
         }
 
         self.finish()
+    }
+
+    /// Checks function `id`'s body, once: in order, or sooner, when a call needs the return
+    /// type it decides because it isn't written. Whatever the body being checked had going
+    /// is put back afterwards.
+    fn check_func(&mut self, id: Id<Func>) {
+        let func = &self.ast.funcs[id];
+        let Some(body) = func.body else { return };
+        if !self.checked.insert(id) {
+            return;
+        }
+        let returns = self.returns.take();
+        let narrowed = std::mem::take(&mut self.narrowed);
+        let outer = (
+            self.current_func.replace(id),
+            std::mem::take(&mut self.in_place),
+            std::mem::take(&mut self.loops),
+            std::mem::take(&mut self.discarding),
+            self.expected.take(),
+            self.expected_here.take(),
+            std::mem::take(&mut self.omitted_args_ok),
+        );
+        self.check_body(id, func, body);
+        // After the body, which decides a return type that isn't written.
+        if func.prop {
+            self.check_prop(id, func);
+        }
+        self.returns = returns;
+        self.narrowed = narrowed;
+        (
+            self.current_func,
+            self.in_place,
+            self.loops,
+            self.discarding,
+            self.expected,
+            self.expected_here,
+            self.omitted_args_ok,
+        ) = outer;
     }
 
     fn check_body(&mut self, id: Id<Func>, func: &Func, body: Id<Expr>) {
@@ -692,10 +729,20 @@ impl<'a> Checker<'a> {
 
     /// A function's signature with its type parameters replaced by fresh variables.
     fn instantiate(&mut self, func: Id<Func>) -> (Signature, Vec<TypeId>) {
-        let sig = self.sigs[func.id].clone();
+        // A return type that isn't written is what the body decides: check it first.
+        if self.ast.funcs[func].returns.is_none() {
+            self.check_func(func);
+        }
+        let mut sig = self.sigs[func.id].clone();
         let type_params = self.names.type_params(func);
         if type_params.is_empty() {
             return (sig, Vec::new());
+        }
+        // Still undecided: called from inside its own body, or one it's being checked for.
+        // The call works its type out on its own, rather than deciding the body's for every
+        // instantiation.
+        if matches!(self.u.get(self.u.shallow(sig.ret)), Ty::Var(_)) {
+            sig.ret = self.u.fresh(VarKind::Any);
         }
         let args: Vec<TypeId> = type_params
             .iter()
@@ -718,6 +765,8 @@ impl<'a> Checker<'a> {
     }
 
     fn substitute(&mut self, ty: TypeId, subst: &[(DefId, TypeId)]) -> TypeId {
+        // An unwritten return type is a variable its body decided: what it was decided to be.
+        let ty = self.u.shallow(ty);
         match self.u.get(ty).clone() {
             Ty::Param(def) => subst
                 .iter()
