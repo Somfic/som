@@ -876,6 +876,12 @@ impl LanguageServer for SomLanguageServer {
                     if a.ast.funcs[f].params.first().is_none_or(|p| &*p.name.name != "self") {
                         continue;
                     }
+                    // A trait's, which comes with the trait methods below.
+                    let from_trait = (a.names.impl_of(f))
+                        .is_some_and(|i| a.names.impls[i].trait_.is_some());
+                    if from_trait {
+                        continue;
+                    }
                     let snippet = call_snippet(a, f, name, 1, insert);
                     items.push(CompletionItem {
                         insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),

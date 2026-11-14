@@ -245,11 +245,13 @@ impl<'a> Resolver<'a> {
                 // Only a struct has methods of its own; an implementation for `bool` is found
                 // through its trait.
                 let owner = match block.target_ty {
-                    // `impl i32 { … }`: a built-in type's own methods.
-                    Some(ty) if block.trait_.is_none() => match ast.types[ty] {
+                    // `impl i32 { … }` and `impl Double for i32 { … }`: a built-in type's
+                    // methods, `i32::double`, as a struct's are.
+                    Some(ty) => match ast.types[ty] {
                         som_ast::TypeExpr::Primitive(p) => {
                             Some(self.names.primitive_or_define(p, block.target.span(), m))
                         }
+                        _ if block.trait_.is_some() => None,
                         _ => {
                             self.errors.push(ResolveError::MethodsOnType {
                                 ty: block.target.to_string(),
@@ -258,7 +260,6 @@ impl<'a> Resolver<'a> {
                             None
                         }
                     },
-                    Some(_) => None,
                     None => self.resolve_path(&block.target, Expect::Struct),
                 };
                 let trait_ = (block.trait_.as_ref())

@@ -1,0 +1,16 @@
+// expect: exit 14
+
+/// A trait's method implemented for a built-in type is the type's, by name too: `i32::double`.
+trait Double<T> {
+    fn double(self: T) -> T;
+}
+
+impl Double<i32> for i32 {
+    fn double(self: i32) -> i32 {
+        self * 2
+    }
+}
+
+fn main() -> i32 {
+    i32::double(2) + 5.double()
+}
