@@ -55,7 +55,8 @@ fn integer_literal_is_not_a_bool() {
         ] => {
             assert_eq!(
                 (expected.plain().as_str(), found.plain().as_str()),
-                ("`bool`", "`an integer`")
+                // A type that isn't known yet is described in plain words.
+                ("`bool`", "an integer")
             );
         }
         other => panic!("{other:?}"),
@@ -272,5 +273,32 @@ fn moving_a_type_parameter_out_of_a_reference_is_an_error_even_unused() {
     // A borrow is fine. (`T: Copy` is too: see the corpus, which has the standard library.)
     assert!(
         errors("struct P<T> { v: T } fn f<T>(p: &P<T>) -> &T { &p.v } fn main() {}").is_empty()
+    );
+}
+
+/// The edits of the `NotBorrowed` reported for `source`'s one error.
+fn borrow_fix(source: &str) -> Vec<String> {
+    match &errors(source)[..] {
+        [TypeError::NotBorrowed { fix, .. }] => {
+            fix.edits.iter().map(|(_, text)| text.clone()).collect()
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_value_where_a_reference_is_expected_can_be_borrowed() {
+    assert_eq!(
+        borrow_fix("fn f(x: &i32) -> i32 { *x } fn main() { let n: i32 = 1; f(n); }"),
+        ["&"]
+    );
+    assert_eq!(
+        borrow_fix("fn f(x: &mut i32) {} fn main() { let mut n: i32 = 1; f(n); }"),
+        ["&mut "]
+    );
+    // Anything but a name or what's read from one goes in parentheses.
+    assert_eq!(
+        borrow_fix("fn f(x: &i32) -> i32 { *x } fn main() { let n: i32 = 1; f(n + 1); }"),
+        ["&(", ")"]
     );
 }

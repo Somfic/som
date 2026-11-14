@@ -1,0 +1,10 @@
+// expect: error DoesNotImplement
+
+/// Calling a trait's method through the trait needs `self`'s type to implement it, a number
+/// as much as anything: `5` is an `i32`.
+trait Twice { fn twice(&self) -> i32; }
+
+fn main() -> i32 {
+    let n = 5;
+    Twice::twice(&n)
+}

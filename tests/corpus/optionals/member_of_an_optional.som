@@ -1,0 +1,12 @@
+// expect: error MemberOfOptional
+
+/// An optional may hold nothing, so its value's fields and methods can't be used until it's
+/// checked: `if found { found.x }`, or given a fallback, `found else …`.
+struct P { x: i32 }
+
+fn find(n: i32) -> P? { if n > 0 { P { x: n } } else { none } }
+
+fn main() -> i32 {
+    let found = find(1);
+    found.x
+}

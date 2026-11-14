@@ -414,8 +414,16 @@ impl Checker<'_> {
     /// Reports type arguments that turned out not to implement what their parameter needs.
     pub(super) fn check_obligations(&mut self) {
         for (ty, trait_, span) in std::mem::take(&mut self.obligations) {
-            let ty = self.normalize_assoc(ty);
-            if self.u.var_kind(ty).is_some() || self.implements(ty, trait_) {
+            let mut ty = self.normalize_assoc(ty);
+            // A number nothing else decides becomes an `i32` or `f64`: that's what has to
+            // implement it.
+            match self.u.var_kind(ty) {
+                Some(VarKind::Int) => ty = self.u.table.i32,
+                Some(VarKind::Float) => ty = self.u.table.f64,
+                Some(_) => continue,
+                None => {}
+            }
+            if self.implements(ty, trait_) {
                 continue;
             }
             self.errors.push(TypeError::DoesNotImplement {

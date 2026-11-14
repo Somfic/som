@@ -1062,7 +1062,8 @@ impl<'a> Resolver<'a> {
             }
             None => (
                 self.lookup(&segments[0].name, Expect::Struct)
-                    .or_else(|| self.primitive_named(&segments[0].name))?,
+                    .or_else(|| self.primitive_named(&segments[0].name))
+                    .or_else(|| self.lookup(&segments[0].name, Expect::Trait))?,
                 &segments[1..],
             ),
         };
@@ -1076,6 +1077,15 @@ impl<'a> Resolver<'a> {
                 .variant(owner, &name.name)
                 .or_else(|| self.names.method(owner, &name.name))
                 .filter(|&d| self.fits(d, expect)),
+            // `Hash::hash(&value, &mut hasher)`: a trait's method, for whichever type `self`
+            // turns out to be.
+            [name] => match self.names.def(owner).kind {
+                DefKind::Trait(t) => (self.ast.traits[t].methods.iter())
+                    .find(|&&m| self.ast.funcs[m].name.name == name.name)
+                    .map(|&m| self.names.func(m))
+                    .filter(|&d| self.fits(d, expect)),
+                _ => None,
+            },
             _ => None,
         }
     }

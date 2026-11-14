@@ -14,6 +14,16 @@ pub enum Unused {
 #[derive(Debug, Clone)]
 pub enum TypeError {
     /// `found` was used where `expected` is required. `expected_from` points at what required it.
+    /// `f(key)` where `f` takes a reference, `&K`: the value has to be borrowed. `expected` is
+    /// the reference type written out, `&K`, even where the call hadn't worked it out yet.
+    NotBorrowed {
+        expected: Message,
+        found: Message,
+        span: Span,
+        expected_from: Option<Span>,
+        /// `&key` or `&mut key`.
+        fix: Fix,
+    },
     Mismatch {
         expected: Message,
         found: Message,
@@ -71,6 +81,14 @@ pub enum TypeError {
     /// `.field` or `.method()` on a value that isn't a struct.
     NotAStruct {
         ty: Message,
+        span: Span,
+    },
+    /// `get(i).value`: a field or method of an optional, which may hold nothing. `object` is
+    /// what's written for it; `variable`, whether that's a variable `if` can check as it is.
+    MemberOfOptional {
+        object: String,
+        ty: Message,
+        variable: bool,
         span: Span,
     },
     NotAFunction {
@@ -440,6 +458,35 @@ pub enum TypeError {
 impl TypeError {
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
+            TypeError::NotBorrowed {
+                expected,
+                found,
+                span,
+                expected_from,
+                fix,
+            } => {
+                let mut d = Diagnostic::error(msg![
+                    "expected ",
+                    expected.clone(),
+                    ", found ",
+                    found.clone()
+                ])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg![
+                        "this is ",
+                        found.clone(),
+                        "; a reference to one is expected"
+                    ],
+                ));
+                if let Some(from) = expected_from {
+                    d = d.with_label(Label::secondary(
+                        from.clone(),
+                        msg![expected.clone(), " expected because of this"],
+                    ));
+                }
+                d.with_fix(fix.clone())
+            }
             TypeError::Mismatch {
                 expected,
                 found,
@@ -612,6 +659,41 @@ impl TypeError {
                 span,
             } => Diagnostic::error(msg![owner.clone(), " has no method ", func(method)])
                 .with_label(Label::primary(span.clone(), "unknown method")),
+            TypeError::MemberOfOptional {
+                object,
+                ty,
+                variable,
+                span,
+            } => {
+                let check = if *variable {
+                    msg![
+                        "check it first: inside ",
+                        code(format!("if {object} {{ … }}")),
+                        ", it holds one"
+                    ]
+                } else {
+                    msg![
+                        "check it first: put it in a variable and use it inside ",
+                        code("if value { … }")
+                    ]
+                };
+                Diagnostic::error(msg![code(object.clone()), " might be ", code("none")])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![
+                            "this is ",
+                            ty.clone(),
+                            ": check it holds a value before using it"
+                        ],
+                    ))
+                    .with_hint(check)
+                    .with_hint(msg![
+                        "or give a fallback for ",
+                        code("none"),
+                        ": ",
+                        code(format!("{object} else …"))
+                    ])
+            }
             TypeError::NotAStruct { ty: found, span } => {
                 Diagnostic::error(msg![found.clone(), " is not a struct"]).with_label(
                     Label::primary(span.clone(), "only structs have fields and methods"),

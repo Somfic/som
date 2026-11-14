@@ -1003,8 +1003,8 @@ impl<'a> Checker<'a> {
 
     // --- Errors ---
 
-    /// A type for an error message. A type that isn't known yet can't be written
-    /// down, so it's described in words instead ("an integer"), still shown as a type.
+    /// A type for an error message. A type that isn't known yet can't be written down, so
+    /// it's described in plain words instead: "an integer", not a type called that.
     fn describe(&self, ty: TypeId) -> Message {
         let text = match self.u.var_kind(ty) {
             Some(VarKind::Int) => "an integer".to_string(),
@@ -1022,9 +1022,9 @@ impl<'a> Checker<'a> {
                 )
             }
             Some(VarKind::Any) => "an unknown type".to_string(),
-            None => self.u.display(ty, self.names),
+            None => return message::ty(self.u.display(ty, self.names)).into(),
         };
-        message::ty(text).into()
+        text.into()
     }
 
     fn mismatch(
@@ -1052,6 +1052,10 @@ impl<'a> Checker<'a> {
         found: TypeId,
         expected_from: Option<Span>,
     ) {
+        if let Some(error) = self.not_borrowed(expr, expected, found, expected_from.clone()) {
+            self.errors.push(error);
+            return;
+        }
         let fix = self.deref_fix(expr, expected, found);
         self.errors.push(TypeError::Mismatch {
             expected: self.describe(expected),
@@ -1060,6 +1064,57 @@ impl<'a> Checker<'a> {
             expected_from,
             fix,
         });
+    }
+
+    /// `expr`, a value, where a reference to one is expected: `Hash::hash(key, …)` for
+    /// `&self`. The reference type is written from the value's, `&K`, as the call may not
+    /// have worked out what it refers to; and the fix borrows it, `&key` or `&mut key`.
+    fn not_borrowed(
+        &self,
+        expr: Id<Expr>,
+        expected: TypeId,
+        found: TypeId,
+        expected_from: Option<Span>,
+    ) -> Option<TypeError> {
+        let Ty::Ref { mutable, to } = *self.u.get(self.u.shallow(expected)) else {
+            return None;
+        };
+        if matches!(
+            self.u.get(self.u.shallow(found)),
+            Ty::Ref { .. } | Ty::Error
+        ) || !self.u.could_fit(to, found)
+        {
+            return None;
+        }
+        let borrow = if mutable { "&mut " } else { "&" };
+        let found_text = self.u.display(found, self.names);
+        let span = self.span(expr);
+        // `&a.b` and `&f()` borrow as they are; anything looser, in parentheses.
+        let edits = match self.ast.exprs[expr] {
+            Expr::Var(_)
+            | Expr::Field { .. }
+            | Expr::Index { .. }
+            | Expr::Call { .. }
+            | Expr::MethodCall { .. }
+            | Expr::Deref(_) => vec![(span.before(), borrow.to_string())],
+            _ => vec![
+                (span.before(), format!("{borrow}(")),
+                (span.after(), ")".to_string()),
+            ],
+        };
+        Some(TypeError::NotBorrowed {
+            expected: message::code(format!("{borrow}{found_text}")).into(),
+            found: self.describe(found),
+            span: span.clone(),
+            expected_from,
+            fix: Fix {
+                title: msg![
+                    "borrow it: ",
+                    message::code(format!("{borrow}{}", span.get_text()))
+                ],
+                edits,
+            },
+        })
     }
 
     /// A fix for `expr`, a reference to what's expected. A value that copies is dereferenced,
@@ -2312,6 +2367,20 @@ impl<'a> Checker<'a> {
                 };
                 let lacks = !matches!(self.u.get(viewed), Ty::Struct(..) | Ty::Error)
                     && !matches!(self.u.var_kind(viewed), Some(VarKind::Any));
+                // `find(2).get()`: an optional may hold nothing, which is what to say.
+                if primitive.is_none() && matches!(self.u.get(viewed), Ty::Optional(_)) {
+                    let span = self.span(*receiver);
+                    self.errors.push(TypeError::MemberOfOptional {
+                        object: span.get_text().to_string(),
+                        ty: self.describe(receiver_ty),
+                        variable: matches!(self.ast.exprs[*receiver], Expr::Var(_)),
+                        span,
+                    });
+                    args.iter().for_each(|&a| {
+                        self.infer(a);
+                    });
+                    return error;
+                }
                 if primitive.is_none() && lacks {
                     self.errors.push(TypeError::UnknownMethod {
                         ty: self.describe(receiver_ty),
@@ -3584,6 +3653,17 @@ impl<'a> Checker<'a> {
             Ty::Var(_) if self.u.var_kind(ty) == Some(VarKind::Any) => {
                 self.errors.push(TypeError::CannotInfer {
                     span: self.span(expr),
+                });
+                None
+            }
+            // `get(i).value`: it may hold nothing, which is what to say.
+            Ty::Optional(_) => {
+                let span = self.span(expr);
+                self.errors.push(TypeError::MemberOfOptional {
+                    object: span.get_text().to_string(),
+                    ty: self.describe(ty),
+                    variable: matches!(self.ast.exprs[expr], Expr::Var(_)),
+                    span,
                 });
                 None
             }

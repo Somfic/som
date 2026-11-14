@@ -413,7 +413,13 @@ fn fmt_fix(f: &mut std::fmt::Formatter<'_>, fix: &Fix) -> std::fmt::Result {
     };
     let marker = |text: &str, rgb: Rgb| format!("{}", text.truecolor(rgb.0, rgb.1, rgb.2).bold());
 
-    for (span, text) in &fix.edits {
+    // Edits on the same line are shown together, as the line comes out: `&(n + 1)` is one
+    // change, not a `&(` and a `)`.
+    let mut shown: Vec<usize> = Vec::new();
+    for (i, (span, text)) in fix.edits.iter().enumerate() {
+        if shown.contains(&i) {
+            continue;
+        }
         let content = span.source.content();
         let start = span.start_offset;
         let end = start + span.length;
@@ -445,28 +451,59 @@ fn fmt_fix(f: &mut std::fmt::Formatter<'_>, fix: &Fix) -> std::fmt::Result {
             continue;
         }
 
-        let (before, removed, after) = (
-            &content[line_start..start],
-            &content[start..end],
-            &content[end..line_end],
-        );
+        // Every edit on this line, in order along it.
+        let mut on_line: Vec<(usize, usize, &str)> = (fix.edits.iter().enumerate())
+            .filter(|(j, (other, other_text))| {
+                !shown.contains(j)
+                    && other.source.identifier() == span.source.identifier()
+                    && other.start.line == line
+                    && !(other.length == 0
+                        && other.start_offset == line_start
+                        && other_text.ends_with('\n'))
+            })
+            .map(|(j, (other, other_text))| {
+                (
+                    j,
+                    other.start_offset,
+                    other.start_offset + other.length,
+                    other_text.as_str(),
+                )
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|(j, at, until, inserted)| {
+                shown.push(j);
+                (at, until, inserted)
+            })
+            .collect();
+        on_line.sort_by_key(|&(at, ..)| at);
+
+        let (mut removed_line, mut added_line) = (String::new(), String::new());
+        let mut at = line_start;
+        for &(edit_start, edit_end, inserted) in &on_line {
+            let kept = syntax_highlight(&content[at..edit_start]);
+            removed_line.push_str(&kept);
+            removed_line.push_str(&paint(&content[edit_start..edit_end], RED));
+            added_line.push_str(&kept);
+            added_line.push_str(&paint(inserted, GREEN));
+            at = edit_end;
+        }
+        let rest = syntax_highlight(&content[at..line_end]);
         writeln!(
             f,
-            "{} {} {}{}{}",
+            "{} {} {}{}",
             line_number(line, RED),
             marker("-", RED),
-            syntax_highlight(before),
-            paint(removed, RED),
-            syntax_highlight(after)
+            removed_line,
+            rest
         )?;
         writeln!(
             f,
-            "{} {} {}{}{}",
+            "{} {} {}{}",
             line_number(line, GREEN),
             marker("+", GREEN),
-            syntax_highlight(before),
-            paint(text, GREEN),
-            syntax_highlight(after)
+            added_line,
+            rest
         )?;
     }
     Ok(())

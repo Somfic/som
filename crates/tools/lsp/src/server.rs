@@ -1119,6 +1119,24 @@ impl LanguageServer for SomLanguageServer {
                         ..Default::default()
                     });
                 }
+            } else if let Some((_, t)) =
+                (a.ast.traits.iter()).find(|(_, t)| *t.name.name == *module)
+            {
+                // `Hash::` lists the trait's methods, to call on any type implementing it:
+                // `Hash::hash(&value, &mut hasher)`.
+                for &f in &t.methods {
+                    let name = &a.ast.funcs[f].name.name;
+                    let snippet = call_snippet(a, f, name, 0, insert);
+                    items.push(CompletionItem {
+                        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
+                        insert_text: snippet,
+                        label: name.to_string(),
+                        kind: Some(CompletionItemKind::METHOD),
+                        detail: Some(signature(a, f)),
+                        documentation: markdown(doc_of(a, a.names.func(f))),
+                        ..Default::default()
+                    });
+                }
             } else if let Some(s) = find_struct(a, module, &cursor.file, cursor.offset) {
                 // `Shape::` lists its variants, then its methods.
                 for (i, variant) in a.ast.structs[s].variants().iter().enumerate() {

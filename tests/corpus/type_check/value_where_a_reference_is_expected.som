@@ -1,0 +1,11 @@
+// expect: error NotBorrowed
+
+/// A function taking a reference is given a value: it has to be borrowed, `&key`.
+struct Key { id: i32 }
+
+fn id(key: &Key) -> i32 { key.id }
+
+fn main() -> i32 {
+    let key = Key { id: 1 };
+    id(key)
+}
