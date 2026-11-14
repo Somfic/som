@@ -22,18 +22,19 @@ use som_typeck::{ArrayMethod, Loop, PointerMethod, Receiver, Take, Typed, Value}
 use std::collections::{HashMap, HashSet};
 
 pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
-    let mut lowerer = Lowerer {
-        ast,
-        names,
-        typed,
-        mir: Mir::new(typed.table.clone()),
-        instances: HashMap::new(),
-        queue: Vec::new(),
-        owners: HashMap::new(),
-        trait_methods: HashMap::new(),
-        drop_glues: HashMap::new(),
-    };
+    let mut lowerer = Lowerer::new(ast, names, typed);
     lowerer.run();
+    lowerer.mir
+}
+
+/// Every generic function's code, with each of its type parameters a stand-in: a struct of
+/// its own with nothing in it, copied only if the parameter has to be `Copy`, and each value
+/// parameter `1`. Only for the borrow checker: this way it sees generic code nothing uses
+/// yet, and finds a value used after it's moved where it's written, not once someone uses it
+/// with a type that moves. Nothing is generated from it.
+pub fn lower_generic(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
+    let mut lowerer = Lowerer::new(ast, names, typed);
+    lowerer.run_generic();
     lowerer.mir
 }
 
@@ -55,7 +56,77 @@ struct Lowerer<'a> {
 }
 
 impl<'a> Lowerer<'a> {
+    fn new(ast: &'a Ast, names: &'a Names, typed: &'a Typed) -> Self {
+        Lowerer {
+            ast,
+            names,
+            typed,
+            mir: Mir::new(typed.table.clone()),
+            instances: HashMap::new(),
+            queue: Vec::new(),
+            owners: HashMap::new(),
+            trait_methods: HashMap::new(),
+            drop_glues: HashMap::new(),
+        }
+    }
+
     fn run(&mut self) {
+        self.prepare();
+        // Every non-generic function, whether or not anything calls it. Generic ones are
+        // added as they're called.
+        for (id, func) in self.ast.funcs.iter() {
+            if func.generics.is_empty() && !self.is_alias(id) {
+                self.instance(id, Vec::new());
+            }
+        }
+        self.finish();
+    }
+
+    /// Like `run`, but for each generic function, once, with stand-ins for its parameters.
+    fn run_generic(&mut self) {
+        self.prepare();
+        for (id, func) in self.ast.funcs.iter() {
+            let params = self.names.type_params(id).to_vec();
+            if params.is_empty() || func.body.is_none() || self.is_alias(id) {
+                continue;
+            }
+            let args = params.iter().map(|&param| self.stand_in(param)).collect();
+            self.instance(id, args);
+        }
+        self.finish();
+    }
+
+    /// What type parameter `param` stands for in `run_generic`: a struct with nothing in it,
+    /// of its own, copied only if `param` has to be `Copy`; for a value parameter, `1`.
+    fn stand_in(&mut self, param: DefId) -> TypeId {
+        if self.names.is_value_param(param) {
+            return self.mir.types.intern(Ty::Value(Value::Int(1)));
+        }
+        let ty = self.mir.types.intern(Ty::Struct(param, Vec::new()));
+        if !self.mir.has_struct(param, &[]) {
+            let copy = (self.names.lang(som_resolve::LangTrait::Copy))
+                .is_some_and(|copy| self.names.bounds(param).contains(&copy));
+            self.mir.add_struct(StructDef {
+                def: param,
+                args: Vec::new(),
+                name: self.names.def(param).name.to_string(),
+                fields: Vec::new(),
+                variants: None,
+                copy,
+                handle: false,
+            });
+        }
+        ty
+    }
+
+    /// Whether `id` is a function only an alias names, which isn't lowered on its own.
+    fn is_alias(&self, id: Id<Func>) -> bool {
+        !matches!(self.names.def(self.names.func(id)).kind, DefKind::Func(f) if f == id)
+    }
+
+    /// What every run needs before functions are lowered: traits' methods, impl blocks'
+    /// owners, and the non-generic structs.
+    fn prepare(&mut self) {
         let ast = self.ast;
         for (id, t) in ast.traits.iter() {
             let def = self.names.trait_def(id);
@@ -84,17 +155,10 @@ impl<'a> Lowerer<'a> {
                 self.struct_instance(id, Vec::new());
             }
         }
+    }
 
-        // Every non-generic function, whether or not anything calls it. Generic ones are
-        // added as they're called.
-        for (id, func) in ast.funcs.iter() {
-            let is_alias =
-                !matches!(self.names.def(self.names.func(id)).kind, DefKind::Func(f) if f == id);
-            if func.generics.is_empty() && !is_alias {
-                self.instance(id, Vec::new());
-            }
-        }
-
+    /// Lowers every function queued, and makes the copies of generic structs they use.
+    fn finish(&mut self) {
         while let Some((func_id, func, type_args)) = self.queue.pop() {
             let body = FnBuilder::new(self, func, type_args).build();
             self.mir.funcs[func_id].body = Some(body);
@@ -134,8 +198,11 @@ impl<'a> Lowerer<'a> {
     /// arguments.
     fn is_copy(&self, ty: TypeId) -> bool {
         match self.mir.types.get(ty) {
-            Ty::Struct(def, _) => match self.names.def(*def).kind {
+            Ty::Struct(def, args) => match self.names.def(*def).kind {
                 DefKind::Struct(s) => self.ast.structs[s].copy || self.implements_copy(*def),
+                // A type parameter's stand-in, in `lower_generic`: copied only if it has to be
+                // `Copy`, as its struct says.
+                _ if self.mir.has_struct(*def, args) => self.mir.struct_def(*def, args).copy,
                 _ => true,
             },
             Ty::Ref { mutable: true, .. } => false,
@@ -496,7 +563,11 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     // --- Building blocks ---
 
     fn ty(&mut self, ty: TypeId) -> TypeId {
-        self.subst.apply(&mut self.l.mir.types, ty)
+        let ty = self.subst.apply(&mut self.l.mir.types, ty);
+        // Its generic structs, so their fields can be reached: in generic code with stand-ins,
+        // one can be reached before anything else would have made it.
+        self.l.make_structs_in(ty);
+        ty
     }
 
     fn expr_ty(&mut self, expr: Id<Expr>) -> TypeId {

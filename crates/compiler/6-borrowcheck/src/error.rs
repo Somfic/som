@@ -5,6 +5,8 @@ use som_base::{Diagnostic, Label, Span, msg};
 pub enum BorrowError {
     UseAfterMove {
         name: String,
+        /// The moved value's type: `V`, `String`.
+        ty: String,
         span: Span,
         moved_at: Span,
     },
@@ -66,24 +68,43 @@ impl BorrowError {
         match self {
             BorrowError::UseAfterMove {
                 name,
+                ty,
                 span,
                 moved_at,
             } => {
-                let d = Diagnostic::error(msg!["use of moved value ", code(name)]);
-                // The same code moving twice means a loop moved it on an earlier iteration.
+                let d = Diagnostic::error(msg![code(name), " is used after it was consumed"]);
+                // The same code moving it twice: a loop, which moved it the time before, or
+                // one expression using it twice, `[a, a]`.
                 let d = if moved_at.start_offset == span.start_offset {
                     d.with_label(Label::primary(
                         span.clone(),
-                        "value moved here, in a previous iteration of the loop",
+                        msg![
+                            "consumed here more than once: by a loop going round again, ",
+                            "or by using it twice here"
+                        ],
                     ))
                 } else {
-                    d.with_label(Label::primary(span.clone(), "value used here after move"))
-                        .with_label(Label::secondary(moved_at.clone(), "value moved here"))
+                    d.with_label(Label::primary(
+                        span.clone(),
+                        "tried to use here, but it's gone",
+                    ))
+                    .with_label(Label::secondary(
+                        moved_at.clone(),
+                        "consumed here, gone after this point",
+                    ))
                 };
                 d.with_hint(msg![
-                    "consider borrowing with ",
-                    code(format!("&{name}")),
-                    " instead of moving it"
+                    code(name),
+                    " is a ",
+                    code(ty),
+                    ", which moves rather than copies: once it's consumed, it's gone"
+                ])
+                .with_hint(
+                    "consume it only after its other uses, or only in the branch that needs it",
+                )
+                .with_hint(msg![
+                    "or, if a reference is enough where it's consumed, borrow it there: ",
+                    code(format!("&{name}"))
                 ])
             }
             BorrowError::MoveOutOfReference { name, span } => {

@@ -1,0 +1,13 @@
+// expect: error UseAfterMove
+
+/// A value used after it's moved is found in generic code where it's written, whether anything
+/// uses the function or not: `V` may be a type that moves.
+struct Pair<K, V> { key: K, value: V }
+struct Slot<V> { item: V }
+
+fn put<K, V>(key: K, value: V, slot: &mut Slot<V>) {
+    let pair = Pair { key, value };
+    slot.item = value;
+}
+
+fn main() -> i32 { 0 }

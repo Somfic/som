@@ -437,6 +437,7 @@ impl<'a> FnChecker<'a> {
         if let Some((_, moved_at)) = state.moved.iter().find(|(moved, _)| overlaps(moved, place)) {
             self.error(BorrowError::UseAfterMove {
                 name: self.name(place),
+                ty: self.mir.display_ty(self.place_ty(place)),
                 span: span.clone(),
                 moved_at: moved_at.clone(),
             });

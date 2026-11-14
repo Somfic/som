@@ -79,6 +79,39 @@ impl Error {
 }
 
 /// Loads `path` and runs every check, stopping after the first pass that reports errors.
+/// The borrow checker's errors: in `mir`, the program as it's used, and in every generic
+/// function with stand-ins for its type parameters, used or not, so a value used after it's
+/// moved in one is found where it's written. Each once: a function the program uses with a
+/// type that moves gives the same error both ways.
+fn borrow_errors(
+    ast: &som_ast::Ast,
+    names: &som_resolve::Names,
+    typed: &som_typeck::Typed,
+    mir: &som_mir::Mir,
+) -> Vec<BorrowError> {
+    let mut errors = som_borrowcheck::check(mir);
+    let generic = som_lower::lower_generic(ast, names, typed);
+    errors.extend(som_borrowcheck::check(&generic));
+    // The same error both ways, naming its types differently: `V`, and `String`.
+    let mut seen = HashSet::new();
+    errors.retain(|e| {
+        let key = match e {
+            BorrowError::UseAfterMove {
+                name,
+                span,
+                moved_at,
+                ..
+            } => format!("UseAfterMove {name} {span:?} {moved_at:?}"),
+            BorrowError::MoveOutOfDrop { name, span, .. } => {
+                format!("MoveOutOfDrop {name} {span:?}")
+            }
+            other => format!("{other:?}"),
+        };
+        seen.insert(key)
+    });
+    errors
+}
+
 pub fn check(path: &Path, options: &Options) -> Result<Checked, Vec<Error>> {
     let (ast, errors) = load(path, &options.library_dirs);
     if !errors.is_empty() {
@@ -108,7 +141,7 @@ pub fn check_loaded(mut ast: Ast, options: &Options) -> Result<Checked, Vec<Erro
     }
 
     let mut mir = som_lower::lower(&ast, &names, &typed);
-    let errors = som_borrowcheck::check(&mir);
+    let errors = borrow_errors(&ast, &names, &typed, &mir);
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Borrow).collect());
     }
@@ -264,7 +297,11 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
 
     let mir = if errors.is_empty() {
         let mir = som_lower::lower(&ast, &names, &typed);
-        errors.extend(som_borrowcheck::check(&mir).into_iter().map(Error::Borrow));
+        errors.extend(
+            borrow_errors(&ast, &names, &typed, &mir)
+                .into_iter()
+                .map(Error::Borrow),
+        );
         Some(mir)
     } else {
         None

@@ -2,7 +2,7 @@
 
 struct Vector<N: usize, T> { values: [T; N] }
 
-impl<T> Vector<2, T> {
+impl<T: Copy> Vector<2, T> {
     fn of(a: T) { Self { values: [a, a] } }
     fn first(self: &Self) -> &T { &self.values[0] }
 }
