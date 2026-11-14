@@ -1462,7 +1462,7 @@ impl TypeError {
                 } else {
                     "assigned here"
                 };
-                Diagnostic::error(msg![var(name), " is immutable"])
+                Diagnostic::error(msg![var(name), " is not mutable"])
                     .with_label(Label::primary(span.clone(), label))
                     .with_label(Label::secondary(
                         declared_at.clone(),
