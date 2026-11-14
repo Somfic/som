@@ -31,7 +31,7 @@ impl Vector<3, f32> {
     prop normalized {
         let magnitude = self.magintude;
 
-        Self { values: [ self.x / magnitude, self.y / magnitude ] }
+        Self { values: [ self.x / magnitude, self.y / magnitude, self.z / magnitude ] }
     }
 }
 

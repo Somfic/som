@@ -2128,9 +2128,9 @@ impl<'a> Checker<'a> {
             Expr::Index { object, index } => self.index(*object, *index),
 
             Expr::Construct {
+                ty: path,
                 args: written,
                 fields: given,
-                ..
             } => {
                 let Some(def) = self.names.expr(id) else {
                     given.iter().for_each(|(_, v)| {
@@ -2148,7 +2148,19 @@ impl<'a> Checker<'a> {
                 // The type arguments written, `Pair<i32> { … }`; or each starts unknown, and the
                 // fields' values decide them.
                 let expected = self.names.struct_params(s).len();
-                let args: Vec<TypeId> = if written.is_empty() {
+                // `Self { … }` is the type the impl block is for, arguments and all: in
+                // `impl Vector<3, f32>`, a `Vector<3, f32>`.
+                let of_self = (path.segments.len() == 1 && &*path.segments[0].name == "Self")
+                    .then(|| self.current_func.and_then(|f| self.names.impl_of(f)))
+                    .flatten()
+                    .map(|index| self.self_type(index))
+                    .and_then(|t| match self.u.get(self.u.shallow(t)) {
+                        Ty::Struct(d, args) if *d == def => Some(args.clone()),
+                        _ => None,
+                    });
+                let args: Vec<TypeId> = if let Some(args) = of_self {
+                    args
+                } else if written.is_empty() {
                     (0..expected).map(|_| self.u.fresh(VarKind::Any)).collect()
                 } else {
                     self.lower_args(def, s, written, self.span(id))

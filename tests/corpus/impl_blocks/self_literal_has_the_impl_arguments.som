@@ -1,0 +1,7 @@
+// expect: error Mismatch
+
+struct Vector<N: usize, T> { values: [T; N] }
+
+impl Vector<3, f32> {
+    prop dropped = Self { values: [1.0, 2.0] };
+}
