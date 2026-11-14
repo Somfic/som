@@ -1033,7 +1033,11 @@ impl TypeError {
                         span.clone(),
                         "reading it would move the value it's read from",
                     ))
-                    .with_hint(msg!["borrow it instead: ", code(borrowed.clone())])
+                    .with_fix(Fix::replace(
+                        msg!["borrow it instead: ", code(borrowed.clone())],
+                        span.clone(),
+                        borrowed.clone(),
+                    ))
             }
             TypeError::MethodIsProp {
                 ty,

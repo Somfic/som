@@ -2672,7 +2672,10 @@ fn return_type_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
         }
         let close = Span::from_range(before.len()..before.len(), at.source.clone());
         let position = convert::span_to_range(&close).start;
-        let text = format!(" -> {}", ty(a, ret));
+        let text = match is_self(a, id, ret) {
+            true => " -> Self".to_string(),
+            false => format!(" -> {}", ty(a, ret)),
+        };
         hints.push(InlayHint {
             position,
             label: InlayHintLabel::String(text.clone()),
@@ -2688,6 +2691,46 @@ fn return_type_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
         });
     }
     hints
+}
+
+/// Whether `ty`, in method `func`'s terms, is the struct its impl block is for: `Self`.
+/// `Vector<N, T>` in `impl<N: usize, T> Vector<N, T>`, with the method's own copies of `N`
+/// and `T`. A built-in type's stays its name: `i32` reads better than `Self`.
+fn is_self(a: &Analysis, func: Id<Func>, ty: som_typeck::TypeId) -> bool {
+    let Some(index) = a.names.impl_of(func) else {
+        return false;
+    };
+    let info = &a.typed.impls[index];
+    let Some(target) = info.target else {
+        return false;
+    };
+    if !matches!(a.typed.ty(target), som_typeck::Ty::Struct(..)) {
+        return false;
+    }
+    let own = a.names.type_params(func);
+    let own = &own[..info.params.len().min(own.len())];
+    fn same(
+        a: &Analysis,
+        params: &[som_resolve::DefId],
+        own: &[som_resolve::DefId],
+        target: som_typeck::TypeId,
+        ty: som_typeck::TypeId,
+    ) -> bool {
+        use som_typeck::Ty;
+        match (a.typed.ty(target), a.typed.ty(ty)) {
+            (Ty::Param(p), Ty::Param(q)) => {
+                let at = |list: &[som_resolve::DefId], d| list.iter().position(|x| x == d);
+                at(params, p).is_some_and(|i| at(own, q) == Some(i))
+            }
+            (Ty::Struct(d, xs), Ty::Struct(e, ys)) => {
+                d == e
+                    && xs.len() == ys.len()
+                    && (xs.iter().zip(ys)).all(|(&x, &y)| same(a, params, own, x, y))
+            }
+            _ => target == ty,
+        }
+    }
+    same(a, &info.params, own, target, ty)
 }
 
 fn type_hint(name: &Span, ty: String) -> InlayHint {
@@ -3232,6 +3275,8 @@ mod tests {
                     fn double(x: i32) { x * 2 }\n\
                     fn written(x: i32) -> i32 { x }\n\
                     fn nothing() { }\n\
+                    struct Pair<T> { a: T }\n\
+                    impl<T> Pair<T> {\n    fn of(a: T) { Pair { a: a } }\n    fn other(self) { Pair { a: 1 } }\n}\n\
                     fn main() -> i32 { double(Rect { w: 1 }.area) }\n";
         std::fs::write(&main, text).unwrap();
         let analysis = som_driver::analyze(&dir, &som_driver::Options::default());
@@ -3250,7 +3295,9 @@ mod tests {
             labels,
             [
                 (2, 26, " -> i32".to_string()),
-                (4, 17, " -> i32".to_string())
+                (4, 17, " -> i32".to_string()),
+                (9, 15, " -> Self".to_string()),
+                (10, 18, " -> Pair<i32>".to_string())
             ]
         );
     }

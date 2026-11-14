@@ -1,0 +1,18 @@
+// expect: exit 7
+
+struct Counter { n: i32 }
+
+impl Counter {
+    fn new() -> Self { Counter { n: 3 } }
+    fn get(&self) -> i32 { self.n }
+    fn bump(&mut self) { self.n = self.n + 1; }
+    fn take(self) -> i32 { self.n }
+    fn grown(mut self) -> Self { self.n = self.n * 2; self }
+}
+
+fn main() -> i32 {
+    let mut c = Counter::new();
+    c.bump();
+    // 4 + 6 - 3 + 4 - 4
+    c.get() + Counter::new().grown().take() - 3 + c.take() - 4
+}

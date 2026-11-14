@@ -1,0 +1,13 @@
+// expect: exit 5
+
+trait Size { fn size(&self) -> i32; }
+
+struct Rect { w: i32 }
+
+impl Size for Rect {
+    fn size(&self) -> i32 { self.w }
+}
+
+fn measure<S: Size>(s: &S) -> i32 { s.size() }
+
+fn main() -> i32 { measure(&Rect { w: 5 }) }

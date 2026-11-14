@@ -108,6 +108,14 @@ impl Parser<'_> {
             .unwrap_or(TokenKind::Eof)
     }
 
+    /// Whether the nth non-trivia token ahead (0 = current) is `self`.
+    fn self_ahead(&self, n: usize) -> bool {
+        (self.tokens[self.pos..].iter())
+            .filter(|t| !is_trivia(t.kind))
+            .nth(n)
+            .is_some_and(|t| t.kind == TokenKind::Ident && &*t.text == "self")
+    }
+
     /// The `///` comment right above the current token: consecutive `///` lines, joined.
     /// A blank line or an ordinary comment in between ends it.
     fn doc_comment(&self) -> Option<String> {

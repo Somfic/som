@@ -496,6 +496,33 @@ impl Parser<'_> {
         Some(self.ast.funcs.alloc(func, span))
     }
 
+    /// `Self`, or with `reference` saying whether it's mutable, `&Self` or `&mut Self`: the
+    /// type of a `self`, `&self` or `&mut self` parameter, written at `span`.
+    fn self_type(&mut self, reference: Option<bool>, span: som_base::Span) -> Id<som_ast::TypeExpr> {
+        let path = som_ast::Path {
+            segments: vec![Ident {
+                name: "Self".into(),
+                span: span.clone(),
+            }],
+        };
+        let named = som_ast::TypeExpr::Named {
+            path,
+            args: Vec::new(),
+        };
+        let to = self.ast.types.alloc(named, span.clone());
+        match reference {
+            Some(mutable) => self.ast.types.alloc(
+                som_ast::TypeExpr::Reference {
+                    mutable,
+                    lifetime: None,
+                    to,
+                },
+                span,
+            ),
+            None => to,
+        }
+    }
+
     /// `<T, N: usize>` declaring generic parameters, if it's there: a type parameter is a
     /// name, a value parameter a name and its type.
     fn parse_generics(&mut self) -> Option<Vec<som_ast::Generic>> {
@@ -561,14 +588,28 @@ impl Parser<'_> {
                 }
                 break;
             }
-            let out = self.eat(TokenKind::Out);
-            let mutable = !out && self.eat(TokenKind::Mut);
+            // `&self` and `&mut self`: short for `self: &Self` and `self: &mut Self`.
+            let reference = (self.at(TokenKind::Ampersand)
+                && (self.self_ahead(1)
+                    || self.peek_nth(1) == TokenKind::Mut && self.self_ahead(2)))
+            .then(|| {
+                let start = self.current_span();
+                self.advance();
+                (self.eat(TokenKind::Mut), start)
+            });
+            let out = reference.is_none() && self.eat(TokenKind::Out);
+            let mutable = reference.is_none() && !out && self.eat(TokenKind::Mut);
             let name = self.parse_ident("a function parameter name")?;
-            let ty = if is_extern {
+            let ty = if let Some((mutable, start)) = reference {
+                Some(self.self_type(Some(mutable), self.span_from(&start)))
+            } else if is_extern {
                 self.expect(TokenKind::Colon, "a colon after function parameter name")?;
                 Some(self.parse_type()?)
             } else if self.eat(TokenKind::Colon) {
                 Some(self.parse_type()?)
+            } else if &*name.name == "self" {
+                // `self` and `mut self`: short for `self: Self`.
+                Some(self.self_type(None, name.span.clone()))
             } else {
                 None
             };

@@ -1,25 +1,26 @@
 use som::data;
+extern "raylib";
 
 struct Vector<N: usize, T> {
     values: [T; N]
 }
 
 impl<N: usize, T> Vector<N, T> {
-    fn empty(empty: T) -> Vector<N, T> {
+    fn empty(empty: T) {
         Vector { values: [empty; N] }
     }
 }
 
 impl<T> Vector<3, T> {
-    prop x(self: &Vector<3, T>) {
+    prop x(&self) {
         self.values[0]
     }
 
-    prop y(self: &Vector<3, T>) {
+    prop y(&self) {
         self.values[1]
     }
 
-    prop z(self: &Vector<3, T>) {
+    prop z(&self) {
         self.values[2]
     }
 }
