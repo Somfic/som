@@ -6,9 +6,9 @@ use som;
 struct Point { x: i32, y: i32 }
 
 fn main() -> i32 {
-    let mut bytes: som::mem::Alloc<u8> = som::mem::Alloc::new(10);
-    let mut wide: som::mem::Alloc<i64> = som::mem::Alloc::new(20);
-    let mut points: som::mem::Alloc<Point> = som::mem::Alloc::new(30);
+    let mut bytes: som::mem::Alloc<u8> = som::mem::Alloc::with_capacity(10);
+    let mut wide: som::mem::Alloc<i64> = som::mem::Alloc::with_capacity(20);
+    let mut points: som::mem::Alloc<Point> = som::mem::Alloc::with_capacity(30);
     bytes.write(9, 1);
     wide.write(19, 10);
     points.write(29, Point { x: 50, y: 50 });

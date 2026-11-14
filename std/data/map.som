@@ -1,0 +1,123 @@
+type Set<T> = Map<T, ()>;
+
+struct Pair<K, V> {
+    key: K,
+    value: V
+}
+
+struct Map<K, V> {
+    keys: Alloc<usize?>,
+    entries: List<Pair<K, V>>,
+}
+
+impl<K: Eq + Hash, V> Map<K, V> {
+    fn empty() -> Self {
+        Self::with_capacity(0)
+    }
+
+    fn with_capacity(size: usize) -> Self {
+        // min/starting capacity is 16
+        let size = usize::biggest(16, size);
+
+        let mut keys = Alloc::with_capacity(size, none);
+
+        let entries = List::with_capacity(size);
+
+        Self { keys, entries }
+    }
+
+    fn get_pair(&self, key: &K) -> &Pair<K, V>? {
+        let slot = .find_slot(key);
+        let entry_index = *.keys.at(slot);
+
+        if entry_index {
+            .entries.get(entry_index)
+        } else {
+            none
+        }
+    }
+
+    fn get_pair_mut(&mut self, key: &K) -> &mut Pair<K, V>? {
+        let slot = .find_slot(key);
+        let entry_index = *.keys.at(slot);
+
+        if entry_index {
+            .entries.get_mut(entry_index)
+        } else {
+            none
+        }
+    }
+
+    fn get(&self, key: &K) -> &V? {
+        let pair = .get_pair(key);
+        if pair {
+            &pair.value
+        } else {
+            none
+        }
+    }
+
+    fn get_mut(&mut self, key: &K) -> &mut V? {
+        let pair = .get_pair_mut(key);
+        if pair {
+            &mut pair.value
+        } else {
+            none
+        }
+    }
+
+    fn grow(&mut self, size: usize) {
+        // grow keys
+        .keys = Alloc::with_capacity(size, none);
+
+        // rehash existing entries
+        for entry_index in 0..self.entries.len {
+            let entry = .entries.get(entry_index) else @unreachable;
+            let slot = .find_slot(&entry.key);
+            .keys.write(slot, entry_index);
+        }
+    }
+
+    fn insert(&mut self, key: K, value: V) {
+        // grow if needed
+        let rehash_treshold = (.keys.size as f32 * 0.75) as usize;
+        if .entries.len > rehash_treshold {
+            .grow(.keys.size * 2);
+        }
+
+        // find the existing entry
+        let slot = .find_slot(&key);
+        let entry_index = *.keys.at(slot);
+
+        if entry_index {
+            // overwrite the existing entry
+            let entry = .entries.get_mut(entry_index) else @unreachable;
+            entry.value = value;
+        } else {
+            // make a new entry
+            .entries.push(Pair { key, value });
+            .keys.write(slot, .entries.len - 1)
+        }
+    }
+
+    fn find_slot(&self, key: &K) -> usize {
+        let mut hasher = Hasher::new();
+        Hash::hash(key, &mut hasher);
+
+        let mut slot = hasher.finish as usize % .keys.size;
+
+        loop {
+            let entry_index = *.keys.at(slot) else return slot;
+            let entry = .entries.get(entry_index) else @unreachable;
+            if entry.key != *key {
+                // collision!
+                slot = (slot + 1) % .keys.size;
+                continue;
+            }
+
+            break;
+        }
+
+        slot
+    }
+}

@@ -420,6 +420,8 @@ impl Checker<'_> {
             match self.u.var_kind(ty) {
                 Some(VarKind::Int) => ty = self.u.table.i32,
                 Some(VarKind::Float) => ty = self.u.table.f64,
+                // Text nothing else decides is a `str`.
+                Some(VarKind::Text) => ty = self.u.table.str_ref,
                 Some(_) => continue,
                 None => {}
             }

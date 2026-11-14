@@ -1,0 +1,10 @@
+extern "c";
+use som::mem;
+
+/// What `@unreachable` does if it's reached after all: says where, then stops the program.
+/// Output is flushed first, so the message isn't lost when it goes to a file or a pipe.
+fn reached_unreachable(at: cstr) {
+    c::printf("reached @unreachable at %s\n", at);
+    c::fflush(null());
+    c::abort();
+}

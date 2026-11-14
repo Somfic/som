@@ -19,7 +19,7 @@ fn sum(mut mem: som::mem::Alloc<i32>) -> i32 {
 }
 
 fn main() -> i32 {
-    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::new(5);
+    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(5);
     fill(&mut mem, 3);
     sum(mem)
 }

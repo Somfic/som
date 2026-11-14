@@ -14,7 +14,7 @@ fn main() -> i32 {
     let mut log = 0;
     let at = &mut log as *i32;
     {
-        let mut mem: som::mem::Alloc<Noisy> = som::mem::Alloc::new(2);
+        let mut mem: som::mem::Alloc<Noisy> = som::mem::Alloc::with_capacity(2);
         mem.write(0, Noisy { id: 1, log: at });
         mem.write(1, Noisy { id: 2, log: at });
         let second = mem.read(1);

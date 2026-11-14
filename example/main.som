@@ -1,1 +1,5 @@
-let value: u64 = 18446744073709551615;
+let mut map = som::data::Map::empty();
+
+map.insert(1, 1);
+
+som::io::printf("%d", *(map.get(&2) else @unreachable))

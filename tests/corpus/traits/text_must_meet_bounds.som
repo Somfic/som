@@ -1,0 +1,9 @@
+// expect: error DoesNotImplement
+
+/// Text written in quotes is a `str`, and has to implement what's required of it as much as
+/// anything: `str` has no `Shout`.
+trait Shout { fn shout(&self) -> i32; }
+
+fn loud<T: Shout>(value: T) -> i32 { value.shout() }
+
+fn main() -> i32 { loud("hi") }

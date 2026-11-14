@@ -5,7 +5,7 @@
 use som;
 
 fn main() -> i32 {
-    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::new(2);
+    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(2);
     mem.write(0, 10);
     mem.write(1, 20);
     mem.resize(1000);

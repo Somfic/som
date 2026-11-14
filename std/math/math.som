@@ -20,3 +20,13 @@ impl f64 {
         c::sqrt(self)
     }
 }
+
+impl usize {
+    fn smallest(self, other: usize) -> usize {
+        self if self <= other else other
+    }
+
+     fn biggest(self, other: usize) -> usize {
+        self if self >= other else other
+    }
+}

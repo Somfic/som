@@ -7,11 +7,11 @@ struct List<T> {
 
 impl<T> List<T> {
     fn empty() -> Self {
-        List { mem: Alloc::new(), len: 0 }
+        List { mem: Alloc::empty(), len: 0 }
     }
 
     fn with_capacity(capacity: usize) -> Self {
-        List { mem: Alloc::new(capacity), len: 0 }
+        List { mem: Alloc::with_capacity(capacity), len: 0 }
     }
 
     prop capacity = .mem.size;
@@ -42,7 +42,7 @@ impl<T> List<T> {
         .mem.at(index)
     }
 
-    fn get(&mut self, index: usize) -> &mut T? {
+    fn get_mut(&mut self, index: usize) -> &mut T? {
         if index >= .len {
             return none;
         }
@@ -139,7 +139,7 @@ impl<T> Iterator for ListIterMut<T> {
     type Item = &mut T;
 
     fn next(&mut self) -> &mut T? {
-        let item = .list.get(.index);
+        let item = .list.get_mut(.index);
         .index = .index + 1;
         item
     }

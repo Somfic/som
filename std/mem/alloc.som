@@ -5,11 +5,11 @@ struct Alloc<T> {
 }
 
 impl<T> Alloc<T> {
-    fn new() -> Self {
+    fn empty() -> Self {
         Alloc { ptr: null<T>(), size: 0 }
     }
 
-    fn new(size: usize) -> Self {
+    fn with_capacity(size: usize) -> Self {
         let mut ptr = null<T>();
         ptr.resize(size);
         Alloc { ptr, size }
@@ -20,20 +20,20 @@ impl<T> Alloc<T> {
         self.size = size;
     }
 
-    fn write(&mut self, at: usize, value: T) {
-        self.ptr.write(at, value)
+    fn write(&mut self, index: usize, value: T) {
+        self.ptr.write(index, value)
     }
 
-    fn read(&mut self, at: usize) -> T {
-        self.ptr.read(at)
+    fn read(&mut self, index: usize) -> T {
+        self.ptr.read(index)
     }
 
-    fn at(&self, at: usize) -> &T {
-        self.ptr.at(at)
+    fn at(&self, index: usize) -> &T {
+        self.ptr.at(index)
     }
 
-    fn at(&mut self, at: usize) -> &mut T {
-        self.ptr.at_mut(at)
+    fn at(&mut self, index: usize) -> &mut T {
+        self.ptr.at_mut(index)
     }
 
     fn view(&self, len: usize) -> &[T] {
@@ -48,5 +48,24 @@ impl<T> Alloc<T> {
 impl<T> Drop for Alloc<T> {
     fn drop(self: &mut Alloc<T>) {
         self.ptr.free();
+    }
+}
+
+impl<T: Copy> Alloc<T> {
+    fn with_capacity(size: usize, initial_value: T) -> Self {
+        let mut ptr = null<T>();
+        ptr.resize(size);
+
+        let mut alloc = Alloc { ptr, size };
+
+        alloc.write_all(initial_value);
+
+        alloc
+    }
+
+    fn write_all(&mut self, value: T) {
+        for i in 0..self.size {
+            .write(i, value);
+        }
     }
 }

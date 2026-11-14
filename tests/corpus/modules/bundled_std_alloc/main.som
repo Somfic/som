@@ -4,6 +4,6 @@
 use som;
 
 fn main() {
-    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::new(100);
+    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(100);
     mem.write(99, 1);
 }

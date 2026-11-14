@@ -1,0 +1,50 @@
+// expect: exit 0
+
+/// A `Map` keeps every key it's given, through growing: each found again with its value, the
+/// last one given for it, and a key never given isn't found.
+use som::data;
+
+fn check(ok: bool, code: i32) -> i32 { if ok { 0 } else { code } }
+
+fn main() -> i32 {
+    let mut map: Map<i32, i32> = Map::empty();
+    let mut failed = 0;
+
+    // Far more than 16 keys: it grows a few times.
+    for i in 0..100 {
+        map.insert(i, i * 10);
+    }
+
+    // Every key, with its value. Each read in a block of its own: a reference kept in a
+    // variable borrows the map until its block ends.
+    let mut missing = 0;
+    for i in 0..100 {
+        let value = map.get(&i) else { missing = missing + 1; continue; };
+        failed = failed + check(*value == i * 10, 1);
+    }
+    failed = failed + check(missing == 0, 2);
+
+    // The same key again: the new value, not another entry.
+    map.insert(42, 7);
+    {
+        let value = map.get(&42) else @unreachable;
+        failed = failed + check(*value == 7, 3);
+    }
+    failed = failed + check(map.entries.len == 100, 4);
+
+    // A key never given.
+    {
+        let never = map.get(&1000);
+        failed = failed + check(never == none, 5);
+    }
+
+    // Changing a value in place.
+    {
+        let changing = map.get_mut(&5) else @unreachable;
+        *changing = 55;
+    }
+    let changed = map.get(&5) else @unreachable;
+    failed = failed + check(*changed == 55, 6);
+
+    failed
+}

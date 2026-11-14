@@ -1,13 +1,13 @@
 // expect: exit 7
 
-/// `Alloc::new()` and `Alloc::new(0)` have no room, and give back nothing that matters when
+/// `Alloc::with_capacity(0)` and `Alloc::with_capacity(0)` have no room, and give back nothing that matters when
 /// dropped. Resizing an empty one gives it room.
 use som;
 
 fn main() -> i32 {
-    let empty: som::mem::Alloc<i32> = som::mem::Alloc::new();
-    let zero: som::mem::Alloc<i32> = som::mem::Alloc::new(0);
-    let mut grown: som::mem::Alloc<i32> = som::mem::Alloc::new();
+    let empty: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(0);
+    let zero: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(0);
+    let mut grown: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(0);
     grown.resize(2);
     grown.write(1, 7);
     (empty.size + zero.size) as i32 + grown.read(1)

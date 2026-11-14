@@ -6,7 +6,7 @@ use som;
 struct Buffer { mem: som::mem::Alloc<u8>, used: usize }
 
 fn make(size: usize) -> Buffer {
-    Buffer { mem: som::mem::Alloc::new(size), used: 0 }
+    Buffer { mem: som::mem::Alloc::with_capacity(size), used: 0 }
 }
 
 fn keep(buffer: Buffer) -> Buffer { buffer }

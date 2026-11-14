@@ -4,7 +4,7 @@
 use som;
 
 fn numbers(count: usize) -> som::mem::Alloc<i32> {
-    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::new(count);
+    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(count);
     for i in 0..count {
         mem.write(i, i as i32 + 1);
     }
