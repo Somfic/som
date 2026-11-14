@@ -31,3 +31,10 @@ impl Add for String {
         Self { bytes }
     }
 }
+
+impl Hash for String {
+    fn hash(&self, hasher: &mut Hasher) {
+        hasher.write(.bytes.as_slice());
+        hasher.write(.len as u64);
+    }
+}

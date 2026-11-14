@@ -1,0 +1,73 @@
+struct Hasher {
+    state: u64
+}
+
+impl Hasher {
+    fn new() {
+        Hasher { state: 0xcbf2_9ce4_8422_2325 }
+    }
+
+    prop finish: u64 = mix(.state);
+
+    fn new(seed: u64) {
+        let mut hasher = Hasher::new();
+        hasher.write(seed);
+        hasher
+    }
+
+    fn write(&mut self, byte: u8) {
+        .state = (.state ^ byte as u64) * 0x0000_0100_0000_01b3;
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.write(byte)
+        }
+    }
+
+     fn write(&mut self, n: u64) {
+        for i in 0..8 {
+            self.write((n >> (i * 8)) as u8);
+        }
+    }
+}
+
+fn mix(mut h: u64) -> u64 {
+    h = h ^ (h >> 33);
+    h = h * 0xff51_afd7_ed55_8ccd;
+    h = h ^ (h >> 33);
+    h = h * 0xc4ce_b9fe_1a85_ec53;
+    h ^ (h >> 33)
+}
+
+trait Hash {
+    fn hash(&self, hasher: &mut Hasher);
+}
+
+impl Hash for u8 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self); } }
+impl Hash for u16 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
+impl Hash for u32 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
+impl Hash for u64 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self); } }
+impl Hash for usize { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
+impl Hash for u128 {
+    fn hash(&self, hasher: &mut Hasher) {
+        hasher.write(*self as u64);
+        hasher.write((*self >> 64) as u64);
+    }
+}
+
+impl Hash for i8 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
+impl Hash for i16 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
+impl Hash for i32 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
+impl Hash for i64 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
+impl Hash for isize { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
+impl Hash for i128 {
+    fn hash(&self, hasher: &mut Hasher) {
+        hasher.write(*self as u64);
+        hasher.write((*self >> 64) as u64);
+    }
+}
+
+impl Hash for bool {
+    fn hash(&self, hasher: &mut Hasher) { hasher.write(if *self { 1 as u8 } else { 0 as u8 }); }
+}
