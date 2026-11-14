@@ -1,0 +1,5 @@
+// expect: error ValueAsType
+
+type Bad<N: usize> = [N; 2];
+
+fn main() -> i32 { 0 }

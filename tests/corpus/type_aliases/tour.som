@@ -1,0 +1,18 @@
+// expect: exit 8
+
+/// A pair of whole numbers.
+struct Pair<T> { a: T, b: T }
+
+type IntPair = Pair<i32>;
+type Ints = [i32; 3];
+// An alias can name another alias.
+type MaybePair = IntPair?;
+
+fn sum(p: &IntPair) -> i32 { p.a + p.b }
+
+fn main() -> i32 {
+    let p: IntPair = Pair { a: 2, b: 3 };
+    let xs: Ints = [1, 2, 3];
+    let m: MaybePair = Pair { a: 0, b: 0 };
+    sum(&p) + xs[2]
+}

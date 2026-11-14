@@ -1,0 +1,5 @@
+// expect: error UnknownType
+
+type Thing = Missing;
+
+fn main() -> i32 { 0 }

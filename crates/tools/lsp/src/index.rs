@@ -85,6 +85,7 @@ pub fn items_in_file<'a>(ast: &'a Ast, file: &str) -> Vec<&'a Item> {
             Item::Impl(block) => in_file(&block.target.span()),
             Item::Trait(id) => in_file(ast.traits.span(*id)),
             Item::Use(u) => in_file(&u.path.span()),
+            Item::Alias(alias) => in_file(&alias.name.span),
         })
         .collect()
 }

@@ -1,3 +1,7 @@
 use som::data;
 
-let vec = Vector::zero();
+let vec = Vector { components: [1.0, 1.0, 1.0 ] };
+c::printf("%f, %f, %f (%f) \n", vec.x, vec.y, vec.z, vec.manitude);
+
+let vec = vec.normalized;
+c::printf("%f, %f, %f (%f)", vec.x, vec.y, vec.z, vec.magintude);

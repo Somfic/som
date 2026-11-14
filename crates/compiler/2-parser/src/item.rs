@@ -1,5 +1,5 @@
 use som_ast::{
-    AssocType, Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Trait, Use,
+    Alias, AssocType, Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Trait, Use,
     Variant, VariantKind,
 };
 use som_base::message::code;
@@ -19,6 +19,7 @@ impl Parser<'_> {
                 | TokenKind::Trait
                 | TokenKind::Use
                 | TokenKind::Impl
+                | TokenKind::Type
         )
     }
 
@@ -38,6 +39,7 @@ impl Parser<'_> {
             }
             TokenKind::Use => self.parse_use().map(Item::Use),
             TokenKind::Impl => self.parse_impl().map(Item::Impl),
+            TokenKind::Type => self.parse_alias().map(Item::Alias),
             _ => unreachable!("caller checks at_item"),
         };
         match item {
@@ -347,6 +349,23 @@ impl Parser<'_> {
         }
         block.use_module = true;
         Some(block)
+    }
+
+    /// `type Vector3 = Vector<3, f32>;`, or `type Vector3<T> = Vector<3, T>;`.
+    fn parse_alias(&mut self) -> Option<Alias> {
+        let doc = self.doc_comment();
+        self.expect(TokenKind::Type, "a type alias")?;
+        let name = self.parse_ident("a type alias name")?;
+        let generics = self.parse_generics()?;
+        self.expect(TokenKind::Equals, "`=` and the type")?;
+        let ty = self.parse_type()?;
+        self.expect(TokenKind::Semicolon, "a semicolon after the type alias")?;
+        Some(Alias {
+            doc,
+            name,
+            generics,
+            ty,
+        })
     }
 
     pub(crate) fn parse_use(&mut self) -> Option<Use> {

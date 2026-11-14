@@ -154,6 +154,17 @@ impl Dumper<'_> {
                 });
             }
             Item::Use(u) => self.line(format!("use {}", u.path)),
+            Item::Alias(a) => {
+                let generics = match a.generics.is_empty() {
+                    true => String::new(),
+                    false => {
+                        let names: Vec<String> =
+                            a.generics.iter().map(|g| g.name.to_string()).collect();
+                        format!("<{}>", names.join(", "))
+                    }
+                };
+                self.line(format!("type {}{generics} = {}", a.name, ast.type_text(a.ty)))
+            }
             Item::Extern(block) => {
                 let mut header = match &block.library {
                     Some(lib) => format!("extern {lib:?}"),

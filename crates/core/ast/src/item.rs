@@ -9,6 +9,18 @@ pub enum Item {
     Extern(Extern),
     Impl(Impl),
     Trait(Id<Trait>),
+    Alias(Alias),
+}
+
+/// `type Vector3 = Vector<3, f32>;`: another name for a type, which stands for it wherever
+/// it's written. It can have generic parameters, filled in where it's used:
+/// `type Vector3<T> = Vector<3, T>;`.
+pub struct Alias {
+    /// The `///` comment above it.
+    pub doc: Option<String>,
+    pub name: Ident,
+    pub generics: Vec<Generic>,
+    pub ty: Id<TypeExpr>,
 }
 
 /// `use math;` or `use std::io;`

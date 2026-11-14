@@ -36,6 +36,7 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         scopes: Vec::new(),
         type_params: Vec::new(),
         block_types: Vec::new(),
+        through_alias: std::cell::Cell::new(None),
     };
     resolver.collect_modules();
     resolver.collect_items();
@@ -91,6 +92,8 @@ struct Resolver<'a> {
     /// Types named inside a trait or impl block besides its parameters: `Self`, and its
     /// associated types, `Item`.
     block_types: Vec<(&'a str, DefId)>,
+    /// The alias the last path looked up named its struct through, if it did.
+    through_alias: std::cell::Cell<Option<DefId>>,
 }
 
 impl<'a> Resolver<'a> {
@@ -175,6 +178,27 @@ impl<'a> Resolver<'a> {
                         for &id in &block.methods {
                             self.define_func(id, m, false);
                         }
+                    }
+                    Item::Alias(alias) => {
+                        let kind = DefKind::Alias { ty: alias.ty };
+                        let def = (self.names).define(
+                            &alias.name.name,
+                            kind,
+                            alias.name.span.clone(),
+                            m,
+                        );
+                        let params = (alias.generics.iter().enumerate())
+                            .map(|(index, g)| {
+                                let kind = DefKind::AliasParam {
+                                    index,
+                                    value: g.ty.is_some(),
+                                };
+                                self.names
+                                    .define(&g.name.name, kind, g.name.span.clone(), m)
+                            })
+                            .collect();
+                        self.names.add_alias(def, params);
+                        self.add_item(m, &alias.name, def);
                     }
                     Item::Use(_) => {}
                 }
@@ -359,6 +383,7 @@ impl<'a> Resolver<'a> {
 
     fn resolve_bodies(&mut self) {
         let ast = self.ast;
+        self.resolve_aliases();
         // Impl blocks, counted in the order `collect_methods` saw them.
         let mut impl_index = 0;
         for (m, module) in ast.modules.iter().enumerate() {
@@ -407,8 +432,41 @@ impl<'a> Resolver<'a> {
                         }
                         self.type_params.clear();
                     }
+                    Item::Alias(_) => {}
                     Item::Use(_) => {}
                 }
+            }
+        }
+    }
+
+    /// What each type alias stands for, before any code, which can name a struct through one:
+    /// `Vector3::zero()`.
+    fn resolve_aliases(&mut self) {
+        let ast = self.ast;
+        // In the order `collect_items` saw them.
+        let mut alias_index = 0;
+        for (m, module) in ast.modules.iter().enumerate() {
+            self.module = m;
+            for item in &module.items {
+                let Item::Alias(alias) = item else {
+                    continue;
+                };
+                // Its type can be written in terms of its parameters.
+                let def = self.names.aliases()[alias_index];
+                alias_index += 1;
+                let params = self.names.alias_params(def).to_vec();
+                self.type_params.clear();
+                for (g, &param) in alias.generics.iter().zip(&params) {
+                    self.type_params.push((&g.name.name, param));
+                }
+                for (g, &param) in alias.generics.iter().zip(&params) {
+                    if let Some(ty) = g.ty {
+                        self.resolve_type(ty);
+                    }
+                    self.resolve_bounds(g, param);
+                }
+                self.resolve_type(alias.ty);
+                self.type_params.clear();
             }
         }
     }
@@ -803,9 +861,40 @@ impl<'a> Resolver<'a> {
     }
 
     fn bind_expr(&mut self, id: Id<Expr>, path: &Path, expect: Expect) {
+        self.through_alias.set(None);
         if let Some(def) = self.resolve_path(path, expect) {
             self.names.set_expr(id, def);
+            if let Some(alias) = self.through_alias.take() {
+                self.names.set_expr_alias(id, alias);
+            }
         }
+    }
+
+    /// `def` if it's something `expect` accepts; or, where a struct is expected, the struct
+    /// alias `def` stands for, noting the alias in `through_alias`.
+    fn fitting(&self, def: DefId, expect: Expect) -> Option<DefId> {
+        if self.fits(def, expect) {
+            return Some(def);
+        }
+        if expect != Expect::Struct {
+            return None;
+        }
+        let strukt = self.aliased_struct(def)?;
+        self.through_alias.set(Some(def));
+        Some(strukt)
+    }
+
+    /// The struct alias `def` stands for, through any aliases it's written with.
+    fn aliased_struct(&self, mut def: DefId) -> Option<DefId> {
+        // An alias that refers to itself stands for nothing; the type checker says so.
+        for _ in 0..=self.names.aliases().len() {
+            match self.names.def(def).kind {
+                DefKind::Alias { ty } => def = self.names.ty(ty)?,
+                DefKind::Struct(_) => return Some(def),
+                _ => return None,
+            }
+        }
+        None
     }
 
     fn resolve_type(&mut self, id: Id<TypeExpr>) {
@@ -929,7 +1018,7 @@ impl<'a> Resolver<'a> {
             .chain(self.imports[self.module].iter().copied())
             .chain(prelude)
             .find_map(|m| self.items[m].get(name).copied())
-            .filter(|&def| self.fits(def, expect))
+            .and_then(|def| self.fitting(def, expect))
     }
 
     /// `module::item`, `Struct::method`, or `module::Struct::method`.
@@ -953,9 +1042,10 @@ impl<'a> Resolver<'a> {
                     return self.items[m]
                         .get(&*rest[0].name)
                         .copied()
-                        .filter(|&d| self.fits(d, expect));
+                        .and_then(|d| self.fitting(d, expect));
                 }
-                (self.items[m].get(&*rest[0].name).copied()?, &rest[1..])
+                let owner = self.items[m].get(&*rest[0].name).copied()?;
+                (self.fitting(owner, Expect::Struct).unwrap_or(owner), &rest[1..])
             }
             None => (
                 self.lookup(&segments[0].name, Expect::Struct)
@@ -995,6 +1085,8 @@ impl<'a> Resolver<'a> {
                     | DefKind::ImplParam { .. }
                     | DefKind::SelfType { .. }
                     | DefKind::ImplType { .. }
+                    | DefKind::Alias { .. }
+                    | DefKind::AliasParam { .. }
             ),
             // `Shape::Circle(1.0)` and `Shape::Rect { … }` make a variant.
             Expect::Func => matches!(kind, DefKind::Func(_) | DefKind::Variant { .. }),
@@ -1008,6 +1100,8 @@ impl<'a> Resolver<'a> {
                     | DefKind::ImplParam { .. }
                     | DefKind::SelfType { .. }
                     | DefKind::ImplType { .. }
+                    | DefKind::Alias { .. }
+                    | DefKind::AliasParam { .. }
             ),
             Expect::Trait => matches!(kind, DefKind::Trait(_)),
         }

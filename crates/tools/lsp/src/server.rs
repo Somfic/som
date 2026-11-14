@@ -635,6 +635,17 @@ impl LanguageServer for SomLanguageServer {
                         Some(methods),
                     ));
                 }
+                Item::Alias(alias) => {
+                    let span = alias.name.span.merge(ast.types.span(alias.ty));
+                    symbols.push(symbol(
+                        alias.name.name.to_string(),
+                        Some(ast.type_text(alias.ty)),
+                        SymbolKind::TYPE_PARAMETER,
+                        &span,
+                        &alias.name.span,
+                        None,
+                    ));
+                }
                 Item::Use(_) => {}
             }
         }
@@ -1073,6 +1084,9 @@ impl LanguageServer for SomLanguageServer {
                                 ..Default::default()
                             });
                         }
+                        Item::Alias(alias) if wants_types => {
+                            items.extend(alias_items(a, alias, name(&alias.name.name), None));
+                        }
                         _ => {}
                     }
                 }
@@ -1228,22 +1242,7 @@ impl LanguageServer for SomLanguageServer {
             hints.push(type_hint(&name.span, ty(a, t)));
         }
         hints.extend(return_type_hints(a, &file));
-        // `let list: List = [1, 2]`: the type arguments left out, after the name.
-        for (id, stmt) in a.ast.stmts.iter() {
-            let Stmt::Let {
-                ty: Some(annotation),
-                ..
-            } = stmt
-            else {
-                continue;
-            };
-            if a.ast.types.span(*annotation).source.identifier() != file {
-                continue;
-            }
-            if let Some(t) = a.names.local(id).and_then(|def| a.typed.try_local(def)) {
-                omitted_args_hints(a, *annotation, t, &mut hints);
-            }
-        }
+        hints.extend(annotation_hints(a, &file));
 
         // What an optional used as a condition asks: `if x` is `if x != none`, and so is each
         // optional operand of `and`, `or` and `!`.
@@ -1492,7 +1491,10 @@ fn describe(a: &Analysis, def: DefId) -> String {
                 None => d.name.to_string(),
             }
         }
-        DefKind::TypeParam { .. } | DefKind::StructParam { .. } | DefKind::ImplParam { .. } => {
+        DefKind::TypeParam { .. }
+        | DefKind::StructParam { .. }
+        | DefKind::ImplParam { .. }
+        | DefKind::AliasParam { .. } => {
             format!("type parameter {}", d.name)
         }
         DefKind::Trait(t) => {
@@ -1508,6 +1510,16 @@ fn describe(a: &Analysis, def: DefId) -> String {
             format!("trait {} {{\n{}\n}}", t.name, lines.join("\n"))
         }
         DefKind::AssocType { .. } | DefKind::ImplType { .. } => format!("type {}", d.name),
+        DefKind::Alias { ty } => {
+            let params: Vec<&str> = (a.names.alias_params(def).iter())
+                .map(|&p| &*a.names.def(p).name)
+                .collect();
+            let generics = match params.is_empty() {
+                true => String::new(),
+                false => format!("<{}>", params.join(", ")),
+            };
+            format!("type {}{generics} = {}", d.name, a.ast.type_text(*ty))
+        }
         DefKind::SelfType { impl_ } => match a.names.impls[*impl_].owner {
             Some(owner) => format!("Self = {}", a.names.def(owner).name),
             None => "Self".to_string(),
@@ -2482,9 +2494,52 @@ fn find_struct(a: &Analysis, path: &str, file: &str, offset: usize) -> Option<Id
     modules.into_iter().find_map(|m| {
         a.ast.modules[m].items.iter().find_map(|item| match item {
             Item::Struct(id) if *a.ast.structs[*id].name.name == *name => Some(*id),
+            // `Vector3::` and `Vector3 { ` are of the struct the alias stands for.
+            Item::Alias(alias) if *alias.name.name == *name => aliased_struct(a, alias.ty),
             _ => None,
         })
     })
+}
+
+/// The struct type `ty`, an alias's, names, through any aliases it's written with.
+fn aliased_struct(a: &Analysis, mut ty: Id<som_ast::TypeExpr>) -> Option<Id<Struct>> {
+    // An alias that refers to itself names nothing.
+    for _ in 0..=a.names.aliases().len() {
+        match a.names.def(a.names.ty(ty)?).kind {
+            DefKind::Struct(s) => return Some(s),
+            DefKind::Alias { ty: next } => ty = next,
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Completions for type alias `alias`, called `label`. Where a value goes (`insert`), one
+/// for a struct also completes to the struct's literal, `Vector3 { values: … }`.
+fn alias_items(
+    a: &Analysis,
+    alias: &som_ast::Alias,
+    label: String,
+    insert: Option<Insert>,
+) -> Vec<CompletionItem> {
+    let detail = Some(format!("type {} = {}", alias.name.name, a.ast.type_text(alias.ty)));
+    let documentation = markdown(alias.doc.clone());
+    match (insert, aliased_struct(a, alias.ty)) {
+        (Some(insert), Some(s)) => (struct_items(a, s, label, insert).into_iter())
+            .map(|item| CompletionItem {
+                detail: detail.clone(),
+                documentation: documentation.clone(),
+                ..item
+            })
+            .collect(),
+        _ => vec![CompletionItem {
+            label,
+            kind: Some(CompletionItemKind::STRUCT),
+            detail,
+            documentation,
+            ..Default::default()
+        }],
+    }
 }
 
 /// When the cursor is where a field's name goes in a struct literal, `Color { r: 1, |`:
@@ -2641,13 +2696,16 @@ fn module_items(
             Item::Extern(block) if block.module.is_none_or(|b| b == m) => {
                 funcs.extend(&block.funcs)
             }
-            Item::Struct(id) => items.push(struct_item(
+            Item::Struct(id) => items.extend(struct_items(
                 a,
                 *id,
                 name(&a.ast.structs[*id].name.name),
                 insert,
             )),
             Item::Trait(id) => items.push(trait_item(a, *id, name(&a.ast.traits[*id].name.name))),
+            Item::Alias(alias) => {
+                items.extend(alias_items(a, alias, name(&alias.name.name), Some(insert)))
+            }
             _ => {}
         }
     }
@@ -2697,6 +2755,28 @@ fn can_have_dot(a: &Analysis, expr: Id<Expr>) -> bool {
     }
 }
 
+/// `let list: List = [1, 2]`: the type arguments each `let` annotation in `file` leaves out,
+/// after it.
+fn annotation_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
+    let mut hints = Vec::new();
+    for (id, stmt) in a.ast.stmts.iter() {
+        let Stmt::Let {
+            ty: Some(annotation),
+            ..
+        } = stmt
+        else {
+            continue;
+        };
+        if a.ast.types.span(*annotation).source.identifier() != file {
+            continue;
+        }
+        if let Some(t) = a.names.local(id).and_then(|def| a.typed.try_local(def)) {
+            omitted_args_hints(a, *annotation, t, &mut hints);
+        }
+    }
+    hints
+}
+
 /// `<i32>` after each generic struct in annotation `written` whose type arguments are left
 /// out, from `t`, the type it turned out to be.
 fn omitted_args_hints(
@@ -2706,6 +2786,36 @@ fn omitted_args_hints(
     hints: &mut Vec<InlayHint>,
 ) {
     use som_ast::TypeExpr;
+    // An alias: what its own parameters turned out to be, not those of what it stands for.
+    if let TypeExpr::Named { args, .. } = &a.ast.types[written]
+        && let Some(alias) = a.names.ty(written)
+        && let DefKind::Alias { ty: body } = a.names.def(alias).kind
+    {
+        let params = a.names.alias_params(alias);
+        let mut bound = HashMap::new();
+        alias_params_in(a, body, t, &mut bound);
+        if args.is_empty() && !params.is_empty() {
+            let shown: Vec<String> = (params.iter())
+                .map(|p| bound.get(p).map_or("_".into(), |&arg| ty(a, arg)))
+                .collect();
+            hints.push(InlayHint {
+                position: convert::span_to_range(a.ast.types.span(written)).end,
+                label: InlayHintLabel::String(format!("<{}>", shown.join(", "))),
+                kind: Some(InlayHintKind::TYPE),
+                text_edits: None,
+                tooltip: None,
+                padding_left: None,
+                padding_right: None,
+                data: None,
+            });
+        }
+        for (&arg, param) in args.iter().zip(params) {
+            if let Some(&actual) = bound.get(param) {
+                omitted_args_hints(a, arg, actual, hints);
+            }
+        }
+        return;
+    }
     match (&a.ast.types[written], a.typed.ty(t)) {
         (TypeExpr::Named { args, .. }, Ty::Struct(_, actual)) if args.is_empty() => {
             if actual.is_empty() {
@@ -2737,6 +2847,51 @@ fn omitted_args_hints(
             },
         ) => {
             omitted_args_hints(a, *inner, *actual, hints);
+        }
+        _ => {}
+    }
+}
+
+/// What each alias parameter in `written`, an alias's type, stands for, given that it
+/// turned out to be `t`: into `bound`.
+fn alias_params_in(
+    a: &Analysis,
+    written: Id<som_ast::TypeExpr>,
+    t: som_typeck::TypeId,
+    bound: &mut HashMap<DefId, som_typeck::TypeId>,
+) {
+    use som_ast::TypeExpr;
+    match (&a.ast.types[written], a.typed.ty(t)) {
+        (TypeExpr::Named { args, .. }, actual) => match a.names.ty(written) {
+            Some(def) if matches!(a.names.def(def).kind, DefKind::AliasParam { .. }) => {
+                bound.insert(def, t);
+            }
+            // Another alias: what its parameters stand for, then what was written for them.
+            Some(def) if let DefKind::Alias { ty: body } = a.names.def(def).kind => {
+                let mut inner = HashMap::new();
+                alias_params_in(a, body, t, &mut inner);
+                for (&arg, param) in args.iter().zip(a.names.alias_params(def)) {
+                    if let Some(&actual) = inner.get(param) {
+                        alias_params_in(a, arg, actual, bound);
+                    }
+                }
+            }
+            _ => {
+                if let Ty::Struct(_, actual) = actual {
+                    for (&arg, &actual) in args.iter().zip(actual) {
+                        alias_params_in(a, arg, actual, bound);
+                    }
+                }
+            }
+        },
+        (TypeExpr::Array { element, len }, Ty::Array { element: e, len: l }) => {
+            alias_params_in(a, *element, *e, bound);
+            alias_params_in(a, *len, *l, bound);
+        }
+        (TypeExpr::Optional(inner), Ty::Optional(actual))
+        | (TypeExpr::Reference { to: inner, .. }, Ty::Ref { to: actual, .. })
+        | (TypeExpr::PointerTo(inner), Ty::Ptr(actual)) => {
+            alias_params_in(a, *inner, *actual, bound);
         }
         _ => {}
     }
@@ -3131,31 +3286,43 @@ fn bound_slot(line: &str) -> Option<TypeSlot> {
     None
 }
 
-fn struct_item(a: &Analysis, s: Id<Struct>, label: String, insert: Insert) -> CompletionItem {
+fn struct_items(a: &Analysis, s: Id<Struct>, label: String, insert: Insert) -> Vec<CompletionItem> {
     let st = &a.ast.structs[s];
-    let snippet = insert.value.then(|| {
-        if st.fields.is_empty() {
+    let mut items = vec![CompletionItem {
+        label: label.clone(),
+        kind: Some(match st.is_enum() {
+            true => CompletionItemKind::ENUM,
+            false => CompletionItemKind::STRUCT,
+        }),
+        documentation: markdown(st.doc.clone()),
+        ..Default::default()
+    }];
+    // Where a value goes, also its literal, as an item of its own: the name alone can go
+    // on to `::new()`.
+    if insert.value && !st.is_enum() && !st.handle {
+        let snippet = if st.fields.is_empty() {
             format!("{label} {{}}$0")
         } else if st.fields.len() > 6 {
             format!("{label} {{ $0 }}")
         } else {
-            let fields: Vec<String> = st
-                .fields
-                .iter()
-                .enumerate()
+            let fields: Vec<String> = (st.fields.iter().enumerate())
                 .map(|(i, field)| format!("{}: ${}", field.name.name, i + 1))
                 .collect();
             format!("{label} {{ {} }}$0", fields.join(", "))
-        }
-    });
-    CompletionItem {
-        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
-        insert_text: snippet,
-        label,
-        kind: Some(CompletionItemKind::STRUCT),
-        documentation: markdown(st.doc.clone()),
-        ..Default::default()
+        };
+        items.push(CompletionItem {
+            label: format!("{label} {{ … }}"),
+            filter_text: Some(label.clone()),
+            // Right after the name alone.
+            sort_text: Some(format!("{label} {{")),
+            insert_text_format: Some(InsertTextFormat::SNIPPET),
+            insert_text: Some(snippet),
+            kind: Some(CompletionItemKind::SNIPPET),
+            documentation: markdown(st.doc.clone()),
+            ..Default::default()
+        });
     }
+    items
 }
 
 /// Whether a type goes at `offset`: after `->`, or after the `:` of a `let`, a function
@@ -3455,6 +3622,40 @@ mod tests {
     }
 
     #[test]
+    fn aliases_hint_only_their_own_omitted_arguments() {
+        let dir = std::env::temp_dir().join(format!("som_lsp_alias_hints_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("main.som");
+        let text = "struct Vector<N: usize, T> { values: [T; N] }\n\
+                    type Vector3f = Vector<3, f32>;\n\
+                    type Vector3<T> = Vector<3, T>;\n\
+                    struct Box<T> { value: T }\n\
+                    fn main() -> i32 {\n\
+                    let a: Vector3f = Vector { values: [0.0, 0.0, 0.0] };\n\
+                    let b: Vector3 = Vector { values: [1, 2, 3] };\n\
+                    let c: Box<Vector3f> = Box { value: a };\n\
+                    let d: Vector = Vector { values: [true] };\n\
+                    0\n}\n";
+        std::fs::write(&main, text).unwrap();
+        let analysis = som_driver::analyze(&dir, &som_driver::Options::default());
+        let file = main.to_string_lossy();
+        let labels: Vec<(u32, u32, String)> = annotation_hints(&analysis, &file)
+            .into_iter()
+            .map(|h| match h.label {
+                InlayHintLabel::String(label) => (h.position.line, h.position.character, label),
+                InlayHintLabel::LabelParts(_) => unreachable!(),
+            })
+            .collect();
+        std::fs::remove_dir_all(&dir).unwrap();
+        // Nothing for `Vector3f`, which leaves nothing out, nor inside `Box<Vector3f>`;
+        // `Vector3`'s own parameter, not `Vector`'s two.
+        assert_eq!(
+            labels,
+            [(6, 14, "<i32>".to_string()), (8, 13, "<1, bool>".to_string())]
+        );
+    }
+
+    #[test]
     fn props_complete_for_the_type_their_block_is_for() {
         let dir = std::env::temp_dir().join(format!("som_lsp_prop_items_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -3485,6 +3686,49 @@ mod tests {
                 ("z".into(), prop, Some("i32".into())),
             ]
         );
+    }
+
+    #[test]
+    fn aliases_complete_like_the_struct_they_stand_for() {
+        let dir = std::env::temp_dir().join(format!("som_lsp_alias_items_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("main.som");
+        let text = "struct Vector<N: usize, T> { values: [T; N] }\n\
+                    type Vector3d = Vector<3, f64>;\n\
+                    type Also = Vector3d;\n\
+                    type Number = i32;\n\
+                    fn main() -> i32 { 0 }\n";
+        std::fs::write(&main, text).unwrap();
+        let a = som_driver::analyze(&dir, &som_driver::Options::default());
+        let file = main.to_string_lossy().to_string();
+        let insert = Insert { value: true, call_follows: false };
+        let shown: Vec<(String, Option<String>, Option<String>)> =
+            (module_items(&a, 0, None, insert).into_iter())
+                .filter(|i| !i.label.starts_with("Vector "))
+                .map(|i| (i.label, i.detail, i.insert_text))
+                .collect();
+        let vector = find_struct(&a, "Vector", &file, 0);
+        let through_aliases = (find_struct(&a, "Vector3d", &file, 0), find_struct(&a, "Also", &file, 0));
+        let number = find_struct(&a, "Number", &file, 0);
+        std::fs::remove_dir_all(&dir).unwrap();
+        // The name alone, which can go on to `::new()`, then the literal.
+        let alias = |name: &str, to: &str| Some(format!("type {name} = {to}"));
+        let literal = |name: &str| Some(format!("{name} {{ values: $1 }}$0"));
+        assert_eq!(
+            shown,
+            [
+                ("Vector".into(), None, None),
+                ("Vector3d".into(), alias("Vector3d", "Vector<3, f64>"), None),
+                ("Vector3d { … }".into(), alias("Vector3d", "Vector<3, f64>"), literal("Vector3d")),
+                ("Also".into(), alias("Also", "Vector3d"), None),
+                ("Also { … }".into(), alias("Also", "Vector3d"), literal("Also")),
+                ("Number".into(), alias("Number", "i32"), None),
+            ]
+        );
+        // `Vector3d::` and `Vector3d { ` complete `Vector`'s methods and fields.
+        assert!(vector.is_some());
+        assert_eq!(through_aliases, (vector, vector));
+        assert_eq!(number, None);
     }
 
     #[test]
