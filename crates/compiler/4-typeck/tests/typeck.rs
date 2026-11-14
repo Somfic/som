@@ -195,3 +195,23 @@ fn conditional_branches_must_agree() {
     let errs = errors("fn f() -> i32 { 1 if true else false }");
     assert!(matches!(errs[..], [TypeError::Mismatch { .. }]), "{errs:?}");
 }
+
+#[test]
+fn unknown_fields_offer_the_properties_of_the_value_type() {
+    let errs = errors(
+        "struct V<N: usize> { values: [i32; N] }
+         impl V<2> { prop magnitude = 2; }
+         impl V<3> { prop magnitude = 3; prop z = 0; }
+         impl V<4> { prop w = 0; }
+         fn f() -> i32 { let v = V { values: [1, 2, 3] }; v.manitude }",
+    );
+    // Each name once, and not `w`, which a `V<3>` doesn't have.
+    match &errs[..] {
+        [TypeError::UnknownField { field, available, props, .. }] => {
+            assert_eq!(field, "manitude");
+            assert_eq!(available, &["values"]);
+            assert_eq!(props, &["magnitude", "z"]);
+        }
+        _ => panic!("{errs:?}"),
+    }
+}

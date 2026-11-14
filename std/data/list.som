@@ -1,4 +1,3 @@
-use som;
 use som::mem;
 
 /// `T`s one after another, as many as are pushed: room for more is made as it's needed.

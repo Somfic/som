@@ -48,6 +48,8 @@ pub enum TypeError {
         ty: String,
         field: String,
         available: Vec<String>,
+        /// The type's properties, read the same way: `v.magnitude`.
+        props: Vec<String>,
         span: Span,
     },
     MissingField {
@@ -492,20 +494,33 @@ impl TypeError {
                 ty: owner,
                 field: name,
                 available,
+                props,
                 span,
             } => {
                 let mut d =
                     Diagnostic::error(msg![struct_name(owner), " has no field ", field(name)])
                         .with_label(Label::primary(span.clone(), "unknown field"));
-                if let Some(close) = closest_match(name, available, 2) {
-                    d = d.with_hint(msg!["did you mean ", field(close), "?"]);
-                } else if !available.is_empty() {
-                    let mut hint = msg!["available fields: "];
-                    for (i, f) in available.iter().enumerate() {
+                let either: Vec<String> = available.iter().chain(props).cloned().collect();
+                let list = |hint: &mut Message, names: &[String]| {
+                    for (i, f) in names.iter().enumerate() {
                         if i > 0 {
                             hint.0.push(", ".into());
                         }
                         hint.0.push(field(f));
+                    }
+                };
+                if let Some(close) = closest_match(name, &either, 2) {
+                    d = d.with_hint(msg!["did you mean ", field(close), "?"]);
+                } else if !either.is_empty() {
+                    let mut hint = Message(Vec::new());
+                    if !available.is_empty() {
+                        hint.0.push("available fields: ".into());
+                        list(&mut hint, available);
+                    }
+                    if !props.is_empty() {
+                        let start = if available.is_empty() { "properties: " } else { "; properties: " };
+                        hint.0.push(start.into());
+                        list(&mut hint, props);
                     }
                     d = d.with_hint(hint);
                 }

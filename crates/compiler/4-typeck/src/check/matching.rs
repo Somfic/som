@@ -153,6 +153,7 @@ impl Checker<'_> {
                 ty: ast_struct.name.name.to_string(),
                 field: field.name.to_string(),
                 available: common.iter().map(|c| c.name.to_string()).collect(),
+                props: Vec::new(),
                 span: field.span.clone(),
             }
         };
@@ -609,6 +610,7 @@ impl Checker<'_> {
                                 available: (variant.fields.iter())
                                     .map(|f| f.name.name.to_string())
                                     .collect(),
+                                props: Vec::new(),
                                 span: field.span.clone(),
                             });
                             self.bind_all(*pat, error);

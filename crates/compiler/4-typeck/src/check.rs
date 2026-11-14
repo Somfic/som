@@ -2248,6 +2248,7 @@ impl<'a> Checker<'a> {
                                 ty: self.u.display(viewed, self.names),
                                 field: field.name.to_string(),
                                 available: vec!["start".into(), "end".into()],
+                                props: Vec::new(),
                                 span: field.span.clone(),
                             });
                             return error;
@@ -2282,10 +2283,13 @@ impl<'a> Checker<'a> {
                         error
                     }
                     None => {
+                        let available = fields.iter().map(|f| f.name.name.to_string()).collect();
+                        let props = self.props_for(owner, object_ty);
                         self.errors.push(TypeError::UnknownField {
                             ty: self.names.def(owner).name.to_string(),
                             field: field.name.to_string(),
-                            available: fields.iter().map(|f| f.name.name.to_string()).collect(),
+                            available,
+                            props,
                             span: field.span.clone(),
                         });
                         error
@@ -2419,6 +2423,7 @@ impl<'a> Checker<'a> {
                                     .iter()
                                     .map(|f| f.name.name.to_string())
                                     .collect(),
+                                props: Vec::new(),
                                 span: name.span.clone(),
                             });
                             self.infer(*value);
@@ -3525,6 +3530,25 @@ impl<'a> Checker<'a> {
 
     /// Whether `receiver_ty`, looking through a reference, could be what the impl block of
     /// method `func` is for, with `type_args` its instantiation. True when that's not known.
+    /// The names of `owner`'s properties a value of type `ty` has: those of the impl blocks
+    /// for its type, `magnitude` of a `Vector<3, f32>`.
+    fn props_for(&mut self, owner: DefId, ty: TypeId) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for (name, def) in self.names.props_of(owner) {
+            let DefKind::Func(func) = self.names.def(def).kind else {
+                continue;
+            };
+            if names.last().is_some_and(|last| last == name) {
+                continue;
+            }
+            let (_, type_args) = self.instantiate(func);
+            if self.impl_target_fits(func, &type_args, ty) {
+                names.push(name.to_string());
+            }
+        }
+        names
+    }
+
     fn impl_target_fits(&mut self, func: Id<Func>, type_args: &[TypeId], receiver_ty: TypeId) -> bool {
         let Some(index) = self.names.impl_of(func) else {
             return true;
