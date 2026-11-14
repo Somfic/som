@@ -995,6 +995,22 @@ impl LanguageServer for SomLanguageServer {
             }
             hints.push(type_hint(&name.span, ty(a, t)));
         }
+        // `let list: List = [1, 2]`: the type arguments left out, after the name.
+        for (id, stmt) in a.ast.stmts.iter() {
+            let Stmt::Let {
+                ty: Some(annotation),
+                ..
+            } = stmt
+            else {
+                continue;
+            };
+            if a.ast.types.span(*annotation).source.identifier() != file {
+                continue;
+            }
+            if let Some(t) = a.names.local(id).and_then(|def| a.typed.try_local(def)) {
+                omitted_args_hints(a, *annotation, t, &mut hints);
+            }
+        }
 
         // What an optional used as a condition asks: `if x` is `if x != none`, and so is each
         // optional operand of `and`, `or` and `!`.
@@ -2287,6 +2303,46 @@ fn can_have_dot(a: &Analysis, expr: Id<Expr>) -> bool {
             args.last().is_none_or(|&last| end(last) != end(expr))
         }
         _ => true,
+    }
+}
+
+/// `<i32>` after each generic struct in annotation `written` whose type arguments are left
+/// out, from `t`, the type it turned out to be.
+fn omitted_args_hints(
+    a: &Analysis,
+    written: Id<som_ast::TypeExpr>,
+    t: som_typeck::TypeId,
+    hints: &mut Vec<InlayHint>,
+) {
+    use som_ast::TypeExpr;
+    match (&a.ast.types[written], a.typed.ty(t)) {
+        (TypeExpr::Named { args, .. }, Ty::Struct(_, actual)) if args.is_empty() => {
+            if actual.is_empty() {
+                return;
+            }
+            let shown: Vec<String> = actual.iter().map(|&arg| ty(a, arg)).collect();
+            hints.push(InlayHint {
+                position: convert::span_to_range(a.ast.types.span(written)).end,
+                label: InlayHintLabel::String(format!("<{}>", shown.join(", "))),
+                kind: Some(InlayHintKind::TYPE),
+                text_edits: None,
+                tooltip: None,
+                padding_left: None,
+                padding_right: None,
+                data: None,
+            });
+        }
+        (TypeExpr::Named { args, .. }, Ty::Struct(_, actual)) => {
+            for (&arg, &actual) in args.iter().zip(actual) {
+                omitted_args_hints(a, arg, actual, hints);
+            }
+        }
+        (TypeExpr::Optional(inner), Ty::Optional(actual))
+        | (TypeExpr::Reference { to: inner, .. }, Ty::Ref { to: actual, .. })
+        | (TypeExpr::Array { element: inner, .. }, Ty::Array { element: actual, .. }) => {
+            omitted_args_hints(a, *inner, *actual, hints);
+        }
+        _ => {}
     }
 }
 

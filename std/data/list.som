@@ -14,6 +14,19 @@ impl<T> List<T> {
         List { items: null(), len: 0, capacity: 0 }
     }
 
+    /// A list of `items`, moved into it: what `let list: List<i32> = [1, 2, 3]` calls.
+    fn from_array<N: usize>(items: [T; N]) -> List<T> {
+        let mut list: List<T> = List::new();
+        list.items = list.items.resize(N);
+        list.capacity = N;
+        let source = &items as *T;
+        for i in 0..N {
+            list.items.write(i, source.read(i));
+        }
+        list.len = N;
+        list
+    }
+
     /// How many values it holds.
     fn len(self: &List<T>) -> usize {
         self.len

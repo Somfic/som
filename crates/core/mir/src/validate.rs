@@ -242,7 +242,8 @@ impl Validator<'_> {
                     );
                 // Raw pointers convert to each other: `null() as *T`.
                 let pointer = |t: TypeId| matches!(types.get(t), Ty::Pointer | Ty::Ptr(_));
-                let pointers = pointer(from) && pointer(*ty);
+                let reference = |t: TypeId| matches!(types.get(t), Ty::Ref { .. });
+                let pointers = (pointer(from) || reference(from)) && pointer(*ty);
                 if !(int(from) && int(*ty)) && !slicing && !pointers {
                     let (f, t) = (self.mir.display_ty(from), self.mir.display_ty(*ty));
                     self.problem(format!("cast from {f} to {t}: those don't convert"));

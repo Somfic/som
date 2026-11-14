@@ -62,6 +62,12 @@ pub(crate) struct Checker<'a> {
     expected_here: Option<TypeId>,
     /// Calls and function values → which of the functions sharing their name they name.
     callees: HashMap<Id<Expr>, DefId>,
+    /// Lowering a `let` annotation, where a generic struct's type arguments can be left out:
+    /// `let list: List = [1, 2]`.
+    omitted_args_ok: bool,
+    /// Collection literals that become a struct through its `from_array` method: the method
+    /// and its type arguments.
+    conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
     /// Calls that more than one function fits, decided once the rest of the program says more
     /// about what their result has to be.
     pending_calls: Vec<PendingCall>,
@@ -104,6 +110,8 @@ impl<'a> Checker<'a> {
             expected_here: None,
             callees: HashMap::new(),
             pending_calls: Vec::new(),
+            omitted_args_ok: false,
+            conversions: HashMap::new(),
         }
     }
 
@@ -310,6 +318,15 @@ impl<'a> Checker<'a> {
                 ret: self.u.finish(sig.ret, &mut ignore),
             })
             .collect();
+        let conversions = std::mem::take(&mut self.conversions)
+            .into_iter()
+            .map(|(expr, (def, args))| {
+                let args = (args.into_iter())
+                    .map(|a| self.u.finish(a, &mut ignore))
+                    .collect();
+                (expr, (def, args))
+            })
+            .collect();
         let type_args = std::mem::take(&mut self.type_args)
             .into_iter()
             .map(|(expr, args)| {
@@ -346,6 +363,7 @@ impl<'a> Checker<'a> {
             patterns: self.patterns,
             receivers: self.receivers,
             callees: self.callees,
+            conversions,
             common: self.common,
             diverging: self.diverging,
         };
@@ -443,6 +461,12 @@ impl<'a> Checker<'a> {
         span: Span,
     ) -> Vec<TypeId> {
         let params = self.names.struct_params(s);
+        // `List` in a `let` annotation: what they are is worked out from the value.
+        if args.is_empty() && !params.is_empty() && self.omitted_args_ok {
+            return (0..params.len())
+                .map(|_| self.u.fresh(VarKind::Any))
+                .collect();
+        }
         if args.len() != params.len() {
             args.iter().for_each(|&a| {
                 self.lower_arg(a, None);
@@ -731,7 +755,9 @@ impl<'a> Checker<'a> {
             Stmt::Let { ty, value, .. } => {
                 let ty = match ty {
                     Some(annotation) => {
+                        self.omitted_args_ok = true;
                         let expected = self.lower(*annotation);
+                        self.omitted_args_ok = false;
                         let from = self.ast.types.span(*annotation).clone();
                         self.expect(*value, expected, Some(from));
                         expected
@@ -1131,6 +1157,9 @@ impl<'a> Checker<'a> {
                 return true;
             }
         }
+        if self.converts(expr, expected, found) {
+            return true;
+        }
         // `&x` of a narrowed `x` borrows the value, but where a reference to the optional is
         // expected, it borrows the optional: `read(&o)` for `fn read(o: &(i32?))`.
         if let Expr::Borrow {
@@ -1157,6 +1186,45 @@ impl<'a> Checker<'a> {
             }
         }
         false
+    }
+
+    /// Whether collection literal `expr`, of type `found`, becomes the struct `expected` through
+    /// its `from_array` method: `let list: List<i32> = [1, 2, 3]` is
+    /// `List::from_array([1, 2, 3])`. Records it if so.
+    fn converts(&mut self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> bool {
+        let Some(VarKind::Collection { element, len }) = self.u.var_kind(found) else {
+            return false;
+        };
+        let Ty::Struct(owner, _) = *self.u.get(self.u.shallow(expected)) else {
+            return false;
+        };
+        let Some(method) = self.names.method(owner, "from_array") else {
+            return false;
+        };
+        let DefKind::Func(func) = self.names.def(method).kind else {
+            return false;
+        };
+        let (sig, type_args) = self.instantiate(func);
+        let array = self.u.intern(Ty::Array { element, len });
+        let fits = sig.params.len() == 1
+            && self.u.could_fit(sig.params[0], array)
+            && self.u.could_fit(expected, sig.ret);
+        if !fits {
+            return false;
+        }
+        // The method takes the array the literal is, and gives what's expected. Its type
+        // parameters are its own, fresh, so tying them to the array changes nothing else.
+        if self.u.unify(sig.params[0], array).is_err() || !self.u.could_fit(expected, sig.ret) {
+            return false;
+        }
+        // A literal inside, `[[1]]` for a `List<List<i32>>`, stays an array: not what's
+        // expected.
+        if self.u.unify(expected, sig.ret).is_err() {
+            return false;
+        }
+        let _ = self.u.unify(found, array);
+        self.conversions.insert(expr, (method, type_args));
+        true
     }
 
     /// Whether a value of type `found` becomes the slice `expected`: a reference to an array of
@@ -1314,11 +1382,13 @@ impl<'a> Checker<'a> {
                 // An enum whose variants hold nothing converts to the number of its variant.
                 let plain_enum = self.is_plain_enum(self.u.get(self.u.shallow(found)))
                     && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_));
-                // A raw pointer to another: `null() as *T`.
+                // A raw pointer to another, `null() as *T`; or a reference to one, `&items as *T`.
                 let pointer = |c: &Self, ty: TypeId| {
                     matches!(c.u.get(c.u.shallow(ty)), Ty::Pointer | Ty::Ptr(_))
                 };
-                let pointers = pointer(self, found) && pointer(self, target);
+                let reference =
+                    |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::Ref { .. });
+                let pointers = (pointer(self, found) || reference(self, found)) && pointer(self, target);
                 if !plain_enum && !pointers && (!number(self, found) || !number(self, target)) {
                     self.errors.push(TypeError::InvalidCast {
                         from: self.describe(found),

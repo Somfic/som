@@ -1,0 +1,9 @@
+// expect: error Mismatch
+
+/// Only the outer literal becomes a `List`; one inside it stays an array, for now.
+use som::data;
+
+fn main() -> i32 {
+    let nested: List<List> = [[true]];
+    0
+}

@@ -1012,6 +1012,9 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// is wrapped in one.
     fn operand(&mut self, expr: Id<Expr>) -> Operand {
         let typed = self.l.typed;
+        if let Some((method, type_args)) = typed.conversion(expr) {
+            return self.convert(expr, method, type_args.to_vec());
+        }
         if !typed.is_wrapped(expr) && typed.sliced_to(expr).is_none() {
             return self.operand_unwrapped(expr);
         }
@@ -1019,6 +1022,26 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let ty = self.used_ty(expr);
         let temp = self.temp(ty, self.span(expr));
         self.assign(Place::local(temp), rvalue, self.span(expr));
+        self.read(Place::local(temp), ty)
+    }
+
+    /// A collection literal made into a struct by its `from_array` method `method`, with type
+    /// arguments `type_args`: the array, passed to it.
+    fn convert(&mut self, expr: Id<Expr>, method: DefId, type_args: Vec<TypeId>) -> Operand {
+        let DefKind::Func(func) = self.l.names.def(method).kind else {
+            unreachable!("methods are functions")
+        };
+        let span = self.span(expr);
+        let array = self.operand_unwrapped(expr);
+        let type_args = type_args.into_iter().map(|t| self.ty(t)).collect();
+        let id = self.l.instance(func, type_args);
+        let ty = self.l.mir.funcs[id].ret;
+        let temp = self.temp(ty, span.clone());
+        let call = Rvalue::Call {
+            func: id,
+            args: vec![array],
+        };
+        self.assign(Place::local(temp), call, span);
         self.read(Place::local(temp), ty)
     }
 
@@ -1046,6 +1069,9 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// an optional where that's what's expected.
     fn rvalue(&mut self, expr: Id<Expr>) -> Rvalue {
         let typed = self.l.typed;
+        if typed.conversion(expr).is_some() {
+            return Rvalue::Use(self.operand(expr));
+        }
         let sliced = typed.sliced_to(expr).map(|ty| self.ty(ty));
         let value = match sliced {
             Some(slice) => {

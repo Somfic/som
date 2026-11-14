@@ -50,6 +50,9 @@ pub struct Typed {
     /// Calls and function values naming a function that shares its name with others → the
     /// one they name.
     callees: HashMap<Id<Expr>, DefId>,
+    /// Collection literals that become a struct → its `from_array` method and the method's
+    /// type arguments.
+    conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
     /// `match` arms that never finish, like `{ return 0; }`: they have no value to give.
     diverging: HashSet<Id<Expr>>,
     /// `[value; N]` → `N`, as an array type's length.
@@ -283,6 +286,12 @@ impl Typed {
             .get(&expr)
             .copied()
             .or_else(|| names.expr(expr))
+    }
+
+    /// The `from_array` method collection literal `expr` is passed to, to become the struct
+    /// expected where it's used, with the method's type arguments.
+    pub fn conversion(&self, expr: Id<Expr>) -> Option<(DefId, &[TypeId])> {
+        self.conversions.get(&expr).map(|(d, args)| (*d, args.as_slice()))
     }
 
     /// How method call receiver `expr` becomes the method's `self`, if not as it is.

@@ -1,0 +1,25 @@
+// expect: exit 49
+
+/// A collection literal where a `List` is expected becomes one; `List` alone in a `let` works out `T`.
+use som::data;
+
+struct Point { x: i32, y: i32 }
+
+fn total(xs: List<i32>) -> i32 {
+    let mut sum = 0;
+    for x in xs.as_slice() { sum = sum + x; }
+    xs.free();
+    sum
+}
+
+fn main() -> i32 {
+    let mut list: List = [1, 2, 3];
+    list.push(4);
+    let zeros: List<i32> = [0; 5];
+    let points: List<Point> = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
+    let empty: List<bool> = [];
+    let p = points.get(1) else &Point { x: 0, y: 0 };
+    let result = total(list) + zeros.len() as i32 + p.y + total([10, 20]) + empty.len() as i32;
+    zeros.free();
+    result
+}

@@ -1,0 +1,8 @@
+// expect: error WrongTypeArgCount
+
+/// Left out only where the value says what they are: a `let`, not a parameter.
+use som::data;
+
+fn f(xs: List) -> usize { xs.len() }
+
+fn main() -> i32 { 0 }
