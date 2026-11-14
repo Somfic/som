@@ -1,0 +1,23 @@
+// expect: exit 2
+
+/// An `Alloc` never drops the values in it: dropping it only gives the room back. A value read
+/// out of it is the reader's, dropped once like any other.
+use som;
+
+struct Noisy { id: i32, log: *i32 }
+
+impl Drop for Noisy {
+    fn drop(&mut self) { .log.write(0, .log.read(0) * 10 + .id); }
+}
+
+fn main() -> i32 {
+    let mut log = 0;
+    let at = &mut log as *i32;
+    {
+        let mut mem: som::mem::Alloc<Noisy> = som::mem::Alloc::new(2);
+        mem.write(0, Noisy { id: 1, log: at });
+        mem.write(1, Noisy { id: 2, log: at });
+        let second = mem.read(1);
+    }
+    log
+}

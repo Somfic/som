@@ -1,0 +1,18 @@
+// expect: exit 3
+
+/// An `Alloc` is given back whichever way its function ends: an early `return`, or the end.
+use som;
+
+fn pick(early: bool) -> i32 {
+    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::new(2);
+    mem.write(0, 1);
+    mem.write(1, 2);
+    if early {
+        return mem.read(0);
+    }
+    mem.read(1)
+}
+
+fn main() -> i32 {
+    pick(true) + pick(false)
+}

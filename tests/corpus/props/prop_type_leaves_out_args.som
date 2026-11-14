@@ -10,12 +10,12 @@ impl<N: usize, T> From<[T; N]> for Vector<N, T> {
     }
 }
 
-impl<T> Vector<2, T> {
+impl<T: Copy> Vector<2, T> {
     prop x = self.values[0];
     prop y = self.values[1];
 }
 
-impl<T> Vector<3, T> {
+impl<T: Copy> Vector<3, T> {
     prop x = self.values[0];
     prop y = self.values[1];
     prop z = self.values[2];

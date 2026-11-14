@@ -1,0 +1,12 @@
+// expect: exit 3
+
+/// `Alloc::new<u8>()`: the type arguments of a function that has none of its own are its
+/// type's.
+use som;
+
+fn main() -> i32 {
+    let empty = som::mem::Alloc::new<u8>();
+    let mut three = som::mem::Alloc::new<u16>(3);
+    three.write(2, 3);
+    empty.size as i32 + three.read(2) as i32
+}

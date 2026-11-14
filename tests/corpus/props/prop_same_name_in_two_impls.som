@@ -2,11 +2,11 @@
 
 struct Vector<N: usize, T> { values: [T; N] }
 
-impl<T> Vector<2, T> {
+impl<T: Copy> Vector<2, T> {
     prop last = self.values[1];
 }
 
-impl<T> Vector<3, T> {
+impl<T: Copy> Vector<3, T> {
     prop last = self.values[2];
 }
 

@@ -7,7 +7,7 @@ fn main() -> i32 {
 
 struct Pair<T> { a: T, b: T }
 
-impl<T> Pair<T> {
+impl<T: Copy> Pair<T> {
     fn first(self: &Pair<T>) { self.a }
     prop second { self.b }
 }

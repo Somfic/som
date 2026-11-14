@@ -1,10 +1,9 @@
 use som::data;
 
-
-let items: List<String> = List::empty();
+let items = [ 1, 2, 3];
 
 for item in &items {
-    c::printf("%s", item)
+    c::printf("%d\n", item)
 }
 
-c::printf("%s", items.len)
+c::printf("\n%d", items.len)

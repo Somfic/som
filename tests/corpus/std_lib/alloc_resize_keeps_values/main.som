@@ -1,0 +1,17 @@
+// expect: exit 60
+
+/// Resizing keeps the values in the room that's kept: growing keeps them all, shrinking keeps
+/// the first ones.
+use som;
+
+fn main() -> i32 {
+    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::new(2);
+    mem.write(0, 10);
+    mem.write(1, 20);
+    mem.resize(1000);
+    mem.write(999, 30);
+    let grown = mem.read(0) + mem.read(1) + mem.read(999);
+    mem.resize(1);
+    let kept = mem.read(0) - 10;
+    grown + kept + (mem.size as i32) - 1
+}

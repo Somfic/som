@@ -1,7 +1,0 @@
-// expect: ok
-
-use som;
-fn main() {
-    let p: * = som::mem::malloc(100);
-    som::mem::free(p);
-}

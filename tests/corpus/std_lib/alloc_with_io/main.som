@@ -1,0 +1,14 @@
+// expect: exit 0
+
+/// An `Alloc` alongside printing.
+use som;
+
+fn main() -> i32 {
+    som::io::println("Starting...");
+    let mut mem: som::mem::Alloc<u8> = som::mem::Alloc::new(256);
+    mem.write(255, 0);
+    som::io::println("Allocated memory");
+    let last = mem.read(255) as i32;
+    som::io::println("Read it back");
+    last
+}

@@ -51,6 +51,14 @@ impl<T> List<T> {
 
     prop slice = .mem.view(.len);
 
+    fn as_slice(&self) -> &[T] {
+        .mem.view(.len)
+    }
+
+    fn as_slice(&mut self) -> &mut [T] {
+        .mem.view(.len)
+    }
+
     fn clear(&mut self) {
         for i in 0..self.len {
             drop(.mem.read(i));
@@ -60,7 +68,6 @@ impl<T> List<T> {
 }
 
 impl<T: Copy> List<T> {
-    /// A list of copies of `values`: the slice only lends them.
     fn of(values: &[T]) -> Self {
         let mut list: List<T> = List::with_capacity(values.len);
         for value in values {

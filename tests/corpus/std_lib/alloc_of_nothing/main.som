@@ -1,0 +1,13 @@
+// expect: exit 5
+
+/// An `Alloc` of a type with nothing in it, `()`, still counts its room.
+use som;
+
+fn nothing() {}
+
+fn main() -> i32 {
+    let mut mem: som::mem::Alloc<()> = som::mem::Alloc::new(5);
+    mem.write(4, nothing());
+    let read = mem.read(4);
+    mem.size as i32
+}

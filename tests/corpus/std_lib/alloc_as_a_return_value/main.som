@@ -1,0 +1,17 @@
+// expect: exit 6
+
+/// A function makes an `Alloc` and gives it back: the room is its caller's now.
+use som;
+
+fn numbers(count: usize) -> som::mem::Alloc<i32> {
+    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::new(count);
+    for i in 0..count {
+        mem.write(i, i as i32 + 1);
+    }
+    mem
+}
+
+fn main() -> i32 {
+    let mut mem = numbers(3);
+    mem.read(0) + mem.read(1) + mem.read(2)
+}

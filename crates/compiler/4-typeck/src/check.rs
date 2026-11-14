@@ -933,13 +933,17 @@ impl<'a> Checker<'a> {
         (sig, args)
     }
 
-    /// A function's own generic parameters: a method's come after its impl block's, which
-    /// the type it's called on decides.
+    /// The generic parameters type arguments written for a call of `func` stand for: its own,
+    /// after its impl block's; or if it has none, its impl block's, which are the type's.
+    /// `Alloc::new<u8>()` is a `new` of `Alloc<u8>`.
     fn own_type_params(&self, func: Id<Func>) -> Vec<DefId> {
         let all = self.names.type_params(func);
         let inherited = (self.names.impl_of(func))
             .map_or(0, |i| self.names.impls[i].params.len())
             .min(all.len());
+        if inherited == all.len() {
+            return all.to_vec();
+        }
         all[inherited..].to_vec()
     }
 

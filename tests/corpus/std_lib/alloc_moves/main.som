@@ -1,0 +1,11 @@
+// expect: error UseAfterMove
+
+/// An `Alloc` moves rather than copies: two would give the same room back.
+use som;
+
+fn main() -> i32 {
+    let mut a: som::mem::Alloc<i32> = som::mem::Alloc::new(1);
+    let b = a;
+    a.write(0, 1);
+    0
+}

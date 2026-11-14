@@ -1,0 +1,14 @@
+// expect: exit 10
+
+/// Small functions make, fill and read an `Alloc` between them.
+use som;
+
+fn make(size: usize) -> som::mem::Alloc<i32> { som::mem::Alloc::new(size) }
+fn put(mem: &mut som::mem::Alloc<i32>, at: usize, value: i32) { mem.write(at, value); }
+fn first(mem: &som::mem::Alloc<i32>) -> i32 { *mem.at(0) }
+
+fn main() -> i32 {
+    let mut mem = make(2);
+    put(&mut mem, 0, 10);
+    first(&mem)
+}

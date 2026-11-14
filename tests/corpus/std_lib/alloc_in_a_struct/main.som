@@ -1,0 +1,21 @@
+// expect: exit 64
+
+/// A struct holding an `Alloc` gives its room back once, wherever it's moved to.
+use som;
+
+struct Buffer { mem: som::mem::Alloc<u8>, used: usize }
+
+fn make(size: usize) -> Buffer {
+    Buffer { mem: som::mem::Alloc::new(size), used: 0 }
+}
+
+fn keep(buffer: Buffer) -> Buffer { buffer }
+
+fn main() -> i32 {
+    let mut buffer = keep(make(64));
+    buffer.mem.write(0, 64);
+    buffer.used = 1;
+    let moved = buffer;
+    let mut again = keep(moved);
+    again.mem.read(0) as i32
+}

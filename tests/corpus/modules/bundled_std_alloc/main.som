@@ -1,0 +1,9 @@
+// expect: ok
+
+/// The standard library's `som::mem::Alloc` is there to use, without bundling anything.
+use som;
+
+fn main() {
+    let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::new(100);
+    mem.write(99, 1);
+}

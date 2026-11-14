@@ -2,7 +2,7 @@
 
 struct Vector<N: usize, T> { values: [T; N] }
 
-impl<T> Vector<3, T> {
+impl<T: Copy> Vector<3, T> {
     prop y: T { self.values[1] }
 }
 
