@@ -1,0 +1,16 @@
+// expect: exit 4
+
+struct Vector<N: usize, T> { values: [T; N] }
+
+impl Vector<2, f32> {
+    prop size: i32 = 4;
+}
+
+fn takes_f32(x: f32) -> f32 = x;
+
+fn main() -> i32 {
+    let v: Vector = Vector { values: [1.0, 2.0] };
+    let first = v.values[0];
+    takes_f32(first);
+    v.size
+}

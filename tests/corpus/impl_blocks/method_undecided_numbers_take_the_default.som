@@ -1,0 +1,16 @@
+// expect: exit 64
+
+struct Vector<N: usize, T> { values: [T; N] }
+
+impl Vector<2, f32> {
+    fn bits(&self) -> i32 = 32;
+}
+
+impl Vector<2, f64> {
+    fn bits(&self) -> i32 = 64;
+}
+
+fn main() -> i32 {
+    let v: Vector = Vector { values: [1.0, 2.0] };
+    v.bits()
+}

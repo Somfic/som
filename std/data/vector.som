@@ -22,12 +22,20 @@ impl Vector<2, f32> {
     prop normalized {
         Self { values: [ .x / .magintude, .y / .magintude ] }
     }
+
+    fn zero() {
+        Self { values: [ 0.0, 0.0 ]}
+    }
 }
 
 impl Vector<2, f64> {
     prop magintude = f64::sqrt(.x * .x + .y * .y);
     prop normalized {
         Self { values: [ .x / .magintude, .y / .magintude ] }
+    }
+
+    fn zero() {
+        Self { values: [ 0.0, 0.0 ]}
     }
 }
 
@@ -36,12 +44,20 @@ impl Vector<3, f32> {
     prop normalized {
         Self { values: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
     }
+
+    fn zero() {
+        Self { values: [ 0.0, 0.0, 0.0 ]}
+    }
 }
 
 impl Vector<3, f64> {
     prop magintude = f64::sqrt(.x * .x + .y * .y + .z * .z);
     prop normalized {
         Self { values: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
+    }
+
+    fn zero() {
+        Self { values: [ 0.0, 0.0, 0.0 ]}
     }
 }
 

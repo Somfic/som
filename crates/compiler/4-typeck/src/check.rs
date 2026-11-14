@@ -2584,32 +2584,49 @@ impl<'a> Checker<'a> {
         // Each fitting method, and how much the receiver has to change for it: 0 as it is,
         // 1 borrowed, 2 borrowed as `&mut`.
         let mut fitting = Vec::new();
-        // Ones the arguments fit as they are; only if there are none, ones they fit converted.
-        for converting in [false, true] {
-            for def in self.names.overloads(first) {
-                let DefKind::Func(func) = self.names.def(def).kind else {
-                    continue;
-                };
-                let (sig, type_args) = self.instantiate(func);
-                let Some((&self_ty, rest)) = sig.params.split_first() else {
-                    continue;
-                };
-                let Some(cost) = self.receiver_cost(self_ty, receiver_ty) else {
-                    continue;
-                };
-                let fits = rest.len() == found.len()
-                    && self.args_fit(rest, &found, converting)
-                    && expected.is_none_or(|e| self.u.could_fit(e, sig.ret));
-                if fits {
-                    fitting.push((cost, def, func, sig, type_args));
+        // If several fit numbers nothing has decided yet, `[1.0, 2.0].normalize()`, they're
+        // settled to `f64` and `i32`, as they would be anyway, and it's chosen again.
+        for attempt in 0..2 {
+            if attempt == 1 {
+                let mut settled = self.default_numbers(receiver_ty);
+                for &ty in &found {
+                    settled |= self.default_numbers(ty);
+                }
+                if !settled {
+                    break;
+                }
+                fitting.clear();
+            }
+            // Ones the arguments fit as they are; only if there are none, ones they fit converted.
+            for converting in [false, true] {
+                for def in self.names.overloads(first) {
+                    let DefKind::Func(func) = self.names.def(def).kind else {
+                        continue;
+                    };
+                    let (sig, type_args) = self.instantiate(func);
+                    let Some((&self_ty, rest)) = sig.params.split_first() else {
+                        continue;
+                    };
+                    let Some(cost) = self.receiver_cost(self_ty, receiver_ty) else {
+                        continue;
+                    };
+                    let fits = rest.len() == found.len()
+                        && self.args_fit(rest, &found, converting)
+                        && expected.is_none_or(|e| self.u.could_fit(e, sig.ret));
+                    if fits {
+                        fitting.push((cost, def, func, sig, type_args));
+                    }
+                }
+                if !fitting.is_empty() {
+                    break;
                 }
             }
-            if !fitting.is_empty() {
+            if let Some(cheapest) = fitting.iter().map(|f| f.0).min() {
+                fitting.retain(|f| f.0 == cheapest);
+            }
+            if fitting.len() <= 1 {
                 break;
             }
-        }
-        if let Some(cheapest) = fitting.iter().map(|f| f.0).min() {
-            fitting.retain(|f| f.0 == cheapest);
         }
         let candidates = |c: &Self, defs: Vec<DefId>| -> Vec<(String, Span)> {
             (defs.into_iter())
@@ -3350,6 +3367,36 @@ impl<'a> Checker<'a> {
         self.u.could_fit(unref(&self.u, wanted), found)
     }
 
+    /// Settles the numbers in `ty` that nothing has decided yet to what they'd end up as
+    /// anyway, `i32` and `f64`. For choosing between impl blocks that an undecided
+    /// `[1.0, 2.0]` would all fit: the choice is the one it gets with nothing else said,
+    /// not whichever block came first. Returns whether anything was settled.
+    fn default_numbers(&mut self, ty: TypeId) -> bool {
+        let ty = self.u.shallow(ty);
+        match self.u.var_kind(ty) {
+            Some(VarKind::Int) => {
+                let int = self.u.table.i32;
+                return self.u.unify(ty, int).is_ok();
+            }
+            Some(VarKind::Float) => {
+                let float = self.u.table.f64;
+                return self.u.unify(ty, float).is_ok();
+            }
+            Some(VarKind::Collection { element, len }) => {
+                let settled = self.default_numbers(element);
+                return self.default_numbers(len) || settled;
+            }
+            Some(_) => return false,
+            None => {}
+        }
+        let children = self.u.get(ty).children();
+        let mut settled = false;
+        for child in children {
+            settled |= self.default_numbers(child);
+        }
+        settled
+    }
+
     /// Whether `expr` reads a property, `list.len`, rather than a field. Known once it's
     /// inferred.
     fn is_prop(&self, expr: Id<Expr>) -> bool {
@@ -3388,15 +3435,24 @@ impl<'a> Checker<'a> {
             let _ = self.u.unify(object_ty, self.u.table.str_ref);
         }
         // Of the impl blocks with one, the one for the value's type: `x` of a `Vector<3, T>`.
-        let mut chosen = None;
-        for &def in &candidates {
-            let func = func_of(self, def);
-            let (sig, type_args) = self.instantiate(func);
-            if self.impl_target_fits(func, &type_args, object_ty) {
-                chosen = Some((def, func, sig, type_args));
-                break;
+        // If several fit a value with numbers nothing has decided, `[1.0, 2.0]`, they're
+        // settled to `f64` and `i32` first, as they would be anyway.
+        let fitting = |c: &mut Self| {
+            let mut fitting = Vec::new();
+            for &def in &candidates {
+                let func = func_of(c, def);
+                let (sig, type_args) = c.instantiate(func);
+                if c.impl_target_fits(func, &type_args, object_ty) {
+                    fitting.push((def, func, sig, type_args));
+                }
             }
+            fitting
+        };
+        let mut found = fitting(self);
+        if found.len() > 1 && self.default_numbers(object_ty) {
+            found = fitting(self);
         }
+        let chosen = found.into_iter().next();
         let Some((def, func, sig, type_args)) = chosen else {
             let funcs: Vec<Id<Func>> = candidates.iter().map(|&d| func_of(self, d)).collect();
             self.not_on_impl_target(&funcs, object_ty, field, "property");
