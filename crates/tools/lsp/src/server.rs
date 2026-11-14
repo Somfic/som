@@ -635,6 +635,17 @@ impl LanguageServer for SomLanguageServer {
                         Some(methods),
                     ));
                 }
+                Item::Alias(alias) => {
+                    let span = alias.name.span.merge(ast.types.span(alias.ty));
+                    symbols.push(symbol(
+                        alias.name.name.to_string(),
+                        Some(ast.type_text(alias.ty)),
+                        SymbolKind::TYPE_PARAMETER,
+                        &span,
+                        &alias.name.span,
+                        None,
+                    ));
+                }
                 Item::Use(_) => {}
             }
         }
@@ -1228,22 +1239,7 @@ impl LanguageServer for SomLanguageServer {
             hints.push(type_hint(&name.span, ty(a, t)));
         }
         hints.extend(return_type_hints(a, &file));
-        // `let list: List = [1, 2]`: the type arguments left out, after the name.
-        for (id, stmt) in a.ast.stmts.iter() {
-            let Stmt::Let {
-                ty: Some(annotation),
-                ..
-            } = stmt
-            else {
-                continue;
-            };
-            if a.ast.types.span(*annotation).source.identifier() != file {
-                continue;
-            }
-            if let Some(t) = a.names.local(id).and_then(|def| a.typed.try_local(def)) {
-                omitted_args_hints(a, *annotation, t, &mut hints);
-            }
-        }
+        hints.extend(annotation_hints(a, &file));
 
         // What an optional used as a condition asks: `if x` is `if x != none`, and so is each
         // optional operand of `and`, `or` and `!`.
@@ -1492,7 +1488,10 @@ fn describe(a: &Analysis, def: DefId) -> String {
                 None => d.name.to_string(),
             }
         }
-        DefKind::TypeParam { .. } | DefKind::StructParam { .. } | DefKind::ImplParam { .. } => {
+        DefKind::TypeParam { .. }
+        | DefKind::StructParam { .. }
+        | DefKind::ImplParam { .. }
+        | DefKind::AliasParam { .. } => {
             format!("type parameter {}", d.name)
         }
         DefKind::Trait(t) => {
@@ -1508,6 +1507,16 @@ fn describe(a: &Analysis, def: DefId) -> String {
             format!("trait {} {{\n{}\n}}", t.name, lines.join("\n"))
         }
         DefKind::AssocType { .. } | DefKind::ImplType { .. } => format!("type {}", d.name),
+        DefKind::Alias { ty } => {
+            let params: Vec<&str> = (a.names.alias_params(def).iter())
+                .map(|&p| &*a.names.def(p).name)
+                .collect();
+            let generics = match params.is_empty() {
+                true => String::new(),
+                false => format!("<{}>", params.join(", ")),
+            };
+            format!("type {}{generics} = {}", d.name, a.ast.type_text(*ty))
+        }
         DefKind::SelfType { impl_ } => match a.names.impls[*impl_].owner {
             Some(owner) => format!("Self = {}", a.names.def(owner).name),
             None => "Self".to_string(),
@@ -2697,6 +2706,28 @@ fn can_have_dot(a: &Analysis, expr: Id<Expr>) -> bool {
     }
 }
 
+/// `let list: List = [1, 2]`: the type arguments each `let` annotation in `file` leaves out,
+/// after it.
+fn annotation_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
+    let mut hints = Vec::new();
+    for (id, stmt) in a.ast.stmts.iter() {
+        let Stmt::Let {
+            ty: Some(annotation),
+            ..
+        } = stmt
+        else {
+            continue;
+        };
+        if a.ast.types.span(*annotation).source.identifier() != file {
+            continue;
+        }
+        if let Some(t) = a.names.local(id).and_then(|def| a.typed.try_local(def)) {
+            omitted_args_hints(a, *annotation, t, &mut hints);
+        }
+    }
+    hints
+}
+
 /// `<i32>` after each generic struct in annotation `written` whose type arguments are left
 /// out, from `t`, the type it turned out to be.
 fn omitted_args_hints(
@@ -2706,6 +2737,36 @@ fn omitted_args_hints(
     hints: &mut Vec<InlayHint>,
 ) {
     use som_ast::TypeExpr;
+    // An alias: what its own parameters turned out to be, not those of what it stands for.
+    if let TypeExpr::Named { args, .. } = &a.ast.types[written]
+        && let Some(alias) = a.names.ty(written)
+        && let DefKind::Alias { ty: body } = a.names.def(alias).kind
+    {
+        let params = a.names.alias_params(alias);
+        let mut bound = HashMap::new();
+        alias_params_in(a, body, t, &mut bound);
+        if args.is_empty() && !params.is_empty() {
+            let shown: Vec<String> = (params.iter())
+                .map(|p| bound.get(p).map_or("_".into(), |&arg| ty(a, arg)))
+                .collect();
+            hints.push(InlayHint {
+                position: convert::span_to_range(a.ast.types.span(written)).end,
+                label: InlayHintLabel::String(format!("<{}>", shown.join(", "))),
+                kind: Some(InlayHintKind::TYPE),
+                text_edits: None,
+                tooltip: None,
+                padding_left: None,
+                padding_right: None,
+                data: None,
+            });
+        }
+        for (&arg, param) in args.iter().zip(params) {
+            if let Some(&actual) = bound.get(param) {
+                omitted_args_hints(a, arg, actual, hints);
+            }
+        }
+        return;
+    }
     match (&a.ast.types[written], a.typed.ty(t)) {
         (TypeExpr::Named { args, .. }, Ty::Struct(_, actual)) if args.is_empty() => {
             if actual.is_empty() {
@@ -2737,6 +2798,51 @@ fn omitted_args_hints(
             },
         ) => {
             omitted_args_hints(a, *inner, *actual, hints);
+        }
+        _ => {}
+    }
+}
+
+/// What each alias parameter in `written`, an alias's type, stands for, given that it
+/// turned out to be `t`: into `bound`.
+fn alias_params_in(
+    a: &Analysis,
+    written: Id<som_ast::TypeExpr>,
+    t: som_typeck::TypeId,
+    bound: &mut HashMap<DefId, som_typeck::TypeId>,
+) {
+    use som_ast::TypeExpr;
+    match (&a.ast.types[written], a.typed.ty(t)) {
+        (TypeExpr::Named { args, .. }, actual) => match a.names.ty(written) {
+            Some(def) if matches!(a.names.def(def).kind, DefKind::AliasParam { .. }) => {
+                bound.insert(def, t);
+            }
+            // Another alias: what its parameters stand for, then what was written for them.
+            Some(def) if let DefKind::Alias { ty: body } = a.names.def(def).kind => {
+                let mut inner = HashMap::new();
+                alias_params_in(a, body, t, &mut inner);
+                for (&arg, param) in args.iter().zip(a.names.alias_params(def)) {
+                    if let Some(&actual) = inner.get(param) {
+                        alias_params_in(a, arg, actual, bound);
+                    }
+                }
+            }
+            _ => {
+                if let Ty::Struct(_, actual) = actual {
+                    for (&arg, &actual) in args.iter().zip(actual) {
+                        alias_params_in(a, arg, actual, bound);
+                    }
+                }
+            }
+        },
+        (TypeExpr::Array { element, len }, Ty::Array { element: e, len: l }) => {
+            alias_params_in(a, *element, *e, bound);
+            alias_params_in(a, *len, *l, bound);
+        }
+        (TypeExpr::Optional(inner), Ty::Optional(actual))
+        | (TypeExpr::Reference { to: inner, .. }, Ty::Ref { to: actual, .. })
+        | (TypeExpr::PointerTo(inner), Ty::Ptr(actual)) => {
+            alias_params_in(a, *inner, *actual, bound);
         }
         _ => {}
     }
@@ -3451,6 +3557,40 @@ mod tests {
                 (13, 15, " -> Self".to_string()),
                 (14, 18, " -> Pair<i32>".to_string())
             ]
+        );
+    }
+
+    #[test]
+    fn aliases_hint_only_their_own_omitted_arguments() {
+        let dir = std::env::temp_dir().join(format!("som_lsp_alias_hints_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = dir.join("main.som");
+        let text = "struct Vector<N: usize, T> { values: [T; N] }\n\
+                    type Vector3f = Vector<3, f32>;\n\
+                    type Vector3<T> = Vector<3, T>;\n\
+                    struct Box<T> { value: T }\n\
+                    fn main() -> i32 {\n\
+                    let a: Vector3f = Vector { values: [0.0, 0.0, 0.0] };\n\
+                    let b: Vector3 = Vector { values: [1, 2, 3] };\n\
+                    let c: Box<Vector3f> = Box { value: a };\n\
+                    let d: Vector = Vector { values: [true] };\n\
+                    0\n}\n";
+        std::fs::write(&main, text).unwrap();
+        let analysis = som_driver::analyze(&dir, &som_driver::Options::default());
+        let file = main.to_string_lossy();
+        let labels: Vec<(u32, u32, String)> = annotation_hints(&analysis, &file)
+            .into_iter()
+            .map(|h| match h.label {
+                InlayHintLabel::String(label) => (h.position.line, h.position.character, label),
+                InlayHintLabel::LabelParts(_) => unreachable!(),
+            })
+            .collect();
+        std::fs::remove_dir_all(&dir).unwrap();
+        // Nothing for `Vector3f`, which leaves nothing out, nor inside `Box<Vector3f>`;
+        // `Vector3`'s own parameter, not `Vector`'s two.
+        assert_eq!(
+            labels,
+            [(6, 14, "<i32>".to_string()), (8, 13, "<1, bool>".to_string())]
         );
     }
 

@@ -1,70 +1,100 @@
+type Vector2i = Vector<2, i32>;
+type Vector3i = Vector<3, i32>;
+
+type Vector2f = Vector<2, f32>;
+type Vector3f = Vector<3, f32>;
+
 struct Vector<N: usize, T> {
-    values: [T; N]
+    components: [T; N]
 }
 
 impl<N: usize, T> Vector<N, T> {
-    fn new(values: [T; N]) {
-        Vector { values }
+    fn new(components: [T; N]) {
+        Vector { components }
     }
 
     fn empty(empty: T) {
-        Vector { values: [empty; N] }
+        Vector { components: [empty; N] }
     }
 }
 
 impl<T> Vector<2, T> {
-    prop x = .values[0];
-    prop y = .values[1];
+    prop x = .components[0];
+    prop y = .components[1];
+}
+
+impl Vector<2, i32> {
+    fn zero() {
+        Self { components: [ 0, 0 ]}
+    }
+}
+
+impl Vector<2, i64> {
+    fn zero() {
+        Self { components: [ 0, 0 ]}
+    }
 }
 
 impl Vector<2, f32> {
     prop magintude = f32::sqrt(.x * .x + .y * .y);
     prop normalized {
-        Self { values: [ .x / .magintude, .y / .magintude ] }
+        Self { components: [ .x / .magintude, .y / .magintude ] }
     }
 
     fn zero() {
-        Self { values: [ 0.0, 0.0 ]}
+        Self { components: [ 0.0, 0.0 ]}
     }
 }
 
 impl Vector<2, f64> {
     prop magintude = f64::sqrt(.x * .x + .y * .y);
     prop normalized {
-        Self { values: [ .x / .magintude, .y / .magintude ] }
+        Self { components: [ .x / .magintude, .y / .magintude ] }
     }
 
     fn zero() {
-        Self { values: [ 0.0, 0.0 ]}
+        Self { components: [ 0.0, 0.0 ]}
+    }
+}
+
+impl Vector<3, i32> {
+    fn zero() {
+        Self { components: [ 0, 0, 0 ]}
+    }
+}
+
+impl Vector<3, i64> {
+    fn zero() {
+        Self { components: [ 0, 0, 0 ]}
     }
 }
 
 impl Vector<3, f32> {
     prop magintude = f32::sqrt(.x * .x + .y * .y + .z * .z);
     prop normalized {
-        Self { values: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
+        Self { components: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
     }
 
     fn zero() {
-        Self { values: [ 0.0, 0.0, 0.0 ]}
+        Self { components: [ 0.0, 0.0, 0.0 ]}
     }
 }
 
 impl Vector<3, f64> {
     prop magintude = f64::sqrt(.x * .x + .y * .y + .z * .z);
     prop normalized {
-        Self { values: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
+        Self { components: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
     }
 
     fn zero() {
-        Self { values: [ 0.0, 0.0, 0.0 ]}
+        Self { components: [ 0.0, 0.0, 0.0 ]}
     }
 }
 
 impl<T> Vector<3, T> {
-    prop x = .values[0];
-    prop y = .values[1];
-    prop z = .values[2];
+    prop x = .components[0];
+    prop y = .components[1];
+    prop z = .components[2];
 
     prop xy: Vector = [.x, .y];
     prop yz: Vector = [.y, .z];
@@ -72,10 +102,10 @@ impl<T> Vector<3, T> {
 }
 
 impl<T> Vector<4, T> {
-    prop x = .values[0];
-    prop y = .values[1];
-    prop z = .values[2];
-    prop w = .values[3];
+    prop x = .components[0];
+    prop y = .components[1];
+    prop z = .components[2];
+    prop w = .components[3];
 
     prop xy: Vector = [.x, .y];
     prop yz: Vector = [.y, .z];
@@ -85,13 +115,13 @@ impl<T> Vector<4, T> {
 }
 
 impl<N: usize, T> From<[T; N]> for Vector<N, T> {
-    fn from(values: [T; N]) -> Self {
-        Vector { values: values }
+    fn from(components: [T; N]) -> Self {
+        Vector { components: components }
     }
 }
 
 impl<N: usize, T> From<Vector<N, T>> for [T; N]  {
     fn from(vector: Vector<N, T>) -> [T; N] {
-        vector.values
+        vector.components
     }
 }

@@ -1,0 +1,18 @@
+// expect: exit 11
+
+struct Vector<N: usize, T> { values: [T; N] }
+
+type Vector3<T> = Vector<3, T>;
+type Row<N: usize> = Vector<N, i32>;
+type Grid = Vector3<Row<2>>;
+
+fn total(v: &Vector3<i32>) -> i32 { v.values[0] + v.values[1] + v.values[2] }
+
+fn main() -> i32 {
+    let v: Vector3<i32> = Vector { values: [1, 2, 3] };
+    let r: Row<2> = Vector { values: [4, 5] };
+    let g: Grid = Vector { values: [r, Vector { values: [0, 0] }, Vector { values: [0, 0] }] };
+    // Its arguments can be left to the value, like a struct's.
+    let w: Vector3 = Vector { values: [0, 0, 0] };
+    total(&v) + g.values[0].values[1] + w.values[0]
+}

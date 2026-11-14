@@ -176,6 +176,27 @@ impl<'a> Resolver<'a> {
                             self.define_func(id, m, false);
                         }
                     }
+                    Item::Alias(alias) => {
+                        let kind = DefKind::Alias { ty: alias.ty };
+                        let def = (self.names).define(
+                            &alias.name.name,
+                            kind,
+                            alias.name.span.clone(),
+                            m,
+                        );
+                        let params = (alias.generics.iter().enumerate())
+                            .map(|(index, g)| {
+                                let kind = DefKind::AliasParam {
+                                    index,
+                                    value: g.ty.is_some(),
+                                };
+                                self.names
+                                    .define(&g.name.name, kind, g.name.span.clone(), m)
+                            })
+                            .collect();
+                        self.names.add_alias(def, params);
+                        self.add_item(m, &alias.name, def);
+                    }
                     Item::Use(_) => {}
                 }
             }
@@ -361,6 +382,8 @@ impl<'a> Resolver<'a> {
         let ast = self.ast;
         // Impl blocks, counted in the order `collect_methods` saw them.
         let mut impl_index = 0;
+        // Type aliases, counted in the order `collect_items` saw them.
+        let mut alias_index = 0;
         for (m, module) in ast.modules.iter().enumerate() {
             self.module = m;
             for item in &module.items {
@@ -405,6 +428,24 @@ impl<'a> Resolver<'a> {
                         {
                             self.resolve_type(field.ty);
                         }
+                        self.type_params.clear();
+                    }
+                    Item::Alias(alias) => {
+                        // Its type can be written in terms of its parameters.
+                        let def = self.names.aliases()[alias_index];
+                        alias_index += 1;
+                        let params = self.names.alias_params(def).to_vec();
+                        self.type_params.clear();
+                        for (g, &param) in alias.generics.iter().zip(&params) {
+                            self.type_params.push((&g.name.name, param));
+                        }
+                        for (g, &param) in alias.generics.iter().zip(&params) {
+                            if let Some(ty) = g.ty {
+                                self.resolve_type(ty);
+                            }
+                            self.resolve_bounds(g, param);
+                        }
+                        self.resolve_type(alias.ty);
                         self.type_params.clear();
                     }
                     Item::Use(_) => {}
@@ -995,6 +1036,8 @@ impl<'a> Resolver<'a> {
                     | DefKind::ImplParam { .. }
                     | DefKind::SelfType { .. }
                     | DefKind::ImplType { .. }
+                    | DefKind::Alias { .. }
+                    | DefKind::AliasParam { .. }
             ),
             // `Shape::Circle(1.0)` and `Shape::Rect { … }` make a variant.
             Expect::Func => matches!(kind, DefKind::Func(_) | DefKind::Variant { .. }),
@@ -1008,6 +1051,8 @@ impl<'a> Resolver<'a> {
                     | DefKind::ImplParam { .. }
                     | DefKind::SelfType { .. }
                     | DefKind::ImplType { .. }
+                    | DefKind::Alias { .. }
+                    | DefKind::AliasParam { .. }
             ),
             Expect::Trait => matches!(kind, DefKind::Trait(_)),
         }

@@ -21,18 +21,12 @@ impl<T> List<T> {
         List { items: items, len: 0, capacity: capacity }
     }
 
-    /// How many values it holds.
-    fn len(self: &List<T>) -> usize {
-        .len
-    }
-
-    fn is_empty(self: &List<T>) -> bool {
-        .len == 0
-    }
+    prop is_empty: bool = .len == 0;
+    prop is_full = .len == .capacity;
 
     /// Adds `value` at the end.
     fn push(self: &mut List<T>, value: T) {
-        if .len == .capacity {
+        if .is_full {
             let capacity = 4 if .capacity == 0 else .capacity * 2;
             .items.resize(capacity);
             .capacity = capacity;

@@ -69,6 +69,13 @@ pub(crate) struct Checker<'a> {
     /// Lowering a `let` annotation, where a generic struct's type arguments can be left out:
     /// `let list: List = [1, 2]`.
     omitted_args_ok: bool,
+    /// The type aliases being expanded, innermost last: one met again refers to itself.
+    expanding: Vec<DefId>,
+    /// Aliases already reported as referring to themselves, so each is reported once.
+    cyclic: HashSet<DefId>,
+    /// What the generic parameters of the aliases being expanded stand for. Outside an
+    /// expansion, a parameter stands for itself.
+    alias_args: HashMap<DefId, TypeId>,
     /// Values that become a struct through its `From` implementation: the trait's `from`
     /// and its type arguments.
     conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
@@ -127,6 +134,9 @@ impl<'a> Checker<'a> {
             pending_calls: Vec::new(),
             checked: HashSet::new(),
             omitted_args_ok: false,
+            expanding: Vec::new(),
+            cyclic: HashSet::new(),
+            alias_args: HashMap::new(),
             impls: Vec::new(),
             current_func: None,
             obligations: Vec::new(),
@@ -146,6 +156,14 @@ impl<'a> Checker<'a> {
                     som_ast::Item::Impl(block) => Some(block),
                     _ => None,
                 });
+        let aliases = (ast.modules.iter())
+            .flat_map(|m| &m.items)
+            .filter_map(|item| match item {
+                som_ast::Item::Alias(alias) => Some(alias),
+                _ => None,
+            })
+            .zip(self.names.aliases())
+            .flat_map(|(alias, &def)| alias.generics.iter().zip(self.names.alias_params(def)));
         let generics = (ast.structs.iter())
             .flat_map(|(id, s)| s.generics.iter().zip(self.names.struct_params(id)))
             .chain(
@@ -156,7 +174,8 @@ impl<'a> Checker<'a> {
             .chain(
                 (ast.funcs.iter())
                     .flat_map(|(id, f)| f.generics.iter().zip(self.names.type_params(id))),
-            );
+            )
+            .chain(aliases);
         for (generic, &def) in generics.collect::<Vec<_>>() {
             if let Some(ty) = generic.ty {
                 let lowered = self.lower(ty);
@@ -167,6 +186,16 @@ impl<'a> Checker<'a> {
                     });
                 }
                 self.value_params.insert(def, lowered);
+            }
+        }
+
+        // Every type alias, used or not, so one that refers to itself is reported.
+        // Its parameters stand for themselves.
+        for def in self.names.aliases().to_vec() {
+            if let DefKind::Alias { ty } = self.names.def(def).kind {
+                self.expanding.push(def);
+                self.lower(ty);
+                self.expanding.pop();
             }
         }
 
@@ -521,6 +550,10 @@ impl<'a> Checker<'a> {
                     Ty::Param(def)
                 }
                 Some((def, DefKind::ImplParam { .. })) => Ty::Param(def),
+                Some((def, DefKind::AliasParam { .. })) => match self.alias_args.get(&def) {
+                    Some(&ty) => return ty,
+                    None => Ty::Param(def),
+                },
                 Some((_, DefKind::SelfType { impl_ })) => return self.self_type(impl_),
                 Some((_, DefKind::ImplType { impl_, index })) => {
                     return self.impl_type(impl_, index);
@@ -529,6 +562,7 @@ impl<'a> Checker<'a> {
                     let base = self.names.projection_base(id);
                     return self.assoc_type(base, trait_, index);
                 }
+                Some((def, DefKind::Alias { ty })) => return self.lower_alias(id, def, ty, args),
                 _ => Ty::Error, // already reported by the resolver
             },
             // `&str` from before strings were slices.
@@ -577,6 +611,90 @@ impl<'a> Checker<'a> {
             }
         };
         self.u.intern(ty)
+    }
+
+    /// What alias `def`, written at `id` with `args`, stands for: its type, `ty`, with its
+    /// generic parameters standing for `args`.
+    fn lower_alias(
+        &mut self,
+        id: Id<TypeExpr>,
+        def: DefId,
+        ty: Id<TypeExpr>,
+        args: &[Id<TypeExpr>],
+    ) -> TypeId {
+        let params = self.names.alias_params(def).to_vec();
+        let span = self.ast.types.span(id).clone();
+        // `Vector3` in a `let` annotation: what its arguments are is worked out from the value.
+        let args: Vec<TypeId> = if args.is_empty() && !params.is_empty() && self.omitted_args_ok
+        {
+            (0..params.len())
+                .map(|_| self.u.fresh(VarKind::Any))
+                .collect()
+        } else if args.len() != params.len() {
+            args.iter().for_each(|&a| {
+                self.lower_arg(a, None);
+            });
+            self.errors.push(TypeError::WrongTypeArgCount {
+                name: self.names.def(def).name.to_string(),
+                expected: params.len(),
+                found: args.len(),
+                span,
+            });
+            return self.u.table.error;
+        } else {
+            (args.iter().zip(&params))
+                .map(|(&arg, &param)| self.lower_arg(arg, Some(param)))
+                .collect()
+        };
+
+        if self.expanding.contains(&def) {
+            let start = self.expanding.iter().position(|&d| d == def).unwrap_or(0);
+            // Report each alias in the cycle once, at its own definition.
+            for &alias in &self.expanding[start..] {
+                if self.cyclic.insert(alias) {
+                    let alias = self.names.def(alias);
+                    self.errors.push(TypeError::AliasCycle {
+                        name: alias.name.to_string(),
+                        span: alias.span.clone(),
+                    });
+                }
+            }
+            return self.u.table.error;
+        }
+        if self.cyclic.contains(&def) {
+            return self.u.table.error;
+        }
+        let lowered = self.expand_alias(def, ty, &params, &args);
+        if self.cyclic.contains(&def) {
+            return self.u.table.error;
+        }
+        lowered
+    }
+
+    /// Alias `def`'s type, `ty`, with its parameters `params` standing for `args`.
+    fn expand_alias(
+        &mut self,
+        def: DefId,
+        ty: Id<TypeExpr>,
+        params: &[DefId],
+        args: &[TypeId],
+    ) -> TypeId {
+        let outer: Vec<_> = (params.iter().zip(args))
+            .map(|(&param, &arg)| (param, self.alias_args.insert(param, arg)))
+            .collect();
+        // What it stands for is written out in full; nothing in it can be left out.
+        let omitted = std::mem::take(&mut self.omitted_args_ok);
+        self.expanding.push(def);
+        let lowered = self.lower(ty);
+        self.expanding.pop();
+        self.omitted_args_ok = omitted;
+        for (param, outer) in outer {
+            match outer {
+                Some(ty) => self.alias_args.insert(param, ty),
+                None => self.alias_args.remove(&param),
+            };
+        }
+        lowered
     }
 
     /// The arguments written for struct `s`, `def`: each a type, or a value for a value
@@ -681,6 +799,14 @@ impl<'a> Checker<'a> {
                 };
                 let ty = self.u.intern(ty);
                 return self.u.normalize(ty);
+            }
+            // A value parameter of an alias being expanded: the value it stands for.
+            TypeExpr::Named { ref args, .. }
+                if args.is_empty()
+                    && let Some(def) = self.names.ty(id)
+                    && let Some(&value) = self.alias_args.get(&def) =>
+            {
+                return value;
             }
             TypeExpr::Named { ref args, .. }
                 if args.is_empty()

@@ -1,0 +1,13 @@
+// expect: exit 3
+
+struct Vector<N: usize> { values: [i32; N] }
+
+impl Vector<2> { fn zero() { Self { values: [0, 0] } } }
+impl Vector<3> { fn zero() { Self { values: [1, 1, 1] } } }
+
+type Vector3 = Vector<3>;
+
+fn main() -> i32 {
+    let v: Vector3 = Vector::zero();
+    v.values[0] + v.values[1] + v.values[2]
+}

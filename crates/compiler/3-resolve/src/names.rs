@@ -19,6 +19,10 @@ pub enum DefKind {
     Binding(Id<Pattern>),
     /// `trait Iterator { … }`
     Trait(Id<Trait>),
+    /// `type Vector3 = Vector<3, f32>;`: another name for the type `ty` describes.
+    Alias { ty: Id<TypeExpr> },
+    /// The `index`th generic parameter of a type alias: `T` in `type Vector3<T> = Vector<3, T>`.
+    AliasParam { index: usize, value: bool },
     /// The `index`th associated type of a trait: `Item` in `trait Iterator { type Item; }`.
     AssocType { trait_: Id<Trait>, index: usize },
     /// The `index`th generic parameter of impl block `impl_` (see `Names::impls`), as its
@@ -180,6 +184,10 @@ pub struct Names {
     funcs: Vec<Option<DefId>>,
     params: Vec<Vec<DefId>>,
     type_params: Vec<Vec<DefId>>,
+    /// Every type alias's definition, in the order written, module by module.
+    aliases: Vec<DefId>,
+    /// Each type alias's generic parameters.
+    alias_params: HashMap<DefId, Vec<DefId>>,
     /// Each struct's type parameters.
     struct_params: Vec<Vec<DefId>>,
     structs: Vec<Option<DefId>>,
@@ -227,6 +235,8 @@ impl Names {
             funcs: vec![None; ast.funcs.len()],
             params: vec![Vec::new(); ast.funcs.len()],
             type_params: vec![Vec::new(); ast.funcs.len()],
+            aliases: Vec::new(),
+            alias_params: HashMap::new(),
             struct_params: vec![Vec::new(); ast.structs.len()],
             structs: vec![None; ast.structs.len()],
             methods: HashMap::new(),
@@ -322,6 +332,21 @@ impl Names {
         self.type_params[func.id].push(def);
     }
 
+    pub(crate) fn add_alias(&mut self, def: DefId, params: Vec<DefId>) {
+        self.aliases.push(def);
+        self.alias_params.insert(def, params);
+    }
+
+    /// Every type alias's definition, in the order they're written, module by module.
+    pub fn aliases(&self) -> &[DefId] {
+        &self.aliases
+    }
+
+    /// A type alias's generic parameters.
+    pub fn alias_params(&self, alias: DefId) -> &[DefId] {
+        self.alias_params.get(&alias).map_or(&[], Vec::as_slice)
+    }
+
     pub(crate) fn push_struct_param(&mut self, s: Id<Struct>, def: DefId) {
         self.struct_params[s.id].push(def);
     }
@@ -367,6 +392,7 @@ impl Names {
             DefKind::TypeParam { value: true, .. }
                 | DefKind::StructParam { value: true, .. }
                 | DefKind::ImplParam { value: true, .. }
+                | DefKind::AliasParam { value: true, .. }
         )
     }
 

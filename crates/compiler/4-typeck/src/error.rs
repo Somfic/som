@@ -138,6 +138,11 @@ pub enum TypeError {
         found: usize,
         span: Span,
     },
+    /// `type A = B; type B = A;`: an alias that stands for itself, so it has no type to stand for.
+    AliasCycle {
+        name: String,
+        span: Span,
+    },
     /// A value where a type is needed: `x: N` for a value parameter `N`, or `Pair<5>`.
     ValueAsType {
         what: Message,
@@ -600,6 +605,11 @@ impl TypeError {
                     }
                 ])
                 .with_label(Label::primary(span.clone(), "here"))
+            }
+            TypeError::AliasCycle { name, span } => {
+                Diagnostic::error(msg!["type alias ", struct_name(name), " refers to itself"])
+                    .with_label(Label::primary(span.clone(), "used in its own definition"))
+                    .with_hint(msg!["an alias stands for its type everywhere, so it can't contain itself"])
             }
             TypeError::ValueAsType { what, span } => {
                 Diagnostic::error(msg![what.clone(), " is a value, not a type"])

@@ -1,0 +1,6 @@
+// expect: error AliasCycle
+
+type A = B;
+type B = [A; 2];
+
+fn main() -> i32 { 0 }

@@ -1,0 +1,8 @@
+// expect: error WrongTypeArgCount
+
+type Number = i32;
+
+fn main() -> i32 {
+    let x: Number<i32> = 1;
+    x
+}
