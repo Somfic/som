@@ -168,14 +168,15 @@ impl<'a> Checker<'a> {
             }
         }
 
-        self.check_overloads();
-
         for (id, func) in ast.funcs.iter() {
             if let Some(body) = func.body {
                 self.check_body(id, func, body);
                 self.settle(func.name.span.clone());
             }
         }
+
+        // After the bodies, which decide unwritten return types: `fn f(x: i32) { 1 }` twice.
+        self.check_overloads();
 
         for (expr, op, lhs, rhs) in std::mem::take(&mut self.deferred_ops) {
             if self.operand_ok(op, lhs) == Some(false) || self.u.var_kind(lhs) == Some(VarKind::Any)
@@ -2203,11 +2204,17 @@ impl<'a> Checker<'a> {
                 })
                 .collect();
             for (i, (f, span)) in funcs.iter().enumerate() {
+                // The same types, as far as they're known: an integer not yet decided counts as
+                // the same as any integer.
+                let alike =
+                    |c: &Self, x: TypeId, y: TypeId| c.u.could_fit(x, y) && c.u.could_fit(y, x);
                 let same = funcs[..i].iter().find(|(g, _)| {
+                    let (fs, gs) = (&self.sigs[f.id], &self.sigs[g.id]);
                     self.names.type_params(*f).is_empty()
                         && self.names.type_params(*g).is_empty()
-                        && self.sigs[f.id].params == self.sigs[g.id].params
-                        && self.sigs[f.id].ret == self.sigs[g.id].ret
+                        && fs.params.len() == gs.params.len()
+                        && (fs.params.iter().zip(&gs.params)).all(|(&x, &y)| alike(self, x, y))
+                        && alike(self, fs.ret, gs.ret)
                 });
                 if let Some((_, previous)) = same {
                     self.errors.push(TypeError::DuplicateOverload {

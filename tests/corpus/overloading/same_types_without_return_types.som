@@ -1,0 +1,12 @@
+// expect: error DuplicateOverload
+
+/// Return types left out are compared once the bodies decide them.
+fn hello(i: i32) {
+    1
+}
+
+fn hello(i: i32) {
+    1
+}
+
+let a = hello(12);

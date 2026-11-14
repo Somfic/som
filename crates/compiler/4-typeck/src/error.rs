@@ -591,13 +591,13 @@ impl TypeError {
                 candidates,
                 span,
             } => {
-                let mut d =
-                    Diagnostic::error(msg!["more than one ", func(name), " fits this call"])
-                        .with_label(Label::primary(span.clone(), "which one is meant?"));
+                let mut d = Diagnostic::error(msg!["unambiguous call to ", func(name)]).with_label(
+                    Label::primary(span.clone(), "cannot determine which overload is meant"),
+                );
                 for c in candidates {
-                    d = d.with_hint(msg!["it could be ", code(c)]);
+                    d = d.with_hint(msg!["candidate", code(c)]);
                 }
-                d.with_hint("say what type the result should be, to pick one")
+                d.with_hint("specify a return type to indicate the overload")
             }
             TypeError::DuplicateOverload {
                 name,
