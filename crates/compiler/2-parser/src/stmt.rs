@@ -153,7 +153,7 @@ impl Parser<'_> {
     }
 
     /// The `x` in `break x;` or `continue x;`: which `for` loop, by its variable.
-    fn parse_loop_target(&mut self) -> Option<Option<som_ast::Ident>> {
+    pub(crate) fn parse_loop_target(&mut self) -> Option<Option<som_ast::Ident>> {
         if !self.at(TokenKind::Ident) {
             return Some(None);
         }

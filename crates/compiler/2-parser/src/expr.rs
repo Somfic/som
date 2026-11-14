@@ -1,4 +1,4 @@
-use som_ast::{Arm, Expr, Id, Ident, Pattern, PatternFields, Span};
+use som_ast::{Arm, Expr, Id, Ident, Pattern, PatternFields, Span, Stmt};
 use som_base::message::code;
 use som_base::msg;
 use som_lexer::TokenKind;
@@ -324,6 +324,26 @@ impl Parser<'_> {
                         )?;
                         Expr::Array(items)
                     }
+                }
+            }
+
+            // `get(i) else return none`: leaving, where a value is expected. It's read as the
+            // block `{ return none; }`, which never ends with a value, so it fits anywhere.
+            TokenKind::Return | TokenKind::Break | TokenKind::Continue => {
+                let kind = self.peek();
+                self.advance();
+                let stmt = match kind {
+                    TokenKind::Return => Stmt::Return(match self.can_start_expr() {
+                        true => Some(self.parse_expr()?),
+                        false => None,
+                    }),
+                    TokenKind::Break => Stmt::Break(self.parse_loop_target()?),
+                    _ => Stmt::Continue(self.parse_loop_target()?),
+                };
+                let stmt = self.ast.stmts.alloc(stmt, self.span_from(&start));
+                Expr::Block {
+                    stmts: vec![stmt],
+                    value: None,
                 }
             }
 

@@ -1,0 +1,28 @@
+// expect: exit 112
+
+/// `return`, `break` and `continue` can stand where a value is expected, `get(i) else return
+/// none`: they leave instead, so they fit any type.
+fn find(n: i32) -> i32? { if n > 0 { n } else { none } }
+
+fn first_or_100(n: i32) -> i32 {
+    let x = find(n) else return 100;
+    x
+}
+
+fn sum_positive(limit: i32) -> i32 {
+    let mut total = 0;
+    for i in 0 - 2..limit {
+        let x = find(i) else continue;
+        if x > 3 {
+            let stop = find(0) else break;
+            total = total + stop;
+        }
+        total = total + x;
+    }
+    total
+}
+
+fn main() -> i32 {
+    // 100 + 5; then 1 + 2 + 3, as the negative values and 0 are skipped and it stops at 4.
+    first_or_100(0) + first_or_100(5) + sum_positive(10) + 1
+}
