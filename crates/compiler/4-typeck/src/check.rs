@@ -2802,6 +2802,13 @@ impl<'a> Checker<'a> {
                         self.expected = expected;
                         self.infer(*value)
                     }
+                    // `{ return x; }` never ends with a value: like `@unreachable`, it fits
+                    // whatever's expected, as in `get(i) else { return none; }`.
+                    None if self.leaves(stmts) => {
+                        let ty = expected.unwrap_or_else(|| self.u.fresh(VarKind::Any));
+                        self.unreachables.push(ty);
+                        ty
+                    }
                     None => unit,
                 };
                 self.narrowed.retain(|n| outer.contains(&n.id));

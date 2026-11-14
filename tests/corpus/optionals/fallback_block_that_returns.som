@@ -1,0 +1,12 @@
+// expect: exit 105
+
+/// A fallback block that always leaves, `else { return 100; }`, never gives a value, so it
+/// fits whatever type is expected there.
+fn find(n: i32) -> i32? { if n > 0 { n } else { none } }
+
+fn f(n: i32) -> i32 {
+    let x = find(n) else { return 100; };
+    x
+}
+
+fn main() -> i32 { f(0) + f(5) }
