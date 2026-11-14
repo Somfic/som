@@ -16,3 +16,7 @@ fn null<T>() -> *T {
 }
 
 fn leave(p: &mut *) {}
+
+/// Takes `value` and never drops it: for a value whose insides were moved out by hand, as
+/// reading each element out of an array through a pointer does.
+fn forget<T>(value: T) {}

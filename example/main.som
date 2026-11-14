@@ -1,11 +1,10 @@
-trait Double<T> {
-    fn double(self: T) -> T;
-}
+use som::data;
+use som::
 
-impl Double<i32> for i32 {
-    fn double(self: i32) -> i32 {
-        self * 2
-    }
-}
+let a: String = "hello";
+let b: String = " ";
+let c: String = "world";
 
-i32::double(12);
+let c = a + b + c;
+
+som::io::printf("%s", c.value.as_slice());

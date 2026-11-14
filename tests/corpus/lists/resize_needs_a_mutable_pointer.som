@@ -1,0 +1,10 @@
+// expect: error NotMutable
+
+/// `resize` changes the pointer it's called on into the new one.
+use som::mem;
+
+fn main() -> i32 {
+    let p: *i32 = null() as *i32;
+    p.resize(3);
+    0
+}

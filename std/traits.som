@@ -49,6 +49,13 @@ trait Compare {
     fn compare(self: &Self, other: &Self) -> Ordering;
 }
 
+/// Copied rather than moved: using a value leaves it usable. Numbers, `bool`, pointers and
+/// `&` references are; a struct is if it implements this, and everything in it is too.
+trait Copy {}
+
+/// Drops `value` now, rather than when its scope ends: moving it here ends it.
+fn drop<T>(value: T) {}
+
 /// Cleans up after a value when it's done with: when its variable's scope ends, it's
 /// replaced, or the temporary holding it isn't needed any more. Not when it's been moved.
 /// What it holds is dropped after, by itself.

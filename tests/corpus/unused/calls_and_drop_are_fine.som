@@ -1,0 +1,12 @@
+// expect: exit 3
+
+/// A function's result can go unused, as calling it may be the point; so can `drop`'s.
+fn bump(x: &mut i32) -> i32 { *x = *x + 1; *x }
+
+fn main() -> i32 {
+    let mut x = 1;
+    bump(&mut x);
+    bump(&mut x);
+    drop(x);
+    x
+}

@@ -47,7 +47,11 @@ pub enum BorrowError {
     /// end of its statement: `let r = make().get();`.
     TemporaryDropped { borrowed_at: Span, dropped_at: Span },
     /// Moving a value out of one whose type implements `Drop`, which needs it to drop.
-    MoveOutOfDrop { name: String, ty: String, span: Span },
+    MoveOutOfDrop {
+        name: String,
+        ty: String,
+        span: Span,
+    },
     /// A function that calls itself on every path, so it never returns.
     EndlessRecursion { name: String, span: Span },
 }
@@ -193,7 +197,10 @@ impl BorrowError {
                 borrowed_at,
                 dropped_at,
             } => Diagnostic::error("temporary value dropped while still borrowed")
-                .with_label(Label::primary(borrowed_at.clone(), "this value is temporary"))
+                .with_label(Label::primary(
+                    borrowed_at.clone(),
+                    "this value is temporary",
+                ))
                 .with_label(Label::secondary(
                     dropped_at.last_char(),
                     "it's dropped at the end of this statement",
@@ -203,11 +210,16 @@ impl BorrowError {
                 Diagnostic::error(msg!["cannot move out of ", code(name)])
                     .with_label(Label::primary(
                         span.clone(),
-                        msg![code(ty.clone()), " implements ", code("Drop"), ", which needs it"],
+                        msg![
+                            code(ty.clone()),
+                            " implements ",
+                            code("Drop"),
+                            ", which needs it"
+                        ],
                     ))
                     .with_hint(msg!["borrow it instead: ", code(format!("&{name}"))])
             }
-            BorrowError::EndlessRecursion { name, span } => {
+            BorrowError::EndlessRecursion { name: _, span } => {
                 Diagnostic::error(msg!["infinite recursion"])
                     .with_label(Label::primary(
                         span.clone(),

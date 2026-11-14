@@ -1,0 +1,9 @@
+// expect: exit 30
+
+/// A slice as a pointer is where its elements start.
+fn main() -> i32 {
+    let numbers = [10, 20, 30];
+    let view: [i32] = &numbers;
+    let p = view as *i32;
+    p.read(2)
+}

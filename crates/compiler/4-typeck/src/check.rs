@@ -1,3 +1,4 @@
+use crate::error::Unused;
 use som_ast::{Ast, BinOp, Expr, Func, Id, Pattern, Primitive, Span, Stmt, TypeExpr, VariantKind};
 use som_resolve::{DefId, DefKind, LangTrait, Names};
 use std::collections::{HashMap, HashSet};
@@ -854,8 +855,13 @@ impl<'a> Checker<'a> {
             Stmt::Expr(expr) => {
                 // A `match` whose value isn't used can have arms of different types.
                 self.discarding = matches!(self.ast.exprs[*expr], Expr::Match { .. });
+                let before = self.errors.len();
                 self.infer(*expr);
                 self.discarding = false;
+                // Once what's wrong with it is fixed, it may not be what's meant either.
+                if self.errors.len() == before {
+                    self.check_unused(*expr);
+                }
             }
             Stmt::Loop { body } => self.check_loop(body),
             Stmt::While { condition, body } => {
@@ -930,6 +936,56 @@ impl<'a> Checker<'a> {
                 }
             }
         }
+    }
+
+    /// Reports statement `expr` if its value is thrown away and working it out does nothing
+    /// else, so the statement can't be what was meant: `x == 5;`, `p.read(i);`, `a + b;`.
+    /// A function's result isn't: calling it may be the point.
+    fn check_unused(&mut self, expr: Id<Expr>) {
+        let ty = self.exprs[expr.id].map(|t| self.u.shallow(t));
+        if ty.is_none_or(|t| matches!(self.u.get(t), Ty::Unit | Ty::Error)) {
+            return;
+        }
+        let span = self.span(expr);
+        let kind = match &self.ast.exprs[expr] {
+            Expr::Binary {
+                op: BinOp::Equals, ..
+            } => {
+                let text = span.get_text().replacen("==", "=", 1);
+                Unused::Comparison(text)
+            }
+            Expr::MethodCall { .. } => {
+                let pure_pointer = self.pointer_methods.get(&expr).is_some_and(|m| {
+                    !matches!(m, PointerMethod::Free | PointerMethod::Write)
+                });
+                let pure_array = self.array_methods.get(&expr).is_some_and(|m| {
+                    !matches!(m, ArrayMethod::Set)
+                });
+                if !pure_pointer && !pure_array {
+                    return;
+                }
+                Unused::Value
+            }
+            Expr::Int(_)
+            | Expr::Float(_)
+            | Expr::Bool(_)
+            | Expr::Str(_)
+            | Expr::None
+            | Expr::Var(_)
+            | Expr::Field { .. }
+            | Expr::Borrow { .. }
+            | Expr::Deref(_)
+            | Expr::Cast { .. }
+            | Expr::Range { .. }
+            | Expr::Array(_)
+            | Expr::ArrayRepeat { .. }
+            | Expr::Construct { .. }
+            | Expr::Binary { .. }
+            | Expr::Not(_)
+            | Expr::Neg(_) => Unused::Value,
+            _ => return,
+        };
+        self.errors.push(TypeError::UnusedValue { kind, span });
     }
 
     /// Whether control never gets past the end of `stmts`: the last one returns, breaks or
@@ -1898,6 +1954,17 @@ impl<'a> Checker<'a> {
                 if let Ty::Ref { to, .. } = *self.u.get(viewed) {
                     viewed = self.u.shallow(to);
                 }
+                // `items.len` of something with a method of that name, not a field.
+                if matches!(self.u.get(viewed), Ty::Array { .. } | Ty::Slice(_) | Ty::Str)
+                    && ArrayMethod::from_name(&field.name).is_some()
+                {
+                    self.errors.push(TypeError::FieldIsMethod {
+                        ty: self.describe(object_ty),
+                        name: field.name.to_string(),
+                        span: field.span.clone(),
+                    });
+                    return error;
+                }
                 if let Ty::Range(int) = *self.u.get(viewed) {
                     let index = match &*field.name {
                         "start" => 0,
@@ -2724,7 +2791,13 @@ impl<'a> Checker<'a> {
             self.expect(first, usize, None);
         }
         Some(match kind {
-            PointerMethod::Resize => receiver_ty,
+            // It changes the pointer it's called on into the new one.
+            PointerMethod::Resize => {
+                if let Expr::MethodCall { receiver, .. } = self.ast.exprs[call] {
+                    self.check_mutable(receiver, false);
+                }
+                unit
+            }
             PointerMethod::Free => unit,
             PointerMethod::Read => element,
             PointerMethod::Write => {
@@ -2792,7 +2865,7 @@ impl<'a> Checker<'a> {
     fn is_copy(&self, ty: TypeId) -> bool {
         match *self.u.get(self.u.shallow(ty)) {
             Ty::Struct(def, _) => match self.names.def(def).kind {
-                DefKind::Struct(s) => self.ast.structs[s].copy,
+                DefKind::Struct(s) => self.ast.structs[s].copy || self.implements_copy(def),
                 _ => true,
             },
             Ty::Ref { mutable: true, .. } => false,

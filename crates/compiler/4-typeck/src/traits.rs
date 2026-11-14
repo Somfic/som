@@ -149,7 +149,11 @@ pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
             ty,
             Ty::Int(_) | Ty::Float(_) | Ty::Char | Ty::Bool | Ty::Pointer
         ),
-        LangTrait::Iterator | LangTrait::Iterable | LangTrait::From | LangTrait::Drop => false,
+        LangTrait::Iterator
+        | LangTrait::Iterable
+        | LangTrait::From
+        | LangTrait::Drop
+        | LangTrait::Copy => false,
     }
 }
 

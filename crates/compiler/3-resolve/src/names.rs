@@ -78,6 +78,7 @@ pub enum LangTrait {
     Divide,
     Compare,
     Drop,
+    Copy,
 }
 
 impl LangTrait {
@@ -107,13 +108,15 @@ impl LangTrait {
             LangTrait::Multiply => "multiply",
             LangTrait::Divide => "divide",
             LangTrait::Compare => "compare",
-            LangTrait::Iterator | LangTrait::Iterable | LangTrait::From | LangTrait::Drop => {
-                return None;
-            }
+            LangTrait::Iterator
+            | LangTrait::Iterable
+            | LangTrait::From
+            | LangTrait::Drop
+            | LangTrait::Copy => return None,
         })
     }
 
-    pub const ALL: [LangTrait; 10] = [
+    pub const ALL: [LangTrait; 11] = [
         LangTrait::Iterator,
         LangTrait::Iterable,
         LangTrait::From,
@@ -124,6 +127,7 @@ impl LangTrait {
         LangTrait::Divide,
         LangTrait::Compare,
         LangTrait::Drop,
+        LangTrait::Copy,
     ];
 
     /// Its name in the standard library.
@@ -139,6 +143,7 @@ impl LangTrait {
             LangTrait::Divide => "Divide",
             LangTrait::Compare => "Compare",
             LangTrait::Drop => "Drop",
+            LangTrait::Copy => "Copy",
         }
     }
 }

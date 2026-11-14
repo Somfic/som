@@ -135,13 +135,26 @@ impl<'a> Lowerer<'a> {
     fn is_copy(&self, ty: TypeId) -> bool {
         match self.mir.types.get(ty) {
             Ty::Struct(def, _) => match self.names.def(*def).kind {
-                DefKind::Struct(s) => self.ast.structs[s].copy,
+                DefKind::Struct(s) => self.ast.structs[s].copy || self.implements_copy(*def),
                 _ => true,
             },
             Ty::Ref { mutable: true, .. } => false,
             Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.is_copy(*inner),
             _ => true,
         }
+    }
+
+    /// Whether struct `def` implements `Copy`.
+    fn implements_copy(&self, def: DefId) -> bool {
+        let Some(copy) = self.names.lang(som_resolve::LangTrait::Copy) else {
+            return false;
+        };
+        (self.typed.impls.iter()).any(|info| {
+            info.trait_ == Some(copy)
+                && info.target.is_some_and(
+                    |t| matches!(self.mir.types.get(t), Ty::Struct(d, _) if *d == def),
+                )
+        })
     }
 
     /// Makes the copies of the generic structs `ty` uses, if they aren't made yet: naming a
@@ -224,7 +237,7 @@ impl<'a> Lowerer<'a> {
             name,
             fields,
             variants,
-            copy: ast_struct.copy,
+            copy: ast_struct.copy || self.implements_copy(def),
             handle: ast_struct.handle,
         });
     }
@@ -1512,6 +1525,16 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::Cast { value, .. } => {
                 let ty = self.expr_ty(expr);
                 let from = self.expr_ty(*value);
+                // A slice as a pointer: where its elements start.
+                if let Ty::Ref { to, .. } = *self.l.mir.types.get(from)
+                    && matches!(self.l.mir.types.get(to), Ty::Slice(_) | Ty::Str)
+                {
+                    let start = self.place(*value).project(Projection::Field(0));
+                    return Rvalue::Cast {
+                        operand: Operand::Copy(start),
+                        ty,
+                    };
+                }
                 let operand = self.number(*value);
                 if from == ty {
                     Rvalue::Use(operand)
@@ -1532,6 +1555,22 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 let len = self.l.typed.count(expr);
                 let len = self.value_of(len);
                 self.collection(expr, len, |ty| Rvalue::Repeat { ty, operand })
+            }
+            // `p.resize(n)`: `p = realloc(p, …)`.
+            Expr::MethodCall { receiver, args, .. }
+                if self.l.typed.pointer_method(expr) == Some(PointerMethod::Resize) =>
+            {
+                let place = self.place(*receiver);
+                let ty = self.place_ty(&place);
+                let count = self.operand(args[0]);
+                let resized = Rvalue::Intrinsic {
+                    intrinsic: Intrinsic::Resize,
+                    args: vec![Operand::Copy(place.clone()), count],
+                    ty,
+                };
+                self.assign(place, resized, self.span(expr));
+                let unit = self.l.mir.types.unit;
+                Rvalue::Use(self.constant(ConstKind::Unit, unit))
             }
             Expr::MethodCall { receiver, args, .. }
                 if let Some(method) = self.l.typed.pointer_method(expr) =>

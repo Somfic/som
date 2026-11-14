@@ -1794,9 +1794,9 @@ fn pointer_method_doc(
     match method {
         PointerMethod::Resize => (
             &[("count", "usize")],
-            "*T",
-            "Room for `count` values, keeping the ones there (as many as fit). The old pointer \
-             is no longer valid; a null one starts empty.",
+            "",
+            "Makes it room for `count` values, keeping the ones there (as many as fit). A null \
+             one starts empty; copies of the old pointer aren't valid any more.",
         ),
         PointerMethod::Free => (&[], "", "Gives the memory back."),
         PointerMethod::Read => (

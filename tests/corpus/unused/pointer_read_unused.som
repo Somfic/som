@@ -1,0 +1,14 @@
+// expect: error UnusedValue
+
+/// Reading through a pointer only gives a value; `drop(p.read(0))` says if dropping it is
+/// the point.
+use som::mem;
+
+fn main() -> i32 {
+    let mut p: *i32 = null() as *i32;
+    p.resize(1);
+    p.write(0, 7);
+    p.read(0);
+    p.free();
+    0
+}

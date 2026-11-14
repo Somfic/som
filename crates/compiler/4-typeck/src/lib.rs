@@ -15,7 +15,7 @@ pub mod traits;
 mod ty;
 mod unify;
 
-pub use error::TypeError;
+pub use error::{TypeError, Unused};
 pub use ty::{FloatTy, IntTy, Ty, TypeId, TypeTable, Value};
 
 use som_ast::{Ast, Expr, Func, Id, Pattern, Stmt, Struct};
@@ -161,8 +161,8 @@ pub enum ArrayMethod {
 /// building types like `List` in som.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PointerMethod {
-    /// `p.resize(count)`: room for `count` `T`s, holding what `p` held (as many as fit); `p`
-    /// itself is no longer valid. A null `p` starts empty.
+    /// `p.resize(count)`: `p` becomes room for `count` `T`s, holding what it held (as many
+    /// as fit). A null `p` starts empty. Copies of the old pointer aren't valid any more.
     Resize,
     /// `p.free()`: gives the memory back.
     Free,

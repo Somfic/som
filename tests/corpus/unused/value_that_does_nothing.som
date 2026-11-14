@@ -1,0 +1,8 @@
+// expect: error UnusedValue
+
+/// Working out `x + 1` does nothing else, so a statement of just that can't be meant.
+fn main() -> i32 {
+    let x = 1;
+    x + 1;
+    x
+}

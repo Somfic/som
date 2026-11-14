@@ -1,13 +1,48 @@
 struct String {
-    value: str
+    value: List<u8>
 }
 
 impl String {
     fn new(string: str) -> String {
-        String { value: string }
+        String { value: string.bytes() }
     }
 
-    fn len(self: String) -> i32 {
-        self.value.len()
+    fn len(self: &String) -> i32 {
+        self.value.len() as i32
     }
 }
+
+impl From<str> for String {
+    fn from(value: str) -> String {
+        String::new(value)
+    }
+}
+
+impl Add for String {
+    fn add(self: &String, other: &String) -> String {
+        let mut bytes: List<u8> = List::with_capacity((self.len() + other.len()) as usize);
+
+        for byte in self.value {
+            bytes.push(*byte);
+        }
+
+         for byte in other.value {
+            bytes.push(*byte);
+        }
+
+        String { value: bytes }
+    }
+}
+
+impl From<i32> for usize {
+    fn from(value: i32) -> usize {
+        value as usize
+    }
+}
+
+impl From<usize> for i32 {
+    fn from(value: usize) -> i32 {
+        value as i32
+    }
+}
+

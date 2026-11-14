@@ -1,0 +1,13 @@
+// expect: error DoesNotImplement
+
+/// Values that move can't be copied out of a slice, which still has them.
+use som::data;
+
+struct Token { id: i32 }
+
+fn main() -> i32 {
+    let tokens = [Token { id: 1 }];
+    let view: [Token] = &tokens;
+    let list: List<Token> = view;
+    0
+}

@@ -1,0 +1,9 @@
+// expect: error CopyWithMovedField
+
+struct Token { id: i32 }
+impl Drop for Token { fn drop(self: &mut Token) {} }
+
+struct Holder { token: Token }
+impl Copy for Holder {}
+
+fn main() -> i32 { 0 }

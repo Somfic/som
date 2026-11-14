@@ -1,0 +1,14 @@
+// expect: exit 10
+
+/// A struct that implements `Copy` is copied, not moved: it's still there after.
+struct Point { x: i32, y: i32 }
+
+impl Copy for Point {}
+
+fn sum(p: Point) -> i32 { p.x + p.y }
+
+fn main() -> i32 {
+    let p = Point { x: 2, y: 3 };
+    let q = p;
+    sum(p) + sum(q)
+}

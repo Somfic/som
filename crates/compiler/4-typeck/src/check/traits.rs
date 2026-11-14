@@ -105,6 +105,26 @@ impl Checker<'_> {
                 continue;
             };
             let trait_name = self.names.def(trait_).name.to_string();
+            // Copying a struct copies its fields: they have to be copied too.
+            if self.names.lang_of(trait_) == Some(LangTrait::Copy)
+                && let Some(target) = self.impls[index].target
+                && let Ty::Struct(def, args) = self.u.get(target).clone()
+                && let DefKind::Struct(s) = self.names.def(def).kind
+            {
+                let params = self.names.struct_params(s).to_vec();
+                let types = self.structs[s.id].clone();
+                for (field, &ty) in self.ast.structs[s].fields.iter().zip(&types) {
+                    let ty = traits::substitute(&mut self.u.table, ty, &params, &args);
+                    if !self.is_copy(ty) && !matches!(self.u.get(ty), Ty::Param(_)) {
+                        self.errors.push(TypeError::CopyWithMovedField {
+                            ty: self.describe(target),
+                            field: field.name.name.to_string(),
+                            field_ty: self.describe(ty),
+                            span: field.name.span.clone(),
+                        });
+                    }
+                }
+            }
             // A copied value would be dropped once for each copy.
             if self.names.lang_of(trait_) == Some(LangTrait::Drop)
                 && let Some(target) = self.impls[index].target
@@ -342,6 +362,12 @@ impl Checker<'_> {
             && self.has_builtin(ty, lang)
         {
             return true;
+        }
+        // Whatever's copied is `Copy`; a type parameter only if it's required to be.
+        if self.names.lang_of(trait_) == Some(LangTrait::Copy)
+            && !matches!(self.u.get(ty), Ty::Param(_))
+        {
+            return self.is_copy(ty);
         }
         match self.u.get(ty) {
             Ty::Error => true,
@@ -619,6 +645,19 @@ impl Checker<'_> {
         }
     }
 
+    /// Whether struct `def` implements `Copy`, for any type arguments.
+    pub(super) fn implements_copy(&self, def: DefId) -> bool {
+        let Some(copy) = self.names.lang(LangTrait::Copy) else {
+            return false;
+        };
+        (self.impls.iter()).any(|info| {
+            info.trait_ == Some(copy)
+                && info
+                    .target
+                    .is_some_and(|t| matches!(self.u.get(t), Ty::Struct(d, _) if *d == def))
+        })
+    }
+
     /// Whether values of `ty` have the operators of `lang` built in, as numbers have `+`.
     pub(super) fn has_builtin(&self, ty: TypeId, lang: LangTrait) -> bool {
         traits::builtin_operator(self.u.get(self.u.shallow(ty)), lang)
@@ -632,9 +671,15 @@ impl Checker<'_> {
         let Some((from, source, fitting)) = self.from_impls(expected, found) else {
             return false;
         };
-        let [(target, arg)] = fitting[..] else {
+        let [(target, arg, ref bounded)] = fitting[..] else {
             return false;
         };
+        // What the implementation requires of its parameters: `T: Copy`.
+        for &(param, fresh) in bounded {
+            for &bound in self.names.bounds(param) {
+                self.obligations.push((fresh, bound, self.span(expr)));
+            }
+        }
         let (expected, shallow) = (self.u.shallow(expected), self.u.shallow(found));
         if self.u.unify(target, expected).is_err() || self.u.unify(arg, source).is_err() {
             return false;
@@ -658,14 +703,15 @@ impl Checker<'_> {
     }
 
     /// The `From` implementations that could make a `found` into the struct `expected`, each
-    /// as its target and source with its parameters fresh unknowns; with the trait, and what
+    /// as its target and source with its parameters fresh unknowns (and which unknown each
+    /// parameter is); with the trait, and what
     /// `found` counts as (a collection literal as an array). `None` if `expected` isn't a
     /// struct or `found` isn't known well enough to say.
     fn from_impls(
         &mut self,
         expected: TypeId,
         found: TypeId,
-    ) -> Option<(DefId, TypeId, Vec<(TypeId, TypeId)>)> {
+    ) -> Option<(DefId, TypeId, Vec<(TypeId, TypeId, Vec<(DefId, TypeId)>)>)> {
         let from = self.names.lang(LangTrait::From)?;
         let expected = self.u.shallow(expected);
         if matches!(self.u.get(expected), Ty::Var(_) | Ty::Error) {
@@ -695,7 +741,7 @@ impl Checker<'_> {
             let target = traits::substitute(&mut self.u.table, target, &params, &fresh);
             let arg = traits::substitute(&mut self.u.table, arg, &params, &fresh);
             if self.u.could_fit(target, expected) && self.u.could_fit(arg, source) {
-                fitting.push((target, arg));
+                fitting.push((target, arg, params.into_iter().zip(fresh).collect()));
             }
         }
         Some((from, source, fitting))

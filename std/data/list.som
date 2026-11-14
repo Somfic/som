@@ -15,6 +15,12 @@ impl<T> List<T> {
         List { items: null(), len: 0, capacity: 0 }
     }
 
+    fn with_capacity(capacity: usize) -> List<T> {
+        let mut items: *T = null();
+        items.resize(capacity);
+        List { items: items, len: 0, capacity: capacity }
+    }
+
     /// How many values it holds.
     fn len(self: &List<T>) -> usize {
         self.len
@@ -28,7 +34,7 @@ impl<T> List<T> {
     fn push(self: &mut List<T>, value: T) {
         if self.len == self.capacity {
             let capacity = 4 if self.capacity == 0 else self.capacity * 2;
-            self.items = self.items.resize(capacity);
+            self.items.resize(capacity);
             self.capacity = capacity;
         }
         self.items.write(self.len, value);
@@ -73,7 +79,7 @@ impl<T> List<T> {
     /// Drops every value, keeping the room for new ones.
     fn clear(self: &mut List<T>) {
         for i in 0..self.len {
-            self.items.read(i);
+            drop(self.items.read(i));
         }
         self.len = 0;
     }
@@ -83,7 +89,7 @@ impl<T> Drop for List<T> {
     /// Drops each value, read out of its room, then gives the room back.
     fn drop(self: &mut List<T>) {
         for i in 0..self.len {
-            self.items.read(i);
+            drop(self.items.read(i));
         }
         self.items.free();
     }
@@ -93,13 +99,31 @@ impl<T> Drop for List<T> {
 impl<T, N: usize> From<[T; N]> for List<T> {
     fn from(items: [T; N]) -> List<T> {
         let mut list: List<T> = List::empty();
-        list.items = list.items.resize(N);
+        list.items.resize(N);
         list.capacity = N;
         let source = &items as *T;
         for i in 0..N {
             list.items.write(i, source.read(i));
         }
         list.len = N;
+        // Its values are the list's now: the array mustn't drop them too.
+        forget(items);
+        list
+    }
+}
+
+// `let list: List<i32> = numbers.as_slice()`: the values copied into a new list. Only for
+// values that are copied, as the slice's still have them.
+impl<T: Copy> From<[T]> for List<T> {
+    fn from(items: [T]) -> List<T> {
+        let mut list: List<T> = List::empty();
+        list.items.resize(items.len());
+        list.capacity = items.len();
+        let source = items as *T;
+        for i in 0..items.len() {
+            list.items.write(i, source.read(i));
+        }
+        list.len = items.len();
         list
     }
 }

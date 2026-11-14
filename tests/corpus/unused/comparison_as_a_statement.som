@@ -1,0 +1,8 @@
+// expect: error UnusedValue
+
+/// `==` where `=` was meant: the comparison's result goes nowhere.
+fn main() -> i32 {
+    let mut x = 1;
+    x == 5;
+    x
+}

@@ -2,6 +2,15 @@ use som_base::diagnostics::closest_match;
 use som_base::message::{Message, code, field, func, struct_name, var};
 use som_base::{Diagnostic, Fix, Label, Span, msg};
 
+/// What kind of value a statement throws away.
+#[derive(Debug, Clone)]
+pub enum Unused {
+    /// `x == 5;`, with the statement as an assignment: `x = 5`.
+    Comparison(String),
+    /// Anything else that only computes a value.
+    Value,
+}
+
 #[derive(Debug, Clone)]
 pub enum TypeError {
     /// `found` was used where `expected` is required. `expected_from` points at what required it.
@@ -277,10 +286,16 @@ pub enum TypeError {
         /// It's a type argument, `Small<300>`, which `as` can't convert.
         type_arg: bool,
     },
+    /// `impl Copy for …` of a struct with a field that's moved, not copied.
+    CopyWithMovedField { ty: Message, field: String, field_ty: Message, span: Span },
+    /// `x.len` of an array, slice or text, which has a method called that, not a field.
+    FieldIsMethod { ty: Message, name: String, span: Span },
     /// `impl Drop for …` of a type whose values are copied.
     DropOnCopy { ty: Message, span: Span },
     /// `impl Add for i32`: a type implementing a trait whose operators it has built in.
     BuiltinImpl { ty: Message, trait_: String, span: Span },
+    /// A statement whose value is thrown away, when working it out does nothing else.
+    UnusedValue { kind: Unused, span: Span },
     /// `-x` of something that isn't a signed integer or a float.
     CannotNegate { ty: Message, span: Span },
     /// `value as T` where they aren't both numbers.
@@ -907,6 +922,24 @@ impl TypeError {
                     ]),
                 }
             }
+            TypeError::CopyWithMovedField {
+                ty,
+                field,
+                field_ty,
+                span,
+            } => Diagnostic::error(msg![ty.clone(), " can't implement ", code("Copy")])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg![code(field.clone()), " is a ", field_ty.clone(), ", which is moved, not copied"],
+                )),
+            TypeError::FieldIsMethod { ty, name, span } => {
+                Diagnostic::error(msg![ty.clone(), " has no field ", code(name.clone())])
+                    .with_label(Label::primary(span.clone(), "it's a method"))
+                    .with_fix(Fix {
+                        title: msg!["call it: ", code(format!("{name}()"))],
+                        edits: vec![(span.after(), "()".to_string())],
+                    })
+            }
             TypeError::DropOnCopy { ty, span } => Diagnostic::error(msg![
                 ty.clone(),
                 " can't implement ",
@@ -922,6 +955,24 @@ impl TypeError {
                 code(trait_)
             ])
             .with_label(Label::primary(span.clone(), "its operators are built in")),
+            TypeError::UnusedValue { kind, span } => match kind {
+                Unused::Comparison(assignment) => {
+                    Diagnostic::error("the comparison's result is unused")
+                        .with_label(Label::primary(span.clone(), "this compares, it doesn't assign"))
+                        .with_fix(Fix::replace(
+                            msg!["assign instead: ", code(assignment.clone())],
+                            span.clone(),
+                            assignment.clone(),
+                        ))
+                }
+                Unused::Value => Diagnostic::error("this value is unused")
+                    .with_label(Label::primary(span.clone(), "working it out does nothing else"))
+                    .with_hint(msg![
+                        "use it, or if dropping it is the point, ",
+                        code("drop(…)"),
+                        " it"
+                    ]),
+            },
             TypeError::CannotNegate { ty, span } => {
                 Diagnostic::error(msg!["cannot negate ", ty.clone()]).with_label(Label::primary(
                     span.clone(),

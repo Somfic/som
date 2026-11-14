@@ -1,0 +1,13 @@
+// expect: exit 13
+
+/// A slice of values that are copied makes a list of copies of them.
+use som::data;
+
+fn main() -> i32 {
+    let numbers = [1, 2, 3, 4];
+    let view: [i32] = &numbers;
+    let copied: List<i32> = view;
+    let mut total = 0;
+    for x in copied { total = total + *x; }
+    total + (copied.len() as i32) - 1
+}

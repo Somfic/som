@@ -508,10 +508,21 @@ impl FnBuilder<'_, '_> {
         }
     }
 
-    /// Ends `local`'s scope: drops it, then it stops existing.
+    /// Ends `local`'s scope: drops it, then it stops existing. `som::mem::forget` doesn't
+    /// drop what it's given: that's what it's for.
     pub(super) fn end_local(&mut self, local: Local, span: som_base::Span) {
-        self.drop_local(local, span.clone());
+        let params = self.l.ast.funcs[self.func].params.len();
+        if !(self.is_forget() && (1..=params).contains(&local.id)) {
+            self.drop_local(local, span.clone());
+        }
         self.push(StatementKind::StorageDead(local), span);
+    }
+
+    /// Whether this is `som::mem::forget`.
+    fn is_forget(&self) -> bool {
+        let def = self.l.names.func(self.func);
+        &*self.l.ast.funcs[self.func].name.name == "forget"
+            && &*self.l.ast.modules[self.l.names.def(def).module].name == "som::mem"
     }
 
     fn body_place_ty(&self, locals: &Arena<LocalDecl>, place: &Place) -> TypeId {

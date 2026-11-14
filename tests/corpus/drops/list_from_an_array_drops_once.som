@@ -1,0 +1,19 @@
+// expect: exit 12
+
+/// A list made from an array takes its values: each is dropped once, with the list.
+use som::data;
+
+struct Noisy { id: i32, log: *i32 }
+
+impl Drop for Noisy {
+    fn drop(self: &mut Noisy) { self.log.write(0, self.log.read(0) * 10 + self.id); }
+}
+
+fn main() -> i32 {
+    let mut log = 0;
+    let at = &mut log as *i32;
+    {
+        let xs: List<Noisy> = [Noisy { id: 1, log: at }, Noisy { id: 2, log: at }];
+    }
+    log
+}
