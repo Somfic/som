@@ -1,4 +1,4 @@
-// expect: error DuplicateDefinition
+// expect: error DuplicateOverload
 
 use geo;
 

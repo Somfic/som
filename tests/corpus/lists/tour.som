@@ -29,6 +29,6 @@ fn main() -> i32 {
 }
 
 fn let_ok(points: &List<Point>) -> bool {
-    let p = points.get_ref(1);
+    let p = points.get(1);
     match p { none => false, q => q.x == 3 }
 }

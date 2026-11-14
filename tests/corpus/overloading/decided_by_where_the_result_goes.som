@@ -1,0 +1,12 @@
+// expect: exit 41
+
+/// Each call is decided by what its result goes into, even below it.
+fn main() -> i32 {
+    let b = make();
+    let n = make();
+    let flag: bool = b;
+    takes(n) + (1 if flag else 0)
+}
+fn takes(n: i32) -> i32 { n * 10 }
+fn make() -> i32 { 4 }
+fn make() -> bool { true }

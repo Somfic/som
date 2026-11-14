@@ -376,7 +376,7 @@ impl TypeTable {
             Ty::Param(def) if let Some(&(_, arg)) = subst.iter().find(|(d, _)| d == def) => {
                 self.display_with(arg, names, &[])
             }
-            Ty::Error => "{error}".into(),
+            Ty::Error => "{unknown}".into(),
             Ty::Unit => "()".into(),
             Ty::Bool => "bool".into(),
             Ty::Char => "char".into(),

@@ -44,7 +44,7 @@ impl<T> List<T> {
     }
 
     /// The value at `index`, or `none` past the end.
-    fn get_ref(self: &List<T>, index: usize) -> &T? {
+    fn get(self: &List<T>, index: usize) -> &T? {
         if index >= self.len {
             return none;
         }
@@ -52,7 +52,7 @@ impl<T> List<T> {
     }
 
     /// The value at `index`, to change, or `none` past the end.
-    fn get_mut(self: &mut List<T>, index: usize) -> &mut T? {
+    fn get(self: &mut List<T>, index: usize) -> &mut T? {
         if index >= self.len {
             return none;
         }

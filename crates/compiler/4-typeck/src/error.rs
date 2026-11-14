@@ -167,13 +167,15 @@ pub enum TypeError {
     NoMatchingOverload {
         name: String,
         args: Vec<Message>,
-        candidates: Vec<String>,
+        /// Each function with the name, and where it's defined.
+        candidates: Vec<(String, Span)>,
         span: Span,
     },
     /// A call where several functions with that name fit equally well.
     AmbiguousCall {
         name: String,
-        candidates: Vec<String>,
+        /// Each function that fits, and where it's defined.
+        candidates: Vec<(String, Span)>,
         span: Span,
     },
     /// Two functions with the same name, both taking and giving the same types.
@@ -581,8 +583,8 @@ impl TypeError {
                 };
                 let mut d = Diagnostic::error(msg!["no ", func(name), " fits this call"])
                     .with_label(Label::primary(span.clone(), label));
-                for c in candidates {
-                    d = d.with_hint(msg!["there's ", code(c)]);
+                for (c, at) in candidates {
+                    d = d.with_label(Label::secondary(at.clone(), msg!["candidate ", code(c)]));
                 }
                 d
             }
@@ -591,21 +593,27 @@ impl TypeError {
                 candidates,
                 span,
             } => {
-                let mut d = Diagnostic::error(msg!["unambiguous call to ", func(name)]).with_label(
-                    Label::primary(span.clone(), "cannot determine which overload is meant"),
+                let mut d = Diagnostic::error(msg!["ambiguous call to ", func(name)]).with_label(
+                    Label::primary(span.clone(), "cannot determine which overload to use"),
                 );
-                for c in candidates {
-                    d = d.with_hint(msg!["candidate", code(c)]);
+                for (c, at) in candidates {
+                    d = d.with_label(Label::secondary(at.clone(), msg!["candidate ", code(c)]));
                 }
-                d.with_hint("specify a return type to indicate the overload")
+                d.with_hint("specify a return type to indicate which overload to use")
             }
             TypeError::DuplicateOverload {
                 name,
                 span,
                 previous,
-            } => Diagnostic::error(msg![func(name), " is defined twice with the same types"])
-                .with_label(Label::primary(span.clone(), "defined again here"))
-                .with_label(Label::secondary(previous.clone(), "first defined here")),
+            } => Diagnostic::error(msg![
+                func(name),
+                " is already defined with the same signature"
+            ])
+            .with_label(Label::primary(span.clone(), "and is defined again here"))
+            .with_label(Label::secondary(
+                previous.clone(),
+                "was already defined here",
+            )),
             TypeError::UnknownVariant {
                 ty: owner,
                 variant,

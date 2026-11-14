@@ -8,11 +8,11 @@ fn main() -> i32 {
     xs.push(1);
     xs.push(2);
     {
-        let second = xs.get_mut(1);
+        let second: &mut i32? = xs.get(1);
         if second { *second = 20; }
     }
     {
-        let first = xs.get_mut(0);
+        let first: &mut i32? = xs.get(0);
         if first { *first = *first + 1; }
     }
     let total = (xs.as_slice().get(0) else 0) + (xs.as_slice().get(1) else 0);

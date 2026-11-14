@@ -47,7 +47,7 @@ impl Mir {
                 let params: Vec<String> = params.iter().map(|&p| self.display_ty(p)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display_ty(*ret))
             }
-            Ty::Error => "{error}".into(),
+            Ty::Error => "{unknown}".into(),
             Ty::Unit => "()".into(),
             Ty::Bool => "bool".into(),
             Ty::Char => "char".into(),

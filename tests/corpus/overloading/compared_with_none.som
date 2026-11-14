@@ -1,0 +1,13 @@
+// expect: error AmbiguousCall
+
+/// Compared with `none`, either fits: it's reported once, as ambiguous.
+fn hello(i: i32) {
+    1
+}
+
+fn hello(i: i32) {
+    true
+}
+
+let a = hello(12);
+let a = a == none;

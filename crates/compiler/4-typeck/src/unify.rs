@@ -274,6 +274,20 @@ impl Unifier {
         }
     }
 
+    /// Makes `ty`, if it's still unknown, the error type: what it is was already reported as
+    /// wrong, so nothing more is said about it.
+    /// Anything still unknown inside it, too: `?T` of an `?T?` it was compared with `none` as.
+    pub fn poison(&mut self, ty: TypeId) {
+        let ty = self.shallow(ty);
+        match self.table.get(ty).clone() {
+            Ty::Var(v) => self.vars[v as usize].bound = Some(self.table.error),
+            other => other
+                .children()
+                .into_iter()
+                .for_each(|child| self.poison(child)),
+        }
+    }
+
     fn bind(&mut self, var: u32, ty: TypeId) -> Result<(), ()> {
         let fits = match self.vars[var as usize].kind {
             VarKind::Any => true,

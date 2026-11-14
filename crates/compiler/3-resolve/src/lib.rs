@@ -206,12 +206,10 @@ impl<'a> Resolver<'a> {
                 for &method in &block.methods {
                     let name = &ast.funcs[method].name;
                     let def = self.names.func(method);
+                    // Methods can share a name, like functions: `get` taking `&self` and
+                    // `&mut self`. The type checker picks the one that fits.
                     if let Some(previous) = self.names.add_method(owner, &name.name, def) {
-                        self.errors.push(ResolveError::DuplicateDefinition {
-                            name: format!("{}::{}", block.target, name),
-                            span: name.span.clone(),
-                            previous: self.names.def(previous).span.clone(),
-                        });
+                        self.names.add_overload(previous, def);
                     }
                 }
             }

@@ -1291,7 +1291,7 @@ fn hover_markdown(a: &Analysis, file: &str, offset: usize) -> Option<String> {
         },
     };
 
-    let text = text.filter(|t| !t.contains("{error}"))?;
+    let text = text.filter(|t| !t.contains("{unknown}"))?;
     Some(match doc {
         Some(doc) => format!("```som\n{text}\n```\n\n{doc}"),
         None => format!("```som\n{text}\n```"),

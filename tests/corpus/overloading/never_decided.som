@@ -1,0 +1,8 @@
+// expect: error AmbiguousCall
+
+fn make() -> i32 { 4 }
+fn make() -> bool { true }
+fn main() -> i32 {
+    let x = make();
+    0
+}

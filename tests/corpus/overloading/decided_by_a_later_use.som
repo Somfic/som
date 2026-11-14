@@ -1,0 +1,14 @@
+// expect: exit 2
+
+/// Nothing says which at the call; adding 1 to the result does.
+fn hello(i: i32) {
+    1
+}
+
+fn hello(i: i32) {
+    true
+}
+
+let a = hello(12);
+let a = a + 1;
+a

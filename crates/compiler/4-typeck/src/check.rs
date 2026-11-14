@@ -62,6 +62,9 @@ pub(crate) struct Checker<'a> {
     expected_here: Option<TypeId>,
     /// Calls and function values → which of the functions sharing their name they name.
     callees: HashMap<Id<Expr>, DefId>,
+    /// Calls that more than one function fits, decided once the rest of the program says more
+    /// about what their result has to be.
+    pending_calls: Vec<PendingCall>,
 }
 
 impl<'a> Checker<'a> {
@@ -100,6 +103,7 @@ impl<'a> Checker<'a> {
             expected: None,
             expected_here: None,
             callees: HashMap::new(),
+            pending_calls: Vec::new(),
         }
     }
 
@@ -175,7 +179,8 @@ impl<'a> Checker<'a> {
             }
         }
 
-        // After the bodies, which decide unwritten return types: `fn f(x: i32) { 1 }` twice.
+        // After the bodies, which decide unwritten return types and what results are used as.
+        self.resolve_pending_calls();
         self.check_overloads();
 
         for (expr, op, lhs, rhs) in std::mem::take(&mut self.deferred_ops) {
@@ -1624,6 +1629,7 @@ impl<'a> Checker<'a> {
                 method,
                 args,
             } => {
+                let expected = self.expected_here.take();
                 let receiver_ty = self.infer(*receiver);
                 if let Some(ty) = self.array_method(id, *receiver, receiver_ty, method, args) {
                     return ty;
@@ -1649,6 +1655,18 @@ impl<'a> Checker<'a> {
                     });
                     return error;
                 };
+                if self.names.overloads(def).len() > 1 {
+                    let name = format!("{}::{}", self.names.def(owner).name, method.name);
+                    return self.overloaded_method(
+                        id,
+                        &name,
+                        def,
+                        *receiver,
+                        receiver_ty,
+                        args,
+                        expected,
+                    );
+                }
                 let DefKind::Func(func) = self.names.def(def).kind else {
                     unreachable!("methods are functions")
                 };
@@ -2102,37 +2120,231 @@ impl<'a> Checker<'a> {
                 fitting = plain;
             }
         }
-        let candidates = |c: &Self, defs: Vec<DefId>| -> Vec<String> {
+        let candidates = |c: &Self, defs: Vec<DefId>| -> Vec<(String, Span)> {
             (defs.into_iter())
                 .filter_map(|d| match c.names.def(d).kind {
-                    DefKind::Func(f) => Some(c.signature_text(f)),
+                    DefKind::Func(f) => Some((c.signature_text(f), c.names.def(d).span.clone())),
+                    _ => None,
+                })
+                .collect()
+        };
+        if fitting.is_empty() {
+            self.errors.push(TypeError::NoMatchingOverload {
+                name: callee.to_string(),
+                args: found.iter().map(|&t| self.describe(t)).collect(),
+                candidates: candidates(self, self.names.overloads(first)),
+                span: self.span(call),
+            });
+            return self.u.table.error;
+        }
+        // Several fit: what the result is used as later may decide.
+        if fitting.len() > 1 {
+            let result = self.u.fresh(VarKind::Any);
+            self.pending_calls.push(PendingCall {
+                call,
+                name: callee.to_string(),
+                args: args.to_vec(),
+                found,
+                fitting,
+                result,
+            });
+            return result;
+        }
+        let (def, func, sig, type_args) = fitting.pop().expect("exactly one");
+        self.finish_call(call, def, func, &sig, type_args, args, &found);
+        sig.ret
+    }
+
+    /// A method call `receiver.name(args)` where several methods have that name: the one
+    /// whose `self` takes the receiver, whose other parameters fit the arguments and whose
+    /// result fits `expected`. Of several, the one taking the receiver as it is, then by `&`,
+    /// then by `&mut`: `list.get(0)` is the `&self` one unless a `&mut` result is expected.
+    #[allow(clippy::too_many_arguments)]
+    fn overloaded_method(
+        &mut self,
+        call: Id<Expr>,
+        name: &str,
+        first: DefId,
+        receiver: Id<Expr>,
+        receiver_ty: TypeId,
+        args: &[Id<Expr>],
+        expected: Option<TypeId>,
+    ) -> TypeId {
+        let found: Vec<TypeId> = args.iter().map(|&a| self.infer(a)).collect();
+        // Each fitting method, and how much the receiver has to change for it: 0 as it is,
+        // 1 borrowed, 2 borrowed as `&mut`.
+        let mut fitting = Vec::new();
+        for def in self.names.overloads(first) {
+            let DefKind::Func(func) = self.names.def(def).kind else {
+                continue;
+            };
+            let (sig, type_args) = self.instantiate(func);
+            let Some((&self_ty, rest)) = sig.params.split_first() else {
+                continue;
+            };
+            let Some(cost) = self.receiver_cost(self_ty, receiver_ty) else {
+                continue;
+            };
+            let fits = rest.len() == found.len()
+                && rest
+                    .iter()
+                    .zip(&found)
+                    .all(|(&p, &a)| self.u.could_fit(p, a))
+                && expected.is_none_or(|e| self.u.could_fit(e, sig.ret));
+            if fits {
+                fitting.push((cost, def, func, sig, type_args));
+            }
+        }
+        if let Some(cheapest) = fitting.iter().map(|f| f.0).min() {
+            fitting.retain(|f| f.0 == cheapest);
+        }
+        let candidates = |c: &Self, defs: Vec<DefId>| -> Vec<(String, Span)> {
+            (defs.into_iter())
+                .filter_map(|d| match c.names.def(d).kind {
+                    DefKind::Func(f) => Some((c.signature_text(f), c.names.def(d).span.clone())),
                     _ => None,
                 })
                 .collect()
         };
         if fitting.len() != 1 {
-            let error = match fitting.len() {
-                0 => TypeError::NoMatchingOverload {
-                    name: callee.to_string(),
-                    args: found.iter().map(|&t| self.describe(t)).collect(),
+            let error = match fitting.is_empty() {
+                true => TypeError::NoMatchingOverload {
+                    name: name.to_string(),
+                    args: std::iter::once(receiver_ty)
+                        .chain(found.iter().copied())
+                        .map(|t| self.describe(t))
+                        .collect(),
                     candidates: candidates(self, self.names.overloads(first)),
                     span: self.span(call),
                 },
-                _ => TypeError::AmbiguousCall {
-                    name: callee.to_string(),
-                    candidates: candidates(self, fitting.iter().map(|f| f.0).collect()),
+                false => TypeError::AmbiguousCall {
+                    name: name.to_string(),
+                    candidates: candidates(self, fitting.iter().map(|f| f.1).collect()),
                     span: self.span(call),
                 },
             };
             self.errors.push(error);
             return self.u.table.error;
         }
-        let (def, func, sig, type_args) = fitting.pop().expect("exactly one");
+        let (_, def, func, sig, type_args) = fitting.pop().expect("exactly one");
+        self.methods.insert(call, def);
+        if !type_args.is_empty() {
+            self.type_args.insert(call, type_args);
+        }
+        let self_ty = sig.params[0];
+        self.receive(receiver, self_ty, receiver_ty);
+        for (i, ((&arg, &param), &ty)) in args.iter().zip(&sig.params[1..]).zip(&found).enumerate()
+        {
+            if !self.coerce(arg, param, ty) {
+                let declared = &self.ast.funcs[func].params[i + 1];
+                let from = declared.ty.map(|t| self.ast.types.span(t).clone());
+                self.mismatch(param, ty, self.span(arg), from);
+            }
+        }
+        sig.ret
+    }
+
+    /// How much a receiver of type `found` changes to be a `self` of type `expected`, without
+    /// changing anything: 0 as it is, 1 borrowed, 2 borrowed as `&mut`, 1 copied out of a
+    /// reference; `None` if it can't be.
+    fn receiver_cost(&self, expected: TypeId, found: TypeId) -> Option<u8> {
+        let wanted = self.u.get(self.u.shallow(expected)).clone();
+        let given = self.u.get(self.u.shallow(found)).clone();
+        match (wanted, given) {
+            (Ty::Ref { mutable, to }, given) if !matches!(given, Ty::Ref { .. } | Ty::Error) => {
+                self.u
+                    .could_fit(to, found)
+                    .then_some(if mutable { 2 } else { 1 })
+            }
+            (
+                Ty::Ref { mutable: m, to },
+                Ty::Ref {
+                    mutable: n,
+                    to: given,
+                },
+            ) => (m == n && self.u.could_fit(to, given)).then_some(0),
+            (wanted, Ty::Ref { to, .. }) if !matches!(wanted, Ty::Var(_)) => {
+                (self.u.could_fit(expected, to) && self.is_copy(to)).then_some(1)
+            }
+            _ => self.u.could_fit(expected, found).then_some(0),
+        }
+    }
+
+    /// Decides the calls more than one function fitted, now that more is known about their
+    /// results: `let a = make(); a + 1` takes the `make` giving a number. One decided can tell
+    /// another's result, so until nothing changes; what's still undecided is reported.
+    fn resolve_pending_calls(&mut self) {
+        let mut pending = std::mem::take(&mut self.pending_calls);
+        loop {
+            let mut progress = false;
+            let mut undecided = Vec::new();
+            for mut p in pending {
+                let fits = |c: &Self, sig: &Signature| {
+                    c.u.could_fit(p.result, sig.ret)
+                        && sig
+                            .params
+                            .iter()
+                            .zip(&p.found)
+                            .all(|(&x, &y)| c.u.could_fit(x, y))
+                };
+                p.fitting.retain(|(.., sig, _)| fits(self, sig));
+                if p.fitting.len() > 1 {
+                    let plain: Vec<_> = (p.fitting.iter())
+                        .filter(|(.., type_args)| type_args.is_empty())
+                        .cloned()
+                        .collect();
+                    if plain.len() == 1 {
+                        p.fitting = plain;
+                    }
+                }
+                if p.fitting.len() == 1 {
+                    let (def, func, sig, type_args) = p.fitting.pop().expect("exactly one");
+                    let _ = self.u.unify(p.result, sig.ret);
+                    self.finish_call(p.call, def, func, &sig, type_args, &p.args, &p.found);
+                    progress = true;
+                } else {
+                    undecided.push(p);
+                }
+            }
+            pending = undecided;
+            if !progress || pending.is_empty() {
+                break;
+            }
+        }
+        for p in pending {
+            let candidates = (p.fitting.iter())
+                .map(|(def, func, ..)| {
+                    (self.signature_text(*func), self.names.def(*def).span.clone())
+                })
+                .collect();
+            self.errors.push(TypeError::AmbiguousCall {
+                name: p.name,
+                candidates,
+                span: self.span(p.call),
+            });
+            // Already reported: don't also say its result can't be inferred.
+            self.u.poison(p.result);
+        }
+    }
+
+    /// Records that `call` calls `func` (`def`), with signature `sig` and type arguments
+    /// `type_args`, and checks its arguments, of types `found`, against its parameters.
+    #[allow(clippy::too_many_arguments)]
+    fn finish_call(
+        &mut self,
+        call: Id<Expr>,
+        def: DefId,
+        func: Id<Func>,
+        sig: &Signature,
+        type_args: Vec<TypeId>,
+        args: &[Id<Expr>],
+        found: &[TypeId],
+    ) {
         self.callees.insert(call, def);
         if !type_args.is_empty() {
             self.type_args.insert(call, type_args);
         }
-        for (i, ((&arg, &param), &ty)) in args.iter().zip(&sig.params).zip(&found).enumerate() {
+        for (i, ((&arg, &param), &ty)) in args.iter().zip(&sig.params).zip(found).enumerate() {
             let declared = &self.ast.funcs[func].params[i];
             if declared.out && !matches!(self.ast.exprs[arg], Expr::Out(_)) {
                 self.errors.push(TypeError::NeedsOut {
@@ -2147,7 +2359,6 @@ impl<'a> Checker<'a> {
                 self.mismatch(param, ty, self.span(arg), from);
             }
         }
-        sig.ret
     }
 
     /// For a function value naming `first` and others with its name: the one whose type fits
@@ -2637,6 +2848,20 @@ fn is_arithmetic(op: BinOp) -> bool {
         op,
         BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
     )
+}
+
+/// A call more than one function fitted when it was checked: see `resolve_pending_calls`.
+struct PendingCall {
+    call: Id<Expr>,
+    name: String,
+    args: Vec<Id<Expr>>,
+    /// The arguments' types.
+    found: Vec<TypeId>,
+    /// The functions that still fit: each one's definition, function, signature (its type
+    /// parameters fresh variables) and those variables.
+    fitting: Vec<(DefId, Id<Func>, Signature, Vec<TypeId>)>,
+    /// The call's type, until it's decided.
+    result: TypeId,
 }
 
 /// What a condition says about optional places when it's true, and when it's false.

@@ -1,12 +1,14 @@
 use som::io;
 
-fn hello(i: i32) {
+fn hello(i: i32) -> i32 {
     1
 }
 
-fn hello(i: i32) {
-    true
+fn hello(i: i32) -> u32 {
+    1
 }
 
 let a = hello(12);
 let a = a + 1;
+
+printf("%d", a);
