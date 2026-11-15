@@ -154,6 +154,13 @@ pub enum TypeError {
         span: Span,
         defined_at: Span,
     },
+    /// `none` where a raw pointer is expected: `fflush(none)`. A null pointer is
+    /// `mem::null()`.
+    NoneAsPointer {
+        ty: Message,
+        span: Span,
+        expected_from: Option<Span>,
+    },
     /// `W = 5` or `&mut W` of `const W = 60;`.
     ConstChanged {
         name: String,
@@ -1863,6 +1870,33 @@ impl TypeError {
                         "a property is worked out when it's read; there's nothing to assign to",
                     ),
             },
+            TypeError::NoneAsPointer {
+                ty,
+                span,
+                expected_from,
+            } => {
+                let mut d = Diagnostic::error(msg![code("none"), " isn't a pointer"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![ty.clone(), " expected, which ", code("none"), " can't be"],
+                    ));
+                if let Some(from) = expected_from {
+                    d = d.with_label(Label::secondary(
+                        from.clone(),
+                        msg![ty.clone(), " expected because of this"],
+                    ));
+                }
+                d.with_hint(msg![
+                    code("none"),
+                    " is an optional without a value; a null pointer is ",
+                    code("som::mem::null()")
+                ])
+                .with_fix(Fix::replace(
+                    msg!["change to ", code("som::mem::null()")],
+                    span.clone(),
+                    "som::mem::null()",
+                ))
+            }
             TypeError::ConstNotCount {
                 name,
                 span,

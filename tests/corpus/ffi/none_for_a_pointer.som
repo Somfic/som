@@ -1,0 +1,11 @@
+// expect: error NoneAsPointer
+
+/// A null pointer is `som::mem::null()`; `none` is an optional's. The fix writes it out.
+extern "c";
+
+fn take(p: *i32) {}
+
+fn main() {
+    c::fflush(none);
+    take(none);
+}

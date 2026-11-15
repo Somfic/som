@@ -1,0 +1,12 @@
+// expect: exit 0
+
+/// `som::mem::null()` is a null pointer, untyped or typed, without a `use`.
+extern "c";
+
+fn take(p: *i32) -> bool = p.is_null();
+
+fn main() -> i32 {
+    c::fflush(som::mem::null());
+    let p: * = som::mem::null();
+    if take(som::mem::null()) { 0 } else { 1 }
+}

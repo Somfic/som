@@ -1427,6 +1427,19 @@ impl<'a> Checker<'a> {
             self.errors.push(error);
             return;
         }
+        // `fflush(none)`: a null pointer is `mem::null()`; `none` is an optional's.
+        if matches!(self.ast.exprs[expr], Expr::None)
+            && matches!(self.u.get(self.u.shallow(expected)), Ty::Pointer | Ty::Ptr(_))
+        {
+            self.errors.push(TypeError::NoneAsPointer {
+                ty: self.describe(expected),
+                span: self.span(expr),
+                expected_from,
+            });
+            // Reported: not also that its type can't be inferred.
+            self.exprs[expr.id] = Some(self.u.table.error);
+            return;
+        }
         let fix = (self.deref_fix(expr, expected, found))
             .or_else(|| self.fallback_fix(expr, expected, found));
         let span = self.span(expr);
