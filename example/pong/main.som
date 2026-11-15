@@ -102,7 +102,7 @@ fn draw(g: &Game) {
     let by = g.ball_y / SCALE;
     let l = g.score_l;
     let r = g.score_r;
-    print("[H");
+    print("\x1b[H");
     print("  YOU {l}  -  {r} CPU      w/s to move, q to quit\r\n");
     let mut x = 0;
     while x < W + 2 { putchar(35); x = x + 1; }
@@ -132,7 +132,7 @@ fn draw(g: &Game) {
 fn main() {
     srandom(time(&mut 0) as u32);
     system("stty raw -echo min 0 time 0");
-    print("[2J[?25l");
+    print("\x1b[2J\x1b[?25l");
 
     let mut g = Game {
         ball_x: 0, ball_y: 0, vel_x: 0, vel_y: 0,
@@ -160,7 +160,7 @@ fn main() {
     }
 
     system("stty -raw echo");
-    print("[?25h\r\n");
+    print("\x1b[?25h\r\n");
     if g.score_l >= WIN { print("You win!\n"); }
     if g.score_r >= WIN { print("CPU wins.\n"); }
 }

@@ -10,14 +10,18 @@ int32_t som_arg_count(void) { return som_argc; }
 uint8_t* som_arg(int32_t index) { return (uint8_t*)som_argv[index]; }
 struct Game;
 struct raylib_Color;
+struct raylib_KeyboardKey;
 struct som_string;
 struct som_StringView;
 struct som_arr_i8_1;
+struct som_arr_i32_110;
 struct Game { float ball_x; float ball_y; float vel_x; float vel_y; float left; float right; int32_t score_l; int32_t score_r; bool serving; };
 struct raylib_Color { uint8_t r; uint8_t g; uint8_t b; uint8_t a; };
+struct raylib_KeyboardKey { uint32_t tag; };
 struct som_string { struct som_StringView* view; };
 struct som_StringView { uintptr_t count; uintptr_t len; };
 struct som_arr_i8_1 { int8_t items[1]; };
+struct som_arr_i32_110 { int32_t items[110]; };
 
 void InitWindow(int32_t, int32_t, uint8_t*);
 void CloseWindow(void);
@@ -34,19 +38,6 @@ void DrawRectangle(int32_t, int32_t, int32_t, int32_t, struct raylib_Color);
 void DrawText(uint8_t*, int32_t, int32_t, int32_t, struct raylib_Color);
 int32_t snprintf(int8_t*, uint64_t, uint8_t*, ...);
 
-static int32_t key_w(void); // key_w
-static int32_t key_s(void); // key_s
-static int32_t key_up(void); // key_up
-static int32_t key_down(void); // key_down
-static int32_t key_space(void); // key_space
-static float screen_w(void); // screen_w
-static float screen_h(void); // screen_h
-static float paddle_w(void); // paddle_w
-static float paddle_h(void); // paddle_h
-static float ball_size(void); // ball_size
-static float paddle_speed(void); // paddle_speed
-static float cpu_speed(void); // cpu_speed
-static int32_t win_score(void); // win_score
 static float clamp(float, float, float); // clamp
 static som_unit reset_ball(struct Game* restrict, float); // reset_ball
 static som_unit hit(struct Game* restrict, float, float, float); // hit
@@ -71,71 +62,6 @@ static som_unit drop_som_string(struct som_string* restrict); // drop<som::strin
 static uint8_t* som_mem_null_u8(void); // som::mem::null<u8>
 static uintptr_t som_string_write_shown_i32(struct som_string*, uintptr_t, int32_t*, uintptr_t); // som::string::write_shown<i32>
 
-// key_w
-static int32_t key_w(void) {
-    return 87;
-}
-
-// key_s
-static int32_t key_s(void) {
-    return 83;
-}
-
-// key_up
-static int32_t key_up(void) {
-    return 265;
-}
-
-// key_down
-static int32_t key_down(void) {
-    return 264;
-}
-
-// key_space
-static int32_t key_space(void) {
-    return 32;
-}
-
-// screen_w
-static float screen_w(void) {
-    return 800.0f;
-}
-
-// screen_h
-static float screen_h(void) {
-    return 450.0f;
-}
-
-// paddle_w
-static float paddle_w(void) {
-    return 12.0f;
-}
-
-// paddle_h
-static float paddle_h(void) {
-    return 80.0f;
-}
-
-// ball_size
-static float ball_size(void) {
-    return 12.0f;
-}
-
-// paddle_speed
-static float paddle_speed(void) {
-    return 420.0f;
-}
-
-// cpu_speed
-static float cpu_speed(void) {
-    return 300.0f;
-}
-
-// win_score
-static int32_t win_score(void) {
-    return 5;
-}
-
 // clamp
 static float clamp(float v, float lo, float hi) {
     if (v < lo) goto bb1; else goto bb2;
@@ -155,12 +81,8 @@ bb7:
 
 // reset_ball
 static som_unit reset_ball(struct Game* restrict g, float dir) {
-    float screen_w_2 = screen_w();
-    float ball_size_2 = ball_size();
-    g->ball_x = screen_w_2 / 2.0f - ball_size_2 / 2.0f;
-    float screen_h_2 = screen_h();
-    float ball_size_3 = ball_size();
-    g->ball_y = screen_h_2 / 2.0f - ball_size_3 / 2.0f;
+    g->ball_x = 394.0f;
+    g->ball_y = 219.0f;
     g->vel_x = 320.0f * dir;
     int32_t get_random_value = GetRandomValue(-200, 200);
     g->vel_y = (float)get_random_value;
@@ -174,10 +96,7 @@ static som_unit hit(struct Game* restrict g, float top, float x, float dir) {
     float abs_2 = abs(g->vel_x);
     float speed = clamp(abs_2 * 1.06f, 0.0f, 900.0f);
     g->vel_x = speed * dir;
-    float ball_size_2 = ball_size();
-    float _11 = g->ball_y + ball_size_2 / 2.0f;
-    float paddle_h_2 = paddle_h();
-    float offset = _11 - (top + paddle_h_2 / 2.0f);
+    float offset = g->ball_y + 6.0f - (top + 40.0f);
     g->vel_y = offset * 7.0f;
     return 0;
 }
@@ -195,12 +114,10 @@ bb3:
 
 // overlaps
 static bool overlaps(float by, float top) {
-    float paddle_h_2;
-    float ball_size_2 = ball_size();
-    if (by + ball_size_2 >= top) goto bb1; else goto bb2;
+    bool _3;
+    if (by + 12.0f >= top) goto bb1; else goto bb2;
 bb1:
-    paddle_h_2 = paddle_h();
-    bool _3 = by <= top + paddle_h_2;
+    _3 = by <= top + 80.0f;
     goto bb3;
 bb2:
     _3 = false;
@@ -211,32 +128,23 @@ bb3:
 
 // update
 static som_unit update(struct Game* restrict g, float dt) {
-    int32_t key_up_2;
-    float paddle_speed_2;
-    int32_t key_s_2;
-    int32_t key_down_2;
-    float paddle_speed_3;
-    float screen_h_2;
-    float screen_h_3;
-    int32_t key_space_2;
-    float screen_h_4;
-    float screen_h_5;
-    float paddle_w_2;
-    bool _60;
+    struct raylib_KeyboardKey _9;
+    struct raylib_KeyboardKey _17;
+    struct raylib_KeyboardKey _22;
+    struct raylib_KeyboardKey _44;
+    bool _61;
     bool _62;
-    float ball_size_5;
-    float screen_w_2;
+    bool _63;
+    bool _73;
+    bool _74;
     bool _75;
-    float ball_size_6;
-    float paddle_w_4;
-    float ball_size_7;
-    float ball_size_8;
-    float screen_w_3;
-    int32_t key_w_2 = key_w();
-    if (IsKeyDown(key_w_2)) goto bb2; else goto bb1;
+    struct raylib_KeyboardKey _4 = (struct raylib_KeyboardKey){ .tag = 40 };
+    struct som_arr_i32_110 _5 = (struct som_arr_i32_110){{0, 39, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 59, 61, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 96, 32, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 280, 281, 282, 283, 284, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 340, 341, 342, 343, 344, 345, 346, 347, 348, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 4, 5, 24, 25}};
+    if (IsKeyDown(_5.items[(uintptr_t)_4.tag])) goto bb2; else goto bb1;
 bb1:
-    key_up_2 = key_up();
-    bool _3 = IsKeyDown(key_up_2);
+    _9 = (struct raylib_KeyboardKey){ .tag = 58 };
+    struct som_arr_i32_110 _10 = (struct som_arr_i32_110){{0, 39, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 59, 61, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 96, 32, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 280, 281, 282, 283, 284, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 340, 341, 342, 343, 344, 345, 346, 347, 348, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 4, 5, 24, 25}};
+    bool _3 = IsKeyDown(_10.items[(uintptr_t)_9.tag]);
     goto bb3;
 bb2:
     _3 = true;
@@ -244,39 +152,33 @@ bb2:
 bb3:
     if (_3) goto bb4; else goto bb5;
 bb4:
-    paddle_speed_2 = paddle_speed();
-    g->left = g->left - paddle_speed_2 * dt;
+    g->left = g->left - 420.0f * dt;
     goto bb6;
 bb5:
     goto bb6;
 bb6:
-    key_s_2 = key_s();
-    if (IsKeyDown(key_s_2)) goto bb8; else goto bb7;
+    _17 = (struct raylib_KeyboardKey){ .tag = 36 };
+    struct som_arr_i32_110 _18 = (struct som_arr_i32_110){{0, 39, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 59, 61, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 96, 32, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 280, 281, 282, 283, 284, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 340, 341, 342, 343, 344, 345, 346, 347, 348, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 4, 5, 24, 25}};
+    if (IsKeyDown(_18.items[(uintptr_t)_17.tag])) goto bb8; else goto bb7;
 bb7:
-    key_down_2 = key_down();
-    bool _11 = IsKeyDown(key_down_2);
+    _22 = (struct raylib_KeyboardKey){ .tag = 57 };
+    struct som_arr_i32_110 _23 = (struct som_arr_i32_110){{0, 39, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 59, 61, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 96, 32, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 280, 281, 282, 283, 284, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 340, 341, 342, 343, 344, 345, 346, 347, 348, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 4, 5, 24, 25}};
+    bool _16 = IsKeyDown(_23.items[(uintptr_t)_22.tag]);
     goto bb9;
 bb8:
-    _11 = true;
+    _16 = true;
     goto bb9;
 bb9:
-    if (_11) goto bb10; else goto bb11;
+    if (_16) goto bb10; else goto bb11;
 bb10:
-    paddle_speed_3 = paddle_speed();
-    g->left = g->left + paddle_speed_3 * dt;
+    g->left = g->left + 420.0f * dt;
     goto bb12;
 bb11:
     goto bb12;
 bb12:
-    screen_h_2 = screen_h();
-    float paddle_h_2 = paddle_h();
-    g->left = clamp(g->left, 0.0f, screen_h_2 - paddle_h_2);
-    float ball_size_2 = ball_size();
-    float _25 = g->ball_y + ball_size_2 / 2.0f;
-    float paddle_h_3 = paddle_h();
-    float target = _25 - paddle_h_3 / 2.0f;
-    float cpu_speed_2 = cpu_speed();
-    float step = cpu_speed_2 * dt;
+    g->left = clamp(g->left, 0.0f, 370.0f);
+    float target = g->ball_y + 6.0f - 40.0f;
+    float step = 300.0f * dt;
     if (g->right < target - step) goto bb13; else goto bb14;
 bb13:
     g->right = g->right + step;
@@ -291,13 +193,12 @@ bb16:
 bb17:
     goto bb18;
 bb18:
-    screen_h_3 = screen_h();
-    float paddle_h_4 = paddle_h();
-    g->right = clamp(g->right, 0.0f, screen_h_3 - paddle_h_4);
+    g->right = clamp(g->right, 0.0f, 370.0f);
     if (g->serving) goto bb19; else goto bb20;
 bb19:
-    key_space_2 = key_space();
-    if (IsKeyPressed(key_space_2)) goto bb22; else goto bb23;
+    _44 = (struct raylib_KeyboardKey){ .tag = 48 };
+    struct som_arr_i32_110 _45 = (struct som_arr_i32_110){{0, 39, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 59, 61, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 96, 32, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 280, 281, 282, 283, 284, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 340, 341, 342, 343, 344, 345, 346, 347, 348, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 4, 5, 24, 25}};
+    if (IsKeyPressed(_45.items[(uintptr_t)_44.tag])) goto bb22; else goto bb23;
 bb20:
     goto bb21;
 bb21:
@@ -318,92 +219,78 @@ bb26:
 bb27:
     goto bb28;
 bb28:
-    screen_h_4 = screen_h();
-    float ball_size_3 = ball_size();
-    if (g->ball_y > screen_h_4 - ball_size_3) goto bb29; else goto bb30;
+    if (g->ball_y > 438.0f) goto bb29; else goto bb30;
 bb29:
-    screen_h_5 = screen_h();
-    float ball_size_4 = ball_size();
-    g->ball_y = screen_h_5 - ball_size_4;
+    g->ball_y = 438.0f;
     float abs_3 = abs(g->vel_y);
     g->vel_y = 0.0f - abs_3;
     goto bb31;
 bb30:
     goto bb31;
 bb31:
-    paddle_w_2 = paddle_w();
-    float left_face = 20.0f + paddle_w_2;
     if (g->vel_x < 0.0f) goto bb32; else goto bb33;
 bb32:
-    _62 = g->ball_x <= left_face;
+    _63 = g->ball_x <= 32.0f;
     goto bb34;
 bb33:
-    _62 = false;
+    _63 = false;
     goto bb34;
 bb34:
-    if (_62) goto bb35; else goto bb36;
+    if (_63) goto bb35; else goto bb36;
 bb35:
-    ball_size_5 = ball_size();
-    bool _61 = g->ball_x >= 20.0f - ball_size_5;
+    _62 = g->ball_x >= 8.0f;
     goto bb37;
 bb36:
-    _61 = false;
+    _62 = false;
     goto bb37;
 bb37:
-    if (_61) goto bb38; else goto bb39;
+    if (_62) goto bb38; else goto bb39;
 bb38:
-    _60 = overlaps(g->ball_y, g->left);
+    _61 = overlaps(g->ball_y, g->left);
     goto bb40;
 bb39:
-    _60 = false;
+    _61 = false;
     goto bb40;
 bb40:
-    if (_60) goto bb41; else goto bb42;
+    if (_61) goto bb41; else goto bb42;
 bb41:
-    hit(g, g->left, left_face, 1.0f);
+    hit(g, g->left, 32.0f, 1.0f);
     goto bb43;
 bb42:
     goto bb43;
 bb43:
-    screen_w_2 = screen_w();
-    float paddle_w_3 = paddle_w();
-    float right_face = screen_w_2 - 20.0f - paddle_w_3;
     if (g->vel_x > 0.0f) goto bb44; else goto bb45;
 bb44:
-    ball_size_6 = ball_size();
-    bool _77 = g->ball_x + ball_size_6 >= right_face;
+    _75 = g->ball_x + 12.0f >= 768.0f;
     goto bb46;
 bb45:
-    _77 = false;
+    _75 = false;
     goto bb46;
 bb46:
-    if (_77) goto bb47; else goto bb48;
+    if (_75) goto bb47; else goto bb48;
 bb47:
-    paddle_w_4 = paddle_w();
-    bool _76 = g->ball_x <= right_face + paddle_w_4;
+    _74 = g->ball_x <= 780.0f;
     goto bb49;
 bb48:
-    _76 = false;
+    _74 = false;
     goto bb49;
 bb49:
-    if (_76) goto bb50; else goto bb51;
+    if (_74) goto bb50; else goto bb51;
 bb50:
-    _75 = overlaps(g->ball_y, g->right);
+    _73 = overlaps(g->ball_y, g->right);
     goto bb52;
 bb51:
-    _75 = false;
+    _73 = false;
     goto bb52;
 bb52:
-    if (_75) goto bb53; else goto bb54;
+    if (_73) goto bb53; else goto bb54;
 bb53:
-    ball_size_7 = ball_size();
-    hit(g, g->right, right_face - ball_size_7, -1.0f);
+    hit(g, g->right, 756.0f, -1.0f);
     goto bb55;
 bb54:
     goto bb55;
 bb55:
-    ball_size_8 = ball_size();
-    if (g->ball_x + ball_size_8 < 0.0f) goto bb56; else goto bb57;
+    if (g->ball_x + 12.0f < 0.0f) goto bb56; else goto bb57;
 bb56:
     g->score_r = g->score_r + 1;
     reset_ball(g, -1.0f);
@@ -411,8 +298,7 @@ bb56:
 bb57:
     goto bb58;
 bb58:
-    screen_w_3 = screen_w();
-    if (g->ball_x > screen_w_3) goto bb59; else goto bb60;
+    if (g->ball_x > 800.0f) goto bb59; else goto bb60;
 bb59:
     g->score_l = g->score_l + 1;
     reset_ball(g, 1.0f);
@@ -425,8 +311,6 @@ bb61:
 
 // draw
 static som_unit draw(struct Game* g) {
-    int32_t _11;
-    int32_t win_score_3;
     struct raylib_Color white = (struct raylib_Color){235, 235, 235, 255};
     struct raylib_Color dim = (struct raylib_Color){90, 90, 110, 255};
     struct raylib_Color bg = (struct raylib_Color){18, 18, 28, 255};
@@ -441,51 +325,37 @@ bb2:
     y = y + 30;
     goto bb1;
 bb3:
-    _11 = (g->left != g->left ? (int32_t)0 : g->left <= (double)INT32_MIN ? (int32_t)INT32_MIN : g->left >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)g->left);
-    float paddle_w_2 = paddle_w();
-    float paddle_h_2 = paddle_h();
-    DrawRectangle(20, _11, (paddle_w_2 != paddle_w_2 ? (int32_t)0 : paddle_w_2 <= (double)INT32_MIN ? (int32_t)INT32_MIN : paddle_w_2 >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)paddle_w_2), (paddle_h_2 != paddle_h_2 ? (int32_t)0 : paddle_h_2 <= (double)INT32_MIN ? (int32_t)INT32_MIN : paddle_h_2 >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)paddle_h_2), white);
-    float screen_w_2 = screen_w();
-    float paddle_w_3 = paddle_w();
-    int32_t _22 = (g->right != g->right ? (int32_t)0 : g->right <= (double)INT32_MIN ? (int32_t)INT32_MIN : g->right >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)g->right);
-    float paddle_w_4 = paddle_w();
-    float paddle_h_3 = paddle_h();
-    DrawRectangle(((screen_w_2 - 20.0f - paddle_w_3) != (screen_w_2 - 20.0f - paddle_w_3) ? (int32_t)0 : (screen_w_2 - 20.0f - paddle_w_3) <= (double)INT32_MIN ? (int32_t)INT32_MIN : (screen_w_2 - 20.0f - paddle_w_3) >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)(screen_w_2 - 20.0f - paddle_w_3)), _22, (paddle_w_4 != paddle_w_4 ? (int32_t)0 : paddle_w_4 <= (double)INT32_MIN ? (int32_t)INT32_MIN : paddle_w_4 >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)paddle_w_4), (paddle_h_3 != paddle_h_3 ? (int32_t)0 : paddle_h_3 <= (double)INT32_MIN ? (int32_t)INT32_MIN : paddle_h_3 >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)paddle_h_3), white);
-    int32_t _28 = (g->ball_x != g->ball_x ? (int32_t)0 : g->ball_x <= (double)INT32_MIN ? (int32_t)INT32_MIN : g->ball_x >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)g->ball_x);
-    int32_t _29 = (g->ball_y != g->ball_y ? (int32_t)0 : g->ball_y <= (double)INT32_MIN ? (int32_t)INT32_MIN : g->ball_y >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)g->ball_y);
-    float ball_size_2 = ball_size();
-    float ball_size_3 = ball_size();
-    DrawRectangle(_28, _29, (ball_size_2 != ball_size_2 ? (int32_t)0 : ball_size_2 <= (double)INT32_MIN ? (int32_t)INT32_MIN : ball_size_2 >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)ball_size_2), (ball_size_3 != ball_size_3 ? (int32_t)0 : ball_size_3 <= (double)INT32_MIN ? (int32_t)INT32_MIN : ball_size_3 >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)ball_size_3), white);
+    DrawRectangle(20, (g->left != g->left ? (int32_t)0 : g->left <= (double)INT32_MIN ? (int32_t)INT32_MIN : g->left >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)g->left), (12.0f != 12.0f ? (int32_t)0 : 12.0f <= (double)INT32_MIN ? (int32_t)INT32_MIN : 12.0f >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)12.0f), (80.0f != 80.0f ? (int32_t)0 : 80.0f <= (double)INT32_MIN ? (int32_t)INT32_MIN : 80.0f >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)80.0f), white);
+    DrawRectangle((768.0f != 768.0f ? (int32_t)0 : 768.0f <= (double)INT32_MIN ? (int32_t)INT32_MIN : 768.0f >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)768.0f), (g->right != g->right ? (int32_t)0 : g->right <= (double)INT32_MIN ? (int32_t)INT32_MIN : g->right >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)g->right), (12.0f != 12.0f ? (int32_t)0 : 12.0f <= (double)INT32_MIN ? (int32_t)INT32_MIN : 12.0f >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)12.0f), (80.0f != 80.0f ? (int32_t)0 : 80.0f <= (double)INT32_MIN ? (int32_t)INT32_MIN : 80.0f >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)80.0f), white);
+    DrawRectangle((g->ball_x != g->ball_x ? (int32_t)0 : g->ball_x <= (double)INT32_MIN ? (int32_t)INT32_MIN : g->ball_x >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)g->ball_x), (g->ball_y != g->ball_y ? (int32_t)0 : g->ball_y <= (double)INT32_MIN ? (int32_t)INT32_MIN : g->ball_y >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)g->ball_y), (12.0f != 12.0f ? (int32_t)0 : 12.0f <= (double)INT32_MIN ? (int32_t)INT32_MIN : 12.0f >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)12.0f), (12.0f != 12.0f ? (int32_t)0 : 12.0f <= (double)INT32_MIN ? (int32_t)INT32_MIN : 12.0f >= (double)INT32_MAX ? (int32_t)INT32_MAX : (int32_t)12.0f), white);
     int32_t l = g->score_l;
     int32_t r = g->score_r;
-    int32_t* _37 = &l;
-    uintptr_t display_len = som_i32_display_len(_37);
-    uintptr_t _39 = 0;
-    _39 = _39 + display_len;
-    struct som_string interpolated = som_string_interpolated(_39);
+    int32_t* _29 = &l;
+    uintptr_t display_len = som_i32_display_len(_29);
+    uintptr_t _31 = 0;
+    _31 = _31 + display_len;
+    struct som_string interpolated = som_string_interpolated(_31);
     uintptr_t write_shown = 0;
-    write_shown = som_string_write_shown_i32(&interpolated, write_shown, _37, display_len);
+    write_shown = som_string_write_shown_i32(&interpolated, write_shown, _29, display_len);
     struct som_string ls = interpolated;
-    int32_t* _44 = &r;
-    uintptr_t display_len_2 = som_i32_display_len(_44);
-    uintptr_t _46 = 0;
-    _46 = _46 + display_len_2;
-    struct som_string interpolated_2 = som_string_interpolated(_46);
+    int32_t* _36 = &r;
+    uintptr_t display_len_2 = som_i32_display_len(_36);
+    uintptr_t _38 = 0;
+    _38 = _38 + display_len_2;
+    struct som_string interpolated_2 = som_string_interpolated(_38);
     uintptr_t write_shown_2 = 0;
-    write_shown_2 = som_string_write_shown_i32(&interpolated_2, write_shown_2, _44, display_len_2);
+    write_shown_2 = som_string_write_shown_i32(&interpolated_2, write_shown_2, _36, display_len_2);
     struct som_string rs = interpolated_2;
     uint8_t* c_str = som_string_c_str(&ls);
     DrawText(c_str, 340, 20, 48, white);
     uint8_t* c_str_2 = som_string_c_str(&rs);
     DrawText(c_str_2, 440, 20, 48, white);
-    int32_t win_score_2 = win_score();
-    if (g->score_l >= win_score_2) goto bb4; else goto bb5;
+    if (g->score_l >= 5) goto bb4; else goto bb5;
 bb4:
     DrawText((uint8_t*)"You win!  space to play again", 230, 200, 24, white);
     goto bb6;
 bb5:
-    win_score_3 = win_score();
-    if (g->score_r >= win_score_3) goto bb7; else goto bb8;
+    if (g->score_r >= 5) goto bb7; else goto bb8;
 bb6:
     EndDrawing();
     drop_som_string(&rs);
@@ -510,46 +380,40 @@ bb12:
 // main
 static som_unit som_main(void) {
     bool window_should_close;
-    int32_t win_score_2;
-    int32_t win_score_3;
+    bool _14;
     bool over;
-    int32_t key_space_2;
-    struct Game* _26;
+    struct raylib_KeyboardKey _18;
+    struct Game* _23;
     InitWindow(800, 450, (uint8_t*)"pong");
     SetTargetFPS(60);
-    float screen_h_2 = screen_h();
-    float paddle_h_2 = paddle_h();
-    float screen_h_3 = screen_h();
-    float paddle_h_3 = paddle_h();
-    struct Game g = (struct Game){0.0f, 0.0f, 0.0f, 0.0f, screen_h_2 / 2.0f - paddle_h_2 / 2.0f, screen_h_3 / 2.0f - paddle_h_3 / 2.0f, 0, 0, true};
+    struct Game g = (struct Game){0.0f, 0.0f, 0.0f, 0.0f, 185.0f, 185.0f, 0, 0, true};
     reset_ball(&g, 1.0f);
     goto bb1;
 bb1:
     window_should_close = WindowShouldClose();
     if (!window_should_close) goto bb2; else goto bb3;
 bb2:
-    win_score_2 = win_score();
-    if (g.score_l >= win_score_2) goto bb5; else goto bb4;
+    if (g.score_l >= 5) goto bb5; else goto bb4;
 bb3:
     CloseWindow();
     return 0;
 bb4:
-    win_score_3 = win_score();
-    bool _18 = g.score_r >= win_score_3;
+    _14 = g.score_r >= 5;
     goto bb6;
 bb5:
-    _18 = true;
+    _14 = true;
     goto bb6;
 bb6:
-    over = _18;
+    over = _14;
     if (over) goto bb7; else goto bb8;
 bb7:
-    key_space_2 = key_space();
-    if (IsKeyPressed(key_space_2)) goto bb10; else goto bb11;
+    _18 = (struct raylib_KeyboardKey){ .tag = 48 };
+    struct som_arr_i32_110 _19 = (struct som_arr_i32_110){{0, 39, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 59, 61, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 96, 32, 256, 257, 258, 259, 260, 261, 262, 263, 264, 265, 266, 267, 268, 269, 280, 281, 282, 283, 284, 290, 291, 292, 293, 294, 295, 296, 297, 298, 299, 300, 301, 340, 341, 342, 343, 344, 345, 346, 347, 348, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 4, 5, 24, 25}};
+    if (IsKeyPressed(_19.items[(uintptr_t)_18.tag])) goto bb10; else goto bb11;
 bb8:
-    _26 = &g;
+    _23 = &g;
     float get_frame_time = GetFrameTime();
-    update(_26, get_frame_time);
+    update(_23, get_frame_time);
     goto bb9;
 bb9:
     draw(&g);

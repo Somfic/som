@@ -523,6 +523,13 @@ pub fn split_text(token: &Token) -> Vec<Token> {
         let rest = &text[at..];
         if rest.starts_with("{{") || rest.starts_with("}}") {
             at += 2;
+        } else if rest.starts_with('\\') {
+            // An escape is text, `\u{41}`'s braces too.
+            at += match rest[1..].chars().next() {
+                Some('u') if rest[2..].starts_with('{') => rest.find('}').map_or(2, |end| end + 1),
+                Some(c) => 1 + c.len_utf8(),
+                None => 1,
+            };
         } else if rest.starts_with('{')
             && let Some(close) = rest.find('}')
         {

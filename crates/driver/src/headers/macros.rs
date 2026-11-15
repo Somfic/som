@@ -207,7 +207,7 @@ impl Val {
                 let ty = if *double { "f64" } else { "f32" };
                 format!("pub const {name}: {ty} = {};", float_text(*x, *double)?)
             }
-            Val::Str(text) => format!("pub const {name}: cstr = \"{text}\";"),
+            Val::Str(text) => format!("pub const {name}: cstr = \"{}\";", som_escaped(text)),
             Val::Struct(strukt, fields) => {
                 let fields: Vec<String> = (fields.iter())
                     .map(|(field, value)| format!("{field}: {value}"))
@@ -302,19 +302,26 @@ fn lex(body: &str) -> Option<Vec<Tok>> {
             }
             tokens.push(Tok::Ident(chars[start..i].iter().collect()));
         } else if c == '"' {
-            let start = i + 1;
+            // The text it stands for, C's escapes worked out: written again as som's.
+            let mut text = String::new();
             i += 1;
             while i < chars.len() && chars[i] != '"' {
-                // Escapes are C's, which som may read differently: left out.
-                if chars[i] == '\\' {
+                if chars[i] != '\\' {
+                    text.push(chars[i]);
+                    i += 1;
+                    continue;
+                }
+                let (byte, len) = c_escape(&chars[i + 1..])?;
+                // Past `\x7f` it's a byte of something, not a character: left out.
+                if byte > 0x7f {
                     return None;
                 }
-                i += 1;
+                text.push(char::from_u32(byte)?);
+                i += 1 + len;
             }
             if i >= chars.len() {
                 return None;
             }
-            let text: String = chars[start..i].iter().collect();
             i += 1;
             // `"a" "b"` is `"ab"`.
             match tokens.last_mut() {
@@ -329,6 +336,61 @@ fn lex(body: &str) -> Option<Vec<Tok>> {
         }
     }
     Some(tokens)
+}
+
+/// The byte C escape `\…` stands for, from what follows its `\`, and how many characters
+/// that is: `n` is a newline, `033` and `x1b` are 27.
+fn c_escape(after: &[char]) -> Option<(u32, usize)> {
+    let simple = |c: char| -> Option<u32> {
+        Some(match c {
+            'n' => 10,
+            't' => 9,
+            'r' => 13,
+            'a' => 7,
+            'b' => 8,
+            'f' => 12,
+            'v' => 11,
+            'e' => 27,
+            '\\' | '"' | '\'' | '?' => c as u32,
+            _ => return None,
+        })
+    };
+    let first = *after.first()?;
+    if let Some(value) = simple(first) {
+        return Some((value, 1));
+    }
+    let (radix, digits, skip): (u32, Vec<char>, usize) = match first {
+        'x' => (16, after[1..].iter().copied().take_while(char::is_ascii_hexdigit).collect(), 1),
+        '0'..='7' => (8, after.iter().copied().take(3).take_while(|c| ('0'..='7').contains(c)).collect(), 0),
+        _ => return None,
+    };
+    if digits.is_empty() {
+        return None;
+    }
+    let value = u32::from_str_radix(&digits.iter().collect::<String>(), radix).ok()?;
+    Some((value, skip + digits.len()))
+}
+
+/// `text` as som writes it between quotes: `"`, `\`, `{` and `}` and control characters
+/// escaped.
+fn som_escaped(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '{' => out.push_str("{{"),
+            '}' => out.push_str("}}"),
+            '\n' => out.push_str("\\n"),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            c if (c as u32) < 0x20 || c as u32 == 0x7f => {
+                let _ = write!(out, "\\x{:02x}", c as u32);
+            }
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 /// A C number literal: `10`, `0xFF`, `10u`, `1UL`, `0.5f`, `1e-3`.

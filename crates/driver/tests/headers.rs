@@ -49,6 +49,7 @@ int demo_key(int key);
 #define DEMO_HALF_PI (DEMO_PI / 2.0f)
 #define DEMO_MASK (~0u >> 28)
 #define DEMO_NAME \"demo\"
+#define DEMO_CLEAR \"\\033[2J\\x1b[H{}\\n\"
 #define DEMO_PAIR (Pair){ 2, 0.25f } // Two and a quarter
 #define DEMO_SQUARE(x) ((x) * (x))
 #define DEMO_CALL demo_add(1, 2)
@@ -595,6 +596,7 @@ fn defines_that_stand_for_values_become_constants() {
         "pub const DEMO_HALF_PI: f32 = 1.75;",
         "pub const DEMO_MASK: u32 = 15;",
         "pub const DEMO_NAME: cstr = \"demo\";",
+        "pub const DEMO_CLEAR: cstr = \"\\x1b[2J\\x1b[H{{}}\\n\";",
         "impl Pair {\n    /// Two and a quarter\n    pub const DEMO_PAIR = Pair { left: 2, right: 0.25 };\n}",
     ] {
         assert!(generated.contains(expected), "{expected:?} in:\n{generated}");

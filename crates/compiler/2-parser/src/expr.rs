@@ -747,8 +747,6 @@ impl Parser<'_> {
         }
     }
 
-    /// The text of a string literal with its escapes resolved: `\n`, `\t`, `\r`, `\0`,
-    /// `\\`, `\"` and `\'`. An unknown escape is reported, and kept as written.
     /// `"total: {n}"`: the text in pieces, each `{…}` read as an expression. `{{` and `}}`
     /// are the braces themselves.
     fn interpolated(&mut self, token: &som_lexer::Token) -> Expr {
@@ -761,6 +759,12 @@ impl Parser<'_> {
         let mut i = 0;
         while i < bytes.len() {
             match bytes[i] {
+                // An escape is text, `\u{41}`'s braces too: unescaped with the rest of it.
+                b'\\' => {
+                    let len = escape_len(&raw[i..]);
+                    piece.push_str(&raw[i..i + len]);
+                    i += len;
+                }
                 b'{' if bytes.get(i + 1) == Some(&b'{') => {
                     piece.push('{');
                     i += 2;
@@ -806,6 +810,10 @@ impl Parser<'_> {
                 }
             }
         }
+        // Only text after all, `"{{}}"` or `"\u{41}"`: plain text.
+        if parts.is_empty() {
+            return Expr::Str(self.unescape(&piece, &token.span).into());
+        }
         if !piece.is_empty() {
             let text = self.unescape(&piece, &token.span);
             parts.push(Part::Text(self.ast.exprs.alloc(Expr::Str(text.into()), token.span.clone())));
@@ -838,6 +846,9 @@ impl Parser<'_> {
         value
     }
 
+    /// The text of a string literal with its escapes resolved: `\n`, `\t`, `\r`, `\0`,
+    /// `\\`, `\"`, `\'`, `\x1b` and `\u{1F600}`. An unknown escape is reported, and kept as
+    /// written.
     fn unescape(&mut self, raw: &str, span: &Span) -> String {
         let mut out = String::with_capacity(raw.len());
         let mut chars = raw.chars();
@@ -852,12 +863,72 @@ impl Parser<'_> {
                 Some('r') => out.push('\r'),
                 Some('0') => out.push('\0'),
                 Some(c @ ('\\' | '"' | '\'')) => out.push(c),
+                // `\x1b`: the character with that number, two hex digits, up to `\x7f`.
+                Some('x') => {
+                    let digits: String = chars.clone().take(2).collect();
+                    let value = (digits.len() == 2)
+                        .then(|| u8::from_str_radix(&digits, 16).ok())
+                        .flatten();
+                    match value {
+                        Some(byte) if byte <= 0x7f => {
+                            chars.nth(1);
+                            out.push(byte as char);
+                        }
+                        Some(_) => {
+                            chars.nth(1);
+                            self.error_at(
+                                span.clone(),
+                                msg!["escape ", code(format!("\\x{digits}")), " is past ", code("\\x7f")],
+                                msg![
+                                    "text is UTF-8: for a character past ",
+                                    code("\\x7f"),
+                                    ", write ",
+                                    code(format!("\\u{{{digits}}}"))
+                                ],
+                            );
+                        }
+                        None => self.error_at(
+                            span.clone(),
+                            msg![code("\\x"), " needs two hex digits"],
+                            msg!["like ", code("\\x1b"), " for escape, or ", code("\\x00")],
+                        ),
+                    }
+                }
+                // `\u{1F600}`: the character with that number, in hex.
+                Some('u') => {
+                    let rest = chars.as_str();
+                    let digits = (rest.strip_prefix('{'))
+                        .and_then(|r| r.find('}').map(|end| &r[..end]))
+                        .filter(|d| (1..=6).contains(&d.len()));
+                    let character = digits
+                        .and_then(|d| u32::from_str_radix(d, 16).ok())
+                        .and_then(char::from_u32);
+                    match (digits, character) {
+                        (Some(d), Some(c)) => {
+                            chars.nth(d.len() + 1);
+                            out.push(c);
+                        }
+                        (Some(d), None) => {
+                            chars.nth(d.len() + 1);
+                            self.error_at(
+                                span.clone(),
+                                msg![code(format!("\\u{{{d}}}")), " isn't a character"],
+                                "a character's number is at most 10FFFF, and not D800 to DFFF",
+                            );
+                        }
+                        (None, _) => self.error_at(
+                            span.clone(),
+                            msg![code("\\u"), " needs a character's number in braces"],
+                            msg!["like ", code("\\u{1F600}"), ", in hex"],
+                        ),
+                    }
+                }
                 other => {
                     let escape = format!("\\{}", other.map(String::from).unwrap_or_default());
                     self.error_at(
                         span.clone(),
                         msg!["unknown escape ", code(&escape)],
-                        msg!["expected one of ", code("\\n \\t \\r \\0 \\\\ \\\" \\'")],
+                        msg!["expected one of ", code("\\n \\t \\r \\0 \\\\ \\\" \\' \\x1b \\u{1F600}")],
                     );
                     out.push_str(&escape);
                 }
@@ -1188,5 +1259,14 @@ impl Parser<'_> {
         )?;
 
         Some(self.alloc_expr(Expr::Construct { ty, args, fields }, &start))
+    }
+}
+
+/// How long the escape at the start of `text`, a `\`, is as written: `\n` is 2, `\u{41}` 6.
+pub(crate) fn escape_len(text: &str) -> usize {
+    match text[1..].chars().next() {
+        Some('u') if text[2..].starts_with('{') => text.find('}').map_or(2, |end| end + 1),
+        Some(c) => 1 + c.len_utf8(),
+        None => 1,
     }
 }
