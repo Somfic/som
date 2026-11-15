@@ -56,6 +56,9 @@ pub(crate) struct Checker<'a> {
     in_place: bool,
     /// Operators whose operand type wasn't known yet when they were checked.
     deferred_ops: Vec<(Id<Expr>, BinOp, TypeId, TypeId)>,
+    /// Values written into text, `n` in `"total: {n}"`: whether they implement `Display`,
+    /// once what they are is known.
+    displayed: Vec<(Id<Expr>, TypeId)>,
     /// Inferring an assignment's target: `s[i] = v`, which a slice can't do.
     assigning: bool,
     /// Values to convert through `From` whose types weren't known well enough to choose
@@ -136,6 +139,7 @@ impl<'a> Checker<'a> {
             returns: None,
             in_place: false,
             deferred_ops: Vec::new(),
+            displayed: Vec::new(),
             assigning: false,
             deferred_conversions: Vec::new(),
             loops: 0,
@@ -310,6 +314,23 @@ impl<'a> Checker<'a> {
             self.mismatch_at(expr, expected, found, from);
         }
 
+        // `"total: {n}"`: what's written in has to be shown as text. Through references.
+        if let Some(display) = self.names.lang(LangTrait::Display) {
+            for (expr, ty) in std::mem::take(&mut self.displayed) {
+                // `"{5}"`: a number nothing else decides is an `i32` or `f64`.
+                self.default_numbers(ty);
+                let mut shown = self.u.shallow(ty);
+                while let Ty::Ref { to, .. } = *self.u.get(shown) {
+                    shown = self.u.shallow(to);
+                }
+                if !self.implements(shown, display) {
+                    self.errors.push(TypeError::NotDisplay {
+                        ty: self.describe(ty),
+                        span: self.span(expr),
+                    });
+                }
+            }
+        }
         for (expr, op, lhs, rhs) in std::mem::take(&mut self.deferred_ops) {
             if self.trait_op(expr, op, lhs) {
                 continue;
@@ -346,6 +367,7 @@ impl<'a> Checker<'a> {
         self.check_body(id, func, body);
         self.check_moves_out(body);
         self.check_main_params(id, func);
+        self.check_main_returns(id, func, body);
         // After the body, which decides a return type that isn't written.
         if func.prop {
             self.check_prop(id, func);
@@ -361,6 +383,36 @@ impl<'a> Checker<'a> {
             self.expected_here,
             self.omitted_args_ok,
         ) = outer;
+    }
+
+    /// What `main` gives is the program's exit code: an integer, or nothing. A script ending
+    /// in `"done"` gives a `string`, which can't be one.
+    fn check_main_returns(&mut self, id: Id<Func>, func: &Func, body: Id<Expr>) {
+        let def = self.names.func(id);
+        let top_level = self.ast.modules[self.names.def(def).module].name.is_empty()
+            && self.names.impl_of(id).is_none();
+        if &*func.name.name != "main" || !top_level {
+            return;
+        }
+        let ret = self.u.shallow(self.sigs[id.id].ret);
+        if matches!(self.u.get(ret), Ty::Int(_) | Ty::Unit | Ty::Error | Ty::Var(_)) {
+            return;
+        }
+        let value = match &self.ast.exprs[body] {
+            Expr::Block {
+                value: Some(value), ..
+            } => *value,
+            _ => body,
+        };
+        let span = match func.returns {
+            Some(ty) => self.ast.types.span(ty).clone(),
+            None => self.span(value),
+        };
+        self.errors.push(TypeError::MainReturns {
+            ty: self.describe(ret),
+            span,
+            written: func.returns.is_some(),
+        });
     }
 
     /// `fn main(args: &[cstr])`: the program's entry takes nothing; its arguments are read
@@ -2305,6 +2357,23 @@ impl<'a> Checker<'a> {
             Expr::Bool(_) => bool,
             // A `str`, or a `cstr` where C needs one.
             Expr::Str(_) => self.u.fresh(VarKind::Text),
+            // `"total: {n}"`: a `string`, of the pieces and the values written in.
+            Expr::Interpolated(parts) => {
+                for &part in parts {
+                    match part {
+                        som_ast::Part::Text(text) => {
+                            let ty = self.infer(text);
+                            self.text_as_string(ty);
+                        }
+                        som_ast::Part::Value(value) => {
+                            let ty = self.infer(value);
+                            self.text_as_string(ty);
+                            self.displayed.push((value, ty));
+                        }
+                    }
+                }
+                self.u.table.text
+            }
             Expr::None => {
                 let inner = self.u.fresh(VarKind::Any);
                 self.u.intern(Ty::Optional(inner))
@@ -5321,6 +5390,13 @@ impl Checker<'_> {
     /// a field access or dereference.
     fn forget_changed_by(&mut self, expr: Id<Expr>, in_place: bool) {
         match &self.ast.exprs[expr] {
+            Expr::Interpolated(parts) => {
+                for &part in parts {
+                    if let som_ast::Part::Value(value) = part {
+                        self.forget_changed_by(value, false);
+                    }
+                }
+            }
             Expr::Hole
             | Expr::Unreachable
             | Expr::Int(_)

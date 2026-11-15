@@ -1,0 +1,3 @@
+let adam = "hi";
+
+som::io::print("Hello {adam}")

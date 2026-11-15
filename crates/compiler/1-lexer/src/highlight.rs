@@ -165,6 +165,11 @@ pub fn highlight(line: &str) -> String {
             }
             seen += 1;
         }
+        // `"total: {1 / 0}"`: the values in text are code.
+        if token.kind == TokenKind::Text && token.text.contains('{') {
+            result.push_str(&highlight_text(&token.text));
+            continue;
+        }
         let colored_text = if is_italic(token.kind) {
             format!(
                 "{}",
@@ -176,5 +181,33 @@ pub fn highlight(line: &str) -> String {
         result.push_str(&colored_text);
     }
 
+    result
+}
+
+/// Text with values written in it, `"total: {n + 1}"`: the text coloured as text, each
+/// `{…}` as code between braces. `{{` and `}}` are text.
+fn highlight_text(text: &str) -> String {
+    let paint = |part: &str, color: Rgb| format!("{}", part.truecolor(color.0, color.1, color.2));
+    let mut result = String::new();
+    let mut piece = String::new();
+    let mut rest = text;
+    while let Some(c) = rest.chars().next() {
+        if rest.starts_with("{{") || rest.starts_with("}}") {
+            piece.push_str(&rest[..2]);
+            rest = &rest[2..];
+        } else if c == '{'
+            && let Some(close) = rest.find('}')
+        {
+            result.push_str(&paint(&std::mem::take(&mut piece), PEACH));
+            result.push_str(&paint("{", SUBTEXT0));
+            result.push_str(&highlight(&rest[1..close]));
+            result.push_str(&paint("}", SUBTEXT0));
+            rest = &rest[close + 1..];
+        } else {
+            piece.push(c);
+            rest = &rest[c.len_utf8()..];
+        }
+    }
+    result.push_str(&paint(&piece, PEACH));
     result
 }

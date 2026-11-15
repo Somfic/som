@@ -1,0 +1,16 @@
+// expect: exit 0
+
+use som::io;
+
+/// `{…}` in text writes a value into it, through `Display`: numbers, floats, `bool`,
+/// strings, optionals, and what references refer to. `{{` and `}}` are the braces.
+fn main() -> i32 {
+    let n = 42;
+    let name = "som";
+    let none_here: i32? = none;
+    let held: i32? = 7;
+    let r = &n;
+    let text = "{name}: {n} {0.5} {true} {none_here} {held} {r} {n + 1} {{x}}";
+    println(text);
+    if text == "som: 42 0.5 true none 7 42 43 {{x}}" { 0 } else { 1 }
+}

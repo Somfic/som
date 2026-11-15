@@ -110,6 +110,17 @@ pub trait IndexMut: Index {
     }
 }
 
+/// Shown as text: what `{x}` in `"total: {x}"` writes. Measured first, so the text it's
+/// written into is made once, at its full length.
+pub trait Display {
+    /// How many bytes its text takes.
+    prop display_len: usize;
+
+    /// Writes its text at `to`, which has room for `display_len` bytes. It may write a zero
+    /// byte after them, which what's written next covers.
+    fn display(self: &Self, to: *u8);
+}
+
 /// Copied by calling `share` rather than moved: using a value leaves it usable, and the
 /// copy is whatever `share` gives. For a value that keeps count of its copies, as a
 /// reference-counted pointer does: `share` counts one more, and `Drop` one fewer.

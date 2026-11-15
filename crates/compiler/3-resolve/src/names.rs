@@ -94,6 +94,8 @@ pub enum LangTrait {
     Index,
     /// `values[i] = value`: its `at_mut`.
     IndexMut,
+    /// `"total: {n}"`: how `n` is written into the text.
+    Display,
 }
 
 impl LangTrait {
@@ -139,11 +141,12 @@ impl LangTrait {
             | LangTrait::Copy
             | LangTrait::Share
             | LangTrait::Index
-            | LangTrait::IndexMut => return None,
+            | LangTrait::IndexMut
+            | LangTrait::Display => return None,
         })
     }
 
-    pub const ALL: [LangTrait; 16] = [
+    pub const ALL: [LangTrait; 17] = [
         LangTrait::Iterator,
         LangTrait::Iterable,
         LangTrait::IterableMut,
@@ -160,6 +163,7 @@ impl LangTrait {
         LangTrait::Share,
         LangTrait::Index,
         LangTrait::IndexMut,
+        LangTrait::Display,
     ];
 
     /// Its name in the standard library.
@@ -181,6 +185,7 @@ impl LangTrait {
             LangTrait::Share => "Share",
             LangTrait::Index => "Index",
             LangTrait::IndexMut => "IndexMut",
+            LangTrait::Display => "Display",
         }
     }
 }

@@ -158,7 +158,8 @@ pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
         | LangTrait::Copy
         | LangTrait::Share
         | LangTrait::Index
-        | LangTrait::IndexMut => false,
+        | LangTrait::IndexMut
+        | LangTrait::Display => false,
     }
 }
 

@@ -327,6 +327,13 @@ impl Dumper<'_> {
             Expr::Str(s) => self.line(format!("str {s:?}")),
             Expr::None => self.line("none"),
             Expr::Array(items) => self.node("array", |d| d.exprs(items)),
+            Expr::Interpolated(parts) => self.node("interpolated", |d| {
+                for part in parts {
+                    match part {
+                        crate::Part::Text(e) | crate::Part::Value(e) => d.expr(*e),
+                    }
+                }
+            }),
             Expr::Cast { value, ty } => {
                 let ty = self.ast.type_text(*ty);
                 self.node(format!("as {ty}"), |d| d.expr(*value))

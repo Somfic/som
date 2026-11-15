@@ -1,9 +1,9 @@
-use som_ast::{Arm, Expr, Id, Ident, Pattern, PatternFields, Span, Stmt};
+use som_ast::{Arm, Expr, Id, Ident, Part, Pattern, PatternFields, Span, Stmt};
 use som_base::message::code;
-use som_base::msg;
+use som_base::{Fix, msg};
 use som_lexer::TokenKind;
 
-use crate::Parser;
+use crate::{ParseError, Parser};
 use crate::grammar::{Association, Grammar, OpInfo};
 use som_ast::BinOp;
 
@@ -318,6 +318,23 @@ impl Parser<'_> {
     }
 
     fn parse_atom(&mut self) -> Option<Id<Expr>> {
+        // `f"total: {n}"`: Python's f-string. som's text writes values in it as it is.
+        if self.at(TokenKind::Ident)
+            && matches!(&*self.peek_token().text, "f" | "F")
+            && self.peek_nth(1) == TokenKind::Text
+            && self.span_ahead(1).start_offset == self.current_span().start_offset + 1
+        {
+            let prefix = self.current_span();
+            if !self.in_recovery {
+                self.errors.push(ParseError {
+                    message: msg!["som's text has no ", code("f"), " in front"],
+                    hint: msg!["any text writes the values in its ", code("{…}")],
+                    fix: Some(Fix::replace(msg!["remove the ", code("f")], prefix.clone(), "")),
+                    span: prefix,
+                });
+            }
+            self.advance();
+        }
         let start = self.current_span();
 
         let expr = match self.peek() {
@@ -468,9 +485,14 @@ impl Parser<'_> {
             }
 
             TokenKind::Text => {
-                let text = self.peek_token().text.clone();
+                let token = self.peek_token().clone();
                 self.advance();
-                Expr::Str(self.unescape(&text[1..text.len() - 1], &start).into())
+                let raw = &token.text[1..token.text.len() - 1];
+                if raw.contains('{') || raw.contains('}') {
+                    self.interpolated(&token)
+                } else {
+                    Expr::Str(self.unescape(raw, &start).into())
+                }
             }
 
             // `.x` and `.len()` are short for `self.x` and `self.len()`. The `self` they mean
@@ -674,6 +696,95 @@ impl Parser<'_> {
 
     /// The text of a string literal with its escapes resolved: `\n`, `\t`, `\r`, `\0`,
     /// `\\`, `\"` and `\'`. An unknown escape is reported, and kept as written.
+    /// `"total: {n}"`: the text in pieces, each `{…}` read as an expression. `{{` and `}}`
+    /// are the braces themselves.
+    fn interpolated(&mut self, token: &som_lexer::Token) -> Expr {
+        let raw = &token.text[1..token.text.len() - 1];
+        // Where the text inside the quotes starts in the file.
+        let base = token.span.start_offset + 1;
+        let mut parts = Vec::new();
+        let mut piece = String::new();
+        let bytes = raw.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'{' if bytes.get(i + 1) == Some(&b'{') => {
+                    piece.push('{');
+                    i += 2;
+                }
+                b'}' if bytes.get(i + 1) == Some(&b'}') => {
+                    piece.push('}');
+                    i += 2;
+                }
+                b'{' => {
+                    let Some(close) = raw[i..].find('}').map(|c| i + c) else {
+                        let at = Span::from_range(base + i..base + i + 1, token.span.source.clone());
+                        self.error_at(
+                            at,
+                            msg!["a ", code("{"), " in text starts a value, and needs a ", code("}")],
+                            msg!["for the brace itself, write ", code("{{")],
+                        );
+                        return Expr::Hole;
+                    };
+                    if !piece.is_empty() {
+                        let text = self.unescape(&std::mem::take(&mut piece), &token.span);
+                        parts.push(Part::Text(self.ast.exprs.alloc(Expr::Str(text.into()), token.span.clone())));
+                    }
+                    let range = base + i + 1..base + close;
+                    match self.text_value(&token.span, range) {
+                        Some(value) => parts.push(Part::Value(value)),
+                        None => return Expr::Hole,
+                    }
+                    i = close + 1;
+                }
+                b'}' => {
+                    let at = Span::from_range(base + i..base + i + 1, token.span.source.clone());
+                    self.error_at(
+                        at,
+                        msg!["a ", code("}"), " in text ends a value, and there's none"],
+                        msg!["for the brace itself, write ", code("}}")],
+                    );
+                    return Expr::Hole;
+                }
+                _ => {
+                    let len = raw[i..].chars().next().map_or(1, char::len_utf8);
+                    piece.push_str(&raw[i..i + len]);
+                    i += len;
+                }
+            }
+        }
+        if !piece.is_empty() {
+            let text = self.unescape(&piece, &token.span);
+            parts.push(Part::Text(self.ast.exprs.alloc(Expr::Str(text.into()), token.span.clone())));
+        }
+        Expr::Interpolated(parts)
+    }
+
+    /// The expression `{…}` in text holds, at `range` of the file: read on its own.
+    fn text_value(&mut self, text: &Span, range: std::ops::Range<usize>) -> Option<Id<Expr>> {
+        let tokens = som_lexer::lex_range(text.source.clone(), range.clone());
+        let outer = (std::mem::replace(&mut self.tokens, tokens), std::mem::replace(&mut self.pos, 0));
+        self.skip_trivia();
+        let value = if self.at_eof() {
+            let at = Span::from_range(range.start - 1..range.end + 1, text.source.clone());
+            self.error_at(
+                at,
+                msg![code("{}"), " in text holds nothing"],
+                msg!["put the value to write between them, ", code("{total}"), ", or write ", code("{{}}"), " for the braces"],
+            );
+            None
+        } else {
+            let value = self.parse_expr();
+            if value.is_some() && !self.at_eof() {
+                let at = self.current_span();
+                self.error_at(at, "expected the end of the value", msg!["a value in text ends with ", code("}")]);
+            }
+            value
+        };
+        (self.tokens, self.pos) = outer;
+        value
+    }
+
     fn unescape(&mut self, raw: &str, span: &Span) -> String {
         let mut out = String::with_capacity(raw.len());
         let mut chars = raw.chars();

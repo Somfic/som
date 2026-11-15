@@ -110,11 +110,22 @@ pub enum Expr {
         scrutinee: Id<Expr>,
         arms: Vec<Arm>,
     },
+    /// `"total: {n}"`: text with values written into it, each through `Display`.
+    Interpolated(Vec<Part>),
     /// `{ stmts; value }`
     Block {
         stmts: Vec<Id<Stmt>>,
         value: Option<Id<Expr>>,
     },
+}
+
+/// A piece of interpolated text.
+#[derive(Clone, Copy)]
+pub enum Part {
+    /// Text as written, an `Expr::Str`.
+    Text(Id<Expr>),
+    /// `{value}`.
+    Value(Id<Expr>),
 }
 
 /// `pattern => body` in a `match`.

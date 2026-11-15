@@ -1,0 +1,10 @@
+// expect: error NotDisplay
+
+/// What doesn't implement `Display` can't be written into text.
+struct Secret { value: i32 }
+
+fn main() -> i32 {
+    let s = Secret { value: 1 };
+    let text = "it's {s}";
+    0
+}

@@ -235,7 +235,8 @@ impl Parser<'_> {
         let first_args = self.parse_type_args()?;
         // `Iterator for ListIter<T>`: what came first was the trait.
         let (trait_, target, target_args, target_ty) = if self.eat(TokenKind::For) {
-            if self.at(TokenKind::Ident) {
+            // `T?` is a type, not a struct's name.
+            if self.at(TokenKind::Ident) && self.peek_nth(1) != TokenKind::Question {
                 let target = self.parse_path("a struct name")?;
                 let target_args = self.parse_type_args()?;
                 (Some((first, first_args)), target, target_args, None)

@@ -461,6 +461,80 @@ pub fn lex(source: Arc<Source>) -> Vec<Token> {
     tokens
 }
 
+/// The tokens of `range` of `source`, where they are in it: `{total}` inside text, read as
+/// code. Ends in an `Eof` at the range's end.
+pub fn lex_range(source: Arc<Source>, range: std::ops::Range<usize>) -> Vec<Token> {
+    let input = source.content();
+    let mut lexer = TokenKind::lexer(&input[range.clone()]);
+    let mut tokens = Vec::new();
+    let mut cursor = Cursor::default();
+    while let Some(result) = lexer.next() {
+        let kind = result.unwrap_or(TokenKind::Error);
+        let at = lexer.span();
+        let (from, to) = (range.start + at.start, range.start + at.end);
+        let start = cursor.advance_to(input, from);
+        let end = cursor.advance_to(input, to);
+        tokens.push(Token {
+            kind,
+            text: lexer.slice().into(),
+            span: Span::new(start.0, start.1, end.0, end.1, from, at.len(), source.clone()),
+        });
+    }
+    let end = cursor.advance_to(input, range.end);
+    tokens.push(Token {
+        kind: TokenKind::Eof,
+        text: "".into(),
+        span: Span::new(end.0, end.1, end.0, end.1, range.end, 0, source),
+    });
+    tokens
+}
+
+/// Text token `token` with values written in it, `"total: {n + 1}"`, in pieces: the text
+/// as `Text` tokens, each `{` and `}` around a value, and the value's tokens. `{{` and `}}`
+/// are text. For colouring: the parser reads values itself.
+pub fn split_text(token: &Token) -> Vec<Token> {
+    let source = token.span.source.clone();
+    let start = token.span.start_offset;
+    let text = &*token.text;
+    let piece = |range: std::ops::Range<usize>, kind: TokenKind| Token {
+        kind,
+        text: text[range.start - start..range.end - start].into(),
+        span: Span::from_range(range, source.clone()),
+    };
+    let mut parts = Vec::new();
+    // Where the text piece being read started.
+    let mut from = start;
+    let mut at = 0;
+    while at < text.len() {
+        let rest = &text[at..];
+        if rest.starts_with("{{") || rest.starts_with("}}") {
+            at += 2;
+        } else if rest.starts_with('{')
+            && let Some(close) = rest.find('}')
+        {
+            let (open, end) = (start + at, start + at + close);
+            if from < open {
+                parts.push(piece(from..open, TokenKind::Text));
+            }
+            parts.push(piece(open..open + 1, TokenKind::OpenBrace));
+            parts.extend(
+                lex_range(source.clone(), open + 1..end)
+                    .into_iter()
+                    .filter(|t| t.kind != TokenKind::Eof),
+            );
+            parts.push(piece(end..end + 1, TokenKind::CloseBrace));
+            at += close + 1;
+            from = start + at;
+        } else {
+            at += rest.chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    if from < start + text.len() {
+        parts.push(piece(from..start + text.len(), TokenKind::Text));
+    }
+    parts
+}
+
 /// A position in the source, moved forward as tokens are read.
 struct Cursor {
     offset: usize,

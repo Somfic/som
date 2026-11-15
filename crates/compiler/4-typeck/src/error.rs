@@ -177,6 +177,13 @@ pub enum TypeError {
         span: Span,
     },
     /// `fn main(args: …)`: the entry takes nothing; arguments come from `args()`.
+    /// `main` giving what isn't an exit code: a script ending in `"done"`.
+    MainReturns {
+        ty: Message,
+        span: Span,
+        /// Its return type is written, rather than its last value deciding it.
+        written: bool,
+    },
     MainParams {
         span: Span,
     },
@@ -394,6 +401,11 @@ pub enum TypeError {
         ty: Message,
         span: Span,
         get: String,
+    },
+    /// `"{x}"` of a value whose type doesn't implement `Display`.
+    NotDisplay {
+        ty: Message,
+        span: Span,
     },
     /// `values[i] = v` of what doesn't implement `IndexMut`: a `string`.
     SliceIndexWrite {
@@ -816,6 +828,27 @@ impl TypeError {
             } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
                 Label::primary(span.clone(), msg!["this is ", found.clone()]),
             ),
+            TypeError::MainReturns { ty, span, written } => {
+                let d = Diagnostic::error(msg![code("main"), " can't give ", ty.clone()])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "what it gives is the program's exit code: an integer, or nothing",
+                    ));
+                match written {
+                    true => d,
+                    // The script's last line: a value, not a statement.
+                    false => d
+                        .with_hint(msg![
+                            "a program's last value is its exit code; to write it out, use ",
+                            code("println")
+                        ])
+                        .with_fix(Fix::replace(
+                            msg!["end it with ", code(";")],
+                            span.after(),
+                            ";",
+                        )),
+                }
+            }
             TypeError::MainParams { span } => {
                 Diagnostic::error(msg![code("main"), " takes no parameters"])
                     .with_label(Label::primary(
@@ -846,7 +879,10 @@ impl TypeError {
             }
             TypeError::StrIsString { span } => {
                 Diagnostic::error(msg!["som's text is ", code("string")])
-                    .with_label(Label::primary(span.clone(), "text used to be `str`"))
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg!["text is ", code("string")],
+                    ))
                     .with_fix(Fix::replace(
                         msg!["change to ", code("string")],
                         span.clone(),
@@ -1324,6 +1360,22 @@ impl TypeError {
                         msg!["not an array, and it doesn't implement ", code("Index")],
                     ))
                     .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
+            }
+            TypeError::NotDisplay { ty, span } => {
+                Diagnostic::error(msg![ty.clone(), " can't be written into text"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg!["it doesn't implement ", code("Display")],
+                    ))
+                    .with_hint(msg![
+                        "implement ",
+                        code("Display"),
+                        " for it: ",
+                        code("prop display_len"),
+                        " says how many bytes its text takes, and ",
+                        code("display"),
+                        " writes them"
+                    ])
             }
             TypeError::SliceIndexWrite { ty, span, instead } => {
                 Diagnostic::error(msg![ty.clone(), " can't be set by index"])

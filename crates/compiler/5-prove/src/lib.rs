@@ -325,6 +325,13 @@ impl Prover<'_> {
             | Expr::Unreachable
             | Expr::Out(_) => {}
             Expr::Array(values) => values.iter().for_each(|&v| self.expr(v)),
+            Expr::Interpolated(parts) => {
+                for &part in parts {
+                    if let som_ast::Part::Value(value) = part {
+                        self.expr(value);
+                    }
+                }
+            }
             Expr::Cast { value, .. } => self.expr(*value),
             Expr::Range { start, end } => {
                 start.iter().chain(end).for_each(|&e| self.expr(e));
@@ -1172,6 +1179,13 @@ impl Prover<'_> {
     fn each_child(&self, expr: Id<Expr>, f: &mut dyn FnMut(Id<Expr>)) {
         match &self.ast.exprs[expr] {
             Expr::Array(values) => values.iter().for_each(|&v| f(v)),
+            Expr::Interpolated(parts) => {
+                for &part in parts {
+                    if let som_ast::Part::Value(value) = part {
+                        f(value);
+                    }
+                }
+            }
             Expr::Cast { value, .. } | Expr::ArrayRepeat { value, .. } => f(*value),
             Expr::Range { start, end } => start.iter().chain(end).for_each(|&e| f(e)),
             Expr::Binary { lhs, rhs, .. } => {

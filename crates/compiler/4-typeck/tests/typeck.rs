@@ -102,7 +102,7 @@ fn generic_parameters_are_opaque_inside_their_function() {
 
 #[test]
 fn generic_calls_record_their_type_arguments() {
-    let (ast, names, typed) = ok("fn id<T>(x: T) -> T { x } fn main() -> bool { id(true) }");
+    let (ast, names, typed) = ok("fn id<T>(x: T) -> T { x } fn run() -> bool { id(true) }");
     let (call, _) = ast
         .exprs
         .iter()

@@ -365,3 +365,126 @@ impl Index for string {
 
     fn at(&self, i: usize) -> &u8 = .data.at(i);
 }
+
+// --- Display: what `{x}` in `"…{x}…"` writes ---
+
+impl Display for i64 {
+    prop display_len: usize {
+        // C says how long it would be, writing none of it but the zero byte.
+        let mut room: [i8; 1] = [0];
+        c::snprintf(&mut room[0], 1, "%lld", *self) as usize
+    }
+    fn display(&self, to: *u8) {
+        c::snprintf((to as *i8).at_mut(0), (.display_len + 1) as u64, "%lld", *self);
+    }
+}
+
+impl Display for u64 {
+    prop display_len: usize {
+        // C says how long it would be, writing none of it but the zero byte.
+        let mut room: [i8; 1] = [0];
+        c::snprintf(&mut room[0], 1, "%llu", *self) as usize
+    }
+    fn display(&self, to: *u8) {
+        c::snprintf((to as *i8).at_mut(0), (.display_len + 1) as u64, "%llu", *self);
+    }
+}
+
+impl Display for f64 {
+    prop display_len: usize {
+        // C says how long it would be, writing none of it but the zero byte.
+        let mut room: [i8; 1] = [0];
+        c::snprintf(&mut room[0], 1, "%g", *self) as usize
+    }
+    fn display(&self, to: *u8) {
+        c::snprintf((to as *i8).at_mut(0), (.display_len + 1) as u64, "%g", *self);
+    }
+}
+
+impl Display for i8 {
+    prop display_len: usize = (*self as i64).display_len;
+    fn display(&self, to: *u8) { (*self as i64).display(to); }
+}
+impl Display for i16 {
+    prop display_len: usize = (*self as i64).display_len;
+    fn display(&self, to: *u8) { (*self as i64).display(to); }
+}
+impl Display for i32 {
+    prop display_len: usize = (*self as i64).display_len;
+    fn display(&self, to: *u8) { (*self as i64).display(to); }
+}
+impl Display for isize {
+    prop display_len: usize = (*self as i64).display_len;
+    fn display(&self, to: *u8) { (*self as i64).display(to); }
+}
+impl Display for u8 {
+    prop display_len: usize = (*self as u64).display_len;
+    fn display(&self, to: *u8) { (*self as u64).display(to); }
+}
+impl Display for u16 {
+    prop display_len: usize = (*self as u64).display_len;
+    fn display(&self, to: *u8) { (*self as u64).display(to); }
+}
+impl Display for u32 {
+    prop display_len: usize = (*self as u64).display_len;
+    fn display(&self, to: *u8) { (*self as u64).display(to); }
+}
+impl Display for usize {
+    prop display_len: usize = (*self as u64).display_len;
+    fn display(&self, to: *u8) { (*self as u64).display(to); }
+}
+impl Display for f32 {
+    prop display_len: usize = (*self as f64).display_len;
+    fn display(&self, to: *u8) { (*self as f64).display(to); }
+}
+
+impl Display for bool {
+    prop display_len: usize = 4 if *self else 5;
+    fn display(&self, to: *u8) {
+        let text = "true" if *self else "false";
+        text.display(to);
+    }
+}
+
+impl Display for string {
+    prop display_len: usize = .len;
+    fn display(&self, to: *u8) { c::memcpy(to as *, .data as *, .len as u64); }
+}
+
+impl Display for cstr {
+    prop display_len: usize = c::strlen(*self) as usize;
+    fn display(&self, to: *u8) { c::memcpy(to as *, *self as *, .display_len as u64); }
+}
+
+/// What an optional holds, or `none`.
+impl<T: Display> Display for T? {
+    prop display_len: usize = match self {
+        none => 4,
+        held => held.display_len,
+    };
+    fn display(&self, to: *u8) {
+        match self {
+            none => "none".display(to),
+            held => held.display(to),
+        };
+    }
+}
+
+impl string {
+    /// Room for an interpolated string's `len` bytes, which `write_piece` and `write_shown`
+    /// fill in, in order.
+    fn interpolated(len: usize) -> string = string::with_len(len);
+
+    /// Writes the text `piece` at byte `at` of a string being made. Gives where it ends.
+    fn write_piece(&self, at: usize, piece: string) -> usize {
+        c::memcpy(.data.at(at) as *u8 as *, piece.data as *, piece.len as u64);
+        at + piece.len
+    }
+
+    /// Writes `value`, `len` bytes of it, at byte `at` of a string being made. Gives where it
+    /// ends.
+    fn write_shown<T: Display>(&self, at: usize, value: &T, len: usize) -> usize {
+        value.display(.data.at(at) as *u8);
+        at + len
+    }
+}

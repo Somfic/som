@@ -789,6 +789,13 @@ impl<'a> Resolver<'a> {
                 self.resolve_type(*count);
             }
             Expr::Array(items) => items.iter().for_each(|&item| self.resolve_expr(item)),
+            Expr::Interpolated(parts) => {
+                for part in parts {
+                    if let som_ast::Part::Value(value) = part {
+                        self.resolve_expr(*value);
+                    }
+                }
+            }
             Expr::Range { start, end } => {
                 start.iter().chain(end).for_each(|&e| self.resolve_expr(e));
             }

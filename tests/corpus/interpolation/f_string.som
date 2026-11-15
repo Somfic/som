@@ -1,0 +1,8 @@
+// expect: error Parse
+
+/// Python's `f"…"`: som's text writes values in it without one.
+fn main() -> i32 {
+    let n = 1;
+    let text = f"n is {n}";
+    0
+}

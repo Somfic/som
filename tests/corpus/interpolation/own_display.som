@@ -1,0 +1,19 @@
+// expect: exit 0
+
+/// A type of your own is written into text by implementing `Display`: how long its text is,
+/// and writing it where it's told.
+struct Point { x: i32, y: i32 }
+
+impl Display for Point {
+    prop display_len: usize = 4 + self.x.display_len + self.y.display_len;
+
+    fn display(&self, to: *u8) {
+        let text = "({self.x}, {self.y})";
+        text.display(to);
+    }
+}
+
+fn main() -> i32 {
+    let p = Point { x: 3, y: -4 };
+    if "p = {p}" == "p = (3, -4)" { 0 } else { 1 }
+}

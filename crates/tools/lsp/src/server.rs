@@ -3991,7 +3991,13 @@ const TOKEN_TYPES: [SemanticTokenType; 10] = [
 
 /// Token kinds from the lexer, refined with one token of lookaround.
 fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
-    let tokens = lex(source);
+    // `"total: {n + 1}"`: the values in text are code, coloured as such.
+    let tokens: Vec<som_lexer::Token> = (lex(source).into_iter())
+        .flat_map(|t| match t.kind == TokenKind::Text && t.text.contains('{') {
+            true => som_lexer::split_text(&t),
+            false => vec![t],
+        })
+        .collect();
     let visible: Vec<&som_lexer::Token> = tokens
         .iter()
         .filter(|t| {

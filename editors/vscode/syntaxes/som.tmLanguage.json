@@ -32,6 +32,19 @@
             {
               "name": "constant.character.escape.som",
               "match": "\\\\."
+            },
+            {
+              "name": "constant.character.escape.som",
+              "match": "\\{\\{|\\}\\}"
+            },
+            {
+              "name": "meta.interpolation.som",
+              "begin": "\\{",
+              "end": "\\}",
+              "beginCaptures": { "0": { "name": "punctuation.section.interpolation.begin.som" } },
+              "endCaptures": { "0": { "name": "punctuation.section.interpolation.end.som" } },
+              "contentName": "meta.embedded.line.som",
+              "patterns": [{ "include": "$self" }]
             }
           ]
         }

@@ -1,0 +1,7 @@
+// expect: error Parse
+
+/// A `{` in text starts a value, which a `}` ends; `{{` is the brace itself.
+fn main() -> i32 {
+    let text = "a { b";
+    0
+}

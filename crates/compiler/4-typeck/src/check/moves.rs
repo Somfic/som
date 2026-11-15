@@ -29,6 +29,14 @@ impl Checker<'_> {
             | Expr::None
             | Expr::Var(_)
             | Expr::Out(_) => {}
+            // What's written into text is only read.
+            Expr::Interpolated(parts) => {
+                for &part in parts {
+                    if let som_ast::Part::Value(value) = part {
+                        self.moves_in(value, false);
+                    }
+                }
+            }
             Expr::Deref(inner) => {
                 if by_value {
                     self.check_move_out(id);

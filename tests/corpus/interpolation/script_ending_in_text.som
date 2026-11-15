@@ -1,0 +1,5 @@
+// expect: error MainReturns
+
+/// A script's last value is its exit code: text can't be one.
+let n = 1;
+"value {n}"
