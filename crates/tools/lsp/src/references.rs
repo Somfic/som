@@ -81,8 +81,8 @@ pub fn occurrences(a: &Analysis) -> Vec<Occurrence> {
                     let declared = &ast.structs[s].fields;
                     if let Some(i) = declared.iter().position(|f| f.name.name == name.name) {
                         // `Point { x }`: the field and the variable it's given, named once.
-                        let shorthand = ast.exprs.span(*value).start_offset
-                            == name.span.start_offset;
+                        let shorthand =
+                            ast.exprs.span(*value).start_offset == name.span.start_offset;
                         add(Symbol::Field(def, i), &name.span, false, shorthand);
                     }
                 }

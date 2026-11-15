@@ -138,12 +138,15 @@ pub fn pascal_case(name: &str) -> String {
 }
 
 /// Find the closest match from a list of candidates using edit distance.
-/// Returns `None` if no candidate is close enough (distance must be <= max_dist).
+/// Returns `None` if no candidate is close enough: within `max_dist` edits, and within a
+/// third of `target`'s length (at least one), so a short name doesn't match one sharing only
+/// half its letters (`null` isn't a typo of `nums`).
 pub fn closest_match<'a>(
     target: &str,
     candidates: &'a [String],
     max_dist: usize,
 ) -> Option<&'a str> {
+    let max_dist = max_dist.min((target.chars().count() / 3).max(1));
     candidates
         .iter()
         .map(|c| (c.as_str(), edit_distance(target, c)))
@@ -586,7 +589,13 @@ impl Display for Rendered<'_> {
         // Each fix: what it does, then the lines as it leaves them.
         for fix in &d.fixes {
             writeln!(f)?;
-            writeln!(f, "{}{} {}", GUTTER, teal("▪"), fix.title.render(self.color))?;
+            writeln!(
+                f,
+                "{}{} {}",
+                GUTTER,
+                teal("▪"),
+                fix.title.render(self.color)
+            )?;
             fmt_fix(f, fix)?;
         }
 
@@ -604,7 +613,10 @@ const ITALIC: &str = "\x1b[3m";
 /// inside it, after a name in colour, turns the style back on.
 fn styled(text: &str, style: &str, color: bool) -> String {
     match color {
-        true => format!("{style}{}\x1b[0m", text.replace("\x1b[0m", &format!("\x1b[0m{style}"))),
+        true => format!(
+            "{style}{}\x1b[0m",
+            text.replace("\x1b[0m", &format!("\x1b[0m{style}"))
+        ),
         false => text.to_string(),
     }
 }

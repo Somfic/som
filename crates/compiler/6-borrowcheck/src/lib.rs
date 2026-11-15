@@ -184,7 +184,7 @@ impl<'a> FnChecker<'a> {
         for (s, stmt) in block.stmts.iter().enumerate() {
             match &stmt.kind {
                 StatementKind::Assign(place, rvalue) => {
-                    let flows = self.rvalue(state, (b, s), rvalue, &stmt.span);
+                    let flows = self.rvalue(state, (b, s), rvalue, &stmt.reads, &stmt.span);
                     self.write(state, place, &stmt.span);
                     let holds = &mut state.holds[place.local.id];
                     if place.projection.is_empty() {
@@ -206,47 +206,32 @@ impl<'a> FnChecker<'a> {
 
     // --- Transfer functions ---
 
-    /// Evaluates an rvalue, returning the loans that flow into its result.
+    /// Evaluates an rvalue, returning the loans that flow into its result. `reads` are where
+    /// the source reads places among its operands, in order; other operands are at `span`.
     fn rvalue(
         &mut self,
         state: &mut State,
         at: (usize, usize),
         rvalue: &Rvalue,
+        reads: &[(Place, Span)],
         span: &Span,
     ) -> BTreeSet<LoanId> {
-        match rvalue {
-            Rvalue::Use(op)
-            | Rvalue::Not(op)
-            | Rvalue::Some(op)
-            | Rvalue::Repeat { operand: op, .. }
-            | Rvalue::Cast { operand: op, .. } => self.operand(state, op, span),
-            Rvalue::Binary { lhs, rhs, .. }
-            | Rvalue::Range {
-                start: lhs,
-                end: rhs,
-                ..
-            }
-            | Rvalue::MakeSlice {
-                start: lhs,
-                len: rhs,
-                ..
-            } => {
-                let mut flows = self.operand(state, lhs, span);
-                flows.extend(self.operand(state, rhs, span));
-                flows
-            }
-            Rvalue::Struct { fields: ops, .. }
-            | Rvalue::Array { items: ops, .. }
-            | Rvalue::Call { args: ops, .. }
-            | Rvalue::Intrinsic { args: ops, .. } => {
-                let mut flows = BTreeSet::new();
-                for op in ops {
-                    flows.extend(self.operand(state, op, span));
-                }
-                flows
-            }
-            Rvalue::Ref { place, .. } => self.borrow(state, self.loan_at[&at], place, span),
+        if let Rvalue::Ref { place, .. } = rvalue {
+            return self.borrow(state, self.loan_at[&at], place, span);
         }
+        let mut reads = reads.iter().peekable();
+        let mut flows = BTreeSet::new();
+        for op in rvalue.operands() {
+            let read = match op {
+                Operand::Copy(place) | Operand::Move(place) => {
+                    reads.next_if(|(read, _)| read == place)
+                }
+                Operand::Const(_) => None,
+            };
+            let span = read.map_or(span, |(_, at)| at);
+            flows.extend(self.operand(state, op, span));
+        }
+        flows
     }
 
     fn operand(&mut self, state: &mut State, op: &Operand, span: &Span) -> BTreeSet<LoanId> {
@@ -434,10 +419,13 @@ impl<'a> FnChecker<'a> {
     }
 
     fn check_moved(&mut self, state: &State, place: &Place, span: &Span) {
-        if let Some((_, moved_at)) = state.moved.iter().find(|(moved, _)| overlaps(moved, place)) {
+        if let Some((moved, moved_at)) =
+            state.moved.iter().find(|(moved, _)| overlaps(moved, place))
+        {
+            // Name what was consumed (`p`), not the part read afterwards (`p.age`).
             self.error(BorrowError::UseAfterMove {
-                name: self.name(place),
-                ty: self.mir.display_ty(self.place_ty(place)),
+                name: self.name(moved),
+                ty: self.mir.display_ty(self.place_ty(moved)),
                 span: span.clone(),
                 moved_at: moved_at.clone(),
             });

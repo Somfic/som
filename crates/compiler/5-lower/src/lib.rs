@@ -483,6 +483,8 @@ struct FnBuilder<'l, 'a> {
     scopes: Vec<Vec<Local>>,
     /// The enclosing loops, innermost last.
     loops: Vec<LoopTargets>,
+    /// Places the source read, with where, not yet claimed by the statement using them.
+    reads: Vec<(Place, Span)>,
 }
 
 impl<'l, 'a> FnBuilder<'l, 'a> {
@@ -499,6 +501,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             bindings: HashMap::new(),
             scopes: Vec::new(),
             loops: Vec::new(),
+            reads: Vec::new(),
         };
         builder.current = builder.new_block();
         builder
@@ -605,9 +608,29 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     fn push(&mut self, kind: StatementKind, span: Span) {
+        let mut reads = Vec::new();
+        if let StatementKind::Assign(_, rvalue) = &kind {
+            // Claim the latest pending read of each operand's place: the latest, as an
+            // earlier one of the same place belongs to an expression already finished.
+            // Backwards, so `f(a, a)` gives each its own.
+            for op in rvalue.operands().into_iter().rev() {
+                if let Operand::Copy(place) | Operand::Move(place) = op
+                    && let Some(i) = self.reads.iter().rposition(|(read, _)| read == place)
+                {
+                    reads.push(self.reads.remove(i));
+                }
+            }
+            reads.reverse();
+        }
         self.blocks[self.current]
             .stmts
-            .push(Statement { kind, span });
+            .push(Statement { kind, span, reads });
+    }
+
+    /// Reads `place`, written in the source at `span`: noted for the statement using it.
+    fn read_at(&mut self, place: Place, ty: TypeId, span: Span) -> Operand {
+        self.reads.push((place.clone(), span));
+        self.read(place, ty)
     }
 
     fn assign(&mut self, place: Place, rvalue: Rvalue, span: Span) {
@@ -955,6 +978,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.blocks[none_block].stmts.push(Statement {
                     kind: StatementKind::StorageDead(reference),
                     span,
+                    reads: Vec::new(),
                 });
                 Operand::Move(Place::local(reference))
             }
@@ -1317,18 +1341,18 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     }
                     _ if self.l.typed.is_narrowed(expr) => {
                         let place = self.place(expr);
-                        self.read(place, ty)
+                        self.read_at(place, ty, span)
                     }
                     _ => {
                         let place = self.variable(def).expect("variables are bound");
-                        self.read(place, ty)
+                        self.read_at(place, ty, span)
                     }
                 }
             }
 
             Expr::Field { .. } | Expr::Deref(_) | Expr::Index { .. } if !self.is_prop(expr) => {
                 let place = self.place(expr);
-                self.read(place, ty)
+                self.read_at(place, ty, span)
             }
 
             Expr::Assign { target, value } => {

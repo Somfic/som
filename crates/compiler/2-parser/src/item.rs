@@ -1,21 +1,23 @@
 use som_ast::{
-    Visibility,
     Alias, AssocType, Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Trait, Use,
-    Variant, VariantKind,
+    Variant, VariantKind, Visibility,
 };
 use som_base::message::code;
-use som_base::msg;
+use som_base::{Fix, Span, msg};
 use som_lexer::TokenKind;
 
-use crate::{Parser, RecoveryLevel, StmtOrExpr};
+use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
 
 impl Parser<'_> {
-    fn at_item(&self) -> bool {
-        // `pub fn …`: who can see it, then the item.
-        let at = match self.peek() {
-            TokenKind::Pub | TokenKind::Mod => 1,
-            _ => 0,
-        };
+    pub(crate) fn at_item(&self) -> bool {
+        // `pub fn …`: who can see it, then the item. Other languages' `public` and
+        // `static` too, reported when the item's read.
+        let mut at = 0;
+        while matches!(self.peek_nth(at), TokenKind::Pub | TokenKind::Mod)
+            || self.foreign_modifier(at).is_some()
+        {
+            at += 1;
+        }
         matches!(
             self.peek_nth(at),
             TokenKind::Fn
@@ -26,7 +28,9 @@ impl Parser<'_> {
                 | TokenKind::Use
                 | TokenKind::Impl
                 | TokenKind::Type
-        )
+        ) || self.foreign_fn(at)
+            || self.c_style_fn(at)
+            || self.foreign_struct(at)
     }
 
     fn parse_item(&mut self) {
@@ -43,13 +47,25 @@ impl Parser<'_> {
         {
             self.error_at(
                 at,
-                msg!["a ", code(self.peek().to_string()), " can't be ", code("pub"), " or ", code("mod")],
+                msg![
+                    "a ",
+                    code(self.peek().to_string()),
+                    " can't be ",
+                    code("pub"),
+                    " or ",
+                    code("mod")
+                ],
                 "who can see something is said on each item inside it",
             );
             self.visibility = Visibility::Private;
         }
         let item = match self.peek() {
             TokenKind::Fn => self.parse_function().map(Item::Func),
+            TokenKind::Ident if self.foreign_fn(0) => self.parse_function().map(Item::Func),
+            _ if self.c_style_fn(0) => self.parse_function().map(Item::Func),
+            TokenKind::Ident if self.foreign_struct(0) => {
+                self.parse_struct().map(Item::Struct)
+            }
             TokenKind::Extern if self.peek_nth(1) == TokenKind::Struct => {
                 self.parse_struct().map(Item::Struct)
             }
@@ -212,7 +228,7 @@ impl Parser<'_> {
                 let ty = self.parse_type()?;
                 self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
                 types.push((name, ty));
-            } else if self.at(TokenKind::Fn) || self.at(TokenKind::Prop) {
+            } else if self.at_fn() || self.at(TokenKind::Prop) || self.c_style_fn(0) {
                 match self.parse_function() {
                     Some(id) => methods.push(id),
                     None => self.recover(RecoveryLevel::Member),
@@ -278,7 +294,7 @@ impl Parser<'_> {
                     Some(id) => methods.push(id),
                     None => self.recover(RecoveryLevel::Member),
                 }
-            } else if self.at(TokenKind::Fn) {
+            } else if self.at_fn() {
                 match self.parse_trait_method(&name, &generics) {
                     Some(id) => methods.push(id),
                     None => self.recover(RecoveryLevel::Member),
@@ -318,7 +334,7 @@ impl Parser<'_> {
         let start = self.current_span();
         let prop = self.eat(TokenKind::Prop);
         if !prop {
-            self.expect(TokenKind::Fn, "a method declaration")?;
+            self.expect_fn("a method declaration")?;
         }
         let name = self.parse_ident("a method name")?;
         let own = self.parse_generics()?;
@@ -326,7 +342,9 @@ impl Parser<'_> {
             true => (self.prop_params(&name)?, false),
             false => self.parse_params(false)?,
         };
-        let returns = if self.eat(TokenKind::Arrow) {
+        let returns = if self.void_return() {
+            None
+        } else if self.eat(TokenKind::Arrow) {
             Some(self.parse_type()?)
         } else {
             None
@@ -405,7 +423,24 @@ impl Parser<'_> {
 
     pub(crate) fn parse_use(&mut self) -> Option<Use> {
         self.expect(TokenKind::Use, "a use statement")?;
-        let path = self.parse_path("an import path")?;
+        let start = self.current_span();
+        let mut path = self.parse_path("an import path")?;
+        // `use std.io`: other languages' paths, reported and read as the `std::io` meant.
+        if self.at(TokenKind::Dot) && self.peek_nth(1) == TokenKind::Ident {
+            while self.at(TokenKind::Dot) && self.peek_nth(1) == TokenKind::Ident {
+                self.advance();
+                path.segments.push(self.parse_ident("a module name")?);
+            }
+            let span = self.span_from(&start);
+            let written: Vec<&str> = path.segments.iter().map(|s| &*s.name).collect();
+            let fixed = written.join("::");
+            self.errors.push(ParseError {
+                message: msg!["som separates a path with ", code("::"), ", not ", code(".")],
+                hint: msg!["write it ", code(&fixed)],
+                fix: Some(Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed)),
+                span,
+            });
+        }
         self.expect(TokenKind::Semicolon, "a semicolon after the use statement")?;
         Some(Use { path })
     }
@@ -417,7 +452,7 @@ impl Parser<'_> {
         let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         let handle = self.eat(TokenKind::Extern);
-        self.expect(TokenKind::Struct, "a struct declaration")?;
+        self.expect_struct("a struct declaration")?;
         let name = self.parse_ident("a struct name")?;
         let generics = self.parse_generics()?;
 
@@ -426,20 +461,36 @@ impl Parser<'_> {
             Vec::new()
         } else {
             self.expect(TokenKind::OpenBrace, "a list of struct fields")?;
-            let fields = self.parse_comma_list(TokenKind::CloseBrace, |p| {
-                let doc = p.doc_comment();
-                let visibility = p.parse_visibility();
-                let name = p.parse_ident("a struct field name")?;
-                p.expect(TokenKind::Colon, "a struct field type")?;
-                let ty = p.parse_type()?;
-                Some(Field {
-                    doc,
-                    visibility,
-                    name,
-                    ty,
-                })
-            })?;
+            // Methods written among the fields, as in another language's class: skipped,
+            // with where they are, to move to an `impl` block. Whether one's a constructor.
+            let mut methods: Vec<(Span, Span, Span)> = Vec::new();
+            let mut constructor = false;
+            let mut fields = Vec::new();
+            while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+                if let Some((is_constructor, name_at)) = self.member_method(&name.name) {
+                    let start = self.current_span();
+                    let header = start.merge(&self.span_ahead(name_at));
+                    let from = self.previous_span().after();
+                    self.skip_member();
+                    constructor |= is_constructor;
+                    methods.push((self.span_from(&start), from, header));
+                    continue;
+                }
+                let before = self.pos;
+                let (field, separated) = self.parse_field()?;
+                fields.push(field);
+                if self.pos == before {
+                    return None;
+                }
+                if !separated && !self.list_continues(TokenKind::CloseBrace) {
+                    break;
+                }
+            }
+            let close = self.current_span();
             self.expect(TokenKind::CloseBrace, "a closing brace after struct fields")?;
+            if !methods.is_empty() {
+                self.methods_in_struct(&name.name, &methods, constructor, &close);
+            }
             fields
         };
 
@@ -458,6 +509,144 @@ impl Parser<'_> {
             },
             span,
         ))
+    }
+
+    /// A struct field, `name: Type`, or another language's `Type name;`, reported and read as
+    /// the `name: Type,` it means. Whether that took its separator, the `;`, along.
+    fn parse_field(&mut self) -> Option<(Field, bool)> {
+        let doc = self.doc_comment();
+        let visibility = self.parse_visibility();
+        let type_first = (self.at(TokenKind::Ident) || crate::ty::primitive(self.peek()).is_some())
+            && self.peek_nth(1) == TokenKind::Ident
+            && matches!(
+                self.peek_nth(2),
+                TokenKind::Semicolon | TokenKind::Comma | TokenKind::CloseBrace
+            );
+        if !type_first {
+            let name = self.parse_ident("a struct field name")?;
+            self.expect(TokenKind::Colon, "a struct field type")?;
+            let ty = self.parse_type()?;
+            return Some((Field { doc, visibility, name, ty }, false));
+        }
+        let start = self.current_span();
+        let ty = self.parse_type()?;
+        let ty_text = self.span_from(&start).get_text();
+        let name = self.parse_ident("a struct field name")?;
+        let separated = self.eat(TokenKind::Semicolon) || self.eat(TokenKind::Comma);
+        let span = self.span_from(&start);
+        let fixed = format!("{}: {ty_text}{}", name.name, if separated { "," } else { "" });
+        if !self.in_recovery {
+            self.errors.push(ParseError {
+                message: msg!["som writes a field's name first, then its type"],
+                hint: msg!["write it ", code(&fixed)],
+                fix: Some(Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed)),
+                span,
+            });
+        }
+        Some((Field { doc, visibility, name, ty }, separated))
+    }
+
+    /// At a method among a struct's fields, as in another language's class: `fn area(…)`,
+    /// `int area(…)`, or a constructor, `Point(…)`, after any modifiers. Whether it's a
+    /// constructor, and how many tokens ahead its name is.
+    fn member_method(&self, struct_name: &str) -> Option<(bool, usize)> {
+        let mut at = 0;
+        while matches!(self.peek_nth(at), TokenKind::Pub | TokenKind::Mod)
+            || self.foreign_modifier(at).is_some()
+        {
+            at += 1;
+        }
+        if self.ident_ahead(at) == Some(struct_name) && self.peek_nth(at + 1) == TokenKind::OpenParen {
+            return Some((true, at));
+        }
+        (self.peek_nth(at) == TokenKind::Fn || self.foreign_fn(at) || self.c_style_fn(at))
+            .then_some((false, at + 1))
+    }
+
+    /// Skips a member up to the end of its body, `{ … }`, or its `;`.
+    fn skip_member(&mut self) {
+        let mut depth = 0usize;
+        while !self.at_eof() {
+            match self.peek() {
+                TokenKind::OpenParen | TokenKind::OpenBracket => depth += 1,
+                TokenKind::CloseParen | TokenKind::CloseBracket => depth = depth.saturating_sub(1),
+                TokenKind::Semicolon if depth == 0 => {
+                    self.advance();
+                    return;
+                }
+                TokenKind::OpenBrace if depth == 0 => {
+                    let mut braces = 0usize;
+                    while !self.at_eof() {
+                        match self.peek() {
+                            TokenKind::OpenBrace => braces += 1,
+                            TokenKind::CloseBrace => {
+                                braces -= 1;
+                                if braces == 0 {
+                                    self.advance();
+                                    return;
+                                }
+                            }
+                            _ => {}
+                        }
+                        self.advance();
+                    }
+                    return;
+                }
+                // The struct's own `}`: a body never came.
+                TokenKind::CloseBrace if depth == 0 => return,
+                _ => {}
+            }
+            self.advance();
+        }
+    }
+
+    /// Reports `methods` written among struct `name`'s fields: each its text, where it starts
+    /// with the space before it, and its header, up to its name. The fix moves them, as they are, to an `impl` block
+    /// after the struct's closing brace, `close`.
+    fn methods_in_struct(
+        &mut self,
+        name: &str,
+        methods: &[(Span, Span, Span)],
+        constructor: bool,
+        close: &Span,
+    ) {
+        if self.in_recovery {
+            return;
+        }
+        let mut edits = Vec::new();
+        let mut moved = Vec::new();
+        for (method, from, _) in methods {
+            let removed = Span {
+                end: method.end,
+                length: method.start_offset + method.length - from.start_offset,
+                ..from.clone()
+            };
+            edits.push((removed, String::new()));
+            moved.push(format!("    {}", method.get_text()));
+        }
+        let block = format!("\n\nimpl {name} {{\n{}\n}}", moved.join("\n\n"));
+        edits.push((close.after(), block));
+        let header = methods[0].2.clone();
+        let hint = if constructor {
+            msg![
+                "a constructor is a function returning the struct: ",
+                code(format!("fn new(…) -> {name} {{ {name} {{ … }} }}"))
+            ]
+        } else {
+            msg!["a method takes ", code("self"), ", ", code("&self"), " or ", code("&mut self")]
+        };
+        self.errors.push(ParseError {
+            message: msg![
+                "a struct holds only its fields: methods go in ",
+                code(format!("impl {name} {{ … }}"))
+            ],
+            hint,
+            fix: Some(Fix {
+                title: msg!["move them to ", code(format!("impl {name}"))],
+                edits,
+            }),
+            span: header,
+        });
     }
 
     /// `enum Shape { Circle(f32), Rect { w: f32, h: f32 }, Empty }`: a type whose values are
@@ -546,8 +735,16 @@ impl Parser<'_> {
         let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         let prop = self.eat(TokenKind::Prop);
-        if !prop {
-            self.expect(TokenKind::Fn, "a function declaration")?;
+        // `int sum()`: another language's function, its return type first.
+        let c_return = if !prop && self.c_style_fn(0) {
+            let ty_start = self.current_span();
+            let ty = self.parse_type()?;
+            Some((ty, self.span_from(&ty_start)))
+        } else {
+            None
+        };
+        if !prop && c_return.is_none() {
+            self.expect_fn("a function declaration")?;
         }
         let name = self.parse_ident("a function name")?;
 
@@ -557,7 +754,39 @@ impl Parser<'_> {
             false => self.parse_params(false)?,
         };
         // A property's type goes after a `:`, as a field's does: `prop x: i32 = …`.
-        let returns = if prop && self.at(TokenKind::Arrow) {
+        let returns = if let Some((ty, ty_span)) = c_return {
+            // Reported, and read as the `fn name(…) -> Type` it means.
+            let ty_text = ty_span.get_text();
+            let before_name = Span {
+                end: name.span.start,
+                length: name.span.start_offset - ty_span.start_offset,
+                ..ty_span.clone()
+            };
+            let returns = format!(" -> {ty_text}");
+            if !self.in_recovery {
+                self.errors.push(ParseError {
+                    message: msg![
+                        "som declares functions with ",
+                        code("fn"),
+                        ", with the return type after ",
+                        code("->")
+                    ],
+                    hint: msg![
+                        "write it ",
+                        code(format!("fn {}(…) -> {ty_text}", name.name))
+                    ],
+                    fix: Some(Fix {
+                        title: msg!["change to ", code(format!("fn {}(…){returns}", name.name))],
+                        edits: vec![
+                            (before_name, "fn ".to_string()),
+                            (self.previous_span().after(), returns),
+                        ],
+                    }),
+                    span: ty_span,
+                });
+            }
+            Some(ty)
+        } else if prop && self.at(TokenKind::Arrow) {
             let span = self.current_span();
             self.advance();
             self.error_at(
@@ -569,6 +798,8 @@ impl Parser<'_> {
                 ],
             );
             Some(self.parse_type()?)
+        } else if self.void_return() {
+            None
         } else if self.eat(TokenKind::Arrow) || prop && self.eat(TokenKind::Colon) {
             Some(self.parse_type()?)
         } else {
@@ -704,6 +935,13 @@ impl Parser<'_> {
     /// `(a: i32, b)`. Extern functions must annotate every parameter, and may end with
     /// `...` to take extra arguments, like C's `printf`; the `bool` says whether they do.
     fn parse_params(&mut self, is_extern: bool) -> Option<(Vec<Param>, bool)> {
+        let outer = std::mem::replace(&mut self.in_params, true);
+        let params = self.parse_params_in(is_extern);
+        self.in_params = outer;
+        params
+    }
+
+    fn parse_params_in(&mut self, is_extern: bool) -> Option<(Vec<Param>, bool)> {
         self.expect(TokenKind::OpenParen, "a list of function parameters")?;
         let mut params = Vec::new();
         let mut variadic = false;
@@ -744,6 +982,36 @@ impl Parser<'_> {
                 self.advance();
                 (self.eat(TokenKind::Mut), start)
             });
+            // `string name`: another language's order, the type first. Reported, and read as
+            // the `name: string` it means.
+            if reference.is_none()
+                && (self.at(TokenKind::Ident) || crate::ty::primitive(self.peek()).is_some())
+                && self.peek_nth(1) == TokenKind::Ident
+                && matches!(self.peek_nth(2), TokenKind::Comma | TokenKind::CloseParen)
+            {
+                let start = self.current_span();
+                let ty = self.parse_type()?;
+                let ty_text = self.span_from(&start).get_text();
+                let name = self.parse_ident("a function parameter name")?;
+                let span = self.span_from(&start);
+                let fixed = format!("{}: {ty_text}", name.name);
+                self.errors.push(ParseError {
+                    message: msg!["som writes a parameter's name first, then its type"],
+                    hint: msg!["write it ", code(&fixed)],
+                    fix: Some(Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed)),
+                    span,
+                });
+                params.push(Param {
+                    name,
+                    ty: Some(ty),
+                    out: false,
+                    mutable: false,
+                });
+                if !self.list_continues(TokenKind::CloseParen) {
+                    break;
+                }
+                continue;
+            }
             let out = reference.is_none() && self.eat(TokenKind::Out);
             let mutable = reference.is_none() && !out && self.eat(TokenKind::Mut);
             let name = match self.at(TokenKind::SelfValue) {
@@ -857,7 +1125,7 @@ impl Parser<'_> {
         let mut funcs = Vec::new();
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
             self.visibility = self.parse_visibility();
-            if self.at(TokenKind::Fn) {
+            if self.at_fn() {
                 match self.parse_extern_func() {
                     Some(id) => funcs.push(id),
                     None => self.recover(RecoveryLevel::Declaration),
@@ -887,10 +1155,12 @@ impl Parser<'_> {
         let doc = self.doc_comment();
         let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
-        self.expect(TokenKind::Fn, "a function declaration")?;
+        self.expect_fn("a function declaration")?;
         let name = self.parse_ident("a function name")?;
         let (params, variadic) = self.parse_params(true)?;
-        let returns = if self.eat(TokenKind::Arrow) {
+        let returns = if self.void_return() {
+            None
+        } else if self.eat(TokenKind::Arrow) {
             Some(self.parse_type()?)
         } else {
             None

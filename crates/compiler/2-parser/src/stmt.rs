@@ -1,11 +1,20 @@
 use som_ast::{Expr, Id, Stmt};
-use som_base::Span;
+use som_base::message::code;
+use som_base::{Fix, Span, msg};
 use som_lexer::TokenKind;
 
-use crate::{Parser, RecoveryLevel, StmtOrExpr};
+use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
 
 impl Parser<'_> {
     pub(crate) fn parse_stmt_or_expr(&mut self) -> StmtOrExpr {
+        // `pass`, `switch (x) { … }`: other languages' statements, reported and read past.
+        let start = self.current_span();
+        if self.foreign_statement().is_some() {
+            let hole = self.ast.exprs.alloc(Expr::Hole, start.clone());
+            return StmtOrExpr::Stmt(self.ast.stmts.alloc(Stmt::Expr(hole), start));
+        }
+        // `++x`: reported, and `x` read on.
+        self.eat_foreign_prefix_step();
         let stmt = match self.peek() {
             // `use som::data;`, for the rest of the block.
             TokenKind::Use => {
@@ -20,6 +29,9 @@ impl Parser<'_> {
                 Some(self.ast.stmts.alloc(Stmt::Use(u), span))
             }
             TokenKind::Let => self.parse_let(),
+            TokenKind::Ident if self.foreign_let().is_some() || self.go_define() => {
+                self.parse_let()
+            }
             TokenKind::Loop => self.parse_loop(),
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),
@@ -73,16 +85,63 @@ impl Parser<'_> {
 
     fn parse_let(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
-        self.expect(TokenKind::Let, "a variable declaration")?;
-        let mutable = self.eat(TokenKind::Mut);
+        // `name := value` (Go): reported, and read as the `let` it means.
+        if self.go_define() {
+            let name = self.eat_go_define()?;
+            return self.parse_let_value(start, true, name, None);
+        }
+        // `const name`, `var name`: another language's `let`, reported and read as it.
+        let mutable = match self.eat_foreign_let() {
+            Some(mutable) => mutable || self.eat(TokenKind::Mut),
+            None => {
+                self.expect(TokenKind::Let, "a variable declaration")?;
+                self.eat(TokenKind::Mut)
+            }
+        };
+        // `let mutable total`: another language's `mut`.
+        let mutable = self.eat_foreign_mut() || mutable;
         let name = self.parse_ident("a variable name")?;
+        // `let add a b = a + b`: another language's function, not a variable.
+        if self.at(TokenKind::Ident) {
+            let mut params = Vec::new();
+            let mut n = 0;
+            while let Some(param) = self.ident_ahead(n) {
+                params.push(param.to_string());
+                n += 1;
+            }
+            if self.peek_nth(n) == TokenKind::Equals {
+                for _ in 0..=n {
+                    self.advance();
+                }
+                let span = self.span_from(&start);
+                let fixed = format!("fn {}({}) =", name.name, params.join(", "));
+                self.errors.push(ParseError {
+                    message: msg!["som declares a function with ", code("fn")],
+                    hint: msg!["with parameters, this is a function, not a variable"],
+                    fix: Some(Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed)),
+                    span,
+                });
+                self.in_recovery = true;
+                return None;
+            }
+        }
         let ty = if self.eat(TokenKind::Colon) {
             Some(self.parse_type()?)
         } else {
             None
         };
-
         self.expect(TokenKind::Equals, "a variable value")?;
+        self.parse_let_value(start, mutable, name, ty)
+    }
+
+    /// A `let`'s value and `;`, after its `=`.
+    fn parse_let_value(
+        &mut self,
+        start: Span,
+        mutable: bool,
+        name: som_ast::Ident,
+        ty: Option<Id<som_ast::TypeExpr>>,
+    ) -> Option<Id<Stmt>> {
         let Some(value) = self.parse_expr() else {
             self.error_missing("missing expression", "an expression after `=`");
             return None;
@@ -173,10 +232,30 @@ impl Parser<'_> {
     fn parse_for(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::For, "a for loop")?;
+        // `for (int i = 0; i < n; i++)`: C's loop, reported and read as the range it counts.
+        if self.at(TokenKind::OpenParen) {
+            let (name, iterable) = self.c_for()?;
+            return self.parse_for_body(start, false, name, iterable);
+        }
         let mutable = self.eat(TokenKind::Mut);
         let name = self.parse_ident("a name for each value")?;
+        // `for i = 1, n do`: Lua's, likewise.
+        if self.at(TokenKind::Equals) {
+            let iterable = self.lua_for(&name)?;
+            return self.parse_for_body(start, mutable, name, iterable);
+        }
         self.expect(TokenKind::In, "`in` and what to loop over")?;
         let iterable = self.parse_condition()?;
+        self.parse_for_body(start, mutable, name, iterable)
+    }
+
+    fn parse_for_body(
+        &mut self,
+        start: Span,
+        mutable: bool,
+        name: som_ast::Ident,
+        iterable: Id<Expr>,
+    ) -> Option<Id<Stmt>> {
         let body = self.parse_stmt_block("the for body")?;
         let span = self.span_from(&start);
         Some(self.ast.stmts.alloc(
@@ -195,12 +274,22 @@ impl Parser<'_> {
     pub(crate) fn parse_if_parts(&mut self) -> Option<IfParts> {
         let start = self.current_span();
         self.expect(TokenKind::If, "an if")?;
+        self.parse_if_rest(start)
+    }
+
+    /// An `if` after its `if` (or another language's `elif`), which started at `start`.
+    fn parse_if_rest(&mut self, start: Span) -> Option<IfParts> {
         let condition = self.parse_condition()?;
         let then = self.parse_block_parts("the if body")?;
-        let otherwise = if !self.eat(TokenKind::Else) {
+        // `elif c`, `elseif c`: another language's `else if`, reported and read as it.
+        let otherwise = if self.eat_foreign_else_if() {
+            Some(Else::If(Box::new(self.parse_if_rest(self.previous_span())?)))
+        } else if !self.eat(TokenKind::Else) {
             None
         } else if self.at(TokenKind::If) {
             Some(Else::If(Box::new(self.parse_if_parts()?)))
+        } else if self.eat_foreign_else_if() {
+            Some(Else::If(Box::new(self.parse_if_rest(self.previous_span())?)))
         } else {
             Some(Else::Block(self.parse_block_parts("the else body")?))
         };
@@ -298,6 +387,12 @@ impl Parser<'_> {
 
     /// `{ stmt; stmt; value }`: the statements, and the value it ends with if it does.
     pub(crate) fn parse_block_parts(&mut self, what: &str) -> Option<BlockParts> {
+        // `then … end`, Python's `:`: a body as another language writes it.
+        if !self.at(TokenKind::OpenBrace)
+            && let Some(parts) = self.foreign_body()
+        {
+            return Some(parts);
+        }
         let start = self.current_span();
         self.expect(TokenKind::OpenBrace, format!("an opening brace for {what}"))?;
 
@@ -334,6 +429,17 @@ pub(crate) struct BlockParts {
     span: Span,
 }
 
+impl BlockParts {
+    /// A block of `stmts`, ending in no value.
+    pub(crate) fn new(stmts: Vec<Id<Stmt>>, span: Span) -> Self {
+        BlockParts {
+            stmts,
+            value: None,
+            span,
+        }
+    }
+}
+
 /// An `if`, parsed before it's known whether it's a statement or gives a value.
 pub(crate) struct IfParts {
     condition: Id<Expr>,
@@ -358,3 +464,4 @@ impl IfParts {
             }
     }
 }
+

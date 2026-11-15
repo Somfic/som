@@ -100,7 +100,14 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::DoubleQuote
         | TokenKind::Dot
         | TokenKind::Ellipsis => SUBTEXT0,
-        TokenKind::Comment => SURFACE2,
+        TokenKind::Comment | TokenKind::ForeignComment => SURFACE2,
+        TokenKind::TripleEquals
+        | TokenKind::NotDoubleEquals
+        | TokenKind::TildeEquals
+        | TokenKind::ColonEquals
+        | TokenKind::PlusPlus
+        | TokenKind::AndAnd
+        | TokenKind::PipePipe => SUBTEXT0,
         TokenKind::Whitespace | TokenKind::Eof | TokenKind::Error => TEXT,
     }
 }
@@ -110,7 +117,7 @@ fn is_italic(kind: TokenKind) -> bool {
     matches!(
         kind,
         TokenKind::Fn | TokenKind::Prop | TokenKind::Let | TokenKind::If | TokenKind::Else | TokenKind::Mut | TokenKind::Out | TokenKind::Extern | // Keywords
-        TokenKind::Comment // Comments
+        TokenKind::Comment | TokenKind::ForeignComment // Comments
     )
 }
 
@@ -124,7 +131,12 @@ pub fn highlight(line: &str) -> String {
     let mut result = String::new();
     let visible: Vec<TokenKind> = (tokens.iter())
         .map(|t| t.kind)
-        .filter(|k| !matches!(k, TokenKind::Whitespace | TokenKind::Comment))
+        .filter(|k| {
+            !matches!(
+                k,
+                TokenKind::Whitespace | TokenKind::Comment | TokenKind::ForeignComment
+            )
+        })
         .collect();
     let mut seen: usize = 0;
 
@@ -134,7 +146,10 @@ pub fn highlight(line: &str) -> String {
         }
 
         let mut color = token_color(token.kind);
-        if !matches!(token.kind, TokenKind::Whitespace | TokenKind::Comment) {
+        if !matches!(
+            token.kind,
+            TokenKind::Whitespace | TokenKind::Comment | TokenKind::ForeignComment
+        ) {
             let (prev, next) = (
                 seen.checked_sub(1).map(|i| visible[i]),
                 visible.get(seen + 1).copied(),

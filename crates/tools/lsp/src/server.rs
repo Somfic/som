@@ -779,7 +779,10 @@ impl LanguageServer for SomLanguageServer {
         &self,
         params: TextDocumentPositionParams,
     ) -> Result<Option<PrepareRenameResponse>> {
-        let Some(cursor) = self.cursor(&params.text_document.uri, &params.position).await else {
+        let Some(cursor) = self
+            .cursor(&params.text_document.uri, &params.position)
+            .await
+        else {
             return Ok(None);
         };
         let projects = self.state.projects.read().await;
@@ -1141,7 +1144,11 @@ impl LanguageServer for SomLanguageServer {
                 // A prop named like a field seen here isn't what `x.name` reads here.
                 let mut props = Vec::new();
                 prop_items(a, owner, a.typed.expr(expr), viewer, &mut props);
-                items.extend(props.into_iter().filter(|p| !fields_here.contains(&p.label)));
+                items.extend(
+                    props
+                        .into_iter()
+                        .filter(|p| !fields_here.contains(&p.label)),
+                );
                 for (name, method) in a.names.methods_of(owner) {
                     if !visible(method) {
                         continue;
@@ -3811,9 +3818,8 @@ fn renamable(a: &Analysis, uses: &Uses) -> std::result::Result<(), String> {
     if !uses.matching.iter().any(|o| o.definition) {
         return Err("this isn't defined in your code, so it can't be renamed".into());
     }
-    let in_std = |o: &Occurrence| {
-        som_driver::stdlib::contains(Path::new(o.span.source.identifier()))
-    };
+    let in_std =
+        |o: &Occurrence| som_driver::stdlib::contains(Path::new(o.span.source.identifier()));
     if uses.matching.iter().any(|o| o.definition && in_std(o)) {
         return Err(format!(
             "`{}` is the standard library's, so it can't be renamed",
@@ -3834,7 +3840,9 @@ fn valid_name(name: &str) -> std::result::Result<(), String> {
         [word] if word.text.chars().all(|c| c.is_alphanumeric() || c == '_') => {
             Err(format!("`{name}` is a keyword, so it can't be a name"))
         }
-        _ => Err(format!("`{name}` isn't a name: use letters, digits and `_`")),
+        _ => Err(format!(
+            "`{name}` isn't a name: use letters, digits and `_`"
+        )),
     }
 }
 
@@ -3914,9 +3922,7 @@ fn workspace_symbols(a: &Analysis, query: &str) -> Vec<SymbolInformation> {
             Some(c) => format!("{c}::{name}"),
             None => name.clone(),
         };
-        if def.span.length == 0
-            || def.span.source.identifier().starts_with('<')
-            || !matches(&full)
+        if def.span.length == 0 || def.span.source.identifier().starts_with('<') || !matches(&full)
         {
             continue;
         }
@@ -4282,7 +4288,8 @@ mod tests {
              impl Hello {\n    prop secret = .private;\n    pub prop open = .public;\n}\n",
         )
         .unwrap();
-        let text = "fn main() -> i32 {\n    let h = Hello { private: 1, public: 2 };\n    h.public\n}\n";
+        let text =
+            "fn main() -> i32 {\n    let h = Hello { private: 1, public: 2 };\n    h.public\n}\n";
         std::fs::write(dir.join("main.som"), text).unwrap();
         let a = som_driver::analyze(&dir, &som_driver::Options::default());
         let helper = dir.join("helper.som").to_string_lossy().into_owned();
@@ -4671,7 +4678,10 @@ mod tests {
 
         let param = uses_at(&a, &file, POINTS.find("x: i32)").unwrap()).unwrap();
         let renamed = applied(POINTS, &rename_edit(&param, "n"));
-        assert!(renamed.contains("fn make(n: i32) -> Point { Point { x: n, y: 1 } }"), "{renamed}");
+        assert!(
+            renamed.contains("fn make(n: i32) -> Point { Point { x: n, y: 1 } }"),
+            "{renamed}"
+        );
     }
 
     #[test]

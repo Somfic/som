@@ -18,6 +18,7 @@ pub use names::{Def, DefId, DefKind, ImplDef, LangStruct, LangTrait, Names, UNRE
 
 use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Pattern, PatternFields, Stmt, TypeExpr};
 use som_base::diagnostics::{closest_match, snake_case};
+use som_base::foreign;
 use som_base::message::{self, Message, Part, code};
 use som_base::{Fix, msg};
 use std::collections::HashMap;
@@ -789,12 +790,26 @@ impl<'a> Resolver<'a> {
                 type_args,
                 args,
             } => {
+                // `range(n)`, `puts(x)`: another language's, where nothing here's called that.
+                if self.foreign_call(id, callee, args) {
+                    args.iter().for_each(|&a| self.resolve_expr(a));
+                    return;
+                }
                 self.bind_expr(id, callee, Expect::Func);
                 (owner_args.iter().chain(type_args)).for_each(|&t| self.resolve_type(t));
                 args.iter().for_each(|&a| self.resolve_expr(a));
             }
             // The method itself depends on the receiver's type, so the type checker finds it.
-            Expr::MethodCall { receiver, args, .. } => {
+            Expr::MethodCall {
+                receiver,
+                method,
+                args,
+            } => {
+                // `console.log(x)`: another language's way of printing.
+                if self.foreign_print(id, *receiver, method) {
+                    args.iter().for_each(|&a| self.resolve_expr(a));
+                    return;
+                }
                 self.resolve_expr(*receiver);
                 args.iter().for_each(|&a| self.resolve_expr(a));
             }
@@ -1246,10 +1261,22 @@ impl<'a> Resolver<'a> {
             } else {
                 return None;
             };
-            return best_match(name, &candidates).map(|m| {
+            if let Some(m) = best_match(name, &candidates) {
                 let text = format!("{qualifier}::{m}");
-                (msg!["did you mean ", code(&text), "?"], change_to(text))
-            });
+                return Some((msg!["did you mean ", code(&text), "?"], change_to(text)));
+            }
+            return self.constructors_hint(path, &qualifier, expect);
+        }
+
+        if expect == Expect::Value
+            && let Some(hint) = self.other_language_hint(name, &change_to)
+        {
+            return Some(hint);
+        }
+        if expect == Expect::Type
+            && let Some(hint) = self.foreign_type_hint(name, &change_to)
+        {
+            return Some(hint);
         }
 
         // A close match among the names visible here?
@@ -1297,7 +1324,7 @@ impl<'a> Resolver<'a> {
                 expect.name(found),
                 " is defined in module ",
                 message::module(m),
-                " but not is accesable from here. try ",
+                " but is not accessible from here. try ",
                 code(&qualified),
                 " or ",
                 code(&import),
@@ -1312,6 +1339,178 @@ impl<'a> Resolver<'a> {
         }
 
         None
+    }
+}
+
+impl Resolver<'_> {
+    /// For `List::new` where `List` has no `new`: the functions that make one, those not
+    /// taking `self`. Only for names other languages give constructors.
+    fn constructors_hint(
+        &self,
+        path: &Path,
+        qualifier: &str,
+        expect: Expect,
+    ) -> Option<(Message, Vec<Fix>)> {
+        let name = &*path.name().name;
+        if expect != Expect::Func
+            || path.segments.len() != 2
+            || !foreign::CONSTRUCTOR.contains(&name)
+        {
+            return None;
+        }
+        let owner = self.lookup(&path.segments[0].name, Expect::Struct)?;
+        // Its functions not taking `self` (however it's taken: `self`, `&self`, `&mut self`),
+        // with whether they take nothing at all.
+        let constructors: Vec<(String, bool)> = (self.names.methods_of(owner).into_iter())
+            .filter_map(|(n, def)| match self.names.def(def).kind {
+                DefKind::Func(f) => {
+                    let func = &self.ast.funcs[f];
+                    let takes_self = func.params.first().is_some_and(|p| &*p.name.name == "self");
+                    (!func.prop && !takes_self)
+                        .then(|| (format!("{qualifier}::{n}"), func.params.is_empty()))
+                }
+                _ => None,
+            })
+            .collect();
+        if constructors.is_empty() {
+            return None;
+        }
+        let mut help = msg![
+            code(qualifier),
+            " has no ",
+            code(name),
+            "; to make one, use "
+        ];
+        for (i, (c, _)) in constructors.iter().enumerate() {
+            if i > 0 {
+                help.push(if i + 1 == constructors.len() {
+                    " or "
+                } else {
+                    ", "
+                });
+            }
+            help.push(code(c));
+        }
+        // Only those taking nothing can stand in as they are: `List::new()` → `List::empty()`.
+        let fixes = (constructors.iter())
+            .filter(|(_, nothing)| *nothing)
+            .map(|(c, _)| Fix::replace(msg!["change to ", code(c)], path.span(), c.clone()))
+            .collect();
+        Some((help, fixes))
+    }
+
+    /// A value named as another language names it: `null` for `none`, `this` for `self`.
+    fn other_language_hint(
+        &self,
+        name: &str,
+        change_to: &dyn Fn(String) -> Vec<Fix>,
+    ) -> Option<(Message, Vec<Fix>)> {
+        let has_self = self.scopes.iter().any(|s| s.contains_key("self"));
+        let found = foreign::value(name).or_else(|| foreign::self_word(name).filter(|_| has_self))?;
+        let help = msg!["som writes ", code(found.som), ": ", found.hint()];
+        Some((help, change_to(found.som.to_string())))
+    }
+
+    /// `range(n)` or `range(a, b)`, Python's count, or `puts(x)`, Ruby's print, where
+    /// nothing's called that: reported, with som's way. Whether it was.
+    fn foreign_call(&mut self, id: Id<Expr>, callee: &Path, args: &[Id<Expr>]) -> bool {
+        let [segment] = callee.segments.as_slice() else {
+            return false;
+        };
+        let name = &*segment.name;
+        if self.lookup(name, Expect::Func).is_some() {
+            return false;
+        }
+        let span = self.ast.exprs.span(id).clone();
+        let text = |e: Id<Expr>| self.ast.exprs.span(e).get_text().to_string();
+        let (help, fixes) = if let Some(found) = foreign::range(name) {
+            let range = match args {
+                [end] => format!("0..{}", text(*end)),
+                [start, end] => format!("{}..{}", text(*start), text(*end)),
+                _ => return false,
+            };
+            let help = msg!["som writes a range ", code(&range), ": ", found.hint()];
+            let fix = Fix::replace(msg!["change to ", code(&range)], span, range);
+            (help, vec![fix])
+        } else if let Some(found) = foreign::print(name) {
+            let help = msg!["som prints a line with ", code("println(…)"), ": ", found.hint()];
+            let fix = Fix::replace(
+                msg!["change to ", code("println")],
+                segment.span.clone(),
+                "println",
+            );
+            (help, vec![fix])
+        } else {
+            return false;
+        };
+        self.errors.push(ResolveError::UnknownFunction {
+            name: name.to_string(),
+            span: segment.span.clone(),
+            help: Some(help),
+            fixes,
+        });
+        true
+    }
+
+    /// `console.log(x)`, `System.out.println(x)`: printing as another language does, where
+    /// nothing's called its first name. Reported, with som's `println`. Whether it was.
+    fn foreign_print(&mut self, id: Id<Expr>, receiver: Id<Expr>, method: &Ident) -> bool {
+        // The names called through, first to last: `System`, `out`.
+        let mut names = vec![&*method.name];
+        let mut at = receiver;
+        let root = loop {
+            match &self.ast.exprs[at] {
+                Expr::Field { object, field } => {
+                    names.push(&field.name);
+                    at = *object;
+                }
+                Expr::Var(path) if path.segments.len() == 1 => break &path.segments[0],
+                _ => return false,
+            }
+        };
+        names.push(&root.name);
+        names.reverse();
+        let path = names.join(".");
+        let Some(found) = foreign::print(&path) else {
+            return false;
+        };
+        if self.lookup(&root.name, Expect::Value).is_some() {
+            return false;
+        }
+        let span = self.ast.exprs.span(receiver).merge(&method.span);
+        let help = msg!["som prints a line with ", code("println(…)"), ": ", found.hint()];
+        let fix = Fix::replace(msg!["change to ", code("println")], span.clone(), "println");
+        let _ = id;
+        self.errors.push(ResolveError::UnknownFunction {
+            name: path,
+            span,
+            help: Some(help),
+            fixes: vec![fix],
+        });
+        true
+    }
+
+    /// A type named as another language names it: `int` for `i32`.
+    fn foreign_type_hint(
+        &self,
+        name: &str,
+        change_to: &dyn Fn(String) -> Vec<Fix>,
+    ) -> Option<(Message, Vec<Fix>)> {
+        let found = foreign::type_name(name)?;
+        // `float`: `f32` or `f64`, depending on where it's from.
+        if found.som.is_empty() {
+            let help = msg![
+                "som's floats are ",
+                code("f32"),
+                " and ",
+                code("f64"),
+                ": ",
+                found.hint()
+            ];
+            return Some((help, Vec::new()));
+        }
+        let help = msg!["som writes ", code(found.som), ": ", found.hint()];
+        Some((help, change_to(found.som.to_string())))
     }
 }
 

@@ -94,8 +94,9 @@ fn params_resolve_to_params() {
 
 #[test]
 fn methods_resolve_through_their_struct() {
-    let (ast, names) =
-        ok("struct S { v: i32 } impl S { pub fn new() -> S { S { v: 1 } } } fn main() { S::new(); }");
+    let (ast, names) = ok(
+        "struct S { v: i32 } impl S { pub fn new() -> S { S { v: 1 } } } fn main() { S::new(); }",
+    );
     let call = ast
         .exprs
         .iter()

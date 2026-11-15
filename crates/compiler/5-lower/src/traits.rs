@@ -119,6 +119,7 @@ impl Lowerer<'_> {
         let stmt = |kind| Statement {
             kind,
             span: span.clone(),
+            reads: Vec::new(),
         };
         let end = |kind| Terminator {
             kind,

@@ -235,6 +235,9 @@ pub struct Block {
 pub struct Statement {
     pub kind: StatementKind,
     pub span: Span,
+    /// Where the source reads places among its operands: `p.age` in `f(p.age)`, so
+    /// diagnostics can point at the read rather than the whole statement. In operand order.
+    pub reads: Vec<(Place, Span)>,
 }
 
 pub enum StatementKind {
@@ -393,6 +396,35 @@ pub enum Rvalue {
         args: Vec<Operand>,
         ty: TypeId,
     },
+}
+
+impl Rvalue {
+    /// The operands it reads, in order.
+    pub fn operands(&self) -> Vec<&Operand> {
+        match self {
+            Rvalue::Use(op)
+            | Rvalue::Not(op)
+            | Rvalue::Some(op)
+            | Rvalue::Repeat { operand: op, .. }
+            | Rvalue::Cast { operand: op, .. } => vec![op],
+            Rvalue::Binary { lhs, rhs, .. }
+            | Rvalue::Range {
+                start: lhs,
+                end: rhs,
+                ..
+            }
+            | Rvalue::MakeSlice {
+                start: lhs,
+                len: rhs,
+                ..
+            } => vec![lhs, rhs],
+            Rvalue::Struct { fields: ops, .. }
+            | Rvalue::Array { items: ops, .. }
+            | Rvalue::Call { args: ops, .. }
+            | Rvalue::Intrinsic { args: ops, .. } => ops.iter().collect(),
+            Rvalue::Ref { .. } => Vec::new(),
+        }
+    }
 }
 
 /// What an `Rvalue::Intrinsic` does, given its arguments: a pointer `p` to `T`s, then the rest.

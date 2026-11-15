@@ -50,6 +50,9 @@ pub enum TypeError {
         expected_from: Option<Span>,
         /// A `&T` where a `T` is expected: dereferencing it.
         fix: Option<Fix>,
+        /// An optional where something else is expected: the code giving it, and whether
+        /// that's a variable, for hints on checking it first.
+        optional: Option<(String, bool)>,
     },
     /// A binary operator applied to types it isn't defined for.
     ///
@@ -503,16 +506,17 @@ impl TypeError {
                 let mut hint = msg![struct_name(ty.clone()), " has private fields: "];
                 for (i, (name, _)) in fields.iter().enumerate() {
                     if i > 0 {
-                        hint.0.push(if i + 1 == fields.len() { " and " } else { ", " }.into());
+                        hint.0
+                            .push(if i + 1 == fields.len() { " and " } else { ", " }.into());
                     }
                     hint.0.push(field(name.clone()));
                 }
-                let mut d = Diagnostic::error(msg![
-                    "cannot construct ",
-                    struct_name(ty.clone()),
-                    " here"
-                ])
-                .with_label(Label::primary(span.clone(), "not all of its fields can be set here"));
+                let mut d =
+                    Diagnostic::error(msg!["cannot construct ", struct_name(ty.clone()), " here"])
+                        .with_label(Label::primary(
+                            span.clone(),
+                            "not all of its fields can be set here",
+                        ));
                 for (name, at) in fields {
                     d = d.with_label(Label::secondary(
                         at.clone(),
@@ -570,6 +574,7 @@ impl TypeError {
                 span,
                 expected_from,
                 fix,
+                optional,
             } => {
                 let mut d = Diagnostic::error(msg![
                     "expected ",
@@ -589,6 +594,9 @@ impl TypeError {
                 }
                 if let Some(fix) = fix {
                     d = d.with_fix(fix.clone());
+                }
+                if let Some((object, variable)) = optional {
+                    d = optional_hints(d, object, *variable);
                 }
                 d
             }
@@ -742,19 +750,7 @@ impl TypeError {
                 variable,
                 span,
             } => {
-                let check = if *variable {
-                    msg![
-                        "check it first: inside ",
-                        code(format!("if {object} {{ … }}")),
-                        ", it holds one"
-                    ]
-                } else {
-                    msg![
-                        "check it first: put it in a variable and use it inside ",
-                        code("if value { … }")
-                    ]
-                };
-                Diagnostic::error(msg![code(object.clone()), " might be ", code("none")])
+                let d = Diagnostic::error(msg![code(object.clone()), " might be ", code("none")])
                     .with_label(Label::primary(
                         span.clone(),
                         msg![
@@ -763,13 +759,8 @@ impl TypeError {
                             ": check it holds a value before using it"
                         ],
                     ))
-                    .with_hint(check)
-                    .with_hint(msg![
-                        "or give a fallback for ",
-                        code("none"),
-                        ": ",
-                        code(format!("{object} else …"))
-                    ])
+                    ;
+                optional_hints(d, object, *variable)
             }
             TypeError::ReferenceToReference { object, ty, span } => {
                 Diagnostic::error(msg![code(object.clone()), " is a reference to a reference"])
@@ -1522,17 +1513,34 @@ impl TypeError {
                 } else {
                     "assigned here"
                 };
-                Diagnostic::error(msg![var(name), " is not mutable"])
+                let d = Diagnostic::error(msg![var(name), " is not mutable"])
                     .with_label(Label::primary(span.clone(), label))
                     .with_label(Label::secondary(
                         declared_at.clone(),
                         msg!["declared without ", code("mut")],
-                    ))
+                    ));
+                // A method's `self`, taken by value: what it changes is its own copy, gone
+                // when it returns. Changing what it's called on takes `&mut self`.
+                let source = declared_at.source.content();
+                let end = (declared_at.start_offset + declared_at.length).min(source.len());
+                let typed = source[end..].trim_start().starts_with(':');
+                if name == "self" && !typed {
+                    d.with_hint(msg![
+                        code("mut self"),
+                        " would change the method's own copy, gone when it returns"
+                    ])
                     .with_fix(Fix::replace(
+                        msg!["take it by mutable reference: ", code("&mut self")],
+                        declared_at.clone(),
+                        "&mut self",
+                    ))
+                } else {
+                    d.with_fix(Fix::replace(
                         msg!["make ", var(name), " mutable"],
                         declared_at.clone(),
                         format!("mut {name}"),
                     ))
+                }
             }
             TypeError::BehindSharedReference { span, borrow } => {
                 let message = if *borrow {
@@ -1547,7 +1555,11 @@ impl TypeError {
                     ))
                     .with_hint(msg!["changing it needs a ", code("&mut"), " reference"])
             }
-            TypeError::AssignToProp { name, span, field: hidden } => match hidden {
+            TypeError::AssignToProp {
+                name,
+                span,
+                field: hidden,
+            } => match hidden {
                 Some((owner, hidden)) => Diagnostic::error(msg![
                     "cannot assign to ",
                     field(name.clone()),
@@ -1559,7 +1571,11 @@ impl TypeError {
                 ))
                 .with_label(Label::secondary(
                     hidden.defined_at.clone(),
-                    msg!["the field ", field(name.clone()), " can't be seen from here"],
+                    msg![
+                        "the field ",
+                        field(name.clone()),
+                        " can't be seen from here"
+                    ],
                 ))
                 .with_hint(msg![
                     "change it through one of ",
@@ -1568,7 +1584,9 @@ impl TypeError {
                 ]),
                 None => Diagnostic::error(msg!["cannot assign to property ", field(name.clone())])
                     .with_label(Label::primary(span.clone(), "this is a property"))
-                    .with_hint("a property is worked out when it's read; there's nothing to assign to"),
+                    .with_hint(
+                        "a property is worked out when it's read; there's nothing to assign to",
+                    ),
             },
             TypeError::InvalidAssignTarget { span } => {
                 Diagnostic::error("cannot assign to this expression").with_label(Label::primary(
@@ -1619,4 +1637,27 @@ impl TypeError {
                 .with_label(Label::secondary(declared_at.clone(), "declared here")),
         }
     }
+}
+
+/// How to get at what optional `object` holds: check it first (inside `if object { … }` if
+/// it's a `variable`, else after putting it in one), or give a fallback for `none`.
+fn optional_hints(d: Diagnostic, object: &str, variable: bool) -> Diagnostic {
+    let check = if variable {
+        msg![
+            "check it first: inside ",
+            code(format!("if {object} {{ … }}")),
+            ", it holds one"
+        ]
+    } else {
+        msg![
+            "check it first: put it in a variable and use it inside ",
+            code("if value { … }")
+        ]
+    };
+    d.with_hint(check).with_hint(msg![
+        "or give a fallback for ",
+        code("none"),
+        ": ",
+        code(format!("{object} else …"))
+    ])
 }

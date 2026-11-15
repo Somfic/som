@@ -208,6 +208,33 @@ pub enum TokenKind {
     Whitespace,
     #[regex(r"//[^\n]*", allow_greedy = true)]
     Comment,
+    /// Another language's comment: `# note`, or `-- note` on a line of its own. Skipped like
+    /// one, and reported.
+    #[regex(r"#[^\n]*", allow_greedy = true)]
+    ForeignComment,
+
+    // Other languages' operators, recognised to be reported and read as som's.
+    /// `a === b`: `==`.
+    #[token("===")]
+    TripleEquals,
+    /// `a !== b`: `!=`.
+    #[token("!==")]
+    NotDoubleEquals,
+    /// `a ~= b`: `!=`.
+    #[token("~=")]
+    TildeEquals,
+    /// `x := 1`: `let x = 1`.
+    #[token(":=")]
+    ColonEquals,
+    /// `x++`: `x += 1`.
+    #[token("++")]
+    PlusPlus,
+    /// `a && b`: `and`. Also two borrows, `&&x`.
+    #[token("&&")]
+    AndAnd,
+    /// `a || b`: `or`.
+    #[token("||")]
+    PipePipe,
 
     // Loops
     #[token("loop")]
@@ -318,6 +345,14 @@ impl std::fmt::Display for TokenKind {
             TokenKind::DoubleQuote => write!(f, "\""),
             TokenKind::Whitespace => write!(f, "whitespace"),
             TokenKind::Comment => write!(f, "comment"),
+            TokenKind::ForeignComment => write!(f, "comment"),
+            TokenKind::TripleEquals => write!(f, "==="),
+            TokenKind::NotDoubleEquals => write!(f, "!=="),
+            TokenKind::TildeEquals => write!(f, "~="),
+            TokenKind::ColonEquals => write!(f, ":="),
+            TokenKind::PlusPlus => write!(f, "++"),
+            TokenKind::AndAnd => write!(f, "&&"),
+            TokenKind::PipePipe => write!(f, "||"),
             TokenKind::Error => write!(f, "unexpected character"),
             TokenKind::Eof => write!(f, "end of file"),
             TokenKind::Percentage => write!(f, "%"),
@@ -369,6 +404,7 @@ impl TokenKind {
             | TokenKind::Text
             | TokenKind::Whitespace
             | TokenKind::Comment
+            | TokenKind::ForeignComment
             | TokenKind::Error
             | TokenKind::Eof => Part::Text(self.to_string()),
             _ => code(self),
@@ -409,6 +445,8 @@ pub fn lex(source: Arc<Source>) -> Vec<Token> {
             ),
         });
     }
+
+    lua_comments(&mut tokens, input);
 
     let end = cursor.advance_to(input, input.len());
     tokens.push(Token {
@@ -451,5 +489,47 @@ impl Cursor {
         }
         self.offset = offset;
         (self.line, self.col)
+    }
+}
+
+/// Lua's comments, `-- note`, on a line of their own: made one `ForeignComment` token each.
+/// Elsewhere `--` is two minuses, as in `a--b`, so only where nothing comes before it.
+fn lua_comments(tokens: &mut Vec<Token>, input: &str) {
+    let mut i = 0;
+    while i + 1 < tokens.len() {
+        let starts_line = i == 0
+            || tokens[i - 1].kind == TokenKind::Whitespace && tokens[i - 1].text.contains('\n')
+            || i == 1 && tokens[0].kind == TokenKind::Whitespace;
+        let dashes = tokens[i].kind == TokenKind::Minus
+            && tokens[i + 1].kind == TokenKind::Minus
+            && tokens[i + 1].span.start_offset == tokens[i].span.start_offset + 1;
+        if !(starts_line && dashes) {
+            i += 1;
+            continue;
+        }
+        let start = tokens[i].span.clone();
+        let line_end = input[start.start_offset..]
+            .find('\n')
+            .map_or(input.len(), |n| start.start_offset + n);
+        // Up to the line's end, but not the whitespace running on past it.
+        let mut last = i;
+        while last + 1 < tokens.len()
+            && tokens[last + 1].span.start_offset < line_end
+            && !(tokens[last + 1].kind == TokenKind::Whitespace
+                && tokens[last + 1].text.contains('\n'))
+        {
+            last += 1;
+        }
+        let span = start.merge(&tokens[last].span);
+        let text: Box<str> = input[span.start_offset..span.start_offset + span.length].into();
+        tokens.splice(
+            i..=last,
+            [Token {
+                kind: TokenKind::ForeignComment,
+                text,
+                span,
+            }],
+        );
+        i += 1;
     }
 }

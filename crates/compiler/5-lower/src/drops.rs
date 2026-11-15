@@ -352,6 +352,7 @@ impl Glue {
         self.blocks[self.current].stmts.push(Statement {
             kind: StatementKind::Assign(place, rvalue),
             span,
+            reads: Vec::new(),
         });
     }
 
@@ -590,6 +591,7 @@ impl FnBuilder<'_, '_> {
                             flag: None,
                         },
                         span,
+                        reads: Vec::new(),
                     });
                 }
             }
@@ -680,6 +682,7 @@ impl FnBuilder<'_, '_> {
                                         flag: None,
                                     },
                                     span: stmt.span.clone(),
+                                    reads: Vec::new(),
                                 });
                             }
                         }
@@ -689,6 +692,7 @@ impl FnBuilder<'_, '_> {
                             out.push(Statement {
                                 kind,
                                 span: stmt.span,
+                                reads: stmt.reads,
                             });
                             continue;
                         }
@@ -705,6 +709,7 @@ impl FnBuilder<'_, '_> {
                         out.push(Statement {
                             kind: StatementKind::Assign(Place::local(new), rvalue),
                             span: stmt.span.clone(),
+                            reads: stmt.reads,
                         });
                         out.extend(drops);
                         out.push(Statement {
@@ -713,6 +718,7 @@ impl FnBuilder<'_, '_> {
                                 Rvalue::Use(Operand::Move(Place::local(new))),
                             ),
                             span: stmt.span,
+                            reads: Vec::new(),
                         });
                     }
                     kind => {
@@ -720,6 +726,7 @@ impl FnBuilder<'_, '_> {
                         out.push(Statement {
                             kind,
                             span: stmt.span,
+                            reads: stmt.reads,
                         });
                     }
                 }
@@ -742,6 +749,7 @@ impl FnBuilder<'_, '_> {
                 })),
             ),
             span: span.clone(),
+            reads: Vec::new(),
         };
         for &id in &ids {
             let stmts = std::mem::take(&mut body.blocks[id].stmts);
@@ -856,5 +864,6 @@ fn drop_statement(
     Statement {
         kind: StatementKind::Drop { place, glue, flag },
         span: span.clone(),
+        reads: Vec::new(),
     }
 }

@@ -2,6 +2,7 @@
 
 pub mod arena;
 pub mod diagnostics;
+pub mod foreign;
 pub mod message;
 mod span;
 

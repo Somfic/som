@@ -1103,12 +1103,16 @@ impl<'a> Checker<'a> {
         span: Span,
         expected_from: Option<Span>,
     ) {
+        let optional = self
+            .unexpected_optional(expected, found)
+            .then(|| (span.get_text().to_string(), false));
         self.errors.push(TypeError::Mismatch {
             expected: self.describe(expected),
             found: self.describe(found),
             span,
             expected_from,
             fix: None,
+            optional,
         });
     }
 
@@ -1125,14 +1129,72 @@ impl<'a> Checker<'a> {
             self.errors.push(error);
             return;
         }
-        let fix = self.deref_fix(expr, expected, found);
+        let fix = (self.deref_fix(expr, expected, found))
+            .or_else(|| self.fallback_fix(expr, expected, found));
+        let span = self.span(expr);
+        let optional = self.unexpected_optional(expected, found).then(|| {
+            let variable = matches!(self.ast.exprs[expr], Expr::Var(_));
+            (span.get_text().to_string(), variable)
+        });
         self.errors.push(TypeError::Mismatch {
             expected: self.describe(expected),
             found: self.describe(found),
-            span: self.span(expr),
+            span,
             expected_from,
             fix,
+            optional,
         });
+    }
+
+    /// An optional `expr` of type `found` where what it holds, `expected`, is: a fallback for
+    /// `none`, where there's an obvious one. `x else 0`, or for a reference to a copy,
+    /// `*(nums.get(0) else &0)`.
+    fn fallback_fix(&self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> Option<Fix> {
+        let Ty::Optional(inner) = *self.u.get(self.u.shallow(found)) else {
+            return None;
+        };
+        let literal = |ty: TypeId| {
+            let ty = self.u.shallow(ty);
+            match (self.u.get(ty), self.u.var_kind(ty)) {
+                (_, Some(VarKind::Int)) | (Ty::Int(_), _) => Some("0"),
+                (_, Some(VarKind::Float)) | (Ty::Float(_), _) => Some("0.0"),
+                (Ty::Bool, _) => Some("false"),
+                _ => None,
+            }
+        };
+        let span = self.span(expr);
+        let text = span.get_text();
+        if text.contains('\n') {
+            return None;
+        }
+        let replacement = if self.u.could_fit(expected, inner) {
+            let fallback = format!("{text} else {}", literal(inner)?);
+            // `else` binds loosest: parentheses unless it stands alone, as `let`'s value or
+            // an argument.
+            if stands_alone(&span) {
+                fallback
+            } else {
+                format!("({fallback})")
+            }
+        } else if let Ty::Ref { to, .. } = *self.u.get(self.u.shallow(inner))
+            && self.u.could_fit(expected, to)
+            && self.is_copy(to)
+        {
+            format!("*({text} else &{})", literal(to)?)
+        } else {
+            return None;
+        };
+        Some(Fix::replace(
+            msg!["give a fallback for ", message::code("none"), ": ", message::code(&replacement)],
+            span,
+            replacement,
+        ))
+    }
+
+    /// An optional, `found`, where `expected` isn't one: what it holds has to be got at.
+    fn unexpected_optional(&self, expected: TypeId, found: TypeId) -> bool {
+        let is_optional = |ty| matches!(self.u.get(self.u.shallow(ty)), Ty::Optional(_));
+        is_optional(found) && !is_optional(expected)
     }
 
     /// `expr`, a value, where a reference to one is expected: `Hash::hash(key, …)` for
@@ -1165,18 +1227,14 @@ impl<'a> Checker<'a> {
         let found_text = self.u.display(found, self.names);
         let question = if optional { "?" } else { "" };
         let span = self.span(expr);
-        // `&a.b` and `&f()` borrow as they are; anything looser, in parentheses.
-        let edits = match self.ast.exprs[expr] {
-            Expr::Var(_)
-            | Expr::Field { .. }
-            | Expr::Index { .. }
-            | Expr::Call { .. }
-            | Expr::MethodCall { .. }
-            | Expr::Deref(_) => vec![(span.before(), borrow.to_string())],
-            _ => vec![
+        // `&a.b`, `&f()` and `&0` borrow as they are; anything looser, in parentheses.
+        let edits = if self.binds_tightly(expr) {
+            vec![(span.before(), borrow.to_string())]
+        } else {
+            vec![
                 (span.before(), format!("{borrow}(")),
                 (span.after(), ")".to_string()),
-            ],
+            ]
         };
         Some(TypeError::NotBorrowed {
             expected: message::code(format!("{borrow}{found_text}{question}")).into(),
@@ -1198,6 +1256,25 @@ impl<'a> Checker<'a> {
     /// `*expr`. A type parameter is required to copy, `T: Copy`: for a loop's variable that's
     /// all it takes, as the loop then copies its values, and anything else is dereferenced
     /// too. A value that moves can't be taken out of a reference at all: no fix.
+    /// Whether `expr` can take a prefix, `&` or `*`, without parentheses: a name, what's
+    /// read from one, a call, a literal.
+    fn binds_tightly(&self, expr: Id<Expr>) -> bool {
+        matches!(
+            self.ast.exprs[expr],
+            Expr::Var(_)
+                | Expr::Field { .. }
+                | Expr::Index { .. }
+                | Expr::Call { .. }
+                | Expr::MethodCall { .. }
+                | Expr::Deref(_)
+                | Expr::Int(_)
+                | Expr::Float(_)
+                | Expr::Bool(_)
+                | Expr::Str(_)
+                | Expr::Array(_)
+        )
+    }
+
     fn deref_fix(&self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> Option<Fix> {
         let Ty::Ref { to, .. } = *self.u.get(self.u.shallow(found)) else {
             return None;
@@ -1211,17 +1288,13 @@ impl<'a> Checker<'a> {
         }
         let span = self.span(expr);
         // A name, or what's read from one, takes a `*` as it is; anything else in parentheses.
-        let deref = match self.ast.exprs[expr] {
-            Expr::Var(_)
-            | Expr::Field { .. }
-            | Expr::Index { .. }
-            | Expr::Call { .. }
-            | Expr::MethodCall { .. }
-            | Expr::Deref(_) => vec![(span.before(), "*".to_string())],
-            _ => vec![
+        let deref = if self.binds_tightly(expr) {
+            vec![(span.before(), "*".to_string())]
+        } else {
+            vec![
                 (span.before(), "*(".to_string()),
                 (span.after(), ")".to_string()),
-            ],
+            ]
         };
         let deref_title = msg![
             "dereference it: ",
@@ -1426,7 +1499,8 @@ impl<'a> Checker<'a> {
         let strukt = &self.ast.structs[s];
         let i = (!strukt.is_enum())
             .then(|| strukt.fields.iter().position(|f| f.name.name == field.name))??;
-        let hidden = visibility::hidden_field(self.ast, self.names, s, i, self.viewer(&field.span))?;
+        let hidden =
+            visibility::hidden_field(self.ast, self.names, s, i, self.viewer(&field.span))?;
         Some((self.names.def(*def).name.to_string(), hidden))
     }
 
@@ -2501,9 +2575,8 @@ impl<'a> Checker<'a> {
                 if let Some(def) = self.names.expr(id)
                     && self.names.overloads(def).len() > 1
                 {
-                    return self.overloaded_call(
-                        id, callee, def, owner_args, written, args, expected,
-                    );
+                    return self
+                        .overloaded_call(id, callee, def, owner_args, written, args, expected);
                 }
                 match self.names.expr(id).map(|def| &self.names.def(def).kind) {
                     Some(DefKind::Func(func)) => {
@@ -4768,4 +4841,19 @@ impl Checker<'_> {
             }
         }
     }
+}
+
+/// Whether the code at `span` stands alone between its neighbours: a `let`'s value, an
+/// argument, what's returned. Anything put in its place needs no parentheses there.
+fn stands_alone(span: &Span) -> bool {
+    let source = span.source.content();
+    let before = source[..span.start_offset].trim_end();
+    let after = source[(span.start_offset + span.length).min(source.len())..].trim_start();
+    let opens = match before.chars().last() {
+        Some('(' | ',' | '{') => true,
+        // `=`, but not `==`, `!=`, `<=` or `>=`.
+        Some('=') => !before[..before.len() - 1].ends_with(['=', '!', '<', '>']),
+        _ => before.ends_with("return"),
+    };
+    opens && after.starts_with([';', ',', ')', '}'])
 }

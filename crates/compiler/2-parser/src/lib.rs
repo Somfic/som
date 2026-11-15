@@ -3,6 +3,7 @@
 
 mod error;
 mod expr;
+mod foreign;
 mod grammar;
 mod item;
 mod stmt;
@@ -11,7 +12,8 @@ mod ty;
 pub use error::ParseError;
 
 use som_ast::{Ast, Ident, Item, Path, Span};
-use som_base::{Message, Source, msg};
+use som_base::message::code;
+use som_base::{Fix, Message, Source, msg};
 use som_lexer::{Token, TokenKind, lex};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -36,8 +38,12 @@ pub fn parse_file(source: Arc<Source>, ast: &mut Ast, module: usize) -> Vec<Pars
         in_recovery: false,
         in_condition: false,
         in_impl: false,
+        in_params: false,
+        foreign_depth: 0,
+        foreign_semicolons: Vec::new(),
         visibility: som_ast::Visibility::Private,
     };
+    parser.report_foreign_comments();
     parser.skip_trivia();
     parser.parse_program();
     parser.errors
@@ -107,6 +113,12 @@ struct Parser<'a> {
     in_condition: bool,
     /// In an `impl` or `trait` block, where methods can take `self`.
     in_impl: bool,
+    /// In a function's parameter list, where `->` after a parameter means its `)` is missing.
+    in_params: bool,
+    /// How many bodies written without braces (`then … end`, Python's `:`) this is in, where
+    /// a line's missing `;` is noted, in `foreign_semicolons`, for the body's fix.
+    foreign_depth: usize,
+    foreign_semicolons: Vec<Span>,
     /// The `pub` or `mod` just read, for the item, method or field after it to take.
     visibility: som_ast::Visibility,
 }
@@ -156,6 +168,14 @@ impl Parser<'_> {
             .map(|t| &*t.text)
     }
 
+    /// The span of the nth non-trivia token ahead (0 = current).
+    fn span_ahead(&self, n: usize) -> Span {
+        (self.tokens[self.pos..].iter())
+            .filter(|t| !is_trivia(t.kind))
+            .nth(n)
+            .map_or_else(|| self.current_span(), |t| t.span.clone())
+    }
+
     /// Whether the nth non-trivia token ahead (0 = current) is `self`.
     fn self_ahead(&self, n: usize) -> bool {
         self.peek_nth(n) == TokenKind::SelfValue
@@ -200,7 +220,13 @@ impl Parser<'_> {
 
     /// `pub` or `mod` before an item, method or field, if it's there: who can see it.
     fn parse_visibility(&mut self) -> som_ast::Visibility {
-        if self.eat(TokenKind::Pub) {
+        // `public static void main`: other languages' modifiers, reported, and `public` read
+        // as the `pub` it means.
+        let public = self.eat_foreign_modifiers();
+        if public {
+            self.eat(TokenKind::Pub);
+            som_ast::Visibility::Public
+        } else if self.eat(TokenKind::Pub) {
             som_ast::Visibility::Public
         } else if self.eat(TokenKind::Mod) {
             som_ast::Visibility::Module
@@ -258,16 +284,7 @@ impl Parser<'_> {
             self.in_recovery = false;
             Some(span)
         } else {
-            if !self.in_recovery {
-                let span = self.previous_span().after();
-                self.errors.push(ParseError {
-                    message: msg!["missing ", kind.part()],
-                    hint: msg!["expected ", expected.into()],
-                    fix: insertion(kind, &span),
-                    span,
-                });
-            }
-            self.in_recovery = true;
+            self.error_missing_token(msg!["missing ", kind.part()], expected, Some(kind));
             None
         }
     }
@@ -286,16 +303,125 @@ impl Parser<'_> {
         expected: impl Into<String>,
         missing: Option<TokenKind>,
     ) {
+        // In a body written without braces, a line's `;` is left out: noted for its fix.
+        if missing == Some(TokenKind::Semicolon) && self.foreign_semicolon() {
+            return;
+        }
         if !self.in_recovery {
-            let span = self.previous_span().after();
+            // What's missing goes right after the previous token, but point at what's there
+            // instead when it's on the same line: `const name` is wrong at `name`, not at the
+            // space before it. On a later line, the gap is where the line ended.
+            let after = self.previous_span().after();
+            let found = self.current_span();
+            let span = if !self.at_eof() && found.start.line == after.end.line {
+                found.clone()
+            } else {
+                after.clone()
+            };
+            let fix = match missing {
+                // `Circle(r) -> r`: the look-alike written in its place, changed.
+                Some(kind) if let Some(text) = self.look_alike(kind) => Some(Fix::replace(
+                    msg!["change ", code(self.peek().to_string()), " to ", code(text)],
+                    found.clone(),
+                    text,
+                )),
+                Some(kind) if self.insertion_fits(kind) => insertion(kind, &after),
+                _ => None,
+            };
             self.errors.push(ParseError {
                 message: message.into(),
                 hint: msg!["expected ", expected.into()],
-                fix: missing.and_then(|kind| insertion(kind, &span)),
+                fix,
                 span,
             });
         }
         self.in_recovery = true;
+    }
+
+    /// Whether putting a missing `kind` in before the current token makes sense of what
+    /// follows. Not when what follows shows something else is wrong: `use std.io` isn't
+    /// missing a `;` before `.`, nor `(a, b) => …` a `)` before `,`.
+    /// The text of `kind`, missing, if what's there instead is a look-alike of it: `->` for
+    /// `=>`, `=>` for `->`.
+    fn look_alike(&self, kind: TokenKind) -> Option<&'static str> {
+        match (kind, self.peek()) {
+            (TokenKind::FatArrow, TokenKind::Arrow) => Some("=>"),
+            (TokenKind::Arrow, TokenKind::FatArrow) => Some("->"),
+            _ => None,
+        }
+    }
+
+    fn insertion_fits(&self, kind: TokenKind) -> bool {
+        let found = self.peek();
+        // At the end of a line, or of the file, the token's just missing.
+        if found == TokenKind::Eof
+            || self.current_span().start.line > self.previous_span().end.line
+        {
+            return true;
+        }
+        match kind {
+            TokenKind::Semicolon => {
+                self.at_item()
+                    || matches!(
+                        found,
+                        TokenKind::Let
+                            | TokenKind::Return
+                            | TokenKind::If
+                            | TokenKind::While
+                            | TokenKind::For
+                            | TokenKind::Loop
+                            | TokenKind::Match
+                            | TokenKind::Break
+                            | TokenKind::Continue
+                            | TokenKind::CloseBrace
+                    )
+            }
+            TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace => {
+                matches!(
+                    found,
+                    TokenKind::Semicolon
+                        | TokenKind::OpenBrace
+                        | TokenKind::CloseParen
+                        | TokenKind::CloseBracket
+                        | TokenKind::CloseBrace
+                ) || (kind == TokenKind::CloseParen
+                    // `fn f(a: i32 -> i32`, but not `map(fun x -> x)`.
+                    && self.in_params
+                    && found == TokenKind::Arrow)
+            }
+            // `x -> …` and `x => …` start a lambda, not the next item: `map(fun x -> x)`.
+            TokenKind::Comma
+                if found == TokenKind::Ident
+                    && matches!(self.peek_nth(1), TokenKind::Arrow | TokenKind::FatArrow) =>
+            {
+                false
+            }
+            // `let mutable total = 0`, `let add a b = …`: the `=` is there, later; what's
+            // before it is what's wrong.
+            TokenKind::Equals => !self.equals_ahead(),
+            // `f(x!)`: an operator with nothing after it isn't the start of the next item.
+            TokenKind::Comma => !matches!(
+                self.peek_nth(1),
+                TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace
+            ) || !matches!(
+                found,
+                TokenKind::Bang
+                    | TokenKind::Minus
+                    | TokenKind::Star
+                    | TokenKind::Ampersand
+                    | TokenKind::Tilde
+            ),
+            _ => true,
+        }
+    }
+
+    /// Whether a `=` comes later in this statement, on this line.
+    fn equals_ahead(&self) -> bool {
+        let line = self.current_span().start.line;
+        (self.tokens[self.pos..].iter())
+            .filter(|t| !is_trivia(t.kind))
+            .take_while(|t| t.span.start.line == line && t.kind != TokenKind::Semicolon)
+            .any(|t| t.kind == TokenKind::Equals)
     }
 
     fn error_expected(&mut self, expected: &[TokenKind], expected_desc: impl Into<String>) {
@@ -450,7 +576,13 @@ impl Parser<'_> {
     ) -> Option<Vec<T>> {
         let mut items = Vec::new();
         while !self.at(close) && !self.at_eof() {
+            let before = self.pos;
             items.push(parse_item(self)?);
+            // An item that took nothing (an error, reported) would be read again, forever:
+            // `foo(i32)`, whose `i32` can start a list item but not an expression.
+            if self.pos == before {
+                return None;
+            }
             if !self.list_continues(close) {
                 break;
             }
@@ -463,6 +595,23 @@ impl Parser<'_> {
     /// `,` in, and read as the next item.
     fn list_continues(&mut self, close: TokenKind) -> bool {
         if self.eat(TokenKind::Comma) {
+            return true;
+        }
+        // `{ a: i32; b: i32 }`: another language's separator, changed and read as `,`.
+        if self.at(TokenKind::Semicolon)
+            && self.peek_nth(1) != close
+            && can_start_item(self.peek_nth(1))
+        {
+            let span = self.current_span();
+            if !self.in_recovery {
+                self.errors.push(ParseError {
+                    message: msg!["items are separated with ", code(","), ", not ", code(";")],
+                    hint: msg!["expected ", code(",")],
+                    fix: Some(Fix::replace(msg!["change to ", code(",")], span.clone(), ",")),
+                    span,
+                });
+            }
+            self.advance();
             return true;
         }
         if self.at(close) || !can_start_item(self.peek()) {
@@ -505,6 +654,9 @@ fn can_start_item(kind: TokenKind) -> bool {
     ) || ty::primitive(kind).is_some()
 }
 
-fn is_trivia(kind: TokenKind) -> bool {
-    matches!(kind, TokenKind::Whitespace | TokenKind::Comment)
+pub(crate) fn is_trivia(kind: TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Whitespace | TokenKind::Comment | TokenKind::ForeignComment
+    )
 }

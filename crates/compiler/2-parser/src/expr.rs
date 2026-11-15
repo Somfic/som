@@ -18,7 +18,7 @@ impl Parser<'_> {
         self.with_condition(true, |p| p.parse_expr())
     }
 
-    fn with_condition<T>(&mut self, in_condition: bool, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub(crate) fn with_condition<T>(&mut self, in_condition: bool, f: impl FnOnce(&mut Self) -> T) -> T {
         let outer = std::mem::replace(&mut self.in_condition, in_condition);
         let result = f(self);
         self.in_condition = outer;
@@ -36,6 +36,12 @@ impl Parser<'_> {
         let mut lhs = self.parse_prefix_or_atom()?;
 
         loop {
+            // `x++`, ending a statement: reported, and read past.
+            if self.eat_foreign_step(lhs) {
+                continue;
+            }
+            // `a && b`, `a === b`: read as som's operators.
+            self.rewrite_foreign_binary_op();
             // `.field` or `.method(args)`
             if self.at(TokenKind::Dot) {
                 if Grammar::POSTFIX * 2 < min_bp {
@@ -44,6 +50,10 @@ impl Parser<'_> {
                 self.advance();
                 // `alloc(10).` while typing: report the missing name, but keep what's
                 // before the dot, so an editor still knows its type and can list fields.
+                // `System.out`: after a `.`, the keyword `out` can only be a name.
+                if self.at(TokenKind::Out) {
+                    self.tokens[self.pos].kind = TokenKind::Ident;
+                }
                 let Some(name) = self.parse_ident("a field or method name") else {
                     break;
                 };
@@ -113,7 +123,10 @@ impl Parser<'_> {
             }
 
             // `optional else fallback`
-            if self.at(TokenKind::Else) {
+            // In a body without braces, an `else` starting a line continues the `if`.
+            let continues_if = self.foreign_depth > 0
+                && self.current_span().start.line > self.previous_span().end.line;
+            if self.at(TokenKind::Else) && !continues_if {
                 if Grammar::FALLBACK < min_bp {
                     break;
                 }
@@ -133,6 +146,20 @@ impl Parser<'_> {
             if self.at(TokenKind::Equals) {
                 if Grammar::ASSIGNMENT < min_bp {
                     break;
+                }
+                // `if n = 0`: a comparison, surely, not an assignment.
+                if self.in_condition && !self.in_recovery {
+                    let span = self.current_span();
+                    self.errors.push(crate::ParseError {
+                        message: msg![code("="), " assigns; to compare, use ", code("==")],
+                        hint: "an assignment in a condition".into(),
+                        fix: Some(som_base::Fix::replace(
+                            msg!["change to ", code("==")],
+                            span.clone(),
+                            "==",
+                        )),
+                        span,
+                    });
                 }
                 self.advance();
                 let value = self.parse_expr_bp(Grammar::ASSIGNMENT)?;
@@ -210,6 +237,34 @@ impl Parser<'_> {
 
     fn parse_prefix_or_atom(&mut self) -> Option<Id<Expr>> {
         let start = self.current_span();
+        // Other languages' ways, reported: an anonymous function, which som doesn't have,
+        // stops the expression; `new Point(…)` and `not x` are read as what they mean.
+        if self.foreign_lambda() || self.at(TokenKind::OpenParen) && self.foreign_lambda_params()
+        {
+            return Some(self.ast.exprs.alloc(Expr::Hole, start));
+        }
+        self.eat_foreign_new();
+        self.rewrite_foreign_not();
+        // `&&x`: a borrow of a borrow, lexed as one `&&`.
+        if self.at(TokenKind::AndAnd) {
+            self.advance();
+            let bp = Grammar::prefix_bp(TokenKind::Ampersand).expect("`&` is a prefix");
+            let inner = self.parse_expr_bp(bp)?;
+            let inner = self.alloc_expr(
+                Expr::Borrow {
+                    mutable: false,
+                    expr: inner,
+                },
+                &start,
+            );
+            return Some(self.alloc_expr(
+                Expr::Borrow {
+                    mutable: false,
+                    expr: inner,
+                },
+                &start,
+            ));
+        }
         let kind = self.peek();
 
         // `..end`, or `..`: a range from the start.
@@ -304,8 +359,39 @@ impl Parser<'_> {
                     Expr::Array(Vec::new())
                 } else {
                     let first = self.with_condition(false, |p| p.parse_expr())?;
-                    if self.eat(TokenKind::Semicolon) {
+                    if self.at(TokenKind::Semicolon) {
+                        let semicolon = self.current_span();
+                        self.advance();
                         let count = self.parse_length("how many copies")?;
+                        // `[1; 2; 3]`: elements separated as in another language.
+                        if self.at(TokenKind::Semicolon) {
+                            let mut separators = vec![semicolon];
+                            while self.at(TokenKind::Semicolon) {
+                                separators.push(self.current_span());
+                                self.advance();
+                                self.with_condition(false, |p| p.parse_expr())?;
+                            }
+                            let span = separators[0].clone();
+                            self.errors.push(crate::ParseError {
+                                message: msg![
+                                    "elements are separated with ",
+                                    code(","),
+                                    ", not ",
+                                    code(";")
+                                ],
+                                hint: msg![
+                                    code("[value; count]"),
+                                    " is ",
+                                    code("count"),
+                                    " copies of one value"
+                                ],
+                                fix: Some(som_base::Fix {
+                                    title: msg!["change each ", code(";"), " to ", code(",")],
+                                    edits: separators.into_iter().map(|s| (s, ",".into())).collect(),
+                                }),
+                                span,
+                            });
+                        }
                         self.expect(TokenKind::CloseBracket, "a closing bracket")?;
                         Expr::ArrayRepeat {
                             value: first,
@@ -519,6 +605,19 @@ impl Parser<'_> {
             TokenKind::If => {
                 let parts = self.parse_if_parts()?;
                 return Some(self.if_expr(parts));
+            }
+
+            // `foo(i32)`: a type where a value goes.
+            kind if crate::ty::primitive(kind).is_some() => {
+                if !self.in_recovery {
+                    self.error_at(
+                        start.clone(),
+                        msg!["expected a value, found type ", code(kind.to_string())],
+                        "this is a type, where a value goes",
+                    );
+                }
+                self.in_recovery = true;
+                return Some(self.ast.exprs.alloc(Expr::Hole, start));
             }
 
             _ => {

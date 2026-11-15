@@ -1,14 +1,15 @@
 extern "c";
 
-extern {
-    pub fn puts(s: cstr);
-    pub fn printf(format: cstr, ...) -> i32;
-}
-
-/// Prints `text` and a newline. Takes a `cstr` for now: a string literal works as one.
 pub fn println(text: cstr) {
-    puts(text);
+    c::printf("%s\n", text);
 }
 
-/// Ends the program straight away, with exit code `code`.
+pub fn print(text: cstr) {
+     c::printf(text);
+}
+
+extern {
+    pub fn printf(pattern: cstr, ...) -> i32;
+}
+
 pub fn exit(code: i32) = c::exit(code);

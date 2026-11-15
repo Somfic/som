@@ -88,7 +88,15 @@ pub fn hidden(ast: &Ast, names: &Names, def: DefId, viewer: Viewer) -> Option<Hi
         DefKind::Trait(t) => Some(ast.traits.span(t)),
         _ => None,
     };
-    check(ast, names, access, defined.module, &defined.span, item, viewer)
+    check(
+        ast,
+        names,
+        access,
+        defined.module,
+        &defined.span,
+        item,
+        viewer,
+    )
 }
 
 /// Why field `index` of struct `s` can't be seen at `viewer`; `None` if it can. Without
@@ -107,7 +115,15 @@ pub fn hidden_field(
         owner: Some(owner),
     };
     let at = &field.name.span;
-    check(ast, names, access, names.def(owner).module, at, Some(at), viewer)
+    check(
+        ast,
+        names,
+        access,
+        names.def(owner).module,
+        at,
+        Some(at),
+        viewer,
+    )
 }
 
 /// Whether something with `access`, defined at `defined_at` in `module`, is hidden from
