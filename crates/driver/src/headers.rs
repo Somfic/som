@@ -208,6 +208,11 @@ fn import_header(
 pub(crate) const LIBC: &str = "c";
 
 /// The headers `extern "c";` imports from.
+#[cfg(unix)]
+const LIBC_HEADERS: &[&str] = &[
+    "stdio.h", "stdlib.h", "string.h", "math.h", "ctype.h", "time.h", "unistd.h", "fcntl.h",
+];
+#[cfg(not(unix))]
 const LIBC_HEADERS: &[&str] = &[
     "stdio.h", "stdlib.h", "string.h", "math.h", "ctype.h", "time.h",
 ];
@@ -272,7 +277,7 @@ fn module_name(library: Option<&str>, header: &str) -> String {
 pub fn check_declarations(ast: &Ast, library_dirs: &[PathBuf]) -> Vec<LibraryError> {
     let root = ast.modules[0].path.clone();
     let mut headers: HashMap<String, Option<Declarations>> = HashMap::new();
-    let mut errors = Vec::new();
+    let mut errors = check_libc_declarations(ast);
 
     for item in ast.modules.iter().flat_map(|m| &m.items) {
         let Item::Extern(block) = item else { continue };
@@ -306,6 +311,76 @@ pub fn check_declarations(ast: &Ast, library_dirs: &[PathBuf]) -> Vec<LibraryErr
         }
     }
     errors
+}
+
+/// Compares hand-written `extern { … }` declarations, which link to the C library, with
+/// what its headers say, as imported into module `c`. Only how the function is called is
+/// compared: a variadic function called as if it weren't (or the other way round) gets
+/// its arguments in the wrong places, without any error. Types are left alone, as C
+/// converts between its integers and pointers where they're passed.
+fn check_libc_declarations(ast: &Ast) -> Vec<LibraryError> {
+    let mut libc: HashMap<&str, &Func> = HashMap::new();
+    for item in ast.modules.iter().flat_map(|m| &m.items) {
+        if let Item::Extern(block) = item
+            && block.library.as_deref() == Some(LIBC)
+            && block.header.is_some()
+        {
+            for &id in &block.funcs {
+                let func = &ast.funcs[id];
+                libc.insert(func.link_name.as_deref().unwrap_or(&func.name.name), func);
+            }
+        }
+    }
+    let mut errors = Vec::new();
+    for item in ast.modules.iter().flat_map(|m| &m.items) {
+        let Item::Extern(block) = item else { continue };
+        if block.library.is_some() || block.header.is_some() {
+            continue;
+        }
+        for &id in &block.funcs {
+            let func = &ast.funcs[id];
+            let symbol = func.link_name.as_deref().unwrap_or(&func.name.name);
+            let Some(expected) = libc.get(symbol) else {
+                continue;
+            };
+            let n = expected.params.len();
+            let problem = match (expected.variadic, func.variadic) {
+                (true, false) => msg!["takes extra arguments (", m::code("..."), ") there"],
+                (false, true) => msg!["doesn't take extra arguments there"],
+                _ if func.params.len() != n => msg![format!(
+                    "takes {n} parameter{} there, not {}",
+                    if n == 1 { "" } else { "s" },
+                    func.params.len()
+                )],
+                _ => continue,
+            };
+            errors.push(LibraryError::HeaderMismatch {
+                function: func.name.name.to_string(),
+                header: "libc".into(),
+                declared_there: func_text(ast, expected),
+                problem,
+                span: func.name.span.clone(),
+            });
+        }
+    }
+    errors
+}
+
+/// `fn name(a: i32, ...) -> i32`, of a declaration.
+fn func_text(ast: &Ast, func: &Func) -> String {
+    let mut params: Vec<String> = (func.params.iter())
+        .map(|p| {
+            let ty = p.ty.map_or("_".into(), |t| ast.type_text(t));
+            format!("{}: {ty}", p.name.name)
+        })
+        .collect();
+    if func.variadic {
+        params.push("...".into());
+    }
+    let returns = func
+        .returns
+        .map_or(String::new(), |t| format!(" -> {}", ast.type_text(t)));
+    format!("fn {}({}){returns}", func.name.name, params.join(", "))
 }
 
 /// What a header declares, in som terms.
@@ -417,7 +492,7 @@ fn compatible(
 }
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 22;
+const GENERATOR_VERSION: u32 = 23;
 
 /// The first line of a cached import: everything it depends on. Any change to the header,
 /// the library or the generator makes it stale.
@@ -568,6 +643,116 @@ fn identifier(name: &str) -> String {
     }
 }
 
+/// C's enums as som enums whose variants convert to C's numbers with `as`:
+/// `typedef enum { KEY_NULL = 0, KEY_W = 87 } KeyboardKey;` is
+/// `pub enum KeyboardKey { Null = 0, W = 87 }`, and `KeyboardKey::W as i32` is 87. What the
+/// names share, `KEY_`, is left out. Functions still take C's enums as `i32`, as C does.
+fn enums(
+    decls: &[Value],
+    header: &str,
+    docs: &Docs,
+    taken: &HashSet<&str>,
+    origins: &mut String,
+) -> String {
+    let header_file = Path::new(header).file_name();
+    // `typedef enum { … } Name;`: the name the enum is known by, by the enum's id.
+    let mut typedefs: HashMap<&str, &str> = HashMap::new();
+    for decl in decls.iter().filter(|d| d["kind"] == "TypedefDecl") {
+        let owned = &decl["inner"][0]["ownedTagDecl"];
+        if owned["kind"] == "EnumDecl"
+            && let (Some(id), Some(name)) = (owned["id"].as_str(), decl["name"].as_str())
+        {
+            typedefs.entry(id).or_insert(name);
+        }
+    }
+    let mut out = String::new();
+    let mut written: HashSet<String> = HashSet::new();
+    for decl in decls.iter().filter(|d| d["kind"] == "EnumDecl") {
+        let Some(constants) = decl["inner"].as_array() else {
+            continue;
+        };
+        let Some(id) = decl["id"].as_str() else {
+            continue;
+        };
+        let in_header = docs
+            .files
+            .get(id)
+            .is_some_and(|file| Path::new(file).file_name() == header_file);
+        let Some(name) = typedefs.get(id).copied().or(decl["name"].as_str()) else {
+            continue;
+        };
+        let name = identifier(&pascal_case(name));
+        if !in_header || taken.contains(name.as_str()) || !written.insert(name.clone()) {
+            continue;
+        }
+        let constants: Vec<&Value> = (constants.iter())
+            .filter(|c| c["kind"] == "EnumConstantDecl")
+            .collect();
+        let c_names: Vec<&str> = constants.iter().filter_map(|c| c["name"].as_str()).collect();
+        if c_names.len() != constants.len() || c_names.is_empty() {
+            continue;
+        }
+        // What every name starts with, up to an `_`: `KEY_` of `KEY_NULL` and `KEY_W`.
+        let mut shared = c_names[0];
+        for other in &c_names[1..] {
+            let common = shared
+                .char_indices()
+                .zip(other.chars())
+                .take_while(|((_, a), b)| a == b)
+                .last()
+                .map_or(0, |((i, a), _)| i + a.len_utf8());
+            shared = &shared[..common];
+        }
+        let shared = shared.rfind('_').map_or("", |i| &shared[..=i]);
+        let variant = |c_name: &str| {
+            let rest = c_name.strip_prefix(shared).unwrap_or(c_name);
+            // `KEY_LEFT_BRACKET`'s words, whatever their case: `LeftBracket`.
+            let words = match rest.chars().any(|c| c.is_ascii_lowercase()) {
+                true => rest.to_string(),
+                false => rest.to_ascii_lowercase(),
+            };
+            pascal_case(&words)
+        };
+        let mut variants: Vec<String> = c_names.iter().map(|n| variant(n)).collect();
+        // A number first, `KEY_0`, can't start a name: keep C's names whole.
+        let unusable = |v: &String| v.is_empty() || v.starts_with(|c: char| c.is_ascii_digit());
+        if variants.iter().any(unusable) {
+            variants = c_names.iter().map(|n| pascal_case(n)).collect();
+        }
+        let distinct: HashSet<&String> = variants.iter().collect();
+        if distinct.len() != variants.len() || variants.iter().any(unusable) {
+            continue;
+        }
+
+        out.push_str(&docs.write(&docs.above(decl, true), ""));
+        if let Some((file, line)) = docs.origin(decl) {
+            let _ = writeln!(origins, "{name}\t{file}\t{line}");
+        }
+        let _ = writeln!(out, "pub enum {name} {{");
+        let mut value: i128 = -1;
+        for (constant, variant) in constants.iter().zip(&variants) {
+            value = constant_value(constant).unwrap_or(value + 1);
+            out.push_str(&docs.write(&docs.of_function(constant), "    "));
+            let _ = writeln!(out, "    {} = {value},", identifier(variant));
+        }
+        out.push_str("}\n\n");
+    }
+    out
+}
+
+/// The number written for an enum constant, `= 87`, as clang worked it out.
+fn constant_value(constant: &Value) -> Option<i128> {
+    fn find(node: &Value) -> Option<i128> {
+        if node["kind"] == "ConstantExpr"
+            && let Some(value) = node["value"].as_str()
+        {
+            return value.parse().ok();
+        }
+        node["inner"].as_array()?.iter().find_map(find)
+    }
+    find(constant)
+}
+
 /// The header's declarations as som source, and where each function is declared: lines
 /// of `name\tfile\tline`, for [`origins`].
 fn generate(
@@ -662,6 +847,14 @@ fn generate(
             let _ = writeln!(out, "    pub {}: {ty},", identifier(name));
         }
         out.push_str("}\n\n");
+    }
+    // The library's own enums, not ones its header pulls in from the system's; the C
+    // library's are left out, as they're mostly the system's.
+    if library != Some(LIBC) {
+        let taken: HashSet<&str> = (c.structs.keys().chain(c.handles.keys()))
+            .map(String::as_str)
+            .collect();
+        out.push_str(&enums(decls, header, &docs, &taken, &mut origins));
     }
     for (name, tag) in &c.handles {
         let decl = decls

@@ -1,0 +1,16 @@
+// expect: error
+
+/// A `&T` made from a `&mut T` lends what it refers to: while the `&T` is used, nothing can
+/// change it through the `&mut T`.
+struct Counter { n: i32 }
+
+fn bump(c: &mut Counter) -> i32 {
+    let shared: &Counter = c;
+    c.n = 5;
+    shared.n
+}
+
+fn main() -> i32 {
+    let mut c = Counter { n: 1 };
+    bump(&mut c)
+}

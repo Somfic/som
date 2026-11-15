@@ -1,12 +1,5 @@
 use extern "raylib";
 
-// raylib key codes; the bindings don't export the KeyboardKey enum.
-fn key_w() -> i32 { return 87; }
-fn key_s() -> i32 { return 83; }
-fn key_up() -> i32 { return 265; }
-fn key_down() -> i32 { return 264; }
-fn key_space() -> i32 { return 32; }
-
 fn screen_w() -> f32 { return 800.0; }
 fn screen_h() -> f32 { return 450.0; }
 fn paddle_w() -> f32 { return 12.0; }
@@ -62,8 +55,8 @@ fn overlaps(by: f32, top: f32) -> bool {
 
 fn update(g: &mut Game, dt: f32) {
     // Player: W/S or the arrow keys.
-    if is_key_down(key_w()) || is_key_down(key_up()) { g.left = g.left - paddle_speed() * dt; }
-    if is_key_down(key_s()) || is_key_down(key_down()) { g.left = g.left + paddle_speed() * dt; }
+    if is_key_down(KeyboardKey::W as i32) || is_key_down(KeyboardKey::Up as i32) { g.left = g.left - paddle_speed() * dt; }
+    if is_key_down(KeyboardKey::S as i32) || is_key_down(KeyboardKey::Down as i32) { g.left = g.left + paddle_speed() * dt; }
     g.left = clamp(g.left, 0.0, screen_h() - paddle_h());
 
     // CPU follows the ball's centre, at a limited speed.
@@ -74,7 +67,7 @@ fn update(g: &mut Game, dt: f32) {
     g.right = clamp(g.right, 0.0, screen_h() - paddle_h());
 
     if g.serving {
-        if is_key_pressed(key_space()) { g.serving = false; }
+        if is_key_pressed(KeyboardKey::Space as i32) { g.serving = false; }
         return;
     }
 
@@ -159,7 +152,7 @@ fn main() {
     while !window_should_close() {
         let over = g.score_l >= win_score() || g.score_r >= win_score();
         if over {
-            if is_key_pressed(key_space()) {
+            if is_key_pressed(KeyboardKey::Space as i32) {
                 g.score_l = 0;
                 g.score_r = 0;
             }

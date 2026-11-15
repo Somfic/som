@@ -1,0 +1,10 @@
+// expect: error MaybeOutOfBounds
+
+/// A signed index checked only against the length could still be below 0, which would
+/// read far outside the array.
+fn at(xs: [i32; 4], i: i32) -> i32 {
+    if i < xs.len { return xs[i]; }
+    0
+}
+
+fn main() -> i32 = at([1, 2, 3, 4], -1000000);

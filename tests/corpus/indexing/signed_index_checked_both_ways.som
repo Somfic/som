@@ -1,0 +1,9 @@
+// expect: exit 4
+
+/// A signed index is inside where it's known to be at least 0 and below the length.
+fn at(xs: [i32; 4], i: i32) -> i32 {
+    if i >= 0 && i < xs.len { return xs[i]; }
+    0
+}
+
+fn main() -> i32 = at([1, 2, 3, 4], 3) + at([1, 2, 3, 4], -1);

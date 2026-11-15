@@ -1,0 +1,14 @@
+// expect: error MaybeOutOfBounds
+
+/// A counter that goes down in the loop can go below 0: a check against the length isn't
+/// enough for it.
+fn main() -> i32 {
+    let xs = [1, 2, 3, 4];
+    let mut total = 0;
+    let mut i = 3;
+    while i < xs.len {
+        total = total + xs[i];
+        i = i - 1;
+    }
+    total
+}

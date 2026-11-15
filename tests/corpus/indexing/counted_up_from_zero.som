@@ -1,0 +1,14 @@
+// expect: exit 10
+
+/// A counter that starts at 0 and only goes up in the loop stays at least 0, so checking it
+/// against the length is enough, signed or not.
+fn main() -> i32 {
+    let xs = [1, 2, 3, 4];
+    let mut total = 0;
+    let mut i = 0;
+    while i < xs.len {
+        total = total + xs[i];
+        i += 1;
+    }
+    total
+}

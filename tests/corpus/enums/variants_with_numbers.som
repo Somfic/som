@@ -1,0 +1,27 @@
+// expect: exit 42
+
+/// A variant holding nothing can say the number it converts to with `as`, as C's enums do:
+/// `W = 87`. One that doesn't is one more than the variant before it, and the first is 0.
+/// Matching and comparing are by variant, whatever their numbers.
+enum Key { Null, W = 87, S = 83, Up = 265, Down, Gone = -1 }
+
+fn name(k: Key) -> i32 {
+    match k {
+        Key::W => 1,
+        Key::Down => 2,
+        _ => 0,
+    }
+}
+
+fn main() -> i32 {
+    let down = Key::Down;
+    let mut total = 0;
+    if Key::Null as i32 == 0 { total = total + 1; }
+    if Key::W as i32 == 87 { total = total + 1; }
+    if Key::S as i32 == 83 { total = total + 1; }
+    if down as i32 == 266 { total = total + 1; }
+    if Key::Gone as i32 == -1 { total = total + 1; }
+    if down != Key::Up && down == Key::Down { total = total + 1; }
+    // 6 checks, then 1 and 2 from matching, then 87 - 83 - 266 + 265 - 1 = 2 more.
+    total + name(Key::W) + name(down) + 30 + Key::W as i32 - Key::S as i32 - down as i32 + Key::Up as i32 + Key::Gone as i32 + 1
+}

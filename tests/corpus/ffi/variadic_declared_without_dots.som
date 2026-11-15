@@ -1,0 +1,11 @@
+// expect: error
+
+/// `fcntl` takes extra arguments in C. Declared without `...`, its third argument would be
+/// passed where a variadic function doesn't look for it, with no error as the program runs.
+use som::io;
+
+extern {
+    fn fcntl(fd: i32, cmd: i32, arg: i32) -> i32;
+}
+
+fn main() -> i32 = fcntl(0, 3, 0);

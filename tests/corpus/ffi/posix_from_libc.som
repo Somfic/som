@@ -1,0 +1,10 @@
+// expect: exit 0
+
+/// The C library's POSIX functions are in `c` too: `usleep`, `getpid`, `fcntl`.
+extern "c";
+
+fn main() -> i32 {
+    c::usleep(1);
+    let pid = c::getpid();
+    0 if pid > 0 else 1
+}

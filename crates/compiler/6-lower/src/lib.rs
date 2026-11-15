@@ -1241,7 +1241,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         if let Some((method, type_args)) = typed.conversion(expr) {
             return self.convert(expr, method, type_args.to_vec());
         }
-        if !typed.is_wrapped(expr) && typed.sliced_to(expr).is_none() {
+        if !typed.is_wrapped(expr) && typed.sliced_to(expr).is_none() && !typed.is_downgraded(expr)
+        {
             return self.operand_unwrapped(expr);
         }
         let rvalue = self.rvalue(expr);
@@ -1306,6 +1307,25 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         if typed.conversion(expr).is_some() {
             return Rvalue::Use(self.operand(expr));
         }
+        // A `&mut T` where a `&T` is expected: `&*r`, lending what it refers to.
+        if typed.is_downgraded(expr) {
+            let span = self.span(expr);
+            let source = self.operand_unwrapped(expr);
+            let place = match source {
+                Operand::Move(place) | Operand::Copy(place) => place,
+                constant => {
+                    let ty = self.expr_ty(expr);
+                    let temp = self.temp(ty, span.clone());
+                    self.assign(Place::local(temp), Rvalue::Use(constant), span);
+                    Place::local(temp)
+                }
+            };
+            self.used_ty(expr);
+            return Rvalue::Ref {
+                mutable: false,
+                place: place.project(Projection::Deref),
+            };
+        }
         let sliced = typed.sliced_to(expr).map(|ty| self.ty(ty));
         let value = match sliced {
             Some(slice) => {
@@ -1340,6 +1360,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let ty = match self.l.typed.sliced_to(expr) {
             Some(slice) => self.ty(slice),
             None => self.expr_ty(expr),
+        };
+        // `&mut T` used as a `&T`.
+        let ty = match *self.l.mir.types.get(ty) {
+            Ty::Ref { mutable: true, to } if self.l.typed.is_downgraded(expr) => {
+                self.l.mir.types.intern(Ty::Ref { mutable: false, to })
+            }
+            _ => ty,
         };
         if self.l.typed.is_wrapped(expr) {
             self.l.mir.types.intern(Ty::Optional(ty))
@@ -1737,6 +1764,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     };
                 }
                 let operand = self.number(*value);
+                // An enum with numbers written for its variants, `W = 87`: its tag is which
+                // variant it is, and picks the number from a table of them.
+                if let Ty::Struct(def, _) = *self.l.mir.types.get(from)
+                    && let DefKind::Struct(s) = self.l.names.def(def).kind
+                    && self.l.ast.structs[s].has_values()
+                {
+                    return self.variant_number(s, operand, ty, self.span(expr));
+                }
                 if from == ty {
                     Rvalue::Use(operand)
                 } else {
@@ -1946,6 +1981,42 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         };
         self.assign(Place::local(temp), borrow, span);
         Operand::Move(Place::local(temp))
+    }
+
+    /// The number `tag`, which variant of enum `s` a value is, converts to as a `ty`: the
+    /// one written for that variant, read from a table of them all.
+    fn variant_number(&mut self, s: Id<Struct>, tag: Operand, ty: TypeId, span: Span) -> Rvalue {
+        let strukt = &self.l.ast.structs[s];
+        let items: Vec<Operand> = (0..strukt.variants().len())
+            .map(|i| strukt.variant_value(i))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|n| self.constant(ConstKind::Int(n), ty))
+            .collect();
+        let len = Ty::Value(Value::Int(items.len() as u128));
+        let len = self.l.mir.types.intern(len);
+        let table_ty = self.l.mir.types.intern(Ty::Array { element: ty, len });
+        let table = self.temp(table_ty, span.clone());
+        self.assign(
+            Place::local(table),
+            Rvalue::Array {
+                ty: table_ty,
+                items,
+            },
+            span.clone(),
+        );
+        let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
+        let index = self.temp(usize, span.clone());
+        self.assign(
+            Place::local(index),
+            Rvalue::Cast {
+                operand: tag,
+                ty: usize,
+            },
+            span,
+        );
+        let element = Place::local(table).project(Projection::Index(index));
+        Rvalue::Use(Operand::Copy(element))
     }
 
     /// `ty` with this copy's type arguments filled in.

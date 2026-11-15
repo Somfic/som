@@ -1,0 +1,8 @@
+// expect: exit 7
+
+/// A function without parameters whose body is a number is that number wherever it's
+/// called, so it can divide.
+fn scale() -> i32 { return 100; }
+fn half() -> i32 = 2;
+
+fn main() -> i32 = 1400 / scale() / half();

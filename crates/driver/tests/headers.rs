@@ -36,6 +36,14 @@ void demo_widen(demo_size *size);
 typedef struct demo_db demo_db;
 int demo_open(int answer, demo_db **db);
 int demo_query(const demo_db *db);
+// Keys
+typedef enum {
+    DEMO_KEY_NULL = 0,  // No key
+    DEMO_KEY_A = 65,
+    DEMO_KEY_B,
+    DEMO_KEY_LEFT_ARROW = 263,
+} DemoKey;
+int demo_key(int key);
 ";
 
 const SOURCE: &str = "
@@ -55,6 +63,7 @@ struct demo_db { int answer; };
 static struct demo_db the_db;
 int demo_open(int answer, demo_db **db) { the_db.answer = answer; *db = &the_db; return 0; }
 int demo_query(const demo_db *db) { return db->answer; }
+int demo_key(int key) { return key; }
 ";
 
 /// A directory with `demo.h` and the shared library `demo` built from it.
@@ -532,5 +541,26 @@ fn unsaved_text_is_analyzed_instead_of_the_file() {
         som_driver::analyze(&main, &Options::default())
             .errors
             .is_empty()
+    );
+}
+
+#[test]
+fn enums_become_enums_whose_variants_convert_to_their_numbers() {
+    let dir = project();
+    let main = write(
+        dir.path(),
+        "extern \"demo\" from \"demo.h\";
+         fn main() -> i32 {
+             // `DEMO_KEY_B` follows `DEMO_KEY_A = 65`, so it's 66.
+             let b = demo::demo_key(demo::DemoKey::B as i32);
+             b - 24 + demo::DemoKey::LeftArrow as i32 - 263 + demo::DemoKey::Null as i32
+         }",
+    );
+    let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
+    let exe =
+        som_driver::build(&checked, &dir.path().join("program"), &Default::default()).unwrap();
+    assert_eq!(
+        som_driver::run(&checked, &exe, &[]).unwrap().code(),
+        Some(42)
     );
 }

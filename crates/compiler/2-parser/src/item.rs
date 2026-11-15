@@ -851,10 +851,35 @@ impl Parser<'_> {
         } else {
             (VariantKind::Unit, Vec::new())
         };
+        // `W = 87`, `Unknown = -1`: the number it converts to.
+        let value = if self.at(TokenKind::Equals) {
+            let at = self.current_span();
+            self.advance();
+            let negative = self.eat(TokenKind::Minus);
+            let n = self.parse_count("the variant's number")?;
+            if kind != VariantKind::Unit {
+                self.error_at(
+                    at.clone(),
+                    "a variant holding values has no number",
+                    "only variants that hold nothing convert to a number",
+                );
+            }
+            match i128::try_from(n) {
+                Ok(n) if negative => Some(-n),
+                Ok(n) => Some(n),
+                Err(_) => {
+                    self.error_at(at, "number is too large", "this does not fit in an `i128`");
+                    None
+                }
+            }
+        } else {
+            None
+        };
         Some(Variant {
             doc,
             name,
             kind,
+            value,
             fields,
         })
     }

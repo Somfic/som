@@ -58,7 +58,7 @@ fn update(g: &mut Game) {
         g.vel_y = -g.vel_y;
     }
 
-    let row = g.ball_y / 100;
+    let row = g.ball_y / SCALE();
 
     // Left paddle sits in column 1.
     if g.vel_x < 0 && g.ball_x <= SCALE() * 2 && g.ball_x > 0 {
@@ -91,15 +91,15 @@ fn update(g: &mut Game) {
 // Simple AI: follow the ball, one step every other frame.
 fn ai(g: &mut Game, frame: i32) {
     if frame % 2 == 0 { return; }
-    let target = g.ball_y / 100 - PADDLE() / 2;
+    let target = g.ball_y / SCALE() - PADDLE() / 2;
     if g.right < target { g.right = g.right + 1; }
     if g.right > target { g.right = g.right - 1; }
     g.right = clamp(g.right, 0, H() - PADDLE());
 }
 
 fn draw(g: &Game) {
-    let bx = g.ball_x / 100;
-    let by = g.ball_y / 100;
+    let bx = g.ball_x / SCALE();
+    let by = g.ball_y / SCALE();
     let l = g.score_l;
     let r = g.score_r;
     print("[H");

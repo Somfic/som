@@ -1,0 +1,26 @@
+// expect: exit 52
+
+/// A grid kept in one array: `y * 10 + x` is inside it where `x` and `y` are known to be
+/// inside the grid, as far as each can go is followed through `*` and `+`.
+struct Grid { cells: [i32; 200] }
+
+fn cols() -> i32 = 10;
+fn rows() -> i32 { return 20; }
+
+fn get(g: &Grid, x: i32, y: i32) -> i32 {
+    if x < 0 || x >= cols() || y < 0 || y >= rows() { return -1; }
+    g.cells[y * cols() + x]
+}
+
+fn set(g: &mut Grid, x: i32, y: i32, v: i32) {
+    if x >= 0 && x < 10 && y >= 0 && y < 20 {
+        g.cells[y * 10 + x] = v;
+    }
+}
+
+fn main() -> i32 {
+    let mut g = Grid { cells: [0; 200] };
+    set(&mut g, 9, 19, 50);
+    set(&mut g, 10, 0, 7);
+    get(&g, 9, 19) + get(&g, 0, 1) + 2 + get(&g, -1, 0) + 1
+}

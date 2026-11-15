@@ -1,0 +1,19 @@
+// expect: exit 42
+
+/// A `&mut T` can go where a `&T` is expected: it's lent as `&*r` for the call, and is
+/// still there to change things through after.
+struct Counter { n: i32 }
+
+fn read(c: &Counter) -> i32 = c.n;
+
+fn bump(c: &mut Counter) -> i32 {
+    let before = read(c);
+    c.n = c.n + 1;
+    let shared: &Counter = c;
+    before + read(shared) + read(c)
+}
+
+fn main() -> i32 {
+    let mut c = Counter { n: 13 };
+    bump(&mut c) + 1
+}

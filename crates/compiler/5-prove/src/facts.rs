@@ -193,6 +193,19 @@ impl<P: Clone + PartialEq> Facts<P> {
             .retain(|f| f.kind.places().into_iter().all(|p| !changed(p)));
     }
 
+    /// Ends what's known about the places `changed` says could have changed, but `rising`,
+    /// which only goes up, keeps what it's known to be at least: `x - rising <= c` still
+    /// holds as it goes up, where `x` doesn't change.
+    pub fn forget_rising(&mut self, rising: &P, changed: impl Fn(&P) -> bool) {
+        self.facts.retain(|f| match &f.kind {
+            FactKind::Le(a, Term::Place(b), _) if b == rising => match a {
+                Term::Zero => true,
+                Term::Place(a) => !changed(a),
+            },
+            kind => kind.places().into_iter().all(|p| !changed(p)),
+        });
+    }
+
     /// `place` is never below 0, whatever's learned or forgotten.
     pub fn unsigned(&mut self, place: P) {
         if !self.unsigned.contains(&place) {

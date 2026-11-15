@@ -1,0 +1,14 @@
+// expect: exit 0
+
+/// Declared as C declares it, extra arguments and all.
+use som::io;
+
+extern {
+    fn fcntl(fd: i32, cmd: i32, ...) -> i32;
+}
+
+fn main() -> i32 {
+    // `F_GETFD` of standard input: not below 0.
+    let flags = fcntl(0, 1);
+    0 if flags >= 0 else 1
+}

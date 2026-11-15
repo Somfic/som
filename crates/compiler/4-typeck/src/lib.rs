@@ -73,6 +73,8 @@ pub struct Typed {
     /// Expressions whose value becomes an optional's where it's used: `5` in
     /// `let x: i32? = 5`.
     wrapped: HashSet<Id<Expr>>,
+    /// `&mut T`s used where a `&T` is expected: each lent as `&*r`.
+    downgraded: HashSet<Id<Expr>>,
     /// Reads of an optional place inside `if x { … }`: they read the value it holds.
     narrowed_reads: HashSet<Id<Expr>>,
     /// Operands read through the reference they are: `self * self` of a `&i32`.
@@ -414,6 +416,12 @@ impl Typed {
     /// what it's used as is the `&T` its `get` gives.
     pub fn is_shared_read(&self, expr: Id<Expr>) -> bool {
         self.shared.contains(&expr)
+    }
+
+    /// Whether `expr`, a `&mut T`, is used where a `&T` is expected: it's lent as `&*expr`,
+    /// so it's still there to use after.
+    pub fn is_downgraded(&self, expr: Id<Expr>) -> bool {
+        self.downgraded.contains(&expr)
     }
 
     /// Whether `expr`'s value is wrapped in an optional where it's used.

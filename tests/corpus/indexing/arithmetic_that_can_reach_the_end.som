@@ -1,0 +1,9 @@
+// expect: error MaybeOutOfBounds
+
+/// `y * 10 + x` can reach 200 when `y` can be 20: one past the end.
+fn get(cells: [i32; 200], x: i32, y: i32) -> i32 {
+    if x >= 0 && x < 10 && y >= 0 && y <= 20 { return cells[y * 10 + x]; }
+    0
+}
+
+fn main() -> i32 = get([0; 200], 0, 0);

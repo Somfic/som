@@ -1,0 +1,6 @@
+// expect: error
+
+/// Only a variant that holds nothing converts to a number.
+enum Shape { Circle(f32) = 1, Empty }
+
+fn main() -> i32 = 0;

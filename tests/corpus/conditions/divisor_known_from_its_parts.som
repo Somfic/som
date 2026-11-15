@@ -1,0 +1,9 @@
+// expect: exit 5
+
+/// `n % 4 + 1` is from 1 to 4 for an `n` not below 0: never 0.
+fn spread(total: i32, n: i32) -> i32 {
+    if n < 0 { return 0; }
+    total / (n % 4 + 1)
+}
+
+fn main() -> i32 = spread(20, 7) + spread(20, -1) + 0;

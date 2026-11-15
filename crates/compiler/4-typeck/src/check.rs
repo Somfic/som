@@ -38,6 +38,8 @@ pub(crate) struct Checker<'a> {
     fields: HashMap<Id<Expr>, usize>,
     type_args: HashMap<Id<Expr>, Vec<TypeId>>,
     wrapped: HashSet<Id<Expr>>,
+    /// `&mut T`s used where a `&T` is expected.
+    downgraded: HashSet<Id<Expr>>,
     /// The optional places known to hold a value here, innermost last.
     narrowed: Vec<Narrowing>,
     next_narrowing: usize,
@@ -130,6 +132,7 @@ impl<'a> Checker<'a> {
             fields: HashMap::new(),
             type_args: HashMap::new(),
             wrapped: HashSet::new(),
+            downgraded: HashSet::new(),
             narrowed: Vec::new(),
             next_narrowing: 0,
             narrowed_reads: HashSet::new(),
@@ -648,6 +651,7 @@ impl<'a> Checker<'a> {
             fields: self.fields,
             type_args,
             wrapped: self.wrapped,
+            downgraded: self.downgraded,
             narrowed_reads: self.narrowed_reads,
             read_through: self.read_through,
             shared: self.shared,
@@ -2307,6 +2311,20 @@ impl<'a> Checker<'a> {
             return true;
         }
         let expected = self.u.shallow(expected);
+        // A `&mut T` where a `&T` is expected: lent as `&*r`, which leaves `r` to use after.
+        if let Ty::Ref {
+            mutable: false,
+            to: wanted,
+        } = *self.u.get(expected)
+            && let Ty::Ref {
+                mutable: true,
+                to: given,
+            } = *self.u.get(self.u.shallow(found))
+            && self.u.unify(wanted, given).is_ok()
+        {
+            self.downgraded.insert(expr);
+            return true;
+        }
         if self.slices_to(expected, found) {
             self.sliced.insert(expr, expected);
             return true;

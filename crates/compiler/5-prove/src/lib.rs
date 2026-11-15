@@ -473,11 +473,21 @@ impl Prover<'_> {
         let Some(len) = self.array_len(object) else {
             return;
         };
+        // Inside is from 0 up to the length: a signed index can be below 0, and `as usize`
+        // would take it far past the end.
         let at = self.value_of(index, &as_is);
         let known = at.is_some_and(|(at, needs)| {
             needs.iter().all(|n| self.facts.holds(n))
+                && self.facts.holds(&Cond::compare(&at, Compare::GreaterOrEqual, &Value::number(0)))
                 && self.facts.holds(&Cond::compare(&at, Compare::Less, &len))
         });
+        // `y * 10 + x`, of an array of a known length: where it's known to be from what's
+        // known of `x` and `y`.
+        let known = known
+            || (len.term == Term::Zero
+                && self
+                    .range_of(index)
+                    .is_some_and(|(least, most)| least >= 0 && most < len.offset));
         if !known {
             self.out_of_bounds(id, object, index, reading);
         }
@@ -492,9 +502,12 @@ impl Prover<'_> {
         // Known to be outside, not just not known to be inside.
         let never = self.index_outside(object, index);
         let written = matches!(self.ast.exprs[index], Expr::Int(_));
-        let check = match written {
-            true => format!("{len_text} > {index_text}"),
-            false => format!("{index_text} < {len_text}"),
+        // A signed index known not to be below 0 only needs the length checked.
+        let signed = !written && !self.is_unsigned(index) && !self.at_least_zero(index);
+        let check = match (written, signed) {
+            (true, _) => format!("{len_text} > {index_text}"),
+            (false, true) => format!("{index_text} >= 0 && {index_text} < {len_text}"),
+            (false, false) => format!("{index_text} < {len_text}"),
         };
         let title = match written {
             true => msg![
@@ -517,6 +530,7 @@ impl Prover<'_> {
             index: index_text.to_string(),
             check,
             written,
+            signed,
             len: len_text,
             known,
             span: self.ast.exprs.span(index).clone(),
@@ -734,6 +748,13 @@ impl Prover<'_> {
             }
             return both;
         }
+        // `(n % 4) + 1`: from what's known of what it's made of.
+        if self
+            .range_of(expr)
+            .is_some_and(|(least, most)| least > 0 || most < 0)
+        {
+            return true;
+        }
         let Some((value, needs)) = self.value_of(expr, &as_is) else {
             return false;
         };
@@ -744,6 +765,142 @@ impl Prover<'_> {
                 .collect(),
         );
         self.facts.holds(&cond)
+    }
+
+    /// Whether `expr` is known not to be below 0.
+    fn at_least_zero(&mut self, expr: Id<Expr>) -> bool {
+        if self.range_of(expr).is_some_and(|(least, _)| least >= 0) {
+            return true;
+        }
+        self.value_of(expr, &as_is).is_some_and(|(value, needs)| {
+            needs.iter().all(|n| self.facts.holds(n))
+                && self.facts.holds(&Cond::compare(
+                    &value,
+                    Compare::GreaterOrEqual,
+                    &Value::number(0),
+                ))
+        })
+    }
+
+    /// The least and most integer `expr` can be: from what's known of each place in it
+    /// (or as far as its type goes), through `+`, `-`, `*`, `/`, `%` and negation. What's compared
+    /// with each other isn't followed here (that's [`Facts`]), only how far each can go:
+    /// `y * 10 + x` of `x` from 0 to 9 and `y` from 0 to 19 is from 0 to 199. `None` where
+    /// a step could wrap around, as its type has no room for it.
+    fn range_of(&mut self, expr: Id<Expr>) -> Option<(i128, i128)> {
+        if !self.is_integer(expr) {
+            return None;
+        }
+        let (least, most) = match self.ast.exprs[expr] {
+            Expr::Neg(inner) => {
+                let (least, most) = self.range_of(inner)?;
+                (most.checked_neg()?, least.checked_neg()?)
+            }
+            Expr::Binary { op, lhs, rhs }
+                if matches!(
+                    op,
+                    BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
+                ) =>
+            {
+                let (a, b) = (self.range_of(lhs)?, self.range_of(rhs)?);
+                // Of `*` and `/`, the extremes are among the ends' combinations.
+                let corners = |f: fn(i128, i128) -> Option<i128>| {
+                    let all = [f(a.0, b.0)?, f(a.0, b.1)?, f(a.1, b.0)?, f(a.1, b.1)?];
+                    Some((*all.iter().min()?, *all.iter().max()?))
+                };
+                match op {
+                    BinOp::Add => (a.0.checked_add(b.0)?, a.1.checked_add(b.1)?),
+                    BinOp::Subtract => (a.0.checked_sub(b.1)?, a.1.checked_sub(b.0)?),
+                    BinOp::Multiply => corners(i128::checked_mul)?,
+                    // Rounding towards 0, as C does; never by something that can be 0.
+                    BinOp::Divide if b.0 > 0 || b.1 < 0 => corners(i128::checked_div)?,
+                    // What's left over is below the divisor, and of something not below 0,
+                    // not below 0 either.
+                    BinOp::Modulo if a.0 >= 0 && b.0 > 0 => (0, a.1.min(b.1 - 1)),
+                    _ => return None,
+                }
+            }
+            _ => {
+                let (value, needs) = self.value_of(expr, &as_is)?;
+                if !needs.iter().all(|n| self.facts.holds(n)) {
+                    return None;
+                }
+                match &value.term {
+                    Term::Zero => (value.offset, value.offset),
+                    term => {
+                        // `0 - t <= d` is `t >= -d`; `t - 0 <= d` is `t <= d`. Where one
+                        // isn't known, it's as far as the type goes.
+                        let (min, max) = self.int_limits(expr)?;
+                        let least = match self.facts.bound(&Term::Zero, term) {
+                            Some(below) => value.offset.checked_sub(below)?,
+                            None => min,
+                        };
+                        let most = match self.facts.bound(term, &Term::Zero) {
+                            Some(above) => value.offset.checked_add(above)?,
+                            None => max,
+                        };
+                        (least, most)
+                    }
+                }
+            }
+        };
+        let (min, max) = self.int_limits(expr)?;
+        (min <= least && most <= max).then_some((least, most))
+    }
+
+    /// The least and most a value of `expr`'s integer type can be.
+    fn int_limits(&self, expr: Id<Expr>) -> Option<(i128, i128)> {
+        let ty = self.through_ref(self.expr_ty(expr)?);
+        let Ty::Int(int) = *self.typed.ty(ty) else {
+            return None;
+        };
+        let bits = match int {
+            IntTy::I8 | IntTy::U8 => 8,
+            IntTy::I16 | IntTy::U16 => 16,
+            IntTy::I32 | IntTy::U32 => 32,
+            IntTy::I64 | IntTy::U64 | IntTy::ISize | IntTy::USize => 64,
+            IntTy::I128 | IntTy::U128 => 128,
+        };
+        Some(match (int.is_signed(), bits) {
+            (true, 128) => (i128::MIN, i128::MAX),
+            (true, n) => (-(1 << (n - 1)), (1 << (n - 1)) - 1),
+            (false, 128) => (0, i128::MAX),
+            (false, n) => (0, (1i128 << n) - 1),
+        })
+    }
+
+    /// What a call of a function without parameters always gives, if its body is only a
+    /// number: `fn width() -> i32 = 60;`, or `{ return 60; }`.
+    fn constant_call(&self, expr: Id<Expr>) -> Option<i128> {
+        let Expr::Call { ref args, .. } = self.ast.exprs[expr] else {
+            return None;
+        };
+        if !args.is_empty() {
+            return None;
+        }
+        let func = &self.ast.funcs[self.callee(expr)?];
+        if !func.params.is_empty() || !func.generics.is_empty() {
+            return None;
+        }
+        let mut body = func.body?;
+        loop {
+            body = match self.ast.exprs[body] {
+                Expr::Int(n) => return Some(n),
+                Expr::Neg(inner) => match self.ast.exprs[inner] {
+                    Expr::Int(n) => return Some(-n),
+                    _ => return None,
+                },
+                Expr::Block { ref stmts, value } => match (&stmts[..], value) {
+                    ([], Some(value)) => value,
+                    ([only], None) => match self.ast.stmts[*only] {
+                        Stmt::Return(Some(value)) => value,
+                        _ => return None,
+                    },
+                    _ => return None,
+                },
+                _ => return None,
+            };
+        }
     }
 
     /// A call `call` of `func`: each of its `@where`s has to be known to hold.
@@ -1037,6 +1194,8 @@ impl Prover<'_> {
                 Value::place(place)
             }
             Expr::Deref(inner) => return self.value_of(inner, subst),
+            // `width()` of `fn width() -> i32 = 60;`.
+            Expr::Call { .. } => Value::number(self.constant_call(expr)?),
             Expr::Binary {
                 op: op @ (BinOp::Add | BinOp::Subtract),
                 lhs,
@@ -1131,9 +1290,87 @@ impl Prover<'_> {
         for &stmt in body {
             self.changes_in_stmt(stmt, &mut changed);
         }
-        for place in changed {
-            self.facts.forget(|p| p.within(&place) || place.within(p));
+        // A counter only ever counted up, `i = i + 1`, is still at least what it was.
+        let rising: Vec<Place> = (changed.iter())
+            .filter(|place| matches!(place, Place::Path { path, .. } if path.is_empty()))
+            .filter(|&place| self.only_rises(body, place))
+            .cloned()
+            .collect();
+        let touches = |place: &Place, p: &Place| p.within(place) || place.within(p);
+        for place in &changed {
+            if rising.contains(place) {
+                let others: Vec<&Place> = changed.iter().filter(|c| *c != place).collect();
+                self.facts.forget_rising(place, |p| {
+                    touches(place, p) || others.iter().any(|o| touches(o, p))
+                });
+            } else {
+                self.facts.forget(|p| touches(place, p));
+            }
         }
+    }
+
+    /// Whether every change to variable `place` in `body` adds a number not below 0 to it:
+    /// `i = i + 1`, `i += 2`.
+    fn only_rises(&self, body: &[Id<Stmt>], place: &Place) -> bool {
+        let mut rises = true;
+        for &stmt in body {
+            self.stmt_exprs_deep(stmt, &mut |expr| {
+                let mut changed = Vec::new();
+                match self.ast.exprs[expr] {
+                    Expr::Assign { target, value } if self.place_of(target).as_ref() == Some(place) => {
+                        let up = match self.ast.exprs[value] {
+                            Expr::Binary {
+                                op: BinOp::Add,
+                                lhs,
+                                rhs,
+                            } => match (&self.ast.exprs[lhs], &self.ast.exprs[rhs]) {
+                                (_, &Expr::Int(n)) => n >= 0 && self.place_of(lhs).as_ref() == Some(place),
+                                (&Expr::Int(n), _) => n >= 0 && self.place_of(rhs).as_ref() == Some(place),
+                                _ => false,
+                            },
+                            _ => false,
+                        };
+                        rises &= up;
+                    }
+                    Expr::Assign { .. } => {}
+                    // Lent as `&mut`, or to a method that may change it: anything could happen.
+                    _ => {
+                        self.changes_here(expr, &mut changed);
+                        rises &= !changed.iter().any(|c| c.within(place) || place.within(c));
+                    }
+                }
+            });
+        }
+        rises
+    }
+
+    /// The places `expr` itself may change, not counting what's inside it.
+    fn changes_here(&self, expr: Id<Expr>, changed: &mut Vec<Place>) {
+        let target = match &self.ast.exprs[expr] {
+            Expr::Assign { target, .. } => Some(*target),
+            Expr::Borrow {
+                mutable: true,
+                expr,
+            } => Some(*expr),
+            Expr::MethodCall { receiver, .. }
+                if self.method(expr).is_some_and(|f| self.takes_mut_self(f)) =>
+            {
+                Some(*receiver)
+            }
+            _ => None,
+        };
+        if let Some(place) = target.and_then(|t| self.place_of(t)) {
+            changed.push(place);
+        }
+    }
+
+    /// Calls `f` with every expression in `stmt`, however deep.
+    fn stmt_exprs_deep(&self, stmt: Id<Stmt>, f: &mut dyn FnMut(Id<Expr>)) {
+        fn walk(p: &Prover, expr: Id<Expr>, f: &mut dyn FnMut(Id<Expr>)) {
+            f(expr);
+            p.each_child(expr, &mut |child| walk(p, child, f));
+        }
+        self.stmt_exprs(stmt, &mut |e| walk(self, e, f));
     }
 
     fn changes_in_stmt(&self, stmt: Id<Stmt>, changed: &mut Vec<Place>) {

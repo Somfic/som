@@ -12,6 +12,8 @@ pub enum ProveError {
         len: String,
         /// The index is a number written out, `xs[2]`.
         written: bool,
+        /// The index can be negative, so it has to be known not to be.
+        signed: bool,
         /// What is known: `xs.len` is only known to be at least 3.
         known: Message,
         span: Span,
@@ -76,6 +78,7 @@ impl ProveError {
                 index,
                 len,
                 written,
+                signed,
                 known,
                 span,
                 get_fix,
@@ -98,11 +101,17 @@ impl ProveError {
                         code(index.clone()),
                         " here, but it cannot be proven"
                     ],
+                    false if *signed => msg![
+                        code(index.clone()),
+                        " is required to be at least 0 and below ",
+                        code(len.clone()),
+                        " here, but it cannot be proven"
+                    ],
                     false => msg![
                         code(index.clone()),
-                        " is required be below ",
+                        " is required to be below ",
                         code(len.clone()),
-                        " here, but it connect be proven"
+                        " here, but it cannot be proven"
                     ],
                 });
                 // Where the check can't be put in for you: what to write.
@@ -116,7 +125,9 @@ impl ProveError {
                         false => msg!["check it first: ", code(format!("if {check} {{ … }}"))],
                     }),
                 };
-                let d = match written {
+                // Only a variable can be the one a loop goes over.
+                let plain = index.chars().all(|c| c.is_alphanumeric() || c == '_');
+                let d = match *written || !plain {
                     true => d,
                     false => d.with_hint(msg![
                         "or loop over the positions: ",

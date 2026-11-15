@@ -202,6 +202,23 @@ impl Struct {
         self.variants().iter().flat_map(|v| &v.fields)
     }
 
+    /// The number variant `variant` converts to with `as`: the one written after it,
+    /// `W = 87`, or as in C, one more than the variant before it's (the first's is 0).
+    pub fn variant_value(&self, variant: usize) -> i128 {
+        let variants = self.variants();
+        let mut value = -1;
+        for v in &variants[..=variant] {
+            value = v.value.unwrap_or(value + 1);
+        }
+        value
+    }
+
+    /// Whether some variant has a number written after it, `W = 87`, so they don't all
+    /// convert to their position.
+    pub fn has_values(&self) -> bool {
+        self.variants().iter().any(|v| v.value.is_some())
+    }
+
     /// Where variant `variant`'s fields start in `payload`.
     pub fn payload_start(&self, variant: usize) -> usize {
         self.variants()[..variant]
@@ -217,6 +234,9 @@ pub struct Variant {
     pub doc: Option<String>,
     pub name: Ident,
     pub kind: VariantKind,
+    /// `W = 87`: the number it converts to with `as`, of a variant holding nothing. Only
+    /// what converts changes; which variant a value is stays as it is.
+    pub value: Option<i128>,
     /// What it holds: named fields for `Rect { w: f32 }`, or numbered `0`, `1`, … for
     /// `Circle(f32)`.
     pub fields: Vec<Field>,
