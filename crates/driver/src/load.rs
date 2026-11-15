@@ -32,6 +32,8 @@ pub enum LoadError {
         name: String,
         path: PathBuf,
         span: Span,
+        /// The modules next to where it was looked for, as they're written in a `use`.
+        nearby: Vec<String>,
     },
     CircularDependency {
         name: String,
@@ -52,10 +54,58 @@ pub enum LoadError {
 impl LoadError {
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
-            LoadError::ModuleNotFound { name, path, span } => {
-                Diagnostic::error(msg!["module ", m::module(name), " not found"]).with_label(
-                    Label::primary(span.clone(), msg!["looked in ", m::path(path.display())]),
-                )
+            LoadError::ModuleNotFound {
+                name,
+                path,
+                span,
+                nearby,
+            } => {
+                let mut d = Diagnostic::error(msg!["module ", m::module(name), " not found"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg!["looked in ", m::path(path.display())],
+                    ));
+                // By the last part of the path: `som::ioo` is close to `som::io`, `som::vec`
+                // isn't to `som::mem`.
+                let last = |n: &str| n.rsplit("::").next().unwrap_or(n).to_string();
+                let lasts: Vec<String> = nearby.iter().map(|n| last(n)).collect();
+                let close = som_base::diagnostics::closest_match(&last(name), &lasts, 2)
+                    .and_then(|l| nearby.iter().find(|n| last(n) == l));
+                if let Some(close) = close {
+                    d = d.with_hint(msg!["did you mean ", m::module(close), "?"]).with_fix(
+                        som_base::Fix::replace(
+                            msg!["change to ", m::code(close)],
+                            span.clone(),
+                            close.to_string(),
+                        ),
+                    );
+                } else if !nearby.is_empty() {
+                    let mut hint = msg!["modules there: "];
+                    for (i, module) in nearby.iter().enumerate() {
+                        if i > 0 {
+                            hint.push(", ");
+                        }
+                        hint.push(m::module(module));
+                    }
+                    d = d.with_hint(hint);
+                }
+                // What people look for in the standard library is at its root, for everyone.
+                if stdlib::is_std_module(name) {
+                    d = d.with_hint(msg![
+                        m::code("List"),
+                        ", ",
+                        m::code("Map"),
+                        ", ",
+                        m::code("string"),
+                        ", ",
+                        m::code("Rc"),
+                        " and the rest of ",
+                        m::module("som"),
+                        " itself need no ",
+                        m::code("use")
+                    ]);
+                }
+                d
             }
             LoadError::NoStandardLibrary { searched, span } => {
                 let searched: Vec<String> =
@@ -311,10 +361,12 @@ impl Loader {
             self.load_dir(module, folder);
             module
         } else {
+            let nearby = nearby_modules(&name, folder);
             self.errors.push(LoadError::ModuleNotFound {
                 name,
                 path: folder.to_path_buf(),
                 span,
+                nearby,
             });
             return;
         };
@@ -330,4 +382,43 @@ impl Loader {
             self.load_module(child, folder, span.clone());
         }
     }
+}
+
+/// The modules next to `name`, which was looked for in `folder`, as a `use` writes them: the
+/// standard library's inside its parent (`som::io` beside `som::vec`), or the folders of
+/// `.som` files beside `folder`.
+fn nearby_modules(name: &str, folder: &Path) -> Vec<String> {
+    let parent = name.rsplit_once("::").map(|(parent, _)| parent);
+    if let Some(parent) = parent
+        && stdlib::is_std_module(parent)
+    {
+        return stdlib::submodules(parent);
+    }
+    // `foo`, looked for from where the program is: beside it, here.
+    let dir = match folder.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => dir,
+        _ => Path::new("."),
+    };
+    let prefix = parent.map(|p| format!("{p}::")).unwrap_or_default();
+    let mut found: Vec<String> = std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .filter(|e| {
+                    std::fs::read_dir(e.path()).is_ok_and(|mut files| {
+                        files.any(|f| {
+                            f.is_ok_and(|f| f.path().extension().is_some_and(|x| x == "som"))
+                        })
+                    })
+                })
+                .filter_map(|e| e.file_name().to_str().map(str::to_string))
+                // Not `.som`, where generated bindings go: only what a `use` can name.
+                .filter(|n| n.starts_with(|c: char| c.is_alphabetic() || c == '_'))
+                .map(|n| format!("{prefix}{n}"))
+                .collect()
+        })
+        .unwrap_or_default();
+    found.sort();
+    found
 }
