@@ -459,6 +459,10 @@ impl Checker<'_> {
                 Some(VarKind::Float) => ty = self.u.table.f64,
                 // Text nothing else decides is a `string`.
                 Some(VarKind::Text) => ty = self.u.table.text,
+                // `[1, 2, 3]` nothing else decides is an array.
+                Some(VarKind::Collection { element, len }) => {
+                    ty = self.u.intern(Ty::Array { element, len });
+                }
                 Some(_) => continue,
                 None => {}
             }

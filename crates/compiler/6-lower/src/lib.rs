@@ -2485,6 +2485,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
         // Each value, borrowed, with the type it's shown as and its length.
         let mut shown = Vec::new();
+        // Temporaries holding values made here, `xs.get(1)`: they end once they're written,
+        // and the borrows they hold with them.
+        let first_new = self.locals.slots();
+        let mut fresh = Vec::new();
         let mut written: i128 = 0;
         for &part in parts {
             match part {
@@ -2495,6 +2499,9 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
                 som_ast::Part::Value(value) => {
                     let mut place = self.place(value);
+                    if place.local.id >= first_new && self.locals[place.local].name.is_none() {
+                        fresh.push(place.local);
+                    }
                     let mut ty = self.expr_ty(value);
                     // Through references, to what they refer to.
                     while let Ty::Ref { to, .. } = *self.l.mir.types.get(ty) {
@@ -2569,7 +2576,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             };
             self.assign(Place::local(at), call, span.clone());
         }
-        self.push(StatementKind::StorageDead(lent_out), span);
+        self.push(StatementKind::StorageDead(lent_out), span.clone());
+        // A value that's dropped is the statement's to drop; one that copies just ends.
+        for temp in fresh {
+            if self.l.drop_glue(self.locals[temp].ty).is_none() {
+                self.push(StatementKind::StorageDead(temp), span.clone());
+            }
+        }
         Rvalue::Use(Operand::Move(Place::local(out)))
     }
 

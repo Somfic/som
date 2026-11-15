@@ -1,11 +1,8 @@
-// expect: exit 3
+// expect: error InvalidOperands
 
-/// An operator's other operand becomes a `string` too, through `From`, on either side.
+/// A number doesn't become text by itself, not even beside `+`: it's written in, `"score: {n}"`.
 fn main() -> i32 {
     let n = 100;
     let a = "score: " + n;
-    let b = n + " points";
-    let c = "pi is " + 3.5 + "!";
-    (1 if a == "score: 100" else 0) + (1 if b == "100 points" else 0)
-        + (1 if c == "pi is 3.5!" and "7" == 7 else 0)
+    0
 }

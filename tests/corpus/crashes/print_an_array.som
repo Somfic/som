@@ -1,0 +1,6 @@
+// expect: error DoesNotImplement
+
+use som::io;
+
+/// An array has no `Display`: it can't be printed as it is.
+println([1, 2, 3]);

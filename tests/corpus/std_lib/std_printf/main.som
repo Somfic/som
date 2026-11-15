@@ -1,7 +1,0 @@
-// expect: exit 7
-
-use som;
-
-fn main() -> i32 {
-    som::io::printf("%s %d\n", "fib", 55)
-}

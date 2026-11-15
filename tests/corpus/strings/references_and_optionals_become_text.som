@@ -1,13 +1,14 @@
 // expect: exit 5
 
-/// A reference or an optional becomes text too: what it refers to or holds, or `none`.
+/// A reference or an optional is written into text too: what it refers to or holds, or
+/// `none`.
 fn main() -> i32 {
     let n = 5;
     let r = &n;
     let xs: List<i32> = [10, 20];
     let missing: string? = none;
-    let right = string::from(r) == "5" and "ref: " + r == "ref: 5"
-        and string::from(xs.get(1)) == "20" and string::from(xs.get(9)) == "none"
-        and "maybe: " + missing == "maybe: none";
+    let right = "{r}" == "5" and "ref: {r}" == "ref: 5"
+        and "{xs.get(1)}" == "20" and "{xs.get(9)}" == "none"
+        and "maybe: {missing}" == "maybe: none";
     5 if right else 0
 }

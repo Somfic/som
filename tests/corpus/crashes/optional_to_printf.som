@@ -1,0 +1,5 @@
+// expect: error NotForC
+
+/// C reads printf's extra arguments as numbers or pointers: an optional would be garbage.
+let xs = [10, 20, 30];
+c::printf("%d\n", xs.get(1));

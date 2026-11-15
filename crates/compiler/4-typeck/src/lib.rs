@@ -15,7 +15,7 @@ pub mod traits;
 mod ty;
 mod unify;
 
-pub use error::{TypeError, Unused};
+pub use error::{NotForC, TypeError, Unused};
 pub use ty::{FloatTy, IntTy, Ty, TypeId, TypeTable, Value};
 
 use som_ast::{Ast, Expr, Func, Id, Pattern, Stmt, Struct};

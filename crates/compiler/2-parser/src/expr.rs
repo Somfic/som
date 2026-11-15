@@ -649,6 +649,8 @@ impl Parser<'_> {
                     );
                 }
                 self.in_recovery = true;
+                // Past it, so whatever reads a list of values goes on.
+                self.advance();
                 return Some(self.ast.exprs.alloc(Expr::Hole, start));
             }
 
@@ -851,6 +853,8 @@ impl Parser<'_> {
                 type_args: Vec::new(),
                 args,
             },
+            // `str(5)`: what isn't a value is already reported.
+            Expr::Hole => Expr::Hole,
             _ => {
                 self.error_missing("expected function name", "a function name");
                 Expr::Hole

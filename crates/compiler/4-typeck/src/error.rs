@@ -11,6 +11,14 @@ pub enum Unused {
     Value,
 }
 
+/// What a value C can't take is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NotForC {
+    Optional,
+    Reference,
+    Other,
+}
+
 #[derive(Debug, Clone)]
 pub enum TypeError {
     /// A field, method or property used where it can't be seen: private to its type, or only
@@ -201,6 +209,13 @@ pub enum TypeError {
     },
     /// A `string` passed to C, which takes a `cstr`: its `c_str`.
     StrToC {
+        span: Span,
+    },
+    /// An optional, reference or struct among a C function's extra arguments, `printf`'s:
+    /// C would read its bytes as a number or pointer.
+    NotForC {
+        ty: Message,
+        what: NotForC,
         span: Span,
     },
     /// `for x in v` where `v` isn't a range, array or slice.
@@ -719,10 +734,22 @@ impl TypeError {
                             hint.push(code(ty));
                         }
                         hint.push(" on the right");
-                        d.with_label(Label::primary(span.clone(), "no such operation"))
-                            .with_hint(hint)
+                        let d = d
+                            .with_label(Label::primary(span.clone(), "no such operation"))
+                            .with_hint(hint);
+                        // `"score: " + n`: written into the text instead.
+                        match fix {
+                            Some(fix) => d.with_fix(fix.clone()),
+                            None => d,
+                        }
                     }
-                    None => d.with_label(Label::primary(span.clone(), "no such operation")),
+                    None => {
+                        let d = d.with_label(Label::primary(span.clone(), "no such operation"));
+                        match fix {
+                            Some(fix) => d.with_fix(fix.clone()),
+                            None => d,
+                        }
+                    }
                 }
             }
             TypeError::WrongArgCount {
@@ -914,6 +941,34 @@ impl TypeError {
                         span.clone(),
                         "string",
                     ))
+            }
+            TypeError::NotForC { ty, what, span } => {
+                let d = Diagnostic::error(msg!["C can't take ", ty.clone()])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "C reads it as the number or pointer its format says",
+                    ));
+                let text = span.get_text();
+                match what {
+                    NotForC::Optional => d.with_hint(msg![
+                        "C has no optionals: check it first, as in ",
+                        code(format!("if {text} {{ … }}")),
+                        ", or give a fallback, as in ",
+                        code(format!("({text} else 0)"))
+                    ]),
+                    NotForC::Reference => d
+                        .with_hint("C takes what it refers to")
+                        .with_fix(Fix {
+                            title: msg!["pass ", code(format!("*{text}"))],
+                            edits: vec![(span.before(), "*".to_string())],
+                        }),
+                    NotForC::Other => d.with_hint(msg![
+                        "C takes numbers, pointers and ",
+                        code("cstr"),
+                        " here; to print it, use ",
+                        code("println(\"{…}\")")
+                    ]),
+                }
             }
             TypeError::StrToC { span } => {
                 let d = Diagnostic::error(msg!["C can't take a ", code("string")])

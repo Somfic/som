@@ -1,0 +1,4 @@
+// expect: error MainReturns
+
+/// A script ending in text: its last value would be its exit code.
+"hello"

@@ -122,7 +122,7 @@ fn no_main(end: Option<&som_base::Span>) -> Diagnostic {
     let file = end
         .and_then(|at| Path::new(at.source.identifier()).file_name())
         .map(|name| m::code(name.to_string_lossy()));
-    let d = Diagnostic::error(msg!["the program has an no entrypoint "])
+    let d = Diagnostic::error(msg!["the program has no entrypoint"])
         .with_hint(msg!["welcome to som!"])
         .with_hint(msg![
             "to get started, write your first lines in ",

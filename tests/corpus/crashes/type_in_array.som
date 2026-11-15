@@ -1,0 +1,4 @@
+// expect: error Parse
+
+/// A type where a value goes, in an array: reported, not read forever.
+let x = [str];

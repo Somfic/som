@@ -4,7 +4,7 @@ use som_resolve::visibility::{self, Hidden, Viewer};
 use som_resolve::{DefId, DefKind, LangTrait, Names};
 use std::collections::{HashMap, HashSet};
 
-use crate::error::TypeError;
+use crate::error::{NotForC, TypeError};
 use crate::traits::find_impl;
 use crate::ty::{IntTy, Ty, TypeId, Value};
 use crate::unify::{Unifier, VarKind};
@@ -394,8 +394,21 @@ impl<'a> Checker<'a> {
         if &*func.name.name != "main" || !top_level {
             return;
         }
-        let ret = self.u.shallow(self.sigs[id.id].ret);
-        if matches!(self.u.get(ret), Ty::Int(_) | Ty::Unit | Ty::Error | Ty::Var(_)) {
+        // A literal it ends in: text is a `string`, a number what it would be anyway.
+        let ret = self.sigs[id.id].ret;
+        self.text_as_string(ret);
+        if self.u.var_kind(ret) == Some(VarKind::Float) {
+            self.default_numbers(ret);
+        }
+        let ret = self.u.shallow(ret);
+        let fine = match self.u.var_kind(ret) {
+            // An integer nothing has decided; or what isn't known at all, reported elsewhere.
+            Some(VarKind::Int | VarKind::Any) => true,
+            // A collection, `[1, 2]`.
+            Some(_) => false,
+            None => matches!(self.u.get(ret), Ty::Int(_) | Ty::Unit | Ty::Error),
+        };
+        if fine {
             return;
         }
         let value = match &self.ast.exprs[body] {
@@ -1551,7 +1564,8 @@ impl<'a> Checker<'a> {
         });
         let fix = LangTrait::of_operator(op)
             .filter(|_| implement.is_some())
-            .and_then(|lang| self.operator_fix(lhs, lang, Some(rhs)));
+            .and_then(|lang| self.operator_fix(lhs, lang, Some(rhs)))
+            .or_else(|| self.interpolation_fix(expr, op, lhs, rhs));
         let takes = LangTrait::of_operator(op)
             .map(|lang| self.operator_takes(lhs, lang))
             .unwrap_or_default();
@@ -1565,6 +1579,36 @@ impl<'a> Checker<'a> {
             fix,
             takes,
         });
+    }
+
+    /// `"score: " + n`, text and something that isn't: written into the text instead,
+    /// `"score: {n}"`, as `+` only joins text.
+    fn interpolation_fix(&self, expr: Id<Expr>, op: BinOp, lhs: TypeId, rhs: TypeId) -> Option<Fix> {
+        let Expr::Binary { lhs: left, rhs: right, .. } = self.ast.exprs[expr] else {
+            return None;
+        };
+        let text = self.u.table.text;
+        let is_text = |c: &Self, ty: TypeId| {
+            c.u.shallow(ty) == text || c.u.var_kind(ty) == Some(VarKind::Text)
+        };
+        if op != BinOp::Add || is_text(self, lhs) == is_text(self, rhs) {
+            return None;
+        }
+        // Each side: a literal's text as it is, anything else as a value written in.
+        let side = |c: &Self, e: Id<Expr>| -> Option<String> {
+            let written = c.span(e).get_text();
+            match c.ast.exprs[e] {
+                Expr::Str(_) => Some(written[1..written.len() - 1].to_string()),
+                _ if written.contains(['"', '\n', '{', '}']) => None,
+                _ => Some(format!("{{{written}}}")),
+            }
+        };
+        let joined = format!("\"{}{}\"", side(self, left)?, side(self, right)?);
+        Some(Fix::replace(
+            msg!["write it into the text: ", message::code(joined.clone())],
+            self.span(expr),
+            joined,
+        ))
     }
 
     /// For an operand `expr` of optional type `ty`: how it's written, a fallback value to
@@ -4367,6 +4411,25 @@ impl<'a> Checker<'a> {
                 self.errors.push(TypeError::StrToC {
                     span: self.span(extra),
                 });
+            } else {
+                // C reads the bytes it's given as the type its format says: numbers, pointers
+                // and `cstr`. An optional, a reference or a struct would be read as garbage.
+                let shown = self.u.shallow(ty);
+                let what = match self.u.get(shown) {
+                    Ty::Optional(_) => Some(NotForC::Optional),
+                    Ty::Ref { .. } => Some(NotForC::Reference),
+                    Ty::Struct(..) | Ty::Array { .. } | Ty::Slice(_) | Ty::Unit | Ty::Fn { .. } => {
+                        Some(NotForC::Other)
+                    }
+                    _ => None,
+                };
+                if let Some(what) = what {
+                    self.errors.push(TypeError::NotForC {
+                        ty: self.describe(ty),
+                        what,
+                        span: self.span(extra),
+                    });
+                }
             }
         }
     }
