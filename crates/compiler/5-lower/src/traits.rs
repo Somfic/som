@@ -363,7 +363,14 @@ impl FnBuilder<'_, '_> {
     ) -> Option<Rvalue> {
         // The operands' type: the one not converted to it, as `n` is in `n + " points"`.
         let converted = |side| self.l.typed.conversion(side).is_some();
-        let ty = self.expr_ty(if converted(lhs) { rhs } else { lhs });
+        let through = |side| self.l.typed.is_read_through(side);
+        let side = if converted(lhs) { rhs } else { lhs };
+        // A `&string` operand is read through: the operands' type is what it refers to.
+        let side_ty = self.expr_ty(side);
+        let ty = match (through(side), self.l.mir.types.get(side_ty)) {
+            (true, &Ty::Ref { to, .. }) => to,
+            _ => side_ty,
+        };
         if builtin_operator(self.l.mir.types.get(ty), lang) {
             return None;
         }
@@ -386,6 +393,8 @@ impl FnBuilder<'_, '_> {
                 let made = self.temp(ty, span.clone());
                 self.assign(Place::local(made), Rvalue::Use(value), span.clone());
                 Place::local(made)
+            } else if through(side) {
+                self.place(side).project(Projection::Deref)
             } else {
                 self.place(side)
             };

@@ -314,6 +314,7 @@ impl<'a> Checker<'a> {
         );
         self.check_body(id, func, body);
         self.check_moves_out(body);
+        self.check_main_params(id, func);
         // After the body, which decides a return type that isn't written.
         if func.prop {
             self.check_prop(id, func);
@@ -329,6 +330,27 @@ impl<'a> Checker<'a> {
             self.expected_here,
             self.omitted_args_ok,
         ) = outer;
+    }
+
+    /// `fn main(args: &[cstr])`: the program's entry takes nothing; its arguments are read
+    /// with `args()`, from anywhere.
+    fn check_main_params(&mut self, id: Id<Func>, func: &Func) {
+        let def = self.names.func(id);
+        let top_level = self.ast.modules[self.names.def(def).module].name.is_empty()
+            && self.names.impl_of(id).is_none();
+        let (Some(first), Some(last)) = (func.params.first(), func.params.last()) else {
+            return;
+        };
+        if &*func.name.name != "main" || !top_level {
+            return;
+        }
+        let end = match last.ty {
+            Some(ty) => self.ast.types.span(ty).clone(),
+            None => last.name.span.clone(),
+        };
+        self.errors.push(TypeError::MainParams {
+            span: first.name.span.merge(&end),
+        });
     }
 
     fn check_body(&mut self, id: Id<Func>, func: &Func, body: Id<Expr>) {
@@ -2745,6 +2767,10 @@ impl<'a> Checker<'a> {
                         ty: self.describe(receiver_ty),
                         method: method.name.to_string(),
                         span: method.span.clone(),
+                        methods: Vec::new(),
+                        props: Vec::new(),
+                        fields: Vec::new(),
+                        bare_call: self.bare_call(id, method, args),
                     });
                     args.iter().for_each(|&a| {
                         self.infer(a);
@@ -2780,10 +2806,15 @@ impl<'a> Checker<'a> {
                         });
                         return error;
                     }
+                    let (fields, props, methods) = self.members(owner, receiver_ty, &method.span);
                     self.errors.push(TypeError::UnknownMethod {
                         ty,
                         method: method.name.to_string(),
                         span: method.span.clone(),
+                        methods,
+                        props,
+                        fields,
+                        bare_call: self.bare_call(id, method, args),
                     });
                     args.iter().for_each(|&a| {
                         self.infer(a);
@@ -2861,6 +2892,23 @@ impl<'a> Checker<'a> {
                 {
                     return ty;
                 }
+                // `xs.length`: an array or slice has `len` and its methods, nothing else.
+                if self.is_collection(object_ty) {
+                    let methods = (ArrayMethod::ALL.iter())
+                        .map(|&(name, _)| name)
+                        .filter(|&name| name != "len" && name != "bytes")
+                        .map(String::from)
+                        .collect();
+                    self.errors.push(TypeError::UnknownField {
+                        ty: self.u.display(self.u.shallow(object_ty), self.names),
+                        field: field.name.to_string(),
+                        available: Vec::new(),
+                        props: vec!["len".into()],
+                        methods,
+                        span: field.span.clone(),
+                    });
+                    return error;
+                }
                 // A range's two ends.
                 let mut viewed = self.u.shallow(object_ty);
                 if let Ty::Ref { to, .. } = *self.u.get(viewed) {
@@ -2889,6 +2937,7 @@ impl<'a> Checker<'a> {
                                 field: field.name.to_string(),
                                 available: vec!["start".into(), "end".into()],
                                 props: Vec::new(),
+                                methods: Vec::new(),
                                 span: field.span.clone(),
                             });
                             return error;
@@ -2924,13 +2973,14 @@ impl<'a> Checker<'a> {
                         error
                     }
                     None => {
-                        let available = fields.iter().map(|f| f.name.name.to_string()).collect();
-                        let props = self.props_for(owner, object_ty);
+                        let (available, props, methods) =
+                            self.members(owner, object_ty, &field.span);
                         self.errors.push(TypeError::UnknownField {
                             ty: self.names.def(owner).name.to_string(),
                             field: field.name.to_string(),
                             available,
                             props,
+                            methods,
                             span: field.span.clone(),
                         });
                         error
@@ -3080,6 +3130,7 @@ impl<'a> Checker<'a> {
                                     .map(|f| f.name.name.to_string())
                                     .collect(),
                                 props: Vec::new(),
+                                methods: Vec::new(),
                                 span: name.span.clone(),
                             });
                             self.infer(*value);
@@ -3225,10 +3276,20 @@ impl<'a> Checker<'a> {
         let kind = ArrayMethod::from_name(&method.name)
             .filter(|&kind| kind != ArrayMethod::Bytes || is_text);
         let Some(kind) = kind else {
+            // What every array has: `len`, read, and its methods.
+            let methods = (ArrayMethod::ALL.iter())
+                .map(|&(name, _)| name)
+                .filter(|&name| name != "len" && (name != "bytes" || is_text))
+                .map(String::from)
+                .collect();
             self.errors.push(TypeError::UnknownMethod {
                 ty: self.describe(array),
                 method: method.name.to_string(),
                 span: method.span.clone(),
+                methods,
+                props: vec!["len".into()],
+                fields: Vec::new(),
+                bare_call: self.bare_call(call, method, args),
             });
             infer_args(self);
             return Some(error);
@@ -3895,10 +3956,15 @@ impl<'a> Checker<'a> {
         };
         let (error, unit, bool) = (self.u.table.error, self.u.table.unit, self.u.table.bool);
         let Some(kind) = PointerMethod::from_name(&method.name) else {
+            let methods = (PointerMethod::ALL.iter()).map(|&(name, _)| name.to_string()).collect();
             self.errors.push(TypeError::UnknownMethod {
                 ty: self.describe(receiver_ty),
                 method: method.name.to_string(),
                 span: method.span.clone(),
+                methods,
+                props: Vec::new(),
+                fields: Vec::new(),
+                bare_call: self.bare_call(call, method, args),
             });
             args.iter().for_each(|&a| {
                 self.infer(a);
@@ -4372,6 +4438,80 @@ impl<'a> Checker<'a> {
     /// method `func` is for, with `type_args` its instantiation. True when that's not known.
     /// The names of `owner`'s properties a value of type `ty` has: those of the impl blocks
     /// for its type, `magnitude` of a `Vector<3, f32>`.
+    /// What a value of `ty`, of struct or built-in type `owner`, has that's seen from `at`:
+    /// its fields, properties and methods, by name.
+    fn members(
+        &mut self,
+        owner: DefId,
+        ty: TypeId,
+        at: &Span,
+    ) -> (Vec<String>, Vec<String>, Vec<String>) {
+        let viewer = self.viewer(at);
+        let visible = |c: &Self, def: DefId| {
+            visibility::hidden(c.ast, c.names, def, viewer.clone()).is_none()
+        };
+        let fields = match self.names.def(owner).kind {
+            DefKind::Struct(s) => (self.ast.structs[s].fields.iter().enumerate())
+                .filter(|&(i, _)| {
+                    visibility::hidden_field(self.ast, self.names, s, i, viewer.clone()).is_none()
+                })
+                .map(|(_, f)| f.name.name.to_string())
+                .collect(),
+            _ => Vec::new(),
+        };
+        let props: Vec<String> = (self.props_for(owner, ty).into_iter())
+            .filter(|name| {
+                (self.names.props(owner, name).iter()).any(|&d| visible(self, d))
+            })
+            .collect();
+        // Only what takes `self` can be called on a value: not `string::from`. Nor what
+        // the language calls itself: `drop`, `share`, and the operators' `add` and `eq`.
+        let takes_self = |c: &Self, def: DefId| match c.names.def(def).kind {
+            DefKind::Func(f) => {
+                let implicit = (c.names.impl_of(f))
+                    .and_then(|i| c.names.impls[i].trait_)
+                    .and_then(|t| c.names.lang_of(t))
+                    .is_some_and(|lang| {
+                        matches!(lang, LangTrait::Drop | LangTrait::Share)
+                            || lang.operator_method().is_some()
+                    });
+                !implicit && (c.ast.funcs[f].params.first()).is_some_and(|p| &*p.name.name == "self")
+            }
+            _ => false,
+        };
+        let mut methods: Vec<String> = (self.names.methods_of(owner).into_iter())
+            .filter(|&(_, def)| visible(self, def) && takes_self(self, def))
+            .map(|(name, _)| name.to_string())
+            .collect();
+        methods.dedup();
+        (fields, props, methods)
+    }
+
+    /// Whether `ty`, or what it refers to, is an array or slice, or a collection literal.
+    fn is_collection(&self, ty: TypeId) -> bool {
+        let mut ty = self.u.shallow(ty);
+        if let Ty::Ref { to, .. } = *self.u.get(ty) {
+            ty = self.u.shallow(to);
+        }
+        matches!(self.u.get(ty), Ty::Array { .. } | Ty::Slice(_))
+            || matches!(self.u.var_kind(ty), Some(VarKind::Collection { .. }))
+    }
+
+    /// `x.name()`, the call `call` of `method` given nothing: from the name to the `)`,
+    /// what a property goes in place of. `None` when it's given something.
+    fn bare_call(&self, call: Id<Expr>, method: &som_ast::Ident, args: &[Id<Expr>]) -> Option<Span> {
+        if !args.is_empty() {
+            return None;
+        }
+        let call = self.span(call);
+        let end = call.start_offset + call.length;
+        Some(Span {
+            end: call.end,
+            length: end - method.span.start_offset,
+            ..method.span.clone()
+        })
+    }
+
     fn props_for(&mut self, owner: DefId, ty: TypeId) -> Vec<String> {
         let mut names: Vec<String> = Vec::new();
         for (name, def) in self.names.props_of(owner) {
@@ -4608,15 +4748,17 @@ impl<'a> Checker<'a> {
     }
 
     /// An operand of an arithmetic or comparison operator, of type `ty`: a reference to a
-    /// number or `bool` is read through, so `self * self` works for a `&i32`.
+    /// number, `bool` or struct is read through, so `self * self` works for a `&i32`, and
+    /// `"arg: " + arg` for a `&string`.
     fn through_reference(&mut self, operand: Id<Expr>, ty: TypeId) -> TypeId {
         let Ty::Ref { to, .. } = *self.u.get(self.u.shallow(ty)) else {
             return ty;
         };
         let to = self.u.shallow(to);
-        let number = matches!(self.u.get(to), Ty::Int(_) | Ty::Float(_) | Ty::Bool)
-            || matches!(self.u.var_kind(to), Some(VarKind::Int | VarKind::Float));
-        if !number {
+        let readable = matches!(self.u.get(to), Ty::Int(_) | Ty::Float(_) | Ty::Bool)
+            || matches!(self.u.var_kind(to), Some(VarKind::Int | VarKind::Float))
+            || matches!(self.u.get(to), Ty::Struct(..));
+        if !readable {
             return ty;
         }
         self.read_through.insert(operand);

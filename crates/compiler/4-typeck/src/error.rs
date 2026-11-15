@@ -84,6 +84,8 @@ pub enum TypeError {
         available: Vec<String>,
         /// The type's properties, read the same way: `v.magnitude`.
         props: Vec<String>,
+        /// Its methods, called: `v.normalized()`.
+        methods: Vec<String>,
         span: Span,
     },
     MissingField {
@@ -99,6 +101,12 @@ pub enum TypeError {
         ty: Message,
         method: String,
         span: Span,
+        /// What the type has that's seen from here: its methods, properties and fields.
+        methods: Vec<String>,
+        props: Vec<String>,
+        fields: Vec<String>,
+        /// The call with its `()`, when it's given nothing: what a property goes in place of.
+        bare_call: Option<Span>,
     },
     /// `.field` or `.method()` on a value that isn't a struct.
     NotAStruct {
@@ -166,6 +174,10 @@ pub enum TypeError {
     /// `Sqlite3 {}` for an `extern struct`, which only C can create.
     ConstructHandle {
         name: String,
+        span: Span,
+    },
+    /// `fn main(args: …)`: the entry takes nothing; arguments come from `args()`.
+    MainParams {
         span: Span,
     },
     /// `str` or `&str`, text before it was `string`.
@@ -699,40 +711,12 @@ impl TypeError {
                 field: name,
                 available,
                 props,
+                methods,
                 span,
             } => {
-                let mut d =
-                    Diagnostic::error(msg![struct_name(owner), " has no field ", field(name)])
-                        .with_label(Label::primary(span.clone(), "unknown field"));
-                let either: Vec<String> = available.iter().chain(props).cloned().collect();
-                let list = |hint: &mut Message, names: &[String]| {
-                    for (i, f) in names.iter().enumerate() {
-                        if i > 0 {
-                            hint.0.push(", ".into());
-                        }
-                        hint.0.push(field(f));
-                    }
-                };
-                if let Some(close) = closest_match(name, &either, 2) {
-                    d = d.with_hint(msg!["did you mean ", field(close), "?"]);
-                } else if !either.is_empty() {
-                    let mut hint = Message(Vec::new());
-                    if !available.is_empty() {
-                        hint.0.push("available fields: ".into());
-                        list(&mut hint, available);
-                    }
-                    if !props.is_empty() {
-                        let start = if available.is_empty() {
-                            "properties: "
-                        } else {
-                            "; properties: "
-                        };
-                        hint.0.push(start.into());
-                        list(&mut hint, props);
-                    }
-                    d = d.with_hint(hint);
-                }
-                d
+                let d = Diagnostic::error(msg![struct_name(owner), " has no field ", field(name)])
+                    .with_label(Label::primary(span.clone(), "unknown field"));
+                member_hints(d, name, span, None, false, available, props, methods)
             }
             TypeError::MissingField {
                 ty: owner,
@@ -756,8 +740,15 @@ impl TypeError {
                 ty: owner,
                 method,
                 span,
-            } => Diagnostic::error(msg![owner.clone(), " has no method ", func(method)])
-                .with_label(Label::primary(span.clone(), "unknown method")),
+                methods,
+                props,
+                fields,
+                bare_call,
+            } => {
+                let d = Diagnostic::error(msg![owner.clone(), " has no method ", func(method)])
+                    .with_label(Label::primary(span.clone(), "unknown method"));
+                member_hints(d, method, span, bare_call.as_ref(), true, fields, props, methods)
+            }
             TypeError::MemberOfOptional {
                 object,
                 ty,
@@ -810,6 +801,19 @@ impl TypeError {
             } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
                 Label::primary(span.clone(), msg!["this is ", found.clone()]),
             ),
+            TypeError::MainParams { span } => Diagnostic::error(msg![
+                code("main"),
+                " takes no parameters"
+            ])
+            .with_label(Label::primary(span.clone(), "the program's arguments aren't passed here"))
+            .with_hint(msg![
+                "read them with ",
+                code("args()"),
+                " from ",
+                code("som::io"),
+                ": the program's path, then each argument"
+            ])
+            .with_fix(Fix::replace(msg!["take nothing"], span.clone(), "")),
             TypeError::StrIsString { span } => Diagnostic::error(msg![
                 "som's text is ",
                 code("string")
@@ -1717,4 +1721,72 @@ fn optional_hints(d: Diagnostic, object: &str, variable: bool) -> Diagnostic {
         ": ",
         code(format!("{object} else …"))
     ])
+}
+
+/// What `name`, a member the type doesn't have, could be instead: how som names another
+/// language's member (`size` → `len`), else the closest one it has, else all it has. `span`
+/// is the name; `bare_call` the call with its `()` when it's given nothing; `called`
+/// whether it was called, `x.name()`, or read, `x.name`.
+#[allow(clippy::too_many_arguments)]
+fn member_hints(
+    d: Diagnostic,
+    name: &str,
+    span: &Span,
+    bare_call: Option<&Span>,
+    called: bool,
+    fields: &[String],
+    props: &[String],
+    methods: &[String],
+) -> Diagnostic {
+    let read = |n: &str| fields.iter().chain(props).any(|f| f == n);
+    let is_method = |n: &str| methods.iter().any(|m| m == n);
+    let foreign = som_base::foreign::member(name).filter(|f| read(f.som) || is_method(f.som));
+    let all: Vec<String> = (fields.iter().chain(props).chain(methods)).cloned().collect();
+    let target = match foreign {
+        Some(found) => Some(found.som),
+        None => closest_match(name, &all, 2),
+    };
+    if let Some(target) = target {
+        let hint = match foreign {
+            Some(found) => msg!["som calls it ", code(target), ": ", found.hint()],
+            None => msg!["did you mean ", code(target), "?"],
+        };
+        // Where it goes: a property read in place of a call that's given nothing,
+        // `xs.size()` → `xs.len`; otherwise just the name.
+        let replaced = match (read(target), called) {
+            (true, true) => bare_call.cloned(),
+            (true, false) => Some(span.clone()),
+            (false, true) => Some(span.clone()),
+            (false, false) => None,
+        };
+        let d = d.with_hint(hint);
+        return match replaced {
+            Some(at) => d.with_fix(Fix::replace(
+                msg!["change to ", code(target)],
+                at,
+                target.to_string(),
+            )),
+            None => d,
+        };
+    }
+    if all.is_empty() {
+        return d;
+    }
+    let mut hint = Message(Vec::new());
+    for (label, names) in [("methods", methods), ("properties", props), ("fields", fields)] {
+        if names.is_empty() {
+            continue;
+        }
+        if !hint.0.is_empty() {
+            hint.0.push("; ".into());
+        }
+        hint.0.push(format!("{label}: ").into());
+        for (i, n) in names.iter().enumerate() {
+            if i > 0 {
+                hint.0.push(", ".into());
+            }
+            hint.0.push(code(n));
+        }
+    }
+    d.with_hint(msg!["it has ", hint])
 }

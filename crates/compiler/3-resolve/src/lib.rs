@@ -1433,7 +1433,16 @@ impl Resolver<'_> {
         }
         let span = self.ast.exprs.span(id).clone();
         let text = |e: Id<Expr>| self.ast.exprs.span(e).get_text().to_string();
-        let (help, fixes) = if let Some(found) = foreign::range(name) {
+        let (help, fixes) = if let Some(found) = foreign::len_function(name) {
+            // `len(xs)`: `xs.len`, a property.
+            let [of] = args else {
+                return false;
+            };
+            let read = format!("{}.len", text(*of));
+            let help = msg!["som reads a length as ", code(&read), ": ", found.hint()];
+            let fix = Fix::replace(msg!["change to ", code(&read)], span, read);
+            (help, vec![fix])
+        } else if let Some(found) = foreign::range(name) {
             let range = match args {
                 [end] => format!("0..{}", text(*end)),
                 [start, end] => format!("{}..{}", text(*start), text(*end)),

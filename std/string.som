@@ -26,6 +26,17 @@ impl string {
 
     prop data = .view.at(1) as *u8;
 
+    /// A copy of `bytes`, as text.
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        let copy = string::with_len(bytes.len);
+        let mut i = 0;
+        for byte in bytes {
+            copy.data.write(i, byte);
+            i = i + 1;
+        }
+        copy
+    }
+
     /// A copy of the bytes C's `text` has, up to its zero byte.
     pub fn from_c(text: cstr) -> Self {
         let len = c::strlen(text) as usize;

@@ -1,0 +1,15 @@
+// expect: ok
+
+/// `read_line()` gives each line typed in, without its newline, and `none` once there's
+/// nothing more.
+use som::io;
+
+fn count_lines() -> i32 {
+    let mut lines = 0;
+    while true {
+        let line = read_line() else break;
+        println("read: " + line);
+        lines = lines + 1;
+    }
+    lines
+}

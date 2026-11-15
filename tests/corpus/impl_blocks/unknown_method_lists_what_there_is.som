@@ -1,0 +1,14 @@
+// expect: error UnknownMethod
+
+/// A method a type doesn't have: its error suggests the closest one, or lists what it has,
+/// as an unknown field's does.
+struct P { x: i32 }
+impl P {
+    fn area(&self) -> i32 { 1 }
+    fn grow(&mut self) {}
+}
+
+fn main() -> i32 {
+    let p = P { x: 1 };
+    p.volume()
+}

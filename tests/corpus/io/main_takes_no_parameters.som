@@ -1,0 +1,4 @@
+// expect: error MainParams
+
+/// The program's entry takes nothing: its arguments are read with `args()`, from anywhere.
+fn main(args: &[cstr]) -> i32 { 0 }

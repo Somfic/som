@@ -1,1 +1,6 @@
-som::io::print("Hello " + 12 + " world");
+use som::io;
+
+let xs = List::empty();
+
+println(xs.get(0));
+println(*(xs.get(0) else &0))

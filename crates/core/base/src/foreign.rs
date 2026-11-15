@@ -244,6 +244,21 @@ pub static OPERATOR: &[Foreign] = &[
     f("--", "x = x - 1", &[C, Cpp, Java, CSharp, JavaScript, Go]),
 ];
 
+/// Members other languages give a collection or text: `xs.length`, `xs.size()`.
+pub static MEMBER: &[Foreign] = &[
+    f("length", "len", &[JavaScript, Java, TypeScript]),
+    f("size", "len", &[Java, Cpp, Kotlin, Scala]),
+    f("count", "len", &[Swift]),
+    f("Length", "len", &[CSharp]),
+    f("Count", "len", &[CSharp]),
+    f("append", "push", &[Python, Go, Swift]),
+    f("add", "push", &[Java, CSharp, Kotlin]),
+    f("push_back", "push", &[Cpp]),
+];
+
+/// The length as a function: `len(xs)`.
+pub static LEN: &[Foreign] = &[f("len", "len", &[Python, Go])];
+
 /// Printing a line: `console.log(…)`. Written as the path called.
 pub static PRINT: &[Foreign] = &[
     f("console.log", "println", &[JavaScript, TypeScript]),
@@ -337,4 +352,10 @@ pub fn lambda(written: &str) -> Option<&'static Foreign> {
 }
 pub fn range(word: &str) -> Option<&'static Foreign> {
     find(RANGE, word)
+}
+pub fn member(name: &str) -> Option<&'static Foreign> {
+    find(MEMBER, name)
+}
+pub fn len_function(name: &str) -> Option<&'static Foreign> {
+    find(LEN, name)
 }

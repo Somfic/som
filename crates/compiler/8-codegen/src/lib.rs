@@ -140,7 +140,9 @@ fn unique(
     taken: &mut HashSet<String>,
     reserved: impl Fn(&str) -> bool,
 ) -> String {
-    let base = if base.starts_with('_') {
+    // `_x`, or a name reserved however it's numbered, as anything starting `som_` is:
+    // the prefix first, `vsom_arg_count`, or numbering it would never find one free.
+    let base = if base.starts_with('_') || reserved(&format!("{base}_2")) {
         format!("{prefix}{base}")
     } else {
         base.to_string()
@@ -737,6 +739,12 @@ impl<'a> Emitter<'a> {
         self.line("#include <stdint.h>");
         self.line("");
         self.line("typedef uint8_t som_unit;");
+        self.line("");
+        // The command-line arguments, for the standard library's `args()`.
+        self.line("static int som_argc;");
+        self.line("static char** som_argv;");
+        self.line("int32_t som_arg_count(void) { return som_argc; }");
+        self.line("uint8_t* som_arg(int32_t index) { return (uint8_t*)som_argv[index]; }");
     }
 
     fn struct_name(&self, def: DefId, args: &[TypeId]) -> String {
@@ -1039,7 +1047,9 @@ impl<'a> Emitter<'a> {
     fn main(&mut self, entry: FuncId) {
         let func = self.mir.func(entry);
         let call = format!("{}()", self.func_name(entry));
-        self.line("int main(void) {");
+        self.line("int main(int argc, char** argv) {");
+        self.line("    som_argc = argc;");
+        self.line("    som_argv = argv;");
         if self.is_unit(func.ret) {
             self.line(format!("    {call};"));
             self.line("    return 0;");

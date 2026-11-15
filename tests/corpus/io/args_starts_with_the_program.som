@@ -1,0 +1,10 @@
+// expect: exit 1
+
+/// `args()` is the program's command-line arguments, its own path first: run without any,
+/// that's all there is.
+use som::io;
+
+fn main() -> i32 {
+    let all = args();
+    all.len as i32
+}

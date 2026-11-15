@@ -154,6 +154,7 @@ impl Checker<'_> {
                 field: field.name.to_string(),
                 available: common.iter().map(|c| c.name.to_string()).collect(),
                 props: Vec::new(),
+                methods: Vec::new(),
                 span: field.span.clone(),
             }
         };
@@ -611,6 +612,7 @@ impl Checker<'_> {
                                     .map(|f| f.name.name.to_string())
                                     .collect(),
                                 props: Vec::new(),
+                                methods: Vec::new(),
                                 span: field.span.clone(),
                             });
                             self.bind_all(*pat, error);

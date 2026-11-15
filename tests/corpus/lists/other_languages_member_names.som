@@ -1,0 +1,10 @@
+// expect: error UnknownMethod UnknownField
+
+/// Other languages' names for a collection's members point to som's: `size()` and `length`
+/// are `len`, `add` is `push`.
+fn main() -> i32 {
+    let mut xs: List<i32> = [1, 2];
+    xs.add(3);
+    let n = xs.size() + [1, 2].length;
+    n as i32
+}

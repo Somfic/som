@@ -13,3 +13,33 @@ extern {
 }
 
 pub fn exit(code: i32) = c::exit(code);
+
+extern {
+    fn som_arg_count() -> i32;
+    fn som_arg(index: i32) -> cstr;
+}
+
+/// The program's command-line arguments, its own path first: `som run main.som -- a b`
+/// gives the path, `a` and `b`.
+pub fn args() -> List<string> {
+    let mut all: List<string> = List::empty();
+    for i in 0..som_arg_count() {
+        all.push(string::from_c(som_arg(i)));
+    }
+    all
+}
+
+/// The next line typed in (from standard input), without its newline; `none` once there's
+/// nothing more to read.
+pub fn read_line() -> string? {
+    let mut bytes: List<u8> = List::empty();
+    let mut read = c::getchar();
+    if read < 0 {
+        return none;
+    }
+    while read >= 0 and read != 10 {
+        bytes.push(read as u8);
+        read = c::getchar();
+    }
+    string::from_bytes(bytes.as_slice())
+}
