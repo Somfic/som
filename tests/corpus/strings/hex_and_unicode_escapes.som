@@ -1,0 +1,13 @@
+// expect: exit 42
+
+/// `\x1b` is the character with that number, two hex digits up to `\x7f`; `\u{1F600}` any
+/// character, by its number in hex. Their braces aren't a value's, even in text with values.
+fn main() -> i32 {
+    let n = 1;
+    let esc = "\x1b";
+    let e = "\u{e9}";
+    let mixed = "\x41{n}\u{42}";
+    let braces = "{{\u{43}}}";
+    // 1 + 2 (é is two bytes) + 3 + 3 + 4 (😀) + 29
+    esc.len as i32 + e.len as i32 + mixed.len as i32 + braces.len as i32 + "\u{1F600}".len as i32 + 29
+}

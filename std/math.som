@@ -1,7 +1,8 @@
 extern "c";
 
 impl f32 {
-    pub const PI = 3.14;
+    pub const PI = c::M_PI as f32;
+    pub const HALF_PI = c::M_PI_2 as f32;
 
     pub fn pow(self, power: f32) -> f32 {
         c::powf(self, power)
@@ -44,6 +45,9 @@ impl f32 {
 
 
 impl f64 {
+    pub const PI = c::M_PI;
+    pub const HALF_PI = c::M_PI_2;
+
     pub fn pow(self, power: f64) -> f64 {
         c::pow(self, power)
     }

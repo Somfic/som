@@ -1,0 +1,10 @@
+// expect: error
+
+/// `\x` takes two hex digits up to `\x7f` (text is UTF-8: past that, `\u{…}`), and `\u`
+/// a character's number in braces.
+fn main() {
+    let a = "\xff";
+    let b = "\x4";
+    let c = "\u{110000}";
+    let d = "\u41";
+}

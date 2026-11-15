@@ -1,0 +1,351 @@
+// A graphical calculator on raylib: click the buttons or type.
+// Keys: digits . + - * / % = Enter, Backspace deletes, Esc clears.
+
+extern "raylib";
+
+use raylib;
+
+const WIDTH: i32 = 360;
+const HEIGHT: i32 = 560;
+const PAD: f32 = 12.0;
+const DISPLAY_H: f32 = 150.0;
+const COLS: i32 = 4;
+
+// Button codes are ASCII where one exists.
+const K_DOT: i32 = 46;
+const K_ADD: i32 = 43;
+const K_SUB: i32 = 45;
+const K_MUL: i32 = 42;
+const K_DIV: i32 = 47;
+const K_PCT: i32 = 37;
+const K_EQ: i32 = 61;
+const K_CLEAR: i32 = 67;  // 'C'
+const K_DEL: i32 = 68;    // 'D'
+const K_NEG: i32 = 78;    // 'N'
+
+const MAX_DIGITS: i32 = 15;
+
+enum Op { None, Add, Sub, Mul, Div }
+enum Kind { Digit, Func, Oper }
+
+struct Btn { label: cstr, key: i32, kind: Kind }
+
+struct Calc {
+    acc: f64,          // left operand, waiting for `op`
+    op: Op,
+    cur: f64,          // value shown when not entering
+    entering: bool,    // the user is typing a number
+    mant: i64,         // typed digits, as an integer
+    frac: i32,         // how many of them follow the dot
+    dot: bool,
+    neg: bool,
+    error: bool,
+    flash: i32,        // key of the button to light up
+    flash_t: i32,
+}
+
+fn pow10(n: i32) -> i64 {
+    let mut p: i64 = 1;
+    let mut i = 0;
+    while i < n { p = p * 10; i = i + 1; }
+    p
+}
+
+fn idiv(a: i64, b: i64) -> i64 { if b == 0 { 0 } else { a / b } }
+fn imod(a: i64, b: i64) -> i64 { if b == 0 { 0 } else { a % b } }
+
+fn digits_of(m: i64) -> i32 {
+    let mut n = 1;
+    let mut v = m;
+    while v >= 10 { v = v / 10; n = n + 1; }
+    n
+}
+
+// `frac` digits after the dot, zero-padded.
+fn frac_str(f: i64, frac: i32) -> string {
+    let mut s: string = "";
+    let mut k = frac - 1;
+    while k >= 0 {
+        let d = idiv(f, pow10(k)) % 10;
+        s = s + "{d}";
+        k = k - 1;
+    }
+    s
+}
+
+fn fmt(x: f64) -> string {
+    if x != x { return "Error"; }
+    let neg = x < 0.0;
+    let a: f64 = if neg { 0.0 - x } else { x };
+    if a >= 1000000000000.0 || (a < 0.000000001 && a > 0.0) {
+        return "{x}";
+    }
+    let ip = a as i64;
+    let mut dec = 12 - digits_of(ip);
+    if dec < 0 { dec = 0; }
+    let scaled = (a * (pow10(dec) as f64) + 0.5) as i64;
+    let int_part = idiv(scaled, pow10(dec));
+    let mut f = imod(scaled, pow10(dec));
+    while dec > 0 && f % 10 == 0 { f = f / 10; dec = dec - 1; }
+    let sign: string = if neg && scaled != 0 { "-" } else { "" };
+    if dec == 0 { return sign + "{int_part}"; }
+    sign + "{int_part}." + frac_str(f, dec)
+}
+
+fn entry_value(c: &Calc) -> f64 {
+    let v = (c.mant as f64) / (pow10(c.frac) as f64);
+    if c.neg { 0.0 - v } else { v }
+}
+
+fn entry_text(c: &Calc) -> string {
+    let p = pow10(c.frac);
+    let sign: string = if c.neg { "-" } else { "" };
+    let mut s = sign + "{idiv(c.mant, p)}";
+    if c.dot { s = s + "." + frac_str(imod(c.mant, p), c.frac); }
+    s
+}
+
+fn shown(c: &Calc) -> f64 {
+    if c.entering { entry_value(c) } else { c.cur }
+}
+
+fn op_symbol(op: Op) -> string {
+    match op {
+        Op::None => { "" }
+        Op::Add => { "+" }
+        Op::Sub => { "-" }
+        Op::Mul => { "*" }
+        Op::Div => { "/" }
+    }
+}
+
+fn reset(c: &mut Calc) {
+    c.acc = 0.0;
+    c.op = Op::None;
+    c.cur = 0.0;
+    c.error = false;
+    clear_entry(c);
+}
+
+fn clear_entry(c: &mut Calc) {
+    c.entering = false;
+    c.mant = 0;
+    c.frac = 0;
+    c.dot = false;
+    c.neg = false;
+}
+
+fn start_entry(c: &mut Calc) {
+    if !c.entering {
+        clear_entry(c);
+        c.entering = true;
+    }
+}
+
+// Fold the shown value into `acc` with the pending operator.
+fn commit(c: &mut Calc) {
+    let x = shown(c);
+    let r: f64 = match c.op {
+        Op::None => { x }
+        Op::Add => { c.acc + x }
+        Op::Sub => { c.acc - x }
+        Op::Mul => { c.acc * x }
+        Op::Div => { if x == 0.0 { 0.0 } else { c.acc / x } }
+    };
+    let div_zero = match c.op { Op::Div => { x == 0.0 } _ => { false } };
+    if div_zero || r != r || r - r != 0.0 {
+        reset(c);
+        c.error = true;
+        return;
+    }
+    c.acc = r;
+    c.cur = r;
+    clear_entry(c);
+}
+
+fn set_op(c: &mut Calc, op: Op) {
+    // Pressing an operator twice in a row just swaps it.
+    let pending = match c.op { Op::None => { false } _ => { true } };
+    if c.entering || !pending { commit(c); }
+    if !c.error { c.op = op; }
+}
+
+fn press(c: &mut Calc, key: i32) {
+    c.flash = key;
+    c.flash_t = 8;
+    if c.error {
+        reset(c);
+        if key == K_CLEAR || key == K_DEL { return; }
+    }
+    if key >= 48 && key <= 57 {
+        start_entry(c);
+        if digits_of(c.mant) < MAX_DIGITS {
+            c.mant = c.mant * 10 + ((key - 48) as i64);
+            if c.dot { c.frac = c.frac + 1; }
+        }
+    } else if key == K_DOT {
+        start_entry(c);
+        c.dot = true;
+    } else if key == K_ADD { set_op(c, Op::Add); }
+    else if key == K_SUB { set_op(c, Op::Sub); }
+    else if key == K_MUL { set_op(c, Op::Mul); }
+    else if key == K_DIV { set_op(c, Op::Div); }
+    else if key == K_EQ {
+        commit(c);
+        if !c.error { c.op = Op::None; }
+    } else if key == K_PCT {
+        c.cur = shown(c) / 100.0;
+        clear_entry(c);
+    } else if key == K_NEG {
+        if c.entering { c.neg = !c.neg; } else { c.cur = 0.0 - c.cur; }
+    } else if key == K_DEL {
+        if c.entering {
+            if c.dot && c.frac == 0 { c.dot = false; }
+            else {
+                c.mant = c.mant / 10;
+                if c.dot { c.frac = c.frac - 1; }
+            }
+        }
+    } else if key == K_CLEAR {
+        reset(c);
+    }
+}
+
+fn rgb(r: u8, g: u8, b: u8) -> Color { Color { r: r, g: g, b: b, a: 255 } }
+
+
+fn btn_color(kind: Kind, hover: bool, down: bool) -> Color {
+    let base = match kind {
+        Kind::Digit => { rgb(52, 54, 64) }
+        Kind::Func => { rgb(96, 100, 116) }
+        Kind::Oper => { rgb(240, 150, 40) }
+    };
+    if down { return Color { r: base.r / 4 * 3, g: base.g / 4 * 3, b: base.b / 4 * 3, a: 255 }; }
+    if hover {
+        return Color { r: base.r + (255 - base.r) / 8, g: base.g + (255 - base.g) / 8, b: base.b + (255 - base.b) / 8, a: 255 };
+    }
+    base
+}
+
+fn btn_rect(i: i32) -> Rectangle {
+    let col = i % COLS;
+    let row = i / COLS;
+    let w = ((WIDTH as f32) - PAD * 5.0) / 4.0;
+    let h = ((HEIGHT as f32) - DISPLAY_H - PAD * 6.0) / 5.0;
+    Rectangle {
+        x: PAD + (col as f32) * (w + PAD),
+        y: DISPLAY_H + PAD + (row as f32) * (h + PAD),
+        width: w,
+        height: h,
+    }
+}
+
+// Right-aligned, shrinking the font until the text fits.
+fn draw_right(text: cstr, right: i32, y: i32, size: i32, min: i32, color: Color) {
+    let mut s = size;
+    while s > min && raylib::measure_text(text, s) > right - 20 { s = s - 2; }
+    let w = raylib::measure_text(text, s);
+    raylib::draw_text(text, right - w, y + (size - s), s, color);
+}
+
+fn main() {
+    let btns = [
+        Btn { label: "AC", key: K_CLEAR, kind: Kind::Func },
+        Btn { label: "DEL", key: K_DEL, kind: Kind::Func },
+        Btn { label: "+/-", key: K_NEG, kind: Kind::Func },
+        Btn { label: "/", key: K_DIV, kind: Kind::Oper },
+        Btn { label: "7", key: 55, kind: Kind::Digit },
+        Btn { label: "8", key: 56, kind: Kind::Digit },
+        Btn { label: "9", key: 57, kind: Kind::Digit },
+        Btn { label: "*", key: K_MUL, kind: Kind::Oper },
+        Btn { label: "4", key: 52, kind: Kind::Digit },
+        Btn { label: "5", key: 53, kind: Kind::Digit },
+        Btn { label: "6", key: 54, kind: Kind::Digit },
+        Btn { label: "-", key: K_SUB, kind: Kind::Oper },
+        Btn { label: "1", key: 49, kind: Kind::Digit },
+        Btn { label: "2", key: 50, kind: Kind::Digit },
+        Btn { label: "3", key: 51, kind: Kind::Digit },
+        Btn { label: "+", key: K_ADD, kind: Kind::Oper },
+        Btn { label: "0", key: 48, kind: Kind::Digit },
+        Btn { label: ".", key: K_DOT, kind: Kind::Digit },
+        Btn { label: "%", key: K_PCT, kind: Kind::Func },
+        Btn { label: "=", key: K_EQ, kind: Kind::Oper },
+    ];
+
+    let mut c = Calc {
+        acc: 0.0, op: Op::None, cur: 0.0, entering: false,
+        mant: 0, frac: 0, dot: false, neg: false, error: false,
+        flash: 0 - 1, flash_t: 0,
+    };
+
+    raylib::init_window(WIDTH, HEIGHT, "som calculator");
+    raylib::set_exit_key(KeyboardKey::Null as i32);
+    raylib::set_target_fps(60);
+
+
+    while !raylib::window_should_close() {
+        let mouse = raylib::get_mouse_position();
+        let white = rgb(240, 240, 245);
+        let dim = rgb(140, 142, 155);
+
+        // Input: mouse.
+        if raylib::is_mouse_button_pressed(MouseButton::Left as i32) {
+            for i in 0..btns.len {
+                if raylib::check_collision_point_rec(mouse, btn_rect(i as i32)) {
+                    press(&mut c, btns[i].key);
+                }
+            }
+        }
+        // Input: typed characters.
+        let mut ch = raylib::get_char_pressed();
+        while ch > 0 {
+            if ch == 120 || ch == 88 { press(&mut c, K_MUL); }       // x X
+            else if ch == 99 || ch == 67 { press(&mut c, K_CLEAR); } // c C
+            else if ch == 44 { press(&mut c, K_DOT); }               // ,
+            else if (ch >= 48 && ch <= 57) || ch == K_DOT || ch == K_ADD || ch == K_SUB
+                 || ch == K_MUL || ch == K_DIV || ch == K_PCT || ch == K_EQ {
+                press(&mut c, ch);
+            }
+            ch = raylib::get_char_pressed();
+        }
+        if raylib::is_key_pressed(KeyboardKey::Enter as i32) || raylib::is_key_pressed(KeyboardKey::KpEnter as i32) { press(&mut c, K_EQ); }
+        if raylib::is_key_pressed(KeyboardKey::Backspace as i32) { press(&mut c, K_DEL); }
+        if raylib::is_key_pressed(KeyboardKey::Escape as i32) { press(&mut c, K_CLEAR); }
+        if c.flash_t > 0 { c.flash_t = c.flash_t - 1; }
+
+        raylib::begin_drawing();
+        raylib::clear_background(rgb(28, 29, 35));
+
+        // Display.
+        let panel = Rectangle { x: PAD, y: PAD, width: (WIDTH as f32) - PAD * 2.0, height: DISPLAY_H - PAD };
+        raylib::draw_rectangle_rounded(panel, 0.15, 8, rgb(18, 19, 24));
+        let right = WIDTH - 28;
+        let pending = match c.op { Op::None => { false } _ => { true } };
+        if pending {
+            let line = fmt(c.acc) + " " + op_symbol(c.op);
+            draw_right(line.c_str, right, 30, 24, 10, dim);
+        }
+        let main_text: string = if c.error { "Error" }
+            else if c.entering { entry_text(&c) }
+            else { fmt(c.cur) };
+        draw_right(main_text.c_str, right, 76, 52, 16, if c.error { rgb(240, 90, 80) } else { white });
+
+        // Buttons.
+        let down = raylib::is_mouse_button_down(MouseButton::Left as i32);
+        for i in 0..btns.len {
+            let b = &btns[i];
+            let r = btn_rect(i as i32);
+            let hover = raylib::check_collision_point_rec(mouse, r);
+            let lit = c.flash_t > 0 && c.flash == b.key;
+            let size = 30;
+            let tw = raylib::measure_text(b.label, size);
+            let tx = (r.x as i32) + ((r.width as i32) - tw) / 2;
+            let ty = (r.y as i32) + ((r.height as i32) - size) / 2;
+            raylib::draw_rectangle_rounded(r, 0.3, 8, btn_color(b.kind, hover, (hover && down) || lit));
+            raylib::draw_text(b.label, tx, ty, size, white);
+        }
+
+        raylib::end_drawing();
+    }
+    raylib::close_window();
+}

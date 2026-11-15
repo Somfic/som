@@ -1,3 +1,3 @@
-extern "raylib";
+let a = f32::PI;
 
-let a = raylib::Color::RED;
+som::io::print("{a}");
