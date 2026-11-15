@@ -44,6 +44,7 @@ pub(crate) struct Checker<'a> {
     narrowed_reads: HashSet<Id<Expr>>,
     /// Operands read through the reference they are: `self * self` of a `&i32`.
     read_through: HashSet<Id<Expr>>,
+    shared: HashSet<Id<Expr>>,
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
     pointer_methods: HashMap<Id<Expr>, PointerMethod>,
     sliced: HashMap<Id<Expr>, TypeId>,
@@ -54,6 +55,12 @@ pub(crate) struct Checker<'a> {
     in_place: bool,
     /// Operators whose operand type wasn't known yet when they were checked.
     deferred_ops: Vec<(Id<Expr>, BinOp, TypeId, TypeId)>,
+    /// Variables known to be below a length, as the length's type: `i` inside
+    /// `for i in 0..a.len` or `if i < a.len { … }`, which may index `a`. Gone once the
+    /// variable changes.
+    bounds: Vec<(DefId, TypeId)>,
+    /// Inferring an assignment's target: `s[i] = v`, which a slice can't do.
+    assigning: bool,
     /// Values to convert through `From` whose types weren't known well enough to choose
     /// which, until later: `println(xs.get(0))` before what `xs` holds is. With where what's
     /// expected came from.
@@ -124,6 +131,7 @@ impl<'a> Checker<'a> {
             next_narrowing: 0,
             narrowed_reads: HashSet::new(),
             read_through: HashSet::new(),
+            shared: HashSet::new(),
             array_methods: HashMap::new(),
             pointer_methods: HashMap::new(),
             sliced: HashMap::new(),
@@ -131,6 +139,8 @@ impl<'a> Checker<'a> {
             returns: None,
             in_place: false,
             deferred_ops: Vec::new(),
+            bounds: Vec::new(),
+            assigning: false,
             deferred_conversions: Vec::new(),
             loops: 0,
             patterns: HashMap::new(),
@@ -557,6 +567,7 @@ impl<'a> Checker<'a> {
             wrapped: self.wrapped,
             narrowed_reads: self.narrowed_reads,
             read_through: self.read_through,
+            shared: self.shared,
             array_methods: self.array_methods,
             pointer_methods: self.pointer_methods,
             sliced,
@@ -1603,12 +1614,17 @@ impl<'a> Checker<'a> {
         self.narrowed.retain(|n| outer.contains(&n.id));
     }
 
-    fn check_loop(&mut self, body: &[Id<Stmt>]) {
+    /// A loop's `body`, where `bounds` hold each time round: what its condition, or its
+    /// range, says, which the body's changes don't undo for the next time.
+    fn check_loop(&mut self, body: &[Id<Stmt>], bounds: Vec<(DefId, TypeId)>) {
         // A later iteration sees what the body changes, even further down.
         self.forget_changed_in(body);
+        let outer = self.bounds.len();
+        self.bounds.extend(bounds);
         self.loops += 1;
         self.check_stmts(body);
         self.loops -= 1;
+        self.bounds.truncate(outer.min(self.bounds.len()));
     }
 
     fn check_stmt(&mut self, id: Id<Stmt>) {
@@ -1652,23 +1668,32 @@ impl<'a> Checker<'a> {
                     self.check_unused(*expr);
                 }
             }
-            Stmt::Loop { body } => self.check_loop(body),
+            Stmt::Loop { body } => self.check_loop(body, Vec::new()),
             Stmt::While { condition, body } => {
                 // The condition runs again after the body.
                 self.forget_changed_in(body);
                 let bool = self.u.table.bool;
                 self.expect(*condition, bool, None);
-                self.check_loop(body);
+                // `while i < a.len { … a[i] … }`
+                let bounds = self.bounds_from(*condition);
+                self.check_loop(body, bounds);
             }
             Stmt::For { iterable, body, .. } => {
                 // A later iteration sees what the body changes.
                 self.forget_changed_in(body);
                 let ty = self.infer(*iterable);
                 let element = self.loop_element(id, *iterable, ty);
+                let mut bounds = Vec::new();
                 if let Some(def) = self.names.local(id) {
                     self.locals.insert(def, element);
+                    // `for i in 0..a.len`: `i` is below `a`'s length, and never changes.
+                    if let Stmt::For { mutable: false, .. } = self.ast.stmts[id]
+                        && let Some(bound) = self.range_bound(*iterable)
+                    {
+                        bounds.push((def, bound));
+                    }
                 }
-                self.check_loop(body);
+                self.check_loop(body, bounds);
             }
             Stmt::Return(value) => {
                 let (ret, from) = self
@@ -1705,7 +1730,12 @@ impl<'a> Checker<'a> {
                 otherwise,
             } => {
                 let facts = self.check_condition(*condition);
+                // `if i < a.len { … a[i] … }`
+                let bounds = self.bounds_from(*condition);
+                let outer = self.bounds.len();
+                self.bounds.extend(bounds);
                 let (_, then_kept) = self.narrowed_during(facts.when_true, |c| c.check_stmts(then));
+                self.bounds.truncate(outer.min(self.bounds.len()));
                 let otherwise_kept = match otherwise {
                     Some(otherwise) => {
                         self.narrowed_during(facts.when_false, |c| c.check_stmts(otherwise))
@@ -2562,6 +2592,9 @@ impl<'a> Checker<'a> {
                 // `&mut x` of a narrowed `x` borrows the value it holds.
                 if *mutable && let Some(borrowed) = self.key(*expr) {
                     self.forget(|key| key.within(&borrowed) && !key.same(&borrowed));
+                    // `&mut i` can change `i`: what it was known to be below is gone.
+                    let root = borrowed.root;
+                    self.bounds.retain(|&(def, _)| def != root);
                 }
                 let to = self.infer(*expr);
                 if *mutable {
@@ -2619,7 +2652,13 @@ impl<'a> Checker<'a> {
                     .into_iter()
                     .partition(|n| assigned.as_ref().is_some_and(|a| n.key.same(a)));
                 self.narrowed = kept;
+                if let Some(assigned) = &assigned {
+                    let root = assigned.root;
+                    self.bounds.retain(|&(def, _)| def != root);
+                }
+                let outer = std::mem::replace(&mut self.assigning, true);
                 let target_ty = self.infer(*target);
+                self.assigning = outer;
                 // After inferring it: whether `p.x` is a field or a property depends on `p`.
                 if let Expr::Field { object, field } = &self.ast.exprs[*target]
                     && self.is_prop(*target)
@@ -2736,6 +2775,8 @@ impl<'a> Checker<'a> {
             } => {
                 let expected = self.expected_here.take();
                 let receiver_ty = self.infer(*receiver);
+                // `node.total()` of a `#Node`: what it shares.
+                let receiver_ty = self.through_shared(*receiver, receiver_ty, &method.name);
                 // `"abc".len()`: text in quotes is a `string`, with its methods.
                 self.text_as_string(receiver_ty);
                 // A trait's method the type has, `x.compare(&y)`, before an array's or a
@@ -2900,6 +2941,8 @@ impl<'a> Checker<'a> {
 
             Expr::Field { object, field } => {
                 let object_ty = self.infer_object(*object);
+                // `node.value` of a `#Node`: what it shares.
+                let object_ty = self.through_shared(*object, object_ty, &field.name);
                 // `"abc".len`: text in quotes is a `string`, with its props.
                 self.text_as_string(object_ty);
                 // `list.len`, with a private field and a `pub prop` both called `len`: the
@@ -3011,7 +3054,7 @@ impl<'a> Checker<'a> {
                 }
             }
 
-            Expr::Index { object, index } => self.index(*object, *index),
+            Expr::Index { object, index } => self.index(id, *object, *index),
 
             Expr::Construct {
                 ty: path,
@@ -3189,9 +3232,14 @@ impl<'a> Checker<'a> {
                 then,
                 otherwise,
             } => {
-                // Like an `if` statement's: an optional is narrowed in the branch it holds in.
+                // Like an `if` statement's: an optional is narrowed in the branch it holds in,
+                // and an index known to be inside an array where it's checked.
                 let facts = self.check_condition(*condition);
+                let bounds = self.bounds_from(*condition);
+                let outer = self.bounds.len();
+                self.bounds.extend(bounds);
                 let (then_ty, _) = self.narrowed_during(facts.when_true, |c| c.infer(*then));
+                self.bounds.truncate(outer.min(self.bounds.len()));
                 let (otherwise_ty, _) =
                     self.narrowed_during(facts.when_false, |c| c.infer(*otherwise));
                 // A branch that never finishes (`return`) has no value: the other's is it.
@@ -4272,6 +4320,10 @@ impl<'a> Checker<'a> {
                 span: self.span(expr),
                 borrow,
             },
+            Some(Immutable::Shared) => TypeError::SharedChanged {
+                span: self.span(expr),
+                borrow,
+            },
             None => return,
         };
         self.errors.push(error);
@@ -4304,6 +4356,12 @@ impl<'a> Checker<'a> {
             // Through a reference, what counts is the reference: `&mut` allows it, even in a
             // variable that isn't `mut`.
             Expr::Field { .. } if self.is_prop(expr) => None,
+            // What a `#T` shares is lent by its `get`: shared, never changed.
+            Expr::Field { object, .. } | Expr::Index { object, .. }
+                if self.shared.contains(object) =>
+            {
+                Some(Immutable::Shared)
+            }
             Expr::Field { object, .. } | Expr::Index { object, .. } => {
                 match self.reference(*object) {
                     Some(true) => None,
@@ -4400,11 +4458,49 @@ impl<'a> Checker<'a> {
 
     /// `values[0]`: the element of an array at an index it's known to have, a number written
     /// out that's less than its length. Anything that might be out of bounds is `get`'s.
-    fn index(&mut self, object: Id<Expr>, index: Id<Expr>) -> TypeId {
+    /// `values[i]`. An array's element, where `i` is known to be inside it: a number written
+    /// out, or a variable below its length (`for i in 0..values.len`, `if i < values.len`). A
+    /// slice's length is only known as the program runs, so a slice gives `&T?`: the element,
+    /// or `none` past its end. Nothing is checked as it runs: what can't be known isn't allowed.
+    fn index(&mut self, id: Id<Expr>, object: Id<Expr>, index: Id<Expr>) -> TypeId {
         let error = self.u.table.error;
         let object_ty = self.infer_object(object);
-        let usize = self.u.table.usize;
-        self.expect(index, usize, None);
+        // `xs[i]` of a struct, `List`, `Map`, `string`: its `Index::index`, `&T?`.
+        let mut base = self.u.shallow(object_ty);
+        if let Ty::Ref { to, .. } = *self.u.get(base) {
+            base = self.u.shallow(to);
+        }
+        if matches!(self.u.get(base), Ty::Struct(..)) {
+            let (object_text, index_text) =
+                (self.span(object).get_text(), self.span(index).get_text());
+            if self.assigning {
+                self.errors.push(TypeError::SliceIndexWrite {
+                    ty: self.describe(object_ty),
+                    span: self.span(id),
+                    instead: format!("{object_text}.get_mut({index_text})"),
+                });
+                self.infer(index);
+                return error;
+            }
+            if let Some(ty) = self.index_call(id, object, object_ty, base, index) {
+                return ty;
+            }
+            self.errors.push(TypeError::IndexNotArray {
+                ty: self.describe(object_ty),
+                span: self.span(object),
+                get: self.get_suggestion(object, index),
+            });
+            self.infer(index);
+            return error;
+        }
+        // A number written out is a position; a variable can be any integer type.
+        let written = matches!(self.ast.exprs[index], Expr::Int(_));
+        let index_ty = if written {
+            self.u.table.usize
+        } else {
+            self.u.fresh(VarKind::Int)
+        };
+        self.expect(index, index_ty, None);
         // `[1, 2, 3][0]`: a collection nothing else decides is an array.
         if let Some(VarKind::Collection { element, len }) = self.u.var_kind(object_ty) {
             let array = self.u.intern(Ty::Array { element, len });
@@ -4417,6 +4513,27 @@ impl<'a> Checker<'a> {
         }
         let (element, len) = match *self.u.get(viewed) {
             Ty::Array { element, len } => (element, len),
+            // A slice: `get_ref`, which gives `&T?`. Not set by index, which could miss.
+            Ty::Slice(element) => {
+                if self.assigning {
+                    self.errors.push(TypeError::SliceIndexWrite {
+                        ty: self.describe(object_ty),
+                        span: self.span(id),
+                        instead: format!(
+                            "{}.set({}, …)",
+                            self.span(object).get_text(),
+                            self.span(index).get_text()
+                        ),
+                    });
+                    return element;
+                }
+                self.array_methods.insert(id, ArrayMethod::GetRef);
+                let reference = self.u.intern(Ty::Ref {
+                    mutable: false,
+                    to: element,
+                });
+                return self.u.intern(Ty::Optional(reference));
+            }
             Ty::Error => return error,
             _ => {
                 self.errors.push(TypeError::IndexNotArray {
@@ -4427,14 +4544,19 @@ impl<'a> Checker<'a> {
                 return error;
             }
         };
+        let len_ty = self.u.normalize(len);
         let Expr::Int(at) = self.ast.exprs[index] else {
-            self.errors.push(TypeError::IndexNotConstant {
-                span: self.span(index),
-                get: self.get_suggestion(object, index),
-            });
+            // A variable: known to be below the length, or not allowed.
+            if !self.below(index, len_ty) {
+                self.errors.push(TypeError::IndexNotConstant {
+                    span: self.span(index),
+                    get: self.get_suggestion(object, index),
+                    len: format!("{}.len", self.span(object).get_text()),
+                    index: self.span(index).get_text().to_string(),
+                });
+            }
             return element;
         };
-        let len_ty = self.u.normalize(len);
         match *self.u.get(self.u.shallow(len_ty)) {
             Ty::Value(Value::Int(n)) if (at as u128) < n => {}
             Ty::Value(Value::Int(n)) => self.errors.push(TypeError::IndexOutOfBounds {
@@ -4452,7 +4574,179 @@ impl<'a> Checker<'a> {
         element
     }
 
-    /// `values.get(i)` for `values[i]`, to suggest instead.
+    /// `object`, of type `ty`, read through to what it shares when it's a `#T` without a
+    /// member called `name` of its own: `node.value` is `node.get().value`. Gives the type
+    /// it's read as: the `&T` its `get` lends, which can't change what it refers to.
+    fn through_shared(&mut self, object: Id<Expr>, ty: TypeId, name: &str) -> TypeId {
+        let Some(rc) = self.names.lang_struct(som_resolve::LangStruct::Rc) else {
+            return ty;
+        };
+        let Ty::Struct(def, ref args) = *self.u.get(self.u.shallow(ty)) else {
+            return ty;
+        };
+        let [inner] = args[..] else {
+            return ty;
+        };
+        let own = self.names.method(rc, name).is_some() || !self.names.props(rc, name).is_empty();
+        if def != rc || own {
+            return ty;
+        }
+        let lent = self.u.intern(Ty::Ref {
+            mutable: false,
+            to: inner,
+        });
+        self.shared.insert(object);
+        lent
+    }
+
+    /// `values[key]` of struct type `base`: a call of its `index`, from its `impl Index`.
+    /// `None` if it has none.
+    fn index_call(
+        &mut self,
+        id: Id<Expr>,
+        object: Id<Expr>,
+        object_ty: TypeId,
+        base: TypeId,
+        key: Id<Expr>,
+    ) -> Option<TypeId> {
+        let Ty::Struct(owner, _) = *self.u.get(base) else {
+            return None;
+        };
+        let index_trait = self.names.lang(LangTrait::Index)?;
+        let def = self.names.method(owner, "index")?;
+        let DefKind::Func(func) = self.names.def(def).kind else {
+            return None;
+        };
+        let from_index = (self.names.impl_of(func))
+            .is_some_and(|i| self.names.impls[i].trait_ == Some(index_trait));
+        if !from_index {
+            return None;
+        }
+        let (sig, type_args) = self.instantiate(func);
+        let name = som_ast::Ident {
+            name: "index".into(),
+            span: self.span(key),
+        };
+        if !self.on_impl_target(func, &type_args, object_ty, &name, "method") {
+            self.infer(key);
+            return Some(self.u.table.error);
+        }
+        self.methods.insert(id, def);
+        self.require_bounds(func, &type_args, self.span(id));
+        if !type_args.is_empty() {
+            self.type_args.insert(id, type_args);
+        }
+        let (&self_ty, rest) = sig.params.split_first()?;
+        if !self.receive(object, self_ty, object_ty) {
+            self.mismatch(self_ty, object_ty, self.span(object), None);
+        }
+        let label = format!("{}::index", self.names.def(owner).name);
+        self.check_args_from(id, &label, func, 1, rest, &[key]);
+        Some(sig.ret)
+    }
+
+    /// Whether `index` is a variable known to be below length `len`: by a bound on it that's
+    /// the same length, or a number no larger.
+    fn below(&self, index: Id<Expr>, len: TypeId) -> bool {
+        let Expr::Var(_) = self.ast.exprs[index] else {
+            return false;
+        };
+        let Some(def) = self.names.expr(index) else {
+            return false;
+        };
+        let number = |c: &Self, ty: TypeId| match *c.u.get(c.u.shallow(ty)) {
+            Ty::Value(Value::Int(n)) => Some(n),
+            _ => None,
+        };
+        let len = self.u.shallow(len);
+        (self.bounds.iter()).any(|&(var, bound)| {
+            let bound = self.u.shallow(bound);
+            var == def
+                && (bound == len
+                    || number(self, bound)
+                        .zip(number(self, len))
+                        .is_some_and(|(b, l)| b <= l))
+        })
+    }
+
+    /// The length the values of range `iterable` are below, if it's `0..n` or `..n` (or
+    /// starts at another number at least 0), with `n` a number written out or an array's `len`.
+    fn range_bound(&mut self, iterable: Id<Expr>) -> Option<TypeId> {
+        let Expr::Range {
+            start,
+            end: Some(end),
+        } = &self.ast.exprs[iterable]
+        else {
+            return None;
+        };
+        let from_zero = match start {
+            None => true,
+            Some(start) => matches!(self.ast.exprs[*start], Expr::Int(n) if n >= 0),
+        };
+        if !from_zero {
+            return None;
+        }
+        self.length_of(*end)
+    }
+
+    /// The bounds condition `condition` gives when it's true: `i < a.len`, `a.len > i`, and
+    /// each side of an `and`. Only for a variable that can't be below 0.
+    fn bounds_from(&mut self, condition: Id<Expr>) -> Vec<(DefId, TypeId)> {
+        let Expr::Binary { op, lhs, rhs } = self.ast.exprs[condition] else {
+            return Vec::new();
+        };
+        let (var, limit) = match op {
+            BinOp::And => {
+                let mut both = self.bounds_from(lhs);
+                both.extend(self.bounds_from(rhs));
+                return both;
+            }
+            BinOp::LessThan => (lhs, rhs),
+            BinOp::GreaterThan => (rhs, lhs),
+            _ => return Vec::new(),
+        };
+        let Expr::Var(_) = self.ast.exprs[var] else {
+            return Vec::new();
+        };
+        let unsigned = self.exprs[var.id].is_some_and(|ty| {
+            matches!(
+                self.u.get(self.u.shallow(ty)),
+                Ty::Int(
+                    IntTy::U8
+                        | IntTy::U16
+                        | IntTy::U32
+                        | IntTy::U64
+                        | IntTy::U128
+                        | IntTy::USize
+                )
+            )
+        });
+        let (Some(def), true) = (self.names.expr(var), unsigned) else {
+            return Vec::new();
+        };
+        self.length_of(limit)
+            .map(|bound| vec![(def, bound)])
+            .unwrap_or_default()
+    }
+
+    /// `expr` as a length to be below: a number written out, or an array's `len`.
+    fn length_of(&mut self, expr: Id<Expr>) -> Option<TypeId> {
+        match &self.ast.exprs[expr] {
+            &Expr::Int(n) if n >= 0 => Some(self.u.intern(Ty::Value(Value::Int(n as u128)))),
+            Expr::Field { object, field } if &*field.name == "len" => {
+                let mut ty = self.u.shallow(self.exprs[object.id]?);
+                if let Ty::Ref { to, .. } = *self.u.get(ty) {
+                    ty = self.u.shallow(to);
+                }
+                match *self.u.get(ty) {
+                    Ty::Array { len, .. } => Some(self.u.normalize(len)),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
     fn get_suggestion(&self, object: Id<Expr>, index: Id<Expr>) -> String {
         format!(
             "{}.get({})",
@@ -4888,6 +5182,8 @@ enum Immutable {
     /// A variable declared without `mut`.
     Variable(DefId),
     BehindSharedReference,
+    /// What a `#T` shares: every copy sees it, so nothing changes it.
+    Shared,
 }
 
 // --- Narrowing ---
@@ -4996,6 +5292,12 @@ impl Checker<'_> {
     /// Ends the narrowings of the places `changed` says could change.
     fn forget(&mut self, changed: impl Fn(&Key) -> bool) {
         self.narrowed.retain(|n| !changed(&n.key));
+        self.bounds.retain(|&(def, _)| {
+            !changed(&Key {
+                root: def,
+                path: Vec::new(),
+            })
+        });
     }
 
     fn is_mut_ref(&self, ty: TypeId) -> bool {
@@ -5007,7 +5309,7 @@ impl Checker<'_> {
 
     /// Ends the narrowings of the places `stmts` could change.
     fn forget_changed_in(&mut self, stmts: &[Id<Stmt>]) {
-        if self.narrowed.is_empty() {
+        if self.narrowed.is_empty() && self.bounds.is_empty() {
             return;
         }
         for &stmt in stmts {

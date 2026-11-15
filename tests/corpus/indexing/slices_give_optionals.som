@@ -1,0 +1,11 @@
+// expect: exit 21
+
+/// A slice's length is only known as the program runs: indexing it gives `&T?`, the element
+/// or `none`.
+fn at(s: &[i32], i: usize) -> i32 = *(s[i] else &0);
+
+fn main() -> i32 {
+    let a = [10, 20, 30];
+    let s = a.slice(0..2) else return 0;
+    at(s, 1) + at(s, 5) + (1 if s[7] == none else 0)
+}

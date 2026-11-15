@@ -1,0 +1,9 @@
+// expect: error SliceIndexWrite
+
+/// What's in a `List` is only known as the program runs: setting it by index could miss.
+/// `get_mut` says whether it's there.
+fn main() -> i32 {
+    let mut xs: List<i32> = [1];
+    xs[0] = 5;
+    0
+}

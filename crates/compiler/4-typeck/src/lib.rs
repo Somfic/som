@@ -77,6 +77,8 @@ pub struct Typed {
     narrowed_reads: HashSet<Id<Expr>>,
     /// Operands read through the reference they are: `self * self` of a `&i32`.
     read_through: HashSet<Id<Expr>>,
+    /// `#T`s read through to what they share: `node` in `node.value`, a `&T` from its `get`.
+    shared: HashSet<Id<Expr>>,
     /// References to arrays used where a slice is expected (`&numbers` for a `[i32]`), and
     /// `[mut T]`s used where a `[T]` is.
     sliced: HashMap<Id<Expr>, TypeId>,
@@ -406,6 +408,12 @@ impl Typed {
     /// self` of a `&i32` multiplies the numbers.
     pub fn is_read_through(&self, expr: Id<Expr>) -> bool {
         self.read_through.contains(&expr)
+    }
+
+    /// Whether `expr`, a `#T`, is read through to what it shares, `node` in `node.value`:
+    /// what it's used as is the `&T` its `get` gives.
+    pub fn is_shared_read(&self, expr: Id<Expr>) -> bool {
+        self.shared.contains(&expr)
     }
 
     /// Whether `expr`'s value is wrapped in an optional where it's used.

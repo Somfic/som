@@ -180,6 +180,11 @@ pub enum TypeError {
     MainParams {
         span: Span,
     },
+    /// Changing what a `#T` shares, `node.value = 5`: every copy sees it.
+    SharedChanged {
+        span: Span,
+        borrow: bool,
+    },
     /// `str` or `&str`, text before it was `string`.
     StrIsString {
         span: Span,
@@ -391,9 +396,20 @@ pub enum TypeError {
         get: String,
     },
     /// `values[i]` of an index that isn't a number written out, so may be out of bounds.
+    /// `values[i]` of an array, where `i` isn't known to be inside it.
     IndexNotConstant {
         span: Span,
         get: String,
+        /// `values.len`, and `i`, as written.
+        len: String,
+        index: String,
+    },
+    /// `values[i] = v` of a slice or struct, which could miss: only arrays are set by index.
+    SliceIndexWrite {
+        ty: Message,
+        span: Span,
+        /// What to write instead, which says whether it found it: `values.set(i, …)`.
+        instead: String,
     },
     /// `values[3]` of a `[T; 3]`.
     IndexOutOfBounds {
@@ -814,6 +830,19 @@ impl TypeError {
                 ": the program's path, then each argument"
             ])
             .with_fix(Fix::replace(msg!["take nothing"], span.clone(), "")),
+            TypeError::SharedChanged { span, borrow } => {
+                let what = if *borrow {
+                    "cannot borrow what a `#T` shares as mutable"
+                } else {
+                    "cannot change what a `#T` shares"
+                };
+                Diagnostic::error(what)
+                    .with_label(Label::primary(span.clone(), "every copy of it sees this"))
+                    .with_hint(msg![
+                        "make a changed copy and share that: ",
+                        code("Rc::new(…)")
+                    ])
+            }
             TypeError::StrIsString { span } => Diagnostic::error(msg![
                 "som's text is ",
                 code("string")
@@ -1294,10 +1323,32 @@ impl TypeError {
                     ))
                     .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
             }
-            TypeError::IndexNotConstant { span, get } => {
-                Diagnostic::error("an index has to be a number written out")
-                    .with_label(Label::primary(span.clone(), "this might be out of bounds"))
-                    .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
+            TypeError::IndexNotConstant {
+                span,
+                get,
+                len,
+                index,
+            } => Diagnostic::error(msg!["can't tell ", code(index.clone()), " is inside the array"])
+                .with_label(Label::primary(span.clone(), "this might be out of bounds"))
+                .with_hint(msg![
+                    "index inside ",
+                    code(format!("for {index} in 0..{len}")),
+                    " or ",
+                    code(format!("if {index} < {len} {{ … }}")),
+                    ", where it's known to be"
+                ])
+                .with_hint(msg!["or use ", code(get.clone()), ", which gives an optional"]),
+            TypeError::SliceIndexWrite { ty, span, instead } => {
+                Diagnostic::error(msg![ty.clone(), " can't be set by index"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "what's there is only known as the program runs: this might miss",
+                    ))
+                    .with_hint(msg![
+                        "use ",
+                        code(instead.clone()),
+                        ", which says whether it's there"
+                    ])
             }
             TypeError::IndexOutOfBounds { index, len, span } => {
                 Diagnostic::error(msg!["index ", code(index.to_string()), " is out of bounds"])

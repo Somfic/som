@@ -1,0 +1,27 @@
+// expect: exit 156
+
+/// An array is indexed by a variable where it's known to be inside it: a loop over its
+/// range, or a check against its length. Its element, read or set, no optional.
+fn sum<N: usize>(values: [i32; N]) -> i32 {
+    let mut total = 0;
+    for i in 0..values.len {
+        total = total + values[i];
+    }
+    total
+}
+
+fn main() -> i32 {
+    let mut a = [1, 2, 3, 4];
+    for i in 0..4 {
+        a[i] = a[i] * 10;
+    }
+    let mut j: usize = 0;
+    while j < a.len {
+        a[j] = a[j] + 1;
+        j = j + 1;
+    }
+    let k: usize = 2;
+    let third = if k < a.len { a[k] } else { 0 };
+    // 11 + 21 + 31 + 41, then 31 and 21 more.
+    sum(a) + third + (a[1] if k < 3 else 0)
+}

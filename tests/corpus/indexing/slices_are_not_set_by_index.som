@@ -1,0 +1,6 @@
+// expect: error SliceIndexWrite
+
+/// Setting a slice by index could miss: `set` says whether it did.
+fn clear(s: &mut [i32], i: usize) { s[i] = 0; }
+
+fn main() -> i32 { 0 }

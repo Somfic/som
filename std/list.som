@@ -183,3 +183,10 @@ impl<T> Drop for ListIntoIter<T> {
         .list.len = 0;
     }
 }
+
+/// `values[i]`: the value at `i`, lent, or `none` past the end.
+impl<T> Index<usize> for List<T> {
+    type Item = T;
+
+    fn index(&self, key: usize) -> &T? = self.get(key);
+}

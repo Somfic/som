@@ -1,0 +1,7 @@
+// expect: error
+
+/// A module that isn't there: the closest that is, or those there are, and what of the
+/// standard library needs no `use`.
+use som::ioo;
+
+fn main() -> i32 { 0 }

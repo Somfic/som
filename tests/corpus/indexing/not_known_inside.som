@@ -1,0 +1,13 @@
+// expect: error IndexNotConstant
+
+/// Where it isn't known to be inside the array, a variable can't index it: here `j` has
+/// already gone up past the check. Nothing is checked as the program runs.
+fn main() -> i32 {
+    let a = [1, 2, 3];
+    let mut j: usize = 0;
+    while j < a.len {
+        j = j + 1;
+        let x = a[j];
+    }
+    0
+}

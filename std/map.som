@@ -124,3 +124,16 @@ impl<K: Eq + Hash, V> Map<K, V> {
         slot
     }
 }
+
+/// `map[key]`: the value kept for `key`, lent, or `none` if there's none.
+impl<K: Eq + Hash, V> Index<K> for Map<K, V> {
+    type Item = V;
+
+    fn index(&self, key: K) -> &V? {
+        let slot = .find_slot(&key);
+        let entry_index = *.keys.at(slot);
+        let at = entry_index else return none;
+        let pair = .entries.get(at) else return none;
+        &pair.value
+    }
+}

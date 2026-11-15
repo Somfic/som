@@ -1,0 +1,10 @@
+// expect: error SharedChanged
+
+/// What a `#T` shares is seen by every copy of it: it's never changed through one.
+struct N { v: i32 }
+
+fn main() -> i32 {
+    let n = Rc::new(N { v: 1 });
+    n.v = 5;
+    0
+}

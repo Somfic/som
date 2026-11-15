@@ -1808,6 +1808,17 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 };
                 self.call(expr, func, Some(*receiver), args)
             }
+            // `values[key]` of a struct: its `Index::index`.
+            Expr::Index { object, index } if let Some(def) = self.l.typed.method(expr) => {
+                let DefKind::Func(func) = self.l.names.def(def).kind else {
+                    unreachable!("methods are functions")
+                };
+                self.call(expr, func, Some(*object), &[*index])
+            }
+            // `values[i]` of a slice: `get_ref`, the element or `none`.
+            Expr::Index { object, index } if let Some(method) = self.l.typed.array_method(expr) => {
+                Rvalue::Use(self.array_method(expr, method, *object, &[*index]))
+            }
             // `items.len` of an array, slice or text.
             Expr::Field { object, .. } if let Some(method) = self.l.typed.array_method(expr) => {
                 Rvalue::Use(self.array_method(expr, method, *object, &[]))
@@ -1826,8 +1837,16 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// Whether `expr` reads a property, `list.len`, which is a call, rather than a field;
     /// or an array's length, `items.len`.
     fn is_prop(&self, expr: Id<Expr>) -> bool {
-        matches!(self.l.ast.exprs[expr], Expr::Field { .. })
-            && (self.l.typed.method(expr).is_some() || self.l.typed.array_method(expr).is_some())
+        match self.l.ast.exprs[expr] {
+            Expr::Field { .. } => {
+                self.l.typed.method(expr).is_some() || self.l.typed.array_method(expr).is_some()
+            }
+            // `values[i]` of a slice or struct: a call too, not a place.
+            Expr::Index { .. } => {
+                self.l.typed.array_method(expr).is_some() || self.l.typed.method(expr).is_some()
+            }
+            _ => false,
+        }
     }
 
     fn call(
@@ -1858,8 +1877,25 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// A method call's receiver as the method's `self`: as it is, borrowed (`a.len()` for
     /// `self: &List`), or copied out of the reference it is. With its type and where it is.
     fn receiver(&mut self, receiver: Id<Expr>) -> (Operand, TypeId, Span) {
-        let ty = self.expr_ty(receiver);
         let span = self.span(receiver);
+        // `node.total()` of a `#Node`: called on the `&Node` its `get` lends.
+        if self.l.typed.is_shared_read(receiver) {
+            let lent = self.shared_get(receiver);
+            let ty = self.l.mir.types.get(self.body_local_ty(lent)).clone();
+            let lent_ty = self.body_local_ty(lent);
+            let Ty::Ref { to, .. } = ty else {
+                unreachable!("`get` lends a reference")
+            };
+            return match self.l.typed.receiver(receiver) {
+                // Taking `self` by value: a copy of what it shares.
+                Some(Receiver::Deref) => {
+                    let value = Place::local(lent).project(Projection::Deref);
+                    (self.read(value, to), to, span)
+                }
+                _ => (Operand::Copy(Place::local(lent)), lent_ty, span),
+            };
+        }
+        let ty = self.expr_ty(receiver);
         match self.l.typed.receiver(receiver) {
             None => (self.operand(receiver), ty, span),
             Some(Receiver::Borrow { mutable }) => {
@@ -2394,6 +2430,50 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     /// Evaluates `expr` to a place, storing it in a temporary if it isn't one already. A
     /// narrowed optional's place is the value it holds.
+    /// `node`, a `#T` read through to what it shares: the `&T` its `get` lends, in a
+    /// temporary.
+    fn shared_get(&mut self, expr: Id<Expr>) -> Local {
+        let span = self.span(expr);
+        let rc_ty = self.expr_ty(expr);
+        let Ty::Struct(rc, ref args) = *self.l.mir.types.get(rc_ty) else {
+            unreachable!("checked: only a `#T` is read through")
+        };
+        let inner = args[0];
+        let get = (self.l.names.method(rc, "get"))
+            .expect("the standard library's `Rc` has `get`");
+        let DefKind::Func(get) = self.l.names.def(get).kind else {
+            unreachable!("methods are functions")
+        };
+        let func = self.l.instance(get, vec![inner]);
+        let place = self.place_of(expr);
+        let borrowed_ty = self.l.mir.types.intern(Ty::Ref {
+            mutable: false,
+            to: rc_ty,
+        });
+        let borrowed = self.temp(borrowed_ty, span.clone());
+        let borrow = Rvalue::Ref {
+            mutable: false,
+            place,
+        };
+        self.assign(Place::local(borrowed), borrow, span.clone());
+        let lent_ty = self.l.mir.types.intern(Ty::Ref {
+            mutable: false,
+            to: inner,
+        });
+        let lent = self.temp(lent_ty, span.clone());
+        let call = Rvalue::Call {
+            func,
+            args: vec![Operand::Move(Place::local(borrowed))],
+        };
+        self.assign(Place::local(lent), call, span);
+        lent
+    }
+
+    /// The type of local `local` of the function being built.
+    fn body_local_ty(&self, local: Local) -> TypeId {
+        self.locals[local].ty
+    }
+
     fn place(&mut self, expr: Id<Expr>) -> Place {
         let place = self.place_of(expr);
         if self.l.typed.is_narrowed(expr) {
@@ -2423,7 +2503,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     .field(expr)
                     .expect("checked fields are resolved");
                 let mut object_ty = self.expr_ty(*object);
-                let mut place = self.place(*object);
+                // `node.value` of a `#Node`: through the `&Node` its `get` lends.
+                let mut place = if self.l.typed.is_shared_read(*object) {
+                    let lent = self.shared_get(*object);
+                    object_ty = self.body_local_ty(lent);
+                    Place::local(lent)
+                } else {
+                    self.place(*object)
+                };
                 // Fields are reachable through one reference.
                 if let Ty::Ref { to, .. } = *self.l.mir.types.get(object_ty) {
                     place = place.project(Projection::Deref);
@@ -2437,7 +2524,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 return place.project(Projection::Field(index));
             }
             // `values[0]`: checked to be in bounds.
-            Expr::Index { object, index } => {
+            Expr::Index { object, index }
+                if self.l.typed.array_method(expr).is_none()
+                    && self.l.typed.method(expr).is_none() =>
+            {
                 let mut place = self.place(*object);
                 // Elements are reachable through one reference.
                 let object_ty = self.expr_ty(*object);
@@ -2448,7 +2538,16 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 let span = self.span(*index);
                 let position = self.temp(usize, span.clone());
                 let at = self.operand(*index);
-                self.assign(Place::local(position), Rvalue::Use(at), span);
+                // Known to be inside: any integer type, as a position.
+                let at = if self.expr_ty(*index) == usize {
+                    Rvalue::Use(at)
+                } else {
+                    Rvalue::Cast {
+                        operand: at,
+                        ty: usize,
+                    }
+                };
+                self.assign(Place::local(position), at, span);
                 return place.project(Projection::Index(position));
             }
             Expr::Deref(inner) => return self.place(*inner).project(Projection::Deref),

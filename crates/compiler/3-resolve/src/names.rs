@@ -90,6 +90,8 @@ pub enum LangTrait {
     Copy,
     /// Copied by calling `share(&self)`: a value that keeps count of its copies.
     Share,
+    /// `values[key]` of a struct: its `index`.
+    Index,
 }
 
 impl LangTrait {
@@ -133,11 +135,12 @@ impl LangTrait {
             | LangTrait::From
             | LangTrait::Drop
             | LangTrait::Copy
-            | LangTrait::Share => return None,
+            | LangTrait::Share
+            | LangTrait::Index => return None,
         })
     }
 
-    pub const ALL: [LangTrait; 14] = [
+    pub const ALL: [LangTrait; 15] = [
         LangTrait::Iterator,
         LangTrait::Iterable,
         LangTrait::IterableMut,
@@ -152,6 +155,7 @@ impl LangTrait {
         LangTrait::Drop,
         LangTrait::Copy,
         LangTrait::Share,
+        LangTrait::Index,
     ];
 
     /// Its name in the standard library.
@@ -171,6 +175,7 @@ impl LangTrait {
             LangTrait::Drop => "Drop",
             LangTrait::Copy => "Copy",
             LangTrait::Share => "Share",
+            LangTrait::Index => "Index",
         }
     }
 }

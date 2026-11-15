@@ -357,3 +357,15 @@ impl From<&string?> for string {
         string::from(held)
     }
 }
+
+/// `text[i]`: the byte at `i`, lent, or `none` past the end.
+impl Index<usize> for string {
+    type Item = u8;
+
+    fn index(&self, key: usize) -> &u8? {
+        if key >= .len {
+            return none;
+        }
+        .data.at(key)
+    }
+}

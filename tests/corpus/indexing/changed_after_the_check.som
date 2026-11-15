@@ -1,0 +1,21 @@
+// expect: error IndexNotConstant
+
+/// A check stops counting once what it checked can change: `&mut k`, or a loop coming
+/// round again after `k` goes up.
+fn bump(x: &mut usize) { *x = *x + 5; }
+
+fn main() -> i32 {
+    let a = [1, 2, 3];
+    let mut k: usize = 0;
+    if k < a.len {
+        bump(&mut k);
+        return a[k];
+    }
+    if k < a.len {
+        loop {
+            let x = a[k];
+            k = k + 1;
+        }
+    }
+    0
+}

@@ -1,0 +1,15 @@
+// expect: exit 128
+
+/// A struct implementing `Index` is indexed too: `List`, `Map`, `string`. What's there, lent,
+/// or `none`.
+fn main() -> i32 {
+    let xs: List<i32> = [10, 20, 30];
+    let second = *(xs[1] else &0);
+    let mut m: Map<string, i32> = Map::empty();
+    m.insert("a", 5);
+    let a = *(m["a"] else &0);
+    let text = "hey";
+    let e = *(text[1] else &0);
+    // 20 + 5 + `e`, 101, and one for each `none`.
+    second + a + (e as i32) + (1 if xs[9] == none else 0) + (1 if m["zz"] == none else 0)
+}
