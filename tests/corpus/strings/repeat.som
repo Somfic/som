@@ -1,0 +1,10 @@
+// expect: exit 6
+
+/// Text times a number is the text that many times over.
+fn main() -> i32 {
+    let aa = "a" * 2;
+    let n: usize = 2;
+    let abab = "ab" * n;
+    let empty = "x" * 0;
+    (aa.len + abab.len + empty.len) as i32
+}

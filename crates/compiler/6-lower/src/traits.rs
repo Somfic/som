@@ -355,6 +355,7 @@ impl FnBuilder<'_, '_> {
     /// values are numbers after all, as a `T: Add` can turn out to be, which have it built in.
     pub(super) fn operator_call(
         &mut self,
+        expr: Id<som_ast::Expr>,
         lang: LangTrait,
         op: BinOp,
         lhs: Id<som_ast::Expr>,
@@ -381,12 +382,19 @@ impl FnBuilder<'_, '_> {
             .expect("checked: the trait is there");
         let method = lang.operator_method().expect("an operator's trait");
         let method = self.l.trait_method(trait_, method);
-        let reference = self.l.mir.types.intern(Ty::Ref {
-            mutable: false,
-            to: ty,
-        });
+        // `Add<Other, Output>`'s arguments, `Self` first; `Eq` and `Compare` have only `Self`.
+        let type_args = match self.type_args(expr) {
+            args if args.is_empty() => vec![ty],
+            args => args,
+        };
+        // What's on the right: `Other`, which is `Self` unless the implementation says.
+        let other = type_args.get(1).copied().unwrap_or(ty);
         let mut args = Vec::new();
-        for side in [lhs, rhs] {
+        for (side, ty) in [(lhs, ty), (rhs, other)] {
+            let reference = self.l.mir.types.intern(Ty::Ref {
+                mutable: false,
+                to: ty,
+            });
             // Converted, `"score: " + n`: made one first, through its `from`, and lent.
             let place = if converted(side) {
                 let value = self.operand(side);
@@ -406,7 +414,7 @@ impl FnBuilder<'_, '_> {
             self.assign(Place::local(temp), borrow, span.clone());
             args.push(Operand::Copy(Place::local(temp)));
         }
-        let func = self.l.instance(method, vec![ty]);
+        let func = self.l.instance(method, type_args);
         let call = Rvalue::Call { func, args };
         let result_ty = self.l.mir.funcs[func].ret;
         // What's asked of the result: `!=` is not `eq`; `<` is `compare` giving `Less`, the

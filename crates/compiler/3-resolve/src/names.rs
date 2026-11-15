@@ -32,6 +32,9 @@ pub enum DefKind {
         index: usize,
         value: bool,
     },
+    /// A trait's own `Self` (`index` 0) or `index - 1`th generic parameter, as its
+    /// parameters' defaults name them: `Self` in `trait Add<Other = Self>`.
+    TraitParam { trait_: Id<Trait>, index: usize },
     /// `Self` inside impl block `impl_`: its target type.
     SelfType { impl_: usize },
     /// The `index`th associated type impl block `impl_` says: `Item` in `type Item = &T;`.
@@ -280,6 +283,8 @@ pub struct Names {
     traits: Vec<Option<DefId>>,
     /// Each trait's associated types, in order.
     trait_types: Vec<Vec<DefId>>,
+    /// Each trait's `Self`, then its generic parameters: what its defaults are written in.
+    trait_params: Vec<Vec<DefId>>,
     /// `trait IndexMut: Index` → the traits it builds on.
     supers: Vec<Vec<DefId>>,
     /// Every `impl` block, in the order they're written, module by module.
@@ -327,6 +332,7 @@ impl Names {
             overloads: HashMap::new(),
             traits: vec![None; ast.traits.len()],
             trait_types: vec![Vec::new(); ast.traits.len()],
+            trait_params: vec![Vec::new(); ast.traits.len()],
             supers: vec![Vec::new(); ast.traits.len()],
             impls: Vec::new(),
             impl_of: HashMap::new(),
@@ -592,6 +598,16 @@ impl Names {
     /// A trait's associated types, in order.
     pub fn trait_types(&self, t: Id<Trait>) -> &[DefId] {
         &self.trait_types[t.id]
+    }
+
+    /// Trait `t`'s `Self`, then its generic parameters, as its parameters' defaults name
+    /// them.
+    pub fn trait_params(&self, t: Id<Trait>) -> &[DefId] {
+        &self.trait_params[t.id]
+    }
+
+    pub(crate) fn set_trait_params(&mut self, t: Id<Trait>, params: Vec<DefId>) {
+        self.trait_params[t.id] = params;
     }
 
     /// The traits trait `t` builds on: `Index` for `trait IndexMut: Index`.

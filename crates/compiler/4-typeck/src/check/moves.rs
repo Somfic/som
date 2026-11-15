@@ -200,7 +200,7 @@ impl Checker<'_> {
             return;
         }
         let span = self.ast.exprs.span(id).clone();
-        let fix = self.operator_fix(ty, LangTrait::Copy);
+        let fix = self.operator_fix(ty, LangTrait::Copy, None);
         self.errors.push(TypeError::MoveOutOfReference {
             place: span.get_text().to_string(),
             ty: self.describe(ty),

@@ -447,6 +447,9 @@ impl<'a> Resolver<'a> {
                             if let Some(ty) = param.ty {
                                 self.resolve_type(ty);
                             }
+                            if let Some(default) = param.default {
+                                self.resolve_type(default);
+                            }
                             self.resolve_bounds(param, def);
                         }
                         for field in ast.structs[*id]
@@ -549,6 +552,30 @@ impl<'a> Resolver<'a> {
             .filter_map(|path| self.resolve_path(path, Expect::Trait))
             .collect();
         self.names.set_supers(id, supers);
+        // Its parameters' defaults, `Other = Self`: in terms of `Self` and its parameters.
+        let this = som_ast::Ident {
+            name: "Self".into(),
+            span: t.name.span.clone(),
+        };
+        let params: Vec<DefId> = (std::iter::once(&this).chain(t.generics.iter().map(|g| &g.name)))
+            .enumerate()
+            .map(|(index, name)| {
+                let kind = DefKind::TraitParam { trait_: id, index };
+                self.names
+                    .define(&name.name, kind, name.span.clone(), self.module)
+            })
+            .collect();
+        self.names.set_trait_params(id, params.clone());
+        self.type_params = std::iter::once("Self")
+            .chain(t.generics.iter().map(|g| &*g.name.name))
+            .zip(params)
+            .collect();
+        for g in &t.generics {
+            if let Some(default) = g.default {
+                self.resolve_type(default);
+            }
+        }
+        self.type_params.clear();
         self.block_types = (t.types.iter().zip(types))
             .map(|(assoc, def)| (&*assoc.name.name, def))
             .collect();
@@ -1176,6 +1203,7 @@ impl<'a> Resolver<'a> {
                 kind,
                 DefKind::Struct(_)
                     | DefKind::TypeParam { .. }
+                    | DefKind::TraitParam { .. }
                     | DefKind::StructParam { .. }
                     | DefKind::Trait(_)
                     | DefKind::AssocType { .. }
@@ -1192,6 +1220,7 @@ impl<'a> Resolver<'a> {
                 kind,
                 DefKind::Struct(_)
                     | DefKind::TypeParam { .. }
+                    | DefKind::TraitParam { .. }
                     | DefKind::StructParam { .. }
                     | DefKind::AssocType { .. }
                     | DefKind::ImplParam { .. }

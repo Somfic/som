@@ -1576,7 +1576,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::Binary { op, lhs, rhs }
                 if let Some(lang) = self.l.typed.operator_trait(expr)
                     && let Some(call) =
-                        self.operator_call(lang, *op, *lhs, *rhs, self.span(expr)) =>
+                        self.operator_call(expr, lang, *op, *lhs, *rhs, self.span(expr)) =>
             {
                 call
             }

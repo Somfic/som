@@ -1,0 +1,7 @@
+// expect: error InvalidOperands
+
+/// Text is repeated a whole number of times.
+fn main() -> i32 {
+    let half = "ab" * 1.5;
+    0
+}

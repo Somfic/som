@@ -1,0 +1,13 @@
+// expect: error InvalidOperands
+
+/// An operator takes on the right only what an implementation says.
+struct Vector { x: i32 }
+
+impl Multiply<i32> for Vector {
+    fn multiply(&self, by: &i32) -> Vector { Vector { x: self.x * *by } }
+}
+
+fn main() -> i32 {
+    let v = Vector { x: 1 } * true;
+    0
+}

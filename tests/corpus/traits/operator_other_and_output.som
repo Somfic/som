@@ -1,0 +1,21 @@
+// expect: exit 9
+
+/// An operator's trait says what's on the right and what comes out: a vector times a
+/// number is a vector, and money divided by money is a ratio.
+struct Vector { x: i32, y: i32 }
+
+impl Multiply<i32> for Vector {
+    fn multiply(&self, by: &i32) -> Vector { Vector { x: self.x * *by, y: self.y * *by } }
+}
+
+struct Cents { n: i64 }
+
+impl Divide<Cents, f64> for Cents {
+    fn divide(&self, other: &Cents) -> f64 { self.n as f64 / other.n as f64 }
+}
+
+fn main() -> i32 {
+    let v = Vector { x: 1, y: 2 } * 2;
+    let ratio: f64 = Cents { n: 3 } / Cents { n: 4 };
+    v.x + v.y + (3 if ratio == 0.75 else 0)
+}

@@ -1,0 +1,7 @@
+// expect: error
+
+/// Only a struct's or a trait's parameters have defaults: a function's are worked out from
+/// its arguments.
+fn first<T = i32>(x: T) -> T { x }
+
+fn main() -> i32 { 0 }

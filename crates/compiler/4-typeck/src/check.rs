@@ -332,7 +332,7 @@ impl<'a> Checker<'a> {
             }
         }
         for (expr, op, lhs, rhs) in std::mem::take(&mut self.deferred_ops) {
-            if self.trait_op(expr, op, lhs) {
+            if self.trait_op(expr, op, lhs).is_some() {
                 continue;
             }
             if self.operand_ok(op, lhs) == Some(false) || self.u.var_kind(lhs) == Some(VarKind::Any)
@@ -674,9 +674,12 @@ impl<'a> Checker<'a> {
                     });
                     Ty::Error
                 }
-                Some((def, DefKind::TypeParam { .. } | DefKind::StructParam { .. })) => {
-                    Ty::Param(def)
-                }
+                Some((
+                    def,
+                    DefKind::TypeParam { .. }
+                    | DefKind::StructParam { .. }
+                    | DefKind::TraitParam { .. },
+                )) => Ty::Param(def),
                 Some((def, DefKind::ImplParam { .. })) => Ty::Param(def),
                 Some((def, DefKind::AliasParam { .. })) => match self.alias_args.get(&def) {
                     Some(&ty) => return ty,
@@ -948,21 +951,72 @@ impl<'a> Checker<'a> {
                 .map(|_| self.u.fresh(VarKind::Any))
                 .collect();
         }
-        if args.len() != params.len() {
+        let params = params.to_vec();
+        let defaults: Vec<Option<Id<TypeExpr>>> = (self.ast.structs[s].generics.iter())
+            .map(|g| g.default)
+            .collect();
+        let required = defaults.iter().take_while(|d| d.is_none()).count();
+        if args.len() < required || args.len() > params.len() {
             args.iter().for_each(|&a| {
                 self.lower_arg(a, None);
             });
-            self.errors.push(TypeError::WrongTypeArgCount {
-                name: self.names.def(def).name.to_string(),
-                expected: params.len(),
-                found: args.len(),
-                span,
-            });
+            self.wrong_arg_count(def, required, params.len(), args.len(), span);
             return vec![self.u.table.error; params.len()];
         }
-        (args.iter().zip(params))
+        let given: Vec<TypeId> = (args.iter().zip(&params))
             .map(|(&arg, &param)| self.lower_arg(arg, Some(param)))
-            .collect()
+            .collect();
+        self.with_defaults(&params, &defaults, given)
+    }
+
+    /// `given`, the arguments written for generic parameters `params`, then the rest from
+    /// their `defaults`, which can name the parameters before them: `B` in
+    /// `struct Pair<A, B = A>` is `A`'s argument if it's left out.
+    pub(super) fn with_defaults(
+        &mut self,
+        params: &[DefId],
+        defaults: &[Option<Id<TypeExpr>>],
+        mut given: Vec<TypeId>,
+    ) -> Vec<TypeId> {
+        for index in given.len()..params.len() {
+            let Some(default) = defaults.get(index).copied().flatten() else {
+                given.push(self.u.table.error);
+                continue;
+            };
+            let ty = self.lower(default);
+            let subst: Vec<(DefId, TypeId)> =
+                params.iter().copied().zip(given.iter().copied()).collect();
+            let ty = self.substitute(ty, &subst);
+            given.push(ty);
+        }
+        given
+    }
+
+    /// Reports `found` type arguments for `def`, which takes `required` to `most`.
+    pub(super) fn wrong_arg_count(
+        &mut self,
+        def: DefId,
+        required: usize,
+        most: usize,
+        found: usize,
+        span: Span,
+    ) {
+        let name = self.names.def(def).name.to_string();
+        self.errors.push(match required == most {
+            true => TypeError::WrongTypeArgCount {
+                name,
+                expected: most,
+                found,
+                span,
+            },
+            false => TypeError::WrongTypeArgRange {
+                name,
+                required,
+                most,
+                found,
+                span,
+            },
+        });
     }
 
     /// An argument for generic parameter `param`: a type, or a value if it's a value parameter.
@@ -1436,7 +1490,7 @@ impl<'a> Checker<'a> {
                 edits: deref,
             });
         }
-        let bound = self.operator_fix(to, LangTrait::Copy)?;
+        let bound = self.operator_fix(to, LangTrait::Copy, None)?;
         if self.lent_loop_variable(expr) {
             return Some(bound);
         }
@@ -1490,12 +1544,17 @@ impl<'a> Checker<'a> {
                 Ty::Param(def) => Some((lang.name(), Some(self.names.def(*def).name.to_string()))),
                 Ty::Var(_) | Ty::Error | Ty::Optional(_) => None,
                 _ if self.has_builtin(lhs, lang) => None,
+                // `string`'s operators are the standard library's to give.
+                Ty::Struct(def, _) if self.in_std(*def) => None,
                 _ => Some((lang.name(), None)),
             }
         });
         let fix = LangTrait::of_operator(op)
             .filter(|_| implement.is_some())
-            .and_then(|lang| self.operator_fix(lhs, lang));
+            .and_then(|lang| self.operator_fix(lhs, lang, Some(rhs)));
+        let takes = LangTrait::of_operator(op)
+            .map(|lang| self.operator_takes(lhs, lang))
+            .unwrap_or_default();
         self.errors.push(TypeError::InvalidOperands {
             op: op.symbol().into(),
             lhs: self.describe(lhs),
@@ -1504,6 +1563,7 @@ impl<'a> Checker<'a> {
             optional,
             implement,
             fix,
+            takes,
         });
     }
 
@@ -5076,6 +5136,14 @@ impl<'a> Checker<'a> {
             return lhs;
         }
 
+        // `"ab" * 3`, `money + money`: an implementation of the operator's trait for these
+        // operands, which says what comes out.
+        if let Some(lang) = LangTrait::of_operator(op)
+            && let Some(output) = self.operator_impl(id, lang, lhs, rhs)
+        {
+            return output;
+        }
+
         // `"score: " + n`: an operand of another type than one whose operator is a trait's
         // method becomes that type, through `From`, as an argument would.
         let (mut lhs, mut rhs) = (lhs, rhs);
@@ -5087,9 +5155,9 @@ impl<'a> Checker<'a> {
             && let Some(lang) = LangTrait::of_operator(op)
             && !self.u.could_fit(lhs, rhs)
         {
-            let has_op = |c: &Self, ty: TypeId| {
+            let has_op = |c: &mut Self, ty: TypeId| {
                 let ty = c.u.shallow(ty);
-                matches!(c.u.get(ty), Ty::Struct(..)) && c.implements_lang(ty, lang)
+                matches!(c.u.get(ty), Ty::Struct(..)) && c.self_operator(ty, lang).is_some()
             };
             // As the operand is, before being read through: `r` of a `&i32` as a `&i32`.
             let own = |c: &Self, side: Id<Expr>, ty: TypeId| c.exprs[side.id].unwrap_or(ty);
@@ -5106,8 +5174,8 @@ impl<'a> Checker<'a> {
             return if is_arithmetic(op) { error } else { bool };
         }
         // Values of a type implementing `Eq` compare with its `eq`, `Add` add with its `add`.
-        if self.trait_op(id, op, lhs) {
-            return result;
+        if let Some(output) = self.trait_op(id, op, lhs) {
+            return if is_arithmetic(op) { output } else { bool };
         }
         match self.operand_ok(op, lhs) {
             Some(true) => {}

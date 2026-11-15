@@ -69,6 +69,9 @@ pub enum TypeError {
         implement: Option<(&'static str, Option<String>)>,
         /// Writing the implementation, or the bound.
         fix: Option<Fix>,
+        /// What the left operand's type does take on the right, through its implementations:
+        /// `usize` for `"ab" * 1.5`.
+        takes: Vec<String>,
     },
     WrongArgCount {
         name: String,
@@ -217,6 +220,15 @@ pub enum TypeError {
     WrongTypeArgCount {
         name: String,
         expected: usize,
+        found: usize,
+        span: Span,
+    },
+    /// `Pair<i32, i32, i32>` for `struct Pair<A, B = A>`: between `required` and `most` type
+    /// arguments, the rest having defaults.
+    WrongTypeArgRange {
+        name: String,
+        required: usize,
+        most: usize,
         found: usize,
         span: Span,
     },
@@ -653,6 +665,7 @@ impl TypeError {
                 optional,
                 implement,
                 fix,
+                takes,
             } => {
                 let d = Diagnostic::error(msg![
                     "cannot apply ",
@@ -695,6 +708,19 @@ impl TypeError {
                                 " for the type"
                             ]),
                         }
+                    }
+                    // `"ab" * 3`: it has the operator, with something else on the right.
+                    None if !takes.is_empty() => {
+                        let mut hint = msg![lhs.clone(), " has ", code(op), " with "];
+                        for (i, ty) in takes.iter().enumerate() {
+                            if i > 0 {
+                                hint.push(if i + 1 == takes.len() { " or " } else { ", " });
+                            }
+                            hint.push(code(ty));
+                        }
+                        hint.push(" on the right");
+                        d.with_label(Label::primary(span.clone(), "no such operation"))
+                            .with_hint(hint)
                     }
                     None => d.with_label(Label::primary(span.clone(), "no such operation")),
                 }
@@ -950,6 +976,26 @@ impl TypeError {
                 ])
                 .with_label(Label::primary(span.clone(), "here"))
             }
+            TypeError::WrongTypeArgRange {
+                name,
+                required,
+                most,
+                found,
+                span,
+            } => Diagnostic::error(msg![
+                struct_name(name),
+                format!(" takes {required} to {most} type arguments, but {found} "),
+                if *found == 1 {
+                    "was given"
+                } else {
+                    "were given"
+                }
+            ])
+            .with_label(Label::primary(span.clone(), "here"))
+            .with_hint(msg![match most - required {
+                1 => "the last one has a default, and can be left out".to_string(),
+                n => format!("the last {n} have defaults, and can be left out"),
+            }]),
             TypeError::AliasCycle { name, span } => {
                 Diagnostic::error(msg!["type alias ", struct_name(name), " refers to itself"])
                     .with_label(Label::primary(span.clone(), "used in its own definition"))

@@ -47,24 +47,28 @@ pub trait From<T> {
     fn from(value: T) -> Self;
 }
 
-/// `a + b`.
-pub trait Add {
-    fn add(self: &Self, other: &Self) -> Self;
+/// `a + b`: `Other` is what's on the right, `Output` what comes out. Both are `Self`
+/// unless an implementation says: `impl Add<f32> for Vector`.
+pub trait Add<Other = Self, Output = Self> {
+    fn add(self: &Self, other: &Other) -> Output;
 }
 
-/// `a - b`.
-pub trait Subtract {
-    fn subtract(self: &Self, other: &Self) -> Self;
+/// `a - b`: `Other` is what's on the right, `Output` what comes out. Both are `Self`
+/// unless an implementation says: `impl Subtract<f32> for Vector`.
+pub trait Subtract<Other = Self, Output = Self> {
+    fn subtract(self: &Self, other: &Other) -> Output;
 }
 
-/// `a * b`.
-pub trait Multiply {
-    fn multiply(self: &Self, other: &Self) -> Self;
+/// `a * b`: `Other` is what's on the right, `Output` what comes out. Both are `Self`
+/// unless an implementation says: `impl Multiply<f32> for Vector`.
+pub trait Multiply<Other = Self, Output = Self> {
+    fn multiply(self: &Self, other: &Other) -> Output;
 }
 
-/// `a / b`.
-pub trait Divide {
-    fn divide(self: &Self, other: &Self) -> Self;
+/// `a / b`: `Other` is what's on the right, `Output` what comes out. Both are `Self`
+/// unless an implementation says: `impl Divide<f32> for Vector`.
+pub trait Divide<Other = Self, Output = Self> {
+    fn divide(self: &Self, other: &Other) -> Output;
 }
 
 /// Which of two values comes first. The language relies on the variants' order.

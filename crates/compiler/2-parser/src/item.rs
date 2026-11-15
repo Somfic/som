@@ -225,7 +225,7 @@ impl Parser<'_> {
     /// `impl<T> Pair<T> { … }`, or `impl<T> Iterator for ListIter<T> { type Item = &T; … }`.
     fn parse_impl(&mut self) -> Option<Impl> {
         self.expect(TokenKind::Impl, "an impl block")?;
-        let generics = self.parse_generics()?;
+        let generics = self.parse_generics(false)?;
         // `impl i32 { … }`: methods for a built-in type.
         if !self.at(TokenKind::Ident) {
             let ty = self.parse_type()?;
@@ -346,7 +346,7 @@ impl Parser<'_> {
         let start = self.current_span();
         self.expect(TokenKind::Trait, "a trait declaration")?;
         let name = self.parse_ident("a trait name")?;
-        let generics = self.parse_generics()?;
+        let generics = self.parse_generics(true)?;
         // `trait IndexMut: Index`
         let mut supers = Vec::new();
         if self.eat(TokenKind::Colon) {
@@ -418,7 +418,7 @@ impl Parser<'_> {
             self.expect_fn("a method declaration")?;
         }
         let name = self.parse_ident("a method name")?;
-        let own = self.parse_generics()?;
+        let own = self.parse_generics(false)?;
         let (params, variadic) = match prop {
             true => (self.prop_params(&name)?, false),
             false => self.parse_params(false)?,
@@ -441,14 +441,19 @@ impl Parser<'_> {
                 span: trait_name.span.clone(),
             },
             ty: None,
+            default: None,
             bounds: std::iter::once(som_ast::Path {
                 segments: vec![trait_name.clone()],
             })
             .chain(self.trait_supers.iter().cloned())
             .collect(),
         };
+        // The defaults are the trait's: a method's copies don't have them.
         let generics = std::iter::once(this)
-            .chain(trait_generics.iter().cloned())
+            .chain(trait_generics.iter().map(|g| som_ast::Generic {
+                default: None,
+                ..g.clone()
+            }))
             .chain(own)
             .collect();
         let span = self.span_from(&start);
@@ -492,7 +497,7 @@ impl Parser<'_> {
         let doc = self.doc_comment();
         self.expect(TokenKind::Type, "a type alias")?;
         let name = self.parse_ident("a type alias name")?;
-        let generics = self.parse_generics()?;
+        let generics = self.parse_generics(false)?;
         self.expect(TokenKind::Equals, "`=` and the type")?;
         let ty = self.parse_type()?;
         self.expect(TokenKind::Semicolon, "a semicolon after the type alias")?;
@@ -547,7 +552,7 @@ impl Parser<'_> {
         let handle = self.eat(TokenKind::Extern);
         self.expect_struct("a struct declaration")?;
         let name = self.parse_ident("a struct name")?;
-        let generics = self.parse_generics()?;
+        let generics = self.parse_generics(true)?;
 
         let fields = if handle {
             self.expect(TokenKind::Semicolon, "a semicolon after an extern struct")?;
@@ -783,7 +788,7 @@ impl Parser<'_> {
         let start = self.current_span();
         self.expect(TokenKind::Enum, "an enum declaration")?;
         let name = self.parse_ident("an enum name")?;
-        let generics = self.parse_generics()?;
+        let generics = self.parse_generics(true)?;
         self.expect(TokenKind::OpenBrace, "a list of enum variants")?;
         let variants = self.parse_comma_list(TokenKind::CloseBrace, |p| p.parse_variant())?;
         self.expect(TokenKind::CloseBrace, "a closing brace after the variants")?;
@@ -874,7 +879,7 @@ impl Parser<'_> {
         }
         let name = self.parse_ident("a function name")?;
 
-        let generics = self.parse_generics()?;
+        let generics = self.parse_generics(false)?;
         let (params, variadic) = match prop {
             true => (self.prop_params(&name)?, false),
             false => self.parse_params(false)?,
@@ -1030,10 +1035,13 @@ impl Parser<'_> {
 
     /// `<T, N: usize>` declaring generic parameters, if it's there: a type parameter is a
     /// name, a value parameter a name and its type.
-    fn parse_generics(&mut self) -> Option<Vec<som_ast::Generic>> {
+    /// `<T, N: usize, Other = Self>`. Only a struct's or a trait's parameters can have a
+    /// default, `with_defaults`.
+    fn parse_generics(&mut self, with_defaults: bool) -> Option<Vec<som_ast::Generic>> {
         if !self.eat(TokenKind::LessThan) {
             return Some(Vec::new());
         }
+        let mut defaulted = false;
         let params = self.parse_comma_list(TokenKind::GreaterThan, |p| {
             let name = p.parse_ident("a generic parameter name")?;
             let (mut ty, mut bounds) = (None, Vec::new());
@@ -1050,7 +1058,38 @@ impl Parser<'_> {
                     }
                 }
             }
-            Some(som_ast::Generic { name, ty, bounds })
+            let mut default = None;
+            let at = p.current_span();
+            if p.eat(TokenKind::Equals) {
+                default = Some(p.parse_type()?);
+                if !with_defaults {
+                    p.error_at(
+                        at.clone(),
+                        "only a struct's or a trait's parameters have defaults",
+                        "a default isn't allowed here",
+                    );
+                } else if ty.is_some() {
+                    p.error_at(
+                        at.clone(),
+                        "a value parameter has no default",
+                        "a default isn't allowed here",
+                    );
+                }
+                defaulted = true;
+            } else if defaulted && with_defaults {
+                // `<A = i32, B>`: which one does `<u8>` give?
+                p.error_at(
+                    name.span.clone(),
+                    "a parameter without a default can't come after one with a default",
+                    "give it a default, or move it before those that have one",
+                );
+            }
+            Some(som_ast::Generic {
+                name,
+                ty,
+                bounds,
+                default,
+            })
         })?;
         self.expect(
             TokenKind::GreaterThan,

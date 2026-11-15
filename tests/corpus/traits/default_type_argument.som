@@ -1,0 +1,23 @@
+// expect: exit 12
+
+/// A trait's parameter with a default can be left out of an implementation, and the default
+/// can name `Self` and the parameters before it.
+trait Scale<By = Self, Out = By> {
+    fn scale(self: &Self, by: &By) -> Out;
+}
+
+struct Meters { n: i32 }
+
+impl Scale<i32> for Meters {
+    fn scale(&self, by: &i32) -> i32 { self.n * *by }
+}
+
+impl Scale for i64 {
+    fn scale(&self, by: &i64) -> i64 { *self * *by }
+}
+
+fn main() -> i32 {
+    let m = Meters { n: 2 };
+    let big: i64 = 2;
+    m.scale(&3) + big.scale(&3) as i32
+}

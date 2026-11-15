@@ -1,19 +1,13 @@
 extern "c";
 
-/// Writes `value` as text, then a newline: anything `Display`, as `"{value}"` shows it.
 pub fn println<T: Display>(value: T) {
     let text = "{value}";
     c::printf("%s\n", text.c_str);
 }
 
-/// Writes `value` as text, with no newline after it.
 pub fn print<T: Display>(value: T) {
     let text = "{value}";
     c::printf("%s", text.c_str);
-}
-
-extern {
-    pub fn printf(pattern: cstr, ...) -> i32;
 }
 
 pub fn exit(code: i32) = c::exit(code);
@@ -23,8 +17,6 @@ extern {
     fn som_arg(index: i32) -> cstr;
 }
 
-/// The program's command-line arguments, its own path first: `som run main.som -- a b`
-/// gives the path, `a` and `b`.
 pub fn args() -> List<string> {
     let mut all: List<string> = List::empty();
     for i in 0..som_arg_count() {
@@ -33,8 +25,6 @@ pub fn args() -> List<string> {
     all
 }
 
-/// The next line typed in (from standard input), without its newline; `none` once there's
-/// nothing more to read.
 pub fn read_line() -> string? {
     let mut bytes: List<u8> = List::empty();
     let mut read = c::getchar();

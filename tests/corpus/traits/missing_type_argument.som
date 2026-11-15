@@ -1,0 +1,10 @@
+// expect: error WrongTypeArgCount
+
+/// A trait's parameter without a default has to be given.
+trait Into<T> { fn into(self: &Self) -> T; }
+
+impl Into for i32 {
+    fn into(&self) -> i32 { *self }
+}
+
+fn main() -> i32 { 0 }

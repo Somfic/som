@@ -152,6 +152,9 @@ pub struct Generic {
     pub ty: Option<Id<TypeExpr>>,
     /// The traits a type parameter has to implement: anything else after the `:`.
     pub bounds: Vec<Path>,
+    /// The type it is when it's left out, after the `=`: `Other` in
+    /// `trait Add<Other = Self>`. Only a struct's or a trait's parameters have one.
+    pub default: Option<Id<TypeExpr>>,
 }
 
 pub struct Param {

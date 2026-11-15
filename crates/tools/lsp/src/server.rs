@@ -1750,6 +1750,7 @@ fn describe(a: &Analysis, def: DefId) -> String {
             }
         }
         DefKind::TypeParam { .. }
+        | DefKind::TraitParam { .. }
         | DefKind::StructParam { .. }
         | DefKind::ImplParam { .. }
         | DefKind::AliasParam { .. } => {

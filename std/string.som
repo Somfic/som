@@ -105,6 +105,17 @@ impl Add for string {
     }
 }
 
+/// The text `times` times over: `"ab" * 3` is `"ababab"`.
+impl Multiply<usize> for string {
+    fn multiply(&self, times: &usize) -> Self {
+        let repeated = string::with_len(.len * *times);
+        for i in 0..*times {
+            c::memcpy(repeated.data.at(i * .len) as *u8 as *, .data as *, .len as u64);
+        }
+        repeated
+    }
+}
+
 impl Eq for string {
     fn eq(&self, other: &Self) -> bool {
         .len == other.len and c::memcmp(.data as *, other.data as *, .len as u64) == 0
