@@ -1,23 +1,84 @@
 extern "c";
 
 impl f32 {
-    pub fn pow(self, power: f32) {
+    pub fn pow(self, power: f32) -> f32 {
         c::powf(self, power)
     }
 
-    pub fn sqrt(self) {
+    pub fn sqrt(self) -> f32 {
         c::sqrtf(self)
+    }
+
+    // the trigonometric sine
+    pub fn sin(rads: f32) -> f32 {
+        c::sinf(rads)
+    }
+
+    // the hyperbolic sine
+    pub fn sinh(rads: f32) -> f32 {
+        c::sinhf(rads)
+    }
+
+    // the trigonometric cosine
+    pub fn cos(rads: f32) -> f32 {
+        c::cosf(rads)
+    }
+
+    // the hyperbolic cosine
+    pub fn cosh(rads: f32) -> f32 {
+        c::coshf(rads)
+    }
+
+     // the trigonometric tangent
+    pub fn tan(rads: f32) -> f32 {
+        c::tanf(rads)
+    }
+
+    // the hyperbolic tangent
+    pub fn tanh(rads: f32) -> f32 {
+        c::tanhf(rads)
     }
 }
 
 
 impl f64 {
-    pub fn pow(self, power: f64) {
+    pub fn pow(self, power: f64) -> f64 {
         c::pow(self, power)
     }
 
-    pub fn sqrt(self) {
+    pub fn sqrt(self) -> f64 {
         c::sqrt(self)
+    }
+
+
+    // the trigonometric sine
+    pub fn sin(rads: f64) -> f64 {
+        c::sin(rads)
+    }
+
+    // the hyperbolic sine
+    pub fn sinh(rads: f64) -> f64 {
+        c::sinh(rads)
+    }
+
+    // the trigonometric cosine
+    pub fn cos(rads: f64) -> f64 {
+        c::cos(rads)
+    }
+
+    // the hyperbolic cosine
+    pub fn cosh(rads: f64) -> f64 {
+        c::cosh(rads)
+    }
+
+     // the trigonometric tangent
+    pub fn tan(rads: f64) -> f64 {
+        c::tan(rads)
+    }
+
+    // the hyperbolic tangent
+    pub fn tanh(rads: f64) -> f64 {
+        c::tanh(rads)
     }
 }
 

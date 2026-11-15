@@ -1,6 +1,5 @@
 extern "raylib";
 extern "box2d" from "box2d/box2d.h";
-extern "c";
 
 let scale = 30.0; // pixels per meter
 
@@ -34,7 +33,7 @@ while i < 100000 {
     def.position = box2d::B2Vec2 { x: (i % 10) as f32 * radius, y: (i / 10) as f32 * radius };
     // a few m/s, pointing a random angle within 30 degrees of straight up
     let angle = (raylib::get_random_value(-30, 30) as f32 - 90.0) * 3.14159 / 180.0;
-    def.linear_velocity = box2d::B2Vec2 { x: c::cosf(angle) * 4.0, y: c::sinf(angle) * 4.0 };
+    def.linear_velocity = box2d::B2Vec2 { x: f32::cos(angle) * 4.0, y: f32::sin(angle) * 4.0 };
     let body = box2d::b2_create_body(world, &def);
     let mut shape = box2d::b2_default_shape_def();
     shape.material.restitution = 1.0;
@@ -62,3 +61,6 @@ while !raylib::window_should_close() {
 }
 
 raylib::close_window();
+
+
+printf
