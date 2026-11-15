@@ -58,7 +58,7 @@
         },
         {
           "name": "keyword.other.som",
-          "match": "\\b(fn|prop|extern|struct|enum|impl|trait|type|let|mut|out|self|pub|mod)\\b"
+          "match": "\\b(fn|prop|extern|struct|enum|impl|trait|type|const|let|mut|out|self|pub|mod)\\b"
         },
         {
           "name": "constant.language.boolean.som",
@@ -71,6 +71,11 @@
         {
           "name": "entity.name.type.primitive.som",
           "match": "\\b(i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|f32|f64|bool|char|string|cstr)\\b"
+        },
+        {
+          "comment": "A constant's name: RED, MAX_LEN (not a lone T, a type parameter)",
+          "name": "variable.other.constant.som",
+          "match": "\\b[A-Z][A-Z0-9_]+\\b"
         },
         {
           "comment": "Self, the type an impl block is for",

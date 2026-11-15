@@ -1,0 +1,30 @@
+// expect: exit 43
+
+/// A constant in an impl block is named through its type, `Color::RED`, or `Self::BLACK`
+/// inside the block. Built-in types and enums can have them too.
+struct Color { r: u8, g: u8, b: u8 }
+
+impl Color {
+    pub const RED = Color { r: 255, g: 0, b: 0 };
+    const BLACK: Self = Self { r: 0, g: 0, b: 0 };
+
+    fn dark() -> Color = Self::BLACK;
+}
+
+impl f32 {
+    pub const TAU: f32 = 6.25;
+}
+
+enum Dir { Up, Down }
+
+impl Dir {
+    const COUNT = 2;
+}
+
+fn main() -> i32 {
+    let c = Color::RED;
+    let d = Color::dark();
+    let cells = [0; Dir::COUNT];
+    // 25 + 0 + 6 + 2 + 10
+    c.r as i32 / 10 + d.g as i32 + f32::TAU as i32 + cells.len as i32 + Dir::COUNT * 5
+}

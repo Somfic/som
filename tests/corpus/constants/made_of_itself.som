@@ -1,0 +1,6 @@
+// expect: error ConstCycle
+
+const A = B + 1;
+const B = A * 2;
+
+fn main() -> i32 = A;

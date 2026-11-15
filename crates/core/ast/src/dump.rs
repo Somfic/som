@@ -171,6 +171,14 @@ impl Dumper<'_> {
                     ast.type_text(a.ty)
                 ))
             }
+            Item::Const(id) => {
+                let c = &ast.consts[*id];
+                let header = match c.ty {
+                    Some(ty) => format!("const {}: {}", c.name, ast.type_text(ty)),
+                    None => format!("const {}", c.name),
+                };
+                self.node(header, |d| d.expr(c.value))
+            }
             Item::Extern(block) => {
                 let mut header = match &block.library {
                     Some(lib) => format!("extern {lib:?}"),

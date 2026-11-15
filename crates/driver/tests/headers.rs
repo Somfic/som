@@ -44,6 +44,14 @@ typedef enum {
     DEMO_KEY_LEFT_ARROW = 263,
 } DemoKey;
 int demo_key(int key);
+#define DEMO_MAX 40
+#define DEMO_PI 3.5f
+#define DEMO_HALF_PI (DEMO_PI / 2.0f)
+#define DEMO_MASK (~0u >> 28)
+#define DEMO_NAME \"demo\"
+#define DEMO_PAIR (Pair){ 2, 0.25f } // Two and a quarter
+#define DEMO_SQUARE(x) ((x) * (x))
+#define DEMO_CALL demo_add(1, 2)
 ";
 
 const SOURCE: &str = "
@@ -557,6 +565,42 @@ fn enums_become_enums_whose_variants_convert_to_their_numbers() {
          }",
     );
     let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
+    let exe =
+        som_driver::build(&checked, &dir.path().join("program"), &Default::default()).unwrap();
+    assert_eq!(
+        som_driver::run(&checked, &exe, &[]).unwrap().code(),
+        Some(42)
+    );
+}
+
+#[test]
+fn defines_that_stand_for_values_become_constants() {
+    let dir = project();
+    let main = write(
+        dir.path(),
+        "extern \"demo\" from \"demo.h\";
+         fn main() -> i32 {
+             let p = demo::Pair::DEMO_PAIR;
+             let half = (demo::DEMO_HALF_PI * 4.0) as i32;
+             // 40 + 2 + 7 - 15 + 8
+             demo::DEMO_MAX + demo_left(p) + half - demo::DEMO_MASK as i32 + (p.right * 32.0) as i32
+         }
+         fn demo_left(p: demo::Pair) -> i32 = demo::demo_left(p);",
+    );
+    let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
+    let generated = std::fs::read_to_string(dir.path().join(".som/demo.som")).unwrap();
+    for expected in [
+        "pub const DEMO_MAX: i32 = 40;",
+        "pub const DEMO_PI: f32 = 3.5;",
+        "pub const DEMO_HALF_PI: f32 = 1.75;",
+        "pub const DEMO_MASK: u32 = 15;",
+        "pub const DEMO_NAME: cstr = \"demo\";",
+        "impl Pair {\n    /// Two and a quarter\n    pub const DEMO_PAIR = Pair { left: 2, right: 0.25 };\n}",
+    ] {
+        assert!(generated.contains(expected), "{expected:?} in:\n{generated}");
+    }
+    // Macros taking arguments, and calls, aren't values.
+    assert!(!generated.contains("DEMO_SQUARE") && !generated.contains("DEMO_CALL"));
     let exe =
         som_driver::build(&checked, &dir.path().join("program"), &Default::default()).unwrap();
     assert_eq!(

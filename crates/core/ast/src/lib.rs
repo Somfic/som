@@ -30,6 +30,7 @@ pub struct Ast {
     pub types: Nodes<TypeExpr>,
     pub patterns: Nodes<Pattern>,
     pub traits: Nodes<Trait>,
+    pub consts: Nodes<Const>,
     /// Statements that were a block's last line without a `;`, where the block's value isn't
     /// used: `end_drawing()` in `while … { begin_drawing(); end_drawing() }`.
     pub unterminated: std::collections::HashSet<Id<Stmt>>,

@@ -66,6 +66,10 @@ pub enum ResolveError {
         span: Span,
         fix: Fix,
     },
+    /// `const N = count();`: a constant's value has to be known while compiling.
+    ConstNotKnown { span: Span },
+    /// `const A = B; const B = A;`: a constant made of itself.
+    ConstCycle { name: String, span: Span },
     /// `break x;` or `continue x;` where `x` isn't a `for` loop's variable.
     NotALoop {
         keyword: &'static str,
@@ -161,6 +165,19 @@ impl ResolveError {
                     msg!["a library is used where its ", code(format!("extern \"{library}\"")), " is"],
                 ))
                 .with_fix(fix.clone());
+            }
+            ResolveError::ConstNotKnown { span } => {
+                return Diagnostic::error("a constant's value has to be known while compiling")
+                    .with_label(Label::primary(span.clone(), "only known when the program runs"))
+                    .with_hint("a constant is made of literals, operators, casts, other constants, and arrays and structs of those");
+            }
+            ResolveError::ConstCycle { name, span } => {
+                return Diagnostic::error(msg![
+                    "constant ",
+                    var(name),
+                    " is made of itself"
+                ])
+                .with_label(Label::primary(span.clone(), "its value comes back to it"));
             }
             ResolveError::NotALoop {
                 keyword,

@@ -29,7 +29,9 @@ fn help(error: &ResolveError) -> Option<String> {
         | ResolveError::PropNamedLikeField { .. }
         | ResolveError::PropGenerics { .. }
         | ResolveError::NotVisible { .. }
-        | ResolveError::LibraryNotDeclared { .. } => None,
+        | ResolveError::LibraryNotDeclared { .. }
+        | ResolveError::ConstNotKnown { .. }
+        | ResolveError::ConstCycle { .. } => None,
     }
 }
 

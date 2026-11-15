@@ -318,7 +318,7 @@ impl LanguageServer for SomLanguageServer {
                         SemanticTokensOptions {
                             legend: SemanticTokensLegend {
                                 token_types: TOKEN_TYPES.to_vec(),
-                                token_modifiers: vec![],
+                                token_modifiers: TOKEN_MODIFIERS.to_vec(),
                             },
                             full: Some(SemanticTokensFullOptions::Bool(true)),
                             range: None,
@@ -708,6 +708,18 @@ impl LanguageServer for SomLanguageServer {
                         SymbolKind::TYPE_PARAMETER,
                         &span,
                         &alias.name.span,
+                        None,
+                    ));
+                }
+                Item::Const(id) => {
+                    let c = &ast.consts[*id];
+                    let def = a.names.const_def(*id);
+                    symbols.push(symbol(
+                        c.name.name.to_string(),
+                        a.typed.try_local(def).map(|t| ty(a, t)),
+                        SymbolKind::CONSTANT,
+                        ast.consts.span(*id),
+                        &c.name.span,
                         None,
                     ));
                 }
@@ -1340,6 +1352,7 @@ impl LanguageServer for SomLanguageServer {
                 }
                 items.extend(module_items(a, m, None, insert));
             } else if let Some(owner) = a.names.primitives_named(module) {
+                items.extend(assoc_const_items(a, owner, &visible));
                 // `i32::` lists its own functions and methods.
                 for (name, method) in a.names.methods_of(owner) {
                     if !visible(method) {
@@ -1392,6 +1405,7 @@ impl LanguageServer for SomLanguageServer {
                     });
                 }
                 let owner = a.names.strukt(s);
+                items.extend(assoc_const_items(a, owner, &visible));
                 for (name, method) in a.names.methods_of(owner) {
                     if !visible(method) {
                         continue;
@@ -1474,6 +1488,7 @@ impl LanguageServer for SomLanguageServer {
             for keyword in [
                 "fn", "let", "mut", "if", "else", "struct", "impl", "extern", "loop", "while",
                 "break", "use", "out", "true", "false", "enum", "match", "trait", "type",
+                "const",
             ] {
                 items.push(CompletionItem {
                     label: keyword.to_string(),
@@ -1761,6 +1776,27 @@ fn describe(a: &Analysis, def: DefId) -> String {
                 Some(t) => format!("{}: {}", d.name, ty(a, t)),
                 None => d.name.to_string(),
             }
+        }
+        DefKind::Const(c) => {
+            let mut text = match a.typed.try_local(def) {
+                Some(t) => format!("const {}: {}", d.name, ty(a, t)),
+                None => format!("const {}", d.name),
+            };
+            // Its value as written, and what that works out to if it's not a number already:
+            // `W * H` is 1200.
+            let value = a.ast.consts[*c].value;
+            let span = a.ast.exprs.span(value);
+            let source = span.source.content();
+            if let Some(written) = source.get(span.start_offset..span.start_offset + span.length) {
+                let written = written.split_whitespace().collect::<Vec<_>>().join(" ");
+                text.push_str(&format!(" = {written}"));
+                if let Some(n) = som_typeck::const_number(&a.ast, &a.names, value)
+                    && written != n.to_string()
+                {
+                    text.push_str(&format!("  // {n}"));
+                }
+            }
+            text
         }
         DefKind::TypeParam { .. }
         | DefKind::TraitParam { .. }
@@ -2066,6 +2102,11 @@ fn doc_of(a: &Analysis, def: DefId) -> Option<String> {
     match a.names.def(def).kind {
         DefKind::Func(f) => func_doc(a, f),
         DefKind::Struct(s) => struct_doc(a, s),
+        // An imported one links to its `#define`.
+        DefKind::Const(c) => {
+            let c = &a.ast.consts[c];
+            with_origin_link(c.doc.clone(), origin_of(&c.name))
+        }
         _ => None,
     }
 }
@@ -3009,6 +3050,24 @@ fn qualifier(text: &str, offset: usize) -> Option<&str> {
 
 /// Completions for the functions and structs in module `m`, named `module::name` when a
 /// module is given.
+/// `Color::RED`: the constants `owner`'s impl blocks give it that `visible` lets be seen.
+fn assoc_const_items(
+    a: &Analysis,
+    owner: DefId,
+    visible: &dyn Fn(DefId) -> bool,
+) -> Vec<CompletionItem> {
+    (a.names.assoc_consts_of(owner).into_iter())
+        .filter(|&(_, def)| visible(def))
+        .map(|(name, def)| CompletionItem {
+            label: name.to_string(),
+            kind: Some(CompletionItemKind::CONSTANT),
+            detail: Some(describe(a, def)),
+            documentation: markdown(doc_of(a, def)),
+            ..Default::default()
+        })
+        .collect()
+}
+
 fn module_items(
     a: &Analysis,
     m: usize,
@@ -3036,6 +3095,16 @@ fn module_items(
             Item::Trait(id) => items.push(trait_item(a, *id, name(&a.ast.traits[*id].name.name))),
             Item::Alias(alias) => {
                 items.extend(alias_items(a, alias, name(&alias.name.name), Some(insert)))
+            }
+            Item::Const(id) => {
+                let def = a.names.const_def(*id);
+                items.push(CompletionItem {
+                    label: name(&a.ast.consts[*id].name.name),
+                    kind: Some(CompletionItemKind::CONSTANT),
+                    detail: Some(describe(a, def)),
+                    documentation: markdown(doc_of(a, def)),
+                    ..Default::default()
+                });
             }
             _ => {}
         }
@@ -3758,6 +3827,7 @@ fn reference_lenses(a: &Analysis, file: &str, uri: &Url) -> Vec<CodeLens> {
             Item::Func(f) => add(a.names.func(*f), &a.ast.funcs[*f].name.span),
             Item::Struct(s) => add(a.names.strukt(*s), &a.ast.structs[*s].name.span),
             Item::Trait(t) => add(a.names.trait_def(*t), &a.ast.traits[*t].name.span),
+            Item::Const(c) => add(a.names.const_def(*c), &a.ast.consts[*c].name.span),
             Item::Impl(block) => {
                 for &m in &block.methods {
                     add(a.names.func(m), &a.ast.funcs[m].name.span);
@@ -4016,6 +4086,17 @@ const TOKEN_TYPES: [SemanticTokenType; 10] = [
     SemanticTokenType::PARAMETER,
 ];
 
+/// `readonly`, bit 0: a constant, which themes colour as one.
+const TOKEN_MODIFIERS: [SemanticTokenModifier; 1] = [SemanticTokenModifier::READONLY];
+
+/// Whether `name` is written like a constant's: capitals, digits and `_`, at least two
+/// characters (a lone `T` is a type parameter).
+fn is_constant_name(name: &str) -> bool {
+    name.len() > 1
+        && name.starts_with(|c: char| c.is_ascii_uppercase())
+        && name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+}
+
 /// Token kinds from the lexer, refined with one token of lookaround.
 fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
     // `"total: {n + 1}"`: the values in text are code, coloured as such.
@@ -4071,7 +4152,12 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::In => 0,
             // `.len`, short for `self.len`: the dot is coloured like `self`.
             TokenKind::Dot if TokenKind::is_self_dot(prev, next) => 0,
+            // `const` isn't reserved, but before a name it declares a constant.
+            TokenKind::Ident if &*token.text == "const" && next == Some(TokenKind::Ident) => 0,
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
+            // `RED`, `MAX_LEN`: a constant's name, not a type's.
+            TokenKind::Ident if is_constant_name(&token.text) => 1,
+            // (marked `readonly` below)
             TokenKind::Ident if token.text.starts_with(char::is_uppercase) => 8,
             // `string` is a name, the standard library's, but it's text: coloured as a type,
             // like `i32` and `cstr`.
@@ -4143,7 +4229,9 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             },
             length: token.span.length as u32,
             token_type,
-            token_modifiers_bitset: 0,
+            token_modifiers_bitset: u32::from(
+                token.kind == TokenKind::Ident && is_constant_name(&token.text) && token_type == 1,
+            ),
         });
         (prev_line, prev_start) = (line, start);
     }
@@ -4163,6 +4251,27 @@ mod tests {
             .collect();
         // fn f p * i32 g 1 * 2   (`(`, `)`, `:`, `->`, `{`, `}` aren't highlighted)
         assert_eq!(types, [0, 7, 1, 4, 4, 7, 2, 6, 2]);
+    }
+
+    #[test]
+    fn const_is_a_keyword_and_constants_are_not_types() {
+        let source = Arc::new(Source::from_raw(
+            "const MAX_LEN: Size = Color::RED; let const = T;",
+        ));
+        let types: Vec<u32> = semantic_tokens(source)
+            .iter()
+            .map(|t| t.token_type)
+            .collect();
+        // const MAX_LEN Size = Color RED let const = T
+        assert_eq!(types, [0, 1, 8, 6, 8, 1, 0, 1, 6, 8]);
+        // Only the constants' names are `readonly`.
+        let readonly: Vec<u32> = semantic_tokens(Arc::new(Source::from_raw(
+            "const MAX_LEN: Size = Color::RED; let const = T;",
+        )))
+        .iter()
+        .map(|t| t.token_modifiers_bitset)
+        .collect();
+        assert_eq!(readonly, [0, 1, 0, 0, 0, 1, 0, 0, 0, 0]);
     }
 
     #[test]
@@ -4417,6 +4526,42 @@ mod tests {
         assert!(vector.is_some());
         assert_eq!(through_aliases, (vector, vector));
         assert_eq!(number, None);
+    }
+
+    #[test]
+    fn constants_complete_with_their_types_and_docs() {
+        let dir = std::env::temp_dir().join(format!("som_lsp_consts_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("main.som"),
+            "/// Cells across.\nconst COLS = 10;\nconst SCALE: f32 = 2.5;\n\
+             const CELLS = COLS * 20;\nfn main() -> i32 = COLS;\n",
+        )
+        .unwrap();
+        let a = som_driver::analyze(&dir, &som_driver::Options::default());
+        std::fs::remove_dir_all(&dir).unwrap();
+        let insert = Insert {
+            value: true,
+            call_follows: false,
+        };
+        let shown: Vec<(String, Option<CompletionItemKind>, Option<String>, bool)> =
+            (module_items(&a, 0, None, insert).into_iter())
+                .map(|i| (i.label, i.kind, i.detail, i.documentation.is_some()))
+                .collect();
+        let constant = Some(CompletionItemKind::CONSTANT);
+        assert_eq!(
+            shown,
+            [
+                ("COLS".into(), constant, Some("const COLS: i32 = 10".into()), true),
+                ("SCALE".into(), constant, Some("const SCALE: f32 = 2.5".into()), false),
+                (
+                    "CELLS".into(),
+                    constant,
+                    Some("const CELLS: i32 = COLS * 20  // 200".into()),
+                    false
+                ),
+            ]
+        );
     }
 
     #[test]

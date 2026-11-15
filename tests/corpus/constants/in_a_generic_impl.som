@@ -1,0 +1,10 @@
+// expect: error
+
+/// One constant can't stand for a value per type the block is for.
+struct Pair<T> { a: T, b: T }
+
+impl<T> Pair<T> {
+    const SIZE = 2;
+}
+
+fn main() -> i32 = 0;

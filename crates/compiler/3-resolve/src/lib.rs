@@ -220,6 +220,17 @@ impl<'a> Resolver<'a> {
                         self.names.add_alias(def, params);
                         self.add_item(m, &alias.name, def);
                     }
+                    Item::Const(id) => {
+                        let c = &ast.consts[*id];
+                        let def = (self.names).define(
+                            &c.name.name,
+                            DefKind::Const(*id),
+                            c.name.span.clone(),
+                            m,
+                        );
+                        self.names.set_const(*id, def);
+                        self.add_item(m, &c.name, def);
+                    }
                     Item::Use(_) => {}
                 }
             }
@@ -357,6 +368,23 @@ impl<'a> Resolver<'a> {
                     methods: block.methods.clone(),
                     types,
                 });
+                // `const PI = 3.14;`: named through the type.
+                for &c in &block.consts {
+                    let name = &ast.consts[c].name;
+                    let def = (self.names).define(&name.name, DefKind::Const(c), name.span.clone(), m);
+                    self.names.set_const(c, def);
+                    let Some(owner) = owner else { continue };
+                    let previous = (self.names.variant(owner, &name.name))
+                        .or_else(|| self.names.method(owner, &name.name))
+                        .or_else(|| self.names.add_assoc_const(owner, c, &name.name, def));
+                    if let Some(previous) = previous {
+                        self.errors.push(ResolveError::DuplicateDefinition {
+                            name: name.name.to_string(),
+                            span: name.span.clone(),
+                            previous: self.names.def(previous).span.clone(),
+                        });
+                    }
+                }
                 let Some(owner) = owner else {
                     continue;
                 };
@@ -365,6 +393,14 @@ impl<'a> Resolver<'a> {
                     let def = self.names.func(method);
                     if ast.funcs[method].prop {
                         self.collect_prop(owner, block, method, def);
+                        continue;
+                    }
+                    if let Some(constant) = self.names.assoc_const(owner, &name.name) {
+                        self.errors.push(ResolveError::DuplicateDefinition {
+                            name: name.name.to_string(),
+                            span: name.span.clone(),
+                            previous: self.names.def(constant).span.clone(),
+                        });
                         continue;
                     }
                     // Methods can share a name, like functions: `get` taking `&self` and
@@ -479,9 +515,124 @@ impl<'a> Resolver<'a> {
                         self.type_params.clear();
                     }
                     Item::Alias(_) => {}
+                    Item::Const(id) => {
+                        let c = &ast.consts[*id];
+                        self.type_params.clear();
+                        if let Some(ty) = c.ty {
+                            self.resolve_type(ty);
+                        }
+                        self.scopes.push(HashMap::new());
+                        self.resolve_expr(c.value);
+                        self.pop_scope();
+                    }
                     Item::Use(_) => {}
                 }
             }
+        }
+        self.check_consts();
+    }
+
+    /// A constant's value is known while compiling: made of literals, operators, casts, other
+    /// constants, and arrays and structs of those. And it can't be made of itself.
+    fn check_consts(&mut self) {
+        let ast = self.ast;
+        for (id, c) in ast.consts.iter() {
+            self.check_const_expr(c.value);
+            // Following the constants it names, it mustn't come back to itself.
+            let mut seen = HashSet::new();
+            let mut todo = vec![c.value];
+            while let Some(expr) = todo.pop() {
+                for used in self.consts_in(expr) {
+                    if used == id {
+                        self.errors.push(ResolveError::ConstCycle {
+                            name: c.name.name.to_string(),
+                            span: c.name.span.clone(),
+                        });
+                        todo.clear();
+                        break;
+                    }
+                    if seen.insert(used) {
+                        todo.push(ast.consts[used].value);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The constants `expr` names, directly.
+    fn consts_in(&self, expr: Id<Expr>) -> Vec<Id<som_ast::Const>> {
+        let mut found = Vec::new();
+        let mut todo = vec![expr];
+        while let Some(expr) = todo.pop() {
+            if let Expr::Var(_) = self.ast.exprs[expr]
+                && let Some(def) = self.names.expr(expr)
+                && let DefKind::Const(c) = self.names.def(def).kind
+            {
+                found.push(c);
+            }
+            todo.extend(self.const_parts(expr));
+        }
+        found
+    }
+
+    /// The expressions a constant's value is made of: what's inside `expr`.
+    fn const_parts(&self, expr: Id<Expr>) -> Vec<Id<Expr>> {
+        match &self.ast.exprs[expr] {
+            Expr::Array(items) => items.clone(),
+            Expr::Cast { value, .. }
+            | Expr::ArrayRepeat { value, .. }
+            | Expr::Not(value)
+            | Expr::Neg(value)
+            | Expr::BitNot(value) => vec![*value],
+            Expr::Binary { lhs, rhs, .. } => vec![*lhs, *rhs],
+            Expr::Construct { fields, .. } => fields.iter().map(|(_, v)| *v).collect(),
+            Expr::Conditional {
+                condition,
+                then,
+                otherwise,
+            } => vec![*condition, *then, *otherwise],
+            _ => Vec::new(),
+        }
+    }
+
+    /// Reports the parts of a constant's value that aren't known while compiling.
+    fn check_const_expr(&mut self, expr: Id<Expr>) {
+        let known = match &self.ast.exprs[expr] {
+            Expr::Hole
+            | Expr::Int(_)
+            | Expr::Float(_)
+            | Expr::Bool(_)
+            | Expr::Str(_)
+            | Expr::None
+            | Expr::Array(_)
+            | Expr::Cast { .. }
+            | Expr::ArrayRepeat { .. }
+            | Expr::Not(_)
+            | Expr::Neg(_)
+            | Expr::BitNot(_)
+            | Expr::Binary { .. }
+            | Expr::Construct { .. }
+            | Expr::Conditional { .. } => true,
+            // Another constant, `usize::MAX`, or a variant without values.
+            Expr::Var(path) => {
+                path.int_limit().is_some()
+                    || self.names.expr(expr).is_none_or(|def| {
+                        matches!(
+                            self.names.def(def).kind,
+                            DefKind::Const(_) | DefKind::Variant { .. }
+                        )
+                    })
+            }
+            _ => false,
+        };
+        if !known {
+            self.errors.push(ResolveError::ConstNotKnown {
+                span: self.ast.exprs.span(expr).clone(),
+            });
+            return;
+        }
+        for part in self.const_parts(expr) {
+            self.check_const_expr(part);
         }
     }
 
@@ -556,6 +707,15 @@ impl<'a> Resolver<'a> {
             )
             .collect();
         let outer = std::mem::replace(&mut self.owner, self.names.impls[index].owner);
+        for &c in &block.consts {
+            let c = &self.ast.consts[c];
+            if let Some(ty) = c.ty {
+                self.resolve_type(ty);
+            }
+            self.scopes.push(HashMap::new());
+            self.resolve_expr(c.value);
+            self.pop_scope();
+        }
         block.methods.iter().for_each(|&id| self.resolve_func(id));
         self.owner = outer;
         self.block_types.clear();
@@ -1223,10 +1383,12 @@ impl<'a> Resolver<'a> {
             [name] if matches!(self.names.def(owner).kind, DefKind::Primitive(_)) => self
                 .names
                 .method(owner, &name.name)
+                .or_else(|| self.names.assoc_const(owner, &name.name))
                 .filter(|&d| self.fits(d, expect)),
             [name] if matches!(self.names.def(owner).kind, DefKind::Struct(_)) => (self.names)
                 .variant(owner, &name.name)
                 .or_else(|| self.names.method(owner, &name.name))
+                .or_else(|| self.names.assoc_const(owner, &name.name))
                 .filter(|&d| self.fits(d, expect)),
             // `Hash::hash(&value, &mut hasher)`: a trait's method, for whichever type `self`
             // turns out to be.
@@ -1279,6 +1441,8 @@ impl<'a> Resolver<'a> {
                     | DefKind::ImplType { .. }
                     | DefKind::Alias { .. }
                     | DefKind::AliasParam { .. }
+                    // An array's length: `[i32; W]`.
+                    | DefKind::Const(_)
             ),
             Expect::Trait => matches!(kind, DefKind::Trait(_)),
         }

@@ -1,0 +1,6 @@
+// expect: error NotVisible
+
+/// A constant in an impl block is private to its type, as a method is.
+use geo;
+
+fn main() -> i32 = geo::P::ONE.x + geo::P::secret() + geo::P::SECRET;

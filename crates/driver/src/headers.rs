@@ -42,6 +42,8 @@ use std::sync::Arc;
 use crate::LoadError;
 use crate::libraries::{self, LibraryError};
 
+mod macros;
+
 /// Sets up the library modules for `module`'s `extern` blocks. A library's functions
 /// go in a module named after it (`raylib::InitWindow`), whether they're written by
 /// hand or imported from its header; `use extern` also `use`s that module. Headers are
@@ -171,8 +173,10 @@ fn import_header(
                 .as_deref()
                 .and_then(|file| libraries::read_symbols(file).ok())
                 .map(|names| names.into_iter().collect());
+            // The header's `#define`s, for its constants; without them, there are none.
+            let preprocessed = clang_macros(&path, root, library_dirs).unwrap_or_default();
             let (generated, origins) = match clang_ast(&path, root, library_dirs) {
-                Ok(json) => generate(&json, library, header, exported.as_ref()),
+                Ok(json) => generate(&json, library, header, exported.as_ref(), &preprocessed),
                 Err(message) => {
                     errors.push(LoadError::HeaderFailed {
                         header: header.to_string(),
@@ -492,7 +496,7 @@ fn compatible(
 }
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 23;
+const GENERATOR_VERSION: u32 = 25;
 
 /// The first line of a cached import: everything it depends on. Any change to the header,
 /// the library or the generator makes it stale.
@@ -624,6 +628,27 @@ fn clang_ast(header: &Path, root: &Path, library_dirs: &[PathBuf]) -> Result<Val
     }
     serde_json::from_slice(&output.stdout)
         .map_err(|e| format!("could not read clang's output: {e}"))
+}
+
+/// The header after the preprocessor, keeping its `#define`s (`-E -dD`), which say what
+/// each name stands for, and lines saying which file each is in.
+fn clang_macros(header: &Path, root: &Path, library_dirs: &[PathBuf]) -> Option<String> {
+    let compiler = std::env::var("SOM_CC").unwrap_or_else(|_| "cc".into());
+    let output = Command::new(&compiler)
+        .args(["-E", "-dD", "-x", "c"])
+        .args(
+            include_dirs(root, library_dirs)
+                .iter()
+                .filter(|dir| dir.is_dir())
+                .map(|dir| format!("-I{}", dir.display())),
+        )
+        .arg(header)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 /// som can't name these, so imported names that use them get a `_` after.
@@ -760,6 +785,7 @@ fn generate(
     library: Option<&str>,
     header: &str,
     exported: Option<&HashSet<String>>,
+    preprocessed: &str,
 ) -> (String, String) {
     let docs = Docs::of(json);
     let mut origins = String::new();
@@ -834,20 +860,37 @@ fn generate(
             }
         }
         let _ = writeln!(out, "pub struct {name} {{");
-        // Fields are snake_case too: `sampleRate` is `sample_rate`. Only the layout has to
-        // match C's, so the names are free; one that would clash keeps its C name.
-        let snake: Vec<String> = fields.iter().map(|(f, _)| snake_case(f)).collect();
-        for (i, (field, ty)) in fields.iter().enumerate() {
+        for (i, (field, (_, ty))) in field_names(fields).iter().zip(fields).enumerate() {
             if let Some(field_decl) = field_decls.get(i) {
                 out.push_str(&docs.write(&docs.of_function(field_decl), "    "));
             }
-            let clashes = snake.iter().filter(|s| **s == snake[i]).count() > 1
-                || fields.iter().any(|(f, _)| *f == snake[i] && f != field);
-            let name = if clashes { field } else { &snake[i] };
-            let _ = writeln!(out, "    pub {}: {ty},", identifier(name));
+            let _ = writeln!(out, "    pub {field}: {ty},");
         }
         out.push_str("}\n\n");
     }
+    // `#define`s that stand for values: the library's own, or for the C library, any not
+    // its internals'.
+    let taken: HashSet<String> = (seen.keys().chain(c.structs.keys()).chain(c.handles.keys()))
+        .cloned()
+        .collect();
+    let wanted = |file: &str, name: &str| match library {
+        Some(LIBC) => !file.starts_with('<') && !name.starts_with('_'),
+        _ => macros::same_file(file, header),
+    };
+    let record = |ty: &str| {
+        let (name, fields) = (c.structs.iter()).find(|(name, _)| {
+            name.as_str() == ty || c.tags.get(*name).is_some_and(|tag| tag == ty)
+        })?;
+        let names = field_names(fields);
+        Some(macros::Record {
+            name: name.clone(),
+            fields: names.into_iter().zip(fields.iter().map(|(_, ty)| ty.clone())).collect(),
+        })
+    };
+    let (constants, constant_origins) =
+        macros::constants(preprocessed, &wanted, &record, &taken);
+    out.push_str(&constants);
+    origins.push_str(&constant_origins);
     // The library's own enums, not ones its header pulls in from the system's; the C
     // library's are left out, as they're mostly the system's.
     if library != Some(LIBC) {
@@ -880,6 +923,19 @@ fn generate(
     out.push_str(&functions);
     out.push_str("}\n");
     (out, origins)
+}
+
+/// A struct's field names in som: snake_case too, `sampleRate` is `sample_rate`. Only the
+/// layout has to match C's, so the names are free; one that would clash keeps its C name.
+fn field_names(fields: &[(String, String)]) -> Vec<String> {
+    let snake: Vec<String> = fields.iter().map(|(f, _)| snake_case(f)).collect();
+    (fields.iter().enumerate())
+        .map(|(i, (field, _))| {
+            let clashes = snake.iter().filter(|s| **s == snake[i]).count() > 1
+                || fields.iter().any(|(f, _)| *f == snake[i] && f != field);
+            identifier(if clashes { field } else { &snake[i] })
+        })
+        .collect()
 }
 
 /// A C function's signature in som types.

@@ -113,6 +113,8 @@ pub(crate) struct Checker<'a> {
     pending_calls: Vec<PendingCall>,
     /// Functions whose bodies have been checked, or are being.
     checked: HashSet<Id<Func>>,
+    /// Constants whose values have been checked, or are being.
+    checked_consts: HashSet<Id<som_ast::Const>>,
 }
 
 impl<'a> Checker<'a> {
@@ -160,6 +162,7 @@ impl<'a> Checker<'a> {
             callees: HashMap::new(),
             pending_calls: Vec::new(),
             checked: HashSet::new(),
+            checked_consts: HashSet::new(),
             omitted_args_ok: false,
             expanding: Vec::new(),
             cyclic: HashSet::new(),
@@ -296,6 +299,9 @@ impl<'a> Checker<'a> {
             }
         }
         self.current_func = None;
+        for (id, _) in ast.consts.iter() {
+            self.check_const(id);
+        }
         for (id, func) in ast.funcs.iter() {
             if func.body.is_some() {
                 self.check_func(id);
@@ -399,6 +405,51 @@ impl<'a> Checker<'a> {
             self.expected_here,
             self.omitted_args_ok,
         ) = outer;
+    }
+
+    /// Checks constant `id`'s value, once: in order, or sooner, when a value naming it needs
+    /// its type. Without a written type, it's what its value would be with nothing else
+    /// said: `60` is an `i32`, wherever it's used.
+    fn check_const(&mut self, id: Id<som_ast::Const>) -> TypeId {
+        let def = self.names.const_def(id);
+        if !self.checked_consts.insert(id) {
+            // Made of itself, which is reported as that.
+            return self.locals.get(&def).copied().unwrap_or(self.u.table.error);
+        }
+        let c = &self.ast.consts[id];
+        let outer = (
+            self.current_func.take(),
+            self.returns.take(),
+            std::mem::take(&mut self.narrowed),
+            self.expected.take(),
+            self.expected_here.take(),
+        );
+        let ty = match c.ty {
+            Some(written) => {
+                let ty = self.lower(written);
+                // Known before the value is checked, for a use inside it.
+                self.locals.insert(def, ty);
+                let from = self.ast.types.span(written).clone();
+                self.expect(c.value, ty, Some(from));
+                ty
+            }
+            None => {
+                let ty = self.infer(c.value);
+                self.text_as_string(ty);
+                self.default_numbers(ty);
+                ty
+            }
+        };
+        self.locals.insert(def, ty);
+        self.settle(c.name.span.clone());
+        (
+            self.current_func,
+            self.returns,
+            self.narrowed,
+            self.expected,
+            self.expected_here,
+        ) = outer;
+        ty
     }
 
     /// What `main` gives is the program's exit code: an integer, or nothing. A script ending
@@ -696,8 +747,12 @@ impl<'a> Checker<'a> {
                     let span = self.ast.types.span(id).clone();
                     Ty::Struct(def, self.lower_args(def, s, args, span))
                 }
-                // `N` in `struct Buffer<N: usize>` stands for a number, not a type.
-                Some((def, _)) if self.names.is_value_param(def) => {
+                // `N` in `struct Buffer<N: usize>` stands for a number, not a type; so does
+                // a constant.
+                Some((def, _))
+                    if self.names.is_value_param(def)
+                        || matches!(self.names.def(def).kind, DefKind::Const(_)) =>
+                {
                     self.errors.push(TypeError::ValueAsType {
                         what: message::var(&*self.names.def(def).name).into(),
                         span: self.ast.types.span(id).clone(),
@@ -1057,43 +1112,77 @@ impl<'a> Checker<'a> {
         }
     }
 
+    /// The number `n`, written where a type argument goes, of type `expected` or of any
+    /// integer type for an array's length.
+    fn lower_number(&mut self, n: u128, expected: Option<TypeId>, span: Span) -> TypeId {
+        let error = self.u.table.error;
+        let int = expected.unwrap_or(self.u.table.usize);
+        match self.u.get(int).clone() {
+            Ty::Int(int_ty) => {
+                let max: u128 = match int_ty {
+                    IntTy::I8 => i8::MAX as u128,
+                    IntTy::I16 => i16::MAX as u128,
+                    IntTy::I32 => i32::MAX as u128,
+                    IntTy::I64 | IntTy::ISize => i64::MAX as u128,
+                    IntTy::I128 => i128::MAX as u128,
+                    IntTy::U8 => u8::MAX as u128,
+                    IntTy::U16 => u16::MAX as u128,
+                    IntTy::U32 => u32::MAX as u128,
+                    IntTy::U64 | IntTy::USize => u64::MAX as u128,
+                    IntTy::U128 => u128::MAX,
+                };
+                if n > max {
+                    self.errors.push(TypeError::LiteralOutOfRange {
+                        value: n.min(i128::MAX as u128) as i128,
+                        ty: format!("{int_ty:?}").to_lowercase(),
+                        max,
+                        min: 0,
+                        span,
+                        type_arg: true,
+                    });
+                    return error;
+                }
+                return self.u.intern(Ty::Value(Value::Int(n)));
+            }
+            _ => {
+                let found = self.u.fresh(VarKind::Int);
+                if self.u.unify(int, found).is_err() {
+                    self.mismatch(int, found, span, None);
+                    return error;
+                }
+                self.u.intern(Ty::Value(Value::Int(n)))
+            }
+        }
+    }
+
+    fn const_number(&self, expr: Id<Expr>) -> Option<i128> {
+        crate::const_number(self.ast, self.names, expr)
+    }
+
     /// A value written where a type argument goes, of type `expected`, or of any integer type
     /// for an array's length: a literal, or a value parameter.
     fn lower_value(&mut self, id: Id<TypeExpr>, expected: Option<TypeId>) -> TypeId {
         let span = self.ast.types.span(id).clone();
         let error = self.u.table.error;
         let (value, found) = match self.ast.types[id] {
-            TypeExpr::Int(n) => {
-                let int = expected.unwrap_or(self.u.table.usize);
-                match self.u.get(int).clone() {
-                    Ty::Int(int_ty) => {
-                        let max: u128 = match int_ty {
-                            IntTy::I8 => i8::MAX as u128,
-                            IntTy::I16 => i16::MAX as u128,
-                            IntTy::I32 => i32::MAX as u128,
-                            IntTy::I64 | IntTy::ISize => i64::MAX as u128,
-                            IntTy::I128 => i128::MAX as u128,
-                            IntTy::U8 => u8::MAX as u128,
-                            IntTy::U16 => u16::MAX as u128,
-                            IntTy::U32 => u32::MAX as u128,
-                            IntTy::U64 | IntTy::USize => u64::MAX as u128,
-                            IntTy::U128 => u128::MAX,
-                        };
-                        if n > max {
-                            self.errors.push(TypeError::LiteralOutOfRange {
-                                value: n.min(i128::MAX as u128) as i128,
-                                ty: format!("{int_ty:?}").to_lowercase(),
-                                max,
-                                min: 0,
-                                span,
-                                type_arg: true,
-                            });
-                            return error;
-                        }
-                        return self.u.intern(Ty::Value(Value::Int(n)));
+            TypeExpr::Int(n) => return self.lower_number(n, expected, span),
+            // `[i32; W]` of `const W = 60;`: the number it is.
+            TypeExpr::Named { ref args, .. }
+                if args.is_empty()
+                    && let Some(def) = self.names.ty(id)
+                    && let DefKind::Const(c) = self.names.def(def).kind =>
+            {
+                return match self.const_number(self.ast.consts[c].value) {
+                    Some(n) if n >= 0 => self.lower_number(n as u128, expected, span),
+                    _ => {
+                        self.errors.push(TypeError::ConstNotCount {
+                            name: self.names.def(def).name.to_string(),
+                            span,
+                            defined_at: self.names.def(def).span.clone(),
+                        });
+                        error
                     }
-                    _ => (Ty::Value(Value::Int(n)), self.u.fresh(VarKind::Int)),
-                }
+                };
             }
             TypeExpr::Bool(b) => (Ty::Value(Value::Bool(b)), self.u.table.bool),
             // `A + B`: arithmetic on numbers, of the same type.
@@ -1600,8 +1689,19 @@ impl<'a> Checker<'a> {
 
     /// `"score: " + n`, text and something that isn't: written into the text instead,
     /// `"score: {n}"`, as `+` only joins text.
-    fn interpolation_fix(&self, expr: Id<Expr>, op: BinOp, lhs: TypeId, rhs: TypeId) -> Option<Fix> {
-        let Expr::Binary { lhs: left, rhs: right, .. } = self.ast.exprs[expr] else {
+    fn interpolation_fix(
+        &self,
+        expr: Id<Expr>,
+        op: BinOp,
+        lhs: TypeId,
+        rhs: TypeId,
+    ) -> Option<Fix> {
+        let Expr::Binary {
+            lhs: left,
+            rhs: right,
+            ..
+        } = self.ast.exprs[expr]
+        else {
             return None;
         };
         let text = self.u.table.text;
@@ -1844,7 +1944,10 @@ impl<'a> Checker<'a> {
                 let ty = self.infer(*expr);
                 // `{ begin(); end() }` of a loop or `if`: the last call, without its `;`.
                 if self.ast.unterminated.contains(&id)
-                    && matches!(self.ast.exprs[*expr], Expr::Call { .. } | Expr::MethodCall { .. })
+                    && matches!(
+                        self.ast.exprs[*expr],
+                        Expr::Call { .. } | Expr::MethodCall { .. }
+                    )
                 {
                     self.tail_calls.push((*expr, ty));
                 }
@@ -2673,6 +2776,8 @@ impl<'a> Checker<'a> {
                     }
                     ty
                 }
+                // `W` for `const W = 60;`
+                Some((_, &DefKind::Const(c))) => self.check_const(c),
                 // `N` in `struct Buffer<N: usize>`: the number it is in each copy.
                 Some((def, _)) if let Some(&ty) = self.value_params.get(&def) => ty,
                 Some((def, DefKind::Func(func))) => {
@@ -4573,6 +4678,15 @@ impl<'a> Checker<'a> {
                     borrow,
                 }
             }
+            Some(Immutable::Const(def)) => {
+                let def = self.names.def(def);
+                TypeError::ConstChanged {
+                    name: def.name.to_string(),
+                    span: self.span(expr),
+                    defined_at: def.span.clone(),
+                    borrow,
+                }
+            }
             Some(Immutable::BehindSharedReference) => TypeError::BehindSharedReference {
                 span: self.span(expr),
                 borrow,
@@ -4594,6 +4708,7 @@ impl<'a> Checker<'a> {
             Expr::Var(_) => {
                 let def = self.names.expr(expr)?;
                 let mutable = match self.names.def(def).kind {
+                    DefKind::Const(_) => return Some(Immutable::Const(def)),
                     DefKind::Local(stmt) => matches!(
                         self.ast.stmts[stmt],
                         Stmt::Let { mutable: true, .. } | Stmt::For { mutable: true, .. }
@@ -4653,6 +4768,8 @@ impl<'a> Checker<'a> {
                         | DefKind::Out(_)
                         | DefKind::Param { .. }
                         | DefKind::Binding(_)
+                        // One that can't change, reported as that.
+                        | DefKind::Const(_)
                 )
             }),
             Expr::Field { object, .. } => !self.is_prop(expr) && self.is_place(*object),
@@ -5402,6 +5519,8 @@ struct Facts {
 enum Immutable {
     /// A variable declared without `mut`.
     Variable(DefId),
+    /// A constant: the same everywhere, never changed.
+    Const(DefId),
     BehindSharedReference,
     /// What a `#T` shares: every copy sees it, so nothing changes it.
     Shared,

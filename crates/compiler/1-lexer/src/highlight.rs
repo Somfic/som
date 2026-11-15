@@ -166,6 +166,21 @@ pub fn highlight(line: &str) -> String {
             if token.kind == TokenKind::Dot && TokenKind::is_self_dot(prev, next) {
                 color = token_color(TokenKind::SelfValue);
             }
+            // `RED`, `MAX_LEN`: a constant, coloured like the value it is.
+            if token.kind == TokenKind::Ident
+                && token.text.len() > 1
+                && token.text.starts_with(|c: char| c.is_ascii_uppercase())
+                && (token.text.chars()).all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+            {
+                color = token_color(TokenKind::Int);
+            }
+            // `const` isn't reserved, but before a name it declares a constant.
+            if token.kind == TokenKind::Ident
+                && &*token.text == "const"
+                && next == Some(TokenKind::Ident)
+            {
+                color = token_color(TokenKind::Let);
+            }
             seen += 1;
         }
         // `"total: {1 / 0}"`: the values in text are code.

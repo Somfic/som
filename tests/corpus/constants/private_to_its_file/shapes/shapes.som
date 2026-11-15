@@ -1,0 +1,3 @@
+pub const SIDES = 4;
+mod const CORNERS = SIDES;
+const HIDDEN = 7;

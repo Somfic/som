@@ -43,6 +43,8 @@ pub enum DefKind {
     Param { func: Id<Func>, index: usize },
     /// A `let` binding.
     Local(Id<Stmt>),
+    /// `const W = 60;`: a value known while compiling.
+    Const(Id<som_ast::Const>),
     /// A variable declared by an `out name` argument.
     Out(Id<Expr>),
     /// The `index`th generic parameter of `func`, as in `fn id<T>(x: T) -> T`. A `value`
@@ -259,6 +261,12 @@ pub struct Names {
     type_params: Vec<Vec<DefId>>,
     /// Every type alias's definition, in the order written, module by module.
     aliases: Vec<DefId>,
+    /// Each constant's definition.
+    consts: Vec<Option<DefId>>,
+    /// Constants in impl blocks, by the type they're for and their name: `f32::PI`.
+    assoc_consts: HashMap<(DefId, Box<str>), DefId>,
+    /// The type each constant in an impl block is for.
+    const_owners: HashMap<Id<som_ast::Const>, DefId>,
     /// Each type alias's generic parameters.
     alias_params: HashMap<DefId, Vec<DefId>>,
     /// `Vector3::zero()`, `Vector3 { … }`: expressions whose path names a struct through an
@@ -322,6 +330,9 @@ impl Names {
             params: vec![Vec::new(); ast.funcs.len()],
             type_params: vec![Vec::new(); ast.funcs.len()],
             aliases: Vec::new(),
+            consts: vec![None; ast.consts.len()],
+            assoc_consts: HashMap::new(),
+            const_owners: HashMap::new(),
             alias_params: HashMap::new(),
             expr_aliases: HashMap::new(),
             struct_params: vec![Vec::new(); ast.structs.len()],
@@ -447,6 +458,52 @@ impl Names {
     }
 
     /// Every type alias's definition, in the order they're written, module by module.
+    pub fn set_const(&mut self, c: Id<som_ast::Const>, def: DefId) {
+        self.consts[c.id] = Some(def);
+    }
+
+    /// Adds constant `c`, `def`, to the type `owner`; the one already called that, if there is.
+    pub fn add_assoc_const(
+        &mut self,
+        owner: DefId,
+        c: Id<som_ast::Const>,
+        name: &str,
+        def: DefId,
+    ) -> Option<DefId> {
+        self.const_owners.insert(c, owner);
+        let key = (owner, name.into());
+        if let Some(&previous) = self.assoc_consts.get(&key) {
+            return Some(previous);
+        }
+        self.assoc_consts.insert(key, def);
+        None
+    }
+
+    /// The constant `owner` has called `name`: `PI` of `f32`.
+    pub fn assoc_const(&self, owner: DefId, name: &str) -> Option<DefId> {
+        self.assoc_consts.get(&(owner, name.into())).copied()
+    }
+
+    /// The constants `owner` has, by name.
+    pub fn assoc_consts_of(&self, owner: DefId) -> Vec<(&str, DefId)> {
+        let mut consts: Vec<(&str, DefId)> = (self.assoc_consts.iter())
+            .filter(|((o, _), _)| *o == owner)
+            .map(|((_, name), &def)| (&**name, def))
+            .collect();
+        consts.sort();
+        consts
+    }
+
+    /// The type constant `c` is in an impl block for, if it is.
+    pub fn const_owner(&self, c: Id<som_ast::Const>) -> Option<DefId> {
+        self.const_owners.get(&c).copied()
+    }
+
+    /// Constant `c`'s own definition.
+    pub fn const_def(&self, c: Id<som_ast::Const>) -> DefId {
+        self.consts[c.id].expect("every constant is defined")
+    }
+
     pub fn aliases(&self) -> &[DefId] {
         &self.aliases
     }

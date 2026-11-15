@@ -1,0 +1,21 @@
+// expect: exit 42
+
+/// A constant can be an array's length, and the prover knows its value: `y * COLS + x` of
+/// `x` below 10 and `y` below 20 is below 200 without a check.
+const COLS = 10;
+const ROWS = 20;
+
+struct Board { cells: [i32; COLS * ROWS] }
+
+fn set(b: &mut Board, x: i32, y: i32, v: i32) {
+    if x >= 0 && x < COLS && y >= 0 && y < ROWS {
+        b.cells[y * COLS + x] = v;
+    }
+}
+
+fn main() -> i32 {
+    let mut b = Board { cells: [0; COLS * ROWS] };
+    set(&mut b, 9, 19, 40);
+    set(&mut b, 10, 0, 99);
+    b.cells[199] + b.cells.len / 100
+}

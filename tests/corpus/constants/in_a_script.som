@@ -1,0 +1,9 @@
+// expect: exit 42
+
+/// In a script, a `const` is the module's, seen by its functions; a `let` is the script's.
+const BASE = 40;
+
+fn plus_two() -> i32 { return BASE + 2; }
+
+let answer = plus_two();
+answer

@@ -1,0 +1,6 @@
+// expect: exit 42
+
+/// A `pub` constant is seen from other modules, through the module's name.
+use shapes;
+
+fn main() -> i32 = shapes::SIDES * 10 + 2;

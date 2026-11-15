@@ -148,6 +148,19 @@ pub enum TypeError {
         ty: Message,
         span: Span,
     },
+    /// `[i32; W]` where `W` isn't a whole number that's not below 0.
+    ConstNotCount {
+        name: String,
+        span: Span,
+        defined_at: Span,
+    },
+    /// `W = 5` or `&mut W` of `const W = 60;`.
+    ConstChanged {
+        name: String,
+        span: Span,
+        defined_at: Span,
+        borrow: bool,
+    },
     /// Assigning to something that isn't a variable, field or dereference.
     InvalidAssignTarget {
         span: Span,
@@ -430,7 +443,9 @@ pub enum TypeError {
         get: String,
     },
     /// `{ begin(); end() }`: a call giving nothing at the end of a block, without a `;`.
-    UnitTail { span: Span },
+    UnitTail {
+        span: Span,
+    },
     /// `"{x}"` of a value whose type doesn't implement `Display`.
     NotDisplay {
         ty: Message,
@@ -945,11 +960,12 @@ impl TypeError {
                     ))
             }
             TypeError::NotForC { ty, what, span } => {
-                let d = Diagnostic::error(msg!["C can't take ", ty.clone()])
-                    .with_label(Label::primary(
+                let d = Diagnostic::error(msg!["C can't take ", ty.clone()]).with_label(
+                    Label::primary(
                         span.clone(),
                         "C reads it as the number or pointer its format says",
-                    ));
+                    ),
+                );
                 let text = span.get_text();
                 match what {
                     NotForC::Optional => d.with_hint(msg![
@@ -958,12 +974,10 @@ impl TypeError {
                         ", or give a fallback, as in ",
                         code(format!("({text} else 0)"))
                     ]),
-                    NotForC::Reference => d
-                        .with_hint("C takes what it refers to")
-                        .with_fix(Fix {
-                            title: msg!["pass ", code(format!("*{text}"))],
-                            edits: vec![(span.before(), "*".to_string())],
-                        }),
+                    NotForC::Reference => d.with_hint("C takes what it refers to").with_fix(Fix {
+                        title: msg!["pass ", code(format!("*{text}"))],
+                        edits: vec![(span.before(), "*".to_string())],
+                    }),
                     NotForC::Other => d.with_hint(msg![
                         "C takes numbers, pointers and ",
                         code("cstr"),
@@ -1465,7 +1479,10 @@ impl TypeError {
                     .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
             }
             TypeError::UnitTail { span } => Diagnostic::error("expected `;`")
-                .with_label(Label::primary(span.after(), "expected a semicolon after the call"))
+                .with_label(Label::primary(
+                    span.after(),
+                    "expected a semicolon after the call",
+                ))
                 .with_fix(Fix::replace(msg!["add the ", code(";")], span.after(), ";")),
             TypeError::NotDisplay { ty, span } => {
                 Diagnostic::error(msg![ty.clone(), " can't be written into text"])
@@ -1846,6 +1863,34 @@ impl TypeError {
                         "a property is worked out when it's read; there's nothing to assign to",
                     ),
             },
+            TypeError::ConstNotCount {
+                name,
+                span,
+                defined_at,
+            } => Diagnostic::error(msg!["constant ", var(name), " isn't a count"])
+                .with_label(Label::primary(
+                    span.clone(),
+                    "a whole number, at least 0, is needed here",
+                ))
+                .with_label(Label::secondary(defined_at.clone(), "defined here")),
+            TypeError::ConstChanged {
+                name,
+                span,
+                defined_at,
+                borrow,
+            } => {
+                let label = match borrow {
+                    true => "borrowed as mutable here",
+                    false => "changed here",
+                };
+                Diagnostic::error(msg!["constant ", var(name), " can't be changed"])
+                    .with_label(Label::primary(span.clone(), label))
+                    .with_label(Label::secondary(defined_at.clone(), "defined here"))
+                    .with_hint(msg![
+                        "for a value that changes, copy it into a variable: ",
+                        code(format!("let mut value = {name};"))
+                    ])
+            }
             TypeError::InvalidAssignTarget { span } => {
                 Diagnostic::error("cannot assign to this expression").with_label(Label::primary(
                     span.clone(),

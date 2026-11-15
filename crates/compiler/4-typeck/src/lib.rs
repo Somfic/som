@@ -18,12 +18,47 @@ mod unify;
 pub use error::{NotForC, TypeError, Unused};
 pub use ty::{FloatTy, IntTy, Ty, TypeId, TypeTable, Value};
 
-use som_ast::{Ast, Expr, Func, Id, Pattern, Stmt, Struct};
-use som_resolve::{DefId, Names};
+use som_ast::{Ast, BinOp, Expr, Func, Id, Pattern, Stmt, Struct};
+use som_resolve::{DefId, DefKind, Names};
 use std::collections::{HashMap, HashSet};
 
 pub fn check(ast: &Ast, names: &Names) -> (Typed, Vec<TypeError>) {
     check::Checker::new(ast, names).run()
+}
+
+/// The integer a constant's value works out to: `W * H` of `const W = 60;` and
+/// `const H = 20;` is 1200. `None` if it isn't one, or doesn't fit.
+pub fn const_number(ast: &Ast, names: &Names, expr: Id<Expr>) -> Option<i128> {
+    Some(match ast.exprs[expr] {
+        Expr::Int(n) => n,
+        Expr::Neg(inner) => const_number(ast, names, inner)?.checked_neg()?,
+        Expr::Cast { value, .. } => const_number(ast, names, value)?,
+        Expr::Var(ref path) if let Some((_, n)) = path.int_limit() => n,
+        Expr::Var(_) => {
+            let def = names.expr(expr)?;
+            let DefKind::Const(c) = names.def(def).kind else {
+                return None;
+            };
+            const_number(ast, names, ast.consts[c].value)?
+        }
+        Expr::Binary { op, lhs, rhs } => {
+            let (a, b) = (const_number(ast, names, lhs)?, const_number(ast, names, rhs)?);
+            match op {
+                BinOp::Add => a.checked_add(b)?,
+                BinOp::Subtract => a.checked_sub(b)?,
+                BinOp::Multiply => a.checked_mul(b)?,
+                BinOp::Divide => a.checked_div(b)?,
+                BinOp::Modulo => a.checked_rem(b)?,
+                BinOp::BitAnd => a & b,
+                BinOp::BitOr => a | b,
+                BinOp::BitXor => a ^ b,
+                BinOp::ShiftLeft => a.checked_shl(u32::try_from(b).ok()?)?,
+                BinOp::ShiftRight => a.checked_shr(u32::try_from(b).ok()?)?,
+                _ => return None,
+            }
+        }
+        _ => return None,
+    })
 }
 
 /// A function's parameter and return types.

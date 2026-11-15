@@ -1,0 +1,13 @@
+// expect: exit 0
+
+/// Text without a type is a `string`; with `cstr`, it's for C.
+use som::io;
+use c;
+
+const NAME = "som";
+const GREETING: cstr = "hello from a constant";
+
+fn main() {
+    print("{NAME}\n");
+    puts(GREETING);
+}

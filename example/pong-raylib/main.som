@@ -1,13 +1,13 @@
 use extern "raylib";
 
-fn screen_w() -> f32 { return 800.0; }
-fn screen_h() -> f32 { return 450.0; }
-fn paddle_w() -> f32 { return 12.0; }
-fn paddle_h() -> f32 { return 80.0; }
-fn ball_size() -> f32 { return 12.0; }
-fn paddle_speed() -> f32 { return 420.0; }
-fn cpu_speed() -> f32 { return 300.0; }
-fn win_score() -> i32 { return 5; }
+const SCREEN_W: f32 = 800.0;
+const SCREEN_H: f32 = 450.0;
+const PADDLE_W: f32 = 12.0;
+const PADDLE_H: f32 = 80.0;
+const BALL_SIZE: f32 = 12.0;
+const PADDLE_SPEED: f32 = 420.0;
+const CPU_SPEED: f32 = 300.0;
+const WIN_SCORE = 5;
 
 struct Game {
     ball_x: f32,
@@ -28,8 +28,8 @@ fn clamp(v: f32, lo: f32, hi: f32) -> f32 {
 }
 
 fn reset_ball(g: &mut Game, dir: f32) {
-    g.ball_x = screen_w() / 2.0 - ball_size() / 2.0;
-    g.ball_y = screen_h() / 2.0 - ball_size() / 2.0;
+    g.ball_x = SCREEN_W / 2.0 - BALL_SIZE / 2.0;
+    g.ball_y = SCREEN_H / 2.0 - BALL_SIZE / 2.0;
     g.vel_x = 320.0 * dir;
     g.vel_y = (get_random_value(-200, 200)) as f32;
     g.serving = true;
@@ -40,7 +40,7 @@ fn hit(g: &mut Game, top: f32, x: f32, dir: f32) {
     g.ball_x = x;
     let speed = clamp(abs(g.vel_x) * 1.06, 0.0, 900.0);
     g.vel_x = speed * dir;
-    let offset = (g.ball_y + ball_size() / 2.0) - (top + paddle_h() / 2.0);
+    let offset = (g.ball_y + BALL_SIZE / 2.0) - (top + PADDLE_H / 2.0);
     g.vel_y = offset * 7.0;
 }
 
@@ -50,21 +50,21 @@ fn abs(v: f32) -> f32 {
 }
 
 fn overlaps(by: f32, top: f32) -> bool {
-    return by + ball_size() >= top && by <= top + paddle_h();
+    return by + BALL_SIZE >= top && by <= top + PADDLE_H;
 }
 
 fn update(g: &mut Game, dt: f32) {
     // Player: W/S or the arrow keys.
-    if is_key_down(KeyboardKey::W as i32) || is_key_down(KeyboardKey::Up as i32) { g.left = g.left - paddle_speed() * dt; }
-    if is_key_down(KeyboardKey::S as i32) || is_key_down(KeyboardKey::Down as i32) { g.left = g.left + paddle_speed() * dt; }
-    g.left = clamp(g.left, 0.0, screen_h() - paddle_h());
+    if is_key_down(KeyboardKey::W as i32) || is_key_down(KeyboardKey::Up as i32) { g.left = g.left - PADDLE_SPEED * dt; }
+    if is_key_down(KeyboardKey::S as i32) || is_key_down(KeyboardKey::Down as i32) { g.left = g.left + PADDLE_SPEED * dt; }
+    g.left = clamp(g.left, 0.0, SCREEN_H - PADDLE_H);
 
     // CPU follows the ball's centre, at a limited speed.
-    let target = g.ball_y + ball_size() / 2.0 - paddle_h() / 2.0;
-    let step = cpu_speed() * dt;
+    let target = g.ball_y + BALL_SIZE / 2.0 - PADDLE_H / 2.0;
+    let step = CPU_SPEED * dt;
     if g.right < target - step { g.right = g.right + step; }
     if g.right > target + step { g.right = g.right - step; }
-    g.right = clamp(g.right, 0.0, screen_h() - paddle_h());
+    g.right = clamp(g.right, 0.0, SCREEN_H - PADDLE_H);
 
     if g.serving {
         if is_key_pressed(KeyboardKey::Space as i32) { g.serving = false; }
@@ -78,25 +78,25 @@ fn update(g: &mut Game, dt: f32) {
         g.ball_y = 0.0;
         g.vel_y = abs(g.vel_y);
     }
-    if g.ball_y > screen_h() - ball_size() {
-        g.ball_y = screen_h() - ball_size();
+    if g.ball_y > SCREEN_H - BALL_SIZE {
+        g.ball_y = SCREEN_H - BALL_SIZE;
         g.vel_y = -abs(g.vel_y);
     }
 
-    let left_face = 20.0 + paddle_w();
-    if g.vel_x < 0.0 && g.ball_x <= left_face && g.ball_x >= 20.0 - ball_size() && overlaps(g.ball_y, g.left) {
+    let left_face = 20.0 + PADDLE_W;
+    if g.vel_x < 0.0 && g.ball_x <= left_face && g.ball_x >= 20.0 - BALL_SIZE && overlaps(g.ball_y, g.left) {
         hit(g, g.left, left_face, 1.0);
     }
-    let right_face = screen_w() - 20.0 - paddle_w();
-    if g.vel_x > 0.0 && g.ball_x + ball_size() >= right_face && g.ball_x <= right_face + paddle_w() && overlaps(g.ball_y, g.right) {
-        hit(g, g.right, right_face - ball_size(), -1.0);
+    let right_face = SCREEN_W - 20.0 - PADDLE_W;
+    if g.vel_x > 0.0 && g.ball_x + BALL_SIZE >= right_face && g.ball_x <= right_face + PADDLE_W && overlaps(g.ball_y, g.right) {
+        hit(g, g.right, right_face - BALL_SIZE, -1.0);
     }
 
-    if g.ball_x + ball_size() < 0.0 {
+    if g.ball_x + BALL_SIZE < 0.0 {
         g.score_r = g.score_r + 1;
         reset_ball(g, -1.0);
     }
-    if g.ball_x > screen_w() {
+    if g.ball_x > SCREEN_W {
         g.score_l = g.score_l + 1;
         reset_ball(g, 1.0);
     }
@@ -116,9 +116,9 @@ fn draw(g: &Game) {
         y = y + 30;
     }
 
-    draw_rectangle(20, g.left as i32, paddle_w() as i32, paddle_h() as i32, white);
-    draw_rectangle((screen_w() - 20.0 - paddle_w()) as i32, g.right as i32, paddle_w() as i32, paddle_h() as i32, white);
-    draw_rectangle(g.ball_x as i32, g.ball_y as i32, ball_size() as i32, ball_size() as i32, white);
+    draw_rectangle(20, g.left as i32, PADDLE_W as i32, PADDLE_H as i32, white);
+    draw_rectangle((SCREEN_W - 20.0 - PADDLE_W) as i32, g.right as i32, PADDLE_W as i32, PADDLE_H as i32, white);
+    draw_rectangle(g.ball_x as i32, g.ball_y as i32, BALL_SIZE as i32, BALL_SIZE as i32, white);
 
     let l = g.score_l;
     let r = g.score_r;
@@ -127,9 +127,9 @@ fn draw(g: &Game) {
     draw_text(ls.c_str, 340, 20, 48, white);
     draw_text(rs.c_str, 440, 20, 48, white);
 
-    if g.score_l >= win_score() {
+    if g.score_l >= WIN_SCORE {
         draw_text("You win!  space to play again", 230, 200, 24, white);
-    } else if g.score_r >= win_score() {
+    } else if g.score_r >= WIN_SCORE {
         draw_text("CPU wins.  space to play again", 225, 200, 24, white);
     } else if g.serving {
         draw_text("space to serve   w/s to move", 250, 400, 20, dim);
@@ -143,14 +143,14 @@ fn main() {
 
     let mut g = Game {
         ball_x: 0.0, ball_y: 0.0, vel_x: 0.0, vel_y: 0.0,
-        left: screen_h() / 2.0 - paddle_h() / 2.0,
-        right: screen_h() / 2.0 - paddle_h() / 2.0,
+        left: SCREEN_H / 2.0 - PADDLE_H / 2.0,
+        right: SCREEN_H / 2.0 - PADDLE_H / 2.0,
         score_l: 0, score_r: 0, serving: true,
     };
     reset_ball(&mut g, 1.0);
 
     while !window_should_close() {
-        let over = g.score_l >= win_score() || g.score_r >= win_score();
+        let over = g.score_l >= WIN_SCORE || g.score_r >= WIN_SCORE;
         if over {
             if is_key_pressed(KeyboardKey::Space as i32) {
                 g.score_l = 0;

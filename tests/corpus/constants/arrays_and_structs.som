@@ -1,0 +1,20 @@
+// expect: exit 42
+
+/// Arrays and structs of known values are constants too. Each use is its own copy.
+struct Point { x: i32, y: i32 }
+
+const ORIGIN = Point { x: 3, y: 4 };
+const PRIMES = [2, 3, 5, 7, 11];
+
+fn sum(values: &[i32; 5]) -> i32 {
+    let mut total = 0;
+    for v in values { total = total + v; }
+    total
+}
+
+fn main() -> i32 {
+    let mut p = ORIGIN;
+    p.x = 10;
+    // 10 + 4 + 28 = 42, and the constant is untouched.
+    p.x + ORIGIN.y + sum(&PRIMES) - ORIGIN.x + PRIMES[1]
+}

@@ -10,6 +10,19 @@ pub enum Item {
     Impl(Impl),
     Trait(Id<Trait>),
     Alias(Alias),
+    Const(Id<Const>),
+}
+
+/// `const W: i32 = 60;`: a value known while compiling, named anywhere in its module (and
+/// further, with `pub` or `mod`). Its value is made of literals, operators, casts, other
+/// constants and arrays or structs of those; each use stands for it.
+pub struct Const {
+    /// The `///` comment above it.
+    pub doc: Option<String>,
+    pub visibility: Visibility,
+    pub name: Ident,
+    pub ty: Option<Id<TypeExpr>>,
+    pub value: Id<Expr>,
 }
 
 /// `type Vector3 = Vector<3, f32>;`: another name for a type, which stands for it wherever
@@ -75,6 +88,8 @@ pub struct Impl {
     /// `impl<T> Pair<T>`: generic parameters every method gets, ahead of its own.
     pub generics: Vec<Generic>,
     pub methods: Vec<Id<Func>>,
+    /// `const PI = 3.14;`: constants named through the type, `f32::PI`, or `Self::PI` inside.
+    pub consts: Vec<Id<Const>>,
     /// Its closing brace, where missing methods go.
     pub close: som_base::Span,
 }

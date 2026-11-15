@@ -1,0 +1,6 @@
+// expect: error NotVisible
+
+/// Without `pub` or `mod`, a constant is private to its file.
+use shapes;
+
+fn main() -> i32 = shapes::HIDDEN;

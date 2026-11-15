@@ -1,0 +1,8 @@
+pub struct P { pub x: i32 }
+
+impl P {
+    pub const ONE = P { x: 1 };
+    const SECRET = 7;
+
+    pub fn secret() -> i32 = Self::SECRET;
+}

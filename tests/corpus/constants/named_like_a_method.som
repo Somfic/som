@@ -1,0 +1,16 @@
+// expect: error DuplicateDefinition
+
+struct Point { x: i32 }
+
+impl Point {
+    const ORIGIN = Point { x: 0 };
+    fn ORIGIN() -> Point = Point { x: 1 };
+}
+
+enum Shape { Circle }
+
+impl Shape {
+    const Circle = 1;
+}
+
+fn main() -> i32 = 0;

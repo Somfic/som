@@ -54,6 +54,11 @@ pub fn access(ast: &Ast, names: &Names, def: DefId) -> Option<Access> {
         // As visible as the enum.
         DefKind::Variant { strukt, .. } => item(ast.structs[strukt].visibility),
         DefKind::Trait(t) => item(ast.traits[t].visibility),
+        DefKind::Const(c) => Some(Access {
+            visibility: ast.consts[c].visibility,
+            // One in an impl block is its type's, as a method is.
+            owner: names.const_owner(c),
+        }),
         DefKind::Alias { ty } => (ast.modules.iter())
             .flat_map(|m| &m.items)
             .find_map(|i| match i {
@@ -86,6 +91,7 @@ pub fn hidden(ast: &Ast, names: &Names, def: DefId, viewer: Viewer) -> Option<Hi
         DefKind::Func(f) => Some(ast.funcs.span(f)),
         DefKind::Struct(s) | DefKind::Variant { strukt: s, .. } => Some(ast.structs.span(s)),
         DefKind::Trait(t) => Some(ast.traits.span(t)),
+        DefKind::Const(c) => Some(ast.consts.span(c)),
         _ => None,
     };
     check(

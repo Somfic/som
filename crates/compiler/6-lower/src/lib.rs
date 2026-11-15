@@ -1403,6 +1403,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         let id = self.l.instance(func, type_args);
                         self.constant(ConstKind::Func(id), ty)
                     }
+                    // A constant stands for its value, made where it's used.
+                    DefKind::Const(c) => self.operand(self.l.ast.consts[c].value),
                     // `Shape::Empty`
                     DefKind::Variant { index, .. } => {
                         let value = Rvalue::Struct {

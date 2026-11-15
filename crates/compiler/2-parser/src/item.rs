@@ -1,5 +1,5 @@
 use som_ast::{
-    Alias, AssocType, Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Trait, Use,
+    Alias, Const, AssocType, Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Trait, Use,
     Variant, VariantKind, Visibility,
 };
 use som_base::message::code;
@@ -96,6 +96,7 @@ impl Parser<'_> {
                     | TokenKind::Impl
                     | TokenKind::Type
             )
+            || self.at_const(at)
             || self.foreign_fn(at)
             || self.c_style_fn(at)
             || self.foreign_struct(at)
@@ -149,6 +150,7 @@ impl Parser<'_> {
             TokenKind::Use => self.parse_use().map(Item::Use),
             TokenKind::Impl => self.parse_impl().map(Item::Impl),
             TokenKind::Type => self.parse_alias().map(Item::Alias),
+            TokenKind::Ident if self.at_const(0) => self.parse_const().map(Item::Const),
             _ => unreachable!("caller checks at_item"),
         };
         match item {
@@ -289,6 +291,7 @@ impl Parser<'_> {
 
         let mut methods = Vec::new();
         let mut types = Vec::new();
+        let mut consts = Vec::new();
         self.in_impl = true;
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
             if self.at_where() {
@@ -307,6 +310,29 @@ impl Parser<'_> {
                 let ty = self.parse_type()?;
                 self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
                 types.push((name, ty));
+            } else if self.at_const(0) {
+                match self.parse_const() {
+                    Some(id) => {
+                        // Its type and value can't depend on the block's parameters: it's one
+                        // value, not one per type the block is for.
+                        if let Some(first) = generics.first() {
+                            let name = &self.ast.consts[id].name;
+                            self.errors.push(ParseError {
+                                message: "a constant can't be in an impl block with type parameters"
+                                    .into(),
+                                hint: msg![
+                                    "it would be one value for every ",
+                                    code(first.name.name.to_string()),
+                                    "; put it outside the block, as a module's constant"
+                                ],
+                                fix: None,
+                                span: name.span.clone(),
+                            });
+                        }
+                        consts.push(id);
+                    }
+                    None => self.recover(RecoveryLevel::Member),
+                }
             } else if self.at_fn() || self.at(TokenKind::Prop) || self.c_style_fn(0) {
                 match self.parse_function() {
                     Some(id) => methods.push(id),
@@ -334,6 +360,7 @@ impl Parser<'_> {
             types,
             generics,
             methods,
+            consts,
             close,
         })
     }
@@ -508,6 +535,46 @@ impl Parser<'_> {
             generics,
             ty,
         })
+    }
+
+    /// At `const NAME:` or `const NAME =`, `at` tokens ahead. `const` isn't a keyword:
+    /// inside a function it's another language's `let`, reported as that.
+    fn at_const(&self, at: usize) -> bool {
+        self.ident_ahead(at) == Some("const")
+            && self.peek_nth(at + 1) == TokenKind::Ident
+            && matches!(
+                self.peek_nth(at + 2),
+                TokenKind::Colon | TokenKind::Equals
+            )
+    }
+
+    /// `const W: i32 = 60;`
+    fn parse_const(&mut self) -> Option<Id<Const>> {
+        let doc = self.doc_comment();
+        let start = self.current_span();
+        self.advance();
+        let name = self.parse_ident("a constant name")?;
+        let ty = match self.at(TokenKind::Colon) {
+            true => {
+                self.advance();
+                Some(self.parse_type()?)
+            }
+            false => None,
+        };
+        self.expect(TokenKind::Equals, "`=` and the constant's value")?;
+        let value = self.parse_expr()?;
+        self.expect(TokenKind::Semicolon, "a semicolon after the constant")?;
+        let span = self.span_from(&start);
+        Some(self.ast.consts.alloc(
+            Const {
+                doc,
+                visibility: std::mem::take(&mut self.visibility),
+                name,
+                ty,
+                value,
+            },
+            span,
+        ))
     }
 
     pub(crate) fn parse_use(&mut self) -> Option<Use> {

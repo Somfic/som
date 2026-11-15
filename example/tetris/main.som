@@ -1,15 +1,15 @@
 use extern "raylib";
 
-fn cols() -> i32 { return 10; }
-fn rows() -> i32 { return 20; }
-fn cell() -> i32 { return 30; }
-fn board_x() -> i32 { return 30; }
-fn board_y() -> i32 { return 30; }
+const COLS = 10;
+const ROWS = 20;
+const CELL = 30;
+const BOARD_X = 30;
+const BOARD_Y = 30;
 
 enum Kind { I, J, L, O, S, T, Z }
 
 struct Game {
-    board: [i32; 200],
+    board: [i32; COLS * ROWS],
     kind: Kind,
     next: Kind,
     rot: i32,
@@ -65,7 +65,7 @@ fn filled(mask: i32, x: i32, y: i32) -> bool {
     return mask & (0x8000 >> (y * 4 + x)) != 0;
 }
 
-fn color(c: i32) -> Color {
+fn color(c: i32) -> Color { 
     if c == 1 { return Color { r: 80, g: 220, b: 240, a: 255 }; }
     if c == 2 { return Color { r: 70, g: 110, b: 240, a: 255 }; }
     if c == 3 { return Color { r: 245, g: 160, b: 50, a: 255 }; }
@@ -77,16 +77,16 @@ fn color(c: i32) -> Color {
 }
 
 fn get(g: &Game, x: i32, y: i32) -> i32 {
-    if x < 0 || x >= cols() || y >= rows() { return 1; }
+    if x < 0 || x >= COLS || y >= ROWS { return 1; }
     // Above the top is open, so pieces can rotate while partly off screen.
     if y < 0 { return 0; }
-    let i = y * cols() + x;
+    let i = y * COLS + x;
     if i >= 0 && i < g.board.len { return g.board[i]; }
     return 1;
 }
 
 fn set(g: &mut Game, x: i32, y: i32, v: i32) {
-    let i = y * cols() + x;
+    let i = y * COLS + x;
     if i >= 0 && i < g.board.len { g.board[i] = v; }
 }
 
@@ -138,11 +138,11 @@ fn fall_interval(g: &Game) -> f32 {
 
 fn clear_lines(g: &mut Game) -> i32 {
     let mut cleared = 0;
-    let mut y = rows() - 1;
+    let mut y = ROWS - 1;
     while y >= 0 {
         let mut full = true;
         let mut x = 0;
-        while x < cols() {
+        while x < COLS {
             if get(g, x, y) == 0 { full = false; }
             x = x + 1;
         }
@@ -151,14 +151,14 @@ fn clear_lines(g: &mut Game) -> i32 {
             let mut yy = y;
             while yy > 0 {
                 x = 0;
-                while x < cols() {
+                while x < COLS {
                     set(g, x, yy, get(g, x, yy - 1));
                     x = x + 1;
                 }
                 yy = yy - 1;
             }
             x = 0;
-            while x < cols() { set(g, x, 0, 0); x = x + 1; }
+            while x < COLS { set(g, x, 0, 0); x = x + 1; }
             cleared = cleared + 1;
         } else {
             y = y - 1;
@@ -251,7 +251,7 @@ fn update(g: &mut Game, dt: f32) {
 }
 
 fn draw_cell(px: i32, py: i32, c: Color) {
-    draw_rectangle(px + 1, py + 1, cell() - 2, cell() - 2, c);
+    draw_rectangle(px + 1, py + 1, CELL - 2, CELL - 2, c);
 }
 
 fn draw_piece(k: Kind, rot: i32, ox: i32, oy: i32, c: Color) {
@@ -260,8 +260,8 @@ fn draw_piece(k: Kind, rot: i32, ox: i32, oy: i32, c: Color) {
     while y < 4 {
         let mut x = 0;
         while x < 4 {
-            if filled(mask, x, y) && oy + y * cell() >= board_y() {
-                draw_cell(ox + x * cell(), oy + y * cell(), c);
+            if filled(mask, x, y) && oy + y * CELL >= BOARD_Y {
+                draw_cell(ox + x * CELL, oy + y * CELL, c);
             }
             x = x + 1;
         }
@@ -280,10 +280,10 @@ fn draw(g: &Game) {
 
     // Board and settled blocks.
     let mut y = 0;
-    while y < rows() {
+    while y < ROWS {
         let mut x = 0;
-        while x < cols() {
-            draw_cell(board_x() + x * cell(), board_y() + y * cell(), color(get(g, x, y)));
+        while x < COLS {
+            draw_cell(BOARD_X + x * CELL, BOARD_Y + y * CELL, color(get(g, x, y)));
             x = x + 1;
         }
         y = y + 1;
@@ -291,11 +291,11 @@ fn draw(g: &Game) {
 
     // Ghost, then the falling piece.
     let c = color(kind_index(g.kind) + 1);
-    draw_piece(g.kind, g.rot, board_x() + g.px * cell(), board_y() + ghost_y(g) * cell(), ghost);
-    draw_piece(g.kind, g.rot, board_x() + g.px * cell(), board_y() + g.py * cell(), c);
+    draw_piece(g.kind, g.rot, BOARD_X + g.px * CELL, BOARD_Y + ghost_y(g) * CELL, ghost);
+    draw_piece(g.kind, g.rot, BOARD_X + g.px * CELL, BOARD_Y + g.py * CELL, c);
 
     // Side panel.
-    let side = board_x() + cols() * cell() + 30;
+    let side = BOARD_X + COLS * CELL + 30;
     draw_text("NEXT", side, 30, 20, dim);
     draw_piece(g.next, 0, side, 60, color(kind_index(g.next) + 1));
 
@@ -320,12 +320,12 @@ fn draw(g: &Game) {
     draw_text("p  pause   r  restart", side, 580, 16, dim);
 
     if g.over {
-        draw_rectangle(board_x(), 250, cols() * cell(), 100, Color { r: 0, g: 0, b: 0, a: 200 });
-        draw_text("GAME OVER", board_x() + 55, 270, 36, white);
-        draw_text("r to restart", board_x() + 90, 315, 20, dim);
+        draw_rectangle(BOARD_X, 250, COLS * CELL, 100, Color { r: 0, g: 0, b: 0, a: 200 });
+        draw_text("GAME OVER", BOARD_X + 55, 270, 36, white);
+        draw_text("r to restart", BOARD_X + 90, 315, 20, dim);
     } else if g.paused {
-        draw_rectangle(board_x(), 250, cols() * cell(), 100, Color { r: 0, g: 0, b: 0, a: 200 });
-        draw_text("PAUSED", board_x() + 85, 285, 36, white);
+        draw_rectangle(BOARD_X, 250, COLS * CELL, 100, Color { r: 0, g: 0, b: 0, a: 200 });
+        draw_text("PAUSED", BOARD_X + 85, 285, 36, white);
     }
     end_drawing();
 }
@@ -335,7 +335,7 @@ fn main() {
     set_target_fps(60);
 
     let mut g = Game {
-        board: [0; 200],
+        board: [0; COLS * ROWS],
         kind: Kind::T,
         next: Kind::T,
         rot: 0, px: 0, py: 0,

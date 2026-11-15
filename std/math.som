@@ -1,6 +1,8 @@
 extern "c";
 
 impl f32 {
+    pub const PI = 3.14;
+
     pub fn pow(self, power: f32) -> f32 {
         c::powf(self, power)
     }

@@ -869,6 +869,45 @@ impl Prover<'_> {
         })
     }
 
+    /// The integer a constant's value is: `W * H` of `const W = 60;` and `const H = 20;`
+    /// is 1200. `None` where it isn't one, or a step wraps around.
+    fn const_int(&self, expr: Id<Expr>) -> Option<i128> {
+        let n = match self.ast.exprs[expr] {
+            Expr::Int(n) => n,
+            Expr::Neg(inner) => self.const_int(inner)?.checked_neg()?,
+            Expr::BitNot(inner) => !self.const_int(inner)?,
+            Expr::Cast { value, .. } => self.const_int(value)?,
+            Expr::Var(ref path) if let Some((_, n)) = path.int_limit() => n,
+            Expr::Var(_) => {
+                let def = self.names.expr(expr)?;
+                let DefKind::Const(c) = self.names.def(def).kind else {
+                    return None;
+                };
+                self.const_int(self.ast.consts[c].value)?
+            }
+            Expr::Binary { op, lhs, rhs } => {
+                let (a, b) = (self.const_int(lhs)?, self.const_int(rhs)?);
+                match op {
+                    BinOp::Add => a.checked_add(b)?,
+                    BinOp::Subtract => a.checked_sub(b)?,
+                    BinOp::Multiply => a.checked_mul(b)?,
+                    BinOp::Divide => a.checked_div(b)?,
+                    BinOp::Modulo => a.checked_rem(b)?,
+                    BinOp::BitAnd => a & b,
+                    BinOp::BitOr => a | b,
+                    BinOp::BitXor => a ^ b,
+                    BinOp::ShiftLeft => a.checked_shl(u32::try_from(b).ok()?)?,
+                    BinOp::ShiftRight => a.checked_shr(u32::try_from(b).ok()?)?,
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+        // Within its type, or it wrapped around on the way.
+        let (min, max) = self.int_limits(expr)?;
+        (min <= n && n <= max).then_some(n)
+    }
+
     /// What a call of a function without parameters always gives, if its body is only a
     /// number: `fn width() -> i32 = 60;`, or `{ return 60; }`.
     fn constant_call(&self, expr: Id<Expr>) -> Option<i128> {
@@ -1140,6 +1179,10 @@ impl Prover<'_> {
         expr: Id<Expr>,
         subst: Subst,
     ) -> Option<(Value<Place>, Vec<Cond<Place>>)> {
+        // Worked out while compiling: `3 * W + 5`.
+        if let Some(n) = self.const_int(expr) {
+            return Some((Value::number(n), Vec::new()));
+        }
         let value = match self.ast.exprs[expr] {
             Expr::Int(n) => Value::number(n),
             Expr::Var(_) => {
@@ -1154,6 +1197,8 @@ impl Prover<'_> {
                             path: Vec::new(),
                         })
                     }
+                    // `W`, of `const W = 60;`
+                    DefKind::Const(c) => Value::number(self.const_int(self.ast.consts[c].value)?),
                     // `N`, of `[T; N]`.
                     DefKind::TypeParam { value: true, .. }
                     | DefKind::StructParam { value: true, .. }
