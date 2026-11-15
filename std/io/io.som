@@ -1,10 +1,14 @@
 extern "c";
 
-pub fn println(text: string) {
+/// Writes `value` as text, then a newline: anything `Display`, as `"{value}"` shows it.
+pub fn println<T: Display>(value: T) {
+    let text = "{value}";
     c::printf("%s\n", text.c_str);
 }
 
-pub fn print(text: string) {
+/// Writes `value` as text, with no newline after it.
+pub fn print<T: Display>(value: T) {
+    let text = "{value}";
     c::printf("%s", text.c_str);
 }
 

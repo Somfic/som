@@ -153,207 +153,207 @@ impl From<f64> for string {
     }
 }
 
-impl From<i8> for string { fn from(value: i8) -> string = string::from(value as i64); }
-impl From<i16> for string { fn from(value: i16) -> string = string::from(value as i64); }
-impl From<i32> for string { fn from(value: i32) -> string = string::from(value as i64); }
-impl From<isize> for string { fn from(value: isize) -> string = string::from(value as i64); }
-impl From<u8> for string { fn from(value: u8) -> string = string::from(value as u64); }
-impl From<u16> for string { fn from(value: u16) -> string = string::from(value as u64); }
-impl From<u32> for string { fn from(value: u32) -> string = string::from(value as u64); }
-impl From<usize> for string { fn from(value: usize) -> string = string::from(value as u64); }
-impl From<f32> for string { fn from(value: f32) -> string = string::from(value as f64); }
+// impl From<i8> for string { fn from(value: i8) -> string = string::from(value as i64); }
+// impl From<i16> for string { fn from(value: i16) -> string = string::from(value as i64); }
+// impl From<i32> for string { fn from(value: i32) -> string = string::from(value as i64); }
+// impl From<isize> for string { fn from(value: isize) -> string = string::from(value as i64); }
+// impl From<u8> for string { fn from(value: u8) -> string = string::from(value as u64); }
+// impl From<u16> for string { fn from(value: u16) -> string = string::from(value as u64); }
+// impl From<u32> for string { fn from(value: u32) -> string = string::from(value as u64); }
+// impl From<usize> for string { fn from(value: usize) -> string = string::from(value as u64); }
+// impl From<f32> for string { fn from(value: f32) -> string = string::from(value as f64); }
 
-impl From<bool> for string {
-    fn from(value: bool) -> string = "true" if value else "false";
-}
+// impl From<bool> for string {
+//     fn from(value: bool) -> string = "true" if value else "false";
+// }
 
-/// What a reference refers to, as text: `println(&n)`, `"x: " + item` of a `&i32`.
-impl From<&i8> for string { fn from(value: &i8) -> string = string::from(*value); }
-impl From<&i16> for string { fn from(value: &i16) -> string = string::from(*value); }
-impl From<&i32> for string { fn from(value: &i32) -> string = string::from(*value); }
-impl From<&i64> for string { fn from(value: &i64) -> string = string::from(*value); }
-impl From<&isize> for string { fn from(value: &isize) -> string = string::from(*value); }
-impl From<&u8> for string { fn from(value: &u8) -> string = string::from(*value); }
-impl From<&u16> for string { fn from(value: &u16) -> string = string::from(*value); }
-impl From<&u32> for string { fn from(value: &u32) -> string = string::from(*value); }
-impl From<&u64> for string { fn from(value: &u64) -> string = string::from(*value); }
-impl From<&usize> for string { fn from(value: &usize) -> string = string::from(*value); }
-impl From<&f32> for string { fn from(value: &f32) -> string = string::from(*value); }
-impl From<&f64> for string { fn from(value: &f64) -> string = string::from(*value); }
-impl From<&bool> for string { fn from(value: &bool) -> string = string::from(*value); }
-impl From<&string> for string { fn from(value: &string) -> string = *value; }
+// /// What a reference refers to, as text: `println(&n)`, `"x: " + item` of a `&i32`.
+// impl From<&i8> for string { fn from(value: &i8) -> string = string::from(*value); }
+// impl From<&i16> for string { fn from(value: &i16) -> string = string::from(*value); }
+// impl From<&i32> for string { fn from(value: &i32) -> string = string::from(*value); }
+// impl From<&i64> for string { fn from(value: &i64) -> string = string::from(*value); }
+// impl From<&isize> for string { fn from(value: &isize) -> string = string::from(*value); }
+// impl From<&u8> for string { fn from(value: &u8) -> string = string::from(*value); }
+// impl From<&u16> for string { fn from(value: &u16) -> string = string::from(*value); }
+// impl From<&u32> for string { fn from(value: &u32) -> string = string::from(*value); }
+// impl From<&u64> for string { fn from(value: &u64) -> string = string::from(*value); }
+// impl From<&usize> for string { fn from(value: &usize) -> string = string::from(*value); }
+// impl From<&f32> for string { fn from(value: &f32) -> string = string::from(*value); }
+// impl From<&f64> for string { fn from(value: &f64) -> string = string::from(*value); }
+// impl From<&bool> for string { fn from(value: &bool) -> string = string::from(*value); }
+// impl From<&string> for string { fn from(value: &string) -> string = *value; }
 
-/// An optional as text: what it holds, or `none`.
-impl From<i8?> for string {
-    fn from(value: i8?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<i16?> for string {
-    fn from(value: i16?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<i32?> for string {
-    fn from(value: i32?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<i64?> for string {
-    fn from(value: i64?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<isize?> for string {
-    fn from(value: isize?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<u8?> for string {
-    fn from(value: u8?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<u16?> for string {
-    fn from(value: u16?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<u32?> for string {
-    fn from(value: u32?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<u64?> for string {
-    fn from(value: u64?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<usize?> for string {
-    fn from(value: usize?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<f32?> for string {
-    fn from(value: f32?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<f64?> for string {
-    fn from(value: f64?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<bool?> for string {
-    fn from(value: bool?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<string?> for string {
-    fn from(value: string?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
+// /// An optional as text: what it holds, or `none`.
+// impl From<i8?> for string {
+//     fn from(value: i8?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<i16?> for string {
+//     fn from(value: i16?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<i32?> for string {
+//     fn from(value: i32?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<i64?> for string {
+//     fn from(value: i64?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<isize?> for string {
+//     fn from(value: isize?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<u8?> for string {
+//     fn from(value: u8?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<u16?> for string {
+//     fn from(value: u16?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<u32?> for string {
+//     fn from(value: u32?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<u64?> for string {
+//     fn from(value: u64?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<usize?> for string {
+//     fn from(value: usize?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<f32?> for string {
+//     fn from(value: f32?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<f64?> for string {
+//     fn from(value: f64?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<bool?> for string {
+//     fn from(value: bool?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<string?> for string {
+//     fn from(value: string?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
 
-/// An optional reference as text, as `List`'s `get` gives: what it refers to, or `none`.
-impl From<&i8?> for string {
-    fn from(value: &i8?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&i16?> for string {
-    fn from(value: &i16?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&i32?> for string {
-    fn from(value: &i32?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&i64?> for string {
-    fn from(value: &i64?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&isize?> for string {
-    fn from(value: &isize?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&u8?> for string {
-    fn from(value: &u8?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&u16?> for string {
-    fn from(value: &u16?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&u32?> for string {
-    fn from(value: &u32?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&u64?> for string {
-    fn from(value: &u64?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&usize?> for string {
-    fn from(value: &usize?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&f32?> for string {
-    fn from(value: &f32?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&f64?> for string {
-    fn from(value: &f64?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&bool?> for string {
-    fn from(value: &bool?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
-impl From<&string?> for string {
-    fn from(value: &string?) -> string {
-        let held = value else return "none";
-        string::from(held)
-    }
-}
+// /// An optional reference as text, as `List`'s `get` gives: what it refers to, or `none`.
+// impl From<&i8?> for string {
+//     fn from(value: &i8?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&i16?> for string {
+//     fn from(value: &i16?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&i32?> for string {
+//     fn from(value: &i32?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&i64?> for string {
+//     fn from(value: &i64?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&isize?> for string {
+//     fn from(value: &isize?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&u8?> for string {
+//     fn from(value: &u8?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&u16?> for string {
+//     fn from(value: &u16?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&u32?> for string {
+//     fn from(value: &u32?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&u64?> for string {
+//     fn from(value: &u64?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&usize?> for string {
+//     fn from(value: &usize?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&f32?> for string {
+//     fn from(value: &f32?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&f64?> for string {
+//     fn from(value: &f64?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&bool?> for string {
+//     fn from(value: &bool?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
+// impl From<&string?> for string {
+//     fn from(value: &string?) -> string {
+//         let held = value else return "none";
+//         string::from(held)
+//     }
+// }
 
 /// `text[i]`: the byte at `i`, where `i` is known to be below `text.len`. Only read: a
 /// string's bytes are shared by its copies.
@@ -454,6 +454,12 @@ impl Display for string {
 impl Display for cstr {
     prop display_len: usize = c::strlen(*self) as usize;
     fn display(&self, to: *u8) { c::memcpy(to as *, *self as *, .display_len as u64); }
+}
+
+/// What it refers to: `println(&value)` shows `value` without giving it up.
+impl<T: Display> Display for &T {
+    prop display_len: usize = (*self).display_len;
+    fn display(&self, to: *u8) { (*self).display(to); }
 }
 
 /// What an optional holds, or `none`.

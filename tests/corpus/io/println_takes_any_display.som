@@ -1,0 +1,27 @@
+// expect: exit 0
+
+/// `println` and `print` take anything `Display`, not only text: numbers, optionals, and
+/// structs that implement it. `println(&value)` shows a value without giving it up.
+use som::io;
+
+struct Point { x: i32, y: i32 }
+
+impl Display for Point {
+    prop display_len: usize = "({self.x}, {self.y})".len;
+    fn display(&self, to: *u8) { "({self.x}, {self.y})".display(to); }
+}
+
+fn main() -> i32 {
+    let p = Point { x: 1, y: 2 };
+    println(&p);
+    println(&p);
+    println(p);
+    println(42);
+    print(1.5);
+    println(true);
+    let mut values: List<i32> = List::empty();
+    values.push(7);
+    println(values.get(0));
+    for value in &values { println(value); }
+    0
+}

@@ -1,0 +1,16 @@
+// expect: exit 0
+
+/// Whatever implements `Display` has `to_string`: its text, as a `string` of its own.
+struct Point { x: i32, y: i32 }
+
+impl Display for Point {
+    prop display_len: usize = "({self.x}, {self.y})".len;
+    fn display(&self, to: *u8) { "({self.x}, {self.y})".display(to); }
+}
+
+fn main() -> i32 {
+    let p = Point { x: 1, y: 2 };
+    let n = 42;
+    let ok = p.to_string() == "(1, 2)" and n.to_string() == "42" and true.to_string() == "true";
+    if ok { 0 } else { 1 }
+}

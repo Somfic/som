@@ -502,6 +502,8 @@ impl Checker<'_> {
                     LangTrait::Divide,
                     LangTrait::Compare,
                     LangTrait::Eq,
+                    // Every number type is shown as text: `42.to_string()`.
+                    LangTrait::Display,
                 ]
                 .into_iter()
                 .filter_map(|l| self.names.lang(l))

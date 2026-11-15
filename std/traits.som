@@ -119,6 +119,9 @@ pub trait Display {
     /// Writes its text at `to`, which has room for `display_len` bytes. It may write a zero
     /// byte after them, which what's written next covers.
     fn display(self: &Self, to: *u8);
+
+    /// Its text, as a `string` of its own: `"{self}"`.
+    fn to_string(self: &Self) -> string = "{self}";
 }
 
 /// Copied by calling `share` rather than moved: using a value leaves it usable, and the

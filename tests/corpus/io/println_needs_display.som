@@ -1,0 +1,11 @@
+// expect: error DoesNotImplement
+
+/// What `println` is given has to be `Display`.
+use som::io;
+
+struct Point { x: i32, y: i32 }
+
+fn main() -> i32 {
+    println(Point { x: 1, y: 2 });
+    0
+}
