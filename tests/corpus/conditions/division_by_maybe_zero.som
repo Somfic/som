@@ -1,0 +1,7 @@
+// expect: error MaybeZeroDivisor
+
+/// An integer divided by something not known not to be 0: nothing is checked as the
+/// program runs, so it has to be known.
+fn average(total: i32, count: i32) -> i32 = total / count;
+
+fn main() -> i32 = average(10, 2);

@@ -1,5 +1,6 @@
 // expect: exit 42
 
+@where b != 0
 fn divide(a: i32, b: i32, out remainder: i32) -> i32 {
     remainder = a % b;
     a / b

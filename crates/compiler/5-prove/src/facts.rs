@@ -50,6 +50,8 @@ pub enum Cond<P> {
     Any(Vec<Cond<P>>),
     /// `a - b <= c`.
     Le(Term<P>, Term<P>, i128),
+    /// `a - b != c`: one or the other side of it, not known which.
+    Ne(Term<P>, Term<P>, i128),
     /// A `bool` place that's this.
     Is(P, bool),
     /// Something not followed: never known to hold.
@@ -98,7 +100,7 @@ impl<P: Clone> Cond<P> {
             Compare::Greater => le(y, x, true),
             Compare::GreaterOrEqual => le(y, x, false),
             Compare::Equal => Cond::All(vec![le(x, y, false), le(y, x, false)]),
-            Compare::NotEqual => Cond::Any(vec![le(x, y, true), le(y, x, true)]),
+            Compare::NotEqual => Cond::Ne(x.term.clone(), y.term.clone(), y.offset - x.offset),
         }
     }
 
@@ -107,7 +109,7 @@ impl<P: Clone> Cond<P> {
         match self {
             Cond::All(all) | Cond::Any(all) => all.iter().any(|c| c.has_unknown()),
             Cond::Unknown => true,
-            Cond::Le(..) | Cond::Is(..) => false,
+            Cond::Le(..) | Cond::Ne(..) | Cond::Is(..) => false,
         }
     }
 
@@ -130,6 +132,7 @@ struct Fact<P> {
 #[derive(Clone, Debug)]
 enum FactKind<P> {
     Le(Term<P>, Term<P>, i128),
+    Ne(Term<P>, Term<P>, i128),
     Is(P, bool),
 }
 
@@ -137,7 +140,7 @@ impl<P> FactKind<P> {
     fn places(&self) -> Vec<&P> {
         let mut places = Vec::new();
         match self {
-            FactKind::Le(a, b, _) => {
+            FactKind::Le(a, b, _) | FactKind::Ne(a, b, _) => {
                 for term in [a, b] {
                     if let Term::Place(p) = term {
                         places.push(p);
@@ -204,6 +207,17 @@ impl<P: Clone + PartialEq> Facts<P> {
             Cond::All(all) => all.iter().for_each(|c| self.assume(c)),
             Cond::Le(a, b, c) => self.learn(FactKind::Le(a.clone(), b.clone(), *c)),
             Cond::Is(p, value) => self.learn(FactKind::Is(p.clone(), *value)),
+            // Kept as it is; and where one side of it can't be, the other: `len != 0` of
+            // an unsigned `len` is `len > 0`.
+            Cond::Ne(a, b, c) => {
+                self.learn(FactKind::Ne(a.clone(), b.clone(), *c));
+                let (below, above) = Self::sides(a, b, *c);
+                if self.refuted(&below) {
+                    self.assume(&above);
+                } else if self.refuted(&above) {
+                    self.assume(&below);
+                }
+            }
             // Of several, the one that doesn't contradict what's known: `len != 0` of an
             // unsigned `len` is `len > 0`, as `len < 0` can't be.
             Cond::Any(any) => {
@@ -222,6 +236,11 @@ impl<P: Clone + PartialEq> Facts<P> {
             // `a - b <= c` fails where `b - a <= -c - 1` holds.
             Cond::Le(a, b, c) => self.holds(&Cond::Le(b.clone(), a.clone(), -c - 1)),
             Cond::Is(p, value) => self.holds(&Cond::Is(p.clone(), !value)),
+            // `a - b != c` fails where it's known to be equal.
+            Cond::Ne(a, b, c) => {
+                self.holds(&Cond::Le(a.clone(), b.clone(), *c))
+                    && self.holds(&Cond::Le(b.clone(), a.clone(), -c))
+            }
             Cond::All(all) => all.iter().any(|c| self.refuted(c)),
             Cond::Any(any) => any.iter().all(|c| self.refuted(c)),
             Cond::Unknown => false,
@@ -244,8 +263,27 @@ impl<P: Clone + PartialEq> Facts<P> {
             Cond::Le(a, b, c) => self.least(a, b).is_none_or(|d| d <= *c),
             Cond::Is(p, value) => (self.facts.iter())
                 .any(|f| matches!(&f.kind, FactKind::Is(q, v) if q == p && v == value)),
+            // Known as it is, either way round, or one side of it known.
+            Cond::Ne(a, b, c) => {
+                let known = self.facts.iter().any(|f| match &f.kind {
+                    FactKind::Ne(x, y, d) => {
+                        (x == a && y == b && d == c) || (x == b && y == a && *d == -c)
+                    }
+                    _ => false,
+                });
+                let (below, above) = Self::sides(a, b, *c);
+                known || self.holds(&below) || self.holds(&above)
+            }
             Cond::Unknown => false,
         }
+    }
+
+    /// The two ways `a - b != c` can hold: `a - b < c`, and `a - b > c`.
+    fn sides(a: &Term<P>, b: &Term<P>, c: i128) -> (Cond<P>, Cond<P>) {
+        (
+            Cond::Le(a.clone(), b.clone(), c - 1),
+            Cond::Le(b.clone(), a.clone(), -c - 1),
+        )
     }
 
     /// The least `d` known with `a - b <= d`, if one is: what's known of how far `a` can be
@@ -377,6 +415,15 @@ mod tests {
             Compare::GreaterOrEqual,
             &Value::number(1)
         )));
+    }
+
+    #[test]
+    fn not_equal_of_signed() {
+        let mut facts = Facts::default();
+        facts.assume(&Cond::compare(&v("b"), Compare::NotEqual, &Value::number(0)));
+        assert!(facts.holds(&Cond::compare(&v("b"), Compare::NotEqual, &Value::number(0))));
+        assert!(facts.holds(&Cond::compare(&Value::number(0), Compare::NotEqual, &v("b"))));
+        assert!(!facts.holds(&Cond::compare(&v("b"), Compare::Greater, &Value::number(0))));
     }
 
     #[test]

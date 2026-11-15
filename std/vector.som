@@ -43,9 +43,9 @@ impl Vector<2, i64> {
 }
 
 impl Vector<2, f32> {
-    pub prop magintude = f32::sqrt(.x * .x + .y * .y);
+    pub prop magnitude = f32::sqrt(.x * .x + .y * .y);
     pub prop normalized {
-        Self { components: [ .x / .magintude, .y / .magintude ] }
+        Self { components: [ .x / .magnitude, .y / .magnitude ] }
     }
 
     pub fn zero() {
@@ -54,9 +54,9 @@ impl Vector<2, f32> {
 }
 
 impl Vector<2, f64> {
-    pub prop magintude = f64::sqrt(.x * .x + .y * .y);
+    pub prop magnitude = f64::sqrt(.x * .x + .y * .y);
     pub prop normalized {
-        Self { components: [ .x / .magintude, .y / .magintude ] }
+        Self { components: [ .x / .magnitude, .y / .magnitude ] }
     }
 
     pub fn zero() {
@@ -77,9 +77,9 @@ impl Vector<3, i64> {
 }
 
 impl Vector<3, f32> {
-    pub prop magintude = f32::sqrt(.x * .x + .y * .y + .z * .z);
+    pub prop magnitude = f32::sqrt(.x * .x + .y * .y + .z * .z);
     pub prop normalized {
-        Self { components: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
+        Self { components: [ .x / .magnitude, .y / .magnitude, .z / .magnitude ] }
     }
 
     pub fn zero() {
@@ -88,9 +88,9 @@ impl Vector<3, f32> {
 }
 
 impl Vector<3, f64> {
-    pub prop magintude = f64::sqrt(.x * .x + .y * .y + .z * .z);
+    pub prop magnitude = f64::sqrt(.x * .x + .y * .y + .z * .z);
     pub prop normalized {
-        Self { components: [ .x / .magintude, .y / .magintude, .z / .magintude ] }
+        Self { components: [ .x / .magnitude, .y / .magnitude, .z / .magnitude ] }
     }
 
     pub fn zero() {

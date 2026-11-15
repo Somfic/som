@@ -284,7 +284,7 @@ impl Parser<'_> {
     /// An `if` after its `if` (or another language's `elif`), which started at `start`.
     fn parse_if_rest(&mut self, start: Span) -> Option<IfParts> {
         let condition = self.parse_condition()?;
-        let then = self.parse_block_parts("the if body")?;
+        let then = self.parse_branch("the if body")?;
         // `elif c`, `elseif c`: another language's `else if`, reported and read as it.
         let otherwise = if self.eat_foreign_else_if() {
             Some(Else::If(Box::new(
@@ -299,7 +299,7 @@ impl Parser<'_> {
                 self.parse_if_rest(self.previous_span())?,
             )))
         } else {
-            Some(Else::Block(self.parse_block_parts("the else body")?))
+            Some(Else::Block(self.parse_branch("the else body")?))
         };
         Some(IfParts {
             condition,
@@ -394,6 +394,27 @@ impl Parser<'_> {
     }
 
     /// `{ stmt; stmt; value }`: the statements, and the value it ends with if it does.
+    /// An `if`'s or `else`'s body: a block, or one statement without braces,
+    /// `if n == 0 return 1;`, `if .keys.size == 0 @unreachable;`.
+    fn parse_branch(&mut self, what: &str) -> Option<BlockParts> {
+        if self.at(TokenKind::OpenBrace) {
+            return self.parse_block_parts(what);
+        }
+        // `then … end`, Python's `:`: another language's body, reported.
+        if let Some(parts) = self.foreign_body() {
+            return Some(parts);
+        }
+        let start = self.current_span();
+        match self.parse_stmt_or_expr() {
+            StmtOrExpr::Stmt(stmt) => Some(BlockParts::new(vec![stmt], self.span_from(&start))),
+            StmtOrExpr::Expr(_) => {
+                self.error_missing("expected `;` after the if's statement", "a semicolon");
+                None
+            }
+            StmtOrExpr::Error => None,
+        }
+    }
+
     pub(crate) fn parse_block_parts(&mut self, what: &str) -> Option<BlockParts> {
         // `then … end`, Python's `:`: a body as another language writes it.
         if !self.at(TokenKind::OpenBrace)

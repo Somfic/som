@@ -177,6 +177,24 @@ impl Prover<'_> {
                         self.facts.assume(&equal);
                     }
                 }
+                // `let p = Point { x: 1, y: 2 }`: `p.x` is 1, until `p` changes.
+                if let Some(def) = self.names.local(id) {
+                    self.learn_fields(def, Vec::new(), *value);
+                    // `let s: &[i32] = [1, 2, 3]`: `s.len` is 3.
+                    if let Expr::Array(values) = &self.ast.exprs[*value]
+                        && matches!(self.typed.ty(self.typed.local(def)), Ty::Ref { to, .. }
+                            if matches!(self.typed.ty(*to), Ty::Slice(_)))
+                    {
+                        let len = Place::Path {
+                            root: def,
+                            path: vec!["len".into()],
+                        };
+                        self.facts.unsigned(len.clone());
+                        let count = Value::number(values.len() as i128);
+                        self.facts
+                            .assume(&Cond::compare(&Value::place(len), Compare::Equal, &count));
+                    }
+                }
             }
             Stmt::Expr(expr) => self.expr(*expr),
             Stmt::Return(value) => {
@@ -205,6 +223,11 @@ impl Prover<'_> {
                 self.forget_changed_in(body);
                 self.expr(*condition);
                 self.branch(*condition, true, |p| p.stmts(body, false));
+                // `while i < n { … }` ends with `i >= n`, unless a `break` leaves it sooner.
+                if !self.breaks(body) {
+                    let cond = self.cond(*condition, false, &as_is);
+                    self.facts.assume(&cond);
+                }
             }
             Stmt::For { iterable, body, .. } => {
                 self.forget_changed_in(body);
@@ -224,6 +247,33 @@ impl Prover<'_> {
         self.facts.assume(&cond);
         f(self);
         self.facts.forget_since(mark);
+    }
+
+    /// What the integer fields of a struct written out, `value`, put at `path` in local
+    /// `root` are: `p.x` is 1 for `let p = Point { x: 1, y: 2 }`. Fields of fields too.
+    fn learn_fields(&mut self, root: DefId, path: Vec<Box<str>>, value: Id<Expr>) {
+        let Expr::Construct { fields, .. } = &self.ast.exprs[value] else {
+            return;
+        };
+        for (name, field) in fields {
+            let mut inner = path.clone();
+            inner.push(name.name.clone());
+            if self.is_integer(*field)
+                && let Some((known, needs)) = self.value_of(*field, &as_is)
+                && needs.iter().all(|n| self.facts.holds(n))
+            {
+                let place = Value::place(Place::Path {
+                    root,
+                    path: inner.clone(),
+                });
+                if self.is_unsigned(*field) {
+                    self.facts.unsigned(place.term_place().clone());
+                }
+                self.facts
+                    .assume(&Cond::compare(&place, Compare::Equal, &known));
+            }
+            self.learn_fields(root, inner, *field);
+        }
     }
 
     /// `for i in a..b`: `a <= i` and `i < b`, each time round. Not of a `mut` variable,
@@ -288,6 +338,10 @@ impl Prover<'_> {
                     BinOp::And => self.branch(*lhs, true, |p| p.expr(*rhs)),
                     BinOp::Or => self.branch(*lhs, false, |p| p.expr(*rhs)),
                     _ => self.expr(*rhs),
+                }
+                // `a / b` and `a % b` of integers: `b` has to be known not to be 0.
+                if matches!(op, BinOp::Divide | BinOp::Modulo) && self.is_integer(*lhs) {
+                    self.check_divisor(*rhs);
                 }
             }
             Expr::Not(inner) | Expr::Neg(inner) | Expr::BitNot(inner) | Expr::Deref(inner) => {
@@ -427,6 +481,8 @@ impl Prover<'_> {
         let index_text = self.ast.exprs.span(index).get_text();
         let len_text = format!("{object_text}.len");
         let known = self.known_about(object, index, &index_text, &len_text);
+        // Known to be outside, not just not known to be inside.
+        let never = self.index_outside(object, index);
         let written = matches!(self.ast.exprs[index], Expr::Int(_));
         let check = match written {
             true => format!("{len_text} > {index_text}"),
@@ -449,6 +505,7 @@ impl Prover<'_> {
             )
         });
         self.errors.push(ProveError::MaybeOutOfBounds {
+            never,
             index: index_text.to_string(),
             check,
             written,
@@ -491,6 +548,31 @@ impl Prover<'_> {
             .collect();
         let wrapped = format!("if {check} {{\n{}\n{indent}}}", body.join("\n"));
         Some(Fix::replace(title, span, wrapped))
+    }
+
+    /// Whether index `index` of `object` is known to be at or past its end.
+    fn index_outside(&mut self, object: Id<Expr>, index: Id<Expr>) -> bool {
+        let len = match self.array_len(object) {
+            Some(len) => len,
+            None => match self.value_of(object, &as_is) {
+                Some((
+                    Value {
+                        term: Term::Place(Place::Path { root, mut path }),
+                        offset: 0,
+                    },
+                    _,
+                )) => {
+                    path.push("len".into());
+                    Value::place(Place::Path { root, path })
+                }
+                _ => return false,
+            },
+        };
+        let Some((at, _)) = self.value_of(index, &as_is) else {
+            return false;
+        };
+        self.facts
+            .refuted(&Cond::compare(&at, Compare::Less, &len))
     }
 
     /// What is known about index `index` of `object`, for when it isn't enough: how it
@@ -588,6 +670,72 @@ impl Prover<'_> {
         }
         let at_known = describe(index_text, at_range);
         msg![at_known, ", and ", len_known]
+    }
+
+    /// The divisor of an integer `/` or `%`: known not to be 0, as dividing by it has no
+    /// answer and nothing is checked as the program runs.
+    fn check_divisor(&mut self, divisor: Id<Expr>) {
+        if self.nonzero(divisor) {
+            return;
+        }
+        let never = match self.value_of(divisor, &as_is) {
+            Some((value, needs)) => self.facts.refuted(&Cond::All(
+                needs
+                    .into_iter()
+                    .chain([Cond::compare(&value, Compare::NotEqual, &Value::number(0))])
+                    .collect(),
+            )),
+            None => false,
+        };
+        let text = self.ast.exprs.span(divisor).get_text().to_string();
+        let simple = text.chars().all(|c| c.is_alphanumeric() || "_.".contains(c));
+        let check = match simple {
+            true => format!("{text} != 0"),
+            false => format!("({text}) != 0"),
+        };
+        // `12 / 0`: no check would do.
+        let written = matches!(self.ast.exprs[divisor], Expr::Int(_));
+        let title = msg!["check it first: ", code(format!("if {check} {{ … }}"))];
+        let fix = (!written).then(|| self.check_fix(&check, title)).flatten();
+        self.errors.push(ProveError::MaybeZeroDivisor {
+            written,
+            divisor: text,
+            check,
+            never,
+            span: self.ast.exprs.span(divisor).clone(),
+            fix,
+        });
+    }
+
+    /// Whether `expr` is known not to be 0. Of `a if c else b`, each where it's chosen: `a`
+    /// where `c` holds, `b` where it doesn't.
+    fn nonzero(&mut self, expr: Id<Expr>) -> bool {
+        if let Expr::Conditional {
+            condition,
+            then,
+            otherwise,
+        } = self.ast.exprs[expr]
+        {
+            let mut both = true;
+            for (branch, truth) in [(then, true), (otherwise, false)] {
+                let mark = self.facts.mark();
+                let cond = self.cond(condition, truth, &as_is);
+                self.facts.assume(&cond);
+                both &= self.nonzero(branch);
+                self.facts.forget_since(mark);
+            }
+            return both;
+        }
+        let Some((value, needs)) = self.value_of(expr, &as_is) else {
+            return false;
+        };
+        let cond = Cond::All(
+            needs
+                .into_iter()
+                .chain([Cond::compare(&value, Compare::NotEqual, &Value::number(0))])
+                .collect(),
+        );
+        self.facts.holds(&cond)
     }
 
     /// A call `call` of `func`: each of its `@where`s has to be known to hold.
@@ -1100,6 +1248,37 @@ impl Prover<'_> {
                     .for_each(|&s| self.stmt_exprs(s, f));
             }
             _ => {}
+        }
+    }
+
+    /// Whether `stmts` has a `break` anywhere: one that may leave the loop they're in.
+    fn breaks(&self, stmts: &[Id<Stmt>]) -> bool {
+        let mut found = false;
+        for &stmt in stmts {
+            found |= match &self.ast.stmts[stmt] {
+                Stmt::Break(_) => true,
+                Stmt::Loop { body } | Stmt::While { body, .. } | Stmt::For { body, .. } => {
+                    self.breaks(body)
+                }
+                Stmt::If {
+                    then, otherwise, ..
+                } => self.breaks(then) || otherwise.as_ref().is_some_and(|o| self.breaks(o)),
+                _ => false,
+            };
+            self.stmt_exprs(stmt, &mut |e| found |= self.expr_breaks(e));
+        }
+        found
+    }
+
+    /// Whether a block inside `expr` has a `break`.
+    fn expr_breaks(&self, expr: Id<Expr>) -> bool {
+        match &self.ast.exprs[expr] {
+            Expr::Block { stmts, .. } => self.breaks(stmts),
+            _ => {
+                let mut found = false;
+                self.each_child(expr, &mut |child| found |= self.expr_breaks(child));
+                found
+            }
         }
     }
 

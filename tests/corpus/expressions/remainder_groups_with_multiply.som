@@ -3,6 +3,7 @@
 /// `%` is the remainder, with `*` and `/`, left to right: `2 * 7 % 4` is `(2 * 7) % 4`. Its
 /// sign is the left side's, so `a / b * b + a % b` is always `a`.
 fn check(ok: bool, code: i32) -> i32 { if ok { 0 } else { code } }
+@where b != 0
 fn rem(a: i32, b: i32) -> i32 { a % b }
 
 fn main() -> i32 {

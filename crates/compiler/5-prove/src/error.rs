@@ -5,6 +5,8 @@ use som_base::{Diagnostic, Fix, Label, Message, Span, msg};
 pub enum ProveError {
     /// `xs[i]` where `i` isn't known to be below `xs.len`.
     MaybeOutOfBounds {
+        /// It's known to be outside, rather than not known to be inside.
+        never: bool,
         /// The index and what it has to be below, as written: `i`, `xs.len`.
         index: String,
         len: String,
@@ -33,6 +35,18 @@ pub enum ProveError {
         declared: Span,
         fix: Option<Fix>,
     },
+    /// `a / b` or `a % b` of integers where `b` isn't known not to be 0.
+    MaybeZeroDivisor {
+        /// The divisor is a `0` written out.
+        written: bool,
+        /// The divisor as written, and the check that would do: `n - 5`, `(n - 5) != 0`.
+        divisor: String,
+        check: String,
+        /// It's known to be 0, rather than not known not to be.
+        never: bool,
+        span: Span,
+        fix: Option<Fix>,
+    },
     /// A `@where` the prover can't follow: one that calls a function, say.
     UnfollowedWhere { span: Span },
     /// A `@where` on a trait's method in an implementation: code calling it through the
@@ -49,6 +63,7 @@ impl ProveError {
         match self {
             ProveError::MaybeOutOfBounds { span, .. }
             | ProveError::Unproven { span, .. }
+            | ProveError::MaybeZeroDivisor { span, .. }
             | ProveError::UnfollowedWhere { span }
             | ProveError::WhereOnImpl { span, .. } => span,
         }
@@ -57,6 +72,7 @@ impl ProveError {
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
             ProveError::MaybeOutOfBounds {
+                never,
                 index,
                 len,
                 written,
@@ -69,7 +85,10 @@ impl ProveError {
                 let d = Diagnostic::error(msg![
                     "index ",
                     code(index.clone()),
-                    " is possibly out of bounds"
+                    match never {
+                        true => " is out of bounds",
+                        false => " is possibly out of bounds",
+                    }
                 ])
                 .with_label(Label::primary(span.clone(), known.clone()))
                 .with_hint(match written {
@@ -107,6 +126,46 @@ impl ProveError {
                 match get_fix {
                     Some(fix) => d.with_fix(fix.clone()),
                     None => d,
+                }
+            }
+            ProveError::MaybeZeroDivisor {
+                written: true,
+                span,
+                ..
+            } => Diagnostic::error("dividing by zero")
+                .with_label(Label::primary(span.clone(), "this is 0"))
+                .with_hint("dividing by zero has no answer"),
+            ProveError::MaybeZeroDivisor {
+                written: false,
+                divisor,
+                check,
+                never,
+                span,
+                fix,
+            } => {
+                let d = Diagnostic::error(match never {
+                    true => msg!["dividing by zero: ", code(divisor.clone()), " is 0 here"],
+                    false => msg!["dividing by ", code(divisor.clone()), ", which might be 0"],
+                })
+                .with_label(Label::primary(
+                    span.clone(),
+                    match never {
+                        true => msg!["this is 0"],
+                        false => msg!["not known not to be 0"],
+                    },
+                ))
+                .with_hint(msg![
+                    "dividing by zero has no answer, and nothing is checked as the program \
+                     runs, so ",
+                    code(divisor.clone()),
+                    " has to be known not to be 0 here"
+                ]);
+                match fix {
+                    Some(fix) => d.with_fix(fix.clone()),
+                    None => d.with_hint(msg![
+                        "check it first: ",
+                        code(format!("if {check} {{ … }}"))
+                    ]),
                 }
             }
             ProveError::WhereOnImpl {

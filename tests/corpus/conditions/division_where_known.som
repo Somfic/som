@@ -1,0 +1,15 @@
+// expect: exit 6
+
+/// Dividing by a number written out, by what a check or a `@where` says isn't 0.
+@where count != 0
+fn average(total: i32, count: i32) -> i32 = total / count;
+
+fn main() -> i32 {
+    let mut n = 4;
+    let mut result = 12 / 4 + 7 % 3;
+    if n != 0 {
+        result = result + 8 / n;
+    }
+    n = 0;
+    result + average(0, 2) - (n % 1)
+}

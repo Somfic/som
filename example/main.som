@@ -1,7 +1,0 @@
-let a: List = [ 1, 2, 3 ];
-
-
-if a.len > 3 {
-    let c = a.get(4);
-}
-
