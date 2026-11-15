@@ -118,7 +118,11 @@ impl Parser<'_> {
                 self.errors.push(ParseError {
                     message: msg!["som declares a function with ", code("fn")],
                     hint: msg!["with parameters, this is a function, not a variable"],
-                    fix: Some(Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed)),
+                    fix: Some(Fix::replace(
+                        msg!["change to ", code(&fixed)],
+                        span.clone(),
+                        fixed,
+                    )),
                     span,
                 });
                 self.in_recovery = true;
@@ -283,13 +287,17 @@ impl Parser<'_> {
         let then = self.parse_block_parts("the if body")?;
         // `elif c`, `elseif c`: another language's `else if`, reported and read as it.
         let otherwise = if self.eat_foreign_else_if() {
-            Some(Else::If(Box::new(self.parse_if_rest(self.previous_span())?)))
+            Some(Else::If(Box::new(
+                self.parse_if_rest(self.previous_span())?,
+            )))
         } else if !self.eat(TokenKind::Else) {
             None
         } else if self.at(TokenKind::If) {
             Some(Else::If(Box::new(self.parse_if_parts()?)))
         } else if self.eat_foreign_else_if() {
-            Some(Else::If(Box::new(self.parse_if_rest(self.previous_span())?)))
+            Some(Else::If(Box::new(
+                self.parse_if_rest(self.previous_span())?,
+            )))
         } else {
             Some(Else::Block(self.parse_block_parts("the else body")?))
         };
@@ -464,4 +472,3 @@ impl IfParts {
             }
     }
 }
-

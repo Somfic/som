@@ -1,5 +1,0 @@
-// expect: error Mismatch
-
-/// Indexing a slice gives `&T?`, as its length is only known as the program runs: not the
-/// `i32` itself.
-fn first(values: &[i32]) -> i32 { values[0] }

@@ -916,6 +916,7 @@ dependencies = [
  "som_mir",
  "som_optimize",
  "som_parser",
+ "som_prove",
  "som_resolve",
  "som_typeck",
  "tempfile",
@@ -987,6 +988,16 @@ dependencies = [
  "som_ast",
  "som_base",
  "som_lexer",
+]
+
+[[package]]
+name = "som_prove"
+version = "0.1.0"
+dependencies = [
+ "som_ast",
+ "som_base",
+ "som_resolve",
+ "som_typeck",
 ]
 
 [[package]]

@@ -79,13 +79,35 @@ pub trait Compare {
 /// `&` references are; a struct is if it implements this, and everything in it is too.
 pub trait Copy {}
 
-/// `values[key]`: what's at `key`, lent, or `none` if there's nothing there. Reading only:
-/// setting by index could miss, which would be an error as the program runs.
-pub trait Index<K> {
-    /// What's kept at each key.
+/// `values[i]`: the value at position `i`, which has to be known to be below `len`, by an
+/// `if i < values.len`, a `for i in 0..values.len`, or a `@where` saying so. Nothing is
+/// checked as the program runs.
+pub trait Index {
     type Item;
 
-    fn index(self: &Self, key: K) -> &Item?;
+    prop len: usize;
+
+    @where i < self.len, "a position in it"
+    fn at(self: &Self, i: usize) -> &Item;
+
+    fn get(self: &Self, i: usize) -> &Item? {
+        if i < self.len {
+            return self.at(i);
+        }
+        none
+    }
+}
+
+pub trait IndexMut: Index {
+    @where i < self.len, "a position in it"
+    fn at_mut(self: &mut Self, i: usize) -> &mut Self::Item;
+
+    fn get_mut(self: &mut Self, i: usize) -> &mut Self::Item? {
+        if i < self.len {
+            return self.at_mut(i);
+        }
+        none
+    }
 }
 
 /// Copied by calling `share` rather than moved: using a value leaves it usable, and the

@@ -45,9 +45,6 @@ impl string {
         copy
     }
 
-    /// How many bytes it has.
-    pub prop len: usize = .view.at(0).len;
-
     /// Its bytes, lent: a view of them, not a copy.
     pub prop bytes: &[u8] = .data.view(.len);
 
@@ -358,14 +355,13 @@ impl From<&string?> for string {
     }
 }
 
-/// `text[i]`: the byte at `i`, lent, or `none` past the end.
-impl Index<usize> for string {
+/// `text[i]`: the byte at `i`, where `i` is known to be below `text.len`. Only read: a
+/// string's bytes are shared by its copies.
+impl Index for string {
     type Item = u8;
 
-    fn index(&self, key: usize) -> &u8? {
-        if key >= .len {
-            return none;
-        }
-        .data.at(key)
-    }
+    /// How many bytes it has.
+    prop len: usize = .view.at(0).len;
+
+    fn at(&self, i: usize) -> &u8 = .data.at(i);
 }

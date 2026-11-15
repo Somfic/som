@@ -90,8 +90,10 @@ pub enum LangTrait {
     Copy,
     /// Copied by calling `share(&self)`: a value that keeps count of its copies.
     Share,
-    /// `values[key]` of a struct: its `index`.
+    /// `values[i]`: its `at`, where `i` is known to be below its `len`.
     Index,
+    /// `values[i] = value`: its `at_mut`.
+    IndexMut,
 }
 
 impl LangTrait {
@@ -136,11 +138,12 @@ impl LangTrait {
             | LangTrait::Drop
             | LangTrait::Copy
             | LangTrait::Share
-            | LangTrait::Index => return None,
+            | LangTrait::Index
+            | LangTrait::IndexMut => return None,
         })
     }
 
-    pub const ALL: [LangTrait; 15] = [
+    pub const ALL: [LangTrait; 16] = [
         LangTrait::Iterator,
         LangTrait::Iterable,
         LangTrait::IterableMut,
@@ -156,6 +159,7 @@ impl LangTrait {
         LangTrait::Copy,
         LangTrait::Share,
         LangTrait::Index,
+        LangTrait::IndexMut,
     ];
 
     /// Its name in the standard library.
@@ -176,6 +180,7 @@ impl LangTrait {
             LangTrait::Copy => "Copy",
             LangTrait::Share => "Share",
             LangTrait::Index => "Index",
+            LangTrait::IndexMut => "IndexMut",
         }
     }
 }
@@ -270,6 +275,8 @@ pub struct Names {
     traits: Vec<Option<DefId>>,
     /// Each trait's associated types, in order.
     trait_types: Vec<Vec<DefId>>,
+    /// `trait IndexMut: Index` → the traits it builds on.
+    supers: Vec<Vec<DefId>>,
     /// Every `impl` block, in the order they're written, module by module.
     pub impls: Vec<ImplDef>,
     /// A method → the impl block it's in.
@@ -315,6 +322,7 @@ impl Names {
             overloads: HashMap::new(),
             traits: vec![None; ast.traits.len()],
             trait_types: vec![Vec::new(); ast.traits.len()],
+            supers: vec![Vec::new(); ast.traits.len()],
             impls: Vec::new(),
             impl_of: HashMap::new(),
             bounds: HashMap::new(),
@@ -579,6 +587,15 @@ impl Names {
     /// A trait's associated types, in order.
     pub fn trait_types(&self, t: Id<Trait>) -> &[DefId] {
         &self.trait_types[t.id]
+    }
+
+    /// The traits trait `t` builds on: `Index` for `trait IndexMut: Index`.
+    pub fn supers(&self, t: Id<Trait>) -> &[DefId] {
+        &self.supers[t.id]
+    }
+
+    pub fn set_supers(&mut self, t: Id<Trait>, supers: Vec<DefId>) {
+        self.supers[t.id] = supers;
     }
 
     /// The impl block method `func` is in, by its index in `impls`.

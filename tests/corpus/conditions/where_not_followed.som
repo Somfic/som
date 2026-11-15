@@ -1,0 +1,9 @@
+// expect: error UnfollowedWhere
+
+/// A `@where` is something the compiler can follow: comparisons of integers, not calls.
+fn small(n: i32) -> bool = n < 10;
+
+@where small(n)
+fn f(n: i32) -> i32 = n;
+
+fn main() -> i32 = 0;

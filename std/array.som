@@ -1,7 +1,5 @@
 use som::mem;
 
-/// Goes through an array it owns, `for x in array`: each element is moved out in turn. The
-/// ones not reached when it's dropped, after a `break` say, are dropped with it.
 pub struct ArrayIntoIter<T, N: usize> {
     items: Manual<[T; N]>,
     next: usize,
@@ -37,4 +35,16 @@ impl<T, N: usize> Drop for ArrayIntoIter<T, N> {
             drop(items.read(i));
         }
     }
+}
+
+impl<T> Index for [T] {
+    type Item = T;
+
+    prop len: usize = self.len;
+
+    fn at(&self, i: usize) -> &T = (self as *T).at(i);
+}
+
+impl<T> IndexMut for [T] {
+    fn at_mut(&mut self, i: usize) -> &mut T = (self as *T).at_mut(i);
 }

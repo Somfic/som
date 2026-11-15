@@ -1,0 +1,11 @@
+// expect: exit 3
+
+/// A `let` is what it's given: `last` is one less than `xs.len`, which is at least 1.
+fn main() -> i32 {
+    let xs: List<i32> = [1, 2, 3];
+    if xs.len == 0 {
+        return 0;
+    }
+    let last = xs.len - 1;
+    xs[last]
+}

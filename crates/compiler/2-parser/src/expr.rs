@@ -18,7 +18,11 @@ impl Parser<'_> {
         self.with_condition(true, |p| p.parse_expr())
     }
 
-    pub(crate) fn with_condition<T>(&mut self, in_condition: bool, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub(crate) fn with_condition<T>(
+        &mut self,
+        in_condition: bool,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
         let outer = std::mem::replace(&mut self.in_condition, in_condition);
         let result = f(self);
         self.in_condition = outer;
@@ -243,8 +247,7 @@ impl Parser<'_> {
         let start = self.current_span();
         // Other languages' ways, reported: an anonymous function, which som doesn't have,
         // stops the expression; `new Point(…)` and `not x` are read as what they mean.
-        if self.foreign_lambda() || self.at(TokenKind::OpenParen) && self.foreign_lambda_params()
-        {
+        if self.foreign_lambda() || self.at(TokenKind::OpenParen) && self.foreign_lambda_params() {
             return Some(self.ast.exprs.alloc(Expr::Hole, start));
         }
         self.eat_foreign_new();
@@ -391,7 +394,10 @@ impl Parser<'_> {
                                 ],
                                 fix: Some(som_base::Fix {
                                     title: msg!["change each ", code(";"), " to ", code(",")],
-                                    edits: separators.into_iter().map(|s| (s, ",".into())).collect(),
+                                    edits: separators
+                                        .into_iter()
+                                        .map(|s| (s, ",".into()))
+                                        .collect(),
                                 }),
                                 span,
                             });

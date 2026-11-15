@@ -1,0 +1,17 @@
+// expect: exit 7
+
+/// A `&mut [T]` is set by index where the index is known to be inside it.
+fn clear(s: &mut [i32], i: usize) {
+    if i < s.len {
+        s[i] = 0;
+    }
+}
+
+fn main() -> i32 {
+    let mut a = [7, 8, 9];
+    let s = a.slice_mut(0..3) else return 0;
+    clear(s, 1);
+    clear(s, 2);
+    clear(s, 10);
+    a[0] + a[1] + a[2]
+}

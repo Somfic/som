@@ -1,3 +1,17 @@
-// expect: error
+// expect: exit 12
 
-trait Sized2 { prop size: i32; }
+/// A trait can have properties: each implementation gives its own, and generic code reads
+/// them through the bound.
+trait Area {
+    prop area: i32;
+}
+
+struct Rect { w: i32, h: i32 }
+
+impl Area for Rect {
+    prop area: i32 = self.w * self.h;
+}
+
+fn area_of<T: Area>(shape: &T) -> i32 = shape.area;
+
+fn main() -> i32 = area_of(&Rect { w: 3, h: 4 });

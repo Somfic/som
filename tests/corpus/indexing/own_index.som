@@ -1,0 +1,22 @@
+// expect: exit 42
+
+/// Any type is indexed by implementing `Index`: a `len`, and an `at` called only below it.
+struct Grid {
+    cells: [i32; 4],
+}
+
+impl Index for Grid {
+    type Item = i32;
+
+    prop len: usize = 4;
+
+    fn at(&self, i: usize) -> &i32 = self.cells.get_ref(i) else @unreachable;
+}
+
+fn main() -> i32 {
+    let g = Grid { cells: [1, 2, 3, 39] };
+    if g.len < 4 {
+        return 0;
+    }
+    g[3] + g[2]
+}

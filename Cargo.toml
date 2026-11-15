@@ -11,10 +11,11 @@ members = [
     "crates/compiler/2-parser",
     "crates/compiler/3-resolve",
     "crates/compiler/4-typeck",
-    "crates/compiler/5-lower",
-    "crates/compiler/6-borrowcheck",
-    "crates/compiler/7-optimize",
-    "crates/compiler/8-codegen",
+    "crates/compiler/5-prove",
+    "crates/compiler/6-lower",
+    "crates/compiler/7-borrowcheck",
+    "crates/compiler/8-optimize",
+    "crates/compiler/9-codegen",
 
     # orchestration
     "crates/driver",

@@ -1,0 +1,28 @@
+// expect: exit 46
+
+/// Whatever implements `Index` has `get`, and with `IndexMut`, `get_mut`: the value, or
+/// `none` past the end, for where an index isn't known to be inside.
+struct Pair {
+    a: i32,
+    b: i32,
+}
+
+impl Index for Pair {
+    type Item = i32;
+
+    prop len: usize = 2;
+
+    fn at(&self, i: usize) -> &i32 = &self.a if i == 0 else &self.b;
+}
+
+impl IndexMut for Pair {
+    fn at_mut(&mut self, i: usize) -> &mut i32 = &mut self.a if i == 0 else &mut self.b;
+}
+
+fn main() -> i32 {
+    let mut p = Pair { a: 1, b: 2 };
+    let second = p.get_mut(1) else return 0;
+    *second = 40;
+    let missing = 1 if p.get(5) == none else 0;
+    *(p.get(1) else &0) + *(p.get(0) else &0) + missing * 5
+}

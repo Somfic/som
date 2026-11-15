@@ -1,0 +1,5 @@
+// expect: error MaybeOutOfBounds
+
+/// A slice's length is only known as the program runs: an index has to be checked against
+/// it first.
+fn first(values: &[i32]) -> i32 { values[0] }

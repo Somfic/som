@@ -1,0 +1,12 @@
+// expect: exit 15
+
+/// A `List` is set by index where the index is known to be inside it.
+fn main() -> i32 {
+    let mut xs: List<i32> = [1, 2];
+    if xs.len > 1 {
+        xs[0] = 5;
+        xs[1] = xs[0] * 2;
+        return xs[0] + xs[1];
+    }
+    0
+}

@@ -22,24 +22,28 @@ type-checker:
   - changed-files:
       - any-glob-to-any-file: crates/compiler/4-typeck/**
 
+prover:
+  - changed-files:
+      - any-glob-to-any-file: crates/compiler/5-prove/**
+
 mir:
   - changed-files:
       - any-glob-to-any-file:
           - crates/core/mir/**
-          - crates/compiler/5-lower/**
+          - crates/compiler/6-lower/**
 
 borrow-checker:
   - changed-files:
-      - any-glob-to-any-file: crates/compiler/6-borrowcheck/**
+      - any-glob-to-any-file: crates/compiler/7-borrowcheck/**
 
 optimizer:
   - changed-files:
       - any-glob-to-any-file:
-          - crates/compiler/7-optimize/**
+          - crates/compiler/8-optimize/**
 
 codegen:
   - changed-files:
-      - any-glob-to-any-file: crates/compiler/8-codegen/**
+      - any-glob-to-any-file: crates/compiler/9-codegen/**
 
 driver:
   - changed-files:

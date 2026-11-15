@@ -366,17 +366,16 @@ impl<'a> Resolver<'a> {
         let ast = self.ast;
         let func = &ast.funcs[prop];
         let name = &func.name;
-        if block.trait_.is_some() {
-            self.errors.push(ResolveError::PropInTraitImpl {
-                span: name.span.clone(),
-            });
-            return;
-        }
         if func.generics.len() > block.generics.len() {
             let own = &func.generics[block.generics.len()..];
             let span = own[0].name.span.merge(&own[own.len() - 1].name.span);
             self.errors.push(ResolveError::PropGenerics { span });
         }
+        // A trait's is as visible as the trait.
+        let visibility = match block.trait_ {
+            Some(_) => som_ast::Visibility::Public,
+            None => func.visibility,
+        };
         if let DefKind::Struct(s) = self.names.def(owner).kind {
             let strukt = &ast.structs[s];
             // A private field and a `pub prop` of its name is a field only some code can
@@ -384,7 +383,7 @@ impl<'a> Resolver<'a> {
             // field, the property could never be reached.
             let field = (strukt.fields.iter().chain(strukt.payload()))
                 .find(|f| f.name.name == name.name)
-                .filter(|f| strukt.is_enum() || f.visibility >= func.visibility);
+                .filter(|f| strukt.is_enum() || f.visibility >= visibility);
             if let Some(field) = field {
                 self.errors.push(ResolveError::PropNamedLikeField {
                     name: name.name.to_string(),
@@ -546,6 +545,10 @@ impl<'a> Resolver<'a> {
     fn resolve_trait(&mut self, id: Id<som_ast::Trait>) {
         let t = &self.ast.traits[id];
         let types = self.names.trait_types(id).to_vec();
+        let supers = (t.supers.iter())
+            .filter_map(|path| self.resolve_path(path, Expect::Trait))
+            .collect();
+        self.names.set_supers(id, supers);
         self.block_types = (t.types.iter().zip(types))
             .map(|(assoc, def)| (&*assoc.name.name, def))
             .collect();
@@ -606,6 +609,10 @@ impl<'a> Resolver<'a> {
         }
         if let Some(ty) = func.returns {
             self.resolve_type(ty);
+        }
+        // `@where i < self.len`: in terms of the parameters.
+        for clause in &func.requires {
+            self.resolve_expr(clause.condition);
         }
         if let Some(body) = func.body {
             self.resolve_expr(body);
@@ -972,6 +979,7 @@ impl<'a> Resolver<'a> {
             | TypeExpr::PointerTo(to)
             | TypeExpr::Optional(to)
             | TypeExpr::Shared(to)
+            | TypeExpr::Elements(to)
             | TypeExpr::Slice { element: to, .. } => self.resolve_type(*to),
             TypeExpr::Array {
                 element: lhs,

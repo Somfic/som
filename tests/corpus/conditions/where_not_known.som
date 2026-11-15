@@ -1,0 +1,10 @@
+// expect: error Unproven
+
+/// A call where a `@where` isn't known to hold is an error, saying how it reads there.
+@where b != 0, "dividing by zero has no answer"
+fn divide(a: i32, b: i32) -> i32 = a / b;
+
+fn main() -> i32 {
+    let n = 5;
+    divide(10, n - 5)
+}

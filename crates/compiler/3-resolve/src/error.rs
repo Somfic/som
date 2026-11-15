@@ -60,8 +60,6 @@ pub enum ResolveError {
     },
     /// `prop len<T> -> …`: a property can't have type parameters of its own.
     PropGenerics { span: Span },
-    /// `prop` in `impl Trait for …`: traits only have methods.
-    PropInTraitImpl { span: Span },
     /// `break x;` or `continue x;` where `x` isn't a `for` loop's variable.
     NotALoop {
         keyword: &'static str,
@@ -146,11 +144,6 @@ impl ResolveError {
                         "for one with type parameters, use a method: ",
                         code("fn")
                     ]);
-            }
-            ResolveError::PropInTraitImpl { span } => {
-                return Diagnostic::error("traits can't have properties yet")
-                    .with_label(Label::primary(span.clone(), "property in a trait's impl"))
-                    .with_hint(msg!["move it to a plain ", code("impl"), " block"]);
             }
             ResolveError::NotALoop {
                 keyword,

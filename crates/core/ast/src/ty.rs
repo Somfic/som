@@ -48,6 +48,9 @@ pub enum TypeExpr {
         element: Id<TypeExpr>,
         mutable: bool,
     },
+    /// `[T]`, only what an `impl` is for: a slice's elements, which `&self` lends as the
+    /// slice. `impl Index<usize> for [T]`.
+    Elements(Id<TypeExpr>),
     /// `fn(A, B) -> C`
     Fn {
         params: Vec<Id<TypeExpr>>,

@@ -60,6 +60,7 @@ pub enum Error {
     Library(LibraryError),
     Resolve(ResolveError),
     Type(TypeError),
+    Prove(som_prove::ProveError),
     Borrow(BorrowError),
 }
 
@@ -71,6 +72,7 @@ impl Error {
             Error::Library(e) => format!("{e:?}"),
             Error::Resolve(e) => format!("{e:?}"),
             Error::Type(e) => format!("{e:?}"),
+            Error::Prove(e) => format!("{e:?}"),
             Error::Borrow(e) => format!("{e:?}"),
         };
         debug
@@ -86,6 +88,7 @@ impl Error {
             Error::Library(e) => e.to_diagnostic(),
             Error::Resolve(e) => e.to_diagnostic(),
             Error::Type(e) => e.to_diagnostic(),
+            Error::Prove(e) => e.to_diagnostic(),
             Error::Borrow(e) => e.to_diagnostic(),
         }
     }
@@ -151,6 +154,11 @@ pub fn check_loaded(mut ast: Ast, options: &Options) -> Result<Checked, Vec<Erro
     let (typed, errors) = som_typeck::check(&ast, &names);
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Type).collect());
+    }
+
+    let errors = som_prove::prove(&ast, &names, &typed);
+    if !errors.is_empty() {
+        return Err(errors.into_iter().map(Error::Prove).collect());
     }
 
     let mut mir = som_lower::lower(&ast, &names, &typed);
@@ -311,7 +319,15 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
     errors.extend(resolve_errors.into_iter().map(Error::Resolve));
 
     let (typed, type_errors) = som_typeck::check(&ast, &names);
+    let well_typed = type_errors.is_empty();
     errors.extend(type_errors.into_iter().map(Error::Type));
+    if well_typed && errors.is_empty() {
+        errors.extend(
+            som_prove::prove(&ast, &names, &typed)
+                .into_iter()
+                .map(Error::Prove),
+        );
+    }
 
     let mir = if errors.is_empty() {
         let mir = som_lower::lower(&ast, &names, &typed);

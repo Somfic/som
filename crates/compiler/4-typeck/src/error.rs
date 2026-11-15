@@ -395,16 +395,7 @@ pub enum TypeError {
         span: Span,
         get: String,
     },
-    /// `values[i]` of an index that isn't a number written out, so may be out of bounds.
-    /// `values[i]` of an array, where `i` isn't known to be inside it.
-    IndexNotConstant {
-        span: Span,
-        get: String,
-        /// `values.len`, and `i`, as written.
-        len: String,
-        index: String,
-    },
-    /// `values[i] = v` of a slice or struct, which could miss: only arrays are set by index.
+    /// `values[i] = v` of what doesn't implement `IndexMut`: a `string`.
     SliceIndexWrite {
         ty: Message,
         span: Span,
@@ -1319,25 +1310,10 @@ impl TypeError {
                 Diagnostic::error(msg!["cannot index ", ty.clone(), " with ", code("[]")])
                     .with_label(Label::primary(
                         span.clone(),
-                        "only an array's length is known, so only arrays are indexed",
+                        msg!["not an array, and it doesn't implement ", code("Index")],
                     ))
                     .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
             }
-            TypeError::IndexNotConstant {
-                span,
-                get,
-                len,
-                index,
-            } => Diagnostic::error(msg!["can't tell ", code(index.clone()), " is inside the array"])
-                .with_label(Label::primary(span.clone(), "this might be out of bounds"))
-                .with_hint(msg![
-                    "index inside ",
-                    code(format!("for {index} in 0..{len}")),
-                    " or ",
-                    code(format!("if {index} < {len} {{ … }}")),
-                    ", where it's known to be"
-                ])
-                .with_hint(msg!["or use ", code(get.clone()), ", which gives an optional"]),
             TypeError::SliceIndexWrite { ty, span, instead } => {
                 Diagnostic::error(msg![ty.clone(), " can't be set by index"])
                     .with_label(Label::primary(

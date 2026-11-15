@@ -28,7 +28,6 @@ fn help(error: &ResolveError) -> Option<String> {
         | ResolveError::MethodsOnType { .. }
         | ResolveError::PropNamedLikeField { .. }
         | ResolveError::PropGenerics { .. }
-        | ResolveError::PropInTraitImpl { .. }
         | ResolveError::NotVisible { .. } => None,
     }
 }

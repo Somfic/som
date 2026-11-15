@@ -89,6 +89,9 @@ pub struct Trait {
     pub generics: Vec<Generic>,
     /// `type Item;`: types each implementation says.
     pub types: Vec<AssocType>,
+    /// `trait IndexMut: Index`: traits whatever implements it implements too, whose
+    /// methods and properties its own can use.
+    pub supers: Vec<Path>,
     /// Each method's signature, generic over `Self` (the implementing type) first, then the
     /// trait's own generics, then its own. One with a body is what implementations get if
     /// they don't write it.
@@ -127,6 +130,17 @@ pub struct Func {
     /// `&self`, which isn't written. Properties are named apart from methods, so a type can
     /// have a `len` of each.
     pub prop: bool,
+    /// `@where i < self.len` above it: what has to be known to hold wherever it's called,
+    /// which its body can rely on.
+    pub requires: Vec<Where>,
+}
+
+/// `@where i < self.len, "a position in it"`: a condition on a function's parameters, with
+/// what it means, for error messages.
+#[derive(Clone)]
+pub struct Where {
+    pub condition: Id<Expr>,
+    pub reason: Option<Box<str>>,
 }
 
 /// A generic parameter: a type, `T` in `struct Pair<T>`, or a value of a type, `N: usize` in

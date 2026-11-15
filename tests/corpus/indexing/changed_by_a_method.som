@@ -1,0 +1,11 @@
+// expect: error MaybeOutOfBounds
+
+/// A method that takes `&mut self` may change the length: what was known about it is gone.
+fn main() -> i32 {
+    let mut xs: List<i32> = [1, 2, 3];
+    if xs.len > 2 {
+        xs.pop();
+        return xs[2];
+    }
+    0
+}

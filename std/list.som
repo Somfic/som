@@ -14,8 +14,6 @@ impl<T> List<T> {
         List { mem: Alloc::with_capacity(capacity), len: 0 }
     }
 
-    /// How many values it holds.
-    pub prop len = .len;
     pub prop capacity = .mem.size;
     pub prop is_empty = .len == 0;
     pub prop is_full = .len == .capacity;
@@ -35,20 +33,6 @@ impl<T> List<T> {
         }
         .len = .len - 1;
         .mem.read(.len)
-    }
-
-    pub fn get(&self, index: usize) -> &T? {
-        if index >= .len {
-            return none;
-        }
-        .mem.at(index)
-    }
-
-    pub fn get_mut(&mut self, index: usize) -> &mut T? {
-        if index >= .len {
-            return none;
-        }
-        .mem.at_mut(index)
     }
 
     pub prop slice = .mem.view(.len);
@@ -184,9 +168,17 @@ impl<T> Drop for ListIntoIter<T> {
     }
 }
 
-/// `values[i]`: the value at `i`, lent, or `none` past the end.
-impl<T> Index<usize> for List<T> {
+/// `values[i]`, where `i` is known to be below `values.len`.
+impl<T> Index for List<T> {
     type Item = T;
 
-    fn index(&self, key: usize) -> &T? = self.get(key);
+    /// How many values it holds.
+    prop len: usize = .len;
+
+    fn at(&self, i: usize) -> &T = .mem.at(i);
+}
+
+/// `values[i] = value`, where `i` is known to be below `values.len`.
+impl<T> IndexMut for List<T> {
+    fn at_mut(&mut self, i: usize) -> &mut T = .mem.at_mut(i);
 }

@@ -1,4 +1,4 @@
-// expect: error IndexNotConstant
+// expect: error MaybeOutOfBounds
 
 /// Where it isn't known to be inside the array, a variable can't index it: here `j` has
 /// already gone up past the check. Nothing is checked as the program runs.

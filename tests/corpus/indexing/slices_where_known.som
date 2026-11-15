@@ -1,0 +1,16 @@
+// expect: exit 21
+
+/// A slice is indexed where the index is known to be inside it: checked first, or after a
+/// `return` for where it isn't.
+fn at(s: &[i32], i: usize) -> i32 {
+    if i >= s.len {
+        return 0;
+    }
+    s[i]
+}
+
+fn main() -> i32 {
+    let a = [10, 20, 30];
+    let s = a.slice(0..2) else return 0;
+    at(s, 1) + at(s, 5) + (1 if s.len == 2 and s[1] == 20 else 0)
+}

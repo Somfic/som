@@ -1,4 +1,4 @@
-// expect: error PropInTraitImpl
+// expect: error NotInTrait
 
 trait Sized2 { fn size(self: &Self) -> i32; }
 

@@ -1,6 +1,7 @@
-use som::io;
+let a: List = [ 1, 2, 3 ];
 
-let xs = List::empty();
 
-println(xs.get(0));
-println(*(xs.get(0) else &0))
+if a.len > 3 {
+    let c = a.get(4);
+}
+

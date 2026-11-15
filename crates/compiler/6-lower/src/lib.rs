@@ -1808,17 +1808,6 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 };
                 self.call(expr, func, Some(*receiver), args)
             }
-            // `values[key]` of a struct: its `Index::index`.
-            Expr::Index { object, index } if let Some(def) = self.l.typed.method(expr) => {
-                let DefKind::Func(func) = self.l.names.def(def).kind else {
-                    unreachable!("methods are functions")
-                };
-                self.call(expr, func, Some(*object), &[*index])
-            }
-            // `values[i]` of a slice: `get_ref`, the element or `none`.
-            Expr::Index { object, index } if let Some(method) = self.l.typed.array_method(expr) => {
-                Rvalue::Use(self.array_method(expr, method, *object, &[*index]))
-            }
             // `items.len` of an array, slice or text.
             Expr::Field { object, .. } if let Some(method) = self.l.typed.array_method(expr) => {
                 Rvalue::Use(self.array_method(expr, method, *object, &[]))
@@ -1841,10 +1830,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::Field { .. } => {
                 self.l.typed.method(expr).is_some() || self.l.typed.array_method(expr).is_some()
             }
-            // `values[i]` of a slice or struct: a call too, not a place.
-            Expr::Index { .. } => {
-                self.l.typed.array_method(expr).is_some() || self.l.typed.method(expr).is_some()
-            }
+            // `values[i]` of a slice or struct is a place: what its `at` lends.
+            Expr::Index { .. } => false,
             _ => false,
         }
     }
@@ -2523,11 +2510,24 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 let index = if is_enum { index + 1 } else { index };
                 return place.project(Projection::Field(index));
             }
+            // `values[i]` of a slice or struct: what its `at` lends, or `at_mut` where it's
+            // changed. The prover checked `i` is below its `len`.
+            Expr::Index { object, index } if let Some(def) = self.l.typed.method(expr) => {
+                let DefKind::Func(func) = self.l.names.def(def).kind else {
+                    unreachable!("methods are functions")
+                };
+                let span = self.span(expr);
+                let call = self.call(expr, func, Some(*object), &[*index]);
+                let Rvalue::Call { func: instance, .. } = &call else {
+                    unreachable!("a call")
+                };
+                let lent_ty = self.l.mir.funcs[*instance].ret;
+                let lent = self.temp(lent_ty, span.clone());
+                self.assign(Place::local(lent), call, span);
+                return Place::local(lent).project(Projection::Deref);
+            }
             // `values[0]`: checked to be in bounds.
-            Expr::Index { object, index }
-                if self.l.typed.array_method(expr).is_none()
-                    && self.l.typed.method(expr).is_none() =>
-            {
+            Expr::Index { object, index } if self.l.typed.array_method(expr).is_none() => {
                 let mut place = self.place(*object);
                 // Elements are reachable through one reference.
                 let object_ty = self.expr_ty(*object);

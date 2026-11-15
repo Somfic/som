@@ -1,0 +1,11 @@
+[package]
+name = "som_prove"
+version = "0.1.0"
+edition = "2024"
+description = "Checks what has to be known where it's needed: indexes inside what they index, and functions' `@where`s"
+
+[dependencies]
+som_base = { path = "../../core/base" }
+som_ast = { path = "../../core/ast" }
+som_resolve = { path = "../3-resolve" }
+som_typeck = { path = "../4-typeck" }

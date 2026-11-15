@@ -454,7 +454,7 @@ impl Checker<'_> {
             return None;
         };
         (self.ast.traits[t].methods.iter().copied())
-            .find(|&m| &*self.ast.funcs[m].name.name == name)
+            .find(|&m| !self.ast.funcs[m].prop && &*self.ast.funcs[m].name.name == name)
     }
 
     /// The index of trait `trait_`'s associated type `name`.

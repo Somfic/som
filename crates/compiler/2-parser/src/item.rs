@@ -9,6 +9,69 @@ use som_lexer::TokenKind;
 use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
 
 impl Parser<'_> {
+    /// At `@where`, a condition on the function below.
+    pub(crate) fn at_where(&self) -> bool {
+        self.at(TokenKind::Builtin) && &*self.peek_token().text == "@where"
+    }
+
+    /// `@where i < self.len`, each line of them: kept for the function after them, with the
+    /// `///` comment above them.
+    fn parse_wheres(&mut self) {
+        if self.wheres.is_empty() {
+            self.where_doc = self.doc_comment();
+            self.where_start = Some(self.current_span());
+        }
+        while self.at_where() {
+            self.advance();
+            match self.parse_expr() {
+                Some(condition) => {
+                    // `, "a position in it"`: what it means, for error messages.
+                    let reason = match self.eat(TokenKind::Comma) && self.at(TokenKind::Text) {
+                        true => {
+                            let text = self.peek_token().text.clone();
+                            self.advance();
+                            Some(text[1..text.len() - 1].replace("\\\"", "\"").into())
+                        }
+                        false => None,
+                    };
+                    self.wheres.push(som_ast::Where { condition, reason });
+                }
+                None => {
+                    self.recover(RecoveryLevel::Member);
+                    return;
+                }
+            }
+        }
+        let at_function = {
+            let mut at = 0;
+            while matches!(self.peek_nth(at), TokenKind::Pub | TokenKind::Mod) {
+                at += 1;
+            }
+            matches!(self.peek_nth(at), TokenKind::Fn | TokenKind::Prop)
+        };
+        if !at_function {
+            let span = self.where_start.take().unwrap_or_else(|| self.current_span());
+            self.wheres.clear();
+            self.where_doc = None;
+            self.error_at(
+                span,
+                msg![code("@where"), " is for a function"],
+                msg!["put it on the line above a ", code("fn")],
+            );
+        }
+    }
+
+    /// The `///` comment and `@where` conditions of the function starting here.
+    fn take_wheres(&mut self) -> (Option<String>, Vec<som_ast::Where>) {
+        let requires = std::mem::take(&mut self.wheres);
+        self.where_start = None;
+        match self.where_doc.take() {
+            Some(doc) => (Some(doc), requires),
+            None if !requires.is_empty() => (None, requires),
+            None => (self.doc_comment(), requires),
+        }
+    }
+
     pub(crate) fn at_item(&self) -> bool {
         // `pub fn …`: who can see it, then the item. Other languages' `public` and
         // `static` too, reported when the item's read.
@@ -18,7 +81,8 @@ impl Parser<'_> {
         {
             at += 1;
         }
-        matches!(
+        self.at_where()
+            || matches!(
             self.peek_nth(at),
             TokenKind::Fn
                 | TokenKind::Extern
@@ -35,6 +99,10 @@ impl Parser<'_> {
 
     fn parse_item(&mut self) {
         self.in_impl = false;
+        if self.at_where() {
+            self.parse_wheres();
+            return;
+        }
         let at = self.current_span();
         self.visibility = self.parse_visibility();
         // Who can see `use`, an `impl` block or an `extern` block is said on what's in it.
@@ -63,9 +131,7 @@ impl Parser<'_> {
             TokenKind::Fn => self.parse_function().map(Item::Func),
             TokenKind::Ident if self.foreign_fn(0) => self.parse_function().map(Item::Func),
             _ if self.c_style_fn(0) => self.parse_function().map(Item::Func),
-            TokenKind::Ident if self.foreign_struct(0) => {
-                self.parse_struct().map(Item::Struct)
-            }
+            TokenKind::Ident if self.foreign_struct(0) => self.parse_struct().map(Item::Struct),
             TokenKind::Extern if self.peek_nth(1) == TokenKind::Struct => {
                 self.parse_struct().map(Item::Struct)
             }
@@ -146,6 +212,7 @@ impl Parser<'_> {
             library: None,
             in_trait: false,
             prop: false,
+            requires: Vec::new(),
         };
         let id = self.ast.funcs.alloc(func, span);
         self.add_item(Item::Func(id));
@@ -169,8 +236,11 @@ impl Parser<'_> {
                 let target_args = self.parse_type_args()?;
                 (Some((first, first_args)), target, target_args, None)
             } else {
-                // A type that isn't a struct: `bool`, `[T; N]`, `&T`.
-                let ty = self.parse_type()?;
+                // A type that isn't a struct: `bool`, `[T; N]`, `&T`, a slice's `[T]`.
+                self.in_impl_target = true;
+                let ty = self.parse_type();
+                self.in_impl_target = false;
+                let ty = ty?;
                 let span = self.ast.types.span(ty).clone();
                 let target = som_ast::Path {
                     segments: vec![som_ast::Ident {
@@ -216,6 +286,10 @@ impl Parser<'_> {
         let mut types = Vec::new();
         self.in_impl = true;
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            if self.at_where() {
+                self.parse_wheres();
+                continue;
+            }
             // `pub fn …`, `mod prop …`: who can see the method.
             self.visibility = self.parse_visibility();
             // `type Item = &T;`
@@ -268,7 +342,18 @@ impl Parser<'_> {
         self.expect(TokenKind::Trait, "a trait declaration")?;
         let name = self.parse_ident("a trait name")?;
         let generics = self.parse_generics()?;
+        // `trait IndexMut: Index`
+        let mut supers = Vec::new();
+        if self.eat(TokenKind::Colon) {
+            loop {
+                supers.push(self.parse_path("a trait name")?);
+                if !self.eat(TokenKind::Plus) {
+                    break;
+                }
+            }
+        }
         self.expect(TokenKind::OpenBrace, "the trait's methods")?;
+        self.trait_supers = supers.clone();
         let mut types = Vec::new();
         let mut methods = Vec::new();
         self.in_impl = true;
@@ -282,19 +367,9 @@ impl Parser<'_> {
                 };
                 self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
                 types.push(AssocType { doc, name });
-            } else if self.at(TokenKind::Prop) {
-                let span = self.current_span();
-                self.error_at(
-                    span,
-                    "traits can't have properties yet",
-                    msg!["use a method, ", code("fn"), ", instead"],
-                );
-                // Read as a method, to carry on after it.
-                match self.parse_trait_method(&name, &generics) {
-                    Some(id) => methods.push(id),
-                    None => self.recover(RecoveryLevel::Member),
-                }
-            } else if self.at_fn() {
+            } else if self.at_where() {
+                self.parse_wheres();
+            } else if self.at_fn() || self.at(TokenKind::Prop) {
                 match self.parse_trait_method(&name, &generics) {
                     Some(id) => methods.push(id),
                     None => self.recover(RecoveryLevel::Member),
@@ -317,6 +392,7 @@ impl Parser<'_> {
                 name,
                 generics,
                 types,
+                supers,
                 methods,
             },
             span,
@@ -330,7 +406,7 @@ impl Parser<'_> {
         trait_name: &Ident,
         trait_generics: &[som_ast::Generic],
     ) -> Option<Id<Func>> {
-        let doc = self.doc_comment();
+        let (doc, requires) = self.take_wheres();
         let start = self.current_span();
         let prop = self.eat(TokenKind::Prop);
         if !prop {
@@ -344,7 +420,7 @@ impl Parser<'_> {
         };
         let returns = if self.void_return() {
             None
-        } else if self.eat(TokenKind::Arrow) {
+        } else if self.eat(TokenKind::Arrow) || prop && self.eat(TokenKind::Colon) {
             Some(self.parse_type()?)
         } else {
             None
@@ -360,9 +436,11 @@ impl Parser<'_> {
                 span: trait_name.span.clone(),
             },
             ty: None,
-            bounds: vec![som_ast::Path {
+            bounds: std::iter::once(som_ast::Path {
                 segments: vec![trait_name.clone()],
-            }],
+            })
+            .chain(self.trait_supers.iter().cloned())
+            .collect(),
         };
         let generics = std::iter::once(this)
             .chain(trait_generics.iter().cloned())
@@ -382,7 +460,8 @@ impl Parser<'_> {
             link_name: None,
             library: None,
             in_trait: true,
-            prop: false,
+            prop,
+            requires,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -435,9 +514,18 @@ impl Parser<'_> {
             let written: Vec<&str> = path.segments.iter().map(|s| &*s.name).collect();
             let fixed = written.join("::");
             self.errors.push(ParseError {
-                message: msg!["som separates a path with ", code("::"), ", not ", code(".")],
+                message: msg![
+                    "som separates a path with ",
+                    code("::"),
+                    ", not ",
+                    code(".")
+                ],
                 hint: msg!["write it ", code(&fixed)],
-                fix: Some(Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed)),
+                fix: Some(Fix::replace(
+                    msg!["change to ", code(&fixed)],
+                    span.clone(),
+                    fixed,
+                )),
                 span,
             });
         }
@@ -526,7 +614,15 @@ impl Parser<'_> {
             let name = self.parse_ident("a struct field name")?;
             self.expect(TokenKind::Colon, "a struct field type")?;
             let ty = self.parse_type()?;
-            return Some((Field { doc, visibility, name, ty }, false));
+            return Some((
+                Field {
+                    doc,
+                    visibility,
+                    name,
+                    ty,
+                },
+                false,
+            ));
         }
         let start = self.current_span();
         let ty = self.parse_type()?;
@@ -534,16 +630,32 @@ impl Parser<'_> {
         let name = self.parse_ident("a struct field name")?;
         let separated = self.eat(TokenKind::Semicolon) || self.eat(TokenKind::Comma);
         let span = self.span_from(&start);
-        let fixed = format!("{}: {ty_text}{}", name.name, if separated { "," } else { "" });
+        let fixed = format!(
+            "{}: {ty_text}{}",
+            name.name,
+            if separated { "," } else { "" }
+        );
         if !self.in_recovery {
             self.errors.push(ParseError {
                 message: msg!["som writes a field's name first, then its type"],
                 hint: msg!["write it ", code(&fixed)],
-                fix: Some(Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed)),
+                fix: Some(Fix::replace(
+                    msg!["change to ", code(&fixed)],
+                    span.clone(),
+                    fixed,
+                )),
                 span,
             });
         }
-        Some((Field { doc, visibility, name, ty }, separated))
+        Some((
+            Field {
+                doc,
+                visibility,
+                name,
+                ty,
+            },
+            separated,
+        ))
     }
 
     /// At a method among a struct's fields, as in another language's class: `fn area(…)`,
@@ -556,7 +668,9 @@ impl Parser<'_> {
         {
             at += 1;
         }
-        if self.ident_ahead(at) == Some(struct_name) && self.peek_nth(at + 1) == TokenKind::OpenParen {
+        if self.ident_ahead(at) == Some(struct_name)
+            && self.peek_nth(at + 1) == TokenKind::OpenParen
+        {
             return Some((true, at));
         }
         (self.peek_nth(at) == TokenKind::Fn || self.foreign_fn(at) || self.c_style_fn(at))
@@ -633,7 +747,14 @@ impl Parser<'_> {
                 code(format!("fn new(…) -> {name} {{ {name} {{ … }} }}"))
             ]
         } else {
-            msg!["a method takes ", code("self"), ", ", code("&self"), " or ", code("&mut self")]
+            msg![
+                "a method takes ",
+                code("self"),
+                ", ",
+                code("&self"),
+                " or ",
+                code("&mut self")
+            ]
         };
         self.errors.push(ParseError {
             message: msg![
@@ -731,7 +852,7 @@ impl Parser<'_> {
     /// `fn name<T>(params) -> Ret { body }` or `fn name<T>(params) -> Ret = value;`, or in an
     /// impl block, `prop name: Ret { body }` or `prop name: Ret = value;`.
     fn parse_function(&mut self) -> Option<Id<Func>> {
-        let doc = self.doc_comment();
+        let (doc, requires) = self.take_wheres();
         let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         let prop = self.eat(TokenKind::Prop);
@@ -821,6 +942,7 @@ impl Parser<'_> {
             library: None,
             in_trait: false,
             prop,
+            requires,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -998,7 +1120,11 @@ impl Parser<'_> {
                 self.errors.push(ParseError {
                     message: msg!["som writes a parameter's name first, then its type"],
                     hint: msg!["write it ", code(&fixed)],
-                    fix: Some(Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed)),
+                    fix: Some(Fix::replace(
+                        msg!["change to ", code(&fixed)],
+                        span.clone(),
+                        fixed,
+                    )),
                     span,
                 });
                 params.push(Param {
@@ -1184,6 +1310,7 @@ impl Parser<'_> {
             library: None,
             in_trait: false,
             prop: false,
+            requires: Vec::new(),
         };
         Some(self.ast.funcs.alloc(func, span))
     }

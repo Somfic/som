@@ -1,4 +1,4 @@
-// expect: error IndexNotConstant
+// expect: error MaybeOutOfBounds
 
 /// A check stops counting once what it checked can change: `&mut k`, or a loop coming
 /// round again after `k` goes up.

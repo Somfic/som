@@ -1,0 +1,18 @@
+// expect: error WhereOnImpl
+
+/// An implementation of a trait's method has the trait's `@where`s and no more: code
+/// calling it through the trait only knows those.
+struct Evens {
+    count: usize,
+}
+
+impl Index for Evens {
+    type Item = usize;
+
+    prop len: usize = self.count;
+
+    @where i > 0
+    fn at(&self, i: usize) -> &usize = &self.count;
+}
+
+fn main() -> i32 = 0;

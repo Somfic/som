@@ -282,13 +282,18 @@ impl Parser<'_> {
                         TokenKind::CloseBracket,
                         "a closing bracket after the slice type",
                     )?;
-                    let written = if mutable { "&mut [T]" } else { "&[T]" };
-                    self.error_at(
-                        self.span_from(&start),
-                        "a slice is borrowed",
-                        &format!("write it `{written}`"),
-                    );
-                    TypeExpr::Slice { element, mutable }
+                    // `impl Index<usize> for [T]`: the elements, which `&self` lends.
+                    if self.in_impl_target && !mutable {
+                        TypeExpr::Elements(element)
+                    } else {
+                        let written = if mutable { "&mut [T]" } else { "&[T]" };
+                        self.error_at(
+                            self.span_from(&start),
+                            "a slice is borrowed",
+                            &format!("write it `{written}`"),
+                        );
+                        TypeExpr::Slice { element, mutable }
+                    }
                 } else {
                     self.expect(TokenKind::Semicolon, "a `;` before the array's length")?;
                     let len = self.parse_length("the array's length")?;

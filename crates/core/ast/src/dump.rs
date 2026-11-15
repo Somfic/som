@@ -53,6 +53,7 @@ impl Ast {
             TypeExpr::Pointer => "*".into(),
             TypeExpr::PointerTo(to) => format!("*{}", self.type_text(*to)),
             TypeExpr::Shared(to) => format!("#{}", self.type_text(*to)),
+            TypeExpr::Elements(element) => format!("[{}]", self.type_text(*element)),
             TypeExpr::Reference {
                 mutable,
                 lifetime,

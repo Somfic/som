@@ -361,6 +361,10 @@ impl<'a> FnChecker<'a> {
         state.moved.retain(|moved, _| {
             !(moved.local == place.local && moved.projection.starts_with(&place.projection))
         });
+        // A temporary is used once: `*at_mut(&mut xs, i) = v` is done with its loan.
+        if self.is_temp(place.local) && place.projection.contains(&Projection::Deref) {
+            state.holds[place.local.id].clear();
+        }
     }
 
     /// A value dropped at `place`. A named variable's borrows are checked where it stops

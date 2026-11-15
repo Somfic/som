@@ -42,6 +42,11 @@ pub fn parse_file(source: Arc<Source>, ast: &mut Ast, module: usize) -> Vec<Pars
         foreign_depth: 0,
         foreign_semicolons: Vec::new(),
         visibility: som_ast::Visibility::Private,
+        in_impl_target: false,
+        wheres: Vec::new(),
+        where_doc: None,
+        where_start: None,
+        trait_supers: Vec::new(),
     };
     parser.report_foreign_comments();
     parser.skip_trivia();
@@ -121,6 +126,16 @@ struct Parser<'a> {
     foreign_semicolons: Vec<Span>,
     /// The `pub` or `mod` just read, for the item, method or field after it to take.
     visibility: som_ast::Visibility,
+    /// Parsing what an `impl` is for, where a slice's elements can be named bare, `[T]`:
+    /// `impl Index<usize> for [T]`, whose `&self` is the slice.
+    in_impl_target: bool,
+    /// `@where` conditions read, for the function after them, with the comment above them
+    /// and where they start.
+    wheres: Vec<som_ast::Where>,
+    where_doc: Option<String>,
+    where_start: Option<Span>,
+    /// The traits the trait being read builds on, which its methods' `Self` implements.
+    trait_supers: Vec<som_ast::Path>,
 }
 
 impl Parser<'_> {
@@ -354,8 +369,7 @@ impl Parser<'_> {
     fn insertion_fits(&self, kind: TokenKind) -> bool {
         let found = self.peek();
         // At the end of a line, or of the file, the token's just missing.
-        if found == TokenKind::Eof
-            || self.current_span().start.line > self.previous_span().end.line
+        if found == TokenKind::Eof || self.current_span().start.line > self.previous_span().end.line
         {
             return true;
         }
@@ -400,17 +414,19 @@ impl Parser<'_> {
             // before it is what's wrong.
             TokenKind::Equals => !self.equals_ahead(),
             // `f(x!)`: an operator with nothing after it isn't the start of the next item.
-            TokenKind::Comma => !matches!(
-                self.peek_nth(1),
-                TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace
-            ) || !matches!(
-                found,
-                TokenKind::Bang
-                    | TokenKind::Minus
-                    | TokenKind::Star
-                    | TokenKind::Ampersand
-                    | TokenKind::Tilde
-            ),
+            TokenKind::Comma => {
+                !matches!(
+                    self.peek_nth(1),
+                    TokenKind::CloseParen | TokenKind::CloseBracket | TokenKind::CloseBrace
+                ) || !matches!(
+                    found,
+                    TokenKind::Bang
+                        | TokenKind::Minus
+                        | TokenKind::Star
+                        | TokenKind::Ampersand
+                        | TokenKind::Tilde
+                )
+            }
             _ => true,
         }
     }
@@ -607,7 +623,11 @@ impl Parser<'_> {
                 self.errors.push(ParseError {
                     message: msg!["items are separated with ", code(","), ", not ", code(";")],
                     hint: msg!["expected ", code(",")],
-                    fix: Some(Fix::replace(msg!["change to ", code(",")], span.clone(), ",")),
+                    fix: Some(Fix::replace(
+                        msg!["change to ", code(",")],
+                        span.clone(),
+                        ",",
+                    )),
                     span,
                 });
             }

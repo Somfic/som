@@ -32,7 +32,10 @@ fn becomes(source: &str, expected: &str) {
     assert_eq!(text, expected);
     let (_, errors) = som_parser::parse(Arc::new(Source::from_raw(&*text)));
     let messages: Vec<String> = errors.iter().map(|e| e.message.plain()).collect();
-    assert!(messages.is_empty(), "{text:?} still has errors: {messages:?}");
+    assert!(
+        messages.is_empty(),
+        "{text:?} still has errors: {messages:?}"
+    );
 }
 
 /// `source` is reported, with no fix.
@@ -55,7 +58,10 @@ fn declarations() {
     becomes("class P { x: i32 }", "struct P { x: i32 }");
     becomes("public static void main() {}", "pub fn main() {}");
     becomes("fn k() -> void {}", "fn k() {}");
-    becomes("int sum(int a, int b) { a + b }", "fn sum(a: int, b: int) -> int { a + b }");
+    becomes(
+        "int sum(int a, int b) { a + b }",
+        "fn sum(a: int, b: int) -> int { a + b }",
+    );
 }
 
 #[test]

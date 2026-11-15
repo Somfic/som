@@ -299,8 +299,8 @@ impl Parser<'_> {
     /// property. Reported, with a fix, and read as it.
     pub(crate) fn c_str_misspelt(&mut self) {
         let start = self.current_span();
-        let called = self.peek_nth(1) == TokenKind::OpenParen
-            && self.peek_nth(2) == TokenKind::CloseParen;
+        let called =
+            self.peek_nth(1) == TokenKind::OpenParen && self.peek_nth(2) == TokenKind::CloseParen;
         let span = if called {
             start.merge(&self.span_ahead(2))
         } else {
@@ -314,8 +314,17 @@ impl Parser<'_> {
                     "'s text for C is its ",
                     code(".c_str")
                 ],
-                hint: msg![code("cstr"), " is the type; ", code("c_str"), " a property, read without parentheses"],
-                fix: Some(Fix::replace(msg!["change to ", code("c_str")], span, "c_str")),
+                hint: msg![
+                    code("cstr"),
+                    " is the type; ",
+                    code("c_str"),
+                    " a property, read without parentheses"
+                ],
+                fix: Some(Fix::replace(
+                    msg!["change to ", code("c_str")],
+                    span,
+                    "c_str",
+                )),
                 span: start,
             });
         }
@@ -415,11 +424,7 @@ impl Parser<'_> {
         let name = target.get_text();
         let fixed = format!("{name} = {name} {} 1", &written[..1]);
         let message = msg!["som has no ", code(written), ": write ", code(&fixed)];
-        let fix = Fix::replace(
-            msg!["change to ", code(&fixed)],
-            target.merge(&span),
-            fixed,
-        );
+        let fix = Fix::replace(msg!["change to ", code(&fixed)], target.merge(&span), fixed);
         self.report_foreign(span, message, found, Some(fix));
         true
     }
@@ -766,7 +771,11 @@ impl Parser<'_> {
     /// How far line `line` is indented, in columns.
     fn indent_of(&self, line: usize) -> usize {
         let source = self.current_span().source.clone();
-        let text = source.content().lines().nth(line.saturating_sub(1)).unwrap_or("");
+        let text = source
+            .content()
+            .lines()
+            .nth(line.saturating_sub(1))
+            .unwrap_or("");
         text.len() - text.trim_start().len()
     }
 

@@ -1,0 +1,21 @@
+// expect: exit 30
+
+/// A method's `@where` can be about `self`.
+struct Stack {
+    items: List<i32>,
+}
+
+impl Stack {
+    @where !self.is_empty
+    fn top(&self) -> i32 = *(self.items.get(self.items.len - 1) else @unreachable);
+
+    prop is_empty: bool = self.items.len == 0;
+}
+
+fn main() -> i32 {
+    let s = Stack { items: [10, 30] };
+    if !s.is_empty {
+        return s.top();
+    }
+    0
+}

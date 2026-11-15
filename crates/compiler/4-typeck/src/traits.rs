@@ -157,7 +157,8 @@ pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
         | LangTrait::Drop
         | LangTrait::Copy
         | LangTrait::Share
-        | LangTrait::Index => false,
+        | LangTrait::Index
+        | LangTrait::IndexMut => false,
     }
 }
 

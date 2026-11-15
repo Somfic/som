@@ -1,0 +1,10 @@
+// expect: error SliceIndexWrite
+
+/// A string's bytes are shared by its copies: it's read by index, never set.
+fn main() -> i32 {
+    let mut text = "hey";
+    if text.len > 0 {
+        text[0] = 72;
+    }
+    0
+}

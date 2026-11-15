@@ -1,7 +1,6 @@
-// expect: error IndexNotConstant
+// expect: error MaybeOutOfBounds
 
-fn main() -> i32 {
-    let values = [1, 2, 3];
-    let i: usize = 1;
-    values[i]
-}
+/// An index nothing says anything about may be outside the array.
+fn pick(values: [i32; 3], i: usize) -> i32 = values[i];
+
+fn main() -> i32 = pick([1, 2, 3], 1);
