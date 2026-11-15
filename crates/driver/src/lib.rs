@@ -235,22 +235,43 @@ fn suggest_imports(ast: &Ast, errors: &mut [ResolveError], options: &Options) {
         else {
             continue;
         };
-        let Some((module, _)) = name.split_once("::") else {
+        let Some((module, item)) = name.split_once("::") else {
             continue;
         };
         if ast.modules.iter().any(|m| *m.name == *module) {
             continue;
         }
         let found = found.get_or_insert_with(|| importable(&ast.modules[0].path, options));
-        let line = if found.libraries.iter().any(|(l, _)| l == module) {
-            format!("extern {module:?};")
+        // `io::println` names `som::io` by its last part, once it's `use`d: the one loaded
+        // with `println` in it, or the one there is to import.
+        let last_part = |m: &str| m.rsplit("::").next() == Some(module);
+        let has_item = |m: &som_ast::Module| {
+            m.files.iter().any(|f| {
+                let text = f.content();
+                text.contains(&format!("fn {item}")) || text.contains(&format!("struct {item}"))
+            })
+        };
+        let by_last_part = (ast.modules.iter())
+            .find(|m| last_part(&m.name) && has_item(m))
+            .map(|m| m.name.to_string())
+            .or_else(|| {
+                let mut named = found.modules.iter().filter(|m| last_part(m));
+                match (named.next(), named.next()) {
+                    (Some(only), None) => Some(only.clone()),
+                    _ => None,
+                }
+            });
+        let (line, shown) = if found.libraries.iter().any(|(l, _)| l == module) {
+            (format!("extern {module:?};"), module.to_string())
         } else if found.modules.iter().any(|m| m == module) {
-            format!("use {module};")
+            (format!("use {module};"), module.to_string())
+        } else if let Some(full) = by_last_part {
+            (format!("use {full};"), full)
         } else {
             continue;
         };
         *help = Some(msg![
-            message::module(module),
+            message::module(&shown),
             " isn't imported: add ",
             message::code(&line)
         ]);

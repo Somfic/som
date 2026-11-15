@@ -1,0 +1,172 @@
+use extern "raylib";
+
+// raylib key codes; the bindings don't export the KeyboardKey enum.
+fn key_w() -> i32 { return 87; }
+fn key_s() -> i32 { return 83; }
+fn key_up() -> i32 { return 265; }
+fn key_down() -> i32 { return 264; }
+fn key_space() -> i32 { return 32; }
+
+fn screen_w() -> f32 { return 800.0; }
+fn screen_h() -> f32 { return 450.0; }
+fn paddle_w() -> f32 { return 12.0; }
+fn paddle_h() -> f32 { return 80.0; }
+fn ball_size() -> f32 { return 12.0; }
+fn paddle_speed() -> f32 { return 420.0; }
+fn cpu_speed() -> f32 { return 300.0; }
+fn win_score() -> i32 { return 5; }
+
+struct Game {
+    ball_x: f32,
+    ball_y: f32,
+    vel_x: f32,
+    vel_y: f32,
+    left: f32,
+    right: f32,
+    score_l: i32,
+    score_r: i32,
+    serving: bool,
+}
+
+fn clamp(v: f32, lo: f32, hi: f32) -> f32 {
+    if v < lo { return lo; }
+    if v > hi { return hi; }
+    return v;
+}
+
+fn reset_ball(g: &mut Game, dir: f32) {
+    g.ball_x = screen_w() / 2.0 - ball_size() / 2.0;
+    g.ball_y = screen_h() / 2.0 - ball_size() / 2.0;
+    g.vel_x = 320.0 * dir;
+    g.vel_y = (get_random_value(-200, 200)) as f32;
+    g.serving = true;
+}
+
+// Bounces the ball off a paddle at `top`, angling it by where it hit.
+fn hit(g: &mut Game, top: f32, x: f32, dir: f32) {
+    g.ball_x = x;
+    let speed = clamp(abs(g.vel_x) * 1.06, 0.0, 900.0);
+    g.vel_x = speed * dir;
+    let offset = (g.ball_y + ball_size() / 2.0) - (top + paddle_h() / 2.0);
+    g.vel_y = offset * 7.0;
+}
+
+fn abs(v: f32) -> f32 {
+    if v < 0.0 { return -v; }
+    return v;
+}
+
+fn overlaps(by: f32, top: f32) -> bool {
+    return by + ball_size() >= top && by <= top + paddle_h();
+}
+
+fn update(g: &mut Game, dt: f32) {
+    // Player: W/S or the arrow keys.
+    if is_key_down(key_w()) || is_key_down(key_up()) { g.left = g.left - paddle_speed() * dt; }
+    if is_key_down(key_s()) || is_key_down(key_down()) { g.left = g.left + paddle_speed() * dt; }
+    g.left = clamp(g.left, 0.0, screen_h() - paddle_h());
+
+    // CPU follows the ball's centre, at a limited speed.
+    let target = g.ball_y + ball_size() / 2.0 - paddle_h() / 2.0;
+    let step = cpu_speed() * dt;
+    if g.right < target - step { g.right = g.right + step; }
+    if g.right > target + step { g.right = g.right - step; }
+    g.right = clamp(g.right, 0.0, screen_h() - paddle_h());
+
+    if g.serving {
+        if is_key_pressed(key_space()) { g.serving = false; }
+        return;
+    }
+
+    g.ball_x = g.ball_x + g.vel_x * dt;
+    g.ball_y = g.ball_y + g.vel_y * dt;
+
+    if g.ball_y < 0.0 {
+        g.ball_y = 0.0;
+        g.vel_y = abs(g.vel_y);
+    }
+    if g.ball_y > screen_h() - ball_size() {
+        g.ball_y = screen_h() - ball_size();
+        g.vel_y = -abs(g.vel_y);
+    }
+
+    let left_face = 20.0 + paddle_w();
+    if g.vel_x < 0.0 && g.ball_x <= left_face && g.ball_x >= 20.0 - ball_size() && overlaps(g.ball_y, g.left) {
+        hit(g, g.left, left_face, 1.0);
+    }
+    let right_face = screen_w() - 20.0 - paddle_w();
+    if g.vel_x > 0.0 && g.ball_x + ball_size() >= right_face && g.ball_x <= right_face + paddle_w() && overlaps(g.ball_y, g.right) {
+        hit(g, g.right, right_face - ball_size(), -1.0);
+    }
+
+    if g.ball_x + ball_size() < 0.0 {
+        g.score_r = g.score_r + 1;
+        reset_ball(g, -1.0);
+    }
+    if g.ball_x > screen_w() {
+        g.score_l = g.score_l + 1;
+        reset_ball(g, 1.0);
+    }
+}
+
+fn draw(g: &Game) {
+    let white = Color { r: 235, g: 235, b: 235, a: 255 };
+    let dim = Color { r: 90, g: 90, b: 110, a: 255 };
+    let bg = Color { r: 18, g: 18, b: 28, a: 255 };
+
+    begin_drawing();
+    clear_background(bg);
+
+    let mut y = 0;
+    while y < 450 {
+        draw_rectangle(398, y, 4, 15, dim);
+        y = y + 30;
+    }
+
+    draw_rectangle(20, g.left as i32, paddle_w() as i32, paddle_h() as i32, white);
+    draw_rectangle((screen_w() - 20.0 - paddle_w()) as i32, g.right as i32, paddle_w() as i32, paddle_h() as i32, white);
+    draw_rectangle(g.ball_x as i32, g.ball_y as i32, ball_size() as i32, ball_size() as i32, white);
+
+    let l = g.score_l;
+    let r = g.score_r;
+    let ls = "{l}";
+    let rs = "{r}";
+    draw_text(ls.c_str, 340, 20, 48, white);
+    draw_text(rs.c_str, 440, 20, 48, white);
+
+    if g.score_l >= win_score() {
+        draw_text("You win!  space to play again", 230, 200, 24, white);
+    } else if g.score_r >= win_score() {
+        draw_text("CPU wins.  space to play again", 225, 200, 24, white);
+    } else if g.serving {
+        draw_text("space to serve   w/s to move", 250, 400, 20, dim);
+    }
+    end_drawing();
+}
+
+fn main() {
+    init_window(800, 450, "pong");
+    set_target_fps(60);
+
+    let mut g = Game {
+        ball_x: 0.0, ball_y: 0.0, vel_x: 0.0, vel_y: 0.0,
+        left: screen_h() / 2.0 - paddle_h() / 2.0,
+        right: screen_h() / 2.0 - paddle_h() / 2.0,
+        score_l: 0, score_r: 0, serving: true,
+    };
+    reset_ball(&mut g, 1.0);
+
+    while !window_should_close() {
+        let over = g.score_l >= win_score() || g.score_r >= win_score();
+        if over {
+            if is_key_pressed(key_space()) {
+                g.score_l = 0;
+                g.score_r = 0;
+            }
+        } else {
+            update(&mut g, get_frame_time());
+        }
+        draw(&g);
+    }
+    close_window();
+}

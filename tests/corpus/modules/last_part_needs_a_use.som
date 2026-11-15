@@ -1,0 +1,4 @@
+// expect: error UnknownFunction
+
+/// A module named by its last part has to be `use`d: `io::println` suggests `use som::io;`.
+io::println("Hello");

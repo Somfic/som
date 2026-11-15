@@ -1176,14 +1176,25 @@ impl<'a> Resolver<'a> {
         let segments = &path.segments;
 
         // The longest prefix that names a module, if any. Module names can contain `::`.
-        let module_prefix = (1..segments.len()).rev().find_map(|len| {
-            let name = segments[..len]
-                .iter()
-                .map(|s| &*s.name)
-                .collect::<Vec<_>>()
-                .join("::");
-            self.modules.get(name.as_str()).map(|&m| (m, len))
-        });
+        // A module this one `use`s is named by its last part too: `io::println` after
+        // `use som::io;`.
+        let module_prefix = (1..segments.len())
+            .rev()
+            .find_map(|len| {
+                let name = segments[..len]
+                    .iter()
+                    .map(|s| &*s.name)
+                    .collect::<Vec<_>>()
+                    .join("::");
+                self.modules.get(name.as_str()).map(|&m| (m, len))
+            })
+            .or_else(|| {
+                let first = &*segments[0].name;
+                (self.block_imports.iter().rev().map(|&(_, m)| m))
+                    .chain(self.imports[self.module].iter().copied())
+                    .find(|&m| self.ast.modules[m].name.rsplit("::").next() == Some(first))
+                    .map(|m| (m, 1))
+            });
 
         let (owner, rest) = match module_prefix {
             Some((m, len)) => {

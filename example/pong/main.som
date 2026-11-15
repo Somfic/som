@@ -1,0 +1,166 @@
+use som::io;
+use c;
+
+extern {
+    fn usleep(us: u32) -> i32;
+    fn read(fd: i32, buf: &mut u8, n: u64) -> i64;
+}
+
+// Field size in cells. Positions are fixed-point: cell * SCALE.
+fn W() -> i32 { return 60; }
+fn H() -> i32 { return 20; }
+fn SCALE() -> i32 { return 100; }
+fn PADDLE() -> i32 { return 4; }
+fn WIN() -> i32 { return 5; }
+
+struct Game {
+    ball_x: i32,
+    ball_y: i32,
+    vel_x: i32,
+    vel_y: i32,
+    left: i32,
+    right: i32,
+    score_l: i32,
+    score_r: i32,
+}
+
+fn read_key() -> i32 {
+    let mut b: u8 = 0;
+    let n = read(0, &mut b, 1);
+    if n == 1 { return b as i32; }
+    return -1;
+}
+
+fn clamp(v: i32, lo: i32, hi: i32) -> i32 {
+    if v < lo { return lo; }
+    if v > hi { return hi; }
+    return v;
+}
+
+fn serve(g: &mut Game, dir: i32) {
+    g.ball_x = (W() / 2) * SCALE();
+    g.ball_y = (H() / 2) * SCALE();
+    g.vel_x = 60 * dir;
+    g.vel_y = (random() % 81) as i32 - 40;
+}
+
+fn update(g: &mut Game) {
+    g.ball_x = g.ball_x + g.vel_x;
+    g.ball_y = g.ball_y + g.vel_y;
+
+    // Bounce off top and bottom walls.
+    if g.ball_y < 0 {
+        g.ball_y = -g.ball_y;
+        g.vel_y = -g.vel_y;
+    }
+    if g.ball_y > (H() - 1) * SCALE() {
+        g.ball_y = 2 * (H() - 1) * SCALE() - g.ball_y;
+        g.vel_y = -g.vel_y;
+    }
+
+    let row = g.ball_y / 100;
+
+    // Left paddle sits in column 1.
+    if g.vel_x < 0 && g.ball_x <= SCALE() * 2 && g.ball_x > 0 {
+        if row >= g.left && row < g.left + PADDLE() {
+            g.ball_x = SCALE() * 2;
+            g.vel_x = -g.vel_x + 5;
+            g.vel_y = g.vel_y + (row - g.left - PADDLE() / 2) * 15;
+        }
+    }
+    // Right paddle sits in column W() - 2.
+    if g.vel_x > 0 && g.ball_x >= (W() - 3) * SCALE() && g.ball_x < (W() - 1) * SCALE() {
+        if row >= g.right && row < g.right + PADDLE() {
+            g.ball_x = (W() - 3) * SCALE();
+            g.vel_x = -g.vel_x - 5;
+            g.vel_y = g.vel_y + (row - g.right - PADDLE() / 2) * 15;
+        }
+    }
+    g.vel_y = clamp(g.vel_y, -90, 90);
+
+    if g.ball_x < 0 {
+        g.score_r = g.score_r + 1;
+        serve(g, 1);
+    }
+    if g.ball_x >= W() * SCALE() {
+        g.score_l = g.score_l + 1;
+        serve(g, -1);
+    }
+}
+
+// Simple AI: follow the ball, one step every other frame.
+fn ai(g: &mut Game, frame: i32) {
+    if frame % 2 == 0 { return; }
+    let target = g.ball_y / 100 - PADDLE() / 2;
+    if g.right < target { g.right = g.right + 1; }
+    if g.right > target { g.right = g.right - 1; }
+    g.right = clamp(g.right, 0, H() - PADDLE());
+}
+
+fn draw(g: &Game) {
+    let bx = g.ball_x / 100;
+    let by = g.ball_y / 100;
+    let l = g.score_l;
+    let r = g.score_r;
+    print("[H");
+    print("  YOU {l}  -  {r} CPU      w/s to move, q to quit\r\n");
+    let mut x = 0;
+    while x < W() + 2 { putchar(35); x = x + 1; }
+    print("\r\n");
+    let mut y = 0;
+    while y < H() {
+        putchar(35);
+        x = 0;
+        while x < W() {
+            let mut ch = 32;
+            if x == W() / 2 && y % 2 == 0 { ch = 58; }
+            if x == 1 && y >= g.left && y < g.left + PADDLE() { ch = 124; }
+            if x == W() - 2 && y >= g.right && y < g.right + PADDLE() { ch = 124; }
+            if x == bx && y == by { ch = 79; }
+            putchar(ch);
+            x = x + 1;
+        }
+        putchar(35);
+        print("\r\n");
+        y = y + 1;
+    }
+    x = 0;
+    while x < W() + 2 { putchar(35); x = x + 1; }
+    print("\r\n");
+}
+
+fn main() {
+    srandom(time(&mut 0) as u32);
+    system("stty raw -echo min 0 time 0");
+    print("[2J[?25l");
+
+    let mut g = Game {
+        ball_x: 0, ball_y: 0, vel_x: 0, vel_y: 0,
+        left: H() / 2 - PADDLE() / 2, right: H() / 2 - PADDLE() / 2,
+        score_l: 0, score_r: 0,
+    };
+    serve(&mut g, 1);
+
+    let mut frame = 0;
+    let mut running = true;
+    while running {
+        let mut k = read_key();
+        while k != -1 {
+            if k == 113 { running = false; }
+            if k == 119 { g.left = clamp(g.left - 1, 0, H() - PADDLE()); }
+            if k == 115 { g.left = clamp(g.left + 1, 0, H() - PADDLE()); }
+            k = read_key();
+        }
+        update(&mut g);
+        ai(&mut g, frame);
+        draw(&g);
+        if g.score_l >= WIN() || g.score_r >= WIN() { running = false; }
+        frame = frame + 1;
+        usleep(33000);
+    }
+
+    system("stty -raw echo");
+    print("[?25h\r\n");
+    if g.score_l >= WIN() { print("You win!\n"); }
+    if g.score_r >= WIN() { print("CPU wins.\n"); }
+}

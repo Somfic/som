@@ -1328,8 +1328,13 @@ impl LanguageServer for SomLanguageServer {
             return Ok(Some(CompletionResponse::Array(items)));
         } else if let Some(module) = qualifier(&cursor.text, cursor.offset) {
             // `raylib::` lists what's in `raylib`, where its `extern "raylib"` is.
-            let (here, _) = modules_in_scope(a, &cursor.file, cursor.offset);
-            if let Some(m) = a.ast.modules.iter().position(|m| *m.name == *module) {
+            let (here, in_scope) = modules_in_scope(a, &cursor.file, cursor.offset);
+            // `io::` after `use som::io;`: a module in scope by its last part too.
+            let named = (a.ast.modules.iter().position(|m| *m.name == *module)).or_else(|| {
+                (in_scope.iter().copied())
+                    .find(|&m| a.ast.modules[m].name.rsplit("::").next() == Some(&*module))
+            });
+            if let Some(m) = named {
                 if undeclared_library(a, here, m) {
                     return Ok(None);
                 }

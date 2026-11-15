@@ -1,0 +1,7 @@
+// expect: exit 0
+
+use som::io;
+
+/// A module that's `use`d is named by the last part of its path too: `io::println`.
+io::println("Hello");
+println("again");
