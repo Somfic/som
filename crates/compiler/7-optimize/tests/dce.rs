@@ -52,7 +52,8 @@ fn constants_folding_left_unread_are_removed() {
 #[test]
 fn locals_that_only_feed_themselves_are_removed() {
     let mir = optimized(
-        "fn main(n: i32) -> i32 { let mut i = 0; while i < n { i = i + 1; } let mut c = 0; let mut j = 0; while j < n { c = c + 1; j = j + 1; } 0 }",
+        "fn run(n: i32) -> i32 { let mut i = 0; while i < n { i = i + 1; } let mut c = 0; let mut j = 0; while j < n { c = c + 1; j = j + 1; } 0 }
+         fn main() -> i32 { run(3) }",
     );
     assert!(mir.contains("// i"), "the loop condition reads `i`:\n{mir}");
     assert!(!mir.contains("// c"), "nothing reads `c`:\n{mir}");
@@ -62,7 +63,8 @@ fn locals_that_only_feed_themselves_are_removed() {
 fn unused_structs_and_borrows_are_removed_and_shaken() {
     let mir = optimized(
         "struct Point { x: i32, y: i32 }
-         fn main(a: i32) -> i32 { let p = Point { x: a, y: a }; let r = &p; a }",
+         fn run(a: i32) -> i32 { let p = Point { x: a, y: a }; let r = &p; a }
+         fn main() -> i32 { run(3) }",
     );
     assert!(!mir.contains("Point"), "{mir}");
 }
@@ -72,7 +74,8 @@ fn calls_writes_through_references_and_traps_stay() {
     let mir = optimized(
         "extern { fn puts(s: cstr); }
          fn set(x: &mut i32) { *x = 5; }
-         fn main(a: i32) -> i32 { let unused = puts(\"hi\"); let q = 10 / a; let mut v = 1; set(&mut v); 0 }",
+         fn run(a: i32) -> i32 { let unused = puts(\"hi\"); let q = 10 / a; let mut v = 1; set(&mut v); 0 }
+         fn main() -> i32 { run(3) }",
     );
     assert!(mir.contains("call puts"), "{mir}");
     assert!(mir.contains("Divide("), "dividing by `a` can trap:\n{mir}");

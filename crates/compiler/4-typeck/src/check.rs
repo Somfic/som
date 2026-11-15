@@ -54,6 +54,10 @@ pub(crate) struct Checker<'a> {
     in_place: bool,
     /// Operators whose operand type wasn't known yet when they were checked.
     deferred_ops: Vec<(Id<Expr>, BinOp, TypeId, TypeId)>,
+    /// Values to convert through `From` whose types weren't known well enough to choose
+    /// which, until later: `println(xs.get(0))` before what `xs` holds is. With where what's
+    /// expected came from.
+    deferred_conversions: Vec<(Id<Expr>, TypeId, TypeId, Option<Span>)>,
     /// How many `loop`s and `while`s enclose the statement being checked.
     loops: usize,
     patterns: HashMap<Id<som_ast::Pattern>, PatternInfo>,
@@ -127,6 +131,7 @@ impl<'a> Checker<'a> {
             returns: None,
             in_place: false,
             deferred_ops: Vec::new(),
+            deferred_conversions: Vec::new(),
             loops: 0,
             patterns: HashMap::new(),
             receivers: HashMap::new(),
@@ -278,6 +283,17 @@ impl<'a> Checker<'a> {
         self.resolve_pending_calls();
         self.check_overloads();
         self.check_obligations();
+
+        // Conversions chosen once what they convert is known. If it still isn't, that's
+        // reported where it's made, not here.
+        for (expr, expected, found, from) in std::mem::take(&mut self.deferred_conversions) {
+            if self.from_conversion(expr, expected, found)
+                || self.conversion_undecided(expected, found)
+            {
+                continue;
+            }
+            self.mismatch_at(expr, expected, found, from);
+        }
 
         for (expr, op, lhs, rhs) in std::mem::take(&mut self.deferred_ops) {
             if self.trait_op(expr, op, lhs) {
@@ -2074,6 +2090,13 @@ impl<'a> Checker<'a> {
             });
             return;
         }
+        // `println(xs.get(0))` of a list nothing's said the values of yet: which `From`
+        // converts it is chosen once it has, after the bodies.
+        if self.conversion_undecided(expected, found) {
+            self.deferred_conversions
+                .push((expr, expected, found, expected_from));
+            return;
+        }
         self.mismatch_at(expr, expected, found, expected_from);
     }
 
@@ -3477,23 +3500,27 @@ impl<'a> Checker<'a> {
                 fitting = plain;
             }
         }
-        // Of several, the ones taking each number nothing's decided as what it would be
-        // anyway, an `i32` or `f64`: `string::from(100)` is the `From<i32>` one.
-        if fitting.len() > 1 {
-            let as_default: Vec<_> = (fitting.iter())
+        // Of several, the ones taking each argument as it is, not wrapped in an optional;
+        // then those taking each number nothing's decided as what it would be anyway, an
+        // `i32` or `f64`: `string::from(100)` is the `From<i32>` one.
+        for pass in 0..2 {
+            if fitting.len() < 2 {
+                break;
+            }
+            let kept: Vec<_> = (fitting.iter())
                 .filter(|(_, _, sig, _)| {
-                    (sig.params.iter().zip(&found)).all(|(&param, &arg)| {
-                        match self.u.var_kind(arg) {
-                            Some(VarKind::Int) => self.u.could_fit(param, self.u.table.i32),
-                            Some(VarKind::Float) => self.u.could_fit(param, self.u.table.f64),
-                            _ => true,
+                    (sig.params.iter().zip(&found)).all(|(&param, &arg)| match pass {
+                        0 => {
+                            matches!(self.u.get(self.u.shallow(arg)), Ty::Optional(_))
+                                || !matches!(self.u.get(self.u.shallow(param)), Ty::Optional(_))
                         }
+                        _ => self.fits_as_default(param, arg),
                     })
                 })
                 .cloned()
                 .collect();
-            if !as_default.is_empty() {
-                fitting = as_default;
+            if !kept.is_empty() {
+                fitting = kept;
             }
         }
         let candidates = |c: &Self, defs: Vec<DefId>| -> Vec<(String, Span)> {
@@ -4724,9 +4751,12 @@ impl<'a> Checker<'a> {
                 let ty = c.u.shallow(ty);
                 matches!(c.u.get(ty), Ty::Struct(..)) && c.implements_lang(ty, lang)
             };
-            if has_op(self, lhs) && self.from_conversion(right, lhs, rhs) {
+            // As the operand is, before being read through: `r` of a `&i32` as a `&i32`.
+            let own = |c: &Self, side: Id<Expr>, ty: TypeId| c.exprs[side.id].unwrap_or(ty);
+            let (left_own, right_own) = (own(self, left, lhs), own(self, right, rhs));
+            if has_op(self, lhs) && self.from_conversion(right, lhs, right_own) {
                 rhs = lhs;
-            } else if has_op(self, rhs) && self.from_conversion(left, rhs, lhs) {
+            } else if has_op(self, rhs) && self.from_conversion(left, rhs, left_own) {
                 lhs = rhs;
             }
         }

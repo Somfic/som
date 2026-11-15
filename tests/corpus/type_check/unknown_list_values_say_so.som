@@ -1,0 +1,11 @@
+// expect: error CannotInfer
+
+/// A list nothing says the values of: what's reported is that they aren't known, not that
+/// `get` doesn't give text.
+use som::io;
+
+fn main() -> i32 {
+    let xs = List::empty();
+    println(xs.get(0));
+    0
+}

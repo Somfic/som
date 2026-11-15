@@ -1,0 +1,12 @@
+// expect: exit 7
+
+/// What a list holds can be decided after it's printed: the conversion to text is chosen
+/// once it is. Here the `else &0` decides it holds `i32`s.
+use som::io;
+
+fn main() -> i32 {
+    let xs = List::empty();
+    println(xs.get(0));
+    let first = *(xs.get(0) else &7);
+    first
+}

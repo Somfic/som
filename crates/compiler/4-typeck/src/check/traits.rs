@@ -747,6 +747,47 @@ impl Checker<'_> {
         true
     }
 
+    /// Whether `param` takes `found` with the number inside it, if one's not decided yet,
+    /// as the `i32` or `f64` it would be anyway: `&i32` for a `&` of an undecided integer.
+    pub(super) fn fits_as_default(&self, param: TypeId, found: TypeId) -> bool {
+        let (mut param, mut found) = (self.u.shallow(param), self.u.shallow(found));
+        loop {
+            match (self.u.get(param), self.u.get(found)) {
+                (&Ty::Ref { to: p, .. }, &Ty::Ref { to: f, .. })
+                | (&Ty::Optional(p), &Ty::Optional(f)) => {
+                    (param, found) = (self.u.shallow(p), self.u.shallow(f));
+                }
+                _ => break,
+            }
+        }
+        match self.u.var_kind(found) {
+            Some(VarKind::Int) => self.u.could_fit(param, self.u.table.i32),
+            Some(VarKind::Float) => self.u.could_fit(param, self.u.table.f64),
+            _ => true,
+        }
+    }
+
+    /// Whether a `found` with something in it not known yet, `&_?`, fits more than one of
+    /// the `From` implementations making the struct `expected`: which one depends on what
+    /// isn't known, and that it isn't is the error, reported where it's made.
+    pub(super) fn conversion_undecided(&mut self, expected: TypeId, found: TypeId) -> bool {
+        let unknown = |c: &Self, ty: TypeId| {
+            let mut stack = vec![ty];
+            while let Some(ty) = stack.pop() {
+                let ty = c.u.shallow(ty);
+                if c.u.var_kind(ty) == Some(VarKind::Any) {
+                    return true;
+                }
+                stack.extend(c.u.get(ty).children());
+            }
+            false
+        };
+        unknown(self, found)
+            && self
+                .from_impls(expected, found)
+                .is_some_and(|(.., fitting)| fitting.len() > 1)
+    }
+
     /// Whether a `found` would become the struct `expected` through `From`, without changing
     /// anything. For choosing between functions with the same name.
     pub(super) fn could_convert(&mut self, expected: TypeId, found: TypeId) -> bool {
@@ -796,17 +837,22 @@ impl Checker<'_> {
                 fitting.push((target, arg, params.into_iter().zip(fresh).collect()));
             }
         }
-        // A number nothing's decided yet fits each number type's: it's the one it would
-        // be anyway, an `i32` or `f64`. `println(5)` is `println(string::from(5 as i32))`.
-        let default = match self.u.var_kind(shallow) {
-            Some(VarKind::Int) => Some(self.u.table.i32),
-            Some(VarKind::Float) => Some(self.u.table.f64),
-            _ => None,
-        };
-        if fitting.len() > 1
-            && let Some(default) = default
-        {
-            fitting.retain(|&(_, arg, _)| self.u.could_fit(arg, default));
+        // A value fits where its optional is expected too: `5` fits `From<i32?>`. The one
+        // taking it as it is goes first.
+        if fitting.len() > 1 && !matches!(self.u.get(shallow), Ty::Optional(_)) {
+            let exact: Vec<_> = (fitting.iter())
+                .filter(|&&(_, arg, _)| !matches!(self.u.get(self.u.shallow(arg)), Ty::Optional(_)))
+                .cloned()
+                .collect();
+            if !exact.is_empty() {
+                fitting = exact;
+            }
+        }
+        // A number nothing's decided yet, maybe behind a `&` or in an optional, fits each
+        // number type's: it's the one it would be anyway, an `i32` or `f64`. `println(5)` is
+        // `println(string::from(5 as i32))`.
+        if fitting.len() > 1 {
+            fitting.retain(|&(_, arg, _)| self.fits_as_default(arg, shallow));
         }
         Some((from, source, fitting))
     }
