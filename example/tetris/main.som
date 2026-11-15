@@ -1,0 +1,364 @@
+use extern "raylib";
+
+// raylib key codes; the bindings don't export the KeyboardKey enum.
+fn key_right() -> i32 { return 262; }
+fn key_left() -> i32 { return 263; }
+fn key_down() -> i32 { return 264; }
+fn key_up() -> i32 { return 265; }
+fn key_space() -> i32 { return 32; }
+fn key_r() -> i32 { return 82; }
+fn key_p() -> i32 { return 80; }
+fn key_z() -> i32 { return 90; }
+fn key_x() -> i32 { return 88; }
+
+fn cols() -> i32 { return 10; }
+fn rows() -> i32 { return 20; }
+fn cell() -> i32 { return 30; }
+fn board_x() -> i32 { return 30; }
+fn board_y() -> i32 { return 30; }
+
+enum Kind { I, J, L, O, S, T, Z }
+
+struct Game {
+    board: [i32; 200],
+    kind: Kind,
+    next: Kind,
+    rot: i32,
+    px: i32,
+    py: i32,
+    score: i32,
+    lines: i32,
+    fall_timer: f32,
+    over: bool,
+    paused: bool,
+}
+
+fn kind_index(k: Kind) -> i32 {
+    match k {
+        Kind::I => 0,
+        Kind::J => 1,
+        Kind::L => 2,
+        Kind::O => 3,
+        Kind::S => 4,
+        Kind::T => 5,
+        Kind::Z => 6,
+    }
+}
+
+fn random_kind() -> Kind {
+    let n = get_random_value(0, 6);
+    if n == 0 { return Kind::I; }
+    if n == 1 { return Kind::J; }
+    if n == 2 { return Kind::L; }
+    if n == 3 { return Kind::O; }
+    if n == 4 { return Kind::S; }
+    if n == 5 { return Kind::T; }
+    return Kind::Z;
+}
+
+// Each piece is 4 rotations of a 4x4 grid; bit 0x8000 is the top-left cell.
+fn shape(k: Kind, rot: i32) -> i32 {
+    let masks = [
+        0x0F00, 0x2222, 0x00F0, 0x4444, // I
+        0x44C0, 0x8E00, 0x6440, 0x0E20, // J
+        0x4460, 0x0E80, 0xC440, 0x2E00, // L
+        0xCC00, 0xCC00, 0xCC00, 0xCC00, // O
+        0x06C0, 0x8C40, 0x6C00, 0x4620, // S
+        0x0E40, 0x4C40, 0x4E00, 0x4640, // T
+        0x0C60, 0x4C80, 0xC600, 0x2640, // Z
+    ];
+    let i = kind_index(k) * 4 + rot;
+    if i >= 0 && i < masks.len { return masks[i]; }
+    return 0;
+}
+
+fn filled(mask: i32, x: i32, y: i32) -> bool {
+    return mask & (0x8000 >> (y * 4 + x)) != 0;
+}
+
+fn color(c: i32) -> Color {
+    if c == 1 { return Color { r: 80, g: 220, b: 240, a: 255 }; }
+    if c == 2 { return Color { r: 70, g: 110, b: 240, a: 255 }; }
+    if c == 3 { return Color { r: 245, g: 160, b: 50, a: 255 }; }
+    if c == 4 { return Color { r: 245, g: 225, b: 60, a: 255 }; }
+    if c == 5 { return Color { r: 90, g: 220, b: 100, a: 255 }; }
+    if c == 6 { return Color { r: 180, g: 90, b: 230, a: 255 }; }
+    if c == 7 { return Color { r: 235, g: 70, b: 80, a: 255 }; }
+    return Color { r: 30, g: 30, b: 44, a: 255 };
+}
+
+fn get(g: &Game, x: i32, y: i32) -> i32 {
+    if x < 0 || x >= cols() || y >= rows() { return 1; }
+    // Above the top is open, so pieces can rotate while partly off screen.
+    if y < 0 { return 0; }
+    let i = y * cols() + x;
+    if i >= 0 && i < g.board.len { return g.board[i]; }
+    return 1;
+}
+
+fn set(g: &mut Game, x: i32, y: i32, v: i32) {
+    let i = y * cols() + x;
+    if i >= 0 && i < g.board.len { g.board[i] = v; }
+}
+
+fn fits(g: &Game, k: Kind, rot: i32, px: i32, py: i32) -> bool {
+    let mask = shape(k, rot);
+    let mut y = 0;
+    while y < 4 {
+        let mut x = 0;
+        while x < 4 {
+            if filled(mask, x, y) && get(&*g, px + x, py + y) != 0 { return false; }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return true;
+}
+
+fn spawn(g: &mut Game) {
+    g.kind = g.next;
+    g.next = random_kind();
+    g.rot = 0;
+    g.px = 3;
+    g.py = -1;
+    g.fall_timer = 0.0;
+    if !fits(&*g, g.kind, g.rot, g.px, g.py) { g.over = true; }
+}
+
+fn reset(g: &mut Game) {
+    let mut i = 0;
+    while i < g.board.len {
+        g.board[i] = 0;
+        i = i + 1;
+    }
+    g.score = 0;
+    g.lines = 0;
+    g.over = false;
+    g.paused = false;
+    g.next = random_kind();
+    spawn(g);
+}
+
+fn level(g: &Game) -> i32 { return g.lines / 10; }
+
+fn fall_interval(g: &Game) -> f32 {
+    let t = 0.8 - (level(&*g) as f32) * 0.07;
+    if t < 0.05 { return 0.05; }
+    return t;
+}
+
+fn clear_lines(g: &mut Game) -> i32 {
+    let mut cleared = 0;
+    let mut y = rows() - 1;
+    while y >= 0 {
+        let mut full = true;
+        let mut x = 0;
+        while x < cols() {
+            if get(&*g, x, y) == 0 { full = false; }
+            x = x + 1;
+        }
+        if full {
+            // Shift everything above down one row, then check this row again.
+            let mut yy = y;
+            while yy > 0 {
+                x = 0;
+                while x < cols() {
+                    set(g, x, yy, get(&*g, x, yy - 1));
+                    x = x + 1;
+                }
+                yy = yy - 1;
+            }
+            x = 0;
+            while x < cols() { set(g, x, 0, 0); x = x + 1; }
+            cleared = cleared + 1;
+        } else {
+            y = y - 1;
+        }
+    }
+    return cleared;
+}
+
+fn lock(g: &mut Game) {
+    let mask = shape(g.kind, g.rot);
+    let c = kind_index(g.kind) + 1;
+    let mut y = 0;
+    while y < 4 {
+        let mut x = 0;
+        while x < 4 {
+            if filled(mask, x, y) { set(g, g.px + x, g.py + y, c); }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    let n = clear_lines(g);
+    let mut points = 0;
+    if n == 1 { points = 100; }
+    if n == 2 { points = 300; }
+    if n == 3 { points = 500; }
+    if n == 4 { points = 800; }
+    g.score = g.score + points * (level(&*g) + 1);
+    g.lines = g.lines + n;
+    spawn(g);
+}
+
+fn try_move(g: &mut Game, dx: i32, dy: i32) -> bool {
+    if fits(&*g, g.kind, g.rot, g.px + dx, g.py + dy) {
+        g.px = g.px + dx;
+        g.py = g.py + dy;
+        return true;
+    }
+    return false;
+}
+
+fn rotate(g: &mut Game, dir: i32) {
+    let r = (g.rot + dir + 4) % 4;
+    // Simple wall kicks: try in place, then nudged sideways.
+    let kicks = [0, -1, 1, -2, 2];
+    let mut i = 0;
+    while i < kicks.len {
+        let dx = kicks[i];
+        if fits(&*g, g.kind, r, g.px + dx, g.py) {
+            g.rot = r;
+            g.px = g.px + dx;
+            return;
+        }
+        i = i + 1;
+    }
+}
+
+fn ghost_y(g: &Game) -> i32 {
+    let mut y = g.py;
+    while fits(&*g, g.kind, g.rot, g.px, y + 1) { y = y + 1; }
+    return y;
+}
+
+fn update(g: &mut Game, dt: f32) {
+    if is_key_pressed(key_r()) { reset(g); return; }
+    if g.over { return; }
+    if is_key_pressed(key_p()) { g.paused = !g.paused; }
+    if g.paused { return; }
+
+    if is_key_pressed(key_left()) || is_key_pressed_repeat(key_left()) { try_move(g, -1, 0); }
+    if is_key_pressed(key_right()) || is_key_pressed_repeat(key_right()) { try_move(g, 1, 0); }
+    if is_key_pressed(key_up()) || is_key_pressed(key_x()) { rotate(g, 1); }
+    if is_key_pressed(key_z()) { rotate(g, -1); }
+
+    if is_key_pressed(key_space()) {
+        let y = ghost_y(&*g);
+        g.score = g.score + (y - g.py) * 2;
+        g.py = y;
+        lock(g);
+        return;
+    }
+
+    let mut interval = fall_interval(&*g);
+    if is_key_down(key_down()) { interval = 0.04; }
+    g.fall_timer = g.fall_timer + dt;
+    if g.fall_timer >= interval {
+        g.fall_timer = 0.0;
+        if !try_move(g, 0, 1) { lock(g); }
+        else if is_key_down(key_down()) { g.score = g.score + 1; }
+    }
+}
+
+fn draw_cell(px: i32, py: i32, c: Color) {
+    draw_rectangle(px + 1, py + 1, cell() - 2, cell() - 2, c);
+}
+
+fn draw_piece(k: Kind, rot: i32, ox: i32, oy: i32, c: Color) {
+    let mask = shape(k, rot);
+    let mut y = 0;
+    while y < 4 {
+        let mut x = 0;
+        while x < 4 {
+            if filled(mask, x, y) && oy + y * cell() >= board_y() {
+                draw_cell(ox + x * cell(), oy + y * cell(), c);
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+}
+
+fn draw(g: &Game) {
+    let white = Color { r: 235, g: 235, b: 235, a: 255 };
+    let dim = Color { r: 120, g: 120, b: 140, a: 255 };
+    let bg = Color { r: 14, g: 14, b: 22, a: 255 };
+    let ghost = Color { r: 70, g: 70, b: 90, a: 255 };
+
+    begin_drawing();
+    clear_background(bg);
+
+    // Board and settled blocks.
+    let mut y = 0;
+    while y < rows() {
+        let mut x = 0;
+        while x < cols() {
+            draw_cell(board_x() + x * cell(), board_y() + y * cell(), color(get(&*g, x, y)));
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+
+    // Ghost, then the falling piece.
+    let c = color(kind_index(g.kind) + 1);
+    draw_piece(g.kind, g.rot, board_x() + g.px * cell(), board_y() + ghost_y(&*g) * cell(), ghost);
+    draw_piece(g.kind, g.rot, board_x() + g.px * cell(), board_y() + g.py * cell(), c);
+
+    // Side panel.
+    let side = board_x() + cols() * cell() + 30;
+    draw_text("NEXT", side, 30, 20, dim);
+    draw_piece(g.next, 0, side, 60, color(kind_index(g.next) + 1));
+
+    let score = g.score;
+    let lines = g.lines;
+    let lvl = level(&*g);
+    let score_s = "{score}";
+    let lines_s = "{lines}";
+    let level_s = "{lvl}";
+    draw_text("SCORE", side, 200, 20, dim);
+    draw_text(score_s.c_str, side, 225, 30, white);
+    draw_text("LINES", side, 275, 20, dim);
+    draw_text(lines_s.c_str, side, 300, 30, white);
+    draw_text("LEVEL", side, 350, 20, dim);
+    draw_text(level_s.c_str, side, 375, 30, white);
+
+    draw_text("<- ->  move", side, 470, 16, dim);
+    draw_text("up / x  rotate", side, 492, 16, dim);
+    draw_text("z  rotate back", side, 514, 16, dim);
+    draw_text("down  soft drop", side, 536, 16, dim);
+    draw_text("space  hard drop", side, 558, 16, dim);
+    draw_text("p  pause   r  restart", side, 580, 16, dim);
+
+    if g.over {
+        draw_rectangle(board_x(), 250, cols() * cell(), 100, Color { r: 0, g: 0, b: 0, a: 200 });
+        draw_text("GAME OVER", board_x() + 55, 270, 36, white);
+        draw_text("r to restart", board_x() + 90, 315, 20, dim);
+    } else if g.paused {
+        draw_rectangle(board_x(), 250, cols() * cell(), 100, Color { r: 0, g: 0, b: 0, a: 200 });
+        draw_text("PAUSED", board_x() + 85, 285, 36, white);
+    }
+    end_drawing();
+}
+
+fn main() {
+    init_window(560, 660, "tetris");
+    set_target_fps(60);
+
+    let mut g = Game {
+        board: [0; 200],
+        kind: Kind::T,
+        next: Kind::T,
+        rot: 0, px: 0, py: 0,
+        score: 0, lines: 0,
+        fall_timer: 0.0,
+        over: false, paused: false,
+    };
+    reset(&mut g);
+
+    while !window_should_close() {
+        update(&mut g, get_frame_time());
+        draw(&g);
+    }
+    close_window();
+}
