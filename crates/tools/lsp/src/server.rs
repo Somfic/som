@@ -1327,8 +1327,12 @@ impl LanguageServer for SomLanguageServer {
             }
             return Ok(Some(CompletionResponse::Array(items)));
         } else if let Some(module) = qualifier(&cursor.text, cursor.offset) {
-            // `raylib::` lists what's in `raylib`.
+            // `raylib::` lists what's in `raylib`, where its `extern "raylib"` is.
+            let (here, _) = modules_in_scope(a, &cursor.file, cursor.offset);
             if let Some(m) = a.ast.modules.iter().position(|m| *m.name == *module) {
+                if undeclared_library(a, here, m) {
+                    return Ok(None);
+                }
                 items.extend(module_items(a, m, None, insert));
             } else if let Some(owner) = a.names.primitives_named(module) {
                 // `i32::` lists its own functions and methods.
@@ -1418,6 +1422,10 @@ impl LanguageServer for SomLanguageServer {
             // theirs, so `rayl` finds `raylib::init_window`.
             let (here, in_scope) = modules_in_scope(a, &cursor.file, cursor.offset);
             for (m, module) in a.ast.modules.iter().enumerate() {
+                // `c`'s functions only where `extern "c"` is written.
+                if undeclared_library(a, here, m) {
+                    continue;
+                }
                 if in_scope.contains(&m) {
                     items.extend(module_items(a, m, None, insert));
                 }
@@ -2722,6 +2730,19 @@ fn extern_links(a: &Analysis, file: &str) -> Vec<(Span, PathBuf)> {
 
 /// The module `file` is in, and the modules whose names it can use bare: its own and
 /// the ones it `use`s.
+/// Whether module `m` is a library's, `c`, that module `here` has no `extern` for: what's
+/// in it can't be named there.
+fn undeclared_library(a: &Analysis, here: usize, m: usize) -> bool {
+    let externs = |module: usize| {
+        a.ast.modules[module].items.iter().filter_map(|item| match item {
+            Item::Extern(block) if block.library.is_some() => block.module,
+            _ => None,
+        })
+    };
+    let is_library = (0..a.ast.modules.len()).any(|module| externs(module).any(|l| l == m));
+    is_library && !externs(here).any(|l| l == m)
+}
+
 fn modules_in_scope(a: &Analysis, file: &str, offset: usize) -> (usize, Vec<usize>) {
     let here = a
         .ast

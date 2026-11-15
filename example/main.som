@@ -1,5 +1,5 @@
 extern "raylib";
-extern "box2d" from "box2d/box2d.h";
+extern "box2d";
 
 let scale = 30.0; // pixels per meter
 
@@ -63,4 +63,4 @@ while !raylib::window_should_close() {
 raylib::close_window();
 
 
-printf
+som::io::println("Hello world!" + "hih" + 12);

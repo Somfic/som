@@ -1,0 +1,4 @@
+// expect: error LibraryNotDeclared
+
+/// A library's functions are there where its `extern` is written: `c::puts` needs `extern "c"`.
+c::puts("hi");

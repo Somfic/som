@@ -1,5 +1,7 @@
 // expect: error NotForC
 
+extern "c";
+
 /// A reference passed to printf: C takes what it refers to.
 let n = 5;
 let r = &n;

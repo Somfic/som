@@ -28,7 +28,8 @@ fn help(error: &ResolveError) -> Option<String> {
         | ResolveError::MethodsOnType { .. }
         | ResolveError::PropNamedLikeField { .. }
         | ResolveError::PropGenerics { .. }
-        | ResolveError::NotVisible { .. } => None,
+        | ResolveError::NotVisible { .. }
+        | ResolveError::LibraryNotDeclared { .. } => None,
     }
 }
 

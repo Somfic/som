@@ -42,7 +42,20 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         block_types: Vec::new(),
         through_alias: std::cell::Cell::new(None),
         owner: None,
+        libraries: HashMap::new(),
+        declared: vec![HashSet::new(); ast.modules.len()],
     };
+    // A library's module, `c`, is named only where its `extern "c"` is written.
+    for (m, module) in ast.modules.iter().enumerate() {
+        for item in &module.items {
+            if let Item::Extern(block) = item
+                && let (Some(library), Some(lib)) = (&block.library, block.module)
+            {
+                resolver.libraries.insert(lib, library.as_str());
+                resolver.declared[m].insert(lib);
+            }
+        }
+    }
     resolver.collect_modules();
     resolver.collect_items();
     resolver.collect_methods();
@@ -90,6 +103,10 @@ struct Resolver<'a> {
     variant_names: Vec<HashSet<&'a str>>,
     /// The module whose code is being resolved.
     module: usize,
+    /// Libraries' modules → the library: `c` for `c::puts`.
+    libraries: HashMap<usize, &'a str>,
+    /// Per module: the libraries' modules it has an `extern` for, which it can name.
+    declared: Vec<HashSet<usize>>,
     /// Local scopes of the function being resolved, innermost last.
     scopes: Vec<HashMap<&'a str, DefId>>,
     /// Type parameters of the function being resolved.
@@ -1064,6 +1081,17 @@ impl<'a> Resolver<'a> {
 
     /// Resolves `path`, reporting an error and returning `None` if it doesn't name an `expect`.
     fn resolve_path(&mut self, path: &Path, expect: Expect) -> Option<DefId> {
+        // `c::puts` without `extern "c"`: what a library has is there once it's declared.
+        if let Some(library) = self.undeclared_library(path) {
+            let span = path.span();
+            let line = format!("extern \"{library}\";");
+            self.errors.push(ResolveError::LibraryNotDeclared {
+                library: library.to_string(),
+                fix: Fix::add_line(msg!["add ", code(line.clone())], span.source.clone(), &line),
+                span,
+            });
+            return None;
+        }
         let found = if path.segments.len() == 1 {
             self.lookup(&path.segments[0].name, expect)
         } else {
@@ -1129,6 +1157,18 @@ impl<'a> Resolver<'a> {
             .chain(prelude)
             .find_map(|m| self.items[m].get(name).copied())
             .and_then(|def| self.fitting(def, expect))
+    }
+
+    /// The library `path` names something of, `c` in `c::puts`, if this module has no
+    /// `extern` for it.
+    fn undeclared_library(&self, path: &Path) -> Option<&'a str> {
+        let segments = &path.segments;
+        let module = (1..segments.len()).rev().find_map(|len| {
+            let name: Vec<&str> = segments[..len].iter().map(|s| &*s.name).collect();
+            self.modules.get(name.join("::").as_str()).copied()
+        })?;
+        let library = self.libraries.get(&module)?;
+        (!self.declared[self.module].contains(&module)).then_some(*library)
     }
 
     /// `module::item`, `Struct::method`, or `module::Struct::method`.

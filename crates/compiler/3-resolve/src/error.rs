@@ -60,6 +60,12 @@ pub enum ResolveError {
     },
     /// `prop len<T> -> …`: a property can't have type parameters of its own.
     PropGenerics { span: Span },
+    /// `c::puts(…)` in a module without `extern "c"`.
+    LibraryNotDeclared {
+        library: String,
+        span: Span,
+        fix: Fix,
+    },
     /// `break x;` or `continue x;` where `x` isn't a `for` loop's variable.
     NotALoop {
         keyword: &'static str,
@@ -144,6 +150,17 @@ impl ResolveError {
                         "for one with type parameters, use a method: ",
                         code("fn")
                     ]);
+            }
+            ResolveError::LibraryNotDeclared { library, span, fix } => {
+                return Diagnostic::error(msg![
+                    code(library.clone()),
+                    " isn't declared here"
+                ])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg!["a library is used where its ", code(format!("extern \"{library}\"")), " is"],
+                ))
+                .with_fix(fix.clone());
             }
             ResolveError::NotALoop {
                 keyword,
