@@ -54,6 +54,10 @@ impl Parser<'_> {
                 if self.at(TokenKind::Out) {
                     self.tokens[self.pos].kind = TokenKind::Ident;
                 }
+                // `text.cstr()`: a `string`'s text for C is its `c_str`, a property.
+                if self.at(TokenKind::CStr) {
+                    self.c_str_misspelt();
+                }
                 let Some(name) = self.parse_ident("a field or method name") else {
                     break;
                 };

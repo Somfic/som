@@ -796,6 +796,18 @@ impl Checker<'_> {
                 fitting.push((target, arg, params.into_iter().zip(fresh).collect()));
             }
         }
+        // A number nothing's decided yet fits each number type's: it's the one it would
+        // be anyway, an `i32` or `f64`. `println(5)` is `println(string::from(5 as i32))`.
+        let default = match self.u.var_kind(shallow) {
+            Some(VarKind::Int) => Some(self.u.table.i32),
+            Some(VarKind::Float) => Some(self.u.table.f64),
+            _ => None,
+        };
+        if fitting.len() > 1
+            && let Some(default) = default
+        {
+            fitting.retain(|&(_, arg, _)| self.u.could_fit(arg, default));
+        }
         Some((from, source, fitting))
     }
 }

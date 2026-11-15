@@ -295,6 +295,45 @@ impl Parser<'_> {
         true
     }
 
+    /// `text.cstr` or `text.cstr()`, at `cstr`: a `string`'s text for C is its `c_str`, a
+    /// property. Reported, with a fix, and read as it.
+    pub(crate) fn c_str_misspelt(&mut self) {
+        let start = self.current_span();
+        let called = self.peek_nth(1) == TokenKind::OpenParen
+            && self.peek_nth(2) == TokenKind::CloseParen;
+        let span = if called {
+            start.merge(&self.span_ahead(2))
+        } else {
+            start.clone()
+        };
+        if !self.in_recovery {
+            self.errors.push(ParseError {
+                message: msg![
+                    "a ",
+                    code("string"),
+                    "'s text for C is its ",
+                    code(".c_str")
+                ],
+                hint: msg![code("cstr"), " is the type; ", code("c_str"), " a property, read without parentheses"],
+                fix: Some(Fix::replace(msg!["change to ", code("c_str")], span, "c_str")),
+                span: start,
+            });
+        }
+        // Read on as the property: `c_str`, without the `()`.
+        self.tokens[self.pos].kind = TokenKind::Ident;
+        self.tokens[self.pos].text = "c_str".into();
+        if called {
+            let at = self.pos;
+            let skipped: Vec<usize> = (at + 1..self.tokens.len())
+                .filter(|&i| !is_trivia(self.tokens[i].kind))
+                .take(2)
+                .collect();
+            for i in skipped {
+                self.tokens[i].kind = TokenKind::Whitespace;
+            }
+        }
+    }
+
     // --- Operators ---
 
     /// At another language's binary operator, `a && b`: reported, and made the token som

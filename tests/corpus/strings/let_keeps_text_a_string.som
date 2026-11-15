@@ -1,0 +1,11 @@
+// expect: error StrToC
+
+/// Text stored in a `let` is a `string`, whatever it's used as later: passing it to C takes
+/// its `c_str`. Only text passed straight to C becomes a `cstr`.
+extern { fn puts(s: cstr); }
+
+fn main() -> i32 {
+    let a = "bob";
+    puts(a);
+    0
+}

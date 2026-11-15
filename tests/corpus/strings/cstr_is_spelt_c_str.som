@@ -1,0 +1,11 @@
+// expect: error
+
+/// A `string`'s text for C is its `c_str`, a property: `cstr` is the type, and `text.cstr()`
+/// says so, with a fix.
+extern { fn puts(s: cstr); }
+
+fn main() -> i32 {
+    let text = "hi";
+    puts(text.cstr());
+    0
+}

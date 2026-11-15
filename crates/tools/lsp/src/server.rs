@@ -4040,6 +4040,9 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             TokenKind::Dot if TokenKind::is_self_dot(prev, next) => 0,
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
             TokenKind::Ident if token.text.starts_with(char::is_uppercase) => 8,
+            // `string` is a name, the standard library's, but it's text: coloured as a type,
+            // like `i32` and `cstr`.
+            TokenKind::Ident if &*token.text == "string" => 4,
             // `Self` is a struct like any named one: the one an impl block is for. A built-in,
             // `@unreachable`, is coloured the same.
             TokenKind::SelfType | TokenKind::Builtin => 8,

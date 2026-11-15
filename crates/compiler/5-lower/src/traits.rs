@@ -361,7 +361,9 @@ impl FnBuilder<'_, '_> {
         rhs: Id<som_ast::Expr>,
         span: Span,
     ) -> Option<Rvalue> {
-        let ty = self.expr_ty(lhs);
+        // The operands' type: the one not converted to it, as `n` is in `n + " points"`.
+        let converted = |side| self.l.typed.conversion(side).is_some();
+        let ty = self.expr_ty(if converted(lhs) { rhs } else { lhs });
         if builtin_operator(self.l.mir.types.get(ty), lang) {
             return None;
         }
@@ -378,7 +380,15 @@ impl FnBuilder<'_, '_> {
         });
         let mut args = Vec::new();
         for side in [lhs, rhs] {
-            let place = self.place(side);
+            // Converted, `"score: " + n`: made one first, through its `from`, and lent.
+            let place = if converted(side) {
+                let value = self.operand(side);
+                let made = self.temp(ty, span.clone());
+                self.assign(Place::local(made), Rvalue::Use(value), span.clone());
+                Place::local(made)
+            } else {
+                self.place(side)
+            };
             let temp = self.temp(reference, span.clone());
             let borrow = Rvalue::Ref {
                 mutable: false,

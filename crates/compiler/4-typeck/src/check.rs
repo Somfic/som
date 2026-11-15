@@ -1586,7 +1586,13 @@ impl<'a> Checker<'a> {
                         self.expect(*value, expected, Some(from));
                         expected
                     }
-                    None => self.infer(*value),
+                    // `let a = "bob"`: a `string`, whatever it's used as later. Only text
+                    // passed straight to C becomes a `cstr`.
+                    None => {
+                        let ty = self.infer(*value);
+                        self.text_as_string(ty);
+                        ty
+                    }
                 };
                 if let Some(def) = self.names.local(id) {
                     self.locals.insert(def, ty);
@@ -3410,6 +3416,25 @@ impl<'a> Checker<'a> {
                 fitting = plain;
             }
         }
+        // Of several, the ones taking each number nothing's decided as what it would be
+        // anyway, an `i32` or `f64`: `string::from(100)` is the `From<i32>` one.
+        if fitting.len() > 1 {
+            let as_default: Vec<_> = (fitting.iter())
+                .filter(|(_, _, sig, _)| {
+                    (sig.params.iter().zip(&found)).all(|(&param, &arg)| {
+                        match self.u.var_kind(arg) {
+                            Some(VarKind::Int) => self.u.could_fit(param, self.u.table.i32),
+                            Some(VarKind::Float) => self.u.could_fit(param, self.u.table.f64),
+                            _ => true,
+                        }
+                    })
+                })
+                .cloned()
+                .collect();
+            if !as_default.is_empty() {
+                fitting = as_default;
+            }
+        }
         let candidates = |c: &Self, defs: Vec<DefId>| -> Vec<(String, Span)> {
             (defs.into_iter())
                 .filter_map(|d| match c.names.def(d).kind {
@@ -4544,6 +4569,27 @@ impl<'a> Checker<'a> {
             return lhs;
         }
 
+        // `"score: " + n`: an operand of another type than one whose operator is a trait's
+        // method becomes that type, through `From`, as an argument would.
+        let (mut lhs, mut rhs) = (lhs, rhs);
+        if let Expr::Binary {
+            lhs: left,
+            rhs: right,
+            ..
+        } = self.ast.exprs[id]
+            && let Some(lang) = LangTrait::of_operator(op)
+            && !self.u.could_fit(lhs, rhs)
+        {
+            let has_op = |c: &Self, ty: TypeId| {
+                let ty = c.u.shallow(ty);
+                matches!(c.u.get(ty), Ty::Struct(..)) && c.implements_lang(ty, lang)
+            };
+            if has_op(self, lhs) && self.from_conversion(right, lhs, rhs) {
+                rhs = lhs;
+            } else if has_op(self, rhs) && self.from_conversion(left, rhs, lhs) {
+                lhs = rhs;
+            }
+        }
         let result = if is_arithmetic(op) { lhs } else { bool };
         if self.u.unify(lhs, rhs).is_err() {
             self.invalid_operands(id, op, lhs, rhs);

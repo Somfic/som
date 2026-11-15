@@ -1,0 +1,18 @@
+// expect: exit 42
+
+/// A number becomes text wherever a `string` is expected, through `From`: an argument, a
+/// `let` with a type, a result. One nothing else decides is the `i32` or `f64` it'd be anyway.
+fn label(n: i32) -> string = n;
+
+fn main() -> i32 {
+    let a: string = 1234;
+    let b = string::from(-5);
+    let c = string::from(2.5);
+    let d = string::from(255 as u8);
+    let e = string::from(true);
+    let f = label(7);
+    // 4 + 2 + 3 + 3 + 4 + 1 bytes, and 25 more if they all read right.
+    let right = a == "1234" and b == "-5" and c == "2.5" and d == "255" and e == "true"
+        and f == "7";
+    (a.len + b.len + c.len + d.len + e.len + f.len) as i32 + (25 if right else 0)
+}

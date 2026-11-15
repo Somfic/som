@@ -109,3 +109,52 @@ impl Hash for string {
         hasher.write(.len as u64);
     }
 }
+
+impl string {
+    /// `value`, written by C's `format`, which writes at most `room` bytes of it.
+    fn written(room: usize, format: cstr, value: i64) -> Self {
+        let text = string::with_len(room);
+        let len = c::snprintf((text.data as *i8).at_mut(0), (room + 1) as u64, format, value);
+        let view = text.view.at_mut(0);
+        view.len = len as usize;
+        text
+    }
+}
+
+impl From<i64> for string {
+    fn from(value: i64) -> string = string::written(20, "%lld", value);
+}
+
+impl From<u64> for string {
+    fn from(value: u64) -> string {
+        let text = string::with_len(20);
+        let len = c::snprintf((text.data as *i8).at_mut(0), 21, "%llu", value);
+        let view = text.view.at_mut(0);
+        view.len = len as usize;
+        text
+    }
+}
+
+impl From<f64> for string {
+    fn from(value: f64) -> string {
+        let text = string::with_len(24);
+        let len = c::snprintf((text.data as *i8).at_mut(0), 25, "%g", value);
+        let view = text.view.at_mut(0);
+        view.len = len as usize;
+        text
+    }
+}
+
+impl From<i8> for string { fn from(value: i8) -> string = string::from(value as i64); }
+impl From<i16> for string { fn from(value: i16) -> string = string::from(value as i64); }
+impl From<i32> for string { fn from(value: i32) -> string = string::from(value as i64); }
+impl From<isize> for string { fn from(value: isize) -> string = string::from(value as i64); }
+impl From<u8> for string { fn from(value: u8) -> string = string::from(value as u64); }
+impl From<u16> for string { fn from(value: u16) -> string = string::from(value as u64); }
+impl From<u32> for string { fn from(value: u32) -> string = string::from(value as u64); }
+impl From<usize> for string { fn from(value: usize) -> string = string::from(value as u64); }
+impl From<f32> for string { fn from(value: f32) -> string = string::from(value as f64); }
+
+impl From<bool> for string {
+    fn from(value: bool) -> string = "true" if value else "false";
+}

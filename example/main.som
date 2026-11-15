@@ -1,1 +1,1 @@
-som::io::print("Hello" + 12 + "world");
+som::io::print("Hello " + 12 + " world");
