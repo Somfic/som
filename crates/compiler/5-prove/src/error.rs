@@ -209,7 +209,7 @@ impl ProveError {
                         ", ",
                         code("!="),
                         ", and ",
-                        code("and"),
+                        code("&&"),
                         "; or says a ",
                         code("bool"),
                         " property is true or false"

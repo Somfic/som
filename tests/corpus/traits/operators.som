@@ -9,7 +9,7 @@ impl Add for V { fn add(self: &V, other: &V) -> V { V { x: self.x + other.x, y: 
 impl Subtract for V { fn subtract(self: &V, other: &V) -> V { V { x: self.x - other.x, y: self.y - other.y } } }
 impl Multiply for V { fn multiply(self: &V, other: &V) -> V { V { x: self.x * other.x, y: self.y * other.y } } }
 impl Divide for V { fn divide(self: &V, other: &V) -> V { V { x: self.x / other.x if other.x != 0 else 0, y: self.y / other.y if other.y != 0 else 0 } } }
-impl Eq for V { fn eq(self: &V, other: &V) -> bool { self.x == other.x and self.y == other.y } }
+impl Eq for V { fn eq(self: &V, other: &V) -> bool { self.x == other.x && self.y == other.y } }
 impl Compare for V {
     fn compare(self: &V, other: &V) -> Ordering {
         let a = self.x + self.y;

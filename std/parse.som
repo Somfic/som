@@ -1,0 +1,155 @@
+extern "c";
+use som::mem;
+
+// Numbers from text: `i32::parse("42")`, `none` if it isn't one.
+
+/// A number written in decimal, as its size and sign.
+struct Digits {
+    size: u64,
+    negative: bool,
+}
+
+/// The digits of `text`, with a `-` or `+` in front if it has one. `none` if it's anything
+/// else, if there are no digits, or if they don't fit in a `u64`.
+fn digits(text: &string) -> Digits? {
+    let bytes = text.bytes;
+    // `-` and `+`.
+    let negative = bytes.len > 0 && bytes[0] == 45;
+    let signed = negative || bytes.len > 0 && bytes[0] == 43;
+    let first: usize = 1 if signed else 0;
+    if first >= bytes.len return none;
+    let mut size: u64 = 0;
+    for i in first..bytes.len {
+        let byte = bytes[i];
+        // `0` to `9`.
+        if byte < 48 || byte > 57 return none;
+        let digit = (byte - 48) as u64;
+        if size > (u64::MAX - digit) / 10 return none;
+        size = size * 10 + digit;
+    }
+    Digits { size, negative }
+}
+
+impl i64 {
+    /// The number `text` is, written in decimal, with a `-` or `+` in front if it has one.
+    /// `none` if it's anything else, or doesn't fit.
+    pub fn parse(text: string) -> i64? {
+        let parsed = digits(&text) else return none;
+        let most = i64::MAX as u64;
+        if !parsed.negative {
+            if parsed.size > most return none;
+            return parsed.size as i64;
+        }
+        // One further below 0 than above it.
+        if parsed.size > most + 1 return none;
+        if parsed.size == most + 1 return i64::MIN;
+        0 - parsed.size as i64
+    }
+}
+
+impl u64 {
+    /// The number `text` is, written in decimal. `none` if it's anything else, below 0, or
+    /// doesn't fit.
+    pub fn parse(text: string) -> u64? {
+        let parsed = digits(&text) else return none;
+        if parsed.negative && parsed.size != 0 return none;
+        parsed.size
+    }
+}
+
+impl i8 {
+    /// The number `text` is, written in decimal. `none` if it's anything else or doesn't fit.
+    pub fn parse(text: string) -> i8? {
+        let n = i64::parse(text) else return none;
+        if n < i8::MIN as i64 || n > i8::MAX as i64 return none;
+        n as i8
+    }
+}
+
+impl i16 {
+    /// The number `text` is, written in decimal. `none` if it's anything else or doesn't fit.
+    pub fn parse(text: string) -> i16? {
+        let n = i64::parse(text) else return none;
+        if n < i16::MIN as i64 || n > i16::MAX as i64 return none;
+        n as i16
+    }
+}
+
+impl i32 {
+    /// The number `text` is, written in decimal. `none` if it's anything else or doesn't fit.
+    pub fn parse(text: string) -> i32? {
+        let n = i64::parse(text) else return none;
+        if n < i32::MIN as i64 || n > i32::MAX as i64 return none;
+        n as i32
+    }
+}
+
+impl isize {
+    /// The number `text` is, written in decimal. `none` if it's anything else or doesn't fit.
+    pub fn parse(text: string) -> isize? {
+        let n = i64::parse(text) else return none;
+        if n < isize::MIN as i64 || n > isize::MAX as i64 return none;
+        n as isize
+    }
+}
+
+impl u8 {
+    /// The number `text` is, written in decimal. `none` if it's anything else or doesn't fit.
+    pub fn parse(text: string) -> u8? {
+        let n = u64::parse(text) else return none;
+        if n > u8::MAX as u64 return none;
+        n as u8
+    }
+}
+
+impl u16 {
+    /// The number `text` is, written in decimal. `none` if it's anything else or doesn't fit.
+    pub fn parse(text: string) -> u16? {
+        let n = u64::parse(text) else return none;
+        if n > u16::MAX as u64 return none;
+        n as u16
+    }
+}
+
+impl u32 {
+    /// The number `text` is, written in decimal. `none` if it's anything else or doesn't fit.
+    pub fn parse(text: string) -> u32? {
+        let n = u64::parse(text) else return none;
+        if n > u32::MAX as u64 return none;
+        n as u32
+    }
+}
+
+impl usize {
+    /// The number `text` is, written in decimal. `none` if it's anything else or doesn't fit.
+    pub fn parse(text: string) -> usize? {
+        let n = u64::parse(text) else return none;
+        if n > usize::MAX as u64 return none;
+        n as usize
+    }
+}
+
+impl f64 {
+    /// The number `text` is: `2.5`, `-1e3`, `42`. `none` if it's anything else, or has
+    /// space around it.
+    pub fn parse(text: string) -> f64? {
+        let bytes = text.bytes;
+        // C would skip space in front; som doesn't.
+        if bytes.len == 0 || bytes[0] <= 32 return none;
+        let start = text.c_str;
+        let mut end: * = null();
+        let value = c::strtod(start, &mut end);
+        // All of it read, up to the zero byte after it.
+        let after = (start as *u8).at(text.len) as *;
+        if end != after return none;
+        value
+    }
+}
+
+impl f32 {
+    /// The number `text` is: `2.5`, `-1e3`, `42`. `none` if it's anything else.
+    pub fn parse(text: string) -> f32? {
+        let n = f64::parse(text) else return none;
+        n as f32
+    }
+}

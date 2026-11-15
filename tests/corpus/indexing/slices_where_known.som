@@ -12,5 +12,5 @@ fn at(s: &[i32], i: usize) -> i32 {
 fn main() -> i32 {
     let a = [10, 20, 30];
     let s = a.slice(0..2) else return 0;
-    at(s, 1) + at(s, 5) + (1 if s.len == 2 and s[1] == 20 else 0)
+    at(s, 1) + at(s, 5) + (1 if s.len == 2 && s[1] == 20 else 0)
 }

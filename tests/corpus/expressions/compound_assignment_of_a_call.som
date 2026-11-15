@@ -1,0 +1,9 @@
+// expect: error Parse
+
+/// `+=` changes a place: a call's result is none.
+fn f() -> i32 = 1;
+
+fn main() -> i32 {
+    f() += 2;
+    0
+}

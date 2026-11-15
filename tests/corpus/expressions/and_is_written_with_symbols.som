@@ -1,0 +1,7 @@
+// expect: error Parse
+
+/// Both is `&&`, either is `||`: `and` and `or` are how Python writes them.
+fn main() -> i32 {
+    let x = 3;
+    if x > 1 and x < 5 { 0 } else { 1 }
+}

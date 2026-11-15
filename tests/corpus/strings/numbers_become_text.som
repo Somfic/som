@@ -12,7 +12,7 @@ fn main() -> i32 {
     let e = true.to_string();
     let f = label(7);
     // 4 + 2 + 3 + 3 + 4 + 1 bytes, and 25 more if they all read right.
-    let right = a == "1234" and b == "-5" and c == "2.5" and d == "255" and e == "true"
-        and f == "7";
+    let right = a == "1234" && b == "-5" && c == "2.5" && d == "255" && e == "true"
+        && f == "7";
     (a.len + b.len + c.len + d.len + e.len + f.len) as i32 + (25 if right else 0)
 }

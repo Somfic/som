@@ -11,7 +11,7 @@ impl Compare for Hello {
 }
 
 impl Add for bool {
-    fn add(self: &bool, other: &bool) -> bool { *self or *other }
+    fn add(self: &bool, other: &bool) -> bool { *self || *other }
 }
 
 fn order<T: Compare>(a: T, b: T) -> Ordering { a.compare(&b) }
@@ -29,7 +29,7 @@ fn main() -> i32 {
     let s = total(20, 22) + 7.multiply(&3);
     let t = true.add(&false);
     let f = 1.5;
-    let u = same(true, true) and x.eq(&3) and !f.eq(&2.0);
-    if t and u and (Hello { a: 1, b: 0.0 } < Hello { a: 2, b: 0.0 }) { r = r + s; }
+    let u = same(true, true) && x.eq(&3) && !f.eq(&2.0);
+    if t && u && (Hello { a: 1, b: 0.0 } < Hello { a: 2, b: 0.0 }) { r = r + s; }
     r
 }

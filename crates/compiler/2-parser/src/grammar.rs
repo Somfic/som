@@ -55,8 +55,8 @@ impl Grammar {
 
     pub fn infix_op(kind: TokenKind) -> Option<(BinOp, OpInfo)> {
         let (operator, precedence, association) = match kind {
-            TokenKind::Or => (BinOp::Or, Self::OR, Association::Left),
-            TokenKind::And => (BinOp::And, Self::AND, Association::Left),
+            TokenKind::PipePipe => (BinOp::Or, Self::OR, Association::Left),
+            TokenKind::AndAnd => (BinOp::And, Self::AND, Association::Left),
             TokenKind::DoubleEquals => (BinOp::Equals, Self::EQUALITY, Association::Left),
             TokenKind::NotEquals => (BinOp::NotEquals, Self::EQUALITY, Association::Left),
 

@@ -41,6 +41,6 @@ fn main() -> i32 {
     let fourth = numbers.get(wide) else 0;
 
     // [1, 20, 3, 4, 50]
-    let checks = first == 1 and past_end == 100 and stored and px == 3 and third == 3 and fourth == 4;
+    let checks = first == 1 && past_end == 100 && stored && px == 3 && third == 3 && fourth == 4;
     sum(&numbers) if checks else 0
 }

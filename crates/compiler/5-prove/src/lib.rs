@@ -340,7 +340,7 @@ impl Prover<'_> {
             Expr::Binary { op, lhs, rhs } => {
                 self.expr(*lhs);
                 // `i < xs.len and xs[i] == 0`: the right side only runs where the left is
-                // true, or for `or`, false.
+                // true, or for `||`, false.
                 match op {
                     BinOp::And => self.branch(*lhs, true, |p| p.expr(*rhs)),
                     BinOp::Or => self.branch(*lhs, false, |p| p.expr(*rhs)),
@@ -461,6 +461,7 @@ impl Prover<'_> {
     fn check_index(&mut self, id: Id<Expr>, object: Id<Expr>, index: Id<Expr>, reading: bool) {
         if let Some(func) = self.method(id) {
             if !self.unproven(func, 1, Some(object), &[index]).is_empty() {
+
                 self.out_of_bounds(id, object, index, reading);
             }
             return;
@@ -1022,7 +1023,18 @@ impl Prover<'_> {
                 };
                 path.push(field.name.clone());
                 let _ = needs;
-                Value::place(Place::Path { root, path })
+                let place = Place::Path { root, path };
+                // A slice's length is never below 0, whatever integer type it's read as.
+                if &*field.name == "len" {
+                    let mut ty = self.typed.expr(object);
+                    while let Ty::Ref { to, .. } = *self.typed.ty(ty) {
+                        ty = to;
+                    }
+                    if matches!(self.typed.ty(ty), Ty::Slice(_) | Ty::Str) {
+                        self.facts.unsigned(place.clone());
+                    }
+                }
+                Value::place(place)
             }
             Expr::Deref(inner) => return self.value_of(inner, subst),
             Expr::Binary {

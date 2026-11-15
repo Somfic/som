@@ -2113,7 +2113,7 @@ impl<'a> Checker<'a> {
     }
 
     /// Checks a condition: a `bool`, or an optional, which is true when it holds a value
-    /// (`if x` is `if x != none`), combined with `and`, `or` and `!`. Returns what it being
+    /// (`if x` is `if x != none`), combined with `&&`, `||` and `!`. Returns what it being
     /// true, or false, says about optional places.
     fn check_condition(&mut self, condition: Id<Expr>) -> Facts {
         let bool = self.u.table.bool;
@@ -2159,7 +2159,7 @@ impl<'a> Checker<'a> {
         facts
     }
 
-    /// Checks a condition that isn't `and`, `or` or `!`.
+    /// Checks a condition that isn't `&&`, `||` or `!`.
     fn check_condition_operand(&mut self, condition: Id<Expr>) -> Facts {
         let mut facts = Facts::default();
         match self.condition_narrowing(condition) {
@@ -2170,7 +2170,7 @@ impl<'a> Checker<'a> {
         facts
     }
 
-    /// Checks a condition that isn't `and`, `or` or `!`, returning the optional place it tells
+    /// Checks a condition that isn't `&&`, `||` or `!`, returning the optional place it tells
     /// something about, and whether that holds a value when the condition is true.
     fn condition_narrowing(&mut self, condition: Id<Expr>) -> Option<(Narrowing, bool)> {
         let bool = self.u.table.bool;

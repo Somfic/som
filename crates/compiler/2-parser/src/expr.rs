@@ -175,6 +175,31 @@ impl Parser<'_> {
                 continue;
             }
 
+            // `target += value`: `target = target + value`.
+            if matches!(self.peek(), TokenKind::PlusEquals | TokenKind::MinusEquals) {
+                if Grammar::ASSIGNMENT < min_bp {
+                    break;
+                }
+                let op = match self.peek() {
+                    TokenKind::PlusEquals => BinOp::Add,
+                    _ => BinOp::Subtract,
+                };
+                let at = self.current_span();
+                self.advance();
+                let value = self.parse_expr_bp(Grammar::ASSIGNMENT)?;
+                let Some(read) = self.copy_place(lhs) else {
+                    self.error_at(
+                        at,
+                        msg![code(op.symbol().to_string() + "="), " changes a variable, field or element"],
+                        msg!["write it out: ", code("target = target + value")],
+                    );
+                    continue;
+                };
+                let sum = self.alloc_expr(Expr::Binary { op, lhs: read, rhs: value }, &start);
+                lhs = self.alloc_expr(Expr::Assign { target: lhs, value: sum }, &start);
+                continue;
+            }
+
             // `value as ty`
             if self.at(TokenKind::As) {
                 if Grammar::AS * 2 < min_bp {
@@ -183,6 +208,24 @@ impl Parser<'_> {
                 self.advance();
                 let ty = self.parse_type()?;
                 lhs = self.alloc_expr(Expr::Cast { value: lhs, ty }, &start);
+                continue;
+            }
+
+            // `start..=end`: up to and including `end`, which is `start..end + 1`.
+            if self.at(TokenKind::DotDotEquals) {
+                if Grammar::RANGE * 2 < min_bp {
+                    break;
+                }
+                self.advance();
+                let end = self.parse_expr_bp(Grammar::RANGE * 2 + 1)?;
+                let end = self.past(end);
+                lhs = self.alloc_expr(
+                    Expr::Range {
+                        start: Some(lhs),
+                        end: Some(end),
+                    },
+                    &start,
+                );
                 continue;
             }
 
@@ -273,6 +316,14 @@ impl Parser<'_> {
             ));
         }
         let kind = self.peek();
+
+        // `..=end`: from the start, up to and including `end`.
+        if kind == TokenKind::DotDotEquals {
+            self.advance();
+            let end = self.parse_expr_bp(Grammar::RANGE * 2 + 1)?;
+            let end = self.past(end);
+            return Some(self.alloc_expr(Expr::Range { start: None, end: Some(end) }, &start));
+        }
 
         // `..end`, or `..`: a range from the start.
         if kind == TokenKind::DotDot {
@@ -865,6 +916,54 @@ impl Parser<'_> {
         let span = self.span_from(start);
         self.ast.exprs.replace(callee, expr, span);
         Some(callee)
+    }
+
+    /// `end + 1`: where an inclusive range's end makes it stop, as a range's end does.
+    fn past(&mut self, end: Id<Expr>) -> Id<Expr> {
+        let span = self.ast.exprs.span(end).clone();
+        let one = self.ast.exprs.alloc(Expr::Int(1), span.clone());
+        self.ast.exprs.alloc(
+            Expr::Binary {
+                op: BinOp::Add,
+                lhs: end,
+                rhs: one,
+            },
+            span,
+        )
+    }
+
+    /// A copy of place `expr`, to read it as well as assign it: the `x` in `x = x + 1` that
+    /// `x += 1` is. A variable, a field, a dereference or an element whose index is a
+    /// variable or number. `None` for anything else, which could do something twice.
+    fn copy_place(&mut self, expr: Id<Expr>) -> Option<Id<Expr>> {
+        let span = self.ast.exprs.span(expr).clone();
+        let copy = match &self.ast.exprs[expr] {
+            Expr::Var(path) => Expr::Var(path.clone()),
+            Expr::Int(n) => Expr::Int(*n),
+            Expr::Field { object, field } => {
+                let (object, field) = (*object, field.clone());
+                Expr::Field {
+                    object: self.copy_place(object)?,
+                    field,
+                }
+            }
+            Expr::Deref(inner) => {
+                let inner = *inner;
+                Expr::Deref(self.copy_place(inner)?)
+            }
+            Expr::Index { object, index } => {
+                let (object, index) = (*object, *index);
+                if !matches!(self.ast.exprs[index], Expr::Var(_) | Expr::Int(_)) {
+                    return None;
+                }
+                Expr::Index {
+                    object: self.copy_place(object)?,
+                    index: self.copy_place(index)?,
+                }
+            }
+            _ => return None,
+        };
+        Some(self.ast.exprs.alloc(copy, span))
     }
 
     /// `{ stmts; value }`

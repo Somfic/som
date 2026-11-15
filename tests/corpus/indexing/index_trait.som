@@ -5,7 +5,7 @@
 fn main() -> i32 {
     let xs: List<i32> = [10, 20, 30];
     let text = "hey";
-    if xs.len < 3 or text.len < 2 {
+    if xs.len < 3 || text.len < 2 {
         return 0;
     }
     // 20 + 101 for `e`.

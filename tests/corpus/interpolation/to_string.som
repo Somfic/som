@@ -11,6 +11,6 @@ impl Display for Point {
 fn main() -> i32 {
     let p = Point { x: 1, y: 2 };
     let n = 42;
-    let ok = p.to_string() == "(1, 2)" and n.to_string() == "42" and true.to_string() == "true";
+    let ok = p.to_string() == "(1, 2)" && n.to_string() == "42" && true.to_string() == "true";
     if ok { 0 } else { 1 }
 }

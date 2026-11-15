@@ -62,7 +62,7 @@ impl string {
 
     /// The bytes from `start` up to `end`, copied; `none` if they aren't all there.
     pub fn slice(&self, start: usize, end: usize) -> Self? {
-        if start > end or end > .len {
+        if start > end || end > .len {
             return none;
         }
         let copy = string::with_len(end - start);
@@ -117,7 +117,7 @@ impl Multiply<usize> for string {
 
 impl Eq for string {
     fn eq(&self, other: &Self) -> bool {
-        .len == other.len and c::memcmp(.data as *, other.data as *, .len as u64) == 0
+        .len == other.len && c::memcmp(.data as *, other.data as *, .len as u64) == 0
     }
 }
 

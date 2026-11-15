@@ -1,0 +1,19 @@
+// expect: exit 0
+
+/// Each number type parses text: `none` if it isn't a whole number of that type.
+fn main() -> i32 {
+    let a = i32::parse("42") else return 1;
+    let b = i32::parse("-17") else return 2;
+    let c = i64::parse("-9223372036854775808") else return 3;
+    let d = u8::parse("255") else return 4;
+    let e = f64::parse("2.5") else return 5;
+    let right = a == 42 && b == -17 && c == i64::MIN && d == 255 && e == 2.5;
+    let rejected = [i32::parse("4x2") == none, i32::parse("") == none, u8::parse("256") == none,
+        i32::parse("99999999999") == none, u64::parse("-1") == none, f64::parse(" 1") == none,
+        i32::parse("-") == none, f64::parse("1.5x") == none];
+    let mut wrong = 0 if right else 100;
+    for ok in rejected {
+        if !ok wrong += 1;
+    }
+    wrong
+}

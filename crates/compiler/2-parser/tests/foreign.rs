@@ -69,8 +69,8 @@ fn operators() {
     becomes("let c = a === b;", "let c = a == b;");
     becomes("let c = a !== b;", "let c = a != b;");
     becomes("let c = a ~= b;", "let c = a != b;");
-    becomes("let c = a && b;", "let c = a and b;");
-    becomes("let c = a || b;", "let c = a or b;");
+    becomes("let c = a and b;", "let c = a && b;");
+    becomes("let c = a or b;", "let c = a || b;");
     becomes("let c = not a;", "let c = !a;");
     becomes("i++;", "i = i + 1;");
     becomes("i--;", "i = i - 1;");

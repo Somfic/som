@@ -1503,7 +1503,7 @@ impl LanguageServer for SomLanguageServer {
         hints.extend(annotation_hints(a, &file));
 
         // What an optional used as a condition asks: `if x` is `if x != none`, and so is each
-        // optional operand of `and`, `or` and `!`.
+        // optional operand of `&&`, `||` and `!`.
         let mut conditions: Vec<Id<Expr>> = a
             .ast
             .stmts
@@ -4096,7 +4096,12 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::GreaterThanOrEqual
             | TokenKind::Ampersand
             | TokenKind::Question
-            | TokenKind::DotDot => 6,
+            | TokenKind::DotDot
+            | TokenKind::DotDotEquals
+            | TokenKind::PlusEquals
+            | TokenKind::MinusEquals
+            | TokenKind::AndAnd
+            | TokenKind::PipePipe => 6,
             _ => continue,
         };
 

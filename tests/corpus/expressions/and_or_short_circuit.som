@@ -5,8 +5,8 @@ fn bump(n: &mut i32) -> bool { *n = *n + 1; true }
 fn main() -> i32 {
     let mut calls = 0;
     // The right side only runs when it decides the result.
-    let a = false and bump(&mut calls);
-    let b = true or bump(&mut calls);
-    let c = true and bump(&mut calls);
+    let a = false && bump(&mut calls);
+    let b = true || bump(&mut calls);
+    let c = true && bump(&mut calls);
     calls
 }

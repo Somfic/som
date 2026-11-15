@@ -226,16 +226,8 @@ pub static ELSE_IF: &[Foreign] = &[
 /// Operators written as words, or as other symbols: `not x`, `a && b`, `a === b`.
 pub static OPERATOR: &[Foreign] = &[
     f("not", "!", &[Python]),
-    f(
-        "&&",
-        "and",
-        &[C, Cpp, Java, CSharp, JavaScript, Go, Kotlin, Swift],
-    ),
-    f(
-        "||",
-        "or",
-        &[C, Cpp, Java, CSharp, JavaScript, Go, Kotlin, Swift],
-    ),
+    f("and", "&&", &[Python, Lua, Ruby]),
+    f("or", "||", &[Python, Lua, Ruby]),
     f("===", "==", &[JavaScript, TypeScript, Php]),
     f("!==", "!=", &[JavaScript, TypeScript, Php]),
     f("~=", "!=", &[Lua]),

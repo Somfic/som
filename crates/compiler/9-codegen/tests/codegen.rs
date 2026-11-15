@@ -180,7 +180,7 @@ fn temporaries_wait_for_assignments_to_what_they_read() {
 #[test]
 fn parentheses_only_where_precedence_needs_them() {
     let c = c(
-        "fn f(a: i32, b: i32, c: i32) -> bool { a * b + c < a - (b - c) and a == b }
+        "fn f(a: i32, b: i32, c: i32) -> bool { a * b + c < a - (b - c) && a == b }
                fn main() -> i32 { 0 }",
     )
     .unwrap();

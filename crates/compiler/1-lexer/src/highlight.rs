@@ -71,6 +71,9 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Ampersand
         | TokenKind::Question
         | TokenKind::DotDot
+        | TokenKind::DotDotEquals
+        | TokenKind::PlusEquals
+        | TokenKind::MinusEquals
         | TokenKind::Slash
         | TokenKind::Equals
         | TokenKind::DoubleEquals
@@ -83,7 +86,9 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Percentage
         | TokenKind::Caret
         | TokenKind::Pipe
-        | TokenKind::Tilde => SKY,
+        | TokenKind::Tilde
+        | TokenKind::AndAnd
+        | TokenKind::PipePipe => SKY,
         TokenKind::OpenParen
         | TokenKind::CloseParen
         | TokenKind::OpenBrace
@@ -106,8 +111,6 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::TildeEquals
         | TokenKind::ColonEquals
         | TokenKind::PlusPlus
-        | TokenKind::AndAnd
-        | TokenKind::PipePipe
         | TokenKind::Hash => SUBTEXT0,
         TokenKind::Whitespace | TokenKind::Eof | TokenKind::Error => TEXT,
     }

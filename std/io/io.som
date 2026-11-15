@@ -31,7 +31,7 @@ pub fn read_line() -> string? {
     if read < 0 {
         return none;
     }
-    while read >= 0 and read != 10 {
+    while read >= 0 && read != 10 {
         bytes.push(read as u8);
         read = c::getchar();
     }

@@ -60,10 +60,12 @@ pub enum TokenKind {
     Out,
     #[token("use")]
     Use,
+    /// Python's `and`: reported, read as `&&`.
     #[token("and")]
     And,
     #[token("as")]
     As,
+    /// Python's `or`: reported, read as `||`.
     #[token("or")]
     Or,
 
@@ -126,6 +128,15 @@ pub enum TokenKind {
     None,
 
     // Operators
+    /// `x += 1`: `x = x + 1`.
+    #[token("+=")]
+    PlusEquals,
+    /// `x -= 1`: `x = x - 1`.
+    #[token("-=")]
+    MinusEquals,
+    /// `1..=10`: up to and including the end.
+    #[token("..=")]
+    DotDotEquals,
     #[token("+")]
     Plus,
     #[token("-")]
@@ -231,10 +242,10 @@ pub enum TokenKind {
     /// `x++`: `x += 1`.
     #[token("++")]
     PlusPlus,
-    /// `a && b`: `and`. Also two borrows, `&&x`.
+    /// `a && b`: both. Also two borrows, `&&x`.
     #[token("&&")]
     AndAnd,
-    /// `a || b`: `or`.
+    /// `a || b`: either.
     #[token("||")]
     PipePipe,
 
@@ -342,6 +353,9 @@ impl std::fmt::Display for TokenKind {
             TokenKind::CloseBracket => write!(f, "]"),
             TokenKind::Dot => write!(f, "."),
             TokenKind::DotDot => write!(f, ".."),
+            TokenKind::DotDotEquals => write!(f, "..="),
+            TokenKind::PlusEquals => write!(f, "+="),
+            TokenKind::MinusEquals => write!(f, "-="),
             TokenKind::Ellipsis => write!(f, "..."),
             TokenKind::SingleQuote => write!(f, "'"),
             TokenKind::DoubleQuote => write!(f, "\""),

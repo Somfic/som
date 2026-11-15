@@ -3,10 +3,10 @@
 /// Built-in types implement traits too: `+` for `bool`, `+` for an array, a `From` into
 /// `i32`. Only where the type has no such operator of its own.
 impl Add for bool {
-    fn add(self: &bool, other: &bool) -> bool { *self or *other }
+    fn add(self: &bool, other: &bool) -> bool { *self || *other }
 }
 impl Multiply for bool {
-    fn multiply(self: &bool, other: &bool) -> bool { *self and *other }
+    fn multiply(self: &bool, other: &bool) -> bool { *self && *other }
 }
 impl Compare for bool {
     fn compare(self: &bool, other: &bool) -> Ordering {

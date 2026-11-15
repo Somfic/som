@@ -7,8 +7,8 @@ fn main() -> i32 {
     let r = &n;
     let xs: List<i32> = [10, 20];
     let missing: string? = none;
-    let right = "{r}" == "5" and "ref: {r}" == "ref: 5"
-        and "{xs.get(1)}" == "20" and "{xs.get(9)}" == "none"
-        and "maybe: {missing}" == "maybe: none";
+    let right = "{r}" == "5" && "ref: {r}" == "ref: 5"
+        && "{xs.get(1)}" == "20" && "{xs.get(9)}" == "none"
+        && "maybe: {missing}" == "maybe: none";
     5 if right else 0
 }

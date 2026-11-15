@@ -345,12 +345,12 @@ impl Parser<'_> {
 
     // --- Operators ---
 
-    /// At another language's binary operator, `a && b`: reported, and made the token som
-    /// writes, `and`, for the expression to read on as usual.
+    /// At another language's binary operator, `a and b`: reported, and made the token som
+    /// writes, `&&`, for the expression to read on as usual.
     pub(crate) fn rewrite_foreign_binary_op(&mut self) {
         let (written, som) = match self.peek() {
-            TokenKind::AndAnd => ("&&", TokenKind::And),
-            TokenKind::PipePipe => ("||", TokenKind::Or),
+            TokenKind::And => ("and", TokenKind::AndAnd),
+            TokenKind::Or => ("or", TokenKind::PipePipe),
             TokenKind::TripleEquals => ("===", TokenKind::DoubleEquals),
             TokenKind::NotDoubleEquals => ("!==", TokenKind::NotEquals),
             TokenKind::TildeEquals => ("~=", TokenKind::NotEquals),
