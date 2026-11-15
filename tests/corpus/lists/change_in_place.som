@@ -1,6 +1,5 @@
 // expect: exit 29
 
-use som::data;
 use som::mem;
 
 fn main() -> i32 {

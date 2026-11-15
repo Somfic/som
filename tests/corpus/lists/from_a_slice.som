@@ -1,7 +1,6 @@
 // expect: exit 13
 
 /// A slice of values that are copied makes a list of copies of them.
-use som::data;
 
 fn main() -> i32 {
     let numbers = [1, 2, 3, 4];

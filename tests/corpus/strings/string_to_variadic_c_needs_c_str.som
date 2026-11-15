@@ -1,9 +1,10 @@
 // expect: error StrToC
 
+/// C reads a variadic function's extra arguments as C types: a `string` passes its `c_str`.
 extern { fn printf(format: cstr, ...) -> i32; }
 
 fn main() -> i32 {
-    let s: str = "hi";
+    let s: string = "hi";
     printf("%s", s);
     0
 }

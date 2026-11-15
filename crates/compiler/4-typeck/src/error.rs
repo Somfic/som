@@ -168,11 +168,11 @@ pub enum TypeError {
         name: String,
         span: Span,
     },
-    /// `&str`: a `str` is already a view of the text, like a slice.
-    StrBehindReference {
+    /// `str` or `&str`, text before it was `string`.
+    StrIsString {
         span: Span,
     },
-    /// A `str` passed to C, which needs text ending in a zero byte: a `cstr`.
+    /// A `string` passed to C, which takes a `cstr`: its `c_str`.
     StrToC {
         span: Span,
     },
@@ -260,6 +260,15 @@ pub enum TypeError {
         name: String,
         span: Span,
         previous: Span,
+    },
+    /// Functions sharing a name that differ only in taking `&T` or `&mut T`: `view(&self)`
+    /// and `view(&mut self)`. `span` is the `&mut` one's name.
+    MutOverload {
+        name: String,
+        span: Span,
+        previous: Span,
+        /// Naming it `…_mut`.
+        fix: Fix,
     },
     /// An `impl Trait for …` without one of the trait's methods or associated types.
     MissingTraitItem {
@@ -421,6 +430,11 @@ pub enum TypeError {
     },
     /// `impl Drop for …` of a type whose values are copied.
     DropOnCopy {
+        ty: Message,
+        span: Span,
+    },
+    /// `impl Share for …` of a type whose values are copied bit for bit.
+    ShareOnCopy {
         ty: Message,
         span: Span,
     },
@@ -796,28 +810,38 @@ impl TypeError {
             } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
                 Label::primary(span.clone(), msg!["this is ", found.clone()]),
             ),
-            TypeError::StrBehindReference { span } => {
-                Diagnostic::error(msg![code("&str"), " is a reference to a reference"])
-                    .with_label(Label::primary(
-                        span.clone(),
-                        "a `str` already refers to its text",
-                    ))
-                    .with_fix(Fix::replace(
-                        msg!["write ", code("str")],
-                        span.clone(),
-                        "str",
-                    ))
+            TypeError::StrIsString { span } => Diagnostic::error(msg![
+                "som's text is ",
+                code("string")
+            ])
+            .with_label(Label::primary(span.clone(), "text used to be `str`"))
+            .with_fix(Fix::replace(
+                msg!["change to ", code("string")],
+                span.clone(),
+                "string",
+            )),
+            TypeError::StrToC { span } => {
+                let d = Diagnostic::error(msg!["C can't take a ", code("string")])
+                    .with_label(Label::primary(span.clone(), "C takes a `cstr`"))
+                    .with_hint(msg![
+                        "pass its ",
+                        code(".c_str"),
+                        ", valid as long as the string is; a literal becomes a ",
+                        code("cstr"),
+                        " by itself"
+                    ]);
+                // A name, or a path through fields: `.c_str` goes straight after it.
+                let text = span.get_text();
+                let plain = text.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.');
+                if plain {
+                    d.with_fix(Fix {
+                        title: msg!["pass ", code(format!("{text}.c_str"))],
+                        edits: vec![(span.after(), ".c_str".to_string())],
+                    })
+                } else {
+                    d
+                }
             }
-            TypeError::StrToC { span } => Diagnostic::error(msg!["C can't take a ", code("str")])
-                .with_label(Label::primary(
-                    span.clone(),
-                    "C needs text ending in a zero byte",
-                ))
-                .with_hint(msg![
-                    "pass a ",
-                    code("cstr"),
-                    "; a string literal becomes one"
-                ]),
             TypeError::MissingReturn { ty, span, returns } => {
                 let d = Diagnostic::error(msg!["not every path returns ", ty.clone()]).with_label(
                     Label::primary(span.clone(), "this end can be reached without a value"),
@@ -987,6 +1011,26 @@ impl TypeError {
                 previous.clone(),
                 "was already defined here",
             )),
+            TypeError::MutOverload {
+                name,
+                span,
+                previous,
+                fix,
+            } => Diagnostic::error(msg![
+                func(name),
+                " is defined twice, differing only in ",
+                code("&"),
+                " and ",
+                code("&mut")
+            ])
+            .with_label(Label::primary(span.clone(), "the one that changes"))
+            .with_label(Label::secondary(previous.clone(), "the one that reads"))
+            .with_hint(msg![
+                "which one runs would depend on whether the caller has a ",
+                code("&mut"),
+                ": give the one that changes its own name"
+            ])
+            .with_fix(fix.clone()),
             TypeError::MissingTraitItem {
                 missing,
                 trait_,
@@ -1361,6 +1405,19 @@ impl TypeError {
                         "its values are copied, so each copy would be dropped",
                     ),
                 )
+            }
+            TypeError::ShareOnCopy { ty, span } => {
+                Diagnostic::error(msg![ty.clone(), " can't implement ", code("Share")])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![
+                            "it's ",
+                            code("Copy"),
+                            ": its copies are made bit for bit, so ",
+                            code("share"),
+                            " would never be called"
+                        ],
+                    ))
             }
             TypeError::BuiltinImpl { ty, trait_, span } => {
                 Diagnostic::error(msg![ty.clone(), " can't implement ", code(trait_)])

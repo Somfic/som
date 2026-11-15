@@ -211,6 +211,22 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// `ty`'s `Share::share`, for its type arguments, if it implements `Share`.
+    fn share_impl(&mut self, ty: TypeId) -> Option<FuncId> {
+        let trait_ = self.names.lang(som_resolve::LangTrait::Share)?;
+        let (index, args) = som_typeck::traits::find_impl(
+            &self.typed.impls,
+            &self.mir.types,
+            trait_,
+            ty,
+            &[],
+            &|t| t,
+        )?;
+        let method = (self.typed.impls[index].methods.iter().copied())
+            .find(|&m| &*self.ast.funcs[m].name.name == "share")?;
+        Some(self.instance(method, args))
+    }
+
     /// Whether struct `def` implements `Copy`.
     fn implements_copy(&self, def: DefId) -> bool {
         let Some(copy) = self.names.lang(som_resolve::LangTrait::Copy) else {
@@ -628,9 +644,45 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     /// Reads `place`, written in the source at `span`: noted for the statement using it.
+    /// A `Share` value is copied by its `share`: `place` stays, and what's read is the copy.
     fn read_at(&mut self, place: Place, ty: TypeId, span: Span) -> Operand {
+        if !self.l.is_copy(ty)
+            && let Some(share) = self.l.share_impl(ty)
+        {
+            return self.share(place, ty, share, span);
+        }
+        // A `T?` of a `Share` `T`: shared by the standard library's `share_optional`.
+        if let Ty::Optional(inner) = *self.l.mir.types.get(ty)
+            && !self.l.is_copy(inner)
+            && self.l.share_impl(inner).is_some()
+            && let Some(def) = self.l.names.share_optional()
+            && let DefKind::Func(func) = self.l.names.def(def).kind
+        {
+            let share = self.l.instance(func, vec![inner]);
+            return self.share(place, ty, share, span);
+        }
         self.reads.push((place.clone(), span));
         self.read(place, ty)
+    }
+
+    /// A copy of `place`, of `Share` type `ty`, from its `share`: `share(&place)`.
+    fn share(&mut self, place: Place, ty: TypeId, share: FuncId, span: Span) -> Operand {
+        let reference = self.l.mir.types.intern(Ty::Ref { mutable: false, to: ty });
+        let borrowed = self.temp(reference, span.clone());
+        let borrow = Rvalue::Ref {
+            mutable: false,
+            place,
+        };
+        self.assign(Place::local(borrowed), borrow, span.clone());
+        let copy = self.temp(ty, span.clone());
+        let call = Rvalue::Call {
+            func: share,
+            args: vec![Operand::Move(Place::local(borrowed))],
+        };
+        self.assign(Place::local(copy), call, span.clone());
+        // The copy is made: the borrow it was made through ends.
+        self.push(StatementKind::StorageDead(borrowed), span);
+        Operand::Move(Place::local(copy))
     }
 
     fn assign(&mut self, place: Place, rvalue: Rvalue, span: Span) {
@@ -1306,6 +1358,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::None => self.constant(ConstKind::Zeroed, ty),
             Expr::Hole => unreachable!("programs with parse errors are never lowered"),
 
+            // `usize::MAX`: a number, which C writes as the target's own for `usize`.
+            Expr::Var(path) if let Some((_, value)) = path.int_limit() => {
+                self.constant(ConstKind::Int(value), ty)
+            }
             Expr::Var(_) => {
                 // Of functions sharing a name, the one the type checker picked.
                 let def = (self.l.typed)
@@ -2350,7 +2406,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn place_of(&mut self, expr: Id<Expr>) -> Place {
         let ast = self.l.ast;
         match &ast.exprs[expr] {
-            Expr::Var(_) => {
+            Expr::Var(path) if path.int_limit().is_none() => {
                 let def = self
                     .l
                     .names

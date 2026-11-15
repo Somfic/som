@@ -1,0 +1,18 @@
+// expect: exit 32
+
+/// An `Rc` counts its copies; each can read the value they share.
+struct Point { x: i32, y: i32 }
+
+fn sum(p: Rc<Point>) -> i32 = p.get().x + p.get().y;
+
+fn main() -> i32 {
+    let a = Rc::new(Point { x: 1, y: 2 });
+    let mut most = 0;
+    {
+        let b = a;
+        let c = b;
+        most = a.count as i32;
+    }
+    // Three while `b` and `c` lived; `sum`'s copy is gone again after it.
+    most * 10 + sum(a) - a.count as i32
+}

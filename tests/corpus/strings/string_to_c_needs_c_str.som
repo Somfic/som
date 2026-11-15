@@ -1,0 +1,10 @@
+// expect: error StrToC
+
+/// C takes a `cstr`: a `string` that isn't a literal passes its `c_str`.
+extern { fn puts(s: cstr); }
+
+fn main() -> i32 {
+    let s: string = "hi";
+    puts(s);
+    0
+}

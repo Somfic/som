@@ -1,7 +1,6 @@
 // expect: exit 255
 
 /// Trait methods on a bounded type parameter, default methods, `Self`, and `==` through `Eq`.
-use som::data;
 
 trait Shape {
     fn area(self: &Self) -> i32;

@@ -1,18 +1,16 @@
 // expect: exit 7
 
-/// What's expected of `x else y` is expected of `x` too: `let e: &mut P = get(…) else …`
-/// picks the `get` that lends it to change.
-struct P { v: i32 }
-struct Box { p: P }
+/// What's expected of `x else y` is expected of `x` too: `let e: i32 = get(…) else …`
+/// picks the `get` that gives an `i32`.
+struct Box { v: i32 }
 
 impl Box {
-    fn get(&self, i: i32) -> &P? { if i == 0 { &.p } else { none } }
-    fn get(&mut self, i: i32) -> &mut P? { if i == 0 { &mut .p } else { none } }
+    fn get(&self, i: i32) -> i32? { if i == 0 { .v } else { none } }
+    fn get(&self, i: i32) -> bool? { if i == 0 { .v > 0 } else { none } }
 }
 
 fn main() -> i32 {
-    let mut b = Box { p: P { v: 1 } };
-    let e: &mut P = b.get(0) else @unreachable;
-    e.v = 7;
-    b.p.v
+    let b = Box { v: 7 };
+    let e: i32 = b.get(0) else @unreachable;
+    e
 }

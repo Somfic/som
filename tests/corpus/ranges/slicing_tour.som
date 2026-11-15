@@ -33,6 +33,6 @@ fn main() -> i32 {
     };
     let d = sum(&numbers);                            // 6
     let text = "hello, world";
-    let word = text.slice(7..) else "";
-    a + b + c + d + word.len + r.start + r.end
+    let word = text.slice(7, text.len) else "";
+    a + b + c + d + word.len as i32 + r.start + r.end
 }

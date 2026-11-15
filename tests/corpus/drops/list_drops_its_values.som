@@ -1,7 +1,6 @@
 // expect: exit 123
 
 /// A list drops its values with itself, and `clear` drops them too.
-use som::data;
 
 struct Noisy { id: i32, log: *i32 }
 

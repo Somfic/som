@@ -1,4 +1,4 @@
-// expect: error StrBehindReference
+// expect: error StrIsString
 
 fn greet(name: &str) {}
 

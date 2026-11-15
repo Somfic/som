@@ -161,7 +161,7 @@ impl Unifier {
             (kind, Ty::Optional(inner)) => self.kind_allows(kind, *inner),
             (VarKind::Int, t) => matches!(t, Ty::Int(_)),
             (VarKind::Float, t) => matches!(t, Ty::Float(_)),
-            (VarKind::Text, t) => matches!(t, Ty::CStr) || ty == self.table.str_ref,
+            (VarKind::Text, t) => matches!(t, Ty::CStr) || ty == self.table.text,
             (VarKind::Collection { .. }, Ty::Array { .. }) => true,
             (VarKind::Collection { .. }, Ty::Ref { to, .. }) => {
                 matches!(self.table.get(self.shallow(*to)), Ty::Slice(_))
@@ -293,7 +293,7 @@ impl Unifier {
             VarKind::Any => true,
             VarKind::Int => matches!(self.table.get(ty), Ty::Int(_)),
             VarKind::Float => matches!(self.table.get(ty), Ty::Float(_)),
-            VarKind::Text => ty == self.table.str_ref || ty == self.table.cstr,
+            VarKind::Text => ty == self.table.text || ty == self.table.cstr,
             // An array of as many, or a slice, of the same elements.
             VarKind::Collection { element, len } => {
                 let found = match self.table.get(ty).clone() {
@@ -352,8 +352,8 @@ impl Unifier {
                     self.table.error
                 }
                 VarKind::Text => {
-                    self.vars[v as usize].bound = Some(self.table.str_ref);
-                    self.table.str_ref
+                    self.vars[v as usize].bound = Some(self.table.text);
+                    self.table.text
                 }
                 VarKind::Collection { element, len } => {
                     let element = self.finish(element, unresolved);
@@ -385,7 +385,7 @@ impl Unifier {
                 VarKind::Int => "i32".into(),
                 VarKind::Float => "f64".into(),
                 VarKind::Any => "_".into(),
-                VarKind::Text => "str".into(),
+                VarKind::Text => "string".into(),
                 VarKind::Collection { element, len } => {
                     format!(
                         "[{}; {}]",

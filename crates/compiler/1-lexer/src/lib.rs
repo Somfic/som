@@ -208,10 +208,12 @@ pub enum TokenKind {
     Whitespace,
     #[regex(r"//[^\n]*", allow_greedy = true)]
     Comment,
-    /// Another language's comment: `# note`, or `-- note` on a line of its own. Skipped like
+    /// Another language's comment, `# note` or `-- note`, on a line of its own. Skipped like
     /// one, and reported.
-    #[regex(r"#[^\n]*", allow_greedy = true)]
     ForeignComment,
+    /// `#T`: a value shared by its copies, counted.
+    #[token("#")]
+    Hash,
 
     // Other languages' operators, recognised to be reported and read as som's.
     /// `a === b`: `==`.
@@ -346,6 +348,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Whitespace => write!(f, "whitespace"),
             TokenKind::Comment => write!(f, "comment"),
             TokenKind::ForeignComment => write!(f, "comment"),
+            TokenKind::Hash => write!(f, "#"),
             TokenKind::TripleEquals => write!(f, "==="),
             TokenKind::NotDoubleEquals => write!(f, "!=="),
             TokenKind::TildeEquals => write!(f, "~="),
@@ -446,7 +449,7 @@ pub fn lex(source: Arc<Source>) -> Vec<Token> {
         });
     }
 
-    lua_comments(&mut tokens, input);
+    foreign_comments(&mut tokens, input);
 
     let end = cursor.advance_to(input, input.len());
     tokens.push(Token {
@@ -492,18 +495,21 @@ impl Cursor {
     }
 }
 
-/// Lua's comments, `-- note`, on a line of their own: made one `ForeignComment` token each.
-/// Elsewhere `--` is two minuses, as in `a--b`, so only where nothing comes before it.
-fn lua_comments(tokens: &mut Vec<Token>, input: &str) {
+/// Other languages' comments, `# note` and `-- note`, on a line of their own: made one
+/// `ForeignComment` token each. Elsewhere `#` starts a type, `#Node`, and `--` is two
+/// minuses, `a--b`, so only where nothing comes before them on their line.
+fn foreign_comments(tokens: &mut Vec<Token>, input: &str) {
     let mut i = 0;
-    while i + 1 < tokens.len() {
+    while i < tokens.len() {
         let starts_line = i == 0
             || tokens[i - 1].kind == TokenKind::Whitespace && tokens[i - 1].text.contains('\n')
             || i == 1 && tokens[0].kind == TokenKind::Whitespace;
-        let dashes = tokens[i].kind == TokenKind::Minus
+        let dashes = i + 1 < tokens.len()
+            && tokens[i].kind == TokenKind::Minus
             && tokens[i + 1].kind == TokenKind::Minus
             && tokens[i + 1].span.start_offset == tokens[i].span.start_offset + 1;
-        if !(starts_line && dashes) {
+        let hash = tokens[i].kind == TokenKind::Hash;
+        if !(starts_line && (dashes || hash)) {
             i += 1;
             continue;
         }

@@ -1,11 +1,11 @@
 extern "c";
 
-pub fn println(text: cstr) {
-    c::printf("%s\n", text);
+pub fn println(text: string) {
+    c::printf("%s\n", text.c_str);
 }
 
-pub fn print(text: cstr) {
-     c::printf(text);
+pub fn print(text: string) {
+    c::printf("%s", text.c_str);
 }
 
 extern {

@@ -1,0 +1,8 @@
+// expect: error UnknownMethod
+
+/// A `string` never changes, so every copy can share it: it has no way to set a byte.
+fn main() -> i32 {
+    let s = "hi";
+    s.set(0, 65);
+    0
+}

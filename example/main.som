@@ -1,0 +1,1 @@
+som::io::print("Hello" + 12 + "world");

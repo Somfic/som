@@ -24,6 +24,8 @@ pub enum TypeExpr {
     },
     /// `T?`: a `T`, or `none`.
     Optional(Id<TypeExpr>),
+    /// `#T`: a `T` shared by its copies, counted. The standard library's `Rc<T>`.
+    Shared(Id<TypeExpr>),
     /// `[T; N]`: `N` values of type `T`. `N` is a number or a value parameter.
     Array {
         element: Id<TypeExpr>,

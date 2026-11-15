@@ -1,0 +1,28 @@
+// expect: exit 21
+
+/// Passing a `Share` value shares it: the function's copy is dropped when it returns, and
+/// the caller's stays usable.
+struct Counted { count: *i32 }
+
+impl Share for Counted {
+    fn share(self: &Counted) -> Counted {
+        self.count.write(0, self.count.read(0) + 1);
+        Counted { count: self.count }
+    }
+}
+
+impl Drop for Counted {
+    fn drop(self: &mut Counted) { self.count.write(0, self.count.read(0) - 1); }
+}
+
+fn copies(c: Counted) -> i32 = c.count.read(0);
+
+fn main() -> i32 {
+    let mut count = 1;
+    let at = &mut count as *i32;
+    let a = Counted { count: at };
+    let during = copies(a);
+    let after = copies(a) - 1;
+    // Two while `copies` ran; back to one, `a`'s own, after.
+    during * 10 + after
+}

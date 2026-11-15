@@ -1565,6 +1565,11 @@ impl<'a> Emitter<'a> {
                 ConstKind::Str(s) if c.ty == self.mir.types.cstr => {
                     format!("(uint8_t*){}", c_string(s))
                 }
+                // A `string`: its block is part of the program, counted as never freed.
+                ConstKind::Str(s) if matches!(self.mir.types.get(c.ty), Ty::Struct(..)) => {
+                    let block = self.text_block(s);
+                    format!("({}){{(void*)&{block}}}", self.ty(c.ty))
+                }
                 ConstKind::Str(s) => format!(
                     "({}){{(uint8_t*){}, {}}}",
                     self.ty(c.ty),
@@ -1657,6 +1662,13 @@ impl<'a> Emitter<'a> {
     /// smallest `long long`: `-9223372036854775808` is `-` applied to a number too big for
     /// one. Above the largest `long long`, it's unsigned.
     fn int_literal(&self, n: i128, ty: TypeId) -> String {
+        // `usize` and `isize` are as wide as a pointer: their limits are the target's own.
+        match self.mir.types.get(ty) {
+            Ty::Int(IntTy::USize) if n == u64::MAX as i128 => return "UINTPTR_MAX".into(),
+            Ty::Int(IntTy::ISize) if n == i64::MAX as i128 => return "INTPTR_MAX".into(),
+            Ty::Int(IntTy::ISize) if n == i64::MIN as i128 => return "INTPTR_MIN".into(),
+            _ => {}
+        }
         if n == i64::MIN as i128 {
             return "(-9223372036854775807LL - 1)".into();
         }
@@ -1844,6 +1856,27 @@ fn address_taken(body: &Body) -> HashSet<Local> {
 }
 
 /// A C string literal with the same bytes as `s`.
+impl Emitter<'_> {
+    /// The name of the static block holding literal `text`, for a `string`: its count, which
+    /// is never counted down, its length, and its bytes with a zero byte after. Emitted once
+    /// for each literal, however often it's used.
+    fn text_block(&self, text: &str) -> String {
+        // FNV-1a: a name from the bytes, so the same literal shares one block.
+        let hash = (text.bytes()).fold(0xcbf2_9ce4_8422_2325u64, |h, b| {
+            (h ^ b as u64).wrapping_mul(0x0000_0100_0000_01b3)
+        });
+        let name = format!("som_text_{hash:016x}");
+        let block = format!(
+            "static struct {{ uintptr_t count; uintptr_t len; uint8_t bytes[{}]; }} {name} = {{UINTPTR_MAX, {}, {}}};\n",
+            text.len() + 1,
+            text.len(),
+            c_string(text)
+        );
+        self.helpers.borrow_mut().entry(name.clone()).or_insert(block);
+        name
+    }
+}
+
 fn c_string(s: &str) -> String {
     let mut out = String::from("\"");
     for byte in s.bytes() {

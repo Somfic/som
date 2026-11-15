@@ -3,7 +3,7 @@
 fn main() -> i32 {
     // Adding up bytes: the reason this exists.
     let mut total = 0;
-    for b in "abc".bytes() { total = total + b as i32; }    // 97 + 98 + 99 = 294
+    for b in "abc".bytes { total = total + b as i32; }    // 97 + 98 + 99 = 294
 
     // Integers wrap when they don't fit.
     let big = 300;

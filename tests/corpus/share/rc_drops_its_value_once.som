@@ -1,0 +1,26 @@
+// expect: exit 101
+
+/// What an `Rc` shares is dropped once: when its last copy is, not before.
+struct Noisy { drops: *i32 }
+
+impl Drop for Noisy {
+    fn drop(self: &mut Noisy) { self.drops.write(0, self.drops.read(0) + 1); }
+}
+
+fn keep(n: Rc<Noisy>) {}
+
+fn main() -> i32 {
+    let mut drops = 0;
+    let at = &mut drops as *i32;
+    let mut before = 0;
+    {
+        let a = Rc::new(Noisy { drops: at });
+        let b = a;
+        keep(a);
+        keep(b);
+        // Still shared by `a` and `b`: not dropped yet.
+        before = at.read(0);
+    }
+    // 100 if it wasn't dropped while shared, plus 1 for being dropped once after.
+    (1 - before) * 100 + at.read(0)
+}

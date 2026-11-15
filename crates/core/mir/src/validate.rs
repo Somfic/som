@@ -267,6 +267,10 @@ impl Validator<'_> {
                 let pointer = |t: TypeId| matches!(types.get(t), Ty::Pointer | Ty::Ptr(_));
                 let reference = |t: TypeId| matches!(types.get(t), Ty::Ref { .. });
                 let pointers = (pointer(from) || reference(from)) && pointer(*ty);
+                // C's text is a pointer to its bytes: `bytes as cstr`, `text as *u8`.
+                let cstr = |t: TypeId| matches!(types.get(t), Ty::CStr);
+                let c_text = (cstr(from) && pointer(*ty)) || (pointer(from) && cstr(*ty));
+                let pointers = pointers || c_text;
                 if !(int(from) && int(*ty)) && !slicing && !pointers {
                     let (f, t) = (self.mir.display_ty(from), self.mir.display_ty(*ty));
                     self.problem(format!("cast from {f} to {t}: those don't convert"));

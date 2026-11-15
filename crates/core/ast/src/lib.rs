@@ -107,6 +107,35 @@ impl Path {
         let first = &self.segments[0].span;
         first.merge(&self.name().span)
     }
+
+    /// `usize::MAX`, `i32::MIN`: the integer type's limit it names, and its value: for
+    /// `usize` and `isize`, as 64 bits (C writes theirs as the target's), and `u128::MAX` as
+    /// the `i128` with the same bits, `-1`.
+    pub fn int_limit(&self) -> Option<(Primitive, i128)> {
+        let [ty, limit] = self.segments.as_slice() else {
+            return None;
+        };
+        let (primitive, min, max): (Primitive, i128, i128) = match &*ty.name {
+            "i8" => (Primitive::I8, i8::MIN as i128, i8::MAX as i128),
+            "i16" => (Primitive::I16, i16::MIN as i128, i16::MAX as i128),
+            "i32" => (Primitive::I32, i32::MIN as i128, i32::MAX as i128),
+            "i64" => (Primitive::I64, i64::MIN as i128, i64::MAX as i128),
+            "i128" => (Primitive::I128, i128::MIN, i128::MAX),
+            "isize" => (Primitive::ISize, i64::MIN as i128, i64::MAX as i128),
+            "u8" => (Primitive::U8, 0, u8::MAX as i128),
+            "u16" => (Primitive::U16, 0, u16::MAX as i128),
+            "u32" => (Primitive::U32, 0, u32::MAX as i128),
+            "u64" => (Primitive::U64, 0, u64::MAX as i128),
+            "u128" => (Primitive::U128, 0, u128::MAX as i128),
+            "usize" => (Primitive::USize, 0, u64::MAX as i128),
+            _ => return None,
+        };
+        match &*limit.name {
+            "MIN" => Some((primitive, min)),
+            "MAX" => Some((primitive, max)),
+            _ => None,
+        }
+    }
 }
 
 impl Display for Path {

@@ -1,0 +1,12 @@
+// expect: exit 227
+
+/// Each integer type has its limits, `T::MIN` and `T::MAX`, of that type. `usize` and
+/// `isize` are as wide as a pointer: theirs are the target's own.
+fn main() -> i32 {
+    let a = usize::MAX;
+    let b = a + 1;
+    let r = &usize::MAX;
+    let wraps = a == 18446744073709551615 and b == 0 and *r == a;
+    let small = u8::MAX as i32 + i8::MIN as i32 + i32::MAX - 2147483647;
+    (1 if wraps else 0) * 100 + small
+}

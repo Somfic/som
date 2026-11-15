@@ -265,6 +265,12 @@ impl Parser<'_> {
                 }
             }
 
+            // `#T`: shared by its copies, counted.
+            TokenKind::Hash => {
+                self.advance();
+                TypeExpr::Shared(self.parse_type_without_optional()?)
+            }
+
             // `[T; N]`. A slice is borrowed, `&[T]`: without the `&` it's reported, and read
             // as one.
             TokenKind::OpenBracket => {

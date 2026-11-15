@@ -14,7 +14,9 @@ mod names;
 pub mod visibility;
 
 pub use error::ResolveError;
-pub use names::{Def, DefId, DefKind, ImplDef, LangStruct, LangTrait, Names, UNREACHABLE};
+pub use names::{
+    Def, DefId, DefKind, ImplDef, LangStruct, LangTrait, Names, SHARE_OPTIONAL, UNREACHABLE,
+};
 
 use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Pattern, PatternFields, Stmt, TypeExpr};
 use som_base::diagnostics::{closest_match, snake_case};
@@ -220,6 +222,11 @@ impl<'a> Resolver<'a> {
                 {
                     self.names.set_lang_struct(lang, def);
                 }
+            }
+            if let Some(&def) = self.items[root].get(SHARE_OPTIONAL)
+                && matches!(self.names.def(def).kind, DefKind::Func(_))
+            {
+                self.names.set_share_optional(def);
             }
             if let Some(&def) = self.items[root].get(UNREACHABLE)
                 && matches!(self.names.def(def).kind, DefKind::Func(_))
@@ -746,6 +753,8 @@ impl<'a> Resolver<'a> {
             | Expr::Bool(_)
             | Expr::Str(_)
             | Expr::None => {}
+            // `usize::MAX`: an integer type's limit, which isn't defined anywhere.
+            Expr::Var(path) if path.int_limit().is_some() => {}
             Expr::Var(path) => self.bind_expr(id, path, Expect::Value),
             // Visible from here to the end of the block, like a `let` before the call.
             Expr::Out(name) => {
@@ -962,6 +971,7 @@ impl<'a> Resolver<'a> {
             TypeExpr::Reference { to, .. }
             | TypeExpr::PointerTo(to)
             | TypeExpr::Optional(to)
+            | TypeExpr::Shared(to)
             | TypeExpr::Slice { element: to, .. } => self.resolve_type(*to),
             TypeExpr::Array {
                 element: lhs,

@@ -10,7 +10,7 @@ impl<T> Vector<T> {
     fn first(self: &Vector<T>) -> &T { &self.a }
 }
 
-struct Named<T> { name: str, value: T }
+struct Named<T> { name: string, value: T }
 
 /// Generic structs inside generic structs, and in non-generic ones.
 struct Holder { ints: Vector<i32>, flags: Vector<bool> }

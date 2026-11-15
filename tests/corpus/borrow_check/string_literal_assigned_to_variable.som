@@ -1,6 +1,6 @@
 // expect: ok
 
-fn test() -> str {
+fn test() -> string {
     let s = "hello";
     s
 }

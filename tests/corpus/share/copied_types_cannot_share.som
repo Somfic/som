@@ -1,0 +1,11 @@
+// expect: error ShareOnCopy
+
+/// A `Copy` value is copied bit for bit, so its `share` would never be called.
+struct Point { x: i32 }
+impl Copy for Point {}
+
+impl Share for Point {
+    fn share(self: &Point) -> Point { Point { x: self.x } }
+}
+
+fn main() -> i32 { 0 }

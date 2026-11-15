@@ -2,7 +2,6 @@
 
 /// A `Map` keeps every key it's given, through growing: each found again with its value, the
 /// last one given for it, and a key never given isn't found.
-use som::data;
 
 fn check(ok: bool, code: i32) -> i32 { if ok { 0 } else { code } }
 

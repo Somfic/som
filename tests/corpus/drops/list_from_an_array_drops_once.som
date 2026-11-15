@@ -1,7 +1,6 @@
 // expect: exit 12
 
 /// A list made from an array takes its values: each is dropped once, with the list.
-use som::data;
 
 struct Noisy { id: i32, log: *i32 }
 

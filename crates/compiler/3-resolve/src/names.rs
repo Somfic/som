@@ -88,6 +88,8 @@ pub enum LangTrait {
     Compare,
     Drop,
     Copy,
+    /// Copied by calling `share(&self)`: a value that keeps count of its copies.
+    Share,
 }
 
 impl LangTrait {
@@ -130,11 +132,12 @@ impl LangTrait {
             | LangTrait::IntoIterator
             | LangTrait::From
             | LangTrait::Drop
-            | LangTrait::Copy => return None,
+            | LangTrait::Copy
+            | LangTrait::Share => return None,
         })
     }
 
-    pub const ALL: [LangTrait; 13] = [
+    pub const ALL: [LangTrait; 14] = [
         LangTrait::Iterator,
         LangTrait::Iterable,
         LangTrait::IterableMut,
@@ -148,6 +151,7 @@ impl LangTrait {
         LangTrait::Compare,
         LangTrait::Drop,
         LangTrait::Copy,
+        LangTrait::Share,
     ];
 
     /// Its name in the standard library.
@@ -166,6 +170,7 @@ impl LangTrait {
             LangTrait::Compare => "Compare",
             LangTrait::Drop => "Drop",
             LangTrait::Copy => "Copy",
+            LangTrait::Share => "Share",
         }
     }
 }
@@ -176,15 +181,21 @@ pub enum LangStruct {
     /// `Manual<T>`: holds a value that's never dropped on its own. Whatever holds it drops
     /// what needs dropping, as an array's iterator does with the elements it hasn't given.
     Manual,
+    /// `Rc<T>`: what `#T` is, a value shared by its copies, counted.
+    Rc,
+    /// `string`: what text is, and what a literal is unless it's given to C.
+    String,
 }
 
 impl LangStruct {
-    pub const ALL: [LangStruct; 1] = [LangStruct::Manual];
+    pub const ALL: [LangStruct; 3] = [LangStruct::Manual, LangStruct::Rc, LangStruct::String];
 
     /// Its name in the standard library.
     pub fn name(self) -> &'static str {
         match self {
             LangStruct::Manual => "Manual",
+            LangStruct::Rc => "Rc",
+            LangStruct::String => "string",
         }
     }
 }
@@ -192,6 +203,9 @@ impl LangStruct {
 /// The standard library's function `@unreachable` calls, with where it is: it says so, then
 /// stops the program.
 pub const UNREACHABLE: &str = "reached_unreachable";
+
+/// The standard library's function copying an optional `Share` value: it shares what's held.
+pub const SHARE_OPTIONAL: &str = "share_optional";
 
 /// An `impl` block, by its index in `Names::impls`.
 pub struct ImplDef {
@@ -265,6 +279,8 @@ pub struct Names {
     lang_structs: HashMap<LangStruct, DefId>,
     /// What `@unreachable` calls, where the standard library defines it.
     unreachable: Option<DefId>,
+    /// What copying a `T?` of a `Share` `T` calls, where the standard library defines it.
+    share_optional: Option<DefId>,
     /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
     /// name (`Circle(r)`, `Empty`) has none: the type matched decides which enum's it is.
     patterns: Vec<Option<DefId>>,
@@ -301,6 +317,7 @@ impl Names {
             lang: HashMap::new(),
             lang_structs: HashMap::new(),
             unreachable: None,
+            share_optional: None,
             patterns: vec![None; ast.patterns.len()],
             primitives: HashMap::new(),
         }
@@ -336,6 +353,15 @@ impl Names {
 
     pub(crate) fn set_unreachable(&mut self, def: DefId) {
         self.unreachable = Some(def);
+    }
+
+    pub(crate) fn set_share_optional(&mut self, def: DefId) {
+        self.share_optional = Some(def);
+    }
+
+    /// What copying a `T?` of a `Share` `T` calls, if the standard library is loaded.
+    pub fn share_optional(&self) -> Option<DefId> {
+        self.share_optional
     }
 
     /// Adds `def` to the functions named like `first`.

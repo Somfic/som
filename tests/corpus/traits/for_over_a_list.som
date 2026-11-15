@@ -2,7 +2,6 @@
 
 /// `for` goes through a `List`: `&items` lends its values, copies here as they're numbers, and
 /// `items` gives them up.
-use som::data;
 use som::io;
 
 pub fn main() -> i32 {

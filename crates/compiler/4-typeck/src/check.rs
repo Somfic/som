@@ -101,7 +101,7 @@ pub(crate) struct Checker<'a> {
 
 impl<'a> Checker<'a> {
     pub fn new(ast: &'a Ast, names: &'a Names) -> Self {
-        Checker {
+        let mut checker = Checker {
             ast,
             names,
             u: Unifier::new(),
@@ -148,7 +148,12 @@ impl<'a> Checker<'a> {
             trait_ops: HashMap::new(),
             unreachables: Vec::new(),
             conversions: HashMap::new(),
+        };
+        // Text is the standard library's `string`, where it's loaded.
+        if let Some(def) = names.lang_struct(som_resolve::LangStruct::String) {
+            checker.u.table.text = checker.u.table.intern(Ty::Struct(def, Vec::new()));
         }
+        checker
     }
 
     pub fn run(mut self) -> (Typed, Vec<TypeError>) {
@@ -536,8 +541,13 @@ impl<'a> Checker<'a> {
     fn lower(&mut self, id: Id<TypeExpr>) -> TypeId {
         let ty = match &self.ast.types[id] {
             TypeExpr::Unit => Ty::Unit,
-            // Text is a view of bytes, like a slice: `str` is a reference to them.
-            TypeExpr::Primitive(Primitive::Str) => return self.u.table.str_ref,
+            // `str`, text before `string`: reported, and read as it.
+            TypeExpr::Primitive(Primitive::Str) => {
+                self.errors.push(TypeError::StrIsString {
+                    span: self.ast.types.span(id).clone(),
+                });
+                return self.u.table.text;
+            }
             TypeExpr::Primitive(p) => Ty::from_primitive(*p),
             TypeExpr::Pointer => Ty::Pointer,
             TypeExpr::PointerTo(to) => Ty::Ptr(self.lower(*to)),
@@ -581,10 +591,10 @@ impl<'a> Checker<'a> {
             TypeExpr::Reference { to, .. }
                 if matches!(self.ast.types[*to], TypeExpr::Primitive(Primitive::Str)) =>
             {
-                self.errors.push(TypeError::StrBehindReference {
+                self.errors.push(TypeError::StrIsString {
                     span: self.ast.types.span(id).clone(),
                 });
-                return self.u.table.str_ref;
+                return self.u.table.text;
             }
             TypeExpr::Reference { mutable, to, .. } => {
                 let to = self.lower(*to);
@@ -594,6 +604,14 @@ impl<'a> Checker<'a> {
                 }
             }
             TypeExpr::Optional(inner) => Ty::Optional(self.lower(*inner)),
+            // `#T` is the standard library's `Rc<T>`; without it loaded, there's nothing it is.
+            TypeExpr::Shared(inner) => {
+                let inner = self.lower(*inner);
+                match self.names.lang_struct(som_resolve::LangStruct::Rc) {
+                    Some(rc) => Ty::Struct(rc, vec![inner]),
+                    None => Ty::Error,
+                }
+            }
             TypeExpr::Array { element, len } => Ty::Array {
                 element: self.lower(*element),
                 len: self.lower_value(*len, None),
@@ -2019,9 +2037,9 @@ impl<'a> Checker<'a> {
         if self.coerce(expr, expected, found) {
             return;
         }
-        // A `str` where C needs a `cstr`: say why they differ.
+        // A `string` where C needs a `cstr`: say why they differ.
         if self.u.shallow(expected) == self.u.table.cstr
-            && self.u.shallow(found) == self.u.table.str_ref
+            && self.u.shallow(found) == self.u.table.text
         {
             self.errors.push(TypeError::StrToC {
                 span: self.span(expr),
@@ -2267,7 +2285,15 @@ impl<'a> Checker<'a> {
                     |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::Ref { .. });
                 let pointers =
                     (pointer(self, found) || reference(self, found)) && pointer(self, target);
-                if !plain_enum && !pointers && (!number(self, found) || !number(self, target)) {
+                // C's text is a pointer to its bytes: `bytes as cstr`, `text as *u8`.
+                let cstr = |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::CStr);
+                let c_text = (cstr(self, found) && pointer(self, target))
+                    || (pointer(self, found) && cstr(self, target));
+                if !plain_enum
+                    && !pointers
+                    && !c_text
+                    && (!number(self, found) || !number(self, target))
+                {
                     self.errors.push(TypeError::InvalidCast {
                         from: self.describe(found),
                         to: self.describe(target),
@@ -2315,6 +2341,10 @@ impl<'a> Checker<'a> {
                 inner
             }
 
+            // `usize::MAX`: of the type it's the limit of.
+            Expr::Var(path) if let Some((primitive, _)) = path.int_limit() => {
+                self.u.intern(Ty::from_primitive(primitive))
+            }
             Expr::Var(_) => match self
                 .names
                 .expr(id)
@@ -2395,6 +2425,9 @@ impl<'a> Checker<'a> {
                 } else {
                     (self.infer(*lhs), self.infer(*rhs))
                 };
+                // `name + "!"`: text in quotes is a `string`, with its operators.
+                self.text_as_string(lhs_ty);
+                self.text_as_string(rhs_ty);
                 if against_none {
                     if self.u.unify(lhs_ty, rhs_ty).is_err() {
                         let ((optional, ty), none) = if matches!(self.ast.exprs[*lhs], Expr::None) {
@@ -2652,6 +2685,8 @@ impl<'a> Checker<'a> {
             } => {
                 let expected = self.expected_here.take();
                 let receiver_ty = self.infer(*receiver);
+                // `"abc".len()`: text in quotes is a `string`, with its methods.
+                self.text_as_string(receiver_ty);
                 // A trait's method the type has, `x.compare(&y)`, before an array's or a
                 // pointer's own.
                 if let Some(ty) = self.trait_method_call(id, *receiver, receiver_ty, method, args) {
@@ -2671,9 +2706,9 @@ impl<'a> Checker<'a> {
                         return ty;
                     }
                 }
-                // Text written in quotes is a `str` here.
+                // Text written in quotes is a `string` here.
                 if primitive.is_some() && self.u.var_kind(receiver_ty) == Some(VarKind::Text) {
-                    let _ = self.u.unify(receiver_ty, self.u.table.str_ref);
+                    let _ = self.u.unify(receiver_ty, self.u.table.text);
                 }
                 // Any type can have methods now: one that isn't a struct just lacks this one.
                 let viewed = {
@@ -2805,6 +2840,8 @@ impl<'a> Checker<'a> {
 
             Expr::Field { object, field } => {
                 let object_ty = self.infer_object(*object);
+                // `"abc".len`: text in quotes is a `string`, with its props.
+                self.text_as_string(object_ty);
                 // `list.len`, with a private field and a `pub prop` both called `len`: the
                 // field where it's seen, so its own code can change it, the prop elsewhere.
                 if !self.field_seen(object_ty, field)
@@ -3155,8 +3192,8 @@ impl<'a> Checker<'a> {
                 let _ = self.u.unify(receiver_ty, array);
             }
             Some(VarKind::Text) => {
-                let str = self.u.table.str_ref;
-                let _ = self.u.unify(receiver_ty, str);
+                let text = self.u.table.text;
+                let _ = self.u.unify(receiver_ty, text);
             }
             _ => {}
         }
@@ -3753,6 +3790,48 @@ impl<'a> Checker<'a> {
                         span: span.clone(),
                         previous: previous.clone(),
                     });
+                    continue;
+                }
+                // `view(&self)` and `view(&mut self)`: which is called would depend on whether
+                // the caller has a `&mut`, so the one that changes is named apart.
+                let only_mut_differs = funcs[..i].iter().find_map(|&(g, ref previous)| {
+                    let (fs, gs) = (&self.sigs[f.id], &self.sigs[g.id]);
+                    let comparable = self.names.type_params(*f).is_empty()
+                        && self.names.type_params(g).is_empty()
+                        && fs.params.len() == gs.params.len();
+                    if !comparable {
+                        return None;
+                    }
+                    let mut mutable = None;
+                    for (&x, &y) in fs.params.iter().zip(&gs.params) {
+                        if alike(self, x, y) {
+                            continue;
+                        }
+                        let (&Ty::Ref { mutable: mx, to: tx }, &Ty::Ref { mutable: my, to: ty }) =
+                            (self.u.get(self.u.shallow(x)), self.u.get(self.u.shallow(y)))
+                        else {
+                            return None;
+                        };
+                        if mx == my || !alike(self, tx, ty) {
+                            return None;
+                        }
+                        mutable = Some(if mx { *f } else { g });
+                    }
+                    mutable.map(|m| (m, previous.clone()))
+                });
+                if let Some((mutable, previous)) = only_mut_differs {
+                    let name = &self.ast.funcs[mutable].name;
+                    let renamed = format!("{}_mut", name.name);
+                    self.errors.push(TypeError::MutOverload {
+                        name: name.name.to_string(),
+                        span: name.span.clone(),
+                        previous: if mutable == *f { previous } else { span.clone() },
+                        fix: Fix::replace(
+                            msg!["rename it ", message::code(&renamed)],
+                            name.span.clone(),
+                            renamed,
+                        ),
+                    });
                 }
             }
         }
@@ -3984,7 +4063,7 @@ impl<'a> Checker<'a> {
             if self.u.var_kind(ty) == Some(VarKind::Text) {
                 let cstr = self.u.table.cstr;
                 let _ = self.u.unify(ty, cstr);
-            } else if self.u.shallow(ty) == self.u.table.str_ref {
+            } else if self.u.shallow(ty) == self.u.table.text {
                 self.errors.push(TypeError::StrToC {
                     span: self.span(extra),
                 });
@@ -4312,6 +4391,15 @@ impl<'a> Checker<'a> {
         self.u.could_fit(unref(&self.u, wanted), found)
     }
 
+    /// Makes `ty`, text in quotes nothing's decided yet, the standard library's `string`,
+    /// whose methods and fields it then has. Without it loaded, text stays undecided.
+    fn text_as_string(&mut self, ty: TypeId) {
+        let text = self.u.table.text;
+        if self.u.var_kind(ty) == Some(VarKind::Text) && text != self.u.table.str_ref {
+            let _ = self.u.unify(ty, text);
+        }
+    }
+
     /// Settles the numbers in `ty` that nothing has decided yet to what they'd end up as
     /// anyway, `i32` and `f64`. For choosing between impl blocks that an undecided
     /// `[1.0, 2.0]` would all fit: the choice is the one it gets with nothing else said,
@@ -4375,9 +4463,9 @@ impl<'a> Checker<'a> {
             DefKind::Func(func) => func,
             _ => unreachable!("properties are functions"),
         };
-        // Text written in quotes is a `str` here.
+        // Text written in quotes is a `string` here.
         if self.u.var_kind(object_ty) == Some(VarKind::Text) {
-            let _ = self.u.unify(object_ty, self.u.table.str_ref);
+            let _ = self.u.unify(object_ty, self.u.table.text);
         }
         // Of the impl blocks with one, the one for the value's type: `x` of a `Vector<3, T>`.
         // If several fit a value with numbers nothing has decided, `[1.0, 2.0]`, they're

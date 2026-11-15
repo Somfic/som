@@ -48,7 +48,7 @@ impl<T> List<T> {
         if index >= .len {
             return none;
         }
-        .mem.at(index)
+        .mem.at_mut(index)
     }
 
     pub prop slice = .mem.view(.len);
@@ -57,8 +57,8 @@ impl<T> List<T> {
         .mem.view(.len)
     }
 
-    pub fn as_slice(&mut self) -> &mut [T] {
-        .mem.view(.len)
+    pub fn as_slice_mut(&mut self) -> &mut [T] {
+        .mem.view_mut(.len)
     }
 
     pub fn clear(&mut self) {

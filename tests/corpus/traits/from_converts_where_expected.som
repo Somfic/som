@@ -2,7 +2,6 @@
 
 /// A type implementing `From<T>` is made from a `T` wherever one is given and it's expected:
 /// in a `let`, an argument, a `return`, a field, an assignment.
-use som::data;
 
 struct Meters { value: i32 }
 
@@ -12,8 +11,8 @@ impl From<i32> for Meters {
 
 struct Name { len: usize }
 
-impl From<str> for Name {
-    fn from(value: str) -> Name { Name { len: value.len } }
+impl From<string> for Name {
+    fn from(value: string) -> Name { Name { len: value.len } }
 }
 
 struct Path { length: Meters }

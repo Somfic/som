@@ -1,0 +1,30 @@
+// expect: exit 30
+
+/// A `Share` value is copied by its `share`: using it leaves it usable, and each copy is
+/// dropped on its own.
+struct Counted { count: *i32 }
+
+impl Share for Counted {
+    fn share(self: &Counted) -> Counted {
+        self.count.write(0, self.count.read(0) + 1);
+        Counted { count: self.count }
+    }
+}
+
+impl Drop for Counted {
+    fn drop(self: &mut Counted) { self.count.write(0, self.count.read(0) - 1); }
+}
+
+fn main() -> i32 {
+    let mut count = 1;
+    let at = &mut count as *i32;
+    let mut seen = 0;
+    {
+        let a = Counted { count: at };
+        let b = a;
+        let c = a;
+        seen = at.read(0);
+    }
+    // Three copies while they lived; none after.
+    seen * 10 + at.read(0)
+}

@@ -332,9 +332,15 @@ impl<'a> FnChecker<'a> {
         }
 
         let mut flows = BTreeSet::from([id]);
-        // Reborrowing through a reference (`&*r`) keeps the original loan alive too.
+        // Reborrowing through a reference (`&*r`) keeps the original loan alive too. A
+        // temporary is used once, as when it's read: its loans move to the reborrow.
         if place.projection.contains(&Projection::Deref) {
-            flows.extend(state.holds[place.local.id].iter().copied());
+            let holds = &mut state.holds[place.local.id];
+            if self.is_temp(place.local) {
+                flows.extend(std::mem::take(holds));
+            } else {
+                flows.extend(holds.iter().copied());
+            }
         }
         flows
     }
@@ -473,14 +479,22 @@ impl<'a> FnChecker<'a> {
 
     /// Whether values of `ty` can carry a borrow.
     fn has_ref(&self, ty: TypeId) -> bool {
+        self.has_ref_in(ty, &mut HashSet::new())
+    }
+
+    /// Like `has_ref`, but not again for the types in `seen`: a struct can reach itself
+    /// through a pointer, `struct Node { next: *Node }`, and what's found there was found.
+    fn has_ref_in(&self, ty: TypeId, seen: &mut HashSet<TypeId>) -> bool {
+        if !seen.insert(ty) {
+            return false;
+        }
         match self.mir.types.get(ty) {
             Ty::Ref { .. } => true,
-            Ty::Struct(def, args) => {
-                (self.mir.struct_def(*def, args).fields.iter()).any(|&(_, f)| self.has_ref(f))
-            }
+            Ty::Struct(def, args) => (self.mir.struct_def(*def, args).fields.iter())
+                .any(|&(_, f)| self.has_ref_in(f, seen)),
             // A function's parameters and result are only types: a function value holds no loan.
             Ty::Fn { .. } => false,
-            t => t.children().into_iter().any(|child| self.has_ref(child)),
+            t => t.children().into_iter().any(|child| self.has_ref_in(child, seen)),
         }
     }
 

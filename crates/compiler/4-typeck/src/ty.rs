@@ -240,6 +240,8 @@ pub struct TypeTable {
     pub pointer: TypeId,
     /// `str`: a reference to text's bytes.
     pub str_ref: TypeId,
+    /// What text is: the standard library's `string`, once it's loaded, or else `&str`.
+    pub text: TypeId,
     pub cstr: TypeId,
     pub u8: TypeId,
     pub usize: TypeId,
@@ -257,6 +259,7 @@ impl Default for TypeTable {
             f64: Id::new(0),
             pointer: Id::new(0),
             str_ref: Id::new(0),
+            text: Id::new(0),
             cstr: Id::new(0),
             u8: Id::new(0),
             usize: Id::new(0),
@@ -272,6 +275,7 @@ impl Default for TypeTable {
             mutable: false,
             to: str,
         });
+        table.text = table.str_ref;
         table.cstr = table.intern(Ty::CStr);
         table.u8 = table.intern(Ty::Int(IntTy::U8));
         table.usize = table.intern(Ty::Int(IntTy::USize));

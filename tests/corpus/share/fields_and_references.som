@@ -1,0 +1,28 @@
+// expect: exit 3
+
+/// Read from a field, or through a reference, a `Share` value is shared, not moved out.
+struct Counted { count: *i32 }
+
+impl Share for Counted {
+    fn share(self: &Counted) -> Counted {
+        self.count.write(0, self.count.read(0) + 1);
+        Counted { count: self.count }
+    }
+}
+
+impl Drop for Counted {
+    fn drop(self: &mut Counted) { self.count.write(0, self.count.read(0) - 1); }
+}
+
+struct Holder { counted: Counted }
+
+fn copy_of(c: &Counted) -> Counted = *c;
+
+fn main() -> i32 {
+    let mut count = 1;
+    let at = &mut count as *i32;
+    let holder = Holder { counted: Counted { count: at } };
+    let a = holder.counted;
+    let b = copy_of(&holder.counted);
+    at.read(0)
+}

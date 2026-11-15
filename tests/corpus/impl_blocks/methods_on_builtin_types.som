@@ -15,8 +15,8 @@ impl bool {
     pub fn to_int(self: bool) -> i32 { if self { 1 } else { 0 } }
 }
 
-impl str {
-    pub fn first_len(self: str) -> usize { self.len }
+impl string {
+    pub fn first_len(self: string) -> usize { self.len }
 }
 
 pub fn main() -> i32 {

@@ -1,7 +1,6 @@
 // expect: exit 49
 
 /// A collection literal where a `List` is expected becomes one; `List` alone in a `let` works out `T`.
-use som::data;
 
 struct Point { x: i32, y: i32 }
 

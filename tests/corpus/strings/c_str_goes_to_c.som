@@ -1,0 +1,11 @@
+// expect: exit 11
+
+/// A `string`'s `c_str` is its bytes as C reads them, ending in a zero byte: even for one
+/// that was put together, not written as a literal.
+extern { fn strlen(s: cstr) -> i32; }
+
+fn main() -> i32 {
+    let hello = "hello";
+    let joined = hello + " world";
+    strlen(joined.c_str)
+}

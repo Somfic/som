@@ -79,6 +79,14 @@ pub trait Compare {
 /// `&` references are; a struct is if it implements this, and everything in it is too.
 pub trait Copy {}
 
+/// Copied by calling `share` rather than moved: using a value leaves it usable, and the
+/// copy is whatever `share` gives. For a value that keeps count of its copies, as a
+/// reference-counted pointer does: `share` counts one more, and `Drop` one fewer.
+/// Copies happen without it being written, so `share` should be cheap.
+pub trait Share {
+    fn share(self: &Self) -> Self;
+}
+
 /// Drops `value` now, rather than when its scope ends: moving it here ends it.
 pub fn drop<T>(value: T) {}
 

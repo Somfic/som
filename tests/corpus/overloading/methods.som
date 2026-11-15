@@ -1,20 +1,22 @@
 // expect: exit 40
 
 /// Methods can share a name: the receiver, and what the result is expected to be, pick one.
+/// Taking `self` or `&self` tells them apart; `&self` or `&mut self` doesn't, so the one
+/// that changes is named apart, `get_mut`.
 struct Cell { value: i32 }
 impl Cell {
     fn get(self: &Cell) -> &i32 { &self.value }
-    fn get(self: &mut Cell) -> &mut i32 { &mut self.value }
+    fn get_mut(self: &mut Cell) -> &mut i32 { &mut self.value }
     fn add(self: &Cell, n: i32) -> i32 { self.value + n }
     fn add(self: &Cell, n: bool) -> i32 { self.value + (1 if n else 0) }
 }
 fn read(c: &Cell) -> i32 { *c.get() }
-fn bump(c: &mut Cell) { let r = c.get(); *r = *r + 1; }
+fn bump(c: &mut Cell) { let r = c.get_mut(); *r = *r + 1; }
 fn main() -> i32 {
     let mut c = Cell { value: 1 };
     let shared = *c.get();
     {
-        let r: &mut i32 = c.get();
+        let r: &mut i32 = c.get_mut();
         *r = 10;
     }
     bump(&mut c);

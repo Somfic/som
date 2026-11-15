@@ -138,6 +138,16 @@ impl Checker<'_> {
                     span: self.impl_target_span(index),
                 });
             }
+            // A copied value is copied bit for bit: its `share` would never be called.
+            if self.names.lang_of(trait_) == Some(LangTrait::Share)
+                && let Some(target) = self.impls[index].target
+                && self.is_copy(target)
+            {
+                self.errors.push(TypeError::ShareOnCopy {
+                    ty: self.describe(target),
+                    span: self.impl_target_span(index),
+                });
+            }
             // `impl Add for i32` would change what `1 + 2` means.
             if let Some(lang) = self.names.lang_of(trait_)
                 && let Some(target) = self.impls[index].target
@@ -420,8 +430,8 @@ impl Checker<'_> {
             match self.u.var_kind(ty) {
                 Some(VarKind::Int) => ty = self.u.table.i32,
                 Some(VarKind::Float) => ty = self.u.table.f64,
-                // Text nothing else decides is a `str`.
-                Some(VarKind::Text) => ty = self.u.table.str_ref,
+                // Text nothing else decides is a `string`.
+                Some(VarKind::Text) => ty = self.u.table.text,
                 Some(_) => continue,
                 None => {}
             }

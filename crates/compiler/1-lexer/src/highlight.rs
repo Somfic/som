@@ -107,7 +107,8 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::ColonEquals
         | TokenKind::PlusPlus
         | TokenKind::AndAnd
-        | TokenKind::PipePipe => SUBTEXT0,
+        | TokenKind::PipePipe
+        | TokenKind::Hash => SUBTEXT0,
         TokenKind::Whitespace | TokenKind::Eof | TokenKind::Error => TEXT,
     }
 }
@@ -146,6 +147,10 @@ pub fn highlight(line: &str) -> String {
         }
 
         let mut color = token_color(token.kind);
+        // `string` is a name, the standard library's, but it's text: coloured as a type.
+        if token.kind == TokenKind::Ident && &*token.text == "string" {
+            color = YELLOW;
+        }
         if !matches!(
             token.kind,
             TokenKind::Whitespace | TokenKind::Comment | TokenKind::ForeignComment

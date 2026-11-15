@@ -1,7 +1,5 @@
 // expect: exit 7
 
-use som::data;
-
 /// `List<i32>::empty()`: the type's arguments, written before one of its functions. Through
 /// a module's path too, and for a function with overloads.
 fn main() -> i32 {

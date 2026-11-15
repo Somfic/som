@@ -195,7 +195,7 @@ pub static TYPE: &[Foreign] = &[
     f("Integer", "i32", &[Java]),
     f("Int", "i32", &[Kotlin, Swift]),
     f("Double", "f64", &[Java, Kotlin, Swift]),
-    f("string", "str", &[CSharp, TypeScript, Go]),
+    f("String", "string", &[Java, CSharp, Kotlin, Swift]),
     f("int8", "i8", &[Go]),
     f("int16", "i16", &[Go]),
     f("int32", "i32", &[Go]),

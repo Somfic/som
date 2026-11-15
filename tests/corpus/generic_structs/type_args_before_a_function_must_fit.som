@@ -1,7 +1,5 @@
 // expect: error Mismatch
 
-use som::data;
-
 /// The type written before the function is the type it makes.
 fn main() -> i32 {
     let list: List<u8> = List<i32>::empty();

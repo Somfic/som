@@ -2,7 +2,6 @@
 
 /// `for x in &mut values` lends each value to change, through a `&mut`; `&values` lends them
 /// to read, and numbers come as copies.
-use som::data;
 
 fn main() -> i32 {
     let mut numbers = [1, 2, 3];

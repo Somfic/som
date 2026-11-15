@@ -1,7 +1,7 @@
 // expect: exit 60
 
-/// `at` lends one value, and on a `&mut`, lends it to change; `view` lends the first values
-/// as a slice, and on a `&mut`, a slice to change them.
+/// `at` lends one value, and `at_mut` lends it to change; `view` lends the first values as
+/// a slice, and `view_mut` a slice to change them.
 use som;
 
 fn main() -> i32 {
@@ -10,11 +10,11 @@ fn main() -> i32 {
         mem.write(i, 1);
     }
     {
-        let first: &mut i32 = mem.at(0);
+        let first: &mut i32 = mem.at_mut(0);
         *first = 10;
     }
     {
-        let changing: &mut [i32] = mem.view(4);
+        let changing: &mut [i32] = mem.view_mut(4);
         for n in changing {
             *n = *n * 2;
         }

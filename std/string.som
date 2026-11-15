@@ -1,0 +1,111 @@
+extern "c";
+use som::mem;
+
+pub struct string {
+    view: *StringView,
+}
+
+struct StringView {
+    /// How many copies of the `string` share it.
+    count: usize,
+    /// How many bytes follow it, not counting the zero byte after them.
+    len: usize,
+}
+
+impl string {
+    fn with_len(len: usize) -> Self {
+        let mut raw = null<u8>();
+        // The block, the bytes, and the zero byte after them.
+        raw.resize(16 + len + 1);
+        let view = raw as *StringView;
+        view.write(0, StringView { count: 1, len });
+        let text = Self { view };
+        text.data.write(len, 0);
+        text
+    }
+
+    prop data = .view.at(1) as *u8;
+
+    /// A copy of the bytes C's `text` has, up to its zero byte.
+    pub fn from_c(text: cstr) -> Self {
+        let len = c::strlen(text) as usize;
+        let copy = string::with_len(len);
+        c::memcpy(copy.data as *, text as *, len as u64);
+        copy
+    }
+
+    /// How many bytes it has.
+    pub prop len: usize = .view.at(0).len;
+
+    /// Its bytes, lent: a view of them, not a copy.
+    pub prop bytes: &[u8] = .data.view(.len);
+
+    /// Its bytes, for C, which reads up to the zero byte after them. Valid as long as
+    /// this copy of it is.
+    pub prop c_str: cstr = .data as cstr;
+
+    /// The byte at `index`, or `none` past its end.
+    pub fn get(&self, index: usize) -> u8? {
+        if index >= .len {
+            return none;
+        }
+        .data.read(index)
+    }
+
+    /// The bytes from `start` up to `end`, copied; `none` if they aren't all there.
+    pub fn slice(&self, start: usize, end: usize) -> Self? {
+        if start > end or end > .len {
+            return none;
+        }
+        let copy = string::with_len(end - start);
+        c::memcpy(copy.data as *, .data.at(start) as *u8 as *, (end - start) as u64);
+        copy
+    }
+}
+
+impl Share for string {
+    fn share(&self) -> Self {
+        let view = .view.at_mut(0);
+        // A literal's count is `usize::MAX`: it's part of the program, never counted.
+        if view.count != usize::MAX {
+            view.count = view.count + 1;
+        }
+        Self { view: .view }
+    }
+}
+
+impl Drop for string {
+    fn drop(&mut self) {
+        let view = .view.at_mut(0);
+        // A literal's: part of the program, never freed.
+        if view.count == usize::MAX {
+            return;
+        }
+        view.count = view.count - 1;
+        if view.count == 0 {
+            (.view as *u8).free();
+        }
+    }
+}
+
+impl Add for string {
+    fn add(&self, other: &Self) -> Self {
+        let joined = string::with_len(.len + other.len);
+        c::memcpy(joined.data as *, .data as *, .len as u64);
+        c::memcpy(joined.data.at(.len) as *u8 as *, other.data as *, other.len as u64);
+        joined
+    }
+}
+
+impl Eq for string {
+    fn eq(&self, other: &Self) -> bool {
+        .len == other.len and c::memcmp(.data as *, other.data as *, .len as u64) == 0
+    }
+}
+
+impl Hash for string {
+    fn hash(&self, hasher: &mut Hasher) {
+        hasher.write(.bytes);
+        hasher.write(.len as u64);
+    }
+}

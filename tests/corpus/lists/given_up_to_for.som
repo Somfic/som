@@ -2,7 +2,6 @@
 
 /// `for x in list` gives the list up: each value is moved out in turn. Leaving early drops the
 /// ones not reached, once each, and the list can't be used after.
-use som::data;
 
 struct Noisy { id: i32, log: *i32 }
 

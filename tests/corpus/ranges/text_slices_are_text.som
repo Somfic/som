@@ -2,7 +2,7 @@
 
 fn main() -> i32 {
     let text = "hello, world";
-    let world = text.slice(7..) else "";
-    let hello = text.slice(..5) else "";
-    (world.len + hello.len) / 2
+    let world = text.slice(7, text.len) else "";
+    let hello = text.slice(0, 5) else "";
+    (world.len + hello.len) as i32 / 2
 }

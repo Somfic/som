@@ -21,7 +21,7 @@ fn main() -> i32 {
     for p in points { xs = xs + p.x; }                      // references: 4
 
     let mut letters = 0;
-    for b in "hello".bytes() { if b == 108 { letters = letters + 1; } }   // 2 `l`s
+    for b in "hello".bytes { if b == 108 { letters = letters + 1; } }   // 2 `l`s
 
     let mut first_big = 0;
     for n in [3, 8, 12, 20] {

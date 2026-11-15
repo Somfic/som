@@ -1,9 +1,7 @@
 // expect: exit 18
 
-use som;
-
-/// Counts how often `byte` appears in `text`.
-fn count(text: str, byte: u8) -> i32 {
+/// A `string`'s bytes, one at a time: `get` gives each, and `none` past its end.
+fn count(text: string, byte: u8) -> i32 {
     let mut n = 0;
     let mut i = 0;
     while i < text.len {
@@ -15,7 +13,7 @@ fn count(text: str, byte: u8) -> i32 {
 
 fn main() -> i32 {
     let greeting = "hello, world";
-    let s = som::data::String::new("abc");
+    let copied = string::from_c("abc");
     // 3 `l`s, 12 bytes, and 3 more.
-    count(greeting, 108) + greeting.len + s.len as i32
+    count(greeting, 108) + greeting.len as i32 + copied.len as i32
 }

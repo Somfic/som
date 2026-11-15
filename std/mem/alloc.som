@@ -35,7 +35,7 @@ impl<T> Alloc<T> {
         self.ptr.at(index)
     }
 
-    pub fn at(&mut self, index: usize) -> &mut T {
+    pub fn at_mut(&mut self, index: usize) -> &mut T {
         self.ptr.at_mut(index)
     }
 
@@ -43,7 +43,7 @@ impl<T> Alloc<T> {
         self.ptr.view(len)
     }
 
-    pub fn view(&mut self, len: usize) -> &mut [T] {
+    pub fn view_mut(&mut self, len: usize) -> &mut [T] {
         self.ptr.view_mut(len)
     }
 }

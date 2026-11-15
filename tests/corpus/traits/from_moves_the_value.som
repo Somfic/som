@@ -1,7 +1,6 @@
 // expect: error UseAfterMove
 
 /// Converting passes the value to `from`: it's moved.
-use som::data;
 
 struct Bag { items: List<i32> }
 
