@@ -356,7 +356,9 @@ impl Parser<'_> {
         let mut stmts = block.stmts;
         if let Some(value) = block.value {
             let span = self.ast.exprs.span(value).clone();
-            stmts.push(self.ast.stmts.alloc(Stmt::Expr(value), span));
+            let stmt = self.ast.stmts.alloc(Stmt::Expr(value), span);
+            self.ast.unterminated.insert(stmt);
+            stmts.push(stmt);
         }
         stmts
     }

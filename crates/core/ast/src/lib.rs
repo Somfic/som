@@ -30,6 +30,9 @@ pub struct Ast {
     pub types: Nodes<TypeExpr>,
     pub patterns: Nodes<Pattern>,
     pub traits: Nodes<Trait>,
+    /// Statements that were a block's last line without a `;`, where the block's value isn't
+    /// used: `end_drawing()` in `while … { begin_drawing(); end_drawing() }`.
+    pub unterminated: std::collections::HashSet<Id<Stmt>>,
 }
 
 /// One module: the `.som` files in one directory, named by the `use` path that loaded it.

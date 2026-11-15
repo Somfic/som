@@ -1,3 +1,13 @@
-let aa = "a" * 1000;
+extern "raylib";
 
-som::io::print(true)
+
+let world = "world";
+
+raylib::init_window(400, 400, "Hello {world}!".c_str);
+
+while !raylib::window_should_close() {
+    raylib::begin_drawing();
+    raylib::end_drawing();
+}
+
+raylib::close_window();

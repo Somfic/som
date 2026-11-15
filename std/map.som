@@ -99,7 +99,7 @@ impl<K: Eq + Hash, V> Map<K, V> {
         } else {
             // make a new entry
             .entries.push(Pair { key, value });
-            .keys.write(slot, .entries.len - 1)
+            .keys.write(slot, .entries.len - 1);
         }
     }
 

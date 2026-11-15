@@ -21,7 +21,7 @@ impl Hasher {
 
     pub fn write(&mut self, bytes: &[u8]) {
         for byte in bytes {
-            self.write(byte)
+            self.write(byte);
         }
     }
 

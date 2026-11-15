@@ -429,6 +429,8 @@ pub enum TypeError {
         span: Span,
         get: String,
     },
+    /// `{ begin(); end() }`: a call giving nothing at the end of a block, without a `;`.
+    UnitTail { span: Span },
     /// `"{x}"` of a value whose type doesn't implement `Display`.
     NotDisplay {
         ty: Message,
@@ -1462,6 +1464,9 @@ impl TypeError {
                     ))
                     .with_hint(msg!["use ", code(get.clone()), ", which gives an optional"])
             }
+            TypeError::UnitTail { span } => Diagnostic::error("expected `;`")
+                .with_label(Label::primary(span.after(), "expected a semicolon after the call"))
+                .with_fix(Fix::replace(msg!["add the ", code(";")], span.after(), ";")),
             TypeError::NotDisplay { ty, span } => {
                 Diagnostic::error(msg![ty.clone(), " can't be written into text"])
                     .with_label(Label::primary(

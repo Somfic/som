@@ -24,7 +24,7 @@ impl<T> Alloc<T> {
     }
 
     pub fn write(&mut self, index: usize, value: T) {
-        self.ptr.write(index, value)
+        self.ptr.write(index, value);
     }
 
     pub fn read(&mut self, index: usize) -> T {

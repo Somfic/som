@@ -59,6 +59,9 @@ pub(crate) struct Checker<'a> {
     /// Values written into text, `n` in `"total: {n}"`: whether they implement `Display`,
     /// once what they are is known.
     displayed: Vec<(Id<Expr>, TypeId)>,
+    /// Calls ending a block, its final value, without a `;`: one giving nothing needs it,
+    /// once what it gives is known.
+    tail_calls: Vec<(Id<Expr>, TypeId)>,
     /// Inferring an assignment's target: `s[i] = v`, which a slice can't do.
     assigning: bool,
     /// Values to convert through `From` whose types weren't known well enough to choose
@@ -140,6 +143,7 @@ impl<'a> Checker<'a> {
             in_place: false,
             deferred_ops: Vec::new(),
             displayed: Vec::new(),
+            tail_calls: Vec::new(),
             assigning: false,
             deferred_conversions: Vec::new(),
             loops: 0,
@@ -314,6 +318,15 @@ impl<'a> Checker<'a> {
             self.mismatch_at(expr, expected, found, from);
         }
 
+        // `{ draw(); end() }`: a call giving nothing ends with a `;`, as a statement; only a
+        // value is left without one.
+        for (call, ty) in std::mem::take(&mut self.tail_calls) {
+            if matches!(self.u.get(self.u.shallow(ty)), Ty::Unit) {
+                self.errors.push(TypeError::UnitTail {
+                    span: self.span(call),
+                });
+            }
+        }
         // `"total: {n}"`: what's written in has to be shown as text. Through references.
         if let Some(display) = self.names.lang(LangTrait::Display) {
             for (expr, ty) in std::mem::take(&mut self.displayed) {
@@ -1824,7 +1837,13 @@ impl<'a> Checker<'a> {
                 // A `match` whose value isn't used can have arms of different types.
                 self.discarding = matches!(self.ast.exprs[*expr], Expr::Match { .. });
                 let before = self.errors.len();
-                self.infer(*expr);
+                let ty = self.infer(*expr);
+                // `{ begin(); end() }` of a loop or `if`: the last call, without its `;`.
+                if self.ast.unterminated.contains(&id)
+                    && matches!(self.ast.exprs[*expr], Expr::Call { .. } | Expr::MethodCall { .. })
+                {
+                    self.tail_calls.push((*expr, ty));
+                }
                 self.discarding = false;
                 // Once what's wrong with it is fixed, it may not be what's meant either.
                 if self.errors.len() == before {
@@ -3448,7 +3467,14 @@ impl<'a> Checker<'a> {
                 let ty = match value {
                     Some(value) => {
                         self.expected = expected;
-                        self.infer(*value)
+                        let ty = self.infer(*value);
+                        if matches!(
+                            self.ast.exprs[*value],
+                            Expr::Call { .. } | Expr::MethodCall { .. }
+                        ) {
+                            self.tail_calls.push((*value, ty));
+                        }
+                        ty
                     }
                     // `{ return x; }` never ends with a value: like `@unreachable`, it fits
                     // whatever's expected, as in `get(i) else { return none; }`.

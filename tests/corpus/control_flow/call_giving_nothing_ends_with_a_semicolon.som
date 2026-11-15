@@ -1,0 +1,15 @@
+// expect: error UnitTail
+
+use som::io;
+
+/// Without a `;`, a block's last line is its value: a call giving nothing ends with one.
+fn draw() {}
+
+fn main() {
+    let mut i = 0;
+    while i < 2 {
+        draw();
+        i = i + 1;
+        draw()
+    }
+}
