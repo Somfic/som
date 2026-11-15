@@ -1882,7 +1882,10 @@ impl Emitter<'_> {
             text.len(),
             c_string(text)
         );
-        self.helpers.borrow_mut().entry(name.clone()).or_insert(block);
+        self.helpers
+            .borrow_mut()
+            .entry(name.clone())
+            .or_insert(block);
         name
     }
 }

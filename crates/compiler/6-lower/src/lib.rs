@@ -667,7 +667,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     /// A copy of `place`, of `Share` type `ty`, from its `share`: `share(&place)`.
     fn share(&mut self, place: Place, ty: TypeId, share: FuncId, span: Span) -> Operand {
-        let reference = self.l.mir.types.intern(Ty::Ref { mutable: false, to: ty });
+        let reference = self.l.mir.types.intern(Ty::Ref {
+            mutable: false,
+            to: ty,
+        });
         let borrowed = self.temp(reference, span.clone());
         let borrow = Rvalue::Ref {
             mutable: false,
@@ -2426,8 +2429,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             unreachable!("checked: only a `#T` is read through")
         };
         let inner = args[0];
-        let get = (self.l.names.method(rc, "get"))
-            .expect("the standard library's `Rc` has `get`");
+        let get = (self.l.names.method(rc, "get")).expect("the standard library's `Rc` has `get`");
         let DefKind::Func(get) = self.l.names.def(get).kind else {
             unreachable!("methods are functions")
         };

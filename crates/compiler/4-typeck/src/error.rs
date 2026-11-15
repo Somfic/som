@@ -754,7 +754,16 @@ impl TypeError {
             } => {
                 let d = Diagnostic::error(msg![owner.clone(), " has no method ", func(method)])
                     .with_label(Label::primary(span.clone(), "unknown method"));
-                member_hints(d, method, span, bare_call.as_ref(), true, fields, props, methods)
+                member_hints(
+                    d,
+                    method,
+                    span,
+                    bare_call.as_ref(),
+                    true,
+                    fields,
+                    props,
+                    methods,
+                )
             }
             TypeError::MemberOfOptional {
                 object,
@@ -770,8 +779,7 @@ impl TypeError {
                             ty.clone(),
                             ": check it holds a value before using it"
                         ],
-                    ))
-                    ;
+                    ));
                 optional_hints(d, object, *variable)
             }
             TypeError::ReferenceToReference { object, ty, span } => {
@@ -808,19 +816,21 @@ impl TypeError {
             } => Diagnostic::error(msg![var(name), " is not a function"]).with_label(
                 Label::primary(span.clone(), msg!["this is ", found.clone()]),
             ),
-            TypeError::MainParams { span } => Diagnostic::error(msg![
-                code("main"),
-                " takes no parameters"
-            ])
-            .with_label(Label::primary(span.clone(), "the program's arguments aren't passed here"))
-            .with_hint(msg![
-                "read them with ",
-                code("args()"),
-                " from ",
-                code("som::io"),
-                ": the program's path, then each argument"
-            ])
-            .with_fix(Fix::replace(msg!["take nothing"], span.clone(), "")),
+            TypeError::MainParams { span } => {
+                Diagnostic::error(msg![code("main"), " takes no parameters"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "the program's arguments aren't passed here",
+                    ))
+                    .with_hint(msg![
+                        "read them with ",
+                        code("args()"),
+                        " from ",
+                        code("som::io"),
+                        ": the program's path, then each argument"
+                    ])
+                    .with_fix(Fix::replace(msg!["take nothing"], span.clone(), ""))
+            }
             TypeError::SharedChanged { span, borrow } => {
                 let what = if *borrow {
                     "cannot borrow what a `#T` shares as mutable"
@@ -834,16 +844,15 @@ impl TypeError {
                         code("Rc::new(…)")
                     ])
             }
-            TypeError::StrIsString { span } => Diagnostic::error(msg![
-                "som's text is ",
-                code("string")
-            ])
-            .with_label(Label::primary(span.clone(), "text used to be `str`"))
-            .with_fix(Fix::replace(
-                msg!["change to ", code("string")],
-                span.clone(),
-                "string",
-            )),
+            TypeError::StrIsString { span } => {
+                Diagnostic::error(msg!["som's text is ", code("string")])
+                    .with_label(Label::primary(span.clone(), "text used to be `str`"))
+                    .with_fix(Fix::replace(
+                        msg!["change to ", code("string")],
+                        span.clone(),
+                        "string",
+                    ))
+            }
             TypeError::StrToC { span } => {
                 let d = Diagnostic::error(msg!["C can't take a ", code("string")])
                     .with_label(Label::primary(span.clone(), "C takes a `cstr`"))
@@ -856,7 +865,9 @@ impl TypeError {
                     ]);
                 // A name, or a path through fields: `.c_str` goes straight after it.
                 let text = span.get_text();
-                let plain = text.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.');
+                let plain = text
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == '.');
                 if plain {
                     d.with_fix(Fix {
                         title: msg!["pass ", code(format!("{text}.c_str"))],
@@ -1438,8 +1449,8 @@ impl TypeError {
                 )
             }
             TypeError::ShareOnCopy { ty, span } => {
-                Diagnostic::error(msg![ty.clone(), " can't implement ", code("Share")])
-                    .with_label(Label::primary(
+                Diagnostic::error(msg![ty.clone(), " can't implement ", code("Share")]).with_label(
+                    Label::primary(
                         span.clone(),
                         msg![
                             "it's ",
@@ -1448,7 +1459,8 @@ impl TypeError {
                             code("share"),
                             " would never be called"
                         ],
-                    ))
+                    ),
+                )
             }
             TypeError::BuiltinImpl { ty, trait_, span } => {
                 Diagnostic::error(msg![ty.clone(), " can't implement ", code(trait_)])
@@ -1768,7 +1780,9 @@ fn member_hints(
     let read = |n: &str| fields.iter().chain(props).any(|f| f == n);
     let is_method = |n: &str| methods.iter().any(|m| m == n);
     let foreign = som_base::foreign::member(name).filter(|f| read(f.som) || is_method(f.som));
-    let all: Vec<String> = (fields.iter().chain(props).chain(methods)).cloned().collect();
+    let all: Vec<String> = (fields.iter().chain(props).chain(methods))
+        .cloned()
+        .collect();
     let target = match foreign {
         Some(found) => Some(found.som),
         None => closest_match(name, &all, 2),
@@ -1800,7 +1814,11 @@ fn member_hints(
         return d;
     }
     let mut hint = Message(Vec::new());
-    for (label, names) in [("methods", methods), ("properties", props), ("fields", fields)] {
+    for (label, names) in [
+        ("methods", methods),
+        ("properties", props),
+        ("fields", fields),
+    ] {
         if names.is_empty() {
             continue;
         }

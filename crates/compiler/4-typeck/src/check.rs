@@ -1258,7 +1258,12 @@ impl<'a> Checker<'a> {
             return None;
         };
         Some(Fix::replace(
-            msg!["give a fallback for ", message::code("none"), ": ", message::code(&replacement)],
+            msg![
+                "give a fallback for ",
+                message::code("none"),
+                ": ",
+                message::code(&replacement)
+            ],
             span,
             replacement,
         ))
@@ -2770,7 +2775,8 @@ impl<'a> Checker<'a> {
                     matches!(self.u.get(ty), Ty::Array { .. } | Ty::Slice(_) | Ty::Str)
                 };
                 if !builtin
-                    && let Some(ty) = self.trait_method_call(id, *receiver, receiver_ty, method, args)
+                    && let Some(ty) =
+                        self.trait_method_call(id, *receiver, receiver_ty, method, args)
                 {
                     return ty;
                 }
@@ -3953,8 +3959,16 @@ impl<'a> Checker<'a> {
                         if alike(self, x, y) {
                             continue;
                         }
-                        let (&Ty::Ref { mutable: mx, to: tx }, &Ty::Ref { mutable: my, to: ty }) =
-                            (self.u.get(self.u.shallow(x)), self.u.get(self.u.shallow(y)))
+                        let (
+                            &Ty::Ref {
+                                mutable: mx,
+                                to: tx,
+                            },
+                            &Ty::Ref {
+                                mutable: my,
+                                to: ty,
+                            },
+                        ) = (self.u.get(self.u.shallow(x)), self.u.get(self.u.shallow(y)))
                         else {
                             return None;
                         };
@@ -3971,7 +3985,11 @@ impl<'a> Checker<'a> {
                     self.errors.push(TypeError::MutOverload {
                         name: name.name.to_string(),
                         span: name.span.clone(),
-                        previous: if mutable == *f { previous } else { span.clone() },
+                        previous: if mutable == *f {
+                            previous
+                        } else {
+                            span.clone()
+                        },
                         fix: Fix::replace(
                             msg!["rename it ", message::code(&renamed)],
                             name.span.clone(),
@@ -4016,7 +4034,9 @@ impl<'a> Checker<'a> {
         };
         let (error, unit, bool) = (self.u.table.error, self.u.table.unit, self.u.table.bool);
         let Some(kind) = PointerMethod::from_name(&method.name) else {
-            let methods = (PointerMethod::ALL.iter()).map(|&(name, _)| name.to_string()).collect();
+            let methods = (PointerMethod::ALL.iter())
+                .map(|&(name, _)| name.to_string())
+                .collect();
             self.errors.push(TypeError::UnknownMethod {
                 ty: self.describe(receiver_ty),
                 method: method.name.to_string(),
@@ -4581,7 +4601,9 @@ impl<'a> Checker<'a> {
         let index_trait = self.names.lang(lang)?;
         let (at, _) = {
             let u = &self.u;
-            find_impl(&self.impls, &u.table, index_trait, base, &[], &|t| u.shallow(t))?
+            find_impl(&self.impls, &u.table, index_trait, base, &[], &|t| {
+                u.shallow(t)
+            })?
         };
         let func = (self.impls[at].methods.iter().copied())
             .find(|&m| &*self.ast.funcs[m].name.name == method)?;
@@ -4682,9 +4704,7 @@ impl<'a> Checker<'a> {
             _ => Vec::new(),
         };
         let props: Vec<String> = (self.props_for(owner, ty).into_iter())
-            .filter(|name| {
-                (self.names.props(owner, name).iter()).any(|&d| visible(self, d))
-            })
+            .filter(|name| (self.names.props(owner, name).iter()).any(|&d| visible(self, d)))
             .collect();
         // Only what takes `self` can be called on a value: not `string::from`. Nor what
         // the language calls itself: `drop`, `share`, and the operators' `add` and `eq`.
@@ -4697,7 +4717,8 @@ impl<'a> Checker<'a> {
                         matches!(lang, LangTrait::Drop | LangTrait::Share)
                             || lang.operator_method().is_some()
                     });
-                !implicit && (c.ast.funcs[f].params.first()).is_some_and(|p| &*p.name.name == "self")
+                !implicit
+                    && (c.ast.funcs[f].params.first()).is_some_and(|p| &*p.name.name == "self")
             }
             _ => false,
         };
@@ -4721,7 +4742,12 @@ impl<'a> Checker<'a> {
 
     /// `x.name()`, the call `call` of `method` given nothing: from the name to the `)`,
     /// what a property goes in place of. `None` when it's given something.
-    fn bare_call(&self, call: Id<Expr>, method: &som_ast::Ident, args: &[Id<Expr>]) -> Option<Span> {
+    fn bare_call(
+        &self,
+        call: Id<Expr>,
+        method: &som_ast::Ident,
+        args: &[Id<Expr>],
+    ) -> Option<Span> {
         if !args.is_empty() {
             return None;
         }

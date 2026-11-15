@@ -33,7 +33,9 @@ pub fn prove(ast: &Ast, names: &Names, typed: &Typed) -> Vec<ProveError> {
     };
     for (id, func) in ast.funcs.iter() {
         // A trait's method has the trait's conditions, all a caller through the trait knows.
-        if let (Some(clause), Some(declared)) = (func.requires.first(), prover.trait_declaration(id)) {
+        if let (Some(clause), Some(declared)) =
+            (func.requires.first(), prover.trait_declaration(id))
+        {
             let trait_ = (ast.traits.iter())
                 .find(|(_, t)| t.methods.contains(&declared))
                 .map(|(_, t)| t.name.name.to_string())
@@ -431,7 +433,10 @@ impl Prover<'_> {
             false => format!("{index_text} < {len_text}"),
         };
         let title = match written {
-            true => msg!["check the length first: ", code(format!("if {check} {{ … }}"))],
+            true => msg![
+                "check the length first: ",
+                code(format!("if {check} {{ … }}"))
+            ],
             false => msg!["check it first: ", code(format!("if {check} {{ … }}"))],
         };
         let fix = self.check_fix(&check, title);
@@ -595,7 +600,10 @@ impl Prover<'_> {
         args: &[Id<Expr>],
     ) {
         for unmet in self.unproven(func, first, receiver, args) {
-            let title = msg!["check it first: ", code(format!("if {} {{ … }}", unmet.text))];
+            let title = msg![
+                "check it first: ",
+                code(format!("if {} {{ … }}", unmet.text))
+            ];
             let fix = self.check_fix(&unmet.text, title);
             self.errors.push(ProveError::Unproven {
                 func: self.ast.funcs[func].name.name.to_string(),

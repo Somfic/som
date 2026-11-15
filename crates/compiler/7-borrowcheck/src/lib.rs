@@ -498,7 +498,10 @@ impl<'a> FnChecker<'a> {
                 .any(|&(_, f)| self.has_ref_in(f, seen)),
             // A function's parameters and result are only types: a function value holds no loan.
             Ty::Fn { .. } => false,
-            t => t.children().into_iter().any(|child| self.has_ref_in(child, seen)),
+            t => t
+                .children()
+                .into_iter()
+                .any(|child| self.has_ref_in(child, seen)),
         }
     }
 

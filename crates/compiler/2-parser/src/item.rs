@@ -50,7 +50,10 @@ impl Parser<'_> {
             matches!(self.peek_nth(at), TokenKind::Fn | TokenKind::Prop)
         };
         if !at_function {
-            let span = self.where_start.take().unwrap_or_else(|| self.current_span());
+            let span = self
+                .where_start
+                .take()
+                .unwrap_or_else(|| self.current_span());
             self.wheres.clear();
             self.where_doc = None;
             self.error_at(
@@ -83,16 +86,17 @@ impl Parser<'_> {
         }
         self.at_where()
             || matches!(
-            self.peek_nth(at),
-            TokenKind::Fn
-                | TokenKind::Extern
-                | TokenKind::Struct
-                | TokenKind::Enum
-                | TokenKind::Trait
-                | TokenKind::Use
-                | TokenKind::Impl
-                | TokenKind::Type
-        ) || self.foreign_fn(at)
+                self.peek_nth(at),
+                TokenKind::Fn
+                    | TokenKind::Extern
+                    | TokenKind::Struct
+                    | TokenKind::Enum
+                    | TokenKind::Trait
+                    | TokenKind::Use
+                    | TokenKind::Impl
+                    | TokenKind::Type
+            )
+            || self.foreign_fn(at)
             || self.c_style_fn(at)
             || self.foreign_struct(at)
     }

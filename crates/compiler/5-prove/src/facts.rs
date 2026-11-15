@@ -339,7 +339,11 @@ mod tests {
         let mut facts = Facts::default();
         facts.unsigned("len");
         // `len > 2` gives `1 < len`, not `3 < len`.
-        facts.assume(&Cond::compare(&v("len"), Compare::Greater, &Value::number(2)));
+        facts.assume(&Cond::compare(
+            &v("len"),
+            Compare::Greater,
+            &Value::number(2),
+        ));
         assert!(facts.holds(&Cond::compare(&Value::number(1), Compare::Less, &v("len"))));
         assert!(facts.holds(&Cond::compare(&Value::number(2), Compare::Less, &v("len"))));
         assert!(!facts.holds(&Cond::compare(&Value::number(3), Compare::Less, &v("len"))));
@@ -363,16 +367,32 @@ mod tests {
     fn not_zero_of_unsigned_is_above_it() {
         let mut facts = Facts::default();
         facts.unsigned("len");
-        facts.assume(&Cond::compare(&v("len"), Compare::NotEqual, &Value::number(0)));
-        assert!(facts.holds(&Cond::compare(&v("len"), Compare::GreaterOrEqual, &Value::number(1))));
+        facts.assume(&Cond::compare(
+            &v("len"),
+            Compare::NotEqual,
+            &Value::number(0),
+        ));
+        assert!(facts.holds(&Cond::compare(
+            &v("len"),
+            Compare::GreaterOrEqual,
+            &Value::number(1)
+        )));
     }
 
     #[test]
     fn unsigned_is_at_least_zero() {
         let mut facts = Facts::default();
         facts.unsigned("i");
-        facts.assume(&Cond::compare(&v("len"), Compare::Greater, &Value::number(0)));
-        assert!(facts.holds(&Cond::compare(&Value::number(0), Compare::LessOrEqual, &v("i"))));
+        facts.assume(&Cond::compare(
+            &v("len"),
+            Compare::Greater,
+            &Value::number(0),
+        ));
+        assert!(facts.holds(&Cond::compare(
+            &Value::number(0),
+            Compare::LessOrEqual,
+            &v("i")
+        )));
         assert!(facts.holds(&Cond::compare(&Value::number(0), Compare::Less, &v("len"))));
     }
 }

@@ -1424,7 +1424,8 @@ impl Resolver<'_> {
         change_to: &dyn Fn(String) -> Vec<Fix>,
     ) -> Option<(Message, Vec<Fix>)> {
         let has_self = self.scopes.iter().any(|s| s.contains_key("self"));
-        let found = foreign::value(name).or_else(|| foreign::self_word(name).filter(|_| has_self))?;
+        let found =
+            foreign::value(name).or_else(|| foreign::self_word(name).filter(|_| has_self))?;
         let help = msg!["som writes ", code(found.som), ": ", found.hint()];
         Some((help, change_to(found.som.to_string())))
     }
@@ -1460,7 +1461,12 @@ impl Resolver<'_> {
             let fix = Fix::replace(msg!["change to ", code(&range)], span, range);
             (help, vec![fix])
         } else if let Some(found) = foreign::print(name) {
-            let help = msg!["som prints a line with ", code("println(…)"), ": ", found.hint()];
+            let help = msg![
+                "som prints a line with ",
+                code("println(…)"),
+                ": ",
+                found.hint()
+            ];
             let fix = Fix::replace(
                 msg!["change to ", code("println")],
                 segment.span.clone(),
@@ -1505,7 +1511,12 @@ impl Resolver<'_> {
             return false;
         }
         let span = self.ast.exprs.span(receiver).merge(&method.span);
-        let help = msg!["som prints a line with ", code("println(…)"), ": ", found.hint()];
+        let help = msg![
+            "som prints a line with ",
+            code("println(…)"),
+            ": ",
+            found.hint()
+        ];
         let fix = Fix::replace(msg!["change to ", code("println")], span.clone(), "println");
         let _ = id;
         self.errors.push(ResolveError::UnknownFunction {

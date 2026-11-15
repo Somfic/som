@@ -60,11 +60,10 @@ impl LoadError {
                 span,
                 nearby,
             } => {
-                let mut d = Diagnostic::error(msg!["module ", m::module(name), " not found"])
-                    .with_label(Label::primary(
-                        span.clone(),
-                        msg!["looked in ", m::path(path.display())],
-                    ));
+                let mut d =
+                    Diagnostic::error(msg!["module ", m::module(name), " not found"]).with_label(
+                        Label::primary(span.clone(), msg!["looked in ", m::path(path.display())]),
+                    );
                 // By the last part of the path: `som::ioo` is close to `som::io`, `som::vec`
                 // isn't to `som::mem`.
                 let last = |n: &str| n.rsplit("::").next().unwrap_or(n).to_string();
@@ -72,13 +71,13 @@ impl LoadError {
                 let close = som_base::diagnostics::closest_match(&last(name), &lasts, 2)
                     .and_then(|l| nearby.iter().find(|n| last(n) == l));
                 if let Some(close) = close {
-                    d = d.with_hint(msg!["did you mean ", m::module(close), "?"]).with_fix(
-                        som_base::Fix::replace(
+                    d = d
+                        .with_hint(msg!["did you mean ", m::module(close), "?"])
+                        .with_fix(som_base::Fix::replace(
                             msg!["change to ", m::code(close)],
                             span.clone(),
                             close.to_string(),
-                        ),
-                    );
+                        ));
                 } else if !nearby.is_empty() {
                     let mut hint = msg!["modules there: "];
                     for (i, module) in nearby.iter().enumerate() {
