@@ -1,0 +1,13 @@
+// expect: exit 5
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+/// A method's `@where` on its block's `N`: known in the body, checked at each call.
+impl<N: usize> Row<N> {
+    @where N >= 1
+    pub fn first(&self) -> i32 = .cells[0];
+}
+
+fn main() -> i32 = Row { cells: [5, 6] }.first();

@@ -18,6 +18,14 @@ impl Parser<'_> {
         self.with_condition(true, |p| p.parse_expr())
     }
 
+    /// An `@if`'s condition, which can compare types: `N >= 3`, `T == f32`.
+    pub(crate) fn parse_settled_condition(&mut self) -> Option<Id<Expr>> {
+        let outer = std::mem::replace(&mut self.in_settled, true);
+        let condition = self.parse_condition();
+        self.in_settled = outer;
+        condition
+    }
+
     pub(crate) fn with_condition<T>(
         &mut self,
         in_condition: bool,
@@ -786,6 +794,12 @@ impl Parser<'_> {
             TokenKind::If => {
                 let parts = self.parse_if_parts()?;
                 return Some(self.if_expr(parts));
+            }
+
+            // `@if T == f32`: a type, compared with another.
+            kind if self.in_settled && crate::ty::primitive(kind).is_some() => {
+                let ty = self.parse_type()?;
+                Expr::Type(ty)
             }
 
             // `foo(i32)`: a type where a value goes.

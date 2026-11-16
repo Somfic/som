@@ -382,6 +382,7 @@ impl Prover<'_> {
             // A constant's value isn't proven here, wherever it's written.
             Expr::InPlace(_)
             | Expr::Hole
+            | Expr::Type(_)
             | Expr::Int(_)
             | Expr::Float(_)
             | Expr::Bool(_)
@@ -526,19 +527,20 @@ impl Prover<'_> {
     /// `reading`: not assigned to, so `get` would do instead.
     fn check_index(&mut self, id: Id<Expr>, object: Id<Expr>, index: Id<Expr>, reading: bool) {
         if let Some(func) = self.method(id) {
-            if !self.unproven(func, 1, Some(object), &[index]).is_empty() {
+            if !self.unproven(id, func, 1, Some(object), &[index]).is_empty() {
 
                 self.out_of_bounds(id, object, index, reading);
             }
             return;
         }
-        // A number written out is checked against a length written out by the type checker.
-        if matches!(self.ast.exprs[index], Expr::Int(_)) {
-            return;
-        }
         let Some(len) = self.array_len(object) else {
             return;
         };
+        // A number written out is checked against a length written out by the type checker;
+        // against `N`, here.
+        if matches!(self.ast.exprs[index], Expr::Int(_)) && len.term == Term::Zero {
+            return;
+        }
         // Inside is from 0 up to the length: a signed index can be below 0, and `as usize`
         // would take it far past the end.
         let at = self.value_of(index, &as_is);
@@ -1022,7 +1024,7 @@ impl Prover<'_> {
         receiver: Option<Id<Expr>>,
         args: &[Id<Expr>],
     ) {
-        for unmet in self.unproven(func, first, receiver, args) {
+        for unmet in self.unproven(call, func, first, receiver, args) {
             let title = msg![
                 "check it first: ",
                 code(format!("if {} {{ … }}", unmet.text))
@@ -1044,6 +1046,7 @@ impl Prover<'_> {
     /// for its parameters from the `first`th; each with how it reads there.
     fn unproven(
         &mut self,
+        call: Id<Expr>,
         func: Id<Func>,
         first: usize,
         receiver: Option<Id<Expr>>,
@@ -1065,6 +1068,11 @@ impl Prover<'_> {
                 None => values.push(None),
             }
         }
+        // `N` of `first<N>`, at this call: 3, or the caller's own `M`.
+        let generics: Vec<(DefId, Value<Place>)> = (self.names.type_params(func).iter())
+            .zip(self.typed.type_args(call))
+            .filter_map(|(&param, &arg)| Some((param, self.generic_value(arg)?)))
+            .collect();
         let mut failed = Vec::new();
         for (clause, declared) in self.requires_of(func) {
             let condition = clause.condition;
@@ -1072,6 +1080,9 @@ impl Prover<'_> {
             // A parameter whose argument isn't followed stands for what's never known.
             let subst =
                 |def: DefId| -> Option<Value<Place>> {
+                    if let Some((_, value)) = generics.iter().find(|(p, _)| *p == def) {
+                        return Some(value.clone());
+                    }
                     let index = params.iter().position(|&d| d == def)?;
                     Some(values.get(index).cloned().flatten().unwrap_or(Value::place(
                         Place::Path {
@@ -1089,6 +1100,13 @@ impl Prover<'_> {
                     .filter_map(|(def, arg)| {
                         Some((def, self.ast.exprs.span((*arg)?).get_text().to_string()))
                     })
+                    // A caller's own `M` for `N`: how it reads there.
+                    .chain(generics.iter().filter_map(|(param, value)| match &value.term {
+                        Term::Place(Place::Len(own)) if value.offset == 0 => {
+                            Some((*param, self.names.def(*own).name.to_string()))
+                        }
+                        _ => None,
+                    }))
                     .collect();
                 failed.push(Unmet {
                     condition,
@@ -1099,6 +1117,22 @@ impl Prover<'_> {
             }
         }
         failed
+    }
+
+    /// What a generic value argument is to the prover: a number, or a value parameter of the
+    /// function it's in.
+    fn generic_value(&mut self, arg: TypeId) -> Option<Value<Place>> {
+        match *self.typed.ty(arg) {
+            Ty::Value(som_typeck::Value::Int(n)) => Some(Value::number(n as i128)),
+            Ty::Param(def) => Some(match self.bound.get(&def) {
+                Some(&n) => Value::number(n),
+                None => {
+                    self.facts.unsigned(Place::Len(def));
+                    Value::place(Place::Len(def))
+                }
+            }),
+            _ => None,
+        }
     }
 
     /// Function `func`'s `@where`s, each with the function whose parameters it names: its

@@ -1,0 +1,10 @@
+// TypeNotCompared: in an `@if`, a type can only be compared with another type: `T == f32`, not `T == 3`.
+
+fn f<T>(x: T) -> i32 {
+    @if T == 3 {
+        return 1;
+    }
+    return 0;
+}
+
+fn main() -> i32 = f(1);

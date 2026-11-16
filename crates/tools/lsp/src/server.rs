@@ -1183,6 +1183,23 @@ impl LanguageServer for SomLanguageServer {
                         .filter(|p| !fields_here.contains(&p.label)),
                 );
                 for (name, method) in a.names.methods_of(owner) {
+                    // Of those called this, one this receiver has: `@if N >= 3 { … }` around
+                    // some, `else` around others.
+                    let receiver_ty = a.typed.expr(expr);
+                    let Some(method) = (a.names.overloads(method).into_iter()).find(|&d| {
+                        match a.names.def(d).kind {
+                            DefKind::Func(f) => som_typeck::member_holds(
+                                &a.ast,
+                                &a.names,
+                                &a.typed,
+                                f,
+                                receiver_ty,
+                            ) != Some(false),
+                            _ => true,
+                        }
+                    }) else {
+                        continue;
+                    };
                     if !visible(method) {
                         continue;
                     }
@@ -2375,7 +2392,8 @@ fn prop_items(
         let fits = (a.names.impl_of(f))
             .and_then(|i| a.typed.impls[i].target)
             .is_none_or(|target| impl_target_matches(a, target, receiver));
-        if !fits {
+        // Only there for some instances (`@if N >= 3 { … }`), not this one.
+        if !fits || som_typeck::member_holds(&a.ast, &a.names, &a.typed, f, receiver) == Some(false) {
             continue;
         }
         let ret = a.typed.func(f).ret;
@@ -4494,6 +4512,43 @@ mod tests {
                 ("z".into(), prop, Some("i32".into())),
             ]
         );
+    }
+
+    #[test]
+    fn members_only_some_instances_have_complete_where_they_do() {
+        let dir = std::env::temp_dir().join(format!("som_lsp_member_if_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let text = "struct Row<N: usize> { cells: [i32; N] }\n\
+                    impl<N: usize> Row<N> {\n    @if N >= 3 {\n        prop third = .cells[2];\n    } \
+                    else {\n        prop short = true;\n    }\n    @if N == 2 {\n        prop pair = true;\n    }\n}\n\
+                    fn main() -> i32 {\n    let two = Row { cells: [1, 2] };\n    \
+                    let three = Row { cells: [1, 2, 3] };\n    three.third\n}\n";
+        std::fs::write(dir.join("main.som"), text).unwrap();
+        let a = som_driver::analyze(&dir, &som_driver::Options::default());
+        std::fs::remove_dir_all(&dir).unwrap();
+        let local = |wanted: &str| {
+            (a.ast.stmts.iter())
+                .find_map(|(id, stmt)| match stmt {
+                    Stmt::Let { name, .. } if &*name.name == wanted => a.names.local(id),
+                    _ => None,
+                })
+                .unwrap()
+        };
+        let owner = (a.ast.structs.iter())
+            .map(|(s, _)| a.names.strukt(s))
+            .next()
+            .unwrap();
+        let file = dir.join("main.som").to_string_lossy().into_owned();
+        let viewer = viewer_at(&a, &file, text.len() - 3);
+        let labels = |name: &str| {
+            let mut items = Vec::new();
+            prop_items(&a, owner, a.typed.local(local(name)), viewer, &mut items);
+            let mut labels: Vec<String> = items.into_iter().map(|i| i.label).collect();
+            labels.sort();
+            labels
+        };
+        assert_eq!(labels("two"), ["pair", "short"]);
+        assert_eq!(labels("three"), ["third"]);
     }
 
     #[test]

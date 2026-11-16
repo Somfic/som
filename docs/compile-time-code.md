@@ -424,8 +424,7 @@ The AST grows by a copy for each struct for each such `@for`.
 
 Not done yet: *pinning* (a region can still change the type of a variable outside it, per
 instance; each instance is checked as a whole, so it's consistent, but the generic check
-doesn't see it); `@for (i, v) in T` over a generic enum's variants among `match` arms; `else`
-for an `@if` among an impl's members.
+doesn't see it); `@for (i, v) in T` over a generic enum's variants among `match` arms.
 
 The plan, in two passes:
 
@@ -468,14 +467,28 @@ impl<N: usize> Row<N> {
     @if N >= 3 {
         pub prop third = .cells[2];
         pub fn sum3(&self) -> i32 = .cells[0] + .cells[1] + .cells[2];
+    } else @if N == 2 {
+        pub prop third = .cells[1] * 10;
+    } else {
+        pub prop third = 0;
     }
+}
+
+impl<T> Pair<T> {
+    @if T == i32 { pub fn sum(&self) -> i32 = .a + .b; }
 }
 ```
 
 - *Parsing.* An `@if` among an impl's members gives each member in it the condition
-  (`Func::when`, nested `@if`s all of theirs). No `else` yet: a second `@if` with the
-  opposite condition. Resolve resolves the condition in the member's scope, in terms of the
-  block's parameters.
+  (`Func::when`, nested `@if`s all of theirs). `else` adds `!(c)` (an `Expr::Not` over the
+  same condition), `else @if d` adds `!(c)` and `d`. Resolve resolves each condition once,
+  with the block, in terms of the block's own parameters (not a member's copies of them), so
+  members in one `@if` share it. Members of one name in different branches aren't duplicates.
+- *Types in conditions.* In an `@if`'s condition (in a body, too) a type can be compared with
+  another: `T == f32`, `T != Point`. A primitive is parsed as `Expr::Type`; a name that's a
+  type and not a value resolves to the type. Known once `T` is: for each instance, or at a
+  member's use. A generic struct named without arguments (`Pair`) is any `Pair`. A type
+  compared with a value is `TypeNotCompared`.
 - *Each member is checked generically, quietly*: for its type, which a `prop` without one
   gets from its body. Its errors are dropped and it's marked per instance; the member, whole,
   is a region, so it's checked and proven for each instance lowering reaches, with errors said
@@ -484,9 +497,17 @@ impl<N: usize> Row<N> {
   receiver's type (`Row<2>`: `N` is 2) and the conditions worked out. False: `MemberNotHere`
   (`Row<2>` has no `third`); not known, the receiver's type generic: `MemberMaybeNotHere`,
   whose hint is to use it in `@if N >= 3 { … }` (pass 1), where each instance is checked and
-  it is known. Among properties of one name, those whose condition is false don't count.
-- Not yet: the LSP's completion still lists such a member everywhere; `else`; a condition on
-  a type parameter (`@if T == f32`), which needs comparing types while compiling.
+  it is known. Among properties or methods of one name, those whose condition is false don't
+  count.
+- *The editor* completes only the members a value's type has
+  (`som_typeck::member_holds`, which works the conditions out from the finished `Typed`).
+
+**Value parameters in the prover.** `N` is a place the prover knows facts about
+(`Place::Len(N)`, the same as `a.len` of an `[T; N]`): `if N >= 3 { a[2] }` and
+`@where N >= 1` prove `a[0]` in a generic body, where the type checker used to reject a
+written index into an array of length `N` outright. At a call, `N` is the call's argument: a
+number (`first(&[])` gives "`N >= 1` is false"), or the caller's own `M`, which its own
+`@where` has to say enough about.
 
 ### 4.8 Other things left for later
 

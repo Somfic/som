@@ -308,7 +308,7 @@ impl Parser<'_> {
     fn parse_settled_if(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.advance();
-        let condition = self.parse_condition()?;
+        let condition = self.parse_settled_condition()?;
         let then = self.parse_stmt_block("the @if body")?;
         let otherwise = match self.eat(TokenKind::Else) {
             true if self.at(TokenKind::Builtin) && &*self.peek_token().text == "@if" => {

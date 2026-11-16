@@ -451,6 +451,15 @@ impl<'a> Checker<'a> {
         // for its type, which its body can decide. What's wrong in it is said per instance.
         let quiet = !func.when.is_empty()
             && !(self.names.type_params(id).iter()).any(|p| self.bound.contains_key(p));
+        // Its conditions, each once: a `bool` worked out while compiling, `N >= 3` or `T == f32`.
+        if quiet {
+            for &condition in &func.when {
+                if self.exprs[condition.id].is_none() {
+                    let bool = self.u.table.bool;
+                    self.expect(condition, bool, None);
+                }
+            }
+        }
         let before = self.errors.len();
         self.check_body(id, func, body);
         self.check_moves_out(body);
@@ -496,27 +505,14 @@ impl<'a> Checker<'a> {
             }
             let mut matched = Vec::new();
             self.match_params(target, found, &params, &mut matched);
-            // Each member has its own copies of the block's parameters, and the members in one
-            // `@if` share its condition, named in terms of whichever's copies: bind them all.
-            let members: Vec<Id<Func>> = (self.names.impls[index].methods.iter())
-                .copied()
-                .filter(|&m| !self.ast.funcs[m].when.is_empty())
-                .collect();
+            // The conditions are in terms of the block's parameters.
             for (param, arg) in matched {
                 let arg = match *self.u.get(arg) {
                     Ty::Param(p) => self.bound.get(&p).copied().unwrap_or(arg),
                     _ => arg,
                 };
-                if !matches!(self.u.get(arg), Ty::Value(_)) {
-                    continue;
-                }
-                let Some(at) = params.iter().position(|&p| p == param) else {
-                    continue;
-                };
-                for &member in &members {
-                    if let Some(&own) = self.names.type_params(member).get(at) {
-                        self.bound.insert(own, arg);
-                    }
+                if !matches!(self.u.get(arg), Ty::Var(_) | Ty::Error) {
+                    self.bound.insert(param, arg);
                 }
             }
         }
@@ -533,6 +529,16 @@ impl<'a> Checker<'a> {
         }
         self.bound = saved;
         holds
+    }
+
+    /// How a member's condition reads: as written, or for an `else`, `!(N >= 3)`.
+    fn condition_text(&self, condition: Id<Expr>) -> String {
+        match self.ast.exprs[condition] {
+            Expr::Not(inner) if self.span(inner) == self.span(condition) => {
+                format!("!({})", self.span(inner).get_text())
+            }
+            _ => self.span(condition).get_text().to_string(),
+        }
     }
 
     /// What's in `found` where each of `params` is in `pattern`, an impl block's target.
@@ -572,7 +578,7 @@ impl<'a> Checker<'a> {
             return true;
         }
         let condition = (self.ast.funcs[func].when.iter())
-            .map(|&c| self.span(c).get_text().to_string())
+            .map(|&c| self.condition_text(c))
             .collect::<Vec<_>>()
             .join(" && ");
         let error = match holds {
@@ -628,8 +634,18 @@ impl<'a> Checker<'a> {
 
     /// The value of `@if`'s condition `expr`, if it's known while compiling: a `bool`, a
     /// constant that's one, comparisons of known numbers, and `!`, `&&` and `||` of those.
-    fn settled_bool(&self, expr: Id<Expr>) -> Option<bool> {
+    fn settled_bool(&mut self, expr: Id<Expr>) -> Option<bool> {
         match &self.ast.exprs[expr] {
+            // `T == f32`: known once `T` is.
+            Expr::Binary {
+                op: op @ (BinOp::Equals | BinOp::NotEquals),
+                lhs,
+                rhs,
+            } if self.is_type_operand(*lhs) || self.is_type_operand(*rhs) => {
+                let (a, b) = (self.type_operand(*lhs)?, self.type_operand(*rhs)?);
+                let same = self.same_type(a, b)?;
+                Some(same == (*op == BinOp::Equals))
+            }
             Expr::Bool(b) => Some(*b),
             Expr::Not(inner) => self.settled_bool(*inner).map(|b| !b),
             Expr::Var(_) if let Some(Value::Bool(b)) = self.bound_value(expr) => Some(b),
@@ -1489,18 +1505,80 @@ impl<'a> Checker<'a> {
         })
     }
 
+    /// Whether `expr` names a type, compared with another in an `@if`: `f32`, `T`, `Point`.
+    fn is_type_operand(&self, expr: Id<Expr>) -> bool {
+        match self.ast.exprs[expr] {
+            Expr::Type(_) => true,
+            Expr::Var(_) => self.names.expr(expr).is_some_and(|def| {
+                matches!(
+                    self.names.def(def).kind,
+                    DefKind::TypeParam { value: false, .. }
+                        | DefKind::ImplParam { value: false, .. }
+                        | DefKind::StructParam { value: false, .. }
+                        | DefKind::Struct(_)
+                )
+            }),
+            _ => false,
+        }
+    }
+
+    /// The type `expr` names, if it names one: a type parameter is what it's bound to, checking
+    /// an instance.
+    fn type_operand(&mut self, expr: Id<Expr>) -> Option<TypeId> {
+        if !self.is_type_operand(expr) {
+            return None;
+        }
+        Some(match self.ast.exprs[expr] {
+            Expr::Type(ty) => self.lower(ty),
+            _ => {
+                let def = self.names.expr(expr)?;
+                match self.names.def(def).kind {
+                    DefKind::Struct(_) => self.u.intern(Ty::Struct(def, Vec::new())),
+                    _ => match self.bound.get(&def) {
+                        Some(&bound) => bound,
+                        None => self.u.intern(Ty::Param(def)),
+                    },
+                }
+            }
+        })
+    }
+
+    /// Whether `a` and `b` are the same type, if that's known: not while either has a type
+    /// parameter in it, or something not decided yet. A generic struct named without its
+    /// arguments, `Pair`, is any `Pair`.
+    fn same_type(&mut self, a: TypeId, b: TypeId) -> Option<bool> {
+        let (a, b) = (self.u.normalize(a), self.u.normalize(b));
+        if !self.settled_type(a) || !self.settled_type(b) {
+            return None;
+        }
+        Some(match (self.u.get(a), self.u.get(b)) {
+            (Ty::Struct(x, xs), Ty::Struct(y, ys)) if xs.is_empty() || ys.is_empty() => x == y,
+            _ => a == b,
+        })
+    }
+
+    /// Whether `ty` is known as it is: no type parameter or undecided type in it.
+    fn settled_type(&self, ty: TypeId) -> bool {
+        let ty = self.u.shallow(ty);
+        match self.u.get(ty) {
+            Ty::Var(_) | Ty::Param(_) | Ty::Error => false,
+            t => t.children().into_iter().all(|c| self.settled_type(c)),
+        }
+    }
+
     /// Whether `expr` is worked out from the function's generic value parameters (and
     /// literals and constants): `N >= 3`. An `@if` on it is checked for each instance.
     fn over_params(&self, expr: Id<Expr>) -> bool {
         fn walk(c: &Checker, expr: Id<Expr>, found: &mut bool) -> bool {
             match &c.ast.exprs[expr] {
-                Expr::Int(_) | Expr::Bool(_) => true,
+                Expr::Int(_) | Expr::Bool(_) | Expr::Type(_) => true,
                 Expr::Var(_) => match c.names.expr(expr).map(|def| &c.names.def(def).kind) {
-                    Some(DefKind::TypeParam { value: true, .. } | DefKind::ImplParam { value: true, .. }) => {
+                    // `N`, or `T` of `T == f32`.
+                    Some(DefKind::TypeParam { .. } | DefKind::ImplParam { .. }) => {
                         *found = true;
                         true
                     }
-                    Some(DefKind::Const(_)) => true,
+                    Some(DefKind::Const(_) | DefKind::Struct(_)) => true,
                     _ => false,
                 },
                 Expr::Not(inner) | Expr::Neg(inner) | Expr::Cast { value: inner, .. } => {
@@ -3120,6 +3198,30 @@ impl<'a> Checker<'a> {
 
         match &self.ast.exprs[id] {
             Expr::Hole => error,
+            Expr::Type(_) => {
+                self.errors.push(TypeError::TypeNotCompared {
+                    span: self.span(id),
+                });
+                error
+            }
+            // `@if T == f32`: a question about types, answered while compiling.
+            Expr::Binary {
+                op: BinOp::Equals | BinOp::NotEquals,
+                lhs,
+                rhs,
+            } if self.is_type_operand(*lhs) || self.is_type_operand(*rhs) => {
+                for operand in [*lhs, *rhs] {
+                    match self.type_operand(operand) {
+                        Some(ty) => {
+                            self.exprs[operand.id] = Some(ty);
+                        }
+                        None => self.errors.push(TypeError::TypeNotCompared {
+                            span: self.span(if self.is_type_operand(*lhs) { *lhs } else { *rhs }),
+                        }),
+                    }
+                }
+                bool
+            }
             // `@const f(x)`: its value, of whatever's expected here. It names no locals, so
             // it's checked here like anything else.
             Expr::InPlace(c) => {
@@ -4506,6 +4608,8 @@ impl<'a> Checker<'a> {
         // Each fitting method, and how much the receiver has to change for it: 0 as it is,
         // 1 borrowed, 2 borrowed as `&mut`.
         let mut fitting = Vec::new();
+        // One only some instances have, where this isn't one of them: not a candidate.
+        let mut not_here = None;
         // If several fit numbers nothing has decided yet, `[1.0, 2.0].normalize()`, they're
         // settled to `f64` and `i32`, as they would be anyway, and it's chosen again.
         for attempt in 0..2 {
@@ -4525,6 +4629,10 @@ impl<'a> Checker<'a> {
                     let DefKind::Func(func) = self.names.def(def).kind else {
                         continue;
                     };
+                    if self.member_holds(func, receiver_ty) == Some(false) {
+                        not_here.get_or_insert(func);
+                        continue;
+                    }
                     let (sig, type_args) = self.instantiate(func);
                     let Some((&self_ty, rest)) = sig.params.split_first() else {
                         continue;
@@ -4565,6 +4673,21 @@ impl<'a> Checker<'a> {
                 })
                 .collect()
         };
+        let method_span = match &self.ast.exprs[call] {
+            Expr::MethodCall { method, .. } => method.span.clone(),
+            _ => self.span(call),
+        };
+        // Only there for some instances: none of them here, or not known which.
+        let unknown = (fitting.iter()).find(|f| self.member_holds(f.2, receiver_ty).is_none());
+        let only_some = match (fitting.is_empty(), unknown) {
+            (true, _) => not_here,
+            (false, Some(f)) if fitting.len() > 1 => Some(f.2),
+            _ => None,
+        };
+        if let Some(func) = only_some {
+            self.check_member_there(func, receiver_ty, name, method_span);
+            return self.u.table.error;
+        }
         if fitting.len() != 1 {
             let error = match fitting.is_empty() {
                 true => TypeError::NoMatchingOverload {
@@ -4586,6 +4709,9 @@ impl<'a> Checker<'a> {
             return self.u.table.error;
         }
         let (_, def, func, sig, type_args) = fitting.pop().expect("exactly one");
+        if !self.check_member_there(func, receiver_ty, name, method_span) {
+            return self.u.table.error;
+        }
         self.methods.insert(call, def);
         if let Expr::MethodCall { method, .. } = &self.ast.exprs[call] {
             self.check_visible(def, &method.span);
@@ -5454,7 +5580,9 @@ impl<'a> Checker<'a> {
                 len: n,
                 span: self.span(index),
             }),
-            Ty::Error => {}
+            // `N`, a value parameter: the prover checks it against what's known of `N` there,
+            // `if N >= 3` or `@where N >= 3`.
+            Ty::Error | Ty::Param(_) => {}
             _ => self.errors.push(TypeError::IndexUnknownLength {
                 len: self.u.display(len_ty, self.names),
                 span: self.span(index),
@@ -6262,6 +6390,7 @@ impl Checker<'_> {
             // Its value changes nothing the function has.
             Expr::InPlace(_)
             | Expr::Hole
+            | Expr::Type(_)
             | Expr::Unreachable
             | Expr::Int(_)
             | Expr::Float(_)

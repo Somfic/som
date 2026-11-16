@@ -1,0 +1,7 @@
+// expect: error Unproven
+
+@where N >= 1
+fn first<N: usize>(a: &[i32; N]) -> i32 = a[0];
+
+/// An empty array: `N` is 0.
+fn main() -> i32 = first(&[]);

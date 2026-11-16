@@ -2027,6 +2027,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::Str(s) => self.constant(ConstKind::Str(s.to_string()), ty),
             Expr::None => self.constant(ConstKind::Zeroed, ty),
             Expr::Hole => unreachable!("programs with parse errors are never lowered"),
+            Expr::Type(_) => unreachable!("types are only compared in `@if`s, worked out"),
             // `@const f(x)`: like a constant's name, worked out while compiling if it runs code.
             Expr::InPlace(c) if som_resolve::const_runs_code(ast, self.l.names, *c) => {
                 let init = self.l.init(*c, self.owner.clone());

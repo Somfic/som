@@ -1,0 +1,16 @@
+// expect: exit 42
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+/// A method in each branch: which one a `Row` has follows from its `N`.
+impl<N: usize> Row<N> {
+    @if N >= 2 {
+        pub fn pick(&self) -> i32 = .cells[1];
+    } else {
+        pub fn pick(&self) -> i32 = 0;
+    }
+}
+
+fn main() -> i32 = Row { cells: [1, 40] }.pick() + Row { cells: [2] }.pick() + 2;

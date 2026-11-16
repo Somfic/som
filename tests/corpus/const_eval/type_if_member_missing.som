@@ -1,0 +1,15 @@
+// expect: error MemberNotHere
+
+struct Pair<T> {
+    a: T,
+    b: T,
+}
+
+impl<T> Pair<T> {
+    @if T == i32 {
+        pub fn sum(&self) -> i32 = .a + .b;
+    }
+}
+
+/// A `Pair<bool>` has no `sum`.
+fn main() -> i32 = Pair { a: true, b: false }.sum();

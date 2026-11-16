@@ -1,0 +1,12 @@
+// expect: error Unproven
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+impl<N: usize> Row<N> {
+    @where N >= 1
+    pub fn first(&self) -> i32 = .cells[0];
+}
+
+fn main() -> i32 = Row { cells: [] }.first();

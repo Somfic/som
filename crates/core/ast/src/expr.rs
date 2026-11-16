@@ -3,6 +3,9 @@ use crate::{Id, Ident, Path, TypeExpr};
 pub enum Expr {
     /// Placeholder for code that failed to parse.
     Hole,
+    /// A type, compared with another in an `@if`'s condition: `f32` in `@if T == f32`. Only
+    /// there: a name, `T` or `Point`, is an [`Expr::Var`] the resolver finds a type for.
+    Type(Id<TypeExpr>),
     /// `@fail(message)`: stops, saying `message`. Gets no value, like `Unreachable`.
     Fail(Id<Expr>),
     /// `@const f(x)`: the value of what follows, worked out while compiling, where it's

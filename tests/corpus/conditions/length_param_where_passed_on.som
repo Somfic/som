@@ -1,0 +1,10 @@
+// expect: exit 7
+
+@where N >= 1
+fn first<N: usize>(a: &[i32; N]) -> i32 = a[0];
+
+/// A generic caller passes its own `M` on: its `@where` says what `first` needs.
+@where M >= 2
+fn first_of_two<M: usize>(a: &[i32; M]) -> i32 = first(a);
+
+fn main() -> i32 = first_of_two(&[7, 8]);

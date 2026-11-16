@@ -1,15 +1,23 @@
-// expect: error
+// expect: exit 42
 
 struct Row<N: usize> {
     cells: [i32; N],
 }
 
+/// The same member, `third`, for every `Row`: where there's a third cell, and where there isn't.
 impl<N: usize> Row<N> {
     @if N >= 3 {
         pub prop third = .cells[2];
+    } else @if N == 2 {
+        pub prop third = .cells[1] * 10;
     } else {
         pub prop third = 0;
     }
 }
 
-fn main() -> i32 = 0;
+fn main() -> i32 {
+    let three = Row { cells: [1, 2, 22] };
+    let two = Row { cells: [1, 2] };
+    let one = Row { cells: [5] };
+    return three.third + two.third + one.third;
+}

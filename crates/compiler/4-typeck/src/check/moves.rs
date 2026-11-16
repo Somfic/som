@@ -24,6 +24,7 @@ impl Checker<'_> {
             // Worked out on its own: it moves nothing of the function's.
             Expr::InPlace(_)
             | Expr::Hole
+            | Expr::Type(_)
             | Expr::Unreachable
             | Expr::Int(_)
             | Expr::Float(_)

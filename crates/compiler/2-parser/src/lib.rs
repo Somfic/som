@@ -49,6 +49,7 @@ impl<'a> Parser<'a> {
             errors: Vec::new(),
             in_recovery: false,
             in_condition: false,
+            in_settled: false,
             in_impl: false,
             in_params: false,
             foreign_depth: 0,
@@ -58,6 +59,7 @@ impl<'a> Parser<'a> {
             wheres: Vec::new(),
             listens: Vec::new(),
             when: Vec::new(),
+            when_frames: Vec::new(),
             where_doc: None,
             where_start: None,
             trait_supers: Vec::new(),
@@ -127,6 +129,8 @@ struct Parser<'a> {
     /// Parsing the condition of an `if` or `while`, where `name {` starts the body, not a
     /// constructor. Cleared again inside parentheses and blocks.
     in_condition: bool,
+    /// In an `@if`'s condition, where a type can be compared with another: `T == f32`.
+    in_settled: bool,
     /// In an `impl` or `trait` block, where methods can take `self`.
     in_impl: bool,
     /// In a function's parameter list, where `->` after a parameter means its `)` is missing.
@@ -148,6 +152,10 @@ struct Parser<'a> {
     /// The `@if`s among an impl block's members the parser is inside: what the members after
     /// them need to hold.
     when: Vec<som_ast::Id<som_ast::Expr>>,
+    /// For each `@if` among the members the parser is inside: how many of `when` it added
+    /// (`else @if` adds the earlier conditions, not holding), and whether the last of them is
+    /// its own condition, which an `else` after it turns around.
+    when_frames: Vec<(usize, bool)>,
     where_doc: Option<String>,
     where_start: Option<Span>,
     /// The traits the trait being read builds on, which its methods' `Self` implements.

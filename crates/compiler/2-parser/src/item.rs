@@ -330,39 +330,44 @@ impl Parser<'_> {
                     break;
                 }
                 self.advance();
-                self.when.pop();
-                if self.at(TokenKind::Else) {
-                    self.error_at(
-                        self.current_span(),
-                        msg!["an ", code("@if"), " among an impl block's members has no ", code("else"), " yet"],
-                        msg!["write a second ", code("@if"), " with the opposite condition"],
-                    );
-                    // Past it, and what's in it.
-                    self.advance();
-                    let mut depth = 0usize;
-                    while !self.at_eof() {
-                        if self.at(TokenKind::OpenBrace) {
-                            depth += 1;
-                        } else if self.at(TokenKind::CloseBrace) {
-                            if depth <= 1 {
-                                if depth == 1 {
-                                    self.advance();
-                                }
-                                break;
-                            }
-                            depth -= 1;
-                        }
-                        self.advance();
-                    }
+                let (count, conditional) = self.when_frames.pop().unwrap_or((0, false));
+                let kept = self.when.len() - count;
+                let mut frame: Vec<_> = self.when.drain(kept..).collect();
+                if !self.at(TokenKind::Else) {
+                    continue;
                 }
+                let else_span = self.current_span();
+                self.advance();
+                if !conditional {
+                    self.error_at(
+                        else_span,
+                        msg!["an ", code("else"), " after an ", code("else")],
+                        msg!["nothing is left for it"],
+                    );
+                }
+                // `else`: where the conditions before it don't hold.
+                if conditional && let Some(last) = frame.pop() {
+                    let span = self.ast.exprs.span(last).clone();
+                    frame.push(self.ast.exprs.alloc(som_ast::Expr::Not(last), span));
+                }
+                // `else @if M >= 3 {`: and where this one does.
+                let conditional = self.at(TokenKind::Builtin) && &*self.peek_token().text == "@if";
+                if conditional {
+                    self.advance();
+                    frame.push(self.parse_settled_condition()?);
+                }
+                self.expect(TokenKind::OpenBrace, "`{` and the members")?;
+                self.when_frames.push((frame.len(), conditional));
+                self.when.extend(frame);
                 continue;
             }
             // `@if N >= 3 { pub prop z = … }`: members only some of the types have.
             if self.at(TokenKind::Builtin) && &*self.peek_token().text == "@if" {
                 self.advance();
-                let condition = self.parse_condition()?;
+                let condition = self.parse_settled_condition()?;
                 self.expect(TokenKind::OpenBrace, "`{` and the members")?;
                 self.when.push(condition);
+                self.when_frames.push((1, true));
                 continue;
             }
             // `@for i in 0..3 { … }` among the methods: each copy written out.

@@ -565,9 +565,16 @@ impl Names {
         name: &str,
         block: usize,
         prop: DefId,
+        conditional: impl Fn(&DefKind) -> bool,
     ) -> Option<DefId> {
+        let defs = &self.defs;
+        let conditional = |def: DefId| conditional(&defs[def].kind);
         let props = self.props.entry((owner, name.into())).or_default();
-        if let Some(&(_, previous)) = props.iter().find(|&&(b, _)| b == block) {
+        // Two in one block, unless each is only there for some of its types (`@if N >= 3 { … }
+        // else { … }`): which is there is worked out where it's used.
+        if let Some(&(_, previous)) = (props.iter())
+            .find(|&&(b, other)| b == block && !(conditional(other) && conditional(prop)))
+        {
             return Some(previous);
         }
         props.push((block, prop));

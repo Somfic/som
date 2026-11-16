@@ -1,0 +1,14 @@
+// expect: exit 42
+
+/// `@if T == f32`: checked for each instance, where `T` is known, so `x` is an `f32` in it.
+fn double<T>(x: T) -> i32 {
+    @if T == f32 {
+        return (x * 2.0) as i32;
+    } else @if T == i32 {
+        return x * 2;
+    } else {
+        return 0;
+    }
+}
+
+fn main() -> i32 = double(11.0 as f32) + double(10) + double(true);

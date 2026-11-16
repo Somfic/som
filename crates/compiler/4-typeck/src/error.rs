@@ -180,6 +180,9 @@ pub enum TypeError {
     /// `@for f in T` where `T` isn't a struct: a generic function's type parameter, used with
     /// one that isn't (`i32`), or a name that's neither.
     ReflectNotStruct { name: String, span: Span },
+    /// A type where a value goes in an `@if`'s condition, not compared with another type:
+    /// `@if T`, or `@if T == 3`.
+    TypeNotCompared { span: Span },
     /// `@on fail fn save()`: a listener takes a `&Failure`, and gives nothing back.
     ListenerSignature { span: Span },
     /// `@const N = len();` where what `len` runs needs `N`'s value to be checked: a type
@@ -2018,6 +2021,16 @@ impl TypeError {
                     code(format!("@if {condition} {{ … }}")),
                     ", which is checked for each instance"
                 ]),
+            TypeError::TypeNotCompared { span } => {
+                Diagnostic::error("a type can only be compared with another type")
+                    .with_label(Label::primary(span.clone(), "a type, where a value goes"))
+                    .with_hint(msg![
+                        "an ",
+                        code("@if"),
+                        " can ask which type it is: ",
+                        code("@if T == f32 { … }")
+                    ])
+            }
             TypeError::ReflectNotStruct { name, span } => {
                 Diagnostic::error(msg![code(name), " isn't a struct to go through the fields of"])
                     .with_label(Label::primary(span.clone(), "not a struct here"))

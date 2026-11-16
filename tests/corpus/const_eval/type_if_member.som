@@ -1,0 +1,17 @@
+// expect: exit 42
+
+struct Pair<T> {
+    a: T,
+    b: T,
+}
+
+/// `sum` only for pairs of numbers it can add up as an `i32`.
+impl<T> Pair<T> {
+    @if T == i32 {
+        pub fn sum(&self) -> i32 = .a + .b;
+    } else @if T == f32 {
+        pub fn sum(&self) -> i32 = (.a + .b) as i32;
+    }
+}
+
+fn main() -> i32 = Pair { a: 10, b: 20 }.sum() + Pair { a: 5.5 as f32, b: 6.5 as f32 }.sum();

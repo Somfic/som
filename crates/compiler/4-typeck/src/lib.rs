@@ -103,6 +103,165 @@ impl ConstValues {
     }
 }
 
+/// Whether member `func`'s `@if`s (`@if N >= 3 { prop z … }`) hold on a value of type
+/// `receiver`, once the program is checked: for the editor, which only offers the members a
+/// value has. `None` where that isn't known, on a generic type's value.
+pub fn member_holds(
+    ast: &Ast,
+    names: &Names,
+    typed: &Typed,
+    func: Id<Func>,
+    receiver: TypeId,
+) -> Option<bool> {
+    let when = &ast.funcs[func].when;
+    if when.is_empty() {
+        return Some(true);
+    }
+    // The block's parameters, as they are in `receiver`: `N` is 3 in a `Row<3>`.
+    let mut matched: HashMap<DefId, TypeId> = HashMap::new();
+    if let Some(index) = names.impl_of(func)
+        && let Some(target) = typed.impls[index].target
+    {
+        fn walk(
+            typed: &Typed,
+            pattern: TypeId,
+            found: TypeId,
+            params: &[DefId],
+            matched: &mut HashMap<DefId, TypeId>,
+        ) {
+            if let Ty::Param(p) = typed.ty(pattern)
+                && params.contains(p)
+            {
+                matched.insert(*p, found);
+                return;
+            }
+            for (a, b) in typed.ty(pattern).zip_children(typed.ty(found)).unwrap_or_default() {
+                walk(typed, a, b, params, matched);
+            }
+        }
+        let found = match *typed.ty(receiver) {
+            Ty::Ref { to, .. } => to,
+            _ => receiver,
+        };
+        walk(typed, target, found, &typed.impls[index].params, &mut matched);
+    }
+    let checker = MemberConditions {
+        ast,
+        names,
+        typed,
+        matched,
+    };
+    let mut holds = Some(true);
+    for &condition in when {
+        match checker.holds(condition) {
+            Some(true) => {}
+            Some(false) => return Some(false),
+            None => holds = None,
+        }
+    }
+    holds
+}
+
+/// Works out a member's conditions with its block's parameters `matched` to a type's.
+struct MemberConditions<'a> {
+    ast: &'a Ast,
+    names: &'a Names,
+    typed: &'a Typed,
+    matched: HashMap<DefId, TypeId>,
+}
+
+/// One side of `T == f32`.
+#[derive(PartialEq)]
+enum Operand {
+    Type(TypeId),
+    /// A struct named without its type arguments: `Pair`, any `Pair`.
+    Struct(DefId),
+}
+
+impl MemberConditions<'_> {
+    fn holds(&self, expr: Id<Expr>) -> Option<bool> {
+        match &self.ast.exprs[expr] {
+            Expr::Bool(b) => Some(*b),
+            Expr::Not(inner) => self.holds(*inner).map(|b| !b),
+            Expr::Binary { op, lhs, rhs } => match op {
+                BinOp::And => Some(self.holds(*lhs)? && self.holds(*rhs)?),
+                BinOp::Or => Some(self.holds(*lhs)? || self.holds(*rhs)?),
+                BinOp::Equals | BinOp::NotEquals
+                    if let (Some(a), Some(b)) = (self.operand(*lhs), self.operand(*rhs)) =>
+                {
+                    let same = match (a, b) {
+                        (Operand::Struct(x), Operand::Type(t))
+                        | (Operand::Type(t), Operand::Struct(x)) => {
+                            matches!(self.typed.ty(t), Ty::Struct(y, _) if *y == x)
+                        }
+                        (a, b) => a == b,
+                    };
+                    Some(same == (*op == BinOp::Equals))
+                }
+                _ => {
+                    let (a, b) = (self.number(*lhs)?, self.number(*rhs)?);
+                    match op {
+                        BinOp::Equals => Some(a == b),
+                        BinOp::NotEquals => Some(a != b),
+                        BinOp::LessThan => Some(a < b),
+                        BinOp::GreaterThan => Some(a > b),
+                        BinOp::LessThanOrEqual => Some(a <= b),
+                        BinOp::GreaterThanOrEqual => Some(a >= b),
+                        _ => None,
+                    }
+                }
+            },
+            _ => None,
+        }
+    }
+
+    fn number(&self, expr: Id<Expr>) -> Option<i128> {
+        if let Some(n) = self.typed.const_number(self.ast, self.names, expr) {
+            return Some(n);
+        }
+        match &self.ast.exprs[expr] {
+            Expr::Var(_) => match self.typed.ty(*self.matched.get(&self.names.expr(expr)?)?) {
+                Ty::Value(Value::Int(n)) => Some(*n as i128),
+                _ => None,
+            },
+            Expr::Binary { op, lhs, rhs } => {
+                let (a, b) = (self.number(*lhs)?, self.number(*rhs)?);
+                match op {
+                    BinOp::Add => a.checked_add(b),
+                    BinOp::Subtract => a.checked_sub(b),
+                    BinOp::Multiply => a.checked_mul(b),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    /// The type `expr` names, if it's one known here.
+    fn operand(&self, expr: Id<Expr>) -> Option<Operand> {
+        let ty = match &self.ast.exprs[expr] {
+            Expr::Type(_) => self.typed.expr(expr),
+            Expr::Var(_) => {
+                let def = self.names.expr(expr)?;
+                match self.names.def(def).kind {
+                    DefKind::Struct(_) => return Some(Operand::Struct(def)),
+                    DefKind::ImplParam { value: false, .. } => *self.matched.get(&def)?,
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        };
+        self.settled(ty).then_some(Operand::Type(ty))
+    }
+
+    fn settled(&self, ty: TypeId) -> bool {
+        match self.typed.ty(ty) {
+            Ty::Var(_) | Ty::Param(_) | Ty::Error => false,
+            t => t.children().into_iter().all(|c| self.settled(c)),
+        }
+    }
+}
+
 /// The integer a constant's value works out to: `W * H` of `@const W = 60;` and
 /// `@const H = 20;` is 1200. `None` if it isn't one, or doesn't fit.
 pub fn const_number(ast: &Ast, names: &Names, expr: Id<Expr>) -> Option<i128> {

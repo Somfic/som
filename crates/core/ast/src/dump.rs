@@ -330,6 +330,7 @@ impl Dumper<'_> {
     fn expr(&mut self, id: Id<Expr>) {
         match &self.ast.exprs[id] {
             Expr::Hole => self.line("hole"),
+            Expr::Type(_) => self.line("type"),
             Expr::Fail(message) => self.node("@fail", |d| d.expr(*message)),
             Expr::InPlace(c) => {
                 let value = self.ast.consts[*c].value;

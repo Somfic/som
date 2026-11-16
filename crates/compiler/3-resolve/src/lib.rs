@@ -39,6 +39,7 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         module: 0,
         scopes: Vec::new(),
             const_depth: None,
+            settled_condition: false,
         type_params: Vec::new(),
         block_types: Vec::new(),
         through_alias: std::cell::Cell::new(None),
@@ -88,6 +89,8 @@ impl Expect {
 
 struct Resolver<'a> {
     ast: &'a Ast,
+    /// Resolving an `@if`'s condition, where a type can be compared with another: `T == f32`.
+    settled_condition: bool,
     names: Names,
     errors: Vec<ResolveError>,
     /// Module name → index into `ast.modules`.
@@ -497,7 +500,11 @@ impl<'a> Resolver<'a> {
             .names
             .impl_of(prop)
             .expect("properties are in impl blocks");
-        if let Some(previous) = self.names.add_prop(owner, &name.name, block, def) {
+        let conditional = |kind: &DefKind| match *kind {
+            DefKind::Func(f) => !ast.funcs[f].when.is_empty(),
+            _ => false,
+        };
+        if let Some(previous) = self.names.add_prop(owner, &name.name, block, def, conditional) {
             self.errors.push(ResolveError::DuplicateDefinition {
                 name: name.name.to_string(),
                 span: name.span.clone(),
@@ -658,6 +665,21 @@ impl<'a> Resolver<'a> {
         for &ty in written {
             self.resolve_type(ty);
         }
+        // `@if N >= 3 { … }` among the members: in terms of the block's parameters, once for
+        // all the members in it.
+        let mut conditions: Vec<Id<Expr>> = Vec::new();
+        for &method in &block.methods {
+            for &condition in &self.ast.funcs[method].when {
+                if !conditions.contains(&condition) {
+                    conditions.push(condition);
+                }
+            }
+        }
+        let outer = std::mem::replace(&mut self.settled_condition, true);
+        for condition in conditions {
+            self.resolve_expr(condition);
+        }
+        self.settled_condition = outer;
         self.type_params.clear();
 
         let self_type = self.names.define(
@@ -796,9 +818,6 @@ impl<'a> Resolver<'a> {
             self.resolve_expr(clause.condition);
         }
         // `@if N >= 3` around it, among an impl block's members: in terms of its parameters.
-        for &condition in &func.when {
-            self.resolve_expr(condition);
-        }
         if let Some(body) = func.body {
             self.resolve_expr(body);
         }
@@ -931,7 +950,10 @@ impl<'a> Resolver<'a> {
                 then,
                 otherwise,
             } => {
+                let settled = self.ast.settled.contains(&id);
+                let outer = std::mem::replace(&mut self.settled_condition, settled);
                 self.resolve_expr(*condition);
+                self.settled_condition = outer;
                 self.resolve_stmts(then);
                 if let Some(otherwise) = otherwise {
                     self.resolve_stmts(otherwise);
@@ -992,6 +1014,25 @@ impl<'a> Resolver<'a> {
             | Expr::Bool(_)
             | Expr::Str(_)
             | Expr::None => {}
+            Expr::Type(ty) => self.resolve_type(*ty),
+            // `@if T == Point`: a type compared with another, where nothing else is named so.
+            Expr::Binary {
+                op: som_ast::BinOp::Equals | som_ast::BinOp::NotEquals,
+                lhs,
+                rhs,
+            } if self.settled_condition => {
+                for operand in [*lhs, *rhs] {
+                    if let Expr::Var(path) = &self.ast.exprs[operand]
+                        && let [only] = &path.segments[..]
+                        && self.lookup(&only.name, Expect::Value).is_none()
+                        && let Some(def) = self.lookup(&only.name, Expect::Type)
+                    {
+                        self.names.set_expr(operand, def);
+                    } else {
+                        self.resolve_expr(operand);
+                    }
+                }
+            }
             // `usize::MAX`: an integer type's limit, which isn't defined anywhere.
             Expr::Var(path) if path.int_limit().is_some() => {}
             Expr::Var(path) => self.bind_expr(id, path, Expect::Value),
@@ -1907,6 +1948,7 @@ pub fn const_runs_code(ast: &Ast, names: &Names, c: Id<som_ast::Const>) -> bool 
     ) -> bool {
         let plain = match &ast.exprs[expr] {
             Expr::Hole
+            | Expr::Type(_)
             | Expr::Int(_)
             | Expr::Float(_)
             | Expr::Bool(_)
