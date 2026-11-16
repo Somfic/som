@@ -3,6 +3,11 @@ use crate::{Id, Ident, Path, TypeExpr};
 pub enum Expr {
     /// Placeholder for code that failed to parse.
     Hole,
+    /// `@fail(message)`: stops, saying `message`. Gets no value, like `Unreachable`.
+    Fail(Id<Expr>),
+    /// `@const f(x)`: the value of what follows, worked out while compiling, where it's
+    /// written. It's a constant with no name ([`crate::Const::in_place`]).
+    InPlace(Id<crate::Const>),
     Int(i128),
     Float(f64),
     Bool(bool),

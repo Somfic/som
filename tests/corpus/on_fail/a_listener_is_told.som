@@ -1,0 +1,19 @@
+// expect: exit 7
+
+use som::io;
+
+/// The program's own `@on fail` function is told what failed and where, instead of the
+/// standard library's printer. Here it leaves with an exit code of its own.
+@on fail
+fn quit(failure: &Failure) {
+    let told = failure.message == "boom" && failure.at.line == 16 && !failure.unreachable;
+    io::exit(7 if told else 1);
+}
+
+fn main() -> i32 {
+    let n = 3;
+    if n > 2 {
+        @fail("boom");
+    }
+    0
+}

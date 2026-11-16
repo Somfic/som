@@ -1,0 +1,8 @@
+// expect: error ConstFailed
+
+@const SIZE = 12;
+
+/// A check run while compiling: `assert` from the standard library, called with `@`.
+@assert(SIZE % 8 == 0, "SIZE must be a multiple of 8, but it's {SIZE}");
+
+fn main() -> i32 = SIZE;

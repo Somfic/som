@@ -1,0 +1,15 @@
+// expect: exit 42
+
+extern "c";
+
+@const SIZE = 16;
+@assert(SIZE % 8 == 0, "SIZE must be a multiple of 8");
+
+fn half(n: i32) -> i32 {
+    // In a function, `@` checks it while compiling; without, when it runs.
+    @assert(SIZE > 0, "SIZE can't be 0");
+    assert(n % 2 == 0, "half of an odd number");
+    n / 2
+}
+
+fn main() -> i32 = half(84);

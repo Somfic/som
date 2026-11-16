@@ -1,0 +1,6 @@
+// expect: error UnknownEvent
+
+@on start
+fn hello(failure: &Failure) {}
+
+fn main() -> i32 = 0;

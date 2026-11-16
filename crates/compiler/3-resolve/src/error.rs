@@ -68,6 +68,10 @@ pub enum ResolveError {
     },
     /// `@const DOUBLE = n * 2;` in a function: a constant's value can't name its locals.
     ConstNotKnown { span: Span },
+    /// `@on start`: an event there isn't. `fail` is the one there is.
+    UnknownEvent { name: String, span: Span },
+    /// `@on fail` on a method: a listener is a function of its own.
+    ListenerIsMethod { span: Span },
     /// `@const A = B; const B = A;`: a constant made of itself.
     ConstCycle { name: String, span: Span },
     /// `break x;` or `continue x;` where `x` isn't a `for` loop's variable.
@@ -170,6 +174,16 @@ impl ResolveError {
                 return Diagnostic::error("a constant's value has to be known while compiling")
                     .with_label(Label::primary(span.clone(), "only known when the program runs"))
                     .with_hint("it's worked out while compiling, before the function runs: its parameters and variables don't have values yet");
+            }
+            ResolveError::UnknownEvent { name, span } => {
+                return Diagnostic::error(msg!["there's no event ", code(name)])
+                    .with_label(Label::primary(span.clone(), "not an event"))
+                    .with_hint(msg![code("@on fail"), ": called when the program fails"]);
+            }
+            ResolveError::ListenerIsMethod { span } => {
+                return Diagnostic::error(msg![code("@on fail"), " is for a function of its own"])
+                    .with_label(Label::primary(span.clone(), "a method"))
+                    .with_hint("move it out of the impl block");
             }
             ResolveError::ConstCycle { name, span } => {
                 return Diagnostic::error(msg![

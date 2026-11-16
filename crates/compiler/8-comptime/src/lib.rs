@@ -23,7 +23,8 @@ use std::collections::HashMap;
 /// Works out every initializer the program uses, and puts their values in its place. If
 /// one can't be worked out, says why, and leaves the program as it was.
 pub fn run(mir: &mut Mir) -> Vec<ComptimeError> {
-    let mut wanted = Vec::new();
+    // `@const assert(…);`, each run for what it checks; then each constant something uses.
+    let mut wanted = mir.checks.clone();
     for func in mir.funcs.iter() {
         if let Some(body) = &func.body {
             for op in operands(body) {
@@ -100,6 +101,12 @@ impl State<'_> {
         };
         let result = machine.run(init);
         let trace = machine.trace();
+        // Said where the program goes into the standard library, not where in it.
+        let result = result.map_err(|stop| match stop {
+            Stop::Report(fault, span) => Stop::Report(fault, machine.blame(span)),
+            stop => stop,
+        });
+        let trace = trace[machine.std_frames()..].to_vec();
         // Its value, while the memory it might point to is still there.
         let result = result.map(|value| machine.bake(&value, mir.funcs[init].ret));
         self.running.pop();
@@ -204,6 +211,8 @@ enum Fault {
     Cycle(String),
     NotSupported(&'static str),
     OutOfBounds,
+    /// `@fail`, with its message.
+    Failed(String),
 }
 
 impl Fault {
@@ -224,6 +233,11 @@ impl Fault {
             Fault::Cycle(name) => ComptimeError::ConstCycle { name, span, trace },
             Fault::NotSupported(what) => ComptimeError::ConstNotSupported { what, span, trace },
             Fault::OutOfBounds => ComptimeError::ConstOutOfBounds { span, trace },
+            Fault::Failed(message) => ComptimeError::ConstFailed {
+                message,
+                span,
+                trace,
+            },
         }
     }
 }
@@ -297,7 +311,10 @@ impl Machine<'_, '_> {
                 call: true,
             })
             .collect();
-        if let Some(first) = self.frames.first() {
+        // One with no name is the line it's on: nothing to add.
+        if let Some(first) = self.frames.first()
+            && self.mir().funcs[first.func].name != "@const"
+        {
             trace.push(Working {
                 name: const_name(self.mir(), first.func),
                 span: first.call_span.clone(),
@@ -305,6 +322,23 @@ impl Machine<'_, '_> {
             });
         }
         trace
+    }
+
+    /// How many of the innermost calls are the standard library's: `som::assert` failing is
+    /// said where it's called.
+    fn std_frames(&self) -> usize {
+        (self.frames.iter().skip(1).rev())
+            .take_while(|frame| self.mir().funcs[frame.func].name.starts_with("som::"))
+            .count()
+    }
+
+    /// Where to say running stopped, given it stopped at `span`: there, or where the program
+    /// called into the standard library.
+    fn blame(&self, span: Span) -> Span {
+        match self.std_frames() {
+            0 => span,
+            n => self.frames[self.frames.len() - n].call_span.clone(),
+        }
     }
 
     /// Runs `init` to its end: the value it gives.
@@ -330,11 +364,17 @@ impl Machine<'_, '_> {
             }
             if let Some(statement) = block.stmts.get(stmt) {
                 self.frames[top].stmt += 1;
-                // `@unreachable`'s call, which says where it is, then stops.
-                if let StatementKind::Assign(_, Rvalue::Call { func, .. }) = &statement.kind
-                    && Some(*func) == mir.unreachable
+                // `@fail` or `@unreachable`: stops here, an error while compiling. What the
+                // program's `@on fail` functions would do only happens when it runs.
+                if let StatementKind::Assign(_, Rvalue::Call { func, args }) = &statement.kind
+                    && Some(*func) == mir.fail
                 {
-                    return Err(Stop::Report(Fault::Unreachable, statement.span.clone()));
+                    let span = &statement.span;
+                    let failure = self.operand(&args[0], span)?;
+                    return Err(Stop::Report(
+                        self.failure(&failure, mir.funcs[*func].params[0], span)?,
+                        span.clone(),
+                    ));
                 }
                 self.statement(statement)?;
                 continue;
@@ -654,6 +694,43 @@ impl Machine<'_, '_> {
                 _ => return unsupported("text that isn't bytes", span),
             }
         }
+    }
+
+    /// What a `Failure` value says failed: `@unreachable`, or `@fail`'s message.
+    fn failure(&self, failure: &Value, ty: TypeId, span: &Span) -> Result<Fault, Stop> {
+        let (Value::Agg(parts), Ty::Struct(def, args)) = (failure, self.mir().types.get(ty)) else {
+            return unsupported("this failure", span);
+        };
+        let fields = &self.mir().struct_def(*def, args).fields;
+        let field =
+            |name: &str| (fields.iter().position(|(n, _)| n == name)).and_then(|i| parts.get(i));
+        if let Some(Value::Bool(true)) = field("unreachable") {
+            return Ok(Fault::Unreachable);
+        }
+        match field("message") {
+            Some(message) => Ok(Fault::Failed(self.string(message, span)?)),
+            None => unsupported("this failure", span),
+        }
+    }
+
+    /// The text a `string` value holds.
+    fn string(&self, value: &Value, span: &Span) -> Result<String, Stop> {
+        let Value::Agg(parts) = value else {
+            return unsupported("this text", span);
+        };
+        let Some(Value::Ref(view)) = parts.first() else {
+            return unsupported("this text", span);
+        };
+        let Root::Heap { alloc, offset } = view.root else {
+            return unsupported("this text", span);
+        };
+        // The block: its count, its length, then its bytes.
+        let block = self.data(view, 2 * POINTER, span)?;
+        let mut word = [0u8; 16];
+        word[..POINTER].copy_from_slice(&block[POINTER..]);
+        let len = u128::from_le_bytes(word) as usize;
+        let bytes = self.data(&Loc::heap(alloc, offset + 2 * POINTER), len, span)?;
+        String::from_utf8(bytes).or_else(|_| unsupported("text that isn't UTF-8", span))
     }
 
     /// `n` bytes from `loc`, as data.
@@ -1180,22 +1257,11 @@ impl Machine<'_, '_> {
             Some(Err(_)) => Err(("text that isn't UTF-8", Vec::new())),
             None => Err(memory()),
         };
-        if ty == types.text
-            && matches!(types.get(ty), Ty::Struct(..))
-            && let Value::Agg(parts) = value
-            && let Some(Value::Ref(view)) = parts.first()
-        {
-            // The block: its count, its length, then its bytes.
-            let Root::Heap { alloc, offset } = view.root else {
-                return Err(memory());
+        if ty == types.text && matches!(types.get(ty), Ty::Struct(..)) {
+            return match self.string(value, span) {
+                Ok(text) => Ok(ConstKind::Str(text)),
+                Err(_) => Err(memory()),
             };
-            let bytes = self.data(view, 2 * POINTER, span).and_then(|block| {
-                let mut word = [0u8; 16];
-                word[..POINTER].copy_from_slice(&block[POINTER..]);
-                let len = u128::from_le_bytes(word) as usize;
-                self.data(&Loc::heap(alloc, offset + 2 * POINTER), len, span)
-            });
-            return literal(bytes);
         }
         match (value, types.get(ty)) {
             (Value::Ref(loc), Ty::CStr) => return literal(self.c_text(loc, span)),

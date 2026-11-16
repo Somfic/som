@@ -1,0 +1,6 @@
+// expect: error ListenerSignature
+
+@on fail
+fn save(code: i32) {}
+
+fn main() -> i32 = 0;

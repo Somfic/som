@@ -299,8 +299,11 @@ impl<'a> Checker<'a> {
             }
         }
         self.current_func = None;
-        for (id, _) in ast.consts.iter() {
-            self.check_const(id);
+        // Each with a name: one written in place is checked there, with what's expected of it.
+        for (id, c) in ast.consts.iter() {
+            if !c.in_place {
+                self.check_const(id);
+            }
         }
         for (id, func) in ast.funcs.iter() {
             if func.body.is_some() {
@@ -308,6 +311,8 @@ impl<'a> Checker<'a> {
                 self.settle(func.name.span.clone());
             }
         }
+        // Once bodies are checked: what a function gives can be what its body is.
+        self.check_listeners();
         self.current_func = None;
 
         // After the bodies, which decide unwritten return types and what results are used as.
@@ -405,6 +410,27 @@ impl<'a> Checker<'a> {
             self.expected_here,
             self.omitted_args_ok,
         ) = outer;
+    }
+
+    /// Each `@on fail` function is called with a `&Failure`, and gives nothing back.
+    fn check_listeners(&mut self) {
+        let failure = self.names.lang_struct(som_resolve::LangStruct::Failure);
+        for &id in self.names.fail_listeners() {
+            let sig = &self.sigs[id.id];
+            let takes = matches!(&sig.params[..], [param] if matches!(
+                self.u.table.get(*param),
+                Ty::Ref { mutable: false, to }
+                    if matches!(self.u.table.get(*to), Ty::Struct(def, _) if Some(*def) == failure)
+            ));
+            let ret = self.u.shallow(sig.ret);
+            let gives = matches!(self.u.table.get(ret), Ty::Unit);
+            let func = &self.ast.funcs[id];
+            if !takes || !gives || !func.generics.is_empty() {
+                self.errors.push(TypeError::ListenerSignature {
+                    span: func.name.span.clone(),
+                });
+            }
+        }
     }
 
     /// Checks constant `id`'s value, once: in order, or sooner, when a value naming it needs
@@ -2133,7 +2159,7 @@ impl<'a> Checker<'a> {
     /// `match` all of whose arms do.
     fn expr_leaves(&self, expr: Id<Expr>) -> bool {
         match &self.ast.exprs[expr] {
-            Expr::Unreachable => true,
+            Expr::Unreachable | Expr::Fail(_) => true,
             Expr::Block { stmts, value: None } => self.leaves(stmts),
             Expr::Block {
                 stmts,
@@ -2614,10 +2640,25 @@ impl<'a> Checker<'a> {
 
         match &self.ast.exprs[id] {
             Expr::Hole => error,
+            // `@const f(x)`: its value, of whatever's expected here. It names no locals, so
+            // it's checked here like anything else.
+            Expr::InPlace(c) => {
+                self.checked_consts.insert(*c);
+                self.expected = self.expected_here.take();
+                self.infer(self.ast.consts[*c].value)
+            }
             // Never gets a value: it's whatever's expected here, or if nothing decides,
             // `()` once checking is done.
             Expr::Unreachable => {
                 let ty = (self.expected_here.take()).unwrap_or_else(|| self.u.fresh(VarKind::Any));
+                self.unreachables.push(ty);
+                ty
+            }
+            // `@fail("…")`: like `@unreachable`, of whatever's expected; its message is text.
+            Expr::Fail(message) => {
+                let ty = (self.expected_here.take()).unwrap_or_else(|| self.u.fresh(VarKind::Any));
+                let text = self.u.table.text;
+                self.expect(*message, text, None);
                 self.unreachables.push(ty);
                 ty
             }
@@ -5716,7 +5757,10 @@ impl Checker<'_> {
                     }
                 }
             }
-            Expr::Hole
+            Expr::Fail(message) => self.forget_changed_by(*message, false),
+            // Its value changes nothing the function has.
+            Expr::InPlace(_)
+            | Expr::Hole
             | Expr::Unreachable
             | Expr::Int(_)
             | Expr::Float(_)

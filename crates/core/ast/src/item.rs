@@ -23,6 +23,20 @@ pub struct Const {
     pub name: Ident,
     pub ty: Option<Id<TypeExpr>>,
     pub value: Id<Expr>,
+    /// `@const f(x)` written as an expression, with no name of its own: its value is used
+    /// where it's written ([`Expr::InPlace`]), which gives its type.
+    pub in_place: bool,
+}
+
+impl Const {
+    /// The name of one that has none: written in place, or `@const assert(…);` on its own.
+    pub const UNNAMED: &'static str = "@const";
+
+    /// Whether it has a name to be used by: not one written in place, or run for what it
+    /// checks.
+    pub fn is_named(&self) -> bool {
+        &*self.name.name != Self::UNNAMED
+    }
 }
 
 /// `type Vector3 = Vector<3, f32>;`: another name for a type, which stands for it wherever
@@ -150,6 +164,8 @@ pub struct Func {
     /// `@where i < self.len` above it: what has to be known to hold wherever it's called,
     /// which its body can rely on.
     pub requires: Vec<Where>,
+    /// `@on fail` above it: the events it's called on.
+    pub listens: Vec<Ident>,
 }
 
 /// `@where i < self.len, "a position in it"`: a condition on a function's parameters, with

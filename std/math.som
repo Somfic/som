@@ -46,7 +46,7 @@ impl f32 {
 
 impl f64 {
     pub @const PI = c::M_PI;
-    pub @const HALF_PI = c::M_PI_2;
+    pub @const HALF_PI = PI / 2.0;
 
     pub fn pow(self, power: f64) -> f64 {
         c::pow(self, power)

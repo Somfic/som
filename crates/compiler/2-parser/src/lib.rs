@@ -44,6 +44,7 @@ pub fn parse_file(source: Arc<Source>, ast: &mut Ast, module: usize) -> Vec<Pars
         visibility: som_ast::Visibility::Private,
         in_impl_target: false,
         wheres: Vec::new(),
+        listens: Vec::new(),
         where_doc: None,
         where_start: None,
         trait_supers: Vec::new(),
@@ -132,6 +133,8 @@ struct Parser<'a> {
     /// `@where` conditions read, for the function after them, with the comment above them
     /// and where they start.
     wheres: Vec<som_ast::Where>,
+    /// `@on` events read, for the function after them.
+    listens: Vec<som_ast::Ident>,
     where_doc: Option<String>,
     where_start: Option<Span>,
     /// The traits the trait being read builds on, which its methods' `Self` implements.

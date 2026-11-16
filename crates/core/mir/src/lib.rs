@@ -24,9 +24,12 @@ pub struct Mir {
     pub structs: Vec<StructDef>,
     /// The types that implement `Drop` themselves: what's in them can't be moved out.
     pub drop_types: std::collections::HashSet<TypeId>,
-    /// The standard library's function `@unreachable` calls, if anything reaches one: it says
-    /// where, then stops the program.
-    pub unreachable: Option<FuncId>,
+    /// What `@fail` and `@unreachable` call with a `Failure`, if anything does: it tells the
+    /// program's `@on fail` functions, then stops the program.
+    pub fail: Option<FuncId>,
+    /// The initializers of `@const assert(…);` and the like: run while compiling for what
+    /// they check, their values not used.
+    pub checks: Vec<FuncId>,
     struct_index: HashMap<(DefId, Vec<TypeId>), usize>,
 }
 
@@ -37,7 +40,8 @@ impl Mir {
             funcs: Arena::new(),
             structs: Vec::new(),
             drop_types: std::collections::HashSet::new(),
-            unreachable: None,
+            fail: None,
+            checks: Vec::new(),
             struct_index: HashMap::new(),
         }
     }

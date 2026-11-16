@@ -9,19 +9,31 @@ use som_lexer::TokenKind;
 use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
 
 impl Parser<'_> {
-    /// At `@where`, a condition on the function below.
+    /// At `@where`, a condition on the function below, or `@on`, an event it's called on.
     pub(crate) fn at_where(&self) -> bool {
-        self.at(TokenKind::Builtin) && &*self.peek_token().text == "@where"
+        self.at(TokenKind::Builtin) && matches!(&*self.peek_token().text, "@where" | "@on")
     }
 
     /// `@where i < self.len`, each line of them: kept for the function after them, with the
     /// `///` comment above them.
     fn parse_wheres(&mut self) {
-        if self.wheres.is_empty() {
+        if self.wheres.is_empty() && self.listens.is_empty() {
             self.where_doc = self.doc_comment();
             self.where_start = Some(self.current_span());
         }
         while self.at_where() {
+            // `@on fail`: the event's name.
+            if &*self.peek_token().text == "@on" {
+                self.advance();
+                match self.parse_ident("an event, like `fail`") {
+                    Some(event) => self.listens.push(event),
+                    None => {
+                        self.recover(RecoveryLevel::Member);
+                        return;
+                    }
+                }
+                continue;
+            }
             self.advance();
             match self.parse_expr() {
                 Some(condition) => {
@@ -55,24 +67,27 @@ impl Parser<'_> {
                 .take()
                 .unwrap_or_else(|| self.current_span());
             self.wheres.clear();
+            self.listens.clear();
             self.where_doc = None;
             self.error_at(
                 span,
-                msg![code("@where"), " is for a function"],
+                msg![code("@where"), " and ", code("@on"), " are for a function"],
                 msg!["put it on the line above a ", code("fn")],
             );
         }
     }
 
-    /// The `///` comment and `@where` conditions of the function starting here.
-    fn take_wheres(&mut self) -> (Option<String>, Vec<som_ast::Where>) {
+    /// The `///` comment, `@where` conditions and `@on` events of the function starting here.
+    fn take_wheres(&mut self) -> (Option<String>, Vec<som_ast::Where>, Vec<Ident>) {
         let requires = std::mem::take(&mut self.wheres);
+        let listens = std::mem::take(&mut self.listens);
         self.where_start = None;
-        match self.where_doc.take() {
-            Some(doc) => (Some(doc), requires),
-            None if !requires.is_empty() => (None, requires),
-            None => (self.doc_comment(), requires),
-        }
+        let doc = match self.where_doc.take() {
+            Some(doc) => Some(doc),
+            None if !requires.is_empty() || !listens.is_empty() => None,
+            None => self.doc_comment(),
+        };
+        (doc, requires, listens)
     }
 
     pub(crate) fn at_item(&self) -> bool {
@@ -97,6 +112,7 @@ impl Parser<'_> {
                     | TokenKind::Type
             )
             || self.at_const(at)
+            || self.at_check(at)
             || self.foreign_fn(at)
             || self.c_style_fn(at)
             || self.foreign_struct(at)
@@ -151,6 +167,7 @@ impl Parser<'_> {
             TokenKind::Impl => self.parse_impl().map(Item::Impl),
             TokenKind::Type => self.parse_alias().map(Item::Alias),
             TokenKind::Builtin | TokenKind::Ident if self.at_const(0) => self.parse_const().map(Item::Const),
+            TokenKind::Builtin if self.at_check(0) => self.parse_check().map(Item::Const),
             _ => unreachable!("caller checks at_item"),
         };
         match item {
@@ -219,6 +236,7 @@ impl Parser<'_> {
             in_trait: false,
             prop: false,
             requires: Vec::new(),
+            listens: Vec::new(),
         };
         let id = self.ast.funcs.alloc(func, span);
         self.add_item(Item::Func(id));
@@ -438,7 +456,7 @@ impl Parser<'_> {
         trait_name: &Ident,
         trait_generics: &[som_ast::Generic],
     ) -> Option<Id<Func>> {
-        let (doc, requires) = self.take_wheres();
+        let (doc, requires, listens) = self.take_wheres();
         let start = self.current_span();
         let prop = self.eat(TokenKind::Prop);
         if !prop {
@@ -499,6 +517,7 @@ impl Parser<'_> {
             in_trait: true,
             prop,
             requires,
+            listens,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -552,6 +571,48 @@ impl Parser<'_> {
             )
     }
 
+    /// At a call made while compiling, on its own, `at` tokens ahead: `@assert(…);`. Or at
+    /// `@const` without a name after it, which is reported.
+    fn at_check(&self, at: usize) -> bool {
+        let unnamed = self.peek_nth(at) == TokenKind::Builtin
+            && (self.tokens[self.pos..].iter())
+                .filter(|t| !crate::is_trivia(t.kind))
+                .nth(at)
+                .is_some_and(|t| &*t.text == "@const")
+            && !self.at_const(at);
+        unnamed || self.at_comptime_call(at)
+    }
+
+    /// `@assert(SIZE % 8 == 0, "…");`: code run while compiling for what it checks.
+    fn parse_check(&mut self) -> Option<Id<Const>> {
+        let start = self.current_span();
+        if !self.at_comptime_call(0) {
+            self.error_at(
+                start.clone(),
+                msg!["a constant needs a name: ", code("@const NAME = …;")],
+                msg!["to run a check while compiling, call it with ", code("@"), ": ", code("@assert(…);")],
+            );
+            self.advance();
+        }
+        let value = self.parse_expr()?;
+        self.expect(TokenKind::Semicolon, "a semicolon after it")?;
+        let span = self.span_from(&start);
+        Some(self.ast.consts.alloc(
+            Const {
+                doc: None,
+                visibility: Visibility::Private,
+                name: Ident {
+                    name: Const::UNNAMED.into(),
+                    span: start,
+                },
+                ty: None,
+                value,
+                in_place: false,
+            },
+            span,
+        ))
+    }
+
     /// `@const W: i32 = 60;`
     pub(crate) fn parse_const(&mut self) -> Option<Id<Const>> {
         let doc = self.doc_comment();
@@ -587,6 +648,7 @@ impl Parser<'_> {
                 name,
                 ty,
                 value,
+                in_place: false,
             },
             span,
         ))
@@ -969,7 +1031,7 @@ impl Parser<'_> {
     /// `fn name<T>(params) -> Ret { body }` or `fn name<T>(params) -> Ret = value;`, or in an
     /// impl block, `prop name: Ret { body }` or `prop name: Ret = value;`.
     fn parse_function(&mut self) -> Option<Id<Func>> {
-        let (doc, requires) = self.take_wheres();
+        let (doc, requires, listens) = self.take_wheres();
         let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         let prop = self.eat(TokenKind::Prop);
@@ -1060,6 +1122,7 @@ impl Parser<'_> {
             in_trait: false,
             prop,
             requires,
+            listens,
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -1465,6 +1528,7 @@ impl Parser<'_> {
             in_trait: false,
             prop: false,
             requires: Vec::new(),
+            listens: Vec::new(),
         };
         Some(self.ast.funcs.alloc(func, span))
     }

@@ -1,0 +1,38 @@
+// expect: exit 42
+
+fn first_primes() -> [i32; 8] {
+    let mut found: List<i32> = List::empty();
+    let mut n = 2;
+    while found.len < 8 {
+        let mut prime = true;
+        for p in &found { if p != 0 && n % p == 0 { prime = false; } }
+        if prime { found.push(n); }
+        n = n + 1;
+    }
+    let mut table = [0; 8];
+    for i in 0..8 { table[i] = *found.at(i); }
+    table
+}
+
+/// `@const` as an expression: worked out while compiling, where it's written.
+fn is_prime_small(n: i32) -> bool {
+    for p in &@const first_primes() { if p == n { return true; } }
+    false
+}
+
+fn square(n: i32) -> i32 = n * n;
+
+fn main() -> i32 {
+    // It binds like `-`: this is `(@const square(4)) + 1`.
+    let seventeen = @const square(4) + 1;
+    // What's expected of it is what it is: a `u8` here.
+    let small: u8 = @const 10;
+    // A block, for more than one expression.
+    let total = @const {
+        let a = square(3);
+        a + 1
+    };
+    let mut primes = 0;
+    for i in 0..20 { if is_prime_small(i) { primes = primes + 1; } }
+    return seventeen + small as i32 + total + primes - 3;
+}

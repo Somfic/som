@@ -15,7 +15,7 @@ pub mod visibility;
 
 pub use error::ResolveError;
 pub use names::{
-    Def, DefId, DefKind, ImplDef, LangStruct, LangTrait, Names, SHARE_OPTIONAL, UNREACHABLE,
+    Def, DefId, DefKind, HALT, ImplDef, LangStruct, LangTrait, Names, SHARE_OPTIONAL,
 };
 
 use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Pattern, PatternFields, Stmt, TypeExpr};
@@ -38,7 +38,7 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         variant_names: vec![HashSet::new(); ast.modules.len()],
         module: 0,
         scopes: Vec::new(),
-            in_local_const: false,
+            const_depth: None,
         type_params: Vec::new(),
         block_types: Vec::new(),
         through_alias: std::cell::Cell::new(None),
@@ -119,8 +119,9 @@ struct Resolver<'a> {
     through_alias: std::cell::Cell<Option<DefId>>,
     /// The type whose impl block is being resolved: what its members' privacy is to.
     owner: Option<DefId>,
-    /// Resolving a `@const` inside a function: its value can't name the function's locals.
-    in_local_const: bool,
+    /// Resolving a `@const` inside a function: how many scopes were open where it starts.
+    /// Its value can't name the locals in those, only its own.
+    const_depth: Option<usize>,
 }
 
 impl<'a> Resolver<'a> {
@@ -232,7 +233,10 @@ impl<'a> Resolver<'a> {
                             m,
                         );
                         self.names.set_const(*id, def);
-                        self.add_item(m, &c.name, def);
+                        // `@const assert(…);` is run for what it checks: nothing names it.
+                        if c.is_named() {
+                            self.add_item(m, &c.name, def);
+                        }
                     }
                     Item::Use(_) => {}
                 }
@@ -259,12 +263,53 @@ impl<'a> Resolver<'a> {
             {
                 self.names.set_share_optional(def);
             }
-            if let Some(&def) = self.items[root].get(UNREACHABLE)
+            if let Some(&def) = self.items[root].get(HALT)
                 && matches!(self.names.def(def).kind, DefKind::Func(_))
             {
-                self.names.set_unreachable(def);
+                self.names.set_halt(def);
             }
         }
+        self.collect_listeners();
+    }
+
+    /// The functions `@on fail` says are called when the program fails: the program's own,
+    /// in order, or if it has none, the standard library's.
+    fn collect_listeners(&mut self) {
+        let ast = self.ast;
+        let methods: HashSet<Id<Func>> = (ast.modules.iter())
+            .flat_map(|module| &module.items)
+            .filter_map(|item| match item {
+                Item::Impl(block) => Some(block.methods.iter().copied()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let (mut own, mut std) = (Vec::new(), Vec::new());
+        for (id, func) in ast.funcs.iter() {
+            for event in &func.listens {
+                if &*event.name != "fail" {
+                    self.errors.push(ResolveError::UnknownEvent {
+                        name: event.name.to_string(),
+                        span: event.span.clone(),
+                    });
+                    continue;
+                }
+                // Called with what failed, by the program: a function of its own.
+                if methods.contains(&id) || func.in_trait {
+                    self.errors.push(ResolveError::ListenerIsMethod {
+                        span: func.name.span.clone(),
+                    });
+                    continue;
+                }
+                let module = &ast.modules[self.names.def(self.names.func(id)).module].name;
+                match &**module == "som" || module.starts_with("som::") {
+                    true => std.push(id),
+                    false => own.push(id),
+                }
+            }
+        }
+        self.names
+            .set_fail_listeners(if own.is_empty() { std } else { own });
     }
 
     fn define_func(&mut self, id: Id<Func>, module: usize, visible: bool) {
@@ -797,9 +842,9 @@ impl<'a> Resolver<'a> {
                 if let Some(ty) = constant.ty {
                     self.resolve_type(ty);
                 }
-                let outer = std::mem::replace(&mut self.in_local_const, true);
+                let outer = self.const_depth.replace(self.scopes.len());
                 self.resolve_expr(constant.value);
-                self.in_local_const = outer;
+                self.const_depth = outer;
                 let def = self.names.define(
                     &constant.name.name,
                     DefKind::Const(c),
@@ -909,6 +954,22 @@ impl<'a> Resolver<'a> {
 
     fn resolve_expr(&mut self, id: Id<Expr>) {
         match &self.ast.exprs[id] {
+            Expr::Fail(message) => self.resolve_expr(*message),
+            // Worked out while compiling: it can't name what's only there when the program runs.
+            Expr::InPlace(c) => {
+                let c = *c;
+                let constant = &self.ast.consts[c];
+                let outer = self.const_depth.replace(self.scopes.len());
+                self.resolve_expr(constant.value);
+                self.const_depth = outer;
+                let def = self.names.define(
+                    &constant.name.name,
+                    DefKind::Const(c),
+                    constant.name.span.clone(),
+                    self.module,
+                );
+                self.names.set_const(c, def);
+            }
             Expr::Hole
             | Expr::Unreachable
             | Expr::Int(_)
@@ -1084,18 +1145,21 @@ impl<'a> Resolver<'a> {
     fn bind_expr(&mut self, id: Id<Expr>, path: &Path, expect: Expect) {
         self.through_alias.set(None);
         if let Some(def) = self.resolve_path(path, expect) {
-            if self.in_local_const
-                && matches!(
-                    self.names.def(def).kind,
-                    DefKind::Local(_)
-                        | DefKind::Param { .. }
-                        | DefKind::Out(_)
-                        | DefKind::Binding(_)
-                        | DefKind::TypeParam { .. }
-                        | DefKind::ImplParam { .. }
-                        | DefKind::StructParam { .. }
-                )
-            {
+            // A local from outside the constant, or a generic parameter.
+            let outside = |r: &Self| {
+                let depth = r.const_depth.unwrap_or(0);
+                (r.scopes.iter().rposition(|scope| scope.values().any(|&d| d == def)))
+                    .is_some_and(|at| at < depth)
+            };
+            let local = matches!(
+                self.names.def(def).kind,
+                DefKind::Local(_) | DefKind::Param { .. } | DefKind::Out(_) | DefKind::Binding(_)
+            );
+            let generic = matches!(
+                self.names.def(def).kind,
+                DefKind::TypeParam { .. } | DefKind::ImplParam { .. } | DefKind::StructParam { .. }
+            );
+            if self.const_depth.is_some() && (generic || local && outside(self)) {
                 self.errors.push(ResolveError::ConstNotKnown {
                     span: self.ast.exprs.span(id).clone(),
                 });

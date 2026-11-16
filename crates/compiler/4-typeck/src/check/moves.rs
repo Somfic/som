@@ -20,7 +20,10 @@ impl Checker<'_> {
     /// `by_value`: what `id` gives is taken, rather than borrowed or assigned to.
     fn moves_in(&mut self, id: Id<Expr>, by_value: bool) {
         match &self.ast.exprs[id] {
-            Expr::Hole
+            Expr::Fail(message) => self.moves_in(*message, true),
+            // Worked out on its own: it moves nothing of the function's.
+            Expr::InPlace(_)
+            | Expr::Hole
             | Expr::Unreachable
             | Expr::Int(_)
             | Expr::Float(_)

@@ -1,0 +1,23 @@
+// expect: exit 42
+
+/// `@name(…)` calls a function while compiling: `@kilobytes(4)` is `@const kilobytes(4)`.
+fn kilobytes(n: i32) -> i32 = n * 1024;
+
+fn squares() -> [i32; 10] {
+    let mut table = [0; 10];
+    for i in 0..10 { table[i] = i * i; }
+    table
+}
+
+@const BUFFER = @kilobytes(4) / 1024;
+
+fn main() -> i32 {
+    @som::assert(BUFFER == 4, "four kilobytes");
+    // Only the call is worked out while compiling: the index is taken when the program runs.
+    let nine = @squares()[3];
+    let total = @const {
+        let k = @kilobytes(1);
+        k / 1024
+    };
+    return BUFFER + nine + total + 28;
+}

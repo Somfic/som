@@ -1,0 +1,10 @@
+// expect: error ListenerIsMethod
+
+struct Log { lines: i32 }
+
+impl Log {
+    @on fail
+    fn save(failure: &Failure) {}
+}
+
+fn main() -> i32 = 0;

@@ -205,10 +205,20 @@ pub enum LangStruct {
     Rc,
     /// `string`: what text is, and what a literal is unless it's given to C.
     String,
+    /// `Failure`: what `@on fail` listeners are given, at `@fail` or `@unreachable`.
+    Failure,
+    /// `Location`: where in the source something is, a `Failure`'s `at`.
+    Location,
 }
 
 impl LangStruct {
-    pub const ALL: [LangStruct; 3] = [LangStruct::Manual, LangStruct::Rc, LangStruct::String];
+    pub const ALL: [LangStruct; 5] = [
+        LangStruct::Manual,
+        LangStruct::Rc,
+        LangStruct::String,
+        LangStruct::Failure,
+        LangStruct::Location,
+    ];
 
     /// Its name in the standard library.
     pub fn name(self) -> &'static str {
@@ -216,13 +226,15 @@ impl LangStruct {
             LangStruct::Manual => "Manual",
             LangStruct::Rc => "Rc",
             LangStruct::String => "string",
+            LangStruct::Failure => "Failure",
+            LangStruct::Location => "Location",
         }
     }
 }
 
-/// The standard library's function `@unreachable` calls, with where it is: it says so, then
-/// stops the program.
-pub const UNREACHABLE: &str = "reached_unreachable";
+/// The standard library's function that stops the program once a failure's listeners have
+/// been told.
+pub const HALT: &str = "halt";
 
 /// The standard library's function copying an optional `Share` value: it shares what's held.
 pub const SHARE_OPTIONAL: &str = "share_optional";
@@ -307,8 +319,10 @@ pub struct Names {
     lang: HashMap<LangTrait, DefId>,
     /// The structs the language uses, where the standard library defines them.
     lang_structs: HashMap<LangStruct, DefId>,
-    /// What `@unreachable` calls, where the standard library defines it.
-    unreachable: Option<DefId>,
+    /// What stops the program after a failure, where the standard library defines it.
+    halt: Option<DefId>,
+    /// The functions called when the program fails (see `fail_listeners`).
+    fail_listeners: Vec<Id<Func>>,
     /// What copying a `T?` of a `Share` `T` calls, where the standard library defines it.
     share_optional: Option<DefId>,
     /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
@@ -351,7 +365,8 @@ impl Names {
             projection_bases: HashMap::new(),
             lang: HashMap::new(),
             lang_structs: HashMap::new(),
-            unreachable: None,
+            halt: None,
+            fail_listeners: Vec::new(),
             share_optional: None,
             patterns: vec![None; ast.patterns.len()],
             primitives: HashMap::new(),
@@ -386,8 +401,12 @@ impl Names {
         self.lang_structs.insert(lang, def);
     }
 
-    pub(crate) fn set_unreachable(&mut self, def: DefId) {
-        self.unreachable = Some(def);
+    pub(crate) fn set_halt(&mut self, def: DefId) {
+        self.halt = Some(def);
+    }
+
+    pub(crate) fn set_fail_listeners(&mut self, listeners: Vec<Id<Func>>) {
+        self.fail_listeners = listeners;
     }
 
     pub(crate) fn set_share_optional(&mut self, def: DefId) {
@@ -702,8 +721,15 @@ impl Names {
     }
 
     /// What `@unreachable` calls, if the standard library is loaded.
-    pub fn unreachable(&self) -> Option<DefId> {
-        self.unreachable
+    /// The standard library's function that stops the program after a failure (see [`HALT`]).
+    pub fn halt(&self) -> Option<DefId> {
+        self.halt
+    }
+
+    /// What's called, in order, when the program fails: its own `@on fail` functions, or if
+    /// it has none, the standard library's.
+    pub fn fail_listeners(&self) -> &[Id<Func>] {
+        &self.fail_listeners
     }
 
     /// Which lang trait `def` is, if any.

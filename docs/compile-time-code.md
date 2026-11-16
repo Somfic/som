@@ -1,8 +1,9 @@
 # Compile-time code
 
-*Design spec. Status: steps 0–5 done (`@const`, calls, branches and recursion, loops,
-structs, enums, arrays and optionals as values, and heap memory while running, in
-`crates/compiler/8-comptime`); the rest is proposed.*
+*Design spec. Status: steps 0–8 done, in `crates/compiler/8-comptime`: `@const` with
+calls, loops, recursion, heap memory and text while compiling; structs, enums, arrays,
+optionals and text as values; constants in impl blocks and function bodies; and `@const` as
+an expression. The rest is proposed.*
 
 Som code can already be worked out while compiling, but only a little of it: a `const` can be
 literals, operators, casts and other constants, and nothing else. This spec lets **any som
@@ -24,6 +25,7 @@ There are four things, and each has a single meaning:
 |---|---|---|
 | `@const X = expr;` | A named constant. `expr` can now call functions | While compiling |
 | `@const expr` / `@const { … }` | This value, worked out where it's written | While compiling |
+| `@f(args)` / `@a::f(args)` | A call of an ordinary `fn`, the same as `@const f(args)`. On its own at the top level, a check: `@assert(…);`. A built-in's name (`@fail`, `@embed`, …) always means the built-in | While compiling |
 | `@for x in xs { … }` | One copy of the body for each `x` | The loop while compiling, the copies at run time |
 | `@if cond { … } else { … }` | Only the branch `cond` picks exists | The choice while compiling, the branch at run time |
 
@@ -40,10 +42,12 @@ code exists. In Zig these are `comptime { }` and `inline for`.
 ```
 item  := …
        | ("pub" | "mod")? "@const" name (":" type)? "=" expr ";"
+       | "@" path "(" args ")" ";"   // a check run while compiling: `@assert(…);`
 
 expr  := …
        | "@const" unary_expr          // binds like `-` and `!`
        | "@const" block
+       | "@" path "(" args ")"        // a call while compiling; `path` isn't a built-in
 
 stmt  := …
        | "@for" pattern "in" expr block
@@ -379,7 +383,7 @@ New entries in `som_lexer::BUILTINS`, so the editor offers them:
 |---|---|---|
 | `@const` | See above | 1 |
 | `@for`, `@if` | See above | 2 |
-| `@assert(cond, "why")` | An error while compiling if `cond` is false | 1 |
+| `@fail("why")` | Stops with a message: when the program runs, it says what failed and where; in a `@const`, an error while compiling (`ConstFailed`). Stands for a value of any type, like `@unreachable` | 1 |
 | `@embed("path")` | A file's bytes (`[u8; _]`) or text (`string`), relative to the source file | 1 |
 | `@variants(E)` | An enum's variants, each with `.name` and `.index` | 3 |
 | `@fields(T)` | A struct's fields, each with `.name` and `.type` | 3 |
@@ -387,9 +391,15 @@ New entries in `som_lexer::BUILTINS`, so the editor offers them:
 | `@ident("xy")` | A name, made from text | 3 |
 | `@size_of(T)` | See below | 3 |
 
-`@size_of` needs care: the C compiler lays out structs, not som. Som would either have to work
-out C's layout itself, or let `@size_of` be used only in `@assert` and have codegen turn that
-into a C `_Static_assert(sizeof(…) == …)`. The second is simpler and always correct.
+`assert(ok, "why")` isn't a built-in: it's an ordinary function in the standard library,
+built on `@fail`. Called when the program runs, it checks then; called with `@`
+(`@assert(SIZE % 8 == 0, "…");`, which can stand on its own at the top level), it checks
+while compiling. Anyone can write their own checks the same way. While compiling, an
+error in the standard library is said where the program called into it, not inside it.
+
+`@size_of` needs care: the C compiler lays out structs, not som. The interpreter already works
+out C's layout for the memory it allocates (`8-comptime/src/memory.rs`), mirroring codegen's
+struct definitions, so `@size_of` can use that.
 
 ---
 
@@ -406,7 +416,7 @@ into a C `_Static_assert(sizeof(…) == …)`. The second is simpler and always 
 | `ConstTooLong` | comptime | 1 |
 | `ConstHoldsMemory` | comptime | 1 |
 | `ConstNeededTooEarly` | typeck | 1, gone in 4 |
-| `AssertFailed` | comptime | 1 |
+| `ConstFailed` | comptime | 1 |
 
 ---
 
@@ -534,7 +544,7 @@ fn banner() -> string = "som v{MAJOR}.{MINOR}";
 @const BANNER = banner();
 ```
 *Needs:* `Display` and `display_len` writing through raw `*u8` pointers, and turning the
-built `string` into a literal (count `usize::MAX`) in the program.
+built `string` into a literal (count `usize::MAX`) in the program. **Done.**
 
 **Step 7. Constants inside impl blocks and functions.** `step_07_scopes.som`
 ```rust
@@ -548,25 +558,26 @@ fn wrap(i: usize) -> usize {
 }
 ```
 *Needs:* `@const` declarations in `impl` blocks and function bodies. In a body, the parser
-tells a declaration (a name, then `:` or `=`) from an expression.
+tells a declaration (a name, then `:` or `=`) from an expression. **Done.**
 
 **Step 8. `@const` as an expression.** `step_08_in_place.som`
 ```rust
 fn is_prime_small(n: i32) -> bool {
-    for p in &@const first_primes() { if *p == n { return true; } }
+    for p in &@const first_primes() { if p == n { return true; } }
     false
 }
 ```
 *Needs:* `@const` as a prefix expression, initializers created at an expression rather than
-for a name, and `ConstNotKnown` when it names a local such as `n` (`local_named.som`).
+for a name, and `ConstNotKnown` when it names a local such as `n` (`local_named.som`). **Done.**
 
 **Step 9. Checks and files while compiling.** `step_09_assert_embed.som`
 ```rust
 @assert(PRIMES[0] == 2, "the first prime is 2");
 @const HELP: string = @embed("help.txt");
 ```
-*Needs:* the `@assert` and `@embed` built-ins, with paths relative to the source file, and
-`AssertFailed`. Phase 1 is done.
+*Needs:* `@fail` and the standard library's `assert` (**done**: `const_eval/assert*.som`,
+`fail_in_a_function.som`), and the `@embed` built-in, with paths relative to the source
+file. Phase 1 is done.
 
 ### Phase 2
 
@@ -670,7 +681,7 @@ they're listed here so every error kind has a test:
 | `keeps_a_list.som`: returns a `List` | `error ConstHoldsMemory` |
 | `array_length.som`: `[i32; computed()]` | `error ConstNeededTooEarly` |
 | `calls_itself.som`: `@const A = f(); fn f() = A;` | `error ConstCycle` |
-| `assert.som`: `@assert(1 == 2, "…")` | `error AssertFailed` |
+| `assert.som`: `@assert(SIZE % 8 == 0, "…")` with `SIZE` 12 | `error ConstFailed` |
 | `wraps.som`: `i8` overflow while compiling equals run time | `exit …` |
 
 There's also one property worth testing outside the corpus: for any function in the corpus,

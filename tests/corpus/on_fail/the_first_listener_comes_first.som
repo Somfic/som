@@ -1,0 +1,16 @@
+// expect: exit 10
+
+use som::io;
+
+/// `@on fail` functions are called in order: the first leaves before the second is told.
+@on fail
+fn first(failure: &Failure) {
+    io::exit(10);
+}
+
+@on fail
+fn second(failure: &Failure) {
+    io::exit(12);
+}
+
+fn main() -> i32 = @fail("stop");

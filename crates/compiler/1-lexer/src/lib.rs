@@ -16,10 +16,29 @@ pub const BUILTINS: &[(&str, &str)] = &[
          stops the program.",
     ),
     (
+        "@fail",
+        "Stops with a message: `@fail(\"no room\")`. When the program runs, it says what \
+         failed and where, then stops it; in a `@const`, it's an error while compiling. Like \
+         `@unreachable`, it stands for a value of whatever type is expected there.",
+    ),
+    (
+        "@on",
+        "On a line above a function: an event it's called on. `@on fail`: when the program \
+         fails, at `@fail` or `@unreachable`, with a `&Failure` saying what and where. The \
+         program's own listeners are called instead of the standard library's printer.",
+    ),
+    (
         "@const",
-        "A constant, worked out while compiling: `@const CELLS = COLS * ROWS;`.",
+        "Worked out while compiling: a constant, `@const CELLS = COLS * ROWS;`, or a value \
+         where it's written, `@const first_primes()`.",
     ),
 ];
+
+/// Whether `@name` is the compiler's own, rather than a function called while compiling:
+/// `@fail` is the built-in, `@assert(…)` calls `assert`.
+pub fn is_builtin(name: &str) -> bool {
+    name == "@where" || BUILTINS.iter().any(|&(builtin, _)| builtin == name)
+}
 
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {

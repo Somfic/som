@@ -316,7 +316,10 @@ impl Prover<'_> {
 
     fn expr(&mut self, id: Id<Expr>) {
         match &self.ast.exprs[id] {
-            Expr::Hole
+            Expr::Fail(message) => self.expr(*message),
+            // A constant's value isn't proven here, wherever it's written.
+            Expr::InPlace(_)
+            | Expr::Hole
             | Expr::Int(_)
             | Expr::Float(_)
             | Expr::Bool(_)
@@ -1611,7 +1614,8 @@ impl Prover<'_> {
                 ..
             } => self.leaves(then) && self.leaves(otherwise),
             Stmt::Expr(expr) => {
-                self.typed.diverges(*expr) || matches!(self.ast.exprs[*expr], Expr::Unreachable)
+                self.typed.diverges(*expr)
+                    || matches!(self.ast.exprs[*expr], Expr::Unreachable | Expr::Fail(_))
             }
             _ => false,
         }

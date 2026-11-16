@@ -1,10 +1,32 @@
 extern "c";
 use som::mem;
 
-/// What `@unreachable` does if it's reached after all: says where, then stops the program.
-/// Output is flushed first, so the message isn't lost when it goes to a file or a pipe.
-fn reached_unreachable(at: cstr) {
-    c::printf("reached @unreachable at %s\n", at);
+pub struct Failure {
+    pub message: string,
+    pub at: Location,
+    pub unreachable: bool,
+}
+
+pub struct Location {
+    pub file: string,
+    pub line: u32,
+    pub column: u32,
+    pub function: string,
+}
+
+@on fail pub fn on_fail(failure: &Failure) {
+    let at = "{failure.at.file}:{failure.at.line}:{failure.at.column} in {failure.at.function}";
+    let text = "reached @unreachable at {at}" if failure.unreachable else "failed at {at}: {failure.message}";
+    c::printf("%s\n", text.c_str);
+}
+
+fn halt() {
     c::fflush(null());
     c::abort();
+}
+
+pub fn assert(ok: bool, error_message: string) {
+    if !ok {
+        @fail(error_message);
+    }
 }

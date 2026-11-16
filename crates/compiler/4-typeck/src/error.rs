@@ -156,6 +156,8 @@ pub enum TypeError {
     },
     /// `[i32; N]` of `@const N = four();`: `N` is worked out by running code, which happens
     /// after types are checked.
+    /// `@on fail fn save()`: a listener takes a `&Failure`, and gives nothing back.
+    ListenerSignature { span: Span },
     ConstNeededTooEarly {
         name: String,
         span: Span,
@@ -1965,6 +1967,13 @@ impl TypeError {
                     "a whole number, at least 0, is needed here",
                 ))
                 .with_label(Label::secondary(defined_at.clone(), "defined here")),
+            TypeError::ListenerSignature { span } => Diagnostic::error(msg![
+                "an ",
+                code("@on fail"),
+                " function takes what failed"
+            ])
+            .with_label(Label::primary(span.clone(), "called when the program fails"))
+            .with_hint(msg!["write it ", code("fn name(failure: &Failure)")]),
             TypeError::ConstNeededTooEarly {
                 name,
                 span,

@@ -40,6 +40,12 @@ pub enum ComptimeError {
     /// It read or wrote memory it doesn't have: freed, past its end, or through a null
     /// pointer. Only unchecked pointer code can.
     ConstOutOfBounds { span: Span, trace: Vec<Working> },
+    /// It reached `@fail(message)`: a check that didn't hold, like `assert`'s.
+    ConstFailed {
+        message: String,
+        span: Span,
+        trace: Vec<Working>,
+    },
     /// It does something code run while compiling can't do yet.
     ConstNotSupported {
         what: &'static str,
@@ -121,6 +127,16 @@ impl ComptimeError {
                     .with_hint("memory that's freed, past the end of its allocation, or null"),
                 span,
                 msg!["used here"],
+                trace,
+            ),
+            ComptimeError::ConstFailed {
+                message,
+                span,
+                trace,
+            } => (
+                Diagnostic::error(message.as_str()),
+                span,
+                msg!["failed here, while compiling"],
                 trace,
             ),
             ComptimeError::ConstNotSupported { what, span, trace } => (

@@ -1,0 +1,8 @@
+// expect: error ConstNotKnown
+
+fn square(n: i32) -> i32 = n * n;
+
+/// `n` only has a value when the function runs.
+fn twice(n: i32) -> i32 = @const square(n);
+
+fn main() -> i32 = twice(3);

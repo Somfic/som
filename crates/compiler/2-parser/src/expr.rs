@@ -336,6 +336,67 @@ impl Parser<'_> {
             return Some(self.alloc_expr(Expr::Range { start: None, end }, &start));
         }
 
+        // `@kilobytes(4)`, `@som::assert(…)`: a function called while compiling, like
+        // `@const kilobytes(4)`. A built-in's name is the built-in's.
+        if self.at_comptime_call(0) {
+            let name = self.peek_token().text.clone();
+            let first = som_ast::Ident {
+                name: name[1..].into(),
+                span: self.current_span(),
+            };
+            self.advance();
+            let mut segments = vec![first];
+            while self.eat(TokenKind::DoubleColon) {
+                segments.push(self.parse_ident("a name after `::`")?);
+            }
+            let callee = self.alloc_expr(Expr::Var(som_ast::Path { segments }), &start);
+            let call = self.parse_call(callee, &start)?;
+            let span = self.span_from(&start);
+            let c = self.ast.consts.alloc(
+                som_ast::Const {
+                    doc: None,
+                    visibility: som_ast::Visibility::Private,
+                    name: som_ast::Ident {
+                        name: som_ast::Const::UNNAMED.into(),
+                        span: start.clone(),
+                    },
+                    ty: None,
+                    value: call,
+                    in_place: true,
+                },
+                span,
+            );
+            return Some(self.alloc_expr(Expr::InPlace(c), &start));
+        }
+
+        // `@const f(x)`, or `@const { … }`: binds like `-`, so `@const f(x) + 1` adds to it.
+        if kind == TokenKind::Builtin && &*self.peek_token().text == "@const" {
+            self.advance();
+            let value = match self.at(TokenKind::OpenBrace) {
+                true => self.parse_block()?,
+                false => {
+                    let bp = Grammar::prefix_bp(TokenKind::Minus).expect("`-` is a prefix");
+                    self.parse_expr_bp(bp)?
+                }
+            };
+            let span = self.span_from(&start);
+            let c = self.ast.consts.alloc(
+                som_ast::Const {
+                    doc: None,
+                    visibility: som_ast::Visibility::Private,
+                    name: som_ast::Ident {
+                        name: "@const".into(),
+                        span: start.clone(),
+                    },
+                    ty: None,
+                    value,
+                    in_place: true,
+                },
+                span,
+            );
+            return Some(self.alloc_expr(Expr::InPlace(c), &start));
+        }
+
         let Some(bp) = Grammar::prefix_bp(kind) else {
             return self.parse_atom();
         };
@@ -366,6 +427,20 @@ impl Parser<'_> {
             _ => unreachable!("prefix_bp only accepts prefix operators"),
         };
         Some(self.alloc_expr(expr, &start))
+    }
+
+    /// At `@name(` or `@name::`, `at` tokens ahead, where `@name` isn't a built-in: a call
+    /// made while compiling.
+    pub(crate) fn at_comptime_call(&self, at: usize) -> bool {
+        self.peek_nth(at) == TokenKind::Builtin
+            && matches!(
+                self.peek_nth(at + 1),
+                TokenKind::OpenParen | TokenKind::DoubleColon
+            )
+            && (self.tokens[self.pos..].iter())
+                .filter(|t| !crate::is_trivia(t.kind))
+                .nth(at)
+                .is_some_and(|t| !som_lexer::is_builtin(&t.text))
     }
 
     fn parse_atom(&mut self) -> Option<Id<Expr>> {
@@ -517,13 +592,11 @@ impl Parser<'_> {
                 self.advance();
                 match &*text {
                     "@unreachable" => Expr::Unreachable,
-                    "@const" => {
-                        self.error_at(
-                            start.clone(),
-                            msg![code("@const"), " here names a constant"],
-                            msg!["write it on its own: ", code("@const NAME = value;")],
-                        );
-                        Expr::Hole
+                    "@fail" => {
+                        self.expect(TokenKind::OpenParen, "`(` and the message")?;
+                        let message = self.parse_expr()?;
+                        self.expect(TokenKind::CloseParen, "`)` after the message")?;
+                        Expr::Fail(message)
                     }
                     _ => {
                         let known: Vec<&str> = som_lexer::BUILTINS.iter().map(|b| b.0).collect();
