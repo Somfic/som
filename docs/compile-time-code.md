@@ -411,9 +411,20 @@ Each instance is proven too (`som_prove::prove_instance`), with its value parame
 `.cells[N]` is said to be out of them, as the instance's error (`per_instance_index_*.som`).
 The generic prover skips regions.
 
+**Done: `@for f in T` over a generic type** (`fields_of_a_generic.som`,
+`fields_eq_generic_args.som`, `fields_indexed_generic.som`). Once every module is loaded, an
+`@for` among statements over a name that's no struct or enum is written out once for each
+struct there is (`Ast.per_type`: the statement standing for it → each struct's copy, a
+block), and each copy resolved where it's written. The type checker says whether the name is
+one of the function's type parameters (else `ReflectNotStruct`); if it is, the statement is a
+region. Checking an instance picks the copy for `T`'s struct (`Typed::chosen_arm`), which
+lowering and the prover then use; `T` that isn't a struct (`count<i32>`) is
+`ReflectNotStruct`, and a field without `!=` is said as `fields_eq<Holder>`'s `Mismatch`.
+The AST grows by a copy for each struct for each such `@for`.
+
 Not done yet: *pinning* (a region can still change the type of a variable outside it, per
 instance; each instance is checked as a whole, so it's consistent, but the generic check
-doesn't see it); `@for f in T` over a generic type (S4).
+doesn't see it); `@for (i, v) in T` over a generic enum's variants among `match` arms; pass 2.
 
 The plan, in two passes:
 
@@ -454,6 +465,15 @@ impl's members. What a type's members are then depends on the instance, so resol
 lookup and the LSP's completion each need one to answer. After pass 1 works.
 
 ### 4.8 Other things left for later
+
+- **A query-based type checker.** Constants in types are worked out in rounds and instances
+  are checked as lowering reaches them, with no typeck restructuring. Pass 2 of 4.7 (members
+  only some instances have) feeds back into other bodies' checking, and could want queries
+  (or rounds again); so could re-checking only what changed, for an editor's speed.
+- **What macros do that this doesn't** (compile-time code instead of a macro system, like
+  Zig): names made from an element (`@ident`, below); calls with any number of arguments
+  (`println!`'s; tuples or variadics); new syntax (`html!`, `sql!`: not planned); embedding
+  files (`@embed`, step 9); attributes on items beyond `@on fail` (`@on test`).
 
 - **Where a failure is, when the program runs.** While compiling, an error in the standard
   library is said where the program called into it. When the program runs, `assert`'s
@@ -777,10 +797,10 @@ Fields the same way, with no `@fields` or `.@field(f)`: `@for f in Point { if a.
 { return false; } }` writes `f` as each field's name, so `a.f` is `a.hello`, then `a.bye`;
 `(i, f)` gives its index too. **Done** among statements, for a struct that isn't generic: the
 `@for` stands as a statement until it's written out, then is a block of the copies. An `@if`
-in the body can pick by `i`. Not done: `@for` over a type among items, properties of the
-element (`v.value`, `v.name`, `f.index`), and generic types (`fields_eq<T>`, which needs
-4.7). The body names the element everywhere it's written, so a local called the same is
-written over too.
+in the body can pick by `i`. Generic types too, `fields_eq<T>`, written out for each
+instance ([4.7](#47-checking-generics-per-instance)). Not done: `@for` over a type among
+items, and properties of the element (`v.value`, `v.name`, `f.index`). The body names the
+element everywhere it's written, so a local called the same is written over too.
 
 ### Phase 4
 

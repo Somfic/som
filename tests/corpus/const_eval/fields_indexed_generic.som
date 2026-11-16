@@ -1,0 +1,17 @@
+// expect: exit 40
+
+struct Struct {
+    hello: i32,
+    bye: i32,
+}
+
+/// `(i, f)`: the field's index too, known in each copy.
+fn second<T>(s: &T) -> i32 {
+    let mut total = 0;
+    @for (i, f) in T {
+        @if i == 1 { total = total + s.f * 10; }
+    }
+    total
+}
+
+fn main() -> i32 = second(&Struct { hello: 3, bye: 4 });

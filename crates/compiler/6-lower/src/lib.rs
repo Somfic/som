@@ -1292,6 +1292,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.push(StatementKind::StorageLive(local), span.clone());
                 self.assign(Place::local(local), value, span);
             }
+            // `@for f in T` over a generic type: the copy for this instance's `T`.
+            Stmt::Expr(_) if let Some(arm) = self.typed.chosen_arm(id) => {
+                self.operand(arm);
+            }
             Stmt::Expr(expr) => {
                 // The result is unused: a temporary holding it dies with the statement.
                 if let Operand::Copy(place) | Operand::Move(place) = self.operand(*expr)

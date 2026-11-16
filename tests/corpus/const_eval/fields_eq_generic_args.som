@@ -1,0 +1,20 @@
+// expect: exit 3
+
+struct Pair<T> {
+    left: T,
+    right: T,
+}
+
+fn fields_eq<T>(a: &T, b: &T) -> bool {
+    @for f in T { if a.f != b.f { return false; } }
+    true
+}
+
+/// A generic struct's fields: the same names, of the type each instance has.
+fn main() -> i32 {
+    let ints = Pair { left: 1, right: 2 };
+    let bytes = Pair { left: 1 as u8, right: 2 as u8 };
+    let a = 1 if fields_eq(&ints, &ints) else 0;
+    let b = 2 if fields_eq(&bytes, &bytes) else 0;
+    return a + b;
+}

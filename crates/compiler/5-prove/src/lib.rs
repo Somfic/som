@@ -241,6 +241,8 @@ impl Prover<'_> {
                     }
                 }
             }
+            // `@for f in T` over a generic type, proving one instance: its copy.
+            Stmt::Expr(_) if let Some(arm) = self.typed.chosen_arm(id) => self.expr(arm),
             Stmt::Expr(expr) => self.expr(*expr),
             Stmt::Return(value) => {
                 if let Some(value) = value {

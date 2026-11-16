@@ -40,6 +40,18 @@ pub struct Ast {
     /// `@for (i, v) in Kind { … }`, which can only be written out once every module is
     /// loaded and `Kind` is known (`som_parser::expand_reflected`).
     pub reflected: Vec<Reflected>,
+    /// `@for f in T { … }` over a generic type `T`, among statements: written out for every
+    /// struct, the statement standing for it picking the copy for `T`'s struct in each
+    /// instance of its function. The statement → the copies.
+    pub per_type: std::collections::HashMap<Id<Stmt>, PerType>,
+}
+
+/// An `@for` over a generic type's fields, written out once for each struct there is.
+pub struct PerType {
+    /// What it goes through: `T`.
+    pub of: Path,
+    /// Each struct, and its copy: a block of the body's statements for each of its fields.
+    pub arms: Vec<(Id<Struct>, Id<Expr>)>,
 }
 
 /// An `@for` over a type: `@for (i, v) in Kind { v => i, }`, each variant of enum `Kind` in

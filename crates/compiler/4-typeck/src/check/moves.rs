@@ -149,6 +149,8 @@ impl Checker<'_> {
 
     fn moves_in_stmt(&mut self, id: Id<Stmt>) {
         match &self.ast.stmts[id] {
+            // `@for f in T`, checking one instance: its copy for `T`'s struct.
+            Stmt::Expr(_) if let Some(&arm) = self.chosen_arms.get(&id) => self.moves_in(arm, true),
             // A constant's value is worked out on its own, while compiling.
             Stmt::Use(_)
             | Stmt::Const(_)

@@ -871,6 +871,17 @@ impl<'a> Resolver<'a> {
                 self.names.set_let(id, def);
                 self.bind(name, def);
             }
+            // `@for f in T`, over a generic type: each struct's copy, where it's written. The
+            // copies are the same text: what's wrong is said for the first.
+            Stmt::Expr(_) if let Some(per_type) = self.ast.per_type.get(&id) => {
+                for (k, &(_, arm)) in per_type.arms.iter().enumerate() {
+                    let before = self.errors.len();
+                    self.resolve_expr(arm);
+                    if k > 0 {
+                        self.errors.truncate(before);
+                    }
+                }
+            }
             Stmt::Expr(expr) => self.resolve_expr(*expr),
             Stmt::Loop { body } => self.resolve_stmts(body),
             Stmt::Return(value) => {

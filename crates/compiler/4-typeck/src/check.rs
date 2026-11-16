@@ -66,6 +66,8 @@ pub(crate) struct Checker<'a> {
     /// Checking one instance: what its generic parameters stand for (`N` is `3`, `T` is
     /// `f32`).
     bound: HashMap<DefId, TypeId>,
+    /// `@for f in T` over a generic type, checking one instance: the copy for `T`'s struct.
+    chosen_arms: HashMap<Id<Stmt>, Id<Expr>>,
     /// The function being checked: its return type, and where that's written.
     returns: Option<(TypeId, Option<Span>)>,
     /// The next expression inferred is the object of a field access or dereference.
@@ -169,6 +171,7 @@ impl<'a> Checker<'a> {
             regions: HashSet::new(),
             per_instance: HashSet::new(),
             bound: HashMap::new(),
+            chosen_arms: HashMap::new(),
             returns: None,
             in_place: false,
             deferred_ops: Vec::new(),
@@ -869,6 +872,7 @@ impl<'a> Checker<'a> {
             const_values: self.known,
             regions: self.regions,
             per_instance: self.per_instance,
+            chosen_arms: self.chosen_arms,
             patterns: self.patterns,
             receivers: self.receivers,
             callees: self.callees,
@@ -2236,6 +2240,45 @@ impl<'a> Checker<'a> {
                         path: Vec::new(),
                     };
                     self.narrow_if_assigned_a_value(Some(key), ty, *value);
+                }
+            }
+            // `@for f in T`, over a generic type: checked for each instance, with the copy for
+            // `T`'s struct.
+            Stmt::Expr(_) if let Some(per_type) = self.ast.per_type.get(&id) => {
+                let name = &per_type.of.name().name;
+                let param = (self.current_func)
+                    .and_then(|f| (self.names.type_params(f).iter().copied())
+                        .find(|&p| &*self.names.def(p).name == &**name));
+                let Some(param) = param else {
+                    self.errors.push(TypeError::ReflectNotStruct {
+                        name: name.to_string(),
+                        span: per_type.of.span(),
+                    });
+                    return;
+                };
+                let Some(&ty) = self.bound.get(&param) else {
+                    self.regions.insert(id);
+                    if let Some(func) = self.current_func {
+                        self.per_instance.insert(func);
+                    }
+                    return;
+                };
+                let strukt = match self.u.get(ty) {
+                    Ty::Struct(def, _) => match self.names.def(*def).kind {
+                        DefKind::Struct(s) => Some(s),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                match strukt.and_then(|s| per_type.arms.iter().find(|(a, _)| *a == s)) {
+                    Some(&(_, arm)) => {
+                        self.chosen_arms.insert(id, arm);
+                        self.infer(arm);
+                    }
+                    None => self.errors.push(TypeError::ReflectNotStruct {
+                        name: self.describe(ty).plain().trim_matches('`').to_string(),
+                        span: per_type.of.span(),
+                    }),
                 }
             }
             Stmt::Expr(expr) => {

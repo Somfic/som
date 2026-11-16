@@ -1,0 +1,10 @@
+// expect: error ReflectNotStruct
+
+fn count<T>(a: &T) -> i32 {
+    let mut n = 0;
+    @for f in T { n = n + 1; }
+    n
+}
+
+/// `i32` has no fields to go through.
+fn main() -> i32 = count(&5);

@@ -221,6 +221,8 @@ pub struct Typed {
     regions: HashSet<Id<Stmt>>,
     /// The functions with such an `@if`.
     per_instance: HashSet<Id<Func>>,
+    /// `@for f in T` over a generic type, in one instance: the copy for `T`'s struct.
+    chosen_arms: HashMap<Id<Stmt>, Id<Expr>>,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
     /// Method calls on typed pointers → the built-in method they call.
@@ -532,6 +534,12 @@ impl Typed {
     /// The `@if`s checked for each instance.
     pub fn regions(&self) -> impl Iterator<Item = Id<Stmt>> + '_ {
         self.regions.iter().copied()
+    }
+
+    /// `@for f in T` over a generic type, statement `stmt`, in one instance: the copy written
+    /// out for `T`'s struct, a block.
+    pub fn chosen_arm(&self, stmt: Id<Stmt>) -> Option<Id<Expr>> {
+        self.chosen_arms.get(&stmt).copied()
     }
 
     /// Whether generic function `func` is checked for each instance (it has a region).

@@ -321,6 +321,36 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
         let found = (enums.iter().find(|(m, _)| *m == r.module))
             .or_else(|| (enums.len() == 1).then(|| &enums[0]))
             .map(|&(_, s)| s);
+        // Not a type there is: in a function, a generic one's, `T`. Written out for every
+        // struct, the function's instances each picking theirs (whether `T` is one is the
+        // type checker's to say).
+        if found.is_none()
+            && r.of.segments.len() == 1
+            && let ReflectedInto::Stmts { stmt } = r.into
+        {
+            let structs: Vec<som_ast::Id<som_ast::Struct>> = (ast.structs.iter())
+                .filter(|(_, s)| !s.is_enum())
+                .map(|(id, _)| id)
+                .collect();
+            let mut arms = Vec::new();
+            for (k, s) in structs.into_iter().enumerate() {
+                let written = match write_copies(ast, &r, s) {
+                    Ok(written) => written,
+                    Err(error) => {
+                        errors.push(error);
+                        break;
+                    }
+                };
+                let (block, copy_errors) = parse_block(ast, r.module, written, r.body.clone());
+                // Every copy is the same text: what's wrong is said for the first.
+                if k == 0 {
+                    errors.extend(copy_errors);
+                }
+                arms.push((s, block));
+            }
+            ast.per_type.insert(stmt, som_ast::PerType { of: r.of.clone(), arms });
+            continue;
+        }
         let Some(s) = found else {
             errors.push(ParseError {
                 message: msg![
@@ -339,68 +369,13 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
             });
             continue;
         };
-        // What each copy writes for the element: a variant's pattern, or a field's name.
-        let strukt = &ast.structs[s];
-        let elements: Vec<String> = match strukt.is_enum() {
-            true => strukt.variants().iter().map(variant_pattern).collect(),
-            false => (strukt.fields.iter())
-                .map(|f| f.name.name.to_string())
-                .collect(),
-        };
-
-        // The body's tokens, as written.
-        let body: Vec<Token> = (lex(r.body.source.clone()).into_iter())
-            .filter(|t| {
-                t.kind != TokenKind::Eof
-                    && t.span.start_offset >= r.body.start_offset
-                    && t.span.start_offset < r.body.start_offset + r.body.length
-            })
-            .collect();
-        let (index, element) = match &r.names[..] {
-            [element] => (None, element),
-            [index, element] => (Some(index), element),
-            _ => {
-                errors.push(ParseError {
-                    message: msg!["an ", code("@for"), " over a type names one or two things"],
-                    hint: msg![code("v"), ", or its index and it: ", code("(i, v)")],
-                    span: r.names[0].span.clone(),
-                    fix: None,
-                });
+        let written = match write_copies(ast, &r, s) {
+            Ok(written) => written,
+            Err(error) => {
+                errors.push(error);
                 continue;
             }
         };
-        let mut written = Vec::new();
-        for (i, pattern) in elements.iter().enumerate() {
-            for token in &body {
-                let is = |name: &Ident| token.kind == TokenKind::Ident && *token.text == *name.name;
-                if index.is_some_and(is) {
-                    written.push(Token {
-                        kind: TokenKind::Int,
-                        text: i.to_string().into(),
-                        span: token.span.clone(),
-                    });
-                } else if is(element) {
-                    // The variant's pattern, or the field's name, said to be where `v` is.
-                    let pattern = lex(std::sync::Arc::new(Source::from_raw(pattern.as_str())));
-                    written.extend(
-                        pattern
-                            .into_iter()
-                            .filter(|t| t.kind != TokenKind::Eof)
-                            .map(|t| Token {
-                                span: token.span.clone(),
-                                ..t
-                            }),
-                    );
-                } else {
-                    written.push(token.clone());
-                }
-            }
-        }
-        written.push(Token {
-            kind: TokenKind::Eof,
-            text: "".into(),
-            span: r.body.clone(),
-        });
 
         let (expr, at) = match r.into {
             ReflectedInto::Arms { expr, at } => (expr, at),
@@ -448,6 +423,18 @@ fn write_stmts(
     stmt: som_ast::Id<som_ast::Stmt>,
     span: Span,
 ) -> Vec<ParseError> {
+    let (block, errors) = parse_block(ast, module, tokens, span);
+    *ast.stmts.get_mut(stmt) = som_ast::Stmt::Expr(block);
+    errors
+}
+
+/// `tokens` parsed as statements: a block of them.
+fn parse_block(
+    ast: &mut Ast,
+    module: usize,
+    tokens: Vec<Token>,
+    span: Span,
+) -> (som_ast::Id<Expr>, Vec<ParseError>) {
     let mut parser = Parser::new(tokens, ast, module);
     parser.skip_trivia();
     let mut stmts = Vec::new();
@@ -468,6 +455,76 @@ fn write_stmts(
     }
     let errors = std::mem::take(&mut parser.errors);
     let block = ast.exprs.alloc(Expr::Block { stmts, value: None }, span);
-    *ast.stmts.get_mut(stmt) = som_ast::Stmt::Expr(block);
-    errors
+    (block, errors)
+}
+
+/// The tokens of `r`'s copies for enum or struct `s`: its body once for each variant or
+/// field, the element written as it (and its index, if it's named), then an `Eof`.
+fn write_copies(
+    ast: &Ast,
+    r: &som_ast::Reflected,
+    s: som_ast::Id<som_ast::Struct>,
+) -> Result<Vec<Token>, ParseError> {
+        // What each copy writes for the element: a variant's pattern, or a field's name.
+        let strukt = &ast.structs[s];
+        let elements: Vec<String> = match strukt.is_enum() {
+            true => strukt.variants().iter().map(variant_pattern).collect(),
+            false => (strukt.fields.iter())
+                .map(|f| f.name.name.to_string())
+                .collect(),
+        };
+
+        // The body's tokens, as written.
+        let body: Vec<Token> = (lex(r.body.source.clone()).into_iter())
+            .filter(|t| {
+                t.kind != TokenKind::Eof
+                    && t.span.start_offset >= r.body.start_offset
+                    && t.span.start_offset < r.body.start_offset + r.body.length
+            })
+            .collect();
+        let (index, element) = match &r.names[..] {
+            [element] => (None, element),
+            [index, element] => (Some(index), element),
+            _ => {
+                return Err(ParseError {
+                    message: msg!["an ", code("@for"), " over a type names one or two things"],
+                    hint: msg![code("v"), ", or its index and it: ", code("(i, v)")],
+                    span: r.names[0].span.clone(),
+                    fix: None,
+                });
+            }
+        };
+        let mut written = Vec::new();
+        for (i, pattern) in elements.iter().enumerate() {
+            for token in &body {
+                let is = |name: &Ident| token.kind == TokenKind::Ident && *token.text == *name.name;
+                if index.is_some_and(is) {
+                    written.push(Token {
+                        kind: TokenKind::Int,
+                        text: i.to_string().into(),
+                        span: token.span.clone(),
+                    });
+                } else if is(element) {
+                    // The variant's pattern, or the field's name, said to be where `v` is.
+                    let pattern = lex(std::sync::Arc::new(Source::from_raw(pattern.as_str())));
+                    written.extend(
+                        pattern
+                            .into_iter()
+                            .filter(|t| t.kind != TokenKind::Eof)
+                            .map(|t| Token {
+                                span: token.span.clone(),
+                                ..t
+                            }),
+                    );
+                } else {
+                    written.push(token.clone());
+                }
+            }
+        }
+        written.push(Token {
+            kind: TokenKind::Eof,
+            text: "".into(),
+            span: r.body.clone(),
+        });
+    Ok(written)
 }

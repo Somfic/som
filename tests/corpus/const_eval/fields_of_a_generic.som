@@ -1,9 +1,28 @@
-// expect: error
+// expect: exit 42
 
-/// `T`'s fields aren't known until an instance is: not yet.
+struct Struct {
+    hello: bool,
+    bye: i32,
+}
+
+struct Other {
+    x: i32,
+}
+
+/// `@for f in T` over a generic type: written out for each instance, with `T`'s fields.
 fn fields_eq<T>(a: &T, b: &T) -> bool {
     @for f in T { if a.f != b.f { return false; } }
     true
 }
 
-fn main() -> i32 = 0;
+fn main() -> i32 {
+    let a = Struct { hello: true, bye: 4 };
+    let b = Struct { hello: true, bye: 4 };
+    let c = Struct { hello: false, bye: 4 };
+    let same = 20 if fields_eq(&a, &b) else 0;
+    let different = 0 if fields_eq(&a, &c) else 20;
+    let x = Other { x: 1 };
+    let y = Other { x: 2 };
+    let others = 0 if fields_eq(&x, &y) else 2;
+    return same + different + others;
+}

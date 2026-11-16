@@ -162,6 +162,9 @@ pub enum TypeError {
         hint: &'static str,
         span: Span,
     },
+    /// `@for f in T` where `T` isn't a struct: a generic function's type parameter, used with
+    /// one that isn't (`i32`), or a name that's neither.
+    ReflectNotStruct { name: String, span: Span },
     /// `@on fail fn save()`: a listener takes a `&Failure`, and gives nothing back.
     ListenerSignature { span: Span },
     /// `@const N = len();` where what `len` runs needs `N`'s value to be checked: a type
@@ -1975,6 +1978,15 @@ impl TypeError {
                 Diagnostic::error(msg![*what, " has to be known while compiling"])
                     .with_label(Label::primary(span.clone(), "only known when the program runs"))
                     .with_hint(*hint)
+            }
+            TypeError::ReflectNotStruct { name, span } => {
+                Diagnostic::error(msg![code(name), " isn't a struct to go through the fields of"])
+                    .with_label(Label::primary(span.clone(), "not a struct here"))
+                    .with_hint(msg![
+                        code("@for f in T"),
+                        " goes through a struct's fields: a struct, or a type parameter used \
+                         with one"
+                    ])
             }
             TypeError::ListenerSignature { span } => Diagnostic::error(msg![
                 "an ",

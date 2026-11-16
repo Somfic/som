@@ -1,0 +1,9 @@
+// ReflectNotStruct: `@for f in T` goes through a struct's fields: here the function is used with `i32`, which has none.
+
+fn count<T>(a: &T) -> i32 {
+    let mut n = 0;
+    @for f in T { n = n + 1; }
+    n
+}
+
+fn main() -> i32 = count(&5);
