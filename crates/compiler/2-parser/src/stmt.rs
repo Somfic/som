@@ -36,6 +36,9 @@ impl Parser<'_> {
             TokenKind::Loop => self.parse_loop(),
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),
+            // `@for i in 0..4 { … }`, `@if DEBUG { … }`: settled while compiling.
+            TokenKind::Builtin if &*self.peek_token().text == "@for" => self.parse_settled_for(),
+            TokenKind::Builtin if &*self.peek_token().text == "@if" => self.parse_settled_if(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Return => self.parse_return(),
@@ -263,6 +266,46 @@ impl Parser<'_> {
         self.expect(TokenKind::In, "`in` and what to loop over")?;
         let iterable = self.parse_condition()?;
         self.parse_for_body(start, mutable, name, iterable)
+    }
+
+    /// `@for i in 0..4 { … }`: a `for` copied once for each value, while compiling.
+    fn parse_settled_for(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        self.advance();
+        let mutable = self.eat(TokenKind::Mut);
+        let name = self.parse_ident("a name for each value")?;
+        self.expect(TokenKind::In, "`in` and what to loop over")?;
+        let iterable = self.parse_condition()?;
+        let id = self.parse_for_body(start, mutable, name, iterable)?;
+        self.ast.settled.insert(id);
+        Some(id)
+    }
+
+    /// `@if DEBUG { … } else { … }`: only the branch the condition picks, chosen while
+    /// compiling. `else @if` goes on choosing.
+    fn parse_settled_if(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        self.advance();
+        let condition = self.parse_condition()?;
+        let then = self.parse_stmt_block("the @if body")?;
+        let otherwise = match self.eat(TokenKind::Else) {
+            true if self.at(TokenKind::Builtin) && &*self.peek_token().text == "@if" => {
+                Some(vec![self.parse_settled_if()?])
+            }
+            true => Some(self.parse_stmt_block("the else body")?),
+            false => None,
+        };
+        let span = self.span_from(&start);
+        let id = self.ast.stmts.alloc(
+            Stmt::If {
+                condition,
+                then,
+                otherwise,
+            },
+            span,
+        );
+        self.ast.settled.insert(id);
+        Some(id)
     }
 
     fn parse_for_body(

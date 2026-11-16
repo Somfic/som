@@ -34,6 +34,9 @@ pub struct Ast {
     /// Statements that were a block's last line without a `;`, where the block's value isn't
     /// used: `end_drawing()` in `while … { begin_drawing(); end_drawing() }`.
     pub unterminated: std::collections::HashSet<Id<Stmt>>,
+    /// `@for` and `@if`: a `Stmt::For` or `Stmt::If` settled while compiling. An `@for`'s
+    /// body is copied once for each value, and only the branch an `@if` picks exists.
+    pub settled: std::collections::HashSet<Id<Stmt>>,
 }
 
 /// One module: the `.som` files in one directory, named by the `use` path that loaded it.

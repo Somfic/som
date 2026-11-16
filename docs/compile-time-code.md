@@ -1,9 +1,10 @@
 # Compile-time code
 
-*Design spec. Status: steps 0–10 done, in `crates/compiler/8-comptime`: `@const` with
+*Design spec. Status: steps 0–12 done, in `crates/compiler/8-comptime`: `@const` with
 calls, loops, recursion, heap memory and text while compiling; structs, enums, arrays,
 optionals and text as values; constants in impl blocks and function bodies; `@const` as an
-expression; `@assert` and `@fail`; and `@const` once per generic instance. The rest is proposed.*
+expression; `@assert` and `@fail`; `@const` once per generic instance; and `@for` and `@if`,
+including over a generic function's or impl block's `N`. The rest is proposed.*
 
 Som code can already be worked out while compiling, but only a little of it: a `const` can be
 literals, operators, casts and other constants, and nothing else. This spec lets **any som
@@ -603,7 +604,11 @@ fn sum4(v: [i32; 4]) -> i32 {
 fn log(msg: string) { @if DEBUG { print(msg); } }
 ```
 *Needs:* the body checked once per iteration with `i` known, the loop unrolled in lowering,
-and the untaken `@if` branch never type-checked. Phase 2 is done.
+and the untaken `@if` branch never type-checked. Phase 2 is done. **Done**, with the body checked
+once (each copy has the same types until phase 3): `@for` loops over a range of known numbers
+(including a generic function's `N`, settled per instance in lowering) or an array written
+out, and lowering unrolls it; `@if` and `else @if` take their condition from literals and
+constants, and only the branch picked is checked and lowered.
 
 ### Phase 3
 
@@ -617,8 +622,12 @@ impl<N: usize> Vector<N, f32> {
     }
 }
 ```
-*Needs:* the decision in [4.6](#46-the-big-question-checking-generics-once-vs-per-instance),
-with generics that use this checked once per instance.
+*Needs:* nothing beyond step 11. **Done**: the body is checked once, its types the same in
+every copy, and lowering unrolls it for each instance's `N`. The decision in
+[4.6](#46-the-big-question-checking-generics-once-vs-per-instance) is only needed once copies
+can differ in type: `@if N >= 3`, and reflection (step 13 on). The prover checks the body once
+too, for every `N`: `.components[i]` is fine, but `.components[N - 1 - i]` isn't proven, its
+facts being one unknown and a constant. Proving each copy with `i` known would fix that.
 
 **Step 13. Generating items.** `step_13_items.som`
 ```rust

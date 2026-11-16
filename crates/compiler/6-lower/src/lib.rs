@@ -1137,6 +1137,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 mutable,
                 iterable,
                 body,
+            } if ast.settled.contains(&id) => {
+                self.settled_for(id, name, *mutable, *iterable, body, span)
+            }
+            Stmt::For {
+                name,
+                mutable,
+                iterable,
+                body,
             } => self.for_loop(id, name, *mutable, *iterable, body, span),
             Stmt::Return(value) => {
                 let value = match value {
@@ -1193,6 +1201,15 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.terminate(TerminatorKind::Goto(target), span);
                 // Whatever follows in the body can't be reached.
                 self.current = self.new_block();
+            }
+            // `@if`: only the branch it picks.
+            Stmt::If {
+                then, otherwise, ..
+            } if let Some(holds) = self.l.typed.settled_if(id) => {
+                let branch = if holds { Some(then) } else { otherwise.as_ref() };
+                if let Some(branch) = branch {
+                    self.stmts(branch, span);
+                }
             }
             Stmt::If {
                 condition,
@@ -1548,6 +1565,102 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     /// A loop's body, where `break` goes to `exit` and `continue` to `next`.
+    /// `@for i in 0..4 { body }`: the body once for each value, with `i` that value. `break`
+    /// leaves them all; `continue` goes on to the next copy.
+    fn settled_for(
+        &mut self,
+        stmt: Id<Stmt>,
+        name: &som_ast::Ident,
+        mutable: bool,
+        iterable: Id<Expr>,
+        body: &[Id<Stmt>],
+        span: Span,
+    ) {
+        let ast = self.l.ast;
+        let def = (self.l.names.local(stmt)).expect("every for loop is resolved");
+        let value_ty = self.l.typed.local(def);
+        let value_ty = self.ty(value_ty);
+        // Each copy's value: a number of the range, or an element written out.
+        let values: Vec<Result<i128, Id<Expr>>> = match &ast.exprs[iterable] {
+            Expr::Range {
+                start: Some(start),
+                end: Some(end),
+            } => (self.settled_int(*start)..self.settled_int(*end))
+                .map(Ok)
+                .collect(),
+            Expr::Array(items) => items.iter().map(|&item| Err(item)).collect(),
+            _ => unreachable!("checked: an `@for` loops over a range or an array written out"),
+        };
+        let exit = self.new_block();
+        let starts: Vec<BlockId> = values.iter().map(|_| self.new_block()).collect();
+        let first = starts.first().copied().unwrap_or(exit);
+        self.terminate(TerminatorKind::Goto(first), span.clone());
+        for (k, value) in values.into_iter().enumerate() {
+            self.current = starts[k];
+            let next = starts.get(k + 1).copied().unwrap_or(exit);
+            self.loops.push(LoopTargets {
+                exit,
+                next,
+                depth: self.scopes.len(),
+                stmt: Some(stmt),
+            });
+            self.in_scope(span.clone(), |b| {
+                let local = b.new_local(
+                    value_ty,
+                    Some(name.name.to_string()),
+                    mutable,
+                    name.span.clone(),
+                );
+                b.bindings.insert(def, local);
+                b.scopes.last_mut().expect("in scope").push(local);
+                b.push(StatementKind::StorageLive(local), span.clone());
+                let value = match value {
+                    Ok(n) => Rvalue::Use(b.constant(ConstKind::Int(n), value_ty)),
+                    Err(item) => b.rvalue(item),
+                };
+                b.assign(Place::local(local), value, span.clone());
+                b.stmts(body, span.clone());
+            });
+            self.loops.pop();
+            self.terminate(TerminatorKind::Goto(next), span.clone());
+        }
+        self.current = exit;
+    }
+
+    /// The number `expr` is in this copy of the function, which the type checker made sure is
+    /// known: a literal, a constant, or a value parameter, and arithmetic of those.
+    fn settled_int(&mut self, expr: Id<Expr>) -> i128 {
+        let ast = self.l.ast;
+        if let Some(n) = som_typeck::const_number(ast, self.l.names, expr) {
+            return n;
+        }
+        match &ast.exprs[expr] {
+            Expr::Var(_) => {
+                let def = (self.l.names.expr(expr)).expect("checked programs are resolved");
+                let param = self.l.mir.types.intern(Ty::Param(def));
+                let value = self.value_of(param);
+                match *self.l.mir.types.get(value) {
+                    Ty::Value(Value::Int(n)) => n as i128,
+                    _ => unreachable!("checked: a value parameter that's a number"),
+                }
+            }
+            Expr::Binary { op, lhs, rhs } => {
+                let (a, b) = (self.settled_int(*lhs), self.settled_int(*rhs));
+                match op {
+                    BinOp::Add => a + b,
+                    BinOp::Subtract => a - b,
+                    BinOp::Multiply => a * b,
+                    BinOp::Divide if b != 0 => a / b,
+                    BinOp::Modulo if b != 0 => a % b,
+                    _ => unreachable!("checked: arithmetic of known numbers"),
+                }
+            }
+            Expr::Cast { value, .. } => self.settled_int(*value),
+            Expr::Neg(value) => -self.settled_int(*value),
+            _ => unreachable!("checked: a number known while compiling"),
+        }
+    }
+
     fn loop_body(&mut self, body: &[Id<Stmt>], exit: BlockId, next: BlockId, span: Span) {
         self.loops.push(LoopTargets {
             exit,

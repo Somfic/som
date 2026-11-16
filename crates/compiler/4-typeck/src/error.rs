@@ -156,6 +156,12 @@ pub enum TypeError {
     },
     /// `[i32; N]` of `@const N = four();`: `N` is worked out by running code, which happens
     /// after types are checked.
+    /// `@for i in 0..n`, `@if ready`: what's settled while compiling has to be known then.
+    NotSettled {
+        what: &'static str,
+        hint: &'static str,
+        span: Span,
+    },
     /// `@on fail fn save()`: a listener takes a `&Failure`, and gives nothing back.
     ListenerSignature { span: Span },
     ConstNeededTooEarly {
@@ -1967,6 +1973,11 @@ impl TypeError {
                     "a whole number, at least 0, is needed here",
                 ))
                 .with_label(Label::secondary(defined_at.clone(), "defined here")),
+            TypeError::NotSettled { what, hint, span } => {
+                Diagnostic::error(msg![*what, " has to be known while compiling"])
+                    .with_label(Label::primary(span.clone(), "only known when the program runs"))
+                    .with_hint(*hint)
+            }
             TypeError::ListenerSignature { span } => Diagnostic::error(msg![
                 "an ",
                 code("@on fail"),

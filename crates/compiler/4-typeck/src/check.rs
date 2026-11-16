@@ -52,6 +52,8 @@ pub(crate) struct Checker<'a> {
     pointer_methods: HashMap<Id<Expr>, PointerMethod>,
     sliced: HashMap<Id<Expr>, TypeId>,
     for_loops: HashMap<Id<Stmt>, Loop>,
+    /// `@if`s → whether the condition holds.
+    settled_ifs: HashMap<Id<Stmt>, bool>,
     /// The function being checked: its return type, and where that's written.
     returns: Option<(TypeId, Option<Span>)>,
     /// The next expression inferred is the object of a field access or dereference.
@@ -144,6 +146,7 @@ impl<'a> Checker<'a> {
             pointer_methods: HashMap::new(),
             sliced: HashMap::new(),
             for_loops: HashMap::new(),
+            settled_ifs: HashMap::new(),
             returns: None,
             in_place: false,
             deferred_ops: Vec::new(),
@@ -410,6 +413,77 @@ impl<'a> Checker<'a> {
             self.expected_here,
             self.omitted_args_ok,
         ) = outer;
+    }
+
+    /// Whether `expr` is a number known while compiling: a literal, a constant made of them,
+    /// or a function's value parameter, `N`, known in each instance.
+    fn settled_int(&self, expr: Id<Expr>) -> bool {
+        if self.const_number(expr).is_some() {
+            return true;
+        }
+        match &self.ast.exprs[expr] {
+            Expr::Var(_) => self.names.expr(expr).is_some_and(|def| {
+                matches!(
+                    self.names.def(def).kind,
+                    DefKind::TypeParam { value: true, .. }
+                        | DefKind::ImplParam { value: true, .. }
+                        | DefKind::StructParam { value: true, .. }
+                )
+            }),
+            Expr::Binary { lhs, rhs, .. } => self.settled_int(*lhs) && self.settled_int(*rhs),
+            Expr::Cast { value, .. } | Expr::Neg(value) => self.settled_int(*value),
+            _ => false,
+        }
+    }
+
+    /// Whether what an `@for` loops over is known while compiling: a range of known numbers,
+    /// or an array written out, each of its elements a copy of the body.
+    fn settled_iterable(&self, expr: Id<Expr>) -> bool {
+        match &self.ast.exprs[expr] {
+            Expr::Range {
+                start: Some(start),
+                end: Some(end),
+            } => self.settled_int(*start) && self.settled_int(*end),
+            Expr::Array(_) => true,
+            _ => false,
+        }
+    }
+
+    /// The value of `@if`'s condition `expr`, if it's known while compiling: a `bool`, a
+    /// constant that's one, comparisons of known numbers, and `!`, `&&` and `||` of those.
+    fn settled_bool(&self, expr: Id<Expr>) -> Option<bool> {
+        match &self.ast.exprs[expr] {
+            Expr::Bool(b) => Some(*b),
+            Expr::Not(inner) => self.settled_bool(*inner).map(|b| !b),
+            Expr::Var(_) => match self.names.def(self.names.expr(expr)?).kind {
+                DefKind::Const(c) => self.settled_bool(self.ast.consts[c].value),
+                _ => None,
+            },
+            Expr::Binary { op, lhs, rhs } => match op {
+                BinOp::And => Some(self.settled_bool(*lhs)? && self.settled_bool(*rhs)?),
+                BinOp::Or => Some(self.settled_bool(*lhs)? || self.settled_bool(*rhs)?),
+                _ => {
+                    if let (Some(a), Some(b)) = (self.settled_bool(*lhs), self.settled_bool(*rhs)) {
+                        return match op {
+                            BinOp::Equals => Some(a == b),
+                            BinOp::NotEquals => Some(a != b),
+                            _ => None,
+                        };
+                    }
+                    let (a, b) = (self.const_number(*lhs)?, self.const_number(*rhs)?);
+                    match op {
+                        BinOp::Equals => Some(a == b),
+                        BinOp::NotEquals => Some(a != b),
+                        BinOp::LessThan => Some(a < b),
+                        BinOp::GreaterThan => Some(a > b),
+                        BinOp::LessThanOrEqual => Some(a <= b),
+                        BinOp::GreaterThanOrEqual => Some(a >= b),
+                        _ => None,
+                    }
+                }
+            },
+            _ => None,
+        }
     }
 
     /// Each `@on fail` function is called with a `&Failure`, and gives nothing back.
@@ -736,6 +810,7 @@ impl<'a> Checker<'a> {
             pointer_methods: self.pointer_methods,
             sliced,
             loops: self.for_loops,
+            settled_ifs: self.settled_ifs,
             patterns: self.patterns,
             receivers: self.receivers,
             callees: self.callees,
@@ -2016,6 +2091,18 @@ impl<'a> Checker<'a> {
                 self.expect(*condition, bool, None);
                 self.check_loop(body);
             }
+            // `@for i in 0..4`: copied once for each value, so they have to be known.
+            Stmt::For { iterable, .. }
+                if self.ast.settled.contains(&id) && !self.settled_iterable(*iterable) =>
+            {
+                self.errors.push(TypeError::NotSettled {
+                    what: "what an `@for` loops over",
+                    hint: "loop over a range of literals, constants and a generic function's \
+                           value parameters, or over an array written out",
+                    span: self.span(*iterable),
+                });
+                self.infer(*iterable);
+            }
             Stmt::For { iterable, body, .. } => {
                 // A later iteration sees what the body changes.
                 self.forget_changed_in(body);
@@ -2055,6 +2142,31 @@ impl<'a> Checker<'a> {
                 });
             }
             Stmt::Break(_) | Stmt::Continue(_) => {}
+            // `@if DEBUG { … }`: only the branch it picks is there, and checked.
+            Stmt::If {
+                condition,
+                then,
+                otherwise,
+            } if self.ast.settled.contains(&id) => {
+                let bool = self.u.table.bool;
+                self.expect(*condition, bool, None);
+                match self.settled_bool(*condition) {
+                    Some(holds) => {
+                        self.settled_ifs.insert(id, holds);
+                        match (holds, otherwise) {
+                            (true, _) => self.check_stmts(then),
+                            (false, Some(otherwise)) => self.check_stmts(otherwise),
+                            (false, None) => {}
+                        }
+                    }
+                    None => self.errors.push(TypeError::NotSettled {
+                        what: "an `@if`'s condition",
+                        hint: "use literals and constants; a generic function's parameters \
+                               can't be used in one yet",
+                        span: self.span(*condition),
+                    }),
+                }
+            }
             Stmt::If {
                 condition,
                 then,
@@ -2144,6 +2256,13 @@ impl<'a> Checker<'a> {
         };
         match &self.ast.stmts[last] {
             Stmt::Return(_) | Stmt::Break(_) | Stmt::Continue(_) => true,
+            // `@if`: the branch it picks.
+            Stmt::If {
+                then, otherwise, ..
+            } if let Some(&holds) = self.settled_ifs.get(&last) => match holds {
+                true => self.leaves(then),
+                false => otherwise.as_ref().is_some_and(|o| self.leaves(o)),
+            },
             Stmt::If {
                 then,
                 otherwise: Some(otherwise),

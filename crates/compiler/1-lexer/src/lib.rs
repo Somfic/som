@@ -28,6 +28,18 @@ pub const BUILTINS: &[(&str, &str)] = &[
          program's own listeners are called instead of the standard library's printer.",
     ),
     (
+        "@for",
+        "A loop settled while compiling: `@for i in 0..4 { s = s + v[i]; }` is the body \
+         four times over, with `i` 0, 1, 2 and 3. What it loops over has to be known while \
+         compiling: a range of known numbers, or an array literal.",
+    ),
+    (
+        "@if",
+        "A choice made while compiling: `@if DEBUG { log(message); }`. Only the branch the \
+         condition picks is checked and compiled; the condition has to be known while \
+         compiling.",
+    ),
+    (
         "@const",
         "Worked out while compiling: a constant, `@const CELLS = COLS * ROWS;`, or a value \
          where it's written, `@const first_primes()`.",

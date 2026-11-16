@@ -121,6 +121,8 @@ pub struct Typed {
     sliced: HashMap<Id<Expr>, TypeId>,
     /// `for` loops → what they loop over.
     loops: HashMap<Id<Stmt>, Loop>,
+    /// `@if`s → whether the condition holds: which branch there is.
+    settled_ifs: HashMap<Id<Stmt>, bool>,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
     /// Method calls on typed pointers → the built-in method they call.
@@ -422,6 +424,12 @@ impl Typed {
     }
 
     /// What the `for` loop `stmt` goes through.
+    /// Whether `@if` `stmt`'s condition holds: `true` for its first branch, `false` for its
+    /// `else`. `None` for an `if` decided when the program runs.
+    pub fn settled_if(&self, stmt: Id<Stmt>) -> Option<bool> {
+        self.settled_ifs.get(&stmt).copied()
+    }
+
     pub fn for_loop(&self, stmt: Id<Stmt>) -> Option<Loop> {
         self.loops.get(&stmt).copied()
     }

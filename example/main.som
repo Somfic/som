@@ -1,10 +1,8 @@
-fn power_of_two(n: usize) -> usize {
-    let mut p = 1;
-    for i in 0..n { p = p * 2; }
-    p
+extern "c";
+fn sum4(v: [i32; 4]) -> i32 {
+    let mut s = 0;
+    @for i in 0..4 { s = s + v[i]; }
+    s
 }
 
-/// The biggest number that fits in N bits.
-fn biggest<N: usize>() -> usize = @power_of_two(N) - 1;
-
-fn main() -> i32 = (biggest<3>() + biggest<5>()) as i32;   // 7 + 31 = 38
+c::printf("%d", sum4([1, 2, 3, 4]))

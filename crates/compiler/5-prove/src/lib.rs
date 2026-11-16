@@ -203,6 +203,16 @@ impl Prover<'_> {
                     self.expr(*value);
                 }
             }
+            // `@if`: only the branch it picks is there, and nothing's checked of the condition
+            // as the program runs.
+            Stmt::If {
+                then, otherwise, ..
+            } if let Some(holds) = self.typed.settled_if(id) => {
+                let branch = if holds { Some(then) } else { otherwise.as_ref() };
+                if let Some(branch) = branch {
+                    self.stmts(branch, false);
+                }
+            }
             Stmt::If {
                 condition,
                 then,
@@ -1608,6 +1618,12 @@ impl Prover<'_> {
         };
         match &self.ast.stmts[last] {
             Stmt::Return(_) | Stmt::Break(_) | Stmt::Continue(_) => true,
+            Stmt::If {
+                then, otherwise, ..
+            } if let Some(holds) = self.typed.settled_if(last) => match holds {
+                true => self.leaves(then),
+                false => otherwise.as_ref().is_some_and(|o| self.leaves(o)),
+            },
             Stmt::If {
                 then,
                 otherwise: Some(otherwise),

@@ -167,6 +167,13 @@ impl Checker<'_> {
                 self.moves_in(*iterable, true);
                 body.iter().for_each(|&s| self.moves_in_stmt(s));
             }
+            // `@if`: only the branch it picks is there.
+            Stmt::If {
+                then, otherwise, ..
+            } if let Some(&holds) = self.settled_ifs.get(&id) => {
+                let branch = if holds { Some(then) } else { otherwise.as_ref() };
+                branch.into_iter().flatten().for_each(|&s| self.moves_in_stmt(s));
+            }
             Stmt::If {
                 condition,
                 then,

@@ -1,0 +1,24 @@
+// expect: exit 34
+
+struct Point<N: usize, T> {
+    components: [T; N]
+}
+
+/// `@for` over an impl block's `N`: unrolled for each `N` it's used with, two copies of the
+/// body for a `Point<2, f32>` and three for a `Point<3, f32>`.
+impl<N: usize> Point<N, f32> {
+    pub prop length_squared: f32 {
+        let mut sum = 0.0;
+        @for i in 0..N { sum = sum + .components[i] * .components[i]; }
+        sum
+    }
+
+    pub prop magnitude: f32 = .length_squared.sqrt();
+}
+
+fn main() -> i32 {
+    let p = Point { components: [3.0, 4.0] };
+    let q = Point { components: [1.0, 2.0, 2.0] };
+    // 25 + 9
+    return p.length_squared as i32 + (q.magnitude * q.magnitude) as i32;
+}

@@ -1,0 +1,50 @@
+// expect: exit 42
+
+extern "c";
+
+/// `@for`: the body copied once for each value, `i` known in each.
+fn sum4(v: [i32; 4]) -> i32 {
+    let mut s = 0;
+    @for i in 0..4 { s = s + v[i]; }
+    s
+}
+
+/// Over a generic function's `N`: copied as many times as each instance has.
+fn total<N: usize>(v: [i32; N]) -> i32 {
+    let mut s = 0;
+    @for i in 0..N { s = s + v[i]; }
+    s
+}
+
+/// `continue` goes on to the next copy, `break` leaves them all.
+fn odd_until_seven() -> i32 {
+    let mut s = 0;
+    @for i in 0..10 {
+        if i % 2 == 0 { continue; }
+        if i > 7 { break; }
+        s = s + i;
+    }
+    s
+}
+
+@const DEBUG = false;
+@const LEVEL = 2;
+
+/// `@if`: only the branch it picks is there. The others aren't even type-checked.
+fn level() -> i32 {
+    @if DEBUG {
+        let wrong: i32 = "not a number";
+        return wrong;
+    } else @if LEVEL > 1 {
+        return 1;
+    } else {
+        return true;
+    }
+}
+
+fn main() -> i32 {
+    let mut shown = 0;
+    @for x in [3, 4, 5] { shown = shown + x; }
+    // 10 + 6 + (1 + 3 + 5 + 7) + 1 - 3 + 12
+    return sum4([1, 2, 3, 4]) + total<3>([1, 2, 3]) + odd_until_seven() + level() - 3 + shown;
+}
