@@ -129,12 +129,24 @@ impl ComptimeError {
             }
         };
         let mut d = d.with_label(Label::primary(span.clone(), label));
+        // Each place once: recursion calls from the same few places, many times over.
+        let mut shown: Vec<&Working> = Vec::new();
         for working in trace {
+            if !shown.iter().any(|w| w.span == working.span && w.call == working.call) {
+                shown.push(working);
+            }
+        }
+        for working in &shown {
             let label = match working.call {
                 true => msg![code(format!("{}(…)", working.name)), " is called here"],
                 false => msg!["while working out ", code(&working.name)],
             };
             d = d.with_label(Label::secondary(working.span.clone(), label));
+        }
+        let calls = trace.iter().filter(|w| w.call).count();
+        let shown_calls = shown.iter().filter(|w| w.call).count();
+        if calls > shown_calls {
+            d = d.with_hint(format!("it was {calls} calls deep"));
         }
         d
     }
