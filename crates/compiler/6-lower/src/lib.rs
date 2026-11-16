@@ -830,7 +830,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn stmt_inner(&mut self, id: Id<Stmt>, span: Span) {
         let ast = self.l.ast;
         match &ast.stmts[id] {
-            Stmt::Use(_) => {}
+            // A constant is made where it's used, or worked out while compiling.
+            Stmt::Use(_) | Stmt::Const(_) => {}
             Stmt::Let {
                 name,
                 mutable,

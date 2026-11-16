@@ -66,7 +66,7 @@ pub enum ResolveError {
         span: Span,
         fix: Fix,
     },
-    /// `@const N = count();`: a constant's value has to be known while compiling.
+    /// `@const DOUBLE = n * 2;` in a function: a constant's value can't name its locals.
     ConstNotKnown { span: Span },
     /// `@const A = B; const B = A;`: a constant made of itself.
     ConstCycle { name: String, span: Span },
@@ -169,7 +169,7 @@ impl ResolveError {
             ResolveError::ConstNotKnown { span } => {
                 return Diagnostic::error("a constant's value has to be known while compiling")
                     .with_label(Label::primary(span.clone(), "only known when the program runs"))
-                    .with_hint("a constant is made of literals, operators, casts, other constants, and arrays and structs of those");
+                    .with_hint("it's worked out while compiling, before the function runs: its parameters and variables don't have values yet");
             }
             ResolveError::ConstCycle { name, span } => {
                 return Diagnostic::error(msg![

@@ -1,0 +1,20 @@
+// expect: exit 42
+
+fn kilobytes(n: i32) -> i32 = n * 1024;
+
+impl f32 {
+    pub @const TAU = f32::PI * 2.0;
+}
+
+/// A constant inside a function: seen by the rest of its block, worked out while compiling.
+fn wrap(i: usize) -> usize {
+    @const SIZE = kilobytes(1) as usize;
+    // The prover runs before constants are worked out: it doesn't know `SIZE` isn't 0.
+    i % SIZE if SIZE != 0 else 0
+}
+
+fn main() -> i32 {
+    @const SIX = 6;
+    let turn = (f32::TAU * 100.0) as i32;
+    return wrap(1024 + 30) as i32 + SIX + turn - 622;
+}

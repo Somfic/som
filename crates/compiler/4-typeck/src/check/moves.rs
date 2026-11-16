@@ -146,7 +146,12 @@ impl Checker<'_> {
 
     fn moves_in_stmt(&mut self, id: Id<Stmt>) {
         match &self.ast.stmts[id] {
-            Stmt::Use(_) | Stmt::Break(_) | Stmt::Continue(_) | Stmt::Return(None) => {}
+            // A constant's value is worked out on its own, while compiling.
+            Stmt::Use(_)
+            | Stmt::Const(_)
+            | Stmt::Break(_)
+            | Stmt::Continue(_)
+            | Stmt::Return(None) => {}
             Stmt::Let { value, .. } | Stmt::Expr(value) | Stmt::Return(Some(value)) => {
                 self.moves_in(*value, true)
             }

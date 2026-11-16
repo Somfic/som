@@ -1931,6 +1931,10 @@ impl<'a> Checker<'a> {
     fn check_stmt(&mut self, id: Id<Stmt>) {
         match &self.ast.stmts[id] {
             Stmt::Use(_) => {}
+            // Checked on its own, apart from the function around it.
+            Stmt::Const(c) => {
+                self.check_const(*c);
+            }
             Stmt::Let { ty, value, .. } => {
                 let ty = match ty {
                     Some(annotation) => {
@@ -5680,7 +5684,7 @@ impl Checker<'_> {
                     self.forget_changed_by(*condition, false);
                     self.forget_changed_in(body);
                 }
-                Stmt::Break(_) | Stmt::Continue(_) | Stmt::Use(_) => {}
+                Stmt::Break(_) | Stmt::Continue(_) | Stmt::Use(_) | Stmt::Const(_) => {}
                 Stmt::Return(value) => {
                     if let Some(value) = value {
                         self.forget_changed_by(*value, false);

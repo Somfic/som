@@ -194,6 +194,9 @@ pub enum BinOp {
 pub enum Stmt {
     /// `use som::data;` inside a block: what the module has is in scope until the block ends.
     Use(crate::Use),
+    /// `@const LIMIT = 10;` inside a block: a constant the rest of the block sees, worked out
+    /// while compiling. Its value can't name the function's locals.
+    Const(Id<crate::Const>),
     Let {
         name: Ident,
         mutable: bool,

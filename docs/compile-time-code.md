@@ -544,7 +544,7 @@ impl f32 {
 
 fn wrap(i: usize) -> usize {
     @const SIZE = kilobytes(1) as usize;
-    i % SIZE
+    i % SIZE if SIZE != 0 else 0
 }
 ```
 *Needs:* `@const` declarations in `impl` blocks and function bodies. In a body, the parser

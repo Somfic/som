@@ -1,0 +1,19 @@
+// expect: exit 42
+
+/// Inside an impl block, its constants are named as they are, by each other and by its
+/// methods, as well as through `Self`. A method's own names come first.
+struct Grid { w: i32 }
+
+impl Grid {
+    @const SIDE = 4;
+    @const CELLS = SIDE * SIDE;
+
+    fn cells() -> i32 = CELLS + Self::SIDE;
+
+    fn shadowed() -> i32 {
+        let SIDE = 2;
+        SIDE
+    }
+}
+
+fn main() -> i32 = Grid::cells() + Grid::shadowed() + Grid::CELLS + 4;

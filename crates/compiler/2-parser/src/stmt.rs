@@ -84,22 +84,11 @@ impl Parser<'_> {
         }
     }
 
-    /// `@const LIMIT = 10;` in a function: not yet, so reported and read as a `let`.
+    /// `@const LIMIT = 10;` in a block.
     fn parse_local_const(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
-        self.advance();
-        self.error_at(
-            start.clone(),
-            msg!["a constant can't be inside a function yet"],
-            msg!["put it outside the function, with the module's other items"],
-        );
-        let name = self.parse_ident("a constant name")?;
-        let ty = match self.eat(TokenKind::Colon) {
-            true => Some(self.parse_type()?),
-            false => None,
-        };
-        self.expect(TokenKind::Equals, "`=` and the constant's value")?;
-        self.parse_let_value(start, false, name, ty)
+        let c = self.parse_const()?;
+        Some(self.ast.stmts.alloc(Stmt::Const(c), self.span_from(&start)))
     }
 
     fn parse_let(&mut self) -> Option<Id<Stmt>> {

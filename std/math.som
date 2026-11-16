@@ -2,7 +2,7 @@ extern "c";
 
 impl f32 {
     pub @const PI = c::M_PI as f32;
-    pub @const HALF_PI = c::M_PI_2 as f32;
+    pub @const HALF_PI = PI / 2.0;
 
     pub fn pow(self, power: f32) -> f32 {
         c::powf(self, power)

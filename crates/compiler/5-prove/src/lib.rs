@@ -157,7 +157,8 @@ impl Prover<'_> {
 
     fn stmt(&mut self, id: Id<Stmt>) {
         match &self.ast.stmts[id] {
-            Stmt::Use(_) | Stmt::Break(_) | Stmt::Continue(_) => {}
+            // A constant's value isn't proven here, wherever it's written.
+            Stmt::Use(_) | Stmt::Const(_) | Stmt::Break(_) | Stmt::Continue(_) => {}
             Stmt::Let { value, .. } => {
                 self.expr(*value);
                 // `let last = xs.len - 1`: `last` is that, until it changes.
@@ -1197,8 +1198,15 @@ impl Prover<'_> {
                             path: Vec::new(),
                         })
                     }
-                    // `W`, of `@const W = 60;`
-                    DefKind::Const(c) => Value::number(self.const_int(self.ast.consts[c].value)?),
+                    // `W`, of `@const W = 60;`; or, for one whose value runs code, worked out
+                    // after this, a value nothing changes: what's checked of it holds.
+                    DefKind::Const(c) => match self.const_int(self.ast.consts[c].value) {
+                        Some(n) => Value::number(n),
+                        None => Value::place(Place::Path {
+                            root: def,
+                            path: Vec::new(),
+                        }),
+                    },
                     // `N`, of `[T; N]`.
                     DefKind::TypeParam { value: true, .. }
                     | DefKind::StructParam { value: true, .. }

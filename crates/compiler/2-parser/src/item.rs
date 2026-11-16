@@ -553,7 +553,7 @@ impl Parser<'_> {
     }
 
     /// `@const W: i32 = 60;`
-    fn parse_const(&mut self) -> Option<Id<Const>> {
+    pub(crate) fn parse_const(&mut self) -> Option<Id<Const>> {
         let doc = self.doc_comment();
         let start = self.current_span();
         // `const MAX = 10;`: another language's, reported and read as `@const`.

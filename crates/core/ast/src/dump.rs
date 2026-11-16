@@ -272,6 +272,7 @@ impl Dumper<'_> {
         let ast = self.ast;
         match &ast.stmts[id] {
             Stmt::Use(u) => self.line(format!("use {}", u.path)),
+            Stmt::Const(c) => self.line(format!("@const {}", ast.consts[*c].name)),
             Stmt::Let {
                 name,
                 mutable,

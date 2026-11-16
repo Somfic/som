@@ -38,6 +38,7 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         variant_names: vec![HashSet::new(); ast.modules.len()],
         module: 0,
         scopes: Vec::new(),
+            in_local_const: false,
         type_params: Vec::new(),
         block_types: Vec::new(),
         through_alias: std::cell::Cell::new(None),
@@ -118,6 +119,8 @@ struct Resolver<'a> {
     through_alias: std::cell::Cell<Option<DefId>>,
     /// The type whose impl block is being resolved: what its members' privacy is to.
     owner: Option<DefId>,
+    /// Resolving a `@const` inside a function: its value can't name the function's locals.
+    in_local_const: bool,
 }
 
 impl<'a> Resolver<'a> {
@@ -629,6 +632,12 @@ impl<'a> Resolver<'a> {
             )
             .collect();
         let outer = std::mem::replace(&mut self.owner, self.names.impls[index].owner);
+        // Its constants, named as they are inside it, `PI` as well as `Self::PI`: by each
+        // other, and by its methods, whose own names come first.
+        let consts = (block.consts.iter())
+            .map(|&c| (&*self.ast.consts[c].name.name, self.names.const_def(c)))
+            .collect();
+        self.scopes.push(consts);
         for &c in &block.consts {
             let c = &self.ast.consts[c];
             if let Some(ty) = c.ty {
@@ -639,6 +648,7 @@ impl<'a> Resolver<'a> {
             self.pop_scope();
         }
         block.methods.iter().for_each(|&id| self.resolve_func(id));
+        self.pop_scope();
         self.owner = outer;
         self.block_types.clear();
     }
@@ -778,6 +788,26 @@ impl<'a> Resolver<'a> {
                 if let Some(&module) = self.modules.get(u.path.to_string().as_str()) {
                     self.block_imports.push((self.scopes.len(), module));
                 }
+            }
+            // Seen by the rest of the block. Its value is worked out while compiling, so it
+            // can't name what's only there when the function runs.
+            Stmt::Const(c) => {
+                let c = *c;
+                let constant = &self.ast.consts[c];
+                if let Some(ty) = constant.ty {
+                    self.resolve_type(ty);
+                }
+                let outer = std::mem::replace(&mut self.in_local_const, true);
+                self.resolve_expr(constant.value);
+                self.in_local_const = outer;
+                let def = self.names.define(
+                    &constant.name.name,
+                    DefKind::Const(c),
+                    constant.name.span.clone(),
+                    self.module,
+                );
+                self.names.set_const(c, def);
+                self.bind(&constant.name, def);
             }
             Stmt::Let {
                 name, ty, value, ..
@@ -1054,6 +1084,22 @@ impl<'a> Resolver<'a> {
     fn bind_expr(&mut self, id: Id<Expr>, path: &Path, expect: Expect) {
         self.through_alias.set(None);
         if let Some(def) = self.resolve_path(path, expect) {
+            if self.in_local_const
+                && matches!(
+                    self.names.def(def).kind,
+                    DefKind::Local(_)
+                        | DefKind::Param { .. }
+                        | DefKind::Out(_)
+                        | DefKind::Binding(_)
+                        | DefKind::TypeParam { .. }
+                        | DefKind::ImplParam { .. }
+                        | DefKind::StructParam { .. }
+                )
+            {
+                self.errors.push(ResolveError::ConstNotKnown {
+                    span: self.ast.exprs.span(id).clone(),
+                });
+            }
             self.names.set_expr(id, def);
             if let Some(alias) = self.through_alias.take() {
                 self.names.set_expr_alias(id, alias);
