@@ -270,8 +270,7 @@ fn lower_instances(
         }
         Ok((mir, instances)) => {
             // Each instance proven, with its parameters known: what's in its `@if`s.
-            let regions: Vec<som_base::Span> =
-                typed.regions().map(|stmt| ast.stmts.span(stmt).clone()).collect();
+            let regions = typed.region_spans(ast);
             for instance in &instances {
                 let proven = som_prove::prove_instance(
                     ast,

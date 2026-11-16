@@ -58,6 +58,10 @@ pub fn prove(ast: &Ast, names: &Names, typed: &Typed) -> Vec<ProveError> {
         }
     }
     for (id, func) in ast.funcs.iter() {
+        // A member only some instances have is proven for each: what's in it depends on them.
+        if typed.is_per_instance(id) && !func.when.is_empty() {
+            continue;
+        }
         if let Some(body) = func.body {
             prover.facts = Facts::default();
             prover.assume_requires(id);

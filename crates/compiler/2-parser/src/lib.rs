@@ -57,6 +57,7 @@ impl<'a> Parser<'a> {
             in_impl_target: false,
             wheres: Vec::new(),
             listens: Vec::new(),
+            when: Vec::new(),
             where_doc: None,
             where_start: None,
             trait_supers: Vec::new(),
@@ -144,6 +145,9 @@ struct Parser<'a> {
     wheres: Vec<som_ast::Where>,
     /// `@on` events read, for the function after them.
     listens: Vec<som_ast::Ident>,
+    /// The `@if`s among an impl block's members the parser is inside: what the members after
+    /// them need to hold.
+    when: Vec<som_ast::Id<som_ast::Expr>>,
     where_doc: Option<String>,
     where_start: Option<Span>,
     /// The traits the trait being read builds on, which its methods' `Self` implements.

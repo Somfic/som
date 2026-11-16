@@ -1,0 +1,17 @@
+// expect: exit 7
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+/// Wrong only for a `Row<2>`, which nothing has: never checked for one.
+impl<N: usize> Row<N> {
+    @if N >= 2 {
+        pub prop third = .cells[2];
+    }
+}
+
+fn main() -> i32 {
+    let row = Row { cells: [1, 2, 7] };
+    return row.third;
+}

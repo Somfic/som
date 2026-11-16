@@ -424,7 +424,8 @@ The AST grows by a copy for each struct for each such `@for`.
 
 Not done yet: *pinning* (a region can still change the type of a variable outside it, per
 instance; each instance is checked as a whole, so it's consistent, but the generic check
-doesn't see it); `@for (i, v) in T` over a generic enum's variants among `match` arms; pass 2.
+doesn't see it); `@for (i, v) in T` over a generic enum's variants among `match` arms; `else`
+for an `@if` among an impl's members.
 
 The plan, in two passes:
 
@@ -460,16 +461,39 @@ only known for an instance. For each instance of such a function, the `@for`s ov
 parameters are written out then (from the body's place in the source, as now), the copies
 resolved in the function's scope, and only then checked and proven as above.
 
-**Pass 2: members only some instances have.** `@if N >= 3 { pub prop z = … }` among an
-impl's members. What a type's members are then depends on the instance, so resolve, method
-lookup and the LSP's completion each need one to answer. After pass 1 works.
+**Pass 2: members only some instances have.** Done:
+
+```
+impl<N: usize> Row<N> {
+    @if N >= 3 {
+        pub prop third = .cells[2];
+        pub fn sum3(&self) -> i32 = .cells[0] + .cells[1] + .cells[2];
+    }
+}
+```
+
+- *Parsing.* An `@if` among an impl's members gives each member in it the condition
+  (`Func::when`, nested `@if`s all of theirs). No `else` yet: a second `@if` with the
+  opposite condition. Resolve resolves the condition in the member's scope, in terms of the
+  block's parameters.
+- *Each member is checked generically, quietly*: for its type, which a `prop` without one
+  gets from its body. Its errors are dropped and it's marked per instance; the member, whole,
+  is a region, so it's checked and proven for each instance lowering reaches, with errors said
+  as "in `Row::third<2>`: …".
+- *At a use* (`row.third`, `row.sum3()`), the block's parameters are matched against the
+  receiver's type (`Row<2>`: `N` is 2) and the conditions worked out. False: `MemberNotHere`
+  (`Row<2>` has no `third`); not known, the receiver's type generic: `MemberMaybeNotHere`,
+  whose hint is to use it in `@if N >= 3 { … }` (pass 1), where each instance is checked and
+  it is known. Among properties of one name, those whose condition is false don't count.
+- Not yet: the LSP's completion still lists such a member everywhere; `else`; a condition on
+  a type parameter (`@if T == f32`), which needs comparing types while compiling.
 
 ### 4.8 Other things left for later
 
 - **A query-based type checker.** Constants in types are worked out in rounds and instances
-  are checked as lowering reaches them, with no typeck restructuring. Pass 2 of 4.7 (members
-  only some instances have) feeds back into other bodies' checking, and could want queries
-  (or rounds again); so could re-checking only what changed, for an editor's speed.
+  are checked as lowering reaches them, with no typeck restructuring; pass 2 of 4.7 didn't
+  need one either (a use works its member's conditions out from the receiver's type).
+  Re-checking only what changed, for an editor's speed, could want queries.
 - **What macros do that this doesn't** (compile-time code instead of a macro system, like
   Zig): names made from an element (`@ident`, below); calls with any number of arguments
   (`println!`'s; tuples or variadics); new syntax (`html!`, `sql!`: not planned); embedding

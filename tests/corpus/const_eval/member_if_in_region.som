@@ -1,0 +1,24 @@
+// expect: exit 42
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+/// Members only some `Row`s have: a third cell only where there is one.
+impl<N: usize> Row<N> {
+    @if N >= 3 {
+        pub prop third = .cells[2];
+        pub fn sum3(&self) -> i32 = .cells[0] + .cells[1] + .cells[2];
+    }
+}
+
+/// In `@if N >= 3`, checked for each instance, a `Row<N>` has `third`.
+fn third_of<N: usize>(row: &Row<N>) -> i32 {
+    @if N >= 3 {
+        return row.third;
+    } else {
+        return 0;
+    }
+}
+
+fn main() -> i32 = third_of(&Row { cells: [1, 2, 42] }) + third_of(&Row { cells: [1, 2] });

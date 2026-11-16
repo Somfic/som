@@ -1,0 +1,18 @@
+// expect: exit 42
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+/// Members only some `Row`s have: a third cell only where there is one.
+impl<N: usize> Row<N> {
+    @if N >= 3 {
+        pub prop third = .cells[2];
+        pub fn sum3(&self) -> i32 = .cells[0] + .cells[1] + .cells[2];
+    }
+}
+
+fn main() -> i32 {
+    let row = Row { cells: [10, 20, 12] };
+    return row.third + row.sum3() - 12;
+}

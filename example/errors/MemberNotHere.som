@@ -1,0 +1,11 @@
+// MemberNotHere: `third` is in `@if N >= 3 { … }` among `Row`'s members, and a `Row<2>` isn't one of them.
+
+struct Row<N: usize> { cells: [i32; N] }
+
+impl<N: usize> Row<N> {
+    @if N >= 3 {
+        pub prop third = .cells[2];
+    }
+}
+
+fn main() -> i32 = Row { cells: [1, 2] }.third;

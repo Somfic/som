@@ -591,9 +591,7 @@ impl<'a> Lowerer<'a> {
         if self.instance_typed.contains_key(&key) {
             return true;
         }
-        let regions: Vec<Span> = (self.typed.regions())
-            .map(|stmt| self.ast.stmts.span(stmt).clone())
-            .collect();
+        let regions = self.typed.region_spans(self.ast);
         let (typed, errors) = som_typeck::check_instance(
             self.ast,
             self.names,

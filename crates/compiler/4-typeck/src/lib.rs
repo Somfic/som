@@ -531,6 +531,17 @@ impl Typed {
         self.regions.contains(&stmt)
     }
 
+    /// Where what's checked for each instance is: the `@if`s on a function's generic
+    /// parameters, and the members only some instances have, whole. Errors found checking an
+    /// instance are said if they're in one of these.
+    pub fn region_spans(&self, ast: &Ast) -> Vec<som_base::Span> {
+        let regions = self.regions.iter().map(|&stmt| ast.stmts.span(stmt).clone());
+        let members = (self.per_instance.iter())
+            .filter(|&&func| !ast.funcs[func].when.is_empty())
+            .map(|&func| ast.funcs.span(func).clone());
+        regions.chain(members).collect()
+    }
+
     /// The `@if`s checked for each instance.
     pub fn regions(&self) -> impl Iterator<Item = Id<Stmt>> + '_ {
         self.regions.iter().copied()

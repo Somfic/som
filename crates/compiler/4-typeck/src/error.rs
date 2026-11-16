@@ -162,6 +162,21 @@ pub enum TypeError {
         hint: &'static str,
         span: Span,
     },
+    /// `v2.z` where `z` is in `@if N >= 3 { … }` among `Vector`'s members, and `v2` is a
+    /// `Vector<2, f32>`.
+    MemberNotHere {
+        name: String,
+        ty: Message,
+        condition: String,
+        span: Span,
+    },
+    /// `v.z` where `v` is a `Vector<N, f32>` of a generic `N`: `z` is only there where
+    /// `N >= 3`, which isn't known here.
+    MemberMaybeNotHere {
+        name: String,
+        condition: String,
+        span: Span,
+    },
     /// `@for f in T` where `T` isn't a struct: a generic function's type parameter, used with
     /// one that isn't (`i32`), or a name that's neither.
     ReflectNotStruct { name: String, span: Span },
@@ -1979,6 +1994,30 @@ impl TypeError {
                     .with_label(Label::primary(span.clone(), "only known when the program runs"))
                     .with_hint(*hint)
             }
+            TypeError::MemberNotHere {
+                name,
+                ty,
+                condition,
+                span,
+            } => Diagnostic::error(msg![ty.clone(), " has no ", code(name)])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg![code(name), " is only there where ", code(condition)],
+                )),
+            TypeError::MemberMaybeNotHere {
+                name,
+                condition,
+                span,
+            } => Diagnostic::error(msg!["can't tell ", code(name), " is there"])
+                .with_label(Label::primary(
+                    span.clone(),
+                    msg!["only there where ", code(condition), ", which isn't known here"],
+                ))
+                .with_hint(msg![
+                    "use it in ",
+                    code(format!("@if {condition} {{ … }}")),
+                    ", which is checked for each instance"
+                ]),
             TypeError::ReflectNotStruct { name, span } => {
                 Diagnostic::error(msg![code(name), " isn't a struct to go through the fields of"])
                     .with_label(Label::primary(span.clone(), "not a struct here"))

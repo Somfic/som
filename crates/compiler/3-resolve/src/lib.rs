@@ -795,6 +795,10 @@ impl<'a> Resolver<'a> {
         for clause in &func.requires {
             self.resolve_expr(clause.condition);
         }
+        // `@if N >= 3` around it, among an impl block's members: in terms of its parameters.
+        for &condition in &func.when {
+            self.resolve_expr(condition);
+        }
         if let Some(body) = func.body {
             self.resolve_expr(body);
         }

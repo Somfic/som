@@ -1,0 +1,18 @@
+// expect: error MemberMaybeNotHere
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+/// Members only some `Row`s have: a third cell only where there is one.
+impl<N: usize> Row<N> {
+    @if N >= 3 {
+        pub prop third = .cells[2];
+        pub fn sum3(&self) -> i32 = .cells[0] + .cells[1] + .cells[2];
+    }
+}
+
+/// A `Row<N>` of any `N` may not have `third`.
+fn third_of<N: usize>(row: &Row<N>) -> i32 = row.third;
+
+fn main() -> i32 = third_of(&Row { cells: [1, 2, 3] });

@@ -1,0 +1,17 @@
+// expect: error
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+/// `N >= 2` lets `N` be 2, with no third cell: wrong in `Row::third<2>`, where it's used.
+impl<N: usize> Row<N> {
+    @if N >= 2 {
+        pub prop third = .cells[2];
+    }
+}
+
+fn main() -> i32 {
+    let row = Row { cells: [1, 2] };
+    return row.third;
+}

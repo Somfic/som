@@ -166,6 +166,9 @@ pub struct Func {
     pub requires: Vec<Where>,
     /// `@on fail` above it: the events it's called on.
     pub listens: Vec<Ident>,
+    /// `@if N >= 3 { pub prop z … }` around it, among an impl block's members: what has to
+    /// hold, in terms of the block's parameters, for a type to have it.
+    pub when: Vec<Id<Expr>>,
 }
 
 /// `@where i < self.len, "a position in it"`: a condition on a function's parameters, with

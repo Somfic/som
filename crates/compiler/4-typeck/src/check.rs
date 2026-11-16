@@ -447,6 +447,11 @@ impl<'a> Checker<'a> {
             self.expected_here.take(),
             std::mem::take(&mut self.omitted_args_ok),
         );
+        // A member only some instances have (`@if N >= 3 { prop z … }`), checked generically:
+        // for its type, which its body can decide. What's wrong in it is said per instance.
+        let quiet = !func.when.is_empty()
+            && !(self.names.type_params(id).iter()).any(|p| self.bound.contains_key(p));
+        let before = self.errors.len();
         self.check_body(id, func, body);
         self.check_moves_out(body);
         self.check_main_params(id, func);
@@ -454,6 +459,10 @@ impl<'a> Checker<'a> {
         // After the body, which decides a return type that isn't written.
         if func.prop {
             self.check_prop(id, func);
+        }
+        if quiet {
+            self.errors.truncate(before);
+            self.per_instance.insert(id);
         }
         self.returns = returns;
         self.narrowed = narrowed;
@@ -466,6 +475,121 @@ impl<'a> Checker<'a> {
             self.expected_here,
             self.omitted_args_ok,
         ) = outer;
+    }
+
+    /// Whether member `func`'s `@if`s hold for `receiver`, the type it's used on: its impl
+    /// block's parameters stand for what's in their places in `receiver`. `None` where that
+    /// isn't known, a generic type's.
+    fn member_holds(&mut self, func: Id<Func>, receiver: TypeId) -> Option<bool> {
+        let when = self.ast.funcs[func].when.clone();
+        if when.is_empty() {
+            return Some(true);
+        }
+        let saved = self.bound.clone();
+        if let Some(index) = self.names.impl_of(func)
+            && let Some(target) = self.impls[index].target
+        {
+            let params = self.impls[index].params.clone();
+            let mut found = self.u.shallow(receiver);
+            if let Ty::Ref { to, .. } = *self.u.get(found) {
+                found = self.u.shallow(to);
+            }
+            let mut matched = Vec::new();
+            self.match_params(target, found, &params, &mut matched);
+            // Each member has its own copies of the block's parameters, and the members in one
+            // `@if` share its condition, named in terms of whichever's copies: bind them all.
+            let members: Vec<Id<Func>> = (self.names.impls[index].methods.iter())
+                .copied()
+                .filter(|&m| !self.ast.funcs[m].when.is_empty())
+                .collect();
+            for (param, arg) in matched {
+                let arg = match *self.u.get(arg) {
+                    Ty::Param(p) => self.bound.get(&p).copied().unwrap_or(arg),
+                    _ => arg,
+                };
+                if !matches!(self.u.get(arg), Ty::Value(_)) {
+                    continue;
+                }
+                let Some(at) = params.iter().position(|&p| p == param) else {
+                    continue;
+                };
+                for &member in &members {
+                    if let Some(&own) = self.names.type_params(member).get(at) {
+                        self.bound.insert(own, arg);
+                    }
+                }
+            }
+        }
+        let mut holds = Some(true);
+        for condition in when {
+            match self.settled_bool(condition) {
+                Some(true) => {}
+                Some(false) => {
+                    holds = Some(false);
+                    break;
+                }
+                None => holds = None,
+            }
+        }
+        self.bound = saved;
+        holds
+    }
+
+    /// What's in `found` where each of `params` is in `pattern`, an impl block's target.
+    fn match_params(
+        &self,
+        pattern: TypeId,
+        found: TypeId,
+        params: &[DefId],
+        matched: &mut Vec<(DefId, TypeId)>,
+    ) {
+        let found = self.u.shallow(found);
+        let pattern_ty = self.u.get(pattern).clone();
+        if let Ty::Param(p) = pattern_ty
+            && params.contains(&p)
+        {
+            matched.push((p, found));
+            return;
+        }
+        if let Some(pairs) = pattern_ty.zip_children(self.u.get(found)) {
+            for (a, b) in pairs {
+                self.match_params(a, b, params, matched);
+            }
+        }
+    }
+
+    /// Reports member `func`, used as `name` at `span` on a value of type `ty`, if its `@if`s
+    /// don't hold there, or aren't known to. Whether it's there.
+    fn check_member_there(
+        &mut self,
+        func: Id<Func>,
+        ty: TypeId,
+        name: &str,
+        span: Span,
+    ) -> bool {
+        let holds = self.member_holds(func, ty);
+        if holds == Some(true) {
+            return true;
+        }
+        let condition = (self.ast.funcs[func].when.iter())
+            .map(|&c| self.span(c).get_text().to_string())
+            .collect::<Vec<_>>()
+            .join(" && ");
+        let error = match holds {
+            Some(false) => TypeError::MemberNotHere {
+                name: name.to_string(),
+                ty: self.describe(ty),
+                condition,
+                span,
+            },
+            _ => TypeError::MemberMaybeNotHere {
+                name: name.to_string(),
+                condition,
+                span,
+            },
+        };
+        self.errors.push(error);
+        false
     }
 
     /// Whether `expr` is a number known while compiling: a literal, a constant made of them,
@@ -3634,7 +3758,14 @@ impl<'a> Checker<'a> {
                     unreachable!("methods are functions")
                 };
                 let (sig, type_args) = self.instantiate(func);
-                if !self.on_impl_target(func, &type_args, receiver_ty, method, "method") {
+                if !self.on_impl_target(func, &type_args, receiver_ty, method, "method")
+                    || !self.check_member_there(
+                        func,
+                        receiver_ty,
+                        &method.name,
+                        method.span.clone(),
+                    )
+                {
                     args.iter().for_each(|&a| {
                         self.infer(a);
                     });
@@ -5666,7 +5797,10 @@ impl<'a> Checker<'a> {
             for &def in &candidates {
                 let func = func_of(c, def);
                 let (sig, type_args) = c.instantiate(func);
-                if c.impl_target_fits(func, &type_args, object_ty) {
+                // One only some instances have, where it isn't one of them, doesn't fit.
+                if c.impl_target_fits(func, &type_args, object_ty)
+                    && c.member_holds(func, object_ty) != Some(false)
+                {
                     fitting.push((def, func, sig, type_args));
                 }
             }
@@ -5679,9 +5813,20 @@ impl<'a> Checker<'a> {
         let chosen = found.into_iter().next();
         let Some((def, func, sig, type_args)) = chosen else {
             let funcs: Vec<Id<Func>> = candidates.iter().map(|&d| func_of(self, d)).collect();
+            // It's on the type, but only where an `@if` holds that doesn't here.
+            if let Some(&only) = (funcs.iter()).find(|&&f| !self.ast.funcs[f].when.is_empty()) {
+                let (_, type_args) = self.instantiate(only);
+                if self.impl_target_fits(only, &type_args, object_ty) {
+                    self.check_member_there(only, object_ty, &field.name, field.span.clone());
+                    return Some(self.u.table.error);
+                }
+            }
             self.not_on_impl_target(&funcs, object_ty, field, "property");
             return Some(self.u.table.error);
         };
+        if !self.check_member_there(func, object_ty, &field.name, field.span.clone()) {
+            return Some(self.u.table.error);
+        }
         self.methods.insert(id, def);
         self.check_visible(def, &field.span);
         self.require_bounds(func, &type_args, self.span(id));

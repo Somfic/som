@@ -247,6 +247,7 @@ impl Parser<'_> {
             prop: false,
             requires: Vec::new(),
             listens: Vec::new(),
+            when: Vec::new(),
         };
         let id = self.ast.funcs.alloc(func, span);
         self.add_item(Item::Func(id));
@@ -321,7 +322,49 @@ impl Parser<'_> {
         let mut types = Vec::new();
         let mut consts = Vec::new();
         self.in_impl = true;
-        while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+        let outside = self.when.len();
+        while !self.at_eof() {
+            // The end of an `@if` among the members, or of the block.
+            if self.at(TokenKind::CloseBrace) {
+                if self.when.len() == outside {
+                    break;
+                }
+                self.advance();
+                self.when.pop();
+                if self.at(TokenKind::Else) {
+                    self.error_at(
+                        self.current_span(),
+                        msg!["an ", code("@if"), " among an impl block's members has no ", code("else"), " yet"],
+                        msg!["write a second ", code("@if"), " with the opposite condition"],
+                    );
+                    // Past it, and what's in it.
+                    self.advance();
+                    let mut depth = 0usize;
+                    while !self.at_eof() {
+                        if self.at(TokenKind::OpenBrace) {
+                            depth += 1;
+                        } else if self.at(TokenKind::CloseBrace) {
+                            if depth <= 1 {
+                                if depth == 1 {
+                                    self.advance();
+                                }
+                                break;
+                            }
+                            depth -= 1;
+                        }
+                        self.advance();
+                    }
+                }
+                continue;
+            }
+            // `@if N >= 3 { pub prop z = … }`: members only some of the types have.
+            if self.at(TokenKind::Builtin) && &*self.peek_token().text == "@if" {
+                self.advance();
+                let condition = self.parse_condition()?;
+                self.expect(TokenKind::OpenBrace, "`{` and the members")?;
+                self.when.push(condition);
+                continue;
+            }
             // `@for i in 0..3 { … }` among the methods: each copy written out.
             if self.at_item_for(true) {
                 self.expand_for();
@@ -533,6 +576,7 @@ impl Parser<'_> {
             prop,
             requires,
             listens,
+            when: self.when.clone(),
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -1138,6 +1182,7 @@ impl Parser<'_> {
             prop,
             requires,
             listens,
+            when: self.when.clone(),
         };
         Some(self.ast.funcs.alloc(func, span))
     }
@@ -1544,6 +1589,7 @@ impl Parser<'_> {
             prop: false,
             requires: Vec::new(),
             listens: Vec::new(),
+            when: Vec::new(),
         };
         Some(self.ast.funcs.alloc(func, span))
     }
