@@ -26,7 +26,5 @@ fn halt() {
 }
 
 pub fn assert(ok: bool, error_message: string) {
-    if !ok {
-        @fail(error_message);
-    }
+    if !ok @fail(error_message);
 }

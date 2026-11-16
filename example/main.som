@@ -1,2 +1,0 @@
-@const test = 12;
-@assert(test == 0, "test is not 12");

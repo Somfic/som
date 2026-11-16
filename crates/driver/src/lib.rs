@@ -416,12 +416,17 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
     }
 
     let mir = if errors.is_empty() {
-        let mir = som_lower::lower(&ast, &names, &typed);
+        let mut mir = som_lower::lower(&ast, &names, &typed);
         errors.extend(
             borrow_errors(&ast, &names, &typed, &mir)
                 .into_iter()
                 .map(Error::Borrow),
         );
+        // What's worked out while compiling, `@assert(…)` among it: its errors are the
+        // program's too.
+        if errors.is_empty() {
+            errors.extend(som_comptime::run(&mut mir).into_iter().map(Error::Comptime));
+        }
         Some(mir)
     } else {
         None

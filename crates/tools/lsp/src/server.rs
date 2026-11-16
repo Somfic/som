@@ -974,6 +974,26 @@ impl LanguageServer for SomLanguageServer {
                     ..Default::default()
                 });
             }
+            // `@assert(…)`: any function in scope, called while compiling. Not C's, which
+            // only exist when the program runs.
+            let (_, in_scope) = modules_in_scope(a, &cursor.file, cursor.offset);
+            for m in in_scope {
+                for item in &a.ast.modules[m].items {
+                    let Item::Func(f) = *item else { continue };
+                    let func = &a.ast.funcs[f];
+                    if func.body.is_none() || !visible(a.names.func(f)) {
+                        continue;
+                    }
+                    let mut item = func_item(a, f, format!("@{}", func.name.name), insert);
+                    let text = item.insert_text.take().unwrap_or_else(|| item.label.clone());
+                    item.filter_text = Some(item.label.clone());
+                    item.text_edit = Some(CompletionTextEdit::Edit(TextEdit {
+                        range,
+                        new_text: text,
+                    }));
+                    items.push(item);
+                }
+            }
             return Ok(Some(CompletionResponse::Array(items)));
         }
         // `extern ` and `extern "ray` list the libraries som can find, but not ones this
@@ -3096,6 +3116,8 @@ fn module_items(
             Item::Alias(alias) => {
                 items.extend(alias_items(a, alias, name(&alias.name.name), Some(insert)))
             }
+            // `@assert(…);` on its own has no name to complete.
+            Item::Const(id) if !a.ast.consts[*id].is_named() => {}
             Item::Const(id) => {
                 let def = a.names.const_def(*id);
                 items.push(CompletionItem {

@@ -31,7 +31,9 @@ fn help(error: &ResolveError) -> Option<String> {
         | ResolveError::NotVisible { .. }
         | ResolveError::LibraryNotDeclared { .. }
         | ResolveError::ConstNotKnown { .. }
-        | ResolveError::ConstCycle { .. } => None,
+        | ResolveError::ConstCycle { .. }
+        | ResolveError::UnknownEvent { .. }
+        | ResolveError::ListenerIsMethod { .. } => None,
     }
 }
 

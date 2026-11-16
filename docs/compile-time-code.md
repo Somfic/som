@@ -384,6 +384,7 @@ New entries in `som_lexer::BUILTINS`, so the editor offers them:
 | `@const` | See above | 1 |
 | `@for`, `@if` | See above | 2 |
 | `@fail("why")` | Stops with a message: when the program runs, it says what failed and where; in a `@const`, an error while compiling (`ConstFailed`). Stands for a value of any type, like `@unreachable` | 1 |
+| `@on fail` | On a line above a `fn`: called with a `&Failure` (`message`, `at: Location`, `unreachable`) when the program fails, at `@fail` or `@unreachable`. The program's own listeners are called, in order, instead of the standard library's `print_failure`; it can call that itself. Not called while compiling, where a failure is an error | 1 |
 | `@embed("path")` | A file's bytes (`[u8; _]`) or text (`string`), relative to the source file | 1 |
 | `@variants(E)` | An enum's variants, each with `.name` and `.index` | 3 |
 | `@fields(T)` | A struct's fields, each with `.name` and `.type` | 3 |

@@ -37,3 +37,20 @@ fn a_file_outside_any_program_is_its_own() {
     std::fs::write(&file, "fn main() -> i32 { 0 }\n").unwrap();
     assert_eq!(program_root(&file), dir.path());
 }
+
+#[test]
+fn checks_run_while_compiling_are_reported_to_an_editor() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("main.som");
+    std::fs::write(
+        &file,
+        "@const TEST = 12;\n@assert(TEST == 0, \"TEST is not 0\");\nfn main() -> i32 = 0;\n",
+    )
+    .unwrap();
+    let analysis = analyze(&program_root(&file), &Options::default());
+    assert!(
+        matches!(&analysis.errors[..], [e] if e.kind() == "ConstFailed"),
+        "the failed `@assert`: {:?}",
+        analysis.errors
+    );
+}
