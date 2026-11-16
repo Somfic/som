@@ -1,0 +1,6 @@
+// ConstCycle: Two constants made of each other.
+
+@const A = B + 1;
+@const B = A + 1;
+
+fn main() -> i32 = A;

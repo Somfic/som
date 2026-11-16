@@ -1,0 +1,8 @@
+// ConstFailed: An `@assert` in a function body is checked while compiling too.
+
+/// An `@assert` in a function is checked while compiling, though nothing uses its value.
+fn main() -> i32 {
+    @const b: i64 = 2;
+    @assert(b == 1, "b is 2");
+    0
+}

@@ -1,0 +1,9 @@
+// NotSettled: What an `@for` loops over has to be known while compiling.
+
+fn sum(v: [i32; 4], n: usize) -> i32 {
+    let mut s = 0;
+    @for i in 0..n { s = s + v[i]; }
+    s
+}
+
+fn main() -> i32 = sum([1, 2, 3, 4], 2);

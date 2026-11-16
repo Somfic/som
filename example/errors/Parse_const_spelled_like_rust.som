@@ -1,0 +1,5 @@
+// Parse: `const` is how Rust, Zig, C and others write it: som writes `@const`.
+
+const SIZE = 10;
+
+fn main() -> i32 = SIZE;
