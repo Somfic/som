@@ -374,6 +374,65 @@ Two ways to do it:
 
 Phase 3 depends on this choice.
 
+### 4.7 TODO: checking generics per instance
+
+Decided: option 1 of [4.6](#46-the-big-question-checking-generics-once-vs-per-instance),
+checking per instance only the generic code that needs it. Not started. The plan, in two
+passes:
+
+**Pass 1: function bodies.** `@if N >= 3 { … }` and `@if N == 2 { … }` in generic function
+and method bodies, including branches that only type-check or prove for some `N`; `@for` over
+a generic parameter where copies differ; and what step 14's reflection (`@fields(T)`) needs.
+
+1. *Typeck finds them.* A generic function's body is checked as now. If it meets an `@if`
+   or `@for` (later, reflection) that depends on the function's own generic parameters, what
+   it found for that body is thrown away, its errors too, and the function is marked *per
+   instance*. Other generic code stays checked once.
+2. *Lowering asks for each instance.* Lowering already finds the instances (`describe<3>`,
+   `Vector<2, f32>`), walking from `main`. For a per-instance function it asks for that
+   instance to be checked: the body checked again with its parameters bound (`N` is
+   `Ty::Value(3)`, `T` is `f32`). The check starts from lowering's own type table, so its
+   `TypeId`s are lowering's (the table only grows, so lowering then takes it over). It gives a
+   `Typed` for that body, where `@if N >= 3` is a known `true` or `false`.
+3. *The prover runs per instance too*, with `N` a number, not `Place::Len(N)`: `.components[2]`
+   under `@if N >= 3` is proven.
+4. *Lowering builds the body from the instance's `Typed`.* `FnBuilder` gets a `typed` of its
+   own instead of `self.l.typed` (about 100 places), the global one for everything else.
+5. *The driver says which instance* an error is in: "in `describe<2>`: …". Instance errors
+   are collected while lowering and reported before the borrow checker and codegen.
+6. *The borrow checker* already works on per-instance MIR; `lower_generic`'s stand-ins skip
+   per-instance functions.
+
+Stages, the corpus passing after each: instance checking in typeck; lowering wired up, for
+`@if` over a value parameter; the prover per instance; errors naming the instance.
+
+**Pass 2: members only some instances have.** `@if N >= 3 { pub prop z = … }` among an
+impl's members. What a type's members are then depends on the instance, so resolve, method
+lookup and the LSP's completion each need one to answer. After pass 1 works.
+
+### 4.8 Other things left for later
+
+- **Where a failure is, when the program runs.** While compiling, an error in the standard
+  library is said where the program called into it. When the program runs, `assert`'s
+  `@fail` says `builtins.som:… in assert`. Planned: standard-library functions with `@fail` or
+  `@unreachable` in them take the caller's `Location` as a hidden last parameter, passed on
+  by any that are themselves such functions (Rust's `#[track_caller]`). `Location` would be
+  `Copy`, its `file` and `function` `cstr`s.
+- **Names made from an element**: `@for N in 1..4 { fn twice_N() … }` writes `twice_N` four
+  times over. `@ident("twice_{N}")` (step 14), or another spelling.
+- **The prover and arithmetic of two unknowns**: `.components[N - 1 - i]` in `@for i in 0..N`
+  isn't proven, the prover's facts being one unknown and a constant. Proving each unrolled
+  copy with `i` known would do it.
+- **A computed constant in a type**: `[i32; four()]` is `ConstNeededTooEarly`. Typeck could
+  run twice, the constants it needed worked out in between (cheaper than evaluating on demand,
+  step 15).
+- **The prover doesn't check a `@const`'s value**: `@where` conditions on calls made while
+  compiling aren't proven; dividing by zero is caught as it runs.
+- **The editor runs constants on every check**: one that runs for the step limit (10 million
+  steps) takes a few seconds in a debug build. The editor could use a lower limit.
+- **Types on functions** (from the same discussion, not compile-time code): no `->` meaning
+  `()` rather than inferring the return type, and properties with a `: type`, like Rust.
+
 ---
 
 ## 5. Built-ins

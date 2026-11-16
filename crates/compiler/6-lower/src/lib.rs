@@ -89,11 +89,10 @@ impl<'a> Lowerer<'a> {
                 self.instance(id, Vec::new());
             }
         }
-        // `@const assert(…);`: run while compiling for what it checks.
+        // `@assert(…);`: run while compiling for what it checks.
         for (c, constant) in self.ast.consts.iter() {
             if !constant.is_named() && !constant.in_place {
-                let init = self.init(c, None);
-                self.mir.checks.push(init);
+                self.init(c, None);
             }
         }
         self.finish();
@@ -479,6 +478,8 @@ impl<'a> Lowerer<'a> {
         });
         self.queue.push((id, Job::Init(c, owner.clone())));
         self.inits.insert(key, id);
+        // Run even if nothing uses its value: `@assert(…);` in a function.
+        self.mir.checks.push(id);
         id
     }
 

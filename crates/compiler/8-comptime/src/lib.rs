@@ -48,8 +48,14 @@ pub fn run(mir: &mut Mir) -> Vec<ComptimeError> {
         let _ = state.init(init);
     }
     let State {
-        results, errors, ..
+        results,
+        mut errors,
+        ..
     } = state;
+    // The same error, said the same way, once: copies of an `@for` around items share where
+    // they're written.
+    let mut seen = std::collections::HashSet::new();
+    errors.retain(|e| seen.insert(format!("{e:?}")));
     if !errors.is_empty() {
         return errors;
     }

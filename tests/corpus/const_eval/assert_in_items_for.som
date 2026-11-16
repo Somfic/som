@@ -1,0 +1,20 @@
+// expect: error ConstFailed
+
+trait Size {
+    fn bits(&self) -> i32;
+}
+
+/// Checked in each copy of the items: for `N` 1 it fails.
+@for N in 1..4 {
+    impl Size for [u8; N] {
+        fn bits(&self) -> i32 {
+            @assert(N > 1, "an array of one");
+            8 * N
+        }
+    }
+}
+
+fn main() -> i32 {
+    let c: [u8; 3] = [0, 0, 0];
+    c.bits()
+}

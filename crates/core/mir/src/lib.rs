@@ -27,8 +27,8 @@ pub struct Mir {
     /// What `@fail` and `@unreachable` call with a `Failure`, if anything does: it tells the
     /// program's `@on fail` functions, then stops the program.
     pub fail: Option<FuncId>,
-    /// The initializers of `@const assert(…);` and the like: run while compiling for what
-    /// they check, their values not used.
+    /// Every `@const`'s initializer: each is run while compiling, whether its value is used
+    /// or not. `@assert(…);` is run for what it checks.
     pub checks: Vec<FuncId>,
     struct_index: HashMap<(DefId, Vec<TypeId>), usize>,
 }
