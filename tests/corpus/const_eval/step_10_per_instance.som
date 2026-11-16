@@ -1,0 +1,28 @@
+// expect: exit 42
+
+fn make_identity<N: usize>() -> [[i32; N]; N] {
+    let mut m = [[0; N]; N];
+    for i in 0..N { m[i][i] = 1; }
+    m
+}
+
+fn triangle(n: usize) -> usize = n * (n + 1) / 2;
+
+/// In a generic function, a `@const` can use its parameters: it's worked out once for each
+/// instance, `identity<3>` and `identity<4>` each with a table of its own.
+fn identity<N: usize>() -> [[i32; N]; N] = @make_identity<N>();
+
+fn sum_to<N: usize>() -> usize = @const triangle(N);
+
+fn cells<N: usize>() -> usize {
+    @const AREA = N * N + triangle(N);
+    AREA
+}
+
+fn main() -> i32 {
+    let three = identity<3>();
+    let four = identity<4>();
+    // 1 + 1 + 10 + 6 + (9 + 6) + (4 + 3) + 2
+    let total = three[2][2] + four[3][3] + sum_to<4>() as i32 + sum_to<3>() as i32;
+    return total + cells<3>() as i32 + cells<2>() as i32 + 2;
+}

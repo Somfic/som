@@ -1145,7 +1145,8 @@ impl<'a> Resolver<'a> {
     fn bind_expr(&mut self, id: Id<Expr>, path: &Path, expect: Expect) {
         self.through_alias.set(None);
         if let Some(def) = self.resolve_path(path, expect) {
-            // A local from outside the constant, or a generic parameter.
+            // A local from outside the constant. A generic parameter, `N`, is known: it's
+            // worked out once for each set of arguments the function is used with.
             let outside = |r: &Self| {
                 let depth = r.const_depth.unwrap_or(0);
                 (r.scopes.iter().rposition(|scope| scope.values().any(|&d| d == def)))
@@ -1155,11 +1156,7 @@ impl<'a> Resolver<'a> {
                 self.names.def(def).kind,
                 DefKind::Local(_) | DefKind::Param { .. } | DefKind::Out(_) | DefKind::Binding(_)
             );
-            let generic = matches!(
-                self.names.def(def).kind,
-                DefKind::TypeParam { .. } | DefKind::ImplParam { .. } | DefKind::StructParam { .. }
-            );
-            if self.const_depth.is_some() && (generic || local && outside(self)) {
+            if self.const_depth.is_some() && local && outside(self) {
                 self.errors.push(ResolveError::ConstNotKnown {
                     span: self.ast.exprs.span(id).clone(),
                 });

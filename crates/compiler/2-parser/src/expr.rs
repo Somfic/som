@@ -349,8 +349,21 @@ impl Parser<'_> {
             while self.eat(TokenKind::DoubleColon) {
                 segments.push(self.parse_ident("a name after `::`")?);
             }
-            let callee = self.alloc_expr(Expr::Var(som_ast::Path { segments }), &start);
-            let call = self.parse_call(callee, &start)?;
+            // `@make_identity<N>()`: type arguments, then the call.
+            let type_args = match self.at(TokenKind::LessThan) {
+                true => self.parse_type_args()?,
+                false => Vec::new(),
+            };
+            let args = self.parse_args()?;
+            let call = self.alloc_expr(
+                Expr::Call {
+                    callee: som_ast::Path { segments },
+                    owner_args: Vec::new(),
+                    type_args,
+                    args,
+                },
+                &start,
+            );
             let span = self.span_from(&start);
             let c = self.ast.consts.alloc(
                 som_ast::Const {
@@ -432,11 +445,15 @@ impl Parser<'_> {
     /// At `@name(` or `@name::`, `at` tokens ahead, where `@name` isn't a built-in: a call
     /// made while compiling.
     pub(crate) fn at_comptime_call(&self, at: usize) -> bool {
+        // `@make_identity<N>(`: type arguments, then the call.
+        let generic = self.peek_nth(at + 1) == TokenKind::LessThan
+            && (self.past_type_args(at + 1)).is_some_and(|n| self.peek_nth(n) == TokenKind::OpenParen);
         self.peek_nth(at) == TokenKind::Builtin
-            && matches!(
-                self.peek_nth(at + 1),
-                TokenKind::OpenParen | TokenKind::DoubleColon
-            )
+            && (generic
+                || matches!(
+                    self.peek_nth(at + 1),
+                    TokenKind::OpenParen | TokenKind::DoubleColon
+                ))
             && (self.tokens[self.pos..].iter())
                 .filter(|t| !crate::is_trivia(t.kind))
                 .nth(at)

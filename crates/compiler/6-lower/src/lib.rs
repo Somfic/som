@@ -47,8 +47,10 @@ struct Lowerer<'a> {
     instances: HashMap<(Id<Func>, Vec<TypeId>), FuncId>,
     /// Functions whose bodies still need lowering.
     queue: Vec<(FuncId, Job)>,
-    /// Each `@const` that runs code → its initializer.
-    inits: HashMap<Id<som_ast::Const>, FuncId>,
+    /// Each `@const` that runs code, in the function instance it's in → its initializer.
+    inits: HashMap<(Id<som_ast::Const>, Owner), FuncId>,
+    /// The constants of modules and impl blocks: none of them is in a function.
+    item_consts: HashSet<Id<som_ast::Const>>,
     /// What `@fail` and `@unreachable` call, once it's made: `None` inside if there's no
     /// standard library to say what a failure is.
     failed: Option<Option<FuncId>>,
@@ -70,6 +72,7 @@ impl<'a> Lowerer<'a> {
             instances: HashMap::new(),
             queue: Vec::new(),
             inits: HashMap::new(),
+            item_consts: HashSet::new(),
             failed: None,
             owners: HashMap::new(),
             trait_methods: HashMap::new(),
@@ -89,7 +92,7 @@ impl<'a> Lowerer<'a> {
         // `@const assert(…);`: run while compiling for what it checks.
         for (c, constant) in self.ast.consts.iter() {
             if !constant.is_named() && !constant.in_place {
-                let init = self.init(c);
+                let init = self.init(c, None);
                 self.mir.checks.push(init);
             }
         }
@@ -162,6 +165,18 @@ impl<'a> Lowerer<'a> {
             }
         }
 
+        for module in &ast.modules {
+            for item in &module.items {
+                match item {
+                    Item::Const(c) => {
+                        self.item_consts.insert(*c);
+                    }
+                    Item::Impl(block) => self.item_consts.extend(&block.consts),
+                    _ => {}
+                }
+            }
+        }
+
         // Every non-generic struct. Generic ones get a copy for each set of type arguments the
         // program uses, once the functions are lowered.
         for (id, s) in ast.structs.iter() {
@@ -176,7 +191,7 @@ impl<'a> Lowerer<'a> {
         while let Some((func_id, job)) = self.queue.pop() {
             let body = match job {
                 Job::Func(func, type_args) => FnBuilder::new(self, func, type_args).build(),
-                Job::Init(c) => FnBuilder::for_init(self, c).build_init(c),
+                Job::Init(c, owner) => FnBuilder::for_init(self, c, owner).build_init(c),
             };
             self.mir.funcs[func_id].body = Some(body);
         }
@@ -422,20 +437,35 @@ impl<'a> Lowerer<'a> {
     }
 
     /// The initializer of `@const` `c`, whose value runs code: a function with no parameters
-    /// giving its value, run while compiling. Created the first time it's used.
-    fn init(&mut self, c: Id<som_ast::Const>) -> FuncId {
-        if let Some(&id) = self.inits.get(&c) {
+    /// giving its value, run while compiling. Created the first time it's used. One in a
+    /// generic function, `owner`, can use its parameters: there's one for each instance.
+    fn init(&mut self, c: Id<som_ast::Const>, owner: Owner) -> FuncId {
+        let owner = match owner {
+            Some((_, args)) if args.is_empty() => None,
+            _ if self.item_consts.contains(&c) => None,
+            owner => owner,
+        };
+        let key = (c, owner);
+        if let Some(&id) = self.inits.get(&key) {
             return id;
         }
+        let (_, owner) = &key;
         let constant = &self.ast.consts[c];
         let def = self.names.const_def(c);
+        let subst = self.owner_subst(owner);
         let ret = self.typed.expr(constant.value);
+        let ret = subst.apply(&mut self.mir.types, ret);
+        self.make_structs_in(ret);
         // One written in place, or run for what it checks, has no name: `@const` is what it's
-        // called.
-        let name = match constant.is_named() {
+        // called. One in a generic function says which instance: `@const SIZE<4>`.
+        let mut name = match constant.is_named() {
             false => "@const".to_string(),
             true => format!("@const {}", self.qualified(def, &constant.name.name)),
         };
+        if let Some((_, args)) = owner {
+            let shown: Vec<String> = args.iter().map(|&a| self.mir.display_ty(a)).collect();
+            name = format!("{name}<{}>", shown.join(", "));
+        }
         let id = self.mir.funcs.alloc(Function {
             name,
             params: Vec::new(),
@@ -447,9 +477,17 @@ impl<'a> Lowerer<'a> {
             is_entry: false,
             variadic: false,
         });
-        self.queue.push((id, Job::Init(c)));
-        self.inits.insert(c, id);
+        self.queue.push((id, Job::Init(c, owner.clone())));
+        self.inits.insert(key, id);
         id
+    }
+
+    /// What a generic function instance's parameters stand for: nothing for no instance.
+    fn owner_subst(&self, owner: &Owner) -> Subst<'a> {
+        match owner {
+            Some((func, args)) => Subst::new(self.names.type_params(*func), args, &self.typed.impls),
+            None => Subst::new(&[], &[], &self.typed.impls),
+        }
     }
 }
 
@@ -560,9 +598,13 @@ impl Lowerer<'_> {
 enum Job {
     /// A function, with these type arguments.
     Func(Id<Func>, Vec<TypeId>),
-    /// A `@const`'s value: its initializer.
-    Init(Id<som_ast::Const>),
+    /// A `@const`'s value: its initializer, in the function instance it's in.
+    Init(Id<som_ast::Const>, Owner),
 }
+
+/// The generic function instance something is in: the function and its type arguments.
+/// `None` outside any, or in one with no parameters, where there's one of everything.
+type Owner = Option<(Id<Func>, Vec<TypeId>)>;
 
 /// The reference a slice's (or text's) elements are reached through: `s` for `(*s)`.
 fn elements_ref(elements: &Place) -> Place {
@@ -647,6 +689,9 @@ struct FnBuilder<'l, 'a> {
     l: &'l mut Lowerer<'a>,
     /// The function being lowered; `None` for a `@const`'s initializer.
     func: Option<Id<Func>>,
+    /// The function instance its generic parameters are of: its own, or for an initializer,
+    /// the one its constant is in.
+    owner: Owner,
     /// Where it's written.
     span: Span,
     subst: Subst<'a>,
@@ -671,20 +716,27 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn new(l: &'l mut Lowerer<'a>, func: Id<Func>, type_args: Vec<TypeId>) -> Self {
         let subst = Subst::new(l.names.type_params(func), &type_args, &l.typed.impls);
         let span = l.ast.funcs.span(func).clone();
-        Self::with(l, Some(func), span, subst)
+        Self::with(l, Some(func), Some((func, type_args)), span, subst)
     }
 
-    /// For the initializer of `@const` `c`.
-    fn for_init(l: &'l mut Lowerer<'a>, c: Id<som_ast::Const>) -> Self {
-        let subst = Subst::new(&[], &[], &l.typed.impls);
+    /// For the initializer of `@const` `c`, in function instance `owner`.
+    fn for_init(l: &'l mut Lowerer<'a>, c: Id<som_ast::Const>, owner: Owner) -> Self {
+        let subst = l.owner_subst(&owner);
         let span = l.ast.consts.span(c).clone();
-        Self::with(l, None, span, subst)
+        Self::with(l, None, owner, span, subst)
     }
 
-    fn with(l: &'l mut Lowerer<'a>, func: Option<Id<Func>>, span: Span, subst: Subst<'a>) -> Self {
+    fn with(
+        l: &'l mut Lowerer<'a>,
+        func: Option<Id<Func>>,
+        owner: Owner,
+        span: Span,
+        subst: Subst<'a>,
+    ) -> Self {
         let mut builder = FnBuilder {
             l,
             func,
+            owner,
             span,
             subst,
             locals: Arena::new(),
@@ -1665,7 +1717,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Expr::Hole => unreachable!("programs with parse errors are never lowered"),
             // `@const f(x)`: like a constant's name, worked out while compiling if it runs code.
             Expr::InPlace(c) if som_resolve::const_runs_code(ast, self.l.names, *c) => {
-                let init = self.l.init(*c);
+                let init = self.l.init(*c, self.owner.clone());
                 self.constant(ConstKind::Pending(init), ty)
             }
             Expr::InPlace(c) => self.operand(ast.consts[*c].value),
@@ -1689,7 +1741,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     DefKind::Const(c)
                         if som_resolve::const_runs_code(self.l.ast, self.l.names, c) =>
                     {
-                        let init = self.l.init(c);
+                        let init = self.l.init(c, self.owner.clone());
                         self.constant(ConstKind::Pending(init), ty)
                     }
                     // A plain constant stands for its value, made where it's used.

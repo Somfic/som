@@ -4119,6 +4119,32 @@ fn is_constant_name(name: &str) -> bool {
         && name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
 }
 
+/// Whether the name at `at` has type arguments, then a call: `make_identity<N>(`. The
+/// brackets are matched, so `a < b` isn't one.
+fn generic_call(visible: &[&som_lexer::Token], at: usize) -> bool {
+    if visible.get(at + 1).map(|t| t.kind) != Some(TokenKind::LessThan) {
+        return false;
+    }
+    let mut depth = 0;
+    for (k, token) in visible.iter().enumerate().skip(at + 1).take(64) {
+        match token.kind {
+            TokenKind::LessThan => depth += 1,
+            TokenKind::GreaterThan => depth -= 1,
+            // Not in a list of types.
+            TokenKind::Semicolon
+            | TokenKind::OpenBrace
+            | TokenKind::CloseBrace
+            | TokenKind::OpenParen
+            | TokenKind::CloseParen => return false,
+            _ => {}
+        }
+        if depth == 0 {
+            return visible.get(k + 1).map(|t| t.kind) == Some(TokenKind::OpenParen);
+        }
+    }
+    false
+}
+
 /// Token kinds from the lexer, refined with one token of lookaround.
 fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
     // `"total: {n + 1}"`: the values in text are code, coloured as such.
@@ -4174,7 +4200,14 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::In => 0,
             // `.len`, short for `self.len`: the dot is coloured like `self`.
             TokenKind::Dot if TokenKind::is_self_dot(prev, next) => 0,
-            TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
+            // `area(`, `fn identity<N: usize>(`, `make_identity<N>(`: a function.
+            TokenKind::Ident
+                if next == Some(TokenKind::OpenParen)
+                    || prev == Some(TokenKind::Fn)
+                    || generic_call(&visible, i) =>
+            {
+                7
+            }
             // `RED`, `MAX_LEN`: a constant's name, not a type's.
             TokenKind::Ident if is_constant_name(&token.text) => 1,
             // (marked `readonly` below)
@@ -4271,6 +4304,21 @@ mod tests {
             .collect();
         // fn f p * i32 g 1 * 2   (`(`, `)`, `:`, `->`, `{`, `}` aren't highlighted)
         assert_eq!(types, [0, 7, 1, 4, 4, 7, 2, 6, 2]);
+    }
+
+    #[test]
+    fn generic_functions_are_functions() {
+        let source = Arc::new(Source::from_raw(
+            "fn make<N: usize>() -> i32 = make<N>() + 1; let x = a < b;",
+        ));
+        let types: Vec<u32> = semantic_tokens(source)
+            .iter()
+            .map(|t| t.token_type)
+            .collect();
+        // fn make < N usize > i32 = make < N > + 1 let x = a < b
+        assert_eq!(types[1], 7, "the declared name: {types:?}");
+        assert_eq!(types[8], 7, "the called name: {types:?}");
+        assert_eq!(types[17], 1, "`a` in `a < b`: {types:?}");
     }
 
     #[test]

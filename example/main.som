@@ -1,0 +1,10 @@
+fn power_of_two(n: usize) -> usize {
+    let mut p = 1;
+    for i in 0..n { p = p * 2; }
+    p
+}
+
+/// The biggest number that fits in N bits.
+fn biggest<N: usize>() -> usize = @power_of_two(N) - 1;
+
+fn main() -> i32 = (biggest<3>() + biggest<5>()) as i32;   // 7 + 31 = 38

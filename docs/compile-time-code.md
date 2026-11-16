@@ -1,9 +1,9 @@
 # Compile-time code
 
-*Design spec. Status: steps 0–8 done, in `crates/compiler/8-comptime`: `@const` with
+*Design spec. Status: steps 0–10 done, in `crates/compiler/8-comptime`: `@const` with
 calls, loops, recursion, heap memory and text while compiling; structs, enums, arrays,
-optionals and text as values; constants in impl blocks and function bodies; and `@const` as
-an expression. The rest is proposed.*
+optionals and text as values; constants in impl blocks and function bodies; `@const` as an
+expression; `@assert` and `@fail`; and `@const` once per generic instance. The rest is proposed.*
 
 Som code can already be worked out while compiling, but only a little of it: a `const` can be
 literals, operators, casts and other constants, and nothing else. This spec lets **any som
@@ -584,11 +584,12 @@ file. Phase 1 is done.
 
 **Step 10. `@const` once per generic instance.** `step_10_per_instance.som`
 ```rust
-fn identity<N: usize>() -> [[i32; N]; N] = @const make_identity(N);
+fn identity<N: usize>() -> [[i32; N]; N] = @const make_identity<N>();
 ```
 *Needs:* `N` to count as statically known in monomorphized code, with one initializer per
 instance. (This only needs phase 1's machinery, but it's the first step that touches
-generics, so it opens phase 2.)
+generics, so it opens phase 2.) **Done**: lowering keys an initializer by its constant and
+the function instance it's in, and builds it with that instance's arguments.
 
 **Step 11. `@for` and `@if` over fixed values.** `step_11_unroll.som`
 ```rust
