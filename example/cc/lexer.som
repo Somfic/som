@@ -1,0 +1,129 @@
+//! Splits C source into tokens.
+
+mod enum Kind { Num, Ident, Str, Punct, End }
+
+mod struct Token {
+    mod kind: Kind,
+    mod text: string,
+    mod value: i64,
+    mod line: i64,
+}
+
+/// Multi-character operators, longest first.
+mod const OPERATORS: [cstr; 13] = [
+    "==", "!=", "<=", ">=", "&&", "||", "++", "--", "+=", "-=", "*=", "/=", "%=",
+];
+
+mod fn byte(s: &string, i: usize) -> u8 = match s.get(i) { none => 0, c => c };
+mod fn piece(s: &string, start: usize, end: usize) -> string = match s.slice(start, end) { none => "", p => p };
+mod fn is_digit(c: u8) -> bool = c >= 48 && c <= 57;
+mod fn is_alpha(c: u8) -> bool = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c == 95;
+
+mod fn token(kind: Kind, text: string, value: i64, line: i64) -> Token {
+    Token { kind, text, value, line }
+}
+
+/// The value of the escape `\c`.
+mod fn escape(c: u8) -> i64 {
+    if c == 110 { 10 }        // \n
+    else if c == 116 { 9 }    // \t
+    else if c == 114 { 13 }   // \r
+    else if c == 48 { 0 }     // \0
+    else { c as i64 }         // \\, \', \"
+}
+
+mod fn tokenize(src: &string) -> List<Token> {
+    let mut tokens: List<Token> = List::empty();
+    let n = src.len;
+    let mut i: usize = 0;
+    let mut line: i64 = 1;
+    let mut line_start = true;
+    while i < n {
+        let c = byte(src, i);
+        if c == 10 {
+            line = line + 1;
+            line_start = true;
+            i = i + 1;
+            continue;
+        }
+        if c == 32 || c == 9 || c == 13 {
+            i = i + 1;
+            continue;
+        }
+        // `#include` and the rest of the preprocessor: skipped, a line at a time.
+        if c == 35 && line_start {
+            while i < n && byte(src, i) != 10 { i = i + 1; }
+            continue;
+        }
+        line_start = false;
+        // Comments.
+        if c == 47 && byte(src, i + 1) == 47 {
+            while i < n && byte(src, i) != 10 { i = i + 1; }
+            continue;
+        }
+        if c == 47 && byte(src, i + 1) == 42 {
+            i = i + 2;
+            while i < n && !(byte(src, i) == 42 && byte(src, i + 1) == 47) {
+                if byte(src, i) == 10 { line = line + 1; }
+                i = i + 1;
+            }
+            i = i + 2;
+            continue;
+        }
+        if is_digit(c) {
+            let start = i;
+            while i < n && is_digit(byte(src, i)) { i = i + 1; }
+            let text = piece(src, start, i);
+            let value = match i64::parse(text.share()) { none => 0, v => v };
+            tokens.push(token(Kind::Num, text, value, line));
+            continue;
+        }
+        if is_alpha(c) {
+            let start = i;
+            while i < n && (is_alpha(byte(src, i)) || is_digit(byte(src, i))) { i = i + 1; }
+            tokens.push(token(Kind::Ident, piece(src, start, i), 0, line));
+            continue;
+        }
+        // 'c': a number.
+        if c == 39 {
+            let mut value = byte(src, i + 1) as i64;
+            i = i + 2;
+            if value == 92 {
+                value = escape(byte(src, i));
+                i = i + 1;
+            }
+            if byte(src, i) != 39 { fail(line, "a character literal needs a closing `'`"); }
+            i = i + 1;
+            tokens.push(token(Kind::Num, "'", value, line));
+            continue;
+        }
+        // "text": kept as written, escapes and all, which the assembler reads the same way.
+        if c == 34 {
+            let start = i + 1;
+            i = i + 1;
+            while i < n && byte(src, i) != 34 {
+                if byte(src, i) == 92 { i = i + 1; }
+                i = i + 1;
+            }
+            tokens.push(token(Kind::Str, piece(src, start, i), 0, line));
+            i = i + 1;
+            continue;
+        }
+        let mut matched = false;
+        for op in &OPERATORS {
+            let op = string::from_c(op);
+            if !matched && piece(src, i, i + 2) == op {
+                tokens.push(token(Kind::Punct, op, 0, line));
+                i = i + 2;
+                matched = true;
+            }
+        }
+        if !matched {
+            tokens.push(token(Kind::Punct, piece(src, i, i + 1), 0, line));
+            i = i + 1;
+        }
+    }
+    tokens.push(token(Kind::End, "end of input", 0, line));
+    tokens
+}
+

@@ -463,6 +463,51 @@ fn fmt_fix(f: &mut std::fmt::Formatter<'_>, fix: &Fix) -> std::fmt::Result {
             continue;
         }
 
+        // An edit across lines, like removing a declaration or replacing a block: the
+        // lines it touches, then what they become.
+        if content[start..end].contains('\n') || text.contains('\n') {
+            shown.push(i);
+            // Ending just after a newline leaves the next line alone.
+            let last = if end > start && content[..end].ends_with('\n') {
+                end - 1
+            } else {
+                line_end
+            };
+            let mut offset = line_start;
+            for (n, removed) in content[line_start..last.max(line_start)].split('\n').enumerate() {
+                let (from, to) = (offset, offset + removed.len());
+                let (cut_from, cut_to) = (start.clamp(from, to), end.clamp(from, to));
+                writeln!(
+                    f,
+                    "{} {} {}{}{}",
+                    line_number(line + n, RED),
+                    marker("-", RED),
+                    syntax_highlight(&content[from..cut_from]),
+                    paint(&content[cut_from..cut_to], RED),
+                    syntax_highlight(&content[cut_to..to])
+                )?;
+                offset = to + 1;
+            }
+            let after_end = if last < end { last } else { end };
+            let added = format!(
+                "{}{text}{}",
+                &content[line_start..start],
+                &content[after_end.max(start)..last.max(after_end)]
+            );
+            if !added.trim().is_empty() {
+                for (n, added) in added.trim_end_matches('\n').split('\n').enumerate() {
+                    writeln!(
+                        f,
+                        "{} {} {}",
+                        line_number(line + n, GREEN),
+                        marker("+", GREEN),
+                        paint(added, GREEN)
+                    )?;
+                }
+            }
+            continue;
+        }
+
         // Every edit on this line, in order along it.
         let mut on_line: Vec<(usize, usize, &str)> = (fix.edits.iter().enumerate())
             .filter(|(j, (other, other_text))| {

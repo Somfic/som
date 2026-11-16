@@ -1,0 +1,20 @@
+// expect: exit 9
+
+/// A method's `&mut self` is only reserved while its arguments are evaluated, so they can
+/// read what it borrows: `v.push(v.len)`.
+struct Stack { items: List<i64>, base: i64 }
+
+impl Stack {
+    fn top(&self) -> i64 = self.base + self.items.len as i64;
+    fn grow(&mut self) { self.items.push(self.top()); }
+}
+
+fn main() -> i32 {
+    let mut v: List<i64> = List::empty();
+    v.push(v.len as i64);
+    v.push(v.len as i64 + 1);
+    let mut s = Stack { items: List::empty(), base: 3 };
+    s.grow();
+    s.grow();
+    ((v.pop() else 0) + (s.items.pop() else 0) + 3) as i32
+}

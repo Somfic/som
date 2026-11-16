@@ -1331,6 +1331,7 @@ impl Parser<'_> {
 
     /// `extern "lib" { fn foo(); }`
     fn parse_extern(&mut self) -> Option<Extern> {
+        let start = self.current_span();
         self.expect(TokenKind::Extern, "an extern block")?;
 
         let (library, library_span) = if self.at(TokenKind::Text) {
@@ -1371,6 +1372,7 @@ impl Parser<'_> {
                 ))
             });
             return Some(Extern {
+                span: self.span_from(&start),
                 library,
                 library_span,
                 header,
@@ -1403,6 +1405,7 @@ impl Parser<'_> {
         self.expect(TokenKind::CloseBrace, "a closing brace after extern block")?;
 
         Some(Extern {
+            span: self.span_from(&start),
             library,
             library_span,
             header,

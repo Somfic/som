@@ -1,7 +1,7 @@
 //! `extern "lib" from "lib.h"` imports, and hand-written declarations checked against
 //! the header, with a small library compiled by the system C compiler.
 
-use som_driver::{Error, LibraryError, LoadError, Options, check};
+use som_driver::{Error, Failed, LibraryError, LibraryWarning, LoadError, Options, Warning, check};
 use std::path::Path;
 use std::process::Command;
 
@@ -101,12 +101,29 @@ fn write(dir: &Path, source: &str) -> std::path::PathBuf {
     path
 }
 
-fn kinds(result: Result<som_driver::Checked, Vec<Error>>) -> Vec<String> {
+fn kinds(result: Result<som_driver::Checked, Failed>) -> Vec<String> {
     result
         .err()
+        .map(|f| f.errors)
         .unwrap_or_default()
         .iter()
         .map(Error::kind)
+        .collect()
+}
+
+/// The warnings a program that passes its checks gets, as `kind name…`.
+fn warnings(main: &Path) -> Vec<String> {
+    let checked = check(main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
+    (checked.warnings.iter())
+        .map(|w| match w {
+            Warning::Library(LibraryWarning::DeclaredInHeader { functions, all, .. }) => {
+                let names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
+                format!("{} {}{}", w.kind(), names.join(" "), if *all { " (all)" } else { "" })
+            }
+            Warning::Library(LibraryWarning::StructInHeader { name, imported, .. }) => {
+                format!("{} {name} as {imported}", w.kind())
+            }
+        })
         .collect()
 }
 
@@ -208,7 +225,7 @@ fn functions_som_cannot_express_are_left_out() {
 fn a_missing_header_is_reported() {
     let dir = project();
     let main = write(dir.path(), "extern \"demo\" from \"nope.h\"; fn main() {}");
-    match check(&main, &Options::default()).err().unwrap().as_slice() {
+    match check(&main, &Options::default()).err().unwrap().errors.as_slice() {
         [Error::Load(LoadError::HeaderNotFound { header, .. })] => assert_eq!(header, "nope.h"),
         other => panic!("{other:?}"),
     }
@@ -230,6 +247,7 @@ fn hand_written_declarations_are_checked_against_the_header() {
     let problems: Vec<String> = check(&main, &Options::default())
         .err()
         .unwrap()
+        .errors
         .into_iter()
         .map(|e| match e {
             Error::Library(LibraryError::HeaderMismatch {
@@ -608,5 +626,118 @@ fn defines_that_stand_for_values_become_constants() {
     assert_eq!(
         som_driver::run(&checked, &exe, &[]).unwrap().code(),
         Some(42)
+    );
+}
+
+#[test]
+fn declarations_the_header_already_has_are_warned_about() {
+    let dir = project();
+    let main = write(
+        dir.path(),
+        "struct Pair { left: i32, right: f32 }
+         extern \"demo\" {
+             fn demo_add(a: i32, b: i32) -> i32;
+             fn demo_pair(left: i32) -> Pair;
+             fn AddNumbers(x: i32, y: i32) -> i32;
+         }
+         fn main() -> i32 { demo::demo_add(1, 2) }",
+    );
+    assert_eq!(
+        warnings(&main),
+        [
+            "StructInHeader Pair as demo::Pair",
+            "DeclaredInHeader demo_add demo_pair AddNumbers (all)",
+        ]
+    );
+    let block = check(&main, &Options::default()).unwrap().warnings.pop().unwrap();
+    assert!(
+        (block.to_diagnostic().hints.iter())
+            .any(|h| h.plain() == "imported, they're named in snake_case: `AddNumbers` is `demo::add_numbers`"),
+        "{block:?}"
+    );
+}
+
+#[test]
+fn only_the_declarations_the_header_already_has_are_pointed_out() {
+    let dir = project();
+    let main = write(
+        dir.path(),
+        "extern \"demo\" { fn demo_add(x: i32, y: i32) -> i32; fn demo_count(format: *, ...) -> i32; }
+         fn main() -> i32 { demo::demo_add(1, 2) }",
+    );
+    assert_eq!(warnings(&main), ["DeclaredInHeader demo_add"]);
+}
+
+#[test]
+fn declarations_that_say_more_than_the_header_are_not_warned_about() {
+    let dir = project();
+    // A pointer where the header has `cstr`, a struct of another name, a reference for a pointer.
+    let main = write(
+        dir.path(),
+        "struct Two { a: i32, b: f32 }
+         struct Size { w: i32, h: i32, rate: i32 }
+         extern \"demo\" {
+             fn demo_count(format: *, ...) -> i32;
+             fn demo_pair(left: i32) -> Two;
+             fn demo_widen(size: &mut Size);
+         }
+         fn main() {}",
+    );
+    assert_eq!(warnings(&main), Vec::<String>::new());
+}
+
+/// `source` with every edit of the first fix of each warning made, as an editor would.
+fn fixed(main: &Path) -> String {
+    let checked = check(main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
+    let mut edits: Vec<(std::ops::Range<usize>, String)> = (checked.warnings.iter())
+        .flat_map(|w| w.to_diagnostic().fixes.into_iter().take(1))
+        .flat_map(|fix| fix.edits)
+        .map(|(span, text)| (span.start_offset..span.start_offset + span.length, text))
+        .collect();
+    edits.sort_by_key(|(range, _)| std::cmp::Reverse(range.start));
+    let mut source = std::fs::read_to_string(main).unwrap();
+    for (range, text) in edits {
+        source.replace_range(range, &text);
+    }
+    source
+}
+
+#[test]
+fn the_fix_replaces_the_block_with_the_import_and_removes_the_structs() {
+    let dir = project();
+    let main = write(
+        dir.path(),
+        "/// Two numbers.
+pub struct Pair { left: i32, right: f32 }
+use extern \"demo\" {
+    fn demo_add(a: i32, b: i32) -> i32;
+    fn demo_pair(left: i32) -> Pair;
+}
+fn main() {}
+",
+    );
+    assert_eq!(fixed(&main), "use extern \"demo\";\nfn main() {}\n");
+}
+
+#[test]
+fn the_fix_keeps_the_declarations_that_differ() {
+    let dir = project();
+    let main = write(
+        dir.path(),
+        "fn main() {}
+    extern \"demo\" {
+        fn demo_add(a: i32, b: i32) -> i32;
+        fn demo_count(format: *, ...) -> i32;
+    }
+",
+    );
+    assert_eq!(
+        fixed(&main),
+        "fn main() {}
+    extern \"demo\";
+    extern \"demo\" {
+        fn demo_count(format: *, ...) -> i32;
+    }
+"
     );
 }

@@ -16,7 +16,7 @@ use object::{BinaryFormat, FileKind, Object, ObjectSymbol};
 use som_ast::{Ast, Item, Span};
 use som_base::diagnostics::{closest_match, edit_distance, snake_case};
 use som_base::message as m;
-use som_base::{Diagnostic, Label, Message, msg};
+use som_base::{Diagnostic, Fix, Label, Message, msg};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -52,6 +52,201 @@ pub enum LibraryError {
         span: Span,
         suggestion: Option<String>,
     },
+}
+
+/// Something worth knowing about how a program uses its libraries, that doesn't stop it
+/// compiling.
+#[derive(Debug)]
+pub enum LibraryWarning {
+    /// Hand-written `extern "raylib" { … }` declarations that are exactly what
+    /// `extern "raylib";` imports from the header.
+    DeclaredInHeader {
+        library: String,
+        header: String,
+        /// Where the library's name is written.
+        span: Span,
+        /// The whole block, `extern` to `}`.
+        block: Span,
+        /// Each declaration that's the same as the header's.
+        functions: Vec<SameAsHeader>,
+        /// Whether that's every declaration in the block.
+        all: bool,
+    },
+    /// A hand-written struct with the same name and fields as one the header declares.
+    StructInHeader {
+        name: String,
+        library: String,
+        header: String,
+        /// What it's called when imported: `raylib::Color`.
+        imported: String,
+        /// Its name.
+        span: Span,
+        /// The whole struct.
+        declaration: Span,
+    },
+}
+
+/// A hand-written declaration that's the same as the header's.
+#[derive(Debug)]
+pub struct SameAsHeader {
+    pub name: String,
+    pub span: Span,
+    /// The whole declaration, `fn` to `;`.
+    pub declaration: Span,
+    /// What it's called when imported: `raylib::init_window`.
+    pub imported: String,
+}
+
+/// What `extern "raylib";` does, for anyone writing out what it would generate.
+fn generates(library: &str, header: &str) -> Message {
+    msg![
+        "when a library's header can be found, ",
+        m::code(format!("extern \"{library}\";")),
+        " generates its functions, structs, enums and constants from ",
+        m::path(header),
+        ", so none of them need writing by hand"
+    ]
+}
+
+/// `span` grown to the whole lines it's on, with a `pub` before it and the `///`
+/// comments above it, so removing it leaves no gap. Left as it is when it shares a
+/// line with something else.
+fn whole_lines(span: &Span) -> Span {
+    let text = span.source.content();
+    let (mut start, mut end) = (span.start_offset, span.start_offset + span.length);
+    let first = line_start_of(text, start);
+    let after = text[end..].find('\n').map_or(text.len(), |i| end + i + 1);
+    let before = text[first..start].trim();
+    if !(before.is_empty() || before == "pub") || !text[end..after].trim().is_empty() {
+        return span.clone();
+    }
+    (start, end) = (first, after);
+    // The doc comment above goes with it.
+    while start > 0 {
+        let above = line_start_of(text, start - 1);
+        if !text[above..start].trim_start().starts_with("///") {
+            break;
+        }
+        start = above;
+    }
+    Span::from_range(start..end, span.source.clone())
+}
+
+/// Where the line holding `offset` starts.
+fn line_start_of(text: &str, offset: usize) -> usize {
+    text[..offset].rfind('\n').map_or(0, |i| i + 1)
+}
+
+impl LibraryWarning {
+    /// Where it's reported.
+    pub fn span(&self) -> &Span {
+        match self {
+            LibraryWarning::DeclaredInHeader { span, .. }
+            | LibraryWarning::StructInHeader { span, .. } => span,
+        }
+    }
+
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        match self {
+            LibraryWarning::DeclaredInHeader {
+                library,
+                header,
+                span,
+                block,
+                functions,
+                all,
+            } => {
+                let import = format!("extern \"{library}\";");
+                let d = if *all {
+                    Diagnostic::warning(msg![
+                        m::path(header),
+                        " already declares everything in this block"
+                    ])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![m::code(&import), " imports all of it"],
+                    ))
+                    .with_fix(Fix::replace(
+                        msg!["replace the block with ", m::code(&import)],
+                        block.clone(),
+                        &import,
+                    ))
+                } else {
+                    let mut d = Diagnostic::warning(msg![
+                        m::path(header),
+                        format!(
+                            " already declares {} of the functions in this block",
+                            functions.len()
+                        ),
+                    ])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![m::code(&import), " imports them"],
+                    ));
+                    for f in functions {
+                        d = d.with_label(Label::secondary(f.span.clone(), "the same as the header"));
+                    }
+                    // Import the header above the block, and keep only what differs from it.
+                    let text = block.source.content();
+                    let line = line_start_of(text, block.start_offset);
+                    let indent = &text[line..block.start_offset];
+                    let indent: String = indent.chars().take_while(|c| c.is_whitespace()).collect();
+                    let mut edits = vec![(
+                        Span::from_range(line..line, block.source.clone()),
+                        format!("{indent}{import}\n"),
+                    )];
+                    edits.extend(
+                        (functions.iter()).map(|f| (whole_lines(&f.declaration), String::new())),
+                    );
+                    d.with_fix(Fix {
+                        title: msg![
+                            "add ",
+                            m::code(&import),
+                            " and remove what it imports"
+                        ],
+                        edits,
+                    })
+                };
+                let d = d.with_hint(generates(library, header));
+                // Imported functions are named in snake_case, so calls change too.
+                match functions
+                    .iter()
+                    .find(|f| f.imported.rsplit("::").next() != Some(f.name.as_str()))
+                {
+                    Some(f) => d.with_hint(msg![
+                        "imported, they're named in snake_case: ",
+                        m::func(&f.name),
+                        " is ",
+                        m::func(&f.imported)
+                    ]),
+                    None => d,
+                }
+            }
+            LibraryWarning::StructInHeader {
+                name,
+                library,
+                header,
+                imported,
+                span,
+                declaration,
+            } => Diagnostic::warning(msg![
+                m::struct_name(name),
+                " is already declared in ",
+                m::path(header)
+            ])
+            .with_label(Label::primary(span.clone(), "the same fields as the header's"))
+            .with_hint(generates(library, header))
+            .with_hint(msg![
+                "imported, it's ",
+                m::struct_name(imported),
+                ", which copies like plain data"
+            ])
+            .with_fix(Fix {
+                title: msg!["remove ", m::struct_name(name)],
+                edits: vec![(whole_lines(declaration), String::new())],
+            }),
+        }
+    }
 }
 
 impl LibraryError {

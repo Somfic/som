@@ -16,6 +16,12 @@
 //! Using a place then conflicts with the loans alive at that point, and a local
 //! going out of scope while something still holds a loan on it is a dangling
 //! reference.
+//!
+//! The `&mut` a method call takes of its receiver is a two-phase borrow, as in Rust:
+//! from where it's taken until the call uses it, it's only reserved, and counts as a
+//! shared borrow, so `v.push(v.len())` can read `v` for its argument. Writing to the
+//! place or borrowing it mutably still conflicts while it's reserved, and when the call
+//! uses it, it must not overlap any loan still alive.
 
 mod error;
 mod outs;
@@ -53,6 +59,8 @@ struct Loan {
     place: Place,
     mutable: bool,
     span: Span,
+    /// The temporary holding it, when it's a two-phase borrow.
+    two_phase: Option<Local>,
 }
 
 /// What's known at one program point.
@@ -62,6 +70,8 @@ struct State {
     moved: BTreeMap<Place, Span>,
     /// For each local, the loans it may hold.
     holds: Vec<BTreeSet<LoanId>>,
+    /// Two-phase loans not used yet, which count as shared.
+    reserved: BTreeSet<LoanId>,
 }
 
 impl State {
@@ -76,6 +86,7 @@ impl State {
         for (mine, theirs) in self.holds.iter_mut().zip(&other.holds) {
             mine.extend(theirs);
         }
+        self.reserved.extend(&other.reserved);
         *self != before
     }
 
@@ -121,12 +132,18 @@ impl<'a> FnChecker<'a> {
         let mut loan_at = BTreeMap::new();
         for (b, block) in body.blocks.iter().enumerate() {
             for (s, stmt) in block.stmts.iter().enumerate() {
-                if let StatementKind::Assign(_, Rvalue::Ref { mutable, place }) = &stmt.kind {
+                if let StatementKind::Assign(holder, Rvalue::Ref { mutable, place }) = &stmt.kind
+                {
+                    let two_phase = (*mutable
+                        && holder.projection.is_empty()
+                        && body.two_phase.contains(&holder.local))
+                    .then_some(holder.local);
                     loan_at.insert((b, s), loans.len());
                     loans.push(Loan {
                         place: place.clone(),
                         mutable: *mutable,
                         span: stmt.span.clone(),
+                        two_phase,
                     });
                 }
             }
@@ -148,6 +165,7 @@ impl<'a> FnChecker<'a> {
         entry[0] = Some(State {
             moved: BTreeMap::new(),
             holds: vec![BTreeSet::new(); self.body.locals.len()],
+            reserved: BTreeSet::new(),
         });
 
         let mut queue = VecDeque::from([0]);
@@ -217,7 +235,12 @@ impl<'a> FnChecker<'a> {
         span: &Span,
     ) -> BTreeSet<LoanId> {
         if let Rvalue::Ref { place, .. } = rvalue {
-            return self.borrow(state, self.loan_at[&at], place, span);
+            let id = self.loan_at[&at];
+            let flows = self.borrow(state, id, place, span);
+            if self.loans[id].two_phase.is_some() {
+                state.reserved.insert(id);
+            }
+            return flows;
         }
         let mut reads = reads.iter().peekable();
         let mut flows = BTreeSet::new();
@@ -249,9 +272,11 @@ impl<'a> FnChecker<'a> {
         span: &Span,
         moving: bool,
     ) -> BTreeSet<LoanId> {
+        self.activate(state, place.local);
         self.check_moved(state, place, span);
-        for loan in state.active() {
-            let loan = &self.loans[loan];
+        for id in state.active() {
+            let reserved = state.reserved.contains(&id);
+            let loan = &self.loans[id];
             if !overlaps(&loan.place, place) {
                 continue;
             }
@@ -262,7 +287,7 @@ impl<'a> FnChecker<'a> {
                     borrowed_at: loan.span.clone(),
                 });
                 break;
-            } else if loan.mutable {
+            } else if loan.mutable && !reserved {
                 self.error(BorrowError::UseWhileMutBorrowed {
                     name: self.name(place),
                     span: span.clone(),
@@ -315,10 +340,13 @@ impl<'a> FnChecker<'a> {
     ) -> BTreeSet<LoanId> {
         self.check_moved(state, place, span);
         let loan = &self.loans[id];
+        // A two-phase borrow is shared until it's used, and checked again then.
+        let mutable = loan.mutable && loan.two_phase.is_none();
         for other in state.active() {
             let existing = &self.loans[other];
+            let existing_mutable = existing.mutable && !state.reserved.contains(&other);
             // A loop can reach the same borrow again while its previous loan is still held.
-            if other != id && overlaps(&existing.place, place) && (loan.mutable || existing.mutable)
+            if other != id && overlaps(&existing.place, place) && (mutable || existing_mutable)
             {
                 self.error(BorrowError::ConflictingBorrow {
                     name: self.name(place),
@@ -343,6 +371,33 @@ impl<'a> FnChecker<'a> {
             }
         }
         flows
+    }
+
+    /// Uses the two-phase loans `holder` holds: from here they're mutable, so they can't
+    /// overlap any loan still alive, like one the call's arguments still hold.
+    fn activate(&mut self, state: &mut State, holder: Local) {
+        let activated: Vec<LoanId> = (state.reserved.iter().copied())
+            .filter(|&id| self.loans[id].two_phase == Some(holder))
+            .collect();
+        for id in activated {
+            state.reserved.remove(&id);
+            let loan = &self.loans[id];
+            let conflict = state.active().into_iter().find(|&other| {
+                other != id
+                    && overlaps(&self.loans[other].place, &loan.place)
+                    && !(state.holds[holder.id].contains(&other))
+            });
+            if let Some(other) = conflict {
+                let existing = &self.loans[other];
+                self.error(BorrowError::ConflictingBorrow {
+                    name: self.name(&loan.place),
+                    span: loan.span.clone(),
+                    mutable: true,
+                    existing_at: existing.span.clone(),
+                    existing_mutable: existing.mutable,
+                });
+            }
+        }
     }
 
     fn write(&mut self, state: &mut State, place: &Place, span: &Span) {

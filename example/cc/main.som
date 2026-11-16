@@ -1,0 +1,62 @@
+// A small C compiler: C on standard input, ARM64 assembly for macOS on standard output.
+//
+//     som run example/cc < example/cc/demo.c > demo.s && cc demo.s -o demo && ./demo
+//
+// Every value is a 64-bit integer (`int`, `long` and `char` alike), with functions,
+// recursion, locals in nested scopes, `if`/`else`, `while`, `for`, `break`, `continue`,
+// `return`, all of C's operators on integers (`&&`, `||`, `?:`, `+=`, `++` and the rest),
+// string and character literals, and calls to C's library, `printf` included. There are no
+// pointers, arrays or structs.
+//
+// It compiles in one pass, the way early compilers did: the parser writes the code for
+// each construct as it reads it. Expressions run on a stack machine: every expression
+// leaves its value in `x0`, and the left operand of a binary operator waits on the stack
+// while the right one is computed.
+
+use som::io;
+
+extern {
+    fn write(fd: i32, buf: cstr, count: usize) -> isize;
+}
+
+/// Reports an error on standard error, so it doesn't end up in the assembly, and stops.
+mod fn fail(line: i64, message: string) {
+    let text = "error: line " + line.to_string() + ": " + message + "\n";
+    write(2, text.c_str, text.len);
+    exit(1);
+}
+
+fn main() {
+    let mut source: string = "";
+    loop {
+        let line = read_line();
+        if line == none { break; }
+        source = source + line + "\n";
+    }
+
+    let mut c = Compiler {
+        tokens: tokenize(&source),
+        pos: 0,
+        end: token(Kind::End, "end of input", 0, 0),
+        text: List::empty(),
+        body: List::empty(),
+        strings: List::empty(),
+        locals: List::empty(),
+        scopes: List::empty(),
+        frame: 0,
+        labels: 0,
+        function: "",
+        breaks: List::empty(),
+        continues: List::empty(),
+    };
+    c.program();
+
+    println("    .section __TEXT,__cstring");
+    for i in 0..c.strings.len {
+        println("Lstr" + i.to_string() + ":");
+        println("    .asciz \"" + c.strings[i].share() + "\"");
+    }
+    println("");
+    println("    .text");
+    for line in &c.text { println(line.share()); }
+}

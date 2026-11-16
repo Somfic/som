@@ -1,0 +1,14 @@
+// expect: exit 5
+
+/// A pattern matches what an optional holds: `5`, `Shape::Empty`, or after `none`, a name.
+enum Shape { Circle(f64), Empty }
+
+fn find(n: i32) -> i32? = if n > 0 { n } else { none };
+fn shape() -> Shape? = Shape::Empty;
+
+fn main() -> i32 {
+    let a = match find(3) { none => 0, v => v };
+    let b = match find(4) { 5 => 1, _ => 0 };
+    let c = match shape() { Shape::Empty => 2, _ => 9 };
+    a + b + c
+}

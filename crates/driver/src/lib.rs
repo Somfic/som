@@ -8,7 +8,7 @@ pub mod stdlib;
 
 pub use build::{BuildError, BuildOptions, build, emit_c, run};
 pub use headers::origins;
-pub use libraries::LibraryError;
+pub use libraries::{LibraryError, LibraryWarning, SameAsHeader};
 pub use load::{LoadError, load};
 
 use som_ast::Ast;
@@ -29,6 +29,14 @@ pub struct Checked {
     /// The library files to link: those of the `extern "…"` blocks whose functions the
     /// program still uses after tree shaking.
     pub libraries: Vec<PathBuf>,
+    pub warnings: Vec<Warning>,
+}
+
+/// Why a program didn't pass its checks, with whatever warnings were found on the way.
+#[derive(Debug)]
+pub struct Failed {
+    pub errors: Vec<Error>,
+    pub warnings: Vec<Warning>,
 }
 
 /// Settings for checking a program.
@@ -94,6 +102,32 @@ impl Error {
     }
 }
 
+/// Something worth fixing that doesn't stop a program compiling.
+#[derive(Debug)]
+pub enum Warning {
+    Library(LibraryWarning),
+}
+
+impl Warning {
+    /// The name of the specific warning, like `DeclaredInHeader`.
+    pub fn kind(&self) -> String {
+        let debug = match self {
+            Warning::Library(w) => format!("{w:?}"),
+        };
+        debug
+            .split(|c: char| !c.is_alphanumeric())
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    }
+
+    pub fn to_diagnostic(&self) -> Diagnostic {
+        match self {
+            Warning::Library(w) => w.to_diagnostic(),
+        }
+    }
+}
+
 /// Loads `path` and runs every check, stopping after the first pass that reports errors.
 /// The borrow checker's errors: in `mir`, the program as it's used, and in every generic
 /// function with stand-ins for its type parameters, used or not, so a value used after it's
@@ -128,19 +162,37 @@ fn borrow_errors(
     errors
 }
 
-pub fn check(path: &Path, options: &Options) -> Result<Checked, Vec<Error>> {
+pub fn check(path: &Path, options: &Options) -> Result<Checked, Failed> {
     let (ast, errors) = load(path, &options.library_dirs);
     if !errors.is_empty() {
-        return Err(errors.into_iter().map(Error::Load).collect());
+        return Err(Failed {
+            errors: errors.into_iter().map(Error::Load).collect(),
+            warnings: Vec::new(),
+        });
     }
     check_loaded(ast, options)
 }
 
 /// Runs every check on a program that loaded without errors.
-pub fn check_loaded(mut ast: Ast, options: &Options) -> Result<Checked, Vec<Error>> {
+pub fn check_loaded(ast: Ast, options: &Options) -> Result<Checked, Failed> {
+    let mut warnings = Vec::new();
+    match check_passes(ast, options, &mut warnings) {
+        Ok(checked) => Ok(Checked { warnings, ..checked }),
+        Err(errors) => Err(Failed { errors, warnings }),
+    }
+}
+
+/// Every pass after loading, adding the warnings they find to `warnings`.
+fn check_passes(
+    mut ast: Ast,
+    options: &Options,
+    warnings: &mut Vec<Warning>,
+) -> Result<Checked, Vec<Error>> {
     // Missing functions and mismatched ones are reported together.
     let (libraries, mut errors) = libraries::check(&mut ast, &options.library_dirs);
-    errors.extend(headers::check_declarations(&ast, &options.library_dirs));
+    let (header_errors, header_warnings) = headers::check_declarations(&ast, &options.library_dirs);
+    errors.extend(header_errors);
+    warnings.extend(header_warnings.into_iter().map(Warning::Library));
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Library).collect());
     }
@@ -181,6 +233,7 @@ pub fn check_loaded(mut ast: Ast, options: &Options) -> Result<Checked, Vec<Erro
         typed,
         mir,
         libraries,
+        warnings: Vec::new(),
     })
 }
 
@@ -193,6 +246,7 @@ pub struct Analysis {
     /// Only present when every check before lowering passed.
     pub mir: Option<Mir>,
     pub errors: Vec<Error>,
+    pub warnings: Vec<Warning>,
 }
 
 /// What a program can bring in that it hasn't yet: the standard library's modules (`use som;`) and
@@ -329,11 +383,9 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
             .into_iter()
             .map(Error::Library),
     );
-    errors.extend(
-        headers::check_declarations(&ast, &options.library_dirs)
-            .into_iter()
-            .map(Error::Library),
-    );
+    let (header_errors, header_warnings) = headers::check_declarations(&ast, &options.library_dirs);
+    errors.extend(header_errors.into_iter().map(Error::Library));
+    let warnings = header_warnings.into_iter().map(Warning::Library).collect();
 
     let (names, mut resolve_errors) = som_resolve::resolve(&ast);
     suggest_imports(&ast, &mut resolve_errors, options);
@@ -368,6 +420,7 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
         typed,
         mir,
         errors,
+        warnings,
     }
 }
 

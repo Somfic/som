@@ -1,0 +1,203 @@
+use som::io;
+extern "c";
+
+const WIDTH = 480;
+const HEIGHT = 270;
+const MAX_DEPTH = 4;
+const SAMPLES = 2;
+const EPSILON: f64 = 0.0001;
+const INFINITY: f64 = 1000000000.0;
+
+struct Vec3 { x: f64, y: f64, z: f64 }
+
+impl Vec3 {
+    const ZERO = Vec3 { x: 0.0, y: 0.0, z: 0.0 };
+
+    fn new(x: f64, y: f64, z: f64) -> Vec3 = Vec3 { x: x, y: y, z: z };
+
+    fn dot(self, other: Vec3) -> f64 = self.x * other.x + self.y * other.y + self.z * other.z;
+
+    fn length(self) -> f64 = self.dot(self).sqrt();
+
+    fn normalized(self) -> Vec3 = self * (1.0 / self.length());
+
+    /// Each part times the other's: for mixing colours.
+    fn times(self, other: Vec3) -> Vec3 = Vec3::new(self.x * other.x, self.y * other.y, self.z * other.z);
+
+    fn reflect(self, normal: Vec3) -> Vec3 = self - normal * (2.0 * self.dot(normal));
+}
+
+impl Copy for Vec3 {}
+impl Copy for Material {}
+impl Copy for Ray {}
+impl Copy for Hit {}
+impl Copy for Light {}
+
+impl Add for Vec3 {
+    fn add(self: &Vec3, other: &Vec3) -> Vec3 = Vec3::new(self.x + other.x, self.y + other.y, self.z + other.z);
+}
+
+impl Subtract for Vec3 {
+    fn subtract(self: &Vec3, other: &Vec3) -> Vec3 = Vec3::new(self.x - other.x, self.y - other.y, self.z - other.z);
+}
+
+impl Multiply<f64> for Vec3 {
+    fn multiply(self: &Vec3, k: &f64) -> Vec3 = Vec3::new(self.x * *k, self.y * *k, self.z * *k);
+}
+
+struct Ray { origin: Vec3, dir: Vec3 }
+
+impl Ray {
+    fn at(self, t: f64) -> Vec3 = self.origin + self.dir * t;
+}
+
+struct Material {
+    color: Vec3,
+    /// How much of the light it reflects like a mirror, 0 to 1.
+    mirror: f64,
+    shine: f64,
+    checkered: bool,
+}
+
+enum Shape {
+    Sphere { center: Vec3, radius: f64, material: Material },
+    Plane { point: Vec3, normal: Vec3, material: Material },
+}
+
+struct Hit { t: f64, point: Vec3, normal: Vec3, material: Material }
+
+struct Light { position: Vec3, color: Vec3 }
+
+/// Where `ray` first meets `shape`, past `EPSILON`.
+fn intersect(shape: &Shape, ray: Ray) -> f64? {
+    match shape {
+        Shape::Sphere { center, radius, .. } => {
+            let oc = ray.origin - center;
+            let b = oc.dot(ray.dir);
+            let c = oc.dot(oc) - radius * radius;
+            let disc = b * b - c;
+            if disc < 0.0 { return none; }
+            let root = disc.sqrt();
+            let near = -b - root;
+            if near > EPSILON { return near; }
+            let far = -b + root;
+            if far > EPSILON { return far; }
+            none
+        }
+        Shape::Plane { point, normal, .. } => {
+            let denom = normal.dot(ray.dir);
+            if c::fabs(denom) < EPSILON { return none; }
+            let t = (point - ray.origin).dot(normal) / denom;
+            if t > EPSILON { t } else { none }
+        }
+    }
+}
+
+fn hit(scene: &[Shape], ray: Ray) -> Hit? {
+    let mut best: Hit? = none;
+    let mut nearest = INFINITY;
+    for shape in scene {
+        let t = intersect(shape, ray);
+        if t {
+            if t < nearest {
+                nearest = t;
+                let point = ray.at(t);
+                best = match shape {
+                    Shape::Sphere { center, material, .. } => Hit { t: t, point: point, normal: (point - center).normalized(), material: material },
+                    Shape::Plane { normal, material, .. } => Hit { t: t, point: point, normal: normal, material: material },
+                };
+            }
+        }
+    }
+    best
+}
+
+fn surface_color(h: &Hit) -> Vec3 {
+    if !h.material.checkered { return h.material.color; }
+    let cx = (c::floor(h.point.x) as i64) + (c::floor(h.point.z) as i64);
+    if cx % 2 == 0 { h.material.color } else { h.material.color * 0.3 }
+}
+
+fn shade(scene: &[Shape], lights: &[Light], ray: Ray, depth: i32) -> Vec3 {
+    let h = hit(scene, ray);
+    if !h {
+        // The sky: lighter towards the top.
+        let t = 0.5 * (ray.dir.y + 1.0);
+        return Vec3::new(1.0, 1.0, 1.0) * (1.0 - t) + Vec3::new(0.5, 0.7, 1.0) * t;
+    }
+    let base = surface_color(&h);
+    let mut color = base * 0.08;
+    for light in lights {
+        let to_light = light.position - h.point;
+        let distance = to_light.length();
+        let dir = to_light.normalized();
+        // In shadow if something is between it and the light.
+        let shadow = Ray { origin: h.point + h.normal * EPSILON, dir: dir };
+        let s = hit(scene, shadow);
+        let blocked = if s { s.t < distance } else { false };
+        if blocked { continue; }
+        let diffuse = h.normal.dot(dir);
+        if diffuse > 0.0 {
+            color = color + base.times(light.color) * diffuse;
+        }
+        let reflected = (dir * -1.0).reflect(h.normal);
+        let spec = reflected.dot(ray.dir * -1.0);
+        if spec > 0.0 && h.material.shine > 0.0 {
+            color = color + light.color * spec.pow(h.material.shine);
+        }
+    }
+    if depth < MAX_DEPTH && h.material.mirror > 0.0 {
+        let bounce = Ray { origin: h.point + h.normal * EPSILON, dir: ray.dir.reflect(h.normal) };
+        let mirrored = shade(scene, lights, bounce, depth + 1);
+        color = color * (1.0 - h.material.mirror) + mirrored * h.material.mirror;
+    }
+    color
+}
+
+fn to_byte(v: f64) -> i32 {
+    // Gamma 2.
+    let c = v.sqrt();
+    if c <= 0.0 { return 0; }
+    if c >= 1.0 { return 255; }
+    (c * 255.0) as i32
+}
+
+fn main() {
+    let scene = [
+        Shape::Plane { point: Vec3::new(0.0, -1.0, 0.0), normal: Vec3::new(0.0, 1.0, 0.0), material: Material { color: Vec3::new(0.9, 0.9, 0.9), mirror: 0.15, shine: 0.0, checkered: true } },
+        Shape::Sphere { center: Vec3::new(0.0, 0.0, -4.0), radius: 1.0, material: Material { color: Vec3::new(0.9, 0.2, 0.2), mirror: 0.2, shine: 50.0, checkered: false } },
+        Shape::Sphere { center: Vec3::new(-2.2, -0.3, -5.0), radius: 0.7, material: Material { color: Vec3::new(0.2, 0.8, 0.3), mirror: 0.0, shine: 10.0, checkered: false } },
+        Shape::Sphere { center: Vec3::new(2.1, 0.2, -4.8), radius: 1.2, material: Material { color: Vec3::new(0.9, 0.9, 0.9), mirror: 0.8, shine: 200.0, checkered: false } },
+        Shape::Sphere { center: Vec3::new(0.6, -0.7, -2.6), radius: 0.3, material: Material { color: Vec3::new(0.3, 0.4, 1.0), mirror: 0.1, shine: 30.0, checkered: false } },
+    ];
+    let lights = [
+        Light { position: Vec3::new(-5.0, 5.0, 0.0), color: Vec3::new(0.8, 0.8, 0.8) },
+        Light { position: Vec3::new(4.0, 3.0, -1.0), color: Vec3::new(0.3, 0.3, 0.4) },
+    ];
+
+    print("P3\n{WIDTH} {HEIGHT}\n255\n");
+    let aspect = WIDTH as f64 / HEIGHT as f64;
+    let mut y = 0;
+    while y < HEIGHT {
+        let mut x = 0;
+        while x < WIDTH {
+            let mut sum = Vec3::ZERO;
+            let mut sy = 0;
+            while sy < SAMPLES {
+                let mut sx = 0;
+                while sx < SAMPLES {
+                    let u = ((x as f64 + (sx as f64 + 0.5) / SAMPLES as f64) / WIDTH as f64 * 2.0 - 1.0) * aspect;
+                    let v = 1.0 - (y as f64 + (sy as f64 + 0.5) / SAMPLES as f64) / HEIGHT as f64 * 2.0;
+                    let ray = Ray { origin: Vec3::ZERO, dir: Vec3::new(u, v, -1.5).normalized() };
+                    sum = sum + shade(&scene, &lights, ray, 0);
+                    sx = sx + 1;
+                }
+                sy = sy + 1;
+            }
+            let c = sum * (1.0 / (SAMPLES * SAMPLES) as f64);
+            print("{to_byte(c.x)} {to_byte(c.y)} {to_byte(c.z)}\n");
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+}

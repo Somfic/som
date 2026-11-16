@@ -5,7 +5,7 @@ mod header;
 
 pub use header::{Expect, Header};
 
-use som_driver::Error;
+use som_driver::{Error, Failed};
 use std::path::Path;
 
 pub fn run_case(path: &str) {
@@ -44,7 +44,7 @@ pub fn run_case(path: &str) {
                 path.display()
             );
         }
-        (Expect::Error(kinds), Err(errors)) => {
+        (Expect::Error(kinds), Err(Failed { errors, .. })) => {
             for kind in kinds {
                 assert!(
                     errors.iter().any(|e| &e.kind() == kind),
@@ -56,7 +56,7 @@ pub fn run_case(path: &str) {
         (Expect::Error(_), Ok(_)) => {
             panic!("expected an error, but {} compiled cleanly", path.display())
         }
-        (_, Err(errors)) => panic!("expected success, got errors:\n{}", describe(&errors)),
+        (_, Err(Failed { errors, .. })) => panic!("expected success, got errors:\n{}", describe(&errors)),
     }
 }
 

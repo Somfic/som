@@ -501,6 +501,8 @@ struct FnBuilder<'l, 'a> {
     loops: Vec<LoopTargets>,
     /// Places the source read, with where, not yet claimed by the statement using them.
     reads: Vec<(Place, Span)>,
+    /// Temporaries holding a two-phase borrow: see `Body::two_phase`.
+    two_phase: Vec<Local>,
 }
 
 impl<'l, 'a> FnBuilder<'l, 'a> {
@@ -518,6 +520,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             scopes: Vec::new(),
             loops: Vec::new(),
             reads: Vec::new(),
+            two_phase: Vec::new(),
         };
         builder.current = builder.new_block();
         builder
@@ -573,6 +576,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             locals: std::mem::take(&mut self.locals),
             arg_count: func.params.len(),
             outs,
+            two_phase: std::mem::take(&mut self.two_phase),
             blocks: std::mem::take(&mut self.blocks),
         };
         self.elaborate_drops(&mut body);
@@ -1935,6 +1939,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     Rvalue::Ref { mutable, place },
                     span.clone(),
                 );
+                // `v.push(v.len())`: the arguments are evaluated before the call uses it.
+                if mutable {
+                    self.two_phase.push(temp);
+                }
                 (self.read(Place::local(temp), reference), reference, span)
             }
             Some(Receiver::Share) => {

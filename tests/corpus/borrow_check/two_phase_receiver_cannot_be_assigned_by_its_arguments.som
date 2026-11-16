@@ -1,0 +1,7 @@
+// expect: error AssignWhileBorrowed
+
+/// Reserved is still borrowed: the arguments can't replace what the call will change.
+fn main() {
+    let mut v: List<i64> = List::empty();
+    v.push({ v = List::empty(); 1 });
+}

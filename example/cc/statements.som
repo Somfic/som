@@ -1,0 +1,201 @@
+//! Functions, blocks, statements and declarations.
+
+impl Compiler {
+    // --- Declarations ---
+
+    mod fn program(&mut self) {
+        while self.kind() != Kind::End {
+            self.function();
+        }
+    }
+
+    mod fn function(&mut self) {
+        self.skip_type();
+        let name = self.name();
+        self.expect("(");
+        let mut params: List<string> = List::empty();
+        if self.is("void") && self.next_is(")") {
+            self.pos = self.pos + 1;
+        }
+        while !self.is(")") {
+            if params.len > 0 { self.expect(","); }
+            // `...`: the variadic part of a prototype, like `printf`'s.
+            if self.is(".") {
+                while self.eat(".") {}
+                break;
+            }
+            self.skip_type();
+            params.push(self.name());
+        }
+        self.expect(")");
+        // A prototype, for a function in C's library or further down.
+        if self.eat(";") { return; }
+        if params.len > 8 {
+            fail(self.line(), "`" + name + "` has more than 8 parameters");
+        }
+
+        self.function = name.share();
+        self.frame = 0;
+        self.body = List::empty();
+        self.enter_scope();
+        for i in 0..params.len {
+            let offset = self.declare(params[i].share());
+            self.emit("sub x9, x29, #" + offset.to_string());
+            self.emit("str x" + i.to_string() + ", [x9]");
+        }
+        self.block();
+        self.leave_scope();
+        // Falling off the end returns 0, which is what `main` should.
+        self.emit("mov x0, #0");
+
+        let frame = (self.frame + 15) / 16 * 16;
+        self.text.push("");
+        self.text.push("    .globl _" + name.share());
+        self.text.push("    .p2align 2");
+        self.text.push("_" + name.share() + ":");
+        self.text.push("    stp x29, x30, [sp, #-16]!");
+        self.text.push("    mov x29, sp");
+        self.text.push("    sub sp, sp, #" + frame.to_string());
+        for line in &self.body { self.text.push(line.share()); }
+        self.text.push("Lreturn_" + name + ":");
+        self.text.push("    mov sp, x29");
+        self.text.push("    ldp x29, x30, [sp], #16");
+        self.text.push("    ret");
+    }
+
+    // --- Statements ---
+
+    mod fn block(&mut self) {
+        self.expect("{{");
+        self.enter_scope();
+        while !self.is("}}") {
+            if self.kind() == Kind::End { fail(self.line(), "expected `}}`"); }
+            self.statement();
+        }
+        self.expect("}}");
+        self.leave_scope();
+    }
+
+    mod fn statement(&mut self) {
+        if self.is("{{") {
+            self.block();
+        } else if self.is_type() {
+            self.declaration();
+        } else if self.eat("return") {
+            if !self.is(";") { self.expr(); }
+            self.expect(";");
+            self.emit("b Lreturn_" + self.function.share());
+        } else if self.eat("if") {
+            let otherwise = self.label();
+            let done = self.label();
+            self.condition();
+            self.emit("cbz x0, " + otherwise.share());
+            self.statement();
+            self.emit("b " + done.share());
+            self.place(&otherwise);
+            if self.eat("else") { self.statement(); }
+            self.place(&done);
+        } else if self.eat("while") {
+            let top = self.label();
+            let done = self.label();
+            self.place(&top);
+            self.condition();
+            self.emit("cbz x0, " + done.share());
+            self.in_loop(done.share(), top.share());
+            self.emit("b " + top.share());
+            self.place(&done);
+        } else if self.eat("for") {
+            self.for_loop();
+        } else if self.is("break") {
+            let line = self.line();
+            self.pos = self.pos + 1;
+            self.expect(";");
+            let target = match self.breaks.get(self.breaks.len - 1) {
+                none => { fail(line, "`break` outside a loop"); "" }
+                l => l.share(),
+            };
+            self.emit("b " + target);
+        } else if self.is("continue") {
+            let line = self.line();
+            self.pos = self.pos + 1;
+            self.expect(";");
+            let target = match self.continues.get(self.continues.len - 1) {
+                none => { fail(line, "`continue` outside a loop"); "" }
+                l => l.share(),
+            };
+            self.emit("b " + target);
+        } else if self.eat(";") {
+        } else {
+            self.expr();
+            self.expect(";");
+        }
+    }
+
+    /// `(expr)`, as `if` and `while` take it.
+    mod fn condition(&mut self) {
+        self.expect("(");
+        self.expr();
+        self.expect(")");
+    }
+
+    /// A loop's body, with `break` and `continue` going to `done` and `next`.
+    mod fn in_loop(&mut self, done: string, next: string) {
+        self.breaks.push(done);
+        self.continues.push(next);
+        self.statement();
+        self.breaks.pop();
+        self.continues.pop();
+    }
+
+    /// `for (init; test; step) body`. The step is read before the body but runs after
+    /// it, so it's jumped around:
+    ///
+    ///     init; top: test; cbz done; b body; step: step; b top; body: body; b step; done:
+    mod fn for_loop(&mut self) {
+        let top = self.label();
+        let step = self.label();
+        let body = self.label();
+        let done = self.label();
+        self.expect("(");
+        self.enter_scope();
+        if self.is_type() {
+            self.declaration();
+        } else {
+            if !self.is(";") { self.expr(); }
+            self.expect(";");
+        }
+        self.place(&top);
+        if !self.is(";") {
+            self.expr();
+            self.emit("cbz x0, " + done.share());
+        }
+        self.expect(";");
+        self.emit("b " + body.share());
+        self.place(&step);
+        if !self.is(")") { self.expr(); }
+        self.expect(")");
+        self.emit("b " + top.share());
+        self.place(&body);
+        self.in_loop(done.share(), step.share());
+        self.emit("b " + step.share());
+        self.place(&done);
+        self.leave_scope();
+    }
+
+    /// `int a, b = 2;`
+    mod fn declaration(&mut self) {
+        self.skip_type();
+        loop {
+            let name = self.name();
+            if self.eat("=") {
+                self.assign();
+                self.declare(name.share());
+                self.store(&name);
+            } else {
+                self.declare(name);
+            }
+            if !self.eat(",") { break; }
+        }
+        self.expect(";");
+    }
+}

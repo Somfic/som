@@ -200,6 +200,11 @@ pub struct Body {
     /// The `out` parameters: pointers the function must assign through on every path
     /// before it returns, and before reading through them.
     pub outs: Vec<Local>,
+    /// Temporaries holding a two-phase borrow: the `&mut` a method call takes of its
+    /// receiver, `v` in `v.push(v.len())`. It's only reserved until the temporary is
+    /// first used, by the call, and until then it's no more than a shared borrow, so the
+    /// arguments can still read what it borrows.
+    pub two_phase: Vec<Local>,
     /// The entry block is `bb0`.
     pub blocks: Arena<Block>,
 }

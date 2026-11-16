@@ -46,6 +46,22 @@ fn reported(source: &str) {
 }
 
 #[test]
+fn rust_optional_checks() {
+    becomes(
+        "fn main() {\n    if let t = f() { g(t); }\n}",
+        "fn main() {\n    let t = f();\n    if t { g(t); }\n}",
+    );
+    becomes(
+        "fn main() {\n    if let Some(t) = f(1) { g(t); }\n}",
+        "fn main() {\n    let t = f(1);\n    if t { g(t); }\n}",
+    );
+    becomes(
+        "fn main() {\n    let Some(h) = f() else { return; };\n    g(h);\n}",
+        "fn main() {\n    let h = f();\n    if !h { return; }\n    g(h);\n}",
+    );
+}
+
+#[test]
 fn declarations() {
     // At the top, `const x = 1;` is a constant; inside a function, a variable.
     becomes("fn main() { const x = 1; }", "fn main() { let x = 1; }");

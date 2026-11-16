@@ -1,0 +1,253 @@
+//! Expressions, from assignment down to a name or a number. Each leaves its value in
+//! `x0`.
+
+impl Compiler {
+    // --- Expressions: each leaves its value in x0 ---
+
+    mod fn expr(&mut self) {
+        self.assign();
+        while self.eat(",") { self.assign(); }
+    }
+
+    mod fn assign(&mut self) {
+        // Only variables can be assigned to, so a name and an `=` are enough to tell.
+        if self.kind() == Kind::Ident {
+            let name = self.text();
+            if self.next_is("=") {
+                self.pos = self.pos + 2;
+                self.assign();
+                self.store(&name);
+                return;
+            }
+            for op in ["+=", "-=", "*=", "/=", "%="] {
+                if self.next_is(op) {
+                    self.pos = self.pos + 2;
+                    self.load(&name);
+                    self.push();
+                    self.assign();
+                    self.pop("x1");
+                    self.arithmetic(piece(&op, 0, 1));
+                    self.store(&name);
+                    return;
+                }
+            }
+        }
+        self.ternary();
+    }
+
+    mod fn ternary(&mut self) {
+        self.or_else();
+        if self.eat("?") {
+            let otherwise = self.label();
+            let done = self.label();
+            self.emit("cbz x0, " + otherwise.share());
+            self.expr();
+            self.expect(":");
+            self.emit("b " + done.share());
+            self.place(&otherwise);
+            self.ternary();
+            self.place(&done);
+        }
+    }
+
+    /// `a || b || …`: 1 as soon as one is nonzero, without evaluating the rest.
+    mod fn or_else(&mut self) {
+        self.and_also();
+        if !self.is("||") { return; }
+        let yes = self.label();
+        let done = self.label();
+        self.emit("cbnz x0, " + yes.share());
+        while self.eat("||") {
+            self.and_also();
+            self.emit("cbnz x0, " + yes.share());
+        }
+        self.emit("mov x0, #0");
+        self.emit("b " + done.share());
+        self.place(&yes);
+        self.emit("mov x0, #1");
+        self.place(&done);
+    }
+
+    /// `a && b && …`: 0 as soon as one is zero, without evaluating the rest.
+    mod fn and_also(&mut self) {
+        self.equality();
+        if !self.is("&&") { return; }
+        let no = self.label();
+        let done = self.label();
+        self.emit("cbz x0, " + no.share());
+        while self.eat("&&") {
+            self.equality();
+            self.emit("cbz x0, " + no.share());
+        }
+        self.emit("mov x0, #1");
+        self.emit("b " + done.share());
+        self.place(&no);
+        self.emit("mov x0, #0");
+        self.place(&done);
+    }
+
+    mod fn compare(&mut self, condition: string) {
+        self.pop("x1");
+        self.emit("cmp x1, x0");
+        self.emit("cset x0, " + condition);
+    }
+
+    mod fn equality(&mut self) {
+        self.relational();
+        loop {
+            if self.eat("==") { self.push(); self.relational(); self.compare("eq"); }
+            else if self.eat("!=") { self.push(); self.relational(); self.compare("ne"); }
+            else { break; }
+        }
+    }
+
+    mod fn relational(&mut self) {
+        self.additive();
+        loop {
+            if self.eat("<") { self.push(); self.additive(); self.compare("lt"); }
+            else if self.eat("<=") { self.push(); self.additive(); self.compare("le"); }
+            else if self.eat(">") { self.push(); self.additive(); self.compare("gt"); }
+            else if self.eat(">=") { self.push(); self.additive(); self.compare("ge"); }
+            else { break; }
+        }
+    }
+
+    /// `x0 = x1 op x0`.
+    mod fn arithmetic(&mut self, op: string) {
+        if op == "+" { self.emit("add x0, x1, x0"); }
+        else if op == "-" { self.emit("sub x0, x1, x0"); }
+        else if op == "*" { self.emit("mul x0, x1, x0"); }
+        else if op == "/" { self.emit("sdiv x0, x1, x0"); }
+        else {
+            self.emit("sdiv x2, x1, x0");
+            self.emit("msub x0, x2, x0, x1");
+        }
+    }
+
+    mod fn additive(&mut self) {
+        self.multiplicative();
+        while self.is("+") || self.is("-") {
+            let op = self.text();
+            self.pos = self.pos + 1;
+            self.push();
+            self.multiplicative();
+            self.pop("x1");
+            self.arithmetic(op);
+        }
+    }
+
+    mod fn multiplicative(&mut self) {
+        self.unary();
+        while self.is("*") || self.is("/") || self.is("%") {
+            let op = self.text();
+            self.pos = self.pos + 1;
+            self.push();
+            self.unary();
+            self.pop("x1");
+            self.arithmetic(op);
+        }
+    }
+
+    mod fn unary(&mut self) {
+        if self.eat("-") {
+            self.unary();
+            self.emit("neg x0, x0");
+        } else if self.eat("+") {
+            self.unary();
+        } else if self.eat("!") {
+            self.unary();
+            self.emit("cmp x0, #0");
+            self.emit("cset x0, eq");
+        } else if self.is("++") || self.is("--") {
+            let op = self.text();
+            self.pos = self.pos + 1;
+            let name = self.name();
+            self.load(&name);
+            self.emit(if op == "++" { "add x0, x0, #1" } else { "sub x0, x0, #1" });
+            self.store(&name);
+        } else {
+            self.primary();
+        }
+    }
+
+    mod fn primary(&mut self) {
+        let line = self.line();
+        if self.eat("(") {
+            self.expr();
+            self.expect(")");
+            return;
+        }
+        match self.kind() {
+            Kind::Num => {
+                let value = self.peek().value;
+                self.pos = self.pos + 1;
+                self.load_number(value);
+            }
+            Kind::Str => {
+                let label = "Lstr" + self.strings.len.to_string();
+                self.strings.push(self.text());
+                self.pos = self.pos + 1;
+                self.emit("adrp x0, " + label.share() + "@PAGE");
+                self.emit("add x0, x0, " + label + "@PAGEOFF");
+            }
+            Kind::Ident => {
+                let name = self.name();
+                if self.is("(") {
+                    self.call(name);
+                } else if self.is("++") || self.is("--") {
+                    // The value before, with the variable changed.
+                    let op = self.text();
+                    self.pos = self.pos + 1;
+                    self.load(&name);
+                    self.emit(if op == "++" { "add x1, x0, #1" } else { "sub x1, x0, #1" });
+                    self.address(&name);
+                    self.emit("str x1, [x9]");
+                } else {
+                    self.load(&name);
+                }
+            }
+            _ => fail(line, "expected an expression, found `" + self.text() + "`"),
+        }
+    }
+
+    /// `f(a, b, …)`: arguments in x0–x7, except those after a variadic function's fixed
+    /// ones, which go on the stack, 8 bytes each.
+    mod fn call(&mut self, name: string) {
+        self.expect("(");
+        let mut count: i64 = 0;
+        while !self.is(")") {
+            if count > 0 { self.expect(","); }
+            self.assign();
+            self.push();
+            count = count + 1;
+        }
+        self.expect(")");
+        if count > 8 {
+            fail(self.line(), "calls take at most 8 arguments");
+        }
+        let mut i = count;
+        while i > 0 {
+            i = i - 1;
+            self.pop("x" + i.to_string());
+        }
+
+        let mut fixed = count;
+        for v in 0..VARIADIC.len {
+            if name == string::from_c(VARIADIC[v]) && FIXED[v] < count {
+                fixed = FIXED[v];
+            }
+        }
+        let extra = (count - fixed) * 8;
+        let space = (extra + 15) / 16 * 16;
+        if space > 0 {
+            self.emit("sub sp, sp, #" + space.to_string());
+            for a in fixed..count {
+                self.emit("str x" + a.to_string() + ", [sp, #" + ((a - fixed) * 8).to_string() + "]");
+            }
+        }
+        self.emit("bl _" + name);
+        if space > 0 {
+            self.emit("add sp, sp, #" + space.to_string());
+        }
+    }
+}

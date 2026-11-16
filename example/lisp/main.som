@@ -1,0 +1,629 @@
+// A small Lisp, read from standard input: `som run example/lisp < example/lisp/demo.lisp`,
+// or `som run example/lisp` to type at it.
+//
+// Numbers, strings, symbols, lists, closures, proper tail calls, and the special forms
+// quote ('), if, cond, define, set!, lambda, let, begin, and, or. Every value lives in
+// one list of cells and is named by its position in it, so values are plain numbers
+// that copy freely. Nothing is ever freed: it's an example, not a garbage collector.
+
+use som::io;
+
+enum Cell {
+    Nil,
+    True,
+    Num(i64),
+    Sym(string),
+    Str(string),
+    Cons(usize, usize),
+    /// A function written in som, by its position in `BUILTINS`.
+    Builtin(usize),
+    /// Parameters, body (a list of expressions), and the environment it closes over.
+    Lambda(usize, usize, usize),
+}
+
+/// What a cell is, without what it holds: matching on this borrows nothing.
+enum Kind { Nil, True, Num, Sym, Str, Cons, Builtin, Lambda }
+
+struct Env {
+    vars: Map<string, usize>,
+    parent: usize?,
+}
+
+const NIL: usize = 0;
+const TRUE: usize = 1;
+const GLOBAL: usize = 0;
+
+const BUILTINS: [cstr; 22] = [
+    "+", "-", "*", "/", "mod", "=", "<", ">", "<=", ">=",
+    "cons", "car", "cdr", "list", "null?", "pair?", "number?", "eq?",
+    "not", "display", "newline", "length",
+];
+
+struct Lisp {
+    cells: List<Cell>,
+    envs: List<Env>,
+    /// What `at` gives for a position with no cell, which never happens.
+    missing: Cell,
+    /// The first error since the last top-level expression: everything unwinds to it.
+    error: string?,
+}
+
+impl Lisp {
+    fn new() -> Lisp {
+        let mut lisp = Lisp {
+            cells: List::empty(),
+            envs: List::empty(),
+            missing: Cell::Nil,
+            error: none,
+        };
+        lisp.alloc(Cell::Nil);
+        lisp.alloc(Cell::True);
+        lisp.envs.push(Env { vars: Map::empty(), parent: none });
+        for i in 0..BUILTINS.len {
+            let f = lisp.alloc(Cell::Builtin(i));
+            lisp.define(GLOBAL, string::from_c(BUILTINS[i]), f);
+        }
+        lisp
+    }
+
+    // --- Cells ---
+
+    fn alloc(&mut self, cell: Cell) -> usize {
+        self.cells.push(cell);
+        self.cells.len - 1
+    }
+
+    fn at(&self, x: usize) -> &Cell {
+        match self.cells.get(x) {
+            none => &self.missing,
+            cell => cell,
+        }
+    }
+
+    fn kind(&self, x: usize) -> Kind {
+        match self.at(x) {
+            Cell::Nil => Kind::Nil,
+            Cell::True => Kind::True,
+            Cell::Num(_) => Kind::Num,
+            Cell::Sym(_) => Kind::Sym,
+            Cell::Str(_) => Kind::Str,
+            Cell::Cons(_, _) => Kind::Cons,
+            Cell::Builtin(_) => Kind::Builtin,
+            Cell::Lambda(_, _, _) => Kind::Lambda,
+        }
+    }
+
+    fn cons(&mut self, car: usize, cdr: usize) -> usize = self.alloc(Cell::Cons(car, cdr));
+    fn num(&mut self, n: i64) -> usize = self.alloc(Cell::Num(n));
+    fn boolean(&self, b: bool) -> usize = if b { TRUE } else { NIL };
+
+    fn car(&self, x: usize) -> usize {
+        match self.at(x) { Cell::Cons(a, _) => a, _ => NIL }
+    }
+
+    fn cdr(&self, x: usize) -> usize {
+        match self.at(x) { Cell::Cons(_, d) => d, _ => NIL }
+    }
+
+    fn number(&self, x: usize) -> i64 {
+        match self.at(x) { Cell::Num(n) => n, _ => 0 }
+    }
+
+    /// A symbol's or string's text.
+    fn text(&self, x: usize) -> string {
+        match self.at(x) {
+            Cell::Sym(s) => s.share(),
+            Cell::Str(s) => s.share(),
+            _ => "",
+        }
+    }
+
+    fn is_symbol(&self, x: usize, name: string) -> bool {
+        match self.at(x) { Cell::Sym(s) => *s == name, _ => false }
+    }
+
+    fn length(&self, list: usize) -> i64 {
+        let mut n = 0;
+        let mut at = list;
+        while self.kind(at) == Kind::Cons {
+            n = n + 1;
+            at = self.cdr(at);
+        }
+        n
+    }
+
+    fn fail(&mut self, message: string) -> usize {
+        if self.error == none {
+            self.error = message;
+        }
+        NIL
+    }
+
+    fn failed(&self) -> bool = self.error != none;
+
+    // --- Environments ---
+
+    fn define(&mut self, env: usize, name: string, value: usize) {
+        match self.envs.get_mut(env) {
+            none => {}
+            e => e.vars.insert(name, value),
+        }
+    }
+
+    /// The environment `name` is defined in, looking outwards from `env`.
+    fn find(&self, env: usize, name: &string) -> usize? {
+        let mut at: usize? = env;
+        while at != none {
+            let here = at else GLOBAL;
+            match self.envs.get(here) {
+                none => { return none; }
+                e => {
+                    if e.vars.get(name) != none {
+                        return here;
+                    }
+                    at = e.parent;
+                }
+            }
+        }
+        none
+    }
+
+    fn lookup(&mut self, env: usize, name: string) -> usize {
+        let found = self.find(env, &name);
+        if found == none {
+            return self.fail("`" + name + "` is not defined");
+        }
+        let mut value = NIL;
+        match self.envs.get(found) {
+            none => {}
+            e => {
+                let v = e.vars.get(&name);
+                if v != none { value = *v; }
+            }
+        }
+        value
+    }
+
+    // --- Reading ---
+
+    /// Every expression in `source`, as a list.
+    fn read_all(&mut self, source: &string) -> usize {
+        let tokens = tokenize(source);
+        let mut pos: usize = 0;
+        let mut exprs: List<usize> = List::empty();
+        while pos < tokens.len && !self.failed() {
+            let expr = self.read(&tokens, &mut pos);
+            exprs.push(expr);
+        }
+        self.list_of(&exprs)
+    }
+
+    fn list_of(&mut self, items: &List<usize>) -> usize {
+        let mut list = NIL;
+        let mut i = items.len;
+        while i > 0 {
+            i = i - 1;
+            let item = match items.get(i) { none => NIL, x => *x };
+            list = self.cons(item, list);
+        }
+        list
+    }
+
+    fn read(&mut self, tokens: &List<string>, pos: &mut usize) -> usize {
+        let token = match tokens.get(*pos) {
+            none => { return self.fail("unexpected end of input"); }
+            t => t.share(),
+        };
+        *pos = *pos + 1;
+        if token == "(" {
+            let mut items: List<usize> = List::empty();
+            loop {
+                let next = match tokens.get(*pos) {
+                    none => { return self.fail("missing `)`"); }
+                    t => t.share(),
+                };
+                if next == ")" {
+                    *pos = *pos + 1;
+                    return self.list_of(&items);
+                }
+                // `(a b . rest)`: a list ending in something other than `()`.
+                if next == "." {
+                    *pos = *pos + 1;
+                    let tail = self.read(tokens, pos);
+                    let close = match tokens.get(*pos) { none => "", t => t.share() };
+                    if close != ")" {
+                        return self.fail("expected `)` after the `.` part of a list");
+                    }
+                    *pos = *pos + 1;
+                    let mut list = tail;
+                    let mut i = items.len;
+                    while i > 0 {
+                        i = i - 1;
+                        let item = match items.get(i) { none => NIL, x => *x };
+                        list = self.cons(item, list);
+                    }
+                    return list;
+                }
+                let item = self.read(tokens, pos);
+                if self.failed() { return NIL; }
+                items.push(item);
+            }
+        }
+        if token == ")" {
+            return self.fail("unexpected `)`");
+        }
+        if token == "'" {
+            let quoted = self.read(tokens, pos);
+            let quote = self.alloc(Cell::Sym("quote"));
+            let rest = self.cons(quoted, NIL);
+            return self.cons(quote, rest);
+        }
+        if token.get(0) == 34 {
+            // A string: the token keeps its opening quote.
+            let text = match token.slice(1, token.len) { none => "", s => s };
+            return self.alloc(Cell::Str(text));
+        }
+        if token == "#t" { return TRUE; }
+        if token == "#f" || token == "nil" { return NIL; }
+        match i64::parse(token.share()) {
+            none => self.alloc(Cell::Sym(token)),
+            n => self.num(n),
+        }
+    }
+
+    // --- Evaluating ---
+
+    fn eval(&mut self, expr: usize, env: usize) -> usize {
+        // Tail positions go round again instead of recursing, so loops written as
+        // recursion run in constant stack.
+        let mut x = expr;
+        let mut env = env;
+        loop {
+            if self.failed() { return NIL; }
+            match self.kind(x) {
+                Kind::Sym => { return self.lookup(env, self.text(x)); }
+                Kind::Cons => {}
+                _ => { return x; }
+            }
+            let head = self.car(x);
+            let args = self.cdr(x);
+
+            if self.kind(head) == Kind::Sym {
+                let form = self.text(head);
+                if form == "quote" {
+                    return self.car(args);
+                }
+                if form == "if" {
+                    let test = self.eval(self.car(args), env);
+                    let branches = self.cdr(args);
+                    x = if test != NIL { self.car(branches) } else { self.car(self.cdr(branches)) };
+                    continue;
+                }
+                if form == "cond" {
+                    let mut clause = args;
+                    let mut chosen = NIL;
+                    while clause != NIL && chosen == NIL {
+                        let c = self.car(clause);
+                        if self.is_symbol(self.car(c), "else") || self.eval(self.car(c), env) != NIL {
+                            chosen = c;
+                        }
+                        clause = self.cdr(clause);
+                    }
+                    if chosen == NIL { return NIL; }
+                    x = self.begin(self.cdr(chosen), env);
+                    continue;
+                }
+                if form == "define" {
+                    let target = self.car(args);
+                    // `(define (f x) body…)` is `(define f (lambda (x) body…))`.
+                    if self.kind(target) == Kind::Cons {
+                        let f = self.alloc(Cell::Lambda(self.cdr(target), self.cdr(args), env));
+                        self.define(env, self.text(self.car(target)), f);
+                        return self.car(target);
+                    }
+                    let value = self.eval(self.car(self.cdr(args)), env);
+                    self.define(env, self.text(target), value);
+                    return target;
+                }
+                if form == "set!" {
+                    let name = self.text(self.car(args));
+                    let value = self.eval(self.car(self.cdr(args)), env);
+                    let found = self.find(env, &name);
+                    if found == none {
+                        return self.fail("can't `set!` `" + name + "`: it's not defined");
+                    }
+                    self.define(found, name, value);
+                    return value;
+                }
+                if form == "lambda" {
+                    return self.alloc(Cell::Lambda(self.car(args), self.cdr(args), env));
+                }
+                if form == "begin" {
+                    x = self.begin(args, env);
+                    continue;
+                }
+                if form == "let" {
+                    let inner = self.new_env(env);
+                    let mut binding = self.car(args);
+                    while binding != NIL {
+                        let b = self.car(binding);
+                        let value = self.eval(self.car(self.cdr(b)), env);
+                        self.define(inner, self.text(self.car(b)), value);
+                        binding = self.cdr(binding);
+                    }
+                    env = inner;
+                    x = self.begin(self.cdr(args), env);
+                    continue;
+                }
+                if form == "and" || form == "or" {
+                    let is_and = form == "and";
+                    let mut result = self.boolean(is_and);
+                    let mut rest = args;
+                    while rest != NIL {
+                        result = self.eval(self.car(rest), env);
+                        if (result == NIL) == is_and { return result; }
+                        rest = self.cdr(rest);
+                    }
+                    return result;
+                }
+            }
+
+            // A call: the function and its arguments, evaluated in order.
+            let f = self.eval(head, env);
+            let mut values: List<usize> = List::empty();
+            let mut rest = args;
+            while rest != NIL {
+                let value = self.eval(self.car(rest), env);
+                values.push(value);
+                rest = self.cdr(rest);
+            }
+            if self.failed() { return NIL; }
+            let values = self.list_of(&values);
+
+            match self.at(f) {
+                Cell::Builtin(op) => { return self.builtin(op, values); }
+                Cell::Lambda(params, body, closed) => {
+                    env = self.bind(params, values, closed);
+                    x = self.begin(body, env);
+                }
+                _ => { return self.fail("`" + self.show(f) + "` is not a function"); }
+            }
+        }
+    }
+
+    /// Evaluates all but the last of `body`, and gives the last to evaluate in its place.
+    fn begin(&mut self, body: usize, env: usize) -> usize {
+        let mut rest = body;
+        while self.cdr(rest) != NIL {
+            self.eval(self.car(rest), env);
+            rest = self.cdr(rest);
+        }
+        self.car(rest)
+    }
+
+    fn new_env(&mut self, parent: usize) -> usize {
+        self.envs.push(Env { vars: Map::empty(), parent });
+        self.envs.len - 1
+    }
+
+    /// A new environment inside `closed`, with `params` named after `values`. Parameters
+    /// ending in a symbol, `(a . rest)` or just `args`, take whatever's left as a list.
+    fn bind(&mut self, params: usize, values: usize, closed: usize) -> usize {
+        let env = self.new_env(closed);
+        let mut p = params;
+        let mut v = values;
+        while self.kind(p) == Kind::Cons {
+            if self.kind(v) != Kind::Cons {
+                self.fail(arity(self.length(params), self.length(values)));
+                return env;
+            }
+            self.define(env, self.text(self.car(p)), self.car(v));
+            p = self.cdr(p);
+            v = self.cdr(v);
+        }
+        if self.kind(p) == Kind::Sym {
+            self.define(env, self.text(p), v);
+        } else if v != NIL {
+            self.fail(arity(self.length(params), self.length(values)));
+        }
+        env
+    }
+
+    fn builtin(&mut self, op: usize, args: usize) -> usize {
+        let name = string::from_c(BUILTINS[op % BUILTINS.len]);
+        let a = self.car(args);
+        let b = self.car(self.cdr(args));
+
+        // Arithmetic folds over every argument: `(+ 1 2 3)`.
+        if name == "+" || name == "-" || name == "*" || name == "/" || name == "mod" {
+            let mut rest = args;
+            while rest != NIL {
+                if self.kind(self.car(rest)) != Kind::Num {
+                    return self.fail("`" + name + "` takes numbers, not `" + self.show(self.car(rest)) + "`");
+                }
+                rest = self.cdr(rest);
+            }
+            let mut total = self.number(a);
+            if name == "-" && b == NIL && self.cdr(args) == NIL { return self.num(0 - total); }
+            rest = self.cdr(args);
+            while rest != NIL {
+                let n = self.number(self.car(rest));
+                if (name == "/" || name == "mod") && n == 0 {
+                    return self.fail("division by zero");
+                }
+                if name == "+" { total = total + n; }
+                else if name == "-" { total = total - n; }
+                else if name == "*" { total = total * n; }
+                else if name == "/" && n != 0 { total = total / n; }
+                else if n != 0 { total = total % n; }
+                rest = self.cdr(rest);
+            }
+            return self.num(total);
+        }
+        if name == "=" || name == "<" || name == ">" || name == "<=" || name == ">=" {
+            if self.kind(a) != Kind::Num || self.kind(b) != Kind::Num {
+                return self.fail("`" + name + "` compares two numbers");
+            }
+            let x = self.number(a);
+            let y = self.number(b);
+            return self.boolean(
+                (name == "=" && x == y) || (name == "<" && x < y) || (name == ">" && x > y)
+                    || (name == "<=" && x <= y) || (name == ">=" && x >= y),
+            );
+        }
+        if name == "cons" { return self.cons(a, b); }
+        if name == "car" || name == "cdr" {
+            if self.kind(a) != Kind::Cons {
+                return self.fail("`" + name + "` of `" + self.show(a) + "`, which isn't a pair");
+            }
+            return if name == "car" { self.car(a) } else { self.cdr(a) };
+        }
+        if name == "list" { return args; }
+        if name == "null?" { return self.boolean(a == NIL); }
+        if name == "pair?" { return self.boolean(self.kind(a) == Kind::Cons); }
+        if name == "number?" { return self.boolean(self.kind(a) == Kind::Num); }
+        if name == "eq?" { return self.boolean(self.equal(a, b)); }
+        if name == "not" { return self.boolean(a == NIL); }
+        if name == "length" { return self.num(self.length(a)); }
+        if name == "display" {
+            // Strings without their quotes.
+            let text = if self.kind(a) == Kind::Str { self.text(a) } else { self.show(a) };
+            print(text);
+            return NIL;
+        }
+        if name == "newline" {
+            println("");
+            return NIL;
+        }
+        self.fail("unknown builtin `" + name + "`")
+    }
+
+    /// The same atom: numbers by value, symbols and strings by text, anything else by identity.
+    fn equal(&self, a: usize, b: usize) -> bool {
+        if a == b { return true; }
+        let ka = self.kind(a);
+        let kb = self.kind(b);
+        if ka != kb { return false; }
+        if ka == Kind::Num { return self.number(a) == self.number(b); }
+        if ka == Kind::Sym || ka == Kind::Str { return self.text(a) == self.text(b); }
+        false
+    }
+
+    // --- Printing ---
+
+    fn show(&self, x: usize) -> string {
+        match self.at(x) {
+            Cell::Nil => "()",
+            Cell::True => "#t",
+            Cell::Num(n) => n.to_string(),
+            Cell::Sym(s) => s.share(),
+            Cell::Str(s) => "\"" + s.share() + "\"",
+            Cell::Builtin(op) => "<builtin " + string::from_c(BUILTINS[op % BUILTINS.len]) + ">",
+            Cell::Lambda(_, _, _) => "<lambda>",
+            Cell::Cons(_, _) => {
+                let mut shown: string = "(";
+                let mut at = x;
+                let mut first = true;
+                while self.kind(at) == Kind::Cons {
+                    if !first { shown = shown + " "; }
+                    shown = shown + self.show(self.car(at));
+                    first = false;
+                    at = self.cdr(at);
+                }
+                if at != NIL { shown = shown + " . " + self.show(at); }
+                shown + ")"
+            }
+        }
+    }
+}
+
+/// "expected 1 argument, got 2"
+fn arity(expected: i64, got: i64) -> string {
+    let plural: string = if expected == 1 { "" } else { "s" };
+    "expected " + expected.to_string() + " argument" + plural + ", got " + got.to_string()
+}
+
+/// Splits source into tokens: `(`, `)`, `'`, strings (keeping their opening quote), and
+/// atoms. `;` starts a comment to the end of the line.
+fn tokenize(source: &string) -> List<string> {
+    let mut tokens: List<string> = List::empty();
+    let n = source.len;
+    let mut i: usize = 0;
+    while i < n {
+        let c = byte(source, i);
+        if c == 59 {
+            while i < n && byte(source, i) != 10 { i = i + 1; }
+        } else if c == 40 || c == 41 || c == 39 {
+            tokens.push(piece(source, i, i + 1));
+            i = i + 1;
+        } else if c == 34 {
+            let start = i;
+            i = i + 1;
+            while i < n && byte(source, i) != 34 { i = i + 1; }
+            tokens.push(piece(source, start, i));
+            i = i + 1;
+        } else if is_space(c) {
+            i = i + 1;
+        } else {
+            let start = i;
+            while i < n && !is_space(byte(source, i)) && !is_delimiter(byte(source, i)) {
+                i = i + 1;
+            }
+            tokens.push(piece(source, start, i));
+        }
+    }
+    tokens
+}
+
+fn byte(s: &string, i: usize) -> u8 = match s.get(i) { none => 0, c => c };
+fn piece(s: &string, start: usize, end: usize) -> string = match s.slice(start, end) { none => "", p => p };
+fn is_space(c: u8) -> bool = c == 32 || c == 10 || c == 9 || c == 13;
+fn is_delimiter(c: u8) -> bool = c == 40 || c == 41 || c == 39 || c == 34 || c == 59;
+
+/// How many more `(` than `)` there are outside strings and comments, so a REPL knows
+/// when an expression typed over several lines is complete.
+fn depth(source: &string) -> i64 {
+    let mut d = 0;
+    let mut in_string = false;
+    let mut in_comment = false;
+    for c in source.bytes {
+        if in_comment {
+            if c == 10 { in_comment = false; }
+        } else if in_string {
+            if c == 34 { in_string = false; }
+        } else if c == 34 { in_string = true; }
+        else if c == 59 { in_comment = true; }
+        else if c == 40 { d = d + 1; }
+        else if c == 41 { d = d - 1; }
+    }
+    d
+}
+
+fn main() {
+    let mut lisp = Lisp::new();
+    let mut pending: string = "";
+    loop {
+        let line = read_line();
+        if line == none { break; }
+        pending = pending + line + "\n";
+        if depth(&pending) > 0 { continue; }
+
+        let exprs = lisp.read_all(&pending);
+        pending = "";
+        let mut rest = exprs;
+        while rest != NIL && !lisp.failed() {
+            let expr = lisp.car(rest);
+            let value = lisp.eval(expr, GLOBAL);
+            // A definition's name isn't worth repeating back.
+            let defines = lisp.kind(expr) == Kind::Cons && lisp.is_symbol(lisp.car(expr), "define");
+            if !lisp.failed() && !defines && value != NIL {
+                println(lisp.show(value));
+            }
+            rest = lisp.cdr(rest);
+        }
+        if lisp.failed() {
+            println("error: " + (lisp.error else ""));
+            lisp.error = none;
+        }
+    }
+}

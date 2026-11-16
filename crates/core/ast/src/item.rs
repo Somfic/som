@@ -56,6 +56,8 @@ pub struct Use {
 /// `extern "lib" { fn puts(s: &str); }`: functions without a body, linked from `library`
 /// (or from libc when no library is named).
 pub struct Extern {
+    /// From `extern` to the closing `}` or `;`, not counting a `use` before it.
+    pub span: Span,
     pub library: Option<String>,
     /// Where the library's name is written, for errors about the library.
     pub library_span: Option<Span>,

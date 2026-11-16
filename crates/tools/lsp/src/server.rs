@@ -211,8 +211,9 @@ async fn analyze_root(client: &Client, state: &State, root: PathBuf, opened: Str
 
     let mut by_file: HashMap<String, Vec<lsp_types::Diagnostic>> =
         files.iter().map(|f| (f.clone(), Vec::new())).collect();
-    for error in &analysis.errors {
-        let diagnostic = error.to_diagnostic();
+    let diagnostics = (analysis.warnings.iter().map(|w| w.to_diagnostic()))
+        .chain(analysis.errors.iter().map(|e| e.to_diagnostic()));
+    for diagnostic in diagnostics {
         match convert::som_diagnostic_to_lsp(&diagnostic) {
             Some((file, diagnostics)) => by_file.entry(file).or_default().extend(diagnostics),
             // Errors without a location, like an unreadable file, go on the file that was opened.

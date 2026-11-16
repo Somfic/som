@@ -1,0 +1,179 @@
+//! The compiler's state, and what statements and expressions share: reading tokens,
+//! writing instructions, and finding variables.
+
+mod struct Local {
+    mod name: string,
+    /// How far below the frame pointer it's kept.
+    mod offset: i64,
+}
+
+/// Functions that take a variable number of arguments after a fixed number of them:
+/// those extra arguments go on the stack on Apple's ARM64, not in registers.
+mod const VARIADIC: [cstr; 4] = ["printf", "sprintf", "snprintf", "scanf"];
+mod const FIXED: [i64; 4] = [1, 2, 3, 1];
+
+mod struct Compiler {
+    mod tokens: List<Token>,
+    mod pos: usize,
+    /// What `peek` gives past the end, which never happens: the last token is `End`.
+    mod end: Token,
+    /// Finished functions.
+    mod text: List<string>,
+    /// The function being compiled, which goes after its prologue once its frame is known.
+    mod body: List<string>,
+    mod strings: List<string>,
+    mod locals: List<Local>,
+    /// How many of `locals` each enclosing block started with.
+    mod scopes: List<usize>,
+    mod frame: i64,
+    mod labels: i64,
+    mod function: string,
+    /// Where `break` and `continue` go, innermost last.
+    mod breaks: List<string>,
+    mod continues: List<string>,
+}
+
+impl Compiler {
+    // --- Tokens ---
+
+    mod fn peek(&self) -> &Token = self.at(self.pos);
+
+    mod fn at(&self, i: usize) -> &Token {
+        match self.tokens.get(i) { none => &self.end, t => t }
+    }
+
+    mod fn kind(&self) -> Kind = self.peek().kind;
+    mod fn text(&self) -> string = self.peek().text.share();
+    mod fn line(&self) -> i64 = self.peek().line;
+
+    /// Whether the next token is the operator or keyword `s`.
+    mod fn is(&self, s: string) -> bool {
+        let t = self.peek();
+        (t.kind == Kind::Punct || t.kind == Kind::Ident) && t.text == s
+    }
+
+    /// Whether the token after the next is `s`.
+    mod fn next_is(&self, s: string) -> bool {
+        let t = self.at(self.pos + 1);
+        t.kind == Kind::Punct && t.text == s
+    }
+
+    mod fn eat(&mut self, s: string) -> bool {
+        if self.is(s) {
+            self.pos = self.pos + 1;
+            return true;
+        }
+        false
+    }
+
+    mod fn expect(&mut self, s: string) {
+        if !self.eat(s.share()) {
+            fail(self.line(), "expected `" + s + "`, found `" + self.text() + "`");
+        }
+    }
+
+    mod fn name(&mut self) -> string {
+        if self.kind() != Kind::Ident {
+            fail(self.line(), "expected a name, found `" + self.text() + "`");
+        }
+        let name = self.text();
+        self.pos = self.pos + 1;
+        name
+    }
+
+    mod fn is_type(&self) -> bool = self.is("int") || self.is("long") || self.is("char") || self.is("void");
+
+    /// A type, which is always a 64-bit integer here.
+    mod fn skip_type(&mut self) {
+        if !self.is_type() {
+            fail(self.line(), "expected a type, found `" + self.text() + "`");
+        }
+        self.pos = self.pos + 1;
+        if self.is("*") {
+            fail(self.line(), "pointers aren't supported");
+        }
+    }
+
+    // --- Output ---
+
+    mod fn emit(&mut self, instruction: string) {
+        self.body.push("    " + instruction);
+    }
+
+    mod fn place(&mut self, label: &string) {
+        self.body.push(label.share() + ":");
+    }
+
+    mod fn label(&mut self) -> string {
+        self.labels = self.labels + 1;
+        "L" + self.labels.to_string()
+    }
+
+    mod fn push(&mut self) = self.emit("str x0, [sp, #-16]!");
+    mod fn pop(&mut self, reg: string) = self.emit("ldr " + reg + ", [sp], #16");
+
+    /// `x0 = value`, sixteen bits at a time.
+    mod fn load_number(&mut self, value: i64) {
+        let v = value as u64;
+        self.emit("mov x0, #" + (v % 65536).to_string());
+        let mut shift: u64 = 16;
+        while shift < 64 {
+            let part = (v >> shift) % 65536;
+            if part != 0 {
+                self.emit("movk x0, #" + part.to_string() + ", lsl #" + shift.to_string());
+            }
+            shift = shift + 16;
+        }
+    }
+
+    // --- Variables ---
+
+    mod fn declare(&mut self, name: string) -> i64 {
+        let start = match self.scopes.get(self.scopes.len - 1) { none => 0, s => *s };
+        for i in start..self.locals.len {
+            if self.locals[i].name == name {
+                fail(self.line(), "`" + name + "` is already declared in this block");
+            }
+        }
+        self.frame = self.frame + 8;
+        self.locals.push(Local { name, offset: self.frame });
+        self.frame
+    }
+
+    mod fn offset(&self, name: &string) -> i64 {
+        // The innermost declaration is the last one.
+        let mut found: i64 = 0;
+        for i in 0..self.locals.len {
+            if self.locals[i].name == *name {
+                found = self.locals[i].offset;
+            }
+        }
+        if found == 0 {
+            fail(self.line(), "`" + name.share() + "` is not declared");
+        }
+        found
+    }
+
+    /// `x9 =` the address of `name`.
+    mod fn address(&mut self, name: &string) {
+        let offset = self.offset(name);
+        self.emit("sub x9, x29, #" + offset.to_string());
+    }
+
+    mod fn load(&mut self, name: &string) {
+        self.address(name);
+        self.emit("ldr x0, [x9]");
+    }
+
+    mod fn store(&mut self, name: &string) {
+        self.address(name);
+        self.emit("str x0, [x9]");
+    }
+
+    mod fn enter_scope(&mut self) = self.scopes.push(self.locals.len);
+
+    mod fn leave_scope(&mut self) {
+        let keep = match self.scopes.pop() { none => 0, n => n };
+        while self.locals.len > keep { self.locals.pop(); }
+    }
+}

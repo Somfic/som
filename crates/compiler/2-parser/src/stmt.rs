@@ -100,6 +100,10 @@ impl Parser<'_> {
         };
         // `let mutable total`: another language's `mut`.
         let mutable = self.eat_foreign_mut() || mutable;
+        // `let Some(h) = hit() else { … };`: Rust's, reported.
+        if self.ident_ahead(0) == Some("Some") && self.peek_nth(1) == TokenKind::OpenParen {
+            return self.let_else(start);
+        }
         let name = self.parse_ident("a variable name")?;
         // `let add a b = a + b`: another language's function, not a variable.
         if self.at(TokenKind::Ident) {
@@ -283,7 +287,10 @@ impl Parser<'_> {
 
     /// An `if` after its `if` (or another language's `elif`), which started at `start`.
     fn parse_if_rest(&mut self, start: Span) -> Option<IfParts> {
-        let condition = self.parse_condition()?;
+        let condition = match self.at(TokenKind::Let) {
+            true => self.if_let(&start)?,
+            false => self.parse_condition()?,
+        };
         let then = self.parse_branch("the if body")?;
         // `elif c`, `elseif c`: another language's `else if`, reported and read as it.
         let otherwise = if self.eat_foreign_else_if() {
@@ -307,6 +314,89 @@ impl Parser<'_> {
             otherwise,
             span: self.span_from(&start),
         })
+    }
+
+    /// `if let t = f() { … }` or `if let Some(t) = f()`, at the `let`: Rust's, reported, with
+    /// the fix of checking the optional itself, `let t = f();` then `if t { … }`. Read as
+    /// `if f()`, to go on.
+    fn if_let(&mut self, start: &Span) -> Option<Id<Expr>> {
+        self.advance();
+        let name = self.bound_name()?;
+        self.expect(TokenKind::Equals, "`=` and the optional")?;
+        let value = self.parse_condition()?;
+        let span = start.merge(self.ast.exprs.span(value));
+        let value_text = self.ast.exprs.span(value).get_text().to_string();
+        let n = &name.name;
+        let fix = line_indent(start).map(|indent| {
+            let fixed = format!("let {n} = {value_text};\n{indent}if {n}");
+            Fix::replace(msg!["check the optional itself: ", code(format!("if {n}"))], span.clone(), fixed)
+        });
+        self.errors.push(ParseError {
+            message: msg!["som has no ", code("if let")],
+            hint: msg![
+                "an optional in a variable is its own check: inside ",
+                code(format!("if {n} {{ … }}")),
+                ", ",
+                code(n.to_string()),
+                " is the value it holds"
+            ],
+            fix,
+            span,
+        });
+        Some(value)
+    }
+
+    /// `let Some(h) = hit() else { return; };`, at `Some`: Rust's, reported, with the fix of
+    /// `let h = hit();` then `if !h { return; }`, after which `h` is the value.
+    fn let_else(&mut self, start: Span) -> Option<Id<Stmt>> {
+        let name = self.bound_name()?;
+        self.expect(TokenKind::Equals, "`=` and the optional")?;
+        // `hit() else { … }` reads as a fallback.
+        let value = self.parse_expr()?;
+        let end = self.current_span();
+        self.expect(TokenKind::Semicolon, "a semicolon after the `else` block")?;
+        let span = self.span_from(&start);
+        let n = &name.name;
+        let fix = match &self.ast.exprs[value] {
+            Expr::Fallback { optional, fallback } => line_indent(&start).map(|indent| {
+                let optional = self.ast.exprs.span(*optional).get_text().to_string();
+                let block = self.ast.exprs.span(*fallback);
+                let before = Span::from_range(start.start_offset..block.start_offset, start.source.clone());
+                let mut fix = Fix::replace(
+                    msg!["check the optional itself: ", code(format!("if !{n}"))],
+                    before,
+                    format!("let {n} = {optional};\n{indent}if !{n} "),
+                );
+                fix.edits.push((end.clone(), String::new()));
+                fix
+            }),
+            _ => None,
+        };
+        self.errors.push(ParseError {
+            message: msg!["som has no ", code("let … else")],
+            hint: msg![
+                "an optional in a variable is its own check: after ",
+                code(format!("if !{n} {{ return …; }}")),
+                ", ",
+                code(n.to_string()),
+                " is the value it holds"
+            ],
+            fix,
+            span,
+        });
+        None
+    }
+
+    /// `t` or `Some(t)`: the name Rust's `if let` and `let … else` bind.
+    fn bound_name(&mut self) -> Option<som_ast::Ident> {
+        if self.ident_ahead(0) == Some("Some") && self.peek_nth(1) == TokenKind::OpenParen {
+            self.advance();
+            self.advance();
+            let name = self.parse_ident("a name for the value")?;
+            self.expect(TokenKind::CloseParen, "`)` after the name")?;
+            return Some(name);
+        }
+        self.parse_ident("a name for the value")
     }
 
     /// An `if` as a statement: values its branches end in are statements too.
@@ -494,4 +584,12 @@ impl IfParts {
                 None => false,
             }
     }
+}
+
+/// The indentation of the line `at` starts, if nothing else is before it there.
+fn line_indent(at: &Span) -> Option<String> {
+    let source = at.source.content();
+    let line_start = source[..at.start_offset].rfind('\n').map_or(0, |i| i + 1);
+    let before = &source[line_start..at.start_offset];
+    before.chars().all(|c| c == ' ' || c == '\t').then(|| before.to_string())
 }

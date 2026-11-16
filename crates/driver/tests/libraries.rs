@@ -37,10 +37,11 @@ fn program(dir: &Path, library: &str, function: &str) -> std::path::PathBuf {
     path
 }
 
-fn library_errors(result: Result<som_driver::Checked, Vec<Error>>) -> Vec<LibraryError> {
+fn library_errors(result: Result<som_driver::Checked, som_driver::Failed>) -> Vec<LibraryError> {
     match result {
         Ok(_) => Vec::new(),
-        Err(errors) => errors
+        Err(failed) => failed
+            .errors
             .into_iter()
             .map(|e| match e {
                 Error::Library(e) => e,

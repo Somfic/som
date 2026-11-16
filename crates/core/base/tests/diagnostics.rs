@@ -68,3 +68,29 @@ fn fixes_render_as_a_diff_of_the_changed_node() {
         assert!(text.contains(expected), "missing:\n{expected}\nin:\n{text}");
     }
 }
+
+#[test]
+fn fixes_across_lines_render_each_line() {
+    use som_base::{Diagnostic, Fix, Source, Span};
+    use std::sync::Arc;
+
+    let text = "extern \"raylib\" {\n    fn InitWindow();\n    fn CloseWindow();\n}\nfn main() {}\n";
+    let source = Arc::new(Source::from_raw(text));
+    let block = Span::from_range(0..text.find("}\n").unwrap() + 1, source.clone());
+    let line = text.find("    fn Close").unwrap();
+    let close = Span::from_range(line..text.find("}\n").unwrap(), source);
+    let diagnostic = Diagnostic::warning("already declared")
+        .with_fix(Fix::replace("replace the block", block, "extern \"raylib\";"))
+        .with_fix(Fix::replace("remove `CloseWindow`", close, ""));
+    let rendered = diagnostic.render(false);
+    for expected in [
+        "   1 - extern \"raylib\" {\n   2 -     fn InitWindow();\n   3 -     fn CloseWindow();\n   4 - }\n   1 + extern \"raylib\";\n",
+    ] {
+        assert!(rendered.contains(expected), "missing:\n{expected}\nin:\n{rendered}");
+    }
+    // Removing whole lines leaves nothing to add, and the next line alone.
+    assert!(
+        rendered.ends_with("▪ remove `CloseWindow`\n   3 -     fn CloseWindow();\n"),
+        "{rendered}"
+    );
+}

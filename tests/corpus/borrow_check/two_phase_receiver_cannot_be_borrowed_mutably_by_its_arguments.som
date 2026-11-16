@@ -1,0 +1,8 @@
+// expect: error ConflictingBorrow
+
+fn bump(list: &mut List<i64>) -> i64 = list.len as i64;
+
+fn main() {
+    let mut v: List<i64> = List::empty();
+    v.push(bump(&mut v));
+}

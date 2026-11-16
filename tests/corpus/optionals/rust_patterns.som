@@ -1,0 +1,15 @@
+// expect: error RustOptionalPattern
+
+/// Rust's `Some(…)` and `None`: som matches an optional's value with the pattern itself,
+/// a name after `none`, and writes `none`.
+enum Shape { Circle(f64), Empty }
+
+fn find(n: i32) -> i32? = if n > 0 { n } else { none };
+fn shape() -> Shape? = none;
+
+fn main() -> i32 {
+    let a = match find(3) { Some(v) => v, None => 0 };
+    let b = match find(3) { none => 0, Some(v) => v };
+    let c = match shape() { Some(Shape::Empty) => 1, _ => 2 };
+    a + b + c
+}

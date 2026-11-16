@@ -213,6 +213,7 @@ impl Lowerer<'_> {
                 locals,
                 arg_count: 2,
                 outs: Vec::new(),
+                two_phase: Vec::new(),
                 blocks,
             }),
             link_name: None,

@@ -377,6 +377,15 @@ pub enum TypeError {
         available: Vec<String>,
         span: Span,
     },
+    /// Rust's `Some(v)` or `None`, matching an optional: som matches the value it holds with
+    /// the pattern itself, `v` (after a `none` arm, for a name), and writes `none`.
+    RustOptionalPattern {
+        written: String,
+        span: Span,
+        fix: Option<Fix>,
+        /// It's `Some(name)` before any `none` arm, where `name` would match the optional.
+        needs_none_first: bool,
+    },
     /// A pattern that can't match values of the type matched: `Circle(r)` against an `i32`.
     PatternMismatch {
         pattern: String,
@@ -1311,6 +1320,48 @@ impl TypeError {
                     d = d.with_hint(hint);
                 }
                 d
+            }
+            TypeError::RustOptionalPattern {
+                written,
+                span,
+                fix,
+                needs_none_first,
+            } => {
+                let (label, hint) = match written.as_str() {
+                    "None" => (
+                        msg!["an optional without a value is ", code("none")],
+                        msg![
+                            "a capitalised name here would be a new variable, matching anything"
+                        ],
+                    ),
+                    _ if *needs_none_first => (
+                        msg!["an optional's value is matched by the pattern itself"],
+                        msg![
+                            "match ",
+                            code("none"),
+                            " first; after it, a name holds the value: ",
+                            code("none => …, v => …")
+                        ],
+                    ),
+                    _ => (
+                        msg!["an optional's value is matched by the pattern itself"],
+                        msg![
+                            code("5"),
+                            " or ",
+                            code("Circle(r)"),
+                            " matches an optional holding it; ",
+                            code("none"),
+                            " one without"
+                        ],
+                    ),
+                };
+                let d = Diagnostic::error(msg!["som has no ", code(written), " pattern"])
+                    .with_label(Label::primary(span.clone(), label))
+                    .with_hint(hint);
+                match fix {
+                    Some(fix) => d.with_fix(fix.clone()),
+                    None => d,
+                }
             }
             TypeError::PatternMismatch { pattern, ty, span } => {
                 Diagnostic::error(msg![code(pattern), " can't match a ", ty.clone()]).with_label(

@@ -418,6 +418,16 @@ impl Checker<'_> {
             _ => None,
         };
 
+        // Rust's `Some(v)` and `None`, against an optional of something without variants of
+        // those names: som matches the value itself, and `none`.
+        if let Some(inner) = optional
+            && let Some(error) = self.rust_optional_pattern(id, inner, none_matched)
+        {
+            self.errors.push(error);
+            self.bind_all(id, error_ty(self));
+            self.patterns.insert(id, info);
+            return Pat::Wild;
+        }
         let pat = match &ast.patterns[id] {
             Pattern::Wildcard => Pat::Wild,
             // A name that's a variant, `Empty`; or looks like one, against an enum, where a new
@@ -654,6 +664,55 @@ impl Checker<'_> {
         Pat::Ctor(Ctor::Variant(index), subs)
     }
 
+    /// `Some(v)` or `None` against an optional of `inner`, if pattern `id` is one, reported:
+    /// som matches what an optional holds with the pattern itself, `v`, after `none`.
+    fn rust_optional_pattern(
+        &self,
+        id: Id<Pattern>,
+        inner: TypeId,
+        none_matched: bool,
+    ) -> Option<TypeError> {
+        let span = self.ast.patterns.span(id).clone();
+        let name = match &self.ast.patterns[id] {
+            Pattern::Binding { name, .. } => &name.name,
+            Pattern::Variant { path, .. } => &path.name().name,
+            _ => return None,
+        };
+        if self.variant_index(inner, name).is_some() {
+            return None;
+        }
+        match &self.ast.patterns[id] {
+            Pattern::Binding { name, .. } if &*name.name == "None" => {
+                Some(TypeError::RustOptionalPattern {
+                    written: "None".into(),
+                    span: span.clone(),
+                    fix: Some(Fix::replace(msg!["change to ", code("none")], span, "none")),
+                    needs_none_first: false,
+                })
+            }
+            Pattern::Variant {
+                path,
+                fields: PatternFields::Tuple(subs),
+            } if path.segments.len() == 1 && &*path.name().name == "Some" && subs.len() == 1 => {
+                let sub = subs[0];
+                let text = self.ast.patterns.span(sub).get_text().to_string();
+                // A name binds the value only once `none` is matched: before it, the whole
+                // optional.
+                let binding = matches!(self.ast.patterns[sub], Pattern::Binding { .. });
+                let fix = (!binding || none_matched).then(|| {
+                    Fix::replace(msg!["change to ", code(&text)], span.clone(), text.clone())
+                });
+                Some(TypeError::RustOptionalPattern {
+                    written: self.ast.pattern_text(id),
+                    span,
+                    fix,
+                    needs_none_first: binding && !none_matched,
+                })
+            }
+            _ => None,
+        }
+    }
+
     fn pattern_mismatch(&mut self, id: Id<Pattern>, ty: TypeId) {
         self.errors.push(TypeError::PatternMismatch {
             pattern: self.ast.pattern_text(id),
@@ -688,4 +747,8 @@ impl Checker<'_> {
             _ => {}
         }
     }
+}
+
+fn error_ty(c: &Checker) -> TypeId {
+    c.u.table.error
 }

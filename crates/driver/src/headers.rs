@@ -40,7 +40,7 @@ use std::process::Command;
 use std::sync::Arc;
 
 use crate::LoadError;
-use crate::libraries::{self, LibraryError};
+use crate::libraries::{self, LibraryError, LibraryWarning, SameAsHeader};
 
 mod macros;
 
@@ -277,11 +277,18 @@ fn module_name(library: Option<&str>, header: &str) -> String {
 
 /// Compares hand-written `extern "library" { … }` declarations with the library's own
 /// header, `library.h`, if it can be found. Blocks that import a header are skipped:
-/// their declarations come from it.
-pub fn check_declarations(ast: &Ast, library_dirs: &[PathBuf]) -> Vec<LibraryError> {
+/// their declarations come from it. Declarations that disagree with the header are
+/// errors; ones that are exactly the header's, which `extern "library";` would import,
+/// are warnings.
+pub fn check_declarations(
+    ast: &Ast,
+    library_dirs: &[PathBuf],
+) -> (Vec<LibraryError>, Vec<LibraryWarning>) {
     let root = ast.modules[0].path.clone();
     let mut headers: HashMap<String, Option<Declarations>> = HashMap::new();
     let mut errors = check_libc_declarations(ast);
+    let mut warnings = Vec::new();
+    let mut warned_structs = HashSet::new();
 
     for item in ast.modules.iter().flat_map(|m| &m.items) {
         let Item::Extern(block) = item else { continue };
@@ -295,7 +302,10 @@ pub fn check_declarations(ast: &Ast, library_dirs: &[PathBuf]) -> Vec<LibraryErr
             Some(declarations(&json))
         });
         let Some(declared) = declared else { continue };
+        let module = module_name(Some(library), &header);
 
+        let mut same = Vec::new();
+        let mut struct_names = Vec::new();
         for &id in &block.funcs {
             let func = &ast.funcs[id];
             // Compared by the C symbol it links to: `init_window` is `InitWindow` there.
@@ -311,10 +321,87 @@ pub fn check_declarations(ast: &Ast, library_dirs: &[PathBuf]) -> Vec<LibraryErr
                     problem,
                     span: func.name.span.clone(),
                 });
+            } else if let Some(structs) = identical(ast, func, expected, &declared.structs) {
+                same.push(SameAsHeader {
+                    name: func.name.name.to_string(),
+                    span: func.name.span.clone(),
+                    declaration: ast.funcs.span(id).clone(),
+                    imported: format!("{module}::{}", identifier(&snake_case(symbol))),
+                });
+                struct_names.extend(structs);
             }
         }
+        if same.is_empty() {
+            continue;
+        }
+
+        // The structs those declarations use, written by hand to match the header's.
+        for name in struct_names {
+            for (id, s) in ast.structs.iter() {
+                if *s.name.name == *name
+                    && !s.copy
+                    && s.variants.is_none()
+                    && s.generics.is_empty()
+                    && warned_structs.insert(id)
+                {
+                    warnings.push(LibraryWarning::StructInHeader {
+                        name: name.clone(),
+                        library: library.clone(),
+                        header: header.clone(),
+                        imported: format!("{module}::{name}"),
+                        span: s.name.span.clone(),
+                        declaration: ast.structs.span(id).clone(),
+                    });
+                }
+            }
+        }
+        warnings.push(LibraryWarning::DeclaredInHeader {
+            library: library.clone(),
+            header: header.clone(),
+            span: block.library_span.clone().unwrap_or(same[0].span.clone()),
+            block: block.span.clone(),
+            all: same.len() == block.funcs.len(),
+            functions: same,
+        });
     }
-    errors
+    warnings.sort_by_key(|w| {
+        let span = w.span();
+        (span.source.identifier().to_string(), span.start_offset)
+    });
+    (errors, warnings)
+}
+
+/// Whether a declaration that agrees with the header's is exactly it, so importing the
+/// header gives the same function. Agreeing is looser: any pointer for any other, a
+/// struct for another with the same fields. A declaration that only agrees says
+/// something the header doesn't, like `&Color` for a `Color *`, and is worth writing.
+/// Returns the header's structs it uses, by name.
+fn identical(
+    ast: &Ast,
+    func: &Func,
+    expected: &Signature,
+    structs: &BTreeMap<String, Vec<(String, String)>>,
+) -> Option<Vec<String>> {
+    let mut used = Vec::new();
+    let mut same = |written: String, header: &str| {
+        if written == header {
+            if structs.contains_key(header) {
+                used.push(header.to_string());
+            }
+            return true;
+        }
+        false
+    };
+    let returns = func.returns.map_or("()".into(), |t| ast.type_text(t));
+    let all = func.variadic == expected.variadic
+        && func.params.len() == expected.params.len()
+        && same(returns, &expected.returns)
+        && func
+            .params
+            .iter()
+            .zip(&expected.params)
+            .all(|(p, (_, ty))| same(p.ty.map_or("_".into(), |t| ast.type_text(t)), ty));
+    all.then_some(used)
 }
 
 /// Compares hand-written `extern { … }` declarations, which link to the C library, with

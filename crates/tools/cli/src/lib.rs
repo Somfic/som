@@ -7,7 +7,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use som_base::diagnostics::{BLUE, MAUVE, PEACH, RED, Rgb, SUBTEXT0, TEAL, YELLOW};
 use som_base::message;
 use som_base::{Diagnostic, msg};
-use som_driver::{BuildOptions, Checked, Error, Options};
+use som_driver::{BuildOptions, Checked, Error, Failed, Options};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -204,7 +204,13 @@ fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
         };
     }
     if !errors.is_empty() {
-        report(path, errors.into_iter().map(Error::Load).collect());
+        report(
+            path,
+            Failed {
+                errors: errors.into_iter().map(Error::Load).collect(),
+                warnings: Vec::new(),
+            },
+        );
         return None;
     }
 
@@ -214,11 +220,14 @@ fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
     };
     let checked = match som_driver::check_loaded(ast, &options) {
         Ok(checked) => checked,
-        Err(errors) => {
-            report(path, errors);
+        Err(failed) => {
+            report(path, failed);
             return None;
         }
     };
+    for warning in &checked.warnings {
+        ui::diagnostic(&warning.to_diagnostic());
+    }
     for e in emits {
         ok &= match e.stage {
             Stage::Mir => write(e, output, &checked.mir.to_string()),
@@ -288,7 +297,11 @@ fn write(emit: &Emit, output: &Path, contents: &str) -> bool {
 }
 
 /// Shows a program's errors, then a summary like rustc's.
-fn report(path: &Path, errors: Vec<Error>) {
+fn report(path: &Path, failed: Failed) {
+    let Failed { errors, warnings } = failed;
+    for warning in &warnings {
+        ui::diagnostic(&warning.to_diagnostic());
+    }
     for error in &errors {
         ui::diagnostic(&error.to_diagnostic());
     }
