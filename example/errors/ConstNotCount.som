@@ -1,0 +1,8 @@
+// ConstNotCount: A constant used as a length isn't a whole number of at least 0.
+
+@const N = 2 - 5;
+
+fn main() -> i32 {
+    let a = [0; N];
+    0
+}

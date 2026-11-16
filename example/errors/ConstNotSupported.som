@@ -1,0 +1,12 @@
+// ConstNotSupported: Code run while compiling does something it can't do yet: bytes on from a local's address.
+
+fn peek() -> i32 {
+    let x: i32 = 5;
+    let p = &x as *;
+    let q = p + 4;
+    0
+}
+
+@const X = peek();
+
+fn main() -> i32 = X;

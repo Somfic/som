@@ -1,0 +1,6 @@
+// ListenerSignature: An `@on fail` function takes a `&Failure`, and gives nothing back.
+
+@on fail
+fn save(code: i32) {}
+
+fn main() -> i32 = 0;

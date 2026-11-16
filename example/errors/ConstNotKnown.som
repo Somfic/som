@@ -1,0 +1,9 @@
+// ConstNotKnown: A constant in a function names one of its parameters, which has no value while compiling.
+
+/// A constant is worked out while compiling: a function's locals aren't there yet.
+fn twice(n: i32) -> i32 {
+    @const DOUBLE = n * 2;
+    DOUBLE
+}
+
+fn main() -> i32 = twice(21);

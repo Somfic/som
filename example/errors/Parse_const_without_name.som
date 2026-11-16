@@ -1,0 +1,5 @@
+// Parse: A constant needs a name; a check run while compiling is `@assert(…);`.
+
+@const assert(1 == 1, "fine");
+
+fn main() -> i32 = 0;

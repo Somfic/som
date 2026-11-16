@@ -1,0 +1,9 @@
+// ConstTooLong: Running a constant takes more than 10 million steps: most likely it never ends.
+
+fn spin() -> i32 {
+    loop {}
+}
+
+@const X = spin();
+
+fn main() -> i32 = X;
