@@ -1,0 +1,18 @@
+// expect: exit 42
+
+enum Shape { Circle(i32), Rect { w: i32, h: i32 }, Empty }
+
+fn biggest(n: i32) -> Shape = Shape::Rect { w: n, h: n + 1 } if n > 0 else Shape::Empty;
+
+fn area(s: Shape) -> i32 = match s {
+    Circle(r) => r * r * 3,
+    Rect { w, h } => w * h,
+    Empty => 0,
+};
+
+/// Enums kept in the program, and a `match` run while compiling.
+@const SHAPE = biggest(6);
+@const NOTHING = biggest(0);
+@const AREA = area(biggest(3));
+
+fn main() -> i32 = area(SHAPE) + area(NOTHING) + AREA - 12;

@@ -1,0 +1,13 @@
+// expect: exit 42
+
+fn first_over(limit: i32) -> i32? {
+    for i in 0..100 {
+        if i * i > limit { return i; }
+    }
+    return none;
+}
+
+@const FOUND = first_over(1000);
+@const MISSING = first_over(100000);
+
+fn main() -> i32 = (FOUND else 0) + 10 + (MISSING else 0);

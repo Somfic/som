@@ -1,0 +1,12 @@
+// expect: exit 81
+
+/// A loop changing an array while compiling; the array it gives is put in the program.
+fn squares() -> [i32; 10] {
+    let mut table = [0; 10];
+    for i in 0..10 { table[i] = i * i; }
+    table
+}
+
+@const SQUARES = squares();
+
+fn main() -> i32 = SQUARES[9];

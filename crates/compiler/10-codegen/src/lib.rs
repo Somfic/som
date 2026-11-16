@@ -1562,36 +1562,68 @@ impl<'a> Emitter<'a> {
             }
             // Moves are plain copies in C; the borrow checker already made sure they're sound.
             Operand::Copy(place) | Operand::Move(place) => Expr::atom(self.place(f, place)),
-            Operand::Const(c) => Expr::atom(match &c.kind {
-                // C gives a literal a type wide enough for its value, and converts it to
-                // whatever it's combined with, so no cast is needed.
-                ConstKind::Int(n) => self.int_literal(*n, c.ty),
-                ConstKind::Float(x) => match self.mir.types.get(c.ty) {
-                    Ty::Float(FloatTy::F32) => format!("{x:?}f"),
-                    _ => format!("{x:?}"),
-                },
-                ConstKind::Bool(b) => (if *b { "true" } else { "false" }).into(),
-                // A `cstr` is the literal; a `str` is where it starts, and how many bytes it has.
-                ConstKind::Str(s) if c.ty == self.mir.types.cstr => {
-                    format!("(uint8_t*){}", c_string(s))
+            Operand::Const(c) => Expr::atom(self.constant(c)),
+        }
+    }
+
+    /// A constant, as a C expression.
+    fn constant(&self, c: &Const) -> String {
+        match &c.kind {
+            // C gives a literal a type wide enough for its value, and converts it to
+            // whatever it's combined with, so no cast is needed.
+            ConstKind::Int(n) => self.int_literal(*n, c.ty),
+            ConstKind::Float(x) => match self.mir.types.get(c.ty) {
+                Ty::Float(FloatTy::F32) => format!("{x:?}f"),
+                _ => format!("{x:?}"),
+            },
+            ConstKind::Bool(b) => (if *b { "true" } else { "false" }).into(),
+            // A `cstr` is the literal; a `str` is where it starts, and how many bytes it has.
+            ConstKind::Str(s) if c.ty == self.mir.types.cstr => {
+                format!("(uint8_t*){}", c_string(s))
+            }
+            // A `string`: its block is part of the program, counted as never freed.
+            ConstKind::Str(s) if matches!(self.mir.types.get(c.ty), Ty::Struct(..)) => {
+                let block = self.text_block(s);
+                format!("({}){{(void*)&{block}}}", self.ty(c.ty))
+            }
+            ConstKind::Str(s) => format!(
+                "({}){{(uint8_t*){}, {}}}",
+                self.ty(c.ty),
+                c_string(s),
+                s.len()
+            ),
+            ConstKind::Unit => "0".into(),
+            ConstKind::Func(id) => format!("(void*)&{}", self.func_name(*id)),
+            ConstKind::Pending(_) => unreachable!("som_comptime works out every constant"),
+            // A compound literal zeroes anything: `(void*){0}`, `(Color){0}`.
+            ConstKind::Zeroed => format!("({}){{0}}", self.ty(c.ty)),
+            ConstKind::Aggregate(parts) => self.aggregate(c.ty, parts),
+        }
+    }
+
+    /// A struct, enum, array, optional or range made while compiling, as a compound literal:
+    /// `(struct som_arr_i32_3){{1, 2, 3}}`.
+    fn aggregate(&self, ty: TypeId, parts: &[Const]) -> String {
+        let text: Vec<String> = parts.iter().map(|p| self.constant(p)).collect();
+        let name = self.ty(ty);
+        match self.mir.types.get(ty) {
+            // `(struct Shape){ .tag = 1, .as.Rect.w = 2 }`: the tag's variant's fields.
+            Ty::Struct(def, args) if self.mir.struct_def(*def, args).variants.is_some() => {
+                let s = self.mir.struct_def(*def, args);
+                let ConstKind::Int(variant) = parts[0].kind else {
+                    unreachable!("an enum's tag is a number")
+                };
+                let mut out = format!("({name}){{ .tag = {variant}");
+                for &index in s.variant_fields(variant as usize) {
+                    let member = &self.names.fields[def][index];
+                    out.push_str(&format!(", .{member} = {}", text[index]));
                 }
-                // A `string`: its block is part of the program, counted as never freed.
-                ConstKind::Str(s) if matches!(self.mir.types.get(c.ty), Ty::Struct(..)) => {
-                    let block = self.text_block(s);
-                    format!("({}){{(void*)&{block}}}", self.ty(c.ty))
-                }
-                ConstKind::Str(s) => format!(
-                    "({}){{(uint8_t*){}, {}}}",
-                    self.ty(c.ty),
-                    c_string(s),
-                    s.len()
-                ),
-                ConstKind::Unit => "0".into(),
-                ConstKind::Func(id) => format!("(void*)&{}", self.func_name(*id)),
-                ConstKind::Pending(_) => unreachable!("som_comptime works out every constant"),
-                // A compound literal zeroes anything: `(void*){0}`, `(Color){0}`.
-                ConstKind::Zeroed => format!("({}){{0}}", self.ty(c.ty)),
-            }),
+                out + " }"
+            }
+            _ if text.is_empty() => format!("({name}){{0}}"),
+            // An array's elements are in its `items`.
+            Ty::Array { .. } => format!("({name}){{{{{}}}}}", text.join(", ")),
+            _ => format!("({name}){{{}}}", text.join(", ")),
         }
     }
 
@@ -1787,7 +1819,10 @@ fn is_zero(op: &Operand) -> bool {
             ConstKind::Float(x) => *x == 0.0 && x.is_sign_positive(),
             ConstKind::Bool(b) => !b,
             ConstKind::Unit | ConstKind::Zeroed => true,
-            ConstKind::Str(_) | ConstKind::Func(_) | ConstKind::Pending(_) => false,
+            ConstKind::Str(_)
+            | ConstKind::Func(_)
+            | ConstKind::Pending(_)
+            | ConstKind::Aggregate(_) => false,
         },
         _ => false,
     }

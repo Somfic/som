@@ -4,12 +4,33 @@ extern "c";
 @const ROWS = 20;
 @const CELLS = COLS * ROWS;
 
-c::printf("%d", CELLS);
-
-
-///////////////////////////////////
-
+c::printf("cells", CELLS);
+//
 fn kilobytes(n: i32) -> i32 = n * 1024;
 @const BUFFER = kilobytes(4);
 
-c::printf("%d", BUFFER);
+c::printf("%buffer", BUFFER);
+//
+fn fib(n: i32) -> i32 = n if n < 2 else fib(n - 1) + fib(n - 2);
+@const FIB_20 = fib(20);
+c::printf("fib", FIB_20);
+//
+fn squares() -> [i32; 10] {
+    let mut table = [0; 10];
+    for i in 0..10 { table[i] = i * i; }
+    table
+}
+@const SQUARES = squares();
+for row in SQUARES {
+    c::printf("fib", row);
+}
+//
+enum Channel { Red, Green, Blue }
+struct Rgb { r: u8, g: u8, b: u8 }
+
+fn pure(c: Channel) -> Rgb = match c {
+    Channel::Red   => Rgb { r: 255, g: 0, b: 0 },
+    Channel::Green => Rgb { r: 0, g: 255, b: 0 },
+    Channel::Blue  => Rgb { r: 0, g: 0, b: 255 },
+};
+@const RED = pure(Channel::Red);

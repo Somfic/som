@@ -98,10 +98,9 @@ impl ComptimeError {
                 trace,
             ),
             ComptimeError::ConstTooLong { span, trace } => (
-                Diagnostic::error("this constant takes too long to work out")
-                    .with_hint(format!(
-                        "it ran {STEP_LIMIT} steps without finishing: it may never end"
-                    )),
+                Diagnostic::error("this constant takes too long to work out").with_hint(format!(
+                    "it ran {STEP_LIMIT} steps without finishing: it may never end"
+                )),
                 span,
                 msg!["still running here"],
                 trace,
@@ -125,14 +124,20 @@ impl ComptimeError {
                     " can't be put in the program"
                 ])
                 .with_label(Label::primary(span.clone(), msg!["its value is ", *what]))
-                .with_hint("a constant's value can be a number, a bool, or text, for now");
+                .with_hint(
+                    "a constant's value can be numbers, bools, text, and structs, enums, \
+                     arrays and optionals of those",
+                );
             }
         };
         let mut d = d.with_label(Label::primary(span.clone(), label));
         // Each place once: recursion calls from the same few places, many times over.
         let mut shown: Vec<&Working> = Vec::new();
         for working in trace {
-            if !shown.iter().any(|w| w.span == working.span && w.call == working.call) {
+            if !shown
+                .iter()
+                .any(|w| w.span == working.span && w.call == working.call)
+            {
                 shown.push(working);
             }
         }

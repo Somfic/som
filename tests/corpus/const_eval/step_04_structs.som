@@ -1,0 +1,14 @@
+// expect: exit 255
+
+enum Channel { Red, Green, Blue }
+struct Rgb { r: u8, g: u8, b: u8 }
+
+fn pure(c: Channel) -> Rgb = match c {
+    Red   => Rgb { r: 255, g: 0, b: 0 },
+    Green => Rgb { r: 0, g: 255, b: 0 },
+    Blue  => Rgb { r: 0, g: 0, b: 255 },
+};
+
+@const RED = pure(Channel::Red);
+
+fn main() -> i32 = RED.r as i32 + RED.g as i32 + RED.b as i32;

@@ -255,7 +255,29 @@ impl Mir {
                 ConstKind::Func(f) => format!("const {}", self.func(*f).name),
                 ConstKind::Zeroed => format!("const zeroed_{}", self.display_ty(c.ty)),
                 ConstKind::Pending(f) => format!("const @const {}", self.func(*f).name),
+                ConstKind::Aggregate(_) => format!("const {}", self.display_const(c)),
             },
+        }
+    }
+
+    /// A constant's value, without `const`: `{1, [2, 3]}`.
+    fn display_const(&self, c: &Const) -> String {
+        match &c.kind {
+            ConstKind::Aggregate(parts) => {
+                let parts: Vec<String> = parts.iter().map(|p| self.display_const(p)).collect();
+                match self.types.get(c.ty) {
+                    Ty::Array { .. } => format!("[{}]", parts.join(", ")),
+                    _ => format!("{{{}}}", parts.join(", ")),
+                }
+            }
+            ConstKind::Int(n) => n.to_string(),
+            ConstKind::Float(x) => format!("{x:?}"),
+            ConstKind::Bool(b) => b.to_string(),
+            ConstKind::Str(s) => format!("{s:?}"),
+            ConstKind::Unit => "()".into(),
+            ConstKind::Func(f) => self.func(*f).name.clone(),
+            ConstKind::Zeroed => "zeroed".into(),
+            ConstKind::Pending(f) => format!("@const {}", self.func(*f).name),
         }
     }
 }

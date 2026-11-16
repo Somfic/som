@@ -1,7 +1,8 @@
 # Compile-time code
 
-*Design spec. Status: steps 0–2 done (`@const`, calls, branches and recursion, in
-`crates/compiler/8-comptime`); the rest is proposed.*
+*Design spec. Status: steps 0–4 done (`@const`, calls, branches and recursion, loops, and
+structs, enums, arrays and optionals as values, in `crates/compiler/8-comptime`); the rest
+is proposed.*
 
 Som code can already be worked out while compiling, but only a little of it: a `const` can be
 literals, operators, casts and other constants, and nothing else. This spec lets **any som
@@ -481,14 +482,14 @@ fn fib(n: i32) -> i32 = n if n < 2 else fib(n - 1) + fib(n - 2);
 **Step 3. Loops, changing locals, and an array as the result.** `step_03_array.som`
 ```rust
 fn squares() -> [i32; 10] {
-    let mut out = [0; 10];
-    for i in 0..10 { out[i] = i * i; }
-    out
+    let mut table = [0; 10];
+    for i in 0..10 { table[i] = i * i; }
+    table
 }
 @const SQUARES = squares();
 ```
 *Needs:* places and indexing in the interpreter, range iterators (`IntoIterator`/`next`
-calls), and `ConstKind::Aggregate` in MIR and codegen.
+calls), and `ConstKind::Aggregate` in MIR and codegen. **Done.**
 
 **Step 4. Structs, enums and `match`.** `step_04_structs.som`
 ```rust
@@ -496,14 +497,14 @@ enum Channel { Red, Green, Blue }
 struct Rgb { r: u8, g: u8, b: u8 }
 
 fn pure(c: Channel) -> Rgb = match c {
-    Channel::Red   => Rgb { r: 255, g: 0, b: 0 },
-    Channel::Green => Rgb { r: 0, g: 255, b: 0 },
-    Channel::Blue  => Rgb { r: 0, g: 0, b: 255 },
+    Red   => Rgb { r: 255, g: 0, b: 0 },
+    Green => Rgb { r: 0, g: 255, b: 0 },
+    Blue  => Rgb { r: 0, g: 0, b: 255 },
 };
 @const RED = pure(Channel::Red);
 ```
 *Needs:* variants and `match` (a switch on the variant) in the interpreter, and struct
-aggregates in codegen.
+aggregates in codegen. **Done.**
 
 **Step 5. Heap memory while running, with a result that has none.** `step_05_heap.som`
 ```rust

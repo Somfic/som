@@ -487,6 +487,12 @@ pub enum ConstKind {
     Func(FuncId),
     /// Every byte zero: `0`, `false`, a null pointer, or a struct of those.
     Zeroed,
+    /// A struct, enum, array, optional or range made while compiling: its parts, each a
+    /// constant of its own type, in the order `Projection`s reach them. A struct's fields (an
+    /// enum's tag first, then every field, of which only the tag's variant's hold anything);
+    /// an array's elements; an optional's whether it holds a value, then the value; a
+    /// range's two ends.
+    Aggregate(Vec<Const>),
     /// A `@const`'s value, worked out while compiling by running its initializer: this
     /// function, with no parameters. `som_comptime` replaces it with the value it gets.
     Pending(FuncId),

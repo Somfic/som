@@ -96,7 +96,7 @@ impl State<'_> {
         let trace = machine.trace();
         self.running.pop();
         let result = match result {
-            Ok(value) => match bake(&value) {
+            Ok(value) => match bake(mir, &value, mir.funcs[init].ret) {
                 Ok(kind) => Some(kind),
                 Err(what) => {
                     self.errors.push(ComptimeError::ConstHoldsMemory {
@@ -458,6 +458,11 @@ impl Machine<'_, '_> {
             ConstKind::Unit => Value::Unit,
             ConstKind::Func(f) => Value::Func(*f),
             ConstKind::Zeroed => self.zero(c.ty, span)?,
+            ConstKind::Aggregate(parts) => Value::Agg(
+                (parts.iter())
+                    .map(|part| self.constant(part, span))
+                    .collect::<Result<_, _>>()?,
+            ),
             ConstKind::Pending(init) => {
                 let kind = self.state.init(*init).map_err(|stop| match stop {
                     // Needing itself: reported where this one needs it.
@@ -580,7 +585,11 @@ impl Machine<'_, '_> {
                 let Ty::Struct(def, args) = self.mir().types.get(*ty) else {
                     return unsupported("this enum", span);
                 };
-                let indexes = self.mir().struct_def(*def, args).variant_fields(*variant).to_vec();
+                let indexes = self
+                    .mir()
+                    .struct_def(*def, args)
+                    .variant_fields(*variant)
+                    .to_vec();
                 // Its tag, first, says which variant it is.
                 parts[0] = Value::Int(*variant as i128);
                 for (index, value) in indexes.into_iter().zip(operands(self, fields)?) {
@@ -695,8 +704,22 @@ impl Machine<'_, '_> {
     }
 }
 
-/// `value` as a constant in the program, or what it is that can't be one.
-fn bake(value: &Value) -> Result<ConstKind, &'static str> {
+/// `value`, of type `ty`, as a constant in the program, or what it is that can't be one.
+fn bake(mir: &Mir, value: &Value, ty: TypeId) -> Result<ConstKind, &'static str> {
+    let part = |value: &Value, ty: TypeId| -> Result<Const, &'static str> {
+        Ok(Const {
+            kind: bake(mir, value, ty)?,
+            ty,
+        })
+    };
+    // What its parts are, and their types.
+    let parts = |values: &[Value], types: &[TypeId]| -> Result<ConstKind, &'static str> {
+        let mut parts = Vec::new();
+        for (i, &ty) in types.iter().enumerate() {
+            parts.push(part(values.get(i).unwrap_or(&Value::Uninit), ty)?);
+        }
+        Ok(ConstKind::Aggregate(parts))
+    };
     Ok(match value {
         Value::Int(n) => ConstKind::Int(*n),
         Value::Float(x) if x.is_finite() => ConstKind::Float(*x),
@@ -705,10 +728,21 @@ fn bake(value: &Value) -> Result<ConstKind, &'static str> {
         Value::Unit => ConstKind::Unit,
         Value::Str(s) => ConstKind::Str(s.to_string()),
         Value::Func(f) => ConstKind::Func(*f),
-        Value::Agg(_) => return Err("a struct, enum, array or optional, which can't be kept yet"),
+        // Never set: a field of a variant it isn't, or `none`'s value.
+        Value::Uninit | Value::Null => ConstKind::Zeroed,
+        Value::Agg(values) => match mir.types.get(ty) {
+            Ty::Struct(def, args) if !mir.struct_def(*def, args).handle => {
+                let types: Vec<TypeId> = (mir.struct_def(*def, args).fields.iter())
+                    .map(|&(_, ty)| ty)
+                    .collect();
+                parts(values, &types)?
+            }
+            Ty::Optional(inner) => parts(values, &[mir.types.bool, *inner])?,
+            Ty::Array { element, .. } => parts(values, &vec![*element; values.len()])?,
+            Ty::Range(int) => parts(values, &[*int, *int])?,
+            _ => return Err("a kind of value that can't be kept yet"),
+        },
         Value::Ref(_) => return Err("a reference to memory that only exists while compiling"),
-        Value::Null => return Err("a pointer"),
-        Value::Uninit => return Err("never set"),
     })
 }
 
@@ -770,7 +804,11 @@ fn traps(a: i128, b: i128, int: IntTy) -> bool {
 fn shift(op: BinOp, a: i128, n: i128, int: IntTy) -> i128 {
     let bits = width(int).0 as i128;
     if !(0..bits).contains(&n) {
-        return if op == BinOp::ShiftRight && a < 0 { -1 } else { 0 };
+        return if op == BinOp::ShiftRight && a < 0 {
+            -1
+        } else {
+            0
+        };
     }
     let moved = match op {
         BinOp::ShiftLeft => ((a as u128) << n) as i128,

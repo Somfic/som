@@ -1,0 +1,9 @@
+// expect: exit 42
+
+struct Point { x: i32, y: i32 }
+
+fn corner(size: i32) -> Point = Point { x: size, y: size * 2 };
+
+@const CORNER = corner(14);
+
+fn main() -> i32 = CORNER.x + CORNER.y;
