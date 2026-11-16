@@ -1,0 +1,11 @@
+// expect: exit 0
+
+/// Integers wrap while compiling just as they do when the program runs.
+fn grow(n: i8) -> i8 = n + 100;
+
+@const WRAPPED = grow(100);
+
+fn main() -> i32 {
+    let at_run_time = grow(100);
+    return 0 if WRAPPED == at_run_time && WRAPPED == -56 else 1;
+}

@@ -101,6 +101,13 @@ struct CheckArgs {
     /// `--emit ast,mir,c`.
     #[arg(long, value_name = "STAGES", value_delimiter = ',', value_parser = parse_emit)]
     emit: Vec<Emit>,
+
+    /// Skip the optimizer: no constant folding, and unused functions are kept.
+    ///
+    /// With `--emit mir,c`, to see the program as lowering made it. Constants are still
+    /// worked out while compiling.
+    #[arg(long)]
+    no_optimize: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -216,6 +223,7 @@ fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
 
     let options = Options {
         library_dirs: args.library_dirs.clone(),
+        no_optimize: args.no_optimize,
         ..Options::default()
     };
     let checked = match som_driver::check_loaded(ast, &options) {

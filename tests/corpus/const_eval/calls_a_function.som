@@ -1,0 +1,8 @@
+// expect: exit 60
+
+/// A constant can call a function: it's run while compiling, and only its result is kept.
+fn width() -> i32 { return 60; }
+
+@const W = width();
+
+fn main() -> i32 = W;

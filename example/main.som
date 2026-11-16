@@ -1,3 +1,15 @@
+extern "c";
+
 @const COLS = 10;
 @const ROWS = 20;
 @const CELLS = COLS * ROWS;
+
+c::printf("%d", CELLS);
+
+
+///////////////////////////////////
+
+fn kilobytes(n: i32) -> i32 = n * 1024;
+@const BUFFER = kilobytes(4);
+
+c::printf("%d", BUFFER);

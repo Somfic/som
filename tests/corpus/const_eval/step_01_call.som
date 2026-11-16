@@ -1,0 +1,7 @@
+// expect: exit 4
+
+fn kilobytes(n: i32) -> i32 = n * 1024;
+
+@const BUFFER = kilobytes(4);
+
+fn main() -> i32 = BUFFER / 1024;

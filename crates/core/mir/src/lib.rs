@@ -11,7 +11,7 @@ mod validate;
 
 pub use som_ast::BinOp;
 pub use som_resolve::DefId;
-pub use som_typeck::{FloatTy, IntTy, Ty, TypeId, TypeTable};
+pub use som_typeck::{FloatTy, IntTy, Ty, TypeId, TypeTable, Value};
 
 pub use som_base::{Arena, Id};
 use som_base::{IdPrefix, Span};
@@ -24,6 +24,9 @@ pub struct Mir {
     pub structs: Vec<StructDef>,
     /// The types that implement `Drop` themselves: what's in them can't be moved out.
     pub drop_types: std::collections::HashSet<TypeId>,
+    /// The standard library's function `@unreachable` calls, if anything reaches one: it says
+    /// where, then stops the program.
+    pub unreachable: Option<FuncId>,
     struct_index: HashMap<(DefId, Vec<TypeId>), usize>,
 }
 
@@ -34,6 +37,7 @@ impl Mir {
             funcs: Arena::new(),
             structs: Vec::new(),
             drop_types: std::collections::HashSet::new(),
+            unreachable: None,
             struct_index: HashMap::new(),
         }
     }
@@ -483,4 +487,7 @@ pub enum ConstKind {
     Func(FuncId),
     /// Every byte zero: `0`, `false`, a null pointer, or a struct of those.
     Zeroed,
+    /// A `@const`'s value, worked out while compiling by running its initializer: this
+    /// function, with no parameters. `som_comptime` replaces it with the value it gets.
+    Pending(FuncId),
 }

@@ -1174,6 +1174,14 @@ impl<'a> Checker<'a> {
             {
                 return match self.const_number(self.ast.consts[c].value) {
                     Some(n) if n >= 0 => self.lower_number(n as u128, expected, span),
+                    None if som_resolve::const_runs_code(self.ast, self.names, c) => {
+                        self.errors.push(TypeError::ConstNeededTooEarly {
+                            name: self.names.def(def).name.to_string(),
+                            span,
+                            defined_at: self.names.def(def).span.clone(),
+                        });
+                        error
+                    }
                     _ => {
                         self.errors.push(TypeError::ConstNotCount {
                             name: self.names.def(def).name.to_string(),

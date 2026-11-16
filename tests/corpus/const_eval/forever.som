@@ -1,0 +1,9 @@
+// expect: error ConstTooLong
+
+fn spin() -> i32 {
+    loop {}
+}
+
+@const X = spin();
+
+fn main() -> i32 = X;

@@ -45,8 +45,10 @@ struct Lowerer<'a> {
     mir: Mir,
     /// `(function, type arguments)` → its MIR function.
     instances: HashMap<(Id<Func>, Vec<TypeId>), FuncId>,
-    /// Instances whose bodies still need lowering.
-    queue: Vec<(FuncId, Id<Func>, Vec<TypeId>)>,
+    /// Functions whose bodies still need lowering.
+    queue: Vec<(FuncId, Job)>,
+    /// Each `@const` that runs code → its initializer.
+    inits: HashMap<Id<som_ast::Const>, FuncId>,
     /// Method → the name of the struct its `impl` block is for.
     owners: HashMap<Id<Func>, String>,
     /// A trait's method → the trait, and how many generic parameters the trait has.
@@ -64,6 +66,7 @@ impl<'a> Lowerer<'a> {
             mir: Mir::new(typed.table.clone()),
             instances: HashMap::new(),
             queue: Vec::new(),
+            inits: HashMap::new(),
             owners: HashMap::new(),
             trait_methods: HashMap::new(),
             drop_glues: HashMap::new(),
@@ -159,8 +162,11 @@ impl<'a> Lowerer<'a> {
 
     /// Lowers every function queued, and makes the copies of generic structs they use.
     fn finish(&mut self) {
-        while let Some((func_id, func, type_args)) = self.queue.pop() {
-            let body = FnBuilder::new(self, func, type_args).build();
+        while let Some((func_id, job)) = self.queue.pop() {
+            let body = match job {
+                Job::Func(func, type_args) => FnBuilder::new(self, func, type_args).build(),
+                Job::Init(c) => FnBuilder::for_init(self, c).build_init(c),
+            };
             self.mir.funcs[func_id].body = Some(body);
         }
 
@@ -398,11 +404,44 @@ impl<'a> Lowerer<'a> {
             variadic: ast_func.variadic,
         });
         if ast_func.body.is_some() {
-            self.queue.push((id, func, type_args.clone()));
+            self.queue.push((id, Job::Func(func, type_args.clone())));
         }
         self.instances.insert(key, id);
         id
     }
+
+    /// The initializer of `@const` `c`, whose value runs code: a function with no parameters
+    /// giving its value, run while compiling. Created the first time it's used.
+    fn init(&mut self, c: Id<som_ast::Const>) -> FuncId {
+        if let Some(&id) = self.inits.get(&c) {
+            return id;
+        }
+        let constant = &self.ast.consts[c];
+        let def = self.names.const_def(c);
+        let ret = self.typed.expr(constant.value);
+        let id = self.mir.funcs.alloc(Function {
+            name: format!("@const {}", self.qualified(def, &constant.name.name)),
+            params: Vec::new(),
+            ret,
+            span: self.ast.consts.span(c).clone(),
+            body: None,
+            link_name: None,
+            library: None,
+            is_entry: false,
+            variadic: false,
+        });
+        self.queue.push((id, Job::Init(c)));
+        self.inits.insert(c, id);
+        id
+    }
+}
+
+/// What a queued function's body is lowered from.
+enum Job {
+    /// A function, with these type arguments.
+    Func(Id<Func>, Vec<TypeId>),
+    /// A `@const`'s value: its initializer.
+    Init(Id<som_ast::Const>),
 }
 
 /// The reference a slice's (or text's) elements are reached through: `s` for `(*s)`.
@@ -486,7 +525,10 @@ impl<'a> Subst<'a> {
 /// Builds the body of one function instance.
 struct FnBuilder<'l, 'a> {
     l: &'l mut Lowerer<'a>,
-    func: Id<Func>,
+    /// The function being lowered; `None` for a `@const`'s initializer.
+    func: Option<Id<Func>>,
+    /// Where it's written.
+    span: Span,
     subst: Subst<'a>,
     locals: Arena<LocalDecl>,
     /// Each starts out `Unreachable`, and stays that way if nothing terminates it.
@@ -508,9 +550,22 @@ struct FnBuilder<'l, 'a> {
 impl<'l, 'a> FnBuilder<'l, 'a> {
     fn new(l: &'l mut Lowerer<'a>, func: Id<Func>, type_args: Vec<TypeId>) -> Self {
         let subst = Subst::new(l.names.type_params(func), &type_args, &l.typed.impls);
+        let span = l.ast.funcs.span(func).clone();
+        Self::with(l, Some(func), span, subst)
+    }
+
+    /// For the initializer of `@const` `c`.
+    fn for_init(l: &'l mut Lowerer<'a>, c: Id<som_ast::Const>) -> Self {
+        let subst = Subst::new(&[], &[], &l.typed.impls);
+        let span = l.ast.consts.span(c).clone();
+        Self::with(l, None, span, subst)
+    }
+
+    fn with(l: &'l mut Lowerer<'a>, func: Option<Id<Func>>, span: Span, subst: Subst<'a>) -> Self {
         let mut builder = FnBuilder {
             l,
             func,
+            span,
             subst,
             locals: Arena::new(),
             blocks: Arena::new(),
@@ -526,11 +581,37 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         builder
     }
 
+    /// How many parameters it has: none for an initializer.
+    fn param_count(&self) -> usize {
+        self.func.map_or(0, |func| self.l.ast.funcs[func].params.len())
+    }
+
+    /// An initializer's body: `_0 = value; return`.
+    fn build_init(mut self, c: Id<som_ast::Const>) -> Body {
+        let value = self.l.ast.consts[c].value;
+        let span = self.span.clone();
+        let ret = self.expr_ty(value);
+        self.new_local(ret, None, false, span.clone());
+        let value = self.operand(value);
+        self.assign(Place::local(RETURN), Rvalue::Use(value), span.clone());
+        self.terminate(TerminatorKind::Return, span);
+        let mut body = Body {
+            locals: std::mem::take(&mut self.locals),
+            arg_count: 0,
+            outs: Vec::new(),
+            two_phase: std::mem::take(&mut self.two_phase),
+            blocks: std::mem::take(&mut self.blocks),
+        };
+        self.elaborate_drops(&mut body);
+        body
+    }
+
     fn build(mut self) -> Body {
         let ast = self.l.ast;
-        let func = &ast.funcs[self.func];
-        let span = ast.funcs.span(self.func).clone();
-        let sig = self.l.typed.func(self.func);
+        let this = self.func.expect("a function's body");
+        let func = &ast.funcs[this];
+        let span = self.span.clone();
+        let sig = self.l.typed.func(this);
 
         let ret = self.ty(sig.ret);
         self.new_local(ret, None, false, span.clone());
@@ -538,7 +619,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         for ((param, &def), ty) in func
             .params
             .iter()
-            .zip(self.l.names.params(self.func))
+            .zip(self.l.names.params(this))
             .zip(params)
         {
             let ty = self.ty(ty);
@@ -617,7 +698,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     fn new_block(&mut self) -> BlockId {
         // Blocks nothing jumps to, like the one after an endless `loop`, end here.
-        let span = self.l.ast.funcs.span(self.func).clone();
+        let span = self.span.clone();
         self.blocks.alloc(Block {
             stmts: Vec::new(),
             terminator: Terminator {
@@ -830,7 +911,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 for local in dying {
                     self.end_local(local, span.clone());
                 }
-                for arg in (1..=ast.funcs[self.func].params.len()).rev() {
+                for arg in (1..=self.param_count()).rev() {
                     self.end_local(Id::new(arg), span.clone());
                 }
                 self.terminate(TerminatorKind::Return, span);
@@ -1407,7 +1488,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         let id = self.l.instance(func, type_args);
                         self.constant(ConstKind::Func(id), ty)
                     }
-                    // A constant stands for its value, made where it's used.
+                    // One that runs code is worked out while compiling, by its initializer.
+                    DefKind::Const(c)
+                        if som_resolve::const_runs_code(self.l.ast, self.l.names, c) =>
+                    {
+                        let init = self.l.init(c);
+                        self.constant(ConstKind::Pending(init), ty)
+                    }
+                    // A plain constant stands for its value, made where it's used.
                     DefKind::Const(c) => self.operand(self.l.ast.consts[c].value),
                     // `Shape::Empty`
                     DefKind::Variant { index, .. } => {
@@ -1457,9 +1545,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
             Expr::Block { stmts, value } => self.in_scope(span.clone(), |b| {
                 stmts.iter().for_each(|&s| b.stmt(s));
+                let unit = b.l.mir.types.unit;
                 let result = match value {
                     Some(value) => b.operand(*value),
-                    None => b.constant(ConstKind::Unit, ty),
+                    None if ty == unit => b.constant(ConstKind::Unit, ty),
+                    // Of another type, it never gets to its end: `else { return none; }`.
+                    // Nothing reads its value, so zeroes stand in.
+                    None => b.constant(ConstKind::Zeroed, ty),
                 };
                 // Locals die at the end of this scope, so take the value out of them first.
                 let declares_locals = !b.scopes.last().expect("in scope").is_empty();
@@ -1636,6 +1728,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     let cstr = self.l.mir.types.cstr;
                     let unit = self.l.mir.types.unit;
                     let id = self.l.instance(func, Vec::new());
+                    self.l.mir.unreachable = Some(id);
                     let called = self.temp(unit, span.clone());
                     let call = Rvalue::Call {
                         func: id,

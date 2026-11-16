@@ -1,0 +1,12 @@
+// expect: exit 42
+
+/// A plain constant made of one that runs code, and a function reading one: each is worked
+/// out once, while compiling.
+fn double(n: i32) -> i32 = n * 2;
+
+@const HALF = double(10) + 1;
+@const ANSWER = HALF * 2;
+
+fn answer() -> i32 = ANSWER;
+
+fn main() -> i32 = answer();

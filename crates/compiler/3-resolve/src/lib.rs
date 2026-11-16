@@ -532,17 +532,16 @@ impl<'a> Resolver<'a> {
         self.check_consts();
     }
 
-    /// A constant's value is known while compiling: made of literals, operators, casts, other
-    /// constants, and arrays and structs of those. And it can't be made of itself.
+    /// A constant can't be made of itself. One whose value runs code is worked out by
+    /// running it, which finds a loop through functions then.
     fn check_consts(&mut self) {
         let ast = self.ast;
         for (id, c) in ast.consts.iter() {
-            self.check_const_expr(c.value);
             // Following the constants it names, it mustn't come back to itself.
             let mut seen = HashSet::new();
             let mut todo = vec![c.value];
             while let Some(expr) = todo.pop() {
-                for used in self.consts_in(expr) {
+                for used in consts_in(ast, &self.names, expr) {
                     if used == id {
                         self.errors.push(ResolveError::ConstCycle {
                             name: c.name.name.to_string(),
@@ -556,83 +555,6 @@ impl<'a> Resolver<'a> {
                     }
                 }
             }
-        }
-    }
-
-    /// The constants `expr` names, directly.
-    fn consts_in(&self, expr: Id<Expr>) -> Vec<Id<som_ast::Const>> {
-        let mut found = Vec::new();
-        let mut todo = vec![expr];
-        while let Some(expr) = todo.pop() {
-            if let Expr::Var(_) = self.ast.exprs[expr]
-                && let Some(def) = self.names.expr(expr)
-                && let DefKind::Const(c) = self.names.def(def).kind
-            {
-                found.push(c);
-            }
-            todo.extend(self.const_parts(expr));
-        }
-        found
-    }
-
-    /// The expressions a constant's value is made of: what's inside `expr`.
-    fn const_parts(&self, expr: Id<Expr>) -> Vec<Id<Expr>> {
-        match &self.ast.exprs[expr] {
-            Expr::Array(items) => items.clone(),
-            Expr::Cast { value, .. }
-            | Expr::ArrayRepeat { value, .. }
-            | Expr::Not(value)
-            | Expr::Neg(value)
-            | Expr::BitNot(value) => vec![*value],
-            Expr::Binary { lhs, rhs, .. } => vec![*lhs, *rhs],
-            Expr::Construct { fields, .. } => fields.iter().map(|(_, v)| *v).collect(),
-            Expr::Conditional {
-                condition,
-                then,
-                otherwise,
-            } => vec![*condition, *then, *otherwise],
-            _ => Vec::new(),
-        }
-    }
-
-    /// Reports the parts of a constant's value that aren't known while compiling.
-    fn check_const_expr(&mut self, expr: Id<Expr>) {
-        let known = match &self.ast.exprs[expr] {
-            Expr::Hole
-            | Expr::Int(_)
-            | Expr::Float(_)
-            | Expr::Bool(_)
-            | Expr::Str(_)
-            | Expr::None
-            | Expr::Array(_)
-            | Expr::Cast { .. }
-            | Expr::ArrayRepeat { .. }
-            | Expr::Not(_)
-            | Expr::Neg(_)
-            | Expr::BitNot(_)
-            | Expr::Binary { .. }
-            | Expr::Construct { .. }
-            | Expr::Conditional { .. } => true,
-            // Another constant, `usize::MAX`, or a variant without values.
-            Expr::Var(path) => {
-                path.int_limit().is_some()
-                    || self.names.expr(expr).is_none_or(|def| {
-                        matches!(
-                            self.names.def(def).kind,
-                            DefKind::Const(_) | DefKind::Variant { .. }
-                        )
-                    })
-            }
-            _ => false,
-        };
-        if !known {
-            self.errors.push(ResolveError::ConstNotKnown {
-                span: self.ast.exprs.span(expr).clone(),
-            });
-            return;
-        }
-        for part in self.const_parts(expr) {
-            self.check_const_expr(part);
         }
     }
 
@@ -1813,4 +1735,82 @@ fn best_match<'a>(name: &str, candidates: &'a [String]) -> Option<&'a str> {
         .find(|c| snake != name && **c == snake)
         .map(String::as_str)
         .or_else(|| closest_match(name, candidates, 2))
+}
+
+/// The constants `expr` names, directly, through the parts a plain constant is made of.
+fn consts_in(ast: &Ast, names: &Names, expr: Id<Expr>) -> Vec<Id<som_ast::Const>> {
+    let mut found = Vec::new();
+    let mut todo = vec![expr];
+    while let Some(expr) = todo.pop() {
+        if let Expr::Var(_) = ast.exprs[expr]
+            && let Some(def) = names.expr(expr)
+            && let DefKind::Const(c) = names.def(def).kind
+        {
+            found.push(c);
+        }
+        todo.extend(const_parts(ast, expr));
+    }
+    found
+}
+
+/// The expressions a plain constant's value is made of: what's inside `expr`.
+fn const_parts(ast: &Ast, expr: Id<Expr>) -> Vec<Id<Expr>> {
+    match &ast.exprs[expr] {
+        Expr::Array(items) => items.clone(),
+        Expr::Cast { value, .. }
+        | Expr::ArrayRepeat { value, .. }
+        | Expr::Not(value)
+        | Expr::Neg(value)
+        | Expr::BitNot(value) => vec![*value],
+        Expr::Binary { lhs, rhs, .. } => vec![*lhs, *rhs],
+        Expr::Construct { fields, .. } => fields.iter().map(|(_, v)| *v).collect(),
+        Expr::Conditional {
+            condition,
+            then,
+            otherwise,
+        } => vec![*condition, *then, *otherwise],
+        _ => Vec::new(),
+    }
+}
+
+/// Whether constant `c`'s value runs code, a call, so it's worked out by running it while
+/// compiling. A plain one, made of literals, operators, casts, other plain constants, and
+/// arrays and structs of those, is written out where it's used instead.
+pub fn const_runs_code(ast: &Ast, names: &Names, c: Id<som_ast::Const>) -> bool {
+    fn runs_code(
+        ast: &Ast,
+        names: &Names,
+        expr: Id<Expr>,
+        seen: &mut HashSet<Id<som_ast::Const>>,
+    ) -> bool {
+        let plain = match &ast.exprs[expr] {
+            Expr::Hole
+            | Expr::Int(_)
+            | Expr::Float(_)
+            | Expr::Bool(_)
+            | Expr::Str(_)
+            | Expr::None
+            | Expr::Array(_)
+            | Expr::Cast { .. }
+            | Expr::ArrayRepeat { .. }
+            | Expr::Not(_)
+            | Expr::Neg(_)
+            | Expr::BitNot(_)
+            | Expr::Binary { .. }
+            | Expr::Construct { .. }
+            | Expr::Conditional { .. } => true,
+            // Another constant, `usize::MAX`, or a variant without values.
+            Expr::Var(path) => match names.expr(expr).map(|def| &names.def(def).kind) {
+                Some(&DefKind::Const(other)) => {
+                    !seen.insert(other) || !runs_code(ast, names, ast.consts[other].value, seen)
+                }
+                Some(DefKind::Variant { .. }) | None => true,
+                Some(_) => path.int_limit().is_some(),
+            },
+            _ => false,
+        };
+        !plain || (const_parts(ast, expr).into_iter()).any(|part| runs_code(ast, names, part, seen))
+    }
+    let mut seen = HashSet::from([c]);
+    runs_code(ast, names, ast.consts[c].value, &mut seen)
 }

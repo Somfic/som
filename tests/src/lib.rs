@@ -17,7 +17,12 @@ pub fn run_case(path: &str) {
     };
     let header = Header::parse(&std::fs::read_to_string(&main).unwrap());
 
-    let result = som_driver::check(path, &Default::default());
+    // `SOM_NO_OPTIMIZE=1`: the program as lowering made it, which has to work too.
+    let options = som_driver::Options {
+        no_optimize: std::env::var_os("SOM_NO_OPTIMIZE").is_some(),
+        ..Default::default()
+    };
+    let result = som_driver::check(path, &options);
 
     if let Ok(checked) = &result {
         let problems = checked.mir.validate();

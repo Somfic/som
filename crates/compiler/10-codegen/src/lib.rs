@@ -1588,6 +1588,7 @@ impl<'a> Emitter<'a> {
                 ),
                 ConstKind::Unit => "0".into(),
                 ConstKind::Func(id) => format!("(void*)&{}", self.func_name(*id)),
+                ConstKind::Pending(_) => unreachable!("som_comptime works out every constant"),
                 // A compound literal zeroes anything: `(void*){0}`, `(Color){0}`.
                 ConstKind::Zeroed => format!("({}){{0}}", self.ty(c.ty)),
             }),
@@ -1786,7 +1787,7 @@ fn is_zero(op: &Operand) -> bool {
             ConstKind::Float(x) => *x == 0.0 && x.is_sign_positive(),
             ConstKind::Bool(b) => !b,
             ConstKind::Unit | ConstKind::Zeroed => true,
-            ConstKind::Str(_) | ConstKind::Func(_) => false,
+            ConstKind::Str(_) | ConstKind::Func(_) | ConstKind::Pending(_) => false,
         },
         _ => false,
     }

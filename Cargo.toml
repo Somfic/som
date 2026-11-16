@@ -14,8 +14,9 @@ members = [
     "crates/compiler/5-prove",
     "crates/compiler/6-lower",
     "crates/compiler/7-borrowcheck",
-    "crates/compiler/8-optimize",
-    "crates/compiler/9-codegen",
+    "crates/compiler/8-comptime",
+    "crates/compiler/9-optimize",
+    "crates/compiler/10-codegen",
 
     # orchestration
     "crates/driver",

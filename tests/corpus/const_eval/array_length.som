@@ -1,0 +1,11 @@
+// expect: error ConstNeededTooEarly
+
+/// A constant worked out by running code isn't known yet when types are checked.
+fn four() -> usize = 4;
+
+@const N = four();
+
+fn main() -> i32 {
+    let a: [i32; N] = [0; N];
+    return a[0];
+}

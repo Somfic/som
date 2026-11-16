@@ -1,0 +1,9 @@
+// expect: error ConstDividedByZero
+
+/// What it says it needs isn't checked while compiling: dividing by zero is caught as it runs.
+@where people != 0
+fn share(total: i32, people: i32) -> i32 = total / people;
+
+@const EACH = share(10, 0);
+
+fn main() -> i32 = EACH;

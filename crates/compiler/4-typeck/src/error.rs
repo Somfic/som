@@ -154,6 +154,13 @@ pub enum TypeError {
         span: Span,
         defined_at: Span,
     },
+    /// `[i32; N]` of `@const N = four();`: `N` is worked out by running code, which happens
+    /// after types are checked.
+    ConstNeededTooEarly {
+        name: String,
+        span: Span,
+        defined_at: Span,
+    },
     /// `none` where a raw pointer is expected: `fflush(none)`. A null pointer is
     /// `mem::null()`.
     NoneAsPointer {
@@ -1958,6 +1965,17 @@ impl TypeError {
                     "a whole number, at least 0, is needed here",
                 ))
                 .with_label(Label::secondary(defined_at.clone(), "defined here")),
+            TypeError::ConstNeededTooEarly {
+                name,
+                span,
+                defined_at,
+            } => Diagnostic::error(msg!["constant ", var(name), " isn't known yet here"])
+                .with_label(Label::primary(span.clone(), "a number is needed here, to check types"))
+                .with_label(Label::secondary(
+                    defined_at.clone(),
+                    "worked out by running code, after types are checked",
+                ))
+                .with_hint("write it as a number, or as arithmetic of constants"),
             TypeError::ConstChanged {
                 name,
                 span,

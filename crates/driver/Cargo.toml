@@ -20,8 +20,9 @@ som_prove = { path = "../compiler/5-prove" }
 som_lower = { path = "../compiler/6-lower" }
 som_mir = { path = "../core/mir" }
 som_borrowcheck = { path = "../compiler/7-borrowcheck" }
-som_optimize = { path = "../compiler/8-optimize" }
-som_codegen = { path = "../compiler/9-codegen" }
+som_comptime = { path = "../compiler/8-comptime" }
+som_optimize = { path = "../compiler/9-optimize" }
+som_codegen = { path = "../compiler/10-codegen" }
 
 [dev-dependencies]
 tempfile = "3"

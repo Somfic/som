@@ -894,6 +894,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "som_comptime"
+version = "0.1.0"
+dependencies = [
+ "som_base",
+ "som_mir",
+]
+
+[[package]]
 name = "som_corpus"
 version = "0.1.0"
 dependencies = [
@@ -911,6 +919,7 @@ dependencies = [
  "som_base",
  "som_borrowcheck",
  "som_codegen",
+ "som_comptime",
  "som_lexer",
  "som_lower",
  "som_mir",

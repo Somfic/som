@@ -49,6 +49,9 @@ pub struct Options {
     /// The file an editor has open: its module is loaded too, even if nothing uses it yet,
     /// so the file is checked as part of the program.
     pub opened: Option<PathBuf>,
+    /// Leave the MIR as lowering made it, once constants are worked out: no folding, and
+    /// nothing unused removed. To see what the program is before the optimizer changes it.
+    pub no_optimize: bool,
 }
 
 /// The folder of the program `file` belongs to: the nearest one around it, its own
@@ -70,6 +73,7 @@ pub enum Error {
     Type(TypeError),
     Prove(som_prove::ProveError),
     Borrow(BorrowError),
+    Comptime(som_comptime::ComptimeError),
 }
 
 impl Error {
@@ -82,6 +86,7 @@ impl Error {
             Error::Type(e) => format!("{e:?}"),
             Error::Prove(e) => format!("{e:?}"),
             Error::Borrow(e) => format!("{e:?}"),
+            Error::Comptime(e) => format!("{e:?}"),
         };
         debug
             .split(|c: char| !c.is_alphanumeric())
@@ -98,6 +103,7 @@ impl Error {
             Error::Type(e) => e.to_diagnostic(),
             Error::Prove(e) => e.to_diagnostic(),
             Error::Borrow(e) => e.to_diagnostic(),
+            Error::Comptime(e) => e.to_diagnostic(),
         }
     }
 }
@@ -218,7 +224,14 @@ fn check_passes(
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Borrow).collect());
     }
-    som_optimize::optimize(&mut mir);
+    // Each `@const` that runs code, worked out by running it.
+    let errors = som_comptime::run(&mut mir);
+    if !errors.is_empty() {
+        return Err(errors.into_iter().map(Error::Comptime).collect());
+    }
+    if !options.no_optimize {
+        som_optimize::optimize(&mut mir);
+    }
     // Tree shaking may have removed every function a library was declared for.
     let used: HashSet<&PathBuf> = mir
         .funcs

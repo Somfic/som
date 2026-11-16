@@ -546,7 +546,7 @@ impl FnBuilder<'_, '_> {
     /// Ends `local`'s scope: drops it, then it stops existing. `som::mem::forget` doesn't
     /// drop what it's given: that's what it's for.
     pub(super) fn end_local(&mut self, local: Local, span: som_base::Span) {
-        let params = self.l.ast.funcs[self.func].params.len();
+        let params = self.param_count();
         if !(self.is_forget() && (1..=params).contains(&local.id)) {
             self.drop_local(local, span.clone());
         }
@@ -555,8 +555,11 @@ impl FnBuilder<'_, '_> {
 
     /// Whether this is `som::mem::forget`.
     fn is_forget(&self) -> bool {
-        let def = self.l.names.func(self.func);
-        &*self.l.ast.funcs[self.func].name.name == "forget"
+        let Some(func) = self.func else {
+            return false;
+        };
+        let def = self.l.names.func(func);
+        &*self.l.ast.funcs[func].name.name == "forget"
             && &*self.l.ast.modules[self.l.names.def(def).module].name == "som::mem"
     }
 

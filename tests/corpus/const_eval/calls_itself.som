@@ -1,0 +1,8 @@
+// expect: error ConstCycle
+
+/// Working out `A` calls `f`, which needs `A`.
+fn f() -> i32 = A + 1;
+
+@const A = f();
+
+fn main() -> i32 = A;

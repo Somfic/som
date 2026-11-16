@@ -1,0 +1,9 @@
+[package]
+name = "som_comptime"
+version = "0.1.0"
+edition = "2024"
+description = "Runs `@const` initializers while compiling, and puts what they give in the program"
+
+[dependencies]
+som_base = { path = "../../core/base" }
+som_mir = { path = "../../core/mir" }

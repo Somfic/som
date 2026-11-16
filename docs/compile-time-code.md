@@ -1,6 +1,7 @@
 # Compile-time code
 
-*Design spec. Status: step 0 done (`@const` syntax); the rest is proposed.*
+*Design spec. Status: steps 0–2 done (`@const`, calls, branches and recursion, in
+`crates/compiler/8-comptime`); the rest is proposed.*
 
 Som code can already be worked out while compiling, but only a little of it: a `const` can be
 literals, operators, casts and other constants, and nothing else. This spec lets **any som
@@ -198,8 +199,8 @@ The relevant parts as they are now:
 | `4-typeck` | `const_number` works a constant out from its AST, for array lengths |
 | `5-prove` | `const_int` does the same again, for facts |
 | `6-lower` | A constant has no value of its own: each use lowers its AST expression again, in place |
-| `8-optimize` | `fold.rs` folds MIR constants, wrapping like the C backend (`-fwrapv`). `shake.rs` drops what nothing uses |
-| `9-codegen` | MIR to C. The C compiler lays out structs |
+| `9-optimize` | `fold.rs` folds MIR constants, wrapping like the C backend (`-fwrapv`). `shake.rs` drops what nothing uses |
+| `10-codegen` | MIR to C. The C compiler lays out structs |
 
 Two things follow from this:
 
@@ -467,7 +468,7 @@ fn main() -> i32 = BUFFER / 1024;
 ```
 *Needs:* calls allowed in `check_const_expr`, initializers and `Pending` in lowering, the
 `som_comptime` crate with call frames, integer arithmetic and `return`, and baking a single
-number. This step runs the whole pipeline end to end.
+number. This step runs the whole pipeline end to end. **Done.**
 
 **Step 2. Branches and recursion.** `step_02_recursion.som`
 ```rust
@@ -475,7 +476,7 @@ fn fib(n: i32) -> i32 = n if n < 2 else fib(n - 1) + fib(n - 2);
 @const FIB_20 = fib(20);
 ```
 *Needs:* the interpreter to follow branches and recursive calls, and the step limit
-(`ConstTooLong`).
+(`ConstTooLong`). **Done.**
 
 **Step 3. Loops, changing locals, and an array as the result.** `step_03_array.som`
 ```rust

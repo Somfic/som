@@ -1,0 +1,7 @@
+// expect: exit 42
+
+fn fib(n: i32) -> i32 = n if n < 2 else fib(n - 1) + fib(n - 2);
+
+@const FIB_20 = fib(20);
+
+fn main() -> i32 = FIB_20 - 6765 + 42;
