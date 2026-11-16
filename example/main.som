@@ -1,8 +1,29 @@
-extern "c";
-fn sum4(v: [i32; 4]) -> i32 {
-    let mut s = 0;
-    @for i in 0..4 { s = s + v[i]; }
-    s
+trait Size {
+    fn bits(&self) -> i32;
 }
 
-c::printf("%d", sum4([1, 2, 3, 4]))
+/// One `impl` for each type: `T` is written as each of them.
+@for T in [u8, u16, u32, i64, 12] {
+    impl Size for T {
+        fn bits(&self) -> i32 = (0 as T).count_bits();
+    }
+}
+
+impl u8 { fn count_bits(self) -> i32 = 8; }
+impl u16 { fn count_bits(self) -> i32 = 16; }
+impl u32 { fn count_bits(self) -> i32 = 32; }
+impl i64 { fn count_bits(self) -> i32 = 64; }
+
+/// Over numbers too: here, one `impl` for each length of array.
+@for N in 1..4 {
+    impl Size for [u8; N] {
+        fn bits(&self) -> i32 = 8 * N;
+    }
+}
+
+fn main() -> i32 {
+    let a: u8 = 1;
+    let b: i64 = 2;
+    let c: [u8; 3] = [0, 0, 0];
+    return a.bits() + b.bits() + c.bits() - 54;
+}

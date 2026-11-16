@@ -179,8 +179,14 @@ impl Parser<'_> {
     /// A file is a list of items, optionally followed by loose statements that
     /// form the body of an implicit `fn main()`.
     pub(crate) fn parse_program(&mut self) {
-        while !self.at_eof() && self.at_item() {
-            self.parse_item();
+        while !self.at_eof() {
+            if self.at_item_for(false) {
+                self.expand_for();
+            } else if self.at_item() {
+                self.parse_item();
+            } else {
+                break;
+            }
         }
         if !self.at_eof() {
             self.parse_implicit_main();
@@ -194,6 +200,10 @@ impl Parser<'_> {
 
         while !self.at_eof() {
             // Items may be interleaved with the statements.
+            if self.at_item_for(false) {
+                self.expand_for();
+                continue;
+            }
             if self.at_item() {
                 self.parse_item();
                 continue;
@@ -312,6 +322,11 @@ impl Parser<'_> {
         let mut consts = Vec::new();
         self.in_impl = true;
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
+            // `@for i in 0..3 { … }` among the methods: each copy written out.
+            if self.at_item_for(true) {
+                self.expand_for();
+                continue;
+            }
             if self.at_where() {
                 self.parse_wheres();
                 continue;

@@ -44,27 +44,23 @@ pub trait Hash {
     fn hash(&self, hasher: &mut Hasher);
 }
 
+// `u8` and `u64` are written as they are: `Hasher::write` takes each.
 impl Hash for u8 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self); } }
-impl Hash for u16 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
-impl Hash for u32 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
 impl Hash for u64 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self); } }
-impl Hash for usize { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
-impl Hash for u128 {
-    fn hash(&self, hasher: &mut Hasher) {
-        hasher.write(*self as u64);
-        hasher.write((*self >> 64) as u64);
+
+@for T in [u16, u32, usize, i8, i16, i32, i64, isize] {
+    impl Hash for T {
+        fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); }
     }
 }
 
-impl Hash for i8 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
-impl Hash for i16 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
-impl Hash for i32 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
-impl Hash for i64 { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
-impl Hash for isize { fn hash(&self, hasher: &mut Hasher) { hasher.write(*self as u64); } }
-impl Hash for i128 {
-    fn hash(&self, hasher: &mut Hasher) {
-        hasher.write(*self as u64);
-        hasher.write((*self >> 64) as u64);
+// Their low 64 bits, then their high 64.
+@for T in [u128, i128] {
+    impl Hash for T {
+        fn hash(&self, hasher: &mut Hasher) {
+            hasher.write(*self as u64);
+            hasher.write((*self >> 64) as u64);
+        }
     }
 }
 

@@ -1,0 +1,11 @@
+// expect: error
+
+@const SIZES = [1, 2];
+
+/// An `@for` around items needs its list written out: it's written out before anything's
+/// worked out.
+@for N in SIZES {
+    fn get() -> i32 = N;
+}
+
+fn main() -> i32 = 0;

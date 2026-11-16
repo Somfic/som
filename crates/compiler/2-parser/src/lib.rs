@@ -2,6 +2,7 @@
 //! expressions, and error recovery at expression, statement and declaration level.
 
 mod error;
+mod expand;
 mod expr;
 mod foreign;
 mod grammar;
@@ -331,12 +332,19 @@ impl Parser<'_> {
             // space before it. On a later line, the gap is where the line ended.
             let after = self.previous_span().after();
             let found = self.current_span();
-            let span = if !self.at_eof() && found.start.line == after.end.line {
+            // A token written in by an `@for` from its list, `12` in `@for T in [u8, 12]`, is
+            // where it's written: it's what's wrong, not a gap after what's before it.
+            let elsewhere = found.source.identifier() != after.source.identifier()
+                || found.start_offset < after.start_offset;
+            let span = if !self.at_eof()
+                && (found.start.line == after.end.line || elsewhere)
+            {
                 found.clone()
             } else {
                 after.clone()
             };
             let fix = match missing {
+                _ if elsewhere => None,
                 // `Circle(r) -> r`: the look-alike written in its place, changed.
                 Some(kind) if let Some(text) = self.look_alike(kind) => Some(Fix::replace(
                     msg!["change ", code(self.peek().to_string()), " to ", code(text)],

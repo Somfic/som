@@ -428,3 +428,23 @@ fn an_if_on_its_own_line_is_a_statement_after_a_missing_semicolon() {
     let errors = insertions("fn f() { let a = get()\n    if a { } }");
     assert_eq!(errors, vec![Some(";".to_string())]);
 }
+
+#[test]
+fn an_item_for_with_a_wrong_element_says_so_at_the_element() {
+    let text = "@for T in [u8, 12] {\n    impl Size for T {}\n}\n";
+    let (_, errors) = som_parser::parse(std::sync::Arc::new(som_base::Source::from_raw(text)));
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    // At the `12` in the list, not after `for` in the body.
+    assert_eq!(&text[errors[0].span.start_offset..][..2], "12");
+}
+
+#[test]
+fn an_item_for_writes_out_one_copy_for_each_element() {
+    let text = "@for T in [u8, u16] {\n    impl Size for T {}\n}\n@for N in 0..3 {\n    impl Size for [u8; N] {}\n}\n";
+    let (ast, errors) = som_parser::parse(std::sync::Arc::new(som_base::Source::from_raw(text)));
+    assert!(errors.is_empty(), "{errors:?}");
+    let impls = (ast.modules[0].items.iter())
+        .filter(|item| matches!(item, som_ast::Item::Impl(_)))
+        .count();
+    assert_eq!(impls, 5);
+}

@@ -1,6 +1,6 @@
 # Compile-time code
 
-*Design spec. Status: steps 0–12 done, in `crates/compiler/8-comptime`: `@const` with
+*Design spec. Status: steps 0–12 done, and step 13's `@for` around items, in `crates/compiler/8-comptime`: `@const` with
 calls, loops, recursion, heap memory and text while compiling; structs, enums, arrays,
 optionals and text as values; constants in impl blocks and function bodies; `@const` as an
 expression; `@assert` and `@fail`; `@const` once per generic instance; and `@for` and `@if`,
@@ -641,6 +641,13 @@ impl<N: usize, T: Copy> Vector<N, T> {
 ```
 *Needs:* `@for` and `@if` at item level, types as values, and the generated items registered
 with resolve after expansion.
+
+`@for` around items is **done**, written out before parsing: each copy of the body's tokens,
+with the name written as that element (a type, or a number of a range), is put where the
+`@for` was and parsed like anything else. Its list has to be written out, `[u8, u16]` or
+`0..4`, since nothing is worked out yet. `std/hash.som` uses it. Not done: `@if N >= 3` in a
+generic impl, which needs [4.6](#46-the-big-question-checking-generics-once-vs-per-instance);
+and names made from the element (`fn twice_{N}`), which is `@ident`.
 
 **Step 14. Reflection.** `step_14_reflection.som`
 ```rust
