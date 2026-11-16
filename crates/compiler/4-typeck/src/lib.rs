@@ -42,6 +42,39 @@ pub fn check_with(ast: &Ast, names: &Names, known: &ConstValues) -> Checked {
     }
 }
 
+/// Checks one instance of generic function `func`, its generic parameters standing for
+/// `args` (`N` for `Ty::Value(3)`): its body, where an `@if N >= 3` is known. The types it
+/// finds are added to `table` (lowering's), so ids already in it stay theirs. Only errors
+/// inside `regions` (the `@if`s checked for each instance) are given: the rest of the body
+/// was checked once, generically.
+pub fn check_instance(
+    ast: &Ast,
+    names: &Names,
+    known: &ConstValues,
+    table: TypeTable,
+    func: Id<Func>,
+    args: &[TypeId],
+    regions: &[som_base::Span],
+) -> (Typed, Vec<TypeError>) {
+    let mut checker = check::Checker::with_table(ast, names, table);
+    checker.known = known.clone();
+    let (typed, errors) = checker.run_instance(func, args);
+    let inside = |error: &TypeError| {
+        let diagnostic = error.to_diagnostic();
+        let Some(label) = diagnostic.labels.iter().find(|l| l.is_primary) else {
+            return false;
+        };
+        let at = &label.span;
+        regions.iter().any(|region| {
+            region.source.identifier() == at.source.identifier()
+                && region.start_offset <= at.start_offset
+                && at.start_offset < region.start_offset + region.length
+        })
+    };
+    let errors = errors.into_iter().filter(|e| inside(e)).collect();
+    (typed, errors)
+}
+
 /// What checking a program gives, with the constants it still needs worked out.
 pub struct Checked {
     pub typed: Typed,
@@ -184,6 +217,10 @@ pub struct Typed {
     settled_ifs: HashMap<Id<Stmt>, bool>,
     /// The values of the constants worked out by running them, that it was checked with.
     const_values: ConstValues,
+    /// `@if`s whose condition is a function's generic parameters: checked for each instance.
+    regions: HashSet<Id<Stmt>>,
+    /// The functions with such an `@if`.
+    per_instance: HashSet<Id<Func>>,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
     /// Method calls on typed pointers → the built-in method they call.
@@ -487,6 +524,26 @@ impl Typed {
     /// What the `for` loop `stmt` goes through.
     /// Whether `@if` `stmt`'s condition holds: `true` for its first branch, `false` for its
     /// `else`. `None` for an `if` decided when the program runs.
+    /// Whether `@if` `stmt` is checked for each instance of its function, not here.
+    pub fn is_region(&self, stmt: Id<Stmt>) -> bool {
+        self.regions.contains(&stmt)
+    }
+
+    /// The `@if`s checked for each instance.
+    pub fn regions(&self) -> impl Iterator<Item = Id<Stmt>> + '_ {
+        self.regions.iter().copied()
+    }
+
+    /// Whether generic function `func` is checked for each instance (it has a region).
+    pub fn is_per_instance(&self, func: Id<Func>) -> bool {
+        self.per_instance.contains(&func)
+    }
+
+    /// The values of the constants worked out by running them, that it was checked with.
+    pub fn const_values(&self) -> &ConstValues {
+        &self.const_values
+    }
+
     /// The value constant `c` was worked out to by running it, if it was.
     pub fn const_value(&self, c: Id<som_ast::Const>) -> Option<ConstValue> {
         self.const_values.get(c)

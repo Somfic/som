@@ -317,8 +317,12 @@ impl Checker<'_> {
             return ty;
         }
         let params = self.impls[index].params.clone();
+        // Checking one instance: what they stand for in it.
         let args: Vec<TypeId> = (self.names.type_params(func).iter().take(params.len()))
-            .map(|&p| self.u.intern(Ty::Param(p)))
+            .map(|&p| match self.bound.get(&p) {
+                Some(&ty) => ty,
+                None => self.u.intern(Ty::Param(p)),
+            })
             .collect();
         if args.len() != params.len() {
             return ty;

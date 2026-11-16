@@ -1,0 +1,12 @@
+// expect: exit 42
+
+/// An `@if` on a generic function's `N`: each instance has the branch its `N` picks.
+fn describe<N: usize>() -> i32 {
+    @if N >= 3 {
+        return 30;
+    } else {
+        return 10;
+    }
+}
+
+fn main() -> i32 = describe<2>() + describe<4>() + 2;

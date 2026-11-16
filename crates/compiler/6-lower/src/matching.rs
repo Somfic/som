@@ -42,7 +42,7 @@ impl FnBuilder<'_, '_> {
             let next = self.new_block();
             let mut bindings = Vec::new();
             self.test_pattern(arm.pattern, place.clone(), matched_ty, next, &mut bindings);
-            let diverges = self.l.typed.diverges(arm.body);
+            let diverges = self.typed.diverges(arm.body);
             self.in_scope(span.clone(), |b| {
                 for binding in bindings {
                     b.bind(binding);
@@ -85,7 +85,7 @@ impl FnBuilder<'_, '_> {
     ) {
         let ast = self.l.ast;
         let span = ast.patterns.span(id).clone();
-        let info = self.l.typed.pattern(id).cloned().unwrap_or_default();
+        let info = self.typed.pattern(id).cloned().unwrap_or_default();
         // A pattern for an optional's value: it has to hold one.
         if info.unwraps {
             let holds = Operand::Copy(place.clone().project(Projection::Field(0)));
@@ -213,7 +213,7 @@ impl FnBuilder<'_, '_> {
     /// Declares the local for a name an arm binds, in the arm's scope, and fills it in.
     fn bind(&mut self, binding: Binding) {
         let Binding { def, place, by_ref } = binding;
-        let ty = self.l.typed.local(def);
+        let ty = self.typed.local(def);
         let ty = self.ty(ty);
         let def_info = self.l.names.def(def);
         let DefKind::Binding(pattern) = def_info.kind else {

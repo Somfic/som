@@ -388,11 +388,30 @@ Two ways to do it:
 
 Phase 3 depends on this choice.
 
-### 4.7 TODO: checking generics per instance
+### 4.7 Checking generics per instance
 
 Decided: option 1 of [4.6](#46-the-big-question-checking-generics-once-vs-per-instance),
-checking per instance only the generic code that needs it. Not started. The plan, in two
-passes:
+checking per instance only the generic code that needs it.
+
+**Done: `@if` on a function's generic value parameters** (`per_instance_*.som`). Checked
+once, generically, an `@if` whose condition is worked out from the function's (or its impl
+block's) value parameters is a *region*: not checked, and the function is checked for each
+instance. Lowering, as it reaches an instance (`describe<2>`), checks it
+(`som_typeck::check_instance`): the program's items again, with the instance's parameters
+standing for what they are, then only that function's body, where `@if N == 2` is known. It
+starts from lowering's type table, which only grows, so the ids lowering has stay theirs and
+it takes the grown table back. Lowering builds the body from what that check found
+(`FnBuilder`'s own `typed`); errors in it, only those inside its regions, are said as the
+instance's, with where it's first used ("in `describe<2>`: …", `Error::InInstance`, whose
+kind is the error's). An instance nothing uses isn't checked. Two `@if`s that between them
+always return aren't known to, checked generically (`region_missing_return.som`).
+
+Not done yet: *pinning* (a region can still change the type of a variable outside it, per
+instance; each instance is checked as a whole, so it's consistent, but the generic check
+doesn't see it); the prover per instance (regions are skipped by the generic prover, so an
+index in one isn't proven: S3); `@for f in T` over a generic type (S4).
+
+The plan, in two passes:
 
 **Pass 1: function bodies.** `@if N >= 3 { … }` and `@if N == 2 { … }` in generic function
 and method bodies, including branches that only type-check or prove for some `N`; `@for` over

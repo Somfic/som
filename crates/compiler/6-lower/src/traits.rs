@@ -248,7 +248,7 @@ impl FnBuilder<'_, '_> {
             .expect("checked: there's an Iterator");
         let next = self.l.trait_method(iterator, "next");
         let def = names.local(stmt).expect("every for loop is resolved");
-        let value_ty = self.l.typed.local(def);
+        let value_ty = self.typed.local(def);
         let value_ty = self.ty(value_ty);
         let bool = self.l.mir.types.bool;
 
@@ -364,8 +364,9 @@ impl FnBuilder<'_, '_> {
         span: Span,
     ) -> Option<Rvalue> {
         // The operands' type: the one not converted to it, as `n` is in `n + " points"`.
-        let converted = |side| self.l.typed.conversion(side).is_some();
-        let through = |side| self.l.typed.is_read_through(side);
+        let typed = self.typed.clone();
+        let converted = |side| typed.conversion(side).is_some();
+        let through = |side| typed.is_read_through(side);
         let side = if converted(lhs) { rhs } else { lhs };
         // A `&string` operand is read through: the operands' type is what it refers to.
         let side_ty = self.expr_ty(side);

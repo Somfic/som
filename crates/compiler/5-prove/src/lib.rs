@@ -203,6 +203,8 @@ impl Prover<'_> {
                     self.expr(*value);
                 }
             }
+            // An `@if` checked for each instance of its function: proven there, not here.
+            Stmt::If { .. } if self.typed.is_region(id) => {}
             // `@if`: only the branch it picks is there, and nothing's checked of the condition
             // as the program runs.
             Stmt::If {

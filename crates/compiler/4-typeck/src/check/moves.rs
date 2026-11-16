@@ -167,6 +167,8 @@ impl Checker<'_> {
                 self.moves_in(*iterable, true);
                 body.iter().for_each(|&s| self.moves_in_stmt(s));
             }
+            // An `@if` checked for each instance: nothing's known of it here.
+            Stmt::If { .. } if self.regions.contains(&id) => {}
             // `@if`: only the branch it picks is there.
             Stmt::If {
                 then, otherwise, ..

@@ -74,6 +74,13 @@ pub enum Error {
     Prove(som_prove::ProveError),
     Borrow(BorrowError),
     Comptime(som_comptime::ComptimeError),
+    /// An error in one instance of a function checked for each instance (`@if N >= 3`):
+    /// `describe<2>`, first used at `used_at`.
+    InInstance {
+        instance: String,
+        used_at: som_base::Span,
+        inner: Box<Error>,
+    },
 }
 
 impl Error {
@@ -87,6 +94,7 @@ impl Error {
             Error::Prove(e) => format!("{e:?}"),
             Error::Borrow(e) => format!("{e:?}"),
             Error::Comptime(e) => format!("{e:?}"),
+            Error::InInstance { inner, .. } => return inner.kind(),
         };
         debug
             .split(|c: char| !c.is_alphanumeric())
@@ -104,6 +112,18 @@ impl Error {
             Error::Prove(e) => e.to_diagnostic(),
             Error::Borrow(e) => e.to_diagnostic(),
             Error::Comptime(e) => e.to_diagnostic(),
+            Error::InInstance {
+                instance,
+                used_at,
+                inner,
+            } => {
+                let mut diagnostic = inner.to_diagnostic();
+                diagnostic.message.0.insert(0, format!("in `{instance}`: ").into());
+                diagnostic.with_label(som_base::Label::secondary(
+                    used_at.clone(),
+                    som_base::msg![som_base::message::code(instance.clone()), " is used here"],
+                ))
+            }
         }
     }
 }
@@ -221,6 +241,32 @@ fn mentions_unknown(mir: &som_mir::Mir) -> bool {
     })
 }
 
+/// Lowers the program, checking each instance of a function checked for each instance as
+/// it's reached: its errors, each saying which instance, if any.
+fn lower_instances(
+    ast: &Ast,
+    names: &som_resolve::Names,
+    typed: &som_typeck::Typed,
+) -> Result<som_mir::Mir, Vec<Error>> {
+    som_lower::lower_checked(ast, names, typed).map_err(|instances| {
+        let mut seen = HashSet::new();
+        let mut errors = Vec::new();
+        for instance in instances {
+            for error in instance.errors {
+                // The same error in another instance, said once.
+                if seen.insert(format!("{error:?}")) {
+                    errors.push(Error::InInstance {
+                        instance: instance.name.clone(),
+                        used_at: instance.used_at.clone(),
+                        inner: Box::new(Error::Type(error)),
+                    });
+                }
+            }
+        }
+        errors
+    })
+}
+
 /// Loads `path` and runs every check, stopping after the first pass that reports errors.
 /// The borrow checker's errors: in `mir`, the program as it's used, and in every generic
 /// function with stand-ins for its type parameters, used or not, so a value used after it's
@@ -306,7 +352,7 @@ fn check_passes(
         return Err(errors.into_iter().map(Error::Prove).collect());
     }
 
-    let mut mir = som_lower::lower(&ast, &names, &typed);
+    let mut mir = lower_instances(&ast, &names, &typed)?;
     let errors = borrow_errors(&ast, &names, &typed, &mir);
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Borrow).collect());
@@ -503,7 +549,13 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
     }
 
     let mir = if errors.is_empty() {
-        let mut mir = som_lower::lower(&ast, &names, &typed);
+        let mut mir = match lower_instances(&ast, &names, &typed) {
+            Ok(mir) => mir,
+            Err(instance_errors) => {
+                errors.extend(instance_errors);
+                som_lower::lower(&ast, &names, &typed)
+            }
+        };
         errors.extend(
             borrow_errors(&ast, &names, &typed, &mir)
                 .into_iter()

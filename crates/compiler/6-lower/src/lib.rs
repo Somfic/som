@@ -20,11 +20,37 @@ use som_resolve::{DefId, DefKind, Names};
 use som_typeck::traits::{ImplInfo, resolve_assoc};
 use som_typeck::{ArrayMethod, Loop, PointerMethod, Receiver, Take, Typed, Value};
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 
 pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
     let mut lowerer = Lowerer::new(ast, names, typed);
     lowerer.run();
     lowerer.mir
+}
+
+/// Lowers the program, checking each instance of a function that's checked for each instance
+/// (`@if N >= 3`) as it's reached: what's wrong in them, if anything, instead of the MIR.
+pub fn lower_checked(
+    ast: &Ast,
+    names: &Names,
+    typed: &Typed,
+) -> Result<Mir, Vec<InstanceErrors>> {
+    let mut lowerer = Lowerer::new(ast, names, typed);
+    lowerer.run();
+    match lowerer.instance_errors.is_empty() {
+        true => Ok(lowerer.mir),
+        false => Err(lowerer.instance_errors),
+    }
+}
+
+/// What checking one instance of a function found wrong, in its `@if`s over its generic
+/// parameters.
+pub struct InstanceErrors {
+    /// The instance: `describe<2>`.
+    pub name: String,
+    /// Where the program first used it.
+    pub used_at: Span,
+    pub errors: Vec<som_typeck::TypeError>,
 }
 
 /// Only what working out constants `consts` runs: each one's initializer, and what it calls,
@@ -67,6 +93,14 @@ struct Lowerer<'a> {
     inits: HashMap<(Id<som_ast::Const>, Owner), FuncId>,
     /// The constants of modules and impl blocks: none of them is in a function.
     item_consts: HashSet<Id<som_ast::Const>>,
+    /// Instances of functions checked for each instance (an `@if N >= 3` in them) → what
+    /// checking that instance found.
+    instance_typed: HashMap<(Id<Func>, Vec<TypeId>), Rc<Typed>>,
+    /// What checking instances found wrong, in them.
+    instance_errors: Vec<InstanceErrors>,
+    /// Where each instance was first asked for, and the statement being lowered now.
+    requested_at: HashMap<FuncId, Span>,
+    at: Option<Span>,
     /// What `@fail` and `@unreachable` call, once it's made: `None` inside if there's no
     /// standard library to say what a failure is.
     failed: Option<Option<FuncId>>,
@@ -89,6 +123,10 @@ impl<'a> Lowerer<'a> {
             queue: Vec::new(),
             inits: HashMap::new(),
             item_consts: HashSet::new(),
+            instance_typed: HashMap::new(),
+            instance_errors: Vec::new(),
+            requested_at: HashMap::new(),
+            at: None,
             failed: None,
             owners: HashMap::new(),
             trait_methods: HashMap::new(),
@@ -119,7 +157,12 @@ impl<'a> Lowerer<'a> {
         self.prepare();
         for (id, func) in self.ast.funcs.iter() {
             let params = self.names.type_params(id).to_vec();
-            if params.is_empty() || func.body.is_none() || self.is_alias(id) {
+            // One checked for each instance has nothing to check generically in its `@if`s.
+            if params.is_empty()
+                || func.body.is_none()
+                || self.is_alias(id)
+                || self.typed.is_per_instance(id)
+            {
                 continue;
             }
             let args = params.iter().map(|&param| self.stand_in(param)).collect();
@@ -205,6 +248,13 @@ impl<'a> Lowerer<'a> {
     fn finish(&mut self) {
         while let Some((func_id, job)) = self.queue.pop() {
             let body = match job {
+                Job::Func(func, type_args)
+                    if self.typed.is_per_instance(func)
+                        && !type_args.is_empty()
+                        && !self.check_instance(func_id, func, &type_args) =>
+                {
+                    unreachable_body(&self.mir.funcs[func_id], self.ast.funcs.span(func))
+                }
                 Job::Func(func, type_args) => FnBuilder::new(self, func, type_args).build(),
                 Job::Init(c, owner) => FnBuilder::for_init(self, c, owner).build_init(c),
             };
@@ -447,6 +497,9 @@ impl<'a> Lowerer<'a> {
         if ast_func.body.is_some() {
             self.queue.push((id, Job::Func(func, type_args.clone())));
         }
+        if let Some(at) = &self.at {
+            self.requested_at.insert(id, at.clone());
+        }
         self.instances.insert(key, id);
         id
     }
@@ -468,7 +521,7 @@ impl<'a> Lowerer<'a> {
         let constant = &self.ast.consts[c];
         let def = self.names.const_def(c);
         let subst = self.owner_subst(owner);
-        let ret = self.typed.expr(constant.value);
+        let ret = self.typed_for(owner).expr(constant.value);
         let ret = subst.apply(&mut self.mir.types, ret);
         self.make_structs_in(ret);
         // One written in place, or run for what it checks, has no name: `@const` is what it's
@@ -497,6 +550,50 @@ impl<'a> Lowerer<'a> {
         // Run even if nothing uses its value: `@assert(…);` in a function.
         self.mir.checks.push(id);
         id
+    }
+
+    /// Checks instance `args` of function `func` (lowered as `id`), whose `@if`s depend on its
+    /// generic parameters: what's found is used to lower it. Whether it's right.
+    fn check_instance(&mut self, id: FuncId, func: Id<Func>, args: &[TypeId]) -> bool {
+        let key = (func, args.to_vec());
+        if self.instance_typed.contains_key(&key) {
+            return true;
+        }
+        let regions: Vec<Span> = (self.typed.regions())
+            .map(|stmt| self.ast.stmts.span(stmt).clone())
+            .collect();
+        let (typed, errors) = som_typeck::check_instance(
+            self.ast,
+            self.names,
+            self.typed.const_values(),
+            self.mir.types.clone(),
+            func,
+            args,
+            &regions,
+        );
+        // Its types were added to lowering's: the ids lowering has are still theirs.
+        self.mir.types = typed.table.clone();
+        if !errors.is_empty() {
+            let used_at = (self.requested_at.get(&id).cloned())
+                .unwrap_or_else(|| self.ast.funcs.span(func).clone());
+            self.instance_errors.push(InstanceErrors {
+                name: self.mir.funcs[id].name.clone(),
+                used_at,
+                errors,
+            });
+            return false;
+        }
+        self.instance_typed.insert(key, Rc::new(typed));
+        true
+    }
+
+    /// What lowering a function, or a constant in one, `owner`, reads what was checked from:
+    /// what checking its instance found, if it's checked for each instance.
+    fn typed_for(&self, owner: &Owner) -> TypedRef<'a> {
+        match owner.as_ref().and_then(|key| self.instance_typed.get(key)) {
+            Some(typed) => TypedRef::Instance(typed.clone()),
+            None => TypedRef::Global(self.typed),
+        }
     }
 
     /// What a generic function instance's parameters stand for: nothing for no instance.
@@ -611,6 +708,52 @@ impl Lowerer<'_> {
     }
 }
 
+/// What's been checked of a body: the program's, or one instance's.
+#[derive(Clone)]
+enum TypedRef<'a> {
+    Global(&'a Typed),
+    Instance(Rc<Typed>),
+}
+
+impl std::ops::Deref for TypedRef<'_> {
+    type Target = Typed;
+
+    fn deref(&self) -> &Typed {
+        match self {
+            TypedRef::Global(typed) => typed,
+            TypedRef::Instance(typed) => typed,
+        }
+    }
+}
+
+/// A body that's never run: an instance with errors, said instead of compiled.
+fn unreachable_body(func: &Function, span: &Span) -> Body {
+    let mut locals = Arena::new();
+    for &ty in std::iter::once(&func.ret).chain(&func.params) {
+        locals.alloc(LocalDecl {
+            ty,
+            name: None,
+            mutable: false,
+            span: span.clone(),
+        });
+    }
+    let mut blocks = Arena::new();
+    blocks.alloc(Block {
+        stmts: Vec::new(),
+        terminator: Terminator {
+            kind: TerminatorKind::Unreachable,
+            span: span.clone(),
+        },
+    });
+    Body {
+        locals,
+        arg_count: func.params.len(),
+        outs: Vec::new(),
+        two_phase: Vec::new(),
+        blocks,
+    }
+}
+
 /// What a queued function's body is lowered from.
 enum Job {
     /// A function, with these type arguments.
@@ -709,6 +852,8 @@ struct FnBuilder<'l, 'a> {
     /// The function instance its generic parameters are of: its own, or for an initializer,
     /// the one its constant is in.
     owner: Owner,
+    /// What was checked of its body: the program's, or its instance's.
+    typed: TypedRef<'a>,
     /// Where it's written.
     span: Span,
     subst: Subst<'a>,
@@ -750,10 +895,12 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         span: Span,
         subst: Subst<'a>,
     ) -> Self {
+        let typed = l.typed_for(&owner);
         let mut builder = FnBuilder {
             l,
             func,
             owner,
+            typed,
             span,
             subst,
             locals: Arena::new(),
@@ -800,6 +947,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let this = self.func.expect("a function's body");
         let func = &ast.funcs[this];
         let span = self.span.clone();
+        self.l.at = Some(span.clone());
         let sig = self.l.typed.func(this);
 
         let ret = self.ty(sig.ret);
@@ -934,7 +1082,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     fn expr_ty(&mut self, expr: Id<Expr>) -> TypeId {
-        let ty = self.l.typed.expr(expr);
+        let ty = self.typed.expr(expr);
         self.ty(ty)
     }
 
@@ -1087,6 +1235,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     fn stmt_inner(&mut self, id: Id<Stmt>, span: Span) {
+        self.l.at = Some(span.clone());
         let ast = self.l.ast;
         match &ast.stmts[id] {
             // A constant is made where it's used, or worked out while compiling.
@@ -1099,7 +1248,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             } => {
                 let value = self.rvalue(*value);
                 let def = self.l.names.local(id).expect("every let is resolved");
-                let ty = self.l.typed.local(def);
+                let ty = self.typed.local(def);
                 let ty = self.ty(ty);
                 let local =
                     self.new_local(ty, Some(name.name.to_string()), *mutable, name.span.clone());
@@ -1222,7 +1371,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             // `@if`: only the branch it picks.
             Stmt::If {
                 then, otherwise, ..
-            } if let Some(holds) = self.l.typed.settled_if(id) => {
+            } if let Some(holds) = self.typed.settled_if(id) => {
                 let branch = if holds { Some(then) } else { otherwise.as_ref() };
                 if let Some(branch) = branch {
                     self.stmts(branch, span);
@@ -1418,7 +1567,6 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     ) {
         let ast = self.l.ast;
         let kind = self
-            .l
             .typed
             .for_loop(stmt)
             .expect("checked: for loops go through something");
@@ -1427,7 +1575,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             .names
             .local(stmt)
             .expect("every for loop is resolved");
-        let value_ty = self.l.typed.local(def);
+        let value_ty = self.typed.local(def);
         let value_ty = self.ty(value_ty);
         let bool = self.l.mir.types.bool;
         let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
@@ -1595,7 +1743,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     ) {
         let ast = self.l.ast;
         let def = (self.l.names.local(stmt)).expect("every for loop is resolved");
-        let value_ty = self.l.typed.local(def);
+        let value_ty = self.typed.local(def);
         let value_ty = self.ty(value_ty);
         // Each copy's value: a number of the range, or an element written out.
         let values: Vec<Result<i128, Id<Expr>>> = match &ast.exprs[iterable] {
@@ -1648,7 +1796,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// known: a literal, a constant, or a value parameter, and arithmetic of those.
     fn settled_int(&mut self, expr: Id<Expr>) -> i128 {
         let ast = self.l.ast;
-        if let Some(n) = self.l.typed.const_number(ast, self.l.names, expr) {
+        if let Some(n) = self.typed.const_number(ast, self.l.names, expr) {
             return n;
         }
         match &ast.exprs[expr] {
@@ -1695,7 +1843,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// expected, a reference to an array becomes one; where an optional is expected, a value
     /// is wrapped in one.
     fn operand(&mut self, expr: Id<Expr>) -> Operand {
-        let typed = self.l.typed;
+        let typed = self.typed.clone();
         if let Some((method, type_args)) = typed.conversion(expr) {
             return self.convert(expr, method, type_args.to_vec());
         }
@@ -1735,7 +1883,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn number(&mut self, expr: Id<Expr>) -> Operand {
         let ty = self.expr_ty(expr);
         // `self * self` of a `&i32`: the numbers it refers to.
-        if self.l.typed.is_read_through(expr) {
+        if self.typed.is_read_through(expr) {
             let Ty::Ref { to, .. } = *self.l.mir.types.get(ty) else {
                 unreachable!("checked: only references are read through")
             };
@@ -1761,7 +1909,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// Evaluates `expr` to a value that can be assigned to a place, made a slice or wrapped in
     /// an optional where that's what's expected.
     fn rvalue(&mut self, expr: Id<Expr>) -> Rvalue {
-        let typed = self.l.typed;
+        let typed = self.typed.clone();
         if typed.conversion(expr).is_some() {
             return Rvalue::Use(self.operand(expr));
         }
@@ -1815,18 +1963,18 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     /// The type `expr` has where it's used: made a slice, or wrapped in an optional.
     fn used_ty(&mut self, expr: Id<Expr>) -> TypeId {
-        let ty = match self.l.typed.sliced_to(expr) {
+        let ty = match self.typed.sliced_to(expr) {
             Some(slice) => self.ty(slice),
             None => self.expr_ty(expr),
         };
         // `&mut T` used as a `&T`.
         let ty = match *self.l.mir.types.get(ty) {
-            Ty::Ref { mutable: true, to } if self.l.typed.is_downgraded(expr) => {
+            Ty::Ref { mutable: true, to } if self.typed.is_downgraded(expr) => {
                 self.l.mir.types.intern(Ty::Ref { mutable: false, to })
             }
             _ => ty,
         };
-        if self.l.typed.is_wrapped(expr) {
+        if self.typed.is_wrapped(expr) {
             self.l.mir.types.intern(Ty::Optional(ty))
         } else {
             ty
@@ -1858,7 +2006,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             }
             Expr::Var(_) => {
                 // Of functions sharing a name, the one the type checker picked.
-                let def = (self.l.typed)
+                let def = (self.typed)
                     .callee(expr, self.l.names)
                     .expect("checked programs are fully resolved");
                 match self.l.names.def(def).kind {
@@ -1898,7 +2046,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         };
                         self.constant(kind, ty)
                     }
-                    _ if self.l.typed.is_narrowed(expr) => {
+                    _ if self.typed.is_narrowed(expr) => {
                         let place = self.place(expr);
                         self.read_at(place, ty, span)
                     }
@@ -2019,7 +2167,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     self.current = block;
                     let value = self.operand(branch);
                     // A branch that never finishes (`{ return 0; }`) doesn't get to the end.
-                    if self.l.typed.diverges(branch) {
+                    if self.typed.diverges(branch) {
                         self.terminate(TerminatorKind::Unreachable, span.clone());
                         continue;
                     }
@@ -2078,7 +2226,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             }
             // Values of a type implementing `Eq` compare with its `eq`.
             Expr::Binary { op, lhs, rhs }
-                if let Some(lang) = self.l.typed.operator_trait(expr)
+                if let Some(lang) = self.typed.operator_trait(expr)
                     && let Some(call) =
                         self.operator_call(expr, lang, *op, *lhs, *rhs, self.span(expr)) =>
             {
@@ -2136,7 +2284,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                     .names
                     .expr(expr)
                     .expect("checked programs are fully resolved");
-                let ty = self.ty(self.l.typed.local(def));
+                let ty = self.ty(self.typed.local(def));
                 let span = name.span.clone();
                 let local = self.new_local(ty, Some(name.name.to_string()), true, span.clone());
                 self.bindings.insert(def, local);
@@ -2188,7 +2336,9 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }
             Expr::Call { args, .. } => {
-                let def = (self.l.typed)
+                // An instance it asks for is first used here.
+                self.l.at = Some(self.span(expr));
+                let def = (self.typed)
                     .callee(expr, self.l.names)
                     .expect("checked programs are fully resolved");
                 match self.l.names.def(def).kind {
@@ -2250,13 +2400,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             }
             Expr::ArrayRepeat { value, .. } => {
                 let operand = self.operand(*value);
-                let len = self.l.typed.count(expr);
+                let len = self.typed.count(expr);
                 let len = self.value_of(len);
                 self.collection(expr, len, |ty| Rvalue::Repeat { ty, operand })
             }
             // `p.resize(n)`: `p = realloc(p, …)`.
             Expr::MethodCall { receiver, args, .. }
-                if self.l.typed.pointer_method(expr) == Some(PointerMethod::Resize) =>
+                if self.typed.pointer_method(expr) == Some(PointerMethod::Resize) =>
             {
                 let place = self.place(*receiver);
                 let ty = self.place_ty(&place);
@@ -2271,7 +2421,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 Rvalue::Use(self.constant(ConstKind::Unit, unit))
             }
             Expr::MethodCall { receiver, args, .. }
-                if let Some(method) = self.l.typed.pointer_method(expr) =>
+                if let Some(method) = self.typed.pointer_method(expr) =>
             {
                 let intrinsic = match method {
                     PointerMethod::Resize => Intrinsic::Resize,
@@ -2294,13 +2444,12 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }
             Expr::MethodCall { receiver, args, .. }
-                if let Some(method) = self.l.typed.array_method(expr) =>
+                if let Some(method) = self.typed.array_method(expr) =>
             {
                 Rvalue::Use(self.array_method(expr, method, *receiver, args))
             }
             Expr::MethodCall { receiver, args, .. } => {
                 let def = self
-                    .l
                     .typed
                     .method(expr)
                     .expect("checked method calls are resolved");
@@ -2310,11 +2459,11 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.call(expr, func, Some(*receiver), args)
             }
             // `items.len` of an array, slice or text.
-            Expr::Field { object, .. } if let Some(method) = self.l.typed.array_method(expr) => {
+            Expr::Field { object, .. } if let Some(method) = self.typed.array_method(expr) => {
                 Rvalue::Use(self.array_method(expr, method, *object, &[]))
             }
             // `list.len`: property `len`, called with `list` as its `self`.
-            Expr::Field { object, .. } if let Some(def) = self.l.typed.method(expr) => {
+            Expr::Field { object, .. } if let Some(def) = self.typed.method(expr) => {
                 let DefKind::Func(func) = self.l.names.def(def).kind else {
                     unreachable!("properties are functions")
                 };
@@ -2329,7 +2478,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn is_prop(&self, expr: Id<Expr>) -> bool {
         match self.l.ast.exprs[expr] {
             Expr::Field { .. } => {
-                self.l.typed.method(expr).is_some() || self.l.typed.array_method(expr).is_some()
+                self.typed.method(expr).is_some() || self.typed.array_method(expr).is_some()
             }
             // `values[i]` of a slice or struct is a place: what its `at` lends.
             Expr::Index { .. } => false,
@@ -2367,14 +2516,14 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn receiver(&mut self, receiver: Id<Expr>) -> (Operand, TypeId, Span) {
         let span = self.span(receiver);
         // `node.total()` of a `#Node`: called on the `&Node` its `get` lends.
-        if self.l.typed.is_shared_read(receiver) {
+        if self.typed.is_shared_read(receiver) {
             let lent = self.shared_get(receiver);
             let ty = self.l.mir.types.get(self.body_local_ty(lent)).clone();
             let lent_ty = self.body_local_ty(lent);
             let Ty::Ref { to, .. } = ty else {
                 unreachable!("`get` lends a reference")
             };
-            return match self.l.typed.receiver(receiver) {
+            return match self.typed.receiver(receiver) {
                 // Taking `self` by value: a copy of what it shares.
                 Some(Receiver::Deref) => {
                     let value = Place::local(lent).project(Projection::Deref);
@@ -2384,7 +2533,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             };
         }
         let ty = self.expr_ty(receiver);
-        match self.l.typed.receiver(receiver) {
+        match self.typed.receiver(receiver) {
             None => (self.operand(receiver), ty, span),
             Some(Receiver::Borrow { mutable }) => {
                 let place = self.place(receiver);
@@ -2940,7 +3089,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     }
 
     fn type_args(&mut self, expr: Id<Expr>) -> Vec<TypeId> {
-        let args = self.l.typed.type_args(expr).to_vec();
+        let args = self.typed.type_args(expr).to_vec();
         args.into_iter().map(|t| self.ty(t)).collect()
     }
 
@@ -3130,7 +3279,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     fn place(&mut self, expr: Id<Expr>) -> Place {
         let place = self.place_of(expr);
-        if self.l.typed.is_narrowed(expr) {
+        if self.typed.is_narrowed(expr) {
             place.project(Projection::Field(1))
         } else {
             place
@@ -3152,13 +3301,12 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             }
             Expr::Field { object, .. } if !self.is_prop(expr) => {
                 let index = self
-                    .l
                     .typed
                     .field(expr)
                     .expect("checked fields are resolved");
                 let mut object_ty = self.expr_ty(*object);
                 // `node.value` of a `#Node`: through the `&Node` its `get` lends.
-                let mut place = if self.l.typed.is_shared_read(*object) {
+                let mut place = if self.typed.is_shared_read(*object) {
                     let lent = self.shared_get(*object);
                     object_ty = self.body_local_ty(lent);
                     Place::local(lent)
@@ -3179,7 +3327,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             }
             // `values[i]` of a slice or struct: what its `at` lends, or `at_mut` where it's
             // changed. The prover checked `i` is below its `len`.
-            Expr::Index { object, index } if let Some(def) = self.l.typed.method(expr) => {
+            Expr::Index { object, index } if let Some(def) = self.typed.method(expr) => {
                 let DefKind::Func(func) = self.l.names.def(def).kind else {
                     unreachable!("methods are functions")
                 };
@@ -3194,7 +3342,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 return Place::local(lent).project(Projection::Deref);
             }
             // `values[0]`: checked to be in bounds.
-            Expr::Index { object, index } if self.l.typed.array_method(expr).is_none() => {
+            Expr::Index { object, index } if self.typed.array_method(expr).is_none() => {
                 let mut place = self.place(*object);
                 // Elements are reachable through one reference.
                 let object_ty = self.expr_ty(*object);

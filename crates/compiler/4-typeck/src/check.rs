@@ -58,6 +58,14 @@ pub(crate) struct Checker<'a> {
     pub(crate) known: crate::ConstValues,
     /// Constants worked out by running code whose values are needed, and aren't known yet.
     needed: Vec<Id<som_ast::Const>>,
+    /// `@if`s whose condition is a function's generic parameters: checked for each instance,
+    /// not here.
+    regions: HashSet<Id<Stmt>>,
+    /// The functions with such a region.
+    per_instance: HashSet<Id<Func>>,
+    /// Checking one instance: what its generic parameters stand for (`N` is `3`, `T` is
+    /// `f32`).
+    bound: HashMap<DefId, TypeId>,
     /// The function being checked: its return type, and where that's written.
     returns: Option<(TypeId, Option<Span>)>,
     /// The next expression inferred is the object of a field access or dereference.
@@ -125,10 +133,15 @@ pub(crate) struct Checker<'a> {
 
 impl<'a> Checker<'a> {
     pub fn new(ast: &'a Ast, names: &'a Names) -> Self {
+        Self::with_table(ast, names, crate::TypeTable::default())
+    }
+
+    /// One whose types are added to `table`, so the ids of the types it has stay theirs.
+    pub fn with_table(ast: &'a Ast, names: &'a Names, table: crate::TypeTable) -> Self {
         let mut checker = Checker {
             ast,
             names,
-            u: Unifier::new(),
+            u: Unifier::with_table(table),
             errors: Vec::new(),
             exprs: vec![None; ast.exprs.len()],
             locals: HashMap::new(),
@@ -153,6 +166,9 @@ impl<'a> Checker<'a> {
             settled_ifs: HashMap::new(),
             known: crate::ConstValues::default(),
             needed: Vec::new(),
+            regions: HashSet::new(),
+            per_instance: HashSet::new(),
+            bound: HashMap::new(),
             returns: None,
             in_place: false,
             deferred_ops: Vec::new(),
@@ -199,7 +215,24 @@ impl<'a> Checker<'a> {
         (typed, errors, needed)
     }
 
+    /// Checks one instance of generic function `func`, its generic parameters standing for
+    /// `args` (as `som_typeck::check_instance` says).
+    pub fn run_instance(mut self, func: Id<Func>, args: &[TypeId]) -> (Typed, Vec<TypeError>) {
+        let params = self.names.type_params(func).to_vec();
+        for (def, &arg) in params.into_iter().zip(args) {
+            self.bound.insert(def, arg);
+        }
+        self.check_items(Some(func));
+        self.finish()
+    }
+
     fn check_program(&mut self) {
+        self.check_items(None);
+    }
+
+    /// Checks the program; or, for an instance, everything about it but its functions' and
+    /// constants' bodies, then only function `only`'s body.
+    fn check_items(&mut self, only: Option<Id<Func>>) {
         let ast = self.ast;
 
         // The types of value parameters, which the types of fields and parameters can use.
@@ -318,19 +351,22 @@ impl<'a> Checker<'a> {
         }
         self.current_func = None;
         // Each with a name: one written in place is checked there, with what's expected of it.
+        // For an instance, as they're used.
         for (id, c) in ast.consts.iter() {
-            if !c.in_place {
+            if !c.in_place && only.is_none() {
                 self.check_const(id);
             }
         }
         for (id, func) in ast.funcs.iter() {
-            if func.body.is_some() {
+            if func.body.is_some() && only.is_none_or(|only| only == id) {
                 self.check_func(id);
                 self.settle(func.name.span.clone());
             }
         }
         // Once bodies are checked: what a function gives can be what its body is.
-        self.check_listeners();
+        if only.is_none() {
+            self.check_listeners();
+        }
         self.current_func = None;
 
         // After the bodies, which decide unwritten return types and what results are used as.
@@ -432,7 +468,7 @@ impl<'a> Checker<'a> {
     /// Whether `expr` is a number known while compiling: a literal, a constant made of them,
     /// or a function's value parameter, `N`, known in each instance.
     fn settled_int(&self, expr: Id<Expr>) -> bool {
-        if self.const_number(expr).is_some() {
+        if self.number(expr).is_some() {
             return true;
         }
         match &self.ast.exprs[expr] {
@@ -469,6 +505,7 @@ impl<'a> Checker<'a> {
         match &self.ast.exprs[expr] {
             Expr::Bool(b) => Some(*b),
             Expr::Not(inner) => self.settled_bool(*inner).map(|b| !b),
+            Expr::Var(_) if let Some(Value::Bool(b)) = self.bound_value(expr) => Some(b),
             Expr::Var(_) => match self.names.def(self.names.expr(expr)?).kind {
                 DefKind::Const(c) => match self.known.get(c) {
                     Some(crate::ConstValue::Bool(b)) => Some(b),
@@ -488,7 +525,7 @@ impl<'a> Checker<'a> {
                             _ => None,
                         };
                     }
-                    let (a, b) = (self.const_number(*lhs)?, self.const_number(*rhs)?);
+                    let (a, b) = (self.number(*lhs)?, self.number(*rhs)?);
                     match op {
                         BinOp::Equals => Some(a == b),
                         BinOp::NotEquals => Some(a != b),
@@ -830,6 +867,8 @@ impl<'a> Checker<'a> {
             loops: self.for_loops,
             settled_ifs: self.settled_ifs,
             const_values: self.known,
+            regions: self.regions,
+            per_instance: self.per_instance,
             patterns: self.patterns,
             receivers: self.receivers,
             callees: self.callees,
@@ -878,6 +917,12 @@ impl<'a> Checker<'a> {
                         span: self.ast.types.span(id).clone(),
                     });
                     Ty::Error
+                }
+                // Checking one instance: what it stands for there.
+                Some((def, DefKind::TypeParam { .. } | DefKind::ImplParam { .. }))
+                    if let Some(&ty) = self.bound.get(&def) =>
+                {
+                    return ty;
                 }
                 Some((
                     def,
@@ -1279,6 +1324,68 @@ impl<'a> Checker<'a> {
         crate::const_number_with(self.ast, self.names, &self.known, expr)
     }
 
+    /// The value a generic value parameter stands for, checking one instance: `N` is `3`.
+    fn bound_value(&self, expr: Id<Expr>) -> Option<Value> {
+        let def = self.names.expr(expr)?;
+        match self.u.table.get(*self.bound.get(&def)?) {
+            Ty::Value(value) => Some(*value),
+            _ => None,
+        }
+    }
+
+    /// The number `expr` is while compiling: `const_number`, and a value parameter bound in
+    /// an instance (`N + 1`).
+    fn number(&self, expr: Id<Expr>) -> Option<i128> {
+        if let Some(n) = self.const_number(expr) {
+            return Some(n);
+        }
+        Some(match &self.ast.exprs[expr] {
+            Expr::Var(_) => match self.bound_value(expr)? {
+                Value::Int(n) => n as i128,
+                Value::Bool(_) => return None,
+            },
+            Expr::Neg(inner) => self.number(*inner)?.checked_neg()?,
+            Expr::Cast { value, .. } => self.number(*value)?,
+            Expr::Binary { op, lhs, rhs } => {
+                let (a, b) = (self.number(*lhs)?, self.number(*rhs)?);
+                match op {
+                    BinOp::Add => a.checked_add(b)?,
+                    BinOp::Subtract => a.checked_sub(b)?,
+                    BinOp::Multiply => a.checked_mul(b)?,
+                    BinOp::Divide => a.checked_div(b)?,
+                    BinOp::Modulo => a.checked_rem(b)?,
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        })
+    }
+
+    /// Whether `expr` is worked out from the function's generic value parameters (and
+    /// literals and constants): `N >= 3`. An `@if` on it is checked for each instance.
+    fn over_params(&self, expr: Id<Expr>) -> bool {
+        fn walk(c: &Checker, expr: Id<Expr>, found: &mut bool) -> bool {
+            match &c.ast.exprs[expr] {
+                Expr::Int(_) | Expr::Bool(_) => true,
+                Expr::Var(_) => match c.names.expr(expr).map(|def| &c.names.def(def).kind) {
+                    Some(DefKind::TypeParam { value: true, .. } | DefKind::ImplParam { value: true, .. }) => {
+                        *found = true;
+                        true
+                    }
+                    Some(DefKind::Const(_)) => true,
+                    _ => false,
+                },
+                Expr::Not(inner) | Expr::Neg(inner) | Expr::Cast { value: inner, .. } => {
+                    walk(c, *inner, found)
+                }
+                Expr::Binary { lhs, rhs, .. } => walk(c, *lhs, found) && walk(c, *rhs, found),
+                _ => false,
+            }
+        }
+        let mut found = false;
+        walk(self, expr, &mut found) && found
+    }
+
     /// Notes that constant `c`'s value is needed here, if it's worked out by running code
     /// and isn't known yet: the program is checked again once it is. Whether it was.
     fn need(&mut self, c: Id<som_ast::Const>) -> bool {
@@ -1384,6 +1491,14 @@ impl<'a> Checker<'a> {
                     && let Some(&value) = self.alias_args.get(&def) =>
             {
                 return value;
+            }
+            // Checking one instance: the number it stands for there.
+            TypeExpr::Named { ref args, .. }
+                if args.is_empty()
+                    && let Some(def) = self.names.ty(id)
+                    && let Some(&ty) = self.bound.get(&def) =>
+            {
+                return ty;
             }
             TypeExpr::Named { ref args, .. }
                 if args.is_empty()
@@ -2226,6 +2341,18 @@ impl<'a> Checker<'a> {
                     }
                     // Made of a constant worked out by running code: checked again once it is.
                     None if self.needs_unknown(*condition) => {}
+                    // `@if N >= 3`: checked for each instance of the function, where `N` is
+                    // known. What's in it can't change what's around it here.
+                    None if self.over_params(*condition) => {
+                        self.regions.insert(id);
+                        if let Some(func) = self.current_func {
+                            self.per_instance.insert(func);
+                        }
+                        self.forget_changed_in(then);
+                        if let Some(otherwise) = otherwise {
+                            self.forget_changed_in(otherwise);
+                        }
+                    }
                     None => self.errors.push(TypeError::NotSettled {
                         what: "an `@if`'s condition",
                         hint: "use literals and constants; a generic function's parameters \

@@ -1,0 +1,11 @@
+// expect: error
+
+/// Two `@if`s on `N` that between them always return: checked once, generically, neither is
+/// known to be taken, so the end of the function can be reached. A return after them, or
+/// one `@if` with an `else`, says so.
+fn pick<N: usize>() -> i32 {
+    @if N > 1 { return 1; }
+    @if N <= 1 { return 2; }
+}
+
+fn main() -> i32 = pick<2>();

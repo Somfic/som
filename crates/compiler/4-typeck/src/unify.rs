@@ -45,9 +45,10 @@ enum Arithmetic {
 }
 
 impl Unifier {
-    pub fn new() -> Self {
+    /// One whose types are added to `table`: the types it has keep their ids.
+    pub fn with_table(table: TypeTable) -> Self {
         Unifier {
-            table: TypeTable::default(),
+            table,
             vars: Vec::new(),
             deferred: Vec::new(),
         }

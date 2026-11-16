@@ -1,0 +1,13 @@
+// expect: exit 1
+
+/// Wrong only for an `N` nothing uses: never checked.
+fn describe<N: usize>() -> i32 {
+    @if N == 2 {
+        let wrong: i32 = "two";
+        return wrong;
+    } else {
+        return 1;
+    }
+}
+
+fn main() -> i32 = describe<3>();

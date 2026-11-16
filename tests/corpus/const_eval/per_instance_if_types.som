@@ -1,0 +1,14 @@
+// expect: exit 7
+
+/// A branch that only type-checks for some `N`: here only for 2, where `[i32; N]` is
+/// `[i32; 2]`.
+fn first_two<N: usize>(v: [i32; N]) -> i32 {
+    @if N == 2 {
+        let pair: [i32; 2] = v;
+        return pair[0] + pair[1];
+    } else {
+        return 0;
+    }
+}
+
+fn main() -> i32 = first_two<2>([3, 4]) + first_two<3>([1, 2, 3]);

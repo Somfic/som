@@ -1,0 +1,13 @@
+// expect: error Mismatch
+
+/// Wrong only in `describe<2>`, where `N == 2`: said as that instance's error.
+fn describe<N: usize>() -> i32 {
+    @if N == 2 {
+        let wrong: i32 = "two";
+        return wrong;
+    } else {
+        return 1;
+    }
+}
+
+fn main() -> i32 = describe<2>();
