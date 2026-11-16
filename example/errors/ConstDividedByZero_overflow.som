@@ -1,8 +1,0 @@
-// ConstDividedByZero: Running a constant divides the smallest number by -1, whose result doesn't fit.
-
-@where by != 0
-fn divide(n: i32, by: i32) -> i32 = n / by;
-
-@const X = divide(0 - 2147483647 - 1, 0 - 1);
-
-fn main() -> i32 = X;

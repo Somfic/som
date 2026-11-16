@@ -1930,7 +1930,11 @@ impl<'a> Checker<'a> {
             {
                 continue;
             }
-            let ret = self.u.shallow(self.sigs[f.id].ret);
+            // A `Self`, or a `Self?`: `File::open` makes one if it can.
+            let mut ret = self.u.shallow(self.sigs[f.id].ret);
+            if let Ty::Optional(inner) = *self.u.get(ret) {
+                ret = self.u.shallow(inner);
+            }
             if !matches!(self.u.get(ret), Ty::Struct(d, _) if *d == def) {
                 continue;
             }

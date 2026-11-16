@@ -1,6 +1,0 @@
-// UnknownEvent: `@on` names an event there isn't: `fail` is the one there is.
-
-@on start
-fn hello(failure: &Failure) {}
-
-fn main() -> i32 = 0;

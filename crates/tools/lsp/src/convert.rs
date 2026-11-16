@@ -148,6 +148,15 @@ pub fn fixes_from_json(diagnostic: &lsp_types::Diagnostic) -> Vec<lsp_types::Cod
 }
 
 /// Convert an LSP position to a byte offset in source text
+/// Where byte `offset` of `text` is, counting columns in characters as `position_to_offset`
+/// does.
+pub fn offset_to_position(text: &str, offset: usize) -> Position {
+    let before = &text[..offset];
+    let line = before.matches('\n').count();
+    let column = before[before.rfind('\n').map_or(0, |i| i + 1)..].chars().count();
+    Position::new(line as u32, column as u32)
+}
+
 pub fn position_to_offset(text: &str, position: &Position) -> Option<usize> {
     let target_line = position.line as usize;
     let target_col = position.character as usize;

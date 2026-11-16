@@ -1,11 +1,6 @@
+let mut file = som::io::File::open("/Users/lucas/som/example/main.som", som::io::FileMode::Read);
+if file == none @unreachable;
 
-struct Struct {
-    hello: bool,
-    bye: i32
+for line in file.lines() {
+    som::io::println(line);
 }
-
-pub fn fields_eq<T>(a: &T, b: &T) -> bool {
-    @for f in T { if a.f != b.f { return false; } }
-    true
-}
-

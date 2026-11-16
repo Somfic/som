@@ -1320,6 +1320,37 @@ impl LanguageServer for SomLanguageServer {
                     ..Default::default()
                 });
             }
+            // `File { ` where `File`'s fields can't all be seen from here: it can't be made
+            // with a literal, so what makes one replaces it, `File::open(…)`.
+            let fields = a.ast.structs[s].fields.len();
+            if (0..fields).any(|i| visibility::hidden_field(&a.ast, &a.names, s, i, viewer).is_some())
+            {
+                let start = path.as_ptr() as usize - cursor.text.as_ptr() as usize;
+                let range = Range::new(
+                    crate::convert::offset_to_position(&cursor.text, start),
+                    crate::convert::offset_to_position(
+                        &cursor.text,
+                        literal_end(&cursor.text, cursor.offset),
+                    ),
+                );
+                for (name, f, method) in constructors(a, s, &visible) {
+                    let label = format!("{path}::{name}");
+                    let snippet = call_snippet(a, f, &label, 0, insert);
+                    items.push(CompletionItem {
+                        label: format!("{label}(…)"),
+                        kind: Some(CompletionItemKind::CONSTRUCTOR),
+                        detail: Some(signature(a, f)),
+                        documentation: markdown(doc_of(a, method)),
+                        filter_text: Some(name.to_string()),
+                        insert_text_format: snippet.as_ref().map(|_| InsertTextFormat::SNIPPET),
+                        text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+                            range,
+                            new_text: snippet.unwrap_or(label),
+                        })),
+                        ..Default::default()
+                    });
+                }
+            }
             return Ok(Some(CompletionResponse::Array(items)));
         } else if let Some(slot) = type_slot(&cursor.text, cursor.offset) {
             // `impl ` lists traits and types, `impl Add for ` types, `<T: ` traits: from the
@@ -1359,14 +1390,12 @@ impl LanguageServer for SomLanguageServer {
                 }
             }
             return Ok(Some(CompletionResponse::Array(items)));
-        } else if let Some(module) = qualifier(&cursor.text, cursor.offset) {
+        } else if let Some(path) = qualifier(&cursor.text, cursor.offset) {
             // `raylib::` lists what's in `raylib`, where its `extern "raylib"` is.
-            let (here, in_scope) = modules_in_scope(a, &cursor.file, cursor.offset);
-            // `io::` after `use som::io;`: a module in scope by its last part too.
-            let named = (a.ast.modules.iter().position(|m| *m.name == *module)).or_else(|| {
-                (in_scope.iter().copied())
-                    .find(|&m| a.ast.modules[m].name.rsplit("::").next() == Some(&*module))
-            });
+            let (here, _) = modules_in_scope(a, &cursor.file, cursor.offset);
+            let named = module_named(a, path, &cursor.file, cursor.offset);
+            // What isn't a module is named by its last part: `Hash` in `som::traits::Hash`.
+            let module = path.rsplit("::").next().unwrap_or(path);
             if let Some(m) = named {
                 if undeclared_library(a, here, m) {
                     return Ok(None);
@@ -1411,7 +1440,7 @@ impl LanguageServer for SomLanguageServer {
                         ..Default::default()
                     });
                 }
-            } else if let Some(s) = find_struct(a, module, &cursor.file, cursor.offset) {
+            } else if let Some(s) = find_struct(a, path, &cursor.file, cursor.offset) {
                 // `Shape::` lists its variants, then its methods.
                 for (i, variant) in a.ast.structs[s].variants().iter().enumerate() {
                     let snippet = variant_snippet(a, s, i, insert);
@@ -2865,17 +2894,21 @@ fn modules_in_scope(a: &Analysis, file: &str, offset: usize) -> (usize, Vec<usiz
     (here, in_scope)
 }
 
+/// The module `path` names from `offset` in `file`: by its whole name, `som::io`, or by
+/// how it ends, for one in scope there: `io` after `use som::io;`.
+fn module_named(a: &Analysis, path: &str, file: &str, offset: usize) -> Option<usize> {
+    (a.ast.modules.iter().position(|m| *m.name == *path)).or_else(|| {
+        let tail = format!("::{path}");
+        (modules_in_scope(a, file, offset).1.into_iter())
+            .find(|&m| a.ast.modules[m].name.ends_with(&*tail))
+    })
+}
+
 /// The struct a literal names: `raylib::Color` in that module, `Color` in the modules
 /// in scope.
 fn find_struct(a: &Analysis, path: &str, file: &str, offset: usize) -> Option<Id<Struct>> {
     let modules = match path.rsplit_once("::") {
-        Some((module, _)) => a
-            .ast
-            .modules
-            .iter()
-            .position(|m| *m.name == *module)
-            .into_iter()
-            .collect(),
+        Some((module, _)) => module_named(a, module, file, offset).into_iter().collect(),
         None => modules_in_scope(a, file, offset).1,
     };
     let name = path.rsplit("::").next().unwrap_or(path);
@@ -2931,6 +2964,43 @@ fn alias_items(
             documentation,
             ..Default::default()
         }],
+    }
+}
+
+/// The functions of struct `s` that make one, giving a `Self` or a `Self?` and taking no
+/// `self`: `File::open`. With each one's name and definition.
+fn constructors<'a>(
+    a: &'a Analysis,
+    s: Id<Struct>,
+    visible: &dyn Fn(DefId) -> bool,
+) -> Vec<(&'a str, Id<Func>, DefId)> {
+    let owner = a.names.strukt(s);
+    let makes = |ty: som_typeck::TypeId| match a.typed.ty(ty) {
+        Ty::Struct(def, _) => *def == owner,
+        Ty::Optional(inner) => matches!(a.typed.ty(*inner), Ty::Struct(def, _) if *def == owner),
+        _ => false,
+    };
+    (a.names.methods_of(owner).into_iter())
+        .filter(|&(_, method)| visible(method))
+        .filter_map(|(name, method)| match a.names.def(method).kind {
+            DefKind::Func(f) => Some((name, f, method)),
+            _ => None,
+        })
+        .filter(|&(_, f, _)| {
+            let takes_self = (a.ast.funcs[f].params.first()).is_some_and(|p| &*p.name.name == "self");
+            !takes_self && makes(a.typed.func(f).ret)
+        })
+        .collect()
+}
+
+/// Where the struct literal the cursor at `offset` is in ends: past its `}` if it's written
+/// with only spaces before it, otherwise at `offset`.
+fn literal_end(text: &str, offset: usize) -> usize {
+    let rest = &text[offset..];
+    let spaces = rest.len() - rest.trim_start_matches([' ', '\t']).len();
+    match rest[spaces..].starts_with('}') {
+        true => offset + spaces + 1,
+        false => offset,
     }
 }
 
@@ -3042,7 +3112,6 @@ fn extern_library(text: &str, offset: usize) -> Option<bool> {
     (spaced && after_extern(rest.trim_end())).then_some(false)
 }
 
-/// The module named right before the word being typed: `raylib` in `raylib::ini`.
 /// In `use som::da`: the path before the part being typed, `som::`; `""` right after `use`.
 fn use_path(text: &str, offset: usize) -> Option<&str> {
     let before = text.get(..offset)?;
@@ -3058,14 +3127,16 @@ fn use_path(text: &str, offset: usize) -> Option<&str> {
     Some(typed)
 }
 
+/// The path right before the word being typed: `raylib` in `raylib::ini`, `som::io::File`
+/// in `som::io::File::op`.
 fn qualifier(text: &str, offset: usize) -> Option<&str> {
     let before = text.get(..offset)?;
     let word = before.trim_end_matches(|c: char| c.is_alphanumeric() || c == '_');
-    let module = word.strip_suffix("::")?;
-    let start = module
-        .rfind(|c: char| !(c.is_alphanumeric() || c == '_'))
+    let path = word.strip_suffix("::")?;
+    let start = path
+        .rfind(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
         .map_or(0, |i| i + 1);
-    Some(&module[start..]).filter(|m| !m.is_empty())
+    Some(&path[start..]).filter(|p| !p.is_empty() && !p.starts_with(':'))
 }
 
 /// Completions for the functions and structs in module `m`, named `module::name` when a
@@ -4597,6 +4668,48 @@ mod tests {
     }
 
     #[test]
+    fn structs_are_found_by_their_whole_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.som");
+        std::fs::write(&main, "use som::io;\nfn main() -> i32 { 0 }\n").unwrap();
+        let a = som_driver::analyze(dir.path(), &som_driver::Options::default());
+        let file = main.to_string_lossy().to_string();
+        // `som::io::File::` by its whole path, and `io::File::` by the module in scope.
+        let whole = find_struct(&a, "som::io::File", &file, 0);
+        assert!(whole.is_some());
+        assert_eq!(find_struct(&a, "io::File", &file, 0), whole);
+        assert_eq!(find_struct(&a, "nope::File", &file, 0), None);
+        // `som::io::File { ` can't be written here, its field being private: `open` makes one.
+        let made: Vec<&str> = (constructors(&a, whole.unwrap(), &|_| true).into_iter())
+            .map(|(name, _, _)| name)
+            .collect();
+        assert_eq!(made, ["open"]);
+    }
+
+    #[test]
+    fn a_for_loop_without_its_body_still_types_what_it_loops_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.som");
+        let text = "fn main() -> i32 {\n    let file = som::io::File::open(\"a\", som::io::FileMode::Read);\n    if file == none @unreachable;\n    for line in file\n    0\n}\n";
+        std::fs::write(&main, text).unwrap();
+        let a = som_driver::analyze(dir.path(), &som_driver::Options::default());
+        let file = main.to_string_lossy().to_string();
+        // `for line in file.`: completed as the dot's left, a `File` once narrowed.
+        let dot = text.find("in file").unwrap() + "in file".len();
+        let receiver = receiver_before(&a, &file, text, dot).unwrap();
+        let owner = struct_of(&a, a.typed.expr(receiver)).unwrap();
+        assert_eq!(&*a.names.def(owner).name, "File");
+    }
+
+    #[test]
+    fn a_literal_ends_past_its_brace() {
+        assert_eq!(literal_end("File { }", 7), 8);
+        assert_eq!(literal_end("File {}", 6), 7);
+        assert_eq!(literal_end("File { ", 7), 7);
+        assert_eq!(literal_end("File { x }", 7), 7);
+    }
+
+    #[test]
     fn constants_complete_with_their_types_and_docs() {
         let dir = std::env::temp_dir().join(format!("som_lsp_consts_{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -4833,12 +4946,14 @@ mod tests {
     }
 
     #[test]
-    fn qualifier_is_the_module_before_the_word() {
+    fn qualifier_is_the_path_before_the_word() {
         fn at_end(text: &str) -> Option<&str> {
             qualifier(text, text.len())
         }
         assert_eq!(at_end("    raylib::ini"), Some("raylib"));
         assert_eq!(at_end("(raylib::"), Some("raylib"));
+        assert_eq!(at_end("= som::io::File::op"), Some("som::io::File"));
+        assert_eq!(at_end("(io::File::"), Some("io::File"));
         assert_eq!(at_end("    rayl"), None);
         assert_eq!(at_end("::x"), None);
     }
