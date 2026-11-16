@@ -1,0 +1,17 @@
+// expect: exit 42
+
+extern "c";
+
+/// Text's bytes and length, read while compiling.
+fn vowels(text: string) -> i32 {
+    let mut count = 0;
+    for byte in text.bytes {
+        if byte == 97 || byte == 101 || byte == 105 || byte == 111 || byte == 117 { count = count + 1; }
+    }
+    count
+}
+
+@const VOWELS = vowels("compile time evaluation");
+@const LENGTH = "compile time evaluation".len;
+
+fn main() -> i32 = VOWELS * 2 + LENGTH as i32 - 3;

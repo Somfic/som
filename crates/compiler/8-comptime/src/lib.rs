@@ -5,15 +5,20 @@
 //! interpreter over MIR: each function call a frame of locals, each value a [`Value`]. It
 //! does what the program would do when it runs: integers wrap to their type's width, `f32`
 //! rounds to `f32` at every step, and `usize` is the host's width, like the C backend's.
+//! Memory it allocates is bytes, laid out as C lays them out (see [`memory`]), and the C
+//! functions the standard library's text uses (`memcpy`, `strlen`, `snprintf`, …) are done
+//! here, in Rust.
 
 mod error;
+mod memory;
+mod printf;
 
 pub use error::{ComptimeError, STEP_LIMIT, Working};
 
+use memory::{Byte, POINTER, Unreadable, decode, encode, layout};
 use som_base::Span;
 use som_mir::*;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 /// Works out every initializer the program uses, and puts their values in its place. If
 /// one can't be worked out, says why, and leaves the program as it was.
@@ -95,21 +100,21 @@ impl State<'_> {
         };
         let result = machine.run(init);
         let trace = machine.trace();
+        // Its value, while the memory it might point to is still there.
+        let result = result.map(|value| machine.bake(&value, mir.funcs[init].ret));
         self.running.pop();
         let result = match result {
-            Ok(value) => match bake(mir, &value, mir.funcs[init].ret) {
-                Ok(kind) => Some(kind),
-                Err((what, at)) => {
-                    let name = const_name(mir, init);
-                    self.errors.push(ComptimeError::ConstHoldsMemory {
-                        part: (!at.is_empty()).then(|| format!("{name}{}", at.concat())),
-                        name,
-                        what,
-                        span: mir.funcs[init].span.clone(),
-                    });
-                    None
-                }
-            },
+            Ok(Ok(kind)) => Some(kind),
+            Ok(Err((what, at))) => {
+                let name = const_name(mir, init);
+                self.errors.push(ComptimeError::ConstHoldsMemory {
+                    part: (!at.is_empty()).then(|| format!("{name}{}", at.concat())),
+                    name,
+                    what,
+                    span: mir.funcs[init].span.clone(),
+                });
+                None
+            }
             Err(Stop::Report(fault, span)) => {
                 self.errors.push(fault.into_error(span, trace));
                 None
@@ -128,16 +133,14 @@ fn const_name(mir: &Mir, init: FuncId) -> String {
 }
 
 /// A value while compiling.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 enum Value {
-    /// A local before it's assigned, or after its scope ends.
+    /// A local before it's assigned, or after its scope ends; memory never written.
     Uninit,
     Int(i128),
     Float(f64),
     Bool(bool),
     Unit,
-    /// A text literal: its text, and the type it was written as.
-    Str(Rc<str>),
     Func(FuncId),
     /// A struct's, enum's, array's, optional's or range's parts, in order.
     Agg(Vec<Value>),
@@ -153,10 +156,12 @@ enum Value {
     },
 }
 
-/// Where a value is: a local or a heap slot, then a path through its parts.
+/// Where a value is: a local, then a path through its parts; or a byte in the heap.
 #[derive(Clone, Debug, PartialEq)]
 struct Loc {
     root: Root,
+    /// For a local, the parts on the way to it. Empty in the heap, where the offset says
+    /// where it is.
     path: Vec<usize>,
 }
 
@@ -164,8 +169,8 @@ struct Loc {
 enum Root {
     /// A frame's local.
     Local { frame: usize, local: Local },
-    /// Element `index` of allocation `alloc` in the heap.
-    Heap { alloc: usize, index: usize },
+    /// Byte `offset` of allocation `alloc`.
+    Heap { alloc: usize, offset: usize },
 }
 
 impl Loc {
@@ -176,16 +181,11 @@ impl Loc {
         }
     }
 
-    /// `n` elements on: the next ones in its allocation, or in its array.
-    fn offset(&self, n: usize, span: &Span) -> Result<Loc, Stop> {
-        let mut loc = self.clone();
-        match (&mut loc.root, loc.path.last_mut()) {
-            (_, Some(last)) => *last += n,
-            (Root::Heap { index, .. }, None) => *index += n,
-            (Root::Local { .. }, None) if n == 0 => {}
-            (Root::Local { .. }, None) => return out_of_bounds(span),
+    fn heap(alloc: usize, offset: usize) -> Loc {
+        Loc {
+            root: Root::Heap { alloc, offset },
+            path: Vec::new(),
         }
-        Ok(loc)
     }
 }
 
@@ -264,8 +264,8 @@ struct Frame {
     block: BlockId,
     /// The next statement in `block` to run.
     stmt: usize,
-    /// Where what it returns goes, in the frame that called it.
-    dest: Option<Loc>,
+    /// Where what it returns goes, in the frame that called it, and its type.
+    dest: Option<(Loc, TypeId)>,
     /// Where it was called.
     call_span: Span,
 }
@@ -275,20 +275,16 @@ struct Machine<'s, 'm> {
     state: &'s mut State<'m>,
     frames: Vec<Frame>,
     steps: u64,
-    /// Memory allocated while running: each allocation's elements, `None` once it's freed.
-    heap: Vec<Option<Vec<Value>>>,
+    /// Memory allocated while running: each allocation's bytes, `None` once it's freed.
+    heap: Vec<Option<Vec<Byte>>>,
 }
+
+/// What can't be kept of a constant's value, and where in it: `[".mem", ".ptr"]`.
+type Unkeepable = (&'static str, Vec<String>);
 
 impl Machine<'_, '_> {
     fn mir(&self) -> &Mir {
         self.state.mir
-    }
-
-    fn body(&self, func: FuncId) -> &Body {
-        self.mir().funcs[func]
-            .body
-            .as_ref()
-            .expect("only functions with bodies are called")
     }
 
     /// How running got where it is, from the innermost call out: each call, then the
@@ -360,7 +356,7 @@ impl Machine<'_, '_> {
                     let value = frame.locals[RETURN.id].clone();
                     match frame.dest {
                         _ if self.frames.is_empty() => return Ok(value),
-                        Some(dest) => *self.slot(&dest, span)? = value,
+                        Some((dest, ty)) => self.write(&dest, ty, value, span)?,
                         None => {}
                     }
                 }
@@ -382,13 +378,20 @@ impl Machine<'_, '_> {
         &mut self,
         func: FuncId,
         args: Vec<Value>,
-        dest: Option<Loc>,
+        dest: Option<(Loc, TypeId)>,
         span: Span,
     ) -> Result<(), Stop> {
         let function = &self.mir().funcs[func];
         let Some(body) = &function.body else {
             let name = function.link_name.clone().unwrap_or(function.name.clone());
-            return Err(Stop::Report(Fault::CallsExtern(name), span));
+            // One of C's that's done here, or one that only exists when the program runs.
+            let Some(value) = self.native(&name, &args, &span)? else {
+                return Err(Stop::Report(Fault::CallsExtern(name), span));
+            };
+            if let Some((dest, ty)) = dest {
+                self.write(&dest, ty, value, &span)?;
+            }
+            return Ok(());
         };
         if self.frames.len() >= DEPTH_LIMIT {
             return Err(Stop::Report(Fault::TooLong, span));
@@ -421,9 +424,8 @@ impl Machine<'_, '_> {
             }
             StatementKind::Assign(place, rvalue) => {
                 let value = self.rvalue(rvalue, span)?;
-                let dest = self.loc(place, span)?;
-                *self.slot(&dest, span)? = value;
-                Ok(())
+                let (dest, ty) = self.loc(place, span)?;
+                self.write(&dest, ty, value, span)
             }
             StatementKind::StorageLive(local) | StatementKind::StorageDead(local) => {
                 self.frames[top].locals[local.id] = Value::Uninit;
@@ -435,7 +437,7 @@ impl Machine<'_, '_> {
                 {
                     return Ok(());
                 }
-                let at = self.loc(place, span)?;
+                let (at, _) = self.loc(place, span)?;
                 self.push_frame(*glue, vec![Value::Ref(at)], None, span.clone())
             }
         }
@@ -443,131 +445,258 @@ impl Machine<'_, '_> {
 
     // --- Places ---
 
-    /// Where `place` is, in the innermost frame.
-    fn loc(&self, place: &Place, span: &Span) -> Result<Loc, Stop> {
+    /// Where `place` is, in the innermost frame, and its type.
+    fn loc(&self, place: &Place, span: &Span) -> Result<(Loc, TypeId), Stop> {
         let frame = self.frames.len() - 1;
+        let mir = self.mir();
+        let body = mir.funcs[self.frames[frame].func]
+            .body
+            .as_ref()
+            .expect("a body");
+        let mut ty = body.locals[place.local].ty;
         let mut loc = Loc::local(frame, place.local);
         // Just past a slice's `*`: an index counts from where its elements start.
         let mut in_slice = false;
-        for projection in &place.projection {
+        for &projection in &place.projection {
+            let projected = mir.project(ty, projection).expect("checked places");
             match projection {
-                Projection::Field(i) => loc.path.push(*i),
+                Projection::Field(i) => loc = self.part(loc, ty, i, span)?,
                 Projection::Index(local) => {
                     let i = count(&self.frames[frame].locals[local.id], span)?;
-                    match in_slice {
-                        true => loc = loc.offset(i, span)?,
-                        false => loc.path.push(i),
-                    }
+                    loc = match in_slice {
+                        true => self.step(&loc, i, projected, span)?,
+                        false => self.part(loc, ty, i, span)?,
+                    };
                 }
-                Projection::Deref => match self.read(&loc, span)? {
+                Projection::Deref => match self.read(&loc, ty, span)? {
                     Value::Ref(target) => loc = target,
                     Value::Slice {
                         start: Some(start), ..
                     } => {
                         loc = start;
                         in_slice = true;
+                        ty = projected;
                         continue;
                     }
                     Value::Null | Value::Uninit | Value::Slice { start: None, .. } => {
                         return out_of_bounds(span);
                     }
-                    _ => return unsupported("text's bytes", span),
+                    _ => return unsupported("this kind of reference", span),
                 },
             }
+            ty = projected;
             in_slice = false;
+        }
+        Ok((loc, ty))
+    }
+
+    /// Part `i` of the value of type `ty` at `loc`: a field, or an array's element.
+    fn part(&self, mut loc: Loc, ty: TypeId, i: usize, span: &Span) -> Result<Loc, Stop> {
+        match &mut loc.root {
+            Root::Local { .. } => loc.path.push(i),
+            Root::Heap { offset, .. } => match layout(self.mir(), ty) {
+                Some(layout) if i < layout.parts.len() => *offset += layout.parts[i].1,
+                Some(_) => return out_of_bounds(span),
+                None => return unsupported("memory holding a value of this type", span),
+            },
         }
         Ok(loc)
     }
 
-    /// The value a location starts from: a local, or a heap slot.
-    fn root(&self, root: &Root, span: &Span) -> Result<&Value, Stop> {
-        match root {
-            Root::Local { frame, local } => Ok(&self.frames[*frame].locals[local.id]),
-            Root::Heap { alloc, index } => match self.heap.get(*alloc) {
-                Some(Some(elements)) => {
-                    elements.get(*index).map_or_else(|| out_of_bounds(span), Ok)
+    /// `n` elements of type `element` on from `loc`: in its allocation, or its array.
+    fn step(&self, loc: &Loc, n: usize, element: TypeId, span: &Span) -> Result<Loc, Stop> {
+        let mut loc = loc.clone();
+        match (&mut loc.root, loc.path.last_mut()) {
+            (Root::Heap { offset, .. }, _) => match layout(self.mir(), element) {
+                Some(layout) => *offset += n * layout.size,
+                None => return unsupported("memory holding a value of this type", span),
+            },
+            (_, Some(last)) => *last += n,
+            (Root::Local { .. }, None) if n == 0 => {}
+            (Root::Local { .. }, None) => return out_of_bounds(span),
+        }
+        Ok(loc)
+    }
+
+    /// The bytes of allocation `alloc` from `offset`, `size` of them.
+    fn bytes(
+        &self,
+        alloc: usize,
+        offset: usize,
+        size: usize,
+        span: &Span,
+    ) -> Result<&[Byte], Stop> {
+        match self.heap.get(alloc) {
+            Some(Some(bytes)) if offset + size <= bytes.len() => Ok(&bytes[offset..offset + size]),
+            _ => out_of_bounds(span),
+        }
+    }
+
+    /// The value of type `ty` at `loc`.
+    fn read(&self, loc: &Loc, ty: TypeId, span: &Span) -> Result<Value, Stop> {
+        match &loc.root {
+            Root::Local { frame, local } => {
+                let mut value = &self.frames[*frame].locals[local.id];
+                for &i in &loc.path {
+                    value = match (value, i) {
+                        (Value::Agg(parts), _) => parts.get(i).unwrap_or(&Value::Uninit),
+                        (Value::Uninit, _) => &Value::Uninit,
+                        // A slice's reference holds where its elements start, and how many.
+                        (Value::Slice { start, .. }, 0) => {
+                            return Ok(start.clone().map_or(Value::Null, Value::Ref));
+                        }
+                        (Value::Slice { len, .. }, 1) => return Ok(Value::Int(*len as i128)),
+                        _ => return unsupported("this kind of value's parts", span),
+                    };
+                }
+                Ok(value.clone())
+            }
+            Root::Heap { alloc, offset } => {
+                let Some(layout) = layout(self.mir(), ty) else {
+                    return unsupported("memory holding a value of this type", span);
+                };
+                let bytes = self.bytes(*alloc, *offset, layout.size, span)?;
+                decode(self.mir(), bytes, ty).or_else(|e| match e {
+                    Unreadable::Type => unsupported("memory holding a value of this type", span),
+                    Unreadable::Pointer => unsupported("a pointer's bytes as something else", span),
+                })
+            }
+        }
+    }
+
+    /// Puts `value`, of type `ty`, at `loc`.
+    fn write(&mut self, loc: &Loc, ty: TypeId, value: Value, span: &Span) -> Result<(), Stop> {
+        match &loc.root {
+            Root::Local { frame, local } => {
+                let mut slot = &mut self.frames[*frame].locals[local.id];
+                for &i in &loc.path {
+                    if matches!(slot, Value::Uninit) {
+                        *slot = Value::Agg(Vec::new());
+                    }
+                    slot = match slot {
+                        Value::Agg(parts) => {
+                            if parts.len() <= i {
+                                parts.resize(i + 1, Value::Uninit);
+                            }
+                            &mut parts[i]
+                        }
+                        _ => return unsupported("changing part of a slice's reference", span),
+                    };
+                }
+                *slot = value;
+                Ok(())
+            }
+            &Root::Heap { alloc, offset } => {
+                let Some(bytes) = encode(self.mir(), &value, ty) else {
+                    return unsupported("memory holding a value of this type", span);
+                };
+                match self.heap.get_mut(alloc) {
+                    Some(Some(memory)) if offset + bytes.len() <= memory.len() => {
+                        memory[offset..offset + bytes.len()].clone_from_slice(&bytes);
+                        Ok(())
+                    }
+                    _ => out_of_bounds(span),
+                }
+            }
+        }
+    }
+
+    /// A new allocation of `bytes`: where it starts.
+    fn allocate(&mut self, bytes: Vec<Byte>) -> Loc {
+        self.heap.push(Some(bytes));
+        Loc::heap(self.heap.len() - 1, 0)
+    }
+
+    /// Byte `n` on from `loc`. In a local, that's element `n` of an array of bytes.
+    fn byte(&self, loc: &Loc, n: usize, span: &Span) -> Result<Byte, Stop> {
+        match &loc.root {
+            &Root::Heap { alloc, offset } => Ok(self.bytes(alloc, offset + n, 1, span)?[0].clone()),
+            Root::Local { .. } => {
+                let at = self.step(loc, n, self.mir().types.u8, span)?;
+                match self.read(&at, self.mir().types.u8, span)? {
+                    Value::Int(b) => Ok(Byte::Data(b as u8)),
+                    Value::Uninit => Ok(Byte::Uninit),
+                    _ => unsupported("this kind of value as bytes", span),
+                }
+            }
+        }
+    }
+
+    fn set_byte(&mut self, loc: &Loc, n: usize, byte: Byte, span: &Span) -> Result<(), Stop> {
+        match &loc.root {
+            &Root::Heap { alloc, offset } => match self.heap.get_mut(alloc) {
+                Some(Some(memory)) if offset + n < memory.len() => {
+                    memory[offset + n] = byte;
+                    Ok(())
                 }
                 _ => out_of_bounds(span),
             },
-        }
-    }
-
-    fn read(&self, loc: &Loc, span: &Span) -> Result<Value, Stop> {
-        let mut value = self.root(&loc.root, span)?;
-        for &i in &loc.path {
-            value = match (value, i) {
-                (Value::Agg(parts), _) => parts.get(i).unwrap_or(&Value::Uninit),
-                (Value::Uninit, _) => &Value::Uninit,
-                // A slice's reference holds where its elements start, and how many.
-                (Value::Slice { start, .. }, 0) => {
-                    return Ok(start.clone().map_or(Value::Null, Value::Ref));
-                }
-                (Value::Slice { len, .. }, 1) => return Ok(Value::Int(*len as i128)),
-                _ => return unsupported("text's bytes", span),
-            };
-        }
-        Ok(value.clone())
-    }
-
-    /// The value at `loc`, to change: the parts on the way are made if they aren't yet.
-    fn slot(&mut self, loc: &Loc, span: &Span) -> Result<&mut Value, Stop> {
-        let mut value = match &loc.root {
-            Root::Local { frame, local } => &mut self.frames[*frame].locals[local.id],
-            Root::Heap { alloc, index } => match self.heap.get_mut(*alloc) {
-                Some(Some(elements)) if *index < elements.len() => &mut elements[*index],
-                _ => return out_of_bounds(span),
-            },
-        };
-        for &i in &loc.path {
-            if matches!(value, Value::Uninit) {
-                *value = Value::Agg(Vec::new());
+            Root::Local { .. } => {
+                let u8 = self.mir().types.u8;
+                let at = self.step(loc, n, u8, span)?;
+                let value = match byte {
+                    Byte::Data(b) => Value::Int(b as i128),
+                    Byte::Uninit => Value::Uninit,
+                    Byte::Ptr(..) => return unsupported("a pointer's bytes in a local", span),
+                };
+                self.write(&at, u8, value, span)
             }
-            value = match value {
-                Value::Agg(parts) => {
-                    if parts.len() <= i {
-                        parts.resize(i + 1, Value::Uninit);
-                    }
-                    &mut parts[i]
-                }
-                _ => return unsupported("changing part of a slice's reference", span),
-            };
         }
-        Ok(value)
     }
 
-    /// What intrinsic `intrinsic` gives, given its arguments: a pointer, then the rest.
+    /// The bytes of C text at `loc`, up to its zero byte.
+    fn c_text(&self, loc: &Loc, span: &Span) -> Result<Vec<u8>, Stop> {
+        let mut text = Vec::new();
+        loop {
+            match self.byte(loc, text.len(), span)? {
+                Byte::Data(0) => return Ok(text),
+                Byte::Data(b) => text.push(b),
+                _ => return unsupported("text that isn't bytes", span),
+            }
+        }
+    }
+
+    /// `n` bytes from `loc`, as data.
+    fn data(&self, loc: &Loc, n: usize, span: &Span) -> Result<Vec<u8>, Stop> {
+        (0..n)
+            .map(|i| match self.byte(loc, i, span)? {
+                Byte::Data(b) => Ok(b),
+                Byte::Uninit => unsupported("memory before it's written", span),
+                Byte::Ptr(..) => unsupported("a pointer's bytes as data", span),
+            })
+            .collect()
+    }
+
+    /// What intrinsic `intrinsic` gives, given its arguments: a pointer to `element`s, then
+    /// the rest.
     fn intrinsic(
         &mut self,
         intrinsic: Intrinsic,
+        element: TypeId,
         args: Vec<Value>,
         span: &Span,
     ) -> Result<Value, Stop> {
         let p = pointer(&args[0], span)?;
+        let size = match layout(self.mir(), element) {
+            Some(layout) => layout.size,
+            None => return unsupported("memory holding a value of this type", span),
+        };
         // The `i`th element on from where `p` points.
-        let at = |i: usize| match &p {
-            Some(loc) => loc.offset(i, span),
+        let at = |m: &Self, i: usize| match &p {
+            Some(loc) => m.step(loc, i, element, span),
             None => out_of_bounds(span),
         };
         Ok(match intrinsic {
             Intrinsic::Resize => {
-                let size = count(&args[1], span)?;
+                let bytes = count(&args[1], span)? * size;
                 match &p {
-                    None => {
-                        self.heap.push(Some(vec![Value::Uninit; size]));
-                        Value::Ref(Loc {
-                            root: Root::Heap {
-                                alloc: self.heap.len() - 1,
-                                index: 0,
-                            },
-                            path: Vec::new(),
-                        })
-                    }
+                    None => Value::Ref(self.allocate(vec![Byte::Uninit; bytes])),
                     Some(Loc {
-                        root: Root::Heap { alloc, index: 0 },
-                        path,
-                    }) if path.is_empty() => {
+                        root: Root::Heap { alloc, offset: 0 },
+                        ..
+                    }) => {
                         match self.heap.get_mut(*alloc) {
-                            Some(Some(elements)) => elements.resize(size, Value::Uninit),
+                            Some(Some(memory)) => memory.resize(bytes, Byte::Uninit),
                             _ => return out_of_bounds(span),
                         }
                         args[0].clone()
@@ -579,9 +708,9 @@ impl Machine<'_, '_> {
                 match &p {
                     None => {}
                     Some(Loc {
-                        root: Root::Heap { alloc, index: 0 },
-                        path,
-                    }) if path.is_empty() => match self.heap.get_mut(*alloc) {
+                        root: Root::Heap { alloc, offset: 0 },
+                        ..
+                    }) => match self.heap.get_mut(*alloc) {
                         Some(slot @ Some(_)) => *slot = None,
                         _ => return out_of_bounds(span),
                     },
@@ -589,13 +718,16 @@ impl Machine<'_, '_> {
                 }
                 Value::Unit
             }
-            Intrinsic::Read => self.read(&at(count(&args[1], span)?)?, span)?,
+            Intrinsic::Read => {
+                let loc = at(self, count(&args[1], span)?)?;
+                self.read(&loc, element, span)?
+            }
             Intrinsic::Write => {
-                let loc = at(count(&args[1], span)?)?;
-                *self.slot(&loc, span)? = args[2].clone();
+                let loc = at(self, count(&args[1], span)?)?;
+                self.write(&loc, element, args[2].clone(), span)?;
                 Value::Unit
             }
-            Intrinsic::Offset => Value::Ref(at(count(&args[1], span)?)?),
+            Intrinsic::Offset => Value::Ref(at(self, count(&args[1], span)?)?),
             Intrinsic::View => Value::Slice {
                 start: p.clone(),
                 len: count(&args[1], span)?,
@@ -604,13 +736,78 @@ impl Machine<'_, '_> {
         })
     }
 
+    /// C function `name`, done here: its result, or `None` if it isn't one of these.
+    fn native(&mut self, name: &str, args: &[Value], span: &Span) -> Result<Option<Value>, Stop> {
+        let to = |value: &Value| match pointer(value, span)? {
+            Some(loc) => Ok(loc),
+            None => out_of_bounds(span),
+        };
+        Ok(Some(match name {
+            "memcpy" | "memmove" => {
+                let (dst, src, n) = (to(&args[0])?, to(&args[1])?, count(&args[2], span)?);
+                // All read first: they can overlap.
+                let bytes = (0..n)
+                    .map(|i| self.byte(&src, i, span))
+                    .collect::<Result<Vec<_>, _>>()?;
+                for (i, byte) in bytes.into_iter().enumerate() {
+                    self.set_byte(&dst, i, byte, span)?;
+                }
+                args[0].clone()
+            }
+            "memset" => {
+                let (dst, n) = (to(&args[0])?, count(&args[2], span)?);
+                let Value::Int(c) = args[1] else {
+                    return unsupported("this byte", span);
+                };
+                for i in 0..n {
+                    self.set_byte(&dst, i, Byte::Data(c as u8), span)?;
+                }
+                args[0].clone()
+            }
+            "memcmp" => {
+                let n = count(&args[2], span)?;
+                let a = self.data(&to(&args[0])?, n, span)?;
+                let b = self.data(&to(&args[1])?, n, span)?;
+                Value::Int(a.cmp(&b) as i128)
+            }
+            "strlen" => Value::Int(self.c_text(&to(&args[0])?, span)?.len() as i128),
+            "snprintf" => {
+                let (size, format) = (count(&args[1], span)?, self.c_text(&to(&args[2])?, span)?);
+                let mut rest = Vec::new();
+                for arg in &args[3..] {
+                    rest.push(match arg {
+                        Value::Int(n) => printf::Arg::Int(*n),
+                        Value::Bool(b) => printf::Arg::Int(*b as i128),
+                        Value::Float(x) => printf::Arg::Float(*x),
+                        Value::Ref(loc) => printf::Arg::Text(self.c_text(loc, span)?),
+                        _ => return unsupported("this argument to `snprintf`", span),
+                    });
+                }
+                let Some(text) = printf::format(&format, &rest) else {
+                    return unsupported("this `snprintf` format", span);
+                };
+                // As much as fits, then the zero byte.
+                if size > 0 {
+                    let dst = to(&args[0])?;
+                    let shown = text.len().min(size - 1);
+                    for (i, &b) in text[..shown].iter().enumerate() {
+                        self.set_byte(&dst, i, Byte::Data(b), span)?;
+                    }
+                    self.set_byte(&dst, shown, Byte::Data(0), span)?;
+                }
+                Value::Int(text.len() as i128)
+            }
+            _ => return Ok(None),
+        }))
+    }
+
     // --- Values ---
 
     fn operand(&mut self, op: &Operand, span: &Span) -> Result<Value, Stop> {
         match op {
             Operand::Copy(place) | Operand::Move(place) => {
-                let loc = self.loc(place, span)?;
-                self.read(&loc, span)
+                let (loc, ty) = self.loc(place, span)?;
+                self.read(&loc, ty, span)
             }
             Operand::Const(c) => self.constant(c, span),
         }
@@ -621,7 +818,7 @@ impl Machine<'_, '_> {
             ConstKind::Int(n) => Value::Int(*n),
             ConstKind::Float(x) => Value::Float(*x),
             ConstKind::Bool(b) => Value::Bool(*b),
-            ConstKind::Str(s) => Value::Str(s.as_str().into()),
+            ConstKind::Str(s) => self.text(s, c.ty, span)?,
             ConstKind::Unit => Value::Unit,
             ConstKind::Func(f) => Value::Func(*f),
             ConstKind::Zeroed => self.zero(c.ty, span)?,
@@ -641,6 +838,40 @@ impl Machine<'_, '_> {
         })
     }
 
+    /// A text literal of type `ty`, in memory as the program would have it: a `cstr`'s bytes
+    /// and a zero byte; a `str`'s bytes; or a `string`'s block, with the count that says it's
+    /// part of the program, its length, its bytes, and a zero byte.
+    fn text(&mut self, text: &str, ty: TypeId, span: &Span) -> Result<Value, Stop> {
+        let types = &self.mir().types;
+        let (cstr, string) = (ty == types.cstr, ty == types.text);
+        let str_ref =
+            matches!(types.get(ty), Ty::Ref { to, .. } if matches!(types.get(*to), Ty::Str));
+        let string = string && matches!(types.get(ty), Ty::Struct(..));
+        let bytes: Vec<Byte> = text.bytes().map(Byte::Data).collect();
+        let zero = [Byte::Data(0)];
+        if cstr {
+            return Ok(Value::Ref(self.allocate([&bytes[..], &zero].concat())));
+        }
+        if string {
+            let word = |n: usize| (n as u128).to_le_bytes()[..POINTER].to_vec();
+            let header: Vec<Byte> = [word(usize::MAX), word(text.len())]
+                .concat()
+                .into_iter()
+                .map(Byte::Data)
+                .collect();
+            let view = self.allocate([&header[..], &bytes, &zero].concat());
+            return Ok(Value::Agg(vec![Value::Ref(view)]));
+        }
+        if str_ref {
+            let start = self.allocate(bytes);
+            return Ok(Value::Slice {
+                start: Some(start),
+                len: text.len(),
+            });
+        }
+        unsupported("text of this type", span)
+    }
+
     /// A value of type `ty` with every byte zero.
     fn zero(&self, ty: TypeId, span: &Span) -> Result<Value, Stop> {
         let mir = self.mir();
@@ -655,26 +886,18 @@ impl Machine<'_, '_> {
                     len: 0,
                 }
             }
-            Ty::Pointer | Ty::Ptr(_) | Ty::CStr | Ty::Ref { .. } => Value::Null,
-            Ty::Struct(def, args) => {
-                let s = mir.struct_def(*def, args);
-                if s.handle {
-                    Value::Null
-                } else {
-                    let fields: Vec<TypeId> = s.fields.iter().map(|&(_, ty)| ty).collect();
-                    Value::Agg(
-                        (fields.into_iter())
-                            .map(|ty| self.zero(ty, span))
-                            .collect::<Result<_, _>>()?,
-                    )
-                }
+            Ty::Pointer | Ty::Ptr(_) | Ty::CStr | Ty::Ref { .. } | Ty::Fn { .. } => Value::Null,
+            Ty::Struct(def, args) if mir.struct_def(*def, args).handle => Value::Null,
+            Ty::Struct(..) | Ty::Optional(_) | Ty::Array { .. } | Ty::Range(_) => {
+                let Some(layout) = layout(mir, ty) else {
+                    return unsupported("a value of this type", span);
+                };
+                Value::Agg(
+                    (layout.parts.iter())
+                        .map(|&(ty, _)| self.zero(ty, span))
+                        .collect::<Result<_, _>>()?,
+                )
             }
-            Ty::Optional(inner) => Value::Agg(vec![Value::Bool(false), self.zero(*inner, span)?]),
-            Ty::Array { element, len } => {
-                let len = self.array_len(*len, span)?;
-                Value::Agg(vec![self.zero(*element, span)?; len])
-            }
-            Ty::Range(_) => Value::Agg(vec![Value::Int(0), Value::Int(0)]),
             _ => return unsupported("a value of this type", span),
         })
     }
@@ -691,7 +914,7 @@ impl Machine<'_, '_> {
             Operand::Const(c) => c.ty,
             Operand::Copy(place) | Operand::Move(place) => {
                 let frame = self.frames.last().expect("a frame");
-                let body = self.body(frame.func);
+                let body = self.mir().funcs[frame.func].body.as_ref().expect("a body");
                 let mut ty = body.locals[place.local].ty;
                 for &projection in &place.projection {
                     ty = self.mir().project(ty, projection).expect("checked places");
@@ -707,7 +930,14 @@ impl Machine<'_, '_> {
         };
         Ok(match rvalue {
             Rvalue::Use(op) => self.operand(op, span)?,
-            Rvalue::Ref { place, .. } => Value::Ref(self.loc(place, span)?),
+            // `&*r` is `r` again: for a slice, its start and its length.
+            Rvalue::Ref { place, .. } if place.projection.last() == Some(&Projection::Deref) => {
+                let mut inner = place.clone();
+                inner.projection.pop();
+                let (loc, ty) = self.loc(&inner, span)?;
+                self.read(&loc, ty, span)?
+            }
+            Rvalue::Ref { place, .. } => Value::Ref(self.loc(place, span)?.0),
             Rvalue::Binary { op, lhs, rhs } => {
                 let ty = self.operand_ty(lhs);
                 let (a, b) = (self.operand(lhs, span)?, self.operand(rhs, span)?);
@@ -740,13 +970,10 @@ impl Machine<'_, '_> {
                 self.cast(value, from, *ty, span)?
             }
             Rvalue::Struct {
-                ty,
                 variant: None,
                 fields,
-            } => {
-                let _ = ty;
-                Value::Agg(operands(self, fields)?)
-            }
+                ..
+            } => Value::Agg(operands(self, fields)?),
             Rvalue::Struct {
                 ty,
                 variant: Some(variant),
@@ -758,9 +985,7 @@ impl Machine<'_, '_> {
                 let Ty::Struct(def, args) = self.mir().types.get(*ty) else {
                     return unsupported("this enum", span);
                 };
-                let indexes = self
-                    .mir()
-                    .struct_def(*def, args)
+                let indexes = (self.mir().struct_def(*def, args))
                     .variant_fields(*variant)
                     .to_vec();
                 // Its tag, first, says which variant it is.
@@ -778,8 +1003,12 @@ impl Machine<'_, '_> {
             Rvalue::Intrinsic {
                 intrinsic, args, ..
             } => {
+                let element = match self.mir().types.get(self.operand_ty(&args[0])) {
+                    Ty::Ptr(element) => *element,
+                    _ => return unsupported("this pointer", span),
+                };
                 let args = operands(self, args)?;
-                self.intrinsic(*intrinsic, args, span)?
+                self.intrinsic(*intrinsic, element, args, span)?
             }
             Rvalue::Call { .. } => unreachable!("calls are statements of their own"),
         })
@@ -795,6 +1024,14 @@ impl Machine<'_, '_> {
     ) -> Result<Value, Stop> {
         let ty = self.mir().types.get(ty);
         Ok(match (a, b, ty) {
+            // `ptr + n`: `n` bytes on.
+            (Value::Ref(mut loc), Value::Int(n), Ty::Pointer) if op == BinOp::Add => {
+                match &mut loc.root {
+                    Root::Heap { offset, .. } => *offset = offset.wrapping_add(n as usize),
+                    Root::Local { .. } => return unsupported("bytes on from a local", span),
+                }
+                Value::Ref(loc)
+            }
             (Value::Int(a), Value::Int(b), Ty::Int(int)) => match op {
                 BinOp::Add => Value::Int(wrap(a.wrapping_add(b), *int)),
                 BinOp::Subtract => Value::Int(wrap(a.wrapping_sub(b), *int)),
@@ -881,7 +1118,10 @@ impl Machine<'_, '_> {
             let len = self.array_len(*len, span)?;
             return Ok(match value {
                 Value::Ref(mut loc) => {
-                    loc.path.push(0);
+                    // In a local, its first element; in memory, it starts where it is.
+                    if let Root::Local { .. } = loc.root {
+                        loc.path.push(0);
+                    }
                     Value::Slice {
                         start: Some(loc),
                         len,
@@ -891,7 +1131,7 @@ impl Machine<'_, '_> {
             });
         }
         // `[mut T]` as `[T]`, and pointers as other pointers: where they point is the same.
-        let points = |t: &Ty| matches!(t, Ty::Pointer | Ty::Ptr(_) | Ty::Ref { .. });
+        let points = |t: &Ty| matches!(t, Ty::Pointer | Ty::Ptr(_) | Ty::CStr | Ty::Ref { .. });
         if points(types.get(from)) && points(types.get(to)) {
             return Ok(match value {
                 Value::Uninit => Value::Null,
@@ -921,71 +1161,106 @@ impl Machine<'_, '_> {
             _ => return unsupported("this conversion", span),
         })
     }
-}
 
-/// What can't be kept of a constant's value, and where in it: `[".mem", ".ptr"]`.
-type Unkeepable = (&'static str, Vec<String>);
-
-/// `value`, of type `ty`, as a constant in the program, or what it is that can't be one.
-fn bake(mir: &Mir, value: &Value, ty: TypeId) -> Result<ConstKind, Unkeepable> {
-    // Its parts, with their types, and how each is named.
-    let parts = |parts: Vec<(&Value, TypeId, String)>| -> Result<ConstKind, Unkeepable> {
-        let mut baked = Vec::new();
-        for (value, ty, name) in parts {
-            let kind = bake(mir, value, ty).map_err(|(what, mut at)| {
-                at.insert(0, name);
-                (what, at)
-            })?;
-            baked.push(Const { kind, ty });
+    /// `value`, of type `ty`, as a constant in the program, or what it is that can't be one.
+    /// Text built while compiling becomes a literal.
+    fn bake(&self, value: &Value, ty: TypeId) -> Result<ConstKind, Unkeepable> {
+        let mir = self.mir();
+        let types = &mir.types;
+        let span = &mir.funcs[self.frames.first().map_or(Id::new(0), |f| f.func)].span;
+        let memory = || {
+            (
+                "a reference to memory that only exists while compiling",
+                Vec::new(),
+            )
+        };
+        // Text: its bytes, kept as a literal.
+        let literal = |bytes: Result<Vec<u8>, Stop>| match bytes.ok().map(String::from_utf8) {
+            Some(Ok(text)) => Ok(ConstKind::Str(text)),
+            Some(Err(_)) => Err(("text that isn't UTF-8", Vec::new())),
+            None => Err(memory()),
+        };
+        if ty == types.text
+            && matches!(types.get(ty), Ty::Struct(..))
+            && let Value::Agg(parts) = value
+            && let Some(Value::Ref(view)) = parts.first()
+        {
+            // The block: its count, its length, then its bytes.
+            let Root::Heap { alloc, offset } = view.root else {
+                return Err(memory());
+            };
+            let bytes = self.data(view, 2 * POINTER, span).and_then(|block| {
+                let mut word = [0u8; 16];
+                word[..POINTER].copy_from_slice(&block[POINTER..]);
+                let len = u128::from_le_bytes(word) as usize;
+                self.data(&Loc::heap(alloc, offset + 2 * POINTER), len, span)
+            });
+            return literal(bytes);
         }
-        Ok(ConstKind::Aggregate(baked))
-    };
-    const UNSET: &Value = &Value::Uninit;
-    fn nth(values: &[Value], i: usize) -> &Value {
-        values.get(i).unwrap_or(UNSET)
-    }
-    let memory = || {
-        (
-            "a reference to memory that only exists while compiling",
-            Vec::new(),
-        )
-    };
-    Ok(match value {
-        Value::Int(n) => ConstKind::Int(*n),
-        Value::Float(x) if x.is_finite() => ConstKind::Float(*x),
-        Value::Float(_) => return Err(("infinite, or not a number", Vec::new())),
-        Value::Bool(b) => ConstKind::Bool(*b),
-        Value::Unit => ConstKind::Unit,
-        Value::Str(s) => ConstKind::Str(s.to_string()),
-        Value::Func(f) => ConstKind::Func(*f),
-        // Never set: a field of a variant it isn't, or `none`'s value.
-        Value::Uninit | Value::Null => ConstKind::Zeroed,
-        Value::Agg(values) => match mir.types.get(ty) {
-            Ty::Struct(def, args) if !mir.struct_def(*def, args).handle => {
-                let s = mir.struct_def(*def, args);
-                parts(
-                    (s.fields.iter().enumerate())
-                        .map(|(i, (name, ty))| (nth(values, i), *ty, format!(".{name}")))
-                        .collect(),
-                )?
+        match (value, types.get(ty)) {
+            (Value::Ref(loc), Ty::CStr) => return literal(self.c_text(loc, span)),
+            (Value::Slice { start, len }, Ty::Ref { to, .. })
+                if matches!(types.get(*to), Ty::Str) =>
+            {
+                return literal(match start {
+                    Some(start) => self.data(start, *len, span),
+                    None => Ok(Vec::new()),
+                });
             }
-            Ty::Optional(inner) => parts(vec![
-                (nth(values, 0), mir.types.bool, String::new()),
-                (nth(values, 1), *inner, String::new()),
-            ])?,
-            Ty::Array { element, .. } => parts(
-                (values.iter().enumerate())
-                    .map(|(i, v)| (v, *element, format!("[{i}]")))
-                    .collect(),
-            )?,
-            Ty::Range(int) => parts(vec![
-                (nth(values, 0), *int, ".start".into()),
-                (nth(values, 1), *int, ".end".into()),
-            ])?,
-            _ => return Err(("a kind of value that can't be kept yet", Vec::new())),
-        },
-        Value::Ref(_) | Value::Slice { .. } => return Err(memory()),
-    })
+            _ => {}
+        }
+        // Its parts, with their types, and how each is named.
+        let parts = |parts: Vec<(&Value, TypeId, String)>| -> Result<ConstKind, Unkeepable> {
+            let mut baked = Vec::new();
+            for (value, ty, name) in parts {
+                let kind = self.bake(value, ty).map_err(|(what, mut at)| {
+                    at.insert(0, name);
+                    (what, at)
+                })?;
+                baked.push(Const { kind, ty });
+            }
+            Ok(ConstKind::Aggregate(baked))
+        };
+        const UNSET: &Value = &Value::Uninit;
+        fn nth(values: &[Value], i: usize) -> &Value {
+            values.get(i).unwrap_or(UNSET)
+        }
+        Ok(match value {
+            Value::Int(n) => ConstKind::Int(*n),
+            Value::Float(x) if x.is_finite() => ConstKind::Float(*x),
+            Value::Float(_) => return Err(("infinite, or not a number", Vec::new())),
+            Value::Bool(b) => ConstKind::Bool(*b),
+            Value::Unit => ConstKind::Unit,
+            Value::Func(f) => ConstKind::Func(*f),
+            // Never set: a field of a variant it isn't, or `none`'s value.
+            Value::Uninit | Value::Null => ConstKind::Zeroed,
+            Value::Agg(values) => match types.get(ty) {
+                Ty::Struct(def, args) if !mir.struct_def(*def, args).handle => {
+                    let s = mir.struct_def(*def, args);
+                    parts(
+                        (s.fields.iter().enumerate())
+                            .map(|(i, (name, ty))| (nth(values, i), *ty, format!(".{name}")))
+                            .collect(),
+                    )?
+                }
+                Ty::Optional(inner) => parts(vec![
+                    (nth(values, 0), types.bool, String::new()),
+                    (nth(values, 1), *inner, String::new()),
+                ])?,
+                Ty::Array { element, .. } => parts(
+                    (values.iter().enumerate())
+                        .map(|(i, v)| (v, *element, format!("[{i}]")))
+                        .collect(),
+                )?,
+                Ty::Range(int) => parts(vec![
+                    (nth(values, 0), *int, ".start".into()),
+                    (nth(values, 1), *int, ".end".into()),
+                ])?,
+                _ => return Err(("a kind of value that can't be kept yet", Vec::new())),
+            },
+            Value::Ref(_) | Value::Slice { .. } => return Err(memory()),
+        })
+    }
 }
 
 // --- Numbers ---

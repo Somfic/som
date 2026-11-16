@@ -1,0 +1,22 @@
+// expect: exit 0
+
+extern "c";
+
+fn greeting(name: string, times: usize) -> string {
+    let mut text = "hello, " + name;
+    text = text + "!" * times;
+    text
+}
+
+fn shown() -> string = "{1.5} {0.1 + 0.2} {1000000.0} {true} {-7} {255 as u8}";
+
+/// Text joined, repeated and shown while compiling: each kept as a literal.
+@const GREETING = greeting("som", 3);
+@const SHOWN = shown();
+
+fn main() -> i32 {
+    if GREETING != "hello, som!!!" { return 1; }
+    // What C's own `%g` writes when the program runs.
+    if SHOWN != shown() { return 2; }
+    return 0;
+}

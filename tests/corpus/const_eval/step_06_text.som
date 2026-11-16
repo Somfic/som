@@ -1,0 +1,13 @@
+// expect: exit 0
+
+extern "c";
+
+@const MAJOR = 0;
+@const MINOR = 3;
+
+/// Text built while compiling becomes a literal in the program.
+fn banner() -> string = "som v{MAJOR}.{MINOR}";
+
+@const BANNER = banner();
+
+fn main() -> i32 = 0 if BANNER == "som v0.3" else 1;
