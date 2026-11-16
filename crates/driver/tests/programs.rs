@@ -54,3 +54,24 @@ fn checks_run_while_compiling_are_reported_to_an_editor() {
         analysis.errors
     );
 }
+
+#[test]
+fn an_unknown_built_in_in_an_at_for_is_the_only_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("main.som");
+    std::fs::write(
+        &file,
+        "enum Kind { A, B, C }\n\
+         fn index(k: Kind) -> usize = match k {\n    @for (i, v) in @variants(Kind) { v => i, }\n};\n\
+         fn main() -> i32 = 0;\n",
+    )
+    .unwrap();
+    // What an editor's told: the same as `som build`, nothing more.
+    let analysis = analyze(&program_root(&file), &Options::default());
+    assert_eq!(analysis.errors.len(), 1, "{:?}", analysis.errors);
+    assert!(
+        format!("{}", analysis.errors[0].to_diagnostic()).contains("unknown built-in"),
+        "{:?}",
+        analysis.errors
+    );
+}

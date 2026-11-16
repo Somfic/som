@@ -213,6 +213,9 @@ pub fn load_with(
         let nowhere = Span::empty(Arc::new(Source::from_raw("")));
         loader.load_module("som".into(), &folder_of(path), nowhere);
     }
+    // `@for v in Kind { … }`: written out now that every module, and `Kind`, is loaded.
+    let errors = som_parser::expand_reflected(&mut loader.ast);
+    loader.errors.extend(errors.into_iter().map(LoadError::Parse));
 
     (loader.ast, loader.errors)
 }

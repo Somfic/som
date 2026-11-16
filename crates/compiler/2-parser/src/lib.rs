@@ -11,6 +11,7 @@ mod stmt;
 mod ty;
 
 pub use error::ParseError;
+pub use expand::expand_reflected;
 
 use som_ast::{Ast, Ident, Item, Path, Span};
 use som_base::message::code;
@@ -30,30 +31,37 @@ pub fn parse(source: Arc<Source>) -> (Ast, Vec<ParseError>) {
 /// Parses one source file, adding its items to an existing module of `ast`.
 pub fn parse_file(source: Arc<Source>, ast: &mut Ast, module: usize) -> Vec<ParseError> {
     ast.modules[module].files.push(source.clone());
-    let mut parser = Parser {
-        tokens: lex(source),
-        pos: 0,
-        ast,
-        module,
-        errors: Vec::new(),
-        in_recovery: false,
-        in_condition: false,
-        in_impl: false,
-        in_params: false,
-        foreign_depth: 0,
-        foreign_semicolons: Vec::new(),
-        visibility: som_ast::Visibility::Private,
-        in_impl_target: false,
-        wheres: Vec::new(),
-        listens: Vec::new(),
-        where_doc: None,
-        where_start: None,
-        trait_supers: Vec::new(),
-    };
+    let mut parser = Parser::new(lex(source), ast, module);
     parser.report_foreign_comments();
     parser.skip_trivia();
     parser.parse_program();
     parser.errors
+}
+
+impl<'a> Parser<'a> {
+    /// A parser of `tokens`, which end in an `Eof`, adding what it reads to `module`.
+    fn new(tokens: Vec<Token>, ast: &'a mut Ast, module: usize) -> Self {
+        Parser {
+            tokens,
+            pos: 0,
+            ast,
+            module,
+            errors: Vec::new(),
+            in_recovery: false,
+            in_condition: false,
+            in_impl: false,
+            in_params: false,
+            foreign_depth: 0,
+            foreign_semicolons: Vec::new(),
+            visibility: som_ast::Visibility::Private,
+            in_impl_target: false,
+            wheres: Vec::new(),
+            listens: Vec::new(),
+            where_doc: None,
+            where_start: None,
+            trait_supers: Vec::new(),
+        }
+    }
 }
 
 /// The value an integer literal is written as: decimal, `0x` hexadecimal or `0b` binary, with

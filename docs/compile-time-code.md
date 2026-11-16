@@ -1,6 +1,7 @@
 # Compile-time code
 
-*Design spec. Status: steps 0–12 done, and step 13's `@for` around items, in `crates/compiler/8-comptime`: `@const` with
+*Design spec. Status: steps 0–12 done, step 13's `@for` around items, and step 14's
+`@for (i, v) in Kind` among `match` arms, in `crates/compiler/8-comptime`: `@const` with
 calls, loops, recursion, heap memory and text while compiling; structs, enums, arrays,
 optionals and text as values; constants in impl blocks and function bodies; `@const` as an
 expression; `@assert` and `@fail`; `@const` once per generic instance; and `@for` and `@if`,
@@ -723,6 +724,16 @@ pub fn fields_eq<T>(a: &T, b: &T) -> bool {
 ```
 *Needs:* `@variants`, `@fields`, `.@field(f)`, and `@for` producing `match` arms. `@ident`
 can come here too, for swizzles. Phase 3 is done.
+
+Written `@for (i, v) in Kind`, not `@for (i, v) in @variants(Kind)`: going through a type
+goes through its variants (and, for a struct, will go through its fields). **Done** for
+`match` arms: the `@for` is kept, its body's place in the source and where its copies go,
+until every module is loaded; then `Kind` is looked up, preferring the module it's written
+in, and each copy's tokens are written with `v` as the variant's pattern (`Red`,
+`Circle(_)`, `Rect { .. }`) and `i` as its index, parsed, and put among the arms.
+Resolve and the type checker see the arms written out, so a `match` is still checked to cover
+every variant. Not done: `@for` over a type among statements or items, structs' fields,
+`v.name`, and anything in generic code (which needs 4.7).
 
 ### Phase 4
 

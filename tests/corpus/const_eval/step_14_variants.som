@@ -1,0 +1,30 @@
+// expect: exit 42
+
+/// `@for (i, v) in Kind`: an arm for each of `Kind`'s variants, `v` matching it and `i` its
+/// index. `Kind` can be defined after it's used.
+impl Kind {
+    pub fn index(self) -> usize = match self {
+        @for (i, v) in Kind { v => i, }
+    };
+}
+
+enum Kind { Red, Green, Blue }
+
+enum Shape { Circle(f32), Rect { w: f32, h: f32 }, Empty }
+
+/// Whatever a variant holds, `v` matches it.
+fn number(s: Shape) -> i32 = match s {
+    @for (i, v) in Shape { v => i as i32 * 10, }
+};
+
+/// One name: each variant.
+fn known(s: Shape) -> bool = match s {
+    @for v in Shape { v => false, }
+};
+
+fn main() -> i32 {
+    let blue = Kind::Blue;
+    let round = 0 if known(Shape::Empty) else 10;
+    // 2 + 10 + 20 + 10
+    return blue.index() as i32 + number(Shape::Rect { w: 1.0, h: 2.0 }) + number(Shape::Empty) + round;
+}

@@ -1201,8 +1201,32 @@ impl Parser<'_> {
         let scrutinee = self.parse_condition()?;
         self.expect(TokenKind::OpenBrace, "the match arms")?;
         let mut arms = Vec::new();
+        // `@for (i, v) in Kind { v => i, }`: written out once `Kind` is known, before the arm
+        // at the index each has.
+        let mut reflected = Vec::new();
         self.with_condition(false, |p| {
             while !p.at(TokenKind::CloseBrace) && !p.at_eof() {
+                if p.at_reflected_for() {
+                    let start = p.current_span();
+                    match p.parse_reflected_for() {
+                        Some(found) => reflected.push((arms.len(), found)),
+                        // Reported: an arm matching anything stands in, so nothing else is
+                        // said of a `match` it leaves without arms.
+                        None => {
+                            let span = p.span_from(&start);
+                            let pattern = p.ast.patterns.alloc(Pattern::Wildcard, span.clone());
+                            let body = p.ast.exprs.alloc(Expr::Hole, span);
+                            arms.push(Arm { pattern, body });
+                        }
+                    }
+                    p.eat(TokenKind::Comma);
+                    continue;
+                }
+                // `@for x in [a, b] { x => … }`: written out here.
+                if p.at(TokenKind::Builtin) && &*p.peek_token().text == "@for" {
+                    p.expand_for();
+                    continue;
+                }
                 let pattern = p.parse_pattern()?;
                 p.expect(TokenKind::FatArrow, "`=>` and the arm's value")?;
                 let body = p.parse_expr()?;
@@ -1219,12 +1243,22 @@ impl Parser<'_> {
             "a closing brace after the match arms",
         )?;
         let scrutinee_and_arms = Expr::Match { scrutinee, arms };
-        Some(self.alloc_expr(scrutinee_and_arms, &start))
+        let id = self.alloc_expr(scrutinee_and_arms, &start);
+        for (at, (names, of, body)) in reflected {
+            self.ast.reflected.push(som_ast::Reflected {
+                module: self.module,
+                names,
+                of,
+                body,
+                into: som_ast::ReflectedInto::Arms { expr: id, at },
+            });
+        }
+        Some(id)
     }
 
     /// A `match` arm's pattern: `_`, `name`, `3`, `true`, `none`, `Circle(r)`,
     /// `Rect { w, h }` or `Shape::Empty`.
-    fn parse_pattern(&mut self) -> Option<Id<Pattern>> {
+    pub(crate) fn parse_pattern(&mut self) -> Option<Id<Pattern>> {
         let start = self.current_span();
         let pattern = match self.peek() {
             TokenKind::Int | TokenKind::Minus => {

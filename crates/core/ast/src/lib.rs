@@ -37,6 +37,30 @@ pub struct Ast {
     /// `@for` and `@if`: a `Stmt::For` or `Stmt::If` settled while compiling. An `@for`'s
     /// body is copied once for each value, and only the branch an `@if` picks exists.
     pub settled: std::collections::HashSet<Id<Stmt>>,
+    /// `@for (i, v) in Kind { … }`, which can only be written out once every module is
+    /// loaded and `Kind` is known (`som_parser::expand_reflected`).
+    pub reflected: Vec<Reflected>,
+}
+
+/// An `@for` over a type: `@for (i, v) in Kind { v => i, }`, each variant of enum `Kind` in
+/// turn, `i` its index.
+pub struct Reflected {
+    /// The module it's written in.
+    pub module: usize,
+    /// What each copy calls the element: `v`, or its index and it, `(i, v)`.
+    pub names: Vec<Ident>,
+    /// The type it goes through: `Kind`.
+    pub of: Path,
+    /// Its body, between the braces: copied once for each element.
+    pub body: Span,
+    /// Where the copies go.
+    pub into: ReflectedInto,
+}
+
+/// Where an `@for` over a type's copies go.
+pub enum ReflectedInto {
+    /// Among a `match`'s arms, before the one at `at`.
+    Arms { expr: Id<Expr>, at: usize },
 }
 
 /// One module: the `.som` files in one directory, named by the `use` path that loaded it.

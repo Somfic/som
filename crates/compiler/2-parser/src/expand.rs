@@ -6,11 +6,12 @@
 //! the `@for` was, then parsed like anything else. Each copy's tokens keep where they're
 //! written, so what's wrong in one is said where the body is.
 
+use som_ast::{Ast, Expr, Ident, Path, ReflectedInto, VariantKind};
 use som_base::message::code;
-use som_base::msg;
-use som_lexer::{Token, TokenKind};
+use som_base::{Source, Span, msg};
+use som_lexer::{Token, TokenKind, lex};
 
-use crate::Parser;
+use crate::{ParseError, Parser};
 
 impl Parser<'_> {
     /// At an `@for` whose body is items, not statements: `@for T in [u8, u16] { impl … }`.
@@ -63,7 +64,10 @@ impl Parser<'_> {
             self.skip_for(start);
             return;
         };
-        if self.expect(TokenKind::In, "`in` and what to loop over").is_none() {
+        if self
+            .expect(TokenKind::In, "`in` and what to loop over")
+            .is_none()
+        {
             self.skip_for(start);
             return;
         }
@@ -107,12 +111,20 @@ impl Parser<'_> {
                     code("@for"),
                     " around items goes through a list written out, or a range of numbers"
                 ],
-                msg!["write it ", code("@for T in [u8, u16] { … }"), " or ", code("@for i in 0..4 { … }")],
+                msg![
+                    "write it ",
+                    code("@for T in [u8, u16] { … }"),
+                    " or ",
+                    code("@for i in 0..4 { … }")
+                ],
             );
             self.skip_for(start);
             return;
         };
-        if self.expect(TokenKind::OpenBrace, "`{` and the items").is_none() {
+        if self
+            .expect(TokenKind::OpenBrace, "`{` and the items")
+            .is_none()
+        {
             self.skip_for(start);
             return;
         }
@@ -147,6 +159,86 @@ impl Parser<'_> {
         self.tokens.splice(start..past, written);
         self.pos = start;
         self.skip_trivia();
+    }
+
+    /// At `@for v in Kind` or `@for (i, v) in Kind`: over a type, its variants, written out
+    /// once every module is loaded. A list `[…]` or a range of numbers is written out at once.
+    pub(crate) fn at_reflected_for(&self) -> bool {
+        if !(self.at(TokenKind::Builtin) && &*self.peek_token().text == "@for") {
+            return false;
+        }
+        let mut n = 1;
+        while !matches!(
+            self.peek_nth(n),
+            TokenKind::In | TokenKind::Eof | TokenKind::OpenBrace
+        ) {
+            n += 1;
+        }
+        // A built-in there, `@variants(Kind)`, is read here too, to be said to be unknown.
+        self.peek_nth(n) == TokenKind::In
+            && (self.peek_nth(n + 1) == TokenKind::Builtin
+                || self.peek_nth(n + 1) == TokenKind::Ident
+                    && self.peek_nth(n + 2) != TokenKind::DotDot)
+    }
+
+    /// `@for (i, v) in Kind { … }`: what each copy calls the element, the type, and the
+    /// body, kept to be written out once `Kind` is known.
+    pub(crate) fn parse_reflected_for(&mut self) -> Option<(Vec<Ident>, Path, Span)> {
+        self.advance();
+        let mut names = Vec::new();
+        if self.eat(TokenKind::OpenParen) {
+            loop {
+                names.push(self.parse_ident("a name")?);
+                if !self.eat(TokenKind::Comma) {
+                    break;
+                }
+            }
+            self.expect(TokenKind::CloseParen, "`)` after the names")?;
+        } else {
+            names.push(self.parse_ident("a name for each element")?);
+        }
+        self.expect(TokenKind::In, "`in` and what to loop over")?;
+        // `@variants(Kind)`: there's no such built-in. The rest of the `@for` is skipped.
+        if self.at(TokenKind::Builtin) {
+            let known: Vec<&str> = som_lexer::BUILTINS.iter().map(|b| b.0).collect();
+            let name = self.peek_token().text.to_string();
+            self.error_at(
+                self.current_span(),
+                msg!["unknown built-in ", code(name)],
+                msg!["the built-ins are ", code(known.join(", "))],
+            );
+            while !self.at_eof() && !self.at(TokenKind::OpenBrace) {
+                self.advance();
+            }
+            if self.at(TokenKind::OpenBrace) {
+                self.skip_balanced(TokenKind::OpenBrace, TokenKind::CloseBrace);
+            }
+            return None;
+        }
+        let of = self.parse_path("a type")?;
+        let open = self.current_span();
+        self.expect(TokenKind::OpenBrace, "`{` and what to write for each")?;
+        // To the matching `}`: the body is what's between.
+        let body_start = open.start_offset + 1;
+        let mut depth = 1;
+        let mut body_end = body_start;
+        while !self.at_eof() {
+            match self.peek() {
+                TokenKind::OpenBrace => depth += 1,
+                TokenKind::CloseBrace => {
+                    depth -= 1;
+                    if depth == 0 {
+                        body_end = self.current_span().start_offset;
+                        self.advance();
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            self.advance();
+        }
+        let body = Span::from_range(body_start..body_end, open.source.clone());
+        Some((names, of, body))
     }
 
     /// `0..4`, of literals: each number, as a token.
@@ -190,4 +282,139 @@ impl Parser<'_> {
             self.skip_balanced(TokenKind::OpenBrace, TokenKind::CloseBrace);
         }
     }
+}
+
+/// What a variant is, to match it: `Red`, `Circle(_)`, `Rect { .. }`.
+fn variant_pattern(variant: &som_ast::Variant) -> String {
+    let name = &variant.name.name;
+    match variant.kind {
+        VariantKind::Unit => name.to_string(),
+        VariantKind::Tuple => {
+            let blanks = vec!["_"; variant.fields.len()];
+            format!("{name}({})", blanks.join(", "))
+        }
+        VariantKind::Named => format!("{name} {{ .. }}"),
+    }
+}
+
+/// Writes out each `@for` over a type, once every module is loaded: `@for (i, v) in Kind
+/// { v => i, }` is an arm for each of `Kind`'s variants, `v` matching it and `i` its index.
+pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
+    let mut errors = Vec::new();
+    let mut reflected = std::mem::take(&mut ast.reflected);
+    // Later positions first, so earlier ones stay where they are.
+    reflected.sort_by_key(|r| match r.into {
+        ReflectedInto::Arms { expr, at } => std::cmp::Reverse((expr.id, at)),
+    });
+    for r in reflected {
+        // The enum: in the module it's written in, or else the only one by that name.
+        let name = &r.of.name().name;
+        let enums: Vec<(usize, som_ast::Id<som_ast::Struct>)> = (ast.modules.iter().enumerate())
+            .flat_map(|(m, module)| module.items.iter().map(move |item| (m, item)))
+            .filter_map(|(m, item)| match item {
+                som_ast::Item::Struct(s) if &*ast.structs[*s].name.name == &**name => Some((m, *s)),
+                _ => None,
+            })
+            .collect();
+        let found = (enums.iter().find(|(m, _)| *m == r.module))
+            .or_else(|| (enums.len() == 1).then(|| &enums[0]))
+            .map(|&(_, s)| s);
+        let Some(s) = found.filter(|&s| ast.structs[s].is_enum()) else {
+            errors.push(ParseError {
+                message: msg!["there's no enum ", code(name.to_string()), " to go through"],
+                hint: msg![code("@for v in Kind"), " goes through an enum's variants"],
+                span: r.of.span(),
+                fix: None,
+            });
+            continue;
+        };
+        let variants: Vec<String> = ast.structs[s]
+            .variants()
+            .iter()
+            .map(variant_pattern)
+            .collect();
+
+        // The body's tokens, as written.
+        let body: Vec<Token> = (lex(r.body.source.clone()).into_iter())
+            .filter(|t| {
+                t.kind != TokenKind::Eof
+                    && t.span.start_offset >= r.body.start_offset
+                    && t.span.start_offset < r.body.start_offset + r.body.length
+            })
+            .collect();
+        let (index, element) = match &r.names[..] {
+            [element] => (None, element),
+            [index, element] => (Some(index), element),
+            _ => {
+                errors.push(ParseError {
+                    message: msg!["an ", code("@for"), " over a type names one or two things"],
+                    hint: msg![code("v"), ", or its index and it: ", code("(i, v)")],
+                    span: r.names[0].span.clone(),
+                    fix: None,
+                });
+                continue;
+            }
+        };
+        let mut written = Vec::new();
+        for (i, pattern) in variants.iter().enumerate() {
+            for token in &body {
+                let is = |name: &Ident| token.kind == TokenKind::Ident && *token.text == *name.name;
+                if index.is_some_and(is) {
+                    written.push(Token {
+                        kind: TokenKind::Int,
+                        text: i.to_string().into(),
+                        span: token.span.clone(),
+                    });
+                } else if is(element) {
+                    // The variant's pattern, said to be where `v` is.
+                    let pattern = lex(std::sync::Arc::new(Source::from_raw(pattern.as_str())));
+                    written.extend(
+                        pattern
+                            .into_iter()
+                            .filter(|t| t.kind != TokenKind::Eof)
+                            .map(|t| Token {
+                                span: token.span.clone(),
+                                ..t
+                            }),
+                    );
+                } else {
+                    written.push(token.clone());
+                }
+            }
+        }
+        written.push(Token {
+            kind: TokenKind::Eof,
+            text: "".into(),
+            span: r.body.clone(),
+        });
+
+        let ReflectedInto::Arms { expr, at } = r.into;
+        let mut parser = Parser::new(written, ast, r.module);
+        parser.skip_trivia();
+        let mut arms = Vec::new();
+        while !parser.at_eof() {
+            let Some(pattern) = parser.parse_pattern() else {
+                break;
+            };
+            if parser
+                .expect(TokenKind::FatArrow, "`=>` and the arm's value")
+                .is_none()
+            {
+                break;
+            }
+            let Some(body) = parser.parse_expr() else {
+                break;
+            };
+            arms.push(som_ast::Arm { pattern, body });
+            let ends_in_block = matches!(parser.ast.exprs[body], Expr::Block { .. });
+            if !parser.eat(TokenKind::Comma) && !ends_in_block {
+                break;
+            }
+        }
+        errors.extend(std::mem::take(&mut parser.errors));
+        if let Expr::Match { arms: existing, .. } = ast.exprs.get_mut(expr) {
+            existing.splice(at..at, arms);
+        }
+    }
+    errors
 }
