@@ -37,6 +37,9 @@ pub enum ComptimeError {
         span: Span,
         trace: Vec<Working>,
     },
+    /// It read or wrote memory it doesn't have: freed, past its end, or through a null
+    /// pointer. Only unchecked pointer code can.
+    ConstOutOfBounds { span: Span, trace: Vec<Working> },
     /// It does something code run while compiling can't do yet.
     ConstNotSupported {
         what: &'static str,
@@ -47,6 +50,8 @@ pub enum ComptimeError {
     /// can't be kept yet.
     ConstHoldsMemory {
         name: String,
+        /// The part of it that can't be: `NUMBERS.mem.ptr`. `None` for all of it.
+        part: Option<String>,
         what: &'static str,
         span: Span,
     },
@@ -111,19 +116,35 @@ impl ComptimeError {
                 msg!["needs ", code(name), " to work out ", code(name)],
                 trace,
             ),
+            ComptimeError::ConstOutOfBounds { span, trace } => (
+                Diagnostic::error("this constant uses memory it doesn't have")
+                    .with_hint("memory that's freed, past the end of its allocation, or null"),
+                span,
+                msg!["used here"],
+                trace,
+            ),
             ComptimeError::ConstNotSupported { what, span, trace } => (
                 Diagnostic::error(msg!["a constant can't use ", *what, " yet"]),
                 span,
                 msg!["used here, while compiling"],
                 trace,
             ),
-            ComptimeError::ConstHoldsMemory { name, what, span } => {
+            ComptimeError::ConstHoldsMemory {
+                name,
+                part,
+                what,
+                span,
+            } => {
+                let label = match part {
+                    Some(part) => msg![code(part), " is ", *what],
+                    None => msg!["its value is ", *what],
+                };
                 return Diagnostic::error(msg![
                     "constant ",
                     code(name),
                     " can't be put in the program"
                 ])
-                .with_label(Label::primary(span.clone(), msg!["its value is ", *what]))
+                .with_label(Label::primary(span.clone(), label))
                 .with_hint(
                     "a constant's value can be numbers, bools, text, and structs, enums, \
                      arrays and optionals of those",

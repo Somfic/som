@@ -91,6 +91,7 @@ impl State<'_> {
             state: self,
             frames: Vec::new(),
             steps: 0,
+            heap: Vec::new(),
         };
         let result = machine.run(init);
         let trace = machine.trace();
@@ -98,9 +99,11 @@ impl State<'_> {
         let result = match result {
             Ok(value) => match bake(mir, &value, mir.funcs[init].ret) {
                 Ok(kind) => Some(kind),
-                Err(what) => {
+                Err((what, at)) => {
+                    let name = const_name(mir, init);
                     self.errors.push(ComptimeError::ConstHoldsMemory {
-                        name: const_name(mir, init),
+                        part: (!at.is_empty()).then(|| format!("{name}{}", at.concat())),
+                        name,
                         what,
                         span: mir.funcs[init].span.clone(),
                     });
@@ -138,18 +141,52 @@ enum Value {
     Func(FuncId),
     /// A struct's, enum's, array's, optional's or range's parts, in order.
     Agg(Vec<Value>),
-    /// A reference: where it points.
+    /// A reference, or a pointer: where it points.
     Ref(Loc),
     /// A null pointer.
     Null,
+    /// A reference to a slice: where its first element is (`None` for an empty one with
+    /// nowhere to start), and how many there are.
+    Slice {
+        start: Option<Loc>,
+        len: usize,
+    },
 }
 
-/// Where a value is: a frame's local, then a path through its parts.
-#[derive(Clone, Debug)]
+/// Where a value is: a local or a heap slot, then a path through its parts.
+#[derive(Clone, Debug, PartialEq)]
 struct Loc {
-    frame: usize,
-    local: Local,
+    root: Root,
     path: Vec<usize>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum Root {
+    /// A frame's local.
+    Local { frame: usize, local: Local },
+    /// Element `index` of allocation `alloc` in the heap.
+    Heap { alloc: usize, index: usize },
+}
+
+impl Loc {
+    fn local(frame: usize, local: Local) -> Loc {
+        Loc {
+            root: Root::Local { frame, local },
+            path: Vec::new(),
+        }
+    }
+
+    /// `n` elements on: the next ones in its allocation, or in its array.
+    fn offset(&self, n: usize, span: &Span) -> Result<Loc, Stop> {
+        let mut loc = self.clone();
+        match (&mut loc.root, loc.path.last_mut()) {
+            (_, Some(last)) => *last += n,
+            (Root::Heap { index, .. }, None) => *index += n,
+            (Root::Local { .. }, None) if n == 0 => {}
+            (Root::Local { .. }, None) => return out_of_bounds(span),
+        }
+        Ok(loc)
+    }
 }
 
 /// Why running stopped: an error to report, at this span; or quietly, for one already reported.
@@ -166,6 +203,7 @@ enum Fault {
     TooLong,
     Cycle(String),
     NotSupported(&'static str),
+    OutOfBounds,
 }
 
 impl Fault {
@@ -185,12 +223,35 @@ impl Fault {
             Fault::TooLong => ComptimeError::ConstTooLong { span, trace },
             Fault::Cycle(name) => ComptimeError::ConstCycle { name, span, trace },
             Fault::NotSupported(what) => ComptimeError::ConstNotSupported { what, span, trace },
+            Fault::OutOfBounds => ComptimeError::ConstOutOfBounds { span, trace },
         }
     }
 }
 
 fn unsupported<T>(what: &'static str, span: &Span) -> Result<T, Stop> {
     Err(Stop::Report(Fault::NotSupported(what), span.clone()))
+}
+
+fn out_of_bounds<T>(span: &Span) -> Result<T, Stop> {
+    Err(Stop::Report(Fault::OutOfBounds, span.clone()))
+}
+
+/// Where pointer `value` points: `None` for null. A pointer never set is null: that's what
+/// `som::mem::null` gives.
+fn pointer(value: &Value, span: &Span) -> Result<Option<Loc>, Stop> {
+    match value {
+        Value::Ref(loc) => Ok(Some(loc.clone())),
+        Value::Null | Value::Uninit => Ok(None),
+        _ => unsupported("this kind of pointer", span),
+    }
+}
+
+/// The number `value` is, as a count or an index.
+fn count(value: &Value, span: &Span) -> Result<usize, Stop> {
+    match value {
+        Value::Int(n) => usize::try_from(*n).or_else(|_| out_of_bounds(span)),
+        _ => unsupported("a count that isn't a number", span),
+    }
 }
 
 /// The deepest calls can go while compiling.
@@ -214,6 +275,8 @@ struct Machine<'s, 'm> {
     state: &'s mut State<'m>,
     frames: Vec<Frame>,
     steps: u64,
+    /// Memory allocated while running: each allocation's elements, `None` once it's freed.
+    heap: Vec<Option<Vec<Value>>>,
 }
 
 impl Machine<'_, '_> {
@@ -383,35 +446,64 @@ impl Machine<'_, '_> {
     /// Where `place` is, in the innermost frame.
     fn loc(&self, place: &Place, span: &Span) -> Result<Loc, Stop> {
         let frame = self.frames.len() - 1;
-        let mut loc = Loc {
-            frame,
-            local: place.local,
-            path: Vec::new(),
-        };
+        let mut loc = Loc::local(frame, place.local);
+        // Just past a slice's `*`: an index counts from where its elements start.
+        let mut in_slice = false;
         for projection in &place.projection {
             match projection {
                 Projection::Field(i) => loc.path.push(*i),
-                Projection::Index(local) => match self.frames[frame].locals[local.id] {
-                    Value::Int(i) => loc.path.push(i as usize),
-                    _ => return unsupported("an index that isn't a number", span),
-                },
+                Projection::Index(local) => {
+                    let i = count(&self.frames[frame].locals[local.id], span)?;
+                    match in_slice {
+                        true => loc = loc.offset(i, span)?,
+                        false => loc.path.push(i),
+                    }
+                }
                 Projection::Deref => match self.read(&loc, span)? {
                     Value::Ref(target) => loc = target,
-                    Value::Null => return unsupported("a null pointer", span),
-                    _ => return unsupported("slices and text", span),
+                    Value::Slice {
+                        start: Some(start), ..
+                    } => {
+                        loc = start;
+                        in_slice = true;
+                        continue;
+                    }
+                    Value::Null | Value::Uninit | Value::Slice { start: None, .. } => {
+                        return out_of_bounds(span);
+                    }
+                    _ => return unsupported("text's bytes", span),
                 },
             }
+            in_slice = false;
         }
         Ok(loc)
     }
 
+    /// The value a location starts from: a local, or a heap slot.
+    fn root(&self, root: &Root, span: &Span) -> Result<&Value, Stop> {
+        match root {
+            Root::Local { frame, local } => Ok(&self.frames[*frame].locals[local.id]),
+            Root::Heap { alloc, index } => match self.heap.get(*alloc) {
+                Some(Some(elements)) => {
+                    elements.get(*index).map_or_else(|| out_of_bounds(span), Ok)
+                }
+                _ => out_of_bounds(span),
+            },
+        }
+    }
+
     fn read(&self, loc: &Loc, span: &Span) -> Result<Value, Stop> {
-        let mut value = &self.frames[loc.frame].locals[loc.local.id];
+        let mut value = self.root(&loc.root, span)?;
         for &i in &loc.path {
-            value = match value {
-                Value::Agg(parts) => parts.get(i).unwrap_or(&Value::Uninit),
-                Value::Uninit => &Value::Uninit,
-                _ => return unsupported("slices and text", span),
+            value = match (value, i) {
+                (Value::Agg(parts), _) => parts.get(i).unwrap_or(&Value::Uninit),
+                (Value::Uninit, _) => &Value::Uninit,
+                // A slice's reference holds where its elements start, and how many.
+                (Value::Slice { start, .. }, 0) => {
+                    return Ok(start.clone().map_or(Value::Null, Value::Ref));
+                }
+                (Value::Slice { len, .. }, 1) => return Ok(Value::Int(*len as i128)),
+                _ => return unsupported("text's bytes", span),
             };
         }
         Ok(value.clone())
@@ -419,7 +511,13 @@ impl Machine<'_, '_> {
 
     /// The value at `loc`, to change: the parts on the way are made if they aren't yet.
     fn slot(&mut self, loc: &Loc, span: &Span) -> Result<&mut Value, Stop> {
-        let mut value = &mut self.frames[loc.frame].locals[loc.local.id];
+        let mut value = match &loc.root {
+            Root::Local { frame, local } => &mut self.frames[*frame].locals[local.id],
+            Root::Heap { alloc, index } => match self.heap.get_mut(*alloc) {
+                Some(Some(elements)) if *index < elements.len() => &mut elements[*index],
+                _ => return out_of_bounds(span),
+            },
+        };
         for &i in &loc.path {
             if matches!(value, Value::Uninit) {
                 *value = Value::Agg(Vec::new());
@@ -431,10 +529,79 @@ impl Machine<'_, '_> {
                     }
                     &mut parts[i]
                 }
-                _ => return unsupported("slices and text", span),
+                _ => return unsupported("changing part of a slice's reference", span),
             };
         }
         Ok(value)
+    }
+
+    /// What intrinsic `intrinsic` gives, given its arguments: a pointer, then the rest.
+    fn intrinsic(
+        &mut self,
+        intrinsic: Intrinsic,
+        args: Vec<Value>,
+        span: &Span,
+    ) -> Result<Value, Stop> {
+        let p = pointer(&args[0], span)?;
+        // The `i`th element on from where `p` points.
+        let at = |i: usize| match &p {
+            Some(loc) => loc.offset(i, span),
+            None => out_of_bounds(span),
+        };
+        Ok(match intrinsic {
+            Intrinsic::Resize => {
+                let size = count(&args[1], span)?;
+                match &p {
+                    None => {
+                        self.heap.push(Some(vec![Value::Uninit; size]));
+                        Value::Ref(Loc {
+                            root: Root::Heap {
+                                alloc: self.heap.len() - 1,
+                                index: 0,
+                            },
+                            path: Vec::new(),
+                        })
+                    }
+                    Some(Loc {
+                        root: Root::Heap { alloc, index: 0 },
+                        path,
+                    }) if path.is_empty() => {
+                        match self.heap.get_mut(*alloc) {
+                            Some(Some(elements)) => elements.resize(size, Value::Uninit),
+                            _ => return out_of_bounds(span),
+                        }
+                        args[0].clone()
+                    }
+                    Some(_) => return unsupported("resizing memory it didn't allocate", span),
+                }
+            }
+            Intrinsic::Free => {
+                match &p {
+                    None => {}
+                    Some(Loc {
+                        root: Root::Heap { alloc, index: 0 },
+                        path,
+                    }) if path.is_empty() => match self.heap.get_mut(*alloc) {
+                        Some(slot @ Some(_)) => *slot = None,
+                        _ => return out_of_bounds(span),
+                    },
+                    Some(_) => return unsupported("freeing memory it didn't allocate", span),
+                }
+                Value::Unit
+            }
+            Intrinsic::Read => self.read(&at(count(&args[1], span)?)?, span)?,
+            Intrinsic::Write => {
+                let loc = at(count(&args[1], span)?)?;
+                *self.slot(&loc, span)? = args[2].clone();
+                Value::Unit
+            }
+            Intrinsic::Offset => Value::Ref(at(count(&args[1], span)?)?),
+            Intrinsic::View => Value::Slice {
+                start: p.clone(),
+                len: count(&args[1], span)?,
+            },
+            Intrinsic::IsNull => Value::Bool(p.is_none()),
+        })
     }
 
     // --- Values ---
@@ -482,6 +649,12 @@ impl Machine<'_, '_> {
             Ty::Bool => Value::Bool(false),
             Ty::Char | Ty::Int(_) => Value::Int(0),
             Ty::Float(_) => Value::Float(0.0),
+            Ty::Ref { to, .. } if matches!(mir.types.get(*to), Ty::Slice(_) | Ty::Str) => {
+                Value::Slice {
+                    start: None,
+                    len: 0,
+                }
+            }
             Ty::Pointer | Ty::Ptr(_) | Ty::CStr | Ty::Ref { .. } => Value::Null,
             Ty::Struct(def, args) => {
                 let s = mir.struct_def(*def, args);
@@ -597,8 +770,17 @@ impl Machine<'_, '_> {
                 }
                 Value::Agg(parts)
             }
-            Rvalue::MakeSlice { .. } => return unsupported("slices and text", span),
-            Rvalue::Intrinsic { .. } => return unsupported("raw memory", span),
+            Rvalue::MakeSlice { start, len, .. } => {
+                let start = pointer(&self.operand(start, span)?, span)?;
+                let len = count(&self.operand(len, span)?, span)?;
+                Value::Slice { start, len }
+            }
+            Rvalue::Intrinsic {
+                intrinsic, args, ..
+            } => {
+                let args = operands(self, args)?;
+                self.intrinsic(*intrinsic, args, span)?
+            }
             Rvalue::Call { .. } => unreachable!("calls are statements of their own"),
         })
     }
@@ -666,6 +848,17 @@ impl Machine<'_, '_> {
                     _ => return unsupported("this operator on floats", span),
                 }
             }
+            // Pointers are equal when they point to the same place.
+            (a @ (Value::Ref(_) | Value::Null), b @ (Value::Ref(_) | Value::Null), _)
+                if matches!(op, BinOp::Equals | BinOp::NotEquals) =>
+            {
+                let same = match (&a, &b) {
+                    (Value::Ref(a), Value::Ref(b)) => a == b,
+                    (Value::Null, Value::Null) => true,
+                    _ => false,
+                };
+                Value::Bool(same == (op == BinOp::Equals))
+            }
             (Value::Bool(a), Value::Bool(b), _) => match op {
                 BinOp::And => Value::Bool(a && b),
                 BinOp::Or => Value::Bool(a || b),
@@ -679,6 +872,32 @@ impl Machine<'_, '_> {
 
     fn cast(&self, value: Value, from: TypeId, to: TypeId, span: &Span) -> Result<Value, Stop> {
         let types = &self.mir().types;
+        let pointee = |t: TypeId| match types.get(t) {
+            Ty::Ref { to, .. } => Some(types.get(*to)),
+            _ => None,
+        };
+        // A reference to an array, as a slice of its elements.
+        if let (Some(Ty::Array { len, .. }), Some(Ty::Slice(_))) = (pointee(from), pointee(to)) {
+            let len = self.array_len(*len, span)?;
+            return Ok(match value {
+                Value::Ref(mut loc) => {
+                    loc.path.push(0);
+                    Value::Slice {
+                        start: Some(loc),
+                        len,
+                    }
+                }
+                _ => return unsupported("this conversion", span),
+            });
+        }
+        // `[mut T]` as `[T]`, and pointers as other pointers: where they point is the same.
+        let points = |t: &Ty| matches!(t, Ty::Pointer | Ty::Ptr(_) | Ty::Ref { .. });
+        if points(types.get(from)) && points(types.get(to)) {
+            return Ok(match value {
+                Value::Uninit => Value::Null,
+                value => value,
+            });
+        }
         Ok(match (value, types.get(from), types.get(to)) {
             (Value::Int(n), _, Ty::Int(int)) => Value::Int(wrap(n, *int)),
             (Value::Int(n), _, Ty::Float(float)) => Value::Float(round(n as f64, *float)),
@@ -704,26 +923,37 @@ impl Machine<'_, '_> {
     }
 }
 
+/// What can't be kept of a constant's value, and where in it: `[".mem", ".ptr"]`.
+type Unkeepable = (&'static str, Vec<String>);
+
 /// `value`, of type `ty`, as a constant in the program, or what it is that can't be one.
-fn bake(mir: &Mir, value: &Value, ty: TypeId) -> Result<ConstKind, &'static str> {
-    let part = |value: &Value, ty: TypeId| -> Result<Const, &'static str> {
-        Ok(Const {
-            kind: bake(mir, value, ty)?,
-            ty,
-        })
-    };
-    // What its parts are, and their types.
-    let parts = |values: &[Value], types: &[TypeId]| -> Result<ConstKind, &'static str> {
-        let mut parts = Vec::new();
-        for (i, &ty) in types.iter().enumerate() {
-            parts.push(part(values.get(i).unwrap_or(&Value::Uninit), ty)?);
+fn bake(mir: &Mir, value: &Value, ty: TypeId) -> Result<ConstKind, Unkeepable> {
+    // Its parts, with their types, and how each is named.
+    let parts = |parts: Vec<(&Value, TypeId, String)>| -> Result<ConstKind, Unkeepable> {
+        let mut baked = Vec::new();
+        for (value, ty, name) in parts {
+            let kind = bake(mir, value, ty).map_err(|(what, mut at)| {
+                at.insert(0, name);
+                (what, at)
+            })?;
+            baked.push(Const { kind, ty });
         }
-        Ok(ConstKind::Aggregate(parts))
+        Ok(ConstKind::Aggregate(baked))
+    };
+    const UNSET: &Value = &Value::Uninit;
+    fn nth(values: &[Value], i: usize) -> &Value {
+        values.get(i).unwrap_or(UNSET)
+    }
+    let memory = || {
+        (
+            "a reference to memory that only exists while compiling",
+            Vec::new(),
+        )
     };
     Ok(match value {
         Value::Int(n) => ConstKind::Int(*n),
         Value::Float(x) if x.is_finite() => ConstKind::Float(*x),
-        Value::Float(_) => return Err("infinite, or not a number"),
+        Value::Float(_) => return Err(("infinite, or not a number", Vec::new())),
         Value::Bool(b) => ConstKind::Bool(*b),
         Value::Unit => ConstKind::Unit,
         Value::Str(s) => ConstKind::Str(s.to_string()),
@@ -732,17 +962,29 @@ fn bake(mir: &Mir, value: &Value, ty: TypeId) -> Result<ConstKind, &'static str>
         Value::Uninit | Value::Null => ConstKind::Zeroed,
         Value::Agg(values) => match mir.types.get(ty) {
             Ty::Struct(def, args) if !mir.struct_def(*def, args).handle => {
-                let types: Vec<TypeId> = (mir.struct_def(*def, args).fields.iter())
-                    .map(|&(_, ty)| ty)
-                    .collect();
-                parts(values, &types)?
+                let s = mir.struct_def(*def, args);
+                parts(
+                    (s.fields.iter().enumerate())
+                        .map(|(i, (name, ty))| (nth(values, i), *ty, format!(".{name}")))
+                        .collect(),
+                )?
             }
-            Ty::Optional(inner) => parts(values, &[mir.types.bool, *inner])?,
-            Ty::Array { element, .. } => parts(values, &vec![*element; values.len()])?,
-            Ty::Range(int) => parts(values, &[*int, *int])?,
-            _ => return Err("a kind of value that can't be kept yet"),
+            Ty::Optional(inner) => parts(vec![
+                (nth(values, 0), mir.types.bool, String::new()),
+                (nth(values, 1), *inner, String::new()),
+            ])?,
+            Ty::Array { element, .. } => parts(
+                (values.iter().enumerate())
+                    .map(|(i, v)| (v, *element, format!("[{i}]")))
+                    .collect(),
+            )?,
+            Ty::Range(int) => parts(vec![
+                (nth(values, 0), *int, ".start".into()),
+                (nth(values, 1), *int, ".end".into()),
+            ])?,
+            _ => return Err(("a kind of value that can't be kept yet", Vec::new())),
         },
-        Value::Ref(_) => return Err("a reference to memory that only exists while compiling"),
+        Value::Ref(_) | Value::Slice { .. } => return Err(memory()),
     })
 }
 

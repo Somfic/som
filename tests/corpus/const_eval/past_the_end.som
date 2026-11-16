@@ -1,0 +1,17 @@
+// expect: error ConstOutOfBounds
+
+use som::mem;
+
+/// Unchecked pointer code reading past what it allocated.
+fn past_the_end() -> i32 {
+    let mut p = mem::null<i32>();
+    p.resize(2);
+    p.write(0, 1);
+    let value = p.read(5);
+    p.free();
+    value
+}
+
+@const X = past_the_end();
+
+fn main() -> i32 = X;

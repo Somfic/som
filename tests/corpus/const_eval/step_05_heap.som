@@ -1,0 +1,20 @@
+// expect: exit 19
+
+/// A `List` built while compiling: its memory is gone by the end, only the array is kept.
+fn first_primes() -> [i32; 8] {
+    let mut found: List<i32> = List::empty();
+    let mut n = 2;
+    while found.len < 8 {
+        let mut prime = true;
+        for p in &found { if p != 0 && n % p == 0 { prime = false; } }
+        if prime { found.push(n); }
+        n = n + 1;
+    }
+    let mut table = [0; 8];
+    for i in 0..8 { table[i] = *found.at(i); }
+    table
+}
+
+@const PRIMES = first_primes();
+
+fn main() -> i32 = PRIMES[7];

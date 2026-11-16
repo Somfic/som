@@ -1,8 +1,8 @@
 # Compile-time code
 
-*Design spec. Status: steps 0–4 done (`@const`, calls, branches and recursion, loops, and
-structs, enums, arrays and optionals as values, in `crates/compiler/8-comptime`); the rest
-is proposed.*
+*Design spec. Status: steps 0–5 done (`@const`, calls, branches and recursion, loops,
+structs, enums, arrays and optionals as values, and heap memory while running, in
+`crates/compiler/8-comptime`); the rest is proposed.*
 
 Som code can already be worked out while compiling, but only a little of it: a `const` can be
 literals, operators, casts and other constants, and nothing else. This spec lets **any som
@@ -513,18 +513,18 @@ fn first_primes() -> [i32; 8] {
     let mut n = 2;
     while found.len < 8 {
         let mut prime = true;
-        for p in &found { if n % *p == 0 { prime = false; } }
+        for p in &found { if p != 0 && n % p == 0 { prime = false; } }
         if prime { found.push(n); }
         n = n + 1;
     }
-    let mut out = [0; 8];
-    for i in 0..8 { out[i] = *found.at(i); }
-    out
+    let mut table = [0; 8];
+    for i in 0..8 { table[i] = *found.at(i); }
+    table
 }
 @const PRIMES = first_primes();
 ```
 *Needs:* the interpreter heap for the `Alloc` intrinsics, references, and `Drop`. Returning
-`found` itself is `ConstHoldsMemory` (`keeps_a_list.som`).
+`found` itself is `ConstHoldsMemory` (`keeps_a_list.som`). **Done.**
 
 **Step 6. Text built while compiling.** `step_06_text.som`
 ```rust

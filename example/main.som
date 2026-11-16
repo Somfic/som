@@ -1,36 +1,20 @@
 extern "c";
 
-@const COLS = 10;
-@const ROWS = 20;
-@const CELLS = COLS * ROWS;
-
-c::printf("cells", CELLS);
 //
-fn kilobytes(n: i32) -> i32 = n * 1024;
-@const BUFFER = kilobytes(4);
-
-c::printf("%buffer", BUFFER);
-//
-fn fib(n: i32) -> i32 = n if n < 2 else fib(n - 1) + fib(n - 2);
-@const FIB_20 = fib(20);
-c::printf("fib", FIB_20);
-//
-fn squares() -> [i32; 10] {
-    let mut table = [0; 10];
-    for i in 0..10 { table[i] = i * i; }
+fn first_primes<N: usize>() -> [i32; N] {
+    let mut found: List<i32> = List::empty();
+    let mut n = 2;
+    while found.len < N {
+        let mut prime = true;
+        for p in &found { if p != 0 && n % p == 0 { prime = false; } }
+        if prime { found.push(n); }
+        n = n + 1;
+    }
+    let mut table = [0; N];
+    for i in 0..N { table[i] = *found.at(i); }
     table
 }
-@const SQUARES = squares();
-for row in SQUARES {
-    c::printf("fib", row);
+@const PRIMES = first_primes<100>();
+for value in PRIMES {
+    c::printf("prime", value);
 }
-//
-enum Channel { Red, Green, Blue }
-struct Rgb { r: u8, g: u8, b: u8 }
-
-fn pure(c: Channel) -> Rgb = match c {
-    Channel::Red   => Rgb { r: 255, g: 0, b: 0 },
-    Channel::Green => Rgb { r: 0, g: 255, b: 0 },
-    Channel::Blue  => Rgb { r: 0, g: 0, b: 255 },
-};
-@const RED = pure(Channel::Red);
