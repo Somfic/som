@@ -1,0 +1,16 @@
+// expect: exit 42
+
+/// An `@if` on a constant worked out by running code.
+fn debugging() -> bool = 2 > 3;
+
+@const DEBUG = debugging();
+
+fn level() -> i32 {
+    @if DEBUG {
+        return "not even an i32";
+    } else {
+        return 42;
+    }
+}
+
+fn main() -> i32 = level();

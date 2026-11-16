@@ -134,6 +134,93 @@ impl Warning {
     }
 }
 
+/// Checks types, working out first the constants needed to: `[i32; SIZE]` of
+/// `@const SIZE = next_power_of_two(100);` needs `SIZE` run before the type is known. Each
+/// round checks the program with what's worked out so far; the constants it needed are then
+/// lowered (only what they run), borrow-checked and run, and it's checked again. A round
+/// that works nothing new out is a constant needed to work itself out.
+fn typecheck_rounds(ast: &Ast, names: &som_resolve::Names) -> (som_typeck::Typed, Vec<Error>) {
+    let mut known = som_typeck::ConstValues::default();
+    loop {
+        let checked = som_typeck::check_with(ast, names, &known);
+        if checked.needed.is_empty() || !checked.errors.is_empty() {
+            let errors = checked.errors.into_iter().map(Error::Type).collect();
+            return (checked.typed, errors);
+        }
+        let mut progress = false;
+        for &c in &checked.needed {
+            match work_out(ast, names, &checked.typed, c) {
+                Ok(Some(value)) => {
+                    known.0.insert(c, value);
+                    progress = true;
+                }
+                // It needs another constant that isn't worked out yet.
+                Ok(None) => {}
+                Err(errors) => return (checked.typed, errors),
+            }
+        }
+        if !progress {
+            let errors = (checked.needed.iter())
+                .map(|&c| {
+                    let name = &ast.consts[c].name;
+                    Error::Type(TypeError::ConstCycle {
+                        name: name.name.to_string(),
+                        span: name.span.clone(),
+                    })
+                })
+                .collect();
+            return (checked.typed, errors);
+        }
+    }
+}
+
+/// Constant `c`'s value, worked out by running it, with the program checked so far.
+/// `Ok(None)` if what it runs needs a constant that isn't known yet: its types aren't all
+/// known.
+fn work_out(
+    ast: &Ast,
+    names: &som_resolve::Names,
+    typed: &som_typeck::Typed,
+    c: som_ast::Id<som_ast::Const>,
+) -> Result<Option<som_typeck::ConstValue>, Vec<Error>> {
+    let (mir, inits) = som_lower::lower_inits(ast, names, typed, &[c]);
+    if mentions_unknown(&mir) {
+        return Ok(None);
+    }
+    let errors = som_borrowcheck::check(&mir);
+    if !errors.is_empty() {
+        return Err(errors.into_iter().map(Error::Borrow).collect());
+    }
+    let (values, errors) = som_comptime::evaluate(&mir, &inits);
+    if !errors.is_empty() {
+        return Err(errors.into_iter().map(Error::Comptime).collect());
+    }
+    Ok(Some(match values.into_iter().next().flatten() {
+        Some(som_mir::ConstKind::Int(n)) => som_typeck::ConstValue::Int(n),
+        Some(som_mir::ConstKind::Bool(b)) => som_typeck::ConstValue::Bool(b),
+        _ => som_typeck::ConstValue::Other,
+    }))
+}
+
+/// Whether a function in `mir` has a type that isn't known: made of a constant still to be
+/// worked out.
+fn mentions_unknown(mir: &som_mir::Mir) -> bool {
+    fn unknown(mir: &som_mir::Mir, ty: som_mir::TypeId, depth: usize) -> bool {
+        depth < 32
+            && match mir.types.get(ty) {
+                som_mir::Ty::Error => true,
+                t => (t.children().into_iter()).any(|child| unknown(mir, child, depth + 1)),
+            }
+    }
+    mir.funcs.iter().any(|func| {
+        unknown(mir, func.ret, 0)
+            || func.params.iter().any(|&p| unknown(mir, p, 0))
+            || (func.body.iter())
+                .flat_map(|body| body.locals.iter())
+                .any(|local| unknown(mir, local.ty, 0))
+    })
+}
+
 /// Loads `path` and runs every check, stopping after the first pass that reports errors.
 /// The borrow checker's errors: in `mir`, the program as it's used, and in every generic
 /// function with stand-ins for its type parameters, used or not, so a value used after it's
@@ -209,9 +296,9 @@ fn check_passes(
         return Err(errors.into_iter().map(Error::Resolve).collect());
     }
 
-    let (typed, errors) = som_typeck::check(&ast, &names);
+    let (typed, errors) = typecheck_rounds(&ast, &names);
     if !errors.is_empty() {
-        return Err(errors.into_iter().map(Error::Type).collect());
+        return Err(errors);
     }
 
     let errors = som_prove::prove(&ast, &names, &typed);
@@ -404,9 +491,9 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
     suggest_imports(&ast, &mut resolve_errors, options);
     errors.extend(resolve_errors.into_iter().map(Error::Resolve));
 
-    let (typed, type_errors) = som_typeck::check(&ast, &names);
+    let (typed, type_errors) = typecheck_rounds(&ast, &names);
     let well_typed = type_errors.is_empty();
-    errors.extend(type_errors.into_iter().map(Error::Type));
+    errors.extend(type_errors);
     if well_typed && errors.is_empty() {
         errors.extend(
             som_prove::prove(&ast, &names, &typed)

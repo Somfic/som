@@ -1,0 +1,22 @@
+// expect: exit 128
+
+/// A constant worked out by running code, used in a type: it's worked out before the types
+/// are checked, and the program is checked with it known.
+fn next_power_of_two(n: usize) -> usize {
+    let mut p: usize = 1;
+    while p < n {
+        p = p * 2;
+    }
+    p
+}
+
+@const SIZE = next_power_of_two(100);
+
+struct Ring {
+    slots: [i32; SIZE],
+}
+
+fn main() -> i32 {
+    let ring = Ring { slots: [0; SIZE] };
+    ring.slots.len as i32
+}

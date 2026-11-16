@@ -897,7 +897,12 @@ impl Prover<'_> {
                 let DefKind::Const(c) = self.names.def(def).kind else {
                     return None;
                 };
-                self.const_int(self.ast.consts[c].value)?
+                // Worked out by running it, before types were checked.
+                match self.typed.const_value(c) {
+                    Some(som_typeck::ConstValue::Int(n)) => n,
+                    Some(_) => return None,
+                    None => self.const_int(self.ast.consts[c].value)?,
+                }
             }
             Expr::Binary { op, lhs, rhs } => {
                 let (a, b) = (self.const_int(lhs)?, self.const_int(rhs)?);

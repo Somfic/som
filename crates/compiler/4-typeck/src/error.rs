@@ -164,11 +164,9 @@ pub enum TypeError {
     },
     /// `@on fail fn save()`: a listener takes a `&Failure`, and gives nothing back.
     ListenerSignature { span: Span },
-    ConstNeededTooEarly {
-        name: String,
-        span: Span,
-        defined_at: Span,
-    },
+    /// `@const N = len();` where what `len` runs needs `N`'s value to be checked: a type
+    /// `[i32; N]`, or an `@if`. It can't be worked out before it's known.
+    ConstCycle { name: String, span: Span },
     /// `none` where a raw pointer is expected: `fflush(none)`. A null pointer is
     /// `mem::null()`.
     NoneAsPointer {
@@ -1985,17 +1983,14 @@ impl TypeError {
             ])
             .with_label(Label::primary(span.clone(), "called when the program fails"))
             .with_hint(msg!["write it ", code("fn name(failure: &Failure)")]),
-            TypeError::ConstNeededTooEarly {
-                name,
-                span,
-                defined_at,
-            } => Diagnostic::error(msg!["constant ", var(name), " isn't known yet here"])
-                .with_label(Label::primary(span.clone(), "a number is needed here, to check types"))
-                .with_label(Label::secondary(
-                    defined_at.clone(),
-                    "worked out by running code, after types are checked",
-                ))
-                .with_hint("write it as a number, or as arithmetic of constants"),
+            TypeError::ConstCycle { name, span } => {
+                Diagnostic::error(msg!["constant ", var(name), " is needed to work itself out"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "what it runs needs its value, in a type or an `@if`",
+                    ))
+                    .with_hint("its value can't be known before it's worked out")
+            }
             TypeError::ConstChanged {
                 name,
                 span,

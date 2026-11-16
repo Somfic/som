@@ -1,0 +1,15 @@
+// expect: error
+
+/// Past the end of an array whose length is a constant worked out by running code.
+fn size() -> usize = 64 * 2;
+
+@const SIZE = size();
+
+struct Ring {
+    slots: [i32; SIZE],
+}
+
+fn main() -> i32 {
+    let ring = Ring { slots: [0; SIZE] };
+    ring.slots[128]
+}

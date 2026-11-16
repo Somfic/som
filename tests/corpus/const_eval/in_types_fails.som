@@ -1,0 +1,14 @@
+// expect: error ConstFailed
+
+/// Working out a constant needed in a type fails: said once, as it fails.
+fn checked(n: usize) -> usize {
+    @fail("no room for {n}");
+}
+
+@const SIZE = checked(3);
+
+struct Ring {
+    slots: [i32; SIZE],
+}
+
+fn main() -> i32 = 0;

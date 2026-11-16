@@ -75,3 +75,20 @@ fn an_unknown_built_in_in_an_at_for_is_the_only_error() {
         analysis.errors
     );
 }
+
+#[test]
+fn an_editor_works_out_constants_used_in_types() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("main.som");
+    std::fs::write(
+        &file,
+        "fn size() -> usize = 2 * 64;\n\
+         @const SIZE = size();\n\
+         struct Ring { slots: [i32; SIZE] }\n\
+         fn main() -> i32 { let ring = Ring { slots: [0; SIZE] }; ring.slots[127] }\n",
+    )
+    .unwrap();
+    // As `som build` sees it: `SIZE` is worked out, so `[i32; SIZE]` has 128 slots.
+    let analysis = analyze(&program_root(&file), &Options::default());
+    assert!(analysis.errors.is_empty(), "{:?}", analysis.errors);
+}

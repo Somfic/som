@@ -1,0 +1,15 @@
+// expect: exit 127
+
+/// The prover knows the length a constant worked out by running code gives an array.
+fn size() -> usize = 64 * 2;
+
+@const SIZE = size();
+
+struct Ring {
+    slots: [i32; SIZE],
+}
+
+fn main() -> i32 {
+    let ring = Ring { slots: [127; SIZE] };
+    ring.slots[127]
+}

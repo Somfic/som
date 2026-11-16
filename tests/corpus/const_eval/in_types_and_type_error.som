@@ -1,0 +1,15 @@
+// expect: error Mismatch
+
+/// A type error elsewhere is said as it is: nothing about the constant still to be worked out.
+fn size() -> usize = 8;
+
+@const SIZE = size();
+
+struct Ring {
+    slots: [i32; SIZE],
+}
+
+fn main() -> i32 {
+    let wrong: i32 = "text";
+    0
+}

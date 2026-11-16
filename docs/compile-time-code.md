@@ -330,17 +330,30 @@ Codegen writes small aggregates as C compound literals. Arrays over a size thres
 single `static const` global that each use reads from, so a 256-entry table isn't repeated at
 every use.
 
-### 4.4 Constants used in types (later)
+### 4.4 Constants used in types: in rounds
 
-In phase 1, a constant that needs code run can't be used where typeck or the prover need its
-number: array lengths, value generic arguments, and the prover's facts. That's a
-`ConstNeededTooEarly` error: "`N` is worked out by running code, which happens after types are
-checked; write it as a number or as arithmetic of constants".
+A constant worked out by running code can be used where typeck or the prover need its
+number: array lengths (`struct Ring { slots: [i32; SIZE] }`), `[0; SIZE]`, and an `@if`'s
+condition. **Done** (step 15), in rounds (`typecheck_rounds` in the driver):
 
-Lifting this means evaluating **on demand during typeck**: when `const_number` hits a computed
-constant, type-check its initializer and what it calls, lower just those, and run them. The
-`ConstCycle` check extends to this, so a constant whose type depends on itself is still an
-error. It's how Zig works, and it's real work, so it waits until phase 4.
+1. Typeck checks the program with the constants worked out so far
+   (`som_typeck::check_with(ast, names, &known)`). A computed constant needed where its value
+   has to be known, and not known yet, is *needed*: what's made of it is `Ty::Error`, with no
+   error said (it unifies with anything, so nothing follows from it).
+2. If nothing's needed, or there are real errors, that's the result.
+3. Otherwise each needed constant is worked out: `som_lower::lower_inits` lowers its
+   initializer and only what it runs (lowering's worklist finds methods through traits, drop
+   glue, `@on fail` functions), the borrow checker checks that, and `som_comptime::evaluate`
+   runs it. If what it runs has a type that isn't known yet (made of another constant still
+   to be worked out), it waits for a later round.
+4. Then typeck checks the program again, with them known. A round that works nothing new
+   out is a constant needed to work itself out: `ConstCycle` (typeck's), at the constant.
+
+The prover and lowering use the values worked out (`Typed::const_value`). Rounds were chosen
+over evaluating on demand inside typeck (how Zig and rustc's queries do it): what a
+constant runs is decided by lowering, not typeck, so a typeck-side "what it calls" would miss
+dispatch, drop glue and listeners; and a constant's value feeds back into the whole program's
+types anyway. A program that needs no computed constant in a type is checked once.
 
 ### 4.5 `@for` and `@if` inside function bodies
 
@@ -430,9 +443,6 @@ lookup and the LSP's completion each need one to answer. After pass 1 works.
 - **The prover and arithmetic of two unknowns**: `.components[N - 1 - i]` in `@for i in 0..N`
   isn't proven, the prover's facts being one unknown and a constant. Proving each unrolled
   copy with `i` known would do it.
-- **A computed constant in a type**: `[i32; four()]` is `ConstNeededTooEarly`. Typeck could
-  run twice, the constants it needed worked out in between (cheaper than evaluating on demand,
-  step 15).
 - **The prover doesn't check a `@const`'s value**: `@where` conditions on calls made while
   compiling aren't proven; dividing by zero is caught as it runs.
 - **The editor runs constants on every check**: one that runs for the step limit (10 million
@@ -483,7 +493,7 @@ struct definitions, so `@size_of` can use that.
 | `ConstOutOfBounds` | comptime | 1 |
 | `ConstTooLong` | comptime | 1 |
 | `ConstHoldsMemory` | comptime | 1 |
-| `ConstNeededTooEarly` | typeck | 1, gone in 4 |
+| `ConstNeededTooEarly` | typeck | 1, gone in 4 (gone) |
 | `ConstFailed` | comptime | 1 |
 
 ---
@@ -756,8 +766,10 @@ written over too.
 @const SIZE = next_power_of_two(100);
 struct Ring { slots: [i32; SIZE] }
 ```
-*Needs:* evaluating on demand during typeck, with cycle detection through types. Until this
-step, this test expects `error ConstNeededTooEarly`, and the step flips it.
+*Needs:* evaluating during typeck, with cycle detection through types. **Done**, in rounds
+([4.4](#44-constants-used-in-types-in-rounds)): `step_15_in_types.som` exits 128, and
+`array_length.som`, which was `error ConstNeededTooEarly`, now runs; a cycle through a type is
+`ConstCycle` (`in_types_cycle.som`, `in_types_struct_cycle.som`).
 
 ---
 
@@ -781,7 +793,7 @@ they're listed here so every error kind has a test:
 | `divides_by_zero.som` | `error ConstDividedByZero` |
 | `forever.som`: `loop {}` | `error ConstTooLong` |
 | `keeps_a_list.som`: returns a `List` | `error ConstHoldsMemory` |
-| `array_length.som`: `[i32; computed()]` | `error ConstNeededTooEarly` |
+| `array_length.som`: `[i32; computed()]` | `exit 0` (was `error ConstNeededTooEarly`) |
 | `calls_itself.som`: `@const A = f(); fn f() = A;` | `error ConstCycle` |
 | `assert.som`: `@assert(SIZE % 8 == 0, "…")` with `SIZE` 12 | `error ConstFailed` |
 | `wraps.som`: `i8` overflow while compiling equals run time | `exit …` |

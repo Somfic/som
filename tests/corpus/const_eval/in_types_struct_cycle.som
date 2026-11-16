@@ -1,0 +1,17 @@
+// expect: error ConstCycle
+
+/// Working out `SIZE` runs `size`, which takes a `Ring`, whose type needs `SIZE`.
+struct Ring {
+    slots: [i32; SIZE],
+}
+
+fn size(ring: &Ring) -> usize = 8;
+
+fn make() -> usize {
+    let ring = Ring { slots: [0; SIZE] };
+    size(&ring)
+}
+
+@const SIZE = make();
+
+fn main() -> i32 = SIZE as i32;

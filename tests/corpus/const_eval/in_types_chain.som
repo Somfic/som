@@ -1,0 +1,19 @@
+// expect: exit 42
+
+/// `B` is worked out by running `b`, whose types need `A`: worked out one round after the other.
+fn four() -> usize = 4;
+
+@const A = four();
+
+fn b() -> usize {
+    let cells: [i32; A] = [10; A];
+    cells[0] as usize + cells.len
+}
+
+@const B = b();
+
+fn main() -> i32 {
+    let row: [u8; B] = [0; B];
+    // 14 + 28
+    return row.len as i32 + 28;
+}

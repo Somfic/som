@@ -23,26 +23,85 @@ use som_resolve::{DefId, DefKind, Names};
 use std::collections::{HashMap, HashSet};
 
 pub fn check(ast: &Ast, names: &Names) -> (Typed, Vec<TypeError>) {
-    check::Checker::new(ast, names).run()
+    let checked = check_with(ast, names, &ConstValues::default());
+    (checked.typed, checked.errors)
+}
+
+/// Checks the program with the values of constants worked out so far, `known`. A constant
+/// that's worked out by running code, needed where its value has to be known (an array's
+/// length, an `@if`) and not in `known`, is `needed`: what's made of it this time round is
+/// an error that isn't said, and the program is checked again once it's worked out.
+pub fn check_with(ast: &Ast, names: &Names, known: &ConstValues) -> Checked {
+    let mut checker = check::Checker::new(ast, names);
+    checker.known = known.clone();
+    let (typed, errors, needed) = checker.run_needing();
+    Checked {
+        typed,
+        errors,
+        needed,
+    }
+}
+
+/// What checking a program gives, with the constants it still needs worked out.
+pub struct Checked {
+    pub typed: Typed,
+    pub errors: Vec<TypeError>,
+    /// Constants worked out by running code that are needed before the program can be
+    /// checked, in the order they were first needed.
+    pub needed: Vec<Id<som_ast::Const>>,
+}
+
+/// A constant's value, worked out by running it: what the type checker can use of it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ConstValue {
+    Int(i128),
+    Bool(bool),
+    /// Anything else: a struct, text. Not a count, nor a condition.
+    Other,
+}
+
+/// The values of constants worked out by running them.
+#[derive(Clone, Debug, Default)]
+pub struct ConstValues(pub HashMap<Id<som_ast::Const>, ConstValue>);
+
+impl ConstValues {
+    pub fn get(&self, c: Id<som_ast::Const>) -> Option<ConstValue> {
+        self.0.get(&c).copied()
+    }
 }
 
 /// The integer a constant's value works out to: `W * H` of `@const W = 60;` and
 /// `@const H = 20;` is 1200. `None` if it isn't one, or doesn't fit.
 pub fn const_number(ast: &Ast, names: &Names, expr: Id<Expr>) -> Option<i128> {
+    const_number_with(ast, names, &ConstValues::default(), expr)
+}
+
+/// Like `const_number`, with the values of constants worked out by running them, `known`.
+pub fn const_number_with(
+    ast: &Ast,
+    names: &Names,
+    known: &ConstValues,
+    expr: Id<Expr>,
+) -> Option<i128> {
+    let number = |expr| const_number_with(ast, names, known, expr);
     Some(match ast.exprs[expr] {
         Expr::Int(n) => n,
-        Expr::Neg(inner) => const_number(ast, names, inner)?.checked_neg()?,
-        Expr::Cast { value, .. } => const_number(ast, names, value)?,
+        Expr::Neg(inner) => number(inner)?.checked_neg()?,
+        Expr::Cast { value, .. } => number(value)?,
         Expr::Var(ref path) if let Some((_, n)) = path.int_limit() => n,
         Expr::Var(_) => {
             let def = names.expr(expr)?;
             let DefKind::Const(c) = names.def(def).kind else {
                 return None;
             };
-            const_number(ast, names, ast.consts[c].value)?
+            match known.get(c) {
+                Some(ConstValue::Int(n)) => n,
+                Some(_) => return None,
+                None => number(ast.consts[c].value)?,
+            }
         }
         Expr::Binary { op, lhs, rhs } => {
-            let (a, b) = (const_number(ast, names, lhs)?, const_number(ast, names, rhs)?);
+            let (a, b) = (number(lhs)?, number(rhs)?);
             match op {
                 BinOp::Add => a.checked_add(b)?,
                 BinOp::Subtract => a.checked_sub(b)?,
@@ -123,6 +182,8 @@ pub struct Typed {
     loops: HashMap<Id<Stmt>, Loop>,
     /// `@if`s → whether the condition holds: which branch there is.
     settled_ifs: HashMap<Id<Stmt>, bool>,
+    /// The values of the constants worked out by running them, that it was checked with.
+    const_values: ConstValues,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
     /// Method calls on typed pointers → the built-in method they call.
@@ -426,6 +487,16 @@ impl Typed {
     /// What the `for` loop `stmt` goes through.
     /// Whether `@if` `stmt`'s condition holds: `true` for its first branch, `false` for its
     /// `else`. `None` for an `if` decided when the program runs.
+    /// The value constant `c` was worked out to by running it, if it was.
+    pub fn const_value(&self, c: Id<som_ast::Const>) -> Option<ConstValue> {
+        self.const_values.get(c)
+    }
+
+    /// `const_number`, with the constants worked out by running them.
+    pub fn const_number(&self, ast: &Ast, names: &Names, expr: Id<Expr>) -> Option<i128> {
+        const_number_with(ast, names, &self.const_values, expr)
+    }
+
     pub fn settled_if(&self, stmt: Id<Stmt>) -> Option<bool> {
         self.settled_ifs.get(&stmt).copied()
     }

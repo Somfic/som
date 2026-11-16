@@ -27,6 +27,22 @@ pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
     lowerer.mir
 }
 
+/// Only what working out constants `consts` runs: each one's initializer, and what it calls,
+/// as lowering finds it (methods through traits, drop glue, `@on fail` functions). The
+/// program's other functions aren't lowered. Each constant's initializer, in order.
+pub fn lower_inits(
+    ast: &Ast,
+    names: &Names,
+    typed: &Typed,
+    consts: &[Id<som_ast::Const>],
+) -> (Mir, Vec<FuncId>) {
+    let mut lowerer = Lowerer::new(ast, names, typed);
+    lowerer.prepare();
+    let inits = consts.iter().map(|&c| lowerer.init(c, None)).collect();
+    lowerer.finish();
+    (lowerer.mir, inits)
+}
+
 /// Every generic function's code, with each of its type parameters a stand-in: a struct of
 /// its own with nothing in it, copied only if the parameter has to be `Copy`, and each value
 /// parameter `1`. Only for the borrow checker: this way it sees generic code nothing uses
@@ -1632,7 +1648,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// known: a literal, a constant, or a value parameter, and arithmetic of those.
     fn settled_int(&mut self, expr: Id<Expr>) -> i128 {
         let ast = self.l.ast;
-        if let Some(n) = som_typeck::const_number(ast, self.l.names, expr) {
+        if let Some(n) = self.l.typed.const_number(ast, self.l.names, expr) {
             return n;
         }
         match &ast.exprs[expr] {

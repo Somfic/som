@@ -1,0 +1,10 @@
+// ConstCycle: Working a constant out runs code whose types need that constant: it can't be known before it's worked out.
+
+fn len() -> usize {
+    let cells: [i32; N] = [0; N];
+    cells.len
+}
+
+@const N = len();
+
+fn main() -> i32 = N as i32;

@@ -297,10 +297,13 @@ impl TypeTable {
         &self.tys[id]
     }
 
-    /// The number an array's `len` stands for. Only for concrete types, where it's a value.
+    /// The number an array's `len` stands for. Only for concrete types, where it's a value;
+    /// or an error, for a length still to be worked out: the code lowered with it, to find
+    /// what a constant runs, is thrown away once that's seen (`0` stands in).
     pub fn len(&self, len: TypeId) -> u64 {
         match self.get(len) {
             Ty::Value(Value::Int(n)) => *n as u64,
+            Ty::Error => 0,
             other => unreachable!("an array's length is a number once it's concrete: {other:?}"),
         }
     }

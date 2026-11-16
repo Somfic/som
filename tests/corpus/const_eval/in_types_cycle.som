@@ -1,0 +1,11 @@
+// expect: error ConstCycle
+
+/// Working out `N` runs `len`, whose types need `N`.
+fn len() -> usize {
+    let cells: [i32; N] = [0; N];
+    cells.len
+}
+
+@const N = len();
+
+fn main() -> i32 = N as i32;

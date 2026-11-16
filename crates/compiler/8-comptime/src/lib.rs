@@ -20,6 +20,23 @@ use som_base::Span;
 use som_mir::*;
 use std::collections::HashMap;
 
+/// Works out initializers `inits`: each one's value, or why it can't be worked out. For a
+/// constant needed before the program's types can be checked: `mir` need only have what
+/// they run.
+pub fn evaluate(mir: &Mir, inits: &[FuncId]) -> (Vec<Option<ConstKind>>, Vec<ComptimeError>) {
+    let mut state = State {
+        mir,
+        results: HashMap::new(),
+        running: Vec::new(),
+        errors: Vec::new(),
+    };
+    let values = inits.iter().map(|&init| state.init(init).ok()).collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut errors = state.errors;
+    errors.retain(|e| seen.insert(format!("{e:?}")));
+    (values, errors)
+}
+
 /// Works out every initializer the program uses, and puts their values in its place. If
 /// one can't be worked out, says why, and leaves the program as it was.
 pub fn run(mir: &mut Mir) -> Vec<ComptimeError> {

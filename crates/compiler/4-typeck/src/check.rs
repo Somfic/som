@@ -54,6 +54,10 @@ pub(crate) struct Checker<'a> {
     for_loops: HashMap<Id<Stmt>, Loop>,
     /// `@if`s → whether the condition holds.
     settled_ifs: HashMap<Id<Stmt>, bool>,
+    /// The values of constants worked out by running them, so far.
+    pub(crate) known: crate::ConstValues,
+    /// Constants worked out by running code whose values are needed, and aren't known yet.
+    needed: Vec<Id<som_ast::Const>>,
     /// The function being checked: its return type, and where that's written.
     returns: Option<(TypeId, Option<Span>)>,
     /// The next expression inferred is the object of a field access or dereference.
@@ -147,6 +151,8 @@ impl<'a> Checker<'a> {
             sliced: HashMap::new(),
             for_loops: HashMap::new(),
             settled_ifs: HashMap::new(),
+            known: crate::ConstValues::default(),
+            needed: Vec::new(),
             returns: None,
             in_place: false,
             deferred_ops: Vec::new(),
@@ -184,7 +190,16 @@ impl<'a> Checker<'a> {
         checker
     }
 
-    pub fn run(mut self) -> (Typed, Vec<TypeError>) {
+    /// Checks the program: what it found, its errors, and the constants worked out by running
+    /// code it needed and didn't know (`needed`).
+    pub fn run_needing(mut self) -> (Typed, Vec<TypeError>, Vec<Id<som_ast::Const>>) {
+        self.check_program();
+        let needed = std::mem::take(&mut self.needed);
+        let (typed, errors) = self.finish();
+        (typed, errors, needed)
+    }
+
+    fn check_program(&mut self) {
         let ast = self.ast;
 
         // The types of value parameters, which the types of fields and parameters can use.
@@ -371,7 +386,6 @@ impl<'a> Checker<'a> {
             }
         }
 
-        self.finish()
     }
 
     /// Checks function `id`'s body, once: in order, or sooner, when a call needs the return
@@ -456,7 +470,11 @@ impl<'a> Checker<'a> {
             Expr::Bool(b) => Some(*b),
             Expr::Not(inner) => self.settled_bool(*inner).map(|b| !b),
             Expr::Var(_) => match self.names.def(self.names.expr(expr)?).kind {
-                DefKind::Const(c) => self.settled_bool(self.ast.consts[c].value),
+                DefKind::Const(c) => match self.known.get(c) {
+                    Some(crate::ConstValue::Bool(b)) => Some(b),
+                    Some(_) => None,
+                    None => self.settled_bool(self.ast.consts[c].value),
+                },
                 _ => None,
             },
             Expr::Binary { op, lhs, rhs } => match op {
@@ -811,6 +829,7 @@ impl<'a> Checker<'a> {
             sliced,
             loops: self.for_loops,
             settled_ifs: self.settled_ifs,
+            const_values: self.known,
             patterns: self.patterns,
             receivers: self.receivers,
             callees: self.callees,
@@ -1257,7 +1276,49 @@ impl<'a> Checker<'a> {
     }
 
     fn const_number(&self, expr: Id<Expr>) -> Option<i128> {
-        crate::const_number(self.ast, self.names, expr)
+        crate::const_number_with(self.ast, self.names, &self.known, expr)
+    }
+
+    /// Notes that constant `c`'s value is needed here, if it's worked out by running code
+    /// and isn't known yet: the program is checked again once it is. Whether it was.
+    fn need(&mut self, c: Id<som_ast::Const>) -> bool {
+        if self.known.get(c).is_some() || !som_resolve::const_runs_code(self.ast, self.names, c)
+        {
+            return false;
+        }
+        if !self.needed.contains(&c) {
+            self.needed.push(c);
+        }
+        true
+    }
+
+    /// Whether `expr` is made of a constant whose value is needed and isn't known yet: what
+    /// it's needed for can't be worked out this time round, and isn't an error.
+    fn needs_unknown(&mut self, expr: Id<Expr>) -> bool {
+        let mut found = false;
+        let mut todo = vec![expr];
+        while let Some(expr) = todo.pop() {
+            match &self.ast.exprs[expr] {
+                Expr::Var(_) => {
+                    if let Some(def) = self.names.expr(expr)
+                        && let DefKind::Const(c) = self.names.def(def).kind
+                    {
+                        if self.need(c) {
+                            found = true;
+                        } else if self.known.get(c).is_none() {
+                            todo.push(self.ast.consts[c].value);
+                        }
+                    }
+                }
+                Expr::Binary { lhs, rhs, .. } => todo.extend([*lhs, *rhs]),
+                Expr::Not(inner) | Expr::Neg(inner) | Expr::Cast { value: inner, .. } => {
+                    todo.push(*inner)
+                }
+                Expr::Range { start, end } => todo.extend(start.iter().chain(end)),
+                _ => {}
+            }
+        }
+        found
     }
 
     /// A value written where a type argument goes, of type `expected`, or of any integer type
@@ -1273,16 +1334,15 @@ impl<'a> Checker<'a> {
                     && let Some(def) = self.names.ty(id)
                     && let DefKind::Const(c) = self.names.def(def).kind =>
             {
-                return match self.const_number(self.ast.consts[c].value) {
+                let number = match self.known.get(c) {
+                    Some(crate::ConstValue::Int(n)) => Some(n),
+                    Some(_) => None,
+                    None => self.const_number(self.ast.consts[c].value),
+                };
+                return match number {
                     Some(n) if n >= 0 => self.lower_number(n as u128, expected, span),
-                    None if som_resolve::const_runs_code(self.ast, self.names, c) => {
-                        self.errors.push(TypeError::ConstNeededTooEarly {
-                            name: self.names.def(def).name.to_string(),
-                            span,
-                            defined_at: self.names.def(def).span.clone(),
-                        });
-                        error
-                    }
+                    // Worked out by running code, not yet: checked again once it is.
+                    None if self.need(c) => error,
                     _ => {
                         self.errors.push(TypeError::ConstNotCount {
                             name: self.names.def(def).name.to_string(),
@@ -2095,6 +2155,11 @@ impl<'a> Checker<'a> {
             Stmt::For { iterable, .. }
                 if self.ast.settled.contains(&id) && !self.settled_iterable(*iterable) =>
             {
+                // Made of a constant that's worked out by running code: checked again once
+                // it is.
+                if self.needs_unknown(*iterable) {
+                    return;
+                }
                 self.errors.push(TypeError::NotSettled {
                     what: "what an `@for` loops over",
                     hint: "loop over a range of literals, constants and a generic function's \
@@ -2159,6 +2224,8 @@ impl<'a> Checker<'a> {
                             (false, None) => {}
                         }
                     }
+                    // Made of a constant worked out by running code: checked again once it is.
+                    None if self.needs_unknown(*condition) => {}
                     None => self.errors.push(TypeError::NotSettled {
                         what: "an `@if`'s condition",
                         hint: "use literals and constants; a generic function's parameters \

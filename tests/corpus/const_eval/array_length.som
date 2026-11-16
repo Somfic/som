@@ -1,4 +1,4 @@
-// expect: error ConstNeededTooEarly
+// expect: exit 0
 
 /// A constant worked out by running code isn't known yet when types are checked.
 fn four() -> usize = 4;
