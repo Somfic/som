@@ -43,7 +43,8 @@ pub struct Ast {
 }
 
 /// An `@for` over a type: `@for (i, v) in Kind { v => i, }`, each variant of enum `Kind` in
-/// turn, `i` its index.
+/// turn, `i` its index; or `@for f in Point { … a.f … }`, each of struct `Point`'s fields,
+/// `f` its name.
 pub struct Reflected {
     /// The module it's written in.
     pub module: usize,
@@ -61,6 +62,9 @@ pub struct Reflected {
 pub enum ReflectedInto {
     /// Among a `match`'s arms, before the one at `at`.
     Arms { expr: Id<Expr>, at: usize },
+    /// In place of statement `stmt`, which stands for it until it's written out: a block of
+    /// the copies' statements.
+    Stmts { stmt: Id<Stmt> },
 }
 
 /// One module: the `.som` files in one directory, named by the `use` path that loaded it.

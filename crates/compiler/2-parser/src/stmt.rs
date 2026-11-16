@@ -37,6 +37,8 @@ impl Parser<'_> {
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),
             // `@for i in 0..4 { … }`, `@if DEBUG { … }`: settled while compiling.
+            // `@for f in Point { … }`: written out once `Point` is known.
+            TokenKind::Builtin if self.at_reflected_for() => self.parse_reflected_stmt(),
             TokenKind::Builtin if &*self.peek_token().text == "@for" => self.parse_settled_for(),
             TokenKind::Builtin if &*self.peek_token().text == "@if" => self.parse_settled_if(),
             TokenKind::Break => self.parse_break(),
@@ -266,6 +268,26 @@ impl Parser<'_> {
         self.expect(TokenKind::In, "`in` and what to loop over")?;
         let iterable = self.parse_condition()?;
         self.parse_for_body(start, mutable, name, iterable)
+    }
+
+    /// `@for f in Point { … }` among statements: a statement standing for it, which the
+    /// copies of its body replace once `Point` is known.
+    fn parse_reflected_stmt(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        let found = self.parse_reflected_for();
+        let span = self.span_from(&start);
+        let hole = self.ast.exprs.alloc(Expr::Hole, span.clone());
+        let stmt = self.ast.stmts.alloc(Stmt::Expr(hole), span);
+        if let Some((names, of, body)) = found {
+            self.ast.reflected.push(som_ast::Reflected {
+                module: self.module,
+                names,
+                of,
+                body,
+                into: som_ast::ReflectedInto::Stmts { stmt },
+            });
+        }
+        Some(stmt)
     }
 
     /// `@for i in 0..4 { … }`: a `for` copied once for each value, while compiling.

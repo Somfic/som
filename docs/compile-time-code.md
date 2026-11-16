@@ -1,7 +1,7 @@
 # Compile-time code
 
 *Design spec. Status: steps 0–12 done, step 13's `@for` around items, and step 14's
-`@for (i, v) in Kind` among `match` arms, in `crates/compiler/8-comptime`: `@const` with
+`@for (i, v) in Kind` among `match` arms and `@for f in Point` among statements, in `crates/compiler/8-comptime`: `@const` with
 calls, loops, recursion, heap memory and text while compiling; structs, enums, arrays,
 optionals and text as values; constants in impl blocks and function bodies; `@const` as an
 expression; `@assert` and `@fail`; `@const` once per generic instance; and `@for` and `@if`,
@@ -407,6 +407,12 @@ a generic parameter where copies differ; and what step 14's reflection (`@fields
 Stages, the corpus passing after each: instance checking in typeck; lowering wired up, for
 `@if` over a value parameter; the prover per instance; errors naming the instance.
 
+`@for f in T` over a generic `T` (`fields_eq<T>`, step 14) needs a step before these: its
+copies can't be written out after loading, as a concrete type's are, since `T`'s fields are
+only known for an instance. For each instance of such a function, the `@for`s over its
+parameters are written out then (from the body's place in the source, as now), the copies
+resolved in the function's scope, and only then checked and proven as above.
+
 **Pass 2: members only some instances have.** `@if N >= 3 { pub prop z = … }` among an
 impl's members. What a type's members are then depends on the instance, so resolve, method
 lookup and the LSP's completion each need one to answer. After pass 1 works.
@@ -732,8 +738,16 @@ until every module is loaded; then `Kind` is looked up, preferring the module it
 in, and each copy's tokens are written with `v` as the variant's pattern (`Red`,
 `Circle(_)`, `Rect { .. }`) and `i` as its index, parsed, and put among the arms.
 Resolve and the type checker see the arms written out, so a `match` is still checked to cover
-every variant. Not done: `@for` over a type among statements or items, structs' fields,
-`v.name`, and anything in generic code (which needs 4.7).
+every variant.
+
+Fields the same way, with no `@fields` or `.@field(f)`: `@for f in Point { if a.f != b.f
+{ return false; } }` writes `f` as each field's name, so `a.f` is `a.hello`, then `a.bye`;
+`(i, f)` gives its index too. **Done** among statements, for a struct that isn't generic: the
+`@for` stands as a statement until it's written out, then is a block of the copies. An `@if`
+in the body can pick by `i`. Not done: `@for` over a type among items, properties of the
+element (`v.value`, `v.name`, `f.index`), and generic types (`fields_eq<T>`, which needs
+4.7). The body names the element everywhere it's written, so a local called the same is
+written over too.
 
 ### Phase 4
 

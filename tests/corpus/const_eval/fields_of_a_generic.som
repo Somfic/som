@@ -1,0 +1,9 @@
+// expect: error
+
+/// `T`'s fields aren't known until an instance is: not yet.
+fn fields_eq<T>(a: &T, b: &T) -> bool {
+    @for f in T { if a.f != b.f { return false; } }
+    true
+}
+
+fn main() -> i32 = 0;

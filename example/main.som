@@ -5,6 +5,7 @@ struct Struct {
 }
 
 pub fn fields_eq<T>(a: &T, b: &T) -> bool {
-    @for f in @fields(T) { if a.@field(f) != b.@field(f) { return false; } }
+    @for f in T { if a.f != b.f { return false; } }
     true
 }
+

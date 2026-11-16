@@ -305,9 +305,11 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
     // Later positions first, so earlier ones stay where they are.
     reflected.sort_by_key(|r| match r.into {
         ReflectedInto::Arms { expr, at } => std::cmp::Reverse((expr.id, at)),
+        ReflectedInto::Stmts { stmt } => std::cmp::Reverse((usize::MAX, stmt.id)),
     });
     for r in reflected {
-        // The enum: in the module it's written in, or else the only one by that name.
+        // The enum or struct: in the module it's written in, or else the only one by that
+        // name.
         let name = &r.of.name().name;
         let enums: Vec<(usize, som_ast::Id<som_ast::Struct>)> = (ast.modules.iter().enumerate())
             .flat_map(|(m, module)| module.items.iter().map(move |item| (m, item)))
@@ -319,20 +321,32 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
         let found = (enums.iter().find(|(m, _)| *m == r.module))
             .or_else(|| (enums.len() == 1).then(|| &enums[0]))
             .map(|&(_, s)| s);
-        let Some(s) = found.filter(|&s| ast.structs[s].is_enum()) else {
+        let Some(s) = found else {
             errors.push(ParseError {
-                message: msg!["there's no enum ", code(name.to_string()), " to go through"],
-                hint: msg![code("@for v in Kind"), " goes through an enum's variants"],
+                message: msg![
+                    "there's no enum or struct ",
+                    code(name.to_string()),
+                    " to go through"
+                ],
+                hint: msg![
+                    code("@for v in Kind"),
+                    " goes through an enum's variants, ",
+                    code("@for f in Point"),
+                    " a struct's fields; not yet a generic type's"
+                ],
                 span: r.of.span(),
                 fix: None,
             });
             continue;
         };
-        let variants: Vec<String> = ast.structs[s]
-            .variants()
-            .iter()
-            .map(variant_pattern)
-            .collect();
+        // What each copy writes for the element: a variant's pattern, or a field's name.
+        let strukt = &ast.structs[s];
+        let elements: Vec<String> = match strukt.is_enum() {
+            true => strukt.variants().iter().map(variant_pattern).collect(),
+            false => (strukt.fields.iter())
+                .map(|f| f.name.name.to_string())
+                .collect(),
+        };
 
         // The body's tokens, as written.
         let body: Vec<Token> = (lex(r.body.source.clone()).into_iter())
@@ -356,7 +370,7 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
             }
         };
         let mut written = Vec::new();
-        for (i, pattern) in variants.iter().enumerate() {
+        for (i, pattern) in elements.iter().enumerate() {
             for token in &body {
                 let is = |name: &Ident| token.kind == TokenKind::Ident && *token.text == *name.name;
                 if index.is_some_and(is) {
@@ -366,7 +380,7 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
                         span: token.span.clone(),
                     });
                 } else if is(element) {
-                    // The variant's pattern, said to be where `v` is.
+                    // The variant's pattern, or the field's name, said to be where `v` is.
                     let pattern = lex(std::sync::Arc::new(Source::from_raw(pattern.as_str())));
                     written.extend(
                         pattern
@@ -388,7 +402,13 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
             span: r.body.clone(),
         });
 
-        let ReflectedInto::Arms { expr, at } = r.into;
+        let (expr, at) = match r.into {
+            ReflectedInto::Arms { expr, at } => (expr, at),
+            ReflectedInto::Stmts { stmt } => {
+                errors.extend(write_stmts(ast, r.module, written, stmt, r.body.clone()));
+                continue;
+            }
+        };
         let mut parser = Parser::new(written, ast, r.module);
         parser.skip_trivia();
         let mut arms = Vec::new();
@@ -416,5 +436,38 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
             existing.splice(at..at, arms);
         }
     }
+    errors
+}
+
+/// The copies' statements, `tokens`, parsed and put in place of statement `stmt`: a block of
+/// them.
+fn write_stmts(
+    ast: &mut Ast,
+    module: usize,
+    tokens: Vec<Token>,
+    stmt: som_ast::Id<som_ast::Stmt>,
+    span: Span,
+) -> Vec<ParseError> {
+    let mut parser = Parser::new(tokens, ast, module);
+    parser.skip_trivia();
+    let mut stmts = Vec::new();
+    while !parser.at_eof() {
+        let before = parser.pos;
+        match parser.parse_stmt_or_expr() {
+            crate::StmtOrExpr::Stmt(s) => stmts.push(s),
+            crate::StmtOrExpr::Expr(e) => {
+                let span = parser.ast.exprs.span(e).clone();
+                stmts.push(parser.ast.stmts.alloc(som_ast::Stmt::Expr(e), span));
+                parser.eat(TokenKind::Semicolon);
+            }
+            crate::StmtOrExpr::Error => parser.recover(crate::RecoveryLevel::Statement),
+        }
+        if parser.pos == before {
+            parser.advance();
+        }
+    }
+    let errors = std::mem::take(&mut parser.errors);
+    let block = ast.exprs.alloc(Expr::Block { stmts, value: None }, span);
+    *ast.stmts.get_mut(stmt) = som_ast::Stmt::Expr(block);
     errors
 }
