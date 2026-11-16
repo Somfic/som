@@ -406,10 +406,14 @@ instance's, with where it's first used ("in `describe<2>`: …", `Error::InInsta
 kind is the error's). An instance nothing uses isn't checked. Two `@if`s that between them
 always return aren't known to, checked generically (`region_missing_return.som`).
 
+Each instance is proven too (`som_prove::prove_instance`), with its value parameters numbers
+(`N` is 3, not `Place::Len(N)`): `.cells[N - 1]` under `@if N >= 1` is proven in bounds, and
+`.cells[N]` is said to be out of them, as the instance's error (`per_instance_index_*.som`).
+The generic prover skips regions.
+
 Not done yet: *pinning* (a region can still change the type of a variable outside it, per
 instance; each instance is checked as a whole, so it's consistent, but the generic check
-doesn't see it); the prover per instance (regions are skipped by the generic prover, so an
-index in one isn't proven: S3); `@for f in T` over a generic type (S4).
+doesn't see it); `@for f in T` over a generic type (S4).
 
 The plan, in two passes:
 

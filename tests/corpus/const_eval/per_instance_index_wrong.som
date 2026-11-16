@@ -1,0 +1,21 @@
+// expect: error
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+/// `N >= 2` lets `N` be 2, where there's no third cell: said as `Row::third<2>`'s.
+impl<N: usize> Row<N> {
+    fn third(&self) -> i32 {
+        @if N >= 2 {
+            return .cells[2];
+        } else {
+            return 0;
+        }
+    }
+}
+
+fn main() -> i32 {
+    let short = Row { cells: [1, 2] };
+    return short.third();
+}

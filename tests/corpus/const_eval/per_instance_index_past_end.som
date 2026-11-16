@@ -1,0 +1,22 @@
+// expect: error
+
+struct Row<N: usize> {
+    cells: [i32; N],
+}
+
+/// In each instance, `N` is known: `.cells[N]` is one past the end of every one, said as the
+/// instance's.
+impl<N: usize> Row<N> {
+    fn last(&self) -> i32 {
+        @if N >= 1 {
+            return .cells[N];
+        } else {
+            return 0;
+        }
+    }
+}
+
+fn main() -> i32 {
+    let row = Row { cells: [1, 2, 42] };
+    return row.last();
+}

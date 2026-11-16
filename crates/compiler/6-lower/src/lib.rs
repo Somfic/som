@@ -34,13 +34,45 @@ pub fn lower_checked(
     ast: &Ast,
     names: &Names,
     typed: &Typed,
-) -> Result<Mir, Vec<InstanceErrors>> {
+) -> Result<(Mir, Vec<CheckedInstance>), Vec<InstanceErrors>> {
     let mut lowerer = Lowerer::new(ast, names, typed);
     lowerer.run();
-    match lowerer.instance_errors.is_empty() {
-        true => Ok(lowerer.mir),
-        false => Err(lowerer.instance_errors),
+    if !lowerer.instance_errors.is_empty() {
+        return Err(lowerer.instance_errors);
     }
+    let mut checked = Vec::new();
+    for ((func, args), typed) in std::mem::take(&mut lowerer.instance_typed) {
+        let Some(&id) = lowerer.instances.get(&(func, args.clone())) else {
+            continue;
+        };
+        // What its value parameters stand for: `N` for 3.
+        let values = (names.type_params(func).iter().zip(&args))
+            .filter_map(|(&def, &arg)| match lowerer.mir.types.get(arg) {
+                Ty::Value(Value::Int(n)) => Some((def, *n as i128)),
+                _ => None,
+            })
+            .collect();
+        checked.push(CheckedInstance {
+            name: lowerer.mir.funcs[id].name.clone(),
+            used_at: (lowerer.requested_at.get(&id).cloned())
+                .unwrap_or_else(|| ast.funcs.span(func).clone()),
+            func,
+            typed,
+            values,
+        });
+    }
+    Ok((lowerer.mir, checked))
+}
+
+/// An instance of a function checked for each instance, as lowering checked it: for the
+/// prover to prove it.
+pub struct CheckedInstance {
+    pub name: String,
+    pub used_at: Span,
+    pub func: Id<Func>,
+    pub typed: Rc<Typed>,
+    /// What its generic value parameters stand for.
+    pub values: Vec<(DefId, i128)>,
 }
 
 /// What checking one instance of a function found wrong, in its `@if`s over its generic

@@ -18,6 +18,7 @@ use som_typeck::{IntTy, Ty, TypeId};
 
 pub use error::ProveError;
 use facts::{Compare, Cond, Facts, Term, Value};
+use std::collections::HashMap;
 use som_base::message::code;
 use som_base::{Fix, Message, Span, msg};
 
@@ -30,6 +31,7 @@ pub fn prove(ast: &Ast, names: &Names, typed: &Typed) -> Vec<ProveError> {
         facts: Facts::default(),
         errors: Vec::new(),
         within: Vec::new(),
+        bound: HashMap::new(),
     };
     for (id, func) in ast.funcs.iter() {
         // A trait's method has the trait's conditions, all a caller through the trait knows.
@@ -63,6 +65,46 @@ pub fn prove(ast: &Ast, names: &Names, typed: &Typed) -> Vec<ProveError> {
         }
     }
     prover.errors
+}
+
+/// Proves one instance of function `func`, checked for that instance (`typed`), its generic
+/// value parameters standing for `values` (`N` for 3): its body, where `@if N >= 3` is
+/// known. Only what's wrong inside `regions` (its `@if`s on them) is said: the rest of it was
+/// proven once, for every instance.
+pub fn prove_instance(
+    ast: &Ast,
+    names: &Names,
+    typed: &Typed,
+    func: Id<som_ast::Func>,
+    values: &[(DefId, i128)],
+    regions: &[Span],
+) -> Vec<ProveError> {
+    let mut prover = Prover {
+        ast,
+        names,
+        typed,
+        facts: Facts::default(),
+        errors: Vec::new(),
+        within: Vec::new(),
+        bound: values.iter().copied().collect(),
+    };
+    if let Some(body) = ast.funcs[func].body {
+        prover.assume_requires(func);
+        prover.expr(body);
+    }
+    let inside = |error: &ProveError| {
+        let diagnostic = error.to_diagnostic();
+        let Some(label) = diagnostic.labels.iter().find(|l| l.is_primary) else {
+            return false;
+        };
+        let at = &label.span;
+        regions.iter().any(|region| {
+            region.source.identifier() == at.source.identifier()
+                && region.start_offset <= at.start_offset
+                && at.start_offset < region.start_offset + region.length
+        })
+    };
+    prover.errors.into_iter().filter(|e| inside(e)).collect()
 }
 
 /// What facts are about: a variable or a field or property of one, `xs.len`; or an
@@ -104,6 +146,8 @@ struct Prover<'a> {
     errors: Vec<ProveError>,
     /// The statements being gone through, innermost last: where a fix puts a check.
     within: Vec<Within>,
+    /// Proving one instance: the numbers its generic value parameters stand for.
+    bound: HashMap<DefId, i128>,
 }
 
 /// A statement being gone through, with the rest of its block after it, and whether the
@@ -1227,6 +1271,14 @@ impl Prover<'_> {
                             path: Vec::new(),
                         }),
                     },
+                    // `N`, proving one instance: the number it stands for there.
+                    DefKind::TypeParam { value: true, .. }
+                    | DefKind::StructParam { value: true, .. }
+                    | DefKind::ImplParam { value: true, .. }
+                        if let Some(&n) = self.bound.get(&def) =>
+                    {
+                        Value::number(n)
+                    }
                     // `N`, of `[T; N]`.
                     DefKind::TypeParam { value: true, .. }
                     | DefKind::StructParam { value: true, .. }

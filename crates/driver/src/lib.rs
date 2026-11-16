@@ -248,23 +248,49 @@ fn lower_instances(
     names: &som_resolve::Names,
     typed: &som_typeck::Typed,
 ) -> Result<som_mir::Mir, Vec<Error>> {
-    som_lower::lower_checked(ast, names, typed).map_err(|instances| {
-        let mut seen = HashSet::new();
-        let mut errors = Vec::new();
-        for instance in instances {
-            for error in instance.errors {
-                // The same error in another instance, said once.
-                if seen.insert(format!("{error:?}")) {
-                    errors.push(Error::InInstance {
-                        instance: instance.name.clone(),
-                        used_at: instance.used_at.clone(),
-                        inner: Box::new(Error::Type(error)),
-                    });
+    let mut seen = HashSet::new();
+    let mut errors = Vec::new();
+    let mut say = |name: &str, used_at: &som_base::Span, inner: Error| {
+        // The same error in another instance, said once.
+        if seen.insert(format!("{inner:?}")) {
+            errors.push(Error::InInstance {
+                instance: name.to_string(),
+                used_at: used_at.clone(),
+                inner: Box::new(inner),
+            });
+        }
+    };
+    match som_lower::lower_checked(ast, names, typed) {
+        Err(instances) => {
+            for instance in instances {
+                for error in instance.errors {
+                    say(&instance.name, &instance.used_at, Error::Type(error));
                 }
             }
         }
-        errors
-    })
+        Ok((mir, instances)) => {
+            // Each instance proven, with its parameters known: what's in its `@if`s.
+            let regions: Vec<som_base::Span> =
+                typed.regions().map(|stmt| ast.stmts.span(stmt).clone()).collect();
+            for instance in &instances {
+                let proven = som_prove::prove_instance(
+                    ast,
+                    names,
+                    &instance.typed,
+                    instance.func,
+                    &instance.values,
+                    &regions,
+                );
+                for error in proven {
+                    say(&instance.name, &instance.used_at, Error::Prove(error));
+                }
+            }
+            if errors.is_empty() {
+                return Ok(mir);
+            }
+        }
+    }
+    Err(errors)
 }
 
 /// Loads `path` and runs every check, stopping after the first pass that reports errors.
