@@ -63,7 +63,7 @@ fn rust_optional_checks() {
 
 #[test]
 fn declarations() {
-    // At the top, `const x = 1;` is a constant; inside a function, a variable.
+    // Inside a function, `const x = 1;` is another language's variable.
     becomes("fn main() { const x = 1; }", "fn main() { let x = 1; }");
     becomes("var x = 1; x = 2;", "let mut x = 1; x = 2;");
     becomes("local x = 1;", "let mut x = 1;");

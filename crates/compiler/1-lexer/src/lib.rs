@@ -8,12 +8,18 @@ use std::sync::Arc;
 
 /// The compiler's own built-ins, written with an `@`, and what each does: for the parser,
 /// and an editor's suggestions.
-pub const BUILTINS: &[(&str, &str)] = &[(
-    "@unreachable",
-    "A place the program can't get to, standing for a value of whatever type is expected \
-     there: `get(i) else @unreachable`. If it's reached after all, it says where, then \
-     stops the program.",
-)];
+pub const BUILTINS: &[(&str, &str)] = &[
+    (
+        "@unreachable",
+        "A place the program can't get to, standing for a value of whatever type is expected \
+         there: `get(i) else @unreachable`. If it's reached after all, it says where, then \
+         stops the program.",
+    ),
+    (
+        "@const",
+        "A constant, worked out while compiling: `@const CELLS = COLS * ROWS;`.",
+    ),
+];
 
 #[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TokenKind {

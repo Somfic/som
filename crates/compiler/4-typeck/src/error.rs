@@ -161,7 +161,7 @@ pub enum TypeError {
         span: Span,
         expected_from: Option<Span>,
     },
-    /// `W = 5` or `&mut W` of `const W = 60;`.
+    /// `W = 5` or `&mut W` of `@const W = 60;`.
     ConstChanged {
         name: String,
         span: Span,

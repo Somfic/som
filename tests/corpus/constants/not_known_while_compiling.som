@@ -3,6 +3,6 @@
 /// A constant's value is worked out while compiling: a call isn't.
 fn width() -> i32 { return 60; }
 
-const W = width();
+@const W = width();
 
 fn main() -> i32 = W;

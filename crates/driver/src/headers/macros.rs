@@ -1,12 +1,12 @@
 //! A header's `#define`s that stand for a value, as som constants:
 //!
-//! | C                                                  | som                                    |
-//! |----------------------------------------------------|----------------------------------------|
-//! | `#define MAX_POINTS 10`                            | `pub const MAX_POINTS: i32 = 10;`      |
-//! | `#define PI 3.14159265358979323846f`               | `pub const PI: f32 = 3.1415927;`       |
-//! | `#define DEG2RAD (PI/180.0f)`                      | `pub const DEG2RAD: f32 = 0.017453292;`|
-//! | `#define VERSION "5.5"`                            | `pub const VERSION: cstr = "5.5";`     |
-//! | `#define RED CLITERAL(Color){ 230, 41, 55, 255 }`  | `Color::RED`, in `impl Color { … }`    |
+//! | C                                                  | som                                     |
+//! |----------------------------------------------------|-----------------------------------------|
+//! | `#define MAX_POINTS 10`                            | `pub @const MAX_POINTS: i32 = 10;`      |
+//! | `#define PI 3.14159265358979323846f`               | `pub @const PI: f32 = 3.1415927;`       |
+//! | `#define DEG2RAD (PI/180.0f)`                      | `pub @const DEG2RAD: f32 = 0.017453292;`|
+//! | `#define VERSION "5.5"`                            | `pub @const VERSION: cstr = "5.5";`     |
+//! | `#define RED CLITERAL(Color){ 230, 41, 55, 255 }`  | `Color::RED`, in `impl Color { … }`     |
 //!
 //! The definitions are read from the preprocessor (`-E -dD`), which says which file each is
 //! in. Each value is worked out here, the way C would, and written as a literal; a
@@ -31,7 +31,7 @@ struct Define {
     line: usize,
 }
 
-/// The `pub const`s for the definitions in `preprocessed` (the preprocessor's `-E -dD`
+/// The `pub @const`s for the definitions in `preprocessed` (the preprocessor's `-E -dD`
 /// output) that `wanted` says belong to the module, by their file and name; and their
 /// origins, as lines of `name\tfile\tline`. `record` finds the struct a C type name is, for
 /// compound literals. Names in `taken` are left out.
@@ -199,20 +199,20 @@ enum Val {
 }
 
 impl Val {
-    /// `pub const NAME: i32 = 10;`
+    /// `pub @const NAME: i32 = 10;`
     fn declaration(&self, name: &str) -> Option<String> {
         Some(match self {
-            Val::Int(n, int) => format!("pub const {name}: {} = {n};", int.som()),
+            Val::Int(n, int) => format!("pub @const {name}: {} = {n};", int.som()),
             Val::Float(x, double) => {
                 let ty = if *double { "f64" } else { "f32" };
-                format!("pub const {name}: {ty} = {};", float_text(*x, *double)?)
+                format!("pub @const {name}: {ty} = {};", float_text(*x, *double)?)
             }
-            Val::Str(text) => format!("pub const {name}: cstr = \"{}\";", som_escaped(text)),
+            Val::Str(text) => format!("pub @const {name}: cstr = \"{}\";", som_escaped(text)),
             Val::Struct(strukt, fields) => {
                 let fields: Vec<String> = (fields.iter())
                     .map(|(field, value)| format!("{field}: {value}"))
                     .collect();
-                format!("pub const {name} = {strukt} {{ {} }};", fields.join(", "))
+                format!("pub @const {name} = {strukt} {{ {} }};", fields.join(", "))
             }
         })
     }

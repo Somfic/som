@@ -174,8 +174,8 @@ impl Dumper<'_> {
             Item::Const(id) => {
                 let c = &ast.consts[*id];
                 let header = match c.ty {
-                    Some(ty) => format!("const {}: {}", c.name, ast.type_text(ty)),
-                    None => format!("const {}", c.name),
+                    Some(ty) => format!("@const {}: {}", c.name, ast.type_text(ty)),
+                    None => format!("@const {}", c.name),
                 };
                 self.node(header, |d| d.expr(c.value))
             }

@@ -9,8 +9,8 @@ mod struct Local {
 
 /// Functions that take a variable number of arguments after a fixed number of them:
 /// those extra arguments go on the stack on Apple's ARM64, not in registers.
-mod const VARIADIC: [cstr; 4] = ["printf", "sprintf", "snprintf", "scanf"];
-mod const FIXED: [i64; 4] = [1, 2, 3, 1];
+mod @const VARIADIC: [cstr; 4] = ["printf", "sprintf", "snprintf", "scanf"];
+mod @const FIXED: [i64; 4] = [1, 2, 3, 1];
 
 mod struct Compiler {
     mod tokens: List<Token>,

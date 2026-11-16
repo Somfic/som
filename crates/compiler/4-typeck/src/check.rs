@@ -1166,7 +1166,7 @@ impl<'a> Checker<'a> {
         let error = self.u.table.error;
         let (value, found) = match self.ast.types[id] {
             TypeExpr::Int(n) => return self.lower_number(n, expected, span),
-            // `[i32; W]` of `const W = 60;`: the number it is.
+            // `[i32; W]` of `@const W = 60;`: the number it is.
             TypeExpr::Named { ref args, .. }
                 if args.is_empty()
                     && let Some(def) = self.names.ty(id)
@@ -2789,7 +2789,7 @@ impl<'a> Checker<'a> {
                     }
                     ty
                 }
-                // `W` for `const W = 60;`
+                // `W` for `@const W = 60;`
                 Some((_, &DefKind::Const(c))) => self.check_const(c),
                 // `N` in `struct Buffer<N: usize>`: the number it is in each copy.
                 Some((def, _)) if let Some(&ty) = self.value_params.get(&def) => ty,

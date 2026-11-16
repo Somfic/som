@@ -29,6 +29,8 @@ pub enum Lang {
     Scala,
     Php,
     Fsharp,
+    Rust,
+    Zig,
 }
 
 impl Lang {
@@ -49,6 +51,8 @@ impl Lang {
             Lang::Scala => "Scala",
             Lang::Php => "PHP",
             Lang::Fsharp => "F#",
+            Lang::Rust => "Rust",
+            Lang::Zig => "Zig",
         }
     }
 }
@@ -109,6 +113,12 @@ pub static LET: &[Foreign] = &[
     f("auto", "let", &[C, Cpp]),
     f("set", "let", &[]),
     f("local", "let mut", &[Lua]),
+];
+
+/// Declaring a constant, outside a function: `const MAX = 10;`.
+pub static CONST: &[Foreign] = &[
+    f("const", "@const", &[Rust, Zig, C, Cpp, JavaScript, TypeScript]),
+    f("constexpr", "@const", &[Cpp]),
 ];
 
 /// Declaring a function: `def area(…)`.
@@ -297,6 +307,9 @@ pub static RANGE: &[Foreign] = &[f("range", "..", &[Python])];
 /// Names other languages give a constructor: `List::new()` where `List` has `empty`.
 pub static CONSTRUCTOR: &[&str] = &["new", "create", "init", "make", "default", "construct"];
 
+pub fn const_word(word: &str) -> Option<&'static Foreign> {
+    find(CONST, word)
+}
 pub fn let_word(word: &str) -> Option<&'static Foreign> {
     find(LET, word)
 }

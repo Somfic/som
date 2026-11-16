@@ -43,7 +43,7 @@ pub enum DefKind {
     Param { func: Id<Func>, index: usize },
     /// A `let` binding.
     Local(Id<Stmt>),
-    /// `const W = 60;`: a value known while compiling.
+    /// `@const W = 60;`: a value known while compiling.
     Const(Id<som_ast::Const>),
     /// A variable declared by an `out name` argument.
     Out(Id<Expr>),

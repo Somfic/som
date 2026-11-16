@@ -869,7 +869,7 @@ impl Prover<'_> {
         })
     }
 
-    /// The integer a constant's value is: `W * H` of `const W = 60;` and `const H = 20;`
+    /// The integer a constant's value is: `W * H` of `@const W = 60;` and `@const H = 20;`
     /// is 1200. `None` where it isn't one, or a step wraps around.
     fn const_int(&self, expr: Id<Expr>) -> Option<i128> {
         let n = match self.ast.exprs[expr] {
@@ -1197,7 +1197,7 @@ impl Prover<'_> {
                             path: Vec::new(),
                         })
                     }
-                    // `W`, of `const W = 60;`
+                    // `W`, of `@const W = 60;`
                     DefKind::Const(c) => Value::number(self.const_int(self.ast.consts[c].value)?),
                     // `N`, of `[T; N]`.
                     DefKind::TypeParam { value: true, .. }

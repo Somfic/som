@@ -609,13 +609,13 @@ fn defines_that_stand_for_values_become_constants() {
     let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
     let generated = std::fs::read_to_string(dir.path().join(".som/demo.som")).unwrap();
     for expected in [
-        "pub const DEMO_MAX: i32 = 40;",
-        "pub const DEMO_PI: f32 = 3.5;",
-        "pub const DEMO_HALF_PI: f32 = 1.75;",
-        "pub const DEMO_MASK: u32 = 15;",
-        "pub const DEMO_NAME: cstr = \"demo\";",
-        "pub const DEMO_CLEAR: cstr = \"\\x1b[2J\\x1b[H{{}}\\n\";",
-        "impl Pair {\n    /// Two and a quarter\n    pub const DEMO_PAIR = Pair { left: 2, right: 0.25 };\n}",
+        "pub @const DEMO_MAX: i32 = 40;",
+        "pub @const DEMO_PI: f32 = 3.5;",
+        "pub @const DEMO_HALF_PI: f32 = 1.75;",
+        "pub @const DEMO_MASK: u32 = 15;",
+        "pub @const DEMO_NAME: cstr = \"demo\";",
+        "pub @const DEMO_CLEAR: cstr = \"\\x1b[2J\\x1b[H{{}}\\n\";",
+        "impl Pair {\n    /// Two and a quarter\n    pub @const DEMO_PAIR = Pair { left: 2, right: 0.25 };\n}",
     ] {
         assert!(generated.contains(expected), "{expected:?} in:\n{generated}");
     }

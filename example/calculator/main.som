@@ -5,25 +5,25 @@ extern "raylib";
 
 use raylib;
 
-const WIDTH: i32 = 360;
-const HEIGHT: i32 = 560;
-const PAD: f32 = 12.0;
-const DISPLAY_H: f32 = 150.0;
-const COLS: i32 = 4;
+@const WIDTH: i32 = 360;
+@const HEIGHT: i32 = 560;
+@const PAD: f32 = 12.0;
+@const DISPLAY_H: f32 = 150.0;
+@const COLS: i32 = 4;
 
 // Button codes are ASCII where one exists.
-const K_DOT: i32 = 46;
-const K_ADD: i32 = 43;
-const K_SUB: i32 = 45;
-const K_MUL: i32 = 42;
-const K_DIV: i32 = 47;
-const K_PCT: i32 = 37;
-const K_EQ: i32 = 61;
-const K_CLEAR: i32 = 67;  // 'C'
-const K_DEL: i32 = 68;    // 'D'
-const K_NEG: i32 = 78;    // 'N'
+@const K_DOT: i32 = 46;
+@const K_ADD: i32 = 43;
+@const K_SUB: i32 = 45;
+@const K_MUL: i32 = 42;
+@const K_DIV: i32 = 47;
+@const K_PCT: i32 = 37;
+@const K_EQ: i32 = 61;
+@const K_CLEAR: i32 = 67;  // 'C'
+@const K_DEL: i32 = 68;    // 'D'
+@const K_NEG: i32 = 78;    // 'N'
 
-const MAX_DIGITS: i32 = 15;
+@const MAX_DIGITS: i32 = 15;
 
 enum Op { None, Add, Sub, Mul, Div }
 enum Kind { Digit, Func, Oper }

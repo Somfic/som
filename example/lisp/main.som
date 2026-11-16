@@ -29,11 +29,11 @@ struct Env {
     parent: usize?,
 }
 
-const NIL: usize = 0;
-const TRUE: usize = 1;
-const GLOBAL: usize = 0;
+@const NIL: usize = 0;
+@const TRUE: usize = 1;
+@const GLOBAL: usize = 0;
 
-const BUILTINS: [cstr; 22] = [
+@const BUILTINS: [cstr; 22] = [
     "+", "-", "*", "/", "mod", "=", "<", ">", "<=", ">=",
     "cons", "car", "cdr", "list", "null?", "pair?", "number?", "eq?",
     "not", "display", "newline", "length",

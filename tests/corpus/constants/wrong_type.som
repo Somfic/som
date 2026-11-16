@@ -1,5 +1,5 @@
 // expect: error Mismatch
 
-const SCALE: i32 = 1.5;
+@const SCALE: i32 = 1.5;
 
 fn main() -> i32 = SCALE;

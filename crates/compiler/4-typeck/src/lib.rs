@@ -26,8 +26,8 @@ pub fn check(ast: &Ast, names: &Names) -> (Typed, Vec<TypeError>) {
     check::Checker::new(ast, names).run()
 }
 
-/// The integer a constant's value works out to: `W * H` of `const W = 60;` and
-/// `const H = 20;` is 1200. `None` if it isn't one, or doesn't fit.
+/// The integer a constant's value works out to: `W * H` of `@const W = 60;` and
+/// `@const H = 20;` is 1200. `None` if it isn't one, or doesn't fit.
 pub fn const_number(ast: &Ast, names: &Names, expr: Id<Expr>) -> Option<i128> {
     Some(match ast.exprs[expr] {
         Expr::Int(n) => n,

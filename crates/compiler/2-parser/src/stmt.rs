@@ -29,6 +29,7 @@ impl Parser<'_> {
                 Some(self.ast.stmts.alloc(Stmt::Use(u), span))
             }
             TokenKind::Let => self.parse_let(),
+            TokenKind::Builtin if self.at_const(0) => self.parse_local_const(),
             TokenKind::Ident if self.foreign_let().is_some() || self.go_define() => {
                 self.parse_let()
             }
@@ -81,6 +82,24 @@ impl Parser<'_> {
             Some(stmt) => StmtOrExpr::Stmt(stmt),
             None => StmtOrExpr::Error,
         }
+    }
+
+    /// `@const LIMIT = 10;` in a function: not yet, so reported and read as a `let`.
+    fn parse_local_const(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        self.advance();
+        self.error_at(
+            start.clone(),
+            msg!["a constant can't be inside a function yet"],
+            msg!["put it outside the function, with the module's other items"],
+        );
+        let name = self.parse_ident("a constant name")?;
+        let ty = match self.eat(TokenKind::Colon) {
+            true => Some(self.parse_type()?),
+            false => None,
+        };
+        self.expect(TokenKind::Equals, "`=` and the constant's value")?;
+        self.parse_let_value(start, false, name, ty)
     }
 
     fn parse_let(&mut self) -> Option<Id<Stmt>> {

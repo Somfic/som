@@ -7,11 +7,11 @@ extern {
 }
 
 // Field size in cells. Positions are fixed-point: cell * SCALE.
-const W = 60;
-const H = 20;
-const SCALE = 100;
-const PADDLE = 4;
-const WIN = 5;
+@const W = 60;
+@const H = 20;
+@const SCALE = 100;
+@const PADDLE = 4;
+@const WIN = 5;
 
 struct Game {
     ball_x: i32,

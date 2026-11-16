@@ -1,17 +1,17 @@
 use som::io;
 extern "c";
 
-const WIDTH = 480;
-const HEIGHT = 270;
-const MAX_DEPTH = 4;
-const SAMPLES = 2;
-const EPSILON: f64 = 0.0001;
-const INFINITY: f64 = 1000000000.0;
+@const WIDTH = 480;
+@const HEIGHT = 270;
+@const MAX_DEPTH = 4;
+@const SAMPLES = 2;
+@const EPSILON: f64 = 0.0001;
+@const INFINITY: f64 = 1000000000.0;
 
 struct Vec3 { x: f64, y: f64, z: f64 }
 
 impl Vec3 {
-    const ZERO = Vec3 { x: 0.0, y: 0.0, z: 0.0 };
+    @const ZERO = Vec3 { x: 0.0, y: 0.0, z: 0.0 };
 
     fn new(x: f64, y: f64, z: f64) -> Vec3 = Vec3 { x: x, y: y, z: z };
 

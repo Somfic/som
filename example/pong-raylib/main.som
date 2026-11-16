@@ -1,13 +1,13 @@
 use extern "raylib";
 
-const SCREEN_W: f32 = 800.0;
-const SCREEN_H: f32 = 450.0;
-const PADDLE_W: f32 = 12.0;
-const PADDLE_H: f32 = 80.0;
-const BALL_SIZE: f32 = 12.0;
-const PADDLE_SPEED: f32 = 420.0;
-const CPU_SPEED: f32 = 300.0;
-const WIN_SCORE = 5;
+@const SCREEN_W: f32 = 800.0;
+@const SCREEN_H: f32 = 450.0;
+@const PADDLE_W: f32 = 12.0;
+@const PADDLE_H: f32 = 80.0;
+@const BALL_SIZE: f32 = 12.0;
+@const PADDLE_SPEED: f32 = 420.0;
+@const CPU_SPEED: f32 = 300.0;
+@const WIN_SCORE = 5;
 
 struct Game {
     ball_x: f32,

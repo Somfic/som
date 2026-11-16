@@ -174,13 +174,6 @@ pub fn highlight(line: &str) -> String {
             {
                 color = token_color(TokenKind::Int);
             }
-            // `const` isn't reserved, but before a name it declares a constant.
-            if token.kind == TokenKind::Ident
-                && &*token.text == "const"
-                && next == Some(TokenKind::Ident)
-            {
-                color = token_color(TokenKind::Let);
-            }
             seen += 1;
         }
         // `"total: {1 / 0}"`: the values in text are code.

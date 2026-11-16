@@ -1489,7 +1489,6 @@ impl LanguageServer for SomLanguageServer {
             for keyword in [
                 "fn", "let", "mut", "if", "else", "struct", "impl", "extern", "loop", "while",
                 "break", "use", "out", "true", "false", "enum", "match", "trait", "type",
-                "const",
             ] {
                 items.push(CompletionItem {
                     label: keyword.to_string(),
@@ -1780,8 +1779,8 @@ fn describe(a: &Analysis, def: DefId) -> String {
         }
         DefKind::Const(c) => {
             let mut text = match a.typed.try_local(def) {
-                Some(t) => format!("const {}: {}", d.name, ty(a, t)),
-                None => format!("const {}", d.name),
+                Some(t) => format!("@const {}: {}", d.name, ty(a, t)),
+                None => format!("@const {}", d.name),
             };
             // Its value as written, and what that works out to if it's not a number already:
             // `W * H` is 1200.
@@ -4153,8 +4152,6 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::In => 0,
             // `.len`, short for `self.len`: the dot is coloured like `self`.
             TokenKind::Dot if TokenKind::is_self_dot(prev, next) => 0,
-            // `const` isn't reserved, but before a name it declares a constant.
-            TokenKind::Ident if &*token.text == "const" && next == Some(TokenKind::Ident) => 0,
             TokenKind::Ident if next == Some(TokenKind::OpenParen) => 7,
             // `RED`, `MAX_LEN`: a constant's name, not a type's.
             TokenKind::Ident if is_constant_name(&token.text) => 1,
@@ -4255,19 +4252,19 @@ mod tests {
     }
 
     #[test]
-    fn const_is_a_keyword_and_constants_are_not_types() {
+    fn at_const_is_a_builtin_and_constants_are_not_types() {
         let source = Arc::new(Source::from_raw(
-            "const MAX_LEN: Size = Color::RED; let const = T;",
+            "@const MAX_LEN: Size = Color::RED; let const = T;",
         ));
         let types: Vec<u32> = semantic_tokens(source)
             .iter()
             .map(|t| t.token_type)
             .collect();
-        // const MAX_LEN Size = Color RED let const = T
-        assert_eq!(types, [0, 1, 8, 6, 8, 1, 0, 1, 6, 8]);
+        // @const MAX_LEN Size = Color RED let const = T
+        assert_eq!(types, [8, 1, 8, 6, 8, 1, 0, 1, 6, 8]);
         // Only the constants' names are `readonly`.
         let readonly: Vec<u32> = semantic_tokens(Arc::new(Source::from_raw(
-            "const MAX_LEN: Size = Color::RED; let const = T;",
+            "@const MAX_LEN: Size = Color::RED; let const = T;",
         )))
         .iter()
         .map(|t| t.token_modifiers_bitset)
@@ -4535,8 +4532,8 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("main.som"),
-            "/// Cells across.\nconst COLS = 10;\nconst SCALE: f32 = 2.5;\n\
-             const CELLS = COLS * 20;\nfn main() -> i32 = COLS;\n",
+            "/// Cells across.\n@const COLS = 10;\n@const SCALE: f32 = 2.5;\n\
+             @const CELLS = COLS * 20;\nfn main() -> i32 = COLS;\n",
         )
         .unwrap();
         let a = som_driver::analyze(&dir, &som_driver::Options::default());
@@ -4553,12 +4550,12 @@ mod tests {
         assert_eq!(
             shown,
             [
-                ("COLS".into(), constant, Some("const COLS: i32 = 10".into()), true),
-                ("SCALE".into(), constant, Some("const SCALE: f32 = 2.5".into()), false),
+                ("COLS".into(), constant, Some("@const COLS: i32 = 10".into()), true),
+                ("SCALE".into(), constant, Some("@const SCALE: f32 = 2.5".into()), false),
                 (
                     "CELLS".into(),
                     constant,
-                    Some("const CELLS: i32 = COLS * 20  // 200".into()),
+                    Some("@const CELLS: i32 = COLS * 20  // 200".into()),
                     false
                 ),
             ]

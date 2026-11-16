@@ -2,11 +2,11 @@
 
 /// A constant is named anywhere in its module, before or after it's written. Without a
 /// type it's what its value would be with nothing else said: `60` is an `i32`.
-const CELLS = W * H;
-const W = 6;
-const H: i32 = 5;
-const HALF: f64 = 0.5;
-const MASK = (1 << 4) - 1;
+@const CELLS = W * H;
+@const W = 6;
+@const H: i32 = 5;
+@const HALF: f64 = 0.5;
+@const MASK = (1 << 4) - 1;
 
 fn area() -> i32 { return CELLS; }
 

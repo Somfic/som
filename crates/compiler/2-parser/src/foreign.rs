@@ -84,7 +84,7 @@ impl Parser<'_> {
 
     /// Another language's keyword `at` tokens ahead, found in `table`, followed by a name:
     /// `def area`, `class Point`.
-    fn foreign_keyword(
+    pub(crate) fn foreign_keyword(
         &self,
         at: usize,
         table: fn(&str) -> Option<&'static Foreign>,

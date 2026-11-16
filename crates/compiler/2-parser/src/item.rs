@@ -3,7 +3,7 @@ use som_ast::{
     Variant, VariantKind, Visibility,
 };
 use som_base::message::code;
-use som_base::{Fix, Span, msg};
+use som_base::{Fix, Span, foreign, msg};
 use som_lexer::TokenKind;
 
 use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
@@ -150,7 +150,7 @@ impl Parser<'_> {
             TokenKind::Use => self.parse_use().map(Item::Use),
             TokenKind::Impl => self.parse_impl().map(Item::Impl),
             TokenKind::Type => self.parse_alias().map(Item::Alias),
-            TokenKind::Ident if self.at_const(0) => self.parse_const().map(Item::Const),
+            TokenKind::Builtin | TokenKind::Ident if self.at_const(0) => self.parse_const().map(Item::Const),
             _ => unreachable!("caller checks at_item"),
         };
         match item {
@@ -537,10 +537,14 @@ impl Parser<'_> {
         })
     }
 
-    /// At `const NAME:` or `const NAME =`, `at` tokens ahead. `const` isn't a keyword:
-    /// inside a function it's another language's `let`, reported as that.
-    fn at_const(&self, at: usize) -> bool {
-        self.ident_ahead(at) == Some("const")
+    /// At `@const NAME:` or `@const NAME =`, `at` tokens ahead. Another language's
+    /// `const NAME =` too, reported when it's read.
+    pub(crate) fn at_const(&self, at: usize) -> bool {
+        let written = (self.tokens[self.pos..].iter())
+            .filter(|t| !crate::is_trivia(t.kind))
+            .nth(at)
+            .is_some_and(|t| &*t.text == "@const");
+        (written || self.foreign_keyword(at, foreign::const_word).is_some())
             && self.peek_nth(at + 1) == TokenKind::Ident
             && matches!(
                 self.peek_nth(at + 2),
@@ -548,10 +552,21 @@ impl Parser<'_> {
             )
     }
 
-    /// `const W: i32 = 60;`
+    /// `@const W: i32 = 60;`
     fn parse_const(&mut self) -> Option<Id<Const>> {
         let doc = self.doc_comment();
         let start = self.current_span();
+        // `const MAX = 10;`: another language's, reported and read as `@const`.
+        if let Some(found) = self.foreign_keyword(0, foreign::const_word) {
+            let message = msg![
+                "som declares constants with ",
+                code(found.som),
+                ", not ",
+                code(found.written)
+            ];
+            let fix = Fix::replace(msg!["change to ", code(found.som)], start.clone(), found.som);
+            self.report_foreign(start.clone(), message, found, Some(fix));
+        }
         self.advance();
         let name = self.parse_ident("a constant name")?;
         let ty = match self.at(TokenKind::Colon) {

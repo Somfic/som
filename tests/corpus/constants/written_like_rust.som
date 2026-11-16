@@ -1,0 +1,6 @@
+// expect: error
+
+/// `const` is another language's: som says to write `@const`, with a fix.
+const COLS = 10;
+
+fn main() -> i32 = COLS;

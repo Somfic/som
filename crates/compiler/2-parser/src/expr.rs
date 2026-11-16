@@ -511,12 +511,20 @@ impl Parser<'_> {
                 }
             }
 
-            // `@unreachable`, the only built-in so far.
+            // `@unreachable`, the only built-in a value can be so far.
             TokenKind::Builtin => {
                 let text = self.peek_token().text.clone();
                 self.advance();
                 match &*text {
                     "@unreachable" => Expr::Unreachable,
+                    "@const" => {
+                        self.error_at(
+                            start.clone(),
+                            msg![code("@const"), " here names a constant"],
+                            msg!["write it on its own: ", code("@const NAME = value;")],
+                        );
+                        Expr::Hole
+                    }
                     _ => {
                         let known: Vec<&str> = som_lexer::BUILTINS.iter().map(|b| b.0).collect();
                         self.error_at(

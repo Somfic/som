@@ -4,7 +4,7 @@
 struct Pair<T> { a: T, b: T }
 
 impl<T> Pair<T> {
-    const SIZE = 2;
+    @const SIZE = 2;
 }
 
 fn main() -> i32 = 0;

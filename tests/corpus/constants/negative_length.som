@@ -1,6 +1,6 @@
 // expect: error ConstNotCount
 
-const N = 2 - 5;
+@const N = 2 - 5;
 
 fn main() -> i32 {
     let a = [0; N];

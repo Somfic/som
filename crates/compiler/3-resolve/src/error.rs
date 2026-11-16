@@ -66,9 +66,9 @@ pub enum ResolveError {
         span: Span,
         fix: Fix,
     },
-    /// `const N = count();`: a constant's value has to be known while compiling.
+    /// `@const N = count();`: a constant's value has to be known while compiling.
     ConstNotKnown { span: Span },
-    /// `const A = B; const B = A;`: a constant made of itself.
+    /// `@const A = B; const B = A;`: a constant made of itself.
     ConstCycle { name: String, span: Span },
     /// `break x;` or `continue x;` where `x` isn't a `for` loop's variable.
     NotALoop {

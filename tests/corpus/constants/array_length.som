@@ -2,8 +2,8 @@
 
 /// A constant can be an array's length, and the prover knows its value: `y * COLS + x` of
 /// `x` below 10 and `y` below 20 is below 200 without a check.
-const COLS = 10;
-const ROWS = 20;
+@const COLS = 10;
+@const ROWS = 20;
 
 struct Board { cells: [i32; COLS * ROWS] }
 

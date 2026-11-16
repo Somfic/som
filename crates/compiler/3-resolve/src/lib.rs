@@ -368,7 +368,7 @@ impl<'a> Resolver<'a> {
                     methods: block.methods.clone(),
                     types,
                 });
-                // `const PI = 3.14;`: named through the type.
+                // `@const PI = 3.14;`: named through the type.
                 for &c in &block.consts {
                     let name = &ast.consts[c].name;
                     let def = (self.names).define(&name.name, DefKind::Const(c), name.span.clone(), m);

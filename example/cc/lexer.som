@@ -10,7 +10,7 @@ mod struct Token {
 }
 
 /// Multi-character operators, longest first.
-mod const OPERATORS: [cstr; 13] = [
+mod @const OPERATORS: [cstr; 13] = [
     "==", "!=", "<=", ">=", "&&", "||", "++", "--", "+=", "-=", "*=", "/=", "%=",
 ];
 
