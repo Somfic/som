@@ -53,8 +53,8 @@ impl Mir {
             Ty::Char => "char".into(),
             Ty::Str => "str".into(),
             Ty::CStr => "cstr".into(),
-            Ty::Int(int) => format!("{int:?}").to_lowercase(),
-            Ty::Float(float) => format!("{float:?}").to_lowercase(),
+            Ty::Int(int) => int.name().to_string(),
+            Ty::Float(float) => float.name().to_string(),
             Ty::Pointer => "*".into(),
             Ty::Ptr(to) => format!("*{}", self.display_ty(*to)),
             Ty::Param(_) | Ty::Var(_) | Ty::Add(..) | Ty::Mul(..) | Ty::Assoc { .. } => {

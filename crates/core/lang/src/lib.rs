@@ -4,6 +4,8 @@
 #[macro_use]
 mod items;
 mod names;
+mod primitives;
 
 pub use items::{FailureField, LangFunc, LangStruct, LangTrait, LocationField};
 pub use names::*;
+pub use primitives::{FloatTy, IntTy, Primitive};

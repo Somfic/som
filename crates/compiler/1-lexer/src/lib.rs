@@ -4,6 +4,7 @@ pub use highlight::highlight;
 use logos::Logos;
 use som_base::message::{Part, code};
 use som_base::{Source, Span};
+use som_lang::Primitive;
 use std::sync::Arc;
 
 /// The compiler's own built-ins, written with an `@`, and what each does: for the parser,
@@ -106,43 +107,8 @@ pub enum TokenKind {
     #[token("or")]
     Or,
 
-    // Built-in types
-    #[token("i8")]
-    I8,
-    #[token("i16")]
-    I16,
-    #[token("i32")]
-    I32,
-    #[token("i64")]
-    I64,
-    #[token("i128")]
-    I128,
-    #[token("isize")]
-    ISize,
-    #[token("u8")]
-    U8,
-    #[token("u16")]
-    U16,
-    #[token("u32")]
-    U32,
-    #[token("u64")]
-    U64,
-    #[token("u128")]
-    U128,
-    #[token("usize")]
-    USize,
-    #[token("f32")]
-    F32,
-    #[token("f64")]
-    F64,
-    #[token("bool")]
-    Bool,
-    #[token("char")]
-    Char,
-    #[token("str")]
-    Str,
-    #[token("cstr")]
-    CStr,
+    /// `i32`, `bool`, `str`: a built-in type's name. Lexed as an identifier, then looked up.
+    Primitive(Primitive),
 
     // Literals and identifiers
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
@@ -337,24 +303,7 @@ impl std::fmt::Display for TokenKind {
             TokenKind::Return => write!(f, "return"),
             TokenKind::For => write!(f, "for"),
             TokenKind::In => write!(f, "in"),
-            TokenKind::I8 => write!(f, "i8"),
-            TokenKind::I16 => write!(f, "i16"),
-            TokenKind::I32 => write!(f, "i32"),
-            TokenKind::I64 => write!(f, "i64"),
-            TokenKind::I128 => write!(f, "i128"),
-            TokenKind::ISize => write!(f, "isize"),
-            TokenKind::U8 => write!(f, "u8"),
-            TokenKind::U16 => write!(f, "u16"),
-            TokenKind::U32 => write!(f, "u32"),
-            TokenKind::U64 => write!(f, "u64"),
-            TokenKind::U128 => write!(f, "u128"),
-            TokenKind::USize => write!(f, "usize"),
-            TokenKind::F32 => write!(f, "f32"),
-            TokenKind::F64 => write!(f, "f64"),
-            TokenKind::Bool => write!(f, "bool"),
-            TokenKind::Char => write!(f, "char"),
-            TokenKind::Str => write!(f, "str"),
-            TokenKind::CStr => write!(f, "cstr"),
+            TokenKind::Primitive(p) => write!(f, "{}", p.name()),
             TokenKind::Ident => write!(f, "identifier"),
             TokenKind::Int => write!(f, "integer"),
             TokenKind::Float => write!(f, "float"),
@@ -475,59 +424,42 @@ pub struct Token {
 
 pub fn lex(source: Arc<Source>) -> Vec<Token> {
     let input = source.content();
-    let mut lexer = TokenKind::lexer(input);
-    let mut tokens = Vec::new();
-    // Line and column are tracked while moving forward, so lexing stays linear.
-    let mut cursor = Cursor::default();
-
-    while let Some(result) = lexer.next() {
-        let kind = result.unwrap_or(TokenKind::Error);
-        let range = lexer.span();
-        let start = cursor.advance_to(input, range.start);
-        let end = cursor.advance_to(input, range.end);
-        tokens.push(Token {
-            kind,
-            text: lexer.slice().into(),
-            span: Span::new(
-                start.0,
-                start.1,
-                end.0,
-                end.1,
-                range.start,
-                range.len(),
-                source.clone(),
-            ),
-        });
-    }
-
+    let mut tokens = lex_without_end(&source, 0..input.len());
     foreign_comments(&mut tokens, input);
-
-    let end = cursor.advance_to(input, input.len());
-    tokens.push(Token {
-        kind: TokenKind::Eof,
-        text: "".into(),
-        span: Span::new(end.0, end.1, end.0, end.1, input.len(), 0, source),
-    });
-
+    tokens.push(end_of(&source, input.len()));
     tokens
 }
 
 /// The tokens of `range` of `source`, where they are in it: `{total}` inside text, read as
 /// code. Ends in an `Eof` at the range's end.
 pub fn lex_range(source: Arc<Source>, range: std::ops::Range<usize>) -> Vec<Token> {
+    let mut tokens = lex_without_end(&source, range.clone());
+    tokens.push(end_of(&source, range.end));
+    tokens
+}
+
+fn lex_without_end(source: &Arc<Source>, range: std::ops::Range<usize>) -> Vec<Token> {
     let input = source.content();
     let mut lexer = TokenKind::lexer(&input[range.clone()]);
     let mut tokens = Vec::new();
+    // Line and column are tracked while moving forward, so lexing stays linear.
     let mut cursor = Cursor::default();
     while let Some(result) = lexer.next() {
-        let kind = result.unwrap_or(TokenKind::Error);
+        let text = lexer.slice();
+        let kind = match result {
+            Ok(TokenKind::Ident) => {
+                Primitive::from_name(text).map_or(TokenKind::Ident, TokenKind::Primitive)
+            }
+            Ok(kind) => kind,
+            Err(()) => TokenKind::Error,
+        };
         let at = lexer.span();
         let (from, to) = (range.start + at.start, range.start + at.end);
         let start = cursor.advance_to(input, from);
         let end = cursor.advance_to(input, to);
         tokens.push(Token {
             kind,
-            text: lexer.slice().into(),
+            text: text.into(),
             span: Span::new(
                 start.0,
                 start.1,
@@ -539,13 +471,16 @@ pub fn lex_range(source: Arc<Source>, range: std::ops::Range<usize>) -> Vec<Toke
             ),
         });
     }
-    let end = cursor.advance_to(input, range.end);
-    tokens.push(Token {
+    tokens
+}
+
+fn end_of(source: &Arc<Source>, offset: usize) -> Token {
+    let (line, col) = Cursor::default().advance_to(source.content(), offset);
+    Token {
         kind: TokenKind::Eof,
         text: "".into(),
-        span: Span::new(end.0, end.1, end.0, end.1, range.end, 0, source),
-    });
-    tokens
+        span: Span::new(line, col, line, col, offset, 0, source.clone()),
+    }
 }
 
 /// Text token `token` with values written in it, `"total: {n + 1}"`, in pieces: the text

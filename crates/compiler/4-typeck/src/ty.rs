@@ -84,37 +84,7 @@ impl std::fmt::Display for Value {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum IntTy {
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    ISize,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    USize,
-}
-
-impl IntTy {
-    /// Whether it can be negative.
-    pub fn is_signed(self) -> bool {
-        matches!(
-            self,
-            IntTy::I8 | IntTy::I16 | IntTy::I32 | IntTy::I64 | IntTy::I128 | IntTy::ISize
-        )
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum FloatTy {
-    F32,
-    F64,
-}
+pub use som_ast::{FloatTy, IntTy};
 
 impl Ty {
     /// The types written inside this one: what a reference points to, what an optional or
@@ -200,25 +170,18 @@ impl Ty {
     }
 
     pub fn from_primitive(p: Primitive) -> Ty {
+        if let Some(int) = p.int() {
+            return Ty::Int(int);
+        }
+        if let Some(float) = p.float() {
+            return Ty::Float(float);
+        }
         match p {
-            Primitive::I8 => Ty::Int(IntTy::I8),
-            Primitive::I16 => Ty::Int(IntTy::I16),
-            Primitive::I32 => Ty::Int(IntTy::I32),
-            Primitive::I64 => Ty::Int(IntTy::I64),
-            Primitive::I128 => Ty::Int(IntTy::I128),
-            Primitive::ISize => Ty::Int(IntTy::ISize),
-            Primitive::U8 => Ty::Int(IntTy::U8),
-            Primitive::U16 => Ty::Int(IntTy::U16),
-            Primitive::U32 => Ty::Int(IntTy::U32),
-            Primitive::U64 => Ty::Int(IntTy::U64),
-            Primitive::U128 => Ty::Int(IntTy::U128),
-            Primitive::USize => Ty::Int(IntTy::USize),
-            Primitive::F32 => Ty::Float(FloatTy::F32),
-            Primitive::F64 => Ty::Float(FloatTy::F64),
             Primitive::Bool => Ty::Bool,
             Primitive::Char => Ty::Char,
             Primitive::Str => Ty::Str,
             Primitive::CStr => Ty::CStr,
+            _ => unreachable!("numbers are handled above"),
         }
     }
 }
@@ -416,8 +379,8 @@ impl TypeTable {
             Ty::Char => "char".into(),
             Ty::Str => "str".into(),
             Ty::CStr => "cstr".into(),
-            Ty::Int(int) => format!("{int:?}").to_lowercase(),
-            Ty::Float(float) => format!("{float:?}").to_lowercase(),
+            Ty::Int(int) => int.name().to_string(),
+            Ty::Float(float) => float.name().to_string(),
             Ty::Pointer => "*".into(),
             Ty::Ptr(to) => format!("*{}", self.display_with(*to, names, subst)),
             Ty::Assoc {

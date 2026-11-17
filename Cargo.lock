@@ -998,6 +998,7 @@ dependencies = [
  "logos",
  "owo-colors",
  "som_base",
+ "som_lang",
 ]
 
 [[package]]

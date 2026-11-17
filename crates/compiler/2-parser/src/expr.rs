@@ -5,7 +5,7 @@ use som_lexer::TokenKind;
 
 use crate::grammar::{Association, Grammar, OpInfo};
 use crate::{ParseError, Parser};
-use som_ast::BinOp;
+use som_ast::{BinOp, Primitive};
 
 impl Parser<'_> {
     pub(crate) fn parse_expr(&mut self) -> Option<Id<Expr>> {
@@ -67,7 +67,7 @@ impl Parser<'_> {
                     self.tokens[self.pos].kind = TokenKind::Ident;
                 }
                 // `text.cstr()`: a `string`'s text for C is its `c_str`, a property.
-                if self.at(TokenKind::CStr) {
+                if self.at(TokenKind::Primitive(Primitive::CStr)) {
                     self.c_str_misspelt();
                 }
                 let Some(name) = self.parse_ident("a field or method name") else {
@@ -1245,24 +1245,7 @@ impl Parser<'_> {
                 | TokenKind::False
                 | TokenKind::Plus
                 | TokenKind::Star
-                | TokenKind::I8
-                | TokenKind::I16
-                | TokenKind::I32
-                | TokenKind::I64
-                | TokenKind::I128
-                | TokenKind::ISize
-                | TokenKind::U8
-                | TokenKind::U16
-                | TokenKind::U32
-                | TokenKind::U64
-                | TokenKind::U128
-                | TokenKind::USize
-                | TokenKind::F32
-                | TokenKind::F64
-                | TokenKind::Bool
-                | TokenKind::Char
-                | TokenKind::Str
-                | TokenKind::CStr => {}
+                | TokenKind::Primitive(_) => {}
                 _ => return None,
             }
             n += 1;

@@ -58,26 +58,4 @@ pub enum TypeExpr {
     },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Primitive {
-    I8,
-    I16,
-    I32,
-    I64,
-    I128,
-    ISize,
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    USize,
-    F32,
-    F64,
-    Bool,
-    Char,
-    /// `str`: text, a view of bytes that live elsewhere.
-    Str,
-    /// `cstr`: a pointer to text ending in a zero byte, for C.
-    CStr,
-}
+pub use som_lang::{FloatTy, IntTy, Primitive};

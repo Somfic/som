@@ -18,27 +18,7 @@ impl Parser<'_> {
 
     /// Whether a primitive type's name is next: `usize` in `N: usize`.
     pub(crate) fn at_primitive_type(&self) -> bool {
-        matches!(
-            self.peek(),
-            TokenKind::I8
-                | TokenKind::I16
-                | TokenKind::I32
-                | TokenKind::I64
-                | TokenKind::I128
-                | TokenKind::ISize
-                | TokenKind::U8
-                | TokenKind::U16
-                | TokenKind::U32
-                | TokenKind::U64
-                | TokenKind::U128
-                | TokenKind::USize
-                | TokenKind::F32
-                | TokenKind::F64
-                | TokenKind::Bool
-                | TokenKind::Char
-                | TokenKind::Str
-                | TokenKind::CStr
-        )
+        matches!(self.peek(), TokenKind::Primitive(_))
     }
 
     /// `<A, B>` after a struct's name in a type, if it's there. An argument is a type, or a
@@ -240,24 +220,7 @@ impl Parser<'_> {
                         | TokenKind::Star
                         | TokenKind::Ampersand
                         | TokenKind::OpenBracket
-                        | TokenKind::I8
-                        | TokenKind::I16
-                        | TokenKind::I32
-                        | TokenKind::I64
-                        | TokenKind::I128
-                        | TokenKind::ISize
-                        | TokenKind::U8
-                        | TokenKind::U16
-                        | TokenKind::U32
-                        | TokenKind::U64
-                        | TokenKind::U128
-                        | TokenKind::USize
-                        | TokenKind::F32
-                        | TokenKind::F64
-                        | TokenKind::Bool
-                        | TokenKind::Char
-                        | TokenKind::Str
-                        | TokenKind::CStr
+                        | TokenKind::Primitive(_)
                 );
                 match pointee {
                     true => TypeExpr::PointerTo(self.parse_type_without_optional()?),
@@ -332,9 +295,9 @@ impl Parser<'_> {
                 None => {
                     self.error_expected(
                         &[
-                            TokenKind::I32,
-                            TokenKind::Bool,
-                            TokenKind::Str,
+                            TokenKind::Primitive(Primitive::I32),
+                            TokenKind::Primitive(Primitive::Bool),
+                            TokenKind::Primitive(Primitive::Str),
                             TokenKind::Ident,
                             TokenKind::Ampersand,
                             TokenKind::Fn,
@@ -352,25 +315,8 @@ impl Parser<'_> {
 }
 
 pub(crate) fn primitive(kind: TokenKind) -> Option<Primitive> {
-    Some(match kind {
-        TokenKind::I8 => Primitive::I8,
-        TokenKind::I16 => Primitive::I16,
-        TokenKind::I32 => Primitive::I32,
-        TokenKind::I64 => Primitive::I64,
-        TokenKind::I128 => Primitive::I128,
-        TokenKind::ISize => Primitive::ISize,
-        TokenKind::U8 => Primitive::U8,
-        TokenKind::U16 => Primitive::U16,
-        TokenKind::U32 => Primitive::U32,
-        TokenKind::U64 => Primitive::U64,
-        TokenKind::U128 => Primitive::U128,
-        TokenKind::USize => Primitive::USize,
-        TokenKind::F32 => Primitive::F32,
-        TokenKind::F64 => Primitive::F64,
-        TokenKind::Bool => Primitive::Bool,
-        TokenKind::Char => Primitive::Char,
-        TokenKind::Str => Primitive::Str,
-        TokenKind::CStr => Primitive::CStr,
-        _ => return None,
-    })
+    match kind {
+        TokenKind::Primitive(primitive) => Some(primitive),
+        _ => None,
+    }
 }

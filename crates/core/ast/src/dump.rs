@@ -44,7 +44,7 @@ impl Ast {
     pub fn type_text(&self, id: Id<TypeExpr>) -> String {
         match &self.types[id] {
             TypeExpr::Unit => "()".into(),
-            TypeExpr::Primitive(p) => format!("{p:?}").to_lowercase(),
+            TypeExpr::Primitive(p) => p.name().to_string(),
             TypeExpr::Named { path, args } if args.is_empty() => path.to_string(),
             TypeExpr::Named { path, args } => {
                 let args: Vec<String> = args.iter().map(|&a| self.type_text(a)).collect();

@@ -611,9 +611,9 @@ impl Names {
 
     /// The definition of the built-in type called `name` (`i32`), if it has methods.
     pub fn primitives_named(&self, name: &str) -> Option<DefId> {
-        (self.primitives.iter())
-            .find(|(p, _)| format!("{p:?}").to_lowercase() == name)
-            .map(|(_, &d)| d)
+        self.primitives
+            .get(&som_ast::Primitive::from_name(name)?)
+            .copied()
     }
 
     /// The definition for built-in type `primitive`'s methods, made the first time.
@@ -626,8 +626,12 @@ impl Names {
         if let Some(&def) = self.primitives.get(&primitive) {
             return def;
         }
-        let name = format!("{primitive:?}").to_lowercase();
-        let def = self.define(&name, DefKind::Primitive(primitive), span, module);
+        let def = self.define(
+            primitive.name(),
+            DefKind::Primitive(primitive),
+            span,
+            module,
+        );
         self.primitives.insert(primitive, def);
         def
     }

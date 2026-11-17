@@ -880,19 +880,7 @@ impl<'a> Checker<'a> {
             let Ty::Int(int) = *self.u.table.get(types[id.id]) else {
                 continue;
             };
-            // `isize` and `usize` are as wide as a pointer: 64 bits is the widest they can be.
-            let (min, max): (i128, u128) = match int {
-                IntTy::I8 => (i8::MIN.into(), i8::MAX as u128),
-                IntTy::I16 => (i16::MIN.into(), i16::MAX as u128),
-                IntTy::I32 => (i32::MIN.into(), i32::MAX as u128),
-                IntTy::I64 | IntTy::ISize => (i64::MIN.into(), i64::MAX as u128),
-                IntTy::I128 => (i128::MIN, i128::MAX as u128),
-                IntTy::U8 => (0, u8::MAX.into()),
-                IntTy::U16 => (0, u16::MAX.into()),
-                IntTy::U32 => (0, u32::MAX.into()),
-                IntTy::U64 | IntTy::USize => (0, u64::MAX.into()),
-                IntTy::U128 => (0, u128::MAX),
-            };
+            let (min, max) = (int.min(), int.max());
             let fits = match *n < 0 {
                 true => *n >= min,
                 false => *n as u128 <= max,
@@ -900,7 +888,7 @@ impl<'a> Checker<'a> {
             if !fits {
                 self.errors.push(TypeError::LiteralOutOfRange {
                     value: *n,
-                    ty: format!("{int:?}").to_lowercase(),
+                    ty: int.name().to_string(),
                     max,
                     min,
                     span: self.span(id),
@@ -1452,7 +1440,7 @@ impl<'a> Checker<'a> {
                 if n > max {
                     self.errors.push(TypeError::LiteralOutOfRange {
                         value: n.min(i128::MAX as u128) as i128,
-                        ty: format!("{int_ty:?}").to_lowercase(),
+                        ty: int_ty.name().to_string(),
                         max,
                         min: 0,
                         span,

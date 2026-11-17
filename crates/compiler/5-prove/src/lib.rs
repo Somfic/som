@@ -948,19 +948,7 @@ impl Prover<'_> {
         let Ty::Int(int) = *self.typed.ty(ty) else {
             return None;
         };
-        let bits = match int {
-            IntTy::I8 | IntTy::U8 => 8,
-            IntTy::I16 | IntTy::U16 => 16,
-            IntTy::I32 | IntTy::U32 => 32,
-            IntTy::I64 | IntTy::U64 | IntTy::ISize | IntTy::USize => 64,
-            IntTy::I128 | IntTy::U128 => 128,
-        };
-        Some(match (int.is_signed(), bits) {
-            (true, 128) => (i128::MIN, i128::MAX),
-            (true, n) => (-(1 << (n - 1)), (1 << (n - 1)) - 1),
-            (false, 128) => (0, i128::MAX),
-            (false, n) => (0, (1i128 << n) - 1),
-        })
+        Some((int.min(), int.max().min(i128::MAX as u128) as i128))
     }
 
     /// The integer a constant's value is: `W * H` of `@const W = 60;` and `@const H = 20;`

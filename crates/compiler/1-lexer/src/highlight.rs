@@ -36,24 +36,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::As
         | TokenKind::Or
         | TokenKind::Impl => MAUVE,
-        TokenKind::I8
-        | TokenKind::I16
-        | TokenKind::I32
-        | TokenKind::I64
-        | TokenKind::I128
-        | TokenKind::ISize
-        | TokenKind::U8
-        | TokenKind::U16
-        | TokenKind::U32
-        | TokenKind::U64
-        | TokenKind::U128
-        | TokenKind::USize
-        | TokenKind::F32
-        | TokenKind::F64
-        | TokenKind::Bool
-        | TokenKind::Char
-        | TokenKind::Str
-        | TokenKind::CStr
+        TokenKind::Primitive(_)
         // `Self` is a type: the one an impl block is for.
         | TokenKind::SelfType
         // `@unreachable`: coloured like a type, the compiler's own.

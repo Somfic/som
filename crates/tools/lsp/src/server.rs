@@ -4356,24 +4356,7 @@ fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
             | TokenKind::False
             | TokenKind::None => 2,
             TokenKind::Text => 3,
-            TokenKind::I8
-            | TokenKind::I16
-            | TokenKind::I32
-            | TokenKind::I64
-            | TokenKind::I128
-            | TokenKind::ISize
-            | TokenKind::U8
-            | TokenKind::U16
-            | TokenKind::U32
-            | TokenKind::U64
-            | TokenKind::U128
-            | TokenKind::USize
-            | TokenKind::F32
-            | TokenKind::F64
-            | TokenKind::Bool
-            | TokenKind::Char
-            | TokenKind::Str
-            | TokenKind::CStr => 4,
+            TokenKind::Primitive(_) => 4,
             TokenKind::Comment => 5,
             // `*` is the pointer type after `:` or `->`, and multiplication or a dereference otherwise.
             TokenKind::Star if matches!(prev, Some(TokenKind::Colon | TokenKind::Arrow)) => 4,
