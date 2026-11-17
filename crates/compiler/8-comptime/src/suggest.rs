@@ -18,6 +18,9 @@ pub struct CouldBeConst {
     /// What to write instead: `@fib(20)`, a local's value written in place of it (`@fib(n)`
     /// can't name `n`, a local).
     pub fix: String,
+    /// The locals it's given that are always the same, each with that value and where it's
+    /// set: `n`, `100`, at `let n = 100;`.
+    pub known: Vec<(String, String, Span)>,
     pub span: Span,
 }
 
@@ -96,6 +99,7 @@ pub fn could_be_const(mir: &Mir) -> Vec<CouldBeConst> {
                 let call = span.get_text().to_string();
                 let mut fixed = call.clone();
                 let mut writable = true;
+                let mut known_here = Vec::new();
                 for (written, arg) in written_args.iter().zip(&args) {
                     let (Operand::Copy(place) | Operand::Move(place)) = written else {
                         continue;
@@ -104,7 +108,13 @@ pub fn could_be_const(mir: &Mir) -> Vec<CouldBeConst> {
                         continue;
                     };
                     match literal(&c.kind) {
-                        Some(text) => fixed = replace_word(&fixed, name, &text),
+                        Some(text) => {
+                            fixed = replace_word(&fixed, name, &text);
+                            let set_at = body.locals[place.local].span.clone();
+                            if !known_here.iter().any(|(n, _, _)| n == name) {
+                                known_here.push((name.clone(), text, set_at));
+                            }
+                        }
                         None => writable = false,
                     }
                 }
@@ -124,6 +134,7 @@ pub fn could_be_const(mir: &Mir) -> Vec<CouldBeConst> {
                     value: literal(&value),
                     call,
                     fix,
+                    known: known_here,
                     span,
                 });
             }

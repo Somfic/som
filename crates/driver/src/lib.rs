@@ -160,21 +160,43 @@ impl Warning {
 }
 
 /// `fib(20)` could be `@fib(20)`: worked out while compiling, not each time the program runs.
+/// Said like a moved value is: where it is, where what it's given comes from, why, then what
+/// to do about it.
 fn could_be_const_diagnostic(w: &som_comptime::CouldBeConst) -> Diagnostic {
     use som_base::message::code;
     use som_base::{Fix, Label, msg};
-    let written = w.fix.clone();
-    let label = match &w.value {
-        Some(value) => msg!["it's ", code(value.clone()), " every time"],
-        None => msg!["it gives the same every time"],
+    let result = match &w.value {
+        Some(value) => msg![code(value.clone())],
+        None => msg!["the same value"],
     };
-    Diagnostic::hint(msg![code(w.call.clone()), " could be worked out while compiling"])
-        .with_label(Label::primary(w.span.clone(), label))
-        .with_fix(Fix::replace(
-            msg!["work it out while compiling: ", code(written.clone())],
+    let mut d = Diagnostic::hint(msg![code(w.call.clone()), " could be worked out while compiling"])
+        .with_label(Label::primary(
             w.span.clone(),
-            written,
-        ))
+            msg!["always ", result.clone(), ", worked out again each time the program runs"],
+        ));
+    // `let n = 100;`: where an argument that never changes is set.
+    for (name, value, set_at) in &w.known {
+        d = d.with_label(Label::secondary(
+            set_at.clone(),
+            msg![code(name.clone()), " is always ", code(value.clone())],
+        ));
+    }
+    d.with_hint(msg![
+        "everything it's given is known while compiling, so what it gives is too: ",
+        result.clone()
+    ])
+    .with_hint(msg![
+        code(w.fix.clone()),
+        " works it out once, while compiling, and puts ",
+        result,
+        " in the program instead"
+    ])
+    .with_hint("or, if it should run each time (it's quick, or it's being timed), leave it as it is")
+    .with_fix(Fix::replace(
+        msg!["work it out while compiling: ", code(w.fix.clone())],
+        w.span.clone(),
+        w.fix.clone(),
+    ))
 }
 
 /// Checks types, working out first the constants needed to: `[i32; SIZE]` of
