@@ -4,7 +4,7 @@ use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 
 use super::Request;
 use super::items::{
-    assoc_const_items, call_snippet, method_item, module_items, snippet_item, variant_snippet,
+    assoc_const_items, method_item, module_items, snippet_item, type_member_item, variant_snippet,
 };
 use crate::docs::{describe, doc_of, markdown, signature, variant_text};
 use crate::lookup::{find_struct, module_named, modules_in_scope, undeclared_library};
@@ -55,13 +55,12 @@ fn primitive_items(request: &Request, owner: DefId) -> Vec<CompletionItem> {
         let DefKind::Func(f) = a.names.def(method).kind else {
             continue;
         };
-        items.push(method_item(
+        items.push(type_member_item(
             a,
             f,
+            owner,
             name,
-            0,
             request.insert,
-            signature(a, f),
             doc_of(a, method),
         ));
     }
@@ -108,17 +107,19 @@ fn struct_items(request: &Request, s: Id<Struct>) -> Vec<CompletionItem> {
         if !request.visible(method) {
             continue;
         }
-        let snippet = match a.names.def(method).kind {
-            DefKind::Func(f) => call_snippet(a, f, name, 0, request.insert),
-            _ => None,
+        let item = match a.names.def(method).kind {
+            DefKind::Func(f) => {
+                type_member_item(a, f, owner, name, request.insert, doc_of(a, method))
+            }
+            _ => snippet_item(
+                name.to_string(),
+                CompletionItemKind::METHOD,
+                None,
+                describe(a, method),
+                markdown(doc_of(a, method)),
+            ),
         };
-        items.push(snippet_item(
-            name.to_string(),
-            CompletionItemKind::METHOD,
-            snippet,
-            describe(a, method),
-            markdown(doc_of(a, method)),
-        ));
+        items.push(item);
     }
     items
 }

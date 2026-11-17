@@ -141,7 +141,9 @@ fn struct_members(
         else {
             continue;
         };
-        if !request.visible(method) {
+        // Not those called on the type, `Queue::empty`: a value has only what takes `self`.
+        let on_the_type = matches!(a.names.def(method).kind, DefKind::Func(f) if !takes_self(a, f));
+        if !request.visible(method) || on_the_type {
             continue;
         }
         let item = match a.names.def(method).kind {

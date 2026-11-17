@@ -6,7 +6,9 @@ use som_lang::LangTrait;
 use som_resolve::visibility::{self, Viewer};
 use som_resolve::{DefId, DefKind};
 use som_typeck::{Ty, TypeId};
-use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, Documentation, InsertTextFormat};
+use tower_lsp::lsp_types::{
+    CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, InsertTextFormat,
+};
 
 use crate::docs::{describe, doc_of, markdown, signature, ty};
 use crate::lookup::aliased_struct;
@@ -71,6 +73,89 @@ pub(super) fn func_item(
         signature(a, f),
         markdown(a.ast.funcs[f].doc.clone()),
     )
+}
+
+/// What a function reached through its type is: called on a value, `self` first; making one
+/// of the type, `Queue::empty`; or neither.
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum TypeMember {
+    Constructor,
+    Function,
+    Method,
+}
+
+impl TypeMember {
+    pub(super) fn of(a: &Analysis, f: Id<Func>, owner: DefId) -> TypeMember {
+        let func = &a.ast.funcs[f];
+        if (func.params.first()).is_some_and(|p| *p.name.name == *som_lang::SELF_VALUE) {
+            return TypeMember::Method;
+        }
+        match a.typed.ty(a.typed.func(f).ret) {
+            Ty::Struct(def, _) if *def == owner => TypeMember::Constructor,
+            _ => TypeMember::Function,
+        }
+    }
+
+    /// Editors that tell them apart show each its own icon; VS Code draws all three alike,
+    /// so the label's details say it too.
+    fn kind(self) -> CompletionItemKind {
+        match self {
+            TypeMember::Constructor => CompletionItemKind::CONSTRUCTOR,
+            TypeMember::Function => CompletionItemKind::FUNCTION,
+            TypeMember::Method => CompletionItemKind::METHOD,
+        }
+    }
+
+    fn description(self) -> &'static str {
+        match self {
+            TypeMember::Constructor => "makes one",
+            TypeMember::Function => "function",
+            TypeMember::Method => "method",
+        }
+    }
+}
+
+/// `Queue::empty`, `Queue::enqueue`: a function of type `owner`, shown as what it is, with its
+/// parameters after its name, `self` as it's taken (`&mut self`). After the type's variants
+/// and constants: what makes one first, then other functions, then methods.
+pub(super) fn type_member_item(
+    a: &Analysis,
+    f: Id<Func>,
+    owner: DefId,
+    name: &str,
+    insert: Insert,
+    doc: Option<String>,
+) -> CompletionItem {
+    let member = TypeMember::of(a, f, owner);
+    let func = &a.ast.funcs[f];
+    let params: Vec<String> = (func.params.iter().zip(&a.typed.func(f).params))
+        .enumerate()
+        .map(|(i, (p, &t))| match a.typed.ty(t) {
+            _ if i > 0 || member != TypeMember::Method => p.name.name.to_string(),
+            Ty::Ref { mutable: true, .. } => "&mut self".to_string(),
+            Ty::Ref { .. } => "&self".to_string(),
+            _ => "self".to_string(),
+        })
+        .collect();
+    let mut item = snippet_item(
+        name.to_string(),
+        member.kind(),
+        call_snippet(a, f, name, 0, insert),
+        signature(a, f),
+        markdown(doc),
+    );
+    item.label_details = Some(CompletionItemLabelDetails {
+        detail: Some(format!("({})", params.join(", "))),
+        description: Some(member.description().to_string()),
+    });
+    // `~` sorts after the variants' and constants' names.
+    let order = match member {
+        TypeMember::Constructor => 0,
+        TypeMember::Function => 1,
+        TypeMember::Method => 2,
+    };
+    item.sort_text = Some(format!("~{order}{name}"));
+    item
 }
 
 /// A method or function called through its type, `i32::parse`, or on a value, `v.push`:
@@ -321,7 +406,8 @@ pub(crate) fn module_items(
     }
     for f in funcs {
         let func = &a.ast.funcs[f];
-        if *func.name.name == *som_lang::ENTRY_POINT && module.is_none() && m == 0 {
+        // Nothing calls `main`, or a `@test`: the runner does.
+        if *func.name.name == *som_lang::ENTRY_POINT && module.is_none() && m == 0 || func.test {
             continue;
         }
         items.push(func_item(a, f, name(&func.name.name), insert));

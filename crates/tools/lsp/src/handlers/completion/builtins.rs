@@ -38,7 +38,7 @@ pub(super) fn complete(request: &Request) -> Option<Vec<CompletionItem>> {
         for item in &a.ast.modules[m].items {
             let Item::Func(f) = *item else { continue };
             let func = &a.ast.funcs[f];
-            if func.body.is_none() || !request.visible(a.names.func(f)) {
+            if func.body.is_none() || func.test || !request.visible(a.names.func(f)) {
                 continue;
             }
             let mut item = func_item(a, f, format!("@{}", func.name.name), request.insert);

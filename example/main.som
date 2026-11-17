@@ -1,1 +1,11 @@
-let queue = Queue::
+
+let mut queue =  Queue::empty();
+queue.enqueue("Hello");
+queue.enqueue("Hello 2");
+queue.enqueue("Hello 3");
+queue.enqueue("Hello 4");
+queue.enqueue("Hello 5");
+
+for item in &queue {
+    som::io::println(item);
+}

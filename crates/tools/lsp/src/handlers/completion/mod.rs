@@ -102,6 +102,105 @@ pub(crate) fn complete(request: &Request, trigger: Option<&str>) -> Option<Vec<C
 mod tests {
     use super::*;
     use crate::test_support::analyzed;
+    use tower_lsp::lsp_types::CompletionItemKind;
+
+    /// The items completed at the end of `source`.
+    fn items_at_end(source: &str) -> Vec<CompletionItem> {
+        let (_dir, file, a) = analyzed(source);
+        let importable = Importable {
+            modules: Vec::new(),
+            libraries: Vec::new(),
+        };
+        let last = source.lines().count() as u32 - 1;
+        let column = source.lines().last().unwrap().len() as u32;
+        let request = Request::new(
+            &a,
+            &importable,
+            &file,
+            source,
+            source.len(),
+            Position::new(last, column),
+        );
+        complete(&request, None).unwrap_or_default()
+    }
+
+    #[test]
+    fn a_types_functions_say_what_they_are() {
+        let source = "struct Bag { n: i32 }\n\
+                      impl Bag {\n\
+                          pub fn empty() -> Self = Bag { n: 0 };\n\
+                          pub fn twice(n: i32) -> i32 = n * 2;\n\
+                          pub fn add(&mut self, n: i32) { .n = .n + n; }\n\
+                          pub fn count(&self) -> i32 = .n;\n\
+                      }\n\
+                      fn main() -> i32 {\n    let b = Bag::";
+        let mut items = items_at_end(source);
+        items.sort_by(|x, y| x.sort_text.cmp(&y.sort_text));
+        let shown: Vec<(String, Option<CompletionItemKind>, String, String)> = (items.into_iter())
+            .map(|item| {
+                let details = item.label_details.unwrap_or_default();
+                let (detail, description) = (details.detail, details.description);
+                let (detail, description) =
+                    (detail.unwrap_or_default(), description.unwrap_or_default());
+                (item.label, item.kind, detail, description)
+            })
+            .collect();
+        let (constructor, function, method) = (
+            Some(CompletionItemKind::CONSTRUCTOR),
+            Some(CompletionItemKind::FUNCTION),
+            Some(CompletionItemKind::METHOD),
+        );
+        let s = |x: &str| x.to_string();
+        assert_eq!(
+            shown,
+            vec![
+                (s("empty"), constructor, s("()"), s("makes one")),
+                (s("twice"), function, s("(n)"), s("function")),
+                (s("add"), method, s("(&mut self, n)"), s("method")),
+                (s("count"), method, s("(&self)"), s("method")),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_value_has_only_what_takes_self() {
+        let source = "struct Bag { n: i32 }\n\
+                      impl Bag {\n\
+                          pub fn empty() -> Self = Bag { n: 0 };\n\
+                          pub fn count(&self) -> i32 = .n;\n\
+                      }\n\
+                      fn main() -> i32 {\n    let b = Bag::empty();\n    b.count()\n}\n";
+        let (_dir, file, a) = analyzed(source);
+        let importable = Importable {
+            modules: Vec::new(),
+            libraries: Vec::new(),
+        };
+        // Just after `b.`, in the program as it was analyzed.
+        let offset = source.find("b.count").unwrap() + 2;
+        let line = source[..offset].lines().count() as u32 - 1;
+        let column = source[..offset].lines().last().unwrap().len() as u32;
+        let request = Request::new(
+            &a,
+            &importable,
+            &file,
+            source,
+            offset,
+            Position::new(line, column),
+        );
+        let labels: Vec<String> = (complete(&request, None).unwrap_or_default().into_iter())
+            .map(|i| i.label)
+            .collect();
+        assert!(labels.iter().any(|l| l == "count"), "{labels:?}");
+        assert!(!labels.iter().any(|l| l == "empty"), "{labels:?}");
+    }
+
+    #[test]
+    fn tests_are_not_offered() {
+        let source = "@test\nfn adds_up() {}\n\nfn adds() {}\n\nfn main() -> i32 {\n    add";
+        let labels: Vec<String> = items_at_end(source).into_iter().map(|i| i.label).collect();
+        assert!(labels.iter().any(|l| l == "adds"), "{labels:?}");
+        assert!(!labels.iter().any(|l| l.contains("adds_up")), "{labels:?}");
+    }
 
     /// The labels completed at the end of `source`.
     fn labels_at_end(source: &str) -> Vec<String> {

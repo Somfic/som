@@ -38,12 +38,39 @@ function programFor(file: string): string {
   return fs.existsSync(path.join(dir, "main.som")) ? dir : file;
 }
 
+/**
+ * VS Code draws methods, functions and constructors with the same icon. A type's functions
+ * (`Queue::…`), which the server describes in their label, get icons of their own: what makes
+ * one of the type the struct's, a function without `self` the namespace's. Methods keep theirs.
+ * Only VS Code needs this; the server's kinds are right for other editors.
+ */
+const TYPE_MEMBER_KINDS: Record<string, vscode.CompletionItemKind> = {
+  "makes one": vscode.CompletionItemKind.Struct,
+  function: vscode.CompletionItemKind.Module,
+};
+
+function withDistinctIcon(item: vscode.CompletionItem) {
+  const description = typeof item.label === "string" ? undefined : item.label.description;
+  const kind = description === undefined ? undefined : TYPE_MEMBER_KINDS[description];
+  if (kind !== undefined) {
+    item.kind = kind;
+  }
+}
+
 async function startClient(): Promise<LanguageClient | undefined> {
   const command = som();
   // stdin/stdout is the default transport; naming it would make the client add `--stdio`.
   const serverOptions: ServerOptions = { command, args: ["lsp"] };
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ language: "som" }],
+    middleware: {
+      async provideCompletionItem(document, position, context, token, next) {
+        const found = await next(document, position, context, token);
+        const items = Array.isArray(found) ? found : found?.items;
+        items?.forEach(withDistinctIcon);
+        return found;
+      },
+    },
   };
 
   const c = new LanguageClient("som", "Som Language Server", serverOptions, clientOptions);
