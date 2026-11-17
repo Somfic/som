@@ -1,50 +1,26 @@
-//! Text for diagnostics that knows what it's talking about.
-//!
-//! A [`Message`] is a list of parts: plain words, and things from the program,
-//! like a type, a function's name, a file, or a snippet of som. Each part is
-//! shown in its theme colour in a terminal, or between backticks without colour:
-//!
-//! ```text
-//! expected i32, found bool        (in colour: i32 and bool in the type colour)
-//! expected `i32`, found `bool`    (without)
-//! ```
-//!
-//! Build one with [`msg!`](crate::msg):
-//!
-//! ```
-//! use som_base::msg;
-//! use som_base::message::{path, ty};
-//!
-//! let m = msg!["expected ", ty("i32"), ", found ", ty("bool")];
-//! assert_eq!(m.plain(), "expected `i32`, found `bool`");
-//! ```
+//! A diagnostic's text: plain words mixed with tagged parts of the program, each shown in
+//! its theme colour in a terminal, or between backticks without colour.
 
 use owo_colors::{OwoColorize, Style};
 use std::fmt::Display;
 
 use crate::diagnostics::*;
 
-/// A diagnostic's text: plain words mixed with tagged parts of the program.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Message(pub Vec<Part>);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Part {
-    /// Plain words.
     Text(String),
-    /// A snippet of som, syntax-highlighted: `use std;`
+    /// Syntax-highlighted som.
     Code(String),
-    /// A type: `i32`, `&Point`
     Type(String),
-    /// A name from the program.
     Name(Kind, String),
-    /// A file or directory: `example.som`
     Path(String),
-    /// Something to type in a shell: a command, flag or environment variable: `--cc`
+    /// A shell command, flag or environment variable.
     Command(String),
 }
 
-/// What a [`Part::Name`] names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     Var,
@@ -55,9 +31,7 @@ pub enum Kind {
     Module,
 }
 
-/// Builds a [`Message`] from parts, strings (plain text) and other messages.
-///
-/// `msg!["cannot find ", func("helper")]`
+/// A [`Message`] from parts, strings (plain text) and other messages.
 #[macro_export]
 macro_rules! msg {
     ($($part:expr),* $(,)?) => {{
@@ -151,17 +125,14 @@ impl From<Part> for Message {
 }
 
 impl Message {
-    /// Appends a part, some text, or a whole message.
     pub fn push(&mut self, more: impl Into<Message>) {
         self.0.extend(more.into().0);
     }
 
-    /// The text with every tagged part between backticks, and no colour.
     pub fn plain(&self) -> String {
         self.render(false)
     }
 
-    /// The text in theme colours, or as [`plain`](Self::plain) text when `color` is false.
     pub fn render(&self, color: bool) -> String {
         self.render_with(RenderOptions {
             color,
@@ -197,7 +168,7 @@ impl Message {
         out
     }
 
-    /// `items` as a list: `a`, `a and b`, `a, b and c`.
+    /// `a`, `a and b`, `a, b and c`, with `last` for the final `and`.
     pub fn list(items: impl IntoIterator<Item = Part>, last: &str) -> Message {
         let items: Vec<Part> = items.into_iter().collect();
         let mut out = Message(Vec::new());
@@ -234,7 +205,6 @@ fn paint(s: &str, color: Rgb, style: Style) -> String {
         .to_string()
 }
 
-/// Plain text, so a message can be used anywhere a string can.
 impl Display for Message {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.plain())

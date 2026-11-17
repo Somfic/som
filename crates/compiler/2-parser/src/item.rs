@@ -628,7 +628,7 @@ impl Parser<'_> {
     /// `const NAME =` too, reported when it's read.
     pub(crate) fn at_const(&self, at: usize) -> bool {
         let written = self.builtin_ahead(at) == Some(Builtin::Const);
-        (written || self.foreign_keyword(at, foreign::const_word).is_some())
+        (written || self.foreign_keyword(at, &foreign::CONST).is_some())
             && self.peek_nth(at + 1) == TokenKind::Ident
             && matches!(self.peek_nth(at + 2), TokenKind::Colon | TokenKind::Equals)
     }
@@ -680,7 +680,7 @@ impl Parser<'_> {
         let doc = self.doc_comment();
         let start = self.current_span();
         // `const MAX = 10;`: another language's, reported and read as `@const`.
-        if let Some(found) = self.foreign_keyword(0, foreign::const_word) {
+        if let Some(found) = self.foreign_keyword(0, &foreign::CONST) {
             let message = msg![
                 "som declares constants with ",
                 code(found.som),

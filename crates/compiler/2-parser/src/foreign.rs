@@ -6,7 +6,7 @@
 //! the parser finds it.
 
 use som_ast::{Expr, Id, Span, Stmt};
-use som_base::foreign::{self, Foreign};
+use som_base::foreign::{self, Foreign, Table};
 use som_base::message::{Message, code};
 use som_base::{Fix, msg};
 use som_lexer::TokenKind;
@@ -65,7 +65,7 @@ impl Parser<'_> {
             .filter(|t| t.kind == TokenKind::ForeignComment)
             .filter_map(|t| {
                 let marker = if t.text.starts_with('#') { "#" } else { "--" };
-                Some((t.span.clone(), foreign::comment(marker)?))
+                Some((t.span.clone(), foreign::COMMENT.find(marker)?))
             })
             .collect();
         for (span, comment) in comments {
@@ -84,23 +84,19 @@ impl Parser<'_> {
 
     /// Another language's keyword `at` tokens ahead, found in `table`, followed by a name:
     /// `def area`, `class Point`.
-    pub(crate) fn foreign_keyword(
-        &self,
-        at: usize,
-        table: fn(&str) -> Option<&'static Foreign>,
-    ) -> Option<&'static Foreign> {
-        let found = table(self.ident_ahead(at)?)?;
+    pub(crate) fn foreign_keyword(&self, at: usize, table: &Table) -> Option<&'static Foreign> {
+        let found = table.find(self.ident_ahead(at)?)?;
         (self.peek_nth(at + 1) == TokenKind::Ident).then_some(found)
     }
 
     /// At another language's `fn`, `at` tokens ahead: `def area`.
     pub(crate) fn foreign_fn(&self, at: usize) -> bool {
-        self.foreign_keyword(at, foreign::fn_word).is_some()
+        self.foreign_keyword(at, &foreign::FN).is_some()
     }
 
     /// At another language's `struct`, `at` tokens ahead: `class Point`.
     pub(crate) fn foreign_struct(&self, at: usize) -> bool {
-        self.foreign_keyword(at, foreign::struct_word).is_some()
+        self.foreign_keyword(at, &foreign::STRUCT).is_some()
     }
 
     /// At `fn`, or another language's word for it.
@@ -109,11 +105,11 @@ impl Parser<'_> {
     }
 
     pub(crate) fn expect_fn(&mut self, expected: &str) -> Option<()> {
-        self.expect_keyword(TokenKind::Fn, foreign::fn_word, "functions", expected)
+        self.expect_keyword(TokenKind::Fn, &foreign::FN, "functions", expected)
     }
 
     pub(crate) fn expect_struct(&mut self, expected: &str) -> Option<()> {
-        self.expect_keyword(TokenKind::Struct, foreign::struct_word, "structs", expected)
+        self.expect_keyword(TokenKind::Struct, &foreign::STRUCT, "structs", expected)
     }
 
     /// Expects keyword `kind`, taking another language's word for it from `table` with an
@@ -122,7 +118,7 @@ impl Parser<'_> {
     fn expect_keyword(
         &mut self,
         kind: TokenKind,
-        table: fn(&str) -> Option<&'static Foreign>,
+        table: &Table,
         declares: &str,
         expected: &str,
     ) -> Option<()> {
@@ -148,7 +144,7 @@ impl Parser<'_> {
     pub(crate) fn c_style_fn(&self, at: usize) -> bool {
         let ty = match self.peek_nth(at) {
             TokenKind::Ident => self.ident_ahead(at).is_some_and(|w| {
-                foreign::fn_word(w).is_none() && foreign::struct_word(w).is_none()
+                foreign::FN.find(w).is_none() && foreign::STRUCT.find(w).is_none()
             }),
             kind => crate::ty::primitive(kind).is_some(),
         };
@@ -158,7 +154,7 @@ impl Parser<'_> {
 
     /// At another language's `let`, followed by a name: `const name`, `var count`.
     pub(crate) fn foreign_let(&self) -> Option<&'static Foreign> {
-        self.foreign_keyword(0, foreign::let_word)
+        self.foreign_keyword(0, &foreign::LET)
     }
 
     /// At Go's `name := value`.
@@ -186,7 +182,7 @@ impl Parser<'_> {
     /// Go's `name :=`, at it: reported, changed to `let name =`. Reads the name and the
     /// `:=`, for what follows to be the value.
     pub(crate) fn eat_go_define(&mut self) -> Option<som_ast::Ident> {
-        let found = foreign::operator(":=")?;
+        let found = foreign::OPERATOR.find(":=")?;
         let start = self.current_span();
         let name = self.parse_ident("a variable name")?;
         self.advance();
@@ -200,7 +196,7 @@ impl Parser<'_> {
 
     /// Another language's `mut`, after `let`: `let mutable total`. Whether it was there.
     pub(crate) fn eat_foreign_mut(&mut self) -> bool {
-        let Some(found) = self.foreign_keyword(0, foreign::mut_word) else {
+        let Some(found) = self.foreign_keyword(0, &foreign::MUT) else {
             return false;
         };
         self.replace_word(found, found.som);
@@ -210,7 +206,7 @@ impl Parser<'_> {
     /// Another language's modifier, `n` tokens ahead, before what it modifies: `public fn`,
     /// `static void main`.
     pub(crate) fn foreign_modifier(&self, n: usize) -> Option<&'static Foreign> {
-        let found = foreign::modifier(self.ident_ahead(n)?)?;
+        let found = foreign::MODIFIER.find(self.ident_ahead(n)?)?;
         let next = self.peek_nth(n + 1);
         let modifies = matches!(
             next,
@@ -270,7 +266,7 @@ impl Parser<'_> {
         if !self.at(TokenKind::Arrow) || self.ident_ahead(1) != Some("void") {
             return false;
         }
-        let Some(found) = foreign::fn_word("void") else {
+        let Some(found) = foreign::FN.find("void") else {
             return false;
         };
         // From the end of what's before it, so `f() -> void {` becomes `f() {`.
@@ -352,7 +348,7 @@ impl Parser<'_> {
             TokenKind::TildeEquals => ("~=", TokenKind::NotEquals),
             _ => return,
         };
-        let Some(found) = foreign::operator(written) else {
+        let Some(found) = foreign::OPERATOR.find(written) else {
             return;
         };
         let span = self.current_span();
@@ -377,7 +373,7 @@ impl Parser<'_> {
         if self.ident_ahead(0) != Some("not") || !starts_operand {
             return;
         }
-        let Some(found) = foreign::operator("not") else {
+        let Some(found) = foreign::OPERATOR.find("not") else {
             return;
         };
         let span = self.current_span();
@@ -404,7 +400,7 @@ impl Parser<'_> {
             self.peek_nth(len),
             TokenKind::Semicolon | TokenKind::CloseParen | TokenKind::CloseBrace | TokenKind::Eof
         ) || self.span_ahead(len).start.line > self.current_span().start.line;
-        let Some(found) = foreign::operator(written).filter(|_| ends) else {
+        let Some(found) = foreign::OPERATOR.find(written).filter(|_| ends) else {
             return false;
         };
         let start = self.current_span();
@@ -427,7 +423,7 @@ impl Parser<'_> {
         if !self.at(TokenKind::PlusPlus) || self.peek_nth(1) != TokenKind::Ident {
             return false;
         }
-        let Some(found) = foreign::operator("++") else {
+        let Some(found) = foreign::OPERATOR.find("++") else {
             return false;
         };
         let start = self.current_span();
@@ -447,7 +443,7 @@ impl Parser<'_> {
     /// and read past; what it leaves, if anything.
     pub(crate) fn foreign_statement(&mut self) -> Option<Option<Id<Stmt>>> {
         let word = self.ident_ahead(0)?;
-        let found = foreign::statement(word)?;
+        let found = foreign::STATEMENT.find(word)?;
         let start = self.current_span();
         match found.written {
             // `pass` alone on its line, or before `;` or `}`.
@@ -515,7 +511,7 @@ impl Parser<'_> {
         if self.ident_ahead(0) != Some("new") || self.peek_nth(1) != TokenKind::Ident {
             return false;
         }
-        let Some(found) = foreign::statement("new") else {
+        let Some(found) = foreign::STATEMENT.find("new") else {
             return false;
         };
         let span = self.current_span();
@@ -572,7 +568,7 @@ impl Parser<'_> {
     }
 
     fn report_lambda(&mut self, written: &str) -> bool {
-        let Some(found) = foreign::lambda(written) else {
+        let Some(found) = foreign::LAMBDA.find(written) else {
             return false;
         };
         let span = self.current_span();
@@ -609,7 +605,7 @@ impl Parser<'_> {
     /// `elif c`, `elsif c`, `elseif c`, at the word: reported, changed to `else if`, and read
     /// past, leaving the condition.
     pub(crate) fn eat_foreign_else_if(&mut self) -> bool {
-        let Some(found) = self.ident_ahead(0).and_then(foreign::else_if) else {
+        let Some(found) = self.ident_ahead(0).and_then(|w| foreign::ELSE_IF.find(w)) else {
             return false;
         };
         self.replace_word(found, found.som);
@@ -621,7 +617,7 @@ impl Parser<'_> {
     /// `for (int i = 0; i < n; i++)`, at its `(`: reported, changed to `for i in 0..n` when
     /// it's a count like that. The loop's name and what it loops over, read as that range.
     pub(crate) fn c_for(&mut self) -> Option<(som_ast::Ident, Id<Expr>)> {
-        let found = foreign::operator("++")?;
+        let found = foreign::OPERATOR.find("++")?;
         let open = self.current_span();
         self.advance();
         // `int i = 0` or `let i = 0`: a type or keyword, then the name.
@@ -704,7 +700,7 @@ impl Parser<'_> {
     /// Lua's `for i = 1, n do`, at the `=` after the name: reported, changed to
     /// `for i in 1..n + 1`. What it loops over, read as that range.
     pub(crate) fn lua_for(&mut self, name: &som_ast::Ident) -> Option<Id<Expr>> {
-        let found = foreign::block("do")?;
+        let found = foreign::BLOCK.find("do")?;
         let start = name.span.clone();
         self.advance();
         let from = self.with_condition(false, |p| p.parse_expr())?;
@@ -739,14 +735,14 @@ impl Parser<'_> {
         let indent = self.indent_of(header_line);
         let word = self.ident_ahead(0);
         if matches!(word, Some("then" | "do")) {
-            let found = foreign::block(word?)?;
+            let found = foreign::BLOCK.find(word?)?;
             let opener = self.current_span();
             self.advance();
             return Some(self.keyword_body(found, Some(opener)));
         }
         let next_line = self.span_ahead(1).start.line > self.current_span().end.line;
         if self.at(TokenKind::Colon) && next_line {
-            let found = foreign::block(":")?;
+            let found = foreign::BLOCK.find(":")?;
             let opener = self.current_span();
             self.advance();
             return Some(self.indented_body(found, opener, indent));
@@ -754,7 +750,7 @@ impl Parser<'_> {
         // Lines up to an `end` lined up with the header: the body, without anything opening it.
         let on_next_line = self.current_span().start.line > header_line;
         if on_next_line && self.end_ahead(indent) {
-            let found = foreign::block("end")?;
+            let found = foreign::BLOCK.find("end")?;
             return Some(self.keyword_body(found, None));
         }
         None
@@ -787,7 +783,9 @@ impl Parser<'_> {
         let parts = self.foreign_statements(|p| {
             p.at(TokenKind::Else)
                 || matches!(p.ident_ahead(0), Some("end"))
-                || p.ident_ahead(0).and_then(foreign::else_if).is_some()
+                || p.ident_ahead(0)
+                    .and_then(|w| foreign::ELSE_IF.find(w))
+                    .is_some()
         });
         self.foreign_depth -= 1;
         let mut edits = match &opener {
@@ -874,7 +872,10 @@ impl Parser<'_> {
         let ends_line = self.current_span().start.line > self.previous_span().end.line;
         let ends_body = self.at(TokenKind::Else)
             || matches!(self.ident_ahead(0), Some("end"))
-            || self.ident_ahead(0).and_then(foreign::else_if).is_some()
+            || self
+                .ident_ahead(0)
+                .and_then(|w| foreign::ELSE_IF.find(w))
+                .is_some()
             || self.at_eof();
         if !(ends_line || ends_body) {
             return false;
