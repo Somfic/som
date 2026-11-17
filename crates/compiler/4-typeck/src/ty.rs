@@ -3,6 +3,8 @@ use som_base::{Arena, Id};
 use som_resolve::{DefId, Names};
 use std::collections::HashMap;
 
+use crate::unify::Unifier;
+
 /// A type, interned in a `TypeTable`. Equal types have equal ids.
 pub type TypeId = Id<Ty>;
 
@@ -368,10 +370,24 @@ impl TypeTable {
     /// Renders a type with type parameters shown as what `subst` says they stand for: a
     /// generic struct's field as it is in one use of it, `i32` rather than `T`.
     pub fn display_with(&self, id: TypeId, names: &Names, subst: &[(DefId, TypeId)]) -> String {
-        match self.get(id) {
+        self.render(id, names, subst, None)
+    }
+
+    /// With `vars`, a type still being inferred: variables are followed to what they're bound
+    /// to, and one that isn't yet is shown as what it would become.
+    pub(crate) fn render(
+        &self,
+        id: TypeId,
+        names: &Names,
+        subst: &[(DefId, TypeId)],
+        vars: Option<&Unifier>,
+    ) -> String {
+        let get = |id: TypeId| self.get(vars.map_or(id, |u| u.shallow(id)));
+        let show = |id: TypeId| self.render(id, names, subst, vars);
+        match get(id) {
             // Once: what it stands for is in the caller's terms, which can be the same `T`.
             Ty::Param(def) if let Some(&(_, arg)) = subst.iter().find(|(d, _)| d == def) => {
-                self.display_with(arg, names, &[])
+                self.render(arg, names, &[], vars)
             }
             Ty::Error => "{unknown}".into(),
             Ty::Unit => "()".into(),
@@ -382,80 +398,54 @@ impl TypeTable {
             Ty::Int(int) => int.name().to_string(),
             Ty::Float(float) => float.name().to_string(),
             Ty::Pointer => "*".into(),
-            Ty::Ptr(to) => format!("*{}", self.display_with(*to, names, subst)),
+            Ty::Ptr(to) => format!("*{}", show(*to)),
             Ty::Assoc {
                 base,
                 trait_,
                 index,
-            } => format!(
-                "{}::{}",
-                self.display_with(*base, names, subst),
-                assoc_name(names, *trait_, *index)
-            ),
+            } => format!("{}::{}", show(*base), assoc_name(names, *trait_, *index)),
             Ty::Ref { mutable, to } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.
-                match self.get(*to) {
+                match get(*to) {
                     Ty::Str => "str".into(),
-                    Ty::Optional(_) => {
-                        format!("&{mutability}({})", self.display_with(*to, names, subst))
-                    }
-                    Ty::Slice(element) => {
-                        format!(
-                            "&{mutability}[{}]",
-                            self.display_with(*element, names, subst)
-                        )
-                    }
-                    _ => format!("&{mutability}{}", self.display_with(*to, names, subst)),
+                    Ty::Optional(_) => format!("&{mutability}({})", show(*to)),
+                    Ty::Slice(element) => format!("&{mutability}[{}]", show(*element)),
+                    _ => format!("&{mutability}{}", show(*to)),
                 }
             }
             // `fn() -> i32?` returns an optional.
-            Ty::Optional(inner) => match self.get(*inner) {
-                Ty::Fn { .. } => format!("({})?", self.display_with(*inner, names, subst)),
-                _ => format!("{}?", self.display_with(*inner, names, subst)),
+            Ty::Optional(inner) => match get(*inner) {
+                Ty::Fn { .. } => format!("({})?", show(*inner)),
+                _ => format!("{}?", show(*inner)),
             },
-            Ty::Array { element, len } => format!(
-                "[{}; {}]",
-                self.display_with(*element, names, subst),
-                self.display_with(*len, names, subst)
-            ),
+            Ty::Array { element, len } => format!("[{}; {}]", show(*element), show(*len)),
             Ty::Value(value) => value.to_string(),
-            Ty::Add(a, b) => format!(
-                "{} + {}",
-                self.display_with(*a, names, subst),
-                self.display_with(*b, names, subst)
-            ),
+            Ty::Add(a, b) => format!("{} + {}", show(*a), show(*b)),
             // A sum inside a product keeps its parentheses.
             Ty::Mul(a, b) => {
-                let side = |id: TypeId| match self.get(id) {
-                    Ty::Add(..) => format!("({})", self.display_with(id, names, subst)),
-                    _ => self.display_with(id, names, subst),
+                let side = |id: TypeId| match get(id) {
+                    Ty::Add(..) => format!("({})", show(id)),
+                    _ => show(id),
                 };
                 format!("{} * {}", side(*a), side(*b))
             }
             // Only reached on its own for a dereferenced slice, which is an error.
-            Ty::Slice(element) => format!("[{}]", self.display_with(*element, names, subst)),
-            Ty::Range(int) => format!("Range<{}>", self.display_with(*int, names, subst)),
+            Ty::Slice(element) => format!("[{}]", show(*element)),
+            Ty::Range(int) => format!("Range<{}>", show(*int)),
             Ty::Struct(def, args) if !args.is_empty() => {
-                let args: Vec<String> = args
-                    .iter()
-                    .map(|&a| self.display_with(a, names, subst))
-                    .collect();
+                let args: Vec<String> = args.iter().map(|&a| show(a)).collect();
                 format!("{}<{}>", names.def(*def).name, args.join(", "))
             }
             Ty::Struct(def, _) | Ty::Param(def) => names.def(*def).name.to_string(),
             Ty::Fn { params, ret } => {
-                let params: Vec<String> = params
-                    .iter()
-                    .map(|&p| self.display_with(p, names, subst))
-                    .collect();
-                format!(
-                    "fn({}) -> {}",
-                    params.join(", "),
-                    self.display_with(*ret, names, subst)
-                )
+                let params: Vec<String> = params.iter().map(|&p| show(p)).collect();
+                format!("fn({}) -> {}", params.join(", "), show(*ret))
             }
-            Ty::Var(_) => "_".into(),
+            Ty::Var(v) => match vars {
+                Some(u) => u.display_var(*v, names),
+                None => "_".into(),
+            },
         }
     }
 }

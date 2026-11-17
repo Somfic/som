@@ -381,75 +381,25 @@ impl Unifier {
 
     /// Renders a type that may still contain variables, for error messages.
     pub fn display(&self, id: TypeId, names: &Names) -> String {
-        let id = self.shallow(id);
-        match self.table.get(id) {
-            // Only reached for a variable inside another type, like `&_`: on its own, the
-            // checker describes it in words instead. A literal's type is shown as what it
-            // becomes if nothing else decides it: `maybe(1)` is an `i32?`.
-            Ty::Var(v) => match self.vars[*v as usize].kind {
-                VarKind::Int => "i32".into(),
-                VarKind::Float => "f64".into(),
-                VarKind::Any => "_".into(),
-                VarKind::Text => "string".into(),
-                VarKind::Collection { element, len } => {
-                    format!(
-                        "[{}; {}]",
-                        self.display(element, names),
-                        self.display(len, names)
-                    )
-                }
-            },
-            Ty::Ptr(to) => format!("*{}", self.display(*to, names)),
-            Ty::Assoc {
-                base,
-                trait_,
-                index,
-            } => format!(
-                "{}::{}",
-                self.display(*base, names),
-                crate::ty::assoc_name(names, *trait_, *index)
-            ),
-            Ty::Ref { mutable, to } => {
-                let mutability = if *mutable { "mut " } else { "" };
-                // `&i32?` is an optional reference.
-                match self.table.get(self.shallow(*to)) {
-                    Ty::Str => "str".into(),
-                    Ty::Optional(_) => format!("&{mutability}({})", self.display(*to, names)),
-                    Ty::Slice(element) => {
-                        format!("&{mutability}[{}]", self.display(*element, names))
-                    }
-                    _ => format!("&{mutability}{}", self.display(*to, names)),
-                }
+        self.table.render(id, names, &[], Some(self))
+    }
+
+    /// An unbound variable inside another type, like `&_`: on its own, the checker describes
+    /// it in words instead. A literal's type is shown as what it becomes if nothing else
+    /// decides it: `maybe(1)` is an `i32?`.
+    pub(crate) fn display_var(&self, var: u32, names: &Names) -> String {
+        match self.vars[var as usize].kind {
+            VarKind::Int => "i32".into(),
+            VarKind::Float => "f64".into(),
+            VarKind::Any => "_".into(),
+            VarKind::Text => "string".into(),
+            VarKind::Collection { element, len } => {
+                format!(
+                    "[{}; {}]",
+                    self.display(element, names),
+                    self.display(len, names)
+                )
             }
-            // `fn() -> i32?` returns an optional.
-            Ty::Optional(inner) => match self.table.get(self.shallow(*inner)) {
-                Ty::Fn { .. } => format!("({})?", self.display(*inner, names)),
-                _ => format!("{}?", self.display(*inner, names)),
-            },
-            Ty::Array { element, len } => format!(
-                "[{}; {}]",
-                self.display(*element, names),
-                self.display(*len, names)
-            ),
-            Ty::Slice(element) => format!("[{}]", self.display(*element, names)),
-            Ty::Struct(def, args) if !args.is_empty() => {
-                let args: Vec<String> = args.iter().map(|&a| self.display(a, names)).collect();
-                format!("{}<{}>", names.def(*def).name, args.join(", "))
-            }
-            Ty::Range(int) => format!("Range<{}>", self.display(*int, names)),
-            Ty::Add(a, b) => format!("{} + {}", self.display(*a, names), self.display(*b, names)),
-            Ty::Mul(a, b) => {
-                let side = |id: TypeId| match self.table.get(self.shallow(id)) {
-                    Ty::Add(..) => format!("({})", self.display(id, names)),
-                    _ => self.display(id, names),
-                };
-                format!("{} * {}", side(*a), side(*b))
-            }
-            Ty::Fn { params, ret } => {
-                let params: Vec<String> = params.iter().map(|&p| self.display(p, names)).collect();
-                format!("fn({}) -> {}", params.join(", "), self.display(*ret, names))
-            }
-            _ => self.table.display(id, names),
         }
     }
 }
