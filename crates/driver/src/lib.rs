@@ -132,6 +132,8 @@ impl Error {
 #[derive(Debug)]
 pub enum Warning {
     Library(LibraryWarning),
+    /// `fib(20)`, which could be worked out while compiling: `@fib(20)`.
+    CouldBeConst(som_comptime::CouldBeConst),
 }
 
 impl Warning {
@@ -139,6 +141,7 @@ impl Warning {
     pub fn kind(&self) -> String {
         let debug = match self {
             Warning::Library(w) => format!("{w:?}"),
+            Warning::CouldBeConst(w) => format!("{w:?}"),
         };
         debug
             .split(|c: char| !c.is_alphanumeric())
@@ -150,8 +153,34 @@ impl Warning {
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
             Warning::Library(w) => w.to_diagnostic(),
+            Warning::CouldBeConst(w) => could_be_const_diagnostic(w),
         }
     }
+}
+
+/// `fib(20)` could be `@fib(20)`: worked out while compiling, not each time the program runs.
+fn could_be_const_diagnostic(w: &som_comptime::CouldBeConst) -> Diagnostic {
+    use som_base::message::code;
+    use som_base::{Fix, Label, msg};
+    // `@f(args)` for a call of a function by its name; `@const …` for anything else.
+    let plain = (w.call.split('(').next()).is_some_and(|callee| {
+        !callee.is_empty() && callee.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+    });
+    let written = match plain {
+        true => format!("@{}", w.call),
+        false => format!("@const {}", w.call),
+    };
+    let label = match &w.value {
+        Some(value) => msg!["it's ", code(value.clone()), " every time"],
+        None => msg!["it gives the same every time"],
+    };
+    Diagnostic::warning(msg![code(w.call.clone()), " could be worked out while compiling"])
+        .with_label(Label::primary(w.span.clone(), label))
+        .with_fix(Fix::replace(
+            msg!["work it out while compiling: ", code(written.clone())],
+            w.span.clone(),
+            written,
+        ))
 }
 
 /// Checks types, working out first the constants needed to: `[i32; SIZE]` of
@@ -387,6 +416,7 @@ fn check_passes(
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Comptime).collect());
     }
+    warnings.extend(som_comptime::could_be_const(&mir).into_iter().map(Warning::CouldBeConst));
     if !options.no_optimize {
         som_optimize::optimize(&mut mir);
     }
@@ -556,7 +586,7 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
     );
     let (header_errors, header_warnings) = headers::check_declarations(&ast, &options.library_dirs);
     errors.extend(header_errors.into_iter().map(Error::Library));
-    let warnings = header_warnings.into_iter().map(Warning::Library).collect();
+    let mut warnings: Vec<Warning> = header_warnings.into_iter().map(Warning::Library).collect();
 
     let (names, mut resolve_errors) = som_resolve::resolve(&ast);
     suggest_imports(&ast, &mut resolve_errors, options);
@@ -590,6 +620,11 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
         // program's too.
         if errors.is_empty() {
             errors.extend(som_comptime::run(&mut mir).into_iter().map(Error::Comptime));
+        }
+        if errors.is_empty() {
+            warnings.extend(
+                som_comptime::could_be_const(&mir).into_iter().map(Warning::CouldBeConst),
+            );
         }
         Some(mir)
     } else {

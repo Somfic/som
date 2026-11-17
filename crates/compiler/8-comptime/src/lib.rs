@@ -13,8 +13,10 @@ mod error;
 mod foreign;
 mod memory;
 mod printf;
+mod suggest;
 
 pub use error::{ComptimeError, STEP_LIMIT, Working};
+pub use suggest::{CouldBeConst, could_be_const};
 
 use memory::{Byte, POINTER, Unreadable, decode, encode, layout};
 use som_base::Span;
@@ -103,7 +105,32 @@ struct State<'m> {
     errors: Vec<ComptimeError>,
 }
 
-impl State<'_> {
+impl<'m> State<'m> {
+    /// What calling `func` with `args`, each a constant, gives while compiling: `None` if it
+    /// can't be worked out, or what it gives can't be put in the program.
+    fn try_call(mir: &'m Mir, func: FuncId, args: &[Operand]) -> Option<ConstKind> {
+        let mut state = State {
+            mir,
+            results: HashMap::new(),
+            running: Vec::new(),
+            errors: Vec::new(),
+        };
+        let mut machine = Machine {
+            state: &mut state,
+            frames: Vec::new(),
+            steps: 0,
+            heap: Vec::new(),
+            pinned: HashMap::new(),
+        };
+        let span = mir.funcs[func].span.clone();
+        let values = (args.iter())
+            .map(|a| machine.operand(a, &span))
+            .collect::<Result<Vec<_>, _>>()
+            .ok()?;
+        let value = machine.run_with(func, values).ok()?;
+        machine.bake(&value, mir.funcs[func].ret).ok()
+    }
+
     /// The value of initializer `init`, working it out the first time.
     fn init(&mut self, init: FuncId) -> Result<ConstKind, Stop> {
         if let Some(result) = self.results.get(&init) {
@@ -403,8 +430,13 @@ impl Machine<'_, '_> {
 
     /// Runs `init` to its end: the value it gives.
     fn run(&mut self, init: FuncId) -> Result<Value, Stop> {
-        let span = self.mir().funcs[init].span.clone();
-        self.push_frame(init, Vec::new(), None, span)?;
+        self.run_with(init, Vec::new())
+    }
+
+    /// Runs `func`, given `args`, to its end: the value it gives.
+    fn run_with(&mut self, func: FuncId, args: Vec<Value>) -> Result<Value, Stop> {
+        let span = self.mir().funcs[func].span.clone();
+        self.push_frame(func, args, None, span)?;
         loop {
             let top = self.frames.len() - 1;
             let (func, block, stmt) = {
