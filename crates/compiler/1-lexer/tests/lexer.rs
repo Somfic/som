@@ -232,3 +232,16 @@ fn a_dot_after_no_value_is_short_for_self() {
     assert!(!K::is_self_dot(Some(K::CloseParen), name));
     assert!(!K::is_self_dot(Some(K::Equals), Some(K::Int)));
 }
+
+#[test]
+fn keywords_are_tokens() {
+    for &keyword in som_lexer::KEYWORDS {
+        let tokens = som_lexer::lex(std::sync::Arc::new(som_base::Source::from_raw(keyword)));
+        assert_ne!(
+            tokens[0].kind,
+            som_lexer::TokenKind::Ident,
+            "{keyword} isn't a keyword"
+        );
+        assert_eq!(&*tokens[0].text, keyword);
+    }
+}

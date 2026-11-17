@@ -16,6 +16,7 @@ pub use expand::expand_reflected;
 use som_ast::{Ast, Ident, Item, Path, Span};
 use som_base::message::code;
 use som_base::{Fix, Message, Source, msg};
+use som_lang::Builtin;
 use som_lexer::{Token, TokenKind, lex};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -178,6 +179,18 @@ impl Parser<'_> {
 
     fn peek_token(&self) -> &Token {
         &self.tokens[self.pos]
+    }
+
+    fn at_builtin(&self, builtin: Builtin) -> bool {
+        self.at(TokenKind::Builtin) && Builtin::from_name(&self.peek_token().text) == Some(builtin)
+    }
+
+    fn builtin_ahead(&self, at: usize) -> Option<Builtin> {
+        (self.tokens[self.pos..].iter())
+            .filter(|t| !is_trivia(t.kind))
+            .nth(at)
+            .filter(|t| t.kind == TokenKind::Builtin)
+            .and_then(|t| Builtin::from_name(&t.text))
     }
 
     fn at(&self, kind: TokenKind) -> bool {

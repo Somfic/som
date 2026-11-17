@@ -4,6 +4,7 @@ use som_ast::{
 };
 use som_base::message::code;
 use som_base::{Fix, Span, foreign, msg};
+use som_lang::Builtin;
 use som_lexer::TokenKind;
 
 use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
@@ -11,7 +12,7 @@ use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
 impl Parser<'_> {
     /// At `@where`, a condition on the function below, or `@on`, an event it's called on.
     pub(crate) fn at_where(&self) -> bool {
-        self.at(TokenKind::Builtin) && matches!(&*self.peek_token().text, "@where" | "@on")
+        self.at_builtin(Builtin::Where) || self.at_builtin(Builtin::On)
     }
 
     /// `@where i < self.len`, each line of them: kept for the function after them, with the
@@ -23,7 +24,7 @@ impl Parser<'_> {
         }
         while self.at_where() {
             // `@on fail`: the event's name.
-            if &*self.peek_token().text == "@on" {
+            if self.at_builtin(Builtin::On) {
                 self.advance();
                 match self.parse_ident("an event, like `fail`") {
                     Some(event) => self.listens.push(event),
@@ -353,7 +354,7 @@ impl Parser<'_> {
                     frame.push(self.ast.exprs.alloc(som_ast::Expr::Not(last), span));
                 }
                 // `else @if M >= 3 {`: and where this one does.
-                let conditional = self.at(TokenKind::Builtin) && &*self.peek_token().text == "@if";
+                let conditional = self.at_builtin(Builtin::If);
                 if conditional {
                     self.advance();
                     frame.push(self.parse_settled_condition()?);
@@ -364,7 +365,7 @@ impl Parser<'_> {
                 continue;
             }
             // `@if N >= 3 { pub prop z = … }`: members only some of the types have.
-            if self.at(TokenKind::Builtin) && &*self.peek_token().text == "@if" {
+            if self.at_builtin(Builtin::If) {
                 self.advance();
                 let condition = self.parse_settled_condition()?;
                 self.expect(TokenKind::OpenBrace, "`{` and the members")?;
@@ -626,10 +627,7 @@ impl Parser<'_> {
     /// At `@const NAME:` or `@const NAME =`, `at` tokens ahead. Another language's
     /// `const NAME =` too, reported when it's read.
     pub(crate) fn at_const(&self, at: usize) -> bool {
-        let written = (self.tokens[self.pos..].iter())
-            .filter(|t| !crate::is_trivia(t.kind))
-            .nth(at)
-            .is_some_and(|t| &*t.text == "@const");
+        let written = self.builtin_ahead(at) == Some(Builtin::Const);
         (written || self.foreign_keyword(at, foreign::const_word).is_some())
             && self.peek_nth(at + 1) == TokenKind::Ident
             && matches!(self.peek_nth(at + 2), TokenKind::Colon | TokenKind::Equals)
@@ -638,12 +636,7 @@ impl Parser<'_> {
     /// At a call made while compiling, on its own, `at` tokens ahead: `@assert(…);`. Or at
     /// `@const` without a name after it, which is reported.
     fn at_check(&self, at: usize) -> bool {
-        let unnamed = self.peek_nth(at) == TokenKind::Builtin
-            && (self.tokens[self.pos..].iter())
-                .filter(|t| !crate::is_trivia(t.kind))
-                .nth(at)
-                .is_some_and(|t| &*t.text == "@const")
-            && !self.at_const(at);
+        let unnamed = self.builtin_ahead(at) == Some(Builtin::Const) && !self.at_const(at);
         unnamed || self.at_comptime_call(at)
     }
 

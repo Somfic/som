@@ -1,6 +1,7 @@
 use som_ast::{Arm, Expr, Id, Ident, Part, Pattern, PatternFields, Span, Stmt};
 use som_base::message::code;
 use som_base::{Fix, msg};
+use som_lang::Builtin;
 use som_lexer::TokenKind;
 
 use crate::grammar::{Association, Grammar, OpInfo};
@@ -413,7 +414,7 @@ impl Parser<'_> {
         }
 
         // `@const f(x)`, or `@const { … }`: binds like `-`, so `@const f(x) + 1` adds to it.
-        if kind == TokenKind::Builtin && &*self.peek_token().text == "@const" {
+        if self.at_builtin(Builtin::Const) {
             self.advance();
             let value = match self.at(TokenKind::OpenBrace) {
                 true => self.parse_block()?,
@@ -428,7 +429,7 @@ impl Parser<'_> {
                     doc: None,
                     visibility: som_ast::Visibility::Private,
                     name: som_ast::Ident {
-                        name: "@const".into(),
+                        name: Builtin::Const.name().into(),
                         span: start.clone(),
                     },
                     ty: None,
@@ -488,7 +489,7 @@ impl Parser<'_> {
             && (self.tokens[self.pos..].iter())
                 .filter(|t| !crate::is_trivia(t.kind))
                 .nth(at)
-                .is_some_and(|t| !som_lexer::is_builtin(&t.text))
+                .is_some_and(|t| Builtin::from_name(&t.text).is_none())
     }
 
     fn parse_atom(&mut self) -> Option<Id<Expr>> {
@@ -642,16 +643,19 @@ impl Parser<'_> {
             TokenKind::Builtin => {
                 let text = self.peek_token().text.clone();
                 self.advance();
-                match &*text {
-                    "@unreachable" => Expr::Unreachable,
-                    "@fail" => {
+                match Builtin::from_name(&text) {
+                    Some(Builtin::Unreachable) => Expr::Unreachable,
+                    Some(Builtin::Fail) => {
                         self.expect(TokenKind::OpenParen, "`(` and the message")?;
                         let message = self.parse_expr()?;
                         self.expect(TokenKind::CloseParen, "`)` after the message")?;
                         Expr::Fail(message)
                     }
                     _ => {
-                        let known: Vec<&str> = som_lexer::BUILTINS.iter().map(|b| b.0).collect();
+                        let known: Vec<&str> = (Builtin::ALL.iter())
+                            .filter(|b| b.doc().is_some())
+                            .map(|b| b.name())
+                            .collect();
                         self.error_at(
                             start.clone(),
                             msg!["unknown built-in ", code(text.to_string())],
@@ -1282,7 +1286,7 @@ impl Parser<'_> {
                     continue;
                 }
                 // `@for x in [a, b] { x => … }`: written out here.
-                if p.at(TokenKind::Builtin) && &*p.peek_token().text == "@for" {
+                if p.at_builtin(Builtin::For) {
                     p.expand_for();
                     continue;
                 }

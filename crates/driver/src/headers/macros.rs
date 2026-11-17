@@ -57,7 +57,7 @@ pub(super) fn constants(
     for define in &defines {
         if !wanted(&define.file, &define.name)
             || taken.contains(&define.name)
-            || super::SOM_KEYWORDS.contains(&define.name.as_str())
+            || som_lexer::is_reserved(&define.name)
         {
             continue;
         }

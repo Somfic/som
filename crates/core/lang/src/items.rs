@@ -9,7 +9,7 @@ macro_rules! named_enum {
         impl $Name {
             pub const ALL: &'static [$Name] = &[$($Name::$Variant),*];
 
-            pub fn name(self) -> &'static str {
+            pub const fn name(self) -> &'static str {
                 match self { $($Name::$Variant => $text),* }
             }
 

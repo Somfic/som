@@ -962,7 +962,9 @@ impl LanguageServer for SomLanguageServer {
                 Position::new(at.line, at.character.saturating_sub(typed)),
                 at,
             );
-            for &(name, doc) in som_lexer::BUILTINS {
+            for (name, doc) in
+                (som_lang::Builtin::ALL.iter()).filter_map(|b| Some((b.name(), b.doc()?)))
+            {
                 items.push(CompletionItem {
                     label: name.to_string(),
                     kind: Some(CompletionItemKind::KEYWORD),
@@ -1555,10 +1557,7 @@ impl LanguageServer for SomLanguageServer {
                     ..Default::default()
                 });
             }
-            for keyword in [
-                "fn", "let", "mut", "if", "else", "struct", "impl", "extern", "loop", "while",
-                "break", "use", "out", "true", "false", "enum", "match", "trait", "type",
-            ] {
+            for keyword in som_lexer::KEYWORDS {
                 items.push(CompletionItem {
                     label: keyword.to_string(),
                     kind: Some(CompletionItemKind::KEYWORD),

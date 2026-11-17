@@ -1,6 +1,7 @@
 use som_ast::{Expr, Id, Stmt};
 use som_base::message::code;
 use som_base::{Fix, Span, msg};
+use som_lang::Builtin;
 use som_lexer::TokenKind;
 
 use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
@@ -39,8 +40,8 @@ impl Parser<'_> {
             // `@for i in 0..4 { … }`, `@if DEBUG { … }`: settled while compiling.
             // `@for f in Point { … }`: written out once `Point` is known.
             TokenKind::Builtin if self.at_reflected_for() => self.parse_reflected_stmt(),
-            TokenKind::Builtin if &*self.peek_token().text == "@for" => self.parse_settled_for(),
-            TokenKind::Builtin if &*self.peek_token().text == "@if" => self.parse_settled_if(),
+            _ if self.at_builtin(Builtin::For) => self.parse_settled_for(),
+            _ if self.at_builtin(Builtin::If) => self.parse_settled_if(),
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Return => self.parse_return(),
@@ -311,9 +312,7 @@ impl Parser<'_> {
         let condition = self.parse_settled_condition()?;
         let then = self.parse_stmt_block("the @if body")?;
         let otherwise = match self.eat(TokenKind::Else) {
-            true if self.at(TokenKind::Builtin) && &*self.peek_token().text == "@if" => {
-                Some(vec![self.parse_settled_if()?])
-            }
+            true if self.at_builtin(Builtin::If) => Some(vec![self.parse_settled_if()?]),
             true => Some(self.parse_stmt_block("the else body")?),
             false => None,
         };

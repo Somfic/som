@@ -738,17 +738,8 @@ fn clang_macros(header: &Path, root: &Path, library_dirs: &[PathBuf]) -> Option<
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-/// som can't name these, so imported names that use them get a `_` after.
-const SOM_KEYWORDS: &[&str] = &[
-    "fn", "extern", "struct", "impl", "let", "if", "else", "mut", "out", "use", "loop", "while",
-    "break", "for", "true", "false", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16",
-    "u32", "u64", "u128", "usize", "f32", "f64", "bool", "char", "str", "cstr", "none", "and",
-    "or", "in", "continue", "as", "return", "enum", "match", "trait", "type", "prop", "self",
-    "Self", "pub", "mod",
-];
-
 fn identifier(name: &str) -> String {
-    if SOM_KEYWORDS.contains(&name) {
+    if som_lexer::is_reserved(name) {
         format!("{name}_")
     } else {
         name.to_string()

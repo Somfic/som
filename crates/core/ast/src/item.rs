@@ -30,7 +30,7 @@ pub struct Const {
 
 impl Const {
     /// The name of one that has none: written in place, or `@const assert(…);` on its own.
-    pub const UNNAMED: &'static str = "@const";
+    pub const UNNAMED: &'static str = som_lang::Builtin::Const.name();
 
     /// Whether it has a name to be used by: not one written in place, or run for what it
     /// checks.

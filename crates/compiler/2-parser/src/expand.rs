@@ -9,6 +9,7 @@
 use som_ast::{Ast, Expr, Ident, Path, ReflectedInto, VariantKind};
 use som_base::message::code;
 use som_base::{Source, Span, msg};
+use som_lang::Builtin;
 use som_lexer::{Token, TokenKind, lex};
 
 use crate::{ParseError, Parser};
@@ -17,7 +18,7 @@ impl Parser<'_> {
     /// At an `@for` whose body is items, not statements: `@for T in [u8, u16] { impl … }`.
     /// In an impl block, `members`, it's methods, or anything else a block has.
     pub(crate) fn at_item_for(&self, members: bool) -> bool {
-        if !(self.at(TokenKind::Builtin) && &*self.peek_token().text == "@for") {
+        if !(self.at_builtin(Builtin::For)) {
             return false;
         }
         if members {
@@ -164,7 +165,7 @@ impl Parser<'_> {
     /// At `@for v in Kind` or `@for (i, v) in Kind`: over a type, its variants, written out
     /// once every module is loaded. A list `[…]` or a range of numbers is written out at once.
     pub(crate) fn at_reflected_for(&self) -> bool {
-        if !(self.at(TokenKind::Builtin) && &*self.peek_token().text == "@for") {
+        if !(self.at_builtin(Builtin::For)) {
             return false;
         }
         let mut n = 1;
@@ -200,7 +201,10 @@ impl Parser<'_> {
         self.expect(TokenKind::In, "`in` and what to loop over")?;
         // `@variants(Kind)`: there's no such built-in. The rest of the `@for` is skipped.
         if self.at(TokenKind::Builtin) {
-            let known: Vec<&str> = som_lexer::BUILTINS.iter().map(|b| b.0).collect();
+            let known: Vec<&str> = (Builtin::ALL.iter())
+                .filter(|b| b.doc().is_some())
+                .map(|b| b.name())
+                .collect();
             let name = self.peek_token().text.to_string();
             self.error_at(
                 self.current_span(),
