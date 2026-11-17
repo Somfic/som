@@ -7,5 +7,6 @@ description = "Checks what has to be known where it's needed: indexes inside wha
 [dependencies]
 som_base = { path = "../../core/base" }
 som_ast = { path = "../../core/ast" }
+som_lang = { path = "../../core/lang" }
 som_resolve = { path = "../3-resolve" }
 som_typeck = { path = "../4-typeck" }

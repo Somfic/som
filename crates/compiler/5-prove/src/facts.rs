@@ -120,7 +120,6 @@ pub enum Cond<P> {
     Unknown,
 }
 
-/// How two values are compared.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Compare {
     Less,
