@@ -18,6 +18,9 @@ pub enum ComptimeError {
     /// It called an `extern` function, which only exists when the program runs.
     ConstCallsExtern {
         function: String,
+        /// Why it can't be: it only exists when the program runs, or its library can't be
+        /// loaded.
+        reason: String,
         span: Span,
         trace: Vec<Working>,
     },
@@ -68,6 +71,7 @@ impl ComptimeError {
         let (d, span, label, trace) = match self {
             ComptimeError::ConstCallsExtern {
                 function,
+                reason,
                 span,
                 trace,
             } => (
@@ -76,7 +80,7 @@ impl ComptimeError {
                     code(function),
                     " while compiling"
                 ])
-                .with_hint("an extern function only exists when the program runs"),
+                .with_hint(reason.clone()),
                 span,
                 msg!["calls ", code(function)],
                 trace,

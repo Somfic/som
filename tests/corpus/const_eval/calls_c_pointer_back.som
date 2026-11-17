@@ -1,0 +1,13 @@
+// expect: exit 42
+
+extern "c";
+
+/// A pointer C gives back into what it was given: `strchr`'s.
+fn after_space(text: cstr) -> i32 {
+    let at = c::strchr(text, 32);
+    return c::atoi(at as cstr);
+}
+
+@const N = after_space("abc 42");
+
+fn main() -> i32 = N;

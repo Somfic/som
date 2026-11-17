@@ -1,0 +1,8 @@
+// expect: exit 3
+
+extern "c";
+
+/// Text C gives, kept as text: its bytes are put in the program.
+@const GREETING: cstr = c::strstr("say hey", "hey") as cstr;
+
+fn main() -> i32 = c::strlen(GREETING) as i32;

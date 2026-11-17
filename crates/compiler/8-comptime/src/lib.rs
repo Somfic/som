@@ -7,9 +7,10 @@
 //! rounds to `f32` at every step, and `usize` is the host's width, like the C backend's.
 //! Memory it allocates is bytes, laid out as C lays them out (see [`memory`]), and the C
 //! functions the standard library's text uses (`memcpy`, `strlen`, `snprintf`, …) are done
-//! here, in Rust.
+//! here, in Rust. Other extern functions are called for real (see [`foreign`]).
 
 mod error;
+mod foreign;
 mod memory;
 mod printf;
 
@@ -121,6 +122,7 @@ impl State<'_> {
             frames: Vec::new(),
             steps: 0,
             heap: Vec::new(),
+            pinned: HashMap::new(),
         };
         let result = machine.run(init);
         let trace = machine.trace();
@@ -201,6 +203,8 @@ enum Root {
     Local { frame: usize, local: Local },
     /// Byte `offset` of allocation `alloc`.
     Heap { alloc: usize, offset: usize },
+    /// A real address, of memory C gave: `getenv`'s text, `fopen`'s `FILE`.
+    Foreign { address: usize },
 }
 
 impl Loc {
@@ -217,6 +221,13 @@ impl Loc {
             path: Vec::new(),
         }
     }
+
+    fn foreign(address: usize) -> Loc {
+        Loc {
+            root: Root::Foreign { address },
+            path: Vec::new(),
+        }
+    }
 }
 
 /// Why running stopped: an error to report, at this span; or quietly, for one already reported.
@@ -227,6 +238,8 @@ enum Stop {
 
 enum Fault {
     CallsExtern(String),
+    /// An extern function that can't be called while compiling, and why.
+    Foreign(String, foreign::Missing),
     Unreachable,
     /// With `true`, `MIN / -1`.
     DividedByZero(bool),
@@ -241,7 +254,29 @@ enum Fault {
 impl Fault {
     fn into_error(self, span: Span, trace: Vec<Working>) -> ComptimeError {
         match self {
+            Fault::Foreign(function, missing) => ComptimeError::ConstCallsExtern {
+                reason: match missing {
+                    foreign::Missing::Static(path) => format!(
+                        "`{}` is a static library: only a shared one (`.dylib`, `.so`) can be \
+                         loaded while compiling",
+                        path.display()
+                    ),
+                    foreign::Missing::Unloadable(path, why) => {
+                        format!("`{}` can't be loaded: {why}", path.display())
+                    }
+                    foreign::Missing::NotFound(Some(path)) => {
+                        format!("it isn't in `{}`", path.display())
+                    }
+                    foreign::Missing::NotFound(None) => "it isn't in the C library the compiler \
+                         has: say which library it's in with `extern \"name\"`"
+                        .to_string(),
+                },
+                function,
+                span,
+                trace,
+            },
             Fault::CallsExtern(function) => ComptimeError::ConstCallsExtern {
+                reason: "an extern function only exists when the program runs".to_string(),
                 function,
                 span,
                 trace,
@@ -314,6 +349,8 @@ struct Machine<'s, 'm> {
     steps: u64,
     /// Memory allocated while running: each allocation's bytes, `None` once it's freed.
     heap: Vec<Option<Vec<Byte>>>,
+    /// The allocations C has been given, each with its real buffer: see [`foreign`].
+    pinned: HashMap<usize, foreign::Pin>,
 }
 
 /// What can't be kept of a constant's value, and where in it: `[".mem", ".ptr"]`.
@@ -478,11 +515,26 @@ impl Machine<'_, '_> {
         let span = &statement.span;
         let top = self.frames.len() - 1;
         match &statement.kind {
-            StatementKind::Assign(place, Rvalue::Call { func, args }) => {
-                let args = (args.iter())
+            StatementKind::Assign(place, Rvalue::Call { func, args: operands }) => {
+                let args = (operands.iter())
                     .map(|a| self.operand(a, span))
                     .collect::<Result<Vec<_>, _>>()?;
                 let dest = self.loc(place, span)?;
+                let function = &self.mir().funcs[*func];
+                if function.body.is_none() {
+                    // One of C's done here; any other, called for real.
+                    let name = function.link_name.clone().unwrap_or(function.name.clone());
+                    let value = match self.native(&name, &args, span)? {
+                        Some(value) => value,
+                        None => {
+                            let tys: Vec<TypeId> =
+                                operands.iter().map(|a| self.operand_ty(a)).collect();
+                            self.call_foreign(*func, &args, &tys, span)?
+                        }
+                    };
+                    let (dest, ty) = dest;
+                    return self.write(&dest, ty, value, span);
+                }
                 self.push_frame(*func, args, Some(dest), span.clone())
             }
             StatementKind::Assign(place, rvalue) => {
@@ -557,11 +609,13 @@ impl Machine<'_, '_> {
     fn part(&self, mut loc: Loc, ty: TypeId, i: usize, span: &Span) -> Result<Loc, Stop> {
         match &mut loc.root {
             Root::Local { .. } => loc.path.push(i),
-            Root::Heap { offset, .. } => match layout(self.mir(), ty) {
-                Some(layout) if i < layout.parts.len() => *offset += layout.parts[i].1,
-                Some(_) => return out_of_bounds(span),
-                None => return unsupported("memory holding a value of this type", span),
-            },
+            Root::Heap { offset, .. } | Root::Foreign { address: offset } => {
+                match layout(self.mir(), ty) {
+                    Some(layout) if i < layout.parts.len() => *offset += layout.parts[i].1,
+                    Some(_) => return out_of_bounds(span),
+                    None => return unsupported("memory holding a value of this type", span),
+                }
+            }
         }
         Ok(loc)
     }
@@ -570,10 +624,12 @@ impl Machine<'_, '_> {
     fn step(&self, loc: &Loc, n: usize, element: TypeId, span: &Span) -> Result<Loc, Stop> {
         let mut loc = loc.clone();
         match (&mut loc.root, loc.path.last_mut()) {
-            (Root::Heap { offset, .. }, _) => match layout(self.mir(), element) {
-                Some(layout) => *offset += n * layout.size,
-                None => return unsupported("memory holding a value of this type", span),
-            },
+            (Root::Heap { offset, .. } | Root::Foreign { address: offset }, _) => {
+                match layout(self.mir(), element) {
+                    Some(layout) => *offset = offset.wrapping_add(n * layout.size),
+                    None => return unsupported("memory holding a value of this type", span),
+                }
+            }
             (_, Some(last)) => *last += n,
             (Root::Local { .. }, None) if n == 0 => {}
             (Root::Local { .. }, None) => return out_of_bounds(span),
@@ -597,7 +653,18 @@ impl Machine<'_, '_> {
 
     /// The value of type `ty` at `loc`.
     fn read(&self, loc: &Loc, ty: TypeId, span: &Span) -> Result<Value, Stop> {
+        let loc = &self.unpinned(loc);
         match &loc.root {
+            &Root::Foreign { address } => {
+                let Some(layout) = layout(self.mir(), ty) else {
+                    return unsupported("memory holding a value of this type", span);
+                };
+                let bytes: Vec<Byte> = (foreign::read_real(address, layout.size).into_iter())
+                    .map(Byte::Data)
+                    .collect();
+                decode(self.mir(), &bytes, ty)
+                    .or_else(|_| unsupported("memory holding a value of this type", span))
+            }
             Root::Local { frame, local } => {
                 let mut value = &self.frames[*frame].locals[local.id];
                 for &i in &loc.path {
@@ -629,7 +696,16 @@ impl Machine<'_, '_> {
 
     /// Puts `value`, of type `ty`, at `loc`.
     fn write(&mut self, loc: &Loc, ty: TypeId, value: Value, span: &Span) -> Result<(), Stop> {
+        let loc = &self.unpinned(loc);
         match &loc.root {
+            &Root::Foreign { address } => {
+                let Some(bytes) = encode(self.mir(), &value, ty) else {
+                    return unsupported("memory holding a value of this type", span);
+                };
+                let host = self.foreign_bytes(&bytes, span)?;
+                foreign::write_real(address, &host);
+                Ok(())
+            }
             Root::Local { frame, local } => {
                 let mut slot = &mut self.frames[*frame].locals[local.id];
                 for &i in &loc.path {
@@ -664,6 +740,19 @@ impl Machine<'_, '_> {
         }
     }
 
+    /// `bytes` as they go in C's memory: a pointer's as a real address.
+    fn foreign_bytes(&mut self, bytes: &[Byte], span: &Span) -> Result<Vec<u8>, Stop> {
+        let mut host = Vec::with_capacity(bytes.len());
+        for byte in bytes {
+            host.push(match byte {
+                Byte::Data(b) => *b,
+                Byte::Uninit => 0,
+                Byte::Ptr(loc, n) => self.address(loc, span)?.to_le_bytes()[*n as usize],
+            });
+        }
+        Ok(host)
+    }
+
     /// A new allocation of `bytes`: where it starts.
     fn allocate(&mut self, bytes: Vec<Byte>) -> Loc {
         self.heap.push(Some(bytes));
@@ -672,7 +761,11 @@ impl Machine<'_, '_> {
 
     /// Byte `n` on from `loc`. In a local, that's element `n` of an array of bytes.
     fn byte(&self, loc: &Loc, n: usize, span: &Span) -> Result<Byte, Stop> {
+        let loc = &self.unpinned(loc);
         match &loc.root {
+            &Root::Foreign { address } => {
+                Ok(Byte::Data(foreign::read_real(address.wrapping_add(n), 1)[0]))
+            }
             &Root::Heap { alloc, offset } => Ok(self.bytes(alloc, offset + n, 1, span)?[0].clone()),
             Root::Local { .. } => {
                 let at = self.step(loc, n, self.mir().types.u8, span)?;
@@ -686,7 +779,13 @@ impl Machine<'_, '_> {
     }
 
     fn set_byte(&mut self, loc: &Loc, n: usize, byte: Byte, span: &Span) -> Result<(), Stop> {
+        let loc = &self.unpinned(loc);
         match &loc.root {
+            &Root::Foreign { address } => {
+                let b = self.foreign_bytes(&[byte], span)?[0];
+                foreign::write_real(address.wrapping_add(n), &[b]);
+                Ok(())
+            }
             &Root::Heap { alloc, offset } => match self.heap.get_mut(alloc) {
                 Some(Some(memory)) if offset + n < memory.len() => {
                     memory[offset + n] = byte;
@@ -1127,7 +1226,9 @@ impl Machine<'_, '_> {
             // `ptr + n`: `n` bytes on.
             (Value::Ref(mut loc), Value::Int(n), Ty::Pointer) if op == BinOp::Add => {
                 match &mut loc.root {
-                    Root::Heap { offset, .. } => *offset = offset.wrapping_add(n as usize),
+                    Root::Heap { offset, .. } | Root::Foreign { address: offset } => {
+                        *offset = offset.wrapping_add(n as usize)
+                    }
                     Root::Local { .. } => return unsupported("bytes on from a local", span),
                 }
                 Value::Ref(loc)
@@ -1190,7 +1291,8 @@ impl Machine<'_, '_> {
                 if matches!(op, BinOp::Equals | BinOp::NotEquals) =>
             {
                 let same = match (&a, &b) {
-                    (Value::Ref(a), Value::Ref(b)) => a == b,
+                    // An address C gave into a buffer it was given is that allocation's.
+                    (Value::Ref(a), Value::Ref(b)) => self.unpinned(a) == self.unpinned(b),
                     (Value::Null, Value::Null) => true,
                     _ => false,
                 };

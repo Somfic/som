@@ -1,0 +1,8 @@
+// expect: exit 42
+
+extern "c";
+
+/// From `c.h`: the C library's own `sqrtf`.
+@const ROOT = c::sqrtf(1764.0) as i32;
+
+fn main() -> i32 = ROOT;

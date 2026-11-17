@@ -1,0 +1,8 @@
+// expect: exit 42
+
+/// `f64::parse` calls `strtod(start, &mut end)`: C writes into a local a pointer into the
+/// text it was given, which is compared with one the interpreter made.
+@const X = f64::parse("2.5") else 0.0;
+@const BAD = f64::parse("2.5x") == none;
+
+fn main() -> i32 = (X * 16.0) as i32 + if BAD { 2 } else { 0 };

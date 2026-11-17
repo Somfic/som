@@ -1,11 +1,9 @@
-// ConstCallsExtern: A constant runs code while compiling: C functions only exist when the program runs.
+// ConstCallsExtern: A constant calls an extern function the compiler can't find: not in the C library it has, nor in a library it can load.
 
 extern {
-    fn abs(x: i32) -> i32;
+    fn not_a_c_function(x: i32) -> i32;
 }
 
-fn positive(n: i32) -> i32 = abs(n);
-
-@const X = positive(0 - 5);
+@const X = not_a_c_function(5);
 
 fn main() -> i32 = X;

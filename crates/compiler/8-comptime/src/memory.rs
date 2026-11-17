@@ -303,6 +303,16 @@ fn pointer(bytes: &[Byte]) -> Result<Value, Unreadable> {
     match &bytes[0] {
         Byte::Uninit => Ok(Value::Uninit),
         Byte::Data(_) if bytes.iter().all(|b| *b == Byte::Data(0)) => Ok(Value::Null),
+        // An address, written by C: its memory, or a pinned buffer's (`Machine::unpinned`).
+        Byte::Data(_) if bytes.iter().all(|b| matches!(b, Byte::Data(_))) => {
+            let mut word = [0u8; 16];
+            for (i, b) in bytes.iter().enumerate().take(POINTER) {
+                if let Byte::Data(b) = b {
+                    word[i] = *b;
+                }
+            }
+            Ok(Value::Ref(crate::Loc::foreign(u128::from_le_bytes(word) as usize)))
+        }
         Byte::Ptr(loc, 0)
             if (bytes.iter().enumerate()).all(
                 |(i, b)| matches!(b, Byte::Ptr(l, n) if Rc::ptr_eq(l, loc) && *n as usize == i),

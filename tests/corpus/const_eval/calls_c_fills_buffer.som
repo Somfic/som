@@ -1,0 +1,16 @@
+// expect: exit 11
+
+extern "c";
+
+/// Memory allocated while compiling, that C fills.
+fn copied() -> string {
+    let buffer = c::malloc(16);
+    c::strcpy((buffer as *i8).at_mut(0), "hello there");
+    let text = string::from_c(buffer as cstr);
+    c::free(buffer);
+    return text;
+}
+
+@const S = copied();
+
+fn main() -> i32 = S.len as i32;

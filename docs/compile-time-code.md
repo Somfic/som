@@ -518,7 +518,37 @@ written index into an array of length `N` outright. At a call, `N` is the call's
 number (`first(&[])` gives "`N >= 1` is false"), or the caller's own `M`, which its own
 `@where` has to say enough about.
 
+### 4.7b Calling C while compiling
+
+Like Jai's `#run`, an extern function is called for real (`8-comptime/src/foreign.rs`):
+looked up in its `extern "lib"` block's library, loaded once and never unloaded, or, for C's
+own (`extern "c"`, a plain `extern { … }`), in the compiler's process. libffi makes the call
+from the declaration's signature; a variadic's extras are promoted as C does. The functions
+the interpreter does itself (`memcpy`, `strlen`, `snprintf`, …) still are.
+
+The interpreter's memory isn't real memory, so it crosses into C through a bridge:
+
+- An allocation a call's arguments reach (through pointers in it too) is *pinned*: a real
+  buffer at a fixed address for as long as the constant is being worked out. Before each
+  call every pinned allocation is copied into its buffer; after it, what C changed is copied
+  back (a pointer's bytes C didn't change stay the pointer, the rest becomes data).
+- A pointer to a local passes a copy of what it points to, written back after.
+- An address C gives (`getenv`'s text, `fopen`'s `FILE*`) is a `Root::Foreign` place, read and
+  written as real memory; one inside a pinned buffer is that allocation's, so `strchr` and
+  `strtod`'s `end` compare equal to the interpreter's own pointers.
+
+Decided: the editor calls them too, on every check. Not supported: callbacks (a function
+pointer passed to C), `i128`, slices by value, enums and optionals by value, static libraries
+(`.a`: only a shared one can be loaded). A constant's value can't hold an address from C
+(`ConstHoldsMemory`), but text it gives, kept as `cstr` or `string`, is copied into the
+program. What C keeps of a pinned buffer after the constant points to nothing.
+
 ### 4.8 Other things left for later
+
+- **Only rerunning what changed.** Constants are worked out again on every check, including
+  the C they call. Keeping each one's value with what it depends on (the functions it runs,
+  the constants it reads) and rerunning it only when one of those changed would make the
+  editor faster, and calls into C less surprising.
 
 - **A query-based type checker.** Constants in types are worked out in rounds and instances
   are checked as lowering reaches them, with no typeck restructuring; pass 2 of 4.7 didn't

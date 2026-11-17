@@ -1,5 +1,7 @@
-// expect: error ConstCallsExtern
+// expect: exit 5
 
+/// An extern function is called for real while compiling, like Jai's `#run`: `abs` is the C
+/// library's, which the compiler has.
 extern {
     fn abs(x: i32) -> i32;
 }

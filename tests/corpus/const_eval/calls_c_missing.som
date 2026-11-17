@@ -1,0 +1,10 @@
+// expect: error ConstCallsExtern
+
+/// Not in any library the compiler can load.
+extern {
+    fn not_a_c_function(x: i32) -> i32;
+}
+
+@const X = not_a_c_function(5);
+
+fn main() -> i32 = X;

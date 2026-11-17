@@ -1,0 +1,8 @@
+// expect: error ConstHoldsMemory
+
+extern "c";
+
+/// An address C gave only exists while compiling: it can't be a constant's value.
+@const P = c::strstr("say hey", "hey");
+
+fn main() -> i32 = if P == som::mem::null() { 0 } else { 1 };
