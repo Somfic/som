@@ -13,7 +13,6 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         Self::with(l, Some(func), Some((func, type_args)), span, subst)
     }
 
-    /// For the initializer of `@const` `c`, in function instance `owner`.
     pub(super) fn for_init(l: &'l mut Lowerer<'a>, c: Id<som_ast::Const>, owner: Owner) -> Self {
         let subst = l.owner_subst(&owner);
         let span = l.ast.consts.span(c).clone();
@@ -49,13 +48,12 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         builder
     }
 
-    /// How many parameters it has: none for an initializer.
     pub(super) fn param_count(&self) -> usize {
         self.func
             .map_or(0, |func| self.l.ast.funcs[func].params.len())
     }
 
-    /// An initializer's body: `_0 = value; return`.
+    /// `_0 = value; return`.
     pub(super) fn build_init(mut self, c: Id<som_ast::Const>) -> Body {
         let value = self.l.ast.consts[c].value;
         let span = self.span.clone();
@@ -64,15 +62,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let value = self.operand(value);
         self.assign(Place::local(RETURN), Rvalue::Use(value), span.clone());
         self.terminate(TerminatorKind::Return, span);
-        let mut body = Body {
-            locals: std::mem::take(&mut self.locals),
-            arg_count: 0,
-            outs: Vec::new(),
-            two_phase: std::mem::take(&mut self.two_phase),
-            blocks: std::mem::take(&mut self.blocks),
-        };
-        self.elaborate_drops(&mut body);
-        body
+        self.take_body(0, Vec::new())
     }
 
     pub(super) fn build(mut self) -> Body {
@@ -85,27 +75,12 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
         let ret = self.ty(sig.ret);
         self.new_local(ret, None, false, span.clone());
-        let params: Vec<TypeId> = sig.params.clone();
-        for ((param, &def), ty) in func
-            .params
-            .iter()
-            .zip(self.l.names.params(this))
-            .zip(params)
-        {
-            let ty = self.ty(ty);
-            let local = self.new_local(
-                ty,
-                Some(param.name.name.to_string()),
-                param.mutable || param.out,
-                param.name.span.clone(),
-            );
-            self.bindings.insert(def, local);
-        }
+        self.bind_params(this, sig.params.clone());
 
         let body = func.body.expect("only functions with bodies are lowered");
         let value = self.operand(body);
-        // A body with no final value that should return one never gets to its end: every path
-        // returns (the type checker made sure). There's nothing to return there.
+        // One with no final value that should return one never gets to its end: every path
+        // returns, as the type checker made sure.
         let unit = self.l.mir.types.unit;
         let reaches_end =
             !matches!(ast.exprs[body], Expr::Block { value: None, .. }) || ret == unit;
@@ -123,9 +98,28 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             .filter(|(_, p)| p.out)
             .map(|(i, _)| Id::new(i + 1))
             .collect();
+        self.take_body(func.params.len(), outs)
+    }
+
+    fn bind_params(&mut self, func: Id<Func>, types: Vec<TypeId>) {
+        let ast = self.l.ast;
+        let params = ast.funcs[func].params.iter();
+        for ((param, &def), ty) in params.zip(self.l.names.params(func)).zip(types) {
+            let ty = self.ty(ty);
+            let local = self.new_local(
+                ty,
+                Some(param.name.name.to_string()),
+                param.mutable || param.out,
+                param.name.span.clone(),
+            );
+            self.bindings.insert(def, local);
+        }
+    }
+
+    fn take_body(&mut self, arg_count: usize, outs: Vec<Local>) -> Body {
         let mut body = Body {
             locals: std::mem::take(&mut self.locals),
-            arg_count: func.params.len(),
+            arg_count,
             outs,
             two_phase: std::mem::take(&mut self.two_phase),
             blocks: std::mem::take(&mut self.blocks),
@@ -136,8 +130,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     pub(super) fn ty(&mut self, ty: TypeId) -> TypeId {
         let ty = self.subst.apply(&mut self.l.mir.types, ty);
-        // Its generic structs, so their fields can be reached: in generic code with stand-ins,
-        // one can be reached before anything else would have made it.
+        // In generic code with stand-ins, a generic struct's fields can be reached before
+        // anything else would have made its copy.
         self.l.make_structs_in(ty);
         ty
     }
@@ -185,9 +179,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     pub(super) fn push(&mut self, kind: StatementKind, span: Span) {
         let mut reads = Vec::new();
         if let StatementKind::Assign(_, rvalue) = &kind {
-            // Claim the latest pending read of each operand's place: the latest, as an
-            // earlier one of the same place belongs to an expression already finished.
-            // Backwards, so `f(a, a)` gives each its own.
+            // The latest pending read of each operand's place: an earlier one belongs to an
+            // expression already finished. Backwards, so `f(a, a)` gives each its own.
             for op in rvalue.operands().into_iter().rev() {
                 if let Operand::Copy(place) | Operand::Move(place) = op
                     && let Some(i) = self.reads.iter().rposition(|(read, _)| read == place)
@@ -202,8 +195,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             .push(Statement { kind, span, reads });
     }
 
-    /// Reads `place`, written in the source at `span`: noted for the statement using it.
-    /// A `Share` value is copied by its `share`: `place` stays, and what's read is the copy.
+    /// Notes where the source reads `place`, for the statement using it. A `Share` value is
+    /// read as a copy from its `share`.
     pub(super) fn read_at(&mut self, place: Place, ty: TypeId, span: Span) -> Operand {
         if !self.l.is_copy(ty)
             && let Some(share) = self.l.share_impl(ty)
@@ -224,7 +217,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         self.read(place, ty)
     }
 
-    /// A copy of `place`, of `Share` type `ty`, from its `share`: `share(&place)`.
+    /// `share(&place)`.
     pub(super) fn share(&mut self, place: Place, ty: TypeId, share: FuncId, span: Span) -> Operand {
         let reference = self.l.mir.types.intern(Ty::Ref {
             mutable: false,
@@ -242,7 +235,6 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             args: vec![Operand::Move(Place::local(borrowed))],
         };
         self.assign(Place::local(copy), call, span.clone());
-        // The copy is made: the borrow it was made through ends.
         self.push(StatementKind::StorageDead(borrowed), span);
         Operand::Move(Place::local(copy))
     }
@@ -257,7 +249,6 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         self.blocks[self.current].terminator = Terminator { kind, span };
     }
 
-    /// Reads a place, copying or moving depending on its type.
     pub(super) fn read(&self, place: Place, ty: TypeId) -> Operand {
         if self.l.is_copy(ty) {
             Operand::Copy(place)
@@ -285,12 +276,21 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         args.into_iter().map(|t| self.ty(t)).collect()
     }
 
-    /// `ty` with this copy's type arguments filled in.
+    /// With this instance's type arguments filled in.
     pub(super) fn value_of(&mut self, ty: TypeId) -> TypeId {
         self.subst.apply(&mut self.l.mir.types, ty)
     }
 
-    /// The type of local `local` of the function being built.
+    /// What value parameter `def` stands for in this instance.
+    pub(super) fn value_param(&mut self, def: DefId) -> Value {
+        let param = self.l.mir.types.intern(Ty::Param(def));
+        let value = self.value_of(param);
+        match *self.l.mir.types.get(value) {
+            Ty::Value(value) => value,
+            _ => unreachable!("value parameters stand for values"),
+        }
+    }
+
     pub(super) fn body_local_ty(&self, local: Local) -> TypeId {
         self.locals[local].ty
     }

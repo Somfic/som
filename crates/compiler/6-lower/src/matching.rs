@@ -260,11 +260,7 @@ impl FnBuilder<'_, '_> {
         let span = def_info.span.clone();
         let local = self.new_local(ty, Some(def_info.name.to_string()), mutable, span.clone());
         self.bindings.insert(def, local);
-        self.scopes
-            .last_mut()
-            .expect("arms are bound in a scope")
-            .push(local);
-        self.push(StatementKind::StorageLive(local), span.clone());
+        self.declare(local, span.clone());
         let value = match by_ref {
             Some(mutable) => Rvalue::Ref { mutable, place },
             None => {
