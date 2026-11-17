@@ -66,7 +66,7 @@ impl Resolver<'_> {
             Expect::Type => foreign_type_hint(name, &change_to),
             _ => None,
         };
-        (foreign)
+        foreign
             .or_else(|| self.suggest_visible(name, expect, &change_to))
             .or_else(|| self.suggest_import(name, &span, expect, &change_to))
     }
