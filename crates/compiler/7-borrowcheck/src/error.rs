@@ -5,19 +5,19 @@ use som_base::{Diagnostic, Label, Span, msg};
 pub enum BorrowError {
     UseAfterMove {
         name: String,
-        /// The moved value's type: `V`, `String`.
         ty: String,
         span: Span,
         moved_at: Span,
     },
-    /// Moving a value out from behind a reference, which would leave the referent empty.
-    MoveOutOfReference { name: String, span: Span },
+    MoveOutOfReference {
+        name: String,
+        span: Span,
+    },
     MoveWhileBorrowed {
         name: String,
         span: Span,
         borrowed_at: Span,
     },
-    /// A borrow that conflicts with one that is still alive: two `&mut`, or `&` and `&mut`.
     ConflictingBorrow {
         name: String,
         span: Span,
@@ -35,27 +35,34 @@ pub enum BorrowError {
         span: Span,
         borrowed_at: Span,
     },
-    /// A reference that outlives what it points to.
     DanglingReference {
-        name: String,
+        /// `None` for a temporary.
+        name: Option<String>,
         borrowed_at: Span,
         dies_at: Span,
     },
-    /// A function that can return without assigning one of its `out` parameters.
-    OutNotAssigned { name: String, span: Span },
-    /// An `out` parameter read before the function assigned it.
-    OutReadBeforeAssigned { name: String, span: Span },
-    /// A reference to a temporary that's still used after the temporary is dropped, at the
-    /// end of its statement: `let r = make().get();`.
-    TemporaryDropped { borrowed_at: Span, dropped_at: Span },
-    /// Moving a value out of one whose type implements `Drop`, which needs it to drop.
+    OutNotAssigned {
+        name: String,
+        span: Span,
+    },
+    OutReadBeforeAssigned {
+        name: String,
+        span: Span,
+    },
+    /// Dropped at the end of its statement: `let r = make().get();`.
+    TemporaryDropped {
+        borrowed_at: Span,
+        dropped_at: Span,
+    },
     MoveOutOfDrop {
         name: String,
         ty: String,
         span: Span,
     },
-    /// A function that calls itself on every path, so it never returns.
-    EndlessRecursion { name: String, span: Span },
+    EndlessRecursion {
+        name: String,
+        span: Span,
+    },
 }
 
 fn kind(mutable: bool) -> &'static str {
@@ -63,7 +70,6 @@ fn kind(mutable: bool) -> &'static str {
 }
 
 impl BorrowError {
-    /// Names here are places like `p.x` or `*r`: som expressions, so they're shown as code.
     pub fn to_diagnostic(&self) -> Diagnostic {
         match self {
             BorrowError::UseAfterMove {
@@ -170,10 +176,10 @@ impl BorrowError {
             .with_label(Label::primary(span.clone(), "assigned here"))
             .with_label(Label::secondary(borrowed_at.clone(), "borrowed here")),
             BorrowError::DanglingReference {
-                name,
+                name: None,
                 borrowed_at,
                 dies_at,
-            } if name == "temporary value" => {
+            } => {
                 // No name to give it: a value made for the expression, like a collection
                 // literal's elements behind a slice.
                 Diagnostic::error("reference to a temporary value outlives it")
@@ -187,7 +193,7 @@ impl BorrowError {
                     ))
             }
             BorrowError::DanglingReference {
-                name,
+                name: Some(name),
                 borrowed_at,
                 dies_at,
             } => Diagnostic::error(msg!["reference to ", code(name), " outlives it"])

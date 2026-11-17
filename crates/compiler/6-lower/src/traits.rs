@@ -9,10 +9,12 @@ use som_resolve::{DefId, DefKind};
 use som_typeck::Start;
 use som_typeck::traits::{builtin_operator, find_impl};
 
-use super::{FnBuilder, LoopTargets, Lowerer, Subst};
+use super::{FnBuilder, Lowerer, Subst};
+
+/// The local holding what a `for` loop iterates with.
+const ITERATOR_NAME: &str = "iterator";
 
 impl Lowerer<'_> {
-    /// Trait `trait_`'s method called `name`.
     pub(super) fn trait_method(&self, trait_: DefId, name: &str) -> Id<Func> {
         let DefKind::Trait(t) = self.names.def(trait_).kind else {
             unreachable!("lang traits are traits")
@@ -259,11 +261,8 @@ impl FnBuilder<'_, '_> {
         start: Start,
         copied: bool,
     ) {
-        let names = self.l.names;
         let next = self.l.lang_method(LangTrait::Iterator);
-        let def = names.local(stmt).expect("every for loop is resolved");
-        let value_ty = self.typed.local(def);
-        let value_ty = self.ty(value_ty);
+        let (def, value_ty) = self.loop_variable(stmt);
         let bool = self.l.mir.types.bool;
 
         self.in_scope(span.clone(), |b| {
@@ -293,9 +292,8 @@ impl FnBuilder<'_, '_> {
                     (ty, call)
                 }
             };
-            let it = b.new_local(iterator_ty, Some("iterator".into()), true, span.clone());
-            b.scopes.last_mut().expect("in scope").push(it);
-            b.push(StatementKind::StorageLive(it), span.clone());
+            let it = b.new_local(iterator_ty, Some(ITERATOR_NAME.into()), true, span.clone());
+            b.declare(it, span.clone());
             b.assign(Place::local(it), start, span.clone());
 
             let (header, body_block, exit) = (b.new_block(), b.new_block(), b.new_block());
@@ -334,31 +332,18 @@ impl FnBuilder<'_, '_> {
             );
 
             b.current = body_block;
-            b.loops.push(LoopTargets {
-                exit,
-                next: header,
-                depth: b.scopes.len(),
-                stmt: Some(stmt),
+            b.in_loop(exit, header, Some(stmt), |b| {
+                b.in_scope(span.clone(), |b| {
+                    let local = b.let_local(def, name, value_ty, mutable, span.clone());
+                    let mut item = Place::local(got).project(Projection::Field(1));
+                    if copied {
+                        item = item.project(Projection::Deref);
+                    }
+                    let value = b.read(item, value_ty);
+                    b.assign(Place::local(local), Rvalue::Use(value), span.clone());
+                    b.stmts(body, span.clone());
+                });
             });
-            b.in_scope(span.clone(), |b| {
-                let local = b.new_local(
-                    value_ty,
-                    Some(name.name.to_string()),
-                    mutable,
-                    name.span.clone(),
-                );
-                b.bindings.insert(def, local);
-                b.scopes.last_mut().expect("in scope").push(local);
-                b.push(StatementKind::StorageLive(local), span.clone());
-                let mut item = Place::local(got).project(Projection::Field(1));
-                if copied {
-                    item = item.project(Projection::Deref);
-                }
-                let value = b.read(item, value_ty);
-                b.assign(Place::local(local), Rvalue::Use(value), span.clone());
-                b.stmts(body, span.clone());
-            });
-            b.loops.pop();
             b.terminate(TerminatorKind::Goto(header), span.clone());
             b.current = exit;
         });

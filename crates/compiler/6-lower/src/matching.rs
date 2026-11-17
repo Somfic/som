@@ -134,15 +134,12 @@ impl FnBuilder<'_, '_> {
             }
             Pattern::Int(n) => {
                 let value = self.constant(ConstKind::Int(*n), ty);
-                let equal = self.compute(
-                    Rvalue::Binary {
-                        op: BinOp::Equals,
-                        lhs: Operand::Copy(place),
-                        rhs: value,
-                    },
-                    bool,
-                    span.clone(),
-                );
+                let rvalue = Rvalue::Binary {
+                    op: BinOp::Equals,
+                    lhs: Operand::Copy(place),
+                    rhs: value,
+                };
+                let equal = self.temp_copy(bool, rvalue, span.clone());
                 self.test(equal, fail, span);
             }
             // `"yes"` is `== "yes"`: `Eq`'s `eq`, as the operator calls it, with the pattern's
@@ -155,7 +152,7 @@ impl FnBuilder<'_, '_> {
                         lhs: Operand::Copy(place),
                         rhs: literal,
                     };
-                    self.compute(rvalue, bool, span.clone())
+                    self.temp_copy(bool, rvalue, span.clone())
                 } else {
                     let other = self.temp(ty, span.clone());
                     self.assign(Place::local(other), Rvalue::Use(literal), span.clone());
@@ -169,11 +166,11 @@ impl FnBuilder<'_, '_> {
                             mutable: false,
                             place: lent,
                         };
-                        args.push(self.compute(borrow, reference, span.clone()));
+                        args.push(self.temp_copy(reference, borrow, span.clone()));
                     }
                     let method = self.l.lang_method(LangTrait::Eq);
                     let func = self.l.instance(method, vec![ty]);
-                    self.compute(Rvalue::Call { func, args }, bool, span.clone())
+                    self.temp_copy(bool, Rvalue::Call { func, args }, span.clone())
                 };
                 self.test(equal, fail, span);
             }
@@ -181,33 +178,29 @@ impl FnBuilder<'_, '_> {
                 let value = Operand::Copy(place);
                 let wanted = match b {
                     true => value,
-                    false => self.compute(Rvalue::Not(value), bool, span.clone()),
+                    false => self.temp_copy(bool, Rvalue::Not(value), span.clone()),
                 };
                 self.test(wanted, fail, span);
             }
             Pattern::None => {
                 let holds = Operand::Copy(place.project(Projection::Field(0)));
-                let empty = self.compute(Rvalue::Not(holds), bool, span.clone());
+                let empty = self.temp_copy(bool, Rvalue::Not(holds), span.clone());
                 self.test(empty, fail, span);
             }
         }
     }
 
-    /// Tests that the enum at `place` is variant `variant`.
     fn test_variant(&mut self, place: &Place, variant: usize, span: som_ast::Span, fail: BlockId) {
         let bool = self.l.mir.types.bool;
         let tag_place = place.clone().project(Projection::Field(0));
         let tag_ty = self.place_ty(&tag_place);
         let wanted = self.constant(ConstKind::Int(variant as i128), tag_ty);
-        let is_variant = self.compute(
-            Rvalue::Binary {
-                op: BinOp::Equals,
-                lhs: Operand::Copy(tag_place),
-                rhs: wanted,
-            },
-            bool,
-            span.clone(),
-        );
+        let rvalue = Rvalue::Binary {
+            op: BinOp::Equals,
+            lhs: Operand::Copy(tag_place),
+            rhs: wanted,
+        };
+        let is_variant = self.temp_copy(bool, rvalue, span.clone());
         self.test(is_variant, fail, span);
     }
 
@@ -223,7 +216,6 @@ impl FnBuilder<'_, '_> {
             .to_vec()
     }
 
-    /// Goes on if `condition` holds, and to `fail` if not.
     fn test(&mut self, condition: Operand, fail: BlockId, span: som_ast::Span) {
         let pass = self.new_block();
         self.terminate(
@@ -235,13 +227,6 @@ impl FnBuilder<'_, '_> {
             span,
         );
         self.current = pass;
-    }
-
-    /// Stores `rvalue`, of type `ty`, in a temporary, and reads it.
-    fn compute(&mut self, rvalue: Rvalue, ty: TypeId, span: som_ast::Span) -> Operand {
-        let temp = self.temp(ty, span.clone());
-        self.assign(Place::local(temp), rvalue, span);
-        Operand::Copy(Place::local(temp))
     }
 
     /// Declares the local for a name an arm binds, in the arm's scope, and fills it in.
@@ -260,11 +245,7 @@ impl FnBuilder<'_, '_> {
         let span = def_info.span.clone();
         let local = self.new_local(ty, Some(def_info.name.to_string()), mutable, span.clone());
         self.bindings.insert(def, local);
-        self.scopes
-            .last_mut()
-            .expect("arms are bound in a scope")
-            .push(local);
-        self.push(StatementKind::StorageLive(local), span.clone());
+        self.declare(local, span.clone());
         let value = match by_ref {
             Some(mutable) => Rvalue::Ref { mutable, place },
             None => {

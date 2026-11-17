@@ -1,30 +1,14 @@
-//! Borrow checking on MIR.
+//! Loans are lexical: a loan lives as long as some live local holds it. It flows into
+//! anything assigned from its holder whose type can hold a reference, and ends when the last
+//! holder's storage dies. Temporaries hand their loans on when read. States merge by union,
+//! so "may have been moved" and "may still be borrowed" hold along every path.
 //!
-//! A forward dataflow analysis over each function's blocks tracks, at every
-//! point:
-//! - which places may have been moved out of, and
-//! - which locals hold which loans (the result of a `&` or `&mut`).
-//!
-//! Loans are lexical: a loan lives as long as some live local holds it. It's
-//! created by a borrow, flows into anything assigned from its holder whose type
-//! contains a reference (including struct fields and function results), and ends
-//! when the last holder goes out of scope (`StorageDead`). Temporaries hand their
-//! loans on when they are read. Branches merge by union, and loops are iterated
-//! until nothing changes, so "may have been moved" and "may still be borrowed"
-//! hold along every path.
-//!
-//! Using a place then conflicts with the loans alive at that point, and a local
-//! going out of scope while something still holds a loan on it is a dangling
-//! reference.
-//!
-//! The `&mut` a method call takes of its receiver is a two-phase borrow, as in Rust:
-//! from where it's taken until the call uses it, it's only reserved, and counts as a
-//! shared borrow, so `v.push(v.len())` can read `v` for its argument. Writing to the
-//! place or borrowing it mutably still conflicts while it's reserved, and when the call
-//! uses it, it must not overlap any loan still alive.
+//! A method call's `&mut` of its receiver is a two-phase borrow, as in Rust: until the call
+//! uses it, it counts as shared, so `v.push(v.len())` can read `v`.
 
 mod error;
 mod outs;
+mod place_name;
 mod recursion;
 
 pub use error::BorrowError;
@@ -43,7 +27,7 @@ pub fn check(mir: &Mir) -> Vec<BorrowError> {
         }
     }
     // A generic function's copies are the same code: once is enough.
-    let mut reported = std::collections::HashSet::new();
+    let mut reported = HashSet::new();
     errors.retain(|e| match e {
         BorrowError::EndlessRecursion { span, .. } => {
             reported.insert((span.source.identifier().to_string(), span.start_offset))
@@ -51,6 +35,22 @@ pub fn check(mir: &Mir) -> Vec<BorrowError> {
         _ => true,
     });
     errors
+}
+
+/// Iterates to a fixpoint without reporting, then walks each reachable block once more with
+/// its final state, reporting.
+fn fixpoint_then_report<S: Clone>(
+    body: &Body,
+    start: S,
+    join: impl FnMut(&mut S, &S) -> bool,
+    mut block: impl FnMut(usize, &mut S, bool),
+) {
+    let entry = dataflow::forward(body, start, |b, state| block(b.id, state, false), join);
+    for (b, state) in entry.into_iter().enumerate() {
+        if let Some(mut state) = state {
+            block(b, &mut state, true);
+        }
+    }
 }
 
 type LoanId = usize;
@@ -63,19 +63,16 @@ struct Loan {
     two_phase: Option<Local>,
 }
 
-/// What's known at one program point.
 #[derive(Clone, PartialEq)]
 struct State {
-    /// Places that may have been moved out of, with where.
     moved: BTreeMap<Place, Span>,
-    /// For each local, the loans it may hold.
+    /// By local.
     holds: Vec<BTreeSet<LoanId>>,
     /// Two-phase loans not used yet, which count as shared.
     reserved: BTreeSet<LoanId>,
 }
 
 impl State {
-    /// Merges `other` into `self`, returning whether anything changed.
     fn join(&mut self, other: &State) -> bool {
         let before = self.clone();
         for (place, span) in &other.moved {
@@ -98,10 +95,21 @@ impl State {
         self.holds[local.id].clear();
         self.moved.retain(|place, _| place.local != local);
     }
+
+    fn held_by_other_than(&self, loan: LoanId, local: Local) -> bool {
+        (self.holds.iter().enumerate())
+            .any(|(holder, loans)| holder != local.id && loans.contains(&loan))
+    }
+
+    /// So it's reported once, not again at every later use.
+    fn forget(&mut self, loan: LoanId) {
+        for holds in &mut self.holds {
+            holds.remove(&loan);
+        }
+    }
 }
 
-/// Whether two places refer to overlapping memory: the same local, and one path extends the
-/// other. Any two elements of an array might be the same one, so indexes all count as equal.
+/// Any two elements of an array might be the same one, so indexes all count as equal.
 fn overlaps(a: &Place, b: &Place) -> bool {
     let same = |x: &Projection, y: &Projection| match (x, y) {
         (Projection::Index(_), Projection::Index(_)) => true,
@@ -118,9 +126,8 @@ struct FnChecker<'a> {
     mir: &'a Mir,
     body: &'a Body,
     loans: Vec<Loan>,
-    /// `(block, statement)` of each borrow → its loan.
+    /// By `(block, statement)` of the borrow.
     loan_at: BTreeMap<(usize, usize), LoanId>,
-    /// Whether to report errors. Off while iterating to a fixpoint, on for the final pass.
     report: bool,
     errors: Vec<BorrowError>,
     reported: HashSet<(String, usize)>,
@@ -164,16 +171,10 @@ impl<'a> FnChecker<'a> {
             holds: vec![BTreeSet::new(); self.body.locals.len()],
             reserved: BTreeSet::new(),
         };
-        let body = self.body;
-        let entry = dataflow::forward(body, start, |b, state| self.block(b.id, state), State::join);
-
-        // The states are final; walk every reachable block once more, reporting errors.
-        self.report = true;
-        for (b, state) in entry.into_iter().enumerate() {
-            if let Some(mut state) = state {
-                self.block(b, &mut state);
-            }
-        }
+        fixpoint_then_report(self.body, start, State::join, |b, state, report| {
+            self.report = report;
+            self.block(b, state);
+        });
         errors.extend(self.errors);
     }
 
@@ -202,10 +203,7 @@ impl<'a> FnChecker<'a> {
         }
     }
 
-    // --- Transfer functions ---
-
-    /// Evaluates an rvalue, returning the loans that flow into its result. `reads` are where
-    /// the source reads places among its operands, in order; other operands are at `span`.
+    /// The loans that flow into its result. Operands not among `reads` are at `span`.
     fn rvalue(
         &mut self,
         state: &mut State,
@@ -276,7 +274,18 @@ impl<'a> FnChecker<'a> {
                 break;
             }
         }
+        if moving {
+            self.move_out(state, place, span);
+        }
+        let holds = &mut state.holds[place.local.id];
+        if self.is_temp(place.local) {
+            std::mem::take(holds)
+        } else {
+            holds.clone()
+        }
+    }
 
+    fn move_out(&mut self, state: &mut State, place: &Place, span: &Span) {
         // What a type that implements `Drop` holds stays for its `drop`.
         let in_drop_type = (0..place.projection.len()).find_map(|len| {
             let outer = Place {
@@ -286,28 +295,19 @@ impl<'a> FnChecker<'a> {
             let ty = self.place_ty(&outer);
             self.mir.drop_types.contains(&ty).then_some(ty)
         });
-        if moving {
-            if place.projection.contains(&Projection::Deref) {
-                self.error(BorrowError::MoveOutOfReference {
-                    name: self.name(place),
-                    span: span.clone(),
-                });
-            } else if let Some(ty) = in_drop_type {
-                self.error(BorrowError::MoveOutOfDrop {
-                    name: self.name(place),
-                    ty: self.mir.display_ty(ty),
-                    span: span.clone(),
-                });
-            } else {
-                state.moved.insert(place.clone(), span.clone());
-            }
-        }
-
-        let holds = &mut state.holds[place.local.id];
-        if self.is_temp(place.local) {
-            std::mem::take(holds)
+        if place.projection.contains(&Projection::Deref) {
+            self.error(BorrowError::MoveOutOfReference {
+                name: self.name(place),
+                span: span.clone(),
+            });
+        } else if let Some(ty) = in_drop_type {
+            self.error(BorrowError::MoveOutOfDrop {
+                name: self.name(place),
+                ty: self.mir.display_ty(ty),
+                span: span.clone(),
+            });
         } else {
-            holds.clone()
+            state.moved.insert(place.clone(), span.clone());
         }
     }
 
@@ -352,8 +352,8 @@ impl<'a> FnChecker<'a> {
         flows
     }
 
-    /// Uses the two-phase loans `holder` holds: from here they're mutable, so they can't
-    /// overlap any loan still alive, like one the call's arguments still hold.
+    /// From here `holder`'s two-phase loans are mutable, so they can't overlap any loan still
+    /// alive, like one the call's arguments still hold.
     fn activate(&mut self, state: &mut State, holder: Local) {
         let activated: Vec<LoanId> = (state.reserved.iter().copied())
             .filter(|&id| self.loans[id].two_phase == Some(holder))
@@ -401,19 +401,17 @@ impl<'a> FnChecker<'a> {
         }
     }
 
-    /// A value dropped at `place`. A named variable's borrows are checked where it stops
-    /// existing, right after; a temporary's, which has no such point, here.
+    /// A named variable's borrows are checked where its storage dies, right after; a
+    /// temporary's, which has no such point, here.
     fn drop(&mut self, state: &mut State, place: &Place, span: &Span) {
         if !self.is_temp(place.local) {
             return;
         }
-        let held = |state: &State, loan: LoanId| {
-            (state.holds.iter().enumerate())
-                .any(|(holder, loans)| holder != place.local.id && loans.contains(&loan))
-        };
         let borrowed = state.active().into_iter().find(|&loan| {
             let l = &self.loans[loan].place;
-            overlaps(l, place) && !l.projection.contains(&Projection::Deref) && held(state, loan)
+            overlaps(l, place)
+                && !l.projection.contains(&Projection::Deref)
+                && state.held_by_other_than(loan, place.local)
         });
         if let Some(loan) = borrowed {
             let l = &self.loans[loan];
@@ -421,20 +419,11 @@ impl<'a> FnChecker<'a> {
                 borrowed_at: l.span.clone(),
                 dropped_at: span.clone(),
             });
-            for holds in &mut state.holds {
-                holds.remove(&loan);
-            }
+            state.forget(loan);
         }
     }
 
     fn storage_dead(&mut self, state: &mut State, local: Local, span: &Span) {
-        let holders_of = |state: &State, loan: LoanId| {
-            state
-                .holds
-                .iter()
-                .enumerate()
-                .any(|(holder, loans)| holder != local.id && loans.contains(&loan))
-        };
         // A reborrow through a reference (`&(*r).x`) points at what `r` refers to, which
         // outlives `r`; the reborrow also holds `r`'s own loans, which keep that borrowed.
         let dangling: Vec<LoanId> = state
@@ -444,20 +433,17 @@ impl<'a> FnChecker<'a> {
                 let place = &self.loans[loan].place;
                 place.local == local
                     && !place.projection.contains(&Projection::Deref)
-                    && holders_of(state, loan)
+                    && state.held_by_other_than(loan, local)
             })
             .collect();
         for loan in dangling {
             let l = &self.loans[loan];
             self.error(BorrowError::DanglingReference {
-                name: self.name(&l.place),
+                name: self.place_name(&l.place).if_named(),
                 borrowed_at: l.span.clone(),
                 dies_at: span.clone(),
             });
-            // Report each dangling reference once, not again at every later use.
-            for holds in &mut state.holds {
-                holds.remove(&loan);
-            }
+            state.forget(loan);
         }
         state.release(local);
     }
@@ -501,8 +487,6 @@ impl<'a> FnChecker<'a> {
         }
     }
 
-    // --- Places and types ---
-
     fn is_temp(&self, local: Local) -> bool {
         local != RETURN && self.body.local(local).name.is_none()
     }
@@ -511,13 +495,12 @@ impl<'a> FnChecker<'a> {
         self.mir.place_ty(&self.body.locals, place)
     }
 
-    /// Whether values of `ty` can carry a borrow.
     fn has_ref(&self, ty: TypeId) -> bool {
         self.has_ref_in(ty, &mut HashSet::new())
     }
 
-    /// Like `has_ref`, but not again for the types in `seen`: a struct can reach itself
-    /// through a pointer, `struct Node { next: *Node }`, and what's found there was found.
+    /// Skips the types in `seen`: a struct can reach itself through a pointer,
+    /// `struct Node { next: *Node }`, and what's found there was already found.
     fn has_ref_in(&self, ty: TypeId, seen: &mut HashSet<TypeId>) -> bool {
         if !seen.insert(ty) {
             return false;
@@ -533,62 +516,5 @@ impl<'a> FnChecker<'a> {
                 .into_iter()
                 .any(|child| self.has_ref_in(child, seen)),
         }
-    }
-
-    /// A place as it would be written in som: `p.x`, `*r`.
-    fn name(&self, place: &Place) -> String {
-        let decl = self.body.local(place.local);
-        let mut name = decl
-            .name
-            .clone()
-            .unwrap_or_else(|| "temporary value".into());
-        let mut ty = decl.ty;
-        let mut projections = place.projection.iter().peekable();
-        while let Some(projection) = projections.next() {
-            match (projection, self.mir.types.get(ty)) {
-                (Projection::Deref, Ty::Ref { to, .. }) => {
-                    // A struct's fields are reached through a reference without the `*`:
-                    // `u.name`, not `*u.name`.
-                    let field_of_struct = matches!(projections.peek(), Some(Projection::Field(_)))
-                        && matches!(self.mir.types.get(*to), Ty::Struct(..));
-                    if !field_of_struct {
-                        name = format!("*{name}");
-                    }
-                    ty = *to;
-                }
-                // A variant's own fields are named by the enum: `match m` moved from `m`.
-                (Projection::Field(i), Ty::Struct(def, args))
-                    if self.mir.struct_def(*def, args).variants.is_some()
-                        && self.mir.struct_def(*def, args).fields[*i].0.contains('.') =>
-                {
-                    break;
-                }
-                (Projection::Field(i), Ty::Struct(def, args)) => {
-                    let (field, field_ty) = &self.mir.struct_def(*def, args).fields[*i];
-                    name = format!("{name}.{field}");
-                    ty = *field_ty;
-                }
-                // Only the value an optional holds can be borrowed or moved: it's what
-                // `if let` binds, so it goes by the optional's own name.
-                (Projection::Field(i), Ty::Optional(inner)) => {
-                    ty = if *i == 0 { self.mir.types.bool } else { *inner };
-                }
-                // Which element isn't known until run time.
-                (Projection::Index(_), Ty::Array { element, .. } | Ty::Slice(element)) => {
-                    name = format!("{name}[_]");
-                    ty = *element;
-                }
-                (Projection::Index(_), Ty::Str) => {
-                    name = format!("{name}[_]");
-                    ty = self.mir.types.u8;
-                }
-                // Where a slice's elements start, or how many there are: part of the slice.
-                (Projection::Field(_), Ty::Ref { .. }) => {
-                    ty = self.mir.project(ty, *projection).expect("validated MIR");
-                }
-                _ => unreachable!("validated MIR has well-typed places"),
-            }
-        }
-        name
     }
 }

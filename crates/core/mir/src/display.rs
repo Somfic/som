@@ -1,24 +1,12 @@
-//! Renders MIR as text, close to Rust's MIR dumps:
-//!
-//! ```text
-//! fn add(_1: i32, _2: i32) -> i32 {
-//!     let _0: i32;
-//!     let _1: i32; // a
-//!     let _2: i32; // b
-//!
-//!     bb0: {
-//!         _0 = Add(copy _1, copy _2);
-//!         return;
-//!     }
-//! }
-//! ```
+//! MIR as text, close to Rust's MIR dumps.
 
+use som_lang::Builtin;
 use std::fmt::{self, Display, Write};
 
 use crate::*;
 
 impl Mir {
-    /// Renders a type the way it would be written in som.
+    /// As it would be written in som.
     pub fn display_ty(&self, ty: TypeId) -> String {
         match self.types.get(ty) {
             Ty::Struct(def, args) => self.struct_def(*def, args).name.clone(),
@@ -254,13 +242,14 @@ impl Mir {
                 ConstKind::Unit => "const ()".into(),
                 ConstKind::Func(f) => format!("const {}", self.func(*f).name),
                 ConstKind::Zeroed => format!("const zeroed_{}", self.display_ty(c.ty)),
-                ConstKind::Pending(f) => format!("const @const {}", self.func(*f).name),
+                ConstKind::Pending(f) => {
+                    format!("const {} {}", Builtin::Const.name(), self.func(*f).name)
+                }
                 ConstKind::Aggregate(_) => format!("const {}", self.display_const(c)),
             },
         }
     }
 
-    /// A constant's value, without `const`: `{1, [2, 3]}`.
     fn display_const(&self, c: &Const) -> String {
         match &c.kind {
             ConstKind::Aggregate(parts) => {
@@ -277,7 +266,7 @@ impl Mir {
             ConstKind::Unit => "()".into(),
             ConstKind::Func(f) => self.func(*f).name.clone(),
             ConstKind::Zeroed => "zeroed".into(),
-            ConstKind::Pending(f) => format!("@const {}", self.func(*f).name),
+            ConstKind::Pending(f) => format!("{} {}", Builtin::Const.name(), self.func(*f).name),
         }
     }
 }
