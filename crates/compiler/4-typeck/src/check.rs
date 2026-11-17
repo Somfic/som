@@ -3157,7 +3157,7 @@ impl<'a> Checker<'a> {
     /// `in_place`: `id` is the object of a field access or dereference, not a value on its own.
     fn infer_inner(&mut self, id: Id<Expr>, in_place: bool) -> TypeId {
         let table = &self.u.table;
-        let (error, unit, bool) = (table.error, table.unit, table.bool);
+        let (error, bool) = (table.error, table.bool);
 
         match &self.ast.exprs[id] {
             Expr::Hole => error,
@@ -3173,21 +3173,7 @@ impl<'a> Checker<'a> {
                 lhs,
                 rhs,
             } if self.is_type_operand(*lhs) || self.is_type_operand(*rhs) => {
-                for operand in [*lhs, *rhs] {
-                    match self.type_operand(operand) {
-                        Some(ty) => {
-                            self.exprs[operand.id] = Some(ty);
-                        }
-                        None => self.errors.push(TypeError::TypeNotCompared {
-                            span: self.span(if self.is_type_operand(*lhs) {
-                                *lhs
-                            } else {
-                                *rhs
-                            }),
-                        }),
-                    }
-                }
-                bool
+                self.infer_type_comparison(*lhs, *rhs)
             }
             // `@const f(x)`: its value, of whatever's expected here. It names no locals, so
             // it's checked here like anything else.
@@ -3217,93 +3203,14 @@ impl<'a> Checker<'a> {
             // A `str`, or a `cstr` where C needs one.
             Expr::Str(_) => self.u.fresh(VarKind::Text),
             // `"total: {n}"`: a `string`, of the pieces and the values written in.
-            Expr::Interpolated(parts) => {
-                for &part in parts {
-                    match part {
-                        som_ast::Part::Text(text) => {
-                            let ty = self.infer(text);
-                            self.text_as_string(ty);
-                        }
-                        som_ast::Part::Value(value) => {
-                            let ty = self.infer(value);
-                            self.text_as_string(ty);
-                            self.displayed.push((value, ty));
-                        }
-                    }
-                }
-                self.u.table.text
-            }
+            Expr::Interpolated(parts) => self.infer_interpolated(parts),
             Expr::None => {
                 let inner = self.u.fresh(VarKind::Any);
                 self.u.intern(Ty::Optional(inner))
             }
             // A collection: an array, or a slice where one is expected.
-            Expr::Array(items) => {
-                let element = self.u.fresh(VarKind::Any);
-                let found: Vec<TypeId> = items.iter().map(|&item| self.infer(item)).collect();
-                // `[1, none, 5]`: with an optional among them, they're all optionals, and the
-                // plain values are wrapped, as in `x if c else none`.
-                if let Some(&optional) = found
-                    .iter()
-                    .find(|&&ty| matches!(self.u.get(self.u.shallow(ty)), Ty::Optional(_)))
-                {
-                    let _ = self.u.unify(element, optional);
-                }
-                for (&item, &ty) in items.iter().zip(&found) {
-                    if !self.coerce(item, element, ty) {
-                        self.mismatch(element, ty, self.span(item), None);
-                    }
-                }
-                let len = self.u.intern(Ty::Value(Value::Int(items.len() as u128)));
-                self.u.fresh(VarKind::Collection { element, len })
-            }
-            Expr::Cast { value, ty } => {
-                let target = self.lower(*ty);
-                let found = self.infer(*value);
-                // A literal converted to an integer type is read in full, as an `i128`, then
-                // wrapped: `18446744073709551617 as u64` is 1, `-1 as u64` the largest.
-                if matches!(self.ast.exprs[*value], Expr::Int(_))
-                    && self.u.var_kind(found) == Some(VarKind::Int)
-                    && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_))
-                {
-                    let i128 = self.u.intern(Ty::Int(IntTy::I128));
-                    let _ = self.u.unify(found, i128);
-                }
-                // The value converts at run time: `300 as u8` is the `i32` 300, wrapped to 44.
-                let number = |c: &Self, ty: TypeId| {
-                    matches!(
-                        c.u.get(c.u.shallow(ty)),
-                        Ty::Int(_) | Ty::Float(_) | Ty::Error
-                    ) || matches!(c.u.var_kind(ty), Some(VarKind::Int | VarKind::Float))
-                };
-                // An enum whose variants hold nothing converts to the number of its variant.
-                let plain_enum = self.is_plain_enum(self.u.get(self.u.shallow(found)))
-                    && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_));
-                // A raw pointer to another, `null() as *T`; or a reference to one, `&items as *T`.
-                let pointer = |c: &Self, ty: TypeId| {
-                    matches!(c.u.get(c.u.shallow(ty)), Ty::Pointer | Ty::Ptr(_))
-                };
-                let reference =
-                    |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::Ref { .. });
-                let pointers =
-                    (pointer(self, found) || reference(self, found)) && pointer(self, target);
-                // C's text is a pointer to its bytes: `bytes as cstr`, `text as *u8`.
-                let cstr = |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::CStr);
-                let c_text = (cstr(self, found) && pointer(self, target))
-                    || (pointer(self, found) && cstr(self, target));
-                if !plain_enum
-                    && !pointers
-                    && !c_text
-                    && (!number(self, found) || !number(self, target))
-                {
-                    self.errors.push(TypeError::InvalidCast {
-                        from: self.describe(found),
-                        to: self.describe(target),
-                        span: self.span(id),
-                    });
-                }
-                target
-            }
+            Expr::Array(items) => self.infer_array(items),
+            Expr::Cast { value, ty } => self.infer_cast(id, *value, *ty),
             Expr::Range { start, end } => {
                 let int = self.u.fresh(VarKind::Int);
                 for &bound in start.iter().chain(end) {
@@ -3347,69 +3254,7 @@ impl<'a> Checker<'a> {
             Expr::Var(path) if let Some((primitive, _)) = path.int_limit() => {
                 self.u.intern(Ty::from_primitive(primitive))
             }
-            Expr::Var(_) => match self
-                .names
-                .expr(id)
-                .map(|def| (def, &self.names.def(def).kind))
-            {
-                // An `out` parameter is a pointer, but it's used as what it points to.
-                Some((def, &DefKind::Param { func, index }))
-                    if self.ast.funcs[func].params[index].out =>
-                {
-                    let ty = self.locals.get(&def).copied().unwrap_or(error);
-                    match self.u.get(ty) {
-                        Ty::Ref { to, .. } => *to,
-                        _ => error,
-                    }
-                }
-                Some((
-                    def,
-                    DefKind::Param { .. }
-                    | DefKind::Local(_)
-                    | DefKind::Out(_)
-                    | DefKind::Binding(_),
-                )) => {
-                    let ty = self.locals.get(&def).copied().unwrap_or(error);
-                    // Passed on, a `&mut` can change what's behind it.
-                    if !in_place && self.is_mut_ref(ty) {
-                        self.forget(|key| key.root == def && !key.path.is_empty());
-                    }
-                    ty
-                }
-                // `Shape::Empty`
-                Some((def, DefKind::Variant { .. })) => {
-                    let (ty, s, index, _) = self.variant_value(def);
-                    self.fit_alias(id, ty);
-                    let kind = self.ast.structs[s].variants()[index].kind;
-                    if kind != VariantKind::Unit {
-                        self.errors.push(TypeError::WrongVariantForm {
-                            name: self.variant_name(s, index),
-                            holds: holds(kind),
-                            form: self.variant_form(s, index),
-                            span: self.span(id),
-                        });
-                    }
-                    ty
-                }
-                // `W` for `@const W = 60;`
-                Some((_, &DefKind::Const(c))) => self.check_const(c),
-                // `N` in `struct Buffer<N: usize>`: the number it is in each copy.
-                Some((def, _)) if let Some(&ty) = self.value_params.get(&def) => ty,
-                Some((def, DefKind::Func(func))) => {
-                    let expected = self.expected_here.take();
-                    let func = self.pick_function(id, def, expected).unwrap_or(*func);
-                    let (sig, args) = self.instantiate(func);
-                    self.require_bounds(func, &args, self.span(id));
-                    if !args.is_empty() {
-                        self.type_args.insert(id, args);
-                    }
-                    self.u.intern(Ty::Fn {
-                        params: sig.params,
-                        ret: sig.ret,
-                    })
-                }
-                _ => error,
-            },
+            Expr::Var(_) => self.infer_var(id, in_place),
 
             Expr::Binary {
                 op: BinOp::And | BinOp::Or,
@@ -3419,63 +3264,7 @@ impl<'a> Checker<'a> {
                 bool
             }
 
-            Expr::Binary { op, lhs, rhs } => {
-                // `x == none` and `x != none` ask whether `x` holds a value.
-                let against_none = matches!(op, BinOp::Equals | BinOp::NotEquals)
-                    && (matches!(self.ast.exprs[*lhs], Expr::None)
-                        || matches!(self.ast.exprs[*rhs], Expr::None));
-                let (lhs_ty, rhs_ty) = if against_none {
-                    (self.infer_optional(*lhs), self.infer_optional(*rhs))
-                } else {
-                    (self.infer(*lhs), self.infer(*rhs))
-                };
-                // `name + "!"`: text in quotes is a `string`, with its operators.
-                self.text_as_string(lhs_ty);
-                self.text_as_string(rhs_ty);
-                if against_none {
-                    // An overloaded call not decided yet: only one giving an optional can be
-                    // `none`; a plain value would only fit by being wrapped.
-                    for ty in [lhs_ty, rhs_ty] {
-                        if self.u.var_kind(ty) == Some(VarKind::Any) {
-                            self.decide_pending_by(ty, &|c, ret| {
-                                matches!(c.u.get(c.u.shallow(ret)), Ty::Optional(_))
-                            });
-                        }
-                    }
-                    if self.u.unify(lhs_ty, rhs_ty).is_err() {
-                        let ((optional, ty), none) = if matches!(self.ast.exprs[*lhs], Expr::None) {
-                            ((*rhs, rhs_ty), *lhs)
-                        } else {
-                            ((*lhs, lhs_ty), *rhs)
-                        };
-                        self.errors.push(TypeError::NotOptional {
-                            ty: self.describe(ty),
-                            span: self.span(optional),
-                        });
-                        // Already reported: don't also say the `none` can't be inferred.
-                        self.exprs[none.id] = Some(error);
-                    }
-                    return bool;
-                }
-                // `x == 5` on an optional: true only if it holds 5.
-                if matches!(op, BinOp::Equals | BinOp::NotEquals)
-                    && let Some((lhs_inner, rhs_inner)) = self.optional_operands(lhs_ty, rhs_ty)
-                {
-                    // The values are compared, but errors name the types as written.
-                    let comparable = self.u.unify(lhs_inner, rhs_inner).is_ok();
-                    match self.operand_ok(*op, lhs_inner) {
-                        Some(true) if comparable => {}
-                        None if comparable => {
-                            self.deferred_ops.push((id, *op, lhs_inner, rhs_inner))
-                        }
-                        _ => self.invalid_operands(id, *op, lhs_ty, rhs_ty),
-                    }
-                    return bool;
-                }
-                let lhs_ty = self.through_reference(*lhs, lhs_ty);
-                let rhs_ty = self.through_reference(*rhs, rhs_ty);
-                self.binary(id, *op, lhs_ty, rhs_ty)
-            }
+            Expr::Binary { op, lhs, rhs } => self.infer_binary(id, *op, *lhs, *rhs),
 
             // `!x` of an optional is `x == none`.
             Expr::Not(_) => {
@@ -3484,56 +3273,12 @@ impl<'a> Checker<'a> {
             }
 
             // `~x`: an integer, the same type back.
-            Expr::BitNot(inner) => {
-                let ty = self.infer(*inner);
-                let shallow = self.u.shallow(ty);
-                let integer = matches!(self.u.get(shallow), Ty::Int(_) | Ty::Error)
-                    || self.u.var_kind(shallow) == Some(VarKind::Int);
-                if !integer {
-                    self.errors.push(TypeError::CannotFlipBits {
-                        ty: self.describe(ty),
-                        span: self.span(id),
-                    });
-                    return self.u.table.error;
-                }
-                ty
-            }
+            Expr::BitNot(inner) => self.infer_bit_not(id, *inner),
 
             // `-x`: a signed integer or a float, the same type back.
-            Expr::Neg(inner) => {
-                let ty = self.infer(*inner);
-                let shallow = self.u.shallow(ty);
-                let negatable = match (self.u.get(shallow), self.u.var_kind(shallow)) {
-                    (Ty::Int(int), _) => int.is_signed(),
-                    (Ty::Float(_) | Ty::Error, _) => true,
-                    (_, Some(VarKind::Int | VarKind::Float)) => true,
-                    _ => false,
-                };
-                if !negatable {
-                    self.errors.push(TypeError::CannotNegate {
-                        ty: self.describe(ty),
-                        span: self.span(id),
-                    });
-                    return self.u.table.error;
-                }
-                ty
-            }
+            Expr::Neg(inner) => self.infer_neg(id, *inner),
 
-            Expr::Borrow { mutable, expr } => {
-                // `&mut p` can change anything inside `p`, other than through what's narrowed:
-                // `&mut x` of a narrowed `x` borrows the value it holds.
-                if *mutable && let Some(borrowed) = self.key(*expr) {
-                    self.forget(|key| key.within(&borrowed) && !key.same(&borrowed));
-                }
-                let to = self.infer(*expr);
-                if *mutable {
-                    self.check_mutable(*expr, true);
-                }
-                self.u.intern(Ty::Ref {
-                    mutable: *mutable,
-                    to,
-                })
-            }
+            Expr::Borrow { mutable, expr } => self.infer_borrow(*mutable, *expr),
 
             // The parameter it's passed to says what the variable is.
             Expr::Out(_) => {
@@ -3544,460 +3289,24 @@ impl<'a> Checker<'a> {
                 self.u.intern(Ty::Ref { mutable: true, to })
             }
 
-            Expr::Deref(inner) => {
-                let ty = self.infer_object(*inner);
-                let ty = self.u.shallow(ty);
-                match self.u.get(ty).clone() {
-                    Ty::Ref { to, .. }
-                        if matches!(self.u.get(self.u.shallow(to)), Ty::Slice(_) | Ty::Str) =>
-                    {
-                        self.errors.push(TypeError::DerefSlice {
-                            span: self.span(id),
-                        });
-                        error
-                    }
-                    Ty::Ref { to, .. } => to,
-                    Ty::Error => error,
-                    Ty::Var(_) if self.u.var_kind(ty) == Some(VarKind::Any) => {
-                        self.errors.push(TypeError::CannotInfer {
-                            span: self.span(*inner),
-                        });
-                        error
-                    }
-                    _ => {
-                        self.errors.push(TypeError::CannotDeref {
-                            ty: self.describe(ty),
-                            span: self.span(*inner),
-                        });
-                        error
-                    }
-                }
-            }
+            Expr::Deref(inner) => self.infer_deref(id, *inner),
 
-            Expr::Assign { target, value } => {
-                // The target is the optional itself, not the value it held: `x = none` is fine.
-                let assigned = self.key(*target);
-                let (lifted, kept) = std::mem::take(&mut self.narrowed)
-                    .into_iter()
-                    .partition(|n| assigned.as_ref().is_some_and(|a| n.key.same(a)));
-                self.narrowed = kept;
-                let outer = std::mem::replace(&mut self.assigning, true);
-                let target_ty = self.infer(*target);
-                self.assigning = outer;
-                // After inferring it: whether `p.x` is a field or a property depends on `p`.
-                if let Expr::Field { object, field } = &self.ast.exprs[*target]
-                    && self.is_prop(*target)
-                {
-                    let object_ty = self.exprs[object.id].unwrap_or(self.u.table.error);
-                    self.errors.push(TypeError::AssignToProp {
-                        name: field.name.to_string(),
-                        span: self.span(*target),
-                        field: self.hidden_field_named(object_ty, field),
-                    });
-                } else if !self.is_place(*target) {
-                    self.errors.push(TypeError::InvalidAssignTarget {
-                        span: self.span(*target),
-                    });
-                }
-                self.check_mutable(*target, false);
-                // The value is worked out first, while the target still holds what it did:
-                // `x = x + 1` reads the narrowed `x`.
-                self.narrowed.extend::<Vec<Narrowing>>(lifted);
-                let from = self.span(*target);
-                self.expect(*value, target_ty, Some(from));
-                // Afterwards it holds what was assigned.
-                if let Some(assigned) = &assigned {
-                    self.forget(|key| key.within(assigned));
-                }
-                self.narrow_if_assigned_a_value(assigned, target_ty, *value);
-                unit
-            }
+            Expr::Assign { target, value } => self.infer_assign(*target, *value),
 
             Expr::Call {
                 callee,
                 owner_args,
                 type_args: written,
                 args,
-            } => {
-                let expected = self.expected_here.take();
-                if let Some(def) = self.names.expr(id)
-                    && self.names.overloads(def).len() > 1
-                {
-                    return self
-                        .overloaded_call(id, callee, def, owner_args, written, args, expected);
-                }
-                match self.names.expr(id).map(|def| &self.names.def(def).kind) {
-                    Some(DefKind::Func(func)) => {
-                        let func = *func;
-                        let (sig, type_args) = self.instantiate(func);
-                        if !written.is_empty() {
-                            self.written_type_args(id, func, written, &type_args);
-                        }
-                        // `Vector3::new(…)`: a method of the type the alias stands for.
-                        if let Some(owner) = self.owner_type(func, &type_args) {
-                            self.fit_alias(id, owner);
-                        }
-                        if !owner_args.is_empty() {
-                            self.fit_owner_args(id, callee, func, &type_args, owner_args);
-                        }
-                        self.require_bounds(func, &type_args, self.span(id));
-                        if !type_args.is_empty() {
-                            self.type_args.insert(id, type_args);
-                        }
-                        self.check_args(id, &callee.to_string(), func, &sig.params, args);
-                        sig.ret
-                    }
-                    // `Shape::Circle(1.0)`
-                    Some(DefKind::Variant { .. }) => {
-                        let def = self.names.expr(id).expect("matched above");
-                        let (ty, s, index, fields) = self.variant_value(def);
-                        self.fit_alias(id, ty);
-                        let variant = &self.ast.structs[s].variants()[index];
-                        if variant.kind != VariantKind::Tuple {
-                            self.errors.push(TypeError::WrongVariantForm {
-                                name: self.variant_name(s, index),
-                                holds: holds(variant.kind),
-                                form: self.variant_form(s, index),
-                                span: self.span(id),
-                            });
-                            args.iter().for_each(|&a| {
-                                self.infer(a);
-                            });
-                        } else if args.len() != fields.len() {
-                            self.errors.push(TypeError::WrongArgCount {
-                                name: callee.to_string(),
-                                expected: fields.len(),
-                                at_least: false,
-                                found: args.len(),
-                                span: self.span(id),
-                            });
-                            args.iter().for_each(|&a| {
-                                self.infer(a);
-                            });
-                        } else {
-                            for ((&arg, &field), declared) in
-                                args.iter().zip(&fields).zip(&variant.fields)
-                            {
-                                let from = self.ast.types.span(declared.ty).clone();
-                                self.expect(arg, field, Some(from));
-                            }
-                        }
-                        ty
-                    }
-                    _ => {
-                        args.iter().for_each(|&a| {
-                            self.infer(a);
-                        });
-                        error
-                    }
-                }
-            }
+            } => self.infer_call(id, callee, owner_args, written, args),
 
             Expr::MethodCall {
                 receiver,
                 method,
                 args,
-            } => {
-                let expected = self.expected_here.take();
-                let receiver_ty = self.infer(*receiver);
-                // `node.total()` of a `#Node`: what it shares.
-                let receiver_ty = self.through_shared(*receiver, receiver_ty, &method.name);
-                // `"abc".len()`: text in quotes is a `string`, with its methods.
-                self.text_as_string(receiver_ty);
-                // A trait's method the type has, `x.compare(&y)`, before a pointer's own; an
-                // array's or slice's own first, `get` giving a copy.
-                let builtin = ArrayMethod::from_name(&method.name).is_some() && {
-                    let mut ty = self.u.shallow(receiver_ty);
-                    if let Ty::Ref { to, .. } = *self.u.get(ty) {
-                        ty = self.u.shallow(to);
-                    }
-                    matches!(self.u.get(ty), Ty::Array { .. } | Ty::Slice(_) | Ty::Str)
-                };
-                if !builtin
-                    && let Some(ty) =
-                        self.trait_method_call(id, *receiver, receiver_ty, method, args)
-                {
-                    return ty;
-                }
-                // A built-in type's own method, from `impl i32 { … }`.
-                let primitive = self
-                    .primitive_owner(receiver_ty)
-                    .filter(|&owner| self.names.method(owner, &method.name).is_some());
-                if primitive.is_none() {
-                    if let Some(ty) =
-                        self.array_method(id, *receiver, receiver_ty, method, args, false)
-                    {
-                        return ty;
-                    }
-                    if let Some(ty) = self.pointer_method(id, receiver_ty, method, args) {
-                        return ty;
-                    }
-                }
-                // Text written in quotes is a `string` here.
-                if primitive.is_some() && self.u.var_kind(receiver_ty) == Some(VarKind::Text) {
-                    let _ = self.u.unify(receiver_ty, self.u.table.text);
-                }
-                // Any type can have methods now: one that isn't a struct just lacks this one.
-                let viewed = {
-                    let shallow = self.u.shallow(receiver_ty);
-                    match self.u.get(shallow) {
-                        Ty::Ref { to, .. } => self.u.shallow(*to),
-                        _ => shallow,
-                    }
-                };
-                let lacks = !matches!(self.u.get(viewed), Ty::Struct(..) | Ty::Error)
-                    && !matches!(self.u.var_kind(viewed), Some(VarKind::Any));
-                // `find(2).get()`: an optional may hold nothing, which is what to say.
-                if primitive.is_none() && matches!(self.u.get(viewed), Ty::Optional(_)) {
-                    let span = self.span(*receiver);
-                    self.errors.push(TypeError::MemberOfOptional {
-                        object: span.get_text().to_string(),
-                        ty: self.describe(receiver_ty),
-                        variable: matches!(self.ast.exprs[*receiver], Expr::Var(_)),
-                        span,
-                    });
-                    args.iter().for_each(|&a| {
-                        self.infer(a);
-                    });
-                    return error;
-                }
-                if primitive.is_none() && lacks {
-                    self.errors.push(TypeError::UnknownMethod {
-                        ty: self.describe(receiver_ty),
-                        method: method.name.to_string(),
-                        span: method.span.clone(),
-                        methods: Vec::new(),
-                        props: Vec::new(),
-                        fields: Vec::new(),
-                        bare_call: self.bare_call(id, method, args),
-                    });
-                    args.iter().for_each(|&a| {
-                        self.infer(a);
-                    });
-                    return error;
-                }
-                let owner = match primitive {
-                    Some(owner) => owner,
-                    None => match self.struct_of(receiver_ty, *receiver) {
-                        Some((owner, _)) => owner,
-                        None => {
-                            args.iter().for_each(|&a| {
-                                self.infer(a);
-                            });
-                            return error;
-                        }
-                    },
-                };
-                let Some(def) = self.names.method(owner, &method.name) else {
-                    let ty = self.describe(receiver_ty);
-                    if !self.names.props(owner, &method.name).is_empty() {
-                        let span = self.span(id);
-                        self.errors.push(TypeError::MethodIsProp {
-                            ty,
-                            name: method.name.to_string(),
-                            span: method.span.clone(),
-                            parens: args
-                                .is_empty()
-                                .then(|| method.span.after().merge(&span.after())),
-                        });
-                        args.iter().for_each(|&a| {
-                            self.infer(a);
-                        });
-                        return error;
-                    }
-                    let (fields, props, methods) = self.members(owner, receiver_ty, &method.span);
-                    self.errors.push(TypeError::UnknownMethod {
-                        ty,
-                        method: method.name.to_string(),
-                        span: method.span.clone(),
-                        methods,
-                        props,
-                        fields,
-                        bare_call: self.bare_call(id, method, args),
-                    });
-                    args.iter().for_each(|&a| {
-                        self.infer(a);
-                    });
-                    return error;
-                };
-                if self.names.overloads(def).len() > 1 {
-                    let name = format!("{}::{}", self.names.def(owner).name, method.name);
-                    return self.overloaded_method(
-                        id,
-                        &name,
-                        def,
-                        *receiver,
-                        receiver_ty,
-                        args,
-                        expected,
-                    );
-                }
-                let DefKind::Func(func) = self.names.def(def).kind else {
-                    unreachable!("methods are functions")
-                };
-                let (sig, type_args) = self.instantiate(func);
-                if !self.on_impl_target(func, &type_args, receiver_ty, method, "method")
-                    || !self.check_member_there(
-                        func,
-                        receiver_ty,
-                        &method.name,
-                        method.span.clone(),
-                    )
-                {
-                    args.iter().for_each(|&a| {
-                        self.infer(a);
-                    });
-                    return error;
-                }
-                self.methods.insert(id, def);
-                self.check_visible(def, &method.span);
-                self.require_bounds(func, &type_args, self.span(id));
-                if !type_args.is_empty() {
-                    self.type_args.insert(id, type_args);
-                }
-                // The receiver is the first (`self`) parameter.
-                match sig.params.split_first() {
-                    Some((&self_ty, rest)) => {
-                        if !self.receive(*receiver, self_ty, receiver_ty) {
-                            let from = self.ast.funcs[func].params[0]
-                                .ty
-                                .map(|t| self.ast.types.span(t).clone());
-                            self.mismatch(self_ty, receiver_ty, self.span(*receiver), from);
-                        }
-                        let name = format!("{}::{}", self.names.def(owner).name, method.name);
-                        self.check_args_from(id, &name, func, 1, rest, args);
-                    }
-                    None => {
-                        let name = format!("{}::{}", self.names.def(owner).name, method.name);
-                        self.errors.push(TypeError::WrongArgCount {
-                            name,
-                            expected: 0,
-                            at_least: false,
-                            found: args.len() + 1,
-                            span: self.span(id),
-                        });
-                    }
-                }
-                sig.ret
-            }
+            } => self.infer_method_call(id, *receiver, method, args),
 
-            Expr::Field { object, field } => {
-                let object_ty = self.infer_object(*object);
-                // `node.value` of a `#Node`: what it shares.
-                let object_ty = self.through_shared(*object, object_ty, &field.name);
-                // `"abc".len`: text in quotes is a `string`, with its props.
-                self.text_as_string(object_ty);
-                // `list.len`, with a private field and a `pub prop` both called `len`: the
-                // field where it's seen, so its own code can change it, the prop elsewhere.
-                if !self.field_seen(object_ty, field)
-                    && let Some(ty) = self.prop_access(id, *object, object_ty, field)
-                {
-                    return ty;
-                }
-                // `items.len`: the length of an array, slice or text.
-                if ArrayMethod::from_name(&field.name) == Some(ArrayMethod::Len)
-                    && let Some(ty) = self.array_method(id, *object, object_ty, field, &[], true)
-                {
-                    return ty;
-                }
-                // `xs.length`: an array or slice has `len` and its methods, nothing else.
-                if self.is_collection(object_ty) {
-                    let methods = (ArrayMethod::ALL.iter())
-                        .filter(|&&m| m != ArrayMethod::Len && m != ArrayMethod::Bytes)
-                        .map(|m| m.name())
-                        .map(String::from)
-                        .collect();
-                    self.errors.push(TypeError::UnknownField {
-                        ty: self.u.display(self.u.shallow(object_ty), self.names),
-                        field: field.name.to_string(),
-                        available: Vec::new(),
-                        props: vec![ArrayMethod::Len.name().into()],
-                        methods,
-                        span: field.span.clone(),
-                    });
-                    return error;
-                }
-                // A range's two ends.
-                let mut viewed = self.u.shallow(object_ty);
-                if let Ty::Ref { to, .. } = *self.u.get(viewed) {
-                    viewed = self.u.shallow(to);
-                }
-                // `items.len` of something with a method of that name, not a field.
-                if matches!(
-                    self.u.get(viewed),
-                    Ty::Array { .. } | Ty::Slice(_) | Ty::Str
-                ) && ArrayMethod::from_name(&field.name).is_some()
-                {
-                    self.errors.push(TypeError::FieldIsMethod {
-                        ty: self.describe(object_ty),
-                        name: field.name.to_string(),
-                        span: field.span.clone(),
-                    });
-                    return error;
-                }
-                if let Ty::Range(int) = *self.u.get(viewed) {
-                    let index = match &*field.name {
-                        som_lang::RANGE_START => 0,
-                        som_lang::RANGE_END => 1,
-                        _ => {
-                            self.errors.push(TypeError::UnknownField {
-                                ty: self.u.display(viewed, self.names),
-                                field: field.name.to_string(),
-                                available: vec![
-                                    som_lang::RANGE_START.into(),
-                                    som_lang::RANGE_END.into(),
-                                ],
-                                props: Vec::new(),
-                                methods: Vec::new(),
-                                span: field.span.clone(),
-                            });
-                            return error;
-                        }
-                    };
-                    self.fields.insert(id, index);
-                    return int;
-                }
-                let Some((owner, args)) = self.struct_of(object_ty, *object) else {
-                    return error;
-                };
-                let DefKind::Struct(s) = self.names.def(owner).kind else {
-                    unreachable!("struct_of returns structs")
-                };
-                if self.ast.structs[s].is_enum() {
-                    return self.common_field(id, s, &args, field);
-                }
-                let fields = &self.ast.structs[s].fields;
-                match fields.iter().position(|f| f.name.name == field.name) {
-                    Some(index) => {
-                        self.fields.insert(id, index);
-                        self.check_field_visible(s, index, &field.span);
-                        // Written in terms of the struct's type parameters: fill in its arguments.
-                        let subst = self.struct_subst(s, &args);
-                        self.substitute(self.structs[s.id][index], &subst)
-                    }
-                    None if self.names.method(owner, &field.name).is_some() => {
-                        self.errors.push(TypeError::FieldIsMethod {
-                            ty: self.describe(object_ty),
-                            name: field.name.to_string(),
-                            span: field.span.clone(),
-                        });
-                        error
-                    }
-                    None => {
-                        let (available, props, methods) =
-                            self.members(owner, object_ty, &field.span);
-                        self.errors.push(TypeError::UnknownField {
-                            ty: self.names.def(owner).name.to_string(),
-                            field: field.name.to_string(),
-                            available,
-                            props,
-                            methods,
-                            span: field.span.clone(),
-                        });
-                        error
-                    }
-                }
-            }
+            Expr::Field { object, field } => self.infer_field(id, *object, field),
 
             Expr::Index { object, index } => self.index(id, *object, *index),
 
@@ -4005,298 +3314,1027 @@ impl<'a> Checker<'a> {
                 ty: path,
                 args: written,
                 fields: given,
-            } => {
-                let Some(def) = self.names.expr(id) else {
-                    given.iter().for_each(|(_, v)| {
-                        self.infer(*v);
-                    });
-                    return error;
-                };
-                // A struct, or a variant with named fields: `Shape::Rect { w: 1.0, h: 2.0 }`.
-                let (s, variant) = match self.names.def(def).kind {
-                    DefKind::Struct(s) => (s, None),
-                    DefKind::Variant { strukt, index } => (strukt, Some(index)),
-                    _ => unreachable!("resolver only binds constructors to structs and variants"),
-                };
-                let def = self.names.strukt(s);
-                // The type arguments written, `Pair<i32> { … }`; or each starts unknown, and the
-                // fields' values decide them.
-                let expected = self.names.struct_params(s).len();
-                // `Self { … }` is the type the impl block is for, arguments and all: in
-                // `impl Vector<3, f32>`, a `Vector<3, f32>`.
-                let of_self = (path.segments.len() == 1
-                    && &*path.segments[0].name == som_lang::SELF_TYPE)
-                    .then(|| self.current_func.and_then(|f| self.names.impl_of(f)))
-                    .flatten()
-                    .map(|index| self.self_type(index))
-                    // `Vector3 { … }`: the type the alias stands for.
-                    .or_else(|| {
-                        self.names
-                            .expr_alias(id)
-                            .map(|alias| self.alias_value(alias))
-                    })
-                    .and_then(|t| match self.u.get(self.u.shallow(t)) {
-                        Ty::Struct(d, args) if *d == def => Some(args.clone()),
-                        _ => None,
-                    });
-                let args: Vec<TypeId> = if let Some(args) = of_self {
-                    args
-                } else if written.is_empty() {
-                    (0..expected).map(|_| self.u.fresh(VarKind::Any)).collect()
-                } else {
-                    self.lower_args(def, s, written, self.span(id))
-                };
-                let subst = self.struct_subst(s, &args);
-                let ty = self.u.intern(Ty::Struct(def, args.clone()));
-                let ast_struct = &self.ast.structs[s];
-                let wrong_form = match variant {
-                    // `Shape { … }`: an enum is made from one of its variants.
-                    None if ast_struct.is_enum() => {
-                        let example =
-                            (!ast_struct.variants().is_empty()).then(|| self.variant_form(s, 0));
-                        self.errors.push(TypeError::ConstructEnum {
-                            name: ast_struct.name.name.to_string(),
-                            example,
-                            span: self.span(id),
-                        });
-                        true
-                    }
-                    Some(index) if ast_struct.variants()[index].kind != VariantKind::Named => {
-                        self.errors.push(TypeError::WrongVariantForm {
-                            name: self.variant_name(s, index),
-                            holds: holds(ast_struct.variants()[index].kind),
-                            form: self.variant_form(s, index),
-                            span: self.span(id),
-                        });
-                        true
-                    }
-                    _ => false,
-                };
-                if wrong_form {
-                    given.iter().for_each(|(_, v)| {
-                        self.infer(*v);
-                    });
-                    return ty;
-                }
-                let (struct_name, declared, field_tys) = match variant {
-                    Some(index) => (
-                        self.variant_name(s, index),
-                        &ast_struct.variants()[index].fields,
-                        self.variant_fields(s, index, &args),
-                    ),
-                    None => {
-                        let tys = (0..ast_struct.fields.len())
-                            .map(|i| self.substitute(self.structs[s.id][i], &subst))
-                            .collect();
-                        (
-                            self.names.def(def).name.to_string(),
-                            &ast_struct.fields,
-                            tys,
-                        )
-                    }
-                };
-                // Only C can make one: som doesn't know what's inside.
-                if self.ast.structs[s].handle {
-                    self.errors.push(TypeError::ConstructHandle {
-                        name: struct_name,
-                        span: self.span(id),
-                    });
-                    given.iter().for_each(|(_, v)| {
-                        self.infer(*v);
-                    });
-                    return ty;
-                }
-                // Fields this code can't see: it can't set them, so it can't make one.
-                let at = self.span(id);
-                let hidden: Vec<usize> = match variant {
-                    Some(_) => Vec::new(),
-                    None => (0..declared.len())
-                        .filter(|&i| {
-                            let viewer = self.viewer(&at);
-                            visibility::hidden_field(self.ast, self.names, s, i, viewer).is_some()
-                        })
-                        .collect(),
-                };
-                let mut seen = vec![false; declared.len()];
-                for (name, value) in given {
-                    match declared.iter().position(|f| f.name.name == name.name) {
-                        Some(index) if seen[index] => {
-                            self.errors.push(TypeError::DuplicateField {
-                                field: name.name.to_string(),
-                                span: name.span.clone(),
-                            });
-                            self.infer(*value);
-                        }
-                        Some(index) => {
-                            seen[index] = true;
-                            let expected = field_tys[index];
-                            let from = self.ast.types.span(declared[index].ty).clone();
-                            self.expect(*value, expected, Some(from));
-                        }
-                        None => {
-                            self.errors.push(TypeError::UnknownField {
-                                ty: struct_name.clone(),
-                                field: name.name.to_string(),
-                                available: declared
-                                    .iter()
-                                    .map(|f| f.name.name.to_string())
-                                    .collect(),
-                                props: Vec::new(),
-                                methods: Vec::new(),
-                                span: name.span.clone(),
-                            });
-                            self.infer(*value);
-                        }
-                    }
-                }
-                if !hidden.is_empty() {
-                    self.errors.push(TypeError::ConstructHidden {
-                        ty: struct_name,
-                        fields: (hidden.iter())
-                            .map(|&i| {
-                                let name = &declared[i].name;
-                                (name.name.to_string(), name.span.clone())
-                            })
-                            .collect(),
-                        span: path.span(),
-                        fixes: self.makers(def, &path.to_string(), given, &at),
-                    });
-                    return ty;
-                }
-                for (field, _) in declared.iter().zip(&seen).filter(|(_, seen)| !**seen) {
-                    self.errors.push(TypeError::MissingField {
-                        ty: struct_name.clone(),
-                        field: field.name.name.to_string(),
-                        span: self.span(id),
-                    });
-                }
-                ty
-            }
+            } => self.infer_construct(id, path, written, given),
 
             Expr::Conditional {
                 condition,
                 then,
                 otherwise,
-            } => {
-                // Like an `if` statement's: an optional is narrowed in the branch it holds in.
-                let facts = self.check_condition(*condition);
-                let (then_ty, _) = self.narrowed_during(facts.when_true, |c| c.infer(*then));
-                let (otherwise_ty, _) =
-                    self.narrowed_during(facts.when_false, |c| c.infer(*otherwise));
-                // A branch that never finishes (`return`) has no value: the other's is it.
-                let (then_leaves, otherwise_leaves) =
-                    (self.expr_leaves(*then), self.expr_leaves(*otherwise));
-                for (branch, leaves) in [(*then, then_leaves), (*otherwise, otherwise_leaves)] {
-                    if leaves {
-                        self.diverging.insert(branch);
-                    }
-                }
-                match (then_leaves, otherwise_leaves) {
-                    (true, true) => return self.u.fresh(VarKind::Any),
-                    (true, false) => return otherwise_ty,
-                    (false, true) => return then_ty,
-                    (false, false) => {}
-                }
-                // `x if c else none`: either branch can be the optional the other is wrapped in.
-                if self.coerce(*otherwise, then_ty, otherwise_ty) {
-                    then_ty
-                } else if self.coerce(*then, otherwise_ty, then_ty) {
-                    otherwise_ty
-                } else {
-                    let from = self.span(*then);
-                    self.mismatch(then_ty, otherwise_ty, self.span(*otherwise), Some(from));
-                    then_ty
-                }
-            }
+            } => self.infer_conditional(*condition, *then, *otherwise),
 
             // `@for (i, k) in T` among its arms, over a generic enum: checked for each
             // instance, with the copy for `T`'s enum.
             Expr::Match { scrutinee, .. }
                 if let Some(per_type) = self.ast.per_type_matches.get(&id) =>
             {
-                let name = &per_type.of.name().name;
-                let param = (self.current_func).and_then(|f| {
-                    (self.names.type_params(f).iter().copied())
-                        .find(|&p| &*self.names.def(p).name == &**name)
-                });
-                let Some(param) = param else {
-                    self.errors.push(TypeError::ReflectNotEnum {
-                        name: name.to_string(),
-                        span: per_type.of.span(),
-                    });
-                    return error;
-                };
-                let Some(&ty) = self.bound.get(&param) else {
-                    // What it gives is what it's expected to: it's checked to be, per instance.
-                    self.infer(*scrutinee);
-                    self.match_regions.insert(id);
-                    if let Some(func) = self.current_func {
-                        self.per_instance.insert(func);
-                    }
-                    return match self.expected_here.take() {
-                        Some(expected) => expected,
-                        None => self.u.fresh(VarKind::Any),
-                    };
-                };
-                let enum_ = match self.u.get(ty) {
-                    Ty::Struct(def, _) => match self.names.def(*def).kind {
-                        DefKind::Struct(s) if self.ast.structs[s].is_enum() => Some(s),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                match enum_.and_then(|s| per_type.arms.iter().find(|(a, _)| *a == s)) {
-                    Some(&(_, copy)) => {
-                        self.chosen_matches.insert(id, copy);
-                        self.infer(copy)
-                    }
-                    None => {
-                        self.errors.push(TypeError::ReflectNotEnum {
-                            name: self.describe(ty).plain().trim_matches('`').to_string(),
-                            span: per_type.of.span(),
-                        });
-                        error
-                    }
-                }
+                self.infer_per_type_match(id, *scrutinee, per_type)
             }
             Expr::Match { scrutinee, arms } => {
                 let discarded = std::mem::take(&mut self.discarding);
                 self.check_match(id, *scrutinee, arms, discarded)
             }
 
-            Expr::Block { stmts, value } => {
-                // What the block is expected to be is what its final value is.
-                let expected = self.expected_here.take();
-                // Like `check_stmts`, but what's narrowed in here lasts into the final value.
-                let outer: HashSet<usize> = self.narrowed.iter().map(|n| n.id).collect();
-                for &stmt in stmts {
-                    self.check_stmt(stmt);
+            Expr::Block { stmts, value } => self.infer_block(stmts, *value),
+        }
+    }
+
+    fn infer_var(&mut self, id: Id<Expr>, in_place: bool) -> TypeId {
+        let error = self.u.table.error;
+        match self
+            .names
+            .expr(id)
+            .map(|def| (def, &self.names.def(def).kind))
+        {
+            // An `out` parameter is a pointer, but it's used as what it points to.
+            Some((def, &DefKind::Param { func, index }))
+                if self.ast.funcs[func].params[index].out =>
+            {
+                let ty = self.locals.get(&def).copied().unwrap_or(error);
+                match self.u.get(ty) {
+                    Ty::Ref { to, .. } => *to,
+                    _ => error,
                 }
-                let ty = match value {
-                    Some(value) => {
-                        self.expected = expected;
-                        let ty = self.infer(*value);
-                        if matches!(
-                            self.ast.exprs[*value],
-                            Expr::Call { .. } | Expr::MethodCall { .. }
-                        ) {
-                            self.tail_calls.push((*value, ty));
-                        }
-                        ty
-                    }
-                    // `{ return x; }` never ends with a value: like `@unreachable`, it fits
-                    // whatever's expected, as in `get(i) else { return none; }`.
-                    None if self.leaves(stmts) => {
-                        let ty = expected.unwrap_or_else(|| self.u.fresh(VarKind::Any));
-                        self.unreachables.push(ty);
-                        ty
-                    }
-                    None => unit,
-                };
-                self.narrowed.retain(|n| outer.contains(&n.id));
+            }
+            Some((
+                def,
+                DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_),
+            )) => {
+                let ty = self.locals.get(&def).copied().unwrap_or(error);
+                // Passed on, a `&mut` can change what's behind it.
+                if !in_place && self.is_mut_ref(ty) {
+                    self.forget(|key| key.root == def && !key.path.is_empty());
+                }
                 ty
             }
+            // `Shape::Empty`
+            Some((def, DefKind::Variant { .. })) => {
+                let (ty, s, index, _) = self.variant_value(def);
+                self.fit_alias(id, ty);
+                let kind = self.ast.structs[s].variants()[index].kind;
+                if kind != VariantKind::Unit {
+                    self.errors.push(TypeError::WrongVariantForm {
+                        name: self.variant_name(s, index),
+                        holds: holds(kind),
+                        form: self.variant_form(s, index),
+                        span: self.span(id),
+                    });
+                }
+                ty
+            }
+            // `W` for `@const W = 60;`
+            Some((_, &DefKind::Const(c))) => self.check_const(c),
+            // `N` in `struct Buffer<N: usize>`: the number it is in each copy.
+            Some((def, _)) if let Some(&ty) = self.value_params.get(&def) => ty,
+            Some((def, DefKind::Func(func))) => {
+                let expected = self.expected_here.take();
+                let func = self.pick_function(id, def, expected).unwrap_or(*func);
+                let (sig, args) = self.instantiate(func);
+                self.require_bounds(func, &args, self.span(id));
+                if !args.is_empty() {
+                    self.type_args.insert(id, args);
+                }
+                self.u.intern(Ty::Fn {
+                    params: sig.params,
+                    ret: sig.ret,
+                })
+            }
+            _ => error,
         }
+    }
+
+    fn infer_type_comparison(&mut self, lhs: Id<Expr>, rhs: Id<Expr>) -> TypeId {
+        let bool = self.u.table.bool;
+        for operand in [lhs, rhs] {
+            match self.type_operand(operand) {
+                Some(ty) => {
+                    self.exprs[operand.id] = Some(ty);
+                }
+                None => self.errors.push(TypeError::TypeNotCompared {
+                    span: self.span(if self.is_type_operand(lhs) { lhs } else { rhs }),
+                }),
+            }
+        }
+        bool
+    }
+
+    fn infer_interpolated(&mut self, parts: &[som_ast::Part]) -> TypeId {
+        for &part in parts {
+            match part {
+                som_ast::Part::Text(text) => {
+                    let ty = self.infer(text);
+                    self.text_as_string(ty);
+                }
+                som_ast::Part::Value(value) => {
+                    let ty = self.infer(value);
+                    self.text_as_string(ty);
+                    self.displayed.push((value, ty));
+                }
+            }
+        }
+        self.u.table.text
+    }
+
+    fn infer_array(&mut self, items: &[Id<Expr>]) -> TypeId {
+        let element = self.u.fresh(VarKind::Any);
+        let found: Vec<TypeId> = items.iter().map(|&item| self.infer(item)).collect();
+        // `[1, none, 5]`: with an optional among them, they're all optionals, and the
+        // plain values are wrapped, as in `x if c else none`.
+        if let Some(&optional) = found
+            .iter()
+            .find(|&&ty| matches!(self.u.get(self.u.shallow(ty)), Ty::Optional(_)))
+        {
+            let _ = self.u.unify(element, optional);
+        }
+        for (&item, &ty) in items.iter().zip(&found) {
+            if !self.coerce(item, element, ty) {
+                self.mismatch(element, ty, self.span(item), None);
+            }
+        }
+        let len = self.u.intern(Ty::Value(Value::Int(items.len() as u128)));
+        self.u.fresh(VarKind::Collection { element, len })
+    }
+
+    fn infer_cast(&mut self, id: Id<Expr>, value: Id<Expr>, ty: Id<TypeExpr>) -> TypeId {
+        let target = self.lower(ty);
+        let found = self.infer(value);
+        // A literal converted to an integer type is read in full, as an `i128`, then
+        // wrapped: `18446744073709551617 as u64` is 1, `-1 as u64` the largest.
+        if matches!(self.ast.exprs[value], Expr::Int(_))
+            && self.u.var_kind(found) == Some(VarKind::Int)
+            && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_))
+        {
+            let i128 = self.u.intern(Ty::Int(IntTy::I128));
+            let _ = self.u.unify(found, i128);
+        }
+        // The value converts at run time: `300 as u8` is the `i32` 300, wrapped to 44.
+        let number = |c: &Self, ty: TypeId| {
+            matches!(
+                c.u.get(c.u.shallow(ty)),
+                Ty::Int(_) | Ty::Float(_) | Ty::Error
+            ) || matches!(c.u.var_kind(ty), Some(VarKind::Int | VarKind::Float))
+        };
+        // An enum whose variants hold nothing converts to the number of its variant.
+        let plain_enum = self.is_plain_enum(self.u.get(self.u.shallow(found)))
+            && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_));
+        // A raw pointer to another, `null() as *T`; or a reference to one, `&items as *T`.
+        let pointer =
+            |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::Pointer | Ty::Ptr(_));
+        let reference = |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::Ref { .. });
+        let pointers = (pointer(self, found) || reference(self, found)) && pointer(self, target);
+        // C's text is a pointer to its bytes: `bytes as cstr`, `text as *u8`.
+        let cstr = |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::CStr);
+        let c_text = (cstr(self, found) && pointer(self, target))
+            || (pointer(self, found) && cstr(self, target));
+        if !plain_enum && !pointers && !c_text && (!number(self, found) || !number(self, target)) {
+            self.errors.push(TypeError::InvalidCast {
+                from: self.describe(found),
+                to: self.describe(target),
+                span: self.span(id),
+            });
+        }
+        target
+    }
+
+    fn infer_binary(&mut self, id: Id<Expr>, op: BinOp, lhs: Id<Expr>, rhs: Id<Expr>) -> TypeId {
+        let error = self.u.table.error;
+        let bool = self.u.table.bool;
+        // `x == none` and `x != none` ask whether `x` holds a value.
+        let against_none = matches!(op, BinOp::Equals | BinOp::NotEquals)
+            && (matches!(self.ast.exprs[lhs], Expr::None)
+                || matches!(self.ast.exprs[rhs], Expr::None));
+        let (lhs_ty, rhs_ty) = if against_none {
+            (self.infer_optional(lhs), self.infer_optional(rhs))
+        } else {
+            (self.infer(lhs), self.infer(rhs))
+        };
+        // `name + "!"`: text in quotes is a `string`, with its operators.
+        self.text_as_string(lhs_ty);
+        self.text_as_string(rhs_ty);
+        if against_none {
+            // An overloaded call not decided yet: only one giving an optional can be
+            // `none`; a plain value would only fit by being wrapped.
+            for ty in [lhs_ty, rhs_ty] {
+                if self.u.var_kind(ty) == Some(VarKind::Any) {
+                    self.decide_pending_by(ty, &|c, ret| {
+                        matches!(c.u.get(c.u.shallow(ret)), Ty::Optional(_))
+                    });
+                }
+            }
+            if self.u.unify(lhs_ty, rhs_ty).is_err() {
+                let ((optional, ty), none) = if matches!(self.ast.exprs[lhs], Expr::None) {
+                    ((rhs, rhs_ty), lhs)
+                } else {
+                    ((lhs, lhs_ty), rhs)
+                };
+                self.errors.push(TypeError::NotOptional {
+                    ty: self.describe(ty),
+                    span: self.span(optional),
+                });
+                // Already reported: don't also say the `none` can't be inferred.
+                self.exprs[none.id] = Some(error);
+            }
+            return bool;
+        }
+        // `x == 5` on an optional: true only if it holds 5.
+        if matches!(op, BinOp::Equals | BinOp::NotEquals)
+            && let Some((lhs_inner, rhs_inner)) = self.optional_operands(lhs_ty, rhs_ty)
+        {
+            // The values are compared, but errors name the types as written.
+            let comparable = self.u.unify(lhs_inner, rhs_inner).is_ok();
+            match self.operand_ok(op, lhs_inner) {
+                Some(true) if comparable => {}
+                None if comparable => self.deferred_ops.push((id, op, lhs_inner, rhs_inner)),
+                _ => self.invalid_operands(id, op, lhs_ty, rhs_ty),
+            }
+            return bool;
+        }
+        let lhs_ty = self.through_reference(lhs, lhs_ty);
+        let rhs_ty = self.through_reference(rhs, rhs_ty);
+        self.binary(id, op, lhs_ty, rhs_ty)
+    }
+
+    fn infer_bit_not(&mut self, id: Id<Expr>, inner: Id<Expr>) -> TypeId {
+        let ty = self.infer(inner);
+        let shallow = self.u.shallow(ty);
+        let integer = matches!(self.u.get(shallow), Ty::Int(_) | Ty::Error)
+            || self.u.var_kind(shallow) == Some(VarKind::Int);
+        if !integer {
+            self.errors.push(TypeError::CannotFlipBits {
+                ty: self.describe(ty),
+                span: self.span(id),
+            });
+            return self.u.table.error;
+        }
+        ty
+    }
+
+    fn infer_neg(&mut self, id: Id<Expr>, inner: Id<Expr>) -> TypeId {
+        let ty = self.infer(inner);
+        let shallow = self.u.shallow(ty);
+        let negatable = match (self.u.get(shallow), self.u.var_kind(shallow)) {
+            (Ty::Int(int), _) => int.is_signed(),
+            (Ty::Float(_) | Ty::Error, _) => true,
+            (_, Some(VarKind::Int | VarKind::Float)) => true,
+            _ => false,
+        };
+        if !negatable {
+            self.errors.push(TypeError::CannotNegate {
+                ty: self.describe(ty),
+                span: self.span(id),
+            });
+            return self.u.table.error;
+        }
+        ty
+    }
+
+    fn infer_borrow(&mut self, mutable: bool, expr: Id<Expr>) -> TypeId {
+        // `&mut p` can change anything inside `p`, other than through what's narrowed:
+        // `&mut x` of a narrowed `x` borrows the value it holds.
+        if mutable && let Some(borrowed) = self.key(expr) {
+            self.forget(|key| key.within(&borrowed) && !key.same(&borrowed));
+        }
+        let to = self.infer(expr);
+        if mutable {
+            self.check_mutable(expr, true);
+        }
+        self.u.intern(Ty::Ref {
+            mutable: mutable,
+            to,
+        })
+    }
+
+    fn infer_deref(&mut self, id: Id<Expr>, inner: Id<Expr>) -> TypeId {
+        let error = self.u.table.error;
+        let ty = self.infer_object(inner);
+        let ty = self.u.shallow(ty);
+        match self.u.get(ty).clone() {
+            Ty::Ref { to, .. }
+                if matches!(self.u.get(self.u.shallow(to)), Ty::Slice(_) | Ty::Str) =>
+            {
+                self.errors.push(TypeError::DerefSlice {
+                    span: self.span(id),
+                });
+                error
+            }
+            Ty::Ref { to, .. } => to,
+            Ty::Error => error,
+            Ty::Var(_) if self.u.var_kind(ty) == Some(VarKind::Any) => {
+                self.errors.push(TypeError::CannotInfer {
+                    span: self.span(inner),
+                });
+                error
+            }
+            _ => {
+                self.errors.push(TypeError::CannotDeref {
+                    ty: self.describe(ty),
+                    span: self.span(inner),
+                });
+                error
+            }
+        }
+    }
+
+    fn infer_assign(&mut self, target: Id<Expr>, value: Id<Expr>) -> TypeId {
+        let unit = self.u.table.unit;
+        // The target is the optional itself, not the value it held: `x = none` is fine.
+        let assigned = self.key(target);
+        let (lifted, kept) = std::mem::take(&mut self.narrowed)
+            .into_iter()
+            .partition(|n| assigned.as_ref().is_some_and(|a| n.key.same(a)));
+        self.narrowed = kept;
+        let outer = std::mem::replace(&mut self.assigning, true);
+        let target_ty = self.infer(target);
+        self.assigning = outer;
+        // After inferring it: whether `p.x` is a field or a property depends on `p`.
+        if let Expr::Field { object, field } = &self.ast.exprs[target]
+            && self.is_prop(target)
+        {
+            let object_ty = self.exprs[object.id].unwrap_or(self.u.table.error);
+            self.errors.push(TypeError::AssignToProp {
+                name: field.name.to_string(),
+                span: self.span(target),
+                field: self.hidden_field_named(object_ty, field),
+            });
+        } else if !self.is_place(target) {
+            self.errors.push(TypeError::InvalidAssignTarget {
+                span: self.span(target),
+            });
+        }
+        self.check_mutable(target, false);
+        // The value is worked out first, while the target still holds what it did:
+        // `x = x + 1` reads the narrowed `x`.
+        self.narrowed.extend::<Vec<Narrowing>>(lifted);
+        let from = self.span(target);
+        self.expect(value, target_ty, Some(from));
+        // Afterwards it holds what was assigned.
+        if let Some(assigned) = &assigned {
+            self.forget(|key| key.within(assigned));
+        }
+        self.narrow_if_assigned_a_value(assigned, target_ty, value);
+        unit
+    }
+
+    fn infer_call(
+        &mut self,
+        id: Id<Expr>,
+        callee: &som_ast::Path,
+        owner_args: &[Id<TypeExpr>],
+        written: &[Id<TypeExpr>],
+        args: &[Id<Expr>],
+    ) -> TypeId {
+        let error = self.u.table.error;
+        let expected = self.expected_here.take();
+        if let Some(def) = self.names.expr(id)
+            && self.names.overloads(def).len() > 1
+        {
+            return self.overloaded_call(id, callee, def, owner_args, written, args, expected);
+        }
+        match self.names.expr(id).map(|def| &self.names.def(def).kind) {
+            Some(DefKind::Func(func)) => {
+                let func = *func;
+                let (sig, type_args) = self.instantiate(func);
+                if !written.is_empty() {
+                    self.written_type_args(id, func, written, &type_args);
+                }
+                // `Vector3::new(…)`: a method of the type the alias stands for.
+                if let Some(owner) = self.owner_type(func, &type_args) {
+                    self.fit_alias(id, owner);
+                }
+                if !owner_args.is_empty() {
+                    self.fit_owner_args(id, callee, func, &type_args, owner_args);
+                }
+                self.require_bounds(func, &type_args, self.span(id));
+                if !type_args.is_empty() {
+                    self.type_args.insert(id, type_args);
+                }
+                self.check_args(id, &callee.to_string(), func, &sig.params, args);
+                sig.ret
+            }
+            // `Shape::Circle(1.0)`
+            Some(DefKind::Variant { .. }) => {
+                let def = self.names.expr(id).expect("matched above");
+                let (ty, s, index, fields) = self.variant_value(def);
+                self.fit_alias(id, ty);
+                let variant = &self.ast.structs[s].variants()[index];
+                if variant.kind != VariantKind::Tuple {
+                    self.errors.push(TypeError::WrongVariantForm {
+                        name: self.variant_name(s, index),
+                        holds: holds(variant.kind),
+                        form: self.variant_form(s, index),
+                        span: self.span(id),
+                    });
+                    args.iter().for_each(|&a| {
+                        self.infer(a);
+                    });
+                } else if args.len() != fields.len() {
+                    self.errors.push(TypeError::WrongArgCount {
+                        name: callee.to_string(),
+                        expected: fields.len(),
+                        at_least: false,
+                        found: args.len(),
+                        span: self.span(id),
+                    });
+                    args.iter().for_each(|&a| {
+                        self.infer(a);
+                    });
+                } else {
+                    for ((&arg, &field), declared) in args.iter().zip(&fields).zip(&variant.fields)
+                    {
+                        let from = self.ast.types.span(declared.ty).clone();
+                        self.expect(arg, field, Some(from));
+                    }
+                }
+                ty
+            }
+            _ => {
+                args.iter().for_each(|&a| {
+                    self.infer(a);
+                });
+                error
+            }
+        }
+    }
+
+    fn infer_method_call(
+        &mut self,
+        id: Id<Expr>,
+        receiver: Id<Expr>,
+        method: &som_ast::Ident,
+        args: &[Id<Expr>],
+    ) -> TypeId {
+        let error = self.u.table.error;
+        let expected = self.expected_here.take();
+        let receiver_ty = self.infer(receiver);
+        // `node.total()` of a `#Node`: what it shares.
+        let receiver_ty = self.through_shared(receiver, receiver_ty, &method.name);
+        // `"abc".len()`: text in quotes is a `string`, with its methods.
+        self.text_as_string(receiver_ty);
+        // A trait's method the type has, `x.compare(&y)`, before a pointer's own; an
+        // array's or slice's own first, `get` giving a copy.
+        let builtin = ArrayMethod::from_name(&method.name).is_some() && {
+            let mut ty = self.u.shallow(receiver_ty);
+            if let Ty::Ref { to, .. } = *self.u.get(ty) {
+                ty = self.u.shallow(to);
+            }
+            matches!(self.u.get(ty), Ty::Array { .. } | Ty::Slice(_) | Ty::Str)
+        };
+        if !builtin
+            && let Some(ty) = self.trait_method_call(id, receiver, receiver_ty, method, args)
+        {
+            return ty;
+        }
+        // A built-in type's own method, from `impl i32 { … }`.
+        let primitive = self
+            .primitive_owner(receiver_ty)
+            .filter(|&owner| self.names.method(owner, &method.name).is_some());
+        if primitive.is_none() {
+            if let Some(ty) = self.array_method(id, receiver, receiver_ty, method, args, false) {
+                return ty;
+            }
+            if let Some(ty) = self.pointer_method(id, receiver_ty, method, args) {
+                return ty;
+            }
+        }
+        // Text written in quotes is a `string` here.
+        if primitive.is_some() && self.u.var_kind(receiver_ty) == Some(VarKind::Text) {
+            let _ = self.u.unify(receiver_ty, self.u.table.text);
+        }
+        // Any type can have methods now: one that isn't a struct just lacks this one.
+        let viewed = {
+            let shallow = self.u.shallow(receiver_ty);
+            match self.u.get(shallow) {
+                Ty::Ref { to, .. } => self.u.shallow(*to),
+                _ => shallow,
+            }
+        };
+        let lacks = !matches!(self.u.get(viewed), Ty::Struct(..) | Ty::Error)
+            && !matches!(self.u.var_kind(viewed), Some(VarKind::Any));
+        // `find(2).get()`: an optional may hold nothing, which is what to say.
+        if primitive.is_none() && matches!(self.u.get(viewed), Ty::Optional(_)) {
+            let span = self.span(receiver);
+            self.errors.push(TypeError::MemberOfOptional {
+                object: span.get_text().to_string(),
+                ty: self.describe(receiver_ty),
+                variable: matches!(self.ast.exprs[receiver], Expr::Var(_)),
+                span,
+            });
+            args.iter().for_each(|&a| {
+                self.infer(a);
+            });
+            return error;
+        }
+        if primitive.is_none() && lacks {
+            self.errors.push(TypeError::UnknownMethod {
+                ty: self.describe(receiver_ty),
+                method: method.name.to_string(),
+                span: method.span.clone(),
+                methods: Vec::new(),
+                props: Vec::new(),
+                fields: Vec::new(),
+                bare_call: self.bare_call(id, method, args),
+            });
+            args.iter().for_each(|&a| {
+                self.infer(a);
+            });
+            return error;
+        }
+        let owner = match primitive {
+            Some(owner) => owner,
+            None => match self.struct_of(receiver_ty, receiver) {
+                Some((owner, _)) => owner,
+                None => {
+                    args.iter().for_each(|&a| {
+                        self.infer(a);
+                    });
+                    return error;
+                }
+            },
+        };
+        let Some(def) = self.names.method(owner, &method.name) else {
+            let ty = self.describe(receiver_ty);
+            if !self.names.props(owner, &method.name).is_empty() {
+                let span = self.span(id);
+                self.errors.push(TypeError::MethodIsProp {
+                    ty,
+                    name: method.name.to_string(),
+                    span: method.span.clone(),
+                    parens: args
+                        .is_empty()
+                        .then(|| method.span.after().merge(&span.after())),
+                });
+                args.iter().for_each(|&a| {
+                    self.infer(a);
+                });
+                return error;
+            }
+            let (fields, props, methods) = self.members(owner, receiver_ty, &method.span);
+            self.errors.push(TypeError::UnknownMethod {
+                ty,
+                method: method.name.to_string(),
+                span: method.span.clone(),
+                methods,
+                props,
+                fields,
+                bare_call: self.bare_call(id, method, args),
+            });
+            args.iter().for_each(|&a| {
+                self.infer(a);
+            });
+            return error;
+        };
+        if self.names.overloads(def).len() > 1 {
+            let name = format!("{}::{}", self.names.def(owner).name, method.name);
+            return self.overloaded_method(id, &name, def, receiver, receiver_ty, args, expected);
+        }
+        let DefKind::Func(func) = self.names.def(def).kind else {
+            unreachable!("methods are functions")
+        };
+        let (sig, type_args) = self.instantiate(func);
+        if !self.on_impl_target(func, &type_args, receiver_ty, method, "method")
+            || !self.check_member_there(func, receiver_ty, &method.name, method.span.clone())
+        {
+            args.iter().for_each(|&a| {
+                self.infer(a);
+            });
+            return error;
+        }
+        self.methods.insert(id, def);
+        self.check_visible(def, &method.span);
+        self.require_bounds(func, &type_args, self.span(id));
+        if !type_args.is_empty() {
+            self.type_args.insert(id, type_args);
+        }
+        // The receiver is the first (`self`) parameter.
+        match sig.params.split_first() {
+            Some((&self_ty, rest)) => {
+                if !self.receive(receiver, self_ty, receiver_ty) {
+                    let from = self.ast.funcs[func].params[0]
+                        .ty
+                        .map(|t| self.ast.types.span(t).clone());
+                    self.mismatch(self_ty, receiver_ty, self.span(receiver), from);
+                }
+                let name = format!("{}::{}", self.names.def(owner).name, method.name);
+                self.check_args_from(id, &name, func, 1, rest, args);
+            }
+            None => {
+                let name = format!("{}::{}", self.names.def(owner).name, method.name);
+                self.errors.push(TypeError::WrongArgCount {
+                    name,
+                    expected: 0,
+                    at_least: false,
+                    found: args.len() + 1,
+                    span: self.span(id),
+                });
+            }
+        }
+        sig.ret
+    }
+
+    fn infer_field(&mut self, id: Id<Expr>, object: Id<Expr>, field: &som_ast::Ident) -> TypeId {
+        let error = self.u.table.error;
+        let object_ty = self.infer_object(object);
+        // `node.value` of a `#Node`: what it shares.
+        let object_ty = self.through_shared(object, object_ty, &field.name);
+        // `"abc".len`: text in quotes is a `string`, with its props.
+        self.text_as_string(object_ty);
+        // `list.len`, with a private field and a `pub prop` both called `len`: the
+        // field where it's seen, so its own code can change it, the prop elsewhere.
+        if !self.field_seen(object_ty, field)
+            && let Some(ty) = self.prop_access(id, object, object_ty, field)
+        {
+            return ty;
+        }
+        // `items.len`: the length of an array, slice or text.
+        if ArrayMethod::from_name(&field.name) == Some(ArrayMethod::Len)
+            && let Some(ty) = self.array_method(id, object, object_ty, field, &[], true)
+        {
+            return ty;
+        }
+        // `xs.length`: an array or slice has `len` and its methods, nothing else.
+        if self.is_collection(object_ty) {
+            let methods = (ArrayMethod::ALL.iter())
+                .filter(|&&m| m != ArrayMethod::Len && m != ArrayMethod::Bytes)
+                .map(|m| m.name())
+                .map(String::from)
+                .collect();
+            self.errors.push(TypeError::UnknownField {
+                ty: self.u.display(self.u.shallow(object_ty), self.names),
+                field: field.name.to_string(),
+                available: Vec::new(),
+                props: vec![ArrayMethod::Len.name().into()],
+                methods,
+                span: field.span.clone(),
+            });
+            return error;
+        }
+        // A range's two ends.
+        let mut viewed = self.u.shallow(object_ty);
+        if let Ty::Ref { to, .. } = *self.u.get(viewed) {
+            viewed = self.u.shallow(to);
+        }
+        // `items.len` of something with a method of that name, not a field.
+        if matches!(
+            self.u.get(viewed),
+            Ty::Array { .. } | Ty::Slice(_) | Ty::Str
+        ) && ArrayMethod::from_name(&field.name).is_some()
+        {
+            self.errors.push(TypeError::FieldIsMethod {
+                ty: self.describe(object_ty),
+                name: field.name.to_string(),
+                span: field.span.clone(),
+            });
+            return error;
+        }
+        if let Ty::Range(int) = *self.u.get(viewed) {
+            let index = match &*field.name {
+                som_lang::RANGE_START => 0,
+                som_lang::RANGE_END => 1,
+                _ => {
+                    self.errors.push(TypeError::UnknownField {
+                        ty: self.u.display(viewed, self.names),
+                        field: field.name.to_string(),
+                        available: vec![som_lang::RANGE_START.into(), som_lang::RANGE_END.into()],
+                        props: Vec::new(),
+                        methods: Vec::new(),
+                        span: field.span.clone(),
+                    });
+                    return error;
+                }
+            };
+            self.fields.insert(id, index);
+            return int;
+        }
+        let Some((owner, args)) = self.struct_of(object_ty, object) else {
+            return error;
+        };
+        let DefKind::Struct(s) = self.names.def(owner).kind else {
+            unreachable!("struct_of returns structs")
+        };
+        if self.ast.structs[s].is_enum() {
+            return self.common_field(id, s, &args, field);
+        }
+        let fields = &self.ast.structs[s].fields;
+        match fields.iter().position(|f| f.name.name == field.name) {
+            Some(index) => {
+                self.fields.insert(id, index);
+                self.check_field_visible(s, index, &field.span);
+                // Written in terms of the struct's type parameters: fill in its arguments.
+                let subst = self.struct_subst(s, &args);
+                self.substitute(self.structs[s.id][index], &subst)
+            }
+            None if self.names.method(owner, &field.name).is_some() => {
+                self.errors.push(TypeError::FieldIsMethod {
+                    ty: self.describe(object_ty),
+                    name: field.name.to_string(),
+                    span: field.span.clone(),
+                });
+                error
+            }
+            None => {
+                let (available, props, methods) = self.members(owner, object_ty, &field.span);
+                self.errors.push(TypeError::UnknownField {
+                    ty: self.names.def(owner).name.to_string(),
+                    field: field.name.to_string(),
+                    available,
+                    props,
+                    methods,
+                    span: field.span.clone(),
+                });
+                error
+            }
+        }
+    }
+
+    fn infer_construct(
+        &mut self,
+        id: Id<Expr>,
+        path: &som_ast::Path,
+        written: &[Id<TypeExpr>],
+        given: &[(som_ast::Ident, Id<Expr>)],
+    ) -> TypeId {
+        let error = self.u.table.error;
+        let Some(def) = self.names.expr(id) else {
+            given.iter().for_each(|(_, v)| {
+                self.infer(*v);
+            });
+            return error;
+        };
+        // A struct, or a variant with named fields: `Shape::Rect { w: 1.0, h: 2.0 }`.
+        let (s, variant) = match self.names.def(def).kind {
+            DefKind::Struct(s) => (s, None),
+            DefKind::Variant { strukt, index } => (strukt, Some(index)),
+            _ => unreachable!("resolver only binds constructors to structs and variants"),
+        };
+        let def = self.names.strukt(s);
+        // The type arguments written, `Pair<i32> { … }`; or each starts unknown, and the
+        // fields' values decide them.
+        let expected = self.names.struct_params(s).len();
+        // `Self { … }` is the type the impl block is for, arguments and all: in
+        // `impl Vector<3, f32>`, a `Vector<3, f32>`.
+        let of_self = (path.segments.len() == 1 && &*path.segments[0].name == som_lang::SELF_TYPE)
+            .then(|| self.current_func.and_then(|f| self.names.impl_of(f)))
+            .flatten()
+            .map(|index| self.self_type(index))
+            // `Vector3 { … }`: the type the alias stands for.
+            .or_else(|| {
+                self.names
+                    .expr_alias(id)
+                    .map(|alias| self.alias_value(alias))
+            })
+            .and_then(|t| match self.u.get(self.u.shallow(t)) {
+                Ty::Struct(d, args) if *d == def => Some(args.clone()),
+                _ => None,
+            });
+        let args: Vec<TypeId> = if let Some(args) = of_self {
+            args
+        } else if written.is_empty() {
+            (0..expected).map(|_| self.u.fresh(VarKind::Any)).collect()
+        } else {
+            self.lower_args(def, s, written, self.span(id))
+        };
+        let subst = self.struct_subst(s, &args);
+        let ty = self.u.intern(Ty::Struct(def, args.clone()));
+        let ast_struct = &self.ast.structs[s];
+        let wrong_form = match variant {
+            // `Shape { … }`: an enum is made from one of its variants.
+            None if ast_struct.is_enum() => {
+                let example = (!ast_struct.variants().is_empty()).then(|| self.variant_form(s, 0));
+                self.errors.push(TypeError::ConstructEnum {
+                    name: ast_struct.name.name.to_string(),
+                    example,
+                    span: self.span(id),
+                });
+                true
+            }
+            Some(index) if ast_struct.variants()[index].kind != VariantKind::Named => {
+                self.errors.push(TypeError::WrongVariantForm {
+                    name: self.variant_name(s, index),
+                    holds: holds(ast_struct.variants()[index].kind),
+                    form: self.variant_form(s, index),
+                    span: self.span(id),
+                });
+                true
+            }
+            _ => false,
+        };
+        if wrong_form {
+            given.iter().for_each(|(_, v)| {
+                self.infer(*v);
+            });
+            return ty;
+        }
+        let (struct_name, declared, field_tys) = match variant {
+            Some(index) => (
+                self.variant_name(s, index),
+                &ast_struct.variants()[index].fields,
+                self.variant_fields(s, index, &args),
+            ),
+            None => {
+                let tys = (0..ast_struct.fields.len())
+                    .map(|i| self.substitute(self.structs[s.id][i], &subst))
+                    .collect();
+                (
+                    self.names.def(def).name.to_string(),
+                    &ast_struct.fields,
+                    tys,
+                )
+            }
+        };
+        // Only C can make one: som doesn't know what's inside.
+        if self.ast.structs[s].handle {
+            self.errors.push(TypeError::ConstructHandle {
+                name: struct_name,
+                span: self.span(id),
+            });
+            given.iter().for_each(|(_, v)| {
+                self.infer(*v);
+            });
+            return ty;
+        }
+        // Fields this code can't see: it can't set them, so it can't make one.
+        let at = self.span(id);
+        let hidden: Vec<usize> = match variant {
+            Some(_) => Vec::new(),
+            None => (0..declared.len())
+                .filter(|&i| {
+                    let viewer = self.viewer(&at);
+                    visibility::hidden_field(self.ast, self.names, s, i, viewer).is_some()
+                })
+                .collect(),
+        };
+        let mut seen = vec![false; declared.len()];
+        for (name, value) in given {
+            match declared.iter().position(|f| f.name.name == name.name) {
+                Some(index) if seen[index] => {
+                    self.errors.push(TypeError::DuplicateField {
+                        field: name.name.to_string(),
+                        span: name.span.clone(),
+                    });
+                    self.infer(*value);
+                }
+                Some(index) => {
+                    seen[index] = true;
+                    let expected = field_tys[index];
+                    let from = self.ast.types.span(declared[index].ty).clone();
+                    self.expect(*value, expected, Some(from));
+                }
+                None => {
+                    self.errors.push(TypeError::UnknownField {
+                        ty: struct_name.clone(),
+                        field: name.name.to_string(),
+                        available: declared.iter().map(|f| f.name.name.to_string()).collect(),
+                        props: Vec::new(),
+                        methods: Vec::new(),
+                        span: name.span.clone(),
+                    });
+                    self.infer(*value);
+                }
+            }
+        }
+        if !hidden.is_empty() {
+            self.errors.push(TypeError::ConstructHidden {
+                ty: struct_name,
+                fields: (hidden.iter())
+                    .map(|&i| {
+                        let name = &declared[i].name;
+                        (name.name.to_string(), name.span.clone())
+                    })
+                    .collect(),
+                span: path.span(),
+                fixes: self.makers(def, &path.to_string(), given, &at),
+            });
+            return ty;
+        }
+        for (field, _) in declared.iter().zip(&seen).filter(|(_, seen)| !**seen) {
+            self.errors.push(TypeError::MissingField {
+                ty: struct_name.clone(),
+                field: field.name.name.to_string(),
+                span: self.span(id),
+            });
+        }
+        ty
+    }
+
+    fn infer_conditional(
+        &mut self,
+        condition: Id<Expr>,
+        then: Id<Expr>,
+        otherwise: Id<Expr>,
+    ) -> TypeId {
+        // Like an `if` statement's: an optional is narrowed in the branch it holds in.
+        let facts = self.check_condition(condition);
+        let (then_ty, _) = self.narrowed_during(facts.when_true, |c| c.infer(then));
+        let (otherwise_ty, _) = self.narrowed_during(facts.when_false, |c| c.infer(otherwise));
+        // A branch that never finishes (`return`) has no value: the other's is it.
+        let (then_leaves, otherwise_leaves) = (self.expr_leaves(then), self.expr_leaves(otherwise));
+        for (branch, leaves) in [(then, then_leaves), (otherwise, otherwise_leaves)] {
+            if leaves {
+                self.diverging.insert(branch);
+            }
+        }
+        match (then_leaves, otherwise_leaves) {
+            (true, true) => return self.u.fresh(VarKind::Any),
+            (true, false) => return otherwise_ty,
+            (false, true) => return then_ty,
+            (false, false) => {}
+        }
+        // `x if c else none`: either branch can be the optional the other is wrapped in.
+        if self.coerce(otherwise, then_ty, otherwise_ty) {
+            then_ty
+        } else if self.coerce(then, otherwise_ty, then_ty) {
+            otherwise_ty
+        } else {
+            let from = self.span(then);
+            self.mismatch(then_ty, otherwise_ty, self.span(otherwise), Some(from));
+            then_ty
+        }
+    }
+
+    fn infer_per_type_match(
+        &mut self,
+        id: Id<Expr>,
+        scrutinee: Id<Expr>,
+        per_type: &som_ast::PerType,
+    ) -> TypeId {
+        let error = self.u.table.error;
+        let name = &per_type.of.name().name;
+        let param = (self.current_func).and_then(|f| {
+            (self.names.type_params(f).iter().copied())
+                .find(|&p| &*self.names.def(p).name == &**name)
+        });
+        let Some(param) = param else {
+            self.errors.push(TypeError::ReflectNotEnum {
+                name: name.to_string(),
+                span: per_type.of.span(),
+            });
+            return error;
+        };
+        let Some(&ty) = self.bound.get(&param) else {
+            // What it gives is what it's expected to: it's checked to be, per instance.
+            self.infer(scrutinee);
+            self.match_regions.insert(id);
+            if let Some(func) = self.current_func {
+                self.per_instance.insert(func);
+            }
+            return match self.expected_here.take() {
+                Some(expected) => expected,
+                None => self.u.fresh(VarKind::Any),
+            };
+        };
+        let enum_ = match self.u.get(ty) {
+            Ty::Struct(def, _) => match self.names.def(*def).kind {
+                DefKind::Struct(s) if self.ast.structs[s].is_enum() => Some(s),
+                _ => None,
+            },
+            _ => None,
+        };
+        match enum_.and_then(|s| per_type.arms.iter().find(|(a, _)| *a == s)) {
+            Some(&(_, copy)) => {
+                self.chosen_matches.insert(id, copy);
+                self.infer(copy)
+            }
+            None => {
+                self.errors.push(TypeError::ReflectNotEnum {
+                    name: self.describe(ty).plain().trim_matches('`').to_string(),
+                    span: per_type.of.span(),
+                });
+                error
+            }
+        }
+    }
+
+    fn infer_block(&mut self, stmts: &[Id<Stmt>], value: Option<Id<Expr>>) -> TypeId {
+        let unit = self.u.table.unit;
+        // What the block is expected to be is what its final value is.
+        let expected = self.expected_here.take();
+        // Like `check_stmts`, but what's narrowed in here lasts into the final value.
+        let outer: HashSet<usize> = self.narrowed.iter().map(|n| n.id).collect();
+        for &stmt in stmts {
+            self.check_stmt(stmt);
+        }
+        let ty = match value {
+            Some(value) => {
+                self.expected = expected;
+                let ty = self.infer(value);
+                if matches!(
+                    self.ast.exprs[value],
+                    Expr::Call { .. } | Expr::MethodCall { .. }
+                ) {
+                    self.tail_calls.push((value, ty));
+                }
+                ty
+            }
+            // `{ return x; }` never ends with a value: like `@unreachable`, it fits
+            // whatever's expected, as in `get(i) else { return none; }`.
+            None if self.leaves(stmts) => {
+                let ty = expected.unwrap_or_else(|| self.u.fresh(VarKind::Any));
+                self.unreachables.push(ty);
+                ty
+            }
+            None => unit,
+        };
+        self.narrowed.retain(|n| outer.contains(&n.id));
+        ty
     }
 
     /// Checks a call of one of the methods every array has, if `receiver` is an array or a
