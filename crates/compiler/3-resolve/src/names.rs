@@ -1,5 +1,6 @@
 use som_ast::{Ast, Expr, Func, Id, Pattern, Span, Stmt, Struct, Trait, TypeExpr};
 use som_base::Arena;
+use som_lang::{LangFunc, LangStruct, LangTrait};
 use std::collections::HashMap;
 
 /// A definition: anything a name can refer to.
@@ -71,173 +72,6 @@ pub struct Def {
     /// Index into `Ast::modules` of the module this is defined in.
     pub module: usize,
 }
-
-/// A trait the language itself uses, found by its name in the standard library: `for` loops
-/// go through `Iterable` and `Iterator`, a value becomes another type through `From`, `==` is
-/// `Eq`'s, `+` is `Add`'s, `<` is `Compare`'s. Adding one is adding a case here, and the hook where the language uses it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum LangTrait {
-    Iterator,
-    /// `for x in &list`: lends its values, `iter(&self)`.
-    Iterable,
-    /// `for x in &mut list`: lends its values to change, `iter_mut(&mut self)`.
-    IterableMut,
-    /// `for x in list`: gives its values up, `into_iter(self)`.
-    IntoIterator,
-    From,
-    Eq,
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Compare,
-    Drop,
-    Copy,
-    /// Copied by calling `share(&self)`: a value that keeps count of its copies.
-    Share,
-    /// `values[i]`: its `at`, where `i` is known to be below its `len`.
-    Index,
-    /// `values[i] = value`: its `at_mut`.
-    IndexMut,
-    /// `"total: {n}"`: how `n` is written into the text.
-    Display,
-}
-
-impl LangTrait {
-    /// The trait operator `op` goes through, for values of a type that implements it.
-    pub fn of_operator(op: som_ast::BinOp) -> Option<LangTrait> {
-        use som_ast::BinOp;
-        Some(match op {
-            BinOp::Equals | BinOp::NotEquals => LangTrait::Eq,
-            BinOp::Add => LangTrait::Add,
-            BinOp::Subtract => LangTrait::Subtract,
-            BinOp::Multiply => LangTrait::Multiply,
-            BinOp::Divide => LangTrait::Divide,
-            BinOp::LessThan
-            | BinOp::GreaterThan
-            | BinOp::LessThanOrEqual
-            | BinOp::GreaterThanOrEqual => LangTrait::Compare,
-            BinOp::Modulo
-            | BinOp::And
-            | BinOp::Or
-            | BinOp::BitAnd
-            | BinOp::BitOr
-            | BinOp::BitXor
-            | BinOp::ShiftLeft
-            | BinOp::ShiftRight => return None,
-        })
-    }
-
-    /// The method of it an operator calls.
-    pub fn operator_method(self) -> Option<&'static str> {
-        Some(match self {
-            LangTrait::Eq => "eq",
-            LangTrait::Add => "add",
-            LangTrait::Subtract => "subtract",
-            LangTrait::Multiply => "multiply",
-            LangTrait::Divide => "divide",
-            LangTrait::Compare => "compare",
-            LangTrait::Iterator
-            | LangTrait::Iterable
-            | LangTrait::IterableMut
-            | LangTrait::IntoIterator
-            | LangTrait::From
-            | LangTrait::Drop
-            | LangTrait::Copy
-            | LangTrait::Share
-            | LangTrait::Index
-            | LangTrait::IndexMut
-            | LangTrait::Display => return None,
-        })
-    }
-
-    pub const ALL: [LangTrait; 17] = [
-        LangTrait::Iterator,
-        LangTrait::Iterable,
-        LangTrait::IterableMut,
-        LangTrait::IntoIterator,
-        LangTrait::From,
-        LangTrait::Eq,
-        LangTrait::Add,
-        LangTrait::Subtract,
-        LangTrait::Multiply,
-        LangTrait::Divide,
-        LangTrait::Compare,
-        LangTrait::Drop,
-        LangTrait::Copy,
-        LangTrait::Share,
-        LangTrait::Index,
-        LangTrait::IndexMut,
-        LangTrait::Display,
-    ];
-
-    /// Its name in the standard library.
-    pub fn name(self) -> &'static str {
-        match self {
-            LangTrait::Iterator => "Iterator",
-            LangTrait::Iterable => "Iterable",
-            LangTrait::IterableMut => "IterableMut",
-            LangTrait::IntoIterator => "IntoIterator",
-            LangTrait::From => "From",
-            LangTrait::Eq => "Eq",
-            LangTrait::Add => "Add",
-            LangTrait::Subtract => "Subtract",
-            LangTrait::Multiply => "Multiply",
-            LangTrait::Divide => "Divide",
-            LangTrait::Compare => "Compare",
-            LangTrait::Drop => "Drop",
-            LangTrait::Copy => "Copy",
-            LangTrait::Share => "Share",
-            LangTrait::Index => "Index",
-            LangTrait::IndexMut => "IndexMut",
-            LangTrait::Display => "Display",
-        }
-    }
-}
-
-/// A struct the language itself uses, found by its name in the standard library.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum LangStruct {
-    /// `Manual<T>`: holds a value that's never dropped on its own. Whatever holds it drops
-    /// what needs dropping, as an array's iterator does with the elements it hasn't given.
-    Manual,
-    /// `Rc<T>`: what `#T` is, a value shared by its copies, counted.
-    Rc,
-    /// `string`: what text is, and what a literal is unless it's given to C.
-    String,
-    /// `Failure`: what `@on fail` listeners are given, at `@fail` or `@unreachable`.
-    Failure,
-    /// `Location`: where in the source something is, a `Failure`'s `at`.
-    Location,
-}
-
-impl LangStruct {
-    pub const ALL: [LangStruct; 5] = [
-        LangStruct::Manual,
-        LangStruct::Rc,
-        LangStruct::String,
-        LangStruct::Failure,
-        LangStruct::Location,
-    ];
-
-    /// Its name in the standard library.
-    pub fn name(self) -> &'static str {
-        match self {
-            LangStruct::Manual => "Manual",
-            LangStruct::Rc => "Rc",
-            LangStruct::String => "string",
-            LangStruct::Failure => "Failure",
-            LangStruct::Location => "Location",
-        }
-    }
-}
-
-/// The standard library's function that stops the program once a failure's listeners have
-/// been told.
-pub const HALT: &str = "halt";
-
-/// The standard library's function copying an optional `Share` value: it shares what's held.
-pub const SHARE_OPTIONAL: &str = "share_optional";
 
 /// An `impl` block, by its index in `Names::impls`.
 pub struct ImplDef {
@@ -319,12 +153,9 @@ pub struct Names {
     lang: HashMap<LangTrait, DefId>,
     /// The structs the language uses, where the standard library defines them.
     lang_structs: HashMap<LangStruct, DefId>,
-    /// What stops the program after a failure, where the standard library defines it.
-    halt: Option<DefId>,
+    lang_funcs: HashMap<LangFunc, DefId>,
     /// The functions called when the program fails (see `fail_listeners`).
     fail_listeners: Vec<Id<Func>>,
-    /// What copying a `T?` of a `Share` `T` calls, where the standard library defines it.
-    share_optional: Option<DefId>,
     /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
     /// name (`Circle(r)`, `Empty`) has none: the type matched decides which enum's it is.
     patterns: Vec<Option<DefId>>,
@@ -365,9 +196,8 @@ impl Names {
             projection_bases: HashMap::new(),
             lang: HashMap::new(),
             lang_structs: HashMap::new(),
-            halt: None,
+            lang_funcs: HashMap::new(),
             fail_listeners: Vec::new(),
-            share_optional: None,
             patterns: vec![None; ast.patterns.len()],
             primitives: HashMap::new(),
         }
@@ -401,21 +231,12 @@ impl Names {
         self.lang_structs.insert(lang, def);
     }
 
-    pub(crate) fn set_halt(&mut self, def: DefId) {
-        self.halt = Some(def);
+    pub(crate) fn set_lang_func(&mut self, lang: LangFunc, def: DefId) {
+        self.lang_funcs.insert(lang, def);
     }
 
     pub(crate) fn set_fail_listeners(&mut self, listeners: Vec<Id<Func>>) {
         self.fail_listeners = listeners;
-    }
-
-    pub(crate) fn set_share_optional(&mut self, def: DefId) {
-        self.share_optional = Some(def);
-    }
-
-    /// What copying a `T?` of a `Share` `T` calls, if the standard library is loaded.
-    pub fn share_optional(&self) -> Option<DefId> {
-        self.share_optional
     }
 
     /// Adds `def` to the functions named like `first`.
@@ -727,10 +548,8 @@ impl Names {
         self.lang_structs.get(&lang).copied()
     }
 
-    /// What `@unreachable` calls, if the standard library is loaded.
-    /// The standard library's function that stops the program after a failure (see [`HALT`]).
-    pub fn halt(&self) -> Option<DefId> {
-        self.halt
+    pub fn lang_func(&self, lang: LangFunc) -> Option<DefId> {
+        self.lang_funcs.get(&lang).copied()
     }
 
     /// What's called, in order, when the program fails: its own `@on fail` functions, or if

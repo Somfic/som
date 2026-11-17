@@ -117,7 +117,11 @@ pub static LET: &[Foreign] = &[
 
 /// Declaring a constant, outside a function: `const MAX = 10;`.
 pub static CONST: &[Foreign] = &[
-    f("const", "@const", &[Rust, Zig, C, Cpp, JavaScript, TypeScript]),
+    f(
+        "const",
+        "@const",
+        &[Rust, Zig, C, Cpp, JavaScript, TypeScript],
+    ),
     f("constexpr", "@const", &[Cpp]),
 ];
 

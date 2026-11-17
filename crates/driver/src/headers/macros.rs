@@ -281,14 +281,14 @@ fn lex(body: &str) -> Option<Vec<Tok>> {
         let c = chars[i];
         if c.is_whitespace() {
             i += 1;
-        } else if c.is_ascii_digit() || (c == '.' && chars.get(i + 1).is_some_and(char::is_ascii_digit)) {
+        } else if c.is_ascii_digit()
+            || (c == '.' && chars.get(i + 1).is_some_and(char::is_ascii_digit))
+        {
             let start = i;
             let hex = c == '0' && matches!(chars.get(i + 1), Some('x' | 'X'));
             while i < chars.len() {
                 let c = chars[i];
-                let exponent = !hex
-                    && matches!(c, '+' | '-')
-                    && matches!(chars[i - 1], 'e' | 'E');
+                let exponent = !hex && matches!(c, '+' | '-') && matches!(chars[i - 1], 'e' | 'E');
                 if !(c.is_ascii_alphanumeric() || c == '.' || exponent) {
                     break;
                 }
@@ -360,8 +360,25 @@ fn c_escape(after: &[char]) -> Option<(u32, usize)> {
         return Some((value, 1));
     }
     let (radix, digits, skip): (u32, Vec<char>, usize) = match first {
-        'x' => (16, after[1..].iter().copied().take_while(char::is_ascii_hexdigit).collect(), 1),
-        '0'..='7' => (8, after.iter().copied().take(3).take_while(|c| ('0'..='7').contains(c)).collect(), 0),
+        'x' => (
+            16,
+            after[1..]
+                .iter()
+                .copied()
+                .take_while(char::is_ascii_hexdigit)
+                .collect(),
+            1,
+        ),
+        '0'..='7' => (
+            8,
+            after
+                .iter()
+                .copied()
+                .take(3)
+                .take_while(|c| ('0'..='7').contains(c))
+                .collect(),
+            0,
+        ),
         _ => return None,
     };
     if digits.is_empty() {
@@ -435,7 +452,10 @@ fn number(text: &str) -> Option<Val> {
         (false, false, true) => &[Int::I32, Int::I64],
         (false, false, false) => &[Int::I32, Int::U32, Int::I64, Int::U64],
     };
-    let int = candidates.iter().copied().find(|int| int.fit(n) == Some(n))?;
+    let int = candidates
+        .iter()
+        .copied()
+        .find(|int| int.fit(n) == Some(n))?;
     Some(Val::Int(n, int))
 }
 

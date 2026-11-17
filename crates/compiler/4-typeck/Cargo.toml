@@ -5,6 +5,7 @@ edition = "2024"
 description = "Infers and checks the type of every expression"
 
 [dependencies]
+som_lang = { path = "../../core/lang" }
 som_base = { path = "../../core/base" }
 som_ast = { path = "../../core/ast" }
 som_resolve = { path = "../3-resolve" }

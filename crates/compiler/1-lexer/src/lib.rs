@@ -528,7 +528,15 @@ pub fn lex_range(source: Arc<Source>, range: std::ops::Range<usize>) -> Vec<Toke
         tokens.push(Token {
             kind,
             text: lexer.slice().into(),
-            span: Span::new(start.0, start.1, end.0, end.1, from, at.len(), source.clone()),
+            span: Span::new(
+                start.0,
+                start.1,
+                end.0,
+                end.1,
+                from,
+                at.len(),
+                source.clone(),
+            ),
         });
     }
     let end = cursor.advance_to(input, range.end);

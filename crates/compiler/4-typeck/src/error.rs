@@ -179,17 +179,30 @@ pub enum TypeError {
     },
     /// `@for f in T` where `T` isn't a struct: a generic function's type parameter, used with
     /// one that isn't (`i32`), or a name that's neither.
-    ReflectNotStruct { name: String, span: Span },
+    ReflectNotStruct {
+        name: String,
+        span: Span,
+    },
     /// `@for (i, k) in T` among a `match`'s arms where `T` isn't an enum.
-    ReflectNotEnum { name: String, span: Span },
+    ReflectNotEnum {
+        name: String,
+        span: Span,
+    },
     /// A type where a value goes in an `@if`'s condition, not compared with another type:
     /// `@if T`, or `@if T == 3`.
-    TypeNotCompared { span: Span },
+    TypeNotCompared {
+        span: Span,
+    },
     /// `@on fail fn save()`: a listener takes a `&Failure`, and gives nothing back.
-    ListenerSignature { span: Span },
+    ListenerSignature {
+        span: Span,
+    },
     /// `@const N = len();` where what `len` runs needs `N`'s value to be checked: a type
     /// `[i32; N]`, or an `@if`. It can't be worked out before it's known.
-    ConstCycle { name: String, span: Span },
+    ConstCycle {
+        name: String,
+        span: Span,
+    },
     /// `none` where a raw pointer is expected: `fflush(none)`. A null pointer is
     /// `mem::null()`.
     NoneAsPointer {
@@ -1366,9 +1379,7 @@ impl TypeError {
                 let (label, hint) = match written.as_str() {
                     "None" => (
                         msg!["an optional without a value is ", code("none")],
-                        msg![
-                            "a capitalised name here would be a new variable, matching anything"
-                        ],
+                        msg!["a capitalised name here would be a new variable, matching anything"],
                     ),
                     _ if *needs_none_first => (
                         msg!["an optional's value is matched by the pattern itself"],
@@ -1963,11 +1974,12 @@ impl TypeError {
                 span,
                 expected_from,
             } => {
-                let mut d = Diagnostic::error(msg![code("none"), " isn't a pointer"])
-                    .with_label(Label::primary(
+                let mut d = Diagnostic::error(msg![code("none"), " isn't a pointer"]).with_label(
+                    Label::primary(
                         span.clone(),
                         msg![ty.clone(), " expected, which ", code("none"), " can't be"],
-                    ));
+                    ),
+                );
                 if let Some(from) = expected_from {
                     d = d.with_label(Label::secondary(
                         from.clone(),
@@ -1997,7 +2009,10 @@ impl TypeError {
                 .with_label(Label::secondary(defined_at.clone(), "defined here")),
             TypeError::NotSettled { what, hint, span } => {
                 Diagnostic::error(msg![*what, " has to be known while compiling"])
-                    .with_label(Label::primary(span.clone(), "only known when the program runs"))
+                    .with_label(Label::primary(
+                        span.clone(),
+                        "only known when the program runs",
+                    ))
                     .with_hint(*hint)
             }
             TypeError::MemberNotHere {
@@ -2005,11 +2020,12 @@ impl TypeError {
                 ty,
                 condition,
                 span,
-            } => Diagnostic::error(msg![ty.clone(), " has no ", code(name)])
-                .with_label(Label::primary(
+            } => Diagnostic::error(msg![ty.clone(), " has no ", code(name)]).with_label(
+                Label::primary(
                     span.clone(),
                     msg![code(name), " is only there where ", code(condition)],
-                )),
+                ),
+            ),
             TypeError::MemberMaybeNotHere {
                 name,
                 condition,
@@ -2017,7 +2033,11 @@ impl TypeError {
             } => Diagnostic::error(msg!["can't tell ", code(name), " is there"])
                 .with_label(Label::primary(
                     span.clone(),
-                    msg!["only there where ", code(condition), ", which isn't known here"],
+                    msg![
+                        "only there where ",
+                        code(condition),
+                        ", which isn't known here"
+                    ],
                 ))
                 .with_hint(msg![
                     "use it in ",
@@ -2034,39 +2054,44 @@ impl TypeError {
                         code("@if T == f32 { … }")
                     ])
             }
-            TypeError::ReflectNotEnum { name, span } => {
-                Diagnostic::error(msg![code(name), " isn't an enum to go through the variants of"])
-                    .with_label(Label::primary(span.clone(), "not an enum here"))
-                    .with_hint(msg![
-                        code("@for (i, k) in T"),
-                        " among a match's arms goes through an enum's variants: an enum, or a \
-                         type parameter used with one"
-                    ])
-            }
-            TypeError::ReflectNotStruct { name, span } => {
-                Diagnostic::error(msg![code(name), " isn't a struct to go through the fields of"])
-                    .with_label(Label::primary(span.clone(), "not a struct here"))
-                    .with_hint(msg![
-                        code("@for f in T"),
-                        " goes through a struct's fields: a struct, or a type parameter used \
-                         with one"
-                    ])
-            }
-            TypeError::ListenerSignature { span } => Diagnostic::error(msg![
-                "an ",
-                code("@on fail"),
-                " function takes what failed"
+            TypeError::ReflectNotEnum { name, span } => Diagnostic::error(msg![
+                code(name),
+                " isn't an enum to go through the variants of"
             ])
-            .with_label(Label::primary(span.clone(), "called when the program fails"))
-            .with_hint(msg!["write it ", code("fn name(failure: &Failure)")]),
-            TypeError::ConstCycle { name, span } => {
-                Diagnostic::error(msg!["constant ", var(name), " is needed to work itself out"])
+            .with_label(Label::primary(span.clone(), "not an enum here"))
+            .with_hint(msg![
+                code("@for (i, k) in T"),
+                " among a match's arms goes through an enum's variants: an enum, or a \
+                         type parameter used with one"
+            ]),
+            TypeError::ReflectNotStruct { name, span } => Diagnostic::error(msg![
+                code(name),
+                " isn't a struct to go through the fields of"
+            ])
+            .with_label(Label::primary(span.clone(), "not a struct here"))
+            .with_hint(msg![
+                code("@for f in T"),
+                " goes through a struct's fields: a struct, or a type parameter used \
+                         with one"
+            ]),
+            TypeError::ListenerSignature { span } => {
+                Diagnostic::error(msg!["an ", code("@on fail"), " function takes what failed"])
                     .with_label(Label::primary(
                         span.clone(),
-                        "what it runs needs its value, in a type or an `@if`",
+                        "called when the program fails",
                     ))
-                    .with_hint("its value can't be known before it's worked out")
+                    .with_hint(msg!["write it ", code("fn name(failure: &Failure)")])
             }
+            TypeError::ConstCycle { name, span } => Diagnostic::error(msg![
+                "constant ",
+                var(name),
+                " is needed to work itself out"
+            ])
+            .with_label(Label::primary(
+                span.clone(),
+                "what it runs needs its value, in a type or an `@if`",
+            ))
+            .with_hint("its value can't be known before it's worked out"),
             TypeError::ConstChanged {
                 name,
                 span,

@@ -4,7 +4,8 @@
 
 use som_ast::{Expr, Func, Id, Item, Span};
 use som_base::msg;
-use som_resolve::{DefId, DefKind, LangTrait};
+use som_lang::LangTrait;
+use som_resolve::{DefId, DefKind};
 
 use super::Checker;
 use crate::Start;
@@ -548,7 +549,7 @@ impl Checker<'_> {
             _ => {
                 let mut traits = implemented(self);
                 traits.extend(
-                    (LangTrait::ALL.into_iter())
+                    (LangTrait::ALL.iter().copied())
                         .filter(|&l| self.has_builtin(base, l))
                         .filter_map(|l| self.names.lang(l)),
                 );
@@ -603,7 +604,7 @@ impl Checker<'_> {
     /// `Iterator` or an `Iterable`. Records how it goes through it.
     pub(super) fn iterator_loop(&mut self, stmt: Id<som_ast::Stmt>, ty: TypeId) -> Option<TypeId> {
         let iterator = self.names.lang(LangTrait::Iterator)?;
-        let item = self.assoc_index(iterator, "Item")?;
+        let item = self.assoc_index(iterator, LangTrait::Iterator.assoc_type()?)?;
         let shallow = self.u.shallow(ty);
         let (viewed, lent) = match *self.u.get(shallow) {
             Ty::Ref { to, mutable } => (self.u.shallow(to), Some(mutable)),
@@ -615,16 +616,16 @@ impl Checker<'_> {
         let (iter_ty, start) = if lent.is_none() && self.implements(shallow, iterator) {
             (shallow, Start::Itself)
         } else {
-            let (lang, assoc, start) = match lent {
-                None => (LangTrait::IntoIterator, "IntoIter", Start::IntoIter),
-                Some(false) => (LangTrait::Iterable, "Iter", Start::Iter),
-                Some(true) => (LangTrait::IterableMut, "IterMut", Start::IterMut),
+            let (lang, start) = match lent {
+                None => (LangTrait::IntoIterator, Start::IntoIter),
+                Some(false) => (LangTrait::Iterable, Start::Iter),
+                Some(true) => (LangTrait::IterableMut, Start::IterMut),
             };
             let trait_ = self.names.lang(lang)?;
             if !self.implements(viewed, trait_) {
                 return None;
             }
-            let index = self.assoc_index(trait_, assoc)?;
+            let index = self.assoc_index(trait_, lang.assoc_type()?)?;
             let assoc = self.u.intern(Ty::Assoc {
                 base: viewed,
                 trait_,
@@ -661,7 +662,7 @@ impl Checker<'_> {
         op: som_ast::BinOp,
         ty: TypeId,
     ) -> Option<TypeId> {
-        let lang = LangTrait::of_operator(op)?;
+        let lang = op.lang_trait()?;
         let shallow = self.u.shallow(ty);
         // Numbers' own `+`; an unknown, once it's known.
         if self.has_builtin(shallow, lang) || matches!(self.u.get(shallow), Ty::Var(_) | Ty::Error)
@@ -979,8 +980,7 @@ impl Checker<'_> {
 
     /// Whether `def` is the standard library's, which a program can't change.
     pub(super) fn in_std(&self, def: DefId) -> bool {
-        let name = &self.ast.modules[self.names.def(def).module].name;
-        &**name == "som" || name.starts_with("som::")
+        som_lang::is_std_module(&self.ast.modules[self.names.def(def).module].name)
     }
 
     /// Whether struct `def` implements `Copy`, for any type arguments.
@@ -1030,7 +1030,9 @@ impl Checker<'_> {
         if source != shallow {
             let _ = self.u.unify(shallow, source);
         }
-        let Some(func) = self.trait_method(from, "from") else {
+        let Some(func) =
+            self.trait_method(from, LangTrait::From.method().expect("From has a method"))
+        else {
             return false;
         };
         self.conversions

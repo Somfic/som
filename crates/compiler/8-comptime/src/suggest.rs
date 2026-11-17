@@ -25,7 +25,9 @@ pub struct CouldBeConst {
 }
 
 /// The C functions the interpreter does itself: calling them changes nothing outside.
-const NATIVE: &[&str] = &["memcpy", "memmove", "memset", "memcmp", "strlen", "snprintf"];
+const NATIVE: &[&str] = &[
+    "memcpy", "memmove", "memset", "memcmp", "strlen", "snprintf",
+];
 
 /// The most steps a call is tried for: more, and it's no call to make while compiling (and the
 /// editor tries them on every check).
@@ -104,7 +106,8 @@ pub fn could_be_const(mir: &Mir) -> Vec<CouldBeConst> {
                     let (Operand::Copy(place) | Operand::Move(place)) = written else {
                         continue;
                     };
-                    let (Some(name), Operand::Const(c)) = (&body.locals[place.local].name, arg) else {
+                    let (Some(name), Operand::Const(c)) = (&body.locals[place.local].name, arg)
+                    else {
                         continue;
                     };
                     match literal(&c.kind) {
@@ -124,7 +127,9 @@ pub fn could_be_const(mir: &Mir) -> Vec<CouldBeConst> {
                 // `@f(args)` for a call of a function by its name; `@const …` for anything else.
                 let plain = (fixed.split('(').next()).is_some_and(|callee| {
                     !callee.is_empty()
-                        && callee.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+                        && callee
+                            .chars()
+                            .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
                 });
                 let fix = match plain {
                     true => format!("@{fixed}"),
@@ -199,7 +204,10 @@ fn known_locals(body: &Body) -> HashMap<Local, Const> {
             let StatementKind::Assign(place, rvalue) = &statement.kind else {
                 continue;
             };
-            if let Rvalue::Ref { place: borrowed, .. } = rvalue {
+            if let Rvalue::Ref {
+                place: borrowed, ..
+            } = rvalue
+            {
                 changed.insert(borrowed.local);
             }
             if !place.projection.is_empty() {
@@ -331,7 +339,10 @@ fn call_span(statement: &Span, name: &str) -> Option<Span> {
     let pattern = format!("{name}(");
     let mut matches = text.match_indices(&pattern).filter(|&(at, _)| {
         // A whole name, not the end of a longer one.
-        text[..at].chars().next_back().is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
+        text[..at]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
             || text[..at].ends_with("::")
     });
     let (at, _) = matches.next()?;
@@ -344,7 +355,11 @@ fn call_span(statement: &Span, name: &str) -> Option<Span> {
         let before = &text[..start];
         if before.ends_with("::") {
             start -= 2;
-        } else if before.chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '_') {
+        } else if before
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
+        {
             start -= before.chars().next_back().map_or(1, char::len_utf8);
         } else {
             break;
@@ -367,5 +382,8 @@ fn call_span(statement: &Span, name: &str) -> Option<Span> {
         }
     }
     let begin = statement.start_offset + start;
-    Some(Span::from_range(begin..statement.start_offset + end?, statement.source.clone()))
+    Some(Span::from_range(
+        begin..statement.start_offset + end?,
+        statement.source.clone(),
+    ))
 }

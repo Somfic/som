@@ -14,9 +14,8 @@ mod names;
 pub mod visibility;
 
 pub use error::ResolveError;
-pub use names::{
-    Def, DefId, DefKind, HALT, ImplDef, LangStruct, LangTrait, Names, SHARE_OPTIONAL,
-};
+pub use names::{Def, DefId, DefKind, ImplDef, Names};
+use som_lang::{LangFunc, LangStruct, LangTrait};
 
 use som_ast::{Ast, Expr, Func, Id, Ident, Item, Path, Pattern, PatternFields, Stmt, TypeExpr};
 use som_base::diagnostics::{closest_match, snake_case};
@@ -38,8 +37,8 @@ pub fn resolve(ast: &Ast) -> (Names, Vec<ResolveError>) {
         variant_names: vec![HashSet::new(); ast.modules.len()],
         module: 0,
         scopes: Vec::new(),
-            const_depth: None,
-            settled_condition: false,
+        const_depth: None,
+        settled_condition: false,
         type_params: Vec::new(),
         block_types: Vec::new(),
         through_alias: std::cell::Cell::new(None),
@@ -245,34 +244,32 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
-        // The traits the language uses, from the standard library's root module.
-        if let Some(&root) = self.modules.get("som") {
-            for lang in LangTrait::ALL {
-                if let Some(&def) = self.items[root].get(lang.name())
-                    && matches!(self.names.def(def).kind, DefKind::Trait(_))
-                {
-                    self.names.set_lang(lang, def);
-                }
-            }
-            for lang in LangStruct::ALL {
-                if let Some(&def) = self.items[root].get(lang.name())
-                    && matches!(self.names.def(def).kind, DefKind::Struct(_))
-                {
-                    self.names.set_lang_struct(lang, def);
-                }
-            }
-            if let Some(&def) = self.items[root].get(SHARE_OPTIONAL)
-                && matches!(self.names.def(def).kind, DefKind::Func(_))
-            {
-                self.names.set_share_optional(def);
-            }
-            if let Some(&def) = self.items[root].get(HALT)
-                && matches!(self.names.def(def).kind, DefKind::Func(_))
-            {
-                self.names.set_halt(def);
+        self.bind_lang_items();
+        self.collect_listeners();
+    }
+
+    fn bind_lang_items(&mut self) {
+        let Some(&root) = self.modules.get(som_lang::PRELUDE_MODULE) else {
+            return;
+        };
+        let find = |this: &Self, name: &str, fits: fn(&DefKind) -> bool| {
+            (this.items[root].get(name).copied()).filter(|&def| fits(&this.names.def(def).kind))
+        };
+        for &lang in LangTrait::ALL {
+            if let Some(def) = find(self, lang.name(), |k| matches!(k, DefKind::Trait(_))) {
+                self.names.set_lang(lang, def);
             }
         }
-        self.collect_listeners();
+        for &lang in LangStruct::ALL {
+            if let Some(def) = find(self, lang.name(), |k| matches!(k, DefKind::Struct(_))) {
+                self.names.set_lang_struct(lang, def);
+            }
+        }
+        for &lang in LangFunc::ALL {
+            if let Some(def) = find(self, lang.name(), |k| matches!(k, DefKind::Func(_))) {
+                self.names.set_lang_func(lang, def);
+            }
+        }
     }
 
     /// The functions `@on fail` says are called when the program fails: the program's own,
@@ -290,7 +287,7 @@ impl<'a> Resolver<'a> {
         let (mut own, mut std) = (Vec::new(), Vec::new());
         for (id, func) in ast.funcs.iter() {
             for event in &func.listens {
-                if &*event.name != "fail" {
+                if &*event.name != som_lang::FAIL_EVENT {
                     self.errors.push(ResolveError::UnknownEvent {
                         name: event.name.to_string(),
                         span: event.span.clone(),
@@ -305,7 +302,7 @@ impl<'a> Resolver<'a> {
                     continue;
                 }
                 let module = &ast.modules[self.names.def(self.names.func(id)).module].name;
-                match &**module == "som" || module.starts_with("som::") {
+                match som_lang::is_std_module(module) {
                     true => std.push(id),
                     false => own.push(id),
                 }
@@ -422,7 +419,8 @@ impl<'a> Resolver<'a> {
                 // `@const PI = 3.14;`: named through the type.
                 for &c in &block.consts {
                     let name = &ast.consts[c].name;
-                    let def = (self.names).define(&name.name, DefKind::Const(c), name.span.clone(), m);
+                    let def =
+                        (self.names).define(&name.name, DefKind::Const(c), name.span.clone(), m);
                     self.names.set_const(c, def);
                     let Some(owner) = owner else { continue };
                     let previous = (self.names.variant(owner, &name.name))
@@ -504,7 +502,10 @@ impl<'a> Resolver<'a> {
             DefKind::Func(f) => !ast.funcs[f].when.is_empty(),
             _ => false,
         };
-        if let Some(previous) = self.names.add_prop(owner, &name.name, block, def, conditional) {
+        if let Some(previous) = self
+            .names
+            .add_prop(owner, &name.name, block, def, conditional)
+        {
             self.errors.push(ResolveError::DuplicateDefinition {
                 name: name.name.to_string(),
                 span: name.span.clone(),
@@ -683,13 +684,13 @@ impl<'a> Resolver<'a> {
         self.type_params.clear();
 
         let self_type = self.names.define(
-            "Self",
+            som_lang::SELF_TYPE,
             DefKind::SelfType { impl_: index },
             block.target.span(),
             self.module,
         );
         let types = self.names.impls[index].types.clone();
-        self.block_types = std::iter::once(("Self", self_type))
+        self.block_types = std::iter::once((som_lang::SELF_TYPE, self_type))
             .chain(
                 block
                     .types
@@ -730,7 +731,7 @@ impl<'a> Resolver<'a> {
         self.names.set_supers(id, supers);
         // Its parameters' defaults, `Other = Self`: in terms of `Self` and its parameters.
         let this = som_ast::Ident {
-            name: "Self".into(),
+            name: som_lang::SELF_TYPE.into(),
             span: t.name.span.clone(),
         };
         let params: Vec<DefId> = (std::iter::once(&this).chain(t.generics.iter().map(|g| &g.name)))
@@ -742,7 +743,7 @@ impl<'a> Resolver<'a> {
             })
             .collect();
         self.names.set_trait_params(id, params.clone());
-        self.type_params = std::iter::once("Self")
+        self.type_params = std::iter::once(som_lang::SELF_TYPE)
             .chain(t.generics.iter().map(|g| &*g.name.name))
             .zip(params)
             .collect();
@@ -1138,7 +1139,9 @@ impl<'a> Resolver<'a> {
             }),
             // `@for (i, k) in T` among its arms, over a generic enum: each enum's copy. The
             // copies are the same text: what's wrong is said for the first.
-            Expr::Match { scrutinee, .. } if let Some(per_type) = self.ast.per_type_matches.get(&id) => {
+            Expr::Match { scrutinee, .. }
+                if let Some(per_type) = self.ast.per_type_matches.get(&id) =>
+            {
                 self.resolve_expr(*scrutinee);
                 for (k, &(_, copy)) in per_type.arms.iter().enumerate() {
                     let before = self.errors.len();
@@ -1206,7 +1209,7 @@ impl<'a> Resolver<'a> {
     /// Whether `name` is a variant of an enum in the current module, one it uses, or the
     /// prelude: `Less` of `Ordering`.
     fn is_variant_name(&self, name: &str) -> bool {
-        let prelude = self.modules.get("som").copied();
+        let prelude = self.modules.get(som_lang::PRELUDE_MODULE).copied();
         std::iter::once(self.module)
             .chain(self.block_imports.iter().rev().map(|&(_, m)| m))
             .chain(self.imports[self.module].iter().copied())
@@ -1221,8 +1224,10 @@ impl<'a> Resolver<'a> {
             // worked out once for each set of arguments the function is used with.
             let outside = |r: &Self| {
                 let depth = r.const_depth.unwrap_or(0);
-                (r.scopes.iter().rposition(|scope| scope.values().any(|&d| d == def)))
-                    .is_some_and(|at| at < depth)
+                (r.scopes
+                    .iter()
+                    .rposition(|scope| scope.values().any(|&d| d == def)))
+                .is_some_and(|at| at < depth)
             };
             let local = matches!(
                 self.names.def(def).kind,
@@ -1395,7 +1400,7 @@ impl<'a> Resolver<'a> {
         }
         // `Self { … }` and `Self::new()` in an impl block: the struct or built-in type it's for.
         if expect == Expect::Struct
-            && name == "Self"
+            && name == som_lang::SELF_TYPE
             && let Some(&(_, def)) = self.block_types.iter().find(|(n, _)| *n == name)
             && let DefKind::SelfType { impl_ } = self.names.def(def).kind
         {
@@ -1411,7 +1416,7 @@ impl<'a> Resolver<'a> {
 
         // The standard library's root module, `som`, is seen from everywhere: the traits the
         // language uses are there.
-        let prelude = self.modules.get("som").copied();
+        let prelude = self.modules.get(som_lang::PRELUDE_MODULE).copied();
         std::iter::once(self.module)
             .chain(self.block_imports.iter().rev().map(|&(_, m)| m))
             .chain(self.imports[self.module].iter().copied())
@@ -1735,7 +1740,10 @@ impl Resolver<'_> {
             .filter_map(|(n, def)| match self.names.def(def).kind {
                 DefKind::Func(f) => {
                     let func = &self.ast.funcs[f];
-                    let takes_self = func.params.first().is_some_and(|p| &*p.name.name == "self");
+                    let takes_self = func
+                        .params
+                        .first()
+                        .is_some_and(|p| &*p.name.name == som_lang::SELF_VALUE);
                     (!func.prop && !takes_self)
                         .then(|| (format!("{qualifier}::{n}"), func.params.is_empty()))
                 }
@@ -1775,7 +1783,10 @@ impl Resolver<'_> {
         name: &str,
         change_to: &dyn Fn(String) -> Vec<Fix>,
     ) -> Option<(Message, Vec<Fix>)> {
-        let has_self = self.scopes.iter().any(|s| s.contains_key("self"));
+        let has_self = self
+            .scopes
+            .iter()
+            .any(|s| s.contains_key(som_lang::SELF_VALUE));
         let found =
             foreign::value(name).or_else(|| foreign::self_word(name).filter(|_| has_self))?;
         let help = msg!["som writes ", code(found.som), ": ", found.hint()];

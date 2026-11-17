@@ -3,8 +3,8 @@ use som_base::message::code;
 use som_base::{Fix, msg};
 use som_lexer::TokenKind;
 
-use crate::{ParseError, Parser};
 use crate::grammar::{Association, Grammar, OpInfo};
+use crate::{ParseError, Parser};
 use som_ast::BinOp;
 
 impl Parser<'_> {
@@ -198,13 +198,29 @@ impl Parser<'_> {
                 let Some(read) = self.copy_place(lhs) else {
                     self.error_at(
                         at,
-                        msg![code(op.symbol().to_string() + "="), " changes a variable, field or element"],
+                        msg![
+                            code(op.symbol().to_string() + "="),
+                            " changes a variable, field or element"
+                        ],
                         msg!["write it out: ", code("target = target + value")],
                     );
                     continue;
                 };
-                let sum = self.alloc_expr(Expr::Binary { op, lhs: read, rhs: value }, &start);
-                lhs = self.alloc_expr(Expr::Assign { target: lhs, value: sum }, &start);
+                let sum = self.alloc_expr(
+                    Expr::Binary {
+                        op,
+                        lhs: read,
+                        rhs: value,
+                    },
+                    &start,
+                );
+                lhs = self.alloc_expr(
+                    Expr::Assign {
+                        target: lhs,
+                        value: sum,
+                    },
+                    &start,
+                );
                 continue;
             }
 
@@ -330,7 +346,13 @@ impl Parser<'_> {
             self.advance();
             let end = self.parse_expr_bp(Grammar::RANGE * 2 + 1)?;
             let end = self.past(end);
-            return Some(self.alloc_expr(Expr::Range { start: None, end: Some(end) }, &start));
+            return Some(self.alloc_expr(
+                Expr::Range {
+                    start: None,
+                    end: Some(end),
+                },
+                &start,
+            ));
         }
 
         // `..end`, or `..`: a range from the start.
@@ -455,7 +477,8 @@ impl Parser<'_> {
     pub(crate) fn at_comptime_call(&self, at: usize) -> bool {
         // `@make_identity<N>(`: type arguments, then the call.
         let generic = self.peek_nth(at + 1) == TokenKind::LessThan
-            && (self.past_type_args(at + 1)).is_some_and(|n| self.peek_nth(n) == TokenKind::OpenParen);
+            && (self.past_type_args(at + 1))
+                .is_some_and(|n| self.peek_nth(n) == TokenKind::OpenParen);
         self.peek_nth(at) == TokenKind::Builtin
             && (generic
                 || matches!(
@@ -480,7 +503,11 @@ impl Parser<'_> {
                 self.errors.push(ParseError {
                     message: msg!["som's text has no ", code("f"), " in front"],
                     hint: msg!["any text writes the values in its ", code("{…}")],
-                    fix: Some(Fix::replace(msg!["remove the ", code("f")], prefix.clone(), "")),
+                    fix: Some(Fix::replace(
+                        msg!["remove the ", code("f")],
+                        prefix.clone(),
+                        "",
+                    )),
                     span: prefix,
                 });
             }
@@ -666,7 +693,7 @@ impl Parser<'_> {
                 self.advance();
                 let path = som_ast::Path {
                     segments: vec![som_ast::Ident {
-                        name: "self".into(),
+                        name: som_lang::SELF_VALUE.into(),
                         span: dot.clone(),
                     }],
                 };
@@ -887,17 +914,27 @@ impl Parser<'_> {
                 }
                 b'{' => {
                     let Some(close) = raw[i..].find('}').map(|c| i + c) else {
-                        let at = Span::from_range(base + i..base + i + 1, token.span.source.clone());
+                        let at =
+                            Span::from_range(base + i..base + i + 1, token.span.source.clone());
                         self.error_at(
                             at,
-                            msg!["a ", code("{"), " in text starts a value, and needs a ", code("}")],
+                            msg![
+                                "a ",
+                                code("{"),
+                                " in text starts a value, and needs a ",
+                                code("}")
+                            ],
                             msg!["for the brace itself, write ", code("{{")],
                         );
                         return Expr::Hole;
                     };
                     if !piece.is_empty() {
                         let text = self.unescape(&std::mem::take(&mut piece), &token.span);
-                        parts.push(Part::Text(self.ast.exprs.alloc(Expr::Str(text.into()), token.span.clone())));
+                        parts.push(Part::Text(
+                            self.ast
+                                .exprs
+                                .alloc(Expr::Str(text.into()), token.span.clone()),
+                        ));
                     }
                     let range = base + i + 1..base + close;
                     match self.text_value(&token.span, range) {
@@ -928,7 +965,11 @@ impl Parser<'_> {
         }
         if !piece.is_empty() {
             let text = self.unescape(&piece, &token.span);
-            parts.push(Part::Text(self.ast.exprs.alloc(Expr::Str(text.into()), token.span.clone())));
+            parts.push(Part::Text(
+                self.ast
+                    .exprs
+                    .alloc(Expr::Str(text.into()), token.span.clone()),
+            ));
         }
         Expr::Interpolated(parts)
     }
@@ -936,21 +977,34 @@ impl Parser<'_> {
     /// The expression `{…}` in text holds, at `range` of the file: read on its own.
     fn text_value(&mut self, text: &Span, range: std::ops::Range<usize>) -> Option<Id<Expr>> {
         let tokens = som_lexer::lex_range(text.source.clone(), range.clone());
-        let outer = (std::mem::replace(&mut self.tokens, tokens), std::mem::replace(&mut self.pos, 0));
+        let outer = (
+            std::mem::replace(&mut self.tokens, tokens),
+            std::mem::replace(&mut self.pos, 0),
+        );
         self.skip_trivia();
         let value = if self.at_eof() {
             let at = Span::from_range(range.start - 1..range.end + 1, text.source.clone());
             self.error_at(
                 at,
                 msg![code("{}"), " in text holds nothing"],
-                msg!["put the value to write between them, ", code("{total}"), ", or write ", code("{{}}"), " for the braces"],
+                msg![
+                    "put the value to write between them, ",
+                    code("{total}"),
+                    ", or write ",
+                    code("{{}}"),
+                    " for the braces"
+                ],
             );
             None
         } else {
             let value = self.parse_expr();
             if value.is_some() && !self.at_eof() {
                 let at = self.current_span();
-                self.error_at(at, "expected the end of the value", msg!["a value in text ends with ", code("}")]);
+                self.error_at(
+                    at,
+                    "expected the end of the value",
+                    msg!["a value in text ends with ", code("}")],
+                );
             }
             value
         };
@@ -990,7 +1044,12 @@ impl Parser<'_> {
                             chars.nth(1);
                             self.error_at(
                                 span.clone(),
-                                msg!["escape ", code(format!("\\x{digits}")), " is past ", code("\\x7f")],
+                                msg![
+                                    "escape ",
+                                    code(format!("\\x{digits}")),
+                                    " is past ",
+                                    code("\\x7f")
+                                ],
                                 msg![
                                     "text is UTF-8: for a character past ",
                                     code("\\x7f"),
@@ -1040,7 +1099,10 @@ impl Parser<'_> {
                     self.error_at(
                         span.clone(),
                         msg!["unknown escape ", code(&escape)],
-                        msg!["expected one of ", code("\\n \\t \\r \\0 \\\\ \\\" \\' \\x1b \\u{1F600}")],
+                        msg![
+                            "expected one of ",
+                            code("\\n \\t \\r \\0 \\\\ \\\" \\' \\x1b \\u{1F600}")
+                        ],
                     );
                     out.push_str(&escape);
                 }

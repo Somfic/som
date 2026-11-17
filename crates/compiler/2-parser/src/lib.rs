@@ -225,7 +225,7 @@ impl Parser<'_> {
         let span = self.current_span();
         self.advance();
         Ident {
-            name: "self".into(),
+            name: som_lang::SELF_VALUE.into(),
             span,
         }
     }
@@ -356,9 +356,7 @@ impl Parser<'_> {
             // where it's written: it's what's wrong, not a gap after what's before it.
             let elsewhere = found.source.identifier() != after.source.identifier()
                 || found.start_offset < after.start_offset;
-            let span = if !self.at_eof()
-                && (found.start.line == after.end.line || elsewhere)
-            {
+            let span = if !self.at_eof() && (found.start.line == after.end.line || elsewhere) {
                 found.clone()
             } else {
                 after.clone()
@@ -602,7 +600,7 @@ impl Parser<'_> {
                 let span = self.current_span();
                 self.advance();
                 Ident {
-                    name: "Self".into(),
+                    name: som_lang::SELF_TYPE.into(),
                     span,
                 }
             }

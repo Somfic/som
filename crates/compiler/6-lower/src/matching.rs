@@ -3,8 +3,9 @@
 //! arm. The type checker made sure some arm always matches.
 
 use som_ast::{Arm, Expr, Id, Pattern, PatternFields};
+use som_lang::LangTrait;
 use som_mir::*;
-use som_resolve::{DefId, DefKind, LangTrait};
+use som_resolve::{DefId, DefKind};
 use som_typeck::traits::builtin_operator;
 
 use super::FnBuilder;
@@ -170,9 +171,7 @@ impl FnBuilder<'_, '_> {
                         };
                         args.push(self.compute(borrow, reference, span.clone()));
                     }
-                    let trait_ = (self.l.names.lang(LangTrait::Eq))
-                        .expect("checked: text is compared with `Eq`");
-                    let method = self.l.trait_method(trait_, "eq");
+                    let method = self.l.lang_method(LangTrait::Eq);
                     let func = self.l.instance(method, vec![ty]);
                     self.compute(Rvalue::Call { func, args }, bool, span.clone())
                 };

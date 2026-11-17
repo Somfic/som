@@ -3,8 +3,9 @@
 //! through `Eq`, become calls of theirs.
 
 use som_ast::{BinOp, Func, Id, Ident, Span, Stmt};
+use som_lang::LangTrait;
 use som_mir::*;
-use som_resolve::{DefId, DefKind, LangTrait};
+use som_resolve::{DefId, DefKind};
 use som_typeck::Start;
 use som_typeck::traits::{builtin_operator, find_impl};
 
@@ -19,6 +20,22 @@ impl Lowerer<'_> {
         (self.ast.traits[t].methods.iter().copied())
             .find(|&m| &*self.ast.funcs[m].name.name == name)
             .expect("checked: the trait has the method")
+    }
+
+    pub(super) fn lang_method(&self, lang: LangTrait) -> Id<Func> {
+        let trait_ = self
+            .names
+            .lang(lang)
+            .expect("checked: the standard library has it");
+        self.trait_method(trait_, lang.method().expect("the language calls it"))
+    }
+
+    pub(super) fn lang_property(&self, lang: LangTrait) -> Id<Func> {
+        let trait_ = self
+            .names
+            .lang(lang)
+            .expect("checked: the standard library has it");
+        self.trait_method(trait_, lang.property().expect("the language reads it"))
     }
 
     /// For trait method `func` with type arguments `type_args`, `Self` first: the method of
@@ -243,10 +260,7 @@ impl FnBuilder<'_, '_> {
         copied: bool,
     ) {
         let names = self.l.names;
-        let iterator = names
-            .lang(LangTrait::Iterator)
-            .expect("checked: there's an Iterator");
-        let next = self.l.trait_method(iterator, "next");
+        let next = self.l.lang_method(LangTrait::Iterator);
         let def = names.local(stmt).expect("every for loop is resolved");
         let value_ty = self.typed.local(def);
         let value_ty = self.ty(value_ty);
@@ -258,15 +272,14 @@ impl FnBuilder<'_, '_> {
             // `into_iter` takes what's looped over; `iter` and `iter_mut` the reference to it.
             let maker = match start {
                 Start::Itself => None,
-                Start::IntoIter => Some((LangTrait::IntoIterator, "into_iter")),
-                Start::Iter => Some((LangTrait::Iterable, "iter")),
-                Start::IterMut => Some((LangTrait::IterableMut, "iter_mut")),
+                Start::IntoIter => Some(LangTrait::IntoIterator),
+                Start::Iter => Some(LangTrait::Iterable),
+                Start::IterMut => Some(LangTrait::IterableMut),
             };
             let (iterator_ty, start) = match maker {
                 None => (iterable_ty, Rvalue::Use(b.operand(iterable))),
-                Some((lang, method)) => {
-                    let trait_ = names.lang(lang).expect("checked: the trait is there");
-                    let method = b.l.trait_method(trait_, method);
+                Some(lang) => {
+                    let method = b.l.lang_method(lang);
                     let viewed = match *b.l.mir.types.get(iterable_ty) {
                         Ty::Ref { to, .. } => to,
                         _ => iterable_ty,
@@ -382,8 +395,9 @@ impl FnBuilder<'_, '_> {
             .names
             .lang(lang)
             .expect("checked: the trait is there");
-        let method = lang.operator_method().expect("an operator's trait");
-        let method = self.l.trait_method(trait_, method);
+        let method = self
+            .l
+            .trait_method(trait_, lang.operator_method().expect("an operator's trait"));
         // `Add<Other, Output>`'s arguments, `Self` first; `Eq` and `Compare` have only `Self`.
         let type_args = match self.type_args(expr) {
             args if args.is_empty() => vec![ty],

@@ -6,6 +6,7 @@ mod dump;
 mod expr;
 mod item;
 mod nodes;
+mod ops;
 mod ty;
 
 pub use expr::*;

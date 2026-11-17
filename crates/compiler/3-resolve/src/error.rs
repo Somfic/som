@@ -160,15 +160,16 @@ impl ResolveError {
                     ]);
             }
             ResolveError::LibraryNotDeclared { library, span, fix } => {
-                return Diagnostic::error(msg![
-                    code(library.clone()),
-                    " isn't declared here"
-                ])
-                .with_label(Label::primary(
-                    span.clone(),
-                    msg!["a library is used where its ", code(format!("extern \"{library}\"")), " is"],
-                ))
-                .with_fix(fix.clone());
+                return Diagnostic::error(msg![code(library.clone()), " isn't declared here"])
+                    .with_label(Label::primary(
+                        span.clone(),
+                        msg![
+                            "a library is used where its ",
+                            code(format!("extern \"{library}\"")),
+                            " is"
+                        ],
+                    ))
+                    .with_fix(fix.clone());
             }
             ResolveError::ConstNotKnown { span } => {
                 return Diagnostic::error("a constant's value has to be known while compiling")
@@ -186,12 +187,8 @@ impl ResolveError {
                     .with_hint("move it out of the impl block");
             }
             ResolveError::ConstCycle { name, span } => {
-                return Diagnostic::error(msg![
-                    "constant ",
-                    var(name),
-                    " is made of itself"
-                ])
-                .with_label(Label::primary(span.clone(), "its value comes back to it"));
+                return Diagnostic::error(msg!["constant ", var(name), " is made of itself"])
+                    .with_label(Label::primary(span.clone(), "its value comes back to it"));
             }
             ResolveError::NotALoop {
                 keyword,

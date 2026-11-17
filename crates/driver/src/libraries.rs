@@ -184,7 +184,8 @@ impl LibraryWarning {
                         msg![m::code(&import), " imports them"],
                     ));
                     for f in functions {
-                        d = d.with_label(Label::secondary(f.span.clone(), "the same as the header"));
+                        d = d
+                            .with_label(Label::secondary(f.span.clone(), "the same as the header"));
                     }
                     // Import the header above the block, and keep only what differs from it.
                     let text = block.source.content();
@@ -199,11 +200,7 @@ impl LibraryWarning {
                         (functions.iter()).map(|f| (whole_lines(&f.declaration), String::new())),
                     );
                     d.with_fix(Fix {
-                        title: msg![
-                            "add ",
-                            m::code(&import),
-                            " and remove what it imports"
-                        ],
+                        title: msg!["add ", m::code(&import), " and remove what it imports"],
                         edits,
                     })
                 };
@@ -234,7 +231,10 @@ impl LibraryWarning {
                 " is already declared in ",
                 m::path(header)
             ])
-            .with_label(Label::primary(span.clone(), "the same fields as the header's"))
+            .with_label(Label::primary(
+                span.clone(),
+                "the same fields as the header's",
+            ))
             .with_hint(generates(library, header))
             .with_hint(msg![
                 "imported, it's ",

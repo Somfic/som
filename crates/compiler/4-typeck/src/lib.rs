@@ -135,7 +135,11 @@ pub fn member_holds(
                 matched.insert(*p, found);
                 return;
             }
-            for (a, b) in typed.ty(pattern).zip_children(typed.ty(found)).unwrap_or_default() {
+            for (a, b) in typed
+                .ty(pattern)
+                .zip_children(typed.ty(found))
+                .unwrap_or_default()
+            {
                 walk(typed, a, b, params, matched);
             }
         }
@@ -143,7 +147,13 @@ pub fn member_holds(
             Ty::Ref { to, .. } => to,
             _ => receiver,
         };
-        walk(typed, target, found, &typed.impls[index].params, &mut matched);
+        walk(
+            typed,
+            target,
+            found,
+            &typed.impls[index].params,
+            &mut matched,
+        );
     }
     let checker = MemberConditions {
         ast,
@@ -344,7 +354,7 @@ pub struct Typed {
     /// Every `impl` block, indexed like `Names::impls`.
     pub impls: Vec<traits::ImplInfo>,
     /// `==` and `!=` that compare with `Eq`'s `eq`.
-    trait_ops: HashMap<Id<Expr>, som_resolve::LangTrait>,
+    trait_ops: HashMap<Id<Expr>, som_lang::LangTrait>,
     /// `match` arms that never finish, like `{ return 0; }`: they have no value to give.
     diverging: HashSet<Id<Expr>>,
     /// `[value; N]` → `N`, as an array type's length.
@@ -468,70 +478,56 @@ pub enum Start {
     IntoIter,
 }
 
-/// A method every array and slice has.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ArrayMethod {
-    /// `a.len()`: how many elements it has.
-    Len,
-    /// `a.get(i)`: a copy of the element at `i`, or `none` past the end.
-    Get,
-    /// `a.get_ref(i)`: a reference to the element at `i`, or `none`.
-    GetRef,
-    /// `a.get_mut(i)`: a mutable reference to the element at `i`, or `none`.
-    GetMut,
-    /// `a.set(i, v)`: stores `v` at `i`, returning whether `i` was in bounds.
-    Set,
-    /// `s.bytes()`: a `str`'s bytes, as a `[u8]`. Only text has it.
-    Bytes,
-    /// `a.slice(r)`: a view of the elements in the range `r`, or `none` if it isn't within
-    /// them. Text gives text.
-    Slice,
-    /// `a.slice_mut(r)`: the same, as a `[mut T]`.
-    SliceMut,
+som_lang::named_enum! {
+    /// A method every array and slice has.
+    pub enum ArrayMethod {
+        /// `a.len()`: how many elements it has.
+        Len = "len",
+        /// `a.get(i)`: a copy of the element at `i`, or `none` past the end.
+        Get = "get",
+        /// `a.get_ref(i)`: a reference to the element at `i`, or `none`.
+        GetRef = "get_ref",
+        /// `a.get_mut(i)`: a mutable reference to the element at `i`, or `none`.
+        GetMut = "get_mut",
+        /// `a.set(i, v)`: stores `v` at `i`, returning whether `i` was in bounds.
+        Set = "set",
+        /// `s.bytes()`: a `str`'s bytes, as a `[u8]`. Only text has it.
+        Bytes = "bytes",
+        /// `a.slice(r)`: a view of the elements in the range `r`, or `none` if it isn't within
+        /// them. Text gives text.
+        Slice = "slice",
+        /// `a.slice_mut(r)`: the same, as a `[mut T]`.
+        SliceMut = "slice_mut",
+    }
 }
 
-/// A method every typed pointer `*T` has: raw memory operations that nothing checks, for
-/// building types like `List` in som.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PointerMethod {
-    /// `p.resize(count)`: `p` becomes room for `count` `T`s, holding what it held (as many
-    /// as fit). A null `p` starts empty. Copies of the old pointer aren't valid any more.
-    Resize,
-    /// `p.free()`: gives the memory back.
-    Free,
-    /// `p.read(i)`: the `T` at `i`, copied or moved out.
-    Read,
-    /// `p.write(i, value)`: stores `value` at `i`, without reading or freeing what was there.
-    Write,
-    /// `p.at(i)`: a reference to the `T` at `i`.
-    At,
-    /// `p.at_mut(i)`: a `&mut` reference to the `T` at `i`.
-    AtMut,
-    /// `p.view(len)`: the `len` `T`s starting at `p`, as a `[T]`.
-    View,
-    /// `p.view_mut(len)`: as a `[mut T]`.
-    ViewMut,
-    /// `p.is_null()`
-    IsNull,
+som_lang::named_enum! {
+    /// A method every typed pointer `*T` has: raw memory operations that nothing checks, for
+    /// building types like `List` in som.
+    pub enum PointerMethod {
+        /// `p.resize(count)`: `p` becomes room for `count` `T`s, holding what it held (as many
+        /// as fit). A null `p` starts empty. Copies of the old pointer aren't valid any more.
+        Resize = "resize",
+        /// `p.free()`: gives the memory back.
+        Free = "free",
+        /// `p.read(i)`: the `T` at `i`, copied or moved out.
+        Read = "read",
+        /// `p.write(i, value)`: stores `value` at `i`, without reading or freeing what was there.
+        Write = "write",
+        /// `p.at(i)`: a reference to the `T` at `i`.
+        At = "at",
+        /// `p.at_mut(i)`: a `&mut` reference to the `T` at `i`.
+        AtMut = "at_mut",
+        /// `p.view(len)`: the `len` `T`s starting at `p`, as a `[T]`.
+        View = "view",
+        /// `p.view_mut(len)`: as a `[mut T]`.
+        ViewMut = "view_mut",
+        /// `p.is_null()`
+        IsNull = "is_null",
+    }
 }
 
 impl PointerMethod {
-    pub const ALL: [(&str, PointerMethod); 9] = [
-        ("resize", PointerMethod::Resize),
-        ("free", PointerMethod::Free),
-        ("read", PointerMethod::Read),
-        ("write", PointerMethod::Write),
-        ("at", PointerMethod::At),
-        ("at_mut", PointerMethod::AtMut),
-        ("view", PointerMethod::View),
-        ("view_mut", PointerMethod::ViewMut),
-        ("is_null", PointerMethod::IsNull),
-    ];
-
-    pub fn from_name(name: &str) -> Option<PointerMethod> {
-        Self::ALL.iter().find(|(n, _)| *n == name).map(|&(_, m)| m)
-    }
-
     /// How many arguments it takes, after the pointer.
     pub fn arity(self) -> usize {
         match self {
@@ -543,31 +539,6 @@ impl PointerMethod {
 }
 
 impl ArrayMethod {
-    pub fn from_name(name: &str) -> Option<ArrayMethod> {
-        Some(match name {
-            "len" => ArrayMethod::Len,
-            "get" => ArrayMethod::Get,
-            "get_ref" => ArrayMethod::GetRef,
-            "get_mut" => ArrayMethod::GetMut,
-            "set" => ArrayMethod::Set,
-            "bytes" => ArrayMethod::Bytes,
-            "slice" => ArrayMethod::Slice,
-            "slice_mut" => ArrayMethod::SliceMut,
-            _ => return None,
-        })
-    }
-
-    pub const ALL: [(&str, ArrayMethod); 8] = [
-        ("len", ArrayMethod::Len),
-        ("get", ArrayMethod::Get),
-        ("get_ref", ArrayMethod::GetRef),
-        ("get_mut", ArrayMethod::GetMut),
-        ("set", ArrayMethod::Set),
-        ("bytes", ArrayMethod::Bytes),
-        ("slice", ArrayMethod::Slice),
-        ("slice_mut", ArrayMethod::SliceMut),
-    ];
-
     /// How many arguments it takes, after the array.
     pub fn arity(self) -> usize {
         match self {
@@ -638,7 +609,7 @@ impl Typed {
 
     /// The trait operator expression `expr` goes through: `Eq` for `==` on a struct
     /// implementing it, `Add` for `+`.
-    pub fn operator_trait(&self, expr: Id<Expr>) -> Option<som_resolve::LangTrait> {
+    pub fn operator_trait(&self, expr: Id<Expr>) -> Option<som_lang::LangTrait> {
         self.trait_ops.get(&expr).copied()
     }
 
@@ -704,7 +675,10 @@ impl Typed {
     /// parameters, and the members only some instances have, whole. Errors found checking an
     /// instance are said if they're in one of these.
     pub fn region_spans(&self, ast: &Ast) -> Vec<som_base::Span> {
-        let regions = self.regions.iter().map(|&stmt| ast.stmts.span(stmt).clone());
+        let regions = self
+            .regions
+            .iter()
+            .map(|&stmt| ast.stmts.span(stmt).clone());
         let members = (self.per_instance.iter())
             .filter(|&&func| !ast.funcs[func].when.is_empty())
             .map(|&func| ast.funcs.span(func).clone());
@@ -713,7 +687,10 @@ impl Typed {
         let ends = (self.per_instance.iter())
             .filter_map(|&func| ast.funcs[func].body)
             .map(|body| ast.exprs.span(body).last_char());
-        let matches = self.match_regions.iter().map(|&m| ast.exprs.span(m).clone());
+        let matches = self
+            .match_regions
+            .iter()
+            .map(|&m| ast.exprs.span(m).clone());
         regions.chain(members).chain(ends).chain(matches).collect()
     }
 

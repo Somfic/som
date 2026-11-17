@@ -1,6 +1,6 @@
 use som_ast::{
-    Alias, Const, AssocType, Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct, Trait, Use,
-    Variant, VariantKind, Visibility,
+    Alias, AssocType, Const, Expr, Extern, Field, Func, Id, Ident, Impl, Item, Param, Struct,
+    Trait, Use, Variant, VariantKind, Visibility,
 };
 use som_base::message::code;
 use som_base::{Fix, Span, foreign, msg};
@@ -166,7 +166,9 @@ impl Parser<'_> {
             TokenKind::Use => self.parse_use().map(Item::Use),
             TokenKind::Impl => self.parse_impl().map(Item::Impl),
             TokenKind::Type => self.parse_alias().map(Item::Alias),
-            TokenKind::Builtin | TokenKind::Ident if self.at_const(0) => self.parse_const().map(Item::Const),
+            TokenKind::Builtin | TokenKind::Ident if self.at_const(0) => {
+                self.parse_const().map(Item::Const)
+            }
             TokenKind::Builtin if self.at_check(0) => self.parse_check().map(Item::Const),
             _ => unreachable!("caller checks at_item"),
         };
@@ -229,7 +231,7 @@ impl Parser<'_> {
             .exprs
             .alloc(Expr::Block { stmts, value }, span.clone());
         let name = som_ast::Ident {
-            name: "main".into(),
+            name: som_lang::ENTRY_POINT.into(),
             span: start.clone(),
         };
         let func = Func {
@@ -399,8 +401,9 @@ impl Parser<'_> {
                         if let Some(first) = generics.first() {
                             let name = &self.ast.consts[id].name;
                             self.errors.push(ParseError {
-                                message: "a constant can't be in an impl block with type parameters"
-                                    .into(),
+                                message:
+                                    "a constant can't be in an impl block with type parameters"
+                                        .into(),
                                 hint: msg![
                                     "it would be one value for every ",
                                     code(first.name.name.to_string()),
@@ -545,7 +548,7 @@ impl Parser<'_> {
         };
         let this = som_ast::Generic {
             name: Ident {
-                name: "Self".into(),
+                name: som_lang::SELF_TYPE.into(),
                 span: trait_name.span.clone(),
             },
             ty: None,
@@ -629,10 +632,7 @@ impl Parser<'_> {
             .is_some_and(|t| &*t.text == "@const");
         (written || self.foreign_keyword(at, foreign::const_word).is_some())
             && self.peek_nth(at + 1) == TokenKind::Ident
-            && matches!(
-                self.peek_nth(at + 2),
-                TokenKind::Colon | TokenKind::Equals
-            )
+            && matches!(self.peek_nth(at + 2), TokenKind::Colon | TokenKind::Equals)
     }
 
     /// At a call made while compiling, on its own, `at` tokens ahead: `@assert(…);`. Or at
@@ -654,7 +654,12 @@ impl Parser<'_> {
             self.error_at(
                 start.clone(),
                 msg!["a constant needs a name: ", code("@const NAME = …;")],
-                msg!["to run a check while compiling, call it with ", code("@"), ": ", code("@assert(…);")],
+                msg![
+                    "to run a check while compiling, call it with ",
+                    code("@"),
+                    ": ",
+                    code("@assert(…);")
+                ],
             );
             self.advance();
         }
@@ -689,7 +694,11 @@ impl Parser<'_> {
                 ", not ",
                 code(found.written)
             ];
-            let fix = Fix::replace(msg!["change to ", code(found.som)], start.clone(), found.som);
+            let fix = Fix::replace(
+                msg!["change to ", code(found.som)],
+                start.clone(),
+                found.som,
+            );
             self.report_foreign(start.clone(), message, found, Some(fix));
         }
         self.advance();
@@ -1228,7 +1237,7 @@ impl Parser<'_> {
         let ty = self.self_type(Some(false), name.span.clone());
         Some(vec![Param {
             name: Ident {
-                name: "self".into(),
+                name: som_lang::SELF_VALUE.into(),
                 span: name.span.clone(),
             },
             ty: Some(ty),
@@ -1246,7 +1255,7 @@ impl Parser<'_> {
     ) -> Id<som_ast::TypeExpr> {
         let path = som_ast::Path {
             segments: vec![Ident {
-                name: "Self".into(),
+                name: som_lang::SELF_TYPE.into(),
                 span: span.clone(),
             }],
         };
@@ -1423,8 +1432,8 @@ impl Parser<'_> {
                 true => self.parse_self(),
                 false => self.parse_ident("a function parameter name")?,
             };
-            let shorthand =
-                reference.is_some() || &*name.name == "self" && !self.at(TokenKind::Colon);
+            let shorthand = reference.is_some()
+                || &*name.name == som_lang::SELF_VALUE && !self.at(TokenKind::Colon);
             if shorthand && !self.in_impl {
                 let span = match &reference {
                     Some((_, start)) => self.span_from(start),
@@ -1449,7 +1458,7 @@ impl Parser<'_> {
                 Some(self.parse_type()?)
             } else if self.eat(TokenKind::Colon) {
                 Some(self.parse_type()?)
-            } else if &*name.name == "self" {
+            } else if &*name.name == som_lang::SELF_VALUE {
                 // `self` and `mut self`: short for `self: Self`.
                 Some(self.self_type(None, name.span.clone()))
             } else {

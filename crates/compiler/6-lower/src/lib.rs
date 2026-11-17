@@ -15,6 +15,7 @@ mod matching;
 mod traits;
 
 use som_ast::{Ast, BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
+use som_lang::{FailureField, LangFunc, LangStruct, LangTrait, LocationField};
 use som_mir::*;
 use som_resolve::{DefId, DefKind, Names};
 use som_typeck::traits::{ImplInfo, resolve_assoc};
@@ -211,7 +212,7 @@ impl<'a> Lowerer<'a> {
         }
         let ty = self.mir.types.intern(Ty::Struct(param, Vec::new()));
         if !self.mir.has_struct(param, &[]) {
-            let copy = (self.names.lang(som_resolve::LangTrait::Copy))
+            let copy = (self.names.lang(LangTrait::Copy))
                 .is_some_and(|copy| self.names.bounds(param).contains(&copy));
             self.mir.add_struct(StructDef {
                 def: param,
@@ -342,7 +343,7 @@ impl<'a> Lowerer<'a> {
 
     /// `ty`'s `Share::share`, for its type arguments, if it implements `Share`.
     fn share_impl(&mut self, ty: TypeId) -> Option<FuncId> {
-        let trait_ = self.names.lang(som_resolve::LangTrait::Share)?;
+        let trait_ = self.names.lang(LangTrait::Share)?;
         let (index, args) = som_typeck::traits::find_impl(
             &self.typed.impls,
             &self.mir.types,
@@ -352,13 +353,13 @@ impl<'a> Lowerer<'a> {
             &|t| t,
         )?;
         let method = (self.typed.impls[index].methods.iter().copied())
-            .find(|&m| &*self.ast.funcs[m].name.name == "share")?;
+            .find(|&m| Some(&*self.ast.funcs[m].name.name) == LangTrait::Share.method())?;
         Some(self.instance(method, args))
     }
 
     /// Whether struct `def` implements `Copy`.
     fn implements_copy(&self, def: DefId) -> bool {
-        let Some(copy) = self.names.lang(som_resolve::LangTrait::Copy) else {
+        let Some(copy) = self.names.lang(LangTrait::Copy) else {
             return false;
         };
         (self.typed.impls.iter()).any(|info| {
@@ -504,7 +505,7 @@ impl<'a> Lowerer<'a> {
             name = format!("{name}<{}>", args.join(", "));
         }
 
-        let is_entry = &*ast_func.name.name == "main"
+        let is_entry = &*ast_func.name.name == som_lang::ENTRY_POINT
             && self.ast.modules[self.names.def(def).module].name.is_empty()
             && !self.owners.contains_key(&func)
             && type_args.is_empty();
@@ -629,7 +630,9 @@ impl<'a> Lowerer<'a> {
     /// What a generic function instance's parameters stand for: nothing for no instance.
     fn owner_subst(&self, owner: &Owner) -> Subst<'a> {
         match owner {
-            Some((func, args)) => Subst::new(self.names.type_params(*func), args, &self.typed.impls),
+            Some((func, args)) => {
+                Subst::new(self.names.type_params(*func), args, &self.typed.impls)
+            }
             None => Subst::new(&[], &[], &self.typed.impls),
         }
     }
@@ -648,8 +651,8 @@ impl Lowerer<'_> {
     }
 
     fn make_failed(&mut self) -> Option<FuncId> {
-        let def = self.names.lang_struct(som_resolve::LangStruct::Failure)?;
-        let DefKind::Func(halt) = self.names.def(self.names.halt()?).kind else {
+        let def = self.names.lang_struct(LangStruct::Failure)?;
+        let DefKind::Func(halt) = self.names.def(self.names.lang_func(LangFunc::Halt)?).kind else {
             return None;
         };
         let failure = self.mir.types.intern(Ty::Struct(def, Vec::new()));
@@ -949,7 +952,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     /// How many parameters it has: none for an initializer.
     fn param_count(&self) -> usize {
-        self.func.map_or(0, |func| self.l.ast.funcs[func].params.len())
+        self.func
+            .map_or(0, |func| self.l.ast.funcs[func].params.len())
     }
 
     /// An initializer's body: `_0 = value; return`.
@@ -1036,8 +1040,8 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     fn fail(&mut self, message: Option<Operand>, span: Span) {
         let ast = self.l.ast;
         if let Some(failed) = self.l.failed()
-            && let Some(location) = self.l.names.lang_struct(som_resolve::LangStruct::Location)
-            && let Some(failure) = self.l.names.lang_struct(som_resolve::LangStruct::Failure)
+            && let Some(location) = self.l.names.lang_struct(LangStruct::Location)
+            && let Some(failure) = self.l.names.lang_struct(LangStruct::Failure)
         {
             let file = std::path::Path::new(span.source.identifier())
                 .file_name()
@@ -1047,17 +1051,21 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 Some(func) => ast.funcs[func].name.name.to_string(),
                 None => "@const".to_string(),
             };
-            // `Location { file, line, column, function }`
             let location_ty = self.l.mir.types.intern(Ty::Struct(location, Vec::new()));
-            let fields: Vec<(String, TypeId)> =
-                self.l.mir.struct_def(location, &[]).fields.clone();
+            let fields: Vec<(String, TypeId)> = self.l.mir.struct_def(location, &[]).fields.clone();
             let parts = (fields.iter())
-                .map(|(name, ty)| match name.as_str() {
-                    "file" => self.constant(ConstKind::Str(file.clone()), *ty),
-                    "line" => self.constant(ConstKind::Int(span.start.line as i128), *ty),
-                    "column" => self.constant(ConstKind::Int(span.start.col as i128), *ty),
-                    "function" => self.constant(ConstKind::Str(function.clone()), *ty),
-                    _ => self.constant(ConstKind::Zeroed, *ty),
+                .map(|(name, ty)| match LocationField::from_name(name) {
+                    Some(LocationField::File) => self.constant(ConstKind::Str(file.clone()), *ty),
+                    Some(LocationField::Line) => {
+                        self.constant(ConstKind::Int(span.start.line as i128), *ty)
+                    }
+                    Some(LocationField::Column) => {
+                        self.constant(ConstKind::Int(span.start.col as i128), *ty)
+                    }
+                    Some(LocationField::Function) => {
+                        self.constant(ConstKind::Str(function.clone()), *ty)
+                    }
+                    None => self.constant(ConstKind::Zeroed, *ty),
                 })
                 .collect();
             let at = self.temp(location_ty, span.clone());
@@ -1067,19 +1075,20 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 fields: parts,
             };
             self.assign(Place::local(at), value, span.clone());
-            // `Failure { message, at, unreachable }`
             let failure_ty = self.l.mir.types.intern(Ty::Struct(failure, Vec::new()));
             let fields: Vec<(String, TypeId)> = self.l.mir.struct_def(failure, &[]).fields.clone();
             let unreachable = message.is_none();
             let mut message = message;
             let parts = (fields.iter())
-                .map(|(name, ty)| match name.as_str() {
-                    "message" => message.take().unwrap_or_else(|| {
+                .map(|(name, ty)| match FailureField::from_name(name) {
+                    Some(FailureField::Message) => message.take().unwrap_or_else(|| {
                         self.constant(ConstKind::Str("reached @unreachable".into()), *ty)
                     }),
-                    "at" => Operand::Move(Place::local(at)),
-                    "unreachable" => self.constant(ConstKind::Bool(unreachable), *ty),
-                    _ => self.constant(ConstKind::Zeroed, *ty),
+                    Some(FailureField::At) => Operand::Move(Place::local(at)),
+                    Some(FailureField::Unreachable) => {
+                        self.constant(ConstKind::Bool(unreachable), *ty)
+                    }
+                    None => self.constant(ConstKind::Zeroed, *ty),
                 })
                 .collect();
             let value = self.temp(failure_ty, span.clone());
@@ -1177,7 +1186,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         if let Ty::Optional(inner) = *self.l.mir.types.get(ty)
             && !self.l.is_copy(inner)
             && self.l.share_impl(inner).is_some()
-            && let Some(def) = self.l.names.share_optional()
+            && let Some(def) = self.l.names.lang_func(LangFunc::ShareOptional)
             && let DefKind::Func(func) = self.l.names.def(def).kind
         {
             let share = self.l.instance(func, vec![inner]);
@@ -1406,7 +1415,11 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             Stmt::If {
                 then, otherwise, ..
             } if let Some(holds) = self.typed.settled_if(id) => {
-                let branch = if holds { Some(then) } else { otherwise.as_ref() };
+                let branch = if holds {
+                    Some(then)
+                } else {
+                    otherwise.as_ref()
+                };
                 if let Some(branch) = branch {
                     self.stmts(branch, span);
                 }
@@ -3193,13 +3206,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let span = self.span(expr);
         let usize = self.l.mir.types.intern(Ty::Int(IntTy::USize));
         let string_ty = self.expr_ty(expr);
-        let display = (names.lang(som_resolve::LangTrait::Display))
-            .expect("checked: the standard library has `Display`");
-        let display_len = self.l.trait_method(display, "display_len");
-        let text = (names.lang_struct(som_resolve::LangStruct::String))
+        let display_len = self.l.lang_property(LangTrait::Display);
+        let text = (names.lang_struct(LangStruct::String))
             .expect("checked: the standard library has `string`");
         let own = |name: &str| -> Id<Func> {
-            let def = names.method(text, name).expect("the standard library's `string` has it");
+            let def = names
+                .method(text, name)
+                .expect("the standard library's `string` has it");
             match names.def(def).kind {
                 DefKind::Func(func) => func,
                 _ => unreachable!("methods are functions"),
@@ -3233,9 +3246,19 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                         place = place.project(Projection::Deref);
                         ty = to;
                     }
-                    let lent_ty = self.l.mir.types.intern(Ty::Ref { mutable: false, to: ty });
+                    let lent_ty = self.l.mir.types.intern(Ty::Ref {
+                        mutable: false,
+                        to: ty,
+                    });
                     let lent = self.temp(lent_ty, span.clone());
-                    self.assign(Place::local(lent), Rvalue::Ref { mutable: false, place }, span.clone());
+                    self.assign(
+                        Place::local(lent),
+                        Rvalue::Ref {
+                            mutable: false,
+                            place,
+                        },
+                        span.clone(),
+                    );
                     let measure = self.l.instance(display_len, vec![ty]);
                     let len = self.temp(usize, span.clone());
                     let call = Rvalue::Call {
@@ -3268,9 +3291,15 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         self.assign(Place::local(out), make, span.clone());
 
         // Filled in, in order: `at` is where the next part goes.
-        let out_ty = self.l.mir.types.intern(Ty::Ref { mutable: false, to: string_ty });
+        let out_ty = self.l.mir.types.intern(Ty::Ref {
+            mutable: false,
+            to: string_ty,
+        });
         let lent_out = self.temp(out_ty, span.clone());
-        let borrow = Rvalue::Ref { mutable: false, place: Place::local(out) };
+        let borrow = Rvalue::Ref {
+            mutable: false,
+            place: Place::local(out),
+        };
         self.assign(Place::local(lent_out), borrow, span.clone());
         let at = self.temp(usize, span.clone());
         let zero = self.constant(ConstKind::Int(0), usize);
@@ -3339,10 +3368,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 }
             }
             Expr::Field { object, .. } if !self.is_prop(expr) => {
-                let index = self
-                    .typed
-                    .field(expr)
-                    .expect("checked fields are resolved");
+                let index = self.typed.field(expr).expect("checked fields are resolved");
                 let mut object_ty = self.expr_ty(*object);
                 // `node.value` of a `#Node`: through the `&Node` its `get` lends.
                 let mut place = if self.typed.is_shared_read(*object) {

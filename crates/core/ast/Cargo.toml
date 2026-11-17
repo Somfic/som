@@ -5,4 +5,5 @@ edition = "2024"
 description = "The syntax tree produced by the parser"
 
 [dependencies]
+som_lang = { path = "../lang" }
 som_base = { path = "../base" }

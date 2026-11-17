@@ -911,6 +911,7 @@ name = "som_ast"
 version = "0.1.0"
 dependencies = [
  "som_base",
+ "som_lang",
 ]
 
 [[package]]
@@ -951,6 +952,7 @@ dependencies = [
  "libffi",
  "libloading",
  "som_base",
+ "som_lang",
  "som_mir",
 ]
 
@@ -973,6 +975,7 @@ dependencies = [
  "som_borrowcheck",
  "som_codegen",
  "som_comptime",
+ "som_lang",
  "som_lexer",
  "som_lower",
  "som_mir",
@@ -983,6 +986,10 @@ dependencies = [
  "som_typeck",
  "tempfile",
 ]
+
+[[package]]
+name = "som_lang"
+version = "0.1.0"
 
 [[package]]
 name = "som_lexer"
@@ -999,6 +1006,7 @@ version = "0.1.0"
 dependencies = [
  "som_ast",
  "som_base",
+ "som_lang",
  "som_mir",
  "som_parser",
  "som_resolve",
@@ -1013,6 +1021,7 @@ dependencies = [
  "som_ast",
  "som_base",
  "som_driver",
+ "som_lang",
  "som_lexer",
  "som_resolve",
  "som_typeck",
@@ -1049,6 +1058,7 @@ version = "0.1.0"
 dependencies = [
  "som_ast",
  "som_base",
+ "som_lang",
  "som_lexer",
 ]
 
@@ -1068,6 +1078,7 @@ version = "0.1.0"
 dependencies = [
  "som_ast",
  "som_base",
+ "som_lang",
  "som_parser",
 ]
 
@@ -1077,6 +1088,7 @@ version = "0.1.0"
 dependencies = [
  "som_ast",
  "som_base",
+ "som_lang",
  "som_parser",
  "som_resolve",
 ]

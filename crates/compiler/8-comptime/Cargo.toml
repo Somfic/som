@@ -5,6 +5,7 @@ edition = "2024"
 description = "Runs `@const` initializers while compiling, and puts what they give in the program"
 
 [dependencies]
+som_lang = { path = "../../core/lang" }
 libffi = "5.2.0"
 libloading = "0.9.1"
 som_base = { path = "../../core/base" }

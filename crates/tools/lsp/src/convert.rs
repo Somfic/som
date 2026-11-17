@@ -154,7 +154,9 @@ pub fn fixes_from_json(diagnostic: &lsp_types::Diagnostic) -> Vec<lsp_types::Cod
 pub fn offset_to_position(text: &str, offset: usize) -> Position {
     let before = &text[..offset];
     let line = before.matches('\n').count();
-    let column = before[before.rfind('\n').map_or(0, |i| i + 1)..].chars().count();
+    let column = before[before.rfind('\n').map_or(0, |i| i + 1)..]
+        .chars()
+        .count();
     Position::new(line as u32, column as u32)
 }
 

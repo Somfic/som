@@ -132,8 +132,7 @@ impl<'a> FnChecker<'a> {
         let mut loan_at = BTreeMap::new();
         for (b, block) in body.blocks.iter().enumerate() {
             for (s, stmt) in block.stmts.iter().enumerate() {
-                if let StatementKind::Assign(holder, Rvalue::Ref { mutable, place }) = &stmt.kind
-                {
+                if let StatementKind::Assign(holder, Rvalue::Ref { mutable, place }) = &stmt.kind {
                     let two_phase = (*mutable
                         && holder.projection.is_empty()
                         && body.two_phase.contains(&holder.local))
@@ -346,8 +345,7 @@ impl<'a> FnChecker<'a> {
             let existing = &self.loans[other];
             let existing_mutable = existing.mutable && !state.reserved.contains(&other);
             // A loop can reach the same borrow again while its previous loan is still held.
-            if other != id && overlaps(&existing.place, place) && (mutable || existing_mutable)
-            {
+            if other != id && overlaps(&existing.place, place) && (mutable || existing_mutable) {
                 self.error(BorrowError::ConflictingBorrow {
                     name: self.name(place),
                     span: span.clone(),

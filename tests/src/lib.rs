@@ -61,7 +61,9 @@ pub fn run_case(path: &str) {
         (Expect::Error(_), Ok(_)) => {
             panic!("expected an error, but {} compiled cleanly", path.display())
         }
-        (_, Err(Failed { errors, .. })) => panic!("expected success, got errors:\n{}", describe(&errors)),
+        (_, Err(Failed { errors, .. })) => {
+            panic!("expected success, got errors:\n{}", describe(&errors))
+        }
     }
 }
 

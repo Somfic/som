@@ -560,7 +560,13 @@ impl Machine<'_, '_> {
         let span = &statement.span;
         let top = self.frames.len() - 1;
         match &statement.kind {
-            StatementKind::Assign(place, Rvalue::Call { func, args: operands }) => {
+            StatementKind::Assign(
+                place,
+                Rvalue::Call {
+                    func,
+                    args: operands,
+                },
+            ) => {
                 let args = (operands.iter())
                     .map(|a| self.operand(a, span))
                     .collect::<Result<Vec<_>, _>>()?;
@@ -808,9 +814,9 @@ impl Machine<'_, '_> {
     fn byte(&self, loc: &Loc, n: usize, span: &Span) -> Result<Byte, Stop> {
         let loc = &self.unpinned(loc);
         match &loc.root {
-            &Root::Foreign { address } => {
-                Ok(Byte::Data(foreign::read_real(address.wrapping_add(n), 1)[0]))
-            }
+            &Root::Foreign { address } => Ok(Byte::Data(
+                foreign::read_real(address.wrapping_add(n), 1)[0],
+            )),
             &Root::Heap { alloc, offset } => Ok(self.bytes(alloc, offset + n, 1, span)?[0].clone()),
             Root::Local { .. } => {
                 let at = self.step(loc, n, self.mir().types.u8, span)?;
@@ -871,10 +877,10 @@ impl Machine<'_, '_> {
         let fields = &self.mir().struct_def(*def, args).fields;
         let field =
             |name: &str| (fields.iter().position(|(n, _)| n == name)).and_then(|i| parts.get(i));
-        if let Some(Value::Bool(true)) = field("unreachable") {
+        if let Some(Value::Bool(true)) = field(som_lang::FailureField::Unreachable.name()) {
             return Ok(Fault::Unreachable);
         }
-        match field("message") {
+        match field(som_lang::FailureField::Message.name()) {
             Some(message) => Ok(Fault::Failed(self.string(message, span)?)),
             None => unsupported("this failure", span),
         }

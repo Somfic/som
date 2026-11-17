@@ -4,7 +4,7 @@
 //! with such a type; here it's an error where it's written, whether it's used or not.
 
 use som_ast::{Expr, Id, Stmt};
-use som_resolve::LangTrait;
+use som_lang::LangTrait;
 
 use super::Checker;
 use crate::error::TypeError;
@@ -180,8 +180,15 @@ impl Checker<'_> {
             Stmt::If {
                 then, otherwise, ..
             } if let Some(&holds) = self.settled_ifs.get(&id) => {
-                let branch = if holds { Some(then) } else { otherwise.as_ref() };
-                branch.into_iter().flatten().for_each(|&s| self.moves_in_stmt(s));
+                let branch = if holds {
+                    Some(then)
+                } else {
+                    otherwise.as_ref()
+                };
+                branch
+                    .into_iter()
+                    .flatten()
+                    .for_each(|&s| self.moves_in_stmt(s));
             }
             Stmt::If {
                 condition,

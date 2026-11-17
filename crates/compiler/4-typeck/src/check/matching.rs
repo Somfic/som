@@ -188,7 +188,9 @@ impl Checker<'_> {
         // An overloaded call not decided yet: the function giving what the arms can match.
         // `"yes"` matches text, or an optional's text; `none` only an optional.
         if self.u.var_kind(matched) == Some(VarKind::Any) {
-            let has = |f: fn(&Pattern) -> bool| (arms.iter()).any(|arm| f(&self.ast.patterns[arm.pattern]));
+            let has = |f: fn(&Pattern) -> bool| {
+                (arms.iter()).any(|arm| f(&self.ast.patterns[arm.pattern]))
+            };
             let none = has(|p| matches!(p, Pattern::None));
             let text = has(|p| matches!(p, Pattern::Str(_)));
             let int = has(|p| matches!(p, Pattern::Int(_)));

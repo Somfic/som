@@ -311,7 +311,9 @@ fn pointer(bytes: &[Byte]) -> Result<Value, Unreadable> {
                     word[i] = *b;
                 }
             }
-            Ok(Value::Ref(crate::Loc::foreign(u128::from_le_bytes(word) as usize)))
+            Ok(Value::Ref(crate::Loc::foreign(
+                u128::from_le_bytes(word) as usize
+            )))
         }
         Byte::Ptr(loc, 0)
             if (bytes.iter().enumerate()).all(

@@ -13,8 +13,8 @@
 use std::collections::{BTreeMap, HashMap};
 
 use som_ast::Id;
+use som_lang::LangTrait;
 use som_mir::*;
-use som_resolve::LangTrait;
 use som_typeck::traits::find_impl;
 
 use super::{FnBuilder, Lowerer};
@@ -37,7 +37,7 @@ impl Lowerer<'_> {
         let trait_ = self.names.lang(LangTrait::Drop)?;
         let (index, args) = find_impl(&self.typed.impls, &self.mir.types, trait_, ty, &[], &|t| t)?;
         let method = (self.typed.impls[index].methods.iter().copied())
-            .find(|&m| &*self.ast.funcs[m].name.name == "drop")?;
+            .find(|&m| Some(&*self.ast.funcs[m].name.name) == LangTrait::Drop.method())?;
         self.mir.drop_types.insert(ty);
         Some(self.instance(method, args))
     }
@@ -45,7 +45,7 @@ impl Lowerer<'_> {
     fn build_glue(&mut self, ty: TypeId) -> Option<FuncId> {
         // What a `Manual` holds is dropped by whatever holds it, not on its own.
         if let Ty::Struct(def, _) = self.mir.types.get(ty)
-            && self.names.lang_struct(som_resolve::LangStruct::Manual) == Some(*def)
+            && self.names.lang_struct(som_lang::LangStruct::Manual) == Some(*def)
         {
             return None;
         }
@@ -559,8 +559,8 @@ impl FnBuilder<'_, '_> {
             return false;
         };
         let def = self.l.names.func(func);
-        &*self.l.ast.funcs[func].name.name == "forget"
-            && &*self.l.ast.modules[self.l.names.def(def).module].name == "som::mem"
+        &*self.l.ast.funcs[func].name.name == som_lang::FORGET
+            && &*self.l.ast.modules[self.l.names.def(def).module].name == som_lang::MEM_MODULE
     }
 
     fn body_place_ty(&self, locals: &Arena<LocalDecl>, place: &Place) -> TypeId {

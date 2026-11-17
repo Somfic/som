@@ -800,7 +800,10 @@ fn enums(
         let constants: Vec<&Value> = (constants.iter())
             .filter(|c| c["kind"] == "EnumConstantDecl")
             .collect();
-        let c_names: Vec<&str> = constants.iter().filter_map(|c| c["name"].as_str()).collect();
+        let c_names: Vec<&str> = constants
+            .iter()
+            .filter_map(|c| c["name"].as_str())
+            .collect();
         if c_names.len() != constants.len() || c_names.is_empty() {
             continue;
         }
@@ -971,11 +974,13 @@ fn generate(
         let names = field_names(fields);
         Some(macros::Record {
             name: name.clone(),
-            fields: names.into_iter().zip(fields.iter().map(|(_, ty)| ty.clone())).collect(),
+            fields: names
+                .into_iter()
+                .zip(fields.iter().map(|(_, ty)| ty.clone()))
+                .collect(),
         })
     };
-    let (constants, constant_origins) =
-        macros::constants(preprocessed, &wanted, &record, &taken);
+    let (constants, constant_origins) = macros::constants(preprocessed, &wanted, &record, &taken);
     out.push_str(&constants);
     origins.push_str(&constant_origins);
     // The library's own enums, not ones its header pulls in from the system's; the C

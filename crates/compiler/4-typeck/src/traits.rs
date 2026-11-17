@@ -3,7 +3,8 @@
 //! concrete types.
 
 use som_ast::{Func, Id};
-use som_resolve::{DefId, LangTrait};
+use som_lang::LangTrait;
+use som_resolve::DefId;
 
 use crate::ty::{Ty, TypeId, TypeTable};
 

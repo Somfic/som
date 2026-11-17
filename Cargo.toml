@@ -5,6 +5,7 @@ members = [
     "crates/core/base",
     "crates/core/ast",
     "crates/core/mir",
+    "crates/core/lang",
 
     # the compiler passes, in pipeline order
     "crates/compiler/1-lexer",

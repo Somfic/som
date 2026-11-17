@@ -100,7 +100,10 @@ fn constant_branches_become_jumps_and_dead_blocks_go() {
 #[test]
 fn floats_fold_but_not_to_infinity() {
     // `main` gives an exit code, an integer: the floats are another function's.
-    assert_returns("fn run() -> f64 { 1.5 * 2.0 } fn main() {}", "const 3.0_f64");
+    assert_returns(
+        "fn run() -> f64 { 1.5 * 2.0 } fn main() {}",
+        "const 3.0_f64",
+    );
     let mir = folded("fn run() -> f64 { 1.0 / 0.0 } fn main() {}");
     assert!(mir.contains("Divide("), "{mir}");
 }

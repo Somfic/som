@@ -64,7 +64,8 @@ pub(crate) enum Missing {
 
 /// The libraries loaded so far, never unloaded: what C gives back can outlive a constant.
 fn loaded() -> &'static Mutex<HashMap<PathBuf, &'static libloading::Library>> {
-    static LOADED: OnceLock<Mutex<HashMap<PathBuf, &'static libloading::Library>>> = OnceLock::new();
+    static LOADED: OnceLock<Mutex<HashMap<PathBuf, &'static libloading::Library>>> =
+        OnceLock::new();
     LOADED.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -200,7 +201,12 @@ impl Machine<'_, '_> {
         let mut locals: Vec<(Loc, TypeId, Vec<u64>)> = Vec::new();
         for (ty, value) in &values {
             let bytes = match value {
-                Value::Ref(loc @ Loc { root: Root::Local { .. }, .. }) => {
+                Value::Ref(
+                    loc @ Loc {
+                        root: Root::Local { .. },
+                        ..
+                    },
+                ) => {
                     let pointee = match mir.types.get(*ty) {
                         Ty::Ptr(to) | Ty::Ref { to, .. } => *to,
                         Ty::CStr => mir.types.u8,
@@ -289,7 +295,9 @@ impl Machine<'_, '_> {
                 }
                 Ok(self.pinned[&alloc].address() + offset)
             }
-            Root::Local { .. } => unsupported("a pointer to a local, inside what's passed to C", span),
+            Root::Local { .. } => {
+                unsupported("a pointer to a local, inside what's passed to C", span)
+            }
         }
     }
 
@@ -316,11 +324,18 @@ impl Machine<'_, '_> {
     fn sync_out(&mut self) {
         let allocs: Vec<usize> = self.pinned.keys().copied().collect();
         for alloc in allocs {
-            let host = self.pinned.get_mut(&alloc).expect("pinned").bytes().to_vec();
+            let host = self
+                .pinned
+                .get_mut(&alloc)
+                .expect("pinned")
+                .bytes()
+                .to_vec();
             let expected: Vec<Option<u8>> = match self.heap.get(alloc) {
                 Some(Some(bytes)) => (bytes.iter())
                     .map(|b| match b {
-                        Byte::Ptr(loc, n) => self.known_address(loc).map(|a| a.to_le_bytes()[*n as usize]),
+                        Byte::Ptr(loc, n) => self
+                            .known_address(loc)
+                            .map(|a| a.to_le_bytes()[*n as usize]),
                         _ => None,
                     })
                     .collect(),

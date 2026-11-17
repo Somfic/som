@@ -99,7 +99,7 @@ impl LoadError {
                         ", ",
                         m::code("Rc"),
                         " and the rest of ",
-                        m::module("som"),
+                        m::module(som_lang::PRELUDE_MODULE),
                         " itself need no ",
                         m::code("use")
                     ]);
@@ -209,13 +209,15 @@ pub fn load_with(
     }
     // The standard library is always there by its full name, `som::io::printf`, without a
     // `use`; `use som::io;` is for naming what's in it unqualified.
-    if !loader.loaded.contains("som") {
+    if !loader.loaded.contains(som_lang::PRELUDE_MODULE) {
         let nowhere = Span::empty(Arc::new(Source::from_raw("")));
-        loader.load_module("som".into(), &folder_of(path), nowhere);
+        loader.load_module(som_lang::PRELUDE_MODULE.into(), &folder_of(path), nowhere);
     }
     // `@for v in Kind { … }`: written out now that every module, and `Kind`, is loaded.
     let errors = som_parser::expand_reflected(&mut loader.ast);
-    loader.errors.extend(errors.into_iter().map(LoadError::Parse));
+    loader
+        .errors
+        .extend(errors.into_iter().map(LoadError::Parse));
 
     (loader.ast, loader.errors)
 }

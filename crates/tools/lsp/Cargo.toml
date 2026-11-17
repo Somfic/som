@@ -9,6 +9,7 @@ rust-version = "1.90.0"
 
 
 [dependencies]
+som_lang = { path = "../../core/lang" }
 som_base = { path = "../../core/base" }
 som_ast = { path = "../../core/ast" }
 som_lexer = { path = "../../compiler/1-lexer" }

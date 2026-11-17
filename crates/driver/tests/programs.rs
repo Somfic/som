@@ -149,7 +149,11 @@ fn a_local_set_once_to_a_number_is_written_in_the_fix() {
     ));
     assert_eq!(
         hints,
-        [("count_primes(n)".to_string(), Some("25".to_string()), "@count_primes(100)".to_string())]
+        [(
+            "count_primes(n)".to_string(),
+            Some("25".to_string()),
+            "@count_primes(100)".to_string()
+        )]
     );
 }
 

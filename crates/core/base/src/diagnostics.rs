@@ -478,7 +478,10 @@ fn fmt_fix(f: &mut std::fmt::Formatter<'_>, fix: &Fix) -> std::fmt::Result {
                 line_end
             };
             let mut offset = line_start;
-            for (n, removed) in content[line_start..last.max(line_start)].split('\n').enumerate() {
+            for (n, removed) in content[line_start..last.max(line_start)]
+                .split('\n')
+                .enumerate()
+            {
                 let (from, to) = (offset, offset + removed.len());
                 let (cut_from, cut_to) = (start.clamp(from, to), end.clamp(from, to));
                 writeln!(

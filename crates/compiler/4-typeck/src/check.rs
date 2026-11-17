@@ -1,7 +1,8 @@
 use crate::error::Unused;
 use som_ast::{Ast, BinOp, Expr, Func, Id, Pattern, Primitive, Span, Stmt, TypeExpr, VariantKind};
+use som_lang::LangTrait;
 use som_resolve::visibility::{self, Hidden, Viewer};
-use som_resolve::{DefId, DefKind, LangTrait, Names};
+use som_resolve::{DefId, DefKind, Names};
 use std::collections::{HashMap, HashSet};
 
 use crate::error::{NotForC, TypeError};
@@ -210,7 +211,7 @@ impl<'a> Checker<'a> {
             conversions: HashMap::new(),
         };
         // Text is the standard library's `string`, where it's loaded.
-        if let Some(def) = names.lang_struct(som_resolve::LangStruct::String) {
+        if let Some(def) = names.lang_struct(som_lang::LangStruct::String) {
             checker.u.table.text = checker.u.table.intern(Ty::Struct(def, Vec::new()));
         }
         checker
@@ -431,7 +432,6 @@ impl<'a> Checker<'a> {
                 self.invalid_operands(expr, op, lhs, rhs);
             }
         }
-
     }
 
     /// Checks function `id`'s body, once: in order, or sooner, when a call needs the return
@@ -573,13 +573,7 @@ impl<'a> Checker<'a> {
 
     /// Reports member `func`, used as `name` at `span` on a value of type `ty`, if its `@if`s
     /// don't hold there, or aren't known to. Whether it's there.
-    fn check_member_there(
-        &mut self,
-        func: Id<Func>,
-        ty: TypeId,
-        name: &str,
-        span: Span,
-    ) -> bool {
+    fn check_member_there(&mut self, func: Id<Func>, ty: TypeId, name: &str, span: Span) -> bool {
         let holds = self.member_holds(func, ty);
         if holds == Some(true) {
             return true;
@@ -693,7 +687,7 @@ impl<'a> Checker<'a> {
 
     /// Each `@on fail` function is called with a `&Failure`, and gives nothing back.
     fn check_listeners(&mut self) {
-        let failure = self.names.lang_struct(som_resolve::LangStruct::Failure);
+        let failure = self.names.lang_struct(som_lang::LangStruct::Failure);
         for &id in self.names.fail_listeners() {
             let sig = &self.sigs[id.id];
             let takes = matches!(&sig.params[..], [param] if matches!(
@@ -763,7 +757,7 @@ impl<'a> Checker<'a> {
         let def = self.names.func(id);
         let top_level = self.ast.modules[self.names.def(def).module].name.is_empty()
             && self.names.impl_of(id).is_none();
-        if &*func.name.name != "main" || !top_level {
+        if &*func.name.name != som_lang::ENTRY_POINT || !top_level {
             return;
         }
         // A literal it ends in: text is a `string`, a number what it would be anyway.
@@ -809,7 +803,7 @@ impl<'a> Checker<'a> {
         let (Some(first), Some(last)) = (func.params.first(), func.params.last()) else {
             return;
         };
-        if &*func.name.name != "main" || !top_level {
+        if &*func.name.name != som_lang::ENTRY_POINT || !top_level {
             return;
         }
         let end = match last.ty {
@@ -1125,7 +1119,7 @@ impl<'a> Checker<'a> {
             // `#T` is the standard library's `Rc<T>`; without it loaded, there's nothing it is.
             TypeExpr::Shared(inner) => {
                 let inner = self.lower(*inner);
-                match self.names.lang_struct(som_resolve::LangStruct::Rc) {
+                match self.names.lang_struct(som_lang::LangStruct::Rc) {
                     Some(rc) => Ty::Struct(rc, vec![inner]),
                     None => Ty::Error,
                 }
@@ -1610,8 +1604,7 @@ impl<'a> Checker<'a> {
     /// Notes that constant `c`'s value is needed here, if it's worked out by running code
     /// and isn't known yet: the program is checked again once it is. Whether it was.
     fn need(&mut self, c: Id<som_ast::Const>) -> bool {
-        if self.known.get(c).is_some() || !som_resolve::const_runs_code(self.ast, self.names, c)
-        {
+        if self.known.get(c).is_some() || !som_resolve::const_runs_code(self.ast, self.names, c) {
             return false;
         }
         if !self.needed.contains(&c) {
@@ -1934,7 +1927,10 @@ impl<'a> Checker<'a> {
         }
         // `fflush(none)`: a null pointer is `mem::null()`; `none` is an optional's.
         if matches!(self.ast.exprs[expr], Expr::None)
-            && matches!(self.u.get(self.u.shallow(expected)), Ty::Pointer | Ty::Ptr(_))
+            && matches!(
+                self.u.get(self.u.shallow(expected)),
+                Ty::Pointer | Ty::Ptr(_)
+            )
         {
             self.errors.push(TypeError::NoneAsPointer {
                 ty: self.describe(expected),
@@ -2175,7 +2171,7 @@ impl<'a> Checker<'a> {
         };
         // A struct's operators are its traits': say which to implement, or for a type
         // parameter, to require.
-        let implement = LangTrait::of_operator(op).and_then(|lang| {
+        let implement = op.lang_trait().and_then(|lang| {
             let ty = self.u.get(self.u.shallow(lhs));
             match ty {
                 Ty::Param(def) => Some((lang.name(), Some(self.names.def(*def).name.to_string()))),
@@ -2186,11 +2182,13 @@ impl<'a> Checker<'a> {
                 _ => Some((lang.name(), None)),
             }
         });
-        let fix = LangTrait::of_operator(op)
+        let fix = op
+            .lang_trait()
             .filter(|_| implement.is_some())
             .and_then(|lang| self.operator_fix(lhs, lang, Some(rhs)))
             .or_else(|| self.interpolation_fix(expr, op, lhs, rhs));
-        let takes = LangTrait::of_operator(op)
+        let takes = op
+            .lang_trait()
             .map(|lang| self.operator_takes(lhs, lang))
             .unwrap_or_default();
         self.errors.push(TypeError::InvalidOperands {
@@ -2321,7 +2319,9 @@ impl<'a> Checker<'a> {
                 continue;
             };
             let params = &self.ast.funcs[f].params;
-            if params.first().is_some_and(|p| &*p.name.name == "self")
+            if params
+                .first()
+                .is_some_and(|p| &*p.name.name == som_lang::SELF_VALUE)
                 || !visibility::can_see(self.ast, self.names, method, viewer)
             {
                 continue;
@@ -2467,9 +2467,10 @@ impl<'a> Checker<'a> {
             // `T`'s struct.
             Stmt::Expr(_) if let Some(per_type) = self.ast.per_type.get(&id) => {
                 let name = &per_type.of.name().name;
-                let param = (self.current_func)
-                    .and_then(|f| (self.names.type_params(f).iter().copied())
-                        .find(|&p| &*self.names.def(p).name == &**name));
+                let param = (self.current_func).and_then(|f| {
+                    (self.names.type_params(f).iter().copied())
+                        .find(|&p| &*self.names.def(p).name == &**name)
+                });
                 let Some(param) = param else {
                     self.errors.push(TypeError::ReflectNotStruct {
                         name: name.to_string(),
@@ -3242,7 +3243,11 @@ impl<'a> Checker<'a> {
                             self.exprs[operand.id] = Some(ty);
                         }
                         None => self.errors.push(TypeError::TypeNotCompared {
-                            span: self.span(if self.is_type_operand(*lhs) { *lhs } else { *rhs }),
+                            span: self.span(if self.is_type_operand(*lhs) {
+                                *lhs
+                            } else {
+                                *rhs
+                            }),
                         }),
                     }
                 }
@@ -3954,7 +3959,7 @@ impl<'a> Checker<'a> {
                     return ty;
                 }
                 // `items.len`: the length of an array, slice or text.
-                if &*field.name == "len"
+                if ArrayMethod::from_name(&field.name) == Some(ArrayMethod::Len)
                     && let Some(ty) = self.array_method(id, *object, object_ty, field, &[], true)
                 {
                     return ty;
@@ -3962,15 +3967,15 @@ impl<'a> Checker<'a> {
                 // `xs.length`: an array or slice has `len` and its methods, nothing else.
                 if self.is_collection(object_ty) {
                     let methods = (ArrayMethod::ALL.iter())
-                        .map(|&(name, _)| name)
-                        .filter(|&name| name != "len" && name != "bytes")
+                        .filter(|&&m| m != ArrayMethod::Len && m != ArrayMethod::Bytes)
+                        .map(|m| m.name())
                         .map(String::from)
                         .collect();
                     self.errors.push(TypeError::UnknownField {
                         ty: self.u.display(self.u.shallow(object_ty), self.names),
                         field: field.name.to_string(),
                         available: Vec::new(),
-                        props: vec!["len".into()],
+                        props: vec![ArrayMethod::Len.name().into()],
                         methods,
                         span: field.span.clone(),
                     });
@@ -3996,13 +4001,16 @@ impl<'a> Checker<'a> {
                 }
                 if let Ty::Range(int) = *self.u.get(viewed) {
                     let index = match &*field.name {
-                        "start" => 0,
-                        "end" => 1,
+                        som_lang::RANGE_START => 0,
+                        som_lang::RANGE_END => 1,
                         _ => {
                             self.errors.push(TypeError::UnknownField {
                                 ty: self.u.display(viewed, self.names),
                                 field: field.name.to_string(),
-                                available: vec!["start".into(), "end".into()],
+                                available: vec![
+                                    som_lang::RANGE_START.into(),
+                                    som_lang::RANGE_END.into(),
+                                ],
                                 props: Vec::new(),
                                 methods: Vec::new(),
                                 span: field.span.clone(),
@@ -4080,7 +4088,8 @@ impl<'a> Checker<'a> {
                 let expected = self.names.struct_params(s).len();
                 // `Self { … }` is the type the impl block is for, arguments and all: in
                 // `impl Vector<3, f32>`, a `Vector<3, f32>`.
-                let of_self = (path.segments.len() == 1 && &*path.segments[0].name == "Self")
+                let of_self = (path.segments.len() == 1
+                    && &*path.segments[0].name == som_lang::SELF_TYPE)
                     .then(|| self.current_func.and_then(|f| self.names.impl_of(f)))
                     .flatten()
                     .map(|index| self.self_type(index))
@@ -4266,11 +4275,14 @@ impl<'a> Checker<'a> {
 
             // `@for (i, k) in T` among its arms, over a generic enum: checked for each
             // instance, with the copy for `T`'s enum.
-            Expr::Match { scrutinee, .. } if let Some(per_type) = self.ast.per_type_matches.get(&id) => {
+            Expr::Match { scrutinee, .. }
+                if let Some(per_type) = self.ast.per_type_matches.get(&id) =>
+            {
                 let name = &per_type.of.name().name;
-                let param = (self.current_func)
-                    .and_then(|f| (self.names.type_params(f).iter().copied())
-                        .find(|&p| &*self.names.def(p).name == &**name));
+                let param = (self.current_func).and_then(|f| {
+                    (self.names.type_params(f).iter().copied())
+                        .find(|&p| &*self.names.def(p).name == &**name)
+                });
                 let Some(param) = param else {
                     self.errors.push(TypeError::ReflectNotEnum {
                         name: name.to_string(),
@@ -4399,8 +4411,8 @@ impl<'a> Checker<'a> {
         let Some(kind) = kind else {
             // What every array has: `len`, read, and its methods.
             let methods = (ArrayMethod::ALL.iter())
-                .map(|&(name, _)| name)
-                .filter(|&name| name != "len" && (name != "bytes" || is_text))
+                .filter(|&&m| m != ArrayMethod::Len && (m != ArrayMethod::Bytes || is_text))
+                .map(|m| m.name())
                 .map(String::from)
                 .collect();
             self.errors.push(TypeError::UnknownMethod {
@@ -4408,7 +4420,7 @@ impl<'a> Checker<'a> {
                 method: method.name.to_string(),
                 span: method.span.clone(),
                 methods,
-                props: vec!["len".into()],
+                props: vec![ArrayMethod::Len.name().into()],
                 fields: Vec::new(),
                 bare_call: self.bare_call(call, method, args),
             });
@@ -4861,10 +4873,14 @@ impl<'a> Checker<'a> {
     /// For an overloaded call whose result is `result`, not decided yet: keeps the functions
     /// whose return type `keep` accepts, and if that leaves one, takes it now. A `match` on
     /// the call does this with what its arms can match.
-    pub(super) fn decide_pending_by(&mut self, result: TypeId, keep: &dyn Fn(&Self, TypeId) -> bool) {
+    pub(super) fn decide_pending_by(
+        &mut self,
+        result: TypeId,
+        keep: &dyn Fn(&Self, TypeId) -> bool,
+    ) {
         let result = self.u.shallow(result);
-        let Some(index) = (self.pending_calls.iter())
-            .position(|p| self.u.shallow(p.result) == result)
+        let Some(index) =
+            (self.pending_calls.iter()).position(|p| self.u.shallow(p.result) == result)
         else {
             return;
         };
@@ -5143,7 +5159,7 @@ impl<'a> Checker<'a> {
         let (error, unit, bool) = (self.u.table.error, self.u.table.unit, self.u.table.bool);
         let Some(kind) = PointerMethod::from_name(&method.name) else {
             let methods = (PointerMethod::ALL.iter())
-                .map(|&(name, _)| name.to_string())
+                .map(|m| m.name().to_string())
                 .collect();
             self.errors.push(TypeError::UnknownMethod {
                 ty: self.describe(receiver_ty),
@@ -5275,7 +5291,7 @@ impl<'a> Checker<'a> {
             Ty::Ref { mutable: true, .. } => false,
             Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.is_copy(inner),
             // Whatever it stands for might move: only copied if it's required to be `Copy`.
-            Ty::Param(def) => (self.names.lang(som_resolve::LangTrait::Copy))
+            Ty::Param(def) => (self.names.lang(som_lang::LangTrait::Copy))
                 .is_some_and(|copy| self.names.bounds(def).contains(&copy)),
             _ => true,
         }
@@ -5634,7 +5650,8 @@ impl<'a> Checker<'a> {
         }
         let is_slice = matches!(self.u.get(base), Ty::Slice(_));
         if is_slice || matches!(self.u.get(base), Ty::Struct(..)) {
-            if let Some(ty) = self.index_call(id, object, object_ty, base, index, "at") {
+            if let Some(ty) = self.index_call(id, object, object_ty, base, index, LangTrait::Index)
+            {
                 return ty;
             }
             self.errors.push(TypeError::IndexNotArray {
@@ -5703,7 +5720,7 @@ impl<'a> Checker<'a> {
     /// member called `name` of its own: `node.value` is `node.get().value`. Gives the type
     /// it's read as: the `&T` its `get` lends, which can't change what it refers to.
     fn through_shared(&mut self, object: Id<Expr>, ty: TypeId, name: &str) -> TypeId {
-        let Some(rc) = self.names.lang_struct(som_resolve::LangStruct::Rc) else {
+        let Some(rc) = self.names.lang_struct(som_lang::LangStruct::Rc) else {
             return ty;
         };
         let Ty::Struct(def, ref args) = *self.u.get(self.u.shallow(ty)) else {
@@ -5733,12 +5750,9 @@ impl<'a> Checker<'a> {
         object_ty: TypeId,
         base: TypeId,
         key: Id<Expr>,
-        method: &str,
+        lang: LangTrait,
     ) -> Option<TypeId> {
-        let lang = match method {
-            "at" => LangTrait::Index,
-            _ => LangTrait::IndexMut,
-        };
+        let method = lang.method()?;
         let index_trait = self.names.lang(lang)?;
         let (at, _) = {
             let u = &self.u;
@@ -5780,7 +5794,7 @@ impl<'a> Checker<'a> {
         let DefKind::Func(func) = self.names.def(def).kind else {
             return false;
         };
-        if &*self.ast.funcs[func].name.name != "at" {
+        if Some(&*self.ast.funcs[func].name.name) != LangTrait::Index.method() {
             return true;
         }
         let Some(object_ty) = self.exprs[object.id] else {
@@ -5793,7 +5807,7 @@ impl<'a> Checker<'a> {
         let read = self.exprs[expr.id];
         // How `at` took `xs` doesn't count: `at_mut` takes it its own way.
         self.receivers.remove(&object);
-        let changed = self.index_call(expr, object, object_ty, base, index, "at_mut");
+        let changed = self.index_call(expr, object, object_ty, base, index, LangTrait::IndexMut);
         match (changed, read) {
             (Some(changed), Some(read)) => {
                 let _ = self.u.unify(changed, read);
@@ -5854,12 +5868,10 @@ impl<'a> Checker<'a> {
                 let implicit = (c.names.impl_of(f))
                     .and_then(|i| c.names.impls[i].trait_)
                     .and_then(|t| c.names.lang_of(t))
-                    .is_some_and(|lang| {
-                        matches!(lang, LangTrait::Drop | LangTrait::Share)
-                            || lang.operator_method().is_some()
-                    });
+                    .is_some_and(LangTrait::called_implicitly);
                 !implicit
-                    && (c.ast.funcs[f].params.first()).is_some_and(|p| &*p.name.name == "self")
+                    && (c.ast.funcs[f].params.first())
+                        .is_some_and(|p| &*p.name.name == som_lang::SELF_VALUE)
             }
             _ => false,
         };
@@ -6164,7 +6176,7 @@ impl<'a> Checker<'a> {
 
         // `"ab" * 3`, `money + money`: an implementation of the operator's trait for these
         // operands, which says what comes out.
-        if let Some(lang) = LangTrait::of_operator(op)
+        if let Some(lang) = op.lang_trait()
             && let Some(output) = self.operator_impl(id, lang, lhs, rhs)
         {
             return output;
@@ -6178,7 +6190,7 @@ impl<'a> Checker<'a> {
             rhs: right,
             ..
         } = self.ast.exprs[id]
-            && let Some(lang) = LangTrait::of_operator(op)
+            && let Some(lang) = op.lang_trait()
             && !self.u.could_fit(lhs, rhs)
         {
             let has_op = |c: &mut Self, ty: TypeId| {
@@ -6194,14 +6206,14 @@ impl<'a> Checker<'a> {
                 lhs = rhs;
             }
         }
-        let result = if is_arithmetic(op) { lhs } else { bool };
+        let result = if op.is_arithmetic() { lhs } else { bool };
         if self.u.unify(lhs, rhs).is_err() {
             self.invalid_operands(id, op, lhs, rhs);
-            return if is_arithmetic(op) { error } else { bool };
+            return if op.is_arithmetic() { error } else { bool };
         }
         // Values of a type implementing `Eq` compare with its `eq`, `Add` add with its `add`.
         if let Some(output) = self.trait_op(id, op, lhs) {
-            return if is_arithmetic(op) { output } else { bool };
+            return if op.is_arithmetic() { output } else { bool };
         }
         match self.operand_ok(op, lhs) {
             Some(true) => {}
@@ -6250,7 +6262,7 @@ impl<'a> Checker<'a> {
             return match kind {
                 VarKind::Any => None,
                 VarKind::Int => Some(true),
-                VarKind::Float => Some(!is_bitwise(op)),
+                VarKind::Float => Some(!op.is_bitwise()),
                 VarKind::Collection { .. } | VarKind::Text => Some(false),
             };
         }
@@ -6278,22 +6290,6 @@ impl<'a> Checker<'a> {
             }
         })
     }
-}
-
-/// Whether `op` gives a value of its operands' type, rather than a `bool`.
-fn is_arithmetic(op: BinOp) -> bool {
-    matches!(
-        op,
-        BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo
-    ) || is_bitwise(op)
-}
-
-/// Whether `op` works on an integer's bits: `&`, `|`, `^`, `<<`, `>>`.
-fn is_bitwise(op: BinOp) -> bool {
-    matches!(
-        op,
-        BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor | BinOp::ShiftLeft | BinOp::ShiftRight
-    )
 }
 
 /// A call more than one function fitted when it was checked: see `resolve_pending_calls`.

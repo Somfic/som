@@ -11,9 +11,10 @@ use tower_lsp::{Client, LanguageServer};
 use som_ast::{BinOp, Expr, Func, Id, Item, Span, Stmt, Struct};
 use som_base::Source;
 use som_driver::Analysis;
+use som_lang::LangTrait;
 use som_lexer::{TokenKind, lex};
 use som_resolve::visibility::{self, Viewer};
-use som_resolve::{DefId, DefKind, LangTrait};
+use som_resolve::{DefId, DefKind};
 use som_typeck::{ArrayMethod, PointerMethod, Ty};
 
 use crate::convert;
@@ -871,7 +872,7 @@ impl LanguageServer for SomLanguageServer {
             .into_iter()
             .find_map(|item| match item {
                 Item::Func(id)
-                    if &*a.ast.funcs[*id].name.name == "main"
+                    if &*a.ast.funcs[*id].name.name == som_lang::ENTRY_POINT
                         && a.names.def(a.names.func(*id)).module == 0 =>
                 {
                     Some(*id)
@@ -985,7 +986,10 @@ impl LanguageServer for SomLanguageServer {
                         continue;
                     }
                     let mut item = func_item(a, f, format!("@{}", func.name.name), insert);
-                    let text = item.insert_text.take().unwrap_or_else(|| item.label.clone());
+                    let text = item
+                        .insert_text
+                        .take()
+                        .unwrap_or_else(|| item.label.clone());
                     item.filter_text = Some(item.label.clone());
                     item.text_edit = Some(CompletionTextEdit::Edit(TextEdit {
                         range,
@@ -1087,7 +1091,7 @@ impl LanguageServer for SomLanguageServer {
             if let Some(expr) = receiver
                 && let Some(sequence) = array_of(a, a.typed.expr(expr))
             {
-                for (_, method) in ArrayMethod::ALL {
+                for &method in ArrayMethod::ALL {
                     // Text can only be read, and only text has `bytes`.
                     let skip = if sequence.is_text {
                         matches!(
@@ -1118,7 +1122,8 @@ impl LanguageServer for SomLanguageServer {
                 && let Ty::Ptr(element) = *a.typed.ty(a.typed.expr(expr))
             {
                 // A typed pointer's built-in methods.
-                for (name, method) in PointerMethod::ALL {
+                for &method in PointerMethod::ALL {
+                    let name = method.name();
                     let (params, ret, doc) = pointer_method_doc(method);
                     let element = ty(a, element);
                     let fill = |s: &str| s.replace('T', &element);
@@ -1188,13 +1193,10 @@ impl LanguageServer for SomLanguageServer {
                     let receiver_ty = a.typed.expr(expr);
                     let Some(method) = (a.names.overloads(method).into_iter()).find(|&d| {
                         match a.names.def(d).kind {
-                            DefKind::Func(f) => som_typeck::member_holds(
-                                &a.ast,
-                                &a.names,
-                                &a.typed,
-                                f,
-                                receiver_ty,
-                            ) != Some(false),
+                            DefKind::Func(f) => {
+                                som_typeck::member_holds(&a.ast, &a.names, &a.typed, f, receiver_ty)
+                                    != Some(false)
+                            }
                             _ => true,
                         }
                     }) else {
@@ -1249,7 +1251,7 @@ impl LanguageServer for SomLanguageServer {
                     if a.ast.funcs[f]
                         .params
                         .first()
-                        .is_none_or(|p| &*p.name.name != "self")
+                        .is_none_or(|p| &*p.name.name != som_lang::SELF_VALUE)
                     {
                         continue;
                     }
@@ -1340,7 +1342,8 @@ impl LanguageServer for SomLanguageServer {
             // `File { ` where `File`'s fields can't all be seen from here: it can't be made
             // with a literal, so what makes one replaces it, `File::open(…)`.
             let fields = a.ast.structs[s].fields.len();
-            if (0..fields).any(|i| visibility::hidden_field(&a.ast, &a.names, s, i, viewer).is_some())
+            if (0..fields)
+                .any(|i| visibility::hidden_field(&a.ast, &a.names, s, i, viewer).is_some())
             {
                 let start = path.as_ptr() as usize - cursor.text.as_ptr() as usize;
                 let range = Range::new(
@@ -2448,7 +2451,8 @@ fn prop_items(
             .and_then(|i| a.typed.impls[i].target)
             .is_none_or(|target| impl_target_matches(a, target, receiver));
         // Only there for some instances (`@if N >= 3 { … }`), not this one.
-        if !fits || som_typeck::member_holds(&a.ast, &a.names, &a.typed, f, receiver) == Some(false) {
+        if !fits || som_typeck::member_holds(&a.ast, &a.names, &a.typed, f, receiver) == Some(false)
+        {
             continue;
         }
         let ret = a.typed.func(f).ret;
@@ -2873,10 +2877,13 @@ fn extern_links(a: &Analysis, file: &str) -> Vec<(Span, PathBuf)> {
 /// in it can't be named there.
 fn undeclared_library(a: &Analysis, here: usize, m: usize) -> bool {
     let externs = |module: usize| {
-        a.ast.modules[module].items.iter().filter_map(|item| match item {
-            Item::Extern(block) if block.library.is_some() => block.module,
-            _ => None,
-        })
+        a.ast.modules[module]
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Extern(block) if block.library.is_some() => block.module,
+                _ => None,
+            })
     };
     let is_library = (0..a.ast.modules.len()).any(|module| externs(module).any(|l| l == m));
     is_library && !externs(here).any(|l| l == m)
@@ -2930,7 +2937,11 @@ fn modules_in_scope(a: &Analysis, file: &str, offset: usize) -> (usize, Vec<usiz
         }
     }
     // The standard library's root module is seen from everywhere.
-    if let Some(prelude) = a.ast.modules.iter().position(|m| &*m.name == "som")
+    if let Some(prelude) = a
+        .ast
+        .modules
+        .iter()
+        .position(|m| &*m.name == som_lang::PRELUDE_MODULE)
         && !in_scope.contains(&prelude)
     {
         in_scope.push(prelude);
@@ -3031,7 +3042,8 @@ fn constructors<'a>(
             _ => None,
         })
         .filter(|&(_, f, _)| {
-            let takes_self = (a.ast.funcs[f].params.first()).is_some_and(|p| &*p.name.name == "self");
+            let takes_self = (a.ast.funcs[f].params.first())
+                .is_some_and(|p| &*p.name.name == som_lang::SELF_VALUE);
             !takes_self && makes(a.typed.func(f).ret)
         })
         .collect()
@@ -3261,7 +3273,7 @@ fn module_items(
     }
     for f in funcs {
         let func = &a.ast.funcs[f];
-        if *func.name.name == *"main" && module.is_none() && m == 0 {
+        if *func.name.name == *som_lang::ENTRY_POINT && module.is_none() && m == 0 {
             continue;
         }
         items.push(func_item(a, f, name(&func.name.name), insert));
@@ -3304,7 +3316,7 @@ fn receiver_before(a: &Analysis, file: &str, text: &str, dot: usize) -> Option<I
         (a.ast.exprs.iter())
             .find(|&(id, expr)| {
                 let span = a.ast.exprs.span(id);
-                matches!(expr, Expr::Var(path) if &*path.to_string() == "self")
+                matches!(expr, Expr::Var(path) if &*path.to_string() == som_lang::SELF_VALUE)
                     && span.source.identifier() == file
                     && span.start_offset == dot
                     && span.length == 1
@@ -3758,7 +3770,7 @@ fn trait_methods_of(a: &Analysis, t: som_typeck::TypeId) -> Vec<(Id<Func>, Strin
             traits.push((tr, args));
         }
     };
-    for lang in LangTrait::ALL {
+    for &lang in LangTrait::ALL {
         if som_typeck::traits::builtin_operator(a.typed.ty(t), lang)
             && let Some(def) = a.names.lang(lang)
         {
@@ -4231,7 +4243,9 @@ const TOKEN_MODIFIERS: [SemanticTokenModifier; 1] = [SemanticTokenModifier::READ
 fn is_constant_name(name: &str) -> bool {
     name.len() > 1
         && name.starts_with(|c: char| c.is_ascii_uppercase())
-        && name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
 }
 
 /// Whether the name at `at` has type arguments, then a call: `make_identity<N>(`. The
@@ -4264,10 +4278,12 @@ fn generic_call(visible: &[&som_lexer::Token], at: usize) -> bool {
 fn semantic_tokens(source: Arc<Source>) -> Vec<SemanticToken> {
     // `"total: {n + 1}"`: the values in text are code, coloured as such.
     let tokens: Vec<som_lexer::Token> = (lex(source).into_iter())
-        .flat_map(|t| match t.kind == TokenKind::Text && t.text.contains('{') {
-            true => som_lexer::split_text(&t),
-            false => vec![t],
-        })
+        .flat_map(
+            |t| match t.kind == TokenKind::Text && t.text.contains('{') {
+                true => som_lexer::split_text(&t),
+                false => vec![t],
+            },
+        )
         .collect();
     let visible: Vec<&som_lexer::Token> = tokens
         .iter()
@@ -4814,8 +4830,18 @@ mod tests {
         assert_eq!(
             shown,
             [
-                ("COLS".into(), constant, Some("@const COLS: i32 = 10".into()), true),
-                ("SCALE".into(), constant, Some("@const SCALE: f32 = 2.5".into()), false),
+                (
+                    "COLS".into(),
+                    constant,
+                    Some("@const COLS: i32 = 10".into()),
+                    true
+                ),
+                (
+                    "SCALE".into(),
+                    constant,
+                    Some("@const SCALE: f32 = 2.5".into()),
+                    false
+                ),
                 (
                     "CELLS".into(),
                     constant,

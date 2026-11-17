@@ -492,9 +492,17 @@ mod tests {
         facts.unsigned("n");
         facts.assume(&Cond::compare(&v("i"), Compare::Less, &v("n")));
         // `n - 1 - i`: inside `0..n`.
-        let at = v("n").less(&Value::number(1)).unwrap().less(&v("i")).unwrap();
+        let at = v("n")
+            .less(&Value::number(1))
+            .unwrap()
+            .less(&v("i"))
+            .unwrap();
         assert!(facts.holds(&Cond::compare(&at, Compare::Less, &v("n"))));
-        assert!(facts.holds(&Cond::compare(&at, Compare::GreaterOrEqual, &Value::number(0))));
+        assert!(facts.holds(&Cond::compare(
+            &at,
+            Compare::GreaterOrEqual,
+            &Value::number(0)
+        )));
         assert!(!facts.holds(&Cond::compare(&at, Compare::Less, &Value::number(1))));
         // Two terms added aren't followed.
         assert!(v("n").plus(&v("i")).is_none());
@@ -519,9 +527,21 @@ mod tests {
     #[test]
     fn not_equal_of_signed() {
         let mut facts = Facts::default();
-        facts.assume(&Cond::compare(&v("b"), Compare::NotEqual, &Value::number(0)));
-        assert!(facts.holds(&Cond::compare(&v("b"), Compare::NotEqual, &Value::number(0))));
-        assert!(facts.holds(&Cond::compare(&Value::number(0), Compare::NotEqual, &v("b"))));
+        facts.assume(&Cond::compare(
+            &v("b"),
+            Compare::NotEqual,
+            &Value::number(0),
+        ));
+        assert!(facts.holds(&Cond::compare(
+            &v("b"),
+            Compare::NotEqual,
+            &Value::number(0)
+        )));
+        assert!(facts.holds(&Cond::compare(
+            &Value::number(0),
+            Compare::NotEqual,
+            &v("b")
+        )));
         assert!(!facts.holds(&Cond::compare(&v("b"), Compare::Greater, &Value::number(0))));
     }
 

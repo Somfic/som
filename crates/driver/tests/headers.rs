@@ -118,7 +118,12 @@ fn warnings(main: &Path) -> Vec<String> {
         .map(|w| match w {
             Warning::Library(LibraryWarning::DeclaredInHeader { functions, all, .. }) => {
                 let names: Vec<&str> = functions.iter().map(|f| f.name.as_str()).collect();
-                format!("{} {}{}", w.kind(), names.join(" "), if *all { " (all)" } else { "" })
+                format!(
+                    "{} {}{}",
+                    w.kind(),
+                    names.join(" "),
+                    if *all { " (all)" } else { "" }
+                )
             }
             Warning::Library(LibraryWarning::StructInHeader { name, imported, .. }) => {
                 format!("{} {name} as {imported}", w.kind())
@@ -226,7 +231,12 @@ fn functions_som_cannot_express_are_left_out() {
 fn a_missing_header_is_reported() {
     let dir = project();
     let main = write(dir.path(), "extern \"demo\" from \"nope.h\"; fn main() {}");
-    match check(&main, &Options::default()).err().unwrap().errors.as_slice() {
+    match check(&main, &Options::default())
+        .err()
+        .unwrap()
+        .errors
+        .as_slice()
+    {
         [Error::Load(LoadError::HeaderNotFound { header, .. })] => assert_eq!(header, "nope.h"),
         other => panic!("{other:?}"),
     }
@@ -618,7 +628,10 @@ fn defines_that_stand_for_values_become_constants() {
         "pub @const DEMO_CLEAR: cstr = \"\\x1b[2J\\x1b[H{{}}\\n\";",
         "impl Pair {\n    /// Two and a quarter\n    pub @const DEMO_PAIR = Pair { left: 2, right: 0.25 };\n}",
     ] {
-        assert!(generated.contains(expected), "{expected:?} in:\n{generated}");
+        assert!(
+            generated.contains(expected),
+            "{expected:?} in:\n{generated}"
+        );
     }
     // Macros taking arguments, and calls, aren't values.
     assert!(!generated.contains("DEMO_SQUARE") && !generated.contains("DEMO_CALL"));
@@ -650,10 +663,14 @@ fn declarations_the_header_already_has_are_warned_about() {
             "DeclaredInHeader demo_add demo_pair AddNumbers (all)",
         ]
     );
-    let block = check(&main, &Options::default()).unwrap().warnings.pop().unwrap();
+    let block = check(&main, &Options::default())
+        .unwrap()
+        .warnings
+        .pop()
+        .unwrap();
     assert!(
-        (block.to_diagnostic().hints.iter())
-            .any(|h| h.plain() == "imported, they're named in snake_case: `AddNumbers` is `demo::add_numbers`"),
+        (block.to_diagnostic().hints.iter()).any(|h| h.plain()
+            == "imported, they're named in snake_case: `AddNumbers` is `demo::add_numbers`"),
         "{block:?}"
     );
 }

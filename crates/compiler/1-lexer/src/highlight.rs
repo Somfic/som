@@ -170,7 +170,8 @@ pub fn highlight(line: &str) -> String {
             if token.kind == TokenKind::Ident
                 && token.text.len() > 1
                 && token.text.starts_with(|c: char| c.is_ascii_uppercase())
-                && (token.text.chars()).all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+                && (token.text.chars())
+                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
             {
                 color = token_color(TokenKind::Int);
             }

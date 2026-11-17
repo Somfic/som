@@ -7,6 +7,7 @@ description = "Binds every name in the syntax tree to the definition it refers t
 [dependencies]
 som_base = { path = "../../core/base" }
 som_ast = { path = "../../core/ast" }
+som_lang = { path = "../../core/lang" }
 
 [dev-dependencies]
 som_parser = { path = "../2-parser" }

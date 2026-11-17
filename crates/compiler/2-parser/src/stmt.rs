@@ -409,7 +409,11 @@ impl Parser<'_> {
         let n = &name.name;
         let fix = line_indent(start).map(|indent| {
             let fixed = format!("let {n} = {value_text};\n{indent}if {n}");
-            Fix::replace(msg!["check the optional itself: ", code(format!("if {n}"))], span.clone(), fixed)
+            Fix::replace(
+                msg!["check the optional itself: ", code(format!("if {n}"))],
+                span.clone(),
+                fixed,
+            )
         });
         self.errors.push(ParseError {
             message: msg!["som has no ", code("if let")],
@@ -441,7 +445,8 @@ impl Parser<'_> {
             Expr::Fallback { optional, fallback } => line_indent(&start).map(|indent| {
                 let optional = self.ast.exprs.span(*optional).get_text().to_string();
                 let block = self.ast.exprs.span(*fallback);
-                let before = Span::from_range(start.start_offset..block.start_offset, start.source.clone());
+                let before =
+                    Span::from_range(start.start_offset..block.start_offset, start.source.clone());
                 let mut fix = Fix::replace(
                     msg!["check the optional itself: ", code(format!("if !{n}"))],
                     before,
@@ -671,5 +676,8 @@ fn line_indent(at: &Span) -> Option<String> {
     let source = at.source.content();
     let line_start = source[..at.start_offset].rfind('\n').map_or(0, |i| i + 1);
     let before = &source[line_start..at.start_offset];
-    before.chars().all(|c| c == ' ' || c == '\t').then(|| before.to_string())
+    before
+        .chars()
+        .all(|c| c == ' ' || c == '\t')
+        .then(|| before.to_string())
 }

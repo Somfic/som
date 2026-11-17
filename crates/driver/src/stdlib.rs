@@ -14,8 +14,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-/// The standard library's own module.
-pub const ROOT_MODULE: &str = "som";
+pub use som_lang::{PRELUDE_MODULE as ROOT_MODULE, is_std_module};
 
 /// The standard library's folder, if it can be found.
 pub fn root() -> Option<&'static Path> {
@@ -42,14 +41,6 @@ pub fn candidates() -> Vec<PathBuf> {
     }
     dirs.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../std"));
     dirs
-}
-
-/// Whether `name` is the standard library or a module in it: `som`, `som::data`.
-pub fn is_std_module(name: &str) -> bool {
-    name == ROOT_MODULE
-        || name
-            .strip_prefix(ROOT_MODULE)
-            .is_some_and(|rest| rest.starts_with("::"))
 }
 
 /// The folder of standard library module `name` (`som::data` → `std/data/`), if it's one

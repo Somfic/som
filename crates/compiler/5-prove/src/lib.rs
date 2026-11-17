@@ -18,9 +18,9 @@ use som_typeck::{IntTy, Ty, TypeId};
 
 pub use error::ProveError;
 use facts::{Compare, Cond, Facts, Term, Value};
-use std::collections::HashMap;
 use som_base::message::code;
 use som_base::{Fix, Message, Span, msg};
+use std::collections::HashMap;
 
 /// Checks every function in `ast`.
 pub fn prove(ast: &Ast, names: &Names, typed: &Typed) -> Vec<ProveError> {
@@ -248,8 +248,11 @@ impl Prover<'_> {
                         };
                         self.facts.unsigned(len.clone());
                         let count = Value::number(values.len() as i128);
-                        self.facts
-                            .assume(&Cond::compare(&Value::place(len), Compare::Equal, &count));
+                        self.facts.assume(&Cond::compare(
+                            &Value::place(len),
+                            Compare::Equal,
+                            &count,
+                        ));
                     }
                 }
             }
@@ -268,7 +271,11 @@ impl Prover<'_> {
             Stmt::If {
                 then, otherwise, ..
             } if let Some(holds) = self.typed.settled_if(id) => {
-                let branch = if holds { Some(then) } else { otherwise.as_ref() };
+                let branch = if holds {
+                    Some(then)
+                } else {
+                    otherwise.as_ref()
+                };
                 if let Some(branch) = branch {
                     self.stmts(branch, false);
                 }
@@ -536,8 +543,10 @@ impl Prover<'_> {
     /// `reading`: not assigned to, so `get` would do instead.
     fn check_index(&mut self, id: Id<Expr>, object: Id<Expr>, index: Id<Expr>, reading: bool) {
         if let Some(func) = self.method(id) {
-            if !self.unproven(id, func, 1, Some(object), &[index]).is_empty() {
-
+            if !self
+                .unproven(id, func, 1, Some(object), &[index])
+                .is_empty()
+            {
                 self.out_of_bounds(id, object, index, reading);
             }
             return;
@@ -555,7 +564,11 @@ impl Prover<'_> {
         let at = self.value_of(index, &as_is);
         let known = at.is_some_and(|(at, needs)| {
             needs.iter().all(|n| self.facts.holds(n))
-                && self.facts.holds(&Cond::compare(&at, Compare::GreaterOrEqual, &Value::number(0)))
+                && self.facts.holds(&Cond::compare(
+                    &at,
+                    Compare::GreaterOrEqual,
+                    &Value::number(0),
+                ))
                 && self.facts.holds(&Cond::compare(&at, Compare::Less, &len))
         });
         // `y * 10 + x`, of an array of a known length: where it's known to be from what's
@@ -671,8 +684,7 @@ impl Prover<'_> {
         let Some((at, _)) = self.value_of(index, &as_is) else {
             return false;
         };
-        self.facts
-            .refuted(&Cond::compare(&at, Compare::Less, &len))
+        self.facts.refuted(&Cond::compare(&at, Compare::Less, &len))
     }
 
     /// What is known about index `index` of `object`, for when it isn't enough: how it
@@ -789,7 +801,9 @@ impl Prover<'_> {
             None => false,
         };
         let text = self.ast.exprs.span(divisor).get_text().to_string();
-        let simple = text.chars().all(|c| c.is_alphanumeric() || "_.".contains(c));
+        let simple = text
+            .chars()
+            .all(|c| c.is_alphanumeric() || "_.".contains(c));
         let check = match simple {
             true => format!("{text} != 0"),
             false => format!("({text}) != 0"),
@@ -1113,12 +1127,16 @@ impl Prover<'_> {
                         Some((def, self.ast.exprs.span((*arg)?).get_text().to_string()))
                     })
                     // A caller's own `M` for `N`: how it reads there.
-                    .chain(generics.iter().filter_map(|(param, value)| match &value.term {
-                        Term::Place(Place::Len(own)) if value.offset == 0 => {
-                            Some((*param, self.names.def(*own).name.to_string()))
-                        }
-                        _ => None,
-                    }))
+                    .chain(
+                        generics
+                            .iter()
+                            .filter_map(|(param, value)| match &value.term {
+                                Term::Place(Place::Len(own)) if value.offset == 0 => {
+                                    Some((*param, self.names.def(*own).name.to_string()))
+                                }
+                                _ => None,
+                            }),
+                    )
                     .collect();
                 failed.push(Unmet {
                     condition,
@@ -1513,15 +1531,21 @@ impl Prover<'_> {
             self.stmt_exprs_deep(stmt, &mut |expr| {
                 let mut changed = Vec::new();
                 match self.ast.exprs[expr] {
-                    Expr::Assign { target, value } if self.place_of(target).as_ref() == Some(place) => {
+                    Expr::Assign { target, value }
+                        if self.place_of(target).as_ref() == Some(place) =>
+                    {
                         let up = match self.ast.exprs[value] {
                             Expr::Binary {
                                 op: BinOp::Add,
                                 lhs,
                                 rhs,
                             } => match (&self.ast.exprs[lhs], &self.ast.exprs[rhs]) {
-                                (_, &Expr::Int(n)) => n >= 0 && self.place_of(lhs).as_ref() == Some(place),
-                                (&Expr::Int(n), _) => n >= 0 && self.place_of(rhs).as_ref() == Some(place),
+                                (_, &Expr::Int(n)) => {
+                                    n >= 0 && self.place_of(lhs).as_ref() == Some(place)
+                                }
+                                (&Expr::Int(n), _) => {
+                                    n >= 0 && self.place_of(rhs).as_ref() == Some(place)
+                                }
                                 _ => false,
                             },
                             _ => false,
