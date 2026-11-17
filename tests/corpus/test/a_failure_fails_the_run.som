@@ -1,0 +1,15 @@
+// expect: exit 1
+// run: tests
+
+@test
+fn fails() {
+    assert(1 + 1 == 3, "arithmetic");
+}
+
+/// Still run after the one before failed: each test is a process of its own.
+@test
+fn passes() {
+    assert(true);
+}
+
+fn main() -> i32 = 0;

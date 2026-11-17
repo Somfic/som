@@ -122,6 +122,9 @@ named_enum! {
     pub enum LangFunc {
         Halt = "halt",
         ShareOptional = "share_optional",
+        TestStart = "test_start",
+        TestPassed = "test_passed",
+        TestSummary = "test_summary",
     }
 }
 

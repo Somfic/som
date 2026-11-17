@@ -24,6 +24,9 @@ pub struct Mir {
     pub fail: Option<FuncId>,
     /// Every `@const` initializer and `@assert(…);`, run while compiling whether used or not.
     pub checks: Vec<FuncId>,
+    /// What `som test` starts at instead of `main`: each `@test`, then a summary. Nothing
+    /// else calls it, so it's shaken out of the program otherwise.
+    pub tests: Option<FuncId>,
     struct_index: HashMap<(DefId, Vec<TypeId>), usize>,
 }
 
@@ -36,6 +39,7 @@ impl Mir {
             drop_types: HashSet::new(),
             fail: None,
             checks: Vec::new(),
+            tests: None,
             struct_index: HashMap::new(),
         }
     }

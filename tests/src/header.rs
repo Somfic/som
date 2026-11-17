@@ -6,6 +6,7 @@
 //! // expect: error                      fails with at least one error
 //! // expect: error Mismatch MissingImpl fails with at least these error kinds
 //! // ignore: reason                     known failure, skipped by default
+//! // run: tests                         built as `som test` builds it: its `@test`s, not `main`
 //! ```
 //!
 //! Shared between `build.rs` (to generate tests) and the runner (to check them).
@@ -21,12 +22,15 @@ pub enum Expect {
 pub struct Header {
     pub expect: Expect,
     pub ignore: Option<String>,
+    /// `// run: tests`.
+    pub tests: bool,
 }
 
 impl Header {
     pub fn parse(source: &str) -> Header {
         let mut expect = None;
         let mut ignore = None;
+        let mut tests = false;
 
         for line in source.lines() {
             let Some(comment) = line.trim().strip_prefix("//") else {
@@ -39,6 +43,8 @@ impl Header {
             match key.trim() {
                 "expect" => expect = Some(parse_expect(value)),
                 "ignore" => ignore = Some(value.to_string()),
+                "run" if value == "tests" => tests = true,
+                "run" => panic!("unknown `// run:` {value:?}; there's only `tests`"),
                 _ => {}
             }
         }
@@ -46,6 +52,7 @@ impl Header {
         Header {
             expect: expect.expect("corpus case is missing an `// expect:` header"),
             ignore,
+            tests,
         }
     }
 }

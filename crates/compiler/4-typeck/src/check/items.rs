@@ -301,7 +301,8 @@ impl Checker<'_> {
         for &id in self.names.tests() {
             let sig = &self.sigs[id.id];
             let ret = self.u.shallow(sig.ret);
-            let gives = matches!(self.u.table.get(ret), Ty::Unit);
+            // Still unknown: its body never gets to the end, like `@unreachable;`.
+            let gives = matches!(self.u.table.get(ret), Ty::Unit | Ty::Var(_));
             let func = &self.ast.funcs[id];
             if !sig.params.is_empty() || !gives || !func.generics.is_empty() {
                 self.errors.push(TypeError::TestSignature {

@@ -228,7 +228,10 @@ fn constant_call_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
                 call.call, call.fix
             ))),
             padding_left: Some(true),
-            ..hint(convert::span_to_range(&call.span).end, format!("= {value}"))
+            ..hint(
+                convert::span_to_range(&call.span).end,
+                format!(" = {value}"),
+            )
         });
     }
     hints

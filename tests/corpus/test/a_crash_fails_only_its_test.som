@@ -1,0 +1,10 @@
+// expect: exit 1
+// run: tests
+
+@test
+fn unreachable() {
+    @unreachable;
+}
+
+@test
+fn passes() {}

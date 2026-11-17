@@ -1,0 +1,44 @@
+extern "c";
+
+// What `som test` runs. The compiler writes the loop: for each `@test`, `test_start`, and
+// where that's true, the test, then `test_passed`; then `test_summary` is the exit code.
+
+/// Starts the test `name`, at `at`, in a child process of its own, so a failure ends only
+/// that test. True in the child, which runs it. Here it's false, once the child is done,
+/// and `failed` counts the test if the child didn't pass it.
+fn test_start(failed: &mut i32, name: string, at: Location) -> bool {
+    // What's printed so far would otherwise be printed by the child too.
+    c::fflush(null());
+    let child = c::fork();
+    if child == 0 {
+        return true;
+    }
+    let mut status = 1;
+    if child > 0 {
+        c::waitpid(child, &mut status, 0);
+    }
+    if status == 0 {
+        c::printf("ok      %s\n", name.c_str);
+    } else {
+        *failed = *failed + 1;
+        let line = "FAILED  {name} ({at.file}:{at.line})";
+        c::printf("%s\n", line.c_str);
+    }
+    false
+}
+
+/// The test returned: it passed.
+fn test_passed() {
+    c::fflush(null());
+    c::exit(0);
+}
+
+/// How many passed and how many failed; the exit code is 1 if any failed.
+fn test_summary(failed: i32, total: i32) -> i32 {
+    let line = "{total - failed} passed, {failed} failed";
+    c::printf("\n%s\n", line.c_str);
+    if failed > 0 {
+        return 1;
+    }
+    0
+}

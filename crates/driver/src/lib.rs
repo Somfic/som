@@ -59,6 +59,9 @@ pub struct Options {
     /// Leave the MIR as lowering made it, once constants are worked out: no folding, and
     /// nothing unused removed. To see what the program is before the optimizer changes it.
     pub no_optimize: bool,
+    /// Build the program's tests: it starts at `som::run_tests`, which runs each `@test`,
+    /// instead of at `main`.
+    pub test: bool,
 }
 
 /// The folder of the program `file` belongs to: the nearest one around it, its own
@@ -101,6 +104,14 @@ pub fn check_loaded(ast: Ast, options: &Options) -> Result<Checked, Failed> {
 fn check_passes(ast: Ast, options: &Options, passes: &mut Passes) -> Result<Checked, Stopped> {
     let front = passes.front(ast)?;
     let mut mir = passes.back(&front)?.expect("no errors, so lowered");
+    if options.test
+        && let Some(tests) = mir.tests
+    {
+        for func in mir.funcs.iter_mut() {
+            func.is_entry = false;
+        }
+        mir.funcs[tests].is_entry = true;
+    }
     if !options.no_optimize {
         som_optimize::optimize(&mut mir);
     }

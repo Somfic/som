@@ -20,6 +20,7 @@ pub fn run_case(path: &str) {
     // `SOM_NO_OPTIMIZE=1`: the program as lowering made it, which has to work too.
     let options = som_driver::Options {
         no_optimize: std::env::var_os("SOM_NO_OPTIMIZE").is_some(),
+        test: header.tests,
         ..Default::default()
     };
     let result = som_driver::check(path, &options);

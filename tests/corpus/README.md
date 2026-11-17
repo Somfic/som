@@ -24,4 +24,6 @@ cargo test -p som_corpus -- --ignored        # only the known failures
 SOM_NO_OPTIMIZE=1 cargo test -p som_corpus  # without the optimizer, which has to work too
 ```
 
+A `// run: tests` line builds the case as `som test` does: it runs its `@test` functions, not `main`.
+
 Adding a test means adding a file; no Rust needed.

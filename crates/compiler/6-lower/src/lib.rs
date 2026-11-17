@@ -17,6 +17,7 @@ mod optional;
 mod place;
 mod rvalue;
 mod stmt;
+mod testing;
 mod traits;
 
 use instances::Subst;
@@ -167,6 +168,7 @@ impl<'a> Lowerer<'a> {
                 self.instance(id, Vec::new());
             }
         }
+        self.make_test_runner();
         // `@assert(…);`: run while compiling for what it checks.
         for (c, constant) in self.ast.consts.iter() {
             if !constant.is_named() && !constant.in_place {

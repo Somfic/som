@@ -1,0 +1,4 @@
+// expect: exit 0
+// run: tests
+
+fn main() -> i32 = 4;
