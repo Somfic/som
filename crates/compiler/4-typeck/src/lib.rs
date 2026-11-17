@@ -553,6 +553,16 @@ impl ArrayMethod {
     }
 }
 
+impl som_ast::Settled for Typed {
+    fn settled_if(&self, stmt: Id<Stmt>) -> Option<bool> {
+        Typed::settled_if(self, stmt)
+    }
+
+    fn chosen_match(&self, expr: Id<Expr>) -> Option<Id<Expr>> {
+        Typed::chosen_match(self, expr)
+    }
+}
+
 impl Typed {
     pub fn ty(&self, id: TypeId) -> &Ty {
         self.table.get(id)

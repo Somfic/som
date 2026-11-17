@@ -11,7 +11,7 @@
 pub mod error;
 pub mod facts;
 
-use som_ast::{Ast, BinOp, Expr, Func, Id, Stmt};
+use som_ast::{Ast, BinOp, Child, Expr, Flow, Func, Id, Stmt};
 use som_resolve::{DefId, DefKind, Names};
 use som_typeck::Typed;
 use som_typeck::{IntTy, Ty, TypeId};
@@ -201,8 +201,8 @@ impl Prover<'_> {
                 otherwise,
             } = &self.ast.stmts[stmt]
             {
-                let then_leaves = self.leaves(then);
-                let otherwise_leaves = otherwise.as_ref().is_some_and(|o| self.leaves(o));
+                let then_leaves = self.flow().leaves(then);
+                let otherwise_leaves = otherwise.as_ref().is_some_and(|o| self.flow().leaves(o));
                 if then_leaves != otherwise_leaves {
                     let cond = self.cond(*condition, otherwise_leaves, &as_is);
                     self.facts.assume(&cond);
@@ -302,7 +302,7 @@ impl Prover<'_> {
                 self.expr(*condition);
                 self.branch(*condition, true, |p| p.stmts(body, false));
                 // `while i < n { … }` ends with `i >= n`, unless a `break` leaves it sooner.
-                if !self.breaks(body) {
+                if !self.flow().breaks(body) {
                     let cond = self.cond(*condition, false, &as_is);
                     self.facts.assume(&cond);
                 }
@@ -1582,31 +1582,7 @@ impl Prover<'_> {
     }
 
     fn changes_in_stmt(&self, stmt: Id<Stmt>, changed: &mut Vec<Place>) {
-        match &self.ast.stmts[stmt] {
-            Stmt::Let { value, .. } => self.changes_in(*value, changed),
-            Stmt::Expr(e) => self.changes_in(*e, changed),
-            Stmt::Return(Some(e)) => self.changes_in(*e, changed),
-            Stmt::Loop { body } => body.iter().for_each(|&s| self.changes_in_stmt(s, changed)),
-            Stmt::While { condition, body } => {
-                self.changes_in(*condition, changed);
-                body.iter().for_each(|&s| self.changes_in_stmt(s, changed));
-            }
-            Stmt::For { iterable, body, .. } => {
-                self.changes_in(*iterable, changed);
-                body.iter().for_each(|&s| self.changes_in_stmt(s, changed));
-            }
-            Stmt::If {
-                condition,
-                then,
-                otherwise,
-            } => {
-                self.changes_in(*condition, changed);
-                then.iter()
-                    .chain(otherwise.iter().flatten())
-                    .for_each(|&s| self.changes_in_stmt(s, changed));
-            }
-            _ => {}
-        }
+        self.stmt_exprs(stmt, &mut |e| self.changes_in(e, changed));
     }
 
     /// The places `expr` may change: assigned, lent as `&mut`, or given to `&mut self`.
@@ -1634,149 +1610,26 @@ impl Prover<'_> {
 
     /// Calls `f` with each expression directly inside `expr`, and each statement's.
     fn each_child(&self, expr: Id<Expr>, f: &mut dyn FnMut(Id<Expr>)) {
-        match &self.ast.exprs[expr] {
-            Expr::Array(values) => values.iter().for_each(|&v| f(v)),
-            Expr::Interpolated(parts) => {
-                for &part in parts {
-                    if let som_ast::Part::Value(value) = part {
-                        f(value);
-                    }
-                }
-            }
-            Expr::Cast { value, .. } | Expr::ArrayRepeat { value, .. } => f(*value),
-            Expr::Range { start, end } => start.iter().chain(end).for_each(|&e| f(e)),
-            Expr::Binary { lhs, rhs, .. } => {
-                f(*lhs);
-                f(*rhs);
-            }
-            Expr::Not(e) | Expr::Neg(e) | Expr::BitNot(e) | Expr::Deref(e) => f(*e),
-            Expr::Borrow { expr, .. } => f(*expr),
-            Expr::Assign { target, value } => {
-                f(*target);
-                f(*value);
-            }
-            Expr::Call { args, .. } => args.iter().for_each(|&a| f(a)),
-            Expr::MethodCall { receiver, args, .. } => {
-                f(*receiver);
-                args.iter().for_each(|&a| f(a));
-            }
-            Expr::Field { object, .. } => f(*object),
-            Expr::Index { object, index } => {
-                f(*object);
-                f(*index);
-            }
-            Expr::Construct { fields, .. } => fields.iter().for_each(|&(_, v)| f(v)),
-            Expr::Conditional {
-                condition,
-                then,
-                otherwise,
-            } => {
-                f(*condition);
-                f(*then);
-                f(*otherwise);
-            }
-            Expr::Fallback { optional, fallback } => {
-                f(*optional);
-                f(*fallback);
-            }
-            Expr::Match { .. } if let Some(copy) = self.typed.chosen_match(expr) => f(copy),
-            Expr::Match { scrutinee, arms } => {
-                f(*scrutinee);
-                arms.iter().for_each(|arm| f(arm.body));
-            }
-            Expr::Block { stmts, value } => {
-                for &stmt in stmts {
-                    self.stmt_exprs(stmt, f);
-                }
-                if let Some(value) = value {
-                    f(*value);
-                }
-            }
-            _ => {}
+        if let Some(copy) = self.typed.chosen_match(expr) {
+            return f(copy);
         }
+        self.ast.exprs[expr].for_each_child(|child| match child {
+            Child::Expr(e) => f(e),
+            Child::Stmt(s) => self.stmt_exprs(s, f),
+        });
     }
 
     fn stmt_exprs(&self, stmt: Id<Stmt>, f: &mut dyn FnMut(Id<Expr>)) {
-        match &self.ast.stmts[stmt] {
-            Stmt::Let { value, .. } | Stmt::Expr(value) | Stmt::Return(Some(value)) => f(*value),
-            Stmt::Loop { body } => body.iter().for_each(|&s| self.stmt_exprs(s, f)),
-            Stmt::While { condition, body }
-            | Stmt::For {
-                iterable: condition,
-                body,
-                ..
-            } => {
-                f(*condition);
-                body.iter().for_each(|&s| self.stmt_exprs(s, f));
-            }
-            Stmt::If {
-                condition,
-                then,
-                otherwise,
-            } => {
-                f(*condition);
-                then.iter()
-                    .chain(otherwise.iter().flatten())
-                    .for_each(|&s| self.stmt_exprs(s, f));
-            }
-            _ => {}
-        }
+        self.ast.stmts[stmt].for_each_child(|child| match child {
+            Child::Expr(e) => f(e),
+            Child::Stmt(s) => self.stmt_exprs(s, f),
+        });
     }
 
-    /// Whether `stmts` has a `break` anywhere: one that may leave the loop they're in.
-    fn breaks(&self, stmts: &[Id<Stmt>]) -> bool {
-        let mut found = false;
-        for &stmt in stmts {
-            found |= match &self.ast.stmts[stmt] {
-                Stmt::Break(_) => true,
-                Stmt::Loop { body } | Stmt::While { body, .. } | Stmt::For { body, .. } => {
-                    self.breaks(body)
-                }
-                Stmt::If {
-                    then, otherwise, ..
-                } => self.breaks(then) || otherwise.as_ref().is_some_and(|o| self.breaks(o)),
-                _ => false,
-            };
-            self.stmt_exprs(stmt, &mut |e| found |= self.expr_breaks(e));
-        }
-        found
-    }
-
-    /// Whether a block inside `expr` has a `break`.
-    fn expr_breaks(&self, expr: Id<Expr>) -> bool {
-        match &self.ast.exprs[expr] {
-            Expr::Block { stmts, .. } => self.breaks(stmts),
-            _ => {
-                let mut found = false;
-                self.each_child(expr, &mut |child| found |= self.expr_breaks(child));
-                found
-            }
-        }
-    }
-
-    /// Whether control never gets past the end of `stmts`.
-    fn leaves(&self, stmts: &[Id<Stmt>]) -> bool {
-        let Some(&last) = stmts.last() else {
-            return false;
-        };
-        match &self.ast.stmts[last] {
-            Stmt::Return(_) | Stmt::Break(_) | Stmt::Continue(_) => true,
-            Stmt::If {
-                then, otherwise, ..
-            } if let Some(holds) = self.typed.settled_if(last) => match holds {
-                true => self.leaves(then),
-                false => otherwise.as_ref().is_some_and(|o| self.leaves(o)),
-            },
-            Stmt::If {
-                then,
-                otherwise: Some(otherwise),
-                ..
-            } => self.leaves(then) && self.leaves(otherwise),
-            Stmt::Expr(expr) => {
-                self.typed.diverges(*expr)
-                    || matches!(self.ast.exprs[*expr], Expr::Unreachable | Expr::Fail(_))
-            }
-            _ => false,
+    fn flow(&self) -> Flow<'_, Typed> {
+        Flow {
+            ast: self.ast,
+            settled: self.typed,
         }
     }
 

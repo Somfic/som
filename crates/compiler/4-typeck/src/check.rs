@@ -1,5 +1,8 @@
 use crate::error::Unused;
-use som_ast::{Ast, BinOp, Expr, Func, Id, Pattern, Primitive, Span, Stmt, TypeExpr, VariantKind};
+use som_ast::{
+    Ast, BinOp, Child, Expr, Flow, Func, Id, Pattern, Primitive, Settled, Span, Stmt, TypeExpr,
+    VariantKind,
+};
 use som_lang::LangTrait;
 use som_resolve::visibility::{self, Hidden, Viewer};
 use som_resolve::{DefId, DefKind, Names};
@@ -21,6 +24,16 @@ mod moves;
 mod traits;
 
 use matching::holds;
+
+impl Settled for Checker<'_> {
+    fn settled_if(&self, stmt: Id<Stmt>) -> Option<bool> {
+        self.settled_ifs.get(&stmt).copied()
+    }
+
+    fn chosen_match(&self, expr: Id<Expr>) -> Option<Id<Expr>> {
+        self.chosen_matches.get(&expr).copied()
+    }
+}
 
 pub(crate) struct Checker<'a> {
     ast: &'a Ast,
@@ -2695,84 +2708,19 @@ impl<'a> Checker<'a> {
         self.errors.push(TypeError::UnusedValue { kind, span });
     }
 
-    /// Whether control never gets past the end of `stmts`: the last one returns, breaks or
-    /// continues; or is an `if` whose branches all do; or a `loop` with no `break` in it.
+    fn flow(&self) -> Flow<'_, Self> {
+        Flow {
+            ast: self.ast,
+            settled: self,
+        }
+    }
+
     fn leaves(&self, stmts: &[Id<Stmt>]) -> bool {
-        // Any of them: what's after one that leaves is never reached. `@if N >= 3 { return a; }`
-        // then `@if N < 3 { return b; }`, for each instance.
-        stmts.iter().any(|&stmt| self.stmt_leaves(stmt))
+        self.flow().leaves(stmts)
     }
 
-    /// Whether control never gets past `last`.
-    fn stmt_leaves(&self, last: Id<Stmt>) -> bool {
-        match &self.ast.stmts[last] {
-            Stmt::Return(_) | Stmt::Break(_) | Stmt::Continue(_) => true,
-            // `@if`: the branch it picks.
-            Stmt::If {
-                then, otherwise, ..
-            } if let Some(&holds) = self.settled_ifs.get(&last) => match holds {
-                true => self.leaves(then),
-                false => otherwise.as_ref().is_some_and(|o| self.leaves(o)),
-            },
-            Stmt::If {
-                then,
-                otherwise: Some(otherwise),
-                ..
-            } => self.leaves(then) && self.leaves(otherwise),
-            Stmt::Loop { body } => !self.breaks(body),
-            Stmt::Expr(expr) => self.expr_leaves(*expr),
-            _ => false,
-        }
-    }
-
-    /// Whether control never gets past `expr`: a block with no value that `leaves`, or a
-    /// `match` all of whose arms do.
-    fn expr_leaves(&self, expr: Id<Expr>) -> bool {
-        match &self.ast.exprs[expr] {
-            Expr::Unreachable | Expr::Fail(_) => true,
-            Expr::Block { stmts, value: None } => self.leaves(stmts),
-            Expr::Block {
-                stmts,
-                value: Some(value),
-            } => self.leaves(stmts) || self.expr_leaves(*value),
-            Expr::Match { .. } if let Some(&copy) = self.chosen_matches.get(&expr) => {
-                self.expr_leaves(copy)
-            }
-            Expr::Match { arms, .. } => {
-                !arms.is_empty() && arms.iter().all(|arm| self.expr_leaves(arm.body))
-            }
-            Expr::Conditional {
-                then, otherwise, ..
-            } => self.expr_leaves(*then) && self.expr_leaves(*otherwise),
-            _ => false,
-        }
-    }
-
-    /// Whether there's a `break` anywhere in `stmts`, which could leave a `loop` around them.
-    fn breaks(&self, stmts: &[Id<Stmt>]) -> bool {
-        stmts.iter().any(|&stmt| match &self.ast.stmts[stmt] {
-            Stmt::Break(_) => true,
-            Stmt::Loop { body } | Stmt::While { body, .. } | Stmt::For { body, .. } => {
-                self.breaks(body)
-            }
-            Stmt::If {
-                then, otherwise, ..
-            } => self.breaks(then) || otherwise.as_ref().is_some_and(|o| self.breaks(o)),
-            Stmt::Expr(expr) => self.expr_breaks(*expr),
-            _ => false,
-        })
-    }
-
-    /// Whether there's a `break` in a block or `match` arm `expr`.
-    fn expr_breaks(&self, expr: Id<Expr>) -> bool {
-        match &self.ast.exprs[expr] {
-            Expr::Block { stmts, .. } => self.breaks(stmts),
-            Expr::Match { arms, .. } => arms.iter().any(|arm| self.expr_breaks(arm.body)),
-            Expr::Conditional {
-                then, otherwise, ..
-            } => self.expr_breaks(*then) || self.expr_breaks(*otherwise),
-            _ => false,
-        }
+    pub(super) fn expr_leaves(&self, expr: Id<Expr>) -> bool {
+        self.flow().expr_leaves(expr)
     }
 
     /// What a `for` loop over `iterable`, of type `ty`, binds each time round, recording how
@@ -6433,35 +6381,17 @@ impl Checker<'_> {
             return;
         }
         for &stmt in stmts {
-            match &self.ast.stmts[stmt] {
-                Stmt::Let { value, .. } => self.forget_changed_by(*value, false),
-                Stmt::Expr(expr) => self.forget_changed_by(*expr, false),
-                Stmt::Loop { body } => self.forget_changed_in(body),
-                Stmt::For { iterable, body, .. } => {
-                    self.forget_changed_by(*iterable, false);
-                    self.forget_changed_in(body);
-                }
-                Stmt::While { condition, body } => {
-                    self.forget_changed_by(*condition, false);
-                    self.forget_changed_in(body);
-                }
-                Stmt::Break(_) | Stmt::Continue(_) | Stmt::Use(_) | Stmt::Const(_) => {}
-                Stmt::Return(value) => {
-                    if let Some(value) = value {
-                        self.forget_changed_by(*value, false);
-                    }
-                }
-                Stmt::If {
-                    condition,
-                    then,
-                    otherwise,
-                } => {
-                    self.forget_changed_by(*condition, false);
-                    self.forget_changed_in(then);
-                    if let Some(otherwise) = otherwise {
-                        self.forget_changed_in(otherwise);
-                    }
-                }
+            let mut children = Vec::new();
+            self.ast.stmts[stmt].for_each_child(|c| children.push(c));
+            self.forget_changed_by_children(children);
+        }
+    }
+
+    fn forget_changed_by_children(&mut self, children: Vec<Child>) {
+        for child in children {
+            match child {
+                Child::Expr(e) => self.forget_changed_by(e, false),
+                Child::Stmt(s) => self.forget_changed_in(&[s]),
             }
         }
     }
@@ -6469,26 +6399,10 @@ impl Checker<'_> {
     /// Ends the narrowings of the places `expr` could change. `in_place`: it's the object of
     /// a field access or dereference.
     fn forget_changed_by(&mut self, expr: Id<Expr>, in_place: bool) {
+        if let Some(&copy) = self.chosen_matches.get(&expr) {
+            return self.forget_changed_by(copy, false);
+        }
         match &self.ast.exprs[expr] {
-            Expr::Interpolated(parts) => {
-                for &part in parts {
-                    if let som_ast::Part::Value(value) = part {
-                        self.forget_changed_by(value, false);
-                    }
-                }
-            }
-            Expr::Fail(message) => self.forget_changed_by(*message, false),
-            // Its value changes nothing the function has.
-            Expr::InPlace(_)
-            | Expr::Hole
-            | Expr::Type(_)
-            | Expr::Unreachable
-            | Expr::Int(_)
-            | Expr::Float(_)
-            | Expr::Bool(_)
-            | Expr::Str(_)
-            | Expr::None
-            | Expr::Out(_) => {}
             Expr::Var(_) => {
                 if !in_place
                     && let Some(def) = self.names.expr(expr)
@@ -6518,68 +6432,10 @@ impl Checker<'_> {
                 self.forget_changed_by(*target, true);
                 self.forget_changed_by(*value, false);
             }
-            Expr::Not(e)
-            | Expr::Neg(e)
-            | Expr::BitNot(e)
-            | Expr::ArrayRepeat { value: e, .. }
-            | Expr::Cast { value: e, .. } => self.forget_changed_by(*e, false),
-            Expr::Range { start, end } => {
-                for &bound in start.iter().chain(end) {
-                    self.forget_changed_by(bound, false);
-                }
-            }
-            Expr::Array(items) => {
-                for &item in items {
-                    self.forget_changed_by(item, false);
-                }
-            }
-            Expr::Binary { lhs, rhs, .. }
-            | Expr::Fallback {
-                optional: lhs,
-                fallback: rhs,
-            } => {
-                self.forget_changed_by(*lhs, false);
-                self.forget_changed_by(*rhs, false);
-            }
-            Expr::Call { args, .. } => {
-                for &arg in args {
-                    self.forget_changed_by(arg, false);
-                }
-            }
-            Expr::MethodCall { receiver, args, .. } => {
-                self.forget_changed_by(*receiver, false);
-                for &arg in args {
-                    self.forget_changed_by(arg, false);
-                }
-            }
-            Expr::Construct { fields, .. } => {
-                for &(_, value) in fields {
-                    self.forget_changed_by(value, false);
-                }
-            }
-            Expr::Conditional {
-                condition,
-                then,
-                otherwise,
-            } => {
-                for e in [*condition, *then, *otherwise] {
-                    self.forget_changed_by(e, false);
-                }
-            }
-            Expr::Block { stmts, value } => {
-                self.forget_changed_in(stmts);
-                if let Some(value) = value {
-                    self.forget_changed_by(*value, false);
-                }
-            }
-            Expr::Match { .. } if let Some(&copy) = self.chosen_matches.get(&expr) => {
-                self.forget_changed_by(copy, false);
-            }
-            Expr::Match { scrutinee, arms } => {
-                self.forget_changed_by(*scrutinee, false);
-                for arm in arms {
-                    self.forget_changed_by(arm.body, false);
-                }
+            other => {
+                let mut children = Vec::new();
+                other.for_each_child(|c| children.push(c));
+                self.forget_changed_by_children(children);
             }
         }
     }

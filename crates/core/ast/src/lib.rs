@@ -4,15 +4,19 @@
 
 mod dump;
 mod expr;
+mod flow;
 mod item;
 mod nodes;
 mod ops;
 mod ty;
+mod walk;
 
 pub use expr::*;
+pub use flow::{Flow, Settled};
 pub use item::*;
 pub use nodes::Nodes;
 pub use ty::*;
+pub use walk::Child;
 
 pub use som_base::{Id, Source, Span};
 
