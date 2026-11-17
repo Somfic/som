@@ -38,6 +38,14 @@ impl Checker<'_> {
         }
     }
 
+    /// Infers each of `exprs`, for what they say about the types of what's in them: they're
+    /// arguments to a call that's wrong.
+    pub(super) fn infer_all(&mut self, exprs: &[Id<Expr>]) {
+        for &expr in exprs {
+            self.infer(expr);
+        }
+    }
+
     /// Infers `expr` as the optional it is, even where it's narrowed: for `if x`, `x != none`
     /// and `x else …`, which ask about the optional itself.
     pub(super) fn infer_optional(&mut self, expr: Id<Expr>) -> TypeId {

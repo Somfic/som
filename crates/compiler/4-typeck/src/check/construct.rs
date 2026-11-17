@@ -38,9 +38,9 @@ impl Checker<'_> {
     ) -> TypeId {
         let error = self.u.table.error;
         let Some(def) = self.names.expr(id) else {
-            given.iter().for_each(|(_, v)| {
-                self.infer(*v);
-            });
+            for (_, value) in given {
+                self.infer(*value);
+            }
             return error;
         };
         // A struct, or a variant with named fields: `Shape::Rect { w: 1.0, h: 2.0 }`.
@@ -102,9 +102,9 @@ impl Checker<'_> {
             _ => false,
         };
         if wrong_form {
-            given.iter().for_each(|(_, v)| {
-                self.infer(*v);
-            });
+            for (_, value) in given {
+                self.infer(*value);
+            }
             return ty;
         }
         let (struct_name, declared, field_tys) = match variant {
@@ -130,9 +130,9 @@ impl Checker<'_> {
                 name: struct_name,
                 span: self.span(id),
             });
-            given.iter().for_each(|(_, v)| {
-                self.infer(*v);
-            });
+            for (_, value) in given {
+                self.infer(*value);
+            }
             return ty;
         }
         // Fields this code can't see: it can't set them, so it can't make one.

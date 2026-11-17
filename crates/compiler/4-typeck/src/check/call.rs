@@ -75,9 +75,7 @@ impl Checker<'_> {
                         form: self.variant_form(s, index),
                         span: self.span(id),
                     });
-                    args.iter().for_each(|&a| {
-                        self.infer(a);
-                    });
+                    self.infer_all(args);
                 } else if args.len() != fields.len() {
                     self.errors.push(TypeError::WrongArgCount {
                         name: callee.to_string(),
@@ -86,9 +84,7 @@ impl Checker<'_> {
                         found: args.len(),
                         span: self.span(id),
                     });
-                    args.iter().for_each(|&a| {
-                        self.infer(a);
-                    });
+                    self.infer_all(args);
                 } else {
                     for ((&arg, &field), declared) in args.iter().zip(&fields).zip(&variant.fields)
                     {
@@ -99,9 +95,7 @@ impl Checker<'_> {
                 ty
             }
             _ => {
-                args.iter().for_each(|&a| {
-                    self.infer(a);
-                });
+                self.infer_all(args);
                 error
             }
         }
@@ -556,9 +550,7 @@ impl Checker<'_> {
                 found: args.len(),
                 span: self.span(call),
             });
-            args.iter().for_each(|&a| {
-                self.infer(a);
-            });
+            self.infer_all(args);
             return;
         }
         for (i, (&arg, &param)) in args.iter().zip(params).enumerate() {

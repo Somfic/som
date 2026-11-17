@@ -60,9 +60,40 @@ impl Checker<'_> {
                 return ty;
             }
         }
+        let Some(owner) = self.method_owner(id, receiver, receiver_ty, method, args, primitive)
+        else {
+            self.infer_all(args);
+            return error;
+        };
+        let Some(def) = self.names.method(owner, &method.name) else {
+            self.report_missing_method(id, owner, receiver_ty, method, args);
+            self.infer_all(args);
+            return error;
+        };
+        let name = format!("{}::{}", self.names.def(owner).name, method.name);
+        if self.names.overloads(def).len() > 1 {
+            return self.overloaded_method(id, &name, def, receiver, receiver_ty, args, expected);
+        }
+        self.call_method(id, def, &name, receiver, receiver_ty, method, args)
+    }
+
+    /// What has the method `receiver` is called with, its own or a built-in type's
+    /// (`primitive`): reported if there's nothing it could be.
+    fn method_owner(
+        &mut self,
+        id: Id<Expr>,
+        receiver: Id<Expr>,
+        receiver_ty: TypeId,
+        method: &som_ast::Ident,
+        args: &[Id<Expr>],
+        primitive: Option<DefId>,
+    ) -> Option<DefId> {
         // Text written in quotes is a `string` here.
         if primitive.is_some() && self.u.var_kind(receiver_ty) == Some(VarKind::Text) {
             let _ = self.u.unify(receiver_ty, self.u.table.text);
+        }
+        if primitive.is_some() {
+            return primitive;
         }
         // Any type can have methods now: one that isn't a struct just lacks this one.
         let viewed = {
@@ -75,7 +106,7 @@ impl Checker<'_> {
         let lacks = !matches!(self.u.get(viewed), Ty::Struct(..) | Ty::Error)
             && !matches!(self.u.var_kind(viewed), Some(VarKind::Any));
         // `find(2).get()`: an optional may hold nothing, which is what to say.
-        if primitive.is_none() && matches!(self.u.get(viewed), Ty::Optional(_)) {
+        if matches!(self.u.get(viewed), Ty::Optional(_)) {
             let span = self.span(receiver);
             self.errors.push(TypeError::MemberOfOptional {
                 object: span.get_text().to_string(),
@@ -83,12 +114,9 @@ impl Checker<'_> {
                 variable: matches!(self.ast.exprs[receiver], Expr::Var(_)),
                 span,
             });
-            args.iter().for_each(|&a| {
-                self.infer(a);
-            });
-            return error;
+            return None;
         }
-        if primitive.is_none() && lacks {
+        if lacks {
             self.errors.push(TypeError::UnknownMethod {
                 ty: self.describe(receiver_ty),
                 method: method.name.to_string(),
@@ -98,59 +126,58 @@ impl Checker<'_> {
                 fields: Vec::new(),
                 bare_call: self.bare_call(id, method, args),
             });
-            args.iter().for_each(|&a| {
-                self.infer(a);
-            });
-            return error;
+            return None;
         }
-        let owner = match primitive {
-            Some(owner) => owner,
-            None => match self.struct_of(receiver_ty, receiver) {
-                Some((owner, _)) => owner,
-                None => {
-                    args.iter().for_each(|&a| {
-                        self.infer(a);
-                    });
-                    return error;
-                }
-            },
-        };
-        let Some(def) = self.names.method(owner, &method.name) else {
-            let ty = self.describe(receiver_ty);
-            if !self.names.props(owner, &method.name).is_empty() {
-                let span = self.span(id);
-                self.errors.push(TypeError::MethodIsProp {
-                    ty,
-                    name: method.name.to_string(),
-                    span: method.span.clone(),
-                    parens: args
-                        .is_empty()
-                        .then(|| method.span.after().merge(&span.after())),
-                });
-                args.iter().for_each(|&a| {
-                    self.infer(a);
-                });
-                return error;
-            }
-            let (fields, props, methods) = self.members(owner, receiver_ty, &method.span);
-            self.errors.push(TypeError::UnknownMethod {
+        self.struct_of(receiver_ty, receiver)
+            .map(|(owner, _)| owner)
+    }
+
+    /// Reports `method`, which `owner` doesn't have: a prop called, or what it has instead.
+    fn report_missing_method(
+        &mut self,
+        id: Id<Expr>,
+        owner: DefId,
+        receiver_ty: TypeId,
+        method: &som_ast::Ident,
+        args: &[Id<Expr>],
+    ) {
+        let ty = self.describe(receiver_ty);
+        if !self.names.props(owner, &method.name).is_empty() {
+            let span = self.span(id);
+            self.errors.push(TypeError::MethodIsProp {
                 ty,
-                method: method.name.to_string(),
+                name: method.name.to_string(),
                 span: method.span.clone(),
-                methods,
-                props,
-                fields,
-                bare_call: self.bare_call(id, method, args),
+                parens: args
+                    .is_empty()
+                    .then(|| method.span.after().merge(&span.after())),
             });
-            args.iter().for_each(|&a| {
-                self.infer(a);
-            });
-            return error;
-        };
-        if self.names.overloads(def).len() > 1 {
-            let name = format!("{}::{}", self.names.def(owner).name, method.name);
-            return self.overloaded_method(id, &name, def, receiver, receiver_ty, args, expected);
+            return;
         }
+        let (fields, props, methods) = self.members(owner, receiver_ty, &method.span);
+        self.errors.push(TypeError::UnknownMethod {
+            ty,
+            method: method.name.to_string(),
+            span: method.span.clone(),
+            methods,
+            props,
+            fields,
+            bare_call: self.bare_call(id, method, args),
+        });
+    }
+
+    /// Checks a call of method `def`, the only one by its name, called `name`.
+    #[allow(clippy::too_many_arguments)]
+    fn call_method(
+        &mut self,
+        id: Id<Expr>,
+        def: DefId,
+        name: &str,
+        receiver: Id<Expr>,
+        receiver_ty: TypeId,
+        method: &som_ast::Ident,
+        args: &[Id<Expr>],
+    ) -> TypeId {
         let DefKind::Func(func) = self.names.def(def).kind else {
             unreachable!("methods are functions")
         };
@@ -158,10 +185,8 @@ impl Checker<'_> {
         if !self.on_impl_target(func, &type_args, receiver_ty, method, "method")
             || !self.check_member_there(func, receiver_ty, &method.name, method.span.clone())
         {
-            args.iter().for_each(|&a| {
-                self.infer(a);
-            });
-            return error;
+            self.infer_all(args);
+            return self.u.table.error;
         }
         self.records.methods.insert(id, def);
         self.check_visible(def, &method.span);
@@ -178,13 +203,11 @@ impl Checker<'_> {
                         .map(|t| self.ast.types.span(t).clone());
                     self.mismatch(self_ty, receiver_ty, self.span(receiver), from);
                 }
-                let name = format!("{}::{}", self.names.def(owner).name, method.name);
-                self.check_args_from(id, &name, func, 1, rest, args);
+                self.check_args_from(id, name, func, 1, rest, args);
             }
             None => {
-                let name = format!("{}::{}", self.names.def(owner).name, method.name);
                 self.errors.push(TypeError::WrongArgCount {
-                    name,
+                    name: name.to_string(),
                     expected: 0,
                     at_least: false,
                     found: args.len() + 1,
@@ -231,11 +254,6 @@ impl Checker<'_> {
             Ty::Str => (self.u.table.u8, true),
             _ => return None,
         };
-        let infer_args = |c: &mut Self| {
-            for &arg in args {
-                c.infer(arg);
-            }
-        };
         let is_text = *self.u.get(array) == Ty::Str;
         // `bytes` is text's own.
         let kind = ArrayMethod::from_name(&method.name).filter(|kind| is_text || !kind.text_only());
@@ -251,7 +269,7 @@ impl Checker<'_> {
                 fields: Vec::new(),
                 bare_call: self.bare_call(call, method, args),
             });
-            infer_args(self);
+            self.infer_all(args);
             return Some(error);
         };
         // `len` is read as a property, `items.len`.
@@ -264,7 +282,7 @@ impl Checker<'_> {
                     .is_empty()
                     .then(|| method.span.after().merge(&self.span(call).after())),
             });
-            infer_args(self);
+            self.infer_all(args);
             return Some(error);
         }
         if args.len() != kind.arity() {
@@ -275,7 +293,7 @@ impl Checker<'_> {
                 found: args.len(),
                 span: self.span(call),
             });
-            infer_args(self);
+            self.infer_all(args);
             return Some(error);
         }
         self.records.array_methods.insert(call, kind);
@@ -572,9 +590,7 @@ impl Checker<'_> {
                 fields: Vec::new(),
                 bare_call: self.bare_call(call, method, args),
             });
-            args.iter().for_each(|&a| {
-                self.infer(a);
-            });
+            self.infer_all(args);
             return Some(error);
         };
         if args.len() != kind.arity() {
@@ -585,9 +601,7 @@ impl Checker<'_> {
                 found: args.len(),
                 span: self.span(call),
             });
-            args.iter().for_each(|&a| {
-                self.infer(a);
-            });
+            self.infer_all(args);
             return Some(error);
         }
         self.records.pointer_methods.insert(call, kind);
