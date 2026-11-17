@@ -106,7 +106,10 @@ mod tests {
     /// The labels completed at the end of `source`.
     fn labels_at_end(source: &str) -> Vec<String> {
         let (_dir, file, a) = analyzed(source);
-        let importable = Importable { modules: Vec::new(), libraries: Vec::new() };
+        let importable = Importable {
+            modules: Vec::new(),
+            libraries: Vec::new(),
+        };
         let last = source.lines().count() as u32 - 1;
         let column = source.lines().last().unwrap().len() as u32;
         let request = Request::new(

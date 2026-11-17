@@ -29,18 +29,18 @@ fn halt() {
     c::abort();
 }
 
-pub fn assert(ok: bool) {
-    assert(ok, "unmet assertion");
+pub fn assert_eq<T: Eq>(actual: T, expected: T) {
+    assert_eq(actual, expected, "unmet assertion");
 }
 
-pub fn assert_eq<T: Eq>(a: T, b: T) {
-    assert_eq(a, b, "unmet assertion");
+pub fn assert_eq<T: Eq>(actual: T, expected: T, error_message: string) {
+    if actual != expected @fail(error_message);
 }
 
-pub fn assert_eq<T: Eq>(a: T, b: T, error_message: string) {
-    if a != b @fail(error_message);
+pub fn assert(predicate: bool) {
+    assert(predicate, "unmet assertion");
 }
 
-pub fn assert(ok: bool, error_message: string) {
-    if !ok @fail(error_message);
+pub fn assert(predicate: bool, error_message: string) {
+    if !predicate @fail(error_message);
 }

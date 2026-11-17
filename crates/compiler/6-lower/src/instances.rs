@@ -255,7 +255,7 @@ impl<'a> Lowerer<'a> {
 }
 
 /// Also works out the associated types that makes known: `I::Item` with `I` a
-/// `ListIter<i32>` is `&i32`.
+/// `ListIntoIter<i32>` is `i32`.
 pub(super) struct Subst<'a> {
     map: Vec<(DefId, TypeId)>,
     impls: &'a [ImplInfo],

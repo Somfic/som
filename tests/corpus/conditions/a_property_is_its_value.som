@@ -1,0 +1,17 @@
+// expect: exit 2
+
+/// A property is what its body is: `len` here is 3, so `Index`'s `@where index < self.len`
+/// is `index < 3`, inside `at` (where `2 - index` is then a position in `values`) and where
+/// `at` is called.
+struct Three { values: [i32; 3] }
+
+impl Index for Three {
+    type Item = i32;
+    prop len: usize = 3;
+    fn at(&self, index: usize) -> &i32 = &.values[2 - index];
+}
+
+fn main() -> i32 {
+    let t = Three { values: [1, 2, 3] };
+    *t.at(1)
+}

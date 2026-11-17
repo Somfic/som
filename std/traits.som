@@ -9,7 +9,7 @@ pub trait Iterator {
 
 /// Can be gone through with `for x in &value`, which goes through the iterator `iter` makes:
 /// it lends the values, or copies them if they copy.
-pub trait Iterable {
+pub trait IterRef {
     /// The iterator `iter` makes.
     type Iter;
 
@@ -18,20 +18,20 @@ pub trait Iterable {
 
 /// Can be gone through with `for x in &mut value`, which goes through the iterator `iter_mut`
 /// makes: it lends the values to change.
-pub trait IterableMut {
+pub trait IterMut {
     /// The iterator `iter_mut` makes.
-    type IterMut;
+    type Iter;
 
-    fn iter_mut(self: &mut Self) -> IterMut;
+    fn iter_mut(self: &mut Self) -> Iter;
 }
 
 /// Can be given up to `for x in value`, which goes through the iterator `into_iter` makes:
 /// it owns the values, and gives each away in turn.
-pub trait IntoIterator {
+pub trait IterOwned {
     /// The iterator `into_iter` makes.
-    type IntoIter;
+    type Iter;
 
-    fn into_iter(self: Self) -> IntoIter;
+    fn into_iter(self: Self) -> Iter;
 }
 
 /// Holds a value that's never dropped on its own: whatever holds the `Manual` drops what
@@ -83,32 +83,29 @@ pub trait Compare {
 /// `&` references are; a struct is if it implements this, and everything in it is too.
 pub trait Copy {}
 
-/// `values[i]`: the value at position `i`, which has to be known to be below `len`, by an
-/// `if i < values.len`, a `for i in 0..values.len`, or a `@where` saying so. Nothing is
-/// checked as the program runs.
 pub trait Index {
     type Item;
 
     prop len: usize;
 
-    @where i < self.len, "a position in it"
-    fn at(self: &Self, i: usize) -> &Item;
+    @where index < self.len, "a position in it"
+    fn at(self: &Self, index: usize) -> &Item;
 
-    fn get(self: &Self, i: usize) -> &Item? {
-        if i < self.len {
-            return self.at(i);
+    fn get(self: &Self, index: usize) -> &Item? {
+        if index < self.len {
+            return self.at(index);
         }
         none
     }
 }
 
 pub trait IndexMut: Index {
-    @where i < self.len, "a position in it"
-    fn at_mut(self: &mut Self, i: usize) -> &mut Self::Item;
+    @where index < self.len, "a position in it"
+    fn at_mut(self: &mut Self, index: usize) -> &mut Self::Item;
 
-    fn get_mut(self: &mut Self, i: usize) -> &mut Self::Item? {
-        if i < self.len {
-            return self.at_mut(i);
+    fn get_mut(self: &mut Self, index: usize) -> &mut Self::Item? {
+        if index < self.len {
+            return self.at_mut(index);
         }
         none
     }

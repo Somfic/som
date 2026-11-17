@@ -13,10 +13,33 @@ fn test_start(failed: &mut i32, name: string, at: Location) -> bool {
     if child == 0 {
         return true;
     }
-    let mut status = 1;
-    if child > 0 {
-        c::waitpid(child, &mut status, 0);
+    if child < 0 {
+        c::printf("could not start the test\n");
+        return finished(failed, name, at, 1);
     }
+    let mut status = 0;
+    c::waitpid(child, &mut status, 0);
+    // What stopped it, as `waitpid` says: a signal in the low 7 bits, or else the exit code
+    // in the next 8.
+    let signal = status & 127;
+    if signal == ABORTED {
+        // `@fail` or `@unreachable`: it said why, then stopped with `abort`.
+    } else if signal != 0 {
+        let why = c::strsignal(signal) as cstr;
+        let line = "crashed: {why}";
+        c::printf("%s\n", line.c_str);
+    } else if status != 0 {
+        let line = "exited with code {(status >> 8) & 255}";
+        c::printf("%s\n", line.c_str);
+    }
+    finished(failed, name, at, status)
+}
+
+/// `SIGABRT`, which `abort` stops a process with.
+@const ABORTED = 6;
+
+/// Says whether the test `name` passed, by how its process ended: `status`, `0` if it did.
+fn finished(failed: &mut i32, name: string, at: Location, status: i32) -> bool {
     if status == 0 {
         c::printf("ok      %s\n", name.c_str);
     } else {

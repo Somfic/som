@@ -5,8 +5,8 @@ pub struct ArrayIntoIter<T, N: usize> {
     next: usize,
 }
 
-impl<T, N: usize> IntoIterator for [T; N] {
-    type IntoIter = ArrayIntoIter<T, N>;
+impl<T, N: usize> IterOwned for [T; N] {
+    type Iter = ArrayIntoIter<T, N>;
 
     fn into_iter(self) -> ArrayIntoIter<T, N> {
         ArrayIntoIter { items: Manual { value: self }, next: 0 }

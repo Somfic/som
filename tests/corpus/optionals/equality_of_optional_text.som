@@ -1,0 +1,27 @@
+// expect: exit 0
+
+/// Optionals of a type compared with `Eq`'s `eq`, like `string`: two `none`s are equal, a
+/// `none` and a value aren't, and two values are if their `eq` says so. `eq` is only called
+/// when both hold a value.
+fn same(a: string?, b: string?) -> bool = a == b;
+fn holds(a: string?, b: string) -> bool = a == b;
+fn held(a: string, b: string?) -> bool = a == b;
+fn differ(a: string?, b: string) -> bool = a != b;
+
+fn main() -> i32 {
+    // How many are wrong.
+    let mut wrong = 0;
+    if !same(none, none) { wrong = wrong + 1; }
+    if same(none, "x") { wrong = wrong + 1; }
+    if same("x", none) { wrong = wrong + 1; }
+    if !same("x", "x") { wrong = wrong + 1; }
+    if same("x", "y") { wrong = wrong + 1; }
+    if holds(none, "x") { wrong = wrong + 1; }
+    if !holds("x", "x") { wrong = wrong + 1; }
+    if holds("y", "x") { wrong = wrong + 1; }
+    if held("x", none) { wrong = wrong + 1; }
+    if !held("x", "x") { wrong = wrong + 1; }
+    if !differ(none, "x") { wrong = wrong + 1; }
+    if differ("x", "x") { wrong = wrong + 1; }
+    wrong
+}

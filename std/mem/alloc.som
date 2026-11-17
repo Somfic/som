@@ -2,26 +2,32 @@
 /// drops them before it goes, since dropping an `Alloc` only gives the memory back.
 pub struct Alloc<T> {
     ptr: *T,
-    count: usize
+    capacity: usize
 }
 
 impl<T> Alloc<T> {
+    pub prop capacity = .capacity;
+    pub prop is_empty = .capacity == 0;
+
     pub fn empty() -> Self {
-
-        Alloc { ptr: null<T>(), count: 0 }
+        Alloc { ptr: null<T>(), capacity: 0 }
     }
-
-    pub prop capacity = .count;
 
     pub fn with_capacity(capacity: usize) -> Self {
         let mut ptr = null<T>();
         ptr.resize(capacity);
-        Alloc { ptr, count: capacity }
+        Alloc { ptr, capacity }
     }
 
-    pub fn resize(&mut self, size: usize) {
-        self.ptr.resize(size);
-        self.count = size;
+    // Doubles capacity
+    pub fn grow(&mut self) {
+        .resize(usize::biggest(4, .capacity * 2));
+    }
+
+    // Resizes capacity
+    pub fn resize(&mut self, capacity: usize) {
+        self.ptr.resize(capacity);
+        self.capacity = capacity;
     }
 
     /// Moves `value` into an empty slot. Whatever was there isn't dropped.
@@ -60,25 +66,15 @@ impl<T> Drop for Alloc<T> {
 }
 
 impl<T: Copy> Alloc<T> {
-    pub fn filled(size: usize, initial_value: T) -> Self {
-        let mut ptr = null<T>();
-        ptr.resize(size);
-
-        let mut alloc = Alloc { ptr, count: size };
-
-        alloc.fill(initial_value);
-
+    pub fn filled(capacity: usize, value: T) -> Self {
+        let mut alloc = Alloc::with_capacity(capacity);
+        alloc.fill(value);
         alloc
     }
 
     pub fn fill(&mut self, value: T) {
-        for i in 0..self.count {
+        for i in 0..self.capacity {
             .put_at(i, value);
         }
     }
-}
-
-@test
-fn test() {
-    assert(1 == 0, "lol");
 }

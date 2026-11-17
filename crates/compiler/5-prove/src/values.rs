@@ -105,7 +105,7 @@ impl Prover<'_> {
                 }
                 self.var_value(def)?
             }
-            Expr::Field { object, ref field } => self.field_value(object, field, subst)?,
+            Expr::Field { object, ref field } => self.field_value(expr, object, field, subst)?,
             Expr::Deref(inner) => return self.value_of(inner, subst),
             // `width()` of `fn width() -> i32 = 60;`.
             Expr::Call { .. } => Value::number(self.constant_call(expr)?),
@@ -158,6 +158,7 @@ impl Prover<'_> {
 
     fn field_value(
         &mut self,
+        expr: Id<Expr>,
         object: Id<Expr>,
         field: &Ident,
         subst: Subst,
@@ -165,6 +166,9 @@ impl Prover<'_> {
         let is_len = &*field.name == som_lang::LEN;
         if is_len && let Some(len) = self.array_len(object) {
             return Some(len);
+        }
+        if let Some(value) = self.prop_value(expr, object, subst) {
+            return Some(value);
         }
         let (base, _) = self.value_of(object, subst)?;
         let (root, mut path) = base.into_path()?;
@@ -181,6 +185,41 @@ impl Prover<'_> {
             }
         }
         Some(Value::place(place))
+    }
+
+    /// `object.name` of a property whose body is a value of what it's read on: `3` of `prop
+    /// len: usize = 3`, `xs.mem.size` of `prop capacity = .mem.size`. A trait's, read in its
+    /// `@where`s, is the implementation's, for the method being proven.
+    fn prop_value(
+        &mut self,
+        expr: Id<Expr>,
+        object: Id<Expr>,
+        subst: Subst,
+    ) -> Option<Value<Place>> {
+        const DEEPEST: usize = 8;
+        let DefKind::Func(mut prop) = self.names.def(self.typed.method(expr)?).kind else {
+            return None;
+        };
+        if !self.ast.funcs[prop].prop || self.prop_depth >= DEEPEST {
+            return None;
+        }
+        if self.ast.funcs[prop].in_trait {
+            let owner = self.names.impls[self.impl_block?].owner?;
+            let name = &self.ast.funcs[prop].name.name;
+            let own = *self.names.props(owner, name).first()?;
+            let DefKind::Func(own) = self.names.def(own).kind else {
+                return None;
+            };
+            prop = own;
+        }
+        let body = self.ast.funcs[prop].body?;
+        let this = *self.names.params(prop).first()?;
+        let (base, _) = self.value_of(object, subst)?;
+        let through = move |def: DefId| (def == this).then(|| base.clone());
+        self.prop_depth += 1;
+        let value = self.value_of(body, &through);
+        self.prop_depth -= 1;
+        Some(value?.0)
     }
 
     /// `a + b` or `a - b`, of a number and a value, or of two values.

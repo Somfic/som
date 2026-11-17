@@ -1,4 +1,5 @@
 use som_ast::{BinOp, Expr, Id, Span};
+use som_lang::LangTrait;
 use som_mir::*;
 
 use super::FnBuilder;
@@ -9,14 +10,19 @@ impl FnBuilder<'_, '_> {
         matches!(self.l.mir.types.get(ty), Ty::Optional(_))
     }
 
-    /// At least one of `lhs` and `rhs` is optional. What a `none` holds is zeroed, so reading
-    /// it is harmless; only the result ignores it.
+    /// `expr`, `lhs == rhs`, where at least one of them is optional. What a `none` holds is
+    /// zeroed, so reading it is harmless; only the result ignores it. Values compared with
+    /// `Eq`'s `eq` are compared only when both are there.
     pub(super) fn optional_equality(
         &mut self,
+        expr: Id<Expr>,
         lhs: Id<Expr>,
         rhs: Id<Expr>,
         span: Span,
     ) -> Operand {
+        if self.typed.operator_trait(expr) == Some(LangTrait::Eq) {
+            return self.optional_eq_call(lhs, rhs, span);
+        }
         let bool = self.l.mir.types.bool;
         let (lhs_some, lhs_value) = self.equality_side(lhs);
         let (rhs_some, rhs_value) = self.equality_side(rhs);
@@ -69,6 +75,92 @@ impl FnBuilder<'_, '_> {
             ),
             (None, None) => unreachable!("one side is optional"),
         }
+    }
+
+    /// `lhs == rhs` of values compared with `Eq`'s `eq`, as `string`s are, where one or both
+    /// are optional: `eq` is called only when both hold one, since a `none`'s zeroes aren't a
+    /// value it could read. Otherwise they're equal if neither holds one.
+    fn optional_eq_call(&mut self, lhs: Id<Expr>, rhs: Id<Expr>, span: Span) -> Operand {
+        let bool = self.l.mir.types.bool;
+        let mut present = Vec::new();
+        let mut values = Vec::new();
+        let mut value_ty = None;
+        for side in [lhs, rhs] {
+            let ty = self.expr_ty(side);
+            let place = self.place(side);
+            match *self.l.mir.types.get(ty) {
+                Ty::Optional(inner) => {
+                    present.push(Operand::Copy(place.clone().project(Projection::Field(0))));
+                    values.push(place.project(Projection::Field(1)));
+                    value_ty = Some(inner);
+                }
+                _ => {
+                    values.push(place);
+                    value_ty = value_ty.or(Some(ty));
+                }
+            }
+        }
+        let value_ty = value_ty.expect("two sides");
+        let compute = |b: &mut Self, rvalue| b.temp_copy(bool, rvalue, span.clone());
+        // Whether `eq` is called, and what they are if it isn't.
+        let (both, otherwise) = match &present[..] {
+            [l, r] => {
+                let both = compute(
+                    self,
+                    Rvalue::Binary {
+                        op: BinOp::And,
+                        lhs: l.clone(),
+                        rhs: r.clone(),
+                    },
+                );
+                let either = compute(
+                    self,
+                    Rvalue::Binary {
+                        op: BinOp::Or,
+                        lhs: l.clone(),
+                        rhs: r.clone(),
+                    },
+                );
+                let neither = compute(self, Rvalue::Not(either));
+                (both, neither)
+            }
+            [some] => (some.clone(), self.constant(ConstKind::Bool(false), bool)),
+            _ => unreachable!("one side is optional"),
+        };
+        let equal = self.new_local(bool, None, true, span.clone());
+        self.assign(Place::local(equal), Rvalue::Use(otherwise), span.clone());
+        let (call, join) = (self.new_block(), self.new_block());
+        self.terminate(
+            TerminatorKind::Branch {
+                condition: both,
+                then: call,
+                otherwise: join,
+            },
+            span.clone(),
+        );
+
+        self.current = call;
+        let reference = self.l.mir.types.intern(Ty::Ref {
+            mutable: false,
+            to: value_ty,
+        });
+        let args = (values.into_iter())
+            .map(|place| {
+                let borrow = Rvalue::Ref {
+                    mutable: false,
+                    place,
+                };
+                self.temp_copy(reference, borrow, span.clone())
+            })
+            .collect();
+        let method = self.l.lang_method(LangTrait::Eq);
+        let func = self.l.instance(method, vec![value_ty]);
+        let call = Rvalue::Call { func, args };
+        self.assign(Place::local(equal), call, span.clone());
+        self.terminate(TerminatorKind::Goto(join), span.clone());
+
+        self.current = join;
+        Operand::Copy(Place::local(equal))
     }
 
     /// One side of an `==` with an optional: whether it holds a value, if it's optional, and

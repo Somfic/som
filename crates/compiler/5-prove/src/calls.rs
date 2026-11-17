@@ -131,7 +131,10 @@ impl Prover<'_> {
                         .unwrap_or_else(unfollowed),
                 )
             };
+            // A trait's `@where` reads the callee's implementation's properties.
+            let caller_block = std::mem::replace(&mut self.impl_block, self.names.impl_of(func));
             let cond = self.cond(condition, true, &subst);
+            self.impl_block = caller_block;
             let all = Cond::All(needs.iter().cloned().chain([cond]).collect());
             if self.facts.holds(&all) {
                 continue;

@@ -1,0 +1,14 @@
+// expect: exit 1
+// run: tests
+
+use som::io;
+
+/// Leaving with a code of its own isn't passing: the runner says what it exited with, and
+/// goes on with the next.
+@test
+fn leaves() {
+    io::exit(3);
+}
+
+@test
+fn passes() {}

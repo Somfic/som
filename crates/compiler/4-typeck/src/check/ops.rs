@@ -114,6 +114,8 @@ impl Checker<'_> {
             match self.operand_ok(op, lhs_inner) {
                 Some(true) if comparable => {}
                 None if comparable => self.deferred.ops.push((id, op, lhs_inner, rhs_inner)),
+                // `name == "x"` of a `string?`: the values compare with `Eq`'s `eq`.
+                Some(false) if comparable && self.trait_op(id, op, lhs_inner).is_some() => {}
                 _ => self.invalid_operands(id, op, lhs_ty, rhs_ty),
             }
             return bool;

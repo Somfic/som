@@ -1,0 +1,37 @@
+pub struct IndexIter<C: Index> {
+    of: &C,
+    index: usize,
+}
+
+impl<C: Index> IndexIter<C> {
+    pub fn of(values: &C) -> Self = IndexIter { of: values, index: 0 };
+}
+
+impl<C: Index> Iterator for IndexIter<C> {
+    type Item = &C::Item;
+
+    fn next(&mut self) -> &C::Item? {
+        let item = .of.get(.index);
+        .index = .index + 1;
+        item
+    }
+}
+
+pub struct IndexIterMut<C: IndexMut> {
+    of: &mut C,
+    index: usize,
+}
+
+impl<C: IndexMut> IndexIterMut<C> {
+    pub fn of(values: &mut C) -> Self = IndexIterMut { of: values, index: 0 };
+}
+
+impl<C: IndexMut> Iterator for IndexIterMut<C> {
+    type Item = &mut C::Item;
+
+    fn next(&mut self) -> &mut C::Item? {
+        let item = .of.get_mut(.index);
+        .index = .index + 1;
+        item
+    }
+}

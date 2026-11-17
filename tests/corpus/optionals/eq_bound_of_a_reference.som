@@ -1,0 +1,27 @@
+// expect: exit 0
+
+/// A `&T` meets an `Eq` bound when `T` does, comparing what they refer to, as `==` on
+/// references does; so does the `&T?` that `get` gives.
+fn same<T: Eq>(a: T, b: T) -> bool = a == b;
+
+fn two() -> List<string> {
+    let mut values: List<string> = List::empty();
+    values.push("a");
+    values.push("b");
+    values
+}
+
+fn main() -> i32 {
+    let values = two();
+    let a = "a";
+    let b = "b";
+    // How many are wrong.
+    let mut wrong = 0;
+    if !same(&a, &a) { wrong = wrong + 1; }
+    if same(&a, &b) { wrong = wrong + 1; }
+    if !same(values.get(1), &b) { wrong = wrong + 1; }
+    if same(values.get(0), &b) { wrong = wrong + 1; }
+    if !same(values.get(5), none) { wrong = wrong + 1; }
+    if same(values.get(5), &a) { wrong = wrong + 1; }
+    wrong
+}

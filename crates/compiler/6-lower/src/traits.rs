@@ -82,6 +82,13 @@ impl Lowerer<'_> {
         let &(trait_, _) = self.trait_methods.get(&func)?;
         let lang = self.names.lang_of(trait_)?;
         let &this = type_args.first()?;
+        if lang == LangTrait::Eq {
+            match *self.mir.types.get(this) {
+                Ty::Optional(inner) => return Some(self.optional_eq(func, this, inner)),
+                Ty::Ref { to, .. } => return Some(self.reference_eq(func, this, to)),
+                _ => {}
+            }
+        }
         if !builtin_operator(self.mir.types.get(this), lang) {
             return None;
         }
@@ -243,6 +250,235 @@ impl Lowerer<'_> {
         self.instances.insert(key, id);
         Some(id)
     }
+
+    /// `eq` of two `&T`s, `this`: whether what they refer to is equal, by `T`'s `eq`.
+    fn reference_eq(&mut self, func: Id<Func>, this: TypeId, to: TypeId) -> FuncId {
+        let key = (func, vec![this]);
+        if let Some(&id) = self.instances.get(&key) {
+            return id;
+        }
+        let span = self.ast.funcs.span(func).clone();
+        let bool = self.mir.types.bool;
+        let reference = self.mir.types.intern(Ty::Ref {
+            mutable: false,
+            to: this,
+        });
+        let name = format!(
+            "{}::{}",
+            self.mir.display_ty(this),
+            self.ast.funcs[func].name.name
+        )
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ':' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+        let id = self.mir.funcs.alloc(Function {
+            name,
+            params: vec![reference, reference],
+            ret: bool,
+            span: span.clone(),
+            body: None,
+            link_name: None,
+            library: None,
+            is_entry: false,
+            variadic: false,
+        });
+        self.instances.insert(key, id);
+        // `T`'s `eq` takes the `&T`s these refer to.
+        let to_eq = self.instance(func, vec![to]);
+        let mut locals = Arena::new();
+        for (ty, name) in [
+            (bool, None),
+            (reference, Some("self")),
+            (reference, Some("other")),
+        ] {
+            locals.alloc(LocalDecl {
+                ty,
+                name: name.map(str::to_string),
+                mutable: false,
+                span: span.clone(),
+            });
+        }
+        let referred = |i| Operand::Copy(Place::local(Id::new(i)).project(Projection::Deref));
+        let mut blocks = Arena::new();
+        blocks.alloc(Block {
+            stmts: vec![Statement {
+                kind: StatementKind::Assign(
+                    Place::local(RETURN),
+                    Rvalue::Call {
+                        func: to_eq,
+                        args: vec![referred(1), referred(2)],
+                    },
+                ),
+                span: span.clone(),
+                reads: Vec::new(),
+            }],
+            terminator: Terminator {
+                kind: TerminatorKind::Return,
+                span: span.clone(),
+            },
+        });
+        self.mir.funcs[id].body = Some(Body {
+            locals,
+            arg_count: 2,
+            outs: Vec::new(),
+            two_phase: Vec::new(),
+            blocks,
+        });
+        id
+    }
+
+    /// `eq` of two `T?`s, `this`, which the language has without an implementation: equal if
+    /// neither holds a value, unequal if one does, and if both do, as `T`'s `eq` says. It's
+    /// called only then: a `none`'s zeroes aren't a `T` it could read.
+    fn optional_eq(&mut self, func: Id<Func>, this: TypeId, inner: TypeId) -> FuncId {
+        let key = (func, vec![this]);
+        if let Some(&id) = self.instances.get(&key) {
+            return id;
+        }
+        let span = self.ast.funcs.span(func).clone();
+        let bool = self.mir.types.bool;
+        let reference = self.mir.types.intern(Ty::Ref {
+            mutable: false,
+            to: this,
+        });
+        let inner_ref = self.mir.types.intern(Ty::Ref {
+            mutable: false,
+            to: inner,
+        });
+        let name = format!(
+            "{}::{}",
+            self.mir.display_ty(this),
+            self.ast.funcs[func].name.name
+        )
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ':' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+        // Made before the body, so a `T??` reaching itself finds it.
+        let id = self.mir.funcs.alloc(Function {
+            name,
+            params: vec![reference, reference],
+            ret: bool,
+            span: span.clone(),
+            body: None,
+            link_name: None,
+            library: None,
+            is_entry: false,
+            variadic: false,
+        });
+        self.instances.insert(key, id);
+        let inner_eq = self.instance(func, vec![inner]);
+
+        let mut locals = Arena::new();
+        let mut local = |ty, name: Option<&str>| {
+            locals.alloc(LocalDecl {
+                ty,
+                name: name.map(str::to_string),
+                mutable: false,
+                span: span.clone(),
+            })
+        };
+        local(bool, None);
+        let (a, b) = (
+            local(reference, Some("self")),
+            local(reference, Some("other")),
+        );
+        let (both, either, a_value, b_value) = (
+            local(bool, None),
+            local(bool, None),
+            local(inner_ref, None),
+            local(inner_ref, None),
+        );
+        let field = |l: Local, i| {
+            Place::local(l)
+                .project(Projection::Deref)
+                .project(Projection::Field(i))
+        };
+        let present = |l: Local| Operand::Copy(field(l, 0));
+        let stmt = |kind| Statement {
+            kind,
+            span: span.clone(),
+            reads: Vec::new(),
+        };
+        let assign = |to: Local, rvalue| stmt(StatementKind::Assign(Place::local(to), rvalue));
+        let end = |kind| Terminator {
+            kind,
+            span: span.clone(),
+        };
+        let mut blocks = Arena::new();
+        let (compare, done) = (Id::new(1), Id::new(2));
+        // Whether both hold a value; if not, they're equal if neither does.
+        blocks.alloc(Block {
+            stmts: vec![
+                assign(
+                    both,
+                    Rvalue::Binary {
+                        op: BinOp::And,
+                        lhs: present(a),
+                        rhs: present(b),
+                    },
+                ),
+                assign(
+                    either,
+                    Rvalue::Binary {
+                        op: BinOp::Or,
+                        lhs: present(a),
+                        rhs: present(b),
+                    },
+                ),
+                assign(RETURN, Rvalue::Not(Operand::Copy(Place::local(either)))),
+            ],
+            terminator: end(TerminatorKind::Branch {
+                condition: Operand::Copy(Place::local(both)),
+                then: compare,
+                otherwise: done,
+            }),
+        });
+        let borrow = |l: Local| Rvalue::Ref {
+            mutable: false,
+            place: field(l, 1),
+        };
+        blocks.alloc(Block {
+            stmts: vec![
+                assign(a_value, borrow(a)),
+                assign(b_value, borrow(b)),
+                assign(
+                    RETURN,
+                    Rvalue::Call {
+                        func: inner_eq,
+                        args: vec![
+                            Operand::Copy(Place::local(a_value)),
+                            Operand::Copy(Place::local(b_value)),
+                        ],
+                    },
+                ),
+            ],
+            terminator: end(TerminatorKind::Return),
+        });
+        blocks.alloc(Block {
+            stmts: Vec::new(),
+            terminator: end(TerminatorKind::Return),
+        });
+        self.mir.funcs[id].body = Some(Body {
+            locals,
+            arg_count: 2,
+            outs: Vec::new(),
+            two_phase: Vec::new(),
+            blocks,
+        });
+        id
+    }
 }
 
 impl FnBuilder<'_, '_> {
@@ -271,9 +507,9 @@ impl FnBuilder<'_, '_> {
             // `into_iter` takes what's looped over; `iter` and `iter_mut` the reference to it.
             let maker = match start {
                 Start::Itself => None,
-                Start::IntoIter => Some(LangTrait::IntoIterator),
-                Start::Iter => Some(LangTrait::Iterable),
-                Start::IterMut => Some(LangTrait::IterableMut),
+                Start::IntoIter => Some(LangTrait::IterOwned),
+                Start::Iter => Some(LangTrait::IterRef),
+                Start::IterMut => Some(LangTrait::IterMut),
             };
             let (iterator_ty, start) = match maker {
                 None => (iterable_ty, Rvalue::Use(b.operand(iterable))),

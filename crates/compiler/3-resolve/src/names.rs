@@ -36,7 +36,7 @@ pub enum DefKind {
         index: usize,
     },
     /// The `index`th generic parameter of impl block `impl_` (see `Names::impls`), as its
-    /// target and associated types are written: `T` in `impl<T> Iterator for ListIter<T>`.
+    /// target and associated types are written: `T` in `impl<T> Iterator for ListIntoIter<T>`.
     ImplParam {
         impl_: usize,
         index: usize,

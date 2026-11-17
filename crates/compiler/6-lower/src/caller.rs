@@ -119,10 +119,13 @@ impl Lowerer<'_> {
         fail: FuncId,
         origin: &HashMap<FuncId, som_ast::Id<som_ast::Func>>,
     ) -> HashSet<FuncId> {
+        // A test is where failures are said to be, as the program's own code is: the
+        // standard library's tests too.
         let in_std = |id: &FuncId| {
             origin.get(id).is_some_and(|&func| {
                 let module = self.names.def(self.names.func(func)).module;
                 som_lang::is_std_module(&self.ast.modules[module].name)
+                    && !self.ast.funcs[func].test
             })
         };
         let callees = |body: &Body| -> Vec<FuncId> {

@@ -13,6 +13,7 @@ impl<'a> Resolver<'a> {
     pub(crate) fn resolve_bodies(&mut self) {
         let ast = self.ast;
         self.resolve_aliases();
+        self.resolve_supers();
         // Impl blocks, counted in the order `collect_methods` saw them.
         let mut impl_index = 0;
         for (m, module) in ast.modules.iter().enumerate() {
@@ -212,14 +213,27 @@ impl<'a> Resolver<'a> {
         self.pop_scope();
     }
 
+    /// Each trait's supertraits, before anything that could name a type through one:
+    /// `C::Item` of a `C: IndexMut` is `Index`'s, wherever the two are written.
+    fn resolve_supers(&mut self) {
+        let ast = self.ast;
+        for (m, module) in ast.modules.iter().enumerate() {
+            self.cx.module = m;
+            for item in &module.items {
+                if let Item::Trait(id) = item {
+                    let supers = (ast.traits[*id].supers.iter())
+                        .filter_map(|path| self.resolve_path(path, Expect::Trait))
+                        .collect();
+                    self.names.set_supers(*id, supers);
+                }
+            }
+        }
+    }
+
     /// A trait's methods, which can name its associated types; `Self` is a generic of each.
     fn resolve_trait(&mut self, id: Id<Trait>) {
         let t = &self.ast.traits[id];
         let types = self.names.trait_types(id).to_vec();
-        let supers = (t.supers.iter())
-            .filter_map(|path| self.resolve_path(path, Expect::Trait))
-            .collect();
-        self.names.set_supers(id, supers);
         // Its parameters' defaults, `Other = Self`: in terms of `Self` and its parameters.
         let this = Ident {
             name: som_lang::SELF_TYPE.into(),
@@ -710,10 +724,23 @@ impl<'a> Resolver<'a> {
         match self.names.def(base).kind {
             DefKind::SelfType { impl_ } => named(&self.names.impls[impl_].types),
             DefKind::TypeParam { .. } | DefKind::StructParam { .. } | DefKind::ImplParam { .. } => {
-                (self.names.bounds(base).iter()).find_map(|&t| match self.names.def(t).kind {
-                    DefKind::Trait(t) => named(self.names.trait_types(t)),
-                    _ => None,
-                })
+                // Its traits', then theirs' supertraits'.
+                let mut traits = self.names.bounds(base).to_vec();
+                let mut seen = Vec::new();
+                while let Some(t) = traits.pop() {
+                    let DefKind::Trait(t) = self.names.def(t).kind else {
+                        continue;
+                    };
+                    if seen.contains(&t) {
+                        continue;
+                    }
+                    seen.push(t);
+                    if let Some(found) = named(self.names.trait_types(t)) {
+                        return Some(found);
+                    }
+                    traits.extend(self.names.supers(t));
+                }
+                None
             }
             _ => None,
         }

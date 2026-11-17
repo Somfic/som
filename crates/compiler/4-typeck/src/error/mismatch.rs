@@ -319,7 +319,7 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
                     msg![
                         code("for"),
                         " goes through ranges, arrays, slices and what implements ",
-                        code(LangTrait::Iterable.name()),
+                        code(LangTrait::IterRef.name()),
                         " or ",
                         code(LangTrait::Iterator.name())
                     ],

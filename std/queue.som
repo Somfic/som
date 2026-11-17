@@ -1,0 +1,106 @@
+use som::iter;
+
+pub struct Queue<T> {
+    mem: Alloc<T>,
+    head: usize,
+    len: usize,
+}
+
+impl<T> Queue {
+    pub prop len = .len;
+    pub prop is_empty = .len == 0;
+    prop capacity = .mem.capacity;
+    prop is_full = .len == .capacity;
+
+    pub fn empty() -> Self {
+        Queue { mem: Alloc::empty(), head: 0, len: 0 }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Queue { mem: Alloc::with_capacity(capacity), head: 0, len: 0 }
+    }
+
+    pub fn enqueue(&mut self, value: T) {
+        if .is_full self.mem.grow();
+
+        let index = .slot(.len);
+        .len = .len + 1;
+        .mem.put_at(index, value);
+    }
+
+    pub fn dequeue(&mut self) -> T? {
+        if .len <= 0 return none;
+
+        let index = .slot(.len - 1);
+        .len = .len - 1;
+        .mem.take_at(index)
+    }
+
+    fn slot(&self, index: usize) -> usize {
+        if .mem.capacity == 0 @unreachable;
+        (.head + index) % .mem.capacity
+    }
+}
+
+impl<T> Index for Queue<T> {
+    type Item = T;
+
+    prop len: usize = .len;
+
+    fn at(&self, index: usize) -> &T = .mem.at(.slot(index));
+}
+
+impl<T> IndexMut for Queue<T> {
+    fn at_mut(&mut self, i: usize) -> &mut T = .mem.at_mut(.slot(i));
+}
+
+impl<T> IterRef for Queue<T> {
+    type Iter = iter::IndexIter<Queue<T>>;
+
+    fn iter(&self) -> iter::IndexIter<Queue<T>> = iter::IndexIter::of(self);
+}
+
+impl<T> IterMut for Queue<T> {
+    type Iter = iter::IndexIterMut<Queue<T>>;
+
+    fn iter_mut(&mut self) -> iter::IndexIterMut<Queue<T>> = iter::IndexIterMut::of(self);
+}
+
+@test
+fn queue() {
+    let mut queue = Queue<bool>::empty();
+    assert_eq(queue.dequeue(), none, "first item");
+
+    let mut queue = Queue::empty();
+    queue.enqueue("First");
+    assert_eq(queue.dequeue(), "First", "first item");
+
+    let mut queue = Queue::empty();
+    queue.enqueue("First");
+    queue.enqueue("Second");
+    assert_eq(queue.dequeue(), "Second", "first item");
+    assert_eq(queue.dequeue(), "First", "second item");
+    assert_eq(queue.dequeue(), none, "third item");
+
+    let mut queue = Queue::empty();
+    queue.enqueue("First");
+    queue.enqueue("Second");
+    assert_eq(queue.get(0), &"First", "first item");
+    assert_eq(queue.get(1), &"Second", "second item");
+}
+
+@test
+fn goes_through_in_order() {
+    let mut queue: Queue<i32> = Queue::empty();
+    queue.enqueue(1);
+    queue.enqueue(2);
+    queue.enqueue(3);
+    for x in &mut queue {
+        *x = *x * 10;
+    }
+    let mut seen = 0;
+    for x in &queue {
+        seen = seen * 100 + x;
+    }
+    assert_eq(seen, 102030, "10, 20 and 30, in turn");
+}

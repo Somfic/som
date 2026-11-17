@@ -19,7 +19,7 @@ struct Members {
 }
 
 impl Parser<'_> {
-    /// `impl<T> Pair<T> { … }`, or `impl<T> Iterator for ListIter<T> { type Item = &T; … }`.
+    /// `impl<T> Pair<T> { … }`, or `impl<T> Iterator for ListIntoIter<T> { type Item = T; … }`.
     pub(super) fn parse_impl(&mut self) -> Option<Impl> {
         self.expect(TokenKind::Impl, "an impl block")?;
         let generics = self.parse_generics(false)?;
@@ -34,7 +34,7 @@ impl Parser<'_> {
         if !self.eat(TokenKind::For) {
             return self.parse_impl_body(generics, None, first, first_args, None);
         }
-        // `Iterator for ListIter<T>`: what came first was the trait. `T?` is a type, not a
+        // `Iterator for ListIntoIter<T>`: what came first was the trait. `T?` is a type, not a
         // struct's name.
         let trait_ = Some((first, first_args));
         if self.at(TokenKind::Ident) && self.peek_nth(1) != TokenKind::Question {

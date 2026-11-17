@@ -23,9 +23,9 @@ macro_rules! named_enum {
 named_enum! {
     pub enum LangTrait {
         Iterator = "Iterator",
-        Iterable = "Iterable",
-        IterableMut = "IterableMut",
-        IntoIterator = "IntoIterator",
+        IterRef = "IterRef",
+        IterMut = "IterMut",
+        IterOwned = "IterOwned",
         From = "From",
         Eq = "Eq",
         Add = "Add",
@@ -47,9 +47,9 @@ impl LangTrait {
     pub fn method(self) -> Option<&'static str> {
         Some(match self {
             LangTrait::Iterator => "next",
-            LangTrait::Iterable => "iter",
-            LangTrait::IterableMut => "iter_mut",
-            LangTrait::IntoIterator => "into_iter",
+            LangTrait::IterRef => "iter",
+            LangTrait::IterMut => "iter_mut",
+            LangTrait::IterOwned => "into_iter",
             LangTrait::From => "from",
             LangTrait::Eq => "eq",
             LangTrait::Add => "add",
@@ -70,9 +70,7 @@ impl LangTrait {
     pub fn assoc_type(self) -> Option<&'static str> {
         Some(match self {
             LangTrait::Iterator | LangTrait::Index => "Item",
-            LangTrait::Iterable => "Iter",
-            LangTrait::IterableMut => "IterMut",
-            LangTrait::IntoIterator => "IntoIter",
+            LangTrait::IterRef | LangTrait::IterMut | LangTrait::IterOwned => "Iter",
             _ => return None,
         })
     }

@@ -1,4 +1,5 @@
 use som::mem;
+use som::iter;
 
 pub struct List<T> {
     mem: Alloc<T>,
@@ -6,6 +7,11 @@ pub struct List<T> {
 }
 
 impl<T> List<T> {
+    pub prop len = .len;
+    pub prop is_empty = .len == 0;
+    prop capacity = .mem.capacity;
+    prop is_full = .len == .capacity;
+
     pub fn empty() -> Self {
         List { mem: Alloc::empty(), len: 0 }
     }
@@ -14,15 +20,8 @@ impl<T> List<T> {
         List { mem: Alloc::with_capacity(capacity), len: 0 }
     }
 
-    pub prop capacity = .mem.capacity;
-    pub prop is_empty = .len == 0;
-    pub prop is_full = .len == .capacity;
-
     pub fn push(&mut self, value: T) {
-        if .is_full {
-            let capacity = 4 if .capacity == 0 else .capacity * 2;
-            .mem.resize(capacity);
-        }
+        if .is_full self.mem.grow();
         .mem.put_at(.len, value);
         .len = .len + 1;
     }
@@ -47,7 +46,7 @@ impl<T> List<T> {
 
     pub fn clear(&mut self) {
         for i in 0..self.len {
-            drop(.mem.at(i));
+            drop(.mem.take_at(i));
         }
         .len = 0;
     }
@@ -63,13 +62,25 @@ impl<T: Copy> List<T> {
     }
 }
 
+impl<T> Index for List<T> {
+    type Item = T;
+
+    prop len: usize = .len;
+
+    fn at(&self, index: usize) -> &T = .mem.at(index);
+}
+
+impl<T> IndexMut for List<T> {
+    fn at_mut(&mut self, index: usize) -> &mut T = .mem.at_mut(index);
+}
+
 impl<T> Drop for List<T> {
     fn drop(&mut self) {
         .clear();
     }
 }
 
-impl<T, N: usize> From<[T; N]> for List<T> {
+impl<T: Copy, N: usize> From<[T; N]> for List<T> {
     fn from(items: [T; N]) -> List<T> {
         let mut list: List<T> = List::with_capacity(items.len);
         for item in items { list.push(item); }
@@ -85,54 +96,20 @@ impl<T: Copy> From<&[T]> for List<T> {
     }
 }
 
-impl<T> Iterable for List<T> {
-    type Iter = ListIter<T>;
+impl<T> IterRef for List<T> {
+    type Iter = iter::IndexIter<List<T>>;
 
-    fn iter(self: &List<T>) -> ListIter<T> {
-        ListIter { list: self, index: 0 }
-    }
+    fn iter(&self) -> iter::IndexIter<List<T>> = iter::IndexIter::of(self);
 }
 
-pub struct ListIter<T> {
-    list: &List<T>,
-    index: usize,
+impl<T> IterMut for List<T> {
+    type Iter = iter::IndexIterMut<List<T>>;
+
+    fn iter_mut(&mut self) -> iter::IndexIterMut<List<T>> = iter::IndexIterMut::of(self);
 }
 
-impl<T> Iterator for ListIter<T> {
-    type Item = &T;
-
-    fn next(self: &mut ListIter<T>) -> &T? {
-        let item = .list.get(.index);
-        .index = .index + 1;
-        item
-    }
-}
-
-impl<T> IterableMut for List<T> {
-    type IterMut = ListIterMut<T>;
-
-    fn iter_mut(&mut self) -> ListIterMut<T> {
-        ListIterMut { list: self, index: 0 }
-    }
-}
-
-pub struct ListIterMut<T> {
-    list: &mut List<T>,
-    index: usize,
-}
-
-impl<T> Iterator for ListIterMut<T> {
-    type Item = &mut T;
-
-    fn next(&mut self) -> &mut T? {
-        let item = .list.get_mut(.index);
-        .index = .index + 1;
-        item
-    }
-}
-
-impl<T> IntoIterator for List<T> {
-    type IntoIter = ListIntoIter<T>;
+impl<T> IterOwned for List<T> {
+    type Iter = ListIntoIter<T>;
 
     fn into_iter(self) -> ListIntoIter<T> {
         ListIntoIter { list: self, next: 0 }
@@ -162,23 +139,8 @@ impl<T> Drop for ListIntoIter<T> {
     /// gives the room back.
     fn drop(&mut self) {
         for i in .next..self.list.len {
-            drop(.list.mem.at(i));
+            drop(.list.mem.take_at(i));
         }
         .list.len = 0;
     }
-}
-
-/// `values[i]`, where `i` is known to be below `values.len`.
-impl<T> Index for List<T> {
-    type Item = T;
-
-    /// How many values it holds.
-    prop len: usize = .len;
-
-    fn at(&self, i: usize) -> &T = .mem.at(i);
-}
-
-/// `values[i] = value`, where `i` is known to be below `values.len`.
-impl<T> IndexMut for List<T> {
-    fn at_mut(&mut self, i: usize) -> &mut T = .mem.at_mut(i);
 }

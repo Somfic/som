@@ -1,0 +1,22 @@
+// expect: exit 0
+
+/// A `T?` meets an `Eq` bound when `T` does: the language compares them, two `none`s equal,
+/// a `none` and a value not, and two values with `T`'s own `==`.
+fn same<T: Eq>(a: T, b: T) -> bool = a == b;
+
+fn pick(n: i32) -> string? = "x" if n > 0 else none;
+fn count(n: i32) -> i32? = n if n > 0 else none;
+
+fn main() -> i32 {
+    // How many are wrong.
+    let mut wrong = 0;
+    if !same(pick(1), "x") { wrong = wrong + 1; }
+    if same(pick(1), "y") { wrong = wrong + 1; }
+    if same(pick(0), "x") { wrong = wrong + 1; }
+    if !same(pick(0), none) { wrong = wrong + 1; }
+    if same(pick(1), none) { wrong = wrong + 1; }
+    if !same(count(3), 3) { wrong = wrong + 1; }
+    if same(count(0), 3) { wrong = wrong + 1; }
+    if !same(count(0), none) { wrong = wrong + 1; }
+    wrong
+}

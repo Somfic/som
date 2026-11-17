@@ -700,7 +700,7 @@ fn squares() -> [i32; 10] {
 }
 @const SQUARES = squares();
 ```
-*Needs:* places and indexing in the interpreter, range iterators (`IntoIterator`/`next`
+*Needs:* places and indexing in the interpreter, range iterators (`IterOwned`/`next`
 calls), and `ConstKind::Aggregate` in MIR and codegen. **Done.**
 
 **Step 4. Structs, enums and `match`.** `step_04_structs.som`

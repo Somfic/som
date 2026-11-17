@@ -26,7 +26,7 @@ impl FnBuilder<'_, '_> {
                 lhs,
                 rhs,
             } if self.is_optional(*lhs) || self.is_optional(*rhs) => {
-                let equal = self.optional_equality(*lhs, *rhs, self.span(expr));
+                let equal = self.optional_equality(expr, *lhs, *rhs, self.span(expr));
                 match op {
                     BinOp::Equals => Rvalue::Use(equal),
                     _ => Rvalue::Not(equal),

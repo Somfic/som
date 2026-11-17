@@ -226,11 +226,11 @@ pub enum Take {
 pub enum Start {
     /// `for x in list.iter()`.
     Itself,
-    /// `for x in &value`: `Iterable::iter` makes it.
+    /// `for x in &value`: `IterRef::iter` makes it.
     Iter,
-    /// `for x in &mut value`: `IterableMut::iter_mut` makes it.
+    /// `for x in &mut value`: `IterMut::iter_mut` makes it.
     IterMut,
-    /// `for x in value`: `IntoIterator::into_iter` makes it, from the value given up.
+    /// `for x in value`: `IterOwned::into_iter` makes it, from the value given up.
     IntoIter,
 }
 

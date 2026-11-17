@@ -113,7 +113,7 @@ pub(crate) fn substituted(subst: &[(DefId, TypeId)], def: DefId) -> Option<TypeI
     subst.iter().find(|(d, _)| *d == def).map(|&(_, ty)| ty)
 }
 
-/// For concrete types, as lowering has them: `ListIter<i32>::Item` is `&i32`.
+/// For concrete types, as lowering has them: `ListIntoIter<i32>::Item` is `i32`.
 pub fn resolve_assoc(table: &mut TypeTable, impls: &[ImplInfo], ty: TypeId) -> TypeId {
     let t = table.get(ty).clone();
     if t.children().is_empty() {
@@ -152,9 +152,9 @@ pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
             Ty::Int(_) | Ty::Float(_) | Ty::Char | Ty::Bool | Ty::Pointer
         ),
         LangTrait::Iterator
-        | LangTrait::Iterable
-        | LangTrait::IterableMut
-        | LangTrait::IntoIterator
+        | LangTrait::IterRef
+        | LangTrait::IterMut
+        | LangTrait::IterOwned
         | LangTrait::From
         | LangTrait::Drop
         | LangTrait::Copy

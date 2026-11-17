@@ -356,7 +356,7 @@ impl Checker<'_> {
     }
 
     /// `ty` with every associated type of a type that's known worked out through its
-    /// implementation: `ListIter<i32>::Item` is `&i32`. One of a type parameter, or of a type
+    /// implementation: `ListIntoIter<i32>::Item` is `i32`. One of a type parameter, or of a type
     /// not known yet, stays as it is.
     pub(super) fn normalize_assoc(&mut self, ty: TypeId) -> TypeId {
         let ty = self.u.shallow(ty);
@@ -396,6 +396,13 @@ impl Checker<'_> {
         {
             return true;
         }
+        // `T?` compares as `T` does, the language seeing to `none`; `&T` as what it refers
+        // to, as `==` on references does.
+        if self.names.lang_of(trait_) == Some(LangTrait::Eq)
+            && let Ty::Optional(inner) | Ty::Ref { to: inner, .. } = *self.u.get(ty)
+        {
+            return self.implements(inner, trait_);
+        }
         // Whatever's copied is `Copy`; a type parameter only if it's required to be.
         if self.names.lang_of(trait_) == Some(LangTrait::Copy)
             && !matches!(self.u.get(ty), Ty::Param(_))
@@ -404,12 +411,32 @@ impl Checker<'_> {
         }
         match self.u.get(ty) {
             Ty::Error => true,
-            Ty::Param(def) => self.names.bounds(*def).contains(&trait_),
+            Ty::Param(def) => self.bound_has(*def, trait_),
             _ => {
                 let u = &self.u;
                 find_impl(&self.impls, &u.table, trait_, ty, &[], &|t| u.shallow(t)).is_some()
             }
         }
+    }
+
+    /// Whether type parameter `param`'s bounds give it `trait_`: one of them is it, or has it
+    /// as a supertrait, as `IndexMut` has `Index`.
+    pub(super) fn bound_has(&self, param: DefId, trait_: DefId) -> bool {
+        let mut traits = self.names.bounds(param).to_vec();
+        let mut seen = Vec::new();
+        while let Some(t) = traits.pop() {
+            if t == trait_ {
+                return true;
+            }
+            let DefKind::Trait(id) = self.names.def(t).kind else {
+                continue;
+            };
+            if !seen.contains(&t) {
+                seen.push(t);
+                traits.extend(self.names.supers(id));
+            }
+        }
+        false
     }
 
     /// `func`'s type arguments `args` have to meet their bounds: checked once they're known.
@@ -424,21 +451,10 @@ impl Checker<'_> {
 
     pub(super) fn check_obligations(&mut self) {
         for (ty, trait_, span) in std::mem::take(&mut self.deferred.obligations) {
-            let mut ty = self.normalize_assoc(ty);
-            // A number nothing else decides becomes an `i32` or `f64`: that's what has to
-            // implement it.
-            match self.u.var_kind(ty) {
-                Some(VarKind::Int) => ty = self.u.table.i32,
-                Some(VarKind::Float) => ty = self.u.table.f64,
-                // Text nothing else decides is a `string`.
-                Some(VarKind::Text) => ty = self.u.table.text,
-                // `[1, 2, 3]` nothing else decides is an array.
-                Some(VarKind::Collection { element, len }) => {
-                    ty = self.u.intern(Ty::Array { element, len });
-                }
-                Some(_) => continue,
-                None => {}
-            }
+            let ty = self.normalize_assoc(ty);
+            let Some(ty) = self.as_decided(ty) else {
+                continue;
+            };
             if self.implements(ty, trait_) {
                 continue;
             }
@@ -447,6 +463,33 @@ impl Checker<'_> {
                 trait_: self.names.def(trait_).name.to_string(),
                 span,
             });
+        }
+    }
+
+    /// `ty` as what nothing else decides makes it: a number an `i32` or `f64`, text a
+    /// `string`, `[1, 2, 3]` an array, in an optional or behind a reference too. `None` while
+    /// it could be anything.
+    fn as_decided(&mut self, ty: TypeId) -> Option<TypeId> {
+        match self.u.var_kind(ty) {
+            Some(VarKind::Int) => return Some(self.u.table.i32),
+            Some(VarKind::Float) => return Some(self.u.table.f64),
+            Some(VarKind::Text) => return Some(self.u.table.text),
+            Some(VarKind::Collection { element, len }) => {
+                return Some(self.u.intern(Ty::Array { element, len }));
+            }
+            Some(_) => return None,
+            None => {}
+        }
+        match *self.u.shallow_ty(ty) {
+            Ty::Optional(inner) => {
+                let inner = self.as_decided(inner)?;
+                Some(self.u.intern(Ty::Optional(inner)))
+            }
+            Ty::Ref { mutable, to } => {
+                let to = self.as_decided(to)?;
+                Some(self.u.intern(Ty::Ref { mutable, to }))
+            }
+            _ => Some(ty),
         }
     }
 
@@ -573,9 +616,9 @@ impl Checker<'_> {
             (shallow, Start::Itself)
         } else {
             let (lang, start) = match lent {
-                None => (LangTrait::IntoIterator, Start::IntoIter),
-                Some(false) => (LangTrait::Iterable, Start::Iter),
-                Some(true) => (LangTrait::IterableMut, Start::IterMut),
+                None => (LangTrait::IterOwned, Start::IntoIter),
+                Some(false) => (LangTrait::IterRef, Start::Iter),
+                Some(true) => (LangTrait::IterMut, Start::IterMut),
             };
             let trait_ = self.names.lang(lang)?;
             if !self.implements(viewed, trait_) {

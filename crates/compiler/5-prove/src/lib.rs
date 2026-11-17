@@ -38,6 +38,7 @@ pub fn prove(ast: &Ast, names: &Names, typed: &Typed) -> Vec<ProveError> {
         }
         if let Some(body) = func.body {
             prover.facts = Facts::default();
+            prover.impl_block = names.impl_of(id);
             prover.assume_requires(id);
             prover.expr(body);
         }
@@ -66,6 +67,7 @@ pub fn prove_instance(
     regions: &[Span],
 ) -> Vec<ProveError> {
     let mut prover = Prover::new(ast, names, typed, values.iter().copied().collect());
+    prover.impl_block = names.impl_of(func);
     if let Some(body) = ast.funcs[func].body {
         prover.assume_requires(func);
         prover.expr(body);
@@ -154,6 +156,11 @@ struct Prover<'a> {
     within: Vec<Within>,
     /// Proving one instance: the numbers its generic value parameters stand for.
     bound: HashMap<DefId, i128>,
+    /// The impl block of the method being proven: whose properties its trait's `@where`s
+    /// read, `self.len` of `Index`'s being the block's own `len`.
+    impl_block: Option<usize>,
+    /// How many properties' bodies are being read through, one inside another.
+    prop_depth: usize,
 }
 
 /// A statement being gone through, with the rest of its block after it, and whether the
@@ -174,6 +181,8 @@ impl<'a> Prover<'a> {
             errors: Vec::new(),
             within: Vec::new(),
             bound,
+            impl_block: None,
+            prop_depth: 0,
         }
     }
 }
