@@ -4,14 +4,15 @@
 //! one that works out within the step limit is suggested, `@fib(20)`, with its value.
 
 use crate::State;
+use crate::limits::{MIN_STEPS, TRY_LIMIT};
+use crate::natives::is_native;
 use som_base::Span;
+use som_lang::Builtin;
 use som_mir::*;
 use std::collections::HashMap;
 
-/// A call that could be worked out while compiling.
 #[derive(Debug)]
 pub struct CouldBeConst {
-    /// The call as written: `fib(20)`.
     pub call: String,
     /// What it gives, where that's a number or a bool: `6765`.
     pub value: Option<String>,
@@ -23,19 +24,6 @@ pub struct CouldBeConst {
     pub known: Vec<(String, String, Span)>,
     pub span: Span,
 }
-
-/// The C functions the interpreter does itself: calling them changes nothing outside.
-const NATIVE: &[&str] = &[
-    "memcpy", "memmove", "memset", "memcmp", "strlen", "snprintf",
-];
-
-/// The most steps a call is tried for: more, and it's no call to make while compiling (and the
-/// editor tries them on every check).
-const TRY_LIMIT: u64 = 1_000_000;
-
-/// The fewest steps a call takes for it to be worth working out while compiling:
-/// `factorial(5)` is gone in a moment when the program runs.
-const MIN_STEPS: u64 = 1_000;
 
 /// Every call in `mir` that could be `@` one, each said once.
 pub fn could_be_const(mir: &Mir) -> Vec<CouldBeConst> {
@@ -51,101 +39,115 @@ pub fn could_be_const(mir: &Mir) -> Vec<CouldBeConst> {
         };
         // Not the standard library's, what's already worked out while compiling, or an
         // instance of a generic function, whose arguments can be known in only some of them.
-        if function.name.starts_with("som::")
-            || function.name.starts_with("@const")
+        if crate::is_std(&function.name)
+            || function.name.starts_with(Builtin::Const.name())
             || function.name.contains('<')
             || Some(id) == mir.fail
         {
             continue;
         }
         let known = known_locals(body);
-        for block in body.blocks.iter() {
-            for statement in &block.stmts {
-                let StatementKind::Assign(_, Rvalue::Call { func, args }) = &statement.kind else {
-                    continue;
-                };
-                let callee = &mir.funcs[*func];
-                // Each argument a constant: written as one, or a local only ever set to one
-                // (`let n = 1000; count_primes(n)`).
-                let written_args = args;
-                let Some(args) = (args.iter())
-                    .map(|a| constant(a, &known).map(Operand::Const))
-                    .collect::<Option<Vec<_>>>()
-                else {
-                    continue;
-                };
-                if callee.body.is_none()
-                    || matches!(mir.types.get(callee.ret), Ty::Unit)
-                    || !facts.pure(*func)
-                    || !facts.works(*func)
-                {
-                    continue;
-                }
-                // Where the call is in its statement (`fib(TEN)` of `let a = fib(TEN);`).
-                let short = callee.name.rsplit("::").next().unwrap_or(&callee.name);
-                let Some(span) = call_span(&statement.span, short) else {
-                    continue;
-                };
-                if found.iter().any(|f| f.span == span) {
-                    continue;
-                }
-                // Worked out while compiling: what it gives, if it does within the limit, and
-                // only if that saves enough work when the program runs.
-                let Some((value, steps)) = State::try_call(mir, *func, &args, TRY_LIMIT) else {
-                    continue;
-                };
-                if steps < MIN_STEPS {
-                    continue;
-                }
-                // The call with each local argument's value written in its place.
-                let call = span.get_text().to_string();
-                let mut fixed = call.clone();
-                let mut writable = true;
-                let mut known_here = Vec::new();
-                for (written, arg) in written_args.iter().zip(&args) {
-                    let (Operand::Copy(place) | Operand::Move(place)) = written else {
-                        continue;
-                    };
-                    let (Some(name), Operand::Const(c)) = (&body.locals[place.local].name, arg)
-                    else {
-                        continue;
-                    };
-                    match literal(&c.kind) {
-                        Some(text) => {
-                            fixed = replace_word(&fixed, name, &text);
-                            let set_at = body.locals[place.local].span.clone();
-                            if !known_here.iter().any(|(n, _, _)| n == name) {
-                                known_here.push((name.clone(), text, set_at));
-                            }
-                        }
-                        None => writable = false,
-                    }
-                }
-                if !writable {
-                    continue;
-                }
-                // `@f(args)` for a call of a function by its name; `@const …` for anything else.
-                let plain = (fixed.split('(').next()).is_some_and(|callee| {
-                    !callee.is_empty()
-                        && callee
-                            .chars()
-                            .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
-                });
-                let fix = match plain {
-                    true => format!("@{fixed}"),
-                    false => format!("@const {fixed}"),
-                };
-                found.push(CouldBeConst {
-                    value: literal(&value),
-                    call,
-                    fix,
-                    known: known_here,
-                    span,
-                });
+        for statement in body.blocks.iter().flat_map(|block| &block.stmts) {
+            let StatementKind::Assign(_, Rvalue::Call { func, args }) = &statement.kind else {
+                continue;
+            };
+            if let Some(suggestion) = facts.suggest(body, &known, statement, *func, args, &found) {
+                found.push(suggestion);
             }
         }
     }
     found
+}
+
+impl Facts<'_> {
+    /// The suggestion for `statement`, a call of `func` with `written_args`, if there is one.
+    fn suggest(
+        &mut self,
+        body: &Body,
+        known: &HashMap<Local, Const>,
+        statement: &Statement,
+        func: FuncId,
+        written_args: &[Operand],
+        found: &[CouldBeConst],
+    ) -> Option<CouldBeConst> {
+        let mir = self.mir;
+        let callee = &mir.funcs[func];
+        // Each argument a constant: written as one, or a local only ever set to one
+        // (`let n = 1000; count_primes(n)`).
+        let args = (written_args.iter())
+            .map(|a| constant(a, known).map(Operand::Const))
+            .collect::<Option<Vec<_>>>()?;
+        if callee.body.is_none()
+            || matches!(mir.types.get(callee.ret), Ty::Unit)
+            || !self.pure(func)
+            || !self.works(func)
+        {
+            return None;
+        }
+        // Where the call is in its statement (`fib(TEN)` of `let a = fib(TEN);`).
+        let short = callee.name.rsplit("::").next().unwrap_or(&callee.name);
+        let span = call_span(&statement.span, short)?;
+        if found.iter().any(|f| f.span == span) {
+            return None;
+        }
+        // Only if that saves enough work when the program runs.
+        let (value, steps) = State::try_call(mir, func, &args, TRY_LIMIT)?;
+        if steps < MIN_STEPS {
+            return None;
+        }
+        let call = span.get_text().to_string();
+        let (fixed, known_here) = with_values_written(&call, body, written_args, &args)?;
+        // `@f(args)` for a call of a function by its name; `@const …` for anything else.
+        let plain = (fixed.split('(').next()).is_some_and(|callee| {
+            !callee.is_empty()
+                && callee
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+        });
+        let fix = match plain {
+            true => format!("@{fixed}"),
+            false => format!("{} {fixed}", Builtin::Const.name()),
+        };
+        Some(CouldBeConst {
+            value: literal(&value),
+            call,
+            fix,
+            known: known_here,
+            span,
+        })
+    }
+}
+
+/// `call` with each local argument's value written in its place, and those locals: each
+/// with its value and where it's set. `None` if a value can't be written.
+fn with_values_written(
+    call: &str,
+    body: &Body,
+    written_args: &[Operand],
+    args: &[Operand],
+) -> Option<(String, Vec<(String, String, Span)>)> {
+    let mut fixed = call.to_string();
+    let mut writable = true;
+    let mut known_here = Vec::new();
+    for (written, arg) in written_args.iter().zip(args) {
+        let Some(place) = written.place() else {
+            continue;
+        };
+        let (Some(name), Operand::Const(c)) = (&body.locals[place.local].name, arg) else {
+            continue;
+        };
+        match literal(&c.kind) {
+            Some(text) => {
+                fixed = replace_word(&fixed, name, &text);
+                let set_at = body.locals[place.local].span.clone();
+                if !known_here.iter().any(|(n, _, _)| n == name) {
+                    known_here.push((name.clone(), text, set_at));
+                }
+            }
+            None => writable = false,
+        }
+    }
+    writable.then_some((fixed, known_here))
 }
 
 /// A number or bool, written as som reads it back: `3.0` for a float, not `3`.
@@ -265,7 +267,7 @@ impl Facts<'_> {
         let function = &self.mir.funcs[func];
         let Some(body) = &function.body else {
             let name = function.link_name.as_deref().unwrap_or(&function.name);
-            return NATIVE.contains(&name);
+            return is_native(name);
         };
         // Recursion, while working it out: pure as far as it's gone.
         self.pure.insert(func, true);
@@ -299,25 +301,29 @@ impl Facts<'_> {
 /// just to an earlier-numbered one: blocks are numbered as they're made, and an `if`'s can
 /// jump to a lower one.)
 fn loops(body: &Body) -> bool {
-    fn visit(body: &Body, block: BlockId, state: &mut Vec<u8>) -> bool {
-        // 0: not seen, 1: on the way here, 2: done.
-        state[block.id] = 1;
+    #[derive(Clone, Copy, PartialEq)]
+    enum Visit {
+        NotSeen,
+        OnTheWay,
+        Done,
+    }
+    fn visit(body: &Body, block: BlockId, state: &mut Vec<Visit>) -> bool {
+        state[block.id] = Visit::OnTheWay;
         for next in body.blocks[block].terminator.kind.successors() {
             let seen = state[next.id];
             match seen {
-                1 => return true,
-                0 if visit(body, next, state) => return true,
+                Visit::OnTheWay => return true,
+                Visit::NotSeen if visit(body, next, state) => return true,
                 _ => {}
             }
         }
-        state[block.id] = 2;
+        state[block.id] = Visit::Done;
         false
     }
     let count = body.blocks.iter().count();
-    count > 0 && visit(body, Id::new(0), &mut vec![0; count])
+    count > 0 && visit(body, Id::new(0), &mut vec![Visit::NotSeen; count])
 }
 
-/// The functions `body` calls.
 fn callees(body: &Body) -> Vec<FuncId> {
     let mut found = Vec::new();
     for block in body.blocks.iter() {

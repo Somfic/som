@@ -188,8 +188,8 @@ impl<'a> Emitter<'a> {
             return;
         }
         code.push(format!("    {place} = {};", value.text));
-        *returned = (local == RETURN && dest.projection.is_empty())
-            .then(|| (code.len() - 1, value.text));
+        *returned =
+            (local == RETURN && dest.projection.is_empty()).then(|| (code.len() - 1, value.text));
     }
 
     /// `[value; N]`: C has no expression for that, so a loop fills it in.
