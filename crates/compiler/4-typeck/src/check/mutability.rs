@@ -7,9 +7,7 @@ use crate::ty::Ty;
 
 /// Why a place can't be changed.
 pub(super) enum Immutable {
-    /// A variable declared without `mut`.
     Variable(DefId),
-    /// A constant: the same everywhere, never changed.
     Const(DefId),
     BehindSharedReference,
     /// What a `#T` shares: every copy sees it, so nothing changes it.
@@ -68,9 +66,8 @@ impl Checker<'_> {
         self.errors.push(error);
     }
 
-    /// Why the place `expr` can't be changed, if it can't. `out` parameters and variables can
-    /// be: being filled in is what they're for. Anything that isn't a place, like a call's
-    /// result, is a fresh value.
+    /// Why place `expr` can't be changed, if it can't. `out` parameters can: being filled in is
+    /// what they're for. What isn't a place, like a call's result, is a fresh value.
     fn immutable(&self, expr: Id<Expr>) -> Option<Immutable> {
         match &self.ast.exprs[expr] {
             Expr::Var(_) => {
@@ -93,8 +90,6 @@ impl Checker<'_> {
                 };
                 (!mutable).then_some(Immutable::Variable(def))
             }
-            // Through a reference, what counts is the reference: `&mut` allows it, even in a
-            // variable that isn't `mut`.
             Expr::Field { .. } if self.is_prop(expr) => None,
             // What a `#T` shares is lent by its `get`: shared, never changed.
             Expr::Field { object, .. } | Expr::Index { object, .. }
@@ -102,6 +97,8 @@ impl Checker<'_> {
             {
                 Some(Immutable::Shared)
             }
+            // Through a reference, what counts is the reference: `&mut` allows it, even in a
+            // variable that isn't `mut`.
             Expr::Field { object, .. } | Expr::Index { object, .. } => {
                 match self.reference(*object) {
                     Some(true) => None,
@@ -126,7 +123,6 @@ impl Checker<'_> {
         }
     }
 
-    /// Whether `expr` denotes a memory location that can be assigned to.
     pub(super) fn is_place(&self, expr: Id<Expr>) -> bool {
         match &self.ast.exprs[expr] {
             Expr::Var(_) => self.names.expr(expr).is_none_or(|def| {

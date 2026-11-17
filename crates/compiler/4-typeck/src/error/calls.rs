@@ -205,7 +205,6 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
             targets,
             span,
         } => {
-            // `Vector<T, 2>`, `Vector<T, 2> and Vector<T, 3>`, or a list ending in `and`.
             let mut only = msg![code(name.clone()), " is only defined for "];
             only.push(Message::list(
                 targets.iter().map(|(target, _)| code(target)),

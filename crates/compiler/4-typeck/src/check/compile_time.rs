@@ -7,9 +7,8 @@ use crate::ty::{Ty, TypeId, Value};
 use crate::unify::VarKind;
 
 impl Checker<'_> {
-    /// Whether member `func`'s `@if`s hold for `receiver`, the type it's used on: its impl
-    /// block's parameters stand for what's in their places in `receiver`. `None` where that
-    /// isn't known, a generic type's.
+    /// Whether member `func`'s `@if`s hold on `receiver`; `None` where that isn't known, as on
+    /// a generic type.
     pub(super) fn member_holds(&mut self, func: Id<Func>, receiver: TypeId) -> Option<bool> {
         let when = self.ast.funcs[func].when.clone();
         if when.is_empty() {
@@ -85,8 +84,8 @@ impl Checker<'_> {
         }
     }
 
-    /// Reports member `func`, used as `name` at `span` on a value of type `ty`, if its `@if`s
-    /// don't hold there, or aren't known to. Whether it's there.
+    /// Reports member `func` if its `@if`s don't hold on `ty`, or aren't known to. Whether it's
+    /// there.
     pub(super) fn check_member_there(
         &mut self,
         func: Id<Func>,
@@ -119,8 +118,7 @@ impl Checker<'_> {
         false
     }
 
-    /// Whether `expr` is a number known while compiling: a literal, a constant made of them,
-    /// or a function's value parameter, `N`, known in each instance.
+    /// Whether `expr` is a number known while compiling; a value parameter is, in each instance.
     fn settled_int(&self, expr: Id<Expr>) -> bool {
         if self.number(expr).is_some() {
             return true;
@@ -153,11 +151,9 @@ impl Checker<'_> {
         }
     }
 
-    /// The value of `@if`'s condition `expr`, if it's known while compiling: a `bool`, a
-    /// constant that's one, comparisons of known numbers, and `!`, `&&` and `||` of those.
+    /// The value of `@if` condition `expr`, if it's known while compiling.
     pub(super) fn settled_bool(&mut self, expr: Id<Expr>) -> Option<bool> {
         match &self.ast.exprs[expr] {
-            // `T == f32`: known once `T` is.
             Expr::Binary {
                 op: op @ (BinOp::Equals | BinOp::NotEquals),
                 lhs,
@@ -196,8 +192,6 @@ impl Checker<'_> {
         }
     }
 
-    /// The number `n`, written where a type argument goes, of type `expected` or of any
-    /// integer type for an array's length.
     pub(super) fn lower_number(&mut self, n: u128, expected: Option<TypeId>, span: Span) -> TypeId {
         let error = self.u.table.error;
         let int = expected.unwrap_or(self.u.table.usize);
@@ -241,8 +235,6 @@ impl Checker<'_> {
         }
     }
 
-    /// The number `expr` is while compiling: `const_number`, and a value parameter bound in
-    /// an instance (`N + 1`).
     fn number(&self, expr: Id<Expr>) -> Option<i128> {
         if let Some(n) = self.const_number(expr) {
             return Some(n);
@@ -278,8 +270,6 @@ impl Checker<'_> {
         }
     }
 
-    /// The type `expr` names, if it names one: a type parameter is what it's bound to, checking
-    /// an instance.
     pub(super) fn type_operand(&mut self, expr: Id<Expr>) -> Option<TypeId> {
         if !self.is_type_operand(expr) {
             return None;
@@ -299,9 +289,8 @@ impl Checker<'_> {
         })
     }
 
-    /// Whether `a` and `b` are the same type, if that's known: not while either has a type
-    /// parameter in it, or something not decided yet. A generic struct named without its
-    /// arguments, `Pair`, is any `Pair`.
+    /// Whether `a` and `b` are the same type; `None` while either isn't settled. A generic
+    /// struct named without arguments, `Pair`, is any `Pair`.
     fn same_type(&mut self, a: TypeId, b: TypeId) -> Option<bool> {
         let (a, b) = (self.u.normalize(a), self.u.normalize(b));
         if !self.settled_type(a) || !self.settled_type(b) {
@@ -313,7 +302,6 @@ impl Checker<'_> {
         })
     }
 
-    /// Whether `ty` is known as it is: no type parameter or undecided type in it.
     fn settled_type(&self, ty: TypeId) -> bool {
         let ty = self.u.shallow(ty);
         match self.u.get(ty) {
@@ -322,14 +310,13 @@ impl Checker<'_> {
         }
     }
 
-    /// Whether `expr` is worked out from the function's generic value parameters (and
-    /// literals and constants): `N >= 3`. An `@if` on it is checked for each instance.
+    /// Whether `expr` is worked out from generic value parameters, `N >= 3`: an `@if` on it is
+    /// checked for each instance.
     pub(super) fn over_params(&self, expr: Id<Expr>) -> bool {
         fn walk(c: &Checker, expr: Id<Expr>, found: &mut bool) -> bool {
             match &c.ast.exprs[expr] {
                 Expr::Int(_) | Expr::Bool(_) | Expr::Type(_) => true,
                 Expr::Var(_) => match c.names.expr(expr).map(|def| &c.names.def(def).kind) {
-                    // `N`, or `T` of `T == f32`.
                     Some(DefKind::TypeParam { .. } | DefKind::ImplParam { .. }) => {
                         *found = true;
                         true

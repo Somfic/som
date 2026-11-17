@@ -20,7 +20,6 @@ impl Checker<'_> {
         self.narrowed.retain(|n| outer.contains(&n.id));
     }
 
-    /// A loop's `body`.
     fn check_loop(&mut self, body: &[Id<Stmt>]) {
         // A later iteration sees what the body changes, even further down.
         self.forget_changed_in(body);
@@ -37,8 +36,7 @@ impl Checker<'_> {
                 self.check_const(*c);
             }
             Stmt::Let { ty, value, .. } => self.check_let(id, *ty, *value),
-            // `@for f in T`, over a generic type: checked for each instance, with the copy for
-            // `T`'s struct.
+            // `@for f in T` over a generic type: checked for each instance, with `T`'s struct's copy.
             Stmt::Expr(_) if let Some(per_type) = self.ast.per_type.get(&id) => {
                 self.check_per_type(id, per_type)
             }
@@ -55,8 +53,7 @@ impl Checker<'_> {
             Stmt::For { iterable, .. }
                 if self.ast.settled.contains(&id) && !self.settled_iterable(*iterable) =>
             {
-                // Made of a constant that's worked out by running code: checked again once
-                // it is.
+                // Made of a constant worked out by running code: checked again once it is.
                 if self.needs_unknown(*iterable) {
                     return;
                 }
@@ -107,9 +104,8 @@ impl Checker<'_> {
             }
             None => facts.when_false,
         };
-        // A branch that leaves (`return`, `break`, `continue`) means the rest of the block
-        // only runs after the other: `if v == none { return 0; }` narrows `v` from here
-        // on, until the end of the block.
+        // If one branch leaves, the rest of the block only runs after the other:
+        // `if v == none { return 0; }` narrows `v` until the end of the block.
         let then_leaves = self.leaves(then);
         let otherwise_leaves = otherwise.as_ref().is_some_and(|o| self.leaves(o));
         if then_leaves && !otherwise_leaves {
@@ -278,9 +274,8 @@ impl Checker<'_> {
         }
     }
 
-    /// Reports statement `expr` if its value is thrown away and working it out does nothing
-    /// else, so the statement can't be what was meant: `x == 5;`, `p.read(i);`, `a + b;`.
-    /// A function's result isn't: calling it may be the point.
+    /// Reports statement `expr` if its value is thrown away and computing it does nothing
+    /// else: `x == 5;`, `a + b;`. A function's result isn't: calling it may be the point.
     fn check_unused(&mut self, expr: Id<Expr>) {
         let ty = self.exprs[expr.id].map(|t| self.u.shallow(t));
         if ty.is_none_or(|t| matches!(self.u.get(t), Ty::Unit | Ty::Error)) {
@@ -348,8 +343,7 @@ impl Checker<'_> {
         self.flow().expr_leaves(expr)
     }
 
-    /// What a `for` loop over `iterable`, of type `ty`, binds each time round, recording how
-    /// it goes through it.
+    /// What a `for` loop over `iterable` binds each time round; records how it loops.
     fn loop_element(&mut self, stmt: Id<Stmt>, iterable: Id<Expr>, ty: TypeId) -> TypeId {
         let error = self.u.table.error;
         // `for x in [1, 2, 3]`: a collection nothing else decides is an array.
@@ -358,7 +352,6 @@ impl Checker<'_> {
             let _ = self.u.unify(ty, array);
         }
         let shallow = self.u.shallow(ty);
-        // What's looped over is given up to the loop, or lent: `&value`, `&mut value`.
         let (viewed, lent) = match *self.u.get(shallow) {
             Ty::Ref { to, mutable } => (self.u.shallow(to), Some(mutable)),
             _ => (shallow, None),
@@ -384,8 +377,6 @@ impl Checker<'_> {
                     }
                 }
                 Ty::Array { element, .. } | Ty::Slice(element) => element,
-                // Anything that's an `Iterator`, `IntoIterator`, `Iterable` or `IterableMut`:
-                // what it gives.
                 _ if let Some(element) = self.iterator_loop(stmt, ty) => return element,
                 _ => {
                     let text = *self.u.get(viewed) == Ty::Str

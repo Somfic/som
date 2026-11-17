@@ -92,7 +92,6 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
                         ", or give a fallback, as in ",
                         code(format!("({name} else {fallback})")),
                     ]),
-                // Values of a type that could say how: `impl Add for …`.
                 None if let Some((trait_, param)) = implement => {
                     let d = d
                         .with_label(Label::primary(span.clone(), "no such operation"))
@@ -121,7 +120,6 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
                     let d = d
                         .with_label(Label::primary(span.clone(), "no such operation"))
                         .with_hint(hint);
-                    // `"score: " + n`: written into the text instead.
                     match fix {
                         Some(fix) => d.with_fix(fix.clone()),
                         None => d,

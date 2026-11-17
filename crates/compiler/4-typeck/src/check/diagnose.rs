@@ -9,12 +9,10 @@ use crate::ty::{Ty, TypeId, Value};
 use crate::unify::VarKind;
 use crate::{Loop, Take};
 
-/// The longest operand, in bytes, that a fix writing it again with a fallback is offered for.
 const LONGEST_OPERAND_FIX: usize = 30;
 
 impl Checker<'_> {
-    /// A type for an error message. A type that isn't known yet can't be written down, so
-    /// it's described in plain words instead: "an integer", not a type called that.
+    /// A type not known yet can't be written down, so it's described in words: "an integer".
     pub(super) fn describe(&self, ty: TypeId) -> Message {
         let text = match self.u.var_kind(ty) {
             Some(VarKind::Int) => "an integer".to_string(),
@@ -100,9 +98,8 @@ impl Checker<'_> {
         });
     }
 
-    /// An optional `expr` of type `found` where what it holds, `expected`, is: a fallback for
-    /// `none`, where there's an obvious one. `x else 0`, or for a reference to a copy,
-    /// `*(nums.get(0) else &0)`.
+    /// A fallback for `none` where there's an obvious one: `x else 0`, or for a reference to a
+    /// copy, `*(nums.get(0) else &0)`.
     fn fallback_fix(&self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> Option<Fix> {
         let Ty::Optional(inner) = *self.u.shallow_ty(found) else {
             return None;
@@ -150,15 +147,13 @@ impl Checker<'_> {
         ))
     }
 
-    /// An optional, `found`, where `expected` isn't one: what it holds has to be got at.
     fn unexpected_optional(&self, expected: TypeId, found: TypeId) -> bool {
         let is_optional = |ty| matches!(self.u.shallow_ty(ty), Ty::Optional(_));
         is_optional(found) && !is_optional(expected)
     }
 
-    /// `expr`, a value, where a reference to one is expected: `Hash::hash(key, …)` for
-    /// `&self`. The reference type is written from the value's, `&K`, as the call may not
-    /// have worked out what it refers to; and the fix borrows it, `&key` or `&mut key`.
+    /// The reference type is written from the value's, `&K`, as the call may not have worked
+    /// out what it refers to.
     fn not_borrowed(
         &self,
         expr: Id<Expr>,
@@ -211,12 +206,7 @@ impl Checker<'_> {
         })
     }
 
-    /// A fix for `expr`, a reference to what's expected. A value that copies is dereferenced,
-    /// `*expr`. A type parameter is required to copy, `T: Copy`: for a loop's variable that's
-    /// all it takes, as the loop then copies its values, and anything else is dereferenced
-    /// too. A value that moves can't be taken out of a reference at all: no fix.
-    /// Whether `expr` can take a prefix, `&` or `*`, without parentheses: a name, what's
-    /// read from one, a call, a literal.
+    /// Whether `expr` takes a prefix `&` or `*` without parentheses.
     fn binds_tightly(&self, expr: Id<Expr>) -> bool {
         matches!(
             self.ast.exprs[expr],
@@ -234,6 +224,8 @@ impl Checker<'_> {
         )
     }
 
+    /// A type parameter is required to copy, `T: Copy`: for a loop's variable that's all it
+    /// takes, as the loop then copies. A value that moves can't leave a reference: no fix.
     fn deref_fix(&self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> Option<Fix> {
         let Ty::Ref { to, .. } = *self.u.shallow_ty(found) else {
             return None;
@@ -345,8 +337,7 @@ impl Checker<'_> {
         });
     }
 
-    /// `"score: " + n`, text and something that isn't: written into the text instead,
-    /// `"score: {n}"`, as `+` only joins text.
+    /// `"score: " + n` becomes `"score: {n}"`, as `+` only joins text.
     fn interpolation_fix(
         &self,
         expr: Id<Expr>,
@@ -386,8 +377,7 @@ impl Checker<'_> {
         ))
     }
 
-    /// For an operand `expr` of optional type `ty`: how it's written, a fallback value to
-    /// suggest for it, and where it is.
+    /// How it's written, a fallback value to suggest, and where it is.
     fn optional_operand(&self, expr: Id<Expr>, ty: TypeId) -> Option<(String, String, Span)> {
         let Ty::Optional(inner) = *self.u.shallow_ty(ty) else {
             return None;
@@ -404,7 +394,6 @@ impl Checker<'_> {
         Some((text, fallback.to_string(), self.span(expr)))
     }
 
-    /// `name<T>(a: i32, b: T) -> T`, for messages.
     pub(super) fn signature_text(&self, func: Id<Func>) -> String {
         let f = &self.ast.funcs[func];
         let generics: Vec<&str> = f.generics.iter().map(|g| &*g.name.name).collect();

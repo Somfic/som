@@ -29,7 +29,6 @@ impl Checker<'_> {
         {
             return ty;
         }
-        // `items.len`: the length of an array, slice or text.
         if ArrayMethod::from_name(&field.name) == Some(ArrayMethod::Len)
             && let Some(ty) = self.array_method(id, object, object_ty, field, &[], true)
         {
@@ -48,7 +47,6 @@ impl Checker<'_> {
             });
             return error;
         }
-        // A range's two ends.
         let mut viewed = self.u.shallow(object_ty);
         if let Ty::Ref { to, .. } = *self.u.get(viewed) {
             viewed = self.u.shallow(to);
@@ -174,18 +172,13 @@ impl Checker<'_> {
         }
     }
 
-    /// `values[0]`: the element of an array at an index it's known to have, a number written
-    /// out that's less than its length. Anything that might be out of bounds is `get`'s.
-    /// `values[i]`. An array's element, where `i` is known to be inside it: a number written
-    /// out, or a variable below its length (`for i in 0..values.len`, `if i < values.len`). A
-    /// slice's length is only known as the program runs, so a slice gives `&T?`: the element,
-    /// or `none` past its end. Nothing is checked as it runs: what can't be known isn't allowed.
+    /// `values[i]`: a struct or slice through its `Index`; an array directly, a written-out
+    /// index checked against its length here and any other left to the prover.
     pub(super) fn index(&mut self, id: Id<Expr>, object: Id<Expr>, index: Id<Expr>) -> TypeId {
         let error = self.u.table.error;
         let object_ty = self.infer_object(object);
-        // `xs[i]` of what implements `Index`: a `List`, `string`, a slice. What its `at`
-        // lends, as a place; `at_mut`'s where it's changed (see `index_mut`). That `i` is
-        // below its `len` is the prover's to check.
+        // What `Index::at` lends, as a place; `at_mut`'s where it's changed (see `index_mut`).
+        // That `i` is below its `len` is the prover's to check.
         let mut base = self.u.shallow(object_ty);
         if let Ty::Ref { to, .. } = *self.u.get(base) {
             base = self.u.shallow(to);
@@ -367,7 +360,6 @@ impl Checker<'_> {
         true
     }
 
-    /// Whether `ty`, or what it refers to, is an array or slice, or a collection literal.
     fn is_collection(&self, ty: TypeId) -> bool {
         let mut ty = self.u.shallow(ty);
         if let Ty::Ref { to, .. } = *self.u.get(ty) {
@@ -394,8 +386,7 @@ impl Checker<'_> {
         names
     }
 
-    /// Whether `expr` reads a property, `list.len`, rather than a field. Known once it's
-    /// inferred.
+    /// Whether `expr` reads a property, `list.len`, rather than a field; known once inferred.
     pub(super) fn is_prop(&self, expr: Id<Expr>) -> bool {
         matches!(self.ast.exprs[expr], Expr::Field { .. })
             && self.records.methods.contains_key(&expr)

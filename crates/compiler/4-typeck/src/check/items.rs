@@ -177,7 +177,6 @@ impl Checker<'_> {
         self.current_func = None;
     }
 
-    /// The checks that waited for the bodies to say more about the types involved.
     fn check_deferred(&mut self) {
         // Conversions chosen once what they convert is known. If it still isn't, that's
         // reported where it's made, not here.

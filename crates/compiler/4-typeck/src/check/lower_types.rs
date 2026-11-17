@@ -9,11 +9,10 @@ use crate::ty::{Ty, TypeId, Value};
 use crate::unify::VarKind;
 
 impl Checker<'_> {
-    /// The type a type annotation describes.
     pub(super) fn lower(&mut self, id: Id<TypeExpr>) -> TypeId {
         let ty = match &self.ast.types[id] {
             TypeExpr::Unit => Ty::Unit,
-            // `str`, text before `string`: reported, and read as it.
+            // Old spelling of `string`: reported, then read as one.
             TypeExpr::Primitive(Primitive::Str) => {
                 self.errors.push(TypeError::StrIsString {
                     span: self.ast.types.span(id).clone(),
@@ -32,8 +31,6 @@ impl Checker<'_> {
                     let span = self.ast.types.span(id).clone();
                     Ty::Struct(def, self.lower_args(def, s, args, span))
                 }
-                // `N` in `struct Buffer<N: usize>` stands for a number, not a type; so does
-                // a constant.
                 Some((def, _))
                     if self.names.is_value_param(def)
                         || matches!(self.names.def(def).kind, DefKind::Const(_)) =>
@@ -129,8 +126,6 @@ impl Checker<'_> {
         self.u.intern(ty)
     }
 
-    /// What alias `def`, written at `id` with `args`, stands for: its type, `ty`, with its
-    /// generic parameters standing for `args`.
     fn lower_alias(
         &mut self,
         id: Id<TypeExpr>,
@@ -187,7 +182,6 @@ impl Checker<'_> {
         lowered
     }
 
-    /// Alias `def`'s type, `ty`, with its parameters `params` standing for `args`.
     fn expand_alias(
         &mut self,
         def: DefId,
@@ -213,8 +207,8 @@ impl Checker<'_> {
         lowered
     }
 
-    /// What alias `def` stands for where an expression names a struct through it,
-    /// `Vector3::zero()`: its parameters each start unknown, for the value to decide.
+    /// An alias naming a struct in an expression, `Vector3::zero()`: its parameters start
+    /// unknown, for the value to decide.
     pub(super) fn alias_value(&mut self, def: DefId) -> TypeId {
         let DefKind::Alias { ty } = self.names.def(def).kind else {
             return self.u.table.error;
@@ -227,8 +221,7 @@ impl Checker<'_> {
         self.expand_alias(def, ty, &params, &args)
     }
 
-    /// The type method `func`'s impl block is for, with the block's parameters standing for
-    /// the first of `type_args`, what the method's were instantiated with.
+    /// The type `func`'s impl block is for; the block's parameters are the first of `type_args`.
     pub(super) fn owner_type(&mut self, func: Id<Func>, type_args: &[TypeId]) -> Option<TypeId> {
         let index = self.names.impl_of(func)?;
         let info = self.impls.get(index)?;
@@ -257,9 +250,8 @@ impl Checker<'_> {
         }
     }
 
-    /// The type written before the name of `def`, a function of it, in call `id`: `Alloc<i32>`
-    /// in `Alloc<i32>::with_capacity(10)`. `None` if none is written, or, with an error, if
-    /// it isn't a struct's function.
+    /// `Alloc<i32>` in `Alloc<i32>::with_capacity(10)`. `None` if none is written, or, with an
+    /// error, if `def` isn't a struct's function.
     pub(super) fn owner_written(
         &mut self,
         id: Id<Expr>,
@@ -308,8 +300,6 @@ impl Checker<'_> {
         }
     }
 
-    /// The arguments written for struct `s`, `def`: each a type, or a value for a value
-    /// parameter. If there are too many or too few, an error for each.
     pub(super) fn lower_args(
         &mut self,
         def: DefId,
@@ -342,9 +332,8 @@ impl Checker<'_> {
         self.with_defaults(&params, &defaults, given)
     }
 
-    /// `given`, the arguments written for generic parameters `params`, then the rest from
-    /// their `defaults`, which can name the parameters before them: `B` in
-    /// `struct Pair<A, B = A>` is `A`'s argument if it's left out.
+    /// Defaults can name the parameters before them: `B` in `struct Pair<A, B = A>` is `A`'s
+    /// argument if it's left out.
     pub(super) fn with_defaults(
         &mut self,
         params: &[DefId],
@@ -365,7 +354,6 @@ impl Checker<'_> {
         given
     }
 
-    /// Reports `found` type arguments for `def`, which takes `required` to `most`.
     pub(super) fn wrong_arg_count(
         &mut self,
         def: DefId,
@@ -392,7 +380,6 @@ impl Checker<'_> {
         });
     }
 
-    /// An argument for generic parameter `param`: a type, or a value if it's a value parameter.
     fn lower_arg(&mut self, arg: Id<TypeExpr>, param: Option<DefId>) -> TypeId {
         match param.and_then(|p| self.value_params.get(&p).copied()) {
             Some(ty) => self.lower_value(arg, Some(ty)),
@@ -400,14 +387,13 @@ impl Checker<'_> {
         }
     }
 
-    /// A value written where a type argument goes, of type `expected`, or of any integer type
-    /// for an array's length: a literal, or a value parameter.
+    /// A value in a type argument's place; with no `expected`, an array length of any integer
+    /// type.
     pub(super) fn lower_value(&mut self, id: Id<TypeExpr>, expected: Option<TypeId>) -> TypeId {
         let span = self.ast.types.span(id).clone();
         let error = self.u.table.error;
         let (value, found) = match self.ast.types[id] {
             TypeExpr::Int(n) => return self.lower_number(n, expected, span),
-            // `[i32; W]` of `@const W = 60;`: the number it is.
             TypeExpr::Named { ref args, .. }
                 if args.is_empty()
                     && let Some(def) = self.names.ty(id)
@@ -433,7 +419,6 @@ impl Checker<'_> {
                 };
             }
             TypeExpr::Bool(b) => (Ty::Value(Value::Bool(b)), self.u.table.bool),
-            // `A + B`: arithmetic on numbers, of the same type.
             TypeExpr::Binary { op, lhs, rhs } => {
                 if let Some(ty) = expected
                     && !matches!(self.u.get(ty), Ty::Int(_) | Ty::Error)
@@ -456,7 +441,6 @@ impl Checker<'_> {
                 let ty = self.u.intern(ty);
                 return self.u.normalize(ty);
             }
-            // A value parameter of an alias being expanded: the value it stands for.
             TypeExpr::Named { ref args, .. }
                 if args.is_empty()
                     && let Some(def) = self.names.ty(id)
@@ -504,8 +488,6 @@ impl Checker<'_> {
         self.u.intern(value)
     }
 
-    /// What each of struct `s`'s type parameters stands for: `args`.
-    /// `params`, each standing for a fresh variable.
     pub(super) fn fresh_subst(&mut self, params: &[DefId]) -> Vec<(DefId, TypeId)> {
         (params.iter())
             .map(|&p| (p, self.u.fresh(VarKind::Any)))
@@ -521,7 +503,6 @@ impl Checker<'_> {
         params.iter().copied().zip(args.iter().copied()).collect()
     }
 
-    /// A function's signature with its type parameters replaced by fresh variables.
     pub(super) fn instantiate(&mut self, func: Id<Func>) -> (Signature, Vec<TypeId>) {
         // A return type that isn't written, or a property's that leaves out arguments, is what
         // the body decides: check it first.
@@ -533,9 +514,8 @@ impl Checker<'_> {
         if type_params.is_empty() {
             return (sig, Vec::new());
         }
-        // Still undecided: called from inside its own body, or one it's being checked for.
-        // The call works its type out on its own, rather than deciding the body's for every
-        // instantiation.
+        // Still undecided, called from inside its own checking: the call works its type out on
+        // its own rather than deciding the body's for every instantiation.
         if matches!(self.u.shallow_ty(sig.ret), Ty::Var(_)) {
             sig.ret = self.u.fresh(VarKind::Any);
         }
@@ -573,8 +553,8 @@ impl Checker<'_> {
         all[inherited..].to_vec()
     }
 
-    /// `null<i32>()`: the type arguments written for a call of `func`, which stand for its own
-    /// generic parameters, whose fresh variables are the last of `type_args`.
+    /// `null<i32>()`: written type arguments stand for `func`'s own parameters, whose
+    /// variables are the last of `type_args`.
     pub(super) fn written_type_args(
         &mut self,
         call: Id<Expr>,

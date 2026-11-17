@@ -8,7 +8,6 @@ use crate::ty::{Ty, TypeId};
 use crate::unify::VarKind;
 
 impl Checker<'_> {
-    /// Infers the type of `expr` and requires it to be `expected`.
     pub(super) fn expect(&mut self, expr: Id<Expr>, expected: TypeId, expected_from: Option<Span>) {
         self.hints.expected = Some(expected);
         let found = self.infer(expr);
@@ -35,8 +34,6 @@ impl Checker<'_> {
         self.mismatch_at(expr, expected, found, expected_from);
     }
 
-    /// Makes `expr`, of type `found`, usable where `expected` is required, returning whether
-    /// it is. A `T` is also usable as a `T?`: it's wrapped.
     pub(super) fn coerce(&mut self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> bool {
         // `I::Item` of an `I` that's known by now is what its implementation says.
         let (expected, found) = (self.normalize_assoc(expected), self.normalize_assoc(found));
@@ -126,7 +123,6 @@ impl Checker<'_> {
         else {
             return false;
         };
-        // A `[mut T]` needs something it may change.
         if wants_mut && !is_mut {
             return false;
         }
@@ -142,9 +138,8 @@ impl Checker<'_> {
         }
     }
 
-    /// What unwrapping an optional of type `ty` gives: the `T` a `T?` holds, or a reference
-    /// to it through a reference to the optional (`&T?` gives `&T`), which leaves the
-    /// optional where it is. Reports an error if `ty` isn't either.
+    /// What unwrapping an optional of type `ty` gives; through a reference, `&T?` gives `&T`,
+    /// leaving the optional in place.
     pub(super) fn optional_inner(&mut self, ty: TypeId, expr: Id<Expr>) -> TypeId {
         let shallow = self.u.shallow(ty);
         if let Ty::Ref { mutable, to } = *self.u.get(shallow)

@@ -194,7 +194,6 @@ impl Checker<'_> {
         if !type_args.is_empty() {
             self.type_args.insert(id, type_args);
         }
-        // The receiver is the first (`self`) parameter.
         match sig.params.split_first() {
             Some((&self_ty, rest)) => {
                 if !self.receive(receiver, self_ty, receiver_ty) {
@@ -218,8 +217,8 @@ impl Checker<'_> {
         sig.ret
     }
 
-    /// Checks a call of one of the methods every array has, if `receiver` is an array or a
-    /// reference to one, returning its type.
+    /// A call of one of the methods every array has, if `receiver` is an array or a reference
+    /// to one.
     pub(super) fn array_method(
         &mut self,
         call: Id<Expr>,
@@ -288,7 +287,6 @@ impl Checker<'_> {
         // `bytes` is text's own.
         let kind = ArrayMethod::from_name(&method.name).filter(|kind| is_text || !kind.text_only());
         let Some(kind) = kind else {
-            // What every array has: `len`, read, and its methods.
             let methods = ArrayMethod::method_names(is_text);
             self.errors.push(TypeError::UnknownMethod {
                 ty: self.describe(array),
@@ -387,7 +385,6 @@ impl Checker<'_> {
         }
     }
 
-    /// What array method `kind` gives, on elements of type `element`.
     fn array_method_type(&mut self, kind: ArrayMethod, element: TypeId, is_text: bool) -> TypeId {
         match kind {
             // The length is a constant, usable as any integer type.
@@ -440,7 +437,6 @@ impl Checker<'_> {
         expected: Option<TypeId>,
     ) -> TypeId {
         let found: Vec<TypeId> = args.iter().map(|&a| self.infer(a)).collect();
-        // Each fitting method, and how much the receiver has to change for it.
         let mut fitting = Vec::new();
         // One only some instances have, where this isn't one of them: not a candidate.
         let mut not_here = None;
@@ -567,7 +563,6 @@ impl Checker<'_> {
         sig.ret
     }
 
-    /// What `ty` refers to, if it's a reference; otherwise `ty`.
     fn referent(&self, ty: TypeId) -> TypeId {
         match self.u.shallow_ty(ty) {
             Ty::Ref { to, .. } => *to,
@@ -603,8 +598,7 @@ impl Checker<'_> {
         }
     }
 
-    /// Checks a call of one of the methods every typed pointer has, if the receiver is one,
-    /// returning its type.
+    /// A call of one of the methods every typed pointer has, if the receiver is one.
     fn pointer_method(
         &mut self,
         call: Id<Expr>,
@@ -678,8 +672,6 @@ impl Checker<'_> {
         })
     }
 
-    /// The struct `ty` is, looking through one reference, and its type arguments. Reports an
-    /// error if it isn't one.
     /// The definition built-in type `ty`'s own methods hang on, looking through a reference;
     /// an integer not settled yet is an `i32`'s, a float an `f64`'s.
     pub(super) fn primitive_owner(&self, ty: TypeId) -> Option<DefId> {
@@ -747,10 +739,6 @@ impl Checker<'_> {
         });
     }
 
-    /// Whether `receiver_ty`, looking through a reference, could be what the impl block of
-    /// method `func` is for, with `type_args` its instantiation. True when that's not known.
-    /// The names of `owner`'s properties a value of type `ty` has: those of the impl blocks
-    /// for its type, `magnitude` of a `Vector<3, f32>`.
     /// What a value of `ty`, of struct or built-in type `owner`, has that's seen from `at`:
     /// its fields, properties and methods, by name.
     pub(super) fn members(

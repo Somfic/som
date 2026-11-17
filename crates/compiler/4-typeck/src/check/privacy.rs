@@ -8,7 +8,6 @@ use crate::error::TypeError;
 use crate::ty::{Ty, TypeId};
 
 impl Checker<'_> {
-    /// Who's looking from `at`: its module, its file, and the type whose impl block it's in.
     pub(super) fn viewer<'s>(&self, at: &'s Span) -> Viewer<'s> {
         let file = at.source.identifier();
         let module = (self.ast.modules.iter())
@@ -24,7 +23,6 @@ impl Checker<'_> {
         }
     }
 
-    /// Reports `name`, used at `span`, if it's hidden from there.
     fn report_hidden(&mut self, name: &str, span: &Span, hidden: Option<Hidden>) {
         if let Some(hidden) = hidden {
             self.errors.push(TypeError::NotVisible {
@@ -35,16 +33,14 @@ impl Checker<'_> {
         }
     }
 
-    /// Reports method or property `def` if it can't be seen at `span`, where it's used.
     pub(super) fn check_visible(&mut self, def: DefId, span: &Span) {
         let hidden = visibility::hidden(self.ast, self.names, def, self.viewer(span));
         self.report_hidden(&self.names.def(def).name.clone(), span, hidden);
     }
 
-    /// The functions of struct `def` that code at `span` can call to make one, like
-    /// `Hello::new` or `List::with_capacity`: those without a `self` that return it. Each as
-    /// a fix replacing `Hello { … }` at `span` with a call to it, its arguments the values
-    /// `given` to fields of the same name, or else the parameters' names.
+    /// Functions without `self` returning struct `def` that code at `span` can call, as fixes
+    /// replacing `Hello { … }` with a call: arguments from `given` fields of the same name, or
+    /// else the parameter names.
     pub(super) fn makers(
         &self,
         def: DefId,
@@ -92,8 +88,8 @@ impl Checker<'_> {
         fixes
     }
 
-    /// The field of a value of type `object_ty` called `field` that a property of its name
-    /// stands in for, where the field can't be seen: its type's name, and why it's hidden.
+    /// Where a property stands in for a field of the same name that can't be seen: the type's
+    /// name, and why the field is hidden.
     pub(super) fn hidden_field_named(
         &self,
         object_ty: TypeId,
@@ -117,8 +113,6 @@ impl Checker<'_> {
         Some((self.names.def(*def).name.to_string(), hidden))
     }
 
-    /// Whether a value of type `object_ty`, maybe through a reference, is a struct with a
-    /// field called `field` that can be seen where it's written.
     pub(super) fn field_seen(&self, object_ty: TypeId, field: &som_ast::Ident) -> bool {
         let mut ty = self.u.shallow(object_ty);
         if let Ty::Ref { to, .. } = self.u.get(ty) {
@@ -142,7 +136,6 @@ impl Checker<'_> {
             })
     }
 
-    /// Reports field `index` of struct `s` if it can't be seen at `span`, where it's used.
     pub(super) fn check_field_visible(
         &mut self,
         s: Id<som_ast::Struct>,

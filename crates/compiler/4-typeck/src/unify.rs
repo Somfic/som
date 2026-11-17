@@ -1,20 +1,16 @@
-//! Inference variables and unification.
-
 use crate::ty::{Ty, TypeId, TypeTable};
 use som_resolve::Names;
 
-/// What an unbound inference variable may still become.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VarKind {
     Any,
-    /// From an integer literal: any integer type. Defaults to `i32`.
+    /// Any integer type; defaults to `i32`.
     Int,
-    /// From a float literal: any float type. Defaults to `f64`.
+    /// Any float type; defaults to `f64`.
     Float,
-    /// From a string literal: a `str`, or a `cstr` for C. Defaults to `str`.
+    /// A `str`, or a `cstr` for C; defaults to `str`.
     Text,
-    /// From a collection literal, `[a, b, c]` or `[v; N]`: `len` elements of type `element`,
-    /// in an array of that length or a slice. Defaults to the array. `len` is an array's.
+    /// `[a, b, c]` or `[v; N]`: an array of `len` elements, or a slice. Defaults to the array.
     Collection {
         element: TypeId,
         len: TypeId,
@@ -34,18 +30,15 @@ pub struct Unifier {
     deferred: Vec<(TypeId, TypeId)>,
 }
 
-/// What comparing two values that involve arithmetic found.
 enum Arithmetic {
-    /// They're equal, or now are: a variable was bound to make them.
+    /// Or now are: a variable was bound to make them.
     Equal,
-    /// They can't be equal.
     Unequal,
-    /// It depends on variables that aren't known yet.
     Undecided,
 }
 
 impl Unifier {
-    /// One whose types are added to `table`: the types it has keep their ids.
+    /// The types already in `table` keep their ids.
     pub fn with_table(table: TypeTable) -> Self {
         Unifier {
             table,
@@ -68,7 +61,6 @@ impl Unifier {
         self.table.get(id)
     }
 
-    /// Follows bound variables until reaching a type that isn't a bound variable.
     pub fn shallow(&self, mut id: TypeId) -> TypeId {
         while let Ty::Var(v) = self.table.get(id)
             && let Some(bound) = self.vars[*v as usize].bound
@@ -82,7 +74,6 @@ impl Unifier {
         self.get(self.shallow(id))
     }
 
-    /// The kind of `id` if it's an unbound variable.
     pub fn var_kind(&self, id: TypeId) -> Option<VarKind> {
         match self.table.get(self.shallow(id)) {
             Ty::Var(v) => Some(self.vars[*v as usize].kind),
@@ -90,7 +81,7 @@ impl Unifier {
         }
     }
 
-    /// Makes `a` and `b` the same type, or fails without changing anything visible.
+    /// On failure, nothing visible changes.
     pub fn unify(&mut self, a: TypeId, b: TypeId) -> Result<(), ()> {
         let (a, b) = (self.shallow(a), self.shallow(b));
         if a == b {
@@ -119,7 +110,6 @@ impl Unifier {
             (Ty::Var(v), _) => self.bind(v, b),
             (_, Ty::Var(w)) => self.bind(w, a),
             (x, y) if x.is_arithmetic() || y.is_arithmetic() => self.unify_arithmetic(a, b),
-            // The same kind of type: their children have to match too.
             (a, b) => match a.zip_children(&b) {
                 Some(pairs) => pairs.into_iter().try_for_each(|(x, y)| self.unify(x, y)),
                 None => Err(()),
@@ -127,9 +117,8 @@ impl Unifier {
         }
     }
 
-    /// Whether `found` could be used where `expected` is, without changing anything: as it is,
-    /// a `T` as a `T?`, or a reference to an array as a slice. An unknown counts as fitting
-    /// whatever its kind allows. For choosing between functions with the same name.
+    /// Without changing anything: as it is, a `T` as a `T?`, or an array reference as a slice.
+    /// An unknown fits whatever its kind allows. For choosing between overloads.
     pub fn could_fit(&self, expected: TypeId, found: TypeId) -> bool {
         let (e, f) = (self.shallow(expected), self.shallow(found));
         if e == f {
@@ -157,7 +146,6 @@ impl Unifier {
         }
     }
 
-    /// Whether an unknown of `kind` could turn out to be `ty`.
     fn kind_allows(&self, kind: VarKind, ty: TypeId) -> bool {
         let ty = self.shallow(ty);
         match (kind, self.table.get(ty)) {
@@ -175,7 +163,6 @@ impl Unifier {
         }
     }
 
-    /// `id` with every bound variable in it replaced by what it's bound to.
     fn resolved(&mut self, id: TypeId) -> TypeId {
         let id = self.shallow(id);
         let ty = self.table.get(id).clone();
@@ -186,15 +173,13 @@ impl Unifier {
         self.table.intern(resolved)
     }
 
-    /// `id` with its arithmetic worked out as far as what's known so far allows.
     pub fn normalize(&mut self, id: TypeId) -> TypeId {
         let resolved = self.resolved(id);
         self.table.normalize(resolved)
     }
 
-    /// Makes two values equal where at least one is arithmetic: `A + B` and `B + A`, or
-    /// `N + 1` and `4`, which makes `N` 3. What depends on variables not known yet is checked
-    /// again later, by [`Unifier::settle`].
+    /// `N + 1` against `4` makes `N` 3. What depends on unknown variables is checked again by
+    /// [`Unifier::settle`].
     fn unify_arithmetic(&mut self, a: TypeId, b: TypeId) -> Result<(), ()> {
         match self.compare_arithmetic(a, b) {
             Arithmetic::Equal => Ok(()),
@@ -206,9 +191,8 @@ impl Unifier {
         }
     }
 
-    /// Checks the arithmetic [`Unifier::unify`] couldn't decide before, now that more may be
-    /// known, until nothing changes. Returns the pairs that turned out unequal; what still
-    /// can't be decided is kept for next time.
+    /// Rechecks deferred arithmetic until nothing changes. Returns the pairs found unequal;
+    /// what's still undecided is kept.
     pub fn settle(&mut self) -> Vec<(TypeId, TypeId)> {
         let mut unequal = Vec::new();
         loop {
@@ -226,9 +210,8 @@ impl Unifier {
         }
     }
 
-    /// Whether `a` and `b` are equal. A variable that's added, not multiplied by another, is
-    /// worked out if it's the only one left: `N + 1 = 4` makes `N` 3, but `N * M = 6` has many
-    /// answers.
+    /// A variable that's added, not multiplied by another, is solved if it's the only one left:
+    /// `N + 1 = 4` makes `N` 3, but `N * M = 6` has many answers.
     fn compare_arithmetic(&mut self, a: TypeId, b: TypeId) -> Arithmetic {
         let (a, b) = (self.normalize(a), self.normalize(b));
         if a == b {
@@ -279,9 +262,8 @@ impl Unifier {
         }
     }
 
-    /// Makes `ty`, if it's still unknown, the error type: what it is was already reported as
-    /// wrong, so nothing more is said about it.
-    /// Anything still unknown inside it, too: `?T` of an `?T?` it was compared with `none` as.
+    /// Makes what's still unknown in `ty` the error type: it was already reported as wrong, so
+    /// nothing more is said about it.
     pub fn poison(&mut self, ty: TypeId) {
         let ty = self.shallow(ty);
         match self.table.get(ty).clone() {
@@ -338,8 +320,8 @@ impl Unifier {
         }
     }
 
-    /// Replaces every bound variable in `id`. Unbound integer and float variables
-    /// get their defaults; any other unbound variable is returned in `unresolved`.
+    /// Unbound integer and float variables get their defaults; any other unbound variable is
+    /// returned in `unresolved`.
     pub fn finish(&mut self, id: TypeId, unresolved: &mut Option<TypeId>) -> TypeId {
         let id = self.shallow(id);
         match self.table.get(id).clone() {
@@ -379,14 +361,12 @@ impl Unifier {
         }
     }
 
-    /// Renders a type that may still contain variables, for error messages.
     pub fn display(&self, id: TypeId, names: &Names) -> String {
         self.table.render(id, names, &[], Some(self))
     }
 
-    /// An unbound variable inside another type, like `&_`: on its own, the checker describes
-    /// it in words instead. A literal's type is shown as what it becomes if nothing else
-    /// decides it: `maybe(1)` is an `i32?`.
+    /// On its own, the checker describes an unbound variable in words; inside a type, like
+    /// `&_`, it's shown here. A literal's is shown as its default: `maybe(1)` is an `i32?`.
     pub(crate) fn display_var(&self, var: u32, names: &Names) -> String {
         match self.vars[var as usize].kind {
             VarKind::Int => "i32".into(),

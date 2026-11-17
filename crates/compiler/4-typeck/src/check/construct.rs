@@ -41,7 +41,6 @@ impl Checker<'_> {
             self.infer_given(given);
             return error;
         };
-        // A struct, or a variant with named fields: `Shape::Rect { w: 1.0, h: 2.0 }`.
         let (s, variant) = match self.names.def(def).kind {
             DefKind::Struct(s) => (s, None),
             DefKind::Variant { strukt, index } => (strukt, Some(index)),
@@ -118,8 +117,8 @@ impl Checker<'_> {
         ty
     }
 
-    /// The type arguments of a struct made by `Construct` `id`: written, `Pair<i32> { … }`;
-    /// or each unknown, for the fields' values to decide.
+    /// The type arguments of the struct `Construct` `id` makes: those written, or unknowns for
+    /// the fields' values to decide.
     fn construct_args(
         &mut self,
         id: Id<Expr>,
@@ -129,8 +128,7 @@ impl Checker<'_> {
         written: &[Id<TypeExpr>],
     ) -> Vec<TypeId> {
         let expected = self.names.struct_params(s).len();
-        // `Self { … }` is the type the impl block is for, arguments and all: in
-        // `impl Vector<3, f32>`, a `Vector<3, f32>`.
+        // `Self { … }` is the impl block's type, arguments and all.
         let of_self = (path.segments.len() == 1 && &*path.segments[0].name == som_lang::SELF_TYPE)
             .then(|| self.current_func.and_then(|f| self.names.impl_of(f)))
             .flatten()
@@ -164,7 +162,6 @@ impl Checker<'_> {
     ) -> bool {
         let ast_struct = &self.ast.structs[s];
         match variant {
-            // `Shape { … }`: an enum is made from one of its variants.
             None if ast_struct.is_enum() => {
                 let example = (!ast_struct.variants().is_empty()).then(|| self.variant_form(s, 0));
                 self.errors.push(TypeError::ConstructEnum {
@@ -187,7 +184,7 @@ impl Checker<'_> {
         }
     }
 
-    /// Checks each field's value given against the field declared: which were given.
+    /// Checks each field's value against its declaration; gives which fields were given.
     fn construct_fields(
         &mut self,
         given: &[(som_ast::Ident, Id<Expr>)],

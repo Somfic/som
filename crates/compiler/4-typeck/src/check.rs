@@ -51,36 +51,31 @@ pub(crate) struct Checker<'a> {
     sigs: Vec<Signature>,
     type_args: HashMap<Id<Expr>, Vec<TypeId>>,
     sliced: HashMap<Id<Expr>, TypeId>,
-    /// Values that become a struct through its `From` implementation: the trait's `from`
-    /// and its type arguments.
+    /// Values that become a struct through its `From`: the trait's `from` and its type arguments.
     conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
     records: Records,
     /// Every `impl` block, indexed like `Names::impls`.
     impls: Vec<crate::impls::ImplInfo>,
     hints: Hints,
     deferred: Deferred,
-    /// Each value parameter's type: `usize` for `N` in `struct Buffer<N: usize>`.
     value_params: HashMap<DefId, TypeId>,
-    /// The optional places known to hold a value here, innermost last.
+    /// Optional places known to hold a value here, innermost last.
     narrowed: Vec<Narrowing>,
     next_narrowing: usize,
     pub(crate) known: crate::ConstValues,
-    /// Constants worked out by running code whose values are needed, and aren't known yet.
+    /// Constants needed before their values are known: worked out by running code.
     needed: Vec<Id<som_ast::Const>>,
-    /// Checking one instance: what its generic parameters stand for (`N` is `3`, `T` is
-    /// `f32`).
+    /// Checking one instance: what its generic parameters stand for.
     bound: HashMap<DefId, TypeId>,
-    /// The function being checked: its return type, and where that's written.
     returns: Option<(TypeId, Option<Span>)>,
     current_func: Option<Id<Func>>,
-    /// How many `loop`s and `while`s enclose the statement being checked.
     loop_depth: usize,
-    /// The type aliases being expanded, innermost last: one met again refers to itself.
+    /// Aliases being expanded, innermost last: one met again refers to itself.
     expanding: Vec<DefId>,
     /// Aliases already reported as referring to themselves, so each is reported once.
     cyclic: HashSet<DefId>,
-    /// What the generic parameters of the aliases being expanded stand for. Outside an
-    /// expansion, a parameter stands for itself.
+    /// What the generic parameters of aliases being expanded stand for; outside an expansion,
+    /// a parameter stands for itself.
     alias_args: HashMap<DefId, TypeId>,
     /// Functions whose bodies have been checked, or are being.
     checked: HashSet<Id<Func>>,
@@ -97,10 +92,8 @@ struct Hints {
     discarding: bool,
     /// It's an assignment's target: `s[i] = v`, which a slice can't do.
     assigning: bool,
-    /// What it's expected to be, if `expect` knows.
     expected: Option<TypeId>,
-    /// What the expression being inferred is expected to be: for a call of a function that
-    /// shares its name with others, it helps decide which.
+    /// What the expression being inferred is expected to be: picks among same-named functions.
     expected_here: Option<TypeId>,
     /// Lowering a `let` annotation, where a generic struct's type arguments can be left out:
     /// `let list: List = [1, 2]`.
@@ -116,11 +109,9 @@ struct Deferred {
     displayed: Vec<(Id<Expr>, TypeId)>,
     /// Calls ending a block without a `;`: one giving nothing needs it.
     tail_calls: Vec<(Id<Expr>, TypeId)>,
-    /// Values to convert through `From` whose types weren't known well enough to choose
-    /// which: `println(xs.get(0))` before what `xs` holds is. With where what's expected came
-    /// from.
+    /// `From` conversions whose types weren't known well enough to choose one, with where what's
+    /// expected came from.
     conversions: Vec<(Id<Expr>, TypeId, TypeId, Option<Span>)>,
-    /// Types that have to implement a trait, and where.
     obligations: Vec<(TypeId, DefId, Span)>,
     /// The types of the `@unreachable`s: what they're used as, or `()`.
     unreachables: Vec<TypeId>,
@@ -165,15 +156,13 @@ impl<'a> Checker<'a> {
             checked: HashSet::new(),
             checked_consts: HashSet::new(),
         };
-        // Text is the standard library's `string`, where it's loaded.
         if let Some(def) = names.lang_struct(som_lang::LangStruct::String) {
             checker.u.table.text = checker.u.table.intern(Ty::Struct(def, Vec::new()));
         }
         checker
     }
 
-    /// Checks the program: what it found, its errors, and the constants worked out by running
-    /// code it needed and didn't know (`needed`).
+    /// Also gives the constants it needed and didn't know, to work out by running code.
     pub fn run_needing(mut self) -> (Typed, Vec<TypeError>, Vec<Id<som_ast::Const>>) {
         self.check_program();
         let needed = std::mem::take(&mut self.needed);
@@ -181,8 +170,7 @@ impl<'a> Checker<'a> {
         (typed, errors, needed)
     }
 
-    /// Checks one instance of generic function `func`, its generic parameters standing for
-    /// `args` (as `som_typeck::check_instance` says).
+    /// Checks generic function `func` with its parameters standing for `args`.
     pub fn run_instance(mut self, func: Id<Func>, args: &[TypeId]) -> (Typed, Vec<TypeError>) {
         let params = self.names.type_params(func).to_vec();
         for (def, &arg) in params.into_iter().zip(args) {
@@ -203,8 +191,8 @@ impl<'a> Checker<'a> {
         self.member_holds(func, receiver)
     }
 
-    /// The hints, leaving none: for checking a body elsewhere, from inside an expression.
-    /// Whether an assignment's target is being inferred lasts, as it did.
+    /// Takes the hints, for checking a body elsewhere from inside an expression; `assigning`
+    /// stays, since the target is still being inferred.
     fn take_hints(&mut self) -> Hints {
         let assigning = self.hints.assigning;
         std::mem::replace(

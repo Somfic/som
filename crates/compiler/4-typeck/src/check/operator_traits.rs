@@ -9,9 +9,8 @@ use crate::ty::{Ty, TypeId};
 use crate::unify::VarKind;
 
 impl Checker<'_> {
-    /// For operator `op` between values of type `ty`: whether it's a trait's method, `Eq`'s
-    /// `eq` for `==` or `Add`'s `add` for `+`, recording it for `expr` if so. Gives what it
-    /// gives: a `bool` for `==`, what the implementation says for `+`.
+    /// Whether operator `op` on `ty` is a trait's method, `Eq`'s `eq` for `==`: records it for
+    /// `expr` and gives its result.
     pub(super) fn trait_op(
         &mut self,
         expr: Id<Expr>,
@@ -33,9 +32,8 @@ impl Checker<'_> {
         Some(output)
     }
 
-    /// Whether trait `lang` is an operator's taking what's on the right and giving what comes
-    /// out as its parameters, `Add<Other = Self, Output = Self>`, as the standard library has
-    /// them.
+    /// Whether trait `lang` takes the right side and the result as parameters,
+    /// `Add<Other = Self, Output = Self>`, as the standard library has them.
     fn operator_generics(&self, lang: LangTrait) -> bool {
         lang.operator_method().is_some()
             && self
@@ -236,7 +234,6 @@ impl Checker<'_> {
                     edits: vec![(at, text)],
                 })
             }
-            // After `struct Hello { … }`: `impl Compare for Hello { … }`, with its methods.
             Ty::Struct(owner, _) => {
                 let DefKind::Struct(s) = self.names.def(owner).kind else {
                     return None;

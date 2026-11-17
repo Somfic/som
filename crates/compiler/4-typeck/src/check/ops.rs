@@ -42,7 +42,6 @@ impl Checker<'_> {
         // An enum whose variants hold nothing converts to the number of its variant.
         let plain_enum = self.is_plain_enum(self.u.shallow_ty(found))
             && matches!(self.u.shallow_ty(target), Ty::Int(_));
-        // A raw pointer to another, `null() as *T`; or a reference to one, `&items as *T`.
         let pointer = |c: &Self, ty: TypeId| matches!(c.u.shallow_ty(ty), Ty::Pointer | Ty::Ptr(_));
         let reference = |c: &Self, ty: TypeId| matches!(c.u.shallow_ty(ty), Ty::Ref { .. });
         let pointers = (pointer(self, found) || reference(self, found)) && pointer(self, target);
@@ -162,7 +161,6 @@ impl Checker<'_> {
         let table = &self.u.table;
         let (error, bool, pointer) = (table.error, table.bool, table.pointer);
 
-        // Pointer arithmetic: `ptr + n`.
         if op == BinOp::Add && self.u.shallow(lhs) == pointer {
             let int = self.u.fresh(VarKind::Int);
             if self.u.unify(int, rhs).is_err() {
@@ -178,7 +176,7 @@ impl Checker<'_> {
             return bool;
         }
 
-        // `a << n`: an integer `a`, moved by any integer `n`.
+        // The shift amount can be any integer type.
         if matches!(op, BinOp::ShiftLeft | BinOp::ShiftRight) {
             let amount = self.u.fresh(VarKind::Int);
             if self.u.unify(amount, rhs).is_err() {
@@ -193,8 +191,7 @@ impl Checker<'_> {
             return lhs;
         }
 
-        // `"ab" * 3`, `money + money`: an implementation of the operator's trait for these
-        // operands, which says what comes out.
+        // `"ab" * 3`, `money + money`: the operator trait's impl says what comes out.
         if let Some(lang) = op.lang_trait()
             && let Some(output) = self.operator_impl(id, lang, lhs, rhs)
         {
@@ -242,9 +239,8 @@ impl Checker<'_> {
         result
     }
 
-    /// An operand of an arithmetic or comparison operator, of type `ty`: a reference to a
-    /// number, `bool` or struct is read through, so `self * self` works for a `&i32`, and
-    /// `"arg: " + arg` for a `&string`.
+    /// A reference to a number, `bool` or struct is read through, so `self * self` works for a
+    /// `&i32`, and `"arg: " + arg` for a `&string`.
     fn through_reference(&mut self, operand: Id<Expr>, ty: TypeId) -> TypeId {
         let Ty::Ref { to, .. } = *self.u.shallow_ty(ty) else {
             return ty;
@@ -260,8 +256,7 @@ impl Checker<'_> {
         to
     }
 
-    /// Whether `ty` is an enum whose variants hold nothing: a number, really, which can be
-    /// compared and converted to one.
+    /// Variants holding nothing: a number, really, which can be compared and converted to one.
     fn is_plain_enum(&self, ty: &Ty) -> bool {
         match ty {
             Ty::Struct(def, _) => match self.names.def(*def).kind {

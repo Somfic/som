@@ -15,9 +15,8 @@ pub(super) struct Facts {
 }
 
 impl Checker<'_> {
-    /// Checks a condition: a `bool`, or an optional, which is true when it holds a value
-    /// (`if x` is `if x != none`), combined with `&&`, `||` and `!`. Returns what it being
-    /// true, or false, says about optional places.
+    /// Checks a condition, where an optional is true when it holds a value (`if x` is
+    /// `if x != none`). Returns what it says about optional places.
     pub(super) fn check_condition(&mut self, condition: Id<Expr>) -> Facts {
         let bool = self.u.table.bool;
         let facts = match &self.ast.exprs[condition] {
@@ -62,7 +61,6 @@ impl Checker<'_> {
         facts
     }
 
-    /// Checks a condition that isn't `&&`, `||` or `!`.
     fn check_condition_operand(&mut self, condition: Id<Expr>) -> Facts {
         let mut facts = Facts::default();
         match self.condition_narrowing(condition) {
@@ -73,8 +71,8 @@ impl Checker<'_> {
         facts
     }
 
-    /// Checks a condition that isn't `&&`, `||` or `!`, returning the optional place it tells
-    /// something about, and whether that holds a value when the condition is true.
+    /// The optional place `condition` tells something about, and whether it holds a value when
+    /// the condition is true.
     fn condition_narrowing(&mut self, condition: Id<Expr>) -> Option<(Narrowing, bool)> {
         let bool = self.u.table.bool;
         let ty = self.infer_optional(condition);
@@ -92,7 +90,6 @@ impl Checker<'_> {
             self.mismatch(bool, ty, self.span(condition), None);
             return None;
         }
-        // `x != none`, `x == none`, `x == 5` and `x != 5`.
         let Expr::Binary { op, lhs, rhs } = &self.ast.exprs[condition] else {
             return None;
         };
@@ -126,7 +123,6 @@ impl Checker<'_> {
         Some((self.narrowing(optional, inner)?, holds_value))
     }
 
-    /// A narrowing of `expr` to the `inner` type it holds, if it's a place that can be narrowed.
     fn narrowing(&mut self, expr: Id<Expr>, inner: TypeId) -> Option<Narrowing> {
         let key = self.key(expr)?;
         self.next_narrowing += 1;
@@ -179,14 +175,9 @@ impl Checker<'_> {
     }
 }
 
-// --- Narrowing ---
-//
-// Inside `if x { … }` (or `if x != none`), where `x` is an optional variable or field, `x`
-// means the value it holds. Anything that could make `x` `none` again ends that: assigning
-// it or what contains it, `&mut` of what contains it, or passing on a `&mut` it's behind.
-// A loop is checked for those first, since a later iteration sees changes further down.
-
-/// An optional place known to hold a value.
+/// An optional place known to hold a value: inside `if x { … }`, `x` means the value it
+/// holds. Anything that could make it `none` again ends that: assigning it or what contains
+/// it, `&mut` of what contains it, or passing on a `&mut` it's behind.
 #[derive(Clone)]
 pub(super) struct Narrowing {
     pub(super) id: usize,
@@ -239,7 +230,6 @@ impl Key {
 }
 
 impl Checker<'_> {
-    /// The place `expr` denotes, if it's a variable, field or dereference of one.
     pub(super) fn key(&self, expr: Id<Expr>) -> Option<Key> {
         match &self.ast.exprs[expr] {
             Expr::Var(_) => {
@@ -282,7 +272,6 @@ impl Checker<'_> {
         Some(found.inner)
     }
 
-    /// Ends the narrowings of the places `changed` says could change.
     pub(super) fn forget(&mut self, changed: impl Fn(&Key) -> bool) {
         self.narrowed.retain(|n| !changed(&n.key));
     }
@@ -291,7 +280,6 @@ impl Checker<'_> {
         matches!(self.u.shallow_ty(ty), Ty::Ref { mutable: true, .. })
     }
 
-    /// Ends the narrowings of the places `stmts` could change.
     pub(super) fn forget_changed_in(&mut self, stmts: &[Id<Stmt>]) {
         if self.narrowed.is_empty() {
             return;
@@ -312,8 +300,7 @@ impl Checker<'_> {
         }
     }
 
-    /// Ends the narrowings of the places `expr` could change. `in_place`: it's the object of
-    /// a field access or dereference.
+    /// `in_place`: `expr` is the object of a field access or dereference.
     fn forget_changed_by(&mut self, expr: Id<Expr>, in_place: bool) {
         if let Some(&copy) = self.records.chosen_matches.get(&expr) {
             return self.forget_changed_by(copy, false);

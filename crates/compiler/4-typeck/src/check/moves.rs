@@ -1,7 +1,6 @@
-//! Moving out of a reference in generic code: `*item` of a `&T`, or `p.value` of a
-//! `&Pair<T>`, where `T` may be a type that moves. The borrow checker sees each use of a
-//! function with its type arguments filled in, so it would only find this once someone uses it
-//! with such a type; here it's an error where it's written, whether it's used or not.
+//! Moving out of a reference in generic code: `*item` of a `&T`. The borrow checker sees each
+//! instance, so it would only catch this once someone uses a type that moves; here it's an
+//! error where it's written.
 
 use som_ast::{Expr, Id, Stmt};
 use som_lang::LangTrait;
@@ -11,8 +10,6 @@ use crate::error::TypeError;
 use crate::ty::{Ty, TypeId};
 
 impl Checker<'_> {
-    /// Reports each value in `body` moved out of a reference whose type may move because of a
-    /// type parameter.
     pub(super) fn check_moves_out(&mut self, body: Id<Expr>) {
         self.moves_in(body, true);
     }
@@ -205,8 +202,6 @@ impl Checker<'_> {
         }
     }
 
-    /// Whether place `id` is reached through a reference: `*r`, `r.x` of a `&Point`, `s[i]`
-    /// of a slice, or a place inside one of those.
     fn behind_reference(&self, id: Id<Expr>) -> bool {
         match &self.ast.exprs[id] {
             Expr::Deref(_) => true,
@@ -221,8 +216,8 @@ impl Checker<'_> {
         self.exprs[id.id].is_some_and(|ty| matches!(self.u.shallow_ty(ty), Ty::Ref { .. }))
     }
 
-    /// Reports taking place `id` out of the reference it's behind, if its type may move
-    /// because of a type parameter. Types without one the borrow checker sees as they are.
+    /// Only for types that may move because of a type parameter: the borrow checker sees the
+    /// rest as they are.
     fn check_move_out(&mut self, id: Id<Expr>) {
         let Some(ty) = self.exprs[id.id] else {
             return;

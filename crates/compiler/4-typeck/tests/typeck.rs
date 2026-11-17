@@ -23,7 +23,6 @@ fn errors(source: &str) -> Vec<TypeError> {
     run(source).3
 }
 
-/// The type of the first `let` in the program, as written in som.
 fn first_let(ast: &Ast, names: &Names, typed: &Typed) -> String {
     let (stmt, _) = ast
         .stmts
@@ -224,7 +223,6 @@ fn unknown_fields_offer_the_properties_of_the_value_type() {
     }
 }
 
-/// The edits of the `Mismatch` reported for `source`'s one error.
 fn mismatch_fix(source: &str) -> Option<Vec<String>> {
     match &errors(source)[..] {
         [TypeError::Mismatch { fix, .. }] => fix
@@ -276,7 +274,6 @@ fn moving_a_type_parameter_out_of_a_reference_is_an_error_even_unused() {
     );
 }
 
-/// The edits of the `NotBorrowed` reported for `source`'s one error.
 fn borrow_fix(source: &str) -> Vec<String> {
     match &errors(source)[..] {
         [TypeError::NotBorrowed { fix, .. }] => {

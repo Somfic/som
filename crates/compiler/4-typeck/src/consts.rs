@@ -3,16 +3,14 @@ use std::collections::HashMap;
 use som_ast::{Ast, BinOp, Expr, Id};
 use som_resolve::{DefKind, Names};
 
-/// A constant's value, worked out by running it: what the type checker can use of it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ConstValue {
     Int(i128),
     Bool(bool),
-    /// Anything else: a struct, text. Not a count, nor a condition.
+    /// A struct, text: not usable as a count or a condition.
     Other,
 }
 
-/// The values of constants worked out by running them.
 #[derive(Clone, Debug, Default)]
 pub struct ConstValues(pub HashMap<Id<som_ast::Const>, ConstValue>);
 
@@ -22,13 +20,11 @@ impl ConstValues {
     }
 }
 
-/// The integer a constant's value works out to: `W * H` of `@const W = 60;` and
-/// `@const H = 20;` is 1200. `None` if it isn't one, or doesn't fit.
+/// `None` if it isn't an integer, or doesn't fit.
 pub fn const_number(ast: &Ast, names: &Names, expr: Id<Expr>) -> Option<i128> {
     const_number_with(ast, names, &ConstValues::default(), expr)
 }
 
-/// Like `const_number`, with the values of constants worked out by running them, `known`.
 pub fn const_number_with(
     ast: &Ast,
     names: &Names,
@@ -57,8 +53,7 @@ pub fn const_number_with(
     })
 }
 
-/// `a op b` of integers known while compiling. `None` if it overflows, or `op` isn't
-/// arithmetic.
+/// `None` if it overflows, or `op` isn't arithmetic.
 pub(crate) fn fold(op: BinOp, a: i128, b: i128) -> Option<i128> {
     Some(match op {
         BinOp::Add => a.checked_add(b)?,
@@ -75,7 +70,6 @@ pub(crate) fn fold(op: BinOp, a: i128, b: i128) -> Option<i128> {
     })
 }
 
-/// `a op b` of integers known while compiling, `op` a comparison.
 pub(crate) fn compare(op: BinOp, a: i128, b: i128) -> Option<bool> {
     Some(match op {
         BinOp::Equals => a == b,

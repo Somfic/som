@@ -1,7 +1,3 @@
-//! Traits in the type checker: impl blocks and the types they name (`Self`, `Item`), calls of
-//! trait methods, the bounds type parameters have to meet, and the traits the language itself
-//! uses (`LangTrait`).
-
 use som_ast::{Expr, Func, Id, Item, Span};
 use som_lang::LangTrait;
 use som_resolve::{DefId, DefKind};
@@ -15,8 +11,7 @@ use crate::unify::VarKind;
 
 impl Checker<'_> {
     /// Lowers every impl block's target and associated types, before any signature uses
-    /// `Self` or `Item`. Reports associated types a trait has that an implementation doesn't
-    /// say, or says that the trait doesn't have.
+    /// `Self` or `Item`.
     pub(super) fn build_impls(&mut self) {
         let ast = self.ast;
         for (index, block) in impl_blocks(ast).enumerate() {
@@ -95,8 +90,6 @@ impl Checker<'_> {
         }
     }
 
-    /// The type arguments of trait `trait_` (`t`) for `this`, `given` and then its
-    /// defaults for the rest. Reports too many, or too few for those without a default.
     pub(super) fn trait_args(
         &mut self,
         trait_: DefId,
@@ -121,8 +114,6 @@ impl Checker<'_> {
         args
     }
 
-    /// Checks each implementation of a trait has its methods, with the types it says, and no
-    /// others.
     pub(super) fn check_impls(&mut self) {
         for index in 0..self.impls.len() {
             let Some(trait_) = self.impls[index].trait_ else {
@@ -212,8 +203,7 @@ impl Checker<'_> {
         }
     }
 
-    /// Reports the associated types and methods impl block `index` doesn't write, with a fix
-    /// writing them, at the trait it names.
+    /// Reports what impl block `index` leaves out, with a fix writing it in.
     fn report_missing(&mut self, index: usize, trait_name: &str) {
         let block = impl_block(self.ast, index);
         let missing = crate::stubs::missing(self.ast, self.names, index, block);
@@ -236,7 +226,6 @@ impl Checker<'_> {
         });
     }
 
-    /// Where impl block `index` names what it's for.
     pub(super) fn impl_target_span(&self, index: usize) -> Span {
         let block = impl_block(self.ast, index);
         let target = block.target.span();
@@ -246,14 +235,11 @@ impl Checker<'_> {
         };
         let last = self.ast.types.span(last);
         let end = last.start_offset + last.length;
-        // Through the `>` after the last one.
         let text = &target.source.content()[end..];
         let close = end + text.find('>').map_or(0, |i| i + 1);
         Span::from_range(target.start_offset..close, target.source.clone())
     }
 
-    /// Checks impl method `written`, of impl block `index`, has the types trait method
-    /// `wanted` says, with `Self` its target and the associated types it says.
     fn check_impl_method(&mut self, index: usize, wanted: Id<Func>, written: Id<Func>) {
         let outer = self.current_func.replace(written);
         let (sig, type_args) = self.instantiate(wanted);
@@ -297,8 +283,8 @@ impl Checker<'_> {
         self.current_func = outer;
     }
 
-    /// `ty`, written in terms of impl block `index`'s parameters, in terms of the method being
-    /// checked's own copies of them, if it's one of that block's.
+    /// `ty`, in terms of impl block `index`'s parameters, in terms of the checked method's own
+    /// copies of them, if it's one of that block's.
     fn in_method_terms(&mut self, index: usize, ty: TypeId) -> TypeId {
         let Some(func) = self.current_func else {
             return ty;
@@ -321,7 +307,6 @@ impl Checker<'_> {
         impls::substitute(&mut self.u.table, ty, &subst)
     }
 
-    /// `Self` inside impl block `index`: its target.
     pub(super) fn self_type(&mut self, index: usize) -> TypeId {
         match self.impls.get(index).and_then(|i| i.target) {
             Some(target) => self.in_method_terms(index, target),
@@ -329,7 +314,6 @@ impl Checker<'_> {
         }
     }
 
-    /// The associated type impl block `index` says `index_in_block`th, as written.
     pub(super) fn impl_type(&mut self, index: usize, written: usize) -> TypeId {
         match self
             .impls
@@ -405,8 +389,6 @@ impl Checker<'_> {
         self.normalize_assoc(found)
     }
 
-    /// Whether `ty` implements trait `trait_`: a type parameter if it's one of its bounds,
-    /// anything else if an `impl` says so.
     pub(super) fn implements(&self, ty: TypeId, trait_: DefId) -> bool {
         let ty = self.u.shallow(ty);
         if let Some(lang) = self.names.lang_of(trait_)
@@ -430,8 +412,7 @@ impl Checker<'_> {
         }
     }
 
-    /// Remembers that the type arguments `args` given to `func`'s generic parameters have to
-    /// implement their bounds, to check once they're known.
+    /// `func`'s type arguments `args` have to meet their bounds: checked once they're known.
     pub(super) fn require_bounds(&mut self, func: Id<Func>, args: &[TypeId], span: Span) {
         let params = self.names.type_params(func);
         for (&param, &arg) in params.iter().zip(args) {
@@ -441,7 +422,6 @@ impl Checker<'_> {
         }
     }
 
-    /// Reports type arguments that turned out not to implement what their parameter needs.
     pub(super) fn check_obligations(&mut self) {
         for (ty, trait_, span) in std::mem::take(&mut self.deferred.obligations) {
             let mut ty = self.normalize_assoc(ty);
@@ -470,7 +450,6 @@ impl Checker<'_> {
         }
     }
 
-    /// Trait `trait_`'s method called `name`.
     pub(super) fn trait_method(&self, trait_: DefId, name: &str) -> Option<Id<Func>> {
         let DefKind::Trait(t) = self.names.def(trait_).kind else {
             return None;
@@ -479,7 +458,6 @@ impl Checker<'_> {
             .find(|&m| !self.ast.funcs[m].prop && &*self.ast.funcs[m].name.name == name)
     }
 
-    /// The index of trait `trait_`'s associated type `name`.
     fn assoc_index(&self, trait_: DefId, name: &str) -> Option<usize> {
         let DefKind::Trait(t) = self.names.def(trait_).kind else {
             return None;
@@ -487,10 +465,6 @@ impl Checker<'_> {
         (self.names.trait_types(t).iter()).position(|&d| &*self.names.def(d).name == name)
     }
 
-    /// `receiver.method(args)` of a trait's method: on a type parameter, one of its bounds'
-    /// methods; on a struct without a method of that name, a trait's it implements; on any
-    /// other type, a trait's it implements or has built in, as numbers have `compare`. Returns
-    /// the call's type, if it's one.
     pub(super) fn trait_method_call(
         &mut self,
         call: Id<Expr>,
@@ -584,8 +558,6 @@ impl Checker<'_> {
         Some(ret)
     }
 
-    /// What a `for` loop over `iterable`, of type `ty`, binds each time round, if it's an
-    /// `Iterator` or an `Iterable`. Records how it goes through it.
     pub(super) fn iterator_loop(&mut self, stmt: Id<som_ast::Stmt>, ty: TypeId) -> Option<TypeId> {
         let iterator = self.names.lang(LangTrait::Iterator)?;
         let item = self.assoc_index(iterator, LangTrait::Iterator.assoc_type()?)?;
@@ -656,7 +628,6 @@ impl Checker<'_> {
         })
     }
 
-    /// Whether values of `ty` have the operators of `lang` built in, as numbers have `+`.
     pub(super) fn has_builtin(&self, ty: TypeId, lang: LangTrait) -> bool {
         impls::builtin_operator(self.u.shallow_ty(ty), lang)
     }

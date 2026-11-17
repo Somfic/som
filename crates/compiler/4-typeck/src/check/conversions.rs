@@ -24,7 +24,6 @@ impl Checker<'_> {
         let [(target, arg, ref bounded)] = fitting[..] else {
             return false;
         };
-        // What the implementation requires of its parameters: `T: Copy`.
         for &(param, fresh) in bounded {
             for &bound in self.names.bounds(param) {
                 self.deferred
@@ -90,18 +89,16 @@ impl Checker<'_> {
                 .is_some_and(|(.., fitting)| fitting.len() > 1)
     }
 
-    /// Whether a `found` would become the struct `expected` through `From`, without changing
-    /// anything. For choosing between functions with the same name.
+    /// Like `from_conversion`, without changing anything: for choosing between functions with
+    /// the same name.
     pub(super) fn could_convert(&mut self, expected: TypeId, found: TypeId) -> bool {
         self.from_impls(expected, found)
             .is_some_and(|(.., fitting)| fitting.len() == 1)
     }
 
-    /// The `From` implementations that could make a `found` into the struct `expected`, each
-    /// as its target and source with its parameters fresh unknowns (and which unknown each
-    /// parameter is); with the trait, and what
-    /// `found` counts as (a collection literal as an array). `None` if `expected` isn't a
-    /// struct or `found` isn't known well enough to say.
+    /// The `From` implementations that could make `found` into struct `expected`, each with
+    /// its parameters fresh; also the trait, and what `found` counts as (a collection literal
+    /// as an array). `None` if `expected` isn't a struct or `found` isn't known well enough.
     fn from_impls(
         &mut self,
         expected: TypeId,

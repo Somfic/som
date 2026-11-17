@@ -38,8 +38,8 @@ impl Checker<'_> {
         }
     }
 
-    /// Infers each of `exprs`, for what they say about the types of what's in them: they're
-    /// arguments to a call that's wrong.
+    /// Infers `exprs` for what they say about the types in them: they're arguments to a call
+    /// that's wrong.
     pub(super) fn infer_all(&mut self, exprs: &[Id<Expr>]) {
         for &expr in exprs {
             self.infer(expr);
@@ -67,7 +67,6 @@ impl Checker<'_> {
         self.infer(object)
     }
 
-    /// `in_place`: `id` is the object of a field access or dereference, not a value on its own.
     fn infer_inner(&mut self, id: Id<Expr>, in_place: bool) -> TypeId {
         let table = &self.u.table;
         let (error, bool) = (table.error, table.bool);
@@ -88,8 +87,7 @@ impl Checker<'_> {
             } if self.is_type_operand(*lhs) || self.is_type_operand(*rhs) => {
                 self.infer_type_comparison(*lhs, *rhs)
             }
-            // `@const f(x)`: its value, of whatever's expected here. It names no locals, so
-            // it's checked here like anything else.
+            // `@const f(x)`: it names no locals, so it's checked here like anything else.
             Expr::InPlace(c) => {
                 self.checked_consts.insert(*c);
                 self.hints.expected = self.hints.expected_here.take();
@@ -103,7 +101,7 @@ impl Checker<'_> {
                 self.deferred.unreachables.push(ty);
                 ty
             }
-            // `@fail("…")`: like `@unreachable`, of whatever's expected; its message is text.
+            // `@fail("…")`: like `@unreachable`; its message is text.
             Expr::Fail(message) => {
                 let ty =
                     (self.hints.expected_here.take()).unwrap_or_else(|| self.u.fresh(VarKind::Any));
@@ -117,7 +115,6 @@ impl Checker<'_> {
             Expr::Bool(_) => bool,
             // A `str`, or a `cstr` where C needs one.
             Expr::Str(_) => self.u.fresh(VarKind::Text),
-            // `"total: {n}"`: a `string`, of the pieces and the values written in.
             Expr::Interpolated(parts) => self.infer_interpolated(parts),
             Expr::None => {
                 let inner = self.u.fresh(VarKind::Any);
@@ -165,7 +162,6 @@ impl Checker<'_> {
                 inner
             }
 
-            // `usize::MAX`: of the type it's the limit of.
             Expr::Var(path) if let Some((primitive, _)) = path.int_limit() => {
                 self.u.intern(Ty::from_primitive(primitive))
             }
@@ -187,10 +183,8 @@ impl Checker<'_> {
                 bool
             }
 
-            // `~x`: an integer, the same type back.
             Expr::BitNot(inner) => self.infer_bit_not(id, *inner),
 
-            // `-x`: a signed integer or a float, the same type back.
             Expr::Neg(inner) => self.infer_neg(id, *inner),
 
             Expr::Borrow { mutable, expr } => self.infer_borrow(*mutable, *expr),
@@ -237,8 +231,7 @@ impl Checker<'_> {
                 otherwise,
             } => self.infer_conditional(*condition, *then, *otherwise),
 
-            // `@for (i, k) in T` among its arms, over a generic enum: checked for each
-            // instance, with the copy for `T`'s enum.
+            // `@for (i, k) in T` among its arms, over a generic enum: checked for each instance.
             Expr::Match { scrutinee, .. }
                 if let Some(per_type) = self.ast.per_type_matches.get(&id) =>
             {
@@ -281,7 +274,6 @@ impl Checker<'_> {
                 }
                 ty
             }
-            // `Shape::Empty`
             Some((def, DefKind::Variant { .. })) => {
                 let (ty, s, index, _) = self.variant_value(def);
                 self.fit_alias(id, ty);
@@ -296,7 +288,6 @@ impl Checker<'_> {
                 }
                 ty
             }
-            // `W` for `@const W = 60;`
             Some((_, &DefKind::Const(c))) => self.check_const(c),
             // `N` in `struct Buffer<N: usize>`: the number it is in each copy.
             Some((def, _)) if let Some(&ty) = self.value_params.get(&def) => ty,
@@ -411,7 +402,6 @@ impl Checker<'_> {
         self.narrowed.extend::<Vec<Narrowing>>(lifted);
         let from = self.span(target);
         self.expect(value, target_ty, Some(from));
-        // Afterwards it holds what was assigned.
         if let Some(assigned) = &assigned {
             self.forget(|key| key.within(assigned));
         }

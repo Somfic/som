@@ -16,10 +16,9 @@ pub(super) struct PendingCall {
     call: Id<Expr>,
     name: String,
     args: Vec<Id<Expr>>,
-    /// The arguments' types.
     found: Vec<TypeId>,
-    /// The functions that still fit: each one's definition, function, signature (its type
-    /// parameters fresh variables) and those variables.
+    /// The functions still fitting: each one's definition, function, signature with fresh
+    /// variables for its type parameters, and those variables.
     fitting: Vec<(DefId, Id<Func>, Signature, Vec<TypeId>)>,
     /// The call's type, until it's decided.
     result: TypeId,
@@ -62,7 +61,6 @@ impl Checker<'_> {
                 self.check_args(id, &callee.to_string(), func, &sig.params, args);
                 sig.ret
             }
-            // `Shape::Circle(1.0)`
             Some(DefKind::Variant { .. }) => {
                 let def = self.names.expr(id).expect("matched above");
                 let (ty, s, index, fields) = self.variant_value(def);
@@ -250,7 +248,6 @@ impl Checker<'_> {
             .all(|(&p, &a)| self.u.could_fit(p, a) || (converting && self.could_convert(p, a)))
     }
 
-    /// Whether `ty` has a type in it that isn't decided yet.
     pub(super) fn has_unknowns(&self, ty: TypeId) -> bool {
         let ty = self.u.shallow(ty);
         match self.u.get(ty) {
@@ -348,8 +345,7 @@ impl Checker<'_> {
         }
     }
 
-    /// Records that `call` calls `func` (`def`), with signature `sig` and type arguments
-    /// `type_args`, and checks its arguments, of types `found`, against its parameters.
+    /// Records that `call` calls `func` (`def`) and checks its arguments, of types `found`.
     #[allow(clippy::too_many_arguments)]
     fn finish_call(
         &mut self,
@@ -600,8 +596,8 @@ impl Checker<'_> {
         }
     }
 
-    /// `x.name()`, the call `call` of `method` given nothing: from the name to the `)`,
-    /// what a property goes in place of. `None` when it's given something.
+    /// The span from `method`'s name to the `)` of a call given nothing, which a property
+    /// goes in place of. `None` when it's given something.
     pub(super) fn bare_call(
         &self,
         call: Id<Expr>,

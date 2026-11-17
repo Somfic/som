@@ -1,6 +1,5 @@
-//! Traits: which implementation a type has, and what its associated types are. Shared by the
-//! type checker, which has inference variables to look through, and lowering, which works on
-//! concrete types.
+//! Shared by the type checker, which has inference variables to look through, and lowering,
+//! which works on concrete types.
 
 use som_ast::{Func, Id};
 use som_lang::LangTrait;
@@ -8,27 +7,23 @@ use som_resolve::DefId;
 
 use crate::ty::{Ty, TypeId, TypeTable};
 
-/// An `impl` block, as the type checker knows it. Indexed like `Names::impls`.
+/// Indexed like `Names::impls`.
 #[derive(Clone, Debug)]
 pub struct ImplInfo {
-    /// The trait it implements, if it does.
     pub trait_: Option<DefId>,
-    /// Its parameters, which `target` and `types` are written in terms of (`Ty::Param` of
-    /// each).
+    /// What `target` and `types` are written in terms of, as `Ty::Param`s.
     pub params: Vec<DefId>,
-    /// What it's for: `ListIter<T>`. `None` if that didn't resolve.
+    /// `None` if it didn't resolve.
     pub target: Option<TypeId>,
-    /// The trait's type arguments: `[T; N]` in `impl<T, N: usize> From<[T; N]> for List<T>`.
     pub trait_args: Vec<TypeId>,
-    /// What the trait's associated types are for `target`, in the trait's order.
+    /// For `target`, in the trait's order.
     pub types: Vec<Option<TypeId>>,
-    /// The associated types as written, in the order written.
+    /// As written, in the order written.
     pub written_types: Vec<TypeId>,
     pub methods: Vec<Id<Func>>,
 }
 
 impl ImplInfo {
-    /// Its parameters standing for `args`.
     pub(crate) fn subst(&self, args: &[TypeId]) -> Vec<(DefId, TypeId)> {
         self.params
             .iter()
@@ -38,9 +33,8 @@ impl ImplInfo {
     }
 }
 
-/// Whether `ty` is what `pattern`, written in terms of `params`, describes: `List<i32>` is
-/// `List<T>`, with `T` bound to `i32` in `bound`. `resolve` looks through inference
-/// variables; one that's still unknown matches nothing but itself.
+/// `List<i32>` matches `List<T>`, binding `T` to `i32` in `bound`. `resolve` looks through
+/// inference variables; one still unknown matches nothing but itself.
 pub fn match_type(
     table: &TypeTable,
     pattern: TypeId,
@@ -68,7 +62,6 @@ pub fn match_type(
     }
 }
 
-/// Whether `a` and `b` are the same type, looking through inference variables.
 fn same(table: &TypeTable, a: TypeId, b: TypeId, resolve: &dyn Fn(TypeId) -> TypeId) -> bool {
     let (a, b) = (resolve(a), resolve(b));
     a == b
@@ -78,9 +71,8 @@ fn same(table: &TypeTable, a: TypeId, b: TypeId, resolve: &dyn Fn(TypeId) -> Typ
             .is_some_and(|pairs| pairs.into_iter().all(|(x, y)| same(table, x, y, resolve)))
 }
 
-/// The implementation of trait `trait_` for `ty`, among `impls`: its index, and what each of
-/// its parameters is for `ty` (the error type if `ty` doesn't say). With `trait_args`, the
-/// trait's type arguments have to be those too: `From<[i32; 3]>`, not any `From`.
+/// Its index, and each of its parameters for `ty` (the error type if `ty` doesn't say). With
+/// `trait_args`, only an impl for those: `From<[i32; 3]>`, not any `From`.
 pub fn find_impl(
     impls: &[ImplInfo],
     table: &TypeTable,
@@ -106,7 +98,6 @@ pub fn find_impl(
     })
 }
 
-/// `ty` with each type parameter in `subst` replaced by what it stands for.
 pub fn substitute(table: &mut TypeTable, ty: TypeId, subst: &[(DefId, TypeId)]) -> TypeId {
     match table.get(ty).clone() {
         Ty::Param(def) => substituted(subst, def).unwrap_or(ty),
@@ -118,13 +109,11 @@ pub fn substitute(table: &mut TypeTable, ty: TypeId, subst: &[(DefId, TypeId)]) 
     }
 }
 
-/// What type parameter `def` stands for in `subst`.
 pub(crate) fn substituted(subst: &[(DefId, TypeId)], def: DefId) -> Option<TypeId> {
     subst.iter().find(|(d, _)| *d == def).map(|&(_, ty)| ty)
 }
 
-/// `ty` with every associated type of a known type worked out through its implementation:
-/// `ListIter<i32>::Item` is `&i32`. For concrete types, as lowering has them.
+/// For concrete types, as lowering has them: `ListIter<i32>::Item` is `&i32`.
 pub fn resolve_assoc(table: &mut TypeTable, impls: &[ImplInfo], ty: TypeId) -> TypeId {
     let t = table.get(ty).clone();
     if t.children().is_empty() {
@@ -176,7 +165,6 @@ pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
     }
 }
 
-/// The built-in type `ty` is, as it's written: `i32`, `bool`, `str`.
 pub fn primitive_of(ty: &Ty) -> Option<som_ast::Primitive> {
     use crate::ty::{FloatTy, IntTy};
     use som_ast::Primitive as P;
