@@ -6,6 +6,7 @@ mod builder;
 mod builtins;
 mod call;
 mod drops;
+mod elaborate;
 mod expr;
 mod failure;
 mod instances;
