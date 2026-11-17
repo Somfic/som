@@ -229,7 +229,6 @@ impl Checker<'_> {
         args: &[Id<Expr>],
         as_prop: bool,
     ) -> Option<TypeId> {
-        let error = self.u.table.error;
         // `[1, 2, 3].len()`: a collection nothing else decides is an array, and a string a `str`.
         match self.u.var_kind(receiver_ty) {
             Some(VarKind::Collection { element, len }) => {
@@ -255,6 +254,37 @@ impl Checker<'_> {
             _ => return None,
         };
         let is_text = *self.u.get(array) == Ty::Str;
+        let kind = match self.array_method_kind(call, array, is_text, method, args, as_prop) {
+            Ok(kind) => kind,
+            Err(ty) => return Some(ty),
+        };
+        self.records.array_methods.insert(call, kind);
+
+        self.array_method_args(kind, args, element);
+        self.check_array_changeable(kind, receiver, array, through, is_slice);
+        if kind == ArrayMethod::Get && !self.is_copy(element) {
+            self.errors.push(TypeError::NotCopyable {
+                ty: self.describe(element),
+                span: method.span.clone(),
+                repeat: false,
+            });
+        }
+
+        Some(self.array_method_type(kind, element, is_text))
+    }
+
+    /// Which of the array methods `method` calls, if it's one `array` has, called as it
+    /// should be: reported if not, `Err` with the call's type.
+    fn array_method_kind(
+        &mut self,
+        call: Id<Expr>,
+        array: TypeId,
+        is_text: bool,
+        method: &som_ast::Ident,
+        args: &[Id<Expr>],
+        as_prop: bool,
+    ) -> Result<ArrayMethod, TypeId> {
+        let error = self.u.table.error;
         // `bytes` is text's own.
         let kind = ArrayMethod::from_name(&method.name).filter(|kind| is_text || !kind.text_only());
         let Some(kind) = kind else {
@@ -270,7 +300,7 @@ impl Checker<'_> {
                 bare_call: self.bare_call(call, method, args),
             });
             self.infer_all(args);
-            return Some(error);
+            return Err(error);
         };
         // `len` is read as a property, `items.len`.
         if kind.is_prop() && !as_prop {
@@ -283,7 +313,7 @@ impl Checker<'_> {
                     .then(|| method.span.after().merge(&self.span(call).after())),
             });
             self.infer_all(args);
-            return Some(error);
+            return Err(error);
         }
         if args.len() != kind.arity() {
             self.errors.push(TypeError::WrongArgCount {
@@ -294,10 +324,12 @@ impl Checker<'_> {
                 span: self.span(call),
             });
             self.infer_all(args);
-            return Some(error);
+            return Err(error);
         }
-        self.records.array_methods.insert(call, kind);
+        Ok(kind)
+    }
 
+    fn array_method_args(&mut self, kind: ArrayMethod, args: &[Id<Expr>], element: TypeId) {
         // A range of any integer type, or any integer, says which elements.
         if matches!(kind, ArrayMethod::Slice | ArrayMethod::SliceMut) {
             let int = self.u.fresh(VarKind::Int);
@@ -319,38 +351,45 @@ impl Checker<'_> {
         if kind == ArrayMethod::Set {
             self.expect(args[1], element, None);
         }
-        // Changing an element changes the array: it has to be changeable, or behind a `&mut`.
-        if matches!(
+    }
+
+    /// Changing an element changes the array: it has to be changeable, or behind a `&mut`.
+    fn check_array_changeable(
+        &mut self,
+        kind: ArrayMethod,
+        receiver: Id<Expr>,
+        array: TypeId,
+        through: Option<bool>,
+        is_slice: bool,
+    ) {
+        if !matches!(
             kind,
             ArrayMethod::Set | ArrayMethod::GetMut | ArrayMethod::SliceMut
         ) {
-            let borrow = kind != ArrayMethod::Set;
-            match through {
-                Some(true) => {}
-                Some(false) if *self.u.get(array) == Ty::Str => {
-                    self.errors.push(TypeError::ReadOnlyStr {
-                        span: self.span(receiver),
-                    })
-                }
-                Some(false) if is_slice => self.errors.push(TypeError::ReadOnlySlice {
+            return;
+        }
+        let borrow = kind != ArrayMethod::Set;
+        match through {
+            Some(true) => {}
+            Some(false) if *self.u.get(array) == Ty::Str => {
+                self.errors.push(TypeError::ReadOnlyStr {
                     span: self.span(receiver),
-                }),
-                Some(false) => self.errors.push(TypeError::BehindSharedReference {
-                    span: self.span(receiver),
-                    borrow,
-                }),
-                None => self.check_mutable(receiver, borrow),
+                })
             }
+            Some(false) if is_slice => self.errors.push(TypeError::ReadOnlySlice {
+                span: self.span(receiver),
+            }),
+            Some(false) => self.errors.push(TypeError::BehindSharedReference {
+                span: self.span(receiver),
+                borrow,
+            }),
+            None => self.check_mutable(receiver, borrow),
         }
-        if kind == ArrayMethod::Get && !self.is_copy(element) {
-            self.errors.push(TypeError::NotCopyable {
-                ty: self.describe(element),
-                span: method.span.clone(),
-                repeat: false,
-            });
-        }
+    }
 
-        Some(match kind {
+    /// What array method `kind` gives, on elements of type `element`.
+    fn array_method_type(&mut self, kind: ArrayMethod, element: TypeId, is_text: bool) -> TypeId {
+        match kind {
             // The length is a constant, usable as any integer type.
             ArrayMethod::Len => self.u.fresh(VarKind::Int),
             ArrayMethod::Get => self.u.intern(Ty::Optional(element)),
@@ -382,7 +421,7 @@ impl Checker<'_> {
                     to: bytes,
                 })
             }
-        })
+        }
     }
 
     /// A method call `receiver.name(args)` where several methods have that name: the one
