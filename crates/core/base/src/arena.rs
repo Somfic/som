@@ -6,7 +6,6 @@ use std::ops::{Index, IndexMut};
 /// Items stored by id. Removing one leaves its slot empty, so every other id stays valid.
 pub struct Arena<T> {
     items: Vec<Option<T>>,
-    /// How many of `items` are `Some`.
     live: usize,
 }
 
@@ -15,7 +14,7 @@ pub struct Id<T> {
     pub id: usize,
 }
 
-/// How the ids of an item type are written: MIR locals as `_3`, blocks as `bb3`.
+// MIR locals as `_3`, blocks as `bb3`.
 pub trait IdPrefix {
     const PREFIX: &'static str;
 }
@@ -95,7 +94,6 @@ impl<T> Arena<T> {
         id
     }
 
-    /// The item with `id`, or `None` if it was removed.
     pub fn get(&self, id: Id<T>) -> Option<&T> {
         self.items.get(id.id)?.as_ref()
     }
@@ -104,14 +102,13 @@ impl<T> Arena<T> {
         self.items.get_mut(id.id)?.as_mut()
     }
 
-    /// Removes the item with `id`. Its id isn't reused.
+    // The id isn't reused.
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         let item = self.items.get_mut(id.id)?.take()?;
         self.live -= 1;
         Some(item)
     }
 
-    /// Keeps only the items `keep` returns true for.
     pub fn retain(&mut self, mut keep: impl FnMut(Id<T>, &T) -> bool) {
         for (i, slot) in self.items.iter_mut().enumerate() {
             if slot.as_ref().is_some_and(|item| !keep(Id::new(i), item)) {
@@ -136,7 +133,6 @@ impl<T> Arena<T> {
             .filter_map(|(i, item)| Some((Id::new(i), item.as_ref()?)))
     }
 
-    /// The number of items, not counting removed ones.
     pub fn len(&self) -> usize {
         self.live
     }
@@ -145,8 +141,7 @@ impl<T> Arena<T> {
         self.live == 0
     }
 
-    /// One past the highest id handed out, counting removed items: the length for a
-    /// `Vec` indexed by id.
+    // Counting removed items: the length for a `Vec` indexed by id.
     pub fn slots(&self) -> usize {
         self.items.len()
     }

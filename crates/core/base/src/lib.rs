@@ -1,5 +1,3 @@
-//! Infrastructure shared by every part of the compiler.
-
 pub mod arena;
 pub mod diagnostics;
 pub mod foreign;

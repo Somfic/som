@@ -16,26 +16,22 @@ pub use text::{closest_match, edit_distance, pascal_case, snake_case, strip_ansi
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
-    /// Raw lines of output from elsewhere, like a C compiler's, shown as they are.
+    /// Lines from elsewhere, like a C compiler's output, shown as they are.
     pub trace: Vec<String>,
     pub message: Message,
     pub hints: Vec<Message>,
     pub labels: Vec<Label>,
-    /// Changes that would resolve it, for an editor to offer.
     pub fixes: Vec<Fix>,
 }
 
-/// A change to the source that resolves a diagnostic: `init_window` for `init_windw`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fix {
-    /// What it does: "change to `init_window`".
     pub title: Message,
-    /// Text to put in place of each span; an empty span inserts.
+    /// An empty span inserts.
     pub edits: Vec<(Span, String)>,
 }
 
 impl Fix {
-    /// Replaces `span` with `text`, titled "change to `text`".
     pub fn change_to(span: Span, text: impl Into<String>) -> Fix {
         let text = text.into();
         Fix::replace(
@@ -45,7 +41,6 @@ impl Fix {
         )
     }
 
-    /// Replaces what `span` covers with `text`.
     pub fn replace(title: impl Into<Message>, span: Span, text: impl Into<String>) -> Fix {
         Fix {
             title: title.into(),
@@ -53,7 +48,6 @@ impl Fix {
         }
     }
 
-    /// Adds a line at the top of `source`'s file: `use std;`.
     pub fn add_line(title: impl Into<Message>, source: Arc<Source>, line: &str) -> Fix {
         Fix {
             title: title.into(),
@@ -86,7 +80,6 @@ impl Diagnostic {
         Self::new(Severity::Hint, message)
     }
 
-    /// Something that went well, labelled with what happened: `built: example/example`.
     pub fn success(what: &'static str, message: impl Into<Message>) -> Self {
         Self::new(Severity::Success(what), message)
     }
@@ -121,9 +114,9 @@ pub enum Severity {
     Error,
     Warning,
     Note,
-    /// Something that could be better, though nothing's wrong: `fib(20)` could be `@fib(20)`.
+    /// Nothing's wrong, but it could be better: `fib(20)` could be `@fib(20)`.
     Hint,
-    /// The happy path, labelled with what happened, like `wrote` or `built`.
+    /// Labelled with what happened, like `wrote` or `built`.
     Success(&'static str),
 }
 

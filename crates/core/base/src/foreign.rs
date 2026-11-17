@@ -1,17 +1,10 @@
-//! Other languages' syntax, and what som writes instead.
-//!
-//! Someone coming from Python, Java or Lua writes what they know: `def`, `null`, `elif`,
-//! `int x;`. These tables say, for each such word, what som writes and where it's from, so
-//! every pass reports it the same way: what som writes, and a hint naming the language.
-//!
-//! Only the knowledge lives here. Recognising a construct in context (a `def` followed by a
-//! name, a `then … end` body) is the parser's, or the resolver's, job; each asks the table
-//! for the word it found.
+//! Other languages' syntax, and what som writes instead, so every pass reports a habit the
+//! same way. Recognising a construct in context is the parser's or the resolver's job; each
+//! asks a table for the word it found.
 
 use crate::message::{Message, code};
 use crate::msg;
 
-/// A language whose habits som recognises.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Lang {
     Python,
@@ -59,8 +52,7 @@ impl Lang {
 
 use Lang::*;
 
-/// A word, or a bit of syntax, from other languages: `written`, which som writes as `som`
-/// (empty when som writes nothing in its place: `static`, `pass`).
+/// `som` is empty when som writes nothing in its place: `static`, `pass`.
 #[derive(Debug)]
 pub struct Foreign {
     pub written: &'static str,
@@ -69,7 +61,6 @@ pub struct Foreign {
 }
 
 impl Foreign {
-    /// "`elif` is how Python writes it", or "… how Java, C# and C++ write it".
     pub fn hint(&self) -> Message {
         let verb = if self.from.len() == 1 {
             "writes"
@@ -83,7 +74,6 @@ impl Foreign {
     }
 }
 
-/// `Python`, `Java and C#`, `Java, C# and C++`.
 fn languages(from: &[Lang]) -> String {
     let names: Vec<&str> = from.iter().map(|l| l.name()).collect();
     match names.as_slice() {
@@ -97,12 +87,15 @@ const fn f(written: &'static str, som: &'static str, from: &'static [Lang]) -> F
     Foreign { written, som, from }
 }
 
-fn find(table: &'static [Foreign], word: &str) -> Option<&'static Foreign> {
-    table.iter().find(|f| f.written == word)
+pub struct Table(&'static [Foreign]);
+
+impl Table {
+    pub fn find(&self, written: &str) -> Option<&'static Foreign> {
+        self.0.iter().find(|f| f.written == written)
+    }
 }
 
-/// Declaring a variable: `const name = …`. `var` is mutable where it's from.
-pub static LET: &[Foreign] = &[
+pub static LET: Table = Table(&[
     f("const", "let", &[JavaScript, TypeScript, Cpp]),
     f(
         "var",
@@ -113,37 +106,33 @@ pub static LET: &[Foreign] = &[
     f("auto", "let", &[C, Cpp]),
     f("set", "let", &[]),
     f("local", "let mut", &[Lua]),
-];
+]);
 
-/// Declaring a constant, outside a function: `const MAX = 10;`.
-pub static CONST: &[Foreign] = &[
+pub static CONST: Table = Table(&[
     f(
         "const",
         "@const",
         &[Rust, Zig, C, Cpp, JavaScript, TypeScript],
     ),
     f("constexpr", "@const", &[Cpp]),
-];
+]);
 
-/// Declaring a function: `def area(…)`.
-pub static FN: &[Foreign] = &[
+pub static FN: Table = Table(&[
     f("def", "fn", &[Python, Ruby, Scala]),
     f("function", "fn", &[JavaScript, TypeScript, Lua, Php]),
     f("func", "fn", &[Go, Swift]),
     f("fun", "fn", &[Kotlin]),
     f("method", "fn", &[]),
     f("void", "fn", &[C, Cpp, Java, CSharp]),
-];
+]);
 
-/// Declaring a struct: `class Point`.
-pub static STRUCT: &[Foreign] = &[f(
+pub static STRUCT: Table = Table(&[f(
     "class",
     "struct",
     &[Java, CSharp, Cpp, Python, JavaScript, Kotlin, Swift],
-)];
+)]);
 
-/// Modifiers before an item or field: `public fn`. Empty `som`: som has nothing in its place.
-pub static MODIFIER: &[Foreign] = &[
+pub static MODIFIER: Table = Table(&[
     f(
         "public",
         "pub",
@@ -164,14 +153,11 @@ pub static MODIFIER: &[Foreign] = &[
         "",
         &[Java, CSharp, C, Cpp, TypeScript, Swift, Php],
     ),
-];
+]);
 
-/// After `let`: `let mutable total`.
-pub static MUT: &[Foreign] = &[f("mutable", "mut", &[Fsharp])];
+pub static MUT: Table = Table(&[f("mutable", "mut", &[Fsharp])]);
 
-/// Values: `null` for `none`. (`this` for `self` only makes sense where there's a `self`,
-/// so it's [`SELF`], apart.)
-pub static VALUE: &[Foreign] = &[
+pub static VALUE: Table = Table(&[
     f(
         "null",
         "none",
@@ -186,17 +172,17 @@ pub static VALUE: &[Foreign] = &[
     f("False", "false", &[Python]),
     f("TRUE", "true", &[C]),
     f("FALSE", "false", &[C]),
-];
+]);
 
-/// The value a method's called on.
-pub static SELF: &[Foreign] = &[f(
+// Apart from `VALUE`: `this` only means something where there's a `self`.
+pub static SELF: Table = Table(&[f(
     "this",
     "self",
     &[Java, CSharp, Cpp, JavaScript, TypeScript, Kotlin],
-)];
+)]);
 
-/// Types: `int` for `i32`. Empty `som`: there's no one som type for it, so no fix.
-pub static TYPE: &[Foreign] = &[
+// An empty `som`: there's no one som type for it, so no fix.
+pub static TYPE: Table = Table(&[
     f("int", "i32", &[C, Cpp, Java, CSharp, Go]),
     f("long", "i64", &[C, Cpp, Java, CSharp]),
     f("short", "i16", &[C, Cpp, Java, CSharp]),
@@ -228,17 +214,15 @@ pub static TYPE: &[Foreign] = &[
     f("HashMap", "Map", &[Java]),
     f("Dictionary", "Map", &[CSharp]),
     f("dict", "Map", &[Python]),
-];
+]);
 
-/// `elif c:`, `elseif c then`: som's `else if`.
-pub static ELSE_IF: &[Foreign] = &[
+pub static ELSE_IF: Table = Table(&[
     f("elif", "else if", &[Python]),
     f("elsif", "else if", &[Ruby]),
     f("elseif", "else if", &[Lua, Php]),
-];
+]);
 
-/// Operators written as words, or as other symbols: `not x`, `a && b`, `a === b`.
-pub static OPERATOR: &[Foreign] = &[
+pub static OPERATOR: Table = Table(&[
     f("not", "!", &[Python]),
     f("and", "&&", &[Python, Lua, Ruby]),
     f("or", "||", &[Python, Lua, Ruby]),
@@ -248,10 +232,9 @@ pub static OPERATOR: &[Foreign] = &[
     f(":=", "let", &[Go]),
     f("++", "x = x + 1", &[C, Cpp, Java, CSharp, JavaScript, Go]),
     f("--", "x = x - 1", &[C, Cpp, Java, CSharp, JavaScript, Go]),
-];
+]);
 
-/// Members other languages give a collection or text: `xs.length`, `xs.size()`.
-pub static MEMBER: &[Foreign] = &[
+pub static MEMBER: Table = Table(&[
     f("length", "len", &[JavaScript, Java, TypeScript]),
     f("size", "len", &[Java, Cpp, Kotlin, Scala]),
     f("count", "len", &[Swift]),
@@ -260,33 +243,28 @@ pub static MEMBER: &[Foreign] = &[
     f("append", "push", &[Python, Go, Swift]),
     f("add", "push", &[Java, CSharp, Kotlin]),
     f("push_back", "push", &[Cpp]),
-];
+]);
 
-/// The length as a function: `len(xs)`.
-pub static LEN: &[Foreign] = &[f("len", "len", &[Python, Go])];
+pub static LEN: Table = Table(&[f("len", "len", &[Python, Go])]);
 
-/// Printing a line: `console.log(…)`. Written as the path called.
-pub static PRINT: &[Foreign] = &[
+pub static PRINT: Table = Table(&[
     f("console.log", "println", &[JavaScript, TypeScript]),
     f("System.out.println", "println", &[Java]),
     f("Console.WriteLine", "println", &[CSharp]),
     f("fmt.Println", "println", &[Go]),
     f("puts", "println", &[Ruby, C]),
-];
+]);
 
-/// Comments: `# note`, and `-- note` on a line of its own.
-pub static COMMENT: &[Foreign] = &[f("#", "//", &[Python, Ruby]), f("--", "//", &[Lua])];
+pub static COMMENT: Table = Table(&[f("#", "//", &[Python, Ruby]), f("--", "//", &[Lua])]);
 
-/// Bodies written without braces, and the words around them.
-pub static BLOCK: &[Foreign] = &[
+pub static BLOCK: Table = Table(&[
     f("then", "{", &[Lua, Ruby]),
     f("do", "{", &[Lua, Ruby]),
     f("end", "}", &[Lua, Ruby]),
     f(":", "{", &[Python]),
-];
+]);
 
-/// Statements with no som counterpart of their own.
-pub static STATEMENT: &[Foreign] = &[
+pub static STATEMENT: Table = Table(&[
     f("pass", "", &[Python]),
     f(
         "switch",
@@ -294,77 +272,38 @@ pub static STATEMENT: &[Foreign] = &[
         &[C, Cpp, Java, CSharp, JavaScript, Go, Swift],
     ),
     f("new", "", &[Java, CSharp, Cpp, JavaScript, TypeScript, Php]),
-];
+]);
 
-/// Anonymous functions, which som doesn't have: `lambda x: …`, `(a, b) => …`.
-pub static LAMBDA: &[Foreign] = &[
+pub static LAMBDA: Table = Table(&[
     f("lambda", "fn", &[Python]),
     f("=>", "fn", &[JavaScript, TypeScript, CSharp]),
     f("->", "fn", &[Fsharp, Kotlin, Java]),
     f("function", "fn", &[JavaScript, Lua, Php]),
     f("func", "fn", &[Go, Swift]),
-];
+]);
 
-/// Looping over numbers: `range(n)`.
-pub static RANGE: &[Foreign] = &[f("range", "..", &[Python])];
+pub static RANGE: Table = Table(&[f("range", "..", &[Python])]);
 
-/// Names other languages give a constructor: `List::new()` where `List` has `empty`.
 pub static CONSTRUCTOR: &[&str] = &["new", "create", "init", "make", "default", "construct"];
 
-pub fn const_word(word: &str) -> Option<&'static Foreign> {
-    find(CONST, word)
-}
-pub fn let_word(word: &str) -> Option<&'static Foreign> {
-    find(LET, word)
-}
-pub fn fn_word(word: &str) -> Option<&'static Foreign> {
-    find(FN, word)
-}
-pub fn struct_word(word: &str) -> Option<&'static Foreign> {
-    find(STRUCT, word)
-}
-pub fn modifier(word: &str) -> Option<&'static Foreign> {
-    find(MODIFIER, word)
-}
-pub fn mut_word(word: &str) -> Option<&'static Foreign> {
-    find(MUT, word)
-}
 pub fn value(word: &str) -> Option<&'static Foreign> {
-    find(VALUE, word)
+    VALUE.find(word)
 }
 pub fn self_word(word: &str) -> Option<&'static Foreign> {
-    find(SELF, word)
+    SELF.find(word)
 }
 pub fn type_name(word: &str) -> Option<&'static Foreign> {
-    find(TYPE, word)
-}
-pub fn else_if(word: &str) -> Option<&'static Foreign> {
-    find(ELSE_IF, word)
-}
-pub fn operator(written: &str) -> Option<&'static Foreign> {
-    find(OPERATOR, written)
+    TYPE.find(word)
 }
 pub fn print(path: &str) -> Option<&'static Foreign> {
-    find(PRINT, path)
-}
-pub fn comment(written: &str) -> Option<&'static Foreign> {
-    find(COMMENT, written)
-}
-pub fn block(word: &str) -> Option<&'static Foreign> {
-    find(BLOCK, word)
-}
-pub fn statement(word: &str) -> Option<&'static Foreign> {
-    find(STATEMENT, word)
-}
-pub fn lambda(written: &str) -> Option<&'static Foreign> {
-    find(LAMBDA, written)
+    PRINT.find(path)
 }
 pub fn range(word: &str) -> Option<&'static Foreign> {
-    find(RANGE, word)
+    RANGE.find(word)
 }
 pub fn member(name: &str) -> Option<&'static Foreign> {
-    find(MEMBER, name)
+    MEMBER.find(name)
 }
 pub fn len_function(name: &str) -> Option<&'static Foreign> {
-    find(LEN, name)
+    LEN.find(name)
 }

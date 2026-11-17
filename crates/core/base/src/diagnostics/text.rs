@@ -1,9 +1,7 @@
-/// How many single-character edits turn `a` into `b`: inserting, deleting or replacing
-/// a character, or swapping two neighbouring ones (a common typo: `deom` for `demo`).
+/// Swapping two neighbouring characters counts as one edit: a common typo, `deom`.
 pub fn edit_distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
-    // d[i][j]: the distance between the first i characters of a and the first j of b.
     let mut d = vec![vec![0usize; b.len() + 1]; a.len() + 1];
     for (i, row) in d.iter_mut().enumerate() {
         row[0] = i;
@@ -25,8 +23,7 @@ pub fn edit_distance(a: &str, b: &str) -> usize {
     d[a.len()][b.len()]
 }
 
-/// `InitWindow` → `init_window`, `GetFPS` → `get_fps`, `Vector2Add` → `vector2_add`,
-/// `DrawText3D` → `draw_text3d`. Names already in snake_case stay as they are.
+/// `GetFPS` → `get_fps`, `Vector2Add` → `vector2_add`, `DrawText3D` → `draw_text3d`.
 pub fn snake_case(name: &str) -> String {
     let chars: Vec<char> = name.chars().collect();
     let mut out = String::with_capacity(name.len() + 4);
@@ -47,9 +44,7 @@ pub fn snake_case(name: &str) -> String {
     out
 }
 
-/// `ma_resampler_config` → `MaResamplerConfig`, `Color` → `Color`,
-/// `SDL_Rect` → `SDLRect`: each word's first letter capitalised and the underscores
-/// dropped. Names already in PascalCase stay as they are.
+/// `ma_resampler_config` → `MaResamplerConfig`, `SDL_Rect` → `SDLRect`.
 pub fn pascal_case(name: &str) -> String {
     let words = name.split('_').filter(|w| !w.is_empty());
     let out: String = words
@@ -66,10 +61,8 @@ pub fn pascal_case(name: &str) -> String {
     }
 }
 
-/// Find the closest match from a list of candidates using edit distance.
-/// Returns `None` if no candidate is close enough: within `max_dist` edits, and within a
-/// third of `target`'s length (at least one), so a short name doesn't match one sharing only
-/// half its letters (`null` isn't a typo of `nums`).
+/// Within a third of `target`'s length too (at least one), so a short name doesn't match
+/// one sharing only half its letters: `null` isn't a typo of `nums`.
 pub fn closest_match<'a>(
     target: &str,
     candidates: &'a [String],
@@ -84,13 +77,12 @@ pub fn closest_match<'a>(
         .map(|(c, _)| c)
 }
 
-/// Removes terminal colour codes from `text`.
 pub fn strip_ansi(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            // Skip to the end of the escape sequence: a letter.
+            // An escape sequence ends in a letter.
             for c in chars.by_ref() {
                 if c.is_ascii_alphabetic() {
                     break;

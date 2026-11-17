@@ -1,57 +1,45 @@
 use crate::{BinOp, Id, Ident, Path};
 
-/// A type annotation as written. Resolving it to an actual type is the type checker's job.
 pub enum TypeExpr {
-    /// `()`
     Unit,
-    /// `i32`, `bool`, `str`, ...
     Primitive(Primitive),
-    /// `Point`, `geo::Point`, `Pair<i32>`
     Named {
         path: Path,
-        /// The arguments of a generic struct: `i32` in `Pair<i32>`, `64` in `Buffer<64>`.
         args: Vec<Id<TypeExpr>>,
     },
-    /// `*`, an untyped raw pointer
     Pointer,
-    /// `*T`: a raw pointer to `T`s, which som doesn't check: it's what `List` is built on.
+    /// `*T`: unchecked; what `List` is built on.
     PointerTo(Id<TypeExpr>),
-    /// `&T`, `&mut T`, `&'a T`
     Reference {
         mutable: bool,
         lifetime: Option<Ident>,
         to: Id<TypeExpr>,
     },
-    /// `T?`: a `T`, or `none`.
     Optional(Id<TypeExpr>),
-    /// `#T`: a `T` shared by its copies, counted. The standard library's `Rc<T>`.
+    /// `#T`: the standard library's `Rc<T>`.
     Shared(Id<TypeExpr>),
-    /// `[T; N]`: `N` values of type `T`. `N` is a number or a value parameter.
     Array {
         element: Id<TypeExpr>,
         len: Id<TypeExpr>,
     },
-    /// A number written where a type argument goes: `64` in `Buffer<64>` or `[u8; 64]`.
+    /// `64` in `Buffer<64>` or `[u8; 64]`.
     Int(u128),
-    /// `true` or `false` written where a type argument goes: `Socket<true>`.
+    /// `true` in `Socket<true>`.
     Bool(bool),
-    /// Arithmetic on values where a type argument goes: `A + B` in `[T; A + B]`. `op` is
-    /// `+` or `*`.
+    /// `A + B` in `[T; A + B]`. `op` is `+` or `*`.
     Binary {
         op: BinOp,
         lhs: Id<TypeExpr>,
         rhs: Id<TypeExpr>,
     },
-    /// `&[T]` or `&mut [T]`: a view of some number of values of type `T` that live elsewhere,
-    /// known at run time. It borrows them; `mut` can change them.
+    /// `&[T]` or `&mut [T]`.
     Slice {
         element: Id<TypeExpr>,
         mutable: bool,
     },
-    /// `[T]`, only what an `impl` is for: a slice's elements, which `&self` lends as the
-    /// slice. `impl Index<usize> for [T]`.
+    /// `[T]`, only what an `impl` is for: `impl Index<usize> for [T]`, whose `&self` is the
+    /// slice.
     Elements(Id<TypeExpr>),
-    /// `fn(A, B) -> C`
     Fn {
         params: Vec<Id<TypeExpr>>,
         returns: Option<Id<TypeExpr>>,

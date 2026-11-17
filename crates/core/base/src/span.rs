@@ -1,14 +1,6 @@
 use std::{fmt::Debug, ops::Range, path::PathBuf, sync::Arc};
 
-/// Create raw source with the caller's file path as context for resolving relative paths.
-///
-/// # Example
-/// ```ignore
-/// let source = source_raw!(r#"
-///     extern "my_lib.so" { fn foo(); }
-///     fn main() { foo() }
-/// "#);
-/// ```
+/// Raw source with the caller's file as its path, so relative paths in it resolve.
 #[macro_export]
 macro_rules! source_raw {
     ($source:expr) => {
@@ -52,12 +44,9 @@ impl Source {
     }
 }
 
-/// Represents a position in source code (line and column)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
-    /// Line number (1-indexed)
     pub line: usize,
-    /// Column number (1-indexed)
     pub col: usize,
 }
 
@@ -67,7 +56,6 @@ impl Position {
     }
 }
 
-/// Represents a location in source code
 #[derive(Clone, PartialEq, Eq)]
 pub struct Span {
     pub start: Position,
@@ -113,12 +101,10 @@ impl Span {
         }
     }
 
-    /// Create a span from a byte range in source code
     pub fn from_range(range: Range<usize>, source: Arc<Source>) -> Self {
         let start_offset = range.start;
         let length = range.end - range.start;
 
-        // Calculate line and column for start position
         let (start_line, start_col) = Self::calculate_position(source.content(), start_offset);
         let (end_line, end_col) = Self::calculate_position(source.content(), range.end);
 
@@ -137,7 +123,6 @@ impl Span {
         }
     }
 
-    /// Calculate line and column (1-indexed) for a byte offset
     fn calculate_position(source: &str, offset: usize) -> (usize, usize) {
         let mut line = 1;
         let mut col = 1;
@@ -157,7 +142,6 @@ impl Span {
         (line, col)
     }
 
-    /// Get the line containing this span
     pub fn get_line(&self) -> Option<Arc<str>> {
         self.source
             .content()
@@ -166,13 +150,11 @@ impl Span {
             .map(|s| s.into())
     }
 
-    /// Get the text covered by this span
     pub fn get_text(&self) -> Arc<str> {
         let end = (self.start_offset + self.length).min(self.source.content().len());
         (&self.source.content()[self.start_offset..end]).into()
     }
 
-    /// Create an empty span at the start of a source
     pub fn empty(source: Arc<Source>) -> Self {
         Span {
             start: Position { line: 1, col: 1 },
@@ -183,7 +165,6 @@ impl Span {
         }
     }
 
-    /// Merge two spans into one that covers both
     pub fn merge(&self, other: &Span) -> Span {
         let (first, second) = if self.start_offset <= other.start_offset {
             (self, other)
@@ -204,7 +185,6 @@ impl Span {
         }
     }
 
-    /// The last character of this span, such as a block's closing `}`.
     pub fn last_char(&self) -> Span {
         let end = self.start_offset + self.length;
         Span::from_range(
@@ -213,7 +193,6 @@ impl Span {
         )
     }
 
-    /// A zero-width span right before this one: where to insert in front of it.
     pub fn before(&self) -> Span {
         Span {
             start: self.start,
@@ -224,7 +203,6 @@ impl Span {
         }
     }
 
-    /// Create a zero-width span pointing right after this span
     pub fn after(&self) -> Span {
         Span {
             start: self.end,

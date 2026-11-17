@@ -4,7 +4,11 @@ use som_base::{Fix, Span, msg};
 use som_lang::Builtin;
 use som_lexer::TokenKind;
 
-use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
+use crate::report::RecoveryLevel;
+use crate::{Parser, StmtOrExpr};
+
+/// Rust's optional with a value, as in `if let Some(x) = …`.
+const RUST_SOME: &str = "Some";
 
 impl Parser<'_> {
     pub(crate) fn parse_stmt_or_expr(&mut self) -> StmtOrExpr {
@@ -17,18 +21,7 @@ impl Parser<'_> {
         // `++x`: reported, and `x` read on.
         self.eat_foreign_prefix_step();
         let stmt = match self.peek() {
-            // `use som::data;`, for the rest of the block.
-            TokenKind::Use => {
-                let start = self.current_span();
-                let Some(u) = self.parse_use() else {
-                    return StmtOrExpr::Error;
-                };
-                self.ast.modules[self.module]
-                    .block_uses
-                    .push(u.path.clone());
-                let span = self.span_from(&start);
-                Some(self.ast.stmts.alloc(Stmt::Use(u), span))
-            }
+            TokenKind::Use => self.parse_block_use(),
             TokenKind::Let => self.parse_let(),
             TokenKind::Builtin if self.at_const(0) => self.parse_local_const(),
             TokenKind::Ident if self.foreign_let().is_some() || self.go_define() => {
@@ -37,7 +30,6 @@ impl Parser<'_> {
             TokenKind::Loop => self.parse_loop(),
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),
-            // `@for i in 0..4 { … }`, `@if DEBUG { … }`: settled while compiling.
             // `@for f in Point { … }`: written out once `Point` is known.
             TokenKind::Builtin if self.at_reflected_for() => self.parse_reflected_stmt(),
             _ if self.at_builtin(Builtin::For) => self.parse_settled_for(),
@@ -45,52 +37,71 @@ impl Parser<'_> {
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Return => self.parse_return(),
-            // An `if` ending a block, each branch ending in a value, gives that value.
-            TokenKind::If => {
-                let Some(parts) = self.parse_if_parts() else {
-                    return StmtOrExpr::Error;
-                };
-                let ends_block = self.at(TokenKind::CloseBrace) || self.at_eof();
-                if ends_block && parts.gives_value() {
-                    return StmtOrExpr::Expr(self.if_expr(parts));
-                }
-                Some(self.if_stmt(parts))
-            }
-            // Like `if`, a `match` or block that starts a statement ends at its brace: no `;`
-            // needed.
-            TokenKind::Match | TokenKind::OpenBrace => {
-                let expr = match self.peek() {
-                    TokenKind::Match => self.parse_match(),
-                    _ => self.parse_block(),
-                };
-                let Some(expr) = expr else {
-                    return StmtOrExpr::Error;
-                };
-                let ends_block = self.at(TokenKind::CloseBrace) || self.at_eof();
-                if !self.eat(TokenKind::Semicolon) && ends_block {
-                    return StmtOrExpr::Expr(expr);
-                }
-                let span = self.ast.exprs.span(expr).clone();
-                Some(self.ast.stmts.alloc(Stmt::Expr(expr), span))
-            }
-            _ => {
-                let Some(expr) = self.parse_expr() else {
-                    return StmtOrExpr::Error;
-                };
-                if !self.eat(TokenKind::Semicolon) {
-                    return StmtOrExpr::Expr(expr);
-                }
-                let span = self.ast.exprs.span(expr).clone();
-                Some(self.ast.stmts.alloc(Stmt::Expr(expr), span))
-            }
+            TokenKind::If => return self.parse_if_stmt(),
+            TokenKind::Match | TokenKind::OpenBrace => return self.parse_braced_stmt(),
+            _ => return self.parse_expr_stmt(),
         };
-        match stmt {
-            Some(stmt) => StmtOrExpr::Stmt(stmt),
-            None => StmtOrExpr::Error,
-        }
+        stmt.map_or(StmtOrExpr::Error, StmtOrExpr::Stmt)
     }
 
-    /// `@const LIMIT = 10;` in a block.
+    fn ends_block(&self) -> bool {
+        self.at(TokenKind::CloseBrace) || self.at_eof()
+    }
+
+    /// `use som::data;`, for the rest of the block.
+    fn parse_block_use(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        let u = self.parse_use()?;
+        self.ast.modules[self.module]
+            .block_uses
+            .push(u.path.clone());
+        let span = self.span_from(&start);
+        Some(self.ast.stmts.alloc(Stmt::Use(u), span))
+    }
+
+    /// An `if` ending a block, each branch ending in a value, gives that value.
+    fn parse_if_stmt(&mut self) -> StmtOrExpr {
+        let Some(parts) = self.parse_if_parts() else {
+            return StmtOrExpr::Error;
+        };
+        if self.ends_block() && parts.gives_value() {
+            return StmtOrExpr::Expr(self.if_expr(parts));
+        }
+        StmtOrExpr::Stmt(self.if_stmt(parts))
+    }
+
+    /// Like `if`, a `match` or block that starts a statement ends at its brace: no `;`
+    /// needed.
+    fn parse_braced_stmt(&mut self) -> StmtOrExpr {
+        let expr = match self.peek() {
+            TokenKind::Match => self.parse_match(),
+            _ => self.parse_block(),
+        };
+        let Some(expr) = expr else {
+            return StmtOrExpr::Error;
+        };
+        let ends_block = self.ends_block();
+        if !self.eat(TokenKind::Semicolon) && ends_block {
+            return StmtOrExpr::Expr(expr);
+        }
+        StmtOrExpr::Stmt(self.expr_stmt(expr))
+    }
+
+    fn parse_expr_stmt(&mut self) -> StmtOrExpr {
+        let Some(expr) = self.parse_expr() else {
+            return StmtOrExpr::Error;
+        };
+        if !self.eat(TokenKind::Semicolon) {
+            return StmtOrExpr::Expr(expr);
+        }
+        StmtOrExpr::Stmt(self.expr_stmt(expr))
+    }
+
+    pub(crate) fn expr_stmt(&mut self, expr: Id<Expr>) -> Id<Stmt> {
+        let span = self.ast.exprs.span(expr).clone();
+        self.ast.stmts.alloc(Stmt::Expr(expr), span)
+    }
+
     fn parse_local_const(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         let c = self.parse_const()?;
@@ -115,7 +126,7 @@ impl Parser<'_> {
         // `let mutable total`: another language's `mut`.
         let mutable = self.eat_foreign_mut() || mutable;
         // `let Some(h) = hit() else { … };`: Rust's, reported.
-        if self.ident_ahead(0) == Some("Some") && self.peek_nth(1) == TokenKind::OpenParen {
+        if self.ident_ahead(0) == Some(RUST_SOME) && self.peek_nth(1) == TokenKind::OpenParen {
             return self.let_else(start);
         }
         let name = self.parse_ident("a variable name")?;
@@ -128,17 +139,15 @@ impl Parser<'_> {
                 n += 1;
             }
             if self.peek_nth(n) == TokenKind::Equals {
-                for _ in 0..=n {
-                    self.advance();
-                }
+                self.advance_by(n + 1);
                 let span = self.span_from(&start);
                 let fixed = format!("fn {}({}) =", name.name, params.join(", "));
-                self.errors.push(ParseError {
-                    message: msg!["som declares a function with ", code("fn")],
-                    hint: msg!["with parameters, this is a function, not a variable"],
-                    fix: Some(Fix::change_to(span.clone(), fixed)),
-                    span,
-                });
+                self.error(
+                    span.clone(),
+                    msg!["som declares a function with ", code("fn")],
+                    msg!["with parameters, this is a function, not a variable"],
+                    Some(Fix::change_to(span, fixed)),
+                );
                 self.in_recovery = true;
                 return None;
             }
@@ -202,7 +211,6 @@ impl Parser<'_> {
         Some(self.ast.stmts.alloc(Stmt::Break(target), span))
     }
 
-    /// `return value;` or `return;`
     fn parse_return(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::Return, "a return statement")?;
@@ -246,7 +254,6 @@ impl Parser<'_> {
         Some(self.ast.stmts.alloc(Stmt::While { condition, body }, span))
     }
 
-    /// `for name in iterable { body }`
     fn parse_for(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::For, "a for loop")?;
@@ -410,9 +417,10 @@ impl Parser<'_> {
                 fixed,
             )
         });
-        self.errors.push(ParseError {
-            message: msg!["som has no ", code("if let")],
-            hint: msg![
+        self.error(
+            span,
+            msg!["som has no ", code("if let")],
+            msg![
                 "an optional in a variable is its own check: inside ",
                 code(format!("if {n} {{ … }}")),
                 ", ",
@@ -420,8 +428,7 @@ impl Parser<'_> {
                 " is the value it holds"
             ],
             fix,
-            span,
-        });
+        );
         Some(value)
     }
 
@@ -452,9 +459,10 @@ impl Parser<'_> {
             }),
             _ => None,
         };
-        self.errors.push(ParseError {
-            message: msg!["som has no ", code("let … else")],
-            hint: msg![
+        self.error(
+            span,
+            msg!["som has no ", code("let … else")],
+            msg![
                 "an optional in a variable is its own check: after ",
                 code(format!("if !{n} {{ return …; }}")),
                 ", ",
@@ -462,16 +470,14 @@ impl Parser<'_> {
                 " is the value it holds"
             ],
             fix,
-            span,
-        });
+        );
         None
     }
 
     /// `t` or `Some(t)`: the name Rust's `if let` and `let … else` bind.
     fn bound_name(&mut self) -> Option<som_ast::Ident> {
-        if self.ident_ahead(0) == Some("Some") && self.peek_nth(1) == TokenKind::OpenParen {
-            self.advance();
-            self.advance();
+        if self.ident_ahead(0) == Some(RUST_SOME) && self.peek_nth(1) == TokenKind::OpenParen {
+            self.advance_by(2);
             let name = self.parse_ident("a name for the value")?;
             self.expect(TokenKind::CloseParen, "`)` after the name")?;
             return Some(name);
@@ -525,8 +531,7 @@ impl Parser<'_> {
     fn block_stmts(&mut self, block: BlockParts) -> Vec<Id<Stmt>> {
         let mut stmts = block.stmts;
         if let Some(value) = block.value {
-            let span = self.ast.exprs.span(value).clone();
-            let stmt = self.ast.stmts.alloc(Stmt::Expr(value), span);
+            let stmt = self.expr_stmt(value);
             self.ast.unterminated.insert(stmt);
             stmts.push(stmt);
         }
@@ -547,25 +552,24 @@ impl Parser<'_> {
     /// `before`, so parsing can't get stuck.
     pub(crate) fn keep_unterminated(
         &mut self,
-        expr: som_ast::Id<som_ast::Expr>,
+        expr: Id<Expr>,
         before: usize,
         stmts: &mut Vec<Id<Stmt>>,
     ) -> bool {
         if self.pos == before {
             return false;
         }
-        let span = self.ast.exprs.span(expr).clone();
-        stmts.push(self.ast.stmts.alloc(Stmt::Expr(expr), span));
+        let stmt = self.expr_stmt(expr);
+        stmts.push(stmt);
         true
     }
 
-    /// `{ stmt; stmt; expr }` where a trailing expression becomes an expression statement.
+    /// A trailing expression becomes an expression statement.
     fn parse_stmt_block(&mut self, what: &str) -> Option<Vec<Id<Stmt>>> {
         let block = self.parse_block_parts(what)?;
         Some(self.block_stmts(block))
     }
 
-    /// `{ stmt; stmt; value }`: the statements, and the value it ends with if it does.
     /// An `if`'s or `else`'s body: a block, or one statement without braces,
     /// `if n == 0 return 1;`, `if .keys.size == 0 @unreachable;`.
     fn parse_branch(&mut self, what: &str) -> Option<BlockParts> {
@@ -587,6 +591,7 @@ impl Parser<'_> {
         }
     }
 
+    /// `{ stmt; stmt; value }`: the statements, and the value it ends with if it does.
     pub(crate) fn parse_block_parts(&mut self, what: &str) -> Option<BlockParts> {
         // `then … end`, Python's `:`: a body as another language writes it.
         if !self.at(TokenKind::OpenBrace)
@@ -623,7 +628,6 @@ impl Parser<'_> {
     }
 }
 
-/// A block's statements, the value it ends with if it does, and where it is.
 pub(crate) struct BlockParts {
     stmts: Vec<Id<Stmt>>,
     value: Option<Id<Expr>>,
@@ -631,7 +635,6 @@ pub(crate) struct BlockParts {
 }
 
 impl BlockParts {
-    /// A block of `stmts`, ending in no value.
     pub(crate) fn new(stmts: Vec<Id<Stmt>>, span: Span) -> Self {
         BlockParts {
             stmts,
