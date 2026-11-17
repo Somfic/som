@@ -123,6 +123,7 @@ fn warnings(main: &Path) -> Vec<String> {
             Warning::Library(LibraryWarning::StructInHeader { name, imported, .. }) => {
                 format!("{} {name} as {imported}", w.kind())
             }
+            Warning::CouldBeConst(_) => w.kind(),
         })
         .collect()
 }
