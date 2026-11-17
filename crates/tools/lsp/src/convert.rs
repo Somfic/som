@@ -23,6 +23,7 @@ fn severity_to_lsp(severity: &SomSeverity) -> DiagnosticSeverity {
         SomSeverity::Error => DiagnosticSeverity::ERROR,
         SomSeverity::Warning => DiagnosticSeverity::WARNING,
         SomSeverity::Note | SomSeverity::Success(_) => DiagnosticSeverity::INFORMATION,
+        SomSeverity::Hint => DiagnosticSeverity::HINT,
     }
 }
 

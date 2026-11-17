@@ -1718,6 +1718,32 @@ impl LanguageServer for SomLanguageServer {
                 });
             }
         }
+
+        // What a call that could be worked out while compiling gives: `count_primes(100) = 25`.
+        for warning in &a.warnings {
+            let som_driver::Warning::CouldBeConst(call) = warning else {
+                continue;
+            };
+            let Some(value) = &call.value else {
+                continue;
+            };
+            if call.span.source.identifier() != file {
+                continue;
+            }
+            hints.push(InlayHint {
+                position: convert::span_to_range(&call.span).end,
+                label: InlayHintLabel::String(format!("= {value}")),
+                kind: None,
+                text_edits: None,
+                tooltip: Some(InlayHintTooltip::String(format!(
+                    "`{}` is {value} every time: `{}` works it out while compiling",
+                    call.call, call.fix
+                ))),
+                padding_left: Some(true),
+                padding_right: None,
+                data: None,
+            });
+        }
         Ok(Some(hints))
     }
 

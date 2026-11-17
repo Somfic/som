@@ -106,9 +106,15 @@ struct State<'m> {
 }
 
 impl<'m> State<'m> {
-    /// What calling `func` with `args`, each a constant, gives while compiling: `None` if it
-    /// can't be worked out, or what it gives can't be put in the program.
-    fn try_call(mir: &'m Mir, func: FuncId, args: &[Operand]) -> Option<ConstKind> {
+    /// What calling `func` with `args`, each a constant, gives while compiling, and how many
+    /// steps it took: `None` if it can't be worked out within `limit` steps, or what it gives
+    /// can't be put in the program.
+    fn try_call(
+        mir: &'m Mir,
+        func: FuncId,
+        args: &[Operand],
+        limit: u64,
+    ) -> Option<(ConstKind, u64)> {
         let mut state = State {
             mir,
             results: HashMap::new(),
@@ -119,6 +125,7 @@ impl<'m> State<'m> {
             state: &mut state,
             frames: Vec::new(),
             steps: 0,
+            limit: STEP_LIMIT,
             heap: Vec::new(),
             pinned: HashMap::new(),
         };
@@ -127,8 +134,11 @@ impl<'m> State<'m> {
             .map(|a| machine.operand(a, &span))
             .collect::<Result<Vec<_>, _>>()
             .ok()?;
+        machine.limit = limit;
         let value = machine.run_with(func, values).ok()?;
-        machine.bake(&value, mir.funcs[func].ret).ok()
+        let steps = machine.steps;
+        let kind = machine.bake(&value, mir.funcs[func].ret).ok()?;
+        Some((kind, steps))
     }
 
     /// The value of initializer `init`, working it out the first time.
@@ -148,6 +158,7 @@ impl<'m> State<'m> {
             state: self,
             frames: Vec::new(),
             steps: 0,
+            limit: STEP_LIMIT,
             heap: Vec::new(),
             pinned: HashMap::new(),
         };
@@ -374,6 +385,8 @@ struct Machine<'s, 'm> {
     state: &'s mut State<'m>,
     frames: Vec<Frame>,
     steps: u64,
+    /// The most steps it runs for: `STEP_LIMIT`, or fewer when only trying a call.
+    limit: u64,
     /// Memory allocated while running: each allocation's bytes, `None` once it's freed.
     heap: Vec<Option<Vec<Byte>>>,
     /// The allocations C has been given, each with its real buffer: see [`foreign`].
@@ -447,7 +460,7 @@ impl Machine<'_, '_> {
             let body = mir.funcs[func].body.as_ref().expect("a body");
             let block = &body.blocks[block];
             self.steps += 1;
-            if self.steps > STEP_LIMIT {
+            if self.steps > self.limit {
                 let span = match block.stmts.get(stmt) {
                     Some(s) => s.span.clone(),
                     None => block.terminator.span.clone(),

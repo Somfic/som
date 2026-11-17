@@ -92,3 +92,74 @@ fn an_editor_works_out_constants_used_in_types() {
     let analysis = analyze(&program_root(&file), &Options::default());
     assert!(analysis.errors.is_empty(), "{:?}", analysis.errors);
 }
+
+/// The hints an editor gets for calls that could be worked out while compiling.
+fn could_be_const(source: &str) -> Vec<(String, Option<String>, String)> {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("main.som");
+    std::fs::write(&file, source).unwrap();
+    let analysis = analyze(&program_root(&file), &Options::default());
+    assert!(analysis.errors.is_empty(), "{:?}", analysis.errors);
+    (analysis.warnings.iter())
+        .filter_map(|w| match w {
+            som_driver::Warning::CouldBeConst(c) => {
+                Some((c.call.clone(), c.value.clone(), c.fix.clone()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+const COUNT_PRIMES: &str = "fn count_primes(limit: i32) -> i32 {\n\
+    let mut count = 0;\n\
+    for n in 2..limit {\n\
+        let mut prime = true;\n\
+        for d in 2..n {\n\
+            if n % d == 0 {\n\
+                prime = false;\n\
+                break;\n\
+            }\n\
+        }\n\
+        if prime {\n\
+            count = count + 1;\n\
+        }\n\
+    }\n\
+    return count;\n\
+}\n";
+
+#[test]
+fn a_call_that_does_work_with_known_arguments_is_hinted() {
+    let hints = could_be_const(&format!(
+        "{COUNT_PRIMES}fn main() -> i32 {{\n    let primes = count_primes(100);\n    return primes;\n}}\n"
+    ));
+    assert_eq!(
+        hints,
+        [(
+            "count_primes(100)".to_string(),
+            Some("25".to_string()),
+            "@count_primes(100)".to_string()
+        )]
+    );
+}
+
+#[test]
+fn a_local_set_once_to_a_number_is_written_in_the_fix() {
+    let hints = could_be_const(&format!(
+        "{COUNT_PRIMES}fn main() -> i32 {{\n    let n = 100;\n    return count_primes(n);\n}}\n"
+    ));
+    assert_eq!(
+        hints,
+        [("count_primes(n)".to_string(), Some("25".to_string()), "@count_primes(100)".to_string())]
+    );
+}
+
+#[test]
+fn calls_that_change_little_or_arent_known_are_not_hinted() {
+    // Too little work; a local that changes; a parameter.
+    let hints = could_be_const(&format!(
+        "{COUNT_PRIMES}fn of(limit: i32) -> i32 = count_primes(limit);\n\
+         fn main() -> i32 {{\n    let mut n = 100;\n    n = n + 1;\n    \
+         return count_primes(5) + count_primes(n) + of(3);\n}}\n"
+    ));
+    assert_eq!(hints, []);
+}

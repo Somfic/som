@@ -132,7 +132,8 @@ impl Error {
 #[derive(Debug)]
 pub enum Warning {
     Library(LibraryWarning),
-    /// `fib(20)`, which could be worked out while compiling: `@fib(20)`.
+    /// `fib(20)`, which could be worked out while compiling: `@fib(20)`. A hint, not a
+    /// warning: nothing's wrong with it.
     CouldBeConst(som_comptime::CouldBeConst),
 }
 
@@ -162,19 +163,12 @@ impl Warning {
 fn could_be_const_diagnostic(w: &som_comptime::CouldBeConst) -> Diagnostic {
     use som_base::message::code;
     use som_base::{Fix, Label, msg};
-    // `@f(args)` for a call of a function by its name; `@const …` for anything else.
-    let plain = (w.call.split('(').next()).is_some_and(|callee| {
-        !callee.is_empty() && callee.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ':')
-    });
-    let written = match plain {
-        true => format!("@{}", w.call),
-        false => format!("@const {}", w.call),
-    };
+    let written = w.fix.clone();
     let label = match &w.value {
         Some(value) => msg!["it's ", code(value.clone()), " every time"],
         None => msg!["it gives the same every time"],
     };
-    Diagnostic::warning(msg![code(w.call.clone()), " could be worked out while compiling"])
+    Diagnostic::hint(msg![code(w.call.clone()), " could be worked out while compiling"])
         .with_label(Label::primary(w.span.clone(), label))
         .with_fix(Fix::replace(
             msg!["work it out while compiling: ", code(written.clone())],

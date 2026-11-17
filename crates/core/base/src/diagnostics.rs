@@ -232,6 +232,10 @@ impl Diagnostic {
         Self::new(Severity::Warning, message)
     }
 
+    pub fn hint(message: impl Into<Message>) -> Self {
+        Self::new(Severity::Hint, message)
+    }
+
     /// Something that went well, labelled with what happened: `built: example/example`.
     pub fn success(what: &'static str, message: impl Into<Message>) -> Self {
         Self::new(Severity::Success(what), message)
@@ -690,6 +694,8 @@ pub enum Severity {
     Error,
     Warning,
     Note,
+    /// Something that could be better, though nothing's wrong: `fib(20)` could be `@fib(20)`.
+    Hint,
     /// The happy path, labelled with what happened, like `wrote` or `built`.
     Success(&'static str),
 }
@@ -699,7 +705,7 @@ impl Severity {
         match self {
             Severity::Error => RED,
             Severity::Warning => YELLOW,
-            Severity::Note => BLUE,
+            Severity::Note | Severity::Hint => BLUE,
             Severity::Success(_) => GREEN,
         }
     }
@@ -715,6 +721,7 @@ impl Display for Severity {
                 Severity::Error => "error",
                 Severity::Warning => "warning",
                 Severity::Note => "note",
+                Severity::Hint => "hint",
                 Severity::Success(what) => what,
             }
             .truecolor(c.0, c.1, c.2)
