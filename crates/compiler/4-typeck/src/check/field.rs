@@ -5,7 +5,7 @@ use som_resolve::{DefId, DefKind};
 use super::Checker;
 use crate::ArrayMethod;
 use crate::error::TypeError;
-use crate::traits::find_impl;
+use crate::impls::find_impl;
 use crate::ty::{Ty, TypeId, Value};
 use crate::unify::VarKind;
 

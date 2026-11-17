@@ -386,7 +386,7 @@ impl TypeTable {
         let show = |id: TypeId| self.render(id, names, subst, vars);
         match get(id) {
             // Once: what it stands for is in the caller's terms, which can be the same `T`.
-            Ty::Param(def) if let Some(arg) = crate::traits::substituted(subst, *def) => {
+            Ty::Param(def) if let Some(arg) = crate::impls::substituted(subst, *def) => {
                 self.render(arg, names, &[], vars)
             }
             Ty::Error => "{unknown}".into(),

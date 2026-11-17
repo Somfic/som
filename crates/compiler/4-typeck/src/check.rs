@@ -54,7 +54,7 @@ pub(crate) struct Checker<'a> {
     conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
     records: Records,
     /// Every `impl` block, indexed like `Names::impls`.
-    impls: Vec<crate::traits::ImplInfo>,
+    impls: Vec<crate::impls::ImplInfo>,
     hints: Hints,
     deferred: Deferred,
     /// Each value parameter's type: `usize` for `N` in `struct Buffer<N: usize>`.
@@ -193,7 +193,7 @@ impl<'a> Checker<'a> {
     /// `member_holds`, in a program already checked, whose impl blocks are `impls`.
     pub(crate) fn member_holds_in(
         mut self,
-        impls: Vec<crate::traits::ImplInfo>,
+        impls: Vec<crate::impls::ImplInfo>,
         func: Id<Func>,
         receiver: TypeId,
     ) -> Option<bool> {

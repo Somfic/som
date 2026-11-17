@@ -235,7 +235,7 @@ impl Checker<'_> {
         let target = info.target?;
         let args = type_args.get(..info.params.len())?;
         let subst = info.subst(args);
-        Some(crate::traits::substitute(&mut self.u.table, target, &subst))
+        Some(crate::impls::substitute(&mut self.u.table, target, &subst))
     }
 
     /// `Alloc<i32>::with_capacity(10)`: the type `func` is a function of, with the arguments
@@ -606,7 +606,7 @@ impl Checker<'_> {
         // An unwritten return type is a variable its body decided: what it was decided to be.
         let ty = self.u.shallow(ty);
         match self.u.get(ty).clone() {
-            Ty::Param(def) => crate::traits::substituted(subst, def).unwrap_or(ty),
+            Ty::Param(def) => crate::impls::substituted(subst, def).unwrap_or(ty),
             other if other.children().is_empty() => ty,
             other => {
                 let substituted = other.map_children(|child| self.substitute(child, subst));

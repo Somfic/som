@@ -11,10 +11,15 @@ mod check;
 mod consts;
 mod error;
 mod exhaustive;
+mod impls;
 pub mod stubs;
-pub mod traits;
 mod ty;
 mod unify;
+
+/// `impls`, by the name other crates know it by.
+pub mod traits {
+    pub use crate::impls::*;
+}
 
 pub use consts::{ConstValue, ConstValues, const_number, const_number_with};
 pub use error::{NotForC, TypeError, Unused};
@@ -127,7 +132,7 @@ pub struct Typed {
     /// `[mut T]`s used where a `[T]` is.
     sliced: HashMap<Id<Expr>, TypeId>,
     /// Every `impl` block, indexed like `Names::impls`.
-    pub impls: Vec<traits::ImplInfo>,
+    pub impls: Vec<impls::ImplInfo>,
     /// The values of the constants worked out by running them, that it was checked with.
     const_values: ConstValues,
     records: Records,

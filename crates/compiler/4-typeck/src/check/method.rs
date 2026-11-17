@@ -638,7 +638,7 @@ impl Checker<'_> {
             Some(VarKind::Int) => som_ast::Primitive::I32,
             Some(VarKind::Float) => som_ast::Primitive::F64,
             Some(VarKind::Text) => som_ast::Primitive::Str,
-            _ => crate::traits::primitive_of(self.u.get(ty))?,
+            _ => crate::impls::primitive_of(self.u.get(ty))?,
         };
         self.names.primitive(primitive)
     }
@@ -760,7 +760,7 @@ impl Checker<'_> {
             return true;
         };
         let subst = self.impls[index].subst(args);
-        let wanted = crate::traits::substitute(&mut self.u.table, target, &subst);
+        let wanted = crate::impls::substitute(&mut self.u.table, target, &subst);
         let wanted = self.u.normalize(wanted);
         // Through a reference on either side: a `str` is one already.
         let unref = |u: &Unifier, ty: TypeId| match *u.shallow_ty(ty) {

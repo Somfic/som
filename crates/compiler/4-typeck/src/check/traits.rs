@@ -10,7 +10,7 @@ use som_resolve::{DefId, DefKind};
 use super::Checker;
 use crate::Start;
 use crate::error::TypeError;
-use crate::traits::{self, ImplInfo, find_impl};
+use crate::impls::{self, ImplInfo, find_impl};
 use crate::ty::{Ty, TypeId};
 use crate::unify::VarKind;
 
@@ -152,7 +152,7 @@ impl Checker<'_> {
                 let subst = self.struct_subst(s, &args);
                 let types = self.records.structs[s.id].clone();
                 for (field, &ty) in self.ast.structs[s].fields.iter().zip(&types) {
-                    let ty = traits::substitute(&mut self.u.table, ty, &subst);
+                    let ty = impls::substitute(&mut self.u.table, ty, &subst);
                     if !self.is_copy(ty) && !matches!(self.u.get(ty), Ty::Param(_)) {
                         self.errors.push(TypeError::CopyWithMovedField {
                             ty: self.describe(target),
@@ -329,7 +329,7 @@ impl Checker<'_> {
             return ty;
         }
         let subst: Vec<(DefId, TypeId)> = params.into_iter().zip(args).collect();
-        traits::substitute(&mut self.u.table, ty, &subst)
+        impls::substitute(&mut self.u.table, ty, &subst)
     }
 
     /// `Self` inside impl block `index`: its target.
@@ -412,7 +412,7 @@ impl Checker<'_> {
             return self.u.table.error;
         };
         let subst = self.impls[i].subst(&args);
-        let found = traits::substitute(&mut self.u.table, written, &subst);
+        let found = impls::substitute(&mut self.u.table, written, &subst);
         self.normalize_assoc(found)
     }
 
@@ -709,7 +709,7 @@ impl Checker<'_> {
                     find_impl(&self.impls, &u.table, trait_, ty, &[ty], &|t| u.shallow(t))?;
                 let output = *self.impls[index].trait_args.get(1)?;
                 let subst = self.impls[index].subst(&args);
-                Some(traits::substitute(&mut self.u.table, output, &subst))
+                Some(impls::substitute(&mut self.u.table, output, &subst))
             }
         }
     }
@@ -746,7 +746,7 @@ impl Checker<'_> {
             }
             let subst = self.fresh_subst(&info.params.clone());
             let [target, other, output] =
-                [target, other, output].map(|ty| traits::substitute(&mut self.u.table, ty, &subst));
+                [target, other, output].map(|ty| impls::substitute(&mut self.u.table, ty, &subst));
             if self.u.could_fit(target, base) && self.u.could_fit(other, rhs) {
                 fitting.push((target, other, output, subst));
             }
@@ -804,9 +804,9 @@ impl Checker<'_> {
             let mut found = Vec::new();
             for (params, target, written) in fitting {
                 let subst = self.fresh_subst(&params);
-                let target = traits::substitute(&mut self.u.table, target, &subst);
+                let target = impls::substitute(&mut self.u.table, target, &subst);
                 let written: Vec<TypeId> = (written.into_iter())
-                    .map(|w| traits::substitute(&mut self.u.table, w, &subst))
+                    .map(|w| impls::substitute(&mut self.u.table, w, &subst))
                     .collect();
                 let fits = self.u.could_fit(target, base)
                     && (written.iter().zip(args)).all(|(&w, &a)| self.u.could_fit(w, a));
@@ -994,7 +994,7 @@ impl Checker<'_> {
 
     /// Whether values of `ty` have the operators of `lang` built in, as numbers have `+`.
     pub(super) fn has_builtin(&self, ty: TypeId, lang: LangTrait) -> bool {
-        traits::builtin_operator(self.u.shallow_ty(ty), lang)
+        impls::builtin_operator(self.u.shallow_ty(ty), lang)
     }
 
     /// Whether `expr`, of type `found`, becomes the struct `expected` through its `From`
@@ -1121,8 +1121,8 @@ impl Checker<'_> {
                 continue;
             };
             let subst = self.fresh_subst(&info.params.clone());
-            let target = traits::substitute(&mut self.u.table, target, &subst);
-            let arg = traits::substitute(&mut self.u.table, arg, &subst);
+            let target = impls::substitute(&mut self.u.table, target, &subst);
+            let arg = impls::substitute(&mut self.u.table, arg, &subst);
             if self.u.could_fit(target, expected) && self.u.could_fit(arg, source) {
                 fitting.push((target, arg, subst));
             }
