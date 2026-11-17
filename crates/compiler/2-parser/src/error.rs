@@ -10,6 +10,15 @@ pub struct ParseError {
 }
 
 impl ParseError {
+    pub(crate) fn new(span: Span, message: impl Into<Message>, hint: impl Into<Message>) -> Self {
+        ParseError {
+            message: message.into(),
+            hint: hint.into(),
+            span,
+            fix: None,
+        }
+    }
+
     pub fn to_diagnostic(&self) -> Diagnostic {
         let d = Diagnostic::error(self.message.clone())
             .with_label(Label::primary(self.span.clone(), self.hint.clone()));

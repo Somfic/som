@@ -4,7 +4,11 @@ use som_base::{Fix, Span, msg};
 use som_lang::Builtin;
 use som_lexer::TokenKind;
 
-use crate::{ParseError, Parser, RecoveryLevel, StmtOrExpr};
+use crate::report::RecoveryLevel;
+use crate::{Parser, StmtOrExpr};
+
+/// Rust's optional with a value, as in `if let Some(x) = …`.
+const RUST_SOME: &str = "Some";
 
 impl Parser<'_> {
     pub(crate) fn parse_stmt_or_expr(&mut self) -> StmtOrExpr {
@@ -115,7 +119,7 @@ impl Parser<'_> {
         // `let mutable total`: another language's `mut`.
         let mutable = self.eat_foreign_mut() || mutable;
         // `let Some(h) = hit() else { … };`: Rust's, reported.
-        if self.ident_ahead(0) == Some("Some") && self.peek_nth(1) == TokenKind::OpenParen {
+        if self.ident_ahead(0) == Some(RUST_SOME) && self.peek_nth(1) == TokenKind::OpenParen {
             return self.let_else(start);
         }
         let name = self.parse_ident("a variable name")?;
@@ -128,17 +132,15 @@ impl Parser<'_> {
                 n += 1;
             }
             if self.peek_nth(n) == TokenKind::Equals {
-                for _ in 0..=n {
-                    self.advance();
-                }
+                self.advance_by(n + 1);
                 let span = self.span_from(&start);
                 let fixed = format!("fn {}({}) =", name.name, params.join(", "));
-                self.errors.push(ParseError {
-                    message: msg!["som declares a function with ", code("fn")],
-                    hint: msg!["with parameters, this is a function, not a variable"],
-                    fix: Some(Fix::change_to(span.clone(), fixed)),
-                    span,
-                });
+                self.error(
+                    span.clone(),
+                    msg!["som declares a function with ", code("fn")],
+                    msg!["with parameters, this is a function, not a variable"],
+                    Some(Fix::change_to(span, fixed)),
+                );
                 self.in_recovery = true;
                 return None;
             }
@@ -410,9 +412,10 @@ impl Parser<'_> {
                 fixed,
             )
         });
-        self.errors.push(ParseError {
-            message: msg!["som has no ", code("if let")],
-            hint: msg![
+        self.error(
+            span,
+            msg!["som has no ", code("if let")],
+            msg![
                 "an optional in a variable is its own check: inside ",
                 code(format!("if {n} {{ … }}")),
                 ", ",
@@ -420,8 +423,7 @@ impl Parser<'_> {
                 " is the value it holds"
             ],
             fix,
-            span,
-        });
+        );
         Some(value)
     }
 
@@ -452,9 +454,10 @@ impl Parser<'_> {
             }),
             _ => None,
         };
-        self.errors.push(ParseError {
-            message: msg!["som has no ", code("let … else")],
-            hint: msg![
+        self.error(
+            span,
+            msg!["som has no ", code("let … else")],
+            msg![
                 "an optional in a variable is its own check: after ",
                 code(format!("if !{n} {{ return …; }}")),
                 ", ",
@@ -462,16 +465,14 @@ impl Parser<'_> {
                 " is the value it holds"
             ],
             fix,
-            span,
-        });
+        );
         None
     }
 
     /// `t` or `Some(t)`: the name Rust's `if let` and `let … else` bind.
     fn bound_name(&mut self) -> Option<som_ast::Ident> {
-        if self.ident_ahead(0) == Some("Some") && self.peek_nth(1) == TokenKind::OpenParen {
-            self.advance();
-            self.advance();
+        if self.ident_ahead(0) == Some(RUST_SOME) && self.peek_nth(1) == TokenKind::OpenParen {
+            self.advance_by(2);
             let name = self.parse_ident("a name for the value")?;
             self.expect(TokenKind::CloseParen, "`)` after the name")?;
             return Some(name);
@@ -547,7 +548,7 @@ impl Parser<'_> {
     /// `before`, so parsing can't get stuck.
     pub(crate) fn keep_unterminated(
         &mut self,
-        expr: som_ast::Id<som_ast::Expr>,
+        expr: Id<Expr>,
         before: usize,
         stmts: &mut Vec<Id<Stmt>>,
     ) -> bool {
@@ -559,13 +560,12 @@ impl Parser<'_> {
         true
     }
 
-    /// `{ stmt; stmt; expr }` where a trailing expression becomes an expression statement.
+    /// A trailing expression becomes an expression statement.
     fn parse_stmt_block(&mut self, what: &str) -> Option<Vec<Id<Stmt>>> {
         let block = self.parse_block_parts(what)?;
         Some(self.block_stmts(block))
     }
 
-    /// `{ stmt; stmt; value }`: the statements, and the value it ends with if it does.
     /// An `if`'s or `else`'s body: a block, or one statement without braces,
     /// `if n == 0 return 1;`, `if .keys.size == 0 @unreachable;`.
     fn parse_branch(&mut self, what: &str) -> Option<BlockParts> {
@@ -587,6 +587,7 @@ impl Parser<'_> {
         }
     }
 
+    /// `{ stmt; stmt; value }`: the statements, and the value it ends with if it does.
     pub(crate) fn parse_block_parts(&mut self, what: &str) -> Option<BlockParts> {
         // `then … end`, Python's `:`: a body as another language writes it.
         if !self.at(TokenKind::OpenBrace)
@@ -623,7 +624,6 @@ impl Parser<'_> {
     }
 }
 
-/// A block's statements, the value it ends with if it does, and where it is.
 pub(crate) struct BlockParts {
     stmts: Vec<Id<Stmt>>,
     value: Option<Id<Expr>>,
@@ -631,7 +631,6 @@ pub(crate) struct BlockParts {
 }
 
 impl BlockParts {
-    /// A block of `stmts`, ending in no value.
     pub(crate) fn new(stmts: Vec<Id<Stmt>>, span: Span) -> Self {
         BlockParts {
             stmts,
