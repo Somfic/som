@@ -1,6 +1,3 @@
-//! Enums and `match`: making a variant, checking each arm's pattern against the type matched,
-//! and making sure the arms cover every value.
-
 use som_ast::{Arm, Expr, Id, Ident, Pattern, PatternFields, Struct, VariantKind};
 use som_base::message::code;
 use som_base::{Fix, Span, msg};
@@ -14,7 +11,6 @@ use crate::ty::{Ty, TypeId};
 use crate::unify::VarKind;
 use crate::{CommonField, PatternInfo};
 
-/// What a variant of `kind` holds, for messages: "`Shape::Circle` holds values by position".
 pub(super) fn holds(kind: VariantKind) -> &'static str {
     match kind {
         VariantKind::Unit => "holds nothing",
@@ -23,10 +19,9 @@ pub(super) fn holds(kind: VariantKind) -> &'static str {
     }
 }
 
-impl Checker<'_> {
-    // --- Variants ---
+const MISSING_SHOWN: usize = 8;
 
-    /// The fields of enum `s`'s variant `index`, with its type arguments `args` filled in.
+impl Checker<'_> {
     pub(super) fn variant_fields(
         &mut self,
         s: Id<Struct>,
@@ -38,18 +33,15 @@ impl Checker<'_> {
         let count = ast_struct.variants()[index].fields.len();
         let subst = self.struct_subst(s, args);
         (start..start + count)
-            .map(|i| self.substitute(self.structs[s.id][i], &subst))
+            .map(|i| self.substitute(self.records.structs[s.id][i], &subst))
             .collect()
     }
 
-    /// `Shape::Circle`
     pub(super) fn variant_name(&self, s: Id<Struct>, index: usize) -> String {
         let ast_struct = &self.ast.structs[s];
         format!("{}::{}", ast_struct.name, ast_struct.variants()[index].name)
     }
 
-    /// How a value of variant `index` of `s` is made: `Shape::Circle(…)`, `Shape::Rect { … }`
-    /// or `Shape::Empty`.
     pub(super) fn variant_form(&self, s: Id<Struct>, index: usize) -> String {
         let name = self.variant_name(s, index);
         match self.ast.structs[s].variants()[index].kind {
@@ -59,8 +51,8 @@ impl Checker<'_> {
         }
     }
 
-    /// A value of `variant`: its enum's type, with a fresh variable for each type argument; the
-    /// enum; which variant it is; and the types of its fields.
+    /// Its enum's type (a fresh variable per type argument), the enum, the variant index, and
+    /// its field types.
     pub(super) fn variant_value(
         &mut self,
         variant: DefId,
@@ -77,9 +69,8 @@ impl Checker<'_> {
         (ty, strukt, index, fields)
     }
 
-    /// The enum `ty` is, and its type arguments.
     fn enum_of(&self, ty: TypeId) -> Option<(Id<Struct>, Vec<TypeId>)> {
-        match self.u.get(self.u.shallow(ty)) {
+        match self.u.shallow_ty(ty) {
             Ty::Struct(def, args) => match self.names.def(*def).kind {
                 DefKind::Struct(s) if self.ast.structs[s].is_enum() => Some((s, args.clone())),
                 _ => None,
@@ -88,12 +79,11 @@ impl Checker<'_> {
         }
     }
 
-    /// Enum `s`'s fields that every variant has, by the same name and of the same type.
     pub(super) fn common_fields(&self, id: Id<Struct>, s: &Struct) -> Vec<CommonField> {
         let Some(first) = s.variants().first() else {
             return Vec::new();
         };
-        let payload = &self.structs[id.id];
+        let payload = &self.records.structs[id.id];
         let mut common = Vec::new();
         for (k, field) in first.fields.iter().enumerate() {
             let ty = payload[s.payload_start(0) + k];
@@ -120,7 +110,6 @@ impl Checker<'_> {
         common
     }
 
-    /// `t.base` on a value of enum `s` with type arguments `args`: one of its common fields.
     pub(super) fn common_field(
         &mut self,
         expr: Id<Expr>,
@@ -128,12 +117,12 @@ impl Checker<'_> {
         args: &[TypeId],
         field: &Ident,
     ) -> TypeId {
-        let common = &self.common[s.id];
+        let common = &self.records.common[s.id];
         if let Some(k) = common.iter().position(|c| c.name == field.name) {
-            self.fields.insert(expr, k);
+            self.records.fields.insert(expr, k);
             let at = common[k].payload[0];
             let subst = self.struct_subst(s, args);
-            return self.substitute(self.structs[s.id][at], &subst);
+            return self.substitute(self.records.structs[s.id][at], &subst);
         }
         let ast_struct = &self.ast.structs[s];
         let without: Vec<String> = (ast_struct.variants().iter())
@@ -162,10 +151,7 @@ impl Checker<'_> {
         self.u.table.error
     }
 
-    // --- `match` ---
-
-    /// `match scrutinee { arms }`. With `discarded`, its value isn't used, so the arms can be of
-    /// different types.
+    /// With `discarded`, the value isn't used, so the arms can differ in type.
     pub(super) fn check_match(
         &mut self,
         id: Id<Expr>,
@@ -174,19 +160,19 @@ impl Checker<'_> {
         discarded: bool,
     ) -> TypeId {
         let found = self.infer(scrutinee);
-        // `for x in [1, 2]` style: a collection nothing else decides is an array.
+        // A collection nothing else decides, as in `for x in [1, 2]`, is an array.
         if let Some(VarKind::Collection { element, len }) = self.u.var_kind(found) {
             let array = self.u.intern(Ty::Array { element, len });
             let _ = self.u.unify(found, array);
         }
         // Through a reference, what it points to is matched, and bindings borrow from it.
-        let (matched, by_ref) = match *self.u.get(self.u.shallow(found)) {
+        let (matched, by_ref) = match *self.u.shallow_ty(found) {
             Ty::Ref { mutable, to } => (to, Some(mutable)),
             _ => (found, None),
         };
 
-        // An overloaded call not decided yet: the function giving what the arms can match.
-        // `"yes"` matches text, or an optional's text; `none` only an optional.
+        // An overloaded call not decided yet: pick the function whose result the arms can
+        // match. `"yes"` matches text or an optional's text; `none` only an optional.
         if self.u.var_kind(matched) == Some(VarKind::Any) {
             let has = |f: fn(&Pattern) -> bool| {
                 (arms.iter()).any(|arm| f(&self.ast.patterns[arm.pattern]))
@@ -207,9 +193,8 @@ impl Checker<'_> {
             });
         }
 
-        // Not decided yet, as an overloaded call's result isn't, and an arm is `none`: an
-        // optional, so `"yes"` before it matches the value it holds rather than deciding
-        // the type is text.
+        // Still undecided with a `none` arm: an optional, so a `"yes"` before it matches the
+        // held value rather than deciding the type is text.
         if self.u.var_kind(matched).is_some()
             && (arms.iter()).any(|arm| matches!(self.ast.patterns[arm.pattern], Pattern::None))
         {
@@ -234,7 +219,7 @@ impl Checker<'_> {
             // What an arm narrowed doesn't hold in the others, or after the `match`.
             self.narrowed.retain(|n| outer.contains(&n.id));
             if self.expr_leaves(arm.body) {
-                self.diverging.insert(arm.body);
+                self.records.diverging.insert(arm.body);
                 continue;
             }
             if discarded {
@@ -245,11 +230,11 @@ impl Checker<'_> {
                 Some((expected, first)) => {
                     if self.coerce(arm.body, expected, ty) {
                         // Fine as it is.
-                    } else if let Ty::Optional(inner) = *self.u.get(self.u.shallow(ty))
+                    } else if let Ty::Optional(inner) = *self.u.shallow_ty(ty)
                         && self.u.unify(inner, expected).is_ok()
                     {
                         // `none` after values: they're all optionals, the values wrapped.
-                        self.wrapped.extend(valued.iter().copied());
+                        self.records.wrapped.extend(valued.iter().copied());
                         result = Some((ty, first));
                     } else {
                         let from = self.span(first);
@@ -260,7 +245,7 @@ impl Checker<'_> {
             valued.push(arm.body);
         }
 
-        if rows.iter().all(Option::is_some) && *self.u.get(self.u.shallow(matched)) != Ty::Error {
+        if rows.iter().all(Option::is_some) && *self.u.shallow_ty(matched) != Ty::Error {
             let pats: Vec<Pat> = rows.into_iter().flatten().collect();
             self.check_coverage(id, arms, &pats, matched);
         }
@@ -274,7 +259,6 @@ impl Checker<'_> {
         }
     }
 
-    /// Reports arms that can never be reached, and values no arm matches.
     fn check_coverage(&mut self, id: Id<Expr>, arms: &[Arm], pats: &[Pat], matched: TypeId) {
         let (unreachable, missing) = {
             let mut space = |ty: TypeId| self.ctors(ty);
@@ -287,9 +271,8 @@ impl Checker<'_> {
                 }
                 seen.push(row);
             }
-            // A few of the values no arm matches, to name.
             let mut missing = Vec::new();
-            while missing.len() < 8
+            while missing.len() < MISSING_SHOWN
                 && let Some(witness) = useful(&seen, &[Pat::Wild], &[matched], &mut space)
             {
                 seen.push(witness.clone());
@@ -324,8 +307,6 @@ impl Checker<'_> {
         });
     }
 
-    /// A fix adding an arm for each of `missing` at the end of the `match` `id`, with an
-    /// empty body to fill in.
     fn missing_arms_fix(&self, id: Id<Expr>, missing: &[String]) -> Option<Fix> {
         let span = self.span(id);
         let text = span.source.content();
@@ -360,9 +341,8 @@ impl Checker<'_> {
         ))
     }
 
-    /// The ways of making a value of `ty`, for `useful`.
     fn ctors(&mut self, ty: TypeId) -> Option<Vec<(Ctor, Vec<TypeId>)>> {
-        match self.u.get(self.u.shallow(ty)).clone() {
+        match self.u.shallow_ty(ty).clone() {
             Ty::Bool => Some(vec![
                 (Ctor::Bool(false), vec![]),
                 (Ctor::Bool(true), vec![]),
@@ -380,7 +360,6 @@ impl Checker<'_> {
         }
     }
 
-    /// A pattern for the values `pat` stands for, of type `ty`, as it would be written.
     fn render(&mut self, pat: &Pat, ty: TypeId) -> String {
         match pat {
             Pat::Wild => "_".into(),
@@ -389,7 +368,7 @@ impl Checker<'_> {
             Pat::Ctor(Ctor::Str(s), _) => format!("{s:?}"),
             Pat::Ctor(Ctor::None, _) => "none".into(),
             // A pattern for an optional's value is written as one for the value.
-            Pat::Ctor(Ctor::Some, inner) => match *self.u.get(self.u.shallow(ty)) {
+            Pat::Ctor(Ctor::Some, inner) => match *self.u.shallow_ty(ty) {
                 Ty::Optional(value) => self.render(&inner[0], value),
                 _ => "_".into(),
             },
@@ -424,12 +403,9 @@ impl Checker<'_> {
         }
     }
 
-    // --- Patterns ---
-
-    /// Checks pattern `id` against a value of type `ty`, giving its bindings their types.
-    /// `by_ref`: the value is matched through a reference, `&mut` or not, so bindings borrow
-    /// from it. `none_matched`: an earlier arm matched `none`, so a binding of an optional
-    /// binds the value it holds.
+    /// `by_ref`: matched through a reference (`&mut` or not), so bindings borrow.
+    /// `none_matched`: an earlier arm matched `none`, so a binding binds the value an optional
+    /// holds.
     fn check_pattern(
         &mut self,
         id: Id<Pattern>,
@@ -459,7 +435,7 @@ impl Checker<'_> {
         {
             self.errors.push(error);
             self.bind_all(id, error_ty(self));
-            self.patterns.insert(id, info);
+            self.records.patterns.insert(id, info);
             return Pat::Wild;
         }
         let pat = match &ast.patterns[id] {
@@ -474,7 +450,6 @@ impl Checker<'_> {
                     || (name.name.starts_with(|c: char| c.is_ascii_uppercase())
                         && self.enum_of(optional.unwrap_or(ty)).is_some()) =>
             {
-                // A name that's a variant: `Empty`.
                 self.unwrapped(ty, optional, &mut info, |c, ty, info| {
                     c.variant_pattern(id, ty, name, &PatternFields::Unit, by_ref, info)
                 })
@@ -537,12 +512,12 @@ impl Checker<'_> {
             }
         };
         let _ = span;
-        self.patterns.insert(id, info);
+        self.records.patterns.insert(id, info);
         pat
     }
 
-    /// Runs `check` on the type matched: the value an optional holds, if `optional` is the
-    /// type that holds, since a pattern other than `none` and a binding matches that value.
+    /// Patterns other than `none` and bindings match the value an `optional` holds, so `check`
+    /// runs on that.
     fn unwrapped(
         &mut self,
         ty: TypeId,
@@ -560,13 +535,11 @@ impl Checker<'_> {
         }
     }
 
-    /// The index of `ty`'s variant called `name`, if `ty` is an enum and has one.
     fn variant_index(&self, ty: TypeId, name: &str) -> Option<usize> {
         let (s, _) = self.enum_of(ty)?;
         (self.ast.structs[s].variants().iter()).position(|v| &*v.name.name == name)
     }
 
-    /// `Circle(r)`, `Rect { w, .. }` or `Empty` against a value of type `ty`.
     fn variant_pattern(
         &mut self,
         id: Id<Pattern>,
@@ -705,8 +678,8 @@ impl Checker<'_> {
         Pat::Ctor(Ctor::Variant(index), subs)
     }
 
-    /// `Some(v)` or `None` against an optional of `inner`, if pattern `id` is one, reported:
-    /// som matches what an optional holds with the pattern itself, `v`, after `none`.
+    /// The error for Rust's `Some(v)` or `None` against an optional: som matches the held value
+    /// with the pattern itself, `v`, after `none`.
     fn rust_optional_pattern(
         &self,
         id: Id<Pattern>,
@@ -774,7 +747,7 @@ impl Checker<'_> {
 
     /// Gives every name pattern `id` binds type `ty`, after an error.
     fn bind_all(&mut self, id: Id<Pattern>, ty: TypeId) {
-        self.patterns.entry(id).or_default();
+        self.records.patterns.entry(id).or_default();
         match &self.ast.patterns[id] {
             Pattern::Binding { .. } => {
                 if let Some(def) = self.names.pattern(id)

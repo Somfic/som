@@ -1,18 +1,14 @@
-//! What an `impl Trait for …` block still has to write: each associated type and method the
-//! trait has that it doesn't, as source text to insert. For the error's fix, and an editor's
-//! completions inside the block.
+//! What an `impl Trait for …` block still has to write, as source text: for the error's fix
+//! and an editor's completions inside the block.
 
 use som_ast::{Ast, Func, Id, Impl, TypeExpr};
 use som_resolve::{DefKind, Names};
 
-/// An item an implementation is missing.
 #[derive(Clone, Debug)]
 pub struct Stub {
-    /// Its name: `eq`, `Item`.
     pub name: String,
-    /// Whether it's an associated type, rather than a method.
     pub is_type: bool,
-    /// How it's shown: `fn eq(self: &Hello, other: &Hello) -> bool`, `type Item`.
+    /// As shown: `fn eq(self: &Hello, other: &Hello) -> bool`, `type Item`.
     pub signature: String,
     /// Its text with an empty body, one level indented, ending in a newline.
     pub text: String,
@@ -20,8 +16,8 @@ pub struct Stub {
     pub snippet: String,
 }
 
-/// The items impl block `block`, the `index`th, is missing from its trait: associated types
-/// first, then methods, in the trait's order. A method with a body in the trait isn't missing.
+/// Associated types first, then methods, in the trait's order. A method with a body in the
+/// trait isn't missing.
 pub fn missing(ast: &Ast, names: &Names, index: usize, block: &Impl) -> Vec<Stub> {
     let Some(trait_def) = names.impls.get(index).and_then(|i| i.trait_) else {
         return Vec::new();
@@ -50,8 +46,7 @@ pub fn missing(ast: &Ast, names: &Names, index: usize, block: &Impl) -> Vec<Stub
     stubs(ast, t, &target, &trait_args, &written)
 }
 
-/// The items an implementation of trait `t` for `target` (as written) has to write, with the
-/// trait's parameters `trait_args`, but not the ones `written` says it has.
+/// Leaves out the items `written` says it has.
 pub fn stubs(
     ast: &Ast,
     t: Id<som_ast::Trait>,
@@ -62,7 +57,7 @@ pub fn stubs(
     let tr = &ast.traits[t];
     // What the trait's names stand for here: `Self` the target, its parameters what the
     // implementation gives them.
-    let mut replace: Vec<(String, String)> = vec![("Self".into(), target.to_string())];
+    let mut replace: Vec<(String, String)> = vec![(som_lang::SELF_TYPE.into(), target.to_string())];
     for (generic, arg) in tr.generics.iter().zip(trait_args) {
         replace.push((generic.name.name.to_string(), arg.clone()));
     }
@@ -122,7 +117,7 @@ pub fn stubs(
         let mut stop = 0;
         let tabbed: Vec<String> = (params.iter())
             .map(|(n, t)| match n.as_str() {
-                "self" => format!("self: {t}"),
+                som_lang::SELF_VALUE => format!("{}: {t}", som_lang::SELF_VALUE),
                 _ => {
                     stop += 1;
                     format!("${{{stop}:{n}}}: {t}")

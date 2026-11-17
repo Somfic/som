@@ -3,13 +3,14 @@ use som_base::{Arena, Id};
 use som_resolve::{DefId, Names};
 use std::collections::HashMap;
 
-/// A type, interned in a `TypeTable`. Equal types have equal ids.
+use crate::unify::Unifier;
+
+/// Interned: equal types have equal ids.
 pub type TypeId = Id<Ty>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Ty {
-    /// The type of something that already failed to check. Unifies with anything,
-    /// so one mistake doesn't cascade into more errors.
+    /// Unifies with anything, so one mistake doesn't cascade into more errors.
     Error,
     Unit,
     Bool,
@@ -17,21 +18,19 @@ pub enum Ty {
     /// Text's bytes. Only ever behind a reference, which holds where they start and how many
     /// there are: som's `str` is `&` of this, like `[u8]` is of a slice.
     Str,
-    /// `cstr`: a pointer to text ending in a zero byte, as C takes it.
+    /// A pointer to text ending in a zero byte, as C takes it.
     CStr,
     Int(IntTy),
     Float(FloatTy),
-    /// `*`, an untyped raw pointer.
+    /// An untyped raw pointer.
     Pointer,
-    /// `*T`: a raw pointer to `T`s. Nothing checks what it points to.
+    /// Nothing checks what it points to.
     Ptr(TypeId),
     Ref {
         mutable: bool,
         to: TypeId,
     },
-    /// A struct, and its type arguments if it's generic: `Pair<i32>`.
     Struct(DefId, Vec<TypeId>),
-    /// `T?`: a `T`, or `none`.
     Optional(TypeId),
     /// `[T; N]`. `len` is a [`Ty::Value`], or a value parameter or variable standing for one.
     Array {
@@ -49,7 +48,6 @@ pub enum Ty {
     /// Some number of `T`s, known at run time. Only ever behind a reference, which holds where
     /// they start and how many there are: som's `[T]` is `&` of this, and `[mut T]` `&mut`.
     Slice(TypeId),
-    /// `start..end`: the integers of type `T` from `start` up to, not including, `end`.
     Range(TypeId),
     /// A type parameter, inside the generic function that declares it.
     Param(DefId),
@@ -68,7 +66,6 @@ pub enum Ty {
     Var(u32),
 }
 
-/// What a value parameter can stand for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Value {
     Int(u128),
@@ -87,12 +84,8 @@ impl std::fmt::Display for Value {
 pub use som_ast::{FloatTy, IntTy};
 
 impl Ty {
-    /// The types written inside this one: what a reference points to, what an optional or
-    /// array holds, a function's parameters and result. A struct's fields aren't: a struct is
-    /// a name, and its fields belong to its definition.
-    ///
-    /// With [`Ty::map_children`], this is the one place that knows how types nest, so code
-    /// that walks into types doesn't need a case for each kind.
+    /// A struct's fields aren't children: a struct is a name, and its fields belong to its
+    /// definition. With `map_children`, the one place that knows how types nest.
     pub fn children(&self) -> Vec<TypeId> {
         match self {
             Ty::Ref { to: inner, .. }
@@ -120,7 +113,6 @@ impl Ty {
         }
     }
 
-    /// This type with each of its [`children`](Ty::children) replaced by `f` of it.
     pub fn map_children(&self, mut f: impl FnMut(TypeId) -> TypeId) -> Ty {
         match self {
             Ty::Ref { mutable, to } => Ty::Ref {
@@ -155,16 +147,14 @@ impl Ty {
         }
     }
 
-    /// If this type and `other` are the same kind of type, apart from their children (both
-    /// `&mut`, both arrays of 3, both functions of two parameters...), the children to match
-    /// up, in pairs.
+    /// If both are the same kind apart from their children (both `&mut`, both arrays of 3...),
+    /// the children paired up.
     pub fn zip_children(&self, other: &Ty) -> Option<Vec<(TypeId, TypeId)>> {
         let blank = |ty: &Ty| ty.map_children(|_| Id::new(0));
         (blank(self) == blank(other))
             .then(|| self.children().into_iter().zip(other.children()).collect())
     }
 
-    /// Whether this is arithmetic on values, `A + B` or `A * B`.
     pub fn is_arithmetic(&self) -> bool {
         matches!(self, Ty::Add(..) | Ty::Mul(..))
     }
@@ -190,7 +180,6 @@ impl Ty {
 /// added. The empty product is the constant.
 pub type Polynomial = std::collections::BTreeMap<Vec<TypeId>, u128>;
 
-/// Interns types, so they can be compared and copied as plain ids.
 #[derive(Clone)]
 pub struct TypeTable {
     tys: Arena<Ty>,
@@ -260,9 +249,8 @@ impl TypeTable {
         &self.tys[id]
     }
 
-    /// The number an array's `len` stands for. Only for concrete types, where it's a value;
-    /// or an error, for a length still to be worked out: the code lowered with it, to find
-    /// what a constant runs, is thrown away once that's seen (`0` stands in).
+    /// Only for concrete types. An error length (`0` stands in) is one still to be worked out:
+    /// code lowered with it, to run a constant, is thrown away.
     pub fn len(&self, len: TypeId) -> u64 {
         match self.get(len) {
             Ty::Value(Value::Int(n)) => *n as u64,
@@ -271,10 +259,9 @@ impl TypeTable {
         }
     }
 
-    /// `id` with any arithmetic in it worked out as far as it can be: numbers added and
-    /// multiplied, and what's left in a normal form, a sum of products. `A + B` and `B + A`
-    /// normalize to the same type, and so do `2 * N` and `N + N`. Value parameters and
-    /// variables are the unknowns, so a variable should be resolved first to be seen through.
+    /// Arithmetic worked out as far as it can be, the rest in a normal form (a sum of
+    /// products), so `A + B` and `B + A` are one type, as are `2 * N` and `N + N`. Variables
+    /// are unknowns, so resolve one first to see through it.
     pub fn normalize(&mut self, id: TypeId) -> TypeId {
         match self.get(id).clone() {
             ty if ty.is_arithmetic() => match self.polynomial(id) {
@@ -289,8 +276,7 @@ impl TypeTable {
         }
     }
 
-    /// `id` as a sum of products: each product of unknowns (sorted, so equal products are
-    /// equal) with how many times it's added. `None` if something in it isn't a number.
+    /// `None` if something in it isn't a number.
     pub fn polynomial(&self, id: TypeId) -> Option<Polynomial> {
         let mut poly = Polynomial::new();
         match self.get(id) {
@@ -324,8 +310,6 @@ impl TypeTable {
         Some(poly)
     }
 
-    /// The type a sum of products is written as: a number if there are no unknowns, and
-    /// otherwise each product, its number first, added up in order, the constant last.
     pub fn from_polynomial(&mut self, poly: Polynomial) -> TypeId {
         let mut sum: Option<TypeId> = None;
         // The number goes last, as it's usually written: `N + 1`.
@@ -350,28 +334,38 @@ impl TypeTable {
         sum.unwrap_or_else(|| self.intern(Ty::Value(Value::Int(0))))
     }
 
-    /// Every interned type, with its id.
     pub fn iter(&self) -> impl Iterator<Item = (TypeId, &Ty)> {
         self.tys.iter_with_ids()
     }
 
-    /// The id of `ty` if it has been interned.
     pub fn lookup(&self, ty: &Ty) -> Option<TypeId> {
         self.ids.get(ty).copied()
     }
 
-    /// Renders a type the way it would be written in som.
     pub fn display(&self, id: TypeId, names: &Names) -> String {
         self.display_with(id, names, &[])
     }
 
-    /// Renders a type with type parameters shown as what `subst` says they stand for: a
-    /// generic struct's field as it is in one use of it, `i32` rather than `T`.
+    /// Type parameters shown as what `subst` says they stand for: `i32` rather than `T`.
     pub fn display_with(&self, id: TypeId, names: &Names, subst: &[(DefId, TypeId)]) -> String {
-        match self.get(id) {
+        self.render(id, names, subst, None)
+    }
+
+    /// With `vars`, a type still being inferred: variables are followed to what they're bound
+    /// to, and one that isn't yet is shown as what it would become.
+    pub(crate) fn render(
+        &self,
+        id: TypeId,
+        names: &Names,
+        subst: &[(DefId, TypeId)],
+        vars: Option<&Unifier>,
+    ) -> String {
+        let get = |id: TypeId| self.get(vars.map_or(id, |u| u.shallow(id)));
+        let show = |id: TypeId| self.render(id, names, subst, vars);
+        match get(id) {
             // Once: what it stands for is in the caller's terms, which can be the same `T`.
-            Ty::Param(def) if let Some(&(_, arg)) = subst.iter().find(|(d, _)| d == def) => {
-                self.display_with(arg, names, &[])
+            Ty::Param(def) if let Some(arg) = crate::impls::substituted(subst, *def) => {
+                self.render(arg, names, &[], vars)
             }
             Ty::Error => "{unknown}".into(),
             Ty::Unit => "()".into(),
@@ -382,85 +376,57 @@ impl TypeTable {
             Ty::Int(int) => int.name().to_string(),
             Ty::Float(float) => float.name().to_string(),
             Ty::Pointer => "*".into(),
-            Ty::Ptr(to) => format!("*{}", self.display_with(*to, names, subst)),
+            Ty::Ptr(to) => format!("*{}", show(*to)),
             Ty::Assoc {
                 base,
                 trait_,
                 index,
-            } => format!(
-                "{}::{}",
-                self.display_with(*base, names, subst),
-                assoc_name(names, *trait_, *index)
-            ),
+            } => format!("{}::{}", show(*base), assoc_name(names, *trait_, *index)),
             Ty::Ref { mutable, to } => {
                 let mutability = if *mutable { "mut " } else { "" };
                 // `&i32?` is an optional reference.
-                match self.get(*to) {
+                match get(*to) {
                     Ty::Str => "str".into(),
-                    Ty::Optional(_) => {
-                        format!("&{mutability}({})", self.display_with(*to, names, subst))
-                    }
-                    Ty::Slice(element) => {
-                        format!(
-                            "&{mutability}[{}]",
-                            self.display_with(*element, names, subst)
-                        )
-                    }
-                    _ => format!("&{mutability}{}", self.display_with(*to, names, subst)),
+                    Ty::Optional(_) => format!("&{mutability}({})", show(*to)),
+                    Ty::Slice(element) => format!("&{mutability}[{}]", show(*element)),
+                    _ => format!("&{mutability}{}", show(*to)),
                 }
             }
             // `fn() -> i32?` returns an optional.
-            Ty::Optional(inner) => match self.get(*inner) {
-                Ty::Fn { .. } => format!("({})?", self.display_with(*inner, names, subst)),
-                _ => format!("{}?", self.display_with(*inner, names, subst)),
+            Ty::Optional(inner) => match get(*inner) {
+                Ty::Fn { .. } => format!("({})?", show(*inner)),
+                _ => format!("{}?", show(*inner)),
             },
-            Ty::Array { element, len } => format!(
-                "[{}; {}]",
-                self.display_with(*element, names, subst),
-                self.display_with(*len, names, subst)
-            ),
+            Ty::Array { element, len } => format!("[{}; {}]", show(*element), show(*len)),
             Ty::Value(value) => value.to_string(),
-            Ty::Add(a, b) => format!(
-                "{} + {}",
-                self.display_with(*a, names, subst),
-                self.display_with(*b, names, subst)
-            ),
-            // A sum inside a product keeps its parentheses.
+            Ty::Add(a, b) => format!("{} + {}", show(*a), show(*b)),
             Ty::Mul(a, b) => {
-                let side = |id: TypeId| match self.get(id) {
-                    Ty::Add(..) => format!("({})", self.display_with(id, names, subst)),
-                    _ => self.display_with(id, names, subst),
+                let side = |id: TypeId| match get(id) {
+                    Ty::Add(..) => format!("({})", show(id)),
+                    _ => show(id),
                 };
                 format!("{} * {}", side(*a), side(*b))
             }
             // Only reached on its own for a dereferenced slice, which is an error.
-            Ty::Slice(element) => format!("[{}]", self.display_with(*element, names, subst)),
-            Ty::Range(int) => format!("Range<{}>", self.display_with(*int, names, subst)),
+            Ty::Slice(element) => format!("[{}]", show(*element)),
+            Ty::Range(int) => format!("Range<{}>", show(*int)),
             Ty::Struct(def, args) if !args.is_empty() => {
-                let args: Vec<String> = args
-                    .iter()
-                    .map(|&a| self.display_with(a, names, subst))
-                    .collect();
+                let args: Vec<String> = args.iter().map(|&a| show(a)).collect();
                 format!("{}<{}>", names.def(*def).name, args.join(", "))
             }
             Ty::Struct(def, _) | Ty::Param(def) => names.def(*def).name.to_string(),
             Ty::Fn { params, ret } => {
-                let params: Vec<String> = params
-                    .iter()
-                    .map(|&p| self.display_with(p, names, subst))
-                    .collect();
-                format!(
-                    "fn({}) -> {}",
-                    params.join(", "),
-                    self.display_with(*ret, names, subst)
-                )
+                let params: Vec<String> = params.iter().map(|&p| show(p)).collect();
+                format!("fn({}) -> {}", params.join(", "), show(*ret))
             }
-            Ty::Var(_) => "_".into(),
+            Ty::Var(v) => match vars {
+                Some(u) => u.display_var(*v, names),
+                None => "_".into(),
+            },
         }
     }
 }
 
-/// The name of trait `trait_`'s `index`th associated type: `Item`.
 pub fn assoc_name(names: &Names, trait_: DefId, index: usize) -> String {
     match names.def(trait_).kind {
         som_resolve::DefKind::Trait(t) => names

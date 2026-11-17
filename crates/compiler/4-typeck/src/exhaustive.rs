@@ -1,15 +1,10 @@
-//! Whether a `match` covers every value, and which arms can never be reached.
-//!
-//! The usual "usefulness" algorithm: a pattern is useful after some others if there's a value
-//! it matches and none of them do. A `match` covers everything if a wildcard after its arms
-//! isn't useful, and an arm is reachable if it's useful after the arms before it. When a
-//! wildcard is useful, the value it alone matches is a witness: what the error names as not
-//! matched.
+//! The usual "usefulness" algorithm: a pattern is useful after others if some value matches it
+//! and none of them. A `match` covers everything if a wildcard after its arms isn't useful; an
+//! arm is reachable if it's useful after those before it. A useful wildcard's value is the
+//! witness the error names.
 
 use crate::ty::TypeId;
 
-/// One way of making a value: a variant, `true`, `5`, `"yes"`, `none`, or an optional holding
-/// a value.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Ctor {
     Variant(usize),
@@ -23,9 +18,8 @@ pub(crate) enum Ctor {
 /// A pattern reduced to what decides which values it matches.
 #[derive(Clone, Debug)]
 pub(crate) enum Pat {
-    /// Matches anything: `_`, or a name that binds.
+    /// `_`, or a name that binds.
     Wild,
-    /// Values made with the constructor, whose fields match the patterns.
     Ctor(Ctor, Vec<Pat>),
 }
 
@@ -94,7 +88,6 @@ pub(crate) fn useful(
     }
 }
 
-/// `useful` for values made with `ctor`, whose fields `fields` match, of types `field_tys`.
 fn specialized(
     rows: &[Vec<Pat>],
     rest: &[Pat],
@@ -135,7 +128,6 @@ fn specialize(row: &[Pat], ctor: &Ctor, arity: usize) -> Option<Vec<Pat>> {
     Some(fields.into_iter().chain(rest.iter().cloned()).collect())
 }
 
-/// The types of what `ctor` holds, for a value of type `ty`.
 fn field_types(space: &mut Space, ty: TypeId, ctor: &Ctor, arity: usize) -> Vec<TypeId> {
     (space(ty).into_iter().flatten())
         .find(|(c, _)| c == ctor)
