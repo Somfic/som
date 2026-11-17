@@ -1,0 +1,10 @@
+// expect: error MissingReturn
+
+/// `pick<1>` gets to its end without a value.
+fn pick<N: usize>(a: &[i32; N]) -> i32 {
+    @if N >= 3 {
+        return a[2];
+    }
+}
+
+fn main() -> i32 = pick(&[1, 2, 42]) + pick(&[1]);

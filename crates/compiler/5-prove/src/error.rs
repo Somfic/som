@@ -255,6 +255,8 @@ impl ProveError {
                     ]);
                 match fix {
                     Some(fix) => d.with_fix(fix.clone()),
+                    // Known to be false: checking it would never let the call happen.
+                    None if *never => d,
                     None => d.with_hint(msg![
                         "check it first: ",
                         code(format!("if {condition} {{ … }}"))

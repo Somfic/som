@@ -180,6 +180,8 @@ pub enum TypeError {
     /// `@for f in T` where `T` isn't a struct: a generic function's type parameter, used with
     /// one that isn't (`i32`), or a name that's neither.
     ReflectNotStruct { name: String, span: Span },
+    /// `@for (i, k) in T` among a `match`'s arms where `T` isn't an enum.
+    ReflectNotEnum { name: String, span: Span },
     /// A type where a value goes in an `@if`'s condition, not compared with another type:
     /// `@if T`, or `@if T == 3`.
     TypeNotCompared { span: Span },
@@ -2029,6 +2031,15 @@ impl TypeError {
                         code("@if"),
                         " can ask which type it is: ",
                         code("@if T == f32 { … }")
+                    ])
+            }
+            TypeError::ReflectNotEnum { name, span } => {
+                Diagnostic::error(msg![code(name), " isn't an enum to go through the variants of"])
+                    .with_label(Label::primary(span.clone(), "not an enum here"))
+                    .with_hint(msg![
+                        code("@for (i, k) in T"),
+                        " among a match's arms goes through an enum's variants: an enum, or a \
+                         type parameter used with one"
                     ])
             }
             TypeError::ReflectNotStruct { name, span } => {

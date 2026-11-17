@@ -382,6 +382,10 @@ pub struct Typed {
     per_instance: HashSet<Id<Func>>,
     /// `@for f in T` over a generic type, in one instance: the copy for `T`'s struct.
     chosen_arms: HashMap<Id<Stmt>, Id<Expr>>,
+    /// `match`es over a generic enum's variants: checked for each instance.
+    match_regions: HashSet<Id<Expr>>,
+    /// Those, in one instance: the copy for `T`'s enum.
+    chosen_matches: HashMap<Id<Expr>, Id<Expr>>,
     /// Method calls on arrays → the built-in method they call.
     array_methods: HashMap<Id<Expr>, ArrayMethod>,
     /// Method calls on typed pointers → the built-in method they call.
@@ -587,6 +591,12 @@ impl Typed {
         self.exprs[expr.id]
     }
 
+    /// Whether `expr` was checked and has a type: not one in an `@if` checked for each
+    /// instance, or one that failed to check.
+    pub fn is_checked_expr(&self, expr: Id<Expr>) -> bool {
+        !matches!(self.ty(self.expr(expr)), Ty::Error)
+    }
+
     /// The type of a parameter or local.
     pub fn local(&self, def: DefId) -> TypeId {
         self.locals[&def]
@@ -698,7 +708,19 @@ impl Typed {
         let members = (self.per_instance.iter())
             .filter(|&&func| !ast.funcs[func].when.is_empty())
             .map(|&func| ast.funcs.span(func).clone());
-        regions.chain(members).collect()
+        // A function's end, where one not returning on every path is said: whether it does
+        // depends on which way its `@if`s go.
+        let ends = (self.per_instance.iter())
+            .filter_map(|&func| ast.funcs[func].body)
+            .map(|body| ast.exprs.span(body).last_char());
+        let matches = self.match_regions.iter().map(|&m| ast.exprs.span(m).clone());
+        regions.chain(members).chain(ends).chain(matches).collect()
+    }
+
+    /// `match` `expr` with `@for (i, k) in T` among its arms, over a generic enum, in one
+    /// instance: the copy written out for `T`'s enum.
+    pub fn chosen_match(&self, expr: Id<Expr>) -> Option<Id<Expr>> {
+        self.chosen_matches.get(&expr).copied()
     }
 
     /// The `@if`s checked for each instance.

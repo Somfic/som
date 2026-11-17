@@ -131,6 +131,10 @@ impl Checker<'_> {
                 self.moves_in(*fallback, by_value);
             }
             // The arms' patterns decide what's taken; the borrow checker sees to that.
+            // Over a generic enum's variants, in one instance: its copy for `T`'s enum.
+            Expr::Match { .. } if let Some(&copy) = self.chosen_matches.get(&id) => {
+                self.moves_in(copy, by_value);
+            }
             Expr::Match { scrutinee, arms } => {
                 self.moves_in(*scrutinee, false);
                 for arm in arms {

@@ -1,0 +1,12 @@
+// expect: error ReflectNotEnum
+
+/// `i32` has no variants.
+fn index<T>(v: T) -> i32 {
+    match v {
+        @for (i, k) in T {
+            k => i as i32,
+        }
+    }
+}
+
+fn main() -> i32 = index(5);

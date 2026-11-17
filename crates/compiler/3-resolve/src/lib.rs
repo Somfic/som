@@ -1136,6 +1136,18 @@ impl<'a> Resolver<'a> {
                     r.resolve_expr(*value);
                 }
             }),
+            // `@for (i, k) in T` among its arms, over a generic enum: each enum's copy. The
+            // copies are the same text: what's wrong is said for the first.
+            Expr::Match { scrutinee, .. } if let Some(per_type) = self.ast.per_type_matches.get(&id) => {
+                self.resolve_expr(*scrutinee);
+                for (k, &(_, copy)) in per_type.arms.iter().enumerate() {
+                    let before = self.errors.len();
+                    self.resolve_expr(copy);
+                    if k > 0 {
+                        self.errors.truncate(before);
+                    }
+                }
+            }
             // What an arm's pattern binds is only seen in that arm.
             Expr::Match { scrutinee, arms } => {
                 self.resolve_expr(*scrutinee);

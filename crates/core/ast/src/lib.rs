@@ -44,6 +44,11 @@ pub struct Ast {
     /// struct, the statement standing for it picking the copy for `T`'s struct in each
     /// instance of its function. The statement → the copies.
     pub per_type: std::collections::HashMap<Id<Stmt>, PerType>,
+    /// `match v { @for (i, k) in T { k => i, } }` over a generic enum `T`: the whole `match`
+    /// written out for every enum, with its arms for that enum's variants, the `match`
+    /// standing for it picking the copy for `T`'s enum in each instance. The `match` → the
+    /// copies.
+    pub per_type_matches: std::collections::HashMap<Id<Expr>, PerType>,
 }
 
 /// An `@for` over a generic type's fields, written out once for each struct there is.

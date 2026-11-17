@@ -1,0 +1,11 @@
+// ReflectNotEnum: `@for (i, k) in T` among a match's arms goes through an enum's variants: here the function is used with `i32`, which has none.
+
+fn index<T>(v: T) -> i32 {
+    match v {
+        @for (i, k) in T {
+            k => i as i32,
+        }
+    }
+}
+
+fn main() -> i32 = index(5);

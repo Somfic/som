@@ -68,6 +68,14 @@ pub fn prove(ast: &Ast, names: &Names, typed: &Typed) -> Vec<ProveError> {
             prover.expr(body);
         }
     }
+    // A constant's value, worked out while compiling: its calls' `@where`s too, `at(5)` of
+    // `@where i < 3` an error here rather than whatever running it gives.
+    for (_, constant) in ast.consts.iter() {
+        if typed.is_checked_expr(constant.value) {
+            prover.facts = Facts::default();
+            prover.expr(constant.value);
+        }
+    }
     prover.errors
 }
 
@@ -488,6 +496,7 @@ impl Prover<'_> {
                 self.expr(*optional);
                 self.expr(*fallback);
             }
+            Expr::Match { .. } if let Some(copy) = self.typed.chosen_match(id) => self.expr(copy),
             Expr::Match { scrutinee, arms } => {
                 self.expr(*scrutinee);
                 for arm in arms {
@@ -538,7 +547,7 @@ impl Prover<'_> {
         };
         // A number written out is checked against a length written out by the type checker;
         // against `N`, here.
-        if matches!(self.ast.exprs[index], Expr::Int(_)) && len.term == Term::Zero {
+        if matches!(self.ast.exprs[index], Expr::Int(_)) && len.is_number() {
             return;
         }
         // Inside is from 0 up to the length: a signed index can be below 0, and `as usize`
@@ -552,7 +561,7 @@ impl Prover<'_> {
         // `y * 10 + x`, of an array of a known length: where it's known to be from what's
         // known of `x` and `y`.
         let known = known
-            || (len.term == Term::Zero
+            || (len.is_number()
                 && self
                     .range_of(index)
                     .is_some_and(|(least, most)| least >= 0 && most < len.offset));
@@ -648,6 +657,7 @@ impl Prover<'_> {
                 Some((
                     Value {
                         term: Term::Place(Place::Path { root, mut path }),
+                        minus: Term::Zero,
                         offset: 0,
                     },
                     _,
@@ -681,6 +691,7 @@ impl Prover<'_> {
                 .and_then(|(base, _)| match base {
                     Value {
                         term: Term::Place(Place::Path { root, mut path }),
+                        minus: Term::Zero,
                         offset: 0,
                     } => {
                         path.push("len".into());
@@ -691,12 +702,11 @@ impl Prover<'_> {
         };
         let at = self.value_of(index, &as_is).map(|(at, _)| at);
         let range = |p: &Self, v: &Value<Place>| {
-            let zero = Term::Zero;
             // Unsigned values are at least 0 anyway: that's no news.
-            let least = (p.facts.bound(&zero, &v.term))
+            let least = (p.facts.bound(&v.minus, &v.term))
                 .map(|d| v.offset - d)
                 .filter(|&n| n > 0);
-            let most = p.facts.bound(&v.term, &zero).map(|d| d + v.offset);
+            let most = p.facts.bound(&v.term, &v.minus).map(|d| d + v.offset);
             (least, most)
         };
         let describe =
@@ -738,12 +748,13 @@ impl Prover<'_> {
         let Some(at) = at else {
             return len_known;
         };
-        if matches!(at.term, Term::Zero) {
+        if at.is_number() {
             return len_known;
         }
         // `i <= xs.len`: how the index compares with the length, when it's no number.
         let at_range = range(self, &at);
         if at_range.1.is_none()
+            && at.minus == Term::Zero
             && let Some(d) = self.facts.bound(&at.term, &len.term)
         {
             let above = d + at.offset - len.offset;
@@ -893,17 +904,18 @@ impl Prover<'_> {
                 if !needs.iter().all(|n| self.facts.holds(n)) {
                     return None;
                 }
-                match &value.term {
-                    Term::Zero => (value.offset, value.offset),
-                    term => {
-                        // `0 - t <= d` is `t >= -d`; `t - 0 <= d` is `t <= d`. Where one
-                        // isn't known, it's as far as the type goes.
+                match value.is_number() {
+                    true => (value.offset, value.offset),
+                    false => {
+                        // `m - t <= d` is `t - m >= -d`; `t - m <= d` is `t - m <= d`. Where
+                        // one isn't known, it's as far as the type goes.
+                        let (term, minus) = (&value.term, &value.minus);
                         let (min, max) = self.int_limits(expr)?;
-                        let least = match self.facts.bound(&Term::Zero, term) {
+                        let least = match self.facts.bound(minus, term) {
                             Some(below) => value.offset.checked_sub(below)?,
                             None => min,
                         };
-                        let most = match self.facts.bound(term, &Term::Zero) {
+                        let most = match self.facts.bound(term, minus) {
                             Some(above) => value.offset.checked_add(above)?,
                             None => max,
                         };
@@ -1264,6 +1276,7 @@ impl Prover<'_> {
                     Some((
                         Value {
                             term: Term::Place(place),
+                            minus: Term::Zero,
                             offset: 0,
                         },
                         _,
@@ -1338,6 +1351,7 @@ impl Prover<'_> {
                 let (base, needs) = self.value_of(object, subst)?;
                 let Value {
                     term: Term::Place(Place::Path { root, mut path }),
+                    minus: Term::Zero,
                     offset: 0,
                 } = base
                 else {
@@ -1369,7 +1383,23 @@ impl Prover<'_> {
                 let (n, other) = match (&self.ast.exprs[lhs], &self.ast.exprs[rhs]) {
                     (_, &Expr::Int(n)) => (n, lhs),
                     (&Expr::Int(n), _) if op == BinOp::Add => (n, rhs),
-                    _ => return None,
+                    // `N - 1 - i`: one term less another.
+                    _ => {
+                        let (a, mut needs) = self.value_of(lhs, subst)?;
+                        let (b, more) = self.value_of(rhs, subst)?;
+                        needs.extend(more);
+                        let value = match op {
+                            BinOp::Add => a.plus(&b)?,
+                            _ => {
+                                // `a - b` doesn't wrap where `a >= b`.
+                                if self.is_unsigned(expr) {
+                                    needs.push(Cond::compare(&a, Compare::GreaterOrEqual, &b));
+                                }
+                                a.less(&b)?
+                            }
+                        };
+                        return Some((value, needs));
+                    }
                 };
                 let (mut value, mut needs) = self.value_of(other, subst)?;
                 if op == BinOp::Add {
@@ -1390,6 +1420,7 @@ impl Prover<'_> {
             _ => return None,
         };
         if self.is_unsigned(expr)
+            && value.minus == Term::Zero
             && let Term::Place(place) = &value.term
         {
             self.facts.unsigned(place.clone());
@@ -1636,6 +1667,7 @@ impl Prover<'_> {
                 f(*optional);
                 f(*fallback);
             }
+            Expr::Match { .. } if let Some(copy) = self.typed.chosen_match(expr) => f(copy),
             Expr::Match { scrutinee, arms } => {
                 f(*scrutinee);
                 arms.iter().for_each(|arm| f(arm.body));

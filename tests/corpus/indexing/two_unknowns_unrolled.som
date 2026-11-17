@@ -1,0 +1,18 @@
+// expect: exit 42
+
+struct Vector<N: usize> {
+    components: [i32; N],
+}
+
+impl<N: usize> Vector<N> {
+    /// The components back to front, `@for` written out: `N - 1 - i` proven for each copy.
+    pub fn reversed_sum(&self) -> i32 {
+        let mut sum = 0;
+        @for i in 0..N {
+            sum = sum + .components[N - 1 - i];
+        }
+        return sum;
+    }
+}
+
+fn main() -> i32 = Vector { components: [1, 2, 39] }.reversed_sum();

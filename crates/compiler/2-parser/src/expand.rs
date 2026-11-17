@@ -321,6 +321,63 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
         let found = (enums.iter().find(|(m, _)| *m == r.module))
             .or_else(|| (enums.len() == 1).then(|| &enums[0]))
             .map(|&(_, s)| s);
+        // Among a `match`'s arms, over a generic `T`: the `match` written out for every enum,
+        // with that enum's arms, each instance picking its copy.
+        if found.is_none()
+            && r.of.segments.len() == 1
+            && let ReflectedInto::Arms { expr, at } = r.into
+        {
+            if ast.per_type_matches.contains_key(&expr) {
+                errors.push(ParseError {
+                    message: msg![
+                        "a ",
+                        code("match"),
+                        " has one ",
+                        code("@for"),
+                        " over a generic type among its arms, for now"
+                    ],
+                    hint: msg!["write the other arms out, or go through the type once"],
+                    span: r.of.span(),
+                    fix: None,
+                });
+                continue;
+            }
+            let enums: Vec<som_ast::Id<som_ast::Struct>> = (ast.structs.iter())
+                .filter(|(_, s)| s.is_enum())
+                .map(|(id, _)| id)
+                .collect();
+            let mut copies = Vec::new();
+            for (k, e) in enums.into_iter().enumerate() {
+                let written = match write_copies(ast, &r, e) {
+                    Ok(written) => written,
+                    Err(error) => {
+                        errors.push(error);
+                        break;
+                    }
+                };
+                let (new_arms, arm_errors) = parse_arms(ast, r.module, written);
+                // Every copy is the same text: what's wrong is said for the first.
+                if k == 0 {
+                    errors.extend(arm_errors);
+                }
+                let Expr::Match { scrutinee, arms } = &ast.exprs[expr] else {
+                    break;
+                };
+                let scrutinee = *scrutinee;
+                let mut all: Vec<som_ast::Arm> = (arms.iter())
+                    .map(|a| som_ast::Arm {
+                        pattern: a.pattern,
+                        body: a.body,
+                    })
+                    .collect();
+                all.splice(at.min(all.len())..at.min(all.len()), new_arms);
+                let span = ast.exprs.span(expr).clone();
+                let copy = ast.exprs.alloc(Expr::Match { scrutinee, arms: all }, span);
+                copies.push((e, copy));
+            }
+            ast.per_type_matches.insert(expr, som_ast::PerType { of: r.of.clone(), arms: copies });
+            continue;
+        }
         // Not a type there is: in a function, a generic one's, `T`. Written out for every
         // struct, the function's instances each picking theirs (whether `T` is one is the
         // type checker's to say).
@@ -384,34 +441,45 @@ pub fn expand_reflected(ast: &mut Ast) -> Vec<ParseError> {
                 continue;
             }
         };
-        let mut parser = Parser::new(written, ast, r.module);
-        parser.skip_trivia();
-        let mut arms = Vec::new();
-        while !parser.at_eof() {
-            let Some(pattern) = parser.parse_pattern() else {
-                break;
-            };
-            if parser
-                .expect(TokenKind::FatArrow, "`=>` and the arm's value")
-                .is_none()
-            {
-                break;
-            }
-            let Some(body) = parser.parse_expr() else {
-                break;
-            };
-            arms.push(som_ast::Arm { pattern, body });
-            let ends_in_block = matches!(parser.ast.exprs[body], Expr::Block { .. });
-            if !parser.eat(TokenKind::Comma) && !ends_in_block {
-                break;
-            }
-        }
-        errors.extend(std::mem::take(&mut parser.errors));
+        let (arms, arm_errors) = parse_arms(ast, r.module, written);
+        errors.extend(arm_errors);
         if let Expr::Match { arms: existing, .. } = ast.exprs.get_mut(expr) {
             existing.splice(at..at, arms);
         }
     }
     errors
+}
+
+/// `tokens` parsed as a `match`'s arms.
+fn parse_arms(
+    ast: &mut Ast,
+    module: usize,
+    tokens: Vec<Token>,
+) -> (Vec<som_ast::Arm>, Vec<ParseError>) {
+    let mut parser = Parser::new(tokens, ast, module);
+    parser.skip_trivia();
+    let mut arms = Vec::new();
+    while !parser.at_eof() {
+        let Some(pattern) = parser.parse_pattern() else {
+            break;
+        };
+        if parser
+            .expect(TokenKind::FatArrow, "`=>` and the arm's value")
+            .is_none()
+        {
+            break;
+        }
+        let Some(body) = parser.parse_expr() else {
+            break;
+        };
+        arms.push(som_ast::Arm { pattern, body });
+        let ends_in_block = matches!(parser.ast.exprs[body], Expr::Block { .. });
+        if !parser.eat(TokenKind::Comma) && !ends_in_block {
+            break;
+        }
+    }
+    let errors = std::mem::take(&mut parser.errors);
+    (arms, errors)
 }
 
 /// The copies' statements, `tokens`, parsed and put in place of statement `stmt`: a block of

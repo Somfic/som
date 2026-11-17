@@ -68,6 +68,11 @@ pub(crate) struct Checker<'a> {
     bound: HashMap<DefId, TypeId>,
     /// `@for f in T` over a generic type, checking one instance: the copy for `T`'s struct.
     chosen_arms: HashMap<Id<Stmt>, Id<Expr>>,
+    /// `match`es with `@for (i, k) in T` among their arms, over a generic enum: checked for
+    /// each instance, not here.
+    match_regions: HashSet<Id<Expr>>,
+    /// Those, in one instance: the copy for `T`'s enum.
+    chosen_matches: HashMap<Id<Expr>, Id<Expr>>,
     /// The function being checked: its return type, and where that's written.
     returns: Option<(TypeId, Option<Span>)>,
     /// The next expression inferred is the object of a field access or dereference.
@@ -172,6 +177,8 @@ impl<'a> Checker<'a> {
             per_instance: HashSet::new(),
             bound: HashMap::new(),
             chosen_arms: HashMap::new(),
+            match_regions: HashSet::new(),
+            chosen_matches: HashMap::new(),
             returns: None,
             in_place: false,
             deferred_ops: Vec::new(),
@@ -826,6 +833,12 @@ impl<'a> Checker<'a> {
             if self.leaves(stmts) {
                 return;
             }
+            // `@if N >= 3 { return a; } else @if N < 3 { return b; }`: whether each instance
+            // returns is said checking it, where they're worked out.
+            let instance = (self.names.type_params(id).iter()).any(|p| self.bound.contains_key(p));
+            if self.per_instance.contains(&id) && !instance {
+                return;
+            }
             // Some path gets to the end with nothing to return.
             let unit = self.u.table.unit;
             if self.u.unify(ret, unit).is_err() {
@@ -1013,6 +1026,8 @@ impl<'a> Checker<'a> {
             regions: self.regions,
             per_instance: self.per_instance,
             chosen_arms: self.chosen_arms,
+            match_regions: self.match_regions,
+            chosen_matches: self.chosen_matches,
             patterns: self.patterns,
             receivers: self.receivers,
             callees: self.callees,
@@ -2690,9 +2705,13 @@ impl<'a> Checker<'a> {
     /// Whether control never gets past the end of `stmts`: the last one returns, breaks or
     /// continues; or is an `if` whose branches all do; or a `loop` with no `break` in it.
     fn leaves(&self, stmts: &[Id<Stmt>]) -> bool {
-        let Some(&last) = stmts.last() else {
-            return false;
-        };
+        // Any of them: what's after one that leaves is never reached. `@if N >= 3 { return a; }`
+        // then `@if N < 3 { return b; }`, for each instance.
+        stmts.iter().any(|&stmt| self.stmt_leaves(stmt))
+    }
+
+    /// Whether control never gets past `last`.
+    fn stmt_leaves(&self, last: Id<Stmt>) -> bool {
         match &self.ast.stmts[last] {
             Stmt::Return(_) | Stmt::Break(_) | Stmt::Continue(_) => true,
             // `@if`: the branch it picks.
@@ -2723,6 +2742,9 @@ impl<'a> Checker<'a> {
                 stmts,
                 value: Some(value),
             } => self.leaves(stmts) || self.expr_leaves(*value),
+            Expr::Match { .. } if let Some(&copy) = self.chosen_matches.get(&expr) => {
+                self.expr_leaves(copy)
+            }
             Expr::Match { arms, .. } => {
                 !arms.is_empty() && arms.iter().all(|arm| self.expr_leaves(arm.body))
             }
@@ -4229,6 +4251,53 @@ impl<'a> Checker<'a> {
                 }
             }
 
+            // `@for (i, k) in T` among its arms, over a generic enum: checked for each
+            // instance, with the copy for `T`'s enum.
+            Expr::Match { scrutinee, .. } if let Some(per_type) = self.ast.per_type_matches.get(&id) => {
+                let name = &per_type.of.name().name;
+                let param = (self.current_func)
+                    .and_then(|f| (self.names.type_params(f).iter().copied())
+                        .find(|&p| &*self.names.def(p).name == &**name));
+                let Some(param) = param else {
+                    self.errors.push(TypeError::ReflectNotEnum {
+                        name: name.to_string(),
+                        span: per_type.of.span(),
+                    });
+                    return error;
+                };
+                let Some(&ty) = self.bound.get(&param) else {
+                    // What it gives is what it's expected to: it's checked to be, per instance.
+                    self.infer(*scrutinee);
+                    self.match_regions.insert(id);
+                    if let Some(func) = self.current_func {
+                        self.per_instance.insert(func);
+                    }
+                    return match self.expected_here.take() {
+                        Some(expected) => expected,
+                        None => self.u.fresh(VarKind::Any),
+                    };
+                };
+                let enum_ = match self.u.get(ty) {
+                    Ty::Struct(def, _) => match self.names.def(*def).kind {
+                        DefKind::Struct(s) if self.ast.structs[s].is_enum() => Some(s),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                match enum_.and_then(|s| per_type.arms.iter().find(|(a, _)| *a == s)) {
+                    Some(&(_, copy)) => {
+                        self.chosen_matches.insert(id, copy);
+                        self.infer(copy)
+                    }
+                    None => {
+                        self.errors.push(TypeError::ReflectNotEnum {
+                            name: self.describe(ty).plain().trim_matches('`').to_string(),
+                            span: per_type.of.span(),
+                        });
+                        error
+                    }
+                }
+            }
             Expr::Match { scrutinee, arms } => {
                 let discarded = std::mem::take(&mut self.discarding);
                 self.check_match(id, *scrutinee, arms, discarded)
@@ -6480,6 +6549,9 @@ impl Checker<'_> {
                 if let Some(value) = value {
                     self.forget_changed_by(*value, false);
                 }
+            }
+            Expr::Match { .. } if let Some(&copy) = self.chosen_matches.get(&expr) => {
+                self.forget_changed_by(copy, false);
             }
             Expr::Match { scrutinee, arms } => {
                 self.forget_changed_by(*scrutinee, false);

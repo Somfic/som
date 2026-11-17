@@ -2179,6 +2179,10 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
                 self.read(Place::local(result), ty)
             }
 
+            // Over a generic enum's variants: the copy for this instance's `T`.
+            Expr::Match { .. } if let Some(copy) = self.typed.chosen_match(expr) => {
+                return self.operand(copy);
+            }
             Expr::Match { scrutinee, arms } => self.lower_match(expr, *scrutinee, arms),
 
             Expr::Conditional {

@@ -1,0 +1,13 @@
+// expect: exit 42
+
+/// Each instance returns from one of them: the condition after `else @if` is the first's
+/// opposite, which is only known for each instance.
+fn pick<N: usize>(a: &[i32; N]) -> i32 {
+    @if N >= 3 {
+        return a[2];
+    } else @if N < 3 {
+        return 0;
+    }
+}
+
+fn main() -> i32 = pick(&[1, 2, 42]) + pick(&[1]);

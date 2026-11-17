@@ -1,0 +1,12 @@
+// expect: exit 42
+
+/// `N - 1 - i` of `i` in `0..N`: from `N - 1` down to 0, inside the array.
+fn reversed_sum<N: usize>(a: &[i32; N]) -> i32 {
+    let mut sum = 0;
+    for i in 0..N {
+        sum = sum + a[N - 1 - i];
+    }
+    return sum;
+}
+
+fn main() -> i32 = reversed_sum(&[40, 2]);

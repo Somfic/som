@@ -1,0 +1,14 @@
+// expect: exit 7
+
+enum Light { Off, Dim, Bright }
+
+/// The arms written out for `T`'s variants use the function's other parameters.
+fn level<T>(v: T, fallback: i32) -> i32 {
+    match v {
+        @for (i, k) in T {
+            k => i as i32 + fallback,
+        }
+    }
+}
+
+fn main() -> i32 = level(Light::Bright, 5);

@@ -1,0 +1,22 @@
+// expect: exit 42
+
+enum Color { Red, Green, Blue }
+
+enum Shape { Circle(f32), Square(f32), Triangle { base: f32, height: f32 }, Dot }
+
+/// The index of `v`'s variant, for any enum: the `match` is written out for each enum, and
+/// each instance of `index` checks the one for its `T`.
+fn index<T>(v: T) -> i32 {
+    match v {
+        @for (i, k) in T {
+            k => i as i32,
+        }
+    }
+}
+
+fn main() -> i32 {
+    let a = index(Color::Blue);
+    let b = index(Shape::Triangle { base: 1.0, height: 2.0 });
+    let c = index(Shape::Dot);
+    return a * 10 + b * 4 + c * 2 + 8;
+}

@@ -1,0 +1,12 @@
+// expect: error MaybeOutOfBounds
+
+/// `N - i` is `N` where `i` is 0: one past the end.
+fn reversed_sum<N: usize>(a: &[i32; N]) -> i32 {
+    let mut sum = 0;
+    for i in 0..N {
+        sum = sum + a[N - i];
+    }
+    return sum;
+}
+
+fn main() -> i32 = reversed_sum(&[40, 2]);

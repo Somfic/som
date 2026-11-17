@@ -1,8 +1,0 @@
-// Parse: `@for x in Name` goes through an enum's variants or a struct's fields: here there's neither by that name.
-
-fn count(n: i32) -> i32 = match n {
-    @for v in Nothing { v => 1, }
-    _ => 0,
-};
-
-fn main() -> i32 = count(1);

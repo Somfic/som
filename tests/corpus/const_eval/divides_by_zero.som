@@ -1,6 +1,7 @@
-// expect: error ConstDividedByZero
+// expect: error Unproven
 
-/// What it says it needs isn't checked while compiling: dividing by zero is caught as it runs.
+/// What a function says it needs is checked for a call while compiling too: `share(10, 0)`
+/// is an error before anything runs.
 @where people != 0
 fn share(total: i32, people: i32) -> i32 = total / people;
 

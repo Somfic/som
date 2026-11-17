@@ -18,17 +18,20 @@ pub enum Term<P> {
     Place(P),
 }
 
-/// A term and a number added to it: `i + 1`, `xs.len - 1`, `3`.
+/// A term, less another, and a number added: `i + 1`, `xs.len - 1`, `3`, `N - 1 - i`.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Value<P> {
     pub term: Term<P>,
+    /// What's taken away: `i` of `N - 1 - i`. Mostly `Zero`.
+    pub minus: Term<P>,
     pub offset: i128,
 }
 
-impl<P> Value<P> {
+impl<P: Clone + PartialEq> Value<P> {
     pub fn number(n: i128) -> Self {
         Value {
             term: Term::Zero,
+            minus: Term::Zero,
             offset: n,
         }
     }
@@ -36,9 +39,68 @@ impl<P> Value<P> {
     pub fn place(place: P) -> Self {
         Value {
             term: Term::Place(place),
+            minus: Term::Zero,
             offset: 0,
         }
     }
+
+    /// Whether it's a number: no term in it.
+    pub fn is_number(&self) -> bool {
+        self.term == Term::Zero && self.minus == Term::Zero
+    }
+
+    /// `self + other`, if it's still at most one term less another: `(N - 1) + i` isn't.
+    pub fn plus(&self, other: &Value<P>) -> Option<Value<P>> {
+        let (plus, minus) = cancel(
+            vec![self.term.clone(), other.term.clone()],
+            vec![self.minus.clone(), other.minus.clone()],
+        )?;
+        Some(Value {
+            term: plus,
+            minus,
+            offset: self.offset.checked_add(other.offset)?,
+        })
+    }
+
+    /// `self - other`, if it's still at most one term less another: `(N - 1) - i`.
+    pub fn less(&self, other: &Value<P>) -> Option<Value<P>> {
+        let (plus, minus) = cancel(
+            vec![self.term.clone(), other.minus.clone()],
+            vec![self.minus.clone(), other.term.clone()],
+        )?;
+        Some(Value {
+            term: plus,
+            minus,
+            offset: self.offset.checked_sub(other.offset)?,
+        })
+    }
+}
+
+/// The terms added, `plus`, and taken away, `minus`, with those on both sides gone (and
+/// zeros): one of each at most, else `None`.
+fn cancel<P: PartialEq>(
+    mut plus: Vec<Term<P>>,
+    mut minus: Vec<Term<P>>,
+) -> Option<(Term<P>, Term<P>)> {
+    plus.retain(|t| *t != Term::Zero);
+    minus.retain(|t| *t != Term::Zero);
+    let mut i = 0;
+    while i < plus.len() {
+        match minus.iter().position(|m| *m == plus[i]) {
+            Some(j) => {
+                plus.remove(i);
+                minus.remove(j);
+            }
+            None => i += 1,
+        }
+    }
+    if plus.len() > 1 || minus.len() > 1 {
+        return None;
+    }
+    Some((
+        plus.pop().unwrap_or(Term::Zero),
+        minus.pop().unwrap_or(Term::Zero),
+    ))
 }
 
 /// A condition, as far as it's followed.
@@ -83,16 +145,22 @@ impl Compare {
     }
 }
 
-impl<P: Clone> Cond<P> {
-    /// `x op y`.
+impl<P: Clone + PartialEq> Cond<P> {
+    /// `x op y`. Followed where `x - y` comes to one term less another: `N - 1 - i < N` is
+    /// `0 - i <= 0`, but `a + b < c` isn't followed.
     pub fn compare(x: &Value<P>, op: Compare, y: &Value<P>) -> Cond<P> {
-        // `x <= y` is `x.term - y.term <= y.offset - x.offset`; `<` one less.
-        let le = |a: &Value<P>, b: &Value<P>, strict: bool| {
-            Cond::Le(
-                a.term.clone(),
-                b.term.clone(),
-                b.offset - a.offset - strict as i128,
+        // The terms of `a - b`, and how much `b`'s numbers are above `a`'s.
+        let terms = |a: &Value<P>, b: &Value<P>| {
+            cancel(
+                vec![a.term.clone(), b.minus.clone()],
+                vec![a.minus.clone(), b.term.clone()],
             )
+            .map(|(plus, minus)| (plus, minus, b.offset - a.offset))
+        };
+        // `a <= b` is `a.term - b.term <= b.offset - a.offset`; `<` one less.
+        let le = |a: &Value<P>, b: &Value<P>, strict: bool| match terms(a, b) {
+            Some((plus, minus, c)) => Cond::Le(plus, minus, c - strict as i128),
+            None => Cond::Unknown,
         };
         match op {
             Compare::Less => le(x, y, true),
@@ -100,7 +168,10 @@ impl<P: Clone> Cond<P> {
             Compare::Greater => le(y, x, true),
             Compare::GreaterOrEqual => le(y, x, false),
             Compare::Equal => Cond::All(vec![le(x, y, false), le(y, x, false)]),
-            Compare::NotEqual => Cond::Ne(x.term.clone(), y.term.clone(), y.offset - x.offset),
+            Compare::NotEqual => match terms(x, y) {
+                Some((plus, minus, c)) => Cond::Ne(plus, minus, c),
+                None => Cond::Unknown,
+            },
         }
     }
 
@@ -412,6 +483,21 @@ mod tests {
         facts.assume(&goal);
         facts.forget_since(mark);
         assert!(!facts.holds(&goal));
+    }
+
+    #[test]
+    fn a_term_less_another() {
+        let mut facts = Facts::default();
+        facts.unsigned("i");
+        facts.unsigned("n");
+        facts.assume(&Cond::compare(&v("i"), Compare::Less, &v("n")));
+        // `n - 1 - i`: inside `0..n`.
+        let at = v("n").less(&Value::number(1)).unwrap().less(&v("i")).unwrap();
+        assert!(facts.holds(&Cond::compare(&at, Compare::Less, &v("n"))));
+        assert!(facts.holds(&Cond::compare(&at, Compare::GreaterOrEqual, &Value::number(0))));
+        assert!(!facts.holds(&Cond::compare(&at, Compare::Less, &Value::number(1))));
+        // Two terms added aren't followed.
+        assert!(v("n").plus(&v("i")).is_none());
     }
 
     #[test]

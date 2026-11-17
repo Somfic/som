@@ -424,7 +424,16 @@ The AST grows by a copy for each struct for each such `@for`.
 
 Not done yet: *pinning* (a region can still change the type of a variable outside it, per
 instance; each instance is checked as a whole, so it's consistent, but the generic check
-doesn't see it); `@for (i, v) in T` over a generic enum's variants among `match` arms.
+doesn't see it).
+
+`@for (i, k) in T` among a `match`'s arms, over a generic enum: the whole `match` is written
+out once for every enum (`Ast::per_type_matches`), with that enum's arms, and is a region:
+each instance checks the copy for `T`'s enum (`Typed::chosen_match`), which lowering and the
+prover use. `T` that isn't an enum is `ReflectNotEnum`. One such `@for` per `match`, for now.
+
+A function whose `@if`s on its parameters decide whether it returns (`@if N >= 3 { return a; }
+else @if N < 3 { return b; }`, or two `@if`s one after the other) is checked for that in
+each instance, where they're worked out: `pick<1>` falling off its end is the error.
 
 The plan, in two passes:
 
@@ -528,11 +537,8 @@ number (`first(&[])` gives "`N >= 1` is false"), or the caller's own `M`, which 
   `Copy`, its `file` and `function` `cstr`s.
 - **Names made from an element**: `@for N in 1..4 { fn twice_N() … }` writes `twice_N` four
   times over. `@ident("twice_{N}")` (step 14), or another spelling.
-- **The prover and arithmetic of two unknowns**: `.components[N - 1 - i]` in `@for i in 0..N`
-  isn't proven, the prover's facts being one unknown and a constant. Proving each unrolled
-  copy with `i` known would do it.
-- **The prover doesn't check a `@const`'s value**: `@where` conditions on calls made while
-  compiling aren't proven; dividing by zero is caught as it runs.
+- **`@if` as a value**: `@if N >= 3 { a } else { b }` can't end a function as its value, in
+  generic code or not: it's a statement, so each branch `return`s.
 - **The editor runs constants on every check**: one that runs for the step limit (10 million
   steps) takes a few seconds in a debug build. The editor could use a lower limit.
 - **Types on functions** (from the same discussion, not compile-time code): no `->` meaning
@@ -790,8 +796,8 @@ impl<N: usize> Vector<N, f32> {
 every copy, and lowering unrolls it for each instance's `N`. The decision in
 [4.6](#46-the-big-question-checking-generics-once-vs-per-instance) is only needed once copies
 can differ in type: `@if N >= 3`, and reflection (step 13 on). The prover checks the body once
-too, for every `N`: `.components[i]` is fine, but `.components[N - 1 - i]` isn't proven, its
-facts being one unknown and a constant. Proving each copy with `i` known would fix that.
+too, for every `N`: `.components[i]` and `.components[N - 1 - i]` are proven, a value being
+one term less another and a number (`N - 1 - i < N` is `0 - i <= 0`).
 
 **Step 13. Generating items.** `step_13_items.som`
 ```rust

@@ -1,0 +1,9 @@
+// expect: error Unproven
+
+@where i < 3
+fn at(i: usize) -> usize = i;
+
+/// A call while compiling has to meet its `@where`s, like any other.
+@const X = at(5);
+
+fn main() -> i32 = X as i32;
