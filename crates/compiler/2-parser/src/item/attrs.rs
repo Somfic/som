@@ -1,4 +1,4 @@
-//! `@where` and `@on`, said of the function below them.
+//! `@where`, `@on` and `@test`, said of the function below them.
 
 use som_ast::{Ident, Where};
 use som_base::message::code;
@@ -13,20 +13,27 @@ use crate::report::RecoveryLevel;
 
 impl Parser<'_> {
     pub(crate) fn at_where(&self) -> bool {
-        self.at_builtin(Builtin::Where) || self.at_builtin(Builtin::On)
+        self.at_builtin(Builtin::Where)
+            || self.at_builtin(Builtin::On)
+            || self.at_builtin(Builtin::Test)
     }
 
-    /// `@where i < self.len`, `@on fail`, each line of them: kept for the function after
-    /// them, with the `///` comment above them.
+    /// `@where i < self.len`, `@on fail`, `@test`, each line of them: kept for the function
+    /// after them, with the `///` comment above them.
     pub(crate) fn parse_wheres(&mut self) {
         if self.wheres.is_empty() {
             self.wheres.doc = self.doc_comment();
             self.wheres.start = Some(self.current_span());
         }
         while self.at_where() {
-            let read = match self.at_builtin(Builtin::On) {
-                true => self.parse_on(),
-                false => self.parse_where(),
+            let read = if self.at_builtin(Builtin::On) {
+                self.parse_on()
+            } else if self.at_builtin(Builtin::Test) {
+                self.advance();
+                self.wheres.test = true;
+                Some(())
+            } else {
+                self.parse_where()
             };
             if read.is_none() {
                 self.recover(RecoveryLevel::Member);
@@ -38,7 +45,7 @@ impl Parser<'_> {
             self.wheres = Default::default();
             self.error_at(
                 span,
-                msg![code("@where"), " and ", code("@on"), " are for a function"],
+                msg![code("@where"), ", ", code("@on"), " and ", code("@test"), " are for a function"],
                 msg!["put it on the line above a ", code("fn")],
             );
         }
@@ -76,14 +83,28 @@ impl Parser<'_> {
         matches!(self.peek_nth(at), TokenKind::Fn | TokenKind::Prop)
     }
 
-    /// The `///` comment, `@where` conditions and `@on` events of the function starting here.
-    pub(crate) fn take_wheres(&mut self) -> (Option<String>, Vec<Where>, Vec<Ident>) {
+    /// The `///` comment, `@where` conditions, `@on` events and `@test` of the function
+    /// starting here.
+    pub(crate) fn take_wheres(&mut self) -> Attrs {
         let wheres = std::mem::take(&mut self.wheres);
         let doc = match wheres.doc {
             Some(doc) => Some(doc),
-            None if !wheres.conditions.is_empty() || !wheres.listens.is_empty() => None,
+            None if !wheres.is_empty() => None,
             None => self.doc_comment(),
         };
-        (doc, wheres.conditions, wheres.listens)
+        Attrs {
+            doc,
+            requires: wheres.conditions,
+            listens: wheres.listens,
+            test: wheres.test,
+        }
     }
+}
+
+/// What's said above a function: see [`Parser::take_wheres`].
+pub(crate) struct Attrs {
+    pub doc: Option<String>,
+    pub requires: Vec<Where>,
+    pub listens: Vec<Ident>,
+    pub test: bool,
 }

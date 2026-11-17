@@ -36,6 +36,28 @@ impl<'a> Resolver<'a> {
             }
         }
         self.check_consts();
+        self.check_test_calls();
+    }
+
+    /// Nothing names a `@test`: the test runner is what calls it.
+    fn check_test_calls(&mut self) {
+        let ast = self.ast;
+        for (id, _) in ast.exprs.iter() {
+            let Some(def) = self.names.expr(id) else {
+                continue;
+            };
+            let DefKind::Func(f) = self.names.def(def).kind else {
+                continue;
+            };
+            let func = &ast.funcs[f];
+            if func.test {
+                self.errors.push(ResolveError::TestCalled {
+                    name: func.name.name.to_string(),
+                    span: ast.exprs.span(id).clone(),
+                    defined_at: func.name.span.clone(),
+                });
+            }
+        }
     }
 
     /// Its fields can be written in terms of its type parameters.

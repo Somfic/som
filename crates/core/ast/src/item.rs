@@ -127,6 +127,8 @@ pub struct Func {
     /// `@where i < self.len`: known to hold wherever it's called.
     pub requires: Vec<Where>,
     pub listens: Vec<Ident>,
+    /// `@test`: run by `som test`, and otherwise reached from nothing.
+    pub test: bool,
     /// `@if N >= 3 { pub prop z … }` around it, among an impl block's members: what has to
     /// hold, of the block's parameters, for a type to have it.
     pub when: Vec<Id<Expr>>,

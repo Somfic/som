@@ -557,7 +557,7 @@ program. What C keeps of a pinned buffer after the constant points to nothing.
 - **What macros do that this doesn't** (compile-time code instead of a macro system, like
   Zig): names made from an element (`@ident`, below); calls with any number of arguments
   (`println!`'s; tuples or variadics); new syntax (`html!`, `sql!`: not planned); embedding
-  files (`@embed`, step 9); attributes on items beyond `@on fail` (`@on test`).
+  files (`@embed`, step 9); attributes on items beyond `@on fail` and `@test`.
 
 - **Where a failure is, when the program runs.** While compiling, an error in the standard
   library is said where the program called into it. When the program runs, `assert`'s

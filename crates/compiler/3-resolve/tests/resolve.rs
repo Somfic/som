@@ -33,7 +33,9 @@ fn help(error: &ResolveError) -> Option<String> {
         | ResolveError::ConstNotKnown { .. }
         | ResolveError::ConstCycle { .. }
         | ResolveError::UnknownEvent { .. }
-        | ResolveError::ListenerIsMethod { .. } => None,
+        | ResolveError::ListenerIsMethod { .. }
+        | ResolveError::TestIsMethod { .. }
+        | ResolveError::TestCalled { .. } => None,
     }
 }
 

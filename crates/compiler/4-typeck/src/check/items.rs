@@ -173,6 +173,7 @@ impl Checker<'_> {
         // Once bodies are checked: what a function gives can be what its body is.
         if only.is_none() {
             self.check_listeners();
+            self.check_tests();
         }
         self.current_func = None;
     }
@@ -288,6 +289,22 @@ impl Checker<'_> {
             let func = &self.ast.funcs[id];
             if !takes || !gives || !func.generics.is_empty() {
                 self.errors.push(TypeError::ListenerSignature {
+                    span: func.name.span.clone(),
+                });
+            }
+        }
+    }
+
+    /// Each `@test` takes nothing and gives nothing back: the runner calls it with nothing,
+    /// and a failure is what fails it.
+    fn check_tests(&mut self) {
+        for &id in self.names.tests() {
+            let sig = &self.sigs[id.id];
+            let ret = self.u.shallow(sig.ret);
+            let gives = matches!(self.u.table.get(ret), Ty::Unit);
+            let func = &self.ast.funcs[id];
+            if !sig.params.is_empty() || !gives || !func.generics.is_empty() {
+                self.errors.push(TypeError::TestSignature {
                     span: func.name.span.clone(),
                 });
             }

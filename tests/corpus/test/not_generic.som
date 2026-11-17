@@ -1,0 +1,6 @@
+// expect: error TestSignature
+
+@test
+fn for_any<T>() {}
+
+fn main() -> i32 = 0;

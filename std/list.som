@@ -182,3 +182,9 @@ impl<T> Index for List<T> {
 impl<T> IndexMut for List<T> {
     fn at_mut(&mut self, i: usize) -> &mut T = .mem.at_mut(i);
 }
+
+
+@test
+fn test() {
+    assert(1 != 1);
+}

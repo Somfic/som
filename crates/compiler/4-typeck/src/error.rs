@@ -183,6 +183,10 @@ pub enum TypeError {
     ListenerSignature {
         span: Span,
     },
+    /// A `@test` takes nothing, gives nothing back, and isn't generic.
+    TestSignature {
+        span: Span,
+    },
     /// `@const N = len();` where checking what `len` runs needs `N`'s value: it can't be worked
     /// out before it's known.
     ConstCycle {
@@ -640,6 +644,7 @@ impl TypeError {
             | TypeError::MainReturns { .. }
             | TypeError::MainParams { .. }
             | TypeError::ListenerSignature { .. }
+            | TypeError::TestSignature { .. }
             | TypeError::ConstructHandle { .. }
             | TypeError::NotInEveryVariant { .. } => calls::diagnostic(self),
             TypeError::WrongTypeArgCount { .. }

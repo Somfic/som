@@ -5,6 +5,7 @@ named_enum! {
         Unreachable = "@unreachable",
         Fail = "@fail",
         On = "@on",
+        Test = "@test",
         For = "@for",
         If = "@if",
         Const = "@const",
@@ -31,6 +32,11 @@ impl Builtin {
                  program fails, at `@fail` or `@unreachable`, with a `&Failure` saying what and \
                  where. The program's own listeners are called instead of the standard \
                  library's printer."
+            }
+            Builtin::Test => {
+                "On a line above a function: a test, run by `som test` and left out of the \
+                 program otherwise. It takes nothing and gives nothing back; it passes unless it \
+                 fails, at `assert`, `@fail` or `@unreachable`."
             }
             Builtin::For => {
                 "A loop settled while compiling: `@for i in 0..4 { s = s + v[i]; }` is the body \

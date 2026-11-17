@@ -1,0 +1,10 @@
+// expect: error TestIsMethod
+
+struct Counter { n: i32 }
+
+impl Counter {
+    @test
+    fn counts() {}
+}
+
+fn main() -> i32 = 0;

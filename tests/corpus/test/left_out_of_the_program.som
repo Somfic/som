@@ -1,0 +1,9 @@
+// expect: exit 3
+
+/// Only `som test` runs a test: the program itself never does.
+@test
+fn would_fail() {
+    assert(false, "ran");
+}
+
+fn main() -> i32 = 3;

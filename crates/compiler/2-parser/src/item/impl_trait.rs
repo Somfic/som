@@ -279,7 +279,12 @@ impl Parser<'_> {
         trait_name: &Ident,
         trait_generics: &[Generic],
     ) -> Option<Id<Func>> {
-        let (doc, requires, listens) = self.take_wheres();
+        let super::attrs::Attrs {
+            doc,
+            requires,
+            listens,
+            test,
+        } = self.take_wheres();
         let start = self.current_span();
         let prop = self.eat(TokenKind::Prop);
         if !prop {
@@ -334,6 +339,7 @@ impl Parser<'_> {
             prop,
             requires,
             listens,
+            test,
             when: self.when.conditions.clone(),
             // As visible as the trait.
             ..signature(doc, som_ast::Visibility::Public, name)

@@ -23,19 +23,20 @@ pub(crate) struct Context {
     pub foreign_semicolons: Vec<Span>,
 }
 
-/// `@where` conditions and `@on` events read, for the function after them, with the `///`
-/// comment above them and where they start.
+/// `@where` conditions, `@on` events and `@test` read, for the function after them, with the
+/// `///` comment above them and where they start.
 #[derive(Default)]
 pub(crate) struct PendingWheres {
     pub conditions: Vec<Where>,
     pub listens: Vec<Ident>,
+    pub test: bool,
     pub doc: Option<String>,
     pub start: Option<Span>,
 }
 
 impl PendingWheres {
     pub fn is_empty(&self) -> bool {
-        self.conditions.is_empty() && self.listens.is_empty()
+        self.conditions.is_empty() && self.listens.is_empty() && !self.test
     }
 }
 

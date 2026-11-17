@@ -68,6 +68,10 @@ pub enum ResolveError {
     UnknownEvent { name: String, span: Span },
     /// `@on fail` on a method: a listener is a function of its own.
     ListenerIsMethod { span: Span },
+    /// `@test` on a method: a test is a function of its own.
+    TestIsMethod { span: Span },
+    /// `parses_hex()` where `parses_hex` is a `@test`: only the test runner calls one.
+    TestCalled { name: String, span: Span, defined_at: Span },
     /// `@const A = B; const B = A;`: a constant made of itself.
     ConstCycle { name: String, span: Span },
     /// `break x;` or `continue x;` where `x` isn't a `for` loop's variable.
@@ -181,6 +185,27 @@ impl ResolveError {
                 return Diagnostic::error(msg![code("@on fail"), " is for a function of its own"])
                     .with_label(Label::primary(span.clone(), "a method"))
                     .with_hint("move it out of the impl block");
+            }
+            ResolveError::TestIsMethod { span } => {
+                return Diagnostic::error(msg![code("@test"), " is for a function of its own"])
+                    .with_label(Label::primary(span.clone(), "a method"))
+                    .with_hint("move it out of the impl block");
+            }
+            ResolveError::TestCalled {
+                name,
+                span,
+                defined_at,
+            } => {
+                return Diagnostic::error(msg![func(name), " is a test, run by ", code("som test")])
+                    .with_label(Label::primary(span.clone(), "only the test runner calls it"))
+                    .with_label(Label::secondary(defined_at.clone(), msg![code("@test"), " here"]))
+                    .with_hint(msg![
+                        "move what's shared into a ",
+                        code("fn"),
+                        " without ",
+                        code("@test"),
+                        ", and call that"
+                    ]);
             }
             ResolveError::ConstCycle { name, span } => {
                 return Diagnostic::error(msg!["constant ", var(name), " is made of itself"])

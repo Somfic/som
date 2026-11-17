@@ -54,6 +54,7 @@ impl<'a> Resolver<'a> {
         }
         self.bind_lang_items();
         self.collect_listeners();
+        self.collect_tests();
     }
 
     fn collect_struct(&mut self, id: Id<Struct>, m: usize) {
@@ -170,6 +171,30 @@ impl<'a> Resolver<'a> {
         }
         self.names
             .set_fail_listeners(if own.is_empty() { std } else { own });
+    }
+
+    /// The `@test` functions. A test is a function of its own: the runner calls it, nothing
+    /// else does.
+    fn collect_tests(&mut self) {
+        let ast = self.ast;
+        let methods: HashSet<Id<Func>> = (ast.modules.iter())
+            .flat_map(|module| &module.items)
+            .filter_map(|item| match item {
+                Item::Impl(block) => Some(block.methods.iter().copied()),
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        let mut tests = Vec::new();
+        for (id, func) in ast.funcs.iter().filter(|(_, func)| func.test) {
+            match methods.contains(&id) || func.in_trait {
+                true => self.errors.push(ResolveError::TestIsMethod {
+                    span: func.name.span.clone(),
+                }),
+                false => tests.push(id),
+            }
+        }
+        self.names.set_tests(tests);
     }
 
     fn define_func(&mut self, id: Id<Func>, module: usize, visible: bool) {

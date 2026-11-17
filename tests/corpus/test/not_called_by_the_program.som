@@ -1,0 +1,11 @@
+// expect: error TestCalled
+
+@test
+fn adds() {
+    assert(1 + 1 == 2);
+}
+
+fn main() -> i32 {
+    adds();
+    0
+}

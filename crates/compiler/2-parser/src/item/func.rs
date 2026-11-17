@@ -11,7 +11,12 @@ impl Parser<'_> {
     /// `fn name<T>(params) -> Ret { body }` or `fn name<T>(params) -> Ret = value;`, or in an
     /// impl block, `prop name: Ret { body }` or `prop name: Ret = value;`.
     pub(super) fn parse_function(&mut self) -> Option<Id<Func>> {
-        let (doc, requires, listens) = self.take_wheres();
+        let super::attrs::Attrs {
+            doc,
+            requires,
+            listens,
+            test,
+        } = self.take_wheres();
         let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
         let prop = self.eat(TokenKind::Prop);
@@ -50,6 +55,7 @@ impl Parser<'_> {
             prop,
             requires,
             listens,
+            test,
             when: self.when.conditions.clone(),
             ..signature(doc, visibility, name)
         };

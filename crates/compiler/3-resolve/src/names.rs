@@ -185,6 +185,8 @@ pub struct Names {
     lang: LangItems,
     /// The functions called when the program fails (see `fail_listeners`).
     fail_listeners: Vec<Id<Func>>,
+    /// The `@test` functions, in the order they're written.
+    tests: Vec<Id<Func>>,
     /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
     /// name (`Circle(r)`, `Empty`) has none: the type matched decides which enum's it is.
     patterns: Vec<Option<DefId>>,
@@ -225,6 +227,7 @@ impl Names {
             projection_bases: HashMap::new(),
             lang: LangItems::default(),
             fail_listeners: Vec::new(),
+            tests: Vec::new(),
             patterns: vec![None; ast.patterns.len()],
             primitives: HashMap::new(),
         }
@@ -264,6 +267,10 @@ impl Names {
 
     pub(crate) fn set_fail_listeners(&mut self, listeners: Vec<Id<Func>>) {
         self.fail_listeners = listeners;
+    }
+
+    pub(crate) fn set_tests(&mut self, tests: Vec<Id<Func>>) {
+        self.tests = tests;
     }
 
     /// Adds `def` to the functions named like `first`.
@@ -571,6 +578,11 @@ impl Names {
     /// it has none, the standard library's.
     pub fn fail_listeners(&self) -> &[Id<Func>] {
         &self.fail_listeners
+    }
+
+    /// Every `@test` function, the standard library's too, in the order they're written.
+    pub fn tests(&self) -> &[Id<Func>] {
+        &self.tests
     }
 
     pub fn lang_of(&self, def: DefId) -> Option<LangTrait> {

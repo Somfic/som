@@ -1,0 +1,6 @@
+// expect: error TestSignature
+
+@test
+fn passes() -> bool = true;
+
+fn main() -> i32 = 0;

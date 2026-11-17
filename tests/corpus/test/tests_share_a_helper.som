@@ -1,0 +1,17 @@
+// expect: exit 0
+
+/// What tests share goes in an ordinary function they both call.
+fn double(n: i32) -> i32 = n * 2;
+
+@test
+fn doubles_two() {
+    assert(double(2) == 4);
+}
+
+/// With a doc comment and visibility, like any function.
+@test
+pub fn doubles_zero() {
+    assert(double(0) == 0);
+}
+
+fn main() -> i32 = double(0);

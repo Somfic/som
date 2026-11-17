@@ -1,0 +1,14 @@
+// expect: error TestCalled
+
+@test
+fn adds() {
+    assert(1 + 1 == 2);
+}
+
+@test
+fn adds_twice() {
+    adds();
+    adds();
+}
+
+fn main() -> i32 = 0;

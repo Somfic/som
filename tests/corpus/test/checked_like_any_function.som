@@ -1,0 +1,8 @@
+// expect: error Mismatch
+
+@test
+fn wrong() {
+    let x: i32 = "text";
+}
+
+fn main() -> i32 = 0;

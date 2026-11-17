@@ -277,6 +277,16 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
                 ))
                 .with_hint(msg!["write it ", code("fn name(failure: &Failure)")])
         }
+        TypeError::TestSignature { span } => {
+            Diagnostic::error(msg!["a ", code("@test"), " takes nothing and gives nothing back"])
+                .with_label(Label::primary(span.clone(), "called by the test runner"))
+                .with_hint(msg![
+                    "write it ",
+                    code("fn name()"),
+                    ", and check what it needs with ",
+                    code("assert")
+                ])
+        }
         TypeError::ConstructHandle { name, span } => {
             Diagnostic::error(msg!["cannot create a ", struct_name(name), " in som"])
                 .with_label(Label::primary(
