@@ -49,6 +49,13 @@ enum Command {
         #[arg(last = true, value_name = "ARGS")]
         args: Vec<String>,
     },
+    /// Run a program's `@test` functions, each in a process of its own
+    Test {
+        /// The program: a .som file, or a directory of them
+        path: PathBuf,
+        #[command(flatten)]
+        build: BuildArgs,
+    },
     /// Compile a program to an executable
     Build {
         /// The program: a .som file, or a directory of them
@@ -158,14 +165,15 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
     };
 
     match cli.command {
-        Command::Run { path, build, args } => run(&path, &build, &args),
+        Command::Run { path, build, args } => run(&path, &build, &args, false),
+        Command::Test { path, build } => run(&path, &build, &[], true),
         Command::Build {
             path,
             output,
             build,
         } => {
             let output = output.unwrap_or_else(|| default_output(&path));
-            match compile(&path, &build.check, &output) {
+            match compile(&path, &build.check, &output, false) {
                 Some(checked) => {
                     build_to(&checked, &output, &build).map_or(ExitCode::FAILURE, |exe| {
                         ui::success("built", message::path(exe.display()));
@@ -179,20 +187,23 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
             som_lsp::serve();
             ExitCode::SUCCESS
         }
-        Command::Check { path, check } => match compile(&path, &check, &default_output(&path)) {
-            Some(_) => {
-                ui::success("checked", message::path(path.display()));
-                ExitCode::SUCCESS
+        Command::Check { path, check } => {
+            match compile(&path, &check, &default_output(&path), false) {
+                Some(_) => {
+                    ui::success("checked", message::path(path.display()));
+                    ExitCode::SUCCESS
+                }
+                None => ExitCode::FAILURE,
             }
-            None => ExitCode::FAILURE,
-        },
+        }
     }
 }
 
 /// Loads and checks a program, writing whichever requested stages it gets to and
 /// printing its errors. `None` if there were any. Tokens and the AST are written even
-/// when later checks fail, which is when they're most useful.
-fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
+/// when later checks fail, which is when they're most useful. With `test`, the program is
+/// its `@test`s instead of `main`.
+fn compile(path: &Path, args: &CheckArgs, output: &Path, test: bool) -> Option<Checked> {
     let emits = &args.emit;
     if !path.exists() {
         ui::diagnostic(&missing_program(path));
@@ -222,6 +233,7 @@ fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
     let options = Options {
         library_dirs: args.library_dirs.clone(),
         no_optimize: args.no_optimize,
+        test,
         ..Options::default()
     };
     let checked = match som_driver::check_loaded(ast, &options) {
@@ -357,8 +369,9 @@ fn build_to(checked: &Checked, output: &Path, args: &BuildArgs) -> Option<PathBu
         .ok()
 }
 
-fn run(path: &Path, build: &BuildArgs, args: &[String]) -> ExitCode {
-    let Some(checked) = compile(path, &build.check, &default_output(path)) else {
+/// Builds and runs the program, or with `test`, its tests.
+fn run(path: &Path, build: &BuildArgs, args: &[String], test: bool) -> ExitCode {
+    let Some(checked) = compile(path, &build.check, &default_output(path), test) else {
         return ExitCode::FAILURE;
     };
     let dir = std::env::temp_dir().join(format!("som-run-{}", std::process::id()));
@@ -370,14 +383,13 @@ fn run(path: &Path, build: &BuildArgs, args: &[String]) -> ExitCode {
         ]);
         return ExitCode::FAILURE;
     }
-    let code = run_in(&checked, path, &dir, build, args);
+    let code = run_in(&checked, &dir, build, args);
     let _ = std::fs::remove_dir_all(&dir);
     code
 }
 
 fn run_in(
     checked: &Checked,
-    path: &Path,
     dir: &Path,
     build: &BuildArgs,
     args: &[String],
@@ -385,8 +397,6 @@ fn run_in(
     let Some(exe) = build_to(checked, &dir.join("program"), build) else {
         return ExitCode::FAILURE;
     };
-    // The executable is temporary, so name the program rather than where it went.
-    ui::success("built", message::path(path.display()));
     match som_driver::run(checked, &exe, args) {
         // Exit codes are a byte; a program killed by a signal has none.
         Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),

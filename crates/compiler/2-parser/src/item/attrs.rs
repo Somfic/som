@@ -45,7 +45,14 @@ impl Parser<'_> {
             self.wheres = Default::default();
             self.error_at(
                 span,
-                msg![code("@where"), ", ", code("@on"), " and ", code("@test"), " are for a function"],
+                msg![
+                    code("@where"),
+                    ", ",
+                    code("@on"),
+                    " and ",
+                    code("@test"),
+                    " are for a function"
+                ],
                 msg!["put it on the line above a ", code("fn")],
             );
         }

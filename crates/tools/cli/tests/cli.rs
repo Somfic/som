@@ -26,7 +26,7 @@ fn stdout(output: &Output) -> String {
 #[test]
 fn help_lists_commands_in_workflow_order() {
     let help = stdout(&som(Path::new("."), &["--help"]));
-    let positions: Vec<usize> = ["  run ", "  build ", "  check "]
+    let positions: Vec<usize> = ["  run ", "  test ", "  build ", "  check "]
         .iter()
         .map(|c| help.find(c).expect(c))
         .collect();
@@ -38,7 +38,27 @@ fn run_exits_with_the_programs_exit_code() {
     let dir = project();
     let out = som(dir.path(), &["run", "main.som"]);
     assert_eq!(out.status.code(), Some(42));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("built: `main.som`"));
+    // Only `som build` says what it built.
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("built"));
+}
+
+#[test]
+fn test_runs_each_test_and_fails_if_one_does() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = "@test\nfn adds() {\n    assert(1 + 1 == 2);\n}\n\n\
+                  @test\nfn subtracts() {\n    assert(2 - 1 == 0, \"off by one\");\n}\n\n\
+                  fn main() -> i32 = 0;\n";
+    std::fs::write(dir.path().join("main.som"), source).unwrap();
+    let out = som(dir.path(), &["test", "main.som"]);
+    assert_eq!(out.status.code(), Some(1));
+    let printed = stdout(&out);
+    assert!(printed.contains("ok      adds"), "{printed}");
+    assert!(
+        printed.contains("FAILED  subtracts (main.som:7)"),
+        "{printed}"
+    );
+    assert!(printed.contains("off by one"), "{printed}");
+    assert!(printed.contains("1 passed, 1 failed"), "{printed}");
 }
 
 #[test]

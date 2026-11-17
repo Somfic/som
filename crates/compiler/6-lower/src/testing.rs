@@ -43,11 +43,16 @@ impl Lowerer<'_> {
             .map(|(name, ty)| (name.to_string(), *ty))
             .collect();
 
-        // The program's own: the standard library's are its own business.
+        // The program's own. The standard library's only when it's the program: then the
+        // root module is an empty one in its folder.
+        let modules = &self.ast.modules;
+        let std_is_program = (modules.iter())
+            .find(|m| *m.name == *som_lang::PRELUDE_MODULE)
+            .is_some_and(|std| std.path == modules[0].path);
         let tests: Vec<(FuncId, String, Span)> = (self.names.tests().to_vec().into_iter())
             .filter(|&test| {
-                let module = &self.ast.modules[self.names.def(self.names.func(test)).module];
-                !som_lang::is_std_module(&module.name)
+                let module = &modules[self.names.def(self.names.func(test)).module];
+                std_is_program || !som_lang::is_std_module(&module.name)
             })
             .map(|test| {
                 let func = &self.ast.funcs[test];
@@ -56,7 +61,11 @@ impl Lowerer<'_> {
                     true => func.name.name.to_string(),
                     false => format!("{module}::{}", func.name.name),
                 };
-                (self.instance(test, Vec::new()), name, func.name.span.clone())
+                (
+                    self.instance(test, Vec::new()),
+                    name,
+                    func.name.span.clone(),
+                )
             })
             .collect();
 
@@ -185,15 +194,19 @@ impl Lowerer<'_> {
 
     /// `test_start`, `test_passed` and `test_summary`, from the standard library.
     fn test_runner_funcs(&mut self) -> Option<[FuncId; 3]> {
-        let mut found = [LangFunc::TestStart, LangFunc::TestPassed, LangFunc::TestSummary]
-            .map(|lang| {
-                let def = self.names.lang_func(lang)?;
-                match self.names.def(def).kind {
-                    DefKind::Func(func) => Some(func),
-                    _ => None,
-                }
-            })
-            .into_iter();
+        let mut found = [
+            LangFunc::TestStart,
+            LangFunc::TestPassed,
+            LangFunc::TestSummary,
+        ]
+        .map(|lang| {
+            let def = self.names.lang_func(lang)?;
+            match self.names.def(def).kind {
+                DefKind::Func(func) => Some(func),
+                _ => None,
+            }
+        })
+        .into_iter();
         let [Some(start), Some(passed), Some(summary)] =
             [found.next()?, found.next()?, found.next()?]
         else {
