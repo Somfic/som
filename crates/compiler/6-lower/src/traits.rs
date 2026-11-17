@@ -15,7 +15,6 @@ use super::{FnBuilder, Lowerer, Subst};
 const ITERATOR_NAME: &str = "iterator";
 
 impl Lowerer<'_> {
-    /// Trait `trait_`'s method called `name`.
     pub(super) fn trait_method(&self, trait_: DefId, name: &str) -> Id<Func> {
         let DefKind::Trait(t) = self.names.def(trait_).kind else {
             unreachable!("lang traits are traits")
