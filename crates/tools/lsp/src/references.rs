@@ -18,7 +18,6 @@ pub enum Symbol {
     Field(DefId, usize),
 }
 
-/// One place a symbol is named.
 #[derive(Clone, Debug)]
 pub struct Occurrence {
     pub symbol: Symbol,
@@ -138,7 +137,6 @@ pub fn occurrences(a: &Analysis) -> Vec<Occurrence> {
         }
     }
 
-    // Only where the symbol's own name is written; each place once.
     let mut seen = HashSet::new();
     found.retain(|o| {
         let name = name_of(a, o.symbol);
@@ -154,7 +152,6 @@ pub fn occurrences(a: &Analysis) -> Vec<Occurrence> {
     found
 }
 
-/// What `symbol` is called.
 pub fn name_of(a: &Analysis, symbol: Symbol) -> String {
     match symbol {
         Symbol::Def(def) => a.names.def(def).name.to_string(),
@@ -167,7 +164,6 @@ pub fn name_of(a: &Analysis, symbol: Symbol) -> String {
     }
 }
 
-/// The symbol named at `offset` in `file`, if any.
 pub fn symbol_at(occurrences: &[Occurrence], file: &str, offset: usize) -> Option<Symbol> {
     occurrences
         .iter()

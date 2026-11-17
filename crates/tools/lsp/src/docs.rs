@@ -132,7 +132,6 @@ pub(crate) fn struct_doc(a: &Analysis, s: Id<Struct>) -> Option<String> {
     origin::with_link(doc, origin::of_name(&a.ast.structs[s].name))
 }
 
-/// The documentation of the field read by `object.field`.
 pub(crate) fn field_doc(
     a: &Analysis,
     object: Id<som_ast::Expr>,

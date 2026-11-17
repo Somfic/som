@@ -229,7 +229,6 @@ pub(crate) fn aliased_struct(a: &Analysis, mut ty: Id<TypeExpr>) -> Option<Id<St
     None
 }
 
-/// Where the field read by `object.field` is declared.
 pub(crate) fn field_definition(
     a: &Analysis,
     object: Id<Expr>,
