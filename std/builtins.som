@@ -25,6 +25,11 @@ fn halt() {
     c::abort();
 }
 
+pub fn assert(ok: bool) {
+    if !ok @fail("unmet assertion");
+}
+
+
 pub fn assert(ok: bool, error_message: string) {
     if !ok @fail(error_message);
 }
