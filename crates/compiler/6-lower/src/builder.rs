@@ -219,16 +219,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
 
     /// `share(&place)`.
     pub(super) fn share(&mut self, place: Place, ty: TypeId, share: FuncId, span: Span) -> Operand {
-        let reference = self.l.mir.types.intern(Ty::Ref {
-            mutable: false,
-            to: ty,
-        });
-        let borrowed = self.temp(reference, span.clone());
-        let borrow = Rvalue::Ref {
-            mutable: false,
-            place,
-        };
-        self.assign(Place::local(borrowed), borrow, span.clone());
+        let borrowed = self.borrow_temp(place, false, ty, span.clone());
         let copy = self.temp(ty, span.clone());
         let call = Rvalue::Call {
             func: share,
@@ -279,6 +270,20 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
     /// With this instance's type arguments filled in.
     pub(super) fn value_of(&mut self, ty: TypeId) -> TypeId {
         self.subst.apply(&mut self.l.mir.types, ty)
+    }
+
+    /// `&place` or `&mut place`, of a `to`, in a new temporary.
+    pub(super) fn borrow_temp(
+        &mut self,
+        place: Place,
+        mutable: bool,
+        to: TypeId,
+        span: Span,
+    ) -> Local {
+        let reference = self.l.mir.types.intern(Ty::Ref { mutable, to });
+        let temp = self.temp(reference, span.clone());
+        self.assign(Place::local(temp), Rvalue::Ref { mutable, place }, span);
+        temp
     }
 
     /// `rvalue` in a new temporary, read.

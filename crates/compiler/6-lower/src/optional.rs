@@ -9,10 +9,8 @@ impl FnBuilder<'_, '_> {
         matches!(self.l.mir.types.get(ty), Ty::Optional(_))
     }
 
-    /// Whether `lhs` and `rhs`, at least one of them optional, are equal: an optional and a
-    /// value when it holds that value, two optionals when neither holds one, or both hold
-    /// equal ones. What a `none` holds is zeroed, so reading it is harmless; only the result
-    /// ignores it.
+    /// At least one of `lhs` and `rhs` is optional. What a `none` holds is zeroed, so reading
+    /// it is harmless; only the result ignores it.
     pub(super) fn optional_equality(
         &mut self,
         lhs: Id<Expr>,
@@ -22,11 +20,7 @@ impl FnBuilder<'_, '_> {
         let bool = self.l.mir.types.bool;
         let (lhs_some, lhs_value) = self.equality_side(lhs);
         let (rhs_some, rhs_value) = self.equality_side(rhs);
-        let compute = |b: &mut Self, rvalue: Rvalue| {
-            let temp = b.temp(bool, span.clone());
-            b.assign(Place::local(temp), rvalue, span.clone());
-            Operand::Copy(Place::local(temp))
-        };
+        let compute = |b: &mut Self, rvalue| b.temp_copy(bool, rvalue, span.clone());
         let values_equal = compute(
             self,
             Rvalue::Binary {
@@ -90,22 +84,21 @@ impl FnBuilder<'_, '_> {
         )
     }
 
-    /// Evaluates an `if` condition: a `bool`, or whether an optional holds a value.
+    /// A `bool`, or whether an optional holds a value.
     pub(super) fn condition(&mut self, expr: Id<Expr>) -> Operand {
-        let ty = self.expr_ty(expr);
-        if matches!(self.l.mir.types.get(ty), Ty::Optional(_)) {
+        if self.is_optional(expr) {
             let place = self.place(expr);
             return Operand::Copy(place.project(Projection::Field(0)));
         }
         self.operand(expr)
     }
 
-    /// Evaluates the optional `expr` and branches on whether it holds a value. Returns the
-    /// value, of type `ty`, to read in the first block, and the blocks for each case.
+    /// Branches on whether the optional `expr` holds a value. Returns the value, of type `ty`,
+    /// to read in the first block, and the blocks for each case.
     ///
-    /// Through a reference to an optional (`&T?`), the value is a reference to what it holds.
-    /// That reference is taken before the branch reads whether there is a value: reading
-    /// through a temporary hands its loans on, and they have to end up in the reference.
+    /// Through a `&T?`, the value is a reference to what it holds, taken before the branch
+    /// reads whether there is one: reading through a temporary hands its loans on, and they
+    /// have to end up in the reference.
     pub(super) fn branch_on_some(
         &mut self,
         expr: Id<Expr>,

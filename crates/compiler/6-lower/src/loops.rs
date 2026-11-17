@@ -68,11 +68,7 @@ impl FnBuilder<'_, '_> {
         };
         // As they would at the end of the body.
         self.end_scopes_from(targets.depth, span.clone());
-        let target = if is_break {
-            targets.exit
-        } else {
-            targets.next
-        };
+        let target = if is_break { targets.exit } else { targets.next };
         self.terminate(TerminatorKind::Goto(target), span);
         // Whatever follows in the body can't be reached.
         self.current = self.new_block();
@@ -129,9 +125,8 @@ impl FnBuilder<'_, '_> {
             b.counted_loop(stmt, counted, span.clone(), |b, counter| {
                 b.in_scope(span.clone(), |b| {
                     let local = b.let_local(def, name, value_ty, mutable, span.clone());
-                    let element = |elements: &Place| {
-                        elements.clone().project(Projection::Index(counter))
-                    };
+                    let element =
+                        |elements: &Place| elements.clone().project(Projection::Index(counter));
                     let value = match (&elements, kind) {
                         (None, _) => Rvalue::Use(Operand::Copy(Place::local(counter))),
                         (

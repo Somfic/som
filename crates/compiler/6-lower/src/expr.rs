@@ -351,8 +351,7 @@ impl FnBuilder<'_, '_> {
     ) -> Operand {
         let result = self.temp(ty, span.clone());
         let condition = self.condition(condition);
-        let (then_block, else_block, join) =
-            (self.new_block(), self.new_block(), self.new_block());
+        let (then_block, else_block, join) = (self.new_block(), self.new_block(), self.new_block());
         self.terminate(
             TerminatorKind::Branch {
                 condition,

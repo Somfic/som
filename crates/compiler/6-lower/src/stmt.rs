@@ -128,8 +128,7 @@ impl FnBuilder<'_, '_> {
         span: Span,
     ) {
         let condition = self.condition(condition);
-        let (then_block, else_block, join) =
-            (self.new_block(), self.new_block(), self.new_block());
+        let (then_block, else_block, join) = (self.new_block(), self.new_block(), self.new_block());
         self.terminate(
             TerminatorKind::Branch {
                 condition,
