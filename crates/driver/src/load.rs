@@ -1,9 +1,6 @@
-//! Finds and parses every module a program uses.
-//!
-//! A program is either a single `.som` file or a directory of them. Each `use a::b;`
-//! loads module `a::b`: the standard library's module of that name if there is one (with
-//! the modules inside it), otherwise the `.som` files in `<folder of the using module>/a/b/`. Modules are identified by
-//! name, so every `use b;` in a program refers to the same module.
+//! Each `use a::b;` loads module `a::b`: the standard library's module of that name if
+//! there is one, otherwise the `.som` files in `<folder of the using module>/a/b/`. Modules
+//! are identified by name, so every `use b;` in a program refers to the same module.
 
 use som_ast::{Ast, Item, Span};
 use som_base::message as m;
@@ -13,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::stdlib;
+use crate::{stdlib, toolchain};
 
 #[derive(Debug)]
 pub enum LoadError {
@@ -39,7 +36,6 @@ pub enum LoadError {
         name: String,
         span: Span,
     },
-    /// The standard library's folder isn't in any of the places it's looked for.
     NoStandardLibrary {
         searched: Vec<PathBuf>,
         span: Span,
@@ -225,7 +221,9 @@ pub fn load_with(
 /// The program a `.som` folder, or a file in one, was generated for: the folder around it.
 fn generated_for(path: &Path) -> Option<PathBuf> {
     let folder = std::path::absolute(folder_of(path)).ok()?;
-    let generated = folder.file_name().is_some_and(|name| name == ".som");
+    let generated = folder
+        .file_name()
+        .is_some_and(|name| name == toolchain::CACHE_DIR);
     generated.then(|| folder.parent().map(Path::to_path_buf))?
 }
 
@@ -246,7 +244,6 @@ struct Loader {
     library_dirs: Vec<PathBuf>,
     /// Library modules whose header has been imported.
     imported: HashSet<String>,
-    /// Files' contents to use instead of what's on disk.
     overlay: HashMap<PathBuf, String>,
 }
 
@@ -256,7 +253,7 @@ impl Loader {
             Ok(entries) => entries
                 .flatten()
                 .map(|e| e.path())
-                .filter(|p| p.extension().is_some_and(|e| e == "som"))
+                .filter(|p| is_source(p))
                 .collect(),
             Err(err) => {
                 self.errors.push(LoadError::Io {
@@ -291,7 +288,6 @@ impl Loader {
         self.errors.extend(errors.into_iter().map(LoadError::Parse));
     }
 
-    /// Loads every module that `module` uses, recursively.
     fn load_uses(&mut self, module: usize) {
         let folder = self.ast.modules[module].path.clone();
         let uses: Vec<(String, PathBuf, Span)> = self.ast.modules[module]
@@ -410,11 +406,8 @@ fn nearby_modules(name: &str, folder: &Path) -> Vec<String> {
                 .flatten()
                 .filter(|e| e.path().is_dir())
                 .filter(|e| {
-                    std::fs::read_dir(e.path()).is_ok_and(|mut files| {
-                        files.any(|f| {
-                            f.is_ok_and(|f| f.path().extension().is_some_and(|x| x == "som"))
-                        })
-                    })
+                    std::fs::read_dir(e.path())
+                        .is_ok_and(|mut files| files.any(|f| f.is_ok_and(|f| is_source(&f.path()))))
                 })
                 .filter_map(|e| e.file_name().to_str().map(str::to_string))
                 // Not `.som`, where generated bindings go: only what a `use` can name.
@@ -425,4 +418,9 @@ fn nearby_modules(name: &str, folder: &Path) -> Vec<String> {
         .unwrap_or_default();
     found.sort();
     found
+}
+
+fn is_source(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e == toolchain::SOURCE_EXTENSION)
 }

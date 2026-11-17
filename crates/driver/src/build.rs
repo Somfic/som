@@ -1,5 +1,3 @@
-//! Turns checked MIR into an executable, via C and the system C compiler.
-
 use som_base::message as m;
 use som_base::{Diagnostic, msg};
 use som_codegen::CodegenError;
@@ -8,6 +6,7 @@ use std::process::{Command, ExitStatus};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::Checked;
+use crate::toolchain;
 
 #[derive(Debug)]
 pub enum BuildError {
@@ -21,7 +20,6 @@ pub enum BuildError {
         path: PathBuf,
         message: String,
     },
-    /// No C compiler could be started.
     NoCompiler {
         compiler: String,
         message: String,
@@ -54,12 +52,11 @@ impl BuildError {
                 "), or name one with ",
                 m::command("--cc"),
                 " or ",
-                m::command("SOM_CC"),
+                m::command(toolchain::C_COMPILER_VAR),
             ]),
             BuildError::CompilerFailed { stderr, c_file } => {
                 let mut diagnostic =
                     Diagnostic::error("the C compiler rejected the generated code");
-                // One line per line of the compiler's output, so it stays readable.
                 diagnostic.trace = stderr.trim().lines().map(str::to_string).collect();
                 diagnostic
                     .with_hint(msg![
@@ -72,26 +69,22 @@ impl BuildError {
     }
 }
 
-/// How to turn generated C into an executable.
 #[derive(Debug, Clone)]
 pub struct BuildOptions {
-    /// The C compiler to run.
     pub cc: String,
     /// Called with the C compiler command line before it runs, to show it.
     pub on_command: Option<fn(&str)>,
 }
 
 impl Default for BuildOptions {
-    /// `$SOM_CC`, or `cc`.
     fn default() -> Self {
         BuildOptions {
-            cc: std::env::var("SOM_CC").unwrap_or_else(|_| "cc".into()),
+            cc: toolchain::c_compiler(),
             on_command: None,
         }
     }
 }
 
-/// The C source for a checked program.
 pub fn emit_c(checked: &Checked) -> Result<String, BuildError> {
     som_codegen::emit_c(&checked.mir).map_err(|e| match e {
         CodegenError::NoEntryPoint => BuildError::NoMain {
@@ -103,14 +96,14 @@ pub fn emit_c(checked: &Checked) -> Result<String, BuildError> {
     })
 }
 
-/// The program's own file, where its `main` would go: its `main.som`, or its first file.
+/// Where the program's `main` would go: its `main.som`, or its first file.
 fn program_file(checked: &Checked) -> Option<std::sync::Arc<som_base::Source>> {
     let root = checked.ast.modules.iter().find(|m| m.name.is_empty())?;
     let named_main = root.files.iter().find(|f| {
         Path::new(f.identifier())
             .file_name()
             .and_then(|n| n.to_str())
-            == Some("main.som")
+            == Some(toolchain::MAIN_FILE)
     });
     named_main.or(root.files.first()).cloned()
 }
@@ -118,7 +111,6 @@ fn program_file(checked: &Checked) -> Option<std::sync::Arc<som_base::Source>> {
 /// A welcome, rather than only an error: a program with no `main` is most likely someone's
 /// very first, so it says how a program starts, and offers a first line.
 fn no_main(end: Option<&som_base::Span>) -> Diagnostic {
-    // The file to write in, by its name: `main.som`.
     let file = end
         .and_then(|at| Path::new(at.source.identifier()).file_name())
         .map(|name| m::code(name.to_string_lossy()));
@@ -135,7 +127,6 @@ fn no_main(end: Option<&som_base::Span>) -> Diagnostic {
     let Some(at) = end else {
         return d;
     };
-    // Appended as lines of their own, after what's there.
     let content = at.source.content();
     let lead = if content.trim().is_empty() || content.ends_with('\n') {
         ""
@@ -175,22 +166,13 @@ pub fn build(
 
     let compiler = options.cc.clone();
     let mut cmd = Command::new(&compiler);
-    cmd.args(["-std=c11", "-O1", "-w"])
-        // som integers wrap on overflow, and som's extern declarations are the only ones that count.
-        .args(["-fwrapv", "-fno-builtin"])
+    cmd.args(toolchain::C_FLAGS)
         .arg("-o")
         .arg(output)
         .arg(&c_file);
-
-    // Link the exact files that were checked, rather than letting the linker search.
-    for library in &checked.libraries {
-        cmd.arg(library);
-    }
-    // A static library (`libbox2d.a`) doesn't bring the libraries it uses, and libm,
-    // separate from libc outside macOS, is the usual one.
-    if !cfg!(target_os = "macos") {
-        cmd.arg("-lm");
-    }
+    // The exact files that were checked, rather than letting the linker search.
+    cmd.args(&checked.libraries);
+    cmd.args(toolchain::c_link_flags());
 
     if let Some(show) = options.on_command {
         let args: Vec<String> = cmd
@@ -213,7 +195,7 @@ pub fn build(
     Ok(output.to_path_buf())
 }
 
-/// Runs a built program with `args`, making the libraries it was linked against findable.
+/// Runs a built program, making the libraries it was linked against findable.
 pub fn run(checked: &Checked, executable: &Path, args: &[String]) -> std::io::Result<ExitStatus> {
     let mut cmd = Command::new(executable);
     cmd.args(args);

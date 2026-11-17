@@ -13,9 +13,13 @@
 //! definition that isn't a value som can write (a function-like macro, a type, a call, an
 //! `extern`) is left out.
 
+use som_lang::{IntTy, Primitive};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Write;
 use std::path::Path;
+
+use super::ctype::cast_type;
+use super::docs::comment_lines;
 
 /// A struct a compound literal can make: its som name, and its fields' som names and types.
 pub(super) struct Record {
@@ -23,7 +27,6 @@ pub(super) struct Record {
     pub fields: Vec<(String, String)>,
 }
 
-/// One `#define NAME body`, and where it's written.
 struct Define {
     name: String,
     body: String,
@@ -51,7 +54,7 @@ pub(super) fn constants(
     };
     let mut texts: HashMap<String, Option<String>> = HashMap::new();
     let mut out = String::new();
-    // A struct's go in an impl block for it: `Color::RED`.
+    // A struct's constants go in an impl block for it: `Color::RED`.
     let mut of_structs: BTreeMap<String, String> = BTreeMap::new();
     let mut origins = String::new();
     for define in &defines {
@@ -80,7 +83,7 @@ pub(super) fn constants(
         if let Some(line) = line {
             let after = &line[line.find(define.name.as_str()).unwrap_or(0)..];
             let comment = after.find("//").or_else(|| after.find("/*"));
-            for doc in comment.map_or(Vec::new(), |at| super::comment_lines(&after[at..])) {
+            for doc in comment.map_or(Vec::new(), |at| comment_lines(&after[at..])) {
                 let _ = writeln!(out, "{indent}/// {doc}");
             }
             let _ = writeln!(origins, "{}\t{}\t{}", define.name, define.file, define.line);
@@ -153,36 +156,36 @@ enum Int {
 }
 
 impl Int {
+    fn ty(self) -> IntTy {
+        match self {
+            Int::I32 => IntTy::I32,
+            Int::U32 => IntTy::U32,
+            Int::I64 => IntTy::I64,
+            Int::U64 => IntTy::U64,
+        }
+    }
+
+    fn of(primitive: Primitive) -> Option<Int> {
+        Some(match primitive {
+            Primitive::I32 => Int::I32,
+            Primitive::U32 => Int::U32,
+            Primitive::I64 => Int::I64,
+            Primitive::U64 => Int::U64,
+            _ => return None,
+        })
+    }
+
     fn bits(self) -> u32 {
-        match self {
-            Int::I32 | Int::U32 => 32,
-            Int::I64 | Int::U64 => 64,
-        }
-    }
-
-    fn signed(self) -> bool {
-        matches!(self, Int::I32 | Int::I64)
-    }
-
-    fn som(self) -> &'static str {
-        match self {
-            Int::I32 => "i32",
-            Int::U32 => "u32",
-            Int::I64 => "i64",
-            Int::U64 => "u64",
-        }
+        self.ty().bits()
     }
 
     /// `n` as a value of this type: an unsigned one wraps around, as C's do; a signed one
     /// that doesn't fit is no value.
     fn fit(self, n: i128) -> Option<i128> {
-        let bits = self.bits();
-        match self.signed() {
-            true => {
-                let max = (1i128 << (bits - 1)) - 1;
-                (-max - 1 <= n && n <= max).then_some(n)
-            }
-            false => Some(n.rem_euclid(1i128 << bits)),
+        let ty = self.ty();
+        match ty.is_signed() {
+            true => (ty.min() <= n && n <= ty.max() as i128).then_some(n),
+            false => Some(n.rem_euclid(1i128 << ty.bits())),
         }
     }
 }
@@ -202,12 +205,16 @@ impl Val {
     /// `pub @const NAME: i32 = 10;`
     fn declaration(&self, name: &str) -> Option<String> {
         Some(match self {
-            Val::Int(n, int) => format!("pub @const {name}: {} = {n};", int.som()),
+            Val::Int(n, int) => format!("pub @const {name}: {} = {n};", int.ty().name()),
             Val::Float(x, double) => {
                 let ty = if *double { "f64" } else { "f32" };
                 format!("pub @const {name}: {ty} = {};", float_text(*x, *double)?)
             }
-            Val::Str(text) => format!("pub @const {name}: cstr = \"{}\";", som_escaped(text)),
+            Val::Str(text) => format!(
+                "pub @const {name}: {} = \"{}\";",
+                Primitive::CStr.name(),
+                som_escaped(text)
+            ),
             Val::Struct(strukt, fields) => {
                 let fields: Vec<String> = (fields.iter())
                     .map(|(field, value)| format!("{field}: {value}"))
@@ -459,33 +466,6 @@ fn number(text: &str) -> Option<Val> {
     Some(Val::Int(n, int))
 }
 
-/// The type a cast names, `(unsigned int)`: an integer type, or a float one (`true` for
-/// `double`).
-fn cast_type(words: &[&str]) -> Option<Result<Int, bool>> {
-    let has = |w: &str| words.contains(&w);
-    if words.iter().any(|w| {
-        !matches!(
-            *w,
-            "int" | "unsigned" | "signed" | "long" | "float" | "double" | "const"
-        )
-    }) {
-        return None;
-    }
-    Some(if has("double") {
-        Err(true)
-    } else if has("float") {
-        Err(false)
-    } else if has("unsigned") && has("long") {
-        Ok(Int::U64)
-    } else if has("unsigned") {
-        Ok(Int::U32)
-    } else if has("long") {
-        Ok(Int::I64)
-    } else {
-        Ok(Int::I32)
-    })
-}
-
 struct Evaluator<'a> {
     defines: &'a HashMap<&'a str, &'a Define>,
     record: &'a dyn Fn(&str) -> Option<Record>,
@@ -496,7 +476,6 @@ struct Evaluator<'a> {
 }
 
 impl Evaluator<'_> {
-    /// What the definition `name` stands for.
     fn value(&mut self, name: &str) -> Option<Val> {
         if let Some(value) = self.values.get(name) {
             return value.clone();
@@ -522,14 +501,8 @@ impl Evaluator<'_> {
             let Some(&Tok::Punct(op)) = p.peek() else {
                 break;
             };
-            let binds = match op {
-                "*" | "/" | "%" => 10,
-                "+" | "-" => 9,
-                "<<" | ">>" => 8,
-                "&" => 5,
-                "^" => 4,
-                "|" => 3,
-                _ => break,
+            let Some(binds) = precedence(op) else {
+                break;
             };
             if binds < least {
                 break;
@@ -555,35 +528,7 @@ impl Evaluator<'_> {
                 Val::Int(n, int) => Some(Val::Int(int.fit(!n)?, int)),
                 _ => None,
             },
-            Tok::Punct("(") => {
-                // `(float)x`: a cast.
-                let words: Vec<String> = (p.tokens[p.at..].iter())
-                    .map_while(|t| match t {
-                        Tok::Ident(word) => Some(word.clone()),
-                        _ => None,
-                    })
-                    .collect();
-                let closes = p.tokens.get(p.at + words.len()) == Some(&Tok::Punct(")"));
-                if !words.is_empty() && closes {
-                    let refs: Vec<&str> = words.iter().map(String::as_str).collect();
-                    if let Some(ty) = cast_type(&refs) {
-                        p.at += words.len() + 1;
-                        let value = self.unary(p)?;
-                        return match ty {
-                            Ok(int) => value.to_int(int),
-                            Err(double) => value.to_float(double),
-                        };
-                    }
-                    // `(Color){ … }`: a compound literal.
-                    if words.len() == 1 && p.tokens.get(p.at + 2) == Some(&Tok::Punct("{")) {
-                        p.at += 2;
-                        return self.compound(p, &words[0]);
-                    }
-                }
-                let value = self.expr(p, 0)?;
-                p.expect(")")?;
-                Some(value)
-            }
+            Tok::Punct("(") => self.parenthesised(p),
             // raylib's `CLITERAL(Color){ … }`.
             Tok::Ident(name)
                 if name == "CLITERAL"
@@ -600,6 +545,36 @@ impl Evaluator<'_> {
             Tok::Ident(name) => self.value(&name),
             Tok::Punct(_) => None,
         }
+    }
+
+    /// After a `(`: a cast, `(float)x`, a compound literal, `(Color){ … }`, or an
+    /// expression in brackets.
+    fn parenthesised(&mut self, p: &mut Parser) -> Option<Val> {
+        let words: Vec<String> = (p.tokens[p.at..].iter())
+            .map_while(|t| match t {
+                Tok::Ident(word) => Some(word.clone()),
+                _ => None,
+            })
+            .collect();
+        let closes = p.tokens.get(p.at + words.len()) == Some(&Tok::Punct(")"));
+        if !words.is_empty() && closes {
+            let refs: Vec<&str> = words.iter().map(String::as_str).collect();
+            if let Some(ty) = cast_type(&refs) {
+                p.at += words.len() + 1;
+                let value = self.unary(p)?;
+                return match Int::of(ty) {
+                    Some(int) => value.to_int(int),
+                    None => value.to_float(ty == Primitive::F64),
+                };
+            }
+            if words.len() == 1 && p.tokens.get(p.at + 2) == Some(&Tok::Punct("{")) {
+                p.at += 2;
+                return self.compound(p, &words[0]);
+            }
+        }
+        let value = self.expr(p, 0)?;
+        p.expect(")")?;
+        Some(value)
     }
 
     /// `{ 230, 41, 55, 255 }` after `(Color)`: the struct with those fields, in order, and
@@ -630,37 +605,40 @@ impl Evaluator<'_> {
 
 /// `value` written for a field of som type `ty`.
 fn field_text(value: &Val, ty: &str) -> Option<String> {
-    let int = |bits: u32, signed: bool| -> Option<String> {
+    let primitive = Primitive::from_name(ty)?;
+    if let Some(int) = primitive.int().filter(|int| int.bits() <= 64) {
         let Val::Int(n, _) = *value else { return None };
-        let fits = match signed {
-            true => -(1i128 << (bits - 1)) <= n && n < 1i128 << (bits - 1),
-            false => 0 <= n && n < 1i128 << bits,
-        };
-        fits.then(|| n.to_string())
-    };
-    match ty {
-        "i8" => int(8, true),
-        "i16" => int(16, true),
-        "i32" => int(32, true),
-        "i64" | "isize" => int(64, true),
-        "u8" => int(8, false),
-        "u16" => int(16, false),
-        "u32" => int(32, false),
-        "u64" | "usize" => int(64, false),
-        "f32" | "f64" => {
-            let double = ty == "f64";
+        let fits = int.min() <= n && n <= int.max() as i128;
+        return fits.then(|| n.to_string());
+    }
+    match primitive {
+        Primitive::F32 | Primitive::F64 => {
+            let double = primitive == Primitive::F64;
             let Val::Float(x, _) = value.to_float(double)? else {
                 return None;
             };
             float_text(x, double)
         }
-        "bool" => match value {
+        Primitive::Bool => match value {
             Val::Int(0, _) => Some("false".into()),
             Val::Int(1, _) => Some("true".into()),
             _ => None,
         },
         _ => None,
     }
+}
+
+/// How tightly a binary operator binds, as in C.
+fn precedence(op: &str) -> Option<u8> {
+    Some(match op {
+        "*" | "/" | "%" => 10,
+        "+" | "-" => 9,
+        "<<" | ">>" => 8,
+        "&" => 5,
+        "^" => 4,
+        "|" => 3,
+        _ => return None,
+    })
 }
 
 /// `lhs op rhs`, as C works it out.
