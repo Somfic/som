@@ -18,9 +18,12 @@ impl Checker<'_> {
             let def = &self.names.impls[index];
             let params = def.params.clone();
             let trait_ = def.trait_;
-            let target = match block.target_ty {
-                Some(ty) => Some(self.lower(ty)),
-                None => def
+            let blanket = def.blanket;
+            let target = match (block.target_ty, blanket) {
+                // `impl<C: Index> IterRef for C`: for its parameter, whatever it turns out to be.
+                (_, Some(param)) => Some(self.u.intern(Ty::Param(param))),
+                (Some(ty), None) => Some(self.lower(ty)),
+                (None, None) => def
                     .owner
                     .and_then(|owner| match self.names.def(owner).kind {
                         DefKind::Struct(s) => {
@@ -86,6 +89,7 @@ impl Checker<'_> {
                 types,
                 written_types: written,
                 methods: block.methods.clone(),
+                blanket: blanket.map(|param| self.names.bounds(param).to_vec()),
             });
         }
     }
@@ -243,9 +247,11 @@ impl Checker<'_> {
     fn check_impl_method(&mut self, index: usize, wanted: Id<Func>, written: Id<Func>) {
         let outer = self.current_func.replace(written);
         let (sig, type_args) = self.instantiate(wanted);
+        let mut own_target = None;
         if let (Some(&this), Some(target)) = (type_args.first(), self.impls[index].target) {
             let target = self.in_method_terms(index, target);
             let _ = self.u.unify(this, target);
+            own_target = Some(target);
         }
         // The trait's own parameters come after `Self`: what the implementation says they are.
         let trait_args = self.impls[index].trait_args.clone();
@@ -253,13 +259,15 @@ impl Checker<'_> {
             let arg = self.in_method_terms(index, arg);
             let _ = self.u.unify(param, arg);
         }
-        let (params, ret): (Vec<TypeId>, TypeId) = (
-            sig.params
-                .iter()
-                .map(|&p| self.normalize_assoc(p))
-                .collect(),
-            self.normalize_assoc(sig.ret),
-        );
+        let normalize = |c: &mut Self, ty: TypeId| {
+            let ty = c.normalize_assoc(ty);
+            match (own_target, c.impls[index].blanket.is_some()) {
+                (Some(target), true) => c.own_assoc(index, target, ty),
+                _ => ty,
+            }
+        };
+        let params: Vec<TypeId> = sig.params.iter().map(|&p| normalize(self, p)).collect();
+        let ret = normalize(self, sig.ret);
         let actual = self.sigs[written.id].clone();
         let fits = params.len() == actual.params.len()
             && (params.iter().zip(&actual.params)).all(|(&p, &a)| self.u.unify(p, a).is_ok())
@@ -358,6 +366,30 @@ impl Checker<'_> {
     /// `ty` with every associated type of a type that's known worked out through its
     /// implementation: `ListIntoIter<i32>::Item` is `i32`. One of a type parameter, or of a type
     /// not known yet, stays as it is.
+    /// `ty` with the associated types of blanket impl `index`'s own trait, of its parameter
+    /// `target`, as it says them: `C::Iter` in `impl<C: Index> IterRef for C`'s methods is
+    /// its `type Iter`. Nothing else knows them: `C` could be any type.
+    fn own_assoc(&mut self, index: usize, target: TypeId, ty: TypeId) -> TypeId {
+        let ty = self.u.shallow(ty);
+        let t = self.u.get(ty).clone();
+        if let Ty::Assoc {
+            base,
+            trait_,
+            index: at,
+        } = t
+            && Some(trait_) == self.impls[index].trait_
+            && self.u.shallow(base) == target
+            && let Some(written) = self.impls[index].types.get(at).copied().flatten()
+        {
+            return self.in_method_terms(index, written);
+        }
+        if t.children().is_empty() {
+            return ty;
+        }
+        let mapped = t.map_children(|child| self.own_assoc(index, target, child));
+        self.u.intern(mapped)
+    }
+
     pub(super) fn normalize_assoc(&mut self, ty: TypeId) -> TypeId {
         let ty = self.u.shallow(ty);
         let t = self.u.get(ty).clone();

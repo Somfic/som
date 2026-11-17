@@ -1,0 +1,28 @@
+// expect: exit 0
+
+/// A type with `Index` and `IndexMut`, and nothing else, can be gone through with
+/// `for x in &value` and `for x in &mut value`: std's blanket `IterRef` and `IterMut`.
+struct Three { values: [i32; 3] }
+
+impl Index for Three {
+    type Item = i32;
+    prop len: usize = 3;
+    fn at(&self, index: usize) -> &i32 = &.values[index];
+}
+
+impl IndexMut for Three {
+    fn at_mut(&mut self, index: usize) -> &mut i32 = &mut .values[index];
+}
+
+fn main() -> i32 {
+    let mut t = Three { values: [1, 2, 3] };
+    for x in &mut t {
+        *x = *x * 10;
+    }
+    let mut seen = 0;
+    for x in &t {
+        seen = seen * 100 + x;
+    }
+    // 10, 20 and 30, in turn.
+    seen - 102030
+}

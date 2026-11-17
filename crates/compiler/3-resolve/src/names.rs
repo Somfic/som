@@ -121,6 +121,9 @@ pub struct ImplDef {
     pub methods: Vec<Id<Func>>,
     /// The associated types it says, `ImplType`s, in the order written.
     pub types: Vec<DefId>,
+    /// `impl<C: Index> IterRef for C`: the parameter it's for, any type meeting its bounds.
+    /// A type's own implementation of the trait comes before it.
+    pub blanket: Option<DefId>,
 }
 
 /// The traits, structs and functions the language uses, where the standard library defines them.

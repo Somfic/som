@@ -1,3 +1,18 @@
+/// Anything with `Index` can be gone through with `for x in &value`
+impl<C: Index> IterRef for C {
+    type Iter = IndexIter<C>;
+
+    fn iter(&self) -> IndexIter<C> = IndexIter::of(self);
+}
+
+/// Anything with `IndexMut` can be gone through with `for x in &mut value`.
+impl<C: IndexMut> IterMut for C {
+    type Iter = IndexIterMut<C>;
+
+    fn iter_mut(&mut self) -> IndexIterMut<C> = IndexIterMut::of(self);
+}
+
+/// Goes through anything with `Index`, lending `at(0)` up to `at(len - 1)` in turn.
 pub struct IndexIter<C: Index> {
     of: &C,
     index: usize,

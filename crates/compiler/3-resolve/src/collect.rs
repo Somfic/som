@@ -248,7 +248,19 @@ impl<'a> Resolver<'a> {
 
     fn collect_impl(&mut self, block: &'a Impl) {
         let index = self.names.impls.len();
-        let owner = self.impl_owner(block);
+        // `for C`, one of its own parameters: for whatever meets its bounds.
+        let blanket_at = (block.trait_.is_some() && block.target_ty.is_none())
+            .then(|| match &block.target.segments[..] {
+                [only] if block.target_args.is_empty() => {
+                    (block.generics.iter()).position(|g| g.name.name == only.name)
+                }
+                _ => None,
+            })
+            .flatten();
+        let owner = match blanket_at {
+            Some(_) => None,
+            None => self.impl_owner(block),
+        };
         let trait_ =
             (block.trait_.as_ref()).and_then(|(path, _)| self.resolve_path(path, Expect::Trait));
         let params = (block.generics.iter().enumerate())
@@ -260,7 +272,7 @@ impl<'a> Resolver<'a> {
                 };
                 self.define(&g.name, kind)
             })
-            .collect();
+            .collect::<Vec<DefId>>();
         let types = (block.types.iter().enumerate())
             .map(|(i, (name, _))| {
                 let kind = DefKind::ImplType {
@@ -270,6 +282,7 @@ impl<'a> Resolver<'a> {
                 self.define(name, kind)
             })
             .collect();
+        let blanket = blanket_at.map(|at| params[at]);
         self.names.add_impl(ImplDef {
             module: self.cx.module,
             trait_,
@@ -277,6 +290,7 @@ impl<'a> Resolver<'a> {
             params,
             methods: block.methods.clone(),
             types,
+            blanket,
         });
         self.collect_impl_consts(block, owner);
         if let Some(owner) = owner {

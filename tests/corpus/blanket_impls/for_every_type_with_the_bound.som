@@ -1,0 +1,25 @@
+// expect: exit 12
+
+/// `impl<C: Sized2> Describe for C`: every type with `Sized2` has `describe`.
+trait Describe {
+    fn describe(self: &Self) -> i32;
+}
+
+trait Sized2 {
+    prop size: i32;
+}
+
+impl<C: Sized2> Describe for C {
+    fn describe(&self) -> i32 = self.size;
+}
+
+struct Box3 { n: i32 }
+
+impl Sized2 for Box3 {
+    prop size: i32 = .n * 3;
+}
+
+fn main() -> i32 {
+    let b = Box3 { n: 4 };
+    b.describe()
+}

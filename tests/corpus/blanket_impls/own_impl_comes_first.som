@@ -1,0 +1,23 @@
+// expect: exit 112
+
+/// A type that writes its own implementation of the trait gets that one, not the blanket one.
+trait Describe {
+    fn describe(self: &Self) -> i32;
+}
+
+trait Sized2 {
+    prop size: i32;
+}
+
+impl<C: Sized2> Describe for C {
+    fn describe(&self) -> i32 = self.size;
+}
+
+struct Box3 { n: i32 }
+impl Sized2 for Box3 { prop size: i32 = .n * 3; }
+
+struct Own { n: i32 }
+impl Sized2 for Own { prop size: i32 = .n; }
+impl Describe for Own { fn describe(&self) -> i32 = 100; }
+
+fn main() -> i32 = Box3 { n: 4 }.describe() + Own { n: 5 }.describe();

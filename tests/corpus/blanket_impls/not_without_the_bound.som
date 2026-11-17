@@ -1,0 +1,14 @@
+// expect: error
+
+/// A type without the bound doesn't get the blanket implementation.
+trait Describe {
+    fn describe(self: &Self) -> i32;
+}
+trait Sized2 {
+    prop size: i32;
+}
+impl<C: Sized2> Describe for C {
+    fn describe(&self) -> i32 = self.size;
+}
+struct Plain { n: i32 }
+fn main() -> i32 = Plain { n: 1 }.describe();

@@ -1,5 +1,3 @@
-use som::iter;
-
 pub struct Queue<T> {
     mem: Alloc<T>,
     head: usize,
@@ -52,18 +50,6 @@ impl<T> Index for Queue<T> {
 
 impl<T> IndexMut for Queue<T> {
     fn at_mut(&mut self, i: usize) -> &mut T = .mem.at_mut(.slot(i));
-}
-
-impl<T> IterRef for Queue<T> {
-    type Iter = iter::IndexIter<Queue<T>>;
-
-    fn iter(&self) -> iter::IndexIter<Queue<T>> = iter::IndexIter::of(self);
-}
-
-impl<T> IterMut for Queue<T> {
-    type Iter = iter::IndexIterMut<Queue<T>>;
-
-    fn iter_mut(&mut self) -> iter::IndexIterMut<Queue<T>> = iter::IndexIterMut::of(self);
 }
 
 @test

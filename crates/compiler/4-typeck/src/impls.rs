@@ -21,6 +21,9 @@ pub struct ImplInfo {
     /// As written, in the order written.
     pub written_types: Vec<TypeId>,
     pub methods: Vec<Id<Func>>,
+    /// `impl<C: Index> IterRef for C`: the traits a type has to have for it to be the
+    /// type's. `None` for one written for a type.
+    pub blanket: Option<Vec<DefId>>,
 }
 
 impl ImplInfo {
@@ -73,6 +76,9 @@ fn same(table: &TypeTable, a: TypeId, b: TypeId, resolve: &dyn Fn(TypeId) -> Typ
 
 /// Its index, and each of its parameters for `ty` (the error type if `ty` doesn't say). With
 /// `trait_args`, only an impl for those: `From<[i32; 3]>`, not any `From`.
+///
+/// An implementation written for the type comes first; a blanket one, `impl<C: Index>
+/// IterRef for C`, only if there's none, and only for a type known to meet its bounds.
 pub fn find_impl(
     impls: &[ImplInfo],
     table: &TypeTable,
@@ -81,7 +87,23 @@ pub fn find_impl(
     trait_args: &[TypeId],
     resolve: &dyn Fn(TypeId) -> TypeId,
 ) -> Option<(usize, Vec<TypeId>)> {
-    impls.iter().enumerate().find_map(|(i, info)| {
+    find_impl_within(impls, table, trait_, ty, trait_args, resolve, 0)
+}
+
+/// How many blanket implementations' bounds can be followed, one inside another: two
+/// written in terms of each other would go on forever.
+const DEEPEST_BLANKET: usize = 8;
+
+fn find_impl_within(
+    impls: &[ImplInfo],
+    table: &TypeTable,
+    trait_: DefId,
+    ty: TypeId,
+    trait_args: &[TypeId],
+    resolve: &dyn Fn(TypeId) -> TypeId,
+    depth: usize,
+) -> Option<(usize, Vec<TypeId>)> {
+    let fitting = |i: usize, info: &ImplInfo| {
         let target = info.target.filter(|_| info.trait_ == Some(trait_))?;
         let mut bound = vec![None; info.params.len()];
         let fits = match_type(table, target, ty, &info.params, &mut bound, resolve)
@@ -95,6 +117,27 @@ pub fn find_impl(
                 .collect();
             (i, args)
         })
+    };
+    let own = (impls.iter().enumerate())
+        .filter(|(_, info)| info.blanket.is_none())
+        .find_map(|(i, info)| fitting(i, info));
+    if own.is_some() {
+        return own;
+    }
+    // A type still being worked out, or a type parameter, would fit any.
+    let known = !matches!(
+        table.get(resolve(ty)),
+        Ty::Var(_) | Ty::Param(_) | Ty::Error
+    );
+    if !known || depth >= DEEPEST_BLANKET {
+        return None;
+    }
+    (impls.iter().enumerate()).find_map(|(i, info)| {
+        let bounds = info.blanket.as_ref()?;
+        let found = fitting(i, info)?;
+        let meets = (bounds.iter())
+            .all(|&b| find_impl_within(impls, table, b, ty, &[], resolve, depth + 1).is_some());
+        meets.then_some(found)
     })
 }
 

@@ -1,5 +1,4 @@
 use som::mem;
-use som::iter;
 
 pub struct List<T> {
     mem: Alloc<T>,
@@ -94,18 +93,6 @@ impl<T: Copy> From<&[T]> for List<T> {
         for item in items { list.push(item); }
         list
     }
-}
-
-impl<T> IterRef for List<T> {
-    type Iter = iter::IndexIter<List<T>>;
-
-    fn iter(&self) -> iter::IndexIter<List<T>> = iter::IndexIter::of(self);
-}
-
-impl<T> IterMut for List<T> {
-    type Iter = iter::IndexIterMut<List<T>>;
-
-    fn iter_mut(&mut self) -> iter::IndexIterMut<List<T>> = iter::IndexIterMut::of(self);
 }
 
 impl<T> IterOwned for List<T> {
