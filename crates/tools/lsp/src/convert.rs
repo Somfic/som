@@ -1,9 +1,11 @@
+//! Between som's spans and diagnostics and the protocol's ranges and diagnostics.
+
 use som_base::{Diagnostic as SomDiagnostic, Fix, Severity as SomSeverity, Span};
 use tower_lsp::lsp_types::{
     self, DiagnosticRelatedInformation, DiagnosticSeverity, Location, Position, Range, Url,
 };
 
-/// Convert a Som span (1-indexed) to an LSP range (0-indexed)
+/// Som's lines and columns count from 1, the protocol's from 0.
 pub fn span_to_range(span: &Span) -> Range {
     Range {
         start: Position::new(
@@ -17,7 +19,13 @@ pub fn span_to_range(span: &Span) -> Range {
     }
 }
 
-/// Convert a Som severity to an LSP severity
+pub fn location(span: &Span) -> Option<Location> {
+    Some(Location {
+        uri: Url::from_file_path(span.source.identifier()).ok()?,
+        range: span_to_range(span),
+    })
+}
+
 fn severity_to_lsp(severity: &SomSeverity) -> DiagnosticSeverity {
     match severity {
         SomSeverity::Error => DiagnosticSeverity::ERROR,
@@ -27,12 +35,10 @@ fn severity_to_lsp(severity: &SomSeverity) -> DiagnosticSeverity {
     }
 }
 
-/// Convert a Som Diagnostic to LSP diagnostics on the primary label.
-/// Returns the main diagnostic plus separate HINT diagnostics for the label and hints.
+/// A diagnostic on its primary label, with its labels as related information, and each of
+/// its hints as an information diagnostic of its own. With the file it's in.
 pub fn som_diagnostic_to_lsp(diag: &SomDiagnostic) -> Option<(String, Vec<lsp_types::Diagnostic>)> {
     let severity = severity_to_lsp(&diag.severity);
-
-    // Find the primary label, or fall back to the first label
     let primary = diag
         .labels
         .iter()
@@ -43,18 +49,13 @@ pub fn som_diagnostic_to_lsp(diag: &SomDiagnostic) -> Option<(String, Vec<lsp_ty
     let range = span_to_range(&primary.span);
     let message = diag.message.plain();
 
-    // Attach all labels as related information
     let related: Vec<DiagnosticRelatedInformation> = diag
         .labels
         .iter()
         .filter(|l| !l.message.is_empty())
         .filter_map(|l| {
-            let uri = Url::from_file_path(l.span.source.identifier()).ok()?;
             Some(DiagnosticRelatedInformation {
-                location: Location {
-                    uri,
-                    range: span_to_range(&l.span),
-                },
+                location: location(&l.span)?,
                 message: l.message.plain(),
             })
         })
@@ -74,7 +75,6 @@ pub fn som_diagnostic_to_lsp(diag: &SomDiagnostic) -> Option<(String, Vec<lsp_ty
         ..Default::default()
     }];
 
-    // Emit each hint as a separate information diagnostic
     for hint in &diag.hints {
         diagnostics.push(lsp_types::Diagnostic {
             range,
@@ -148,7 +148,6 @@ pub fn fixes_from_json(diagnostic: &lsp_types::Diagnostic) -> Vec<lsp_types::Cod
         .collect()
 }
 
-/// Convert an LSP position to a byte offset in source text
 /// Where byte `offset` of `text` is, counting columns in characters as `position_to_offset`
 /// does.
 pub fn offset_to_position(text: &str, offset: usize) -> Position {
@@ -160,6 +159,8 @@ pub fn offset_to_position(text: &str, offset: usize) -> Position {
     Position::new(line as u32, column as u32)
 }
 
+/// The byte offset of `position` in `text`. A column past the end of its line is the line's
+/// end.
 pub fn position_to_offset(text: &str, position: &Position) -> Option<usize> {
     let target_line = position.line as usize;
     let target_col = position.character as usize;
@@ -173,7 +174,6 @@ pub fn position_to_offset(text: &str, position: &Position) -> Option<usize> {
         }
         if ch == '\n' {
             if current_line == target_line {
-                // Column is past end of line
                 return Some(offset);
             }
             current_line += 1;
@@ -183,7 +183,6 @@ pub fn position_to_offset(text: &str, position: &Position) -> Option<usize> {
         }
     }
 
-    // Position at end of file
     if current_line == target_line && current_col == target_col {
         return Some(text.len());
     }
