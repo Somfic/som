@@ -40,9 +40,6 @@ fn fold_body(types: &TypeTable, body: &mut Body) {
     }
 }
 
-// --- Expressions ---
-
-/// Replaces operations on constants with their results.
 fn fold_rvalues(types: &TypeTable, body: &mut Body) -> bool {
     let mut changed = false;
     for block in body.blocks.iter_mut() {
@@ -254,8 +251,6 @@ fn wrap(n: i128, int: IntTy) -> Option<i128> {
     Some(n.wrapping_sub(min).rem_euclid(modulus) + min)
 }
 
-// --- Locals ---
-
 /// Replaces reads of locals that only ever hold one constant with that constant.
 fn propagate(body: &mut Body) -> bool {
     let mut assigned: Vec<Vec<&Rvalue>> = vec![Vec::new(); body.locals.slots()];
@@ -315,9 +310,6 @@ fn propagate(body: &mut Body) -> bool {
     changed
 }
 
-// --- Control flow ---
-
-/// Turns branches on constants into jumps.
 fn fold_branches(body: &mut Body) -> bool {
     let mut changed = false;
     for block in body.blocks.iter_mut() {
@@ -354,5 +346,3 @@ fn remove_unreachable(body: &mut Body) -> bool {
     body.blocks.retain(|id, _| reachable.contains(&id));
     body.blocks.len() != before
 }
-
-// --- Operands ---

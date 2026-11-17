@@ -102,7 +102,6 @@ pub(crate) fn identifier(name: &str) -> String {
     }
 }
 
-/// The C names of the program's structs, their fields and its functions.
 pub(crate) struct Names {
     /// One for each set of type arguments: `Pair<i32>` is `Pair_i32`.
     pub structs: HashMap<(DefId, Vec<TypeId>), String>,

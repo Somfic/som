@@ -4,10 +4,8 @@ use som_mir::*;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
-/// Where a local is read.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Use {
-    /// The whole right-hand side of an assignment.
     Assign,
     /// A call argument; C converts it to the parameter's type.
     Arg,
@@ -210,7 +208,6 @@ impl Prec {
     }
 }
 
-/// A C expression, and how tightly it binds.
 #[derive(Clone)]
 pub(crate) struct Expr {
     pub text: String,
@@ -280,7 +277,6 @@ pub(crate) struct Pending {
     pub effect: bool,
 }
 
-/// The state while emitting one function.
 pub(crate) struct FnState<'a> {
     pub body: &'a Body,
     pub locals: Vec<String>,
@@ -295,7 +291,6 @@ pub(crate) struct FnState<'a> {
     pub mentioned: RefCell<HashMap<Local, u32>>,
     /// The line of code each local is first mentioned on, where it can be declared.
     pub first: RefCell<HashMap<Local, usize>>,
-    /// The line of code being written.
     pub line: Cell<usize>,
 }
 
@@ -336,7 +331,6 @@ pub(crate) fn is_zero(op: &Operand) -> bool {
     }
 }
 
-/// The local a whole-local operand reads, if it is one.
 pub(crate) fn operand_local(op: &Operand) -> Option<Local> {
     op.place()
         .filter(|place| place.projection.is_empty())

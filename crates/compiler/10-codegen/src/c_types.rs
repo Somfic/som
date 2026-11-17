@@ -1,6 +1,5 @@
 use som_mir::IntTy;
 
-/// How C spells an integer type.
 pub(crate) struct CInt {
     pub name: &'static str,
     /// The unsigned type as wide.

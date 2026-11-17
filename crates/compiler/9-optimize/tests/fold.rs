@@ -2,7 +2,6 @@ use som_base::Source;
 use som_mir::Mir;
 use std::sync::Arc;
 
-/// The MIR of `main` in `source`, after folding.
 fn folded(source: &str) -> String {
     let (ast, errors) = som_parser::parse(Arc::new(Source::from_raw(source)));
     assert!(errors.is_empty(), "parse errors: {errors:?}");

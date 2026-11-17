@@ -51,7 +51,6 @@ impl Emitter<'_> {
         matches!(self.mir.types.get(ty), Ty::Unit)
     }
 
-    /// Whether `ty` is an integer that C does arithmetic on as `int`.
     pub(crate) fn is_narrow(&self, ty: TypeId) -> bool {
         matches!(self.mir.types.get(ty), Ty::Int(int) if is_promoted(*int))
     }
