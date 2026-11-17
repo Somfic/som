@@ -750,11 +750,11 @@ impl Checker<'_> {
         let Some(target) = self.impls[index].target else {
             return true;
         };
-        let params = self.impls[index].params.clone();
-        let Some(args) = type_args.get(..params.len()) else {
+        let Some(args) = type_args.get(..self.impls[index].params.len()) else {
             return true;
         };
-        let wanted = crate::traits::substitute(&mut self.u.table, target, &params, args);
+        let subst = self.impls[index].subst(args);
+        let wanted = crate::traits::substitute(&mut self.u.table, target, &subst);
         let wanted = self.u.normalize(wanted);
         // Through a reference on either side: a `str` is one already.
         let unref = |u: &Unifier, ty: TypeId| match *u.shallow_ty(ty) {

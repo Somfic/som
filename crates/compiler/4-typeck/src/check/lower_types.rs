@@ -232,14 +232,10 @@ impl Checker<'_> {
     pub(super) fn owner_type(&mut self, func: Id<Func>, type_args: &[TypeId]) -> Option<TypeId> {
         let index = self.names.impl_of(func)?;
         let info = self.impls.get(index)?;
-        let (target, params) = (info.target?, info.params.clone());
-        let args = type_args.get(..params.len())?;
-        Some(crate::traits::substitute(
-            &mut self.u.table,
-            target,
-            &params,
-            args,
-        ))
+        let target = info.target?;
+        let args = type_args.get(..info.params.len())?;
+        let subst = info.subst(args);
+        Some(crate::traits::substitute(&mut self.u.table, target, &subst))
     }
 
     /// `Alloc<i32>::with_capacity(10)`: the type `func` is a function of, with the arguments
@@ -509,6 +505,13 @@ impl Checker<'_> {
     }
 
     /// What each of struct `s`'s type parameters stands for: `args`.
+    /// `params`, each standing for a fresh variable.
+    pub(super) fn fresh_subst(&mut self, params: &[DefId]) -> Vec<(DefId, TypeId)> {
+        (params.iter())
+            .map(|&p| (p, self.u.fresh(VarKind::Any)))
+            .collect()
+    }
+
     pub(super) fn struct_subst(
         &self,
         s: som_ast::Id<som_ast::Struct>,
@@ -603,10 +606,7 @@ impl Checker<'_> {
         // An unwritten return type is a variable its body decided: what it was decided to be.
         let ty = self.u.shallow(ty);
         match self.u.get(ty).clone() {
-            Ty::Param(def) => subst
-                .iter()
-                .find(|(d, _)| *d == def)
-                .map_or(ty, |(_, t)| *t),
+            Ty::Param(def) => crate::traits::substituted(subst, def).unwrap_or(ty),
             other if other.children().is_empty() => ty,
             other => {
                 let substituted = other.map_children(|child| self.substitute(child, subst));

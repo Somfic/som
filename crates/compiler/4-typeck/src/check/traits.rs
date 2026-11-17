@@ -149,10 +149,10 @@ impl Checker<'_> {
                 && let Ty::Struct(def, args) = self.u.get(target).clone()
                 && let DefKind::Struct(s) = self.names.def(def).kind
             {
-                let params = self.names.struct_params(s).to_vec();
+                let subst = self.struct_subst(s, &args);
                 let types = self.records.structs[s.id].clone();
                 for (field, &ty) in self.ast.structs[s].fields.iter().zip(&types) {
-                    let ty = traits::substitute(&mut self.u.table, ty, &params, &args);
+                    let ty = traits::substitute(&mut self.u.table, ty, &subst);
                     if !self.is_copy(ty) && !matches!(self.u.get(ty), Ty::Param(_)) {
                         self.errors.push(TypeError::CopyWithMovedField {
                             ty: self.describe(target),
@@ -328,7 +328,8 @@ impl Checker<'_> {
         if args.len() != params.len() {
             return ty;
         }
-        traits::substitute(&mut self.u.table, ty, &params, &args)
+        let subst: Vec<(DefId, TypeId)> = params.into_iter().zip(args).collect();
+        traits::substitute(&mut self.u.table, ty, &subst)
     }
 
     /// `Self` inside impl block `index`: its target.
@@ -410,8 +411,8 @@ impl Checker<'_> {
         let Some(written) = self.impls[i].types.get(index).copied().flatten() else {
             return self.u.table.error;
         };
-        let params = self.impls[i].params.clone();
-        let found = traits::substitute(&mut self.u.table, written, &params, &args);
+        let subst = self.impls[i].subst(&args);
+        let found = traits::substitute(&mut self.u.table, written, &subst);
         self.normalize_assoc(found)
     }
 
@@ -707,13 +708,8 @@ impl Checker<'_> {
                 let (index, args) =
                     find_impl(&self.impls, &u.table, trait_, ty, &[ty], &|t| u.shallow(t))?;
                 let output = *self.impls[index].trait_args.get(1)?;
-                let params = self.impls[index].params.clone();
-                Some(traits::substitute(
-                    &mut self.u.table,
-                    output,
-                    &params,
-                    &args,
-                ))
+                let subst = self.impls[index].subst(&args);
+                Some(traits::substitute(&mut self.u.table, output, &subst))
             }
         }
     }
@@ -748,13 +744,11 @@ impl Checker<'_> {
             if info.trait_ != Some(trait_) {
                 continue;
             }
-            let params = info.params.clone();
-            let fresh: Vec<TypeId> = params.iter().map(|_| self.u.fresh(VarKind::Any)).collect();
-            let [target, other, output] = [target, other, output]
-                .map(|ty| traits::substitute(&mut self.u.table, ty, &params, &fresh));
+            let subst = self.fresh_subst(&info.params.clone());
+            let [target, other, output] =
+                [target, other, output].map(|ty| traits::substitute(&mut self.u.table, ty, &subst));
             if self.u.could_fit(target, base) && self.u.could_fit(other, rhs) {
-                let bounded: Vec<(DefId, TypeId)> = params.into_iter().zip(fresh).collect();
-                fitting.push((target, other, output, bounded));
+                fitting.push((target, other, output, subst));
             }
         }
         // An integer nothing's decided yet fits each integer type's: it's the one it would be
@@ -809,11 +803,10 @@ impl Checker<'_> {
             }
             let mut found = Vec::new();
             for (params, target, written) in fitting {
-                let fresh: Vec<TypeId> =
-                    params.iter().map(|_| self.u.fresh(VarKind::Any)).collect();
-                let target = traits::substitute(&mut self.u.table, target, &params, &fresh);
+                let subst = self.fresh_subst(&params);
+                let target = traits::substitute(&mut self.u.table, target, &subst);
                 let written: Vec<TypeId> = (written.into_iter())
-                    .map(|w| traits::substitute(&mut self.u.table, w, &params, &fresh))
+                    .map(|w| traits::substitute(&mut self.u.table, w, &subst))
                     .collect();
                 let fits = self.u.could_fit(target, base)
                     && (written.iter().zip(args)).all(|(&w, &a)| self.u.could_fit(w, a));
@@ -1127,12 +1120,11 @@ impl Checker<'_> {
             let (Some(target), Some(&arg)) = (info.target, info.trait_args.first()) else {
                 continue;
             };
-            let params = info.params.clone();
-            let fresh: Vec<TypeId> = params.iter().map(|_| self.u.fresh(VarKind::Any)).collect();
-            let target = traits::substitute(&mut self.u.table, target, &params, &fresh);
-            let arg = traits::substitute(&mut self.u.table, arg, &params, &fresh);
+            let subst = self.fresh_subst(&info.params.clone());
+            let target = traits::substitute(&mut self.u.table, target, &subst);
+            let arg = traits::substitute(&mut self.u.table, arg, &subst);
             if self.u.could_fit(target, expected) && self.u.could_fit(arg, source) {
-                fitting.push((target, arg, params.into_iter().zip(fresh).collect()));
+                fitting.push((target, arg, subst));
             }
         }
         // A value fits where its optional is expected too: `5` fits `From<i32?>`. The one

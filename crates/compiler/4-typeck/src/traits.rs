@@ -27,6 +27,17 @@ pub struct ImplInfo {
     pub methods: Vec<Id<Func>>,
 }
 
+impl ImplInfo {
+    /// Its parameters standing for `args`.
+    pub(crate) fn subst(&self, args: &[TypeId]) -> Vec<(DefId, TypeId)> {
+        self.params
+            .iter()
+            .copied()
+            .zip(args.iter().copied())
+            .collect()
+    }
+}
+
 /// Whether `ty` is what `pattern`, written in terms of `params`, describes: `List<i32>` is
 /// `List<T>`, with `T` bound to `i32` in `bound`. `resolve` looks through inference
 /// variables; one that's still unknown matches nothing but itself.
@@ -95,19 +106,21 @@ pub fn find_impl(
     })
 }
 
-/// `ty` with `params` replaced by `args`.
-pub fn substitute(table: &mut TypeTable, ty: TypeId, params: &[DefId], args: &[TypeId]) -> TypeId {
+/// `ty` with each type parameter in `subst` replaced by what it stands for.
+pub fn substitute(table: &mut TypeTable, ty: TypeId, subst: &[(DefId, TypeId)]) -> TypeId {
     match table.get(ty).clone() {
-        Ty::Param(def) => match params.iter().position(|&p| p == def) {
-            Some(i) => args[i],
-            None => ty,
-        },
+        Ty::Param(def) => substituted(subst, def).unwrap_or(ty),
         other if other.children().is_empty() => ty,
         other => {
-            let replaced = other.map_children(|child| substitute(table, child, params, args));
+            let replaced = other.map_children(|child| substitute(table, child, subst));
             table.intern(replaced)
         }
     }
+}
+
+/// What type parameter `def` stands for in `subst`.
+pub(crate) fn substituted(subst: &[(DefId, TypeId)], def: DefId) -> Option<TypeId> {
+    subst.iter().find(|(d, _)| *d == def).map(|&(_, ty)| ty)
 }
 
 /// `ty` with every associated type of a known type worked out through its implementation:
@@ -133,8 +146,7 @@ pub fn resolve_assoc(table: &mut TypeTable, impls: &[ImplInfo], ty: TypeId) -> T
     let Some(written) = impls[i].types.get(index).copied().flatten() else {
         return inner;
     };
-    let params = impls[i].params.clone();
-    let found = substitute(table, written, &params, &args);
+    let found = substitute(table, written, &impls[i].subst(&args));
     resolve_assoc(table, impls, found)
 }
 
