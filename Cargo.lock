@@ -1037,6 +1037,7 @@ version = "0.1.0"
 dependencies = [
  "som_ast",
  "som_base",
+ "som_lang",
  "som_resolve",
  "som_typeck",
 ]
