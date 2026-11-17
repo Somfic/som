@@ -1,11 +1,19 @@
 use owo_colors::{OwoColorize, Rgb};
 use som_base::Source;
 use som_base::diagnostics::*;
+use som_lang::LangStruct;
 use std::sync::Arc;
 
-use crate::{TokenKind, lex};
+use crate::{TextPart, TokenKind, lex, text_parts};
 
-// Map token kinds to colors
+const KEYWORD: Rgb = MAUVE;
+const TYPE: Rgb = YELLOW;
+const LITERAL: Rgb = PEACH;
+const OPERATOR: Rgb = SKY;
+const PUNCTUATION: Rgb = SUBTEXT0;
+const COMMENT: Rgb = SURFACE2;
+const PLAIN: Rgb = TEXT;
+
 fn token_color(kind: TokenKind) -> Rgb {
     match kind {
         TokenKind::Fn
@@ -35,19 +43,15 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::And
         | TokenKind::As
         | TokenKind::Or
-        | TokenKind::Impl => MAUVE,
-        TokenKind::Primitive(_)
-        // `Self` is a type: the one an impl block is for.
-        | TokenKind::SelfType
-        // `@unreachable`: coloured like a type, the compiler's own.
-        | TokenKind::Builtin => YELLOW,
+        | TokenKind::Impl => KEYWORD,
+        // A built-in is the compiler's own, like a primitive type.
+        TokenKind::Primitive(_) | TokenKind::SelfType | TokenKind::Builtin => TYPE,
         TokenKind::Int
         | TokenKind::Float
         | TokenKind::Text
         | TokenKind::True
         | TokenKind::False
-        | TokenKind::None => PEACH,
-        TokenKind::Ident => TEXT,
+        | TokenKind::None => LITERAL,
         TokenKind::Plus
         | TokenKind::Minus
         | TokenKind::Star
@@ -71,7 +75,7 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::Pipe
         | TokenKind::Tilde
         | TokenKind::AndAnd
-        | TokenKind::PipePipe => SKY,
+        | TokenKind::PipePipe => OPERATOR,
         TokenKind::OpenParen
         | TokenKind::CloseParen
         | TokenKind::OpenBrace
@@ -87,121 +91,102 @@ fn token_color(kind: TokenKind) -> Rgb {
         | TokenKind::SingleQuote
         | TokenKind::DoubleQuote
         | TokenKind::Dot
-        | TokenKind::Ellipsis => SUBTEXT0,
-        TokenKind::Comment | TokenKind::ForeignComment => SURFACE2,
-        TokenKind::TripleEquals
+        | TokenKind::Ellipsis
+        | TokenKind::Hash
+        | TokenKind::TripleEquals
         | TokenKind::NotDoubleEquals
         | TokenKind::TildeEquals
         | TokenKind::ColonEquals
-        | TokenKind::PlusPlus
-        | TokenKind::Hash => SUBTEXT0,
-        TokenKind::Whitespace | TokenKind::Eof | TokenKind::Error => TEXT,
+        | TokenKind::PlusPlus => PUNCTUATION,
+        TokenKind::Comment | TokenKind::ForeignComment => COMMENT,
+        TokenKind::Ident | TokenKind::Whitespace | TokenKind::Eof | TokenKind::Error => PLAIN,
     }
 }
 
-// Check if a token should be italic
 fn is_italic(kind: TokenKind) -> bool {
     matches!(
         kind,
-        TokenKind::Fn | TokenKind::Prop | TokenKind::Let | TokenKind::If | TokenKind::Else | TokenKind::Mut | TokenKind::Out | TokenKind::Extern | // Keywords
-        TokenKind::Comment | TokenKind::ForeignComment // Comments
+        TokenKind::Fn
+            | TokenKind::Prop
+            | TokenKind::Let
+            | TokenKind::If
+            | TokenKind::Else
+            | TokenKind::Mut
+            | TokenKind::Out
+            | TokenKind::Extern
+            | TokenKind::Comment
+            | TokenKind::ForeignComment
     )
 }
 
-// Syntax highlight a line of source code
+fn paint(text: &str, color: Rgb) -> String {
+    format!("{}", text.truecolor(color.0, color.1, color.2))
+}
+
+/// `RED`, `MAX_LEN`.
+fn is_constant_name(name: &str) -> bool {
+    name.len() > 1
+        && name.starts_with(|c: char| c.is_ascii_uppercase())
+        && (name.chars()).all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+}
+
 /// Syntax-highlights one line of source code for terminal output.
 pub fn highlight(line: &str) -> String {
-    let source = Arc::new(Source::from_raw(line));
-    let tokens = lex(source);
-
-    let mut result = String::new();
+    let tokens = lex(Arc::new(Source::from_raw(line)));
     let visible: Vec<TokenKind> = (tokens.iter())
         .map(|t| t.kind)
-        .filter(|k| {
-            !matches!(
-                k,
-                TokenKind::Whitespace | TokenKind::Comment | TokenKind::ForeignComment
-            )
-        })
+        .filter(|k| !k.is_trivia())
         .collect();
     let mut seen: usize = 0;
-
+    let mut result = String::new();
     for token in tokens {
         if token.kind == TokenKind::Eof {
             break;
         }
-
         let mut color = token_color(token.kind);
-        // `string` is a name, the standard library's, but it's text: coloured as a type.
-        if token.kind == TokenKind::Ident && &*token.text == "string" {
-            color = YELLOW;
+        // The standard library's `string` is a name, but it's text: coloured as a type.
+        if token.kind == TokenKind::Ident && &*token.text == LangStruct::String.name() {
+            color = TYPE;
         }
-        if !matches!(
-            token.kind,
-            TokenKind::Whitespace | TokenKind::Comment | TokenKind::ForeignComment
-        ) {
-            let (prev, next) = (
-                seen.checked_sub(1).map(|i| visible[i]),
-                visible.get(seen + 1).copied(),
-            );
+        if !token.kind.is_trivia() {
+            let prev = seen.checked_sub(1).map(|i| visible[i]);
+            let next = visible.get(seen + 1).copied();
             // `.len`, short for `self.len`: the dot is coloured like `self`.
             if token.kind == TokenKind::Dot && TokenKind::is_self_dot(prev, next) {
                 color = token_color(TokenKind::SelfValue);
             }
-            // `RED`, `MAX_LEN`: a constant, coloured like the value it is.
-            if token.kind == TokenKind::Ident
-                && token.text.len() > 1
-                && token.text.starts_with(|c: char| c.is_ascii_uppercase())
-                && (token.text.chars())
-                    .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
-            {
+            // A constant is coloured like the value it is.
+            if token.kind == TokenKind::Ident && is_constant_name(&token.text) {
                 color = token_color(TokenKind::Int);
             }
             seen += 1;
         }
-        // `"total: {1 / 0}"`: the values in text are code.
         if token.kind == TokenKind::Text && token.text.contains('{') {
             result.push_str(&highlight_text(&token.text));
-            continue;
-        }
-        let colored_text = if is_italic(token.kind) {
-            format!(
-                "{}",
-                token.text.truecolor(color.0, color.1, color.2).italic()
-            )
+        } else if is_italic(token.kind) {
+            let text = token.text.truecolor(color.0, color.1, color.2);
+            result.push_str(&format!("{}", text.italic()));
         } else {
-            format!("{}", token.text.truecolor(color.0, color.1, color.2))
-        };
-        result.push_str(&colored_text);
+            result.push_str(&paint(&token.text, color));
+        }
     }
-
     result
 }
 
-/// Text with values written in it, `"total: {n + 1}"`: the text coloured as text, each
-/// `{…}` as code between braces. `{{` and `}}` are text.
+/// `"total: {n + 1}"`: the text coloured as text, each value as code between braces.
 fn highlight_text(text: &str) -> String {
-    let paint = |part: &str, color: Rgb| format!("{}", part.truecolor(color.0, color.1, color.2));
     let mut result = String::new();
-    let mut piece = String::new();
-    let mut rest = text;
-    while let Some(c) = rest.chars().next() {
-        if rest.starts_with("{{") || rest.starts_with("}}") {
-            piece.push_str(&rest[..2]);
-            rest = &rest[2..];
-        } else if c == '{'
-            && let Some(close) = rest.find('}')
-        {
-            result.push_str(&paint(&std::mem::take(&mut piece), PEACH));
-            result.push_str(&paint("{", SUBTEXT0));
-            result.push_str(&highlight(&rest[1..close]));
-            result.push_str(&paint("}", SUBTEXT0));
-            rest = &rest[close + 1..];
-        } else {
-            piece.push(c);
-            rest = &rest[c.len_utf8()..];
-        }
+    let mut from = 0;
+    for part in text_parts(text) {
+        let TextPart::Value(value) = part else {
+            continue;
+        };
+        result.push_str(&paint(&text[from..value.start - 1], LITERAL));
+        result.push_str(&paint("{", PUNCTUATION));
+        result.push_str(&highlight(&text[value.clone()]));
+        result.push_str(&paint("}", PUNCTUATION));
+        from = value.end + 1;
     }
-    result.push_str(&paint(&piece, PEACH));
+    result.push_str(&paint(&text[from..], LITERAL));
     result
 }
