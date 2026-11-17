@@ -1,0 +1,6 @@
+// expect: error
+
+/// A `use` can be `pub`, passing on what it brings, but not `mod`.
+mod use som::io;
+
+fn main() -> i32 = 0;

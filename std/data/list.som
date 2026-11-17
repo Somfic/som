@@ -1,0 +1,79 @@
+use som::mem;
+
+pub struct List<T> {
+    mem: Alloc<T>,
+    len: usize,
+}
+
+impl<T> List<T> {
+    pub prop is_empty = .len == 0;
+    prop capacity = .mem.capacity;
+    prop is_full = .len == .capacity;
+
+    pub fn empty() -> Self {
+        List { mem: Alloc::empty(), len: 0 }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        List { mem: Alloc::with_capacity(capacity), len: 0 }
+    }
+
+    pub fn push(&mut self, value: T) {
+        if .is_full self.mem.grow();
+        .mem.put_at(.len, value);
+        .len = .len + 1;
+    }
+
+    pub fn pop(&mut self) -> T? {
+        if .len == 0 {
+            return none;
+        }
+        .len = .len - 1;
+        .mem.take_at(.len)
+    }
+
+    pub prop slice = .mem.slice(.len);
+
+    pub fn as_slice(&self) -> &[T] {
+        .mem.slice(.len)
+    }
+
+    pub fn as_slice_mut(&mut self) -> &mut [T] {
+        .mem.slice_mut(.len)
+    }
+
+    pub fn clear(&mut self) {
+        for i in 0..self.len {
+            drop(.mem.take_at(i));
+        }
+        .len = 0;
+    }
+}
+
+impl<T> Sized for List<T> {
+    prop len = .len;
+}
+
+impl<T> Index for List<T> {
+    type Item = T;
+
+    fn at(&self, index: usize) -> &T = .mem.at(index);
+}
+
+impl<T> IndexMut for List<T> {
+    fn at_mut(&mut self, i: usize) -> &mut T = .mem.at_mut(i);
+}
+
+impl<T> Iterator for List<T> {
+    type Item = T;
+
+    fn next(self: &mut List<T>) -> Item? {
+        none // TODO
+    }
+}
+
+impl<T> Drop for List<T> {
+    fn drop(&mut self) {
+        .clear();
+    }
+}

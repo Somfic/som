@@ -12,7 +12,6 @@ impl<C: IndexMut> IterMut for C {
     fn iter_mut(&mut self) -> IndexIterMut<C> = IndexIterMut::of(self);
 }
 
-/// Goes through anything with `Index`, lending `at(0)` up to `at(len - 1)` in turn.
 pub struct IndexIter<C: Index> {
     of: &C,
     index: usize,

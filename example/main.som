@@ -6,6 +6,6 @@ queue.enqueue("Hello 3");
 queue.enqueue("Hello 4");
 queue.enqueue("Hello 5");
 
-for item in &queue {
+for item in queue {
     som::io::println(item);
 }

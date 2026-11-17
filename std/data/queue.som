@@ -5,7 +5,6 @@ pub struct Queue<T> {
 }
 
 impl<T> Queue {
-    pub prop len = .len;
     pub prop is_empty = .len == 0;
     prop capacity = .mem.capacity;
     prop is_full = .len == .capacity;
@@ -26,11 +25,14 @@ impl<T> Queue {
         .mem.put_at(index, value);
     }
 
-    pub fn dequeue(&mut self) -> T? {
-        if .len <= 0 return none;
+   pub fn dequeue(&mut self) -> T? {
+        if .len == 0 return none;
+        if .mem.capacity == 0 @unreachable;
 
-        let index = .slot(.len - 1);
+        let index = .slot(0);
+        .head = (.head + 1) % .mem.capacity;
         .len = .len - 1;
+
         .mem.take_at(index)
     }
 
@@ -40,16 +42,34 @@ impl<T> Queue {
     }
 }
 
+impl<T> Sized for Queue<T> {
+    prop len = .len;
+}
+
 impl<T> Index for Queue<T> {
     type Item = T;
-
-    prop len: usize = .len;
 
     fn at(&self, index: usize) -> &T = .mem.at(.slot(index));
 }
 
 impl<T> IndexMut for Queue<T> {
     fn at_mut(&mut self, i: usize) -> &mut T = .mem.at_mut(.slot(i));
+}
+
+impl<T> Iterator for Queue<T> {
+    type Item = T;
+
+    fn next(self: &mut Queue<T>) -> Item? {
+        self.dequeue()
+    }
+}
+
+impl<T> Drop for Queue<T> {
+    fn drop(&mut self) {
+        for i in 0..self.len {
+            drop(.mem.take_at(.slot(i)));
+        }
+    }
 }
 
 @test
@@ -64,8 +84,8 @@ fn queue() {
     let mut queue = Queue::empty();
     queue.enqueue("First");
     queue.enqueue("Second");
-    assert_eq(queue.dequeue(), "Second", "first item");
-    assert_eq(queue.dequeue(), "First", "second item");
+    assert_eq(queue.dequeue(), "First", "first item");
+    assert_eq(queue.dequeue(), "Second", "second item");
     assert_eq(queue.dequeue(), none, "third item");
 
     let mut queue = Queue::empty();

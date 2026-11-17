@@ -670,8 +670,15 @@ impl Checker<'_> {
             index: item,
         });
         let mut element = self.normalize_assoc(assoc);
-        // Lent values that copy are copied: `for n in &numbers` gives numbers.
+        // Lent values that copy are copied: `for n in &numbers` gives numbers. Text nothing
+        // has decided yet is the `string` it would end up as, which doesn't copy: asked now,
+        // it would look like it could.
         let mut copied = false;
+        if start == Start::Iter
+            && let Ty::Ref { mutable: false, to } = *self.u.shallow_ty(element)
+        {
+            self.text_as_string(to);
+        }
         if start == Start::Iter
             && let Ty::Ref { mutable: false, to } = *self.u.shallow_ty(element)
             && self.is_copy(to)

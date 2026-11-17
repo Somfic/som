@@ -87,13 +87,14 @@ impl<'a> Resolver<'a> {
 
     /// The modules whose items are named without a qualifier here, nearest first: this one,
     /// those `use`d in enclosing blocks, those it `use`s, and the standard library's root
-    /// module, `som`, where the traits the language uses are.
+    /// module, `som`, where the traits the language uses are; each with what it `pub use`s.
     fn visible_modules(&self) -> impl Iterator<Item = usize> + '_ {
         let prelude = self.modules.by_name.get(som_lang::PRELUDE_MODULE).copied();
-        std::iter::once(self.cx.module)
+        let direct = std::iter::once(self.cx.module)
             .chain(self.cx.block_imports.iter().rev().map(|&(_, m)| m))
             .chain(self.modules.imports[self.cx.module].iter().copied())
-            .chain(prelude)
+            .chain(prelude);
+        self.modules.with_reexports(direct).into_iter()
     }
 
     /// Whether `name` is a variant of an enum in a module visible here: `Less` of `Ordering`.
@@ -135,7 +136,9 @@ impl<'a> Resolver<'a> {
         let (owner, rest) = match module_prefix {
             Some((m, len)) => {
                 let rest = &segments[len..];
-                let item = self.modules.items[m].get(&*rest[0].name).copied();
+                // `som::Queue`, of `pub use som::collections;` in `som`: its own, or passed on.
+                let item = (self.modules.with_reexports(std::iter::once(m)).into_iter())
+                    .find_map(|m| self.modules.items[m].get(&*rest[0].name).copied());
                 if rest.len() == 1 {
                     return item.and_then(|d| self.fitting(d, expect));
                 }

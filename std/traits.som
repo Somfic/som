@@ -83,10 +83,8 @@ pub trait Compare {
 /// `&` references are; a struct is if it implements this, and everything in it is too.
 pub trait Copy {}
 
-pub trait Index {
+pub trait Index: Sized {
     type Item;
-
-    prop len: usize;
 
     @where index < self.len, "a position in it"
     fn at(self: &Self, index: usize) -> &Item;
@@ -109,6 +107,10 @@ pub trait IndexMut: Index {
         }
         none
     }
+}
+
+pub trait Sized {
+    prop len: usize;
 }
 
 /// Shown as text: what `{x}` in `"total: {x}"` writes. Measured first, so the text it's

@@ -89,9 +89,11 @@ impl Parser<'_> {
         }
     }
 
-    /// Who can see `use`, an `impl` block or an `extern` block is said on what's in it.
+    /// Who can see an `impl` block or an `extern` block is said on what's in it. A `use` can
+    /// be `pub`, passing on what it brings; not `mod`.
     fn check_container_visibility(&mut self, at: som_ast::Span) {
         if self.visibility == Visibility::Private
+            || self.visibility == Visibility::Public && self.peek() == TokenKind::Use
             || !matches!(
                 self.peek(),
                 TokenKind::Use | TokenKind::Impl | TokenKind::Extern
@@ -267,6 +269,7 @@ impl Parser<'_> {
     }
 
     pub(crate) fn parse_use(&mut self) -> Option<Use> {
+        let public = std::mem::take(&mut self.visibility) == Visibility::Public;
         self.expect(TokenKind::Use, "a use statement")?;
         let start = self.current_span();
         let mut path = self.parse_path("an import path")?;
@@ -292,7 +295,7 @@ impl Parser<'_> {
             );
         }
         self.expect(TokenKind::Semicolon, "a semicolon after the use statement")?;
-        Some(Use { path })
+        Some(Use { path, public })
     }
 }
 

@@ -1,0 +1,14 @@
+// expect: exit 3
+
+/// `for item in &list` over text nothing has given a type yet: it's `string`, which doesn't
+/// copy, so each is lent, not moved out.
+fn main() -> i32 {
+    let mut list = List::empty();
+    list.push("a");
+    list.push("bb");
+    let mut total = 0;
+    for item in &list {
+        total = total + item.len;
+    }
+    total as i32
+}

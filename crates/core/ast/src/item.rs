@@ -53,6 +53,9 @@ pub struct Alias {
 
 pub struct Use {
     pub path: Path,
+    /// `pub use som::collections;`: whoever sees this module sees what it uses too, as if
+    /// written here.
+    pub public: bool,
 }
 
 /// Linked from `library`, or from libc when no library is named.

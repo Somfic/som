@@ -72,6 +72,8 @@ struct Modules<'a> {
     items: Vec<HashMap<&'a str, DefId>>,
     /// The modules it `use`s, in order.
     imports: Vec<Vec<usize>>,
+    /// The modules it `pub use`s: seen, wherever it is, as if their items were its own.
+    reexports: Vec<Vec<usize>>,
     /// Its enums' variant names. A bare name in a pattern that's one of those, here or in a
     /// module this one uses, is that variant rather than a new binding.
     variant_names: Vec<HashSet<&'a str>>,
@@ -82,12 +84,29 @@ struct Modules<'a> {
 }
 
 impl<'a> Modules<'a> {
+    /// `modules`, each followed by what it passes on through `pub use`, and what those pass
+    /// on, each once: a module passing on one that passes it back stops there.
+    fn with_reexports(&self, modules: impl Iterator<Item = usize>) -> Vec<usize> {
+        let mut seen = Vec::new();
+        let mut todo: Vec<usize> = modules.collect();
+        todo.reverse();
+        while let Some(m) = todo.pop() {
+            if seen.contains(&m) {
+                continue;
+            }
+            seen.push(m);
+            todo.extend(self.reexports[m].iter().rev());
+        }
+        seen
+    }
+
     fn new(ast: &'a Ast) -> Self {
         let count = ast.modules.len();
         let mut modules = Modules {
             by_name: HashMap::new(),
             items: vec![HashMap::new(); count],
             imports: vec![Vec::new(); count],
+            reexports: vec![Vec::new(); count],
             variant_names: vec![HashSet::new(); count],
             libraries: HashMap::new(),
             declared: vec![HashSet::new(); count],

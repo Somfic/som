@@ -40,8 +40,6 @@ impl<T, N: usize> Drop for ArrayIntoIter<T, N> {
 impl<T> Index for [T] {
     type Item = T;
 
-    prop len: usize = self.len;
-
     fn at(&self, i: usize) -> &T = (self as *T).at(i);
 }
 

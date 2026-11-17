@@ -165,6 +165,20 @@ pub(crate) fn modules_in_scope(a: &Analysis, file: &str, offset: usize) -> (usiz
     {
         in_scope.push(prelude);
     }
+    // Each with what it passes on through `pub use`, and what those pass on.
+    let mut at = 0;
+    while at < in_scope.len() {
+        for item in &a.ast.modules[in_scope[at]].items {
+            if let Item::Use(u) = item
+                && u.public
+                && let Some(m) = module_named(&u.path.to_string())
+                && !in_scope.contains(&m)
+            {
+                in_scope.push(m);
+            }
+        }
+        at += 1;
+    }
     (here, in_scope)
 }
 

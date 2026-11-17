@@ -1,0 +1,7 @@
+// expect: exit 22
+
+use lib;
+
+/// `deep` is `inner`'s, passed on by `lib`'s `pub use`: named unqualified, through `lib`,
+/// and at its own path.
+fn main() -> i32 = deep() + lib::deep() + inner::deep() + shallow();

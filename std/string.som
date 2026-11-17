@@ -133,25 +133,22 @@ impl Hash for string {
     }
 }
 
-/// `text[i]`: the byte at `i`, where `i` is known to be below `text.len`. Only read: a
-/// string's bytes are shared by its copies.
+impl Sized for string {
+    prop len = .view.at(0).len;
+}
+
 impl Index for string {
     type Item = u8;
-
-    /// How many bytes it has.
-    prop len: usize = .view.at(0).len;
 
     fn at(&self, i: usize) -> &u8 = .data.at(i);
 }
 
-// --- Display: what `{x}` in `"…{x}…"` writes ---
-
 impl Display for i64 {
     prop display_len: usize {
-        // C says how long it would be, writing none of it but the zero byte.
         let mut room: [i8; 1] = [0];
         c::snprintf(&mut room[0], 1, "%lld", *self) as usize
     }
+
     fn display(&self, to: *u8) {
         c::snprintf((to as *i8).at_mut(0), (.display_len + 1) as u64, "%lld", *self);
     }
@@ -159,7 +156,6 @@ impl Display for i64 {
 
 impl Display for u64 {
     prop display_len: usize {
-        // C says how long it would be, writing none of it but the zero byte.
         let mut room: [i8; 1] = [0];
         c::snprintf(&mut room[0], 1, "%llu", *self) as usize
     }
@@ -170,7 +166,6 @@ impl Display for u64 {
 
 impl Display for f64 {
     prop display_len: usize {
-        // C says how long it would be, writing none of it but the zero byte.
         let mut room: [i8; 1] = [0];
         c::snprintf(&mut room[0], 1, "%g", *self) as usize
     }

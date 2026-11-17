@@ -84,7 +84,10 @@ pub fn import(
                     span,
                 }],
             };
-            ast.modules[module].items.push(Item::Use(Use { path }));
+            ast.modules[module].items.push(Item::Use(Use {
+                path,
+                public: false,
+            }));
         }
 
         if let Some((header, span)) = header

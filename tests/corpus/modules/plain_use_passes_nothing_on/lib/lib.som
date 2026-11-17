@@ -1,0 +1,3 @@
+use inner;
+
+pub fn shallow() -> i32 = deep();

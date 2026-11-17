@@ -15,11 +15,15 @@ impl<'a> Resolver<'a> {
         }
         for (index, module) in self.ast.modules.iter().enumerate() {
             for item in &module.items {
-                if let Item::Use(u) = item
-                    && let Some(&used) = self.modules.by_name.get(u.path.to_string().as_str())
-                    && !self.modules.imports[index].contains(&used)
-                {
+                let Item::Use(u) = item else { continue };
+                let Some(&used) = self.modules.by_name.get(u.path.to_string().as_str()) else {
+                    continue;
+                };
+                if !self.modules.imports[index].contains(&used) {
                     self.modules.imports[index].push(used);
+                }
+                if u.public && !self.modules.reexports[index].contains(&used) {
+                    self.modules.reexports[index].push(used);
                 }
             }
         }

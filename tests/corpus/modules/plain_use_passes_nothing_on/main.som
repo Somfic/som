@@ -1,0 +1,6 @@
+// expect: error UnknownFunction
+
+use lib;
+
+/// `lib` uses `inner` for itself: without `pub`, what's in `inner` isn't passed on.
+fn main() -> i32 = deep();
