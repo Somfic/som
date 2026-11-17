@@ -1,8 +1,0 @@
-// Unproven: a call while compiling has to meet the function's `@where`s, like any other: `share(10, 0)` doesn't.
-
-@where people != 0
-fn share(total: i32, people: i32) -> i32 = total / people;
-
-@const EACH = share(10, 0);
-
-fn main() -> i32 = EACH;

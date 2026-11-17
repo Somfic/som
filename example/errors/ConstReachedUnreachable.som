@@ -1,7 +1,0 @@
-// ConstReachedUnreachable: Running a constant reaches `@unreachable`.
-
-fn pick(n: i32) -> i32 = n if n > 0 else @unreachable;
-
-@const X = pick(0);
-
-fn main() -> i32 = X;

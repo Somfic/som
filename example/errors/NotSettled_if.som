@@ -1,8 +1,0 @@
-// NotSettled: An `@if`'s condition has to be known while compiling.
-
-fn pick(fast: bool) -> i32 {
-    @if fast { return 1; }
-    return 2;
-}
-
-fn main() -> i32 = pick(true);

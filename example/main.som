@@ -1,1 +1,24 @@
-@assert(som::io::get_env("CARGO") == true, "rust is installed");
+use som::io;
+
+fn count_primes(limit: i32) -> i32 {
+    let mut count = 0;
+    for n in 2..limit {
+        let mut prime = true;
+        for d in 2..n {
+            if n % d == 0 {
+                prime = false;
+                break;
+            }
+        }
+        if prime {
+            count = count + 1;
+        }
+    }
+    return count;
+}
+
+fn main() -> i32 {
+    let primes = count_primes(100);
+    print("{primes} primes below 1000\n");
+    return 0;
+}

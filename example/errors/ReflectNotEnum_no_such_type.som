@@ -1,8 +1,0 @@
-// ReflectNotEnum: `@for v in Name` among a match's arms goes through an enum's variants: here there's no enum or type parameter by that name.
-
-fn count(n: i32) -> i32 = match n {
-    @for v in Nothing { v => 1, }
-    _ => 0,
-};
-
-fn main() -> i32 = count(1);

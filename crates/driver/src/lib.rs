@@ -118,7 +118,10 @@ impl Error {
                 inner,
             } => {
                 let mut diagnostic = inner.to_diagnostic();
-                diagnostic.message.0.insert(0, format!("in `{instance}`: ").into());
+                diagnostic
+                    .message
+                    .0
+                    .insert(0, format!("in `{instance}`: ").into());
                 diagnostic.with_label(som_base::Label::secondary(
                     used_at.clone(),
                     som_base::msg![som_base::message::code(instance.clone()), " is used here"],
@@ -169,29 +172,33 @@ fn could_be_const_diagnostic(w: &som_comptime::CouldBeConst) -> Diagnostic {
         Some(value) => msg![code(value.clone())],
         None => msg!["the same value"],
     };
-    let mut d = Diagnostic::hint(msg![code(w.call.clone()), " could be worked out while compiling"])
-        .with_label(Label::primary(
-            w.span.clone(),
-            msg!["always ", result.clone(), ", worked out again each time the program runs"],
-        ));
+    let mut d = Diagnostic::hint(msg![
+        code(w.call.clone()),
+        " could be computed during compilation"
+    ])
+    .with_label(Label::primary(
+        w.span.clone(),
+        msg!["will always be ", result.clone(),],
+    ));
     // `let n = 100;`: where an argument that never changes is set.
     for (name, value, set_at) in &w.known {
         d = d.with_label(Label::secondary(
             set_at.clone(),
-            msg![code(name.clone()), " is always ", code(value.clone())],
+            msg![code(name.clone()), " will always be ", code(value.clone())],
         ));
     }
     d.with_hint(msg![
-        "everything it's given is known while compiling, so what it gives is too: ",
+        code(w.call.clone()),
+        " is a pure function, its arguments will never change, so its value won't either: ",
         result.clone()
     ])
     .with_hint(msg![
         code(w.fix.clone()),
-        " works it out once, while compiling, and puts ",
+        " would compute it during compilation, and use ",
         result,
-        " in the program instead"
+        " instead"
     ])
-    .with_hint("or, if it should run each time (it's quick, or it's being timed), leave it as it is")
+    .with_hint("if this should run each time (it's quick, or it's being timed), leave it as it is")
     .with_fix(Fix::replace(
         msg!["work it out while compiling: ", code(w.fix.clone())],
         w.span.clone(),
@@ -386,7 +393,10 @@ pub fn check(path: &Path, options: &Options) -> Result<Checked, Failed> {
 pub fn check_loaded(ast: Ast, options: &Options) -> Result<Checked, Failed> {
     let mut warnings = Vec::new();
     match check_passes(ast, options, &mut warnings) {
-        Ok(checked) => Ok(Checked { warnings, ..checked }),
+        Ok(checked) => Ok(Checked {
+            warnings,
+            ..checked
+        }),
         Err(errors) => Err(Failed { errors, warnings }),
     }
 }
@@ -432,7 +442,11 @@ fn check_passes(
     if !errors.is_empty() {
         return Err(errors.into_iter().map(Error::Comptime).collect());
     }
-    warnings.extend(som_comptime::could_be_const(&mir).into_iter().map(Warning::CouldBeConst));
+    warnings.extend(
+        som_comptime::could_be_const(&mir)
+            .into_iter()
+            .map(Warning::CouldBeConst),
+    );
     if !options.no_optimize {
         som_optimize::optimize(&mut mir);
     }
@@ -639,7 +653,9 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
         }
         if errors.is_empty() {
             warnings.extend(
-                som_comptime::could_be_const(&mir).into_iter().map(Warning::CouldBeConst),
+                som_comptime::could_be_const(&mir)
+                    .into_iter()
+                    .map(Warning::CouldBeConst),
             );
         }
         Some(mir)

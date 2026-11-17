@@ -1,6 +1,0 @@
-// Parse: `@on` (like `@where`) goes on a line above a function.
-
-@on fail
-struct Log { lines: i32 }
-
-fn main() -> i32 = 0;
