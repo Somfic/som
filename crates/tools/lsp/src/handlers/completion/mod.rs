@@ -97,3 +97,35 @@ pub(crate) fn complete(request: &Request, trigger: Option<&str>) -> Option<Vec<C
         qualified::Answer::NotQualified => Some(scope::complete(request)),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::analyzed;
+
+    /// The labels completed at the end of `source`.
+    fn labels_at_end(source: &str) -> Vec<String> {
+        let (_dir, file, a) = analyzed(source);
+        let importable = Importable { modules: Vec::new(), libraries: Vec::new() };
+        let last = source.lines().count() as u32 - 1;
+        let column = source.lines().last().unwrap().len() as u32;
+        let request = Request::new(
+            &a,
+            &importable,
+            &file,
+            source,
+            source.len(),
+            Position::new(last, column),
+        );
+        (complete(&request, None).unwrap_or_default().into_iter())
+            .map(|item| item.label)
+            .collect()
+    }
+
+    #[test]
+    fn the_standard_library_s_root_functions_complete_without_an_import() {
+        let labels = labels_at_end("fn main() -> i32 {\n    ass");
+        assert!(labels.iter().any(|l| l == "assert"), "{labels:?}");
+        assert!(labels.iter().any(|l| l == "assert_eq"), "{labels:?}");
+    }
+}

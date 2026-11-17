@@ -5,6 +5,7 @@
 mod builder;
 mod builtins;
 mod call;
+mod caller;
 mod drops;
 mod elaborate;
 mod expr;
@@ -309,6 +310,7 @@ impl<'a> Lowerer<'a> {
                 self.struct_instance(s, args);
             }
         }
+        self.pass_caller_locations();
     }
 
     /// Like `Mir::is_copy`, but before the copies of generic structs exist: copying is the

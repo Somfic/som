@@ -388,12 +388,7 @@ fn run(path: &Path, build: &BuildArgs, args: &[String], test: bool) -> ExitCode 
     code
 }
 
-fn run_in(
-    checked: &Checked,
-    dir: &Path,
-    build: &BuildArgs,
-    args: &[String],
-) -> ExitCode {
+fn run_in(checked: &Checked, dir: &Path, build: &BuildArgs, args: &[String]) -> ExitCode {
     let Some(exe) = build_to(checked, &dir.join("program"), build) else {
         return ExitCode::FAILURE;
     };

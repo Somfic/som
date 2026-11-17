@@ -46,8 +46,8 @@ impl FnBuilder<'_, '_> {
         let intrinsic = match method {
             PointerMethod::Resize => Intrinsic::Resize,
             PointerMethod::Free => Intrinsic::Free,
-            PointerMethod::Read => Intrinsic::Read,
-            PointerMethod::Write => Intrinsic::Write,
+            PointerMethod::Take => Intrinsic::Take,
+            PointerMethod::Put => Intrinsic::Put,
             PointerMethod::At | PointerMethod::AtMut => Intrinsic::Offset,
             PointerMethod::View | PointerMethod::ViewMut => Intrinsic::View,
             PointerMethod::IsNull => Intrinsic::IsNull,

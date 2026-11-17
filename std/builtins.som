@@ -7,12 +7,16 @@ pub struct Failure {
     pub unreachable: bool,
 }
 
+/// Where something happened in the program. A standard-library function that can fail, like
+/// `assert`, is told where it was called, and fails there.
 pub struct Location {
-    pub file: string,
+    pub file: cstr,
     pub line: u32,
     pub column: u32,
-    pub function: string,
+    pub function: cstr,
 }
+
+impl Copy for Location {}
 
 @on fail pub fn on_fail(failure: &Failure) {
     let at = "{failure.at.file}:{failure.at.line}:{failure.at.column} in {failure.at.function}";
@@ -26,9 +30,16 @@ fn halt() {
 }
 
 pub fn assert(ok: bool) {
-    if !ok @fail("unmet assertion");
+    assert(ok, "unmet assertion");
 }
 
+pub fn assert_eq<T: Eq>(a: T, b: T) {
+    assert_eq(a, b, "unmet assertion");
+}
+
+pub fn assert_eq<T: Eq>(a: T, b: T, error_message: string) {
+    if a != b @fail(error_message);
+}
 
 pub fn assert(ok: bool, error_message: string) {
     if !ok @fail(error_message);

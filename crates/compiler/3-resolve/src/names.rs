@@ -585,6 +585,30 @@ impl Names {
         &self.tests
     }
 
+    /// The tests `som test` runs: the program's own. The standard library's only when it's
+    /// the program, which is loaded as an empty root module in its folder.
+    pub fn program_tests(&self, ast: &Ast) -> Vec<Id<Func>> {
+        let modules = &ast.modules;
+        let std_is_program = (modules.iter())
+            .find(|m| *m.name == *som_lang::PRELUDE_MODULE)
+            .is_some_and(|std| std.path == modules[0].path);
+        (self.tests.iter().copied())
+            .filter(|&test| {
+                let module = &modules[self.def(self.func(test)).module];
+                std_is_program || !som_lang::is_std_module(&module.name)
+            })
+            .collect()
+    }
+
+    /// What the test runner calls `test`: its name, after its module's.
+    pub fn test_name(&self, ast: &Ast, test: Id<Func>) -> String {
+        let name = &ast.funcs[test].name.name;
+        match &*ast.modules[self.def(self.func(test)).module].name {
+            "" => name.to_string(),
+            module => format!("{module}::{name}"),
+        }
+    }
+
     pub fn lang_of(&self, def: DefId) -> Option<LangTrait> {
         self.lang
             .traits

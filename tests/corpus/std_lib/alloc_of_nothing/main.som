@@ -7,7 +7,7 @@ fn nothing() {}
 
 fn main() -> i32 {
     let mut mem: som::mem::Alloc<()> = som::mem::Alloc::with_capacity(5);
-    mem.write(4, nothing());
-    let read = mem.read(4);
-    mem.size as i32
+    mem.put_at(4, nothing());
+    let read = mem.take_at(4);
+    mem.capacity as i32
 }

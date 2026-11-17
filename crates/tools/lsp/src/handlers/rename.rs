@@ -72,8 +72,8 @@ pub(crate) fn highlights(a: &Analysis, cursor: &Cursor) -> Option<Vec<DocumentHi
     )
 }
 
-/// Why the symbol can't be renamed, if it can't: it's the standard library's, C's, or the
-/// language's own.
+/// Why the symbol can't be renamed, if it can't: it's C's, the language's own, or the
+/// standard library's when renamed from outside it.
 pub(crate) fn renamable(a: &Analysis, uses: &Uses) -> Result<(), String> {
     if let Symbol::Def(def) = uses.at.symbol {
         match a.names.def(def).kind {
@@ -98,7 +98,7 @@ pub(crate) fn renamable(a: &Analysis, uses: &Uses) -> Result<(), String> {
     }
     let in_std =
         |o: &Occurrence| som_driver::stdlib::contains(Path::new(o.span.source.identifier()));
-    if uses.matching.iter().any(|o| o.definition && in_std(o)) {
+    if !in_std(&uses.at) && uses.matching.iter().any(|o| o.definition && in_std(o)) {
         return Err(format!(
             "`{}` is the standard library's, so it can't be renamed",
             references::name_of(a, uses.at.symbol)

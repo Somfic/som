@@ -6,6 +6,6 @@ use som;
 fn main() -> i32 {
     let mut a: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(1);
     let b = a;
-    a.write(0, 1);
+    a.put_at(0, 1);
     0
 }

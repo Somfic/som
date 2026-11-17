@@ -7,21 +7,21 @@ use som;
 fn main() -> i32 {
     let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(4);
     for i in 0..4 {
-        mem.write(i, 1);
+        mem.put_at(i, 1);
     }
     {
         let first: &mut i32 = mem.at_mut(0);
         *first = 10;
     }
     {
-        let changing: &mut [i32] = mem.view_mut(4);
+        let changing: &mut [i32] = mem.slice_mut(4);
         for n in changing {
             *n = *n * 2;
         }
     }
     let mut total = 0;
     {
-        let reading: &[i32] = mem.view(4);
+        let reading: &[i32] = mem.slice(4);
         for n in reading {
             total = total + n;
         }

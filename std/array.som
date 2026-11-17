@@ -21,7 +21,7 @@ impl<T, N: usize> Iterator for ArrayIntoIter<T, N> {
             return none;
         }
         let items = &.items.value as *T;
-        let value = items.read(.next);
+        let value = items.take(.next);
         .next = .next + 1;
         value
     }
@@ -32,7 +32,7 @@ impl<T, N: usize> Drop for ArrayIntoIter<T, N> {
     fn drop(&mut self) {
         let items = &.items.value as *T;
         for i in .next..N {
-            drop(items.read(i));
+            drop(items.take(i));
         }
     }
 }

@@ -92,11 +92,11 @@ impl Machine<'_, '_> {
                 }
                 Value::Unit
             }
-            Intrinsic::Read => {
+            Intrinsic::Take => {
                 let loc = at(self, count(&args[1], span)?)?;
                 self.read(&loc, element, span)?
             }
-            Intrinsic::Write => {
+            Intrinsic::Put => {
                 let loc = at(self, count(&args[1], span)?)?;
                 self.write(&loc, element, args[2].clone(), span)?;
                 Value::Unit

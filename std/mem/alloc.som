@@ -1,36 +1,40 @@
-// A memory allocation for T
+/// Room for `capacity` `T`s. It doesn't know which slots hold a value: its owner does, and
+/// drops them before it goes, since dropping an `Alloc` only gives the memory back.
 pub struct Alloc<T> {
     ptr: *T,
-    size: usize
+    count: usize
 }
 
 impl<T> Alloc<T> {
     pub fn empty() -> Self {
-        Alloc { ptr: null<T>(), size: 0 }
+
+        Alloc { ptr: null<T>(), count: 0 }
     }
 
-    /// How many values it has room for.
-    pub prop size = .size;
+    pub prop capacity = .count;
 
-    pub fn with_capacity(size: usize) -> Self {
+    pub fn with_capacity(capacity: usize) -> Self {
         let mut ptr = null<T>();
-        ptr.resize(size);
-        Alloc { ptr, size }
+        ptr.resize(capacity);
+        Alloc { ptr, count: capacity }
     }
 
     pub fn resize(&mut self, size: usize) {
         self.ptr.resize(size);
-        self.size = size;
+        self.count = size;
     }
 
-    pub fn write(&mut self, index: usize, value: T) {
-        self.ptr.write(index, value);
+    /// Moves `value` into an empty slot. Whatever was there isn't dropped.
+    pub fn put_at(&mut self, index: usize, value: T) {
+        self.ptr.put(index, value);
     }
 
-    pub fn read(&mut self, index: usize) -> T {
-        self.ptr.read(index)
+    /// Moves the value out, leaving the slot empty.
+    pub fn take_at(&mut self, index: usize) -> T {
+        self.ptr.take(index)
     }
 
+    /// Borrows the value, which stays in its slot.
     pub fn at(&self, index: usize) -> &T {
         self.ptr.at(index)
     }
@@ -39,11 +43,12 @@ impl<T> Alloc<T> {
         self.ptr.at_mut(index)
     }
 
-    pub fn view(&self, len: usize) -> &[T] {
+    /// The first `len` slots, which must all hold values.
+    pub fn slice(&self, len: usize) -> &[T] {
         self.ptr.view(len)
     }
 
-    pub fn view_mut(&mut self, len: usize) -> &mut [T] {
+    pub fn slice_mut(&mut self, len: usize) -> &mut [T] {
         self.ptr.view_mut(len)
     }
 }
@@ -55,20 +60,25 @@ impl<T> Drop for Alloc<T> {
 }
 
 impl<T: Copy> Alloc<T> {
-    pub fn with_capacity(size: usize, initial_value: T) -> Self {
+    pub fn filled(size: usize, initial_value: T) -> Self {
         let mut ptr = null<T>();
         ptr.resize(size);
 
-        let mut alloc = Alloc { ptr, size };
+        let mut alloc = Alloc { ptr, count: size };
 
-        alloc.write_all(initial_value);
+        alloc.fill(initial_value);
 
         alloc
     }
 
-    pub fn write_all(&mut self, value: T) {
-        for i in 0..self.size {
-            .write(i, value);
+    pub fn fill(&mut self, value: T) {
+        for i in 0..self.count {
+            .put_at(i, value);
         }
     }
+}
+
+@test
+fn test() {
+    assert(1 == 0, "lol");
 }

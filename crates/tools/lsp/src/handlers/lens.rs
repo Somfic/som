@@ -1,8 +1,9 @@
 use som_ast::{Func, Id, Item, Span};
-use som_driver::Analysis;
+use som_driver::{Analysis, Outcome};
 use som_resolve::DefId;
 use tower_lsp::lsp_types::{CodeLens, Command, Range, Url};
 
+use super::tests::TestStatus;
 use crate::convert;
 use crate::index::items_in_file;
 use crate::references::{self, Symbol};
@@ -11,9 +12,18 @@ use crate::references::{self, Symbol};
 const RUN_COMMAND: &str = "som.run";
 const SHOW_REFERENCES_COMMAND: &str = "som.showReferences";
 
-/// How many references each item in `file` has, and a Run button above the entry point.
-pub(crate) fn code_lenses(a: &Analysis, file: &str, uri: &Url) -> Vec<CodeLens> {
+/// How many references each item in `file` has, a Run button above the entry point, and
+/// how each test did when the tests last ran.
+pub(crate) fn code_lenses(
+    a: &Analysis,
+    file: &str,
+    uri: &Url,
+    tests: Option<&TestStatus>,
+) -> Vec<CodeLens> {
     let mut lenses = reference_lenses(a, file, uri);
+    if let Some(tests) = tests {
+        lenses.extend(test_lenses(a, file, tests));
+    }
     if let Some(main) = entry_point(a, file) {
         let start = convert::span_to_range(a.ast.funcs.span(main)).start;
         lenses.push(CodeLens {
@@ -27,6 +37,49 @@ pub(crate) fn code_lenses(a: &Analysis, file: &str, uri: &Url) -> Vec<CodeLens> 
         });
     }
     lenses
+}
+
+/// Above each of the program's tests in `file`: passed, failed and why, or still running.
+fn test_lenses(a: &Analysis, file: &str, tests: &TestStatus) -> Vec<CodeLens> {
+    let order = a.names.program_tests(&a.ast);
+    // Where the run stopped, when it timed out: the test that was running.
+    let stuck = tests.timed_out.and_then(|_| {
+        (order.iter()).find(|&&t| {
+            let name = a.names.test_name(&a.ast, t);
+            !tests.results.iter().any(|r| r.name == name)
+        })
+    });
+    (order.iter())
+        .filter(|&&t| a.ast.funcs.span(t).source.identifier() == file)
+        .filter_map(|&t| {
+            let name = a.names.test_name(&a.ast, t);
+            let result = tests.results.iter().find(|r| r.name == name);
+            let title = match (tests.running, result) {
+                (true, _) => "$(sync~spin) running".to_string(),
+                (false, Some(r)) => match &r.outcome {
+                    Outcome::Passed => "$(pass) passed".to_string(),
+                    Outcome::Failed(failure) => format!("$(error) failed: {}", failure.why),
+                },
+                (false, None) if stuck == Some(&t) => {
+                    let after = tests.timed_out?.as_secs();
+                    format!("$(watch) still running after {after}s: stopped")
+                }
+                (false, None) if tests.timed_out.is_some() => "$(circle-slash) not run".into(),
+                (false, None) => return None,
+            };
+            let start = convert::span_to_range(&a.ast.funcs[t].name.span).start;
+            Some(CodeLens {
+                range: Range { start, end: start },
+                // Nothing to do when it's clicked: it's what's known.
+                command: Some(Command {
+                    title,
+                    command: String::new(),
+                    arguments: None,
+                }),
+                data: None,
+            })
+        })
+        .collect()
 }
 
 /// `main` in the root module, if `file` has it.

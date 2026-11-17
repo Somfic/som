@@ -5,12 +5,12 @@ use som;
 
 fn pick(early: bool) -> i32 {
     let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(2);
-    mem.write(0, 1);
-    mem.write(1, 2);
+    mem.put_at(0, 1);
+    mem.put_at(1, 2);
     if early {
-        return mem.read(0);
+        return mem.take_at(0);
     }
-    mem.read(1)
+    mem.take_at(1)
 }
 
 fn main() -> i32 {

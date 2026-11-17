@@ -6,12 +6,12 @@ use som;
 fn numbers(count: usize) -> som::mem::Alloc<i32> {
     let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(count);
     for i in 0..count {
-        mem.write(i, i as i32 + 1);
+        mem.put_at(i, i as i32 + 1);
     }
     mem
 }
 
 fn main() -> i32 {
     let mut mem = numbers(3);
-    mem.read(0) + mem.read(1) + mem.read(2)
+    mem.take_at(0) + mem.take_at(1) + mem.take_at(2)
 }

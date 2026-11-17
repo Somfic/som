@@ -652,8 +652,8 @@ impl Checker<'_> {
                 unit
             }
             PointerMethod::Free => unit,
-            PointerMethod::Read => element,
-            PointerMethod::Write => {
+            PointerMethod::Take => element,
+            PointerMethod::Put => {
                 self.expect(args[1], element, None);
                 unit
             }

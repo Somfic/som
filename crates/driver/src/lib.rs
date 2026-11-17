@@ -8,16 +8,18 @@ mod libraries;
 mod load;
 mod pipeline;
 pub mod stdlib;
+mod tests;
 mod tokens;
 pub mod toolchain;
 
-pub use build::{BuildError, BuildOptions, build, emit_c, run};
+pub use build::{BuildError, BuildOptions, build, command, emit_c, run};
 pub use error::{Error, Warning};
 pub use headers::origins;
 pub use imports::{Importable, importable, locate};
 pub use libraries::{LibraryError, LibraryWarning, SameAsHeader};
 pub use load::{LoadError, load};
 pub use som_lexer::highlight;
+pub use tests::{FailedAt, Failure, Outcome, TestResult, TestRun, TestRunError, run_tests};
 pub use tokens::dump_tokens;
 
 use pipeline::{OnError, Passes, Stopped};

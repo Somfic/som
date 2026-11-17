@@ -7,6 +7,6 @@ use som;
 fn main() -> i32 {
     let empty = som::mem::Alloc::with_capacity<u8>(0);
     let mut three = som::mem::Alloc::with_capacity<u16>(3);
-    three.write(2, 3);
-    empty.size as i32 + three.read(2) as i32
+    three.put_at(2, 3);
+    empty.capacity as i32 + three.take_at(2) as i32
 }

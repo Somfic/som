@@ -1,0 +1,22 @@
+// expect: exit 7
+
+use som::io;
+
+/// A failure in the standard library's `assert` is said to be where the program called it,
+/// passed on through the standard library's own calls: `assert(ok)` calls `assert(ok, …)`.
+@on fail
+fn quit(failure: &Failure) {
+    let here = failure.at.line == 16 && failure.at.column == 5;
+    let named = failure.at.function == "check";
+    io::exit(7 if here && named else 1);
+}
+
+fn check(n: i32) {
+    let doubled = n * 2;
+    assert(doubled == 5);
+}
+
+fn main() -> i32 {
+    check(2);
+    0
+}

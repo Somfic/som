@@ -7,7 +7,7 @@ use som;
 struct Noisy { id: i32, log: *i32 }
 
 impl Drop for Noisy {
-    fn drop(&mut self) { .log.write(0, .log.read(0) * 10 + .id); }
+    fn drop(&mut self) { .log.put(0, .log.take(0) * 10 + .id); }
 }
 
 fn main() -> i32 {
@@ -15,9 +15,9 @@ fn main() -> i32 {
     let at = &mut log as *i32;
     {
         let mut mem: som::mem::Alloc<Noisy> = som::mem::Alloc::with_capacity(2);
-        mem.write(0, Noisy { id: 1, log: at });
-        mem.write(1, Noisy { id: 2, log: at });
-        let second = mem.read(1);
+        mem.put_at(0, Noisy { id: 1, log: at });
+        mem.put_at(1, Noisy { id: 2, log: at });
+        let second = mem.take_at(1);
     }
     log
 }

@@ -102,6 +102,11 @@ impl<T> Arena<T> {
         self.items.get_mut(id.id)?.as_mut()
     }
 
+    /// `a`'s item is `b`'s, and `b`'s `a`'s.
+    pub fn swap(&mut self, a: Id<T>, b: Id<T>) {
+        self.items.swap(a.id, b.id);
+    }
+
     // The id isn't reused.
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         let item = self.items.get_mut(id.id)?.take()?;

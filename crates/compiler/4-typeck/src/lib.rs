@@ -259,9 +259,9 @@ som_lang::named_enum! {
         Resize = "resize",
         Free = "free",
         /// Copied or moved out.
-        Read = "read",
+        Take = "take",
         /// Without reading or freeing what was there.
-        Write = "write",
+        Put = "put",
         At = "at",
         AtMut = "at_mut",
         View = "view",
@@ -275,7 +275,7 @@ impl PointerMethod {
     pub fn arity(self) -> usize {
         match self {
             PointerMethod::Free | PointerMethod::IsNull => 0,
-            PointerMethod::Write => 2,
+            PointerMethod::Put => 2,
             _ => 1,
         }
     }

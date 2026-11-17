@@ -43,29 +43,11 @@ impl Lowerer<'_> {
             .map(|(name, ty)| (name.to_string(), *ty))
             .collect();
 
-        // The program's own. The standard library's only when it's the program: then the
-        // root module is an empty one in its folder.
-        let modules = &self.ast.modules;
-        let std_is_program = (modules.iter())
-            .find(|m| *m.name == *som_lang::PRELUDE_MODULE)
-            .is_some_and(|std| std.path == modules[0].path);
-        let tests: Vec<(FuncId, String, Span)> = (self.names.tests().to_vec().into_iter())
-            .filter(|&test| {
-                let module = &modules[self.names.def(self.names.func(test)).module];
-                std_is_program || !som_lang::is_std_module(&module.name)
-            })
+        let tests: Vec<(FuncId, String, Span)> = (self.names.program_tests(self.ast).into_iter())
             .map(|test| {
-                let func = &self.ast.funcs[test];
-                let module = &self.ast.modules[self.names.def(self.names.func(test)).module].name;
-                let name = match module.is_empty() {
-                    true => func.name.name.to_string(),
-                    false => format!("{module}::{}", func.name.name),
-                };
-                (
-                    self.instance(test, Vec::new()),
-                    name,
-                    func.name.span.clone(),
-                )
+                let name = self.names.test_name(self.ast, test);
+                let at = self.ast.funcs[test].name.span.clone();
+                (self.instance(test, Vec::new()), name, at)
             })
             .collect();
 

@@ -5,5 +5,5 @@ use som;
 
 fn main() {
     let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(100);
-    mem.write(99, 1);
+    mem.put_at(99, 1);
 }

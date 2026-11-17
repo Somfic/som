@@ -197,6 +197,11 @@ pub fn build(
 
 /// Runs a built program, making the libraries it was linked against findable.
 pub fn run(checked: &Checked, executable: &Path, args: &[String]) -> std::io::Result<ExitStatus> {
+    command(checked, executable, args).status()
+}
+
+/// The command that runs `executable` with `args`, finding the libraries it was linked with.
+pub fn command(checked: &Checked, executable: &Path, args: &[String]) -> Command {
     let mut cmd = Command::new(executable);
     cmd.args(args);
     let dirs: Vec<PathBuf> = checked
@@ -213,5 +218,5 @@ pub fn run(checked: &Checked, executable: &Path, args: &[String]) -> std::io::Re
         };
         cmd.env(var, joined);
     }
-    cmd.status()
+    cmd
 }

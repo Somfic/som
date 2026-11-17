@@ -367,12 +367,12 @@ fn pointer_method(method: PointerMethod) -> BuiltinMethod {
              one starts empty; copies of the old pointer aren't valid any more.",
         ),
         PointerMethod::Free => (&[], "", "Gives the memory back."),
-        PointerMethod::Read => (
+        PointerMethod::Take => (
             &[("index", "usize")],
             "T",
             "The value at `index`, copied or moved out. Nothing checks it's there.",
         ),
-        PointerMethod::Write => (
+        PointerMethod::Put => (
             &[("index", "usize"), ("value", "T")],
             "",
             "Stores `value` at `index`, without reading or freeing what was there.",

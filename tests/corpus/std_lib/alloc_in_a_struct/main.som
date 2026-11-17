@@ -13,9 +13,9 @@ fn keep(buffer: Buffer) -> Buffer { buffer }
 
 fn main() -> i32 {
     let mut buffer = keep(make(64));
-    buffer.mem.write(0, 64);
+    buffer.mem.put_at(0, 64);
     buffer.used = 1;
     let moved = buffer;
     let mut again = keep(moved);
-    again.mem.read(0) as i32
+    again.mem.take_at(0) as i32
 }

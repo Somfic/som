@@ -6,9 +6,9 @@ use som;
 fn main() -> i32 {
     som::io::println("Starting...");
     let mut mem: som::mem::Alloc<u8> = som::mem::Alloc::with_capacity(256);
-    mem.write(255, 0);
+    mem.put_at(255, 0);
     som::io::println("Allocated memory");
-    let last = mem.read(255) as i32;
+    let last = mem.take_at(255) as i32;
     som::io::println("Read it back");
     last
 }

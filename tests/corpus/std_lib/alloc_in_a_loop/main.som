@@ -10,11 +10,11 @@ fn main() -> i32 {
     let mut kept: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(1);
     while i < 100 {
         let mut mem: som::mem::Alloc<i32> = som::mem::Alloc::with_capacity(64);
-        mem.write(63, 1);
-        total = total + mem.read(63);
+        mem.put_at(63, 1);
+        total = total + mem.take_at(63);
         kept = som::mem::Alloc::with_capacity(1);
-        kept.write(0, 1);
-        total = total + kept.read(0);
+        kept.put_at(0, 1);
+        total = total + kept.take_at(0);
         i = i + 1;
     }
     total

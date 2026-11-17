@@ -4,7 +4,7 @@
 struct Noisy { drops: *i32 }
 
 impl Drop for Noisy {
-    fn drop(self: &mut Noisy) { self.drops.write(0, self.drops.read(0) + 1); }
+    fn drop(self: &mut Noisy) { self.drops.put(0, self.drops.take(0) + 1); }
 }
 
 fn keep(n: Rc<Noisy>) {}
@@ -19,8 +19,8 @@ fn main() -> i32 {
         keep(a);
         keep(b);
         // Still shared by `a` and `b`: not dropped yet.
-        before = at.read(0);
+        before = at.take(0);
     }
     // 100 if it wasn't dropped while shared, plus 1 for being dropped once after.
-    (1 - before) * 100 + at.read(0)
+    (1 - before) * 100 + at.take(0)
 }

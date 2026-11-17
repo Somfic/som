@@ -60,7 +60,7 @@ impl Iterator for Lines {
 
         let mut len = n as usize;
         let bytes = .buf as *u8;
-        if len > 0 && bytes.read(len - 1) == 10 {
+        if len > 0 && bytes.take(len - 1) == 10 {
             len = len - 1; // drop trailing '\n'
         }
 

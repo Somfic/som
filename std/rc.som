@@ -12,7 +12,7 @@ impl<T> Rc<T> {
         let mut ptr = null<RcBox<T>>();
 
         ptr.resize(1);
-        ptr.write(0, RcBox { count: 1, value });
+        ptr.put(0, RcBox { count: 1, value });
 
         Rc { ptr }
     }
@@ -42,7 +42,7 @@ impl<T> Drop for Rc<T> {
 
         if shared.count <= 0 {
             // last reference got dropped, free
-            let last = self.ptr.read(0);
+            let last = self.ptr.take(0);
             self.ptr.free();
         }
     }

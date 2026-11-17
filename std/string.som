@@ -18,9 +18,9 @@ impl string {
         // The block, the bytes, and the zero byte after them.
         raw.resize(16 + len + 1);
         let view = raw as *StringView;
-        view.write(0, StringView { count: 1, len });
+        view.put(0, StringView { count: 1, len });
         let text = Self { view };
-        text.data.write(len, 0);
+        text.data.put(len, 0);
         text
     }
 
@@ -31,7 +31,7 @@ impl string {
         let copy = string::with_len(bytes.len);
         let mut i = 0;
         for byte in bytes {
-            copy.data.write(i, byte);
+            copy.data.put(i, byte);
             i = i + 1;
         }
         copy
@@ -57,7 +57,7 @@ impl string {
         if index >= .len {
             return none;
         }
-        .data.read(index)
+        .data.take(index)
     }
 
     /// The bytes from `start` up to `end`, copied; `none` if they aren't all there.
@@ -119,6 +119,11 @@ impl Eq for string {
     fn eq(&self, other: &Self) -> bool {
         .len == other.len && c::memcmp(.data as *, other.data as *, .len as u64) == 0
     }
+}
+
+/// C's text as som's: a copy. It's what lets `failure.at.function == "pick"` compare them.
+impl From<cstr> for string {
+    fn from(text: cstr) -> Self = string::from_c(text);
 }
 
 impl Hash for string {

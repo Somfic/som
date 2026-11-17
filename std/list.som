@@ -14,7 +14,7 @@ impl<T> List<T> {
         List { mem: Alloc::with_capacity(capacity), len: 0 }
     }
 
-    pub prop capacity = .mem.size;
+    pub prop capacity = .mem.capacity;
     pub prop is_empty = .len == 0;
     pub prop is_full = .len == .capacity;
 
@@ -23,7 +23,7 @@ impl<T> List<T> {
             let capacity = 4 if .capacity == 0 else .capacity * 2;
             .mem.resize(capacity);
         }
-        .mem.write(.len, value);
+        .mem.put_at(.len, value);
         .len = .len + 1;
     }
 
@@ -32,22 +32,22 @@ impl<T> List<T> {
             return none;
         }
         .len = .len - 1;
-        .mem.read(.len)
+        .mem.take_at(.len)
     }
 
-    pub prop slice = .mem.view(.len);
+    pub prop slice = .mem.slice(.len);
 
     pub fn as_slice(&self) -> &[T] {
-        .mem.view(.len)
+        .mem.slice(.len)
     }
 
     pub fn as_slice_mut(&mut self) -> &mut [T] {
-        .mem.view_mut(.len)
+        .mem.slice_mut(.len)
     }
 
     pub fn clear(&mut self) {
         for i in 0..self.len {
-            drop(.mem.read(i));
+            drop(.mem.at(i));
         }
         .len = 0;
     }
@@ -151,7 +151,7 @@ impl<T> Iterator for ListIntoIter<T> {
         if .next == .list.len {
             return none;
         }
-        let value = .list.mem.read(.next);
+        let value: T = .list.mem.take_at(.next);
         .next = .next + 1;
         value
     }
@@ -162,7 +162,7 @@ impl<T> Drop for ListIntoIter<T> {
     /// gives the room back.
     fn drop(&mut self) {
         for i in .next..self.list.len {
-            drop(.list.mem.read(i));
+            drop(.list.mem.at(i));
         }
         .list.len = 0;
     }
@@ -181,10 +181,4 @@ impl<T> Index for List<T> {
 /// `values[i] = value`, where `i` is known to be below `values.len`.
 impl<T> IndexMut for List<T> {
     fn at_mut(&mut self, i: usize) -> &mut T = .mem.at_mut(i);
-}
-
-
-@test
-fn test() {
-    assert(1 != 1);
 }

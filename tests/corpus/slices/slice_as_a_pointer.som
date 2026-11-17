@@ -5,5 +5,5 @@ fn main() -> i32 {
     let numbers = [10, 20, 30];
     let view: &[i32] = &numbers;
     let p = view as *i32;
-    p.read(2)
+    p.take(2)
 }

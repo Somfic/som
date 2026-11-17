@@ -247,6 +247,71 @@ impl Body {
     pub fn args(&self) -> impl Iterator<Item = Local> {
         (1..=self.arg_count).map(Id::new)
     }
+
+    /// `a` is `b`, and `b` is `a`: their declarations, and everywhere they're mentioned.
+    pub fn swap_locals(&mut self, a: Local, b: Local) {
+        let swap = |local: &mut Local| {
+            if *local == a {
+                *local = b;
+            } else if *local == b {
+                *local = a;
+            }
+        };
+        let place = |place: &mut Place| {
+            swap(&mut place.local);
+            for projection in &mut place.projection {
+                if let Projection::Index(index) = projection {
+                    swap(index);
+                }
+            }
+        };
+        for block in self.blocks.iter_mut() {
+            for statement in &mut block.stmts {
+                for (read, _) in &mut statement.reads {
+                    place(read);
+                }
+                match &mut statement.kind {
+                    StatementKind::Assign(to, rvalue) => {
+                        place(to);
+                        if let Rvalue::Ref {
+                            place: borrowed, ..
+                        } = rvalue
+                        {
+                            place(borrowed);
+                        }
+                        for operand in rvalue.operands_mut() {
+                            if let Operand::Copy(p) | Operand::Move(p) = operand {
+                                place(p);
+                            }
+                        }
+                    }
+                    StatementKind::StorageLive(local) | StatementKind::StorageDead(local) => {
+                        swap(local)
+                    }
+                    StatementKind::Drop {
+                        place: dropped,
+                        flag,
+                        ..
+                    } => {
+                        place(dropped);
+                        if let Some(flag) = flag {
+                            swap(flag);
+                        }
+                    }
+                }
+            }
+            if let TerminatorKind::Branch {
+                condition: Operand::Copy(p) | Operand::Move(p),
+                ..
+            } = &mut block.terminator.kind
+            {
+                place(p);
+            }
+        }
+        self.two_phase.iter_mut().for_each(swap);
+        self.outs.iter_mut().for_each(swap);
+        self.locals.swap(a, b);
+    }
 }
 
 pub struct LocalDecl {
@@ -491,9 +556,9 @@ pub enum Intrinsic {
     /// `p`: gives back what `p` points to.
     Free,
     /// `p, i`: the `T` at `i`, moved or copied out.
-    Read,
+    Take,
     /// `p, i, value`: stores `value` at `i`, without reading what was there.
-    Write,
+    Put,
     /// `p, i`: where the `T` at `i` is, as a reference.
     Offset,
     /// `p, len`: a slice of the `len` `T`s starting at `p`.
@@ -505,7 +570,7 @@ pub enum Intrinsic {
 impl Intrinsic {
     /// Changes memory, so it has to happen even if its result isn't used.
     pub fn has_effect(self) -> bool {
-        matches!(self, Intrinsic::Resize | Intrinsic::Free | Intrinsic::Write)
+        matches!(self, Intrinsic::Resize | Intrinsic::Free | Intrinsic::Put)
     }
 }
 

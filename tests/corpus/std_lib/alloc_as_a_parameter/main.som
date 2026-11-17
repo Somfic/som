@@ -5,15 +5,15 @@
 use som;
 
 fn fill(mem: &mut som::mem::Alloc<i32>, value: i32) {
-    for i in 0..mem.size {
-        mem.write(i, value);
+    for i in 0..mem.capacity {
+        mem.put_at(i, value);
     }
 }
 
 fn sum(mut mem: som::mem::Alloc<i32>) -> i32 {
     let mut total = 0;
-    for i in 0..mem.size {
-        total = total + mem.read(i);
+    for i in 0..mem.capacity {
+        total = total + mem.take_at(i);
     }
     total
 }

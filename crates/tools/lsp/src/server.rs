@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use som_base::Source;
 use som_driver::Analysis;
@@ -14,12 +14,16 @@ use tower_lsp::{Client, LanguageServer};
 use crate::convert;
 use crate::handlers::completion::{self, Request};
 use crate::handlers::semantic_tokens::{TOKEN_MODIFIERS, TOKEN_TYPES, semantic_tokens};
+use crate::handlers::tests::{self, TestStatus};
 use crate::handlers::{Cursor, definition, hover, inlay, lens, rename, signature_help, symbols};
 use crate::lookup::receiver_before;
 use crate::text_scan::dot_before_word;
 
 /// How long typing has to pause before the program is analyzed again.
 const DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// How long a program's tests may run, all together, before they're stopped.
+const TEST_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// The analysis of one program.
 struct Project {
@@ -28,6 +32,9 @@ struct Project {
     importable: som_driver::Importable,
     /// Files diagnostics were published for, so they can be cleared next time.
     files: HashSet<String>,
+    /// The analysis's diagnostics, by file: published with the tests' failures, again when
+    /// the tests have run.
+    diagnostics: HashMap<String, Vec<Diagnostic>>,
 }
 
 pub struct SomLanguageServer {
@@ -46,6 +53,13 @@ struct State {
     analyzing: tokio::sync::Mutex<()>,
     /// Whether the editor can be asked to refresh inlay hints and code lenses.
     refresh: AtomicBool,
+    /// Each program's tests, as they last ran, by its root.
+    tests: RwLock<HashMap<PathBuf, TestStatus>>,
+    /// Held while tests run: one program's at a time.
+    testing: tokio::sync::Mutex<()>,
+    /// Counts the test runs asked for: one that's no longer the latest when its turn comes
+    /// is skipped, since a newer one will run what's saved now.
+    test_runs: AtomicU64,
 }
 
 impl State {
@@ -135,6 +149,15 @@ impl SomLanguageServer {
         analyze(&self.client, &self.state, uri).await;
     }
 
+    /// Runs the tests of the program `uri` is in, on the side.
+    fn test(&self, uri: &Url) {
+        let Ok(path) = uri.to_file_path() else {
+            return;
+        };
+        let (client, state) = (self.client.clone(), self.state.clone());
+        tokio::spawn(async move { run_tests(&client, &state, root_of(&path)).await });
+    }
+
     /// An analysis of the program `file` is in, with `text` in place of its own: for an
     /// answer that can't wait for the next one. Its diagnostics aren't published.
     async fn analyze_with(&self, file: &str, text: String) -> Option<Analysis> {
@@ -218,30 +241,127 @@ async fn analyze_root(client: &Client, state: &State, root: PathBuf, opened: Str
             by_file.entry(file.clone()).or_default();
         }
     }
-    for (file, diagnostics) in by_file {
-        if let Ok(uri) = Url::from_file_path(&file) {
-            client.publish_diagnostics(uri, diagnostics, None).await;
-        }
-    }
+    let failed = match state.tests.read().await.get(&root) {
+        Some(status) => tests::diagnostics(&analysis, status),
+        None => HashMap::new(),
+    };
+    publish(
+        client,
+        &by_file,
+        &failed,
+        by_file.keys().chain(failed.keys()),
+    )
+    .await;
     projects.insert(
         root,
         Project {
             analysis,
             importable,
             files,
+            diagnostics: by_file,
         },
     );
     drop(projects);
 
-    // Hints and lenses asked for before this analysis finished are out of date. Each
-    // refresh waits for the editor's answer, so it's sent on the side.
+    // Hints and lenses asked for before this analysis finished are out of date.
+    refresh(client, state, true);
+}
+
+/// Publishes each of `files`' diagnostics: the analysis's, and the tests' failures.
+async fn publish<'a>(
+    client: &Client,
+    analyzed: &HashMap<String, Vec<Diagnostic>>,
+    failed: &HashMap<String, Vec<Diagnostic>>,
+    files: impl Iterator<Item = &'a String>,
+) {
+    let files: HashSet<&String> = files.collect();
+    for file in files {
+        let Ok(uri) = Url::from_file_path(file) else {
+            continue;
+        };
+        let diagnostics = (analyzed.get(file).into_iter().flatten())
+            .chain(failed.get(file).into_iter().flatten())
+            .cloned()
+            .collect();
+        client.publish_diagnostics(uri, diagnostics, None).await;
+    }
+}
+
+/// Asks the editor for its code lenses again, and with `hints`, its inlay hints. Each
+/// refresh waits for the editor's answer, so it's sent on the side.
+fn refresh(client: &Client, state: &State, hints: bool) {
     if state.refresh.load(Ordering::Relaxed) {
         let client = client.clone();
         tokio::spawn(async move {
-            let _ = client.inlay_hint_refresh().await;
+            if hints {
+                let _ = client.inlay_hint_refresh().await;
+            }
             let _ = client.code_lens_refresh().await;
         });
     }
+}
+
+/// Builds and runs the tests of the program at `root`, if it checked without errors and
+/// has any, showing them as running until they're done.
+async fn run_tests(client: &Client, state: &State, root: PathBuf) {
+    let run = state.test_runs.fetch_add(1, Ordering::SeqCst) + 1;
+    let _one_at_a_time = state.testing.lock().await;
+    if state.test_runs.load(Ordering::SeqCst) != run {
+        return;
+    }
+    let has_tests = (state.projects.read().await.get(&root)).is_some_and(|p| {
+        p.analysis.errors.is_empty()
+            && !(p.analysis.names.program_tests(&p.analysis.ast)).is_empty()
+    });
+    if !has_tests {
+        // Its results, if any, are of code that's changed.
+        // Taken out first: the lock isn't held while waiting for the projects'.
+        let before = state.tests.write().await.remove(&root);
+        if let Some(before) = before {
+            if let Some(project) = state.projects.read().await.get(&root) {
+                let gone = tests::diagnostics(&project.analysis, &before);
+                publish(client, &project.diagnostics, &HashMap::new(), gone.keys()).await;
+            }
+            refresh(client, state, true);
+        }
+        return;
+    }
+    (state.tests.write().await.entry(root.clone()).or_default()).running = true;
+    refresh(client, state, false);
+
+    let options = som_driver::Options {
+        overlay: state.overlay().await,
+        ..Default::default()
+    };
+    let tested = root.clone();
+    let ran =
+        tokio::task::spawn_blocking(move || som_driver::run_tests(&tested, &options, TEST_LIMIT))
+            .await;
+    let status = match ran {
+        Ok(Ok(run)) => TestStatus {
+            running: false,
+            results: run.results,
+            timed_out: run.timed_out.then_some(TEST_LIMIT),
+        },
+        // It didn't build: nothing's known about its tests.
+        _ => TestStatus::default(),
+    };
+    let before = state
+        .tests
+        .write()
+        .await
+        .insert(root.clone(), status.clone());
+    // The failures as they were and as they are: those gone are cleared.
+    if let Some(project) = state.projects.read().await.get(&root) {
+        let failed = tests::diagnostics(&project.analysis, &status);
+        let gone = match &before {
+            Some(before) => tests::diagnostics(&project.analysis, before),
+            None => HashMap::new(),
+        };
+        let files = failed.keys().chain(gone.keys());
+        publish(client, &project.diagnostics, &failed, files).await;
+    }
+    refresh(client, state, true);
 }
 
 /// Every file the program was loaded from, and the opened one.
@@ -380,6 +500,7 @@ impl LanguageServer for SomLanguageServer {
             (self.state.documents.write().await).insert(file, (document.version, document.text));
         }
         self.analyze(&document.uri).await;
+        self.test(&document.uri);
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -392,6 +513,7 @@ impl LanguageServer for SomLanguageServer {
 
     async fn did_save(&self, params: DidSaveTextDocumentParams) {
         self.analyze(&params.text_document.uri).await;
+        self.test(&params.text_document.uri);
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
@@ -524,8 +646,14 @@ impl LanguageServer for SomLanguageServer {
 
     async fn code_lens(&self, params: CodeLensParams) -> Result<Option<Vec<CodeLens>>> {
         let uri = &params.text_document.uri;
+        let tests = match uri.to_file_path() {
+            Ok(path) => self.state.tests.read().await.get(&root_of(&path)).cloned(),
+            Err(_) => None,
+        };
         Ok(self
-            .in_file(uri, |a, file| Some(lens::code_lenses(a, file, uri)))
+            .in_file(uri, |a, file| {
+                Some(lens::code_lenses(a, file, uri, tests.as_ref()))
+            })
             .await)
     }
 
@@ -582,8 +710,18 @@ impl LanguageServer for SomLanguageServer {
 
     async fn inlay_hint(&self, params: InlayHintParams) -> Result<Option<Vec<InlayHint>>> {
         let uri = &params.text_document.uri;
+        let tests = match uri.to_file_path() {
+            Ok(path) => self.state.tests.read().await.get(&root_of(&path)).cloned(),
+            Err(_) => None,
+        };
         Ok(self
-            .in_file(uri, |a, file| Some(inlay::inlay_hints(a, file)))
+            .in_file(uri, |a, file| {
+                let mut hints = inlay::inlay_hints(a, file);
+                if let Some(tests) = &tests {
+                    hints.extend(tests::hints(a, tests, file));
+                }
+                Some(hints)
+            })
             .await)
     }
 

@@ -9,6 +9,7 @@ pub(crate) mod rename;
 pub(crate) mod semantic_tokens;
 pub(crate) mod signature_help;
 pub(crate) mod symbols;
+pub(crate) mod tests;
 
 /// Where a request points: the file, its text, and the byte offset of the position.
 pub(crate) struct Cursor {

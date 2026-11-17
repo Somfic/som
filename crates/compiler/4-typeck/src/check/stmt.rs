@@ -294,7 +294,7 @@ impl Checker<'_> {
                     .records
                     .pointer_methods
                     .get(&expr)
-                    .is_some_and(|m| !matches!(m, PointerMethod::Free | PointerMethod::Write));
+                    .is_some_and(|m| !matches!(m, PointerMethod::Free | PointerMethod::Put));
                 let pure_array = self
                     .records
                     .array_methods

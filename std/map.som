@@ -19,7 +19,7 @@ impl<K: Eq + Hash, V> Map<K, V> {
         // min/starting capacity is 16
         let size = usize::biggest(16, size);
 
-        let mut keys = Alloc::with_capacity(size, none);
+        let mut keys = Alloc::filled(size, none);
 
         let entries = List::with_capacity(size);
 
@@ -71,21 +71,21 @@ impl<K: Eq + Hash, V> Map<K, V> {
 
     fn grow(&mut self, size: usize) {
         // grow keys
-        .keys = Alloc::with_capacity(size, none);
+        .keys = Alloc::filled(size, none);
 
         // rehash existing entries
         for entry_index in 0..self.entries.len {
             let entry = .entries.get(entry_index) else @unreachable;
             let slot = .find_slot(&entry.key);
-            .keys.write(slot, entry_index);
+            .keys.put_at(slot, entry_index);
         }
     }
 
     pub fn insert(&mut self, key: K, value: V) {
         // grow if needed
-        let rehash_treshold = (.keys.size as f32 * 0.75) as usize;
+        let rehash_treshold = (.keys.capacity as f32 * 0.75) as usize;
         if .entries.len > rehash_treshold {
-            .grow(.keys.size * 2);
+            .grow(.keys.capacity * 2);
         }
 
         // find the existing entry
@@ -99,7 +99,7 @@ impl<K: Eq + Hash, V> Map<K, V> {
         } else {
             // make a new entry
             .entries.push(Pair { key, value });
-            .keys.write(slot, .entries.len - 1);
+            .keys.put_at(slot, .entries.len - 1);
         }
     }
 
@@ -108,15 +108,15 @@ impl<K: Eq + Hash, V> Map<K, V> {
         Hash::hash(key, &mut hasher);
 
         // with_capacity makes at least 16 slots
-        if .keys.size == 0 @unreachable;
-        let mut slot = hasher.finish as usize % .keys.size;
+        if .keys.capacity == 0 @unreachable;
+        let mut slot = hasher.finish as usize % .keys.capacity;
 
         loop {
             let entry_index = *.keys.at(slot) else return slot;
             let entry = .entries.get(entry_index) else @unreachable;
             if entry.key != *key {
                 // collision!
-                slot = (slot + 1) % .keys.size;
+                slot = (slot + 1) % .keys.capacity;
                 continue;
             }
 

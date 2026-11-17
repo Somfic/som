@@ -9,9 +9,9 @@ fn main() -> i32 {
     let mut bytes: som::mem::Alloc<u8> = som::mem::Alloc::with_capacity(10);
     let mut wide: som::mem::Alloc<i64> = som::mem::Alloc::with_capacity(20);
     let mut points: som::mem::Alloc<Point> = som::mem::Alloc::with_capacity(30);
-    bytes.write(9, 1);
-    wide.write(19, 10);
-    points.write(29, Point { x: 50, y: 50 });
-    let p = points.read(29);
-    bytes.read(9) as i32 + wide.read(19) as i32 + p.x + p.y
+    bytes.put_at(9, 1);
+    wide.put_at(19, 10);
+    points.put_at(29, Point { x: 50, y: 50 });
+    let p = points.take_at(29);
+    bytes.take_at(9) as i32 + wide.take_at(19) as i32 + p.x + p.y
 }

@@ -4,7 +4,7 @@
 struct Noisy { id: i32, log: *i32 }
 
 impl Drop for Noisy {
-    fn drop(self: &mut Noisy) { self.log.write(0, self.log.read(0) * 10 + self.id); }
+    fn drop(self: &mut Noisy) { self.log.put(0, self.log.take(0) * 10 + self.id); }
 }
 
 fn main() -> i32 {

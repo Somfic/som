@@ -6,8 +6,8 @@ use som::mem;
 fn past_the_end() -> i32 {
     let mut p = mem::null<i32>();
     p.resize(2);
-    p.write(0, 1);
-    let value = p.read(5);
+    p.put(0, 1);
+    let value = p.take(5);
     p.free();
     value
 }

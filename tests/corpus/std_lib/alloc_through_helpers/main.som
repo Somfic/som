@@ -4,7 +4,7 @@
 use som;
 
 fn make(size: usize) -> som::mem::Alloc<i32> { som::mem::Alloc::with_capacity(size) }
-fn put(mem: &mut som::mem::Alloc<i32>, at: usize, value: i32) { mem.write(at, value); }
+fn put(mem: &mut som::mem::Alloc<i32>, at: usize, value: i32) { mem.put_at(at, value); }
 fn first(mem: &som::mem::Alloc<i32>) -> i32 { *mem.at(0) }
 
 fn main() -> i32 {

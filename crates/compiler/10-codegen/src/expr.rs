@@ -176,8 +176,8 @@ impl Emitter<'_> {
                 ))
             }
             Intrinsic::Free => Expr::atom(format!("({FREE}({p}), 0)")),
-            Intrinsic::Read => Expr::atom(format!("{p}[{}]", arg(1))),
-            Intrinsic::Write => {
+            Intrinsic::Take => Expr::atom(format!("{p}[{}]", arg(1))),
+            Intrinsic::Put => {
                 let (i, value) = (arg(1), arg(2));
                 Expr::atom(format!("({p}[{i}] = {value}, 0)"))
             }
