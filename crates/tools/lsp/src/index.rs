@@ -1,7 +1,6 @@
 use som_ast::{Ast, Expr, Func, Id, Item, Span, Stmt, Struct, TypeExpr};
 use std::collections::HashMap;
 
-/// An AST node found at a source position.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeRef {
     Expr(Id<Expr>),
@@ -17,7 +16,6 @@ struct IndexEntry {
     node: NodeRef,
 }
 
-/// Maps source positions back to AST nodes, per file.
 pub struct AstIndex {
     entries_by_file: HashMap<String, Vec<IndexEntry>>,
 }
@@ -59,7 +57,6 @@ impl AstIndex {
         AstIndex { entries_by_file }
     }
 
-    /// The innermost node at a byte offset in a file.
     pub fn find_at(&self, file: &str, offset: usize) -> Option<NodeRef> {
         self.entries_by_file
             .get(file)?
@@ -69,7 +66,6 @@ impl AstIndex {
     }
 }
 
-/// The items declared in `file`, from whichever module it belongs to.
 pub fn items_in_file<'a>(ast: &'a Ast, file: &str) -> Vec<&'a Item> {
     let in_file = |span: &Span| span.source.identifier() == file;
     ast.modules

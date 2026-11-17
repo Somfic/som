@@ -1,15 +1,5 @@
-//! Everything the CLI tells the user goes through here, so it always looks the same:
-//!
-//! every message is a [`Diagnostic`], so it has the same shape whether things went
-//! well or not, and whether or not it points into source code:
-//!
-//! ```text
-//! wrote: example/example.c
-//! built: example/example
-//! error: example does not exist
-//! ```
-//!
-//! Colour is used only when stderr is a terminal and `NO_COLOR` isn't set.
+//! Everything the CLI tells the user is a [`Diagnostic`], so it has the same shape
+//! whether things went well or not, and whether or not it points into source code.
 
 use som_base::diagnostics::RenderOptions;
 use som_base::{Diagnostic, Message};
@@ -24,13 +14,12 @@ fn color() -> bool {
     })
 }
 
-/// Reports something that went well: `success("built", path)` shows `built: <path>`.
+/// `success("built", path)` shows `built: <path>`.
 pub fn success(what: &'static str, subject: impl Into<Message>) {
     diagnostic(&Diagnostic::success(what, subject));
 }
 
-/// Shows a diagnostic. Ones with code snippets are followed by a blank line,
-/// to keep consecutive ones apart.
+/// Ones with code snippets are followed by a blank line, to keep consecutive ones apart.
 pub fn diagnostic(diagnostic: &Diagnostic) {
     let mut text = diagnostic.render_with(RenderOptions {
         color: color(),
@@ -42,7 +31,6 @@ pub fn diagnostic(diagnostic: &Diagnostic) {
     eprint!("{text}");
 }
 
-/// Shows a problem that has no place in the source code.
 pub fn error(message: impl Into<Message>) {
     diagnostic(&Diagnostic::error(message));
 }

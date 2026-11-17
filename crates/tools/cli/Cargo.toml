@@ -19,6 +19,7 @@ path = "src/main.rs"
 clap = { version = "4", features = ["derive", "env", "wrap_help"] }
 som_base = { path = "../../core/base" }
 som_driver = { path = "../../driver" }
+som_lang = { path = "../../core/lang" }
 som_lsp = { path = "../lsp" }
 
 [dev-dependencies]

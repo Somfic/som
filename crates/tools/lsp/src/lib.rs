@@ -2,9 +2,17 @@
 //! Language Server Protocol over stdin and stdout.
 
 mod convert;
+mod docs;
+mod handlers;
 mod index;
+mod lookup;
+mod origin;
 mod references;
 mod server;
+#[cfg(test)]
+mod test_support;
+mod text_scan;
+mod types;
 
 use server::SomLanguageServer;
 use tower_lsp::{LspService, Server};

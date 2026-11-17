@@ -1,5 +1,3 @@
-//! The `som` command line interface.
-
 mod ui;
 
 use clap::builder::styling::{Color, RgbColor, Style, Styles};
@@ -7,6 +5,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use som_base::diagnostics::{BLUE, MAUVE, PEACH, RED, Rgb, SUBTEXT0, TEAL, YELLOW};
 use som_base::message;
 use som_base::{Diagnostic, msg};
+use som_driver::toolchain::{self, C_COMPILER_VAR, DEFAULT_C_COMPILER};
 use som_driver::{BuildOptions, Checked, Error, Failed, Options};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -19,10 +18,9 @@ struct Cli {
     command: Command,
 }
 
-/// Help and error colours, from the same Catppuccin palette as diagnostics, in the
-/// same roles: keywords for headers, function names for commands and flags, types for
-/// placeholders (in italics, to set them apart from literal text). Clap leaves the
-/// colours out when output isn't a terminal or `NO_COLOR` is set.
+/// The diagnostics' palette, in the same roles: keywords for headers, function names for
+/// commands and flags, types for placeholders (in italics, to set them apart from literal
+/// text).
 const STYLES: Styles = Styles::styled()
     .header(color(MAUVE).bold())
     .usage(color(MAUVE).bold())
@@ -38,7 +36,7 @@ const fn color(rgb: Rgb) -> Style {
     Style::new().fg_color(Some(Color::Rgb(RgbColor(rgb.0, rgb.1, rgb.2))))
 }
 
-// Subcommands are listed in `--help` in the order they're declared here.
+// `--help` lists the subcommands in this order.
 #[derive(Subcommand)]
 enum Command {
     /// Compile a program and run it, exiting with its exit code
@@ -81,7 +79,7 @@ struct BuildArgs {
     #[command(flatten)]
     check: CheckArgs,
     /// The C compiler to use
-    #[arg(long, env = "SOM_CC", default_value = "cc", value_name = "PATH")]
+    #[arg(long, env = C_COMPILER_VAR, default_value = DEFAULT_C_COMPILER, value_name = "PATH")]
     cc: String,
     /// Print the C compiler command before running it
     #[arg(short, long)]
@@ -129,10 +127,13 @@ impl Stage {
     }
 }
 
+/// A stage's output goes to standard output when written to this.
+const STDOUT: &str = "-";
+
 #[derive(Clone)]
 struct Emit {
     stage: Stage,
-    /// `None` for the default file, `-` for standard output.
+    /// `None` for the default file.
     to: Option<PathBuf>,
 }
 
@@ -146,7 +147,7 @@ fn parse_emit(value: &str) -> Result<Emit, String> {
     Ok(Emit { stage, to })
 }
 
-/// Runs the CLI with `args` (including the program name) and returns the process exit code.
+/// `args` includes the program name.
 pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
     let cli = match Cli::try_parse_from(args) {
         Ok(cli) => cli,
@@ -189,10 +190,8 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
 }
 
 /// Loads and checks a program, writing whichever requested stages it gets to and
-/// printing its errors. `None` if there were any.
-///
-/// Tokens and the AST are written even when later checks fail, which is when
-/// they're most useful.
+/// printing its errors. `None` if there were any. Tokens and the AST are written even
+/// when later checks fail, which is when they're most useful.
 fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
     let emits = &args.emit;
     if !path.exists() {
@@ -251,10 +250,9 @@ fn compile(path: &Path, args: &CheckArgs, output: &Path) -> Option<Checked> {
     ok.then_some(checked)
 }
 
-/// The error for a program path that doesn't exist, with a way forward.
 fn missing_program(path: &Path) -> Diagnostic {
     let error = Diagnostic::error(msg![message::path(path.display()), " does not exist"]);
-    let with_extension = path.with_extension("som");
+    let with_extension = path.with_extension(toolchain::SOURCE_EXTENSION);
     if path.extension().is_none() && with_extension.is_file() {
         return error.with_hint(msg![
             "did you mean ",
@@ -264,26 +262,26 @@ fn missing_program(path: &Path) -> Diagnostic {
     }
     let name = path
         .file_stem()
-        .map_or("main".into(), |s| s.to_string_lossy());
+        .map_or(som_lang::ENTRY_POINT.into(), |s| s.to_string_lossy());
     let dir = path.with_extension("");
+    let file = format!("{name}.{}", toolchain::SOURCE_EXTENSION);
     error.with_hint(msg![
         "create ",
-        message::path(dir.with_file_name(format!("{name}.som")).display()),
+        message::path(dir.with_file_name(file).display()),
         ", or a directory ",
         message::path(format!("{}/", dir.display())),
         " with a ",
-        message::path("main.som"),
+        message::path(toolchain::MAIN_FILE),
         " in it",
     ])
 }
 
-/// Writes one emitted stage to its file, or to standard output for `-`.
 fn write(emit: &Emit, output: &Path, contents: &str) -> bool {
     let path = emit
         .to
         .clone()
         .unwrap_or_else(|| output.with_extension(emit.stage.extension()));
-    if path.as_os_str() == "-" {
+    if path.as_os_str() == STDOUT {
         print!("{contents}");
         return true;
     }
@@ -303,7 +301,7 @@ fn write(emit: &Emit, output: &Path, contents: &str) -> bool {
     }
 }
 
-/// Shows a program's errors, then a summary like rustc's.
+/// A program's errors, then a summary like rustc's.
 fn report(path: &Path, failed: Failed) {
     let Failed { errors, warnings } = failed;
     for warning in &warnings {
@@ -377,7 +375,6 @@ fn run(path: &Path, build: &BuildArgs, args: &[String]) -> ExitCode {
     code
 }
 
-/// Builds the program into `dir` and runs it, returning its exit code.
 fn run_in(
     checked: &Checked,
     path: &Path,

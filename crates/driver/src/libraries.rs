@@ -1,11 +1,5 @@
-//! Finds the libraries `extern "name" { … }` blocks link against, and checks that
-//! each declared function is really in them, before anything is compiled.
-//!
-//! `extern "raylib"` means `libraylib.dylib` or `libraylib.a` (`.so` on Linux),
-//! looked for in the program's own directory, then the usual system places,
-//! then `LIBRARY_PATH` and the `-L` flags in `NIX_LDFLAGS`. A name that looks like a path (`"libs/libfoo.dylib"`)
-//! is used as written, relative to the program. Function names are read from
-//! the library's symbol table, so nothing has to be compiled or linked.
+//! Function names are read from each library's symbol table, so nothing has to be
+//! compiled or linked to check them.
 //!
 //! Plain `extern { … }` blocks link against libc, which isn't a file on every
 //! system (macOS keeps it in a shared cache), so those aren't checked.
@@ -20,6 +14,8 @@ use som_base::{Diagnostic, Fix, Label, Message, msg};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use crate::toolchain;
+
 #[derive(Debug)]
 pub enum LibraryError {
     LibraryNotFound {
@@ -27,7 +23,6 @@ pub enum LibraryError {
         span: Span,
         files: Vec<String>,
         searched: Vec<PathBuf>,
-        /// A library in those places with a similar name.
         suggestion: Option<String>,
     },
     UnreadableLibrary {
@@ -44,7 +39,6 @@ pub enum LibraryError {
         problem: Message,
         span: Span,
     },
-    /// A function declared in an `extern` block that its library doesn't have.
     NotInLibrary {
         library: String,
         file: PathBuf,
@@ -54,8 +48,6 @@ pub enum LibraryError {
     },
 }
 
-/// Something worth knowing about how a program uses its libraries, that doesn't stop it
-/// compiling.
 #[derive(Debug)]
 pub enum LibraryWarning {
     /// Hand-written `extern "raylib" { … }` declarations that are exactly what
@@ -65,9 +57,7 @@ pub enum LibraryWarning {
         header: String,
         /// Where the library's name is written.
         span: Span,
-        /// The whole block, `extern` to `}`.
         block: Span,
-        /// Each declaration that's the same as the header's.
         functions: Vec<SameAsHeader>,
         /// Whether that's every declaration in the block.
         all: bool,
@@ -79,25 +69,20 @@ pub enum LibraryWarning {
         header: String,
         /// What it's called when imported: `raylib::Color`.
         imported: String,
-        /// Its name.
         span: Span,
-        /// The whole struct.
         declaration: Span,
     },
 }
 
-/// A hand-written declaration that's the same as the header's.
 #[derive(Debug)]
 pub struct SameAsHeader {
     pub name: String,
     pub span: Span,
-    /// The whole declaration, `fn` to `;`.
     pub declaration: Span,
     /// What it's called when imported: `raylib::init_window`.
     pub imported: String,
 }
 
-/// What `extern "raylib";` does, for anyone writing out what it would generate.
 fn generates(library: &str, header: &str) -> Message {
     msg![
         "when a library's header can be found, ",
@@ -121,7 +106,6 @@ fn whole_lines(span: &Span) -> Span {
         return span.clone();
     }
     (start, end) = (first, after);
-    // The doc comment above goes with it.
     while start > 0 {
         let above = line_start_of(text, start - 1);
         if !text[above..start].trim_start().starts_with("///") {
@@ -132,13 +116,11 @@ fn whole_lines(span: &Span) -> Span {
     Span::from_range(start..end, span.source.clone())
 }
 
-/// Where the line holding `offset` starts.
 fn line_start_of(text: &str, offset: usize) -> usize {
     text[..offset].rfind('\n').map_or(0, |i| i + 1)
 }
 
 impl LibraryWarning {
-    /// Where it's reported.
     pub fn span(&self) -> &Span {
         match self {
             LibraryWarning::DeclaredInHeader { span, .. }
@@ -187,7 +169,6 @@ impl LibraryWarning {
                         d = d
                             .with_label(Label::secondary(f.span.clone(), "the same as the header"));
                     }
-                    // Import the header above the block, and keep only what differs from it.
                     let text = block.source.content();
                     let line = line_start_of(text, block.start_offset);
                     let indent = &text[line..block.start_offset];
@@ -205,7 +186,6 @@ impl LibraryWarning {
                     })
                 };
                 let d = d.with_hint(generates(library, header));
-                // Imported functions are named in snake_case, so calls change too.
                 match functions
                     .iter()
                     .find(|f| f.imported.rsplit("::").next() != Some(f.name.as_str()))
@@ -347,7 +327,6 @@ pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryErro
         let (Some(library), Some(span)) = (&block.library, &block.library_span) else {
             continue;
         };
-        // The C library is always linked.
         if library == crate::headers::LIBC {
             continue;
         }
@@ -363,7 +342,7 @@ pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryErro
                 errors.push(LibraryError::LibraryNotFound {
                     library: library.clone(),
                     span: span.clone(),
-                    files: file_names(library),
+                    files: toolchain::library_files(library),
                     searched,
                     suggestion,
                 });
@@ -416,11 +395,10 @@ pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryErro
     (found, errors)
 }
 
-/// A library's exported names, and the snake_case name som code uses for each.
 struct Symbols {
-    /// Sorted.
+    /// Sorted, for binary search.
     names: Vec<String>,
-    /// snake_case name → the symbol, for symbols whose snake_case name differs.
+    /// Only symbols whose snake_case name differs.
     by_snake: HashMap<String, String>,
     /// Every name som code could use, sorted: for suggestions.
     snake: Vec<String>,
@@ -461,43 +439,18 @@ impl Symbols {
     }
 }
 
-/// Whether a library is written as a path rather than a name.
+/// `"libs/libfoo.dylib"`, used as written, relative to the program.
 fn is_path(library: &str) -> bool {
     library.contains('/')
-        || [".so", ".dylib", ".a", ".dll", ".lib"]
-            .iter()
-            .any(|ext| library.ends_with(ext))
+        || (toolchain::LIBRARY_EXTENSIONS.iter()).any(|ext| library.ends_with(&format!(".{ext}")))
 }
 
-/// The files a library name can be: `raylib` is `libraylib.dylib` or `libraylib.a`.
-fn file_names(library: &str) -> Vec<String> {
-    let extensions: &[&str] = if cfg!(target_os = "macos") {
-        &["dylib", "a"]
-    } else if cfg!(windows) {
-        &["dll", "lib"]
-    } else {
-        &["so", "a"]
-    };
-    extensions
-        .iter()
-        .map(|ext| format!("lib{library}.{ext}"))
-        .collect()
-}
-
-/// Where libraries are looked for: the program's directory, then `extra` (from `-L`),
-/// then the system's, then `LIBRARY_PATH` and Nix's `NIX_LDFLAGS`.
+/// The program's directory, then `extra` (from `-L`), then the system's, then
+/// `LIBRARY_PATH` and Nix's `NIX_LDFLAGS`.
 pub(crate) fn search_dirs(root: &Path, extra: &[PathBuf]) -> Vec<PathBuf> {
-    let root = if root.as_os_str().is_empty() {
-        Path::new(".")
-    } else {
-        root
-    };
-    let mut dirs = vec![root.to_path_buf()];
+    let mut dirs = vec![toolchain::program_dir(root).to_path_buf()];
     dirs.extend(extra.iter().cloned());
-    if cfg!(target_os = "macos") {
-        dirs.push("/opt/homebrew/lib".into());
-    }
-    dirs.extend(["/usr/local/lib".into(), "/usr/lib".into()]);
+    dirs.extend(toolchain::system_library_dirs());
     if let Some(paths) = std::env::var_os("LIBRARY_PATH") {
         dirs.extend(std::env::split_paths(&paths));
     }
@@ -541,8 +494,8 @@ fn similar_library(library: &str, dirs: &[PathBuf]) -> Option<String> {
             .flatten()
             .filter_map(|entry| {
                 let file = entry.file_name().into_string().ok()?;
-                let (stem, _) = file.strip_prefix("lib")?.split_once('.')?;
-                file_names(stem).contains(&file).then(|| stem.to_string())
+                let name = toolchain::library_name(&file)?;
+                (toolchain::library_files(name).contains(&file)).then(|| name.to_string())
             })
             .collect();
         names.sort();
@@ -568,7 +521,7 @@ pub(crate) fn find(library: &str, root: &Path, extra: &[PathBuf]) -> Result<Path
     }
     let dirs = search_dirs(root, extra);
     for dir in &dirs {
-        for file in file_names(library) {
+        for file in toolchain::library_files(library) {
             let path = dir.join(file);
             if path.is_file() {
                 return Ok(path);
@@ -578,7 +531,7 @@ pub(crate) fn find(library: &str, root: &Path, extra: &[PathBuf]) -> Result<Path
     Err(dirs)
 }
 
-/// The functions a library exports, sorted.
+/// Sorted.
 pub(crate) fn read_symbols(path: &Path) -> Result<Vec<String>, String> {
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let mut names = HashSet::new();
@@ -591,7 +544,6 @@ pub(crate) fn read_symbols(path: &Path) -> Result<Vec<String>, String> {
 fn collect_symbols(data: &[u8], names: &mut HashSet<String>) -> Result<(), String> {
     let err = |e: object::Error| e.to_string();
     match FileKind::parse(data).map_err(err)? {
-        // A static library: every object file in it.
         FileKind::Archive => {
             let archive = ArchiveFile::parse(data).map_err(err)?;
             for member in archive.members() {
@@ -600,7 +552,6 @@ fn collect_symbols(data: &[u8], names: &mut HashSet<String>) -> Result<(), Strin
                 let _ = collect_symbols(member.data(data).map_err(err)?, names);
             }
         }
-        // A universal binary: one library per architecture.
         FileKind::MachOFat32 => {
             for arch in MachOFatFile32::parse(data).map_err(err)?.arches() {
                 collect_symbols(arch.data(data).map_err(err)?, names)?;

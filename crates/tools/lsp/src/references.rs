@@ -7,7 +7,8 @@ use som_ast::{Expr, Item, Pattern, TypeExpr};
 use som_base::Span;
 use som_driver::Analysis;
 use som_resolve::{DefId, DefKind};
-use som_typeck::Ty;
+
+use crate::types::struct_of;
 
 /// Something a name can name: a definition, or a struct's field, by its struct and index,
 /// which isn't a definition of its own.
@@ -17,7 +18,6 @@ pub enum Symbol {
     Field(DefId, usize),
 }
 
-/// One place a symbol is named.
 #[derive(Clone, Debug)]
 pub struct Occurrence {
     pub symbol: Symbol,
@@ -42,7 +42,6 @@ pub fn occurrences(a: &Analysis) -> Vec<Occurrence> {
         });
     };
 
-    // Definitions: every named thing, and every struct's fields.
     for (id, def) in names.defs.iter_with_ids() {
         add(Symbol::Def(id), &def.span, true, false);
     }
@@ -55,7 +54,6 @@ pub fn occurrences(a: &Analysis) -> Vec<Occurrence> {
         }
     }
 
-    // Uses in code.
     for (id, expr) in ast.exprs.iter() {
         match expr {
             Expr::Var(path) => {
@@ -139,7 +137,6 @@ pub fn occurrences(a: &Analysis) -> Vec<Occurrence> {
         }
     }
 
-    // Only where the symbol's own name is written; each place once.
     let mut seen = HashSet::new();
     found.retain(|o| {
         let name = name_of(a, o.symbol);
@@ -155,7 +152,6 @@ pub fn occurrences(a: &Analysis) -> Vec<Occurrence> {
     found
 }
 
-/// What `symbol` is called.
 pub fn name_of(a: &Analysis, symbol: Symbol) -> String {
     match symbol {
         Symbol::Def(def) => a.names.def(def).name.to_string(),
@@ -168,7 +164,6 @@ pub fn name_of(a: &Analysis, symbol: Symbol) -> String {
     }
 }
 
-/// The symbol named at `offset` in `file`, if any.
 pub fn symbol_at(occurrences: &[Occurrence], file: &str, offset: usize) -> Option<Symbol> {
     occurrences
         .iter()
@@ -177,18 +172,6 @@ pub fn symbol_at(occurrences: &[Occurrence], file: &str, offset: usize) -> Optio
                 && (o.span.start_offset..=o.span.start_offset + o.span.length).contains(&offset)
         })
         .map(|o| o.symbol)
-}
-
-/// The struct a value of type `ty` is, through one reference.
-fn struct_of(a: &Analysis, ty: som_typeck::TypeId) -> Option<DefId> {
-    let ty = match a.typed.ty(ty) {
-        Ty::Ref { to, .. } => *to,
-        _ => ty,
-    };
-    match a.typed.ty(ty) {
-        Ty::Struct(def, _) => Some(*def),
-        _ => None,
-    }
 }
 
 /// `symbol` and what has to keep its name with it: a trait's method and every
