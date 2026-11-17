@@ -180,18 +180,19 @@ impl Checker<'_> {
         // Of several, the ones taking each argument as it is, not wrapped in an optional;
         // then those taking each number nothing's decided as what it would be anyway, an
         // `i32` or `f64`: `string::from(100)` is the `From<i32>` one.
-        for pass in 0..2 {
+        for prefer_defaults in [false, true] {
             if fitting.len() < 2 {
                 break;
             }
             let kept: Vec<_> = (fitting.iter())
                 .filter(|(_, _, sig, _)| {
-                    (sig.params.iter().zip(&found)).all(|(&param, &arg)| match pass {
-                        0 => {
+                    (sig.params.iter().zip(&found)).all(|(&param, &arg)| {
+                        if prefer_defaults {
+                            self.fits_as_default(param, arg)
+                        } else {
                             matches!(self.u.shallow_ty(arg), Ty::Optional(_))
                                 || !matches!(self.u.shallow_ty(param), Ty::Optional(_))
                         }
-                        _ => self.fits_as_default(param, arg),
                     })
                 })
                 .cloned()

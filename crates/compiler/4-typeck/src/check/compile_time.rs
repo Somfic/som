@@ -3,7 +3,7 @@ use som_resolve::{DefId, DefKind};
 
 use super::Checker;
 use crate::error::TypeError;
-use crate::ty::{IntTy, Ty, TypeId, Value};
+use crate::ty::{Ty, TypeId, Value};
 use crate::unify::VarKind;
 
 impl Checker<'_> {
@@ -203,18 +203,7 @@ impl Checker<'_> {
         let int = expected.unwrap_or(self.u.table.usize);
         match self.u.get(int).clone() {
             Ty::Int(int_ty) => {
-                let max: u128 = match int_ty {
-                    IntTy::I8 => i8::MAX as u128,
-                    IntTy::I16 => i16::MAX as u128,
-                    IntTy::I32 => i32::MAX as u128,
-                    IntTy::I64 | IntTy::ISize => i64::MAX as u128,
-                    IntTy::I128 => i128::MAX as u128,
-                    IntTy::U8 => u8::MAX as u128,
-                    IntTy::U16 => u16::MAX as u128,
-                    IntTy::U32 => u32::MAX as u128,
-                    IntTy::U64 | IntTy::USize => u64::MAX as u128,
-                    IntTy::U128 => u128::MAX,
-                };
+                let max = int_ty.max();
                 if n > max {
                     self.errors.push(TypeError::LiteralOutOfRange {
                         value: n.min(i128::MAX as u128) as i128,

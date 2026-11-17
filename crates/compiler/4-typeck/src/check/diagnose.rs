@@ -9,6 +9,9 @@ use crate::ty::{Ty, TypeId, Value};
 use crate::unify::VarKind;
 use crate::{Loop, Take};
 
+/// The longest operand, in bytes, that a fix writing it again with a fallback is offered for.
+const LONGEST_OPERAND_FIX: usize = 30;
+
 impl Checker<'_> {
     /// A type for an error message. A type that isn't known yet can't be written down, so
     /// it's described in plain words instead: "an integer", not a type called that.
@@ -390,7 +393,7 @@ impl Checker<'_> {
             return None;
         };
         let text = self.span(expr).get_text().to_string();
-        if text.len() > 30 || text.contains('\n') {
+        if text.len() > LONGEST_OPERAND_FIX || text.contains('\n') {
             return None;
         }
         let fallback = match (self.u.shallow_ty(inner), self.u.var_kind(inner)) {

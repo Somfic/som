@@ -23,6 +23,9 @@ pub(super) fn holds(kind: VariantKind) -> &'static str {
     }
 }
 
+/// How many of the values no arm matches are worked out, to name.
+const MISSING_SHOWN: usize = 8;
+
 impl Checker<'_> {
     // --- Variants ---
 
@@ -289,7 +292,7 @@ impl Checker<'_> {
             }
             // A few of the values no arm matches, to name.
             let mut missing = Vec::new();
-            while missing.len() < 8
+            while missing.len() < MISSING_SHOWN
                 && let Some(witness) = useful(&seen, &[Pat::Wild], &[matched], &mut space)
             {
                 seen.push(witness.clone());

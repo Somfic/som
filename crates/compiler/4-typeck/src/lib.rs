@@ -327,6 +327,24 @@ impl PointerMethod {
 }
 
 impl ArrayMethod {
+    /// Whether only text has it, not other arrays.
+    pub(crate) fn text_only(self) -> bool {
+        self == ArrayMethod::Bytes
+    }
+
+    /// Whether it's read as a property, `items.len`, rather than called.
+    pub(crate) fn is_prop(self) -> bool {
+        self == ArrayMethod::Len
+    }
+
+    /// The names of those called as methods, on text or on any other array.
+    pub(crate) fn method_names(text: bool) -> Vec<String> {
+        (ArrayMethod::ALL.iter())
+            .filter(|m| !m.is_prop() && (text || !m.text_only()))
+            .map(|m| m.name().to_string())
+            .collect()
+    }
+
     /// How many arguments it takes, after the array.
     pub fn arity(self) -> usize {
         match self {

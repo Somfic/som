@@ -9,6 +9,16 @@ use crate::ty::{Ty, TypeId};
 use crate::unify::{Unifier, VarKind};
 use crate::{ArrayMethod, PointerMethod};
 
+/// How much a method call's receiver changes to be the method's `self`: of the methods
+/// sharing a name, the one changing it least is chosen.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ReceiverCost {
+    AsItIs,
+    /// Borrowed as a `&`, or copied out of a reference.
+    Changed,
+    BorrowedMut,
+}
+
 impl Checker<'_> {
     pub(super) fn infer_method_call(
         &mut self,
@@ -228,15 +238,10 @@ impl Checker<'_> {
         };
         let is_text = *self.u.get(array) == Ty::Str;
         // `bytes` is text's own.
-        let kind = ArrayMethod::from_name(&method.name)
-            .filter(|&kind| kind != ArrayMethod::Bytes || is_text);
+        let kind = ArrayMethod::from_name(&method.name).filter(|kind| is_text || !kind.text_only());
         let Some(kind) = kind else {
             // What every array has: `len`, read, and its methods.
-            let methods = (ArrayMethod::ALL.iter())
-                .filter(|&&m| m != ArrayMethod::Len && (m != ArrayMethod::Bytes || is_text))
-                .map(|m| m.name())
-                .map(String::from)
-                .collect();
+            let methods = ArrayMethod::method_names(is_text);
             self.errors.push(TypeError::UnknownMethod {
                 ty: self.describe(array),
                 method: method.name.to_string(),
@@ -250,7 +255,7 @@ impl Checker<'_> {
             return Some(error);
         };
         // `len` is read as a property, `items.len`.
-        if kind == ArrayMethod::Len && !as_prop {
+        if kind.is_prop() && !as_prop {
             self.errors.push(TypeError::MethodIsProp {
                 ty: self.describe(array),
                 name: method.name.to_string(),
@@ -378,15 +383,14 @@ impl Checker<'_> {
         expected: Option<TypeId>,
     ) -> TypeId {
         let found: Vec<TypeId> = args.iter().map(|&a| self.infer(a)).collect();
-        // Each fitting method, and how much the receiver has to change for it: 0 as it is,
-        // 1 borrowed, 2 borrowed as `&mut`.
+        // Each fitting method, and how much the receiver has to change for it.
         let mut fitting = Vec::new();
         // One only some instances have, where this isn't one of them: not a candidate.
         let mut not_here = None;
         // If several fit numbers nothing has decided yet, `[1.0, 2.0].normalize()`, they're
         // settled to `f64` and `i32`, as they would be anyway, and it's chosen again.
-        for attempt in 0..2 {
-            if attempt == 1 {
+        for defaulted in [false, true] {
+            if defaulted {
                 let mut settled = self.default_numbers(receiver_ty);
                 for &ty in &found {
                     settled |= self.default_numbers(ty);
@@ -515,16 +519,17 @@ impl Checker<'_> {
     }
 
     /// How much a receiver of type `found` changes to be a `self` of type `expected`, without
-    /// changing anything: 0 as it is, 1 borrowed, 2 borrowed as `&mut`, 1 copied out of a
-    /// reference; `None` if it can't be.
-    fn receiver_cost(&self, expected: TypeId, found: TypeId) -> Option<u8> {
+    /// changing anything; `None` if it can't be.
+    fn receiver_cost(&self, expected: TypeId, found: TypeId) -> Option<ReceiverCost> {
         let wanted = self.u.shallow_ty(expected).clone();
         let given = self.u.shallow_ty(found).clone();
         match (wanted, given) {
             (Ty::Ref { mutable, to }, given) if !matches!(given, Ty::Ref { .. } | Ty::Error) => {
-                self.u
-                    .could_fit(to, found)
-                    .then_some(if mutable { 2 } else { 1 })
+                self.u.could_fit(to, found).then_some(if mutable {
+                    ReceiverCost::BorrowedMut
+                } else {
+                    ReceiverCost::Changed
+                })
             }
             (
                 Ty::Ref { mutable: m, to },
@@ -532,11 +537,12 @@ impl Checker<'_> {
                     mutable: n,
                     to: given,
                 },
-            ) => (m == n && self.u.could_fit(to, given)).then_some(0),
+            ) => (m == n && self.u.could_fit(to, given)).then_some(ReceiverCost::AsItIs),
             (wanted, Ty::Ref { to, .. }) if !matches!(wanted, Ty::Var(_)) => {
-                (self.u.could_fit(expected, to) && self.is_copy(to)).then_some(1)
+                (self.u.could_fit(expected, to) && self.is_copy(to))
+                    .then_some(ReceiverCost::Changed)
             }
-            _ => self.u.could_fit(expected, found).then_some(0),
+            _ => (self.u.could_fit(expected, found)).then_some(ReceiverCost::AsItIs),
         }
     }
 

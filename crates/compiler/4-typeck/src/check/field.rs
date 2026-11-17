@@ -37,11 +37,7 @@ impl Checker<'_> {
         }
         // `xs.length`: an array or slice has `len` and its methods, nothing else.
         if self.is_collection(object_ty) {
-            let methods = (ArrayMethod::ALL.iter())
-                .filter(|&&m| m != ArrayMethod::Len && m != ArrayMethod::Bytes)
-                .map(|m| m.name())
-                .map(String::from)
-                .collect();
+            let methods = ArrayMethod::method_names(false);
             self.errors.push(TypeError::UnknownField {
                 ty: self.u.display(self.u.shallow(object_ty), self.names),
                 field: field.name.to_string(),
