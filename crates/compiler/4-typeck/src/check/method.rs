@@ -1,6 +1,6 @@
 use som_ast::{Expr, Func, Id, Span};
 use som_lang::LangTrait;
-use som_resolve::visibility::{self};
+use som_resolve::visibility;
 use som_resolve::{DefId, DefKind};
 
 use super::Checker;
