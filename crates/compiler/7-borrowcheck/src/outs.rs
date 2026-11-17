@@ -9,44 +9,28 @@
 use crate::BorrowError;
 use som_base::Span;
 use som_mir::*;
-use std::collections::{BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeSet, HashSet};
 
 pub(crate) fn check(body: &Body, errors: &mut Vec<BorrowError>) {
     if body.outs.is_empty() {
         return;
     }
-    let blocks = body.blocks.len();
-    let mut entry: Vec<Option<BTreeSet<Local>>> = vec![None; blocks];
-    entry[0] = Some(BTreeSet::new());
-
     let mut checker = Checker {
         body,
         report: false,
         errors: Vec::new(),
         reported: HashSet::new(),
     };
-    let mut queue = VecDeque::from([0]);
-    while let Some(b) = queue.pop_front() {
-        let mut assigned = entry[b].clone().expect("queued blocks have a state");
-        checker.block(b, &mut assigned);
-        for next in body.blocks[Id::new(b)].terminator.kind.successors() {
-            let next = next.id;
-            let changed = match &mut entry[next] {
-                Some(existing) => {
-                    let before = existing.len();
-                    existing.retain(|l| assigned.contains(l));
-                    existing.len() != before
-                }
-                slot @ None => {
-                    *slot = Some(assigned.clone());
-                    true
-                }
-            };
-            if changed && !queue.contains(&next) {
-                queue.push_back(next);
-            }
-        }
-    }
+    let entry = dataflow::forward(
+        body,
+        BTreeSet::new(),
+        |b, assigned| checker.block(b.id, assigned),
+        |existing, assigned| {
+            let before = existing.len();
+            existing.retain(|l| assigned.contains(l));
+            existing.len() != before
+        },
+    );
 
     // The states are final; walk every reachable block once more, reporting errors.
     checker.report = true;
@@ -74,33 +58,9 @@ impl Checker<'_> {
                 continue;
             };
             match rvalue {
-                Rvalue::Use(op)
-                | Rvalue::Not(op)
-                | Rvalue::Some(op)
-                | Rvalue::Repeat { operand: op, .. }
-                | Rvalue::Cast { operand: op, .. } => self.operand(assigned, op, &stmt.span),
-                Rvalue::Binary { lhs, rhs, .. }
-                | Rvalue::Range {
-                    start: lhs,
-                    end: rhs,
-                    ..
-                }
-                | Rvalue::MakeSlice {
-                    start: lhs,
-                    len: rhs,
-                    ..
-                } => {
-                    self.operand(assigned, lhs, &stmt.span);
-                    self.operand(assigned, rhs, &stmt.span);
-                }
-                Rvalue::Struct { fields: ops, .. }
-                | Rvalue::Array { items: ops, .. }
-                | Rvalue::Call { args: ops, .. }
-                | Rvalue::Intrinsic { args: ops, .. } => {
-                    ops.iter()
-                        .for_each(|op| self.operand(assigned, op, &stmt.span));
-                }
                 Rvalue::Ref { place, .. } => self.read(assigned, place, &stmt.span),
+                _ => (rvalue.operands().into_iter())
+                    .for_each(|op| self.operand(assigned, op, &stmt.span)),
             }
             if self.is_out(place.local) && place.projection == [Projection::Deref] {
                 assigned.insert(place.local);

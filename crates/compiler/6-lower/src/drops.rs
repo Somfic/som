@@ -469,44 +469,11 @@ fn followed(place: &Place) -> bool {
     place.local != RETURN && (place.projection.iter()).all(|p| matches!(p, Projection::Field(_)))
 }
 
-/// The places an rvalue moves out of.
-fn moves(rvalue: &Rvalue) -> Vec<&Place> {
-    let operands: Vec<&Operand> = match rvalue {
-        Rvalue::Use(op)
-        | Rvalue::Not(op)
-        | Rvalue::Some(op)
-        | Rvalue::Repeat { operand: op, .. }
-        | Rvalue::Cast { operand: op, .. } => vec![op],
-        Rvalue::Binary { lhs, rhs, .. }
-        | Rvalue::Range {
-            start: lhs,
-            end: rhs,
-            ..
-        }
-        | Rvalue::MakeSlice {
-            start: lhs,
-            len: rhs,
-            ..
-        } => vec![lhs, rhs],
-        Rvalue::Struct { fields: ops, .. }
-        | Rvalue::Array { items: ops, .. }
-        | Rvalue::Call { args: ops, .. }
-        | Rvalue::Intrinsic { args: ops, .. } => ops.iter().collect(),
-        Rvalue::Ref { .. } => Vec::new(),
-    };
-    (operands.into_iter())
-        .filter_map(|op| match op {
-            Operand::Move(place) => Some(place),
-            _ => None,
-        })
-        .collect()
-}
-
 /// How a statement changes what's there.
 fn transfer(state: &mut State, kind: &StatementKind) {
     match kind {
         StatementKind::Assign(dest, rvalue) => {
-            for moved in moves(rvalue) {
+            for moved in rvalue.moves() {
                 if followed(moved) {
                     state.set(moved, Init::No);
                 }
@@ -563,14 +530,6 @@ impl FnBuilder<'_, '_> {
             && &*self.l.ast.modules[self.l.names.def(def).module].name == som_lang::MEM_MODULE
     }
 
-    fn body_place_ty(&self, locals: &Arena<LocalDecl>, place: &Place) -> TypeId {
-        let mut ty = locals[place.local].ty;
-        for &projection in &place.projection {
-            ty = (self.l.mir.project(ty, projection)).expect("lowered places are well-typed");
-        }
-        ty
-    }
-
     /// Works out every drop against what's there along each path, as the module says.
     pub(super) fn elaborate_drops(&mut self, body: &mut Body) {
         // Temporaries still there when the function returns go then: those of a loop's
@@ -607,31 +566,21 @@ impl FnBuilder<'_, '_> {
             start.set(&Place::local(arg), Init::Yes);
         }
         let ids: Vec<BlockId> = body.blocks.iter_with_ids().map(|(id, _)| id).collect();
-        let mut entry: HashMap<BlockId, State> = HashMap::from([(ids[0], start.clone())]);
-        let mut work = vec![ids[0]];
-        while let Some(id) = work.pop() {
-            let mut state = entry[&id].clone();
-            for stmt in &body.blocks[id].stmts {
-                transfer(&mut state, &stmt.kind);
-            }
-            for next in body.blocks[id].terminator.kind.successors() {
-                let changed = match entry.get_mut(&next) {
-                    Some(existing) => existing.join(&state),
-                    None => {
-                        entry.insert(next, state.clone());
-                        true
-                    }
-                };
-                if changed && !work.contains(&next) {
-                    work.push(next);
+        let entry = dataflow::forward(
+            body,
+            start.clone(),
+            |id, state| {
+                for stmt in &body.blocks[id].stmts {
+                    transfer(state, &stmt.kind);
                 }
-            }
-        }
+            },
+            State::join,
+        );
 
         // Each drop as what's there says; and what an assignment replaces, dropped.
         let mut flags: HashMap<Place, Local> = HashMap::new();
         for &id in &ids {
-            let Some(mut state) = entry.get(&id).cloned() else {
+            let Some(mut state) = entry[id.id].clone() else {
                 // Never reached: nothing to drop.
                 body.blocks[id]
                     .stmts
@@ -656,13 +605,13 @@ impl FnBuilder<'_, '_> {
                         }
                     }
                     StatementKind::Assign(dest, rvalue) => {
-                        let ty = self.body_place_ty(&body.locals, &dest);
+                        let ty = self.l.mir.place_ty(&body.locals, &dest);
                         let replaced = self.l.drop_glue(ty).is_some()
                             && !body.outs.contains(&dest.local)
                             && dest.local != RETURN;
                         // After the value's worked out: it may read what's replaced.
                         let mut after_moves = state.clone();
-                        for moved in moves(&rvalue) {
+                        for moved in rvalue.moves() {
                             if followed(moved) {
                                 after_moves.set(moved, Init::No);
                             }
@@ -762,7 +711,7 @@ impl FnBuilder<'_, '_> {
                 let mut updates = Vec::new();
                 match &stmt.kind {
                     StatementKind::Assign(dest, rvalue) => {
-                        for moved in moves(rvalue) {
+                        for moved in rvalue.moves() {
                             for (place, &flag) in &flags {
                                 if within(place, moved) || within(moved, place) {
                                     updates.push(set(flag, false, &stmt.span));
@@ -817,7 +766,7 @@ impl FnBuilder<'_, '_> {
         span: &som_base::Span,
         out: &mut Vec<Statement>,
     ) {
-        let ty = self.body_place_ty(locals, place);
+        let ty = self.l.mir.place_ty(locals, place);
         let Some(glue) = self.l.drop_glue(ty) else {
             return;
         };

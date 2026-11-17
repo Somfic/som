@@ -305,7 +305,7 @@ fn propagate(body: &mut Body) -> bool {
     for block in body.blocks.iter_mut() {
         for stmt in &mut block.stmts {
             if let StatementKind::Assign(_, rvalue) = &mut stmt.kind {
-                operands_mut(rvalue).into_iter().for_each(&mut replace);
+                rvalue.operands_mut().into_iter().for_each(&mut replace);
             }
         }
         if let TerminatorKind::Branch { condition, .. } = &mut block.terminator.kind {
@@ -356,29 +356,3 @@ fn remove_unreachable(body: &mut Body) -> bool {
 }
 
 // --- Operands ---
-
-fn operands_mut(rvalue: &mut Rvalue) -> Vec<&mut Operand> {
-    match rvalue {
-        Rvalue::Use(op)
-        | Rvalue::Not(op)
-        | Rvalue::Some(op)
-        | Rvalue::Repeat { operand: op, .. }
-        | Rvalue::Cast { operand: op, .. } => vec![op],
-        Rvalue::Ref { .. } => Vec::new(),
-        Rvalue::Binary { lhs, rhs, .. }
-        | Rvalue::Range {
-            start: lhs,
-            end: rhs,
-            ..
-        }
-        | Rvalue::MakeSlice {
-            start: lhs,
-            len: rhs,
-            ..
-        } => vec![lhs, rhs],
-        Rvalue::Struct { fields: ops, .. }
-        | Rvalue::Array { items: ops, .. }
-        | Rvalue::Call { args: ops, .. }
-        | Rvalue::Intrinsic { args: ops, .. } => ops.iter_mut().collect(),
-    }
-}

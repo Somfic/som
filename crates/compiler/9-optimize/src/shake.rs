@@ -53,32 +53,10 @@ fn referenced(body: &Body) -> Vec<FuncId> {
             let StatementKind::Assign(_, rvalue) = &stmt.kind else {
                 continue;
             };
-            let operands: Vec<&Operand> = match rvalue {
-                Rvalue::Use(op)
-                | Rvalue::Not(op)
-                | Rvalue::Some(op)
-                | Rvalue::Repeat { operand: op, .. }
-                | Rvalue::Cast { operand: op, .. } => vec![op],
-                Rvalue::Ref { .. } => Vec::new(),
-                Rvalue::Binary { lhs, rhs, .. }
-                | Rvalue::Range {
-                    start: lhs,
-                    end: rhs,
-                    ..
-                }
-                | Rvalue::MakeSlice {
-                    start: lhs,
-                    len: rhs,
-                    ..
-                } => vec![lhs, rhs],
-                Rvalue::Struct { fields: ops, .. }
-                | Rvalue::Array { items: ops, .. }
-                | Rvalue::Intrinsic { args: ops, .. } => ops.iter().collect(),
-                Rvalue::Call { func, args } => {
-                    found.push(*func);
-                    args.iter().collect()
-                }
-            };
+            if let Rvalue::Call { func, .. } = rvalue {
+                found.push(*func);
+            }
+            let operands = rvalue.operands();
             for op in operands {
                 if let Operand::Const(Const {
                     kind: ConstKind::Func(id),

@@ -1260,7 +1260,7 @@ impl<'a> Emitter<'a> {
     /// depends on, including the temporaries already folded into it.
     fn pending(&self, f: &FnState, rvalue: &Rvalue, expr: Expr) -> Pending {
         let (mut reads, mut memory, mut effect) = f.folded.take();
-        for place in places(rvalue) {
+        for place in rvalue.places() {
             reads.extend(place.locals());
             memory |= place.projection.contains(&Projection::Deref);
         }
@@ -1533,18 +1533,7 @@ impl<'a> Emitter<'a> {
     }
 
     fn operand_ty(&self, f: &FnState, op: &Operand) -> TypeId {
-        match op {
-            Operand::Const(c) => c.ty,
-            Operand::Copy(place) | Operand::Move(place) => self.place_ty(f, place),
-        }
-    }
-
-    fn place_ty(&self, f: &FnState, place: &Place) -> TypeId {
-        let mut ty = f.body.local(place.local).ty;
-        for projection in &place.projection {
-            ty = self.project(ty, *projection);
-        }
-        ty
+        self.mir.operand_ty(&f.body.locals, op)
     }
 
     fn project(&self, ty: TypeId, projection: Projection) -> TypeId {
@@ -1838,44 +1827,11 @@ fn operand_local(op: &Operand) -> Option<Local> {
     }
 }
 
-/// The places an rvalue reads, or takes the address of.
-fn places(rvalue: &Rvalue) -> Vec<&Place> {
-    let ops: Vec<&Operand> = match rvalue {
-        Rvalue::Use(op)
-        | Rvalue::Not(op)
-        | Rvalue::Some(op)
-        | Rvalue::Repeat { operand: op, .. }
-        | Rvalue::Cast { operand: op, .. } => vec![op],
-        Rvalue::Binary { lhs, rhs, .. }
-        | Rvalue::Range {
-            start: lhs,
-            end: rhs,
-            ..
-        }
-        | Rvalue::MakeSlice {
-            start: lhs,
-            len: rhs,
-            ..
-        } => vec![lhs, rhs],
-        Rvalue::Struct { fields: ops, .. }
-        | Rvalue::Array { items: ops, .. }
-        | Rvalue::Call { args: ops, .. }
-        | Rvalue::Intrinsic { args: ops, .. } => ops.iter().collect(),
-        Rvalue::Ref { place, .. } => return vec![place],
-    };
-    ops.into_iter()
-        .filter_map(|op| match op {
-            Operand::Copy(place) | Operand::Move(place) => Some(place),
-            Operand::Const(_) => None,
-        })
-        .collect()
-}
-
 /// The locals `dest = rvalue` could fold pending temporaries into: whole operands, and
 /// indexes.
 fn statement_reads(dest: &Place, rvalue: &Rvalue) -> Vec<Local> {
     let mut read: Vec<Local> = dest.index_locals().collect();
-    for place in places(rvalue) {
+    for place in rvalue.places() {
         if place.projection.is_empty() && !matches!(rvalue, Rvalue::Ref { .. }) {
             read.push(place.local);
         }

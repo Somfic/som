@@ -6,6 +6,7 @@
 //! whether they copy or move, so ownership is explicit. Generic functions are
 //! monomorphized: MIR only contains concrete types.
 
+pub mod dataflow;
 mod display;
 mod validate;
 
@@ -110,6 +111,20 @@ impl Mir {
                 self.types.lookup(&Ty::Int(IntTy::USize))
             }
             _ => None,
+        }
+    }
+
+    /// The type of `place` among `locals`. Lowering builds places well-typed.
+    pub fn place_ty(&self, locals: &Arena<LocalDecl>, place: &Place) -> TypeId {
+        (place.projection.iter()).fold(locals[place.local].ty, |ty, &projection| {
+            (self.project(ty, projection)).expect("validated MIR has well-typed places")
+        })
+    }
+
+    pub fn operand_ty(&self, locals: &Arena<LocalDecl>, operand: &Operand) -> TypeId {
+        match operand {
+            Operand::Const(c) => c.ty,
+            Operand::Copy(place) | Operand::Move(place) => self.place_ty(locals, place),
         }
     }
 
@@ -218,6 +233,37 @@ pub struct Body {
 }
 
 impl Body {
+    /// Every operand in it: what its statements read, and what its branches test.
+    pub fn operands(&self) -> Vec<&Operand> {
+        let mut found = Vec::new();
+        for block in self.blocks.iter() {
+            for statement in &block.stmts {
+                if let StatementKind::Assign(_, rvalue) = &statement.kind {
+                    found.extend(rvalue.operands());
+                }
+            }
+            if let TerminatorKind::Branch { condition, .. } = &block.terminator.kind {
+                found.push(condition);
+            }
+        }
+        found
+    }
+
+    pub fn operands_mut(&mut self) -> Vec<&mut Operand> {
+        let mut found = Vec::new();
+        for block in self.blocks.iter_mut() {
+            for statement in &mut block.stmts {
+                if let StatementKind::Assign(_, rvalue) = &mut statement.kind {
+                    found.extend(rvalue.operands_mut());
+                }
+            }
+            if let TerminatorKind::Branch { condition, .. } = &mut block.terminator.kind {
+                found.push(condition);
+            }
+        }
+        found
+    }
+
     pub fn local(&self, local: Local) -> &LocalDecl {
         &self.locals[local]
     }
@@ -438,6 +484,54 @@ impl Rvalue {
             Rvalue::Ref { .. } => Vec::new(),
         }
     }
+
+    pub fn operands_mut(&mut self) -> Vec<&mut Operand> {
+        match self {
+            Rvalue::Use(op)
+            | Rvalue::Not(op)
+            | Rvalue::Some(op)
+            | Rvalue::Repeat { operand: op, .. }
+            | Rvalue::Cast { operand: op, .. } => vec![op],
+            Rvalue::Binary { lhs, rhs, .. }
+            | Rvalue::Range {
+                start: lhs,
+                end: rhs,
+                ..
+            }
+            | Rvalue::MakeSlice {
+                start: lhs,
+                len: rhs,
+                ..
+            } => vec![lhs, rhs],
+            Rvalue::Struct { fields: ops, .. }
+            | Rvalue::Array { items: ops, .. }
+            | Rvalue::Call { args: ops, .. }
+            | Rvalue::Intrinsic { args: ops, .. } => ops.iter_mut().collect(),
+            Rvalue::Ref { .. } => Vec::new(),
+        }
+    }
+
+    /// The places it reads, or takes the address of.
+    pub fn places(&self) -> Vec<&Place> {
+        match self {
+            Rvalue::Ref { place, .. } => vec![place],
+            _ => self
+                .operands()
+                .into_iter()
+                .filter_map(Operand::place)
+                .collect(),
+        }
+    }
+
+    /// The places it moves out of.
+    pub fn moves(&self) -> Vec<&Place> {
+        (self.operands().into_iter())
+            .filter_map(|op| match op {
+                Operand::Move(place) => Some(place),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 /// What an `Rvalue::Intrinsic` does, given its arguments: a pointer `p` to `T`s, then the rest.
@@ -472,6 +566,15 @@ pub enum Operand {
     /// Like `Copy`, but the place may not be used again until it's reassigned.
     Move(Place),
     Const(Const),
+}
+
+impl Operand {
+    pub fn place(&self) -> Option<&Place> {
+        match self {
+            Operand::Copy(place) | Operand::Move(place) => Some(place),
+            Operand::Const(_) => None,
+        }
+    }
 }
 
 #[derive(Clone)]

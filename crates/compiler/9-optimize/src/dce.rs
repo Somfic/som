@@ -237,32 +237,8 @@ fn reads(dest: &Place, rvalue: &Rvalue, mut read: impl FnMut(Local)) {
     }
     dest.index_locals().for_each(&mut read);
     match rvalue {
-        Rvalue::Use(op)
-        | Rvalue::Not(op)
-        | Rvalue::Some(op)
-        | Rvalue::Repeat { operand: op, .. }
-        | Rvalue::Cast { operand: op, .. } => read_operand(op, read),
         Rvalue::Ref { place, .. } => place.locals().for_each(read),
-        Rvalue::Binary { lhs, rhs, .. }
-        | Rvalue::Range {
-            start: lhs,
-            end: rhs,
-            ..
-        }
-        | Rvalue::MakeSlice {
-            start: lhs,
-            len: rhs,
-            ..
-        } => {
-            read_operand(lhs, &mut read);
-            read_operand(rhs, read);
-        }
-        Rvalue::Struct { fields: ops, .. }
-        | Rvalue::Array { items: ops, .. }
-        | Rvalue::Call { args: ops, .. }
-        | Rvalue::Intrinsic { args: ops, .. } => {
-            ops.iter().for_each(|op| read_operand(op, &mut read))
-        }
+        _ => (rvalue.operands().into_iter()).for_each(|op| read_operand(op, &mut read)),
     }
 }
 

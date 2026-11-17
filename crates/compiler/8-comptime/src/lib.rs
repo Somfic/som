@@ -47,7 +47,7 @@ pub fn run(mir: &mut Mir) -> Vec<ComptimeError> {
     let mut wanted = mir.checks.clone();
     for func in mir.funcs.iter() {
         if let Some(body) = &func.body {
-            for op in operands(body) {
+            for op in body.operands() {
                 if let Operand::Const(Const {
                     kind: ConstKind::Pending(init),
                     ..
@@ -83,7 +83,7 @@ pub fn run(mir: &mut Mir) -> Vec<ComptimeError> {
         let Some(body) = &mut func.body else {
             continue;
         };
-        for op in operands_mut(body) {
+        for op in body.operands_mut() {
             if let Operand::Const(c) = op
                 && let ConstKind::Pending(init) = c.kind
                 && let Some(Some(value)) = results.get(&init)
@@ -1160,18 +1160,9 @@ impl Machine<'_, '_> {
     }
 
     fn operand_ty(&self, op: &Operand) -> TypeId {
-        match op {
-            Operand::Const(c) => c.ty,
-            Operand::Copy(place) | Operand::Move(place) => {
-                let frame = self.frames.last().expect("a frame");
-                let body = self.mir().funcs[frame.func].body.as_ref().expect("a body");
-                let mut ty = body.locals[place.local].ty;
-                for &projection in &place.projection {
-                    ty = self.mir().project(ty, projection).expect("checked places");
-                }
-                ty
-            }
-        }
+        let frame = self.frames.last().expect("a frame");
+        let body = self.mir().funcs[frame.func].body.as_ref().expect("a body");
+        self.mir().operand_ty(&body.locals, op)
     }
 
     fn rvalue(&mut self, rvalue: &Rvalue, span: &Span) -> Result<Value, Stop> {
@@ -1577,61 +1568,3 @@ fn shift(op: BinOp, a: i128, n: i128, int: IntTy) -> i128 {
 }
 
 // --- Operands ---
-
-fn rvalue_operands(rvalue: &Rvalue) -> Vec<&Operand> {
-    rvalue.operands()
-}
-
-/// Every operand in `body`.
-fn operands(body: &Body) -> Vec<&Operand> {
-    let mut found = Vec::new();
-    for block in body.blocks.iter() {
-        for statement in &block.stmts {
-            if let StatementKind::Assign(_, rvalue) = &statement.kind {
-                found.extend(rvalue_operands(rvalue));
-            }
-        }
-        if let TerminatorKind::Branch { condition, .. } = &block.terminator.kind {
-            found.push(condition);
-        }
-    }
-    found
-}
-
-/// Every operand in `body`, to change.
-fn operands_mut(body: &mut Body) -> Vec<&mut Operand> {
-    let mut found = Vec::new();
-    for block in body.blocks.iter_mut() {
-        for statement in &mut block.stmts {
-            if let StatementKind::Assign(_, rvalue) = &mut statement.kind {
-                found.extend(match rvalue {
-                    Rvalue::Use(op)
-                    | Rvalue::Not(op)
-                    | Rvalue::Some(op)
-                    | Rvalue::Repeat { operand: op, .. }
-                    | Rvalue::Cast { operand: op, .. } => vec![op],
-                    Rvalue::Binary { lhs, rhs, .. }
-                    | Rvalue::Range {
-                        start: lhs,
-                        end: rhs,
-                        ..
-                    }
-                    | Rvalue::MakeSlice {
-                        start: lhs,
-                        len: rhs,
-                        ..
-                    } => vec![lhs, rhs],
-                    Rvalue::Struct { fields: ops, .. }
-                    | Rvalue::Array { items: ops, .. }
-                    | Rvalue::Call { args: ops, .. }
-                    | Rvalue::Intrinsic { args: ops, .. } => ops.iter_mut().collect(),
-                    Rvalue::Ref { .. } => Vec::new(),
-                });
-            }
-        }
-        if let TerminatorKind::Branch { condition, .. } = &mut block.terminator.kind {
-            found.push(condition);
-        }
-    }
-    found
-}

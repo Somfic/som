@@ -31,7 +31,7 @@ pub use error::BorrowError;
 
 use som_base::Span;
 use som_mir::*;
-use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 pub fn check(mir: &Mir) -> Vec<BorrowError> {
     let mut errors = Vec::new();
@@ -159,32 +159,13 @@ impl<'a> FnChecker<'a> {
     }
 
     fn run(mut self, errors: &mut Vec<BorrowError>) {
-        let blocks = self.body.blocks.len();
-        let mut entry: Vec<Option<State>> = vec![None; blocks];
-        entry[0] = Some(State {
+        let start = State {
             moved: BTreeMap::new(),
             holds: vec![BTreeSet::new(); self.body.locals.len()],
             reserved: BTreeSet::new(),
-        });
-
-        let mut queue = VecDeque::from([0]);
-        while let Some(b) = queue.pop_front() {
-            let mut state = entry[b].clone().expect("queued blocks have a state");
-            self.block(b, &mut state);
-            for next in self.body.blocks[Id::new(b)].terminator.kind.successors() {
-                let next = next.id;
-                let changed = match &mut entry[next] {
-                    Some(existing) => existing.join(&state),
-                    slot @ None => {
-                        *slot = Some(state.clone());
-                        true
-                    }
-                };
-                if changed && !queue.contains(&next) {
-                    queue.push_back(next);
-                }
-            }
-        }
+        };
+        let body = self.body;
+        let entry = dataflow::forward(body, start, |b, state| self.block(b.id, state), State::join);
 
         // The states are final; walk every reachable block once more, reporting errors.
         self.report = true;
@@ -527,11 +508,7 @@ impl<'a> FnChecker<'a> {
     }
 
     fn place_ty(&self, place: &Place) -> TypeId {
-        let mut ty = self.body.local(place.local).ty;
-        for &projection in &place.projection {
-            ty = (self.mir.project(ty, projection)).expect("validated MIR has well-typed places");
-        }
-        ty
+        self.mir.place_ty(&self.body.locals, place)
     }
 
     /// Whether values of `ty` can carry a borrow.
