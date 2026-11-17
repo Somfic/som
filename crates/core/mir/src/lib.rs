@@ -129,6 +129,9 @@ impl Mir {
     }
 }
 
+/// The name of an enum's first field, saying which variant it is.
+pub const ENUM_TAG: &str = "tag";
+
 /// Ids stay the same when other functions are removed.
 pub type FuncId = Id<Function>;
 

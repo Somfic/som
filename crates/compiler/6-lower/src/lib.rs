@@ -32,8 +32,8 @@ pub fn lower(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
     lowerer.mir
 }
 
-/// Lowers the program, checking each instance of a function that's checked for each instance
-/// (`@if N >= 3`) as it's reached: what's wrong in them, if anything, instead of the MIR.
+/// Also checks each instance of a function checked per instance (`@if N >= 3`) as it's
+/// reached; what's wrong in them, if anything, comes back instead of the MIR.
 pub fn lower_checked(
     ast: &Ast,
     names: &Names,
@@ -49,7 +49,6 @@ pub fn lower_checked(
         let Some(&id) = lowerer.instances.get(&(func, args.clone())) else {
             continue;
         };
-        // What its value parameters stand for: `N` for 3.
         let values = (names.type_params(func).iter().zip(&args))
             .filter_map(|(&def, &arg)| match lowerer.mir.types.get(arg) {
                 Ty::Value(Value::Int(n)) => Some((def, *n as i128)),
@@ -68,30 +67,24 @@ pub fn lower_checked(
     Ok((lowerer.mir, checked))
 }
 
-/// An instance of a function checked for each instance, as lowering checked it: for the
-/// prover to prove it.
+/// For the prover to prove.
 pub struct CheckedInstance {
     pub name: String,
     pub used_at: Span,
     pub func: Id<Func>,
     pub typed: Rc<Typed>,
-    /// What its generic value parameters stand for.
     pub values: Vec<(DefId, i128)>,
 }
 
-/// What checking one instance of a function found wrong, in its `@if`s over its generic
-/// parameters.
+/// What's wrong in one instance's `@if`s over its generic parameters.
 pub struct InstanceErrors {
-    /// The instance: `describe<2>`.
     pub name: String,
-    /// Where the program first used it.
     pub used_at: Span,
     pub errors: Vec<som_typeck::TypeError>,
 }
 
-/// Only what working out constants `consts` runs: each one's initializer, and what it calls,
-/// as lowering finds it (methods through traits, drop glue, `@on fail` functions). The
-/// program's other functions aren't lowered. Each constant's initializer, in order.
+/// Only what working out `consts` runs: their initializers and what those call. Returns
+/// each one's initializer, in order.
 pub fn lower_inits(
     ast: &Ast,
     names: &Names,
@@ -105,11 +98,9 @@ pub fn lower_inits(
     (lowerer.mir, inits)
 }
 
-/// Every generic function's code, with each of its type parameters a stand-in: a struct of
-/// its own with nothing in it, copied only if the parameter has to be `Copy`, and each value
-/// parameter `1`. Only for the borrow checker: this way it sees generic code nothing uses
-/// yet, and finds a value used after it's moved where it's written, not once someone uses it
-/// with a type that moves. Nothing is generated from it.
+/// For the borrow checker only, nothing is generated from it: each generic function once,
+/// with stand-ins for its parameters, so a use after a move is found where it's written,
+/// not only once someone uses it with a type that moves.
 pub fn lower_generic(ast: &Ast, names: &Names, typed: &Typed) -> Mir {
     let mut lowerer = Lowerer::new(ast, names, typed);
     lowerer.run_generic();
@@ -121,30 +112,25 @@ struct Lowerer<'a> {
     names: &'a Names,
     typed: &'a Typed,
     mir: Mir,
-    /// `(function, type arguments)` → its MIR function.
     instances: HashMap<(Id<Func>, Vec<TypeId>), FuncId>,
-    /// Functions whose bodies still need lowering.
     queue: Vec<(FuncId, Job)>,
-    /// Each `@const` that runs code, in the function instance it's in → its initializer.
+    /// By constant and the function instance it's in.
     inits: HashMap<(Id<som_ast::Const>, Owner), FuncId>,
-    /// The constants of modules and impl blocks: none of them is in a function.
+    /// Constants of modules and impl blocks: none of them is in a function.
     item_consts: HashSet<Id<som_ast::Const>>,
-    /// Instances of functions checked for each instance (an `@if N >= 3` in them) → what
-    /// checking that instance found.
+    /// What checking each per-instance function's instance found.
     instance_typed: HashMap<(Id<Func>, Vec<TypeId>), Rc<Typed>>,
-    /// What checking instances found wrong, in them.
     instance_errors: Vec<InstanceErrors>,
-    /// Where each instance was first asked for, and the statement being lowered now.
+    /// Where each instance was first asked for: `at` when it was.
     requested_at: HashMap<FuncId, Span>,
     at: Option<Span>,
-    /// What `@fail` and `@unreachable` call, once it's made: `None` inside if there's no
-    /// standard library to say what a failure is.
+    /// `Some(None)` if there's no standard library to say what a failure is.
     failed: Option<Option<FuncId>>,
-    /// Method → the name of the struct its `impl` block is for.
+    /// Method → its impl's type, as a name C can have.
     owners: HashMap<Id<Func>, String>,
-    /// A trait's method → the trait, and how many generic parameters the trait has.
+    /// A trait's method → the trait, and how many generic parameters it has.
     trait_methods: HashMap<Id<Func>, (DefId, usize)>,
-    /// Each type's drop glue, `None` for one with nothing to drop.
+    /// `None` for a type with nothing to drop.
     drop_glues: HashMap<TypeId, Option<FuncId>>,
 }
 
@@ -188,12 +174,11 @@ impl<'a> Lowerer<'a> {
         self.finish();
     }
 
-    /// Like `run`, but for each generic function, once, with stand-ins for its parameters.
     fn run_generic(&mut self) {
         self.prepare();
         for (id, func) in self.ast.funcs.iter() {
             let params = self.names.type_params(id).to_vec();
-            // One checked for each instance has nothing to check generically in its `@if`s.
+            // One checked per instance has nothing to check generically in its `@if`s.
             if params.is_empty()
                 || func.body.is_none()
                 || self.is_alias(id)
@@ -207,8 +192,8 @@ impl<'a> Lowerer<'a> {
         self.finish();
     }
 
-    /// What type parameter `param` stands for in `run_generic`: a struct with nothing in it,
-    /// of its own, copied only if `param` has to be `Copy`; for a value parameter, `1`.
+    /// A struct of its own with nothing in it, copied only if `param` has to be `Copy`; for a
+    /// value parameter, `1`.
     fn stand_in(&mut self, param: DefId) -> TypeId {
         if self.names.is_value_param(param) {
             return self.mir.types.intern(Ty::Value(Value::Int(1)));
@@ -230,13 +215,11 @@ impl<'a> Lowerer<'a> {
         ty
     }
 
-    /// Whether `id` is a function only an alias names, which isn't lowered on its own.
+    /// A function only an alias names isn't lowered on its own.
     fn is_alias(&self, id: Id<Func>) -> bool {
         !matches!(self.names.def(self.names.func(id)).kind, DefKind::Func(f) if f == id)
     }
 
-    /// What every run needs before functions are lowered: traits' methods, impl blocks'
-    /// owners, and the non-generic structs.
     fn prepare(&mut self) {
         let ast = self.ast;
         for (id, t) in ast.traits.iter() {
@@ -271,8 +254,8 @@ impl<'a> Lowerer<'a> {
             }
         }
 
-        // Every non-generic struct. Generic ones get a copy for each set of type arguments the
-        // program uses, once the functions are lowered.
+        // Generic structs get a copy for each set of type arguments used, once functions are
+        // lowered.
         for (id, s) in ast.structs.iter() {
             if s.generics.is_empty() {
                 self.struct_instance(id, Vec::new());
@@ -280,7 +263,6 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Lowers every function queued, and makes the copies of generic structs they use.
     fn finish(&mut self) {
         while let Some((func_id, job)) = self.queue.pop() {
             let body = match job {
@@ -297,8 +279,7 @@ impl<'a> Lowerer<'a> {
             self.mir.funcs[func_id].body = Some(body);
         }
 
-        // A copy of each generic struct for each set of concrete type arguments it's used with.
-        // A copy's fields can use more, so until there are no new ones.
+        // A copy's fields can use more generic structs, so until there are no new ones.
         loop {
             let types = &self.mir.types;
             let wanted: Vec<(DefId, Vec<TypeId>)> = types
@@ -326,15 +307,13 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// Whether values of `ty` are copied rather than moved, like `Mir::is_copy`, but working
-    /// before the copies of generic structs exist: copying is the struct's, whatever its type
-    /// arguments.
+    /// Like `Mir::is_copy`, but before the copies of generic structs exist: copying is the
+    /// struct's, whatever its type arguments.
     fn is_copy(&self, ty: TypeId) -> bool {
         match self.mir.types.get(ty) {
             Ty::Struct(def, args) => match self.names.def(*def).kind {
                 DefKind::Struct(s) => self.ast.structs[s].copy || self.implements_copy(*def),
-                // A type parameter's stand-in, in `lower_generic`: copied only if it has to be
-                // `Copy`, as its struct says.
+                // A type parameter's stand-in, in `lower_generic`.
                 _ if self.mir.has_struct(*def, args) => self.mir.struct_def(*def, args).copy,
                 _ => true,
             },
@@ -344,7 +323,6 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// `ty`'s `Share::share`, for its type arguments, if it implements `Share`.
     fn share_impl(&mut self, ty: TypeId) -> Option<FuncId> {
         let trait_ = self.names.lang(LangTrait::Share)?;
         let (index, args) = som_typeck::traits::find_impl(
@@ -360,7 +338,6 @@ impl<'a> Lowerer<'a> {
         Some(self.instance(method, args))
     }
 
-    /// Whether struct `def` implements `Copy`.
     fn implements_copy(&self, def: DefId) -> bool {
         let Some(copy) = self.names.lang(LangTrait::Copy) else {
             return false;
@@ -373,8 +350,7 @@ impl<'a> Lowerer<'a> {
         })
     }
 
-    /// Makes the copies of the generic structs `ty` uses, if they aren't made yet: naming a
-    /// type, `List<List<i32>>`, needs them.
+    /// Naming a type, `List<List<i32>>`, needs them.
     fn make_structs_in(&mut self, ty: TypeId) {
         let t = self.mir.types.get(ty).clone();
         for child in t.children() {
@@ -391,7 +367,7 @@ impl<'a> Lowerer<'a> {
     }
 }
 
-/// What's been checked of a body: the program's, or one instance's.
+/// The program's, or one instance's.
 #[derive(Clone)]
 enum TypedRef<'a> {
     Global(&'a Typed),
@@ -409,7 +385,7 @@ impl std::ops::Deref for TypedRef<'_> {
     }
 }
 
-/// A body that's never run: an instance with errors, said instead of compiled.
+/// For an instance with errors, said instead of compiled.
 fn unreachable_body(func: &Function, span: &Span) -> Body {
     let mut locals = Arena::new();
     for &ty in std::iter::once(&func.ret).chain(&func.params) {
@@ -437,33 +413,26 @@ fn unreachable_body(func: &Function, span: &Span) -> Body {
     }
 }
 
-/// What a queued function's body is lowered from.
 enum Job {
-    /// A function, with these type arguments.
     Func(Id<Func>, Vec<TypeId>),
-    /// A `@const`'s value: its initializer, in the function instance it's in.
+    /// A `@const`'s initializer, in the function instance it's in.
     Init(Id<som_ast::Const>, Owner),
 }
 
-/// The generic function instance something is in: the function and its type arguments.
-/// `None` outside any, or in one with no parameters, where there's one of everything.
+/// `None` outside any generic function instance, or in one with no parameters.
 type Owner = Option<(Id<Func>, Vec<TypeId>)>;
 
-/// Where `break` and `continue` go in a loop.
 #[derive(Clone, Copy)]
 struct LoopTargets {
-    /// Past the loop.
     exit: BlockId,
-    /// Its next time round: the start of a `loop`, a `while`'s condition, a `for`'s step to
-    /// the next value.
+    /// The start of a `loop`, a `while`'s condition, a `for`'s step to the next value.
     next: BlockId,
     /// How many scopes were open where it started: those opened since end at either.
     depth: usize,
-    /// The `for` loop it is, which `break x;` and `continue x;` name by its variable.
+    /// The `for` loop, which `break x;` and `continue x;` name by its variable.
     stmt: Option<Id<Stmt>>,
 }
 
-/// Whether `ty` is fully known: no type parameters or inference variables left in it.
 fn concrete(types: &TypeTable, ty: TypeId) -> bool {
     match types.get(ty) {
         Ty::Param(_) | Ty::Var(_) | Ty::Error => false,
@@ -471,17 +440,13 @@ fn concrete(types: &TypeTable, ty: TypeId) -> bool {
     }
 }
 
-/// Builds the body of one function instance.
 struct FnBuilder<'l, 'a> {
     l: &'l mut Lowerer<'a>,
-    /// The function being lowered; `None` for a `@const`'s initializer.
+    /// `None` for a `@const`'s initializer.
     func: Option<Id<Func>>,
-    /// The function instance its generic parameters are of: its own, or for an initializer,
-    /// the one its constant is in.
+    /// Whose generic parameters it has: its own, or for an initializer, its constant's.
     owner: Owner,
-    /// What was checked of its body: the program's, or its instance's.
     typed: TypedRef<'a>,
-    /// Where it's written.
     span: Span,
     subst: Subst<'a>,
     locals: Arena<LocalDecl>,
@@ -489,14 +454,11 @@ struct FnBuilder<'l, 'a> {
     blocks: Arena<Block>,
     terminated: HashSet<BlockId>,
     current: BlockId,
-    /// Parameters and `let` bindings → their locals.
     bindings: HashMap<DefId, Local>,
-    /// The `let` locals of each enclosing scope, innermost last.
+    /// The `let` locals of each enclosing scope.
     scopes: Vec<Vec<Local>>,
-    /// The enclosing loops, innermost last.
     loops: Vec<LoopTargets>,
     /// Places the source read, with where, not yet claimed by the statement using them.
     reads: Vec<(Place, Span)>,
-    /// Temporaries holding a two-phase borrow: see `Body::two_phase`.
     two_phase: Vec<Local>,
 }

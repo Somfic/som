@@ -1,4 +1,5 @@
-use som_ast::{Func, Id, Struct};
+use som_ast::{Func, Id, Span, Struct};
+use som_lang::Builtin;
 use som_mir::*;
 use som_resolve::DefId;
 use som_typeck::traits::{ImplInfo, resolve_assoc};
@@ -8,7 +9,6 @@ use std::rc::Rc;
 use super::{InstanceErrors, Job, Lowerer, Owner, TypedRef};
 
 impl<'a> Lowerer<'a> {
-    /// Adds struct `s` with type arguments `args`: its fields' types with the arguments filled in.
     pub(super) fn struct_instance(&mut self, s: Id<Struct>, args: Vec<TypeId>) {
         for &arg in &args {
             self.make_structs_in(arg);
@@ -25,46 +25,9 @@ impl<'a> Lowerer<'a> {
                 )
             })
             .collect();
-        // An enum: which variant it is, then every variant's fields.
-        // An enum: which variant it is, the fields every variant has, then each variant's own.
-        let variants = ast_struct.is_enum().then(|| {
-            let tag = self.mir.types.intern(Ty::Int(IntTy::U32));
-            fields.push(("tag".into(), tag));
-            let payload: Vec<TypeId> = (self.typed.fields(s).iter())
-                .map(|&ty| subst.apply(&mut self.mir.types, ty))
-                .collect();
-            let mut common_at = HashMap::new();
-            for common in self.typed.common_fields(s) {
-                for &at in &common.payload {
-                    common_at.insert(at, fields.len());
-                }
-                fields.push((common.name.to_string(), payload[common.payload[0]]));
-            }
-            (ast_struct.variants().iter().enumerate())
-                .map(|(i, v)| {
-                    let start = ast_struct.payload_start(i);
-                    let indexes = (v.fields.iter().enumerate())
-                        .map(|(k, f)| match common_at.get(&(start + k)) {
-                            Some(&at) => at,
-                            None => {
-                                let name = format!("{}.{}", v.name, f.name);
-                                fields.push((name, payload[start + k]));
-                                fields.len() - 1
-                            }
-                        })
-                        .collect();
-                    VariantDef {
-                        name: v.name.name.to_string(),
-                        fields: indexes,
-                    }
-                })
-                .collect()
-        });
-        let mut name = self.qualified(def, &ast_struct.name.name);
-        if !args.is_empty() {
-            let shown: Vec<String> = args.iter().map(|&a| self.mir.display_ty(a)).collect();
-            name = format!("{name}<{}>", shown.join(", "));
-        }
+        let variants = (ast_struct.is_enum()).then(|| self.enum_layout(s, &subst, &mut fields));
+        let name = self.qualified(def, &ast_struct.name.name);
+        let name = self.with_type_args(name, &args);
         self.mir.add_struct(StructDef {
             def,
             args,
@@ -76,7 +39,58 @@ impl<'a> Lowerer<'a> {
         });
     }
 
-    /// `name` prefixed with its module, if it isn't in the root module.
+    /// Adds the enum's tag, common fields and variants' own fields, as `StructDef::fields`
+    /// lays them out.
+    fn enum_layout(
+        &mut self,
+        s: Id<Struct>,
+        subst: &Subst,
+        fields: &mut Vec<(String, TypeId)>,
+    ) -> Vec<VariantDef> {
+        let ast_struct = &self.ast.structs[s];
+        let tag = self.mir.types.intern(Ty::Int(IntTy::U32));
+        fields.push((ENUM_TAG.into(), tag));
+        let payload: Vec<TypeId> = (self.typed.fields(s).iter())
+            .map(|&ty| subst.apply(&mut self.mir.types, ty))
+            .collect();
+        let mut common_at = HashMap::new();
+        for common in self.typed.common_fields(s) {
+            for &at in &common.payload {
+                common_at.insert(at, fields.len());
+            }
+            fields.push((common.name.to_string(), payload[common.payload[0]]));
+        }
+        (ast_struct.variants().iter().enumerate())
+            .map(|(i, v)| {
+                let start = ast_struct.payload_start(i);
+                let indexes = (v.fields.iter().enumerate())
+                    .map(|(k, f)| match common_at.get(&(start + k)) {
+                        Some(&at) => at,
+                        None => {
+                            let name = format!("{}.{}", v.name, f.name);
+                            fields.push((name, payload[start + k]));
+                            fields.len() - 1
+                        }
+                    })
+                    .collect();
+                VariantDef {
+                    name: v.name.name.to_string(),
+                    fields: indexes,
+                }
+            })
+            .collect()
+    }
+
+    /// `name<i32, bool>`, or just `name` without type arguments.
+    fn with_type_args(&self, name: String, args: &[TypeId]) -> String {
+        if args.is_empty() {
+            return name;
+        }
+        let shown: Vec<String> = args.iter().map(|&a| self.mir.display_ty(a)).collect();
+        format!("{name}<{}>", shown.join(", "))
+    }
+
+    /// Prefixed with its module, unless that's the root module.
     pub(super) fn qualified(&self, def: DefId, name: &str) -> String {
         let module = &self.ast.modules[self.names.def(def).module].name;
         if module.is_empty() {
@@ -86,7 +100,6 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// The MIR function for `func` instantiated with `type_args`, creating it if needed.
     pub(super) fn instance(&mut self, func: Id<Func>, type_args: Vec<TypeId>) -> FuncId {
         // A trait's method, for a known `Self`: the method its implementation has.
         if let Some((method, args)) = self.dispatch(func, &type_args) {
@@ -118,13 +131,10 @@ impl<'a> Lowerer<'a> {
             name = format!("{owner}::{name}");
         }
         name = self.qualified(def, &name);
-        if !type_args.is_empty() {
-            for &arg in type_args {
-                self.make_structs_in(arg);
-            }
-            let args: Vec<String> = type_args.iter().map(|&t| self.mir.display_ty(t)).collect();
-            name = format!("{name}<{}>", args.join(", "));
+        for &arg in type_args {
+            self.make_structs_in(arg);
         }
+        let name = self.with_type_args(name, type_args);
 
         let is_entry = &*ast_func.name.name == som_lang::ENTRY_POINT
             && self.ast.modules[self.names.def(def).module].name.is_empty()
@@ -158,9 +168,8 @@ impl<'a> Lowerer<'a> {
         id
     }
 
-    /// The initializer of `@const` `c`, whose value runs code: a function with no parameters
-    /// giving its value, run while compiling. Created the first time it's used. One in a
-    /// generic function, `owner`, can use its parameters: there's one for each instance.
+    /// `c`'s initializer, run while compiling. One in a generic function can use its
+    /// parameters, so there's one for each instance.
     pub(super) fn init(&mut self, c: Id<som_ast::Const>, owner: Owner) -> FuncId {
         let owner = match owner {
             Some((_, args)) if args.is_empty() => None,
@@ -178,36 +187,25 @@ impl<'a> Lowerer<'a> {
         let ret = self.typed_for(owner).expr(constant.value);
         let ret = subst.apply(&mut self.mir.types, ret);
         self.make_structs_in(ret);
-        // One written in place, or run for what it checks, has no name: `@const` is what it's
-        // called. One in a generic function says which instance: `@const SIZE<4>`.
-        let mut name = match constant.is_named() {
-            false => "@const".to_string(),
-            true => format!("@const {}", self.qualified(def, &constant.name.name)),
+        // `@const SIZE<4>`, or just `@const` for one without a name.
+        let keyword = Builtin::Const.name();
+        let name = match constant.is_named() {
+            false => keyword.to_string(),
+            true => format!("{keyword} {}", self.qualified(def, &constant.name.name)),
         };
-        if let Some((_, args)) = owner {
-            let shown: Vec<String> = args.iter().map(|&a| self.mir.display_ty(a)).collect();
-            name = format!("{name}<{}>", shown.join(", "));
-        }
-        let id = self.mir.funcs.alloc(Function {
-            name,
-            params: Vec::new(),
-            ret,
-            span: self.ast.consts.span(c).clone(),
-            body: None,
-            link_name: None,
-            library: None,
-            is_entry: false,
-            variadic: false,
-        });
+        let args = owner.as_ref().map_or(&[][..], |(_, args)| args);
+        let name = self.with_type_args(name, args);
+        let span = self.ast.consts.span(c).clone();
+        let id = (self.mir.funcs).alloc(internal_function(name, Vec::new(), ret, span));
         self.queue.push((id, Job::Init(c, owner.clone())));
         self.inits.insert(key, id);
-        // Run even if nothing uses its value: `@assert(…);` in a function.
+        // Even if nothing uses its value: `@assert(…);` in a function.
         self.mir.checks.push(id);
         id
     }
 
-    /// Checks instance `args` of function `func` (lowered as `id`), whose `@if`s depend on its
-    /// generic parameters: what's found is used to lower it. Whether it's right.
+    /// For a function whose `@if`s depend on its generic parameters: what's found is used to
+    /// lower it. False if it's wrong.
     pub(super) fn check_instance(&mut self, id: FuncId, func: Id<Func>, args: &[TypeId]) -> bool {
         let key = (func, args.to_vec());
         if self.instance_typed.contains_key(&key) {
@@ -239,8 +237,6 @@ impl<'a> Lowerer<'a> {
         true
     }
 
-    /// What lowering a function, or a constant in one, `owner`, reads what was checked from:
-    /// what checking its instance found, if it's checked for each instance.
     pub(super) fn typed_for(&self, owner: &Owner) -> TypedRef<'a> {
         match owner.as_ref().and_then(|key| self.instance_typed.get(key)) {
             Some(typed) => TypedRef::Instance(typed.clone()),
@@ -248,7 +244,6 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    /// What a generic function instance's parameters stand for: nothing for no instance.
     pub(super) fn owner_subst(&self, owner: &Owner) -> Subst<'a> {
         match owner {
             Some((func, args)) => {
@@ -259,8 +254,8 @@ impl<'a> Lowerer<'a> {
     }
 }
 
-/// Replaces a generic function's type parameters with concrete types, and works out the
-/// associated types that makes known: `I::Item` with `I` a `ListIter<i32>` is `&i32`.
+/// Also works out the associated types that makes known: `I::Item` with `I` a
+/// `ListIter<i32>` is `&i32`.
 pub(super) struct Subst<'a> {
     map: Vec<(DefId, TypeId)>,
     impls: &'a [ImplInfo],
@@ -297,5 +292,25 @@ impl<'a> Subst<'a> {
                 types.normalize(applied)
             }
         }
+    }
+}
+
+/// A function of the compiler's own: not extern, not the entry point.
+pub(super) fn internal_function(
+    name: String,
+    params: Vec<TypeId>,
+    ret: TypeId,
+    span: Span,
+) -> Function {
+    Function {
+        name,
+        params,
+        ret,
+        span,
+        body: None,
+        link_name: None,
+        library: None,
+        is_entry: false,
+        variadic: false,
     }
 }
