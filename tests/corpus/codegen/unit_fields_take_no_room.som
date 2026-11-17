@@ -1,0 +1,23 @@
+// expect: exit 123
+
+/// A `()` field takes no room: C has no member for it. It still reads, writes and lends
+/// as a value, here and in `Map<i32, ()>`'s own code.
+struct Holder<T> { before: i32, value: T, after: i32 }
+
+fn nothing() {}
+
+fn lend<T>(h: &Holder<T>) -> &T = &h.value;
+
+fn main() -> i32 {
+    let mut h = Holder { before: 1, value: nothing(), after: 2 };
+    h.value = nothing();
+    let v = h.value;
+    let r = lend(&h);
+    let mut map: Map<i32, ()> = Map::empty();
+    map.insert(3, nothing());
+    map.insert(4, nothing());
+    map.insert(3, nothing());
+    let found = map.get(&4) != none;
+    let missing = map.get(&9) == none;
+    h.before + h.after + (map.len as i32) * 10 + (100 if found && missing else 0)
+}

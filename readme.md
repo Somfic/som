@@ -81,3 +81,4 @@ let int_pair: Pair<int, int> = { first: 1, second: 2 }
 - Refactor from_array into a trait
 - Traits!!!
 - give a warning if code can better be ran at compile time
+- multithreading (the go way?)

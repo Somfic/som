@@ -150,7 +150,9 @@ fn ffi_type(mir: &Mir, ty: TypeId) -> Option<Type> {
             if parts.is_empty() {
                 return None;
             }
+            // Without its `()` fields, which the C backend leaves out.
             let fields = (parts.iter())
+                .filter(|&&(part, _)| !matches!(mir.types.get(part), Ty::Unit))
                 .map(|&(part, _)| ffi_type(mir, part))
                 .collect::<Option<Vec<_>>>()?;
             Type::structure(fields)

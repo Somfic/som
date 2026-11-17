@@ -149,6 +149,14 @@ impl<'a> Emitter<'a> {
         }
 
         let value = self.rvalue(f, rvalue);
+        // A `()` in a field has nowhere to go: only what working it out does is kept.
+        if self.is_absent(f, dest) {
+            if matches!(rvalue, Rvalue::Call { .. }) {
+                code.push(format!("    {};", value.text));
+            }
+            *returned = None;
+            return;
+        }
         let local = dest.local;
         // A call to an extern returning `void` has no value.
         let void = matches!(rvalue, Rvalue::Call { func, .. }

@@ -13,6 +13,9 @@ impl Emitter<'_> {
                 inner.projection.pop();
                 Expr::atom(self.place(f, &inner))
             }
+            Rvalue::Ref { place, .. } if self.is_absent(f, place) => {
+                Expr::atom("(&som_unit_place)".to_string())
+            }
             Rvalue::Ref { place, .. } => Expr::compound(format!("&{}", self.place(f, place))),
             Rvalue::Not(op) => self.not(f, op),
             Rvalue::Array { ty, items } => {
@@ -52,14 +55,28 @@ impl Emitter<'_> {
                 fields,
             } => self.variant(f, *ty, *variant, fields),
             Rvalue::Struct { ty, fields, .. } => {
-                let fields: Vec<String> =
-                    fields.iter().map(|op| self.operand(f, op).text).collect();
-                let fields = if fields.is_empty() {
+                let present = self.present_fields(*ty);
+                let mut kept = Vec::new();
+                // A `()` field's value isn't stored; one worked out by a call still runs.
+                let mut effects = Vec::new();
+                for (i, op) in fields.iter().enumerate() {
+                    let text = self.operand(f, op).text;
+                    match present.as_ref().is_some_and(|p| !p[i]) {
+                        true if text.contains('(') => effects.push(text),
+                        true => {}
+                        false => kept.push(text),
+                    }
+                }
+                let kept = if kept.is_empty() {
                     "0".into()
                 } else {
-                    fields.join(", ")
+                    kept.join(", ")
                 };
-                Expr::atom(format!("({}){{{fields}}}", self.ty(*ty)))
+                let made = format!("({}){{{kept}}}", self.ty(*ty));
+                match effects.is_empty() {
+                    true => Expr::atom(made),
+                    false => Expr::atom(format!("({}, {made})", effects.join(", "))),
+                }
             }
             Rvalue::Intrinsic {
                 intrinsic,
@@ -198,6 +215,29 @@ impl Emitter<'_> {
         (self.mir.project(ty, projection)).expect("validated MIR has well-typed places")
     }
 
+    /// Whether `place` is a `()` reached through a field, an element or a reference. A `()`
+    /// takes no room, so C has no member for it: read, it's `0`; written, nothing.
+    pub(crate) fn is_absent(&self, f: &FnState, place: &Place) -> bool {
+        if place.projection.is_empty() {
+            return false;
+        }
+        let ty = (place.projection.iter())
+            .fold(f.body.local(place.local).ty, |ty, &p| self.project(ty, p));
+        self.is_unit(ty)
+    }
+
+    /// The fields of struct type `ty` C has: all but its `()`s. `None` for anything else.
+    pub(crate) fn present_fields(&self, ty: TypeId) -> Option<Vec<bool>> {
+        let Ty::Struct(def, args) = self.mir.types.get(ty) else {
+            return None;
+        };
+        let s = self.mir.struct_def(*def, args);
+        if s.variants.is_some() || s.handle {
+            return None;
+        }
+        Some(s.fields.iter().map(|&(_, t)| !self.is_unit(t)).collect())
+    }
+
     pub(crate) fn operand(&self, f: &mut FnState, op: &Operand) -> Expr {
         match op {
             // A temporary computed by the previous statement is folded in here.
@@ -206,6 +246,9 @@ impl Emitter<'_> {
                     Some(value) => value,
                     None => Expr::atom(self.place(f, place)),
                 }
+            }
+            Operand::Copy(place) | Operand::Move(place) if self.is_absent(f, place) => {
+                Expr::atom("0".to_string())
             }
             // Moves are plain copies in C; the borrow checker already made sure they're sound.
             Operand::Copy(place) | Operand::Move(place) => Expr::atom(self.place(f, place)),
@@ -249,7 +292,11 @@ impl Emitter<'_> {
 
     /// A struct, enum, array, optional or range made while compiling, as a compound literal.
     fn aggregate(&self, ty: TypeId, parts: &[Const]) -> String {
-        let text: Vec<String> = parts.iter().map(|p| self.constant(p)).collect();
+        let present = self.present_fields(ty);
+        let text: Vec<String> = (parts.iter().enumerate())
+            .filter(|(i, _)| present.as_ref().is_none_or(|p| p[*i]))
+            .map(|(_, p)| self.constant(p))
+            .collect();
         let name = self.ty(ty);
         match self.mir.types.get(ty) {
             // `(struct Shape){ .tag = 1, .as.Rect.w = 2 }`: the tag's variant's fields.

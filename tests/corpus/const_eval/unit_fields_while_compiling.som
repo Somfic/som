@@ -1,0 +1,20 @@
+// expect: exit 46
+
+/// While compiling too: a struct's `()` field is laid out as the C backend has it, with no
+/// room of its own.
+struct Holder<T> { before: i32, value: T, after: i32 }
+
+fn nothing() {}
+
+fn work() -> i32 {
+    let mut h = Holder { before: 1, value: nothing(), after: 2 };
+    h.value = nothing();
+    let mut map: Map<i32, ()> = Map::empty();
+    map.insert(3, nothing());
+    map.insert(4, nothing());
+    h.before + h.after + (map.len as i32) * 10
+}
+
+@const WORKED = work();
+
+fn main() -> i32 = WORKED + work();

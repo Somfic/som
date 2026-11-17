@@ -111,6 +111,7 @@ pub trait IndexMut: Index {
 
 pub trait Sized {
     prop len: usize;
+    prop is_empty = .len == 0;
 }
 
 /// Shown as text: what `{x}` in `"total: {x}"` writes. Measured first, so the text it's

@@ -1,5 +1,3 @@
-pub type Set<T> = Map<T, ()>;
-
 pub struct Pair<K, V> {
     key: K,
     value: V
@@ -25,9 +23,6 @@ impl<K: Eq + Hash, V> Map<K, V> {
 
         Self { keys, entries }
     }
-
-    /// How many entries it holds.
-    pub prop len = .entries.len;
 
     pub fn get_pair(&self, key: &K) -> &Pair<K, V>? {
         let slot = .find_slot(key);
@@ -127,3 +122,6 @@ impl<K: Eq + Hash, V> Map<K, V> {
     }
 }
 
+impl<K, V> Sized for Map<K, V> {
+    pub prop len = .entries.len;
+}

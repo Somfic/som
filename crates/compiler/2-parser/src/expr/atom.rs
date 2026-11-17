@@ -46,6 +46,14 @@ impl Parser<'_> {
                 self.parse_primitive_path()?
             }
             TokenKind::Ident | TokenKind::SelfType => return self.parse_name(&start),
+            // `()`: the value of type `()`, as an empty block is.
+            TokenKind::OpenParen if self.peek_nth(1) == TokenKind::CloseParen => {
+                self.advance_by(2);
+                Expr::Block {
+                    stmts: Vec::new(),
+                    value: None,
+                }
+            }
             TokenKind::OpenParen => {
                 self.advance();
                 let inner = self.nested(|p| p.parse_expr())?;

@@ -151,10 +151,9 @@ impl Emitter<'_> {
             return self.define_enum(def, args);
         }
         let names = &self.names.fields[&def];
-        let fields: Vec<String> = s
-            .fields
-            .iter()
-            .zip(names)
+        // A `()` takes no room: C has no member for it.
+        let fields: Vec<String> = (s.fields.iter().zip(names))
+            .filter(|((_, ty), _)| !self.is_unit(*ty))
             .map(|(&(_, ty), name)| format!(" {} {name};", self.ty(ty)))
             .collect();
         // C doesn't allow empty structs.

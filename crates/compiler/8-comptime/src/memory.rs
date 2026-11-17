@@ -87,15 +87,31 @@ pub(crate) fn layout(mir: &Mir, ty: TypeId) -> Option<Layout> {
             let s = mir.struct_def(*def, args);
             let types: Vec<TypeId> = s.fields.iter().map(|&(_, ty)| ty).collect();
             let Some(variants) = &s.variants else {
-                // C has no empty structs: one with no fields holds a `som_unit`.
-                if types.is_empty() {
-                    return scalar(1);
+                // A `()` field takes no room, as the C backend leaves it out: it's at 0, where
+                // nothing is read or written for it.
+                let stored: Vec<TypeId> = (types.iter().copied())
+                    .filter(|&t| !matches!(mir.types.get(t), Ty::Unit))
+                    .collect();
+                // C has no empty structs: one with nothing in it holds a `som_unit`.
+                if stored.is_empty() {
+                    return Some(Layout {
+                        size: 1,
+                        align: 1,
+                        parts: types.into_iter().map(|t| (t, 0)).collect(),
+                    });
                 }
-                let (offsets, end, align) = sequence(mir, &types, 0)?;
+                let (offsets, end, align) = sequence(mir, &stored, 0)?;
+                let mut offsets = offsets.into_iter();
+                let parts = (types.into_iter())
+                    .map(|t| match mir.types.get(t) {
+                        Ty::Unit => (t, 0),
+                        _ => (t, offsets.next().expect("one for each stored field")),
+                    })
+                    .collect();
                 return Some(Layout {
                     size: align_to(end, align),
                     align,
-                    parts: types.into_iter().zip(offsets).collect(),
+                    parts,
                 });
             };
             // `{ uint32_t tag; <common fields>; union { struct { <own fields> } V; … } as; }`
@@ -222,7 +238,12 @@ pub(crate) fn encode(mir: &Mir, value: &Value, ty: TypeId) -> Option<Vec<Byte>> 
         }
         Value::Agg(parts) => {
             let mut bytes = vec![Byte::Uninit; layout.size];
+            // A struct's `()` fields take no room: see `layout`.
+            let in_struct = matches!(mir.types.get(ty), Ty::Struct(..));
             for (i, &(ty, offset)) in layout.parts.iter().enumerate() {
+                if in_struct && matches!(mir.types.get(ty), Ty::Unit) {
+                    continue;
+                }
                 let part = encode(mir, parts.get(i).unwrap_or(&Value::Uninit), ty)?;
                 bytes[offset..offset + part.len()].clone_from_slice(&part);
             }

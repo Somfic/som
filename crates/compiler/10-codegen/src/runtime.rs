@@ -23,6 +23,8 @@ const PRELUDE: &[&str] = &[
     "#include <stdint.h>",
     "",
     "typedef uint8_t som_unit;",
+    // What a `()` reached through a field is lent as: C has no member for it.
+    "static som_unit som_unit_place;",
     "",
     // The command-line arguments, for the standard library's `args()`.
     "static int som_argc;",

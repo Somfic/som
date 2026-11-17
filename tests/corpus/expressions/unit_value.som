@@ -1,0 +1,13 @@
+// expect: exit 7
+
+/// `()` is the value of type `()`: in a struct literal, assigned, and given as an argument.
+struct Holder<T> { before: i32, value: T }
+
+fn main() -> i32 {
+    let mut h = Holder { before: 5, value: () };
+    h.value = ();
+    let mut set: Map<i32, ()> = Map::empty();
+    set.insert(1, ());
+    set.insert(2, ());
+    h.before + set.len as i32
+}
