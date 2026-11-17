@@ -110,7 +110,6 @@ fn is_italic(kind: TokenKind) -> bool {
 
 // Syntax highlight a line of source code
 /// Syntax-highlights one line of source code for terminal output.
-/// Install with `som_base::diagnostics::set_highlighter(som_lexer::highlight)`.
 pub fn highlight(line: &str) -> String {
     let source = Arc::new(Source::from_raw(line));
     let tokens = lex(source);

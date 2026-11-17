@@ -170,11 +170,7 @@ impl Parser<'_> {
                     self.errors.push(crate::ParseError {
                         message: msg![code("="), " assigns; to compare, use ", code("==")],
                         hint: "an assignment in a condition".into(),
-                        fix: Some(som_base::Fix::replace(
-                            msg!["change to ", code("==")],
-                            span.clone(),
-                            "==",
-                        )),
+                        fix: Some(som_base::Fix::change_to(span.clone(), "==")),
                         span,
                     });
                 }

@@ -687,11 +687,7 @@ impl Parser<'_> {
                 ", not ",
                 code(found.written)
             ];
-            let fix = Fix::replace(
-                msg!["change to ", code(found.som)],
-                start.clone(),
-                found.som,
-            );
+            let fix = Fix::change_to(start.clone(), found.som);
             self.report_foreign(start.clone(), message, found, Some(fix));
         }
         self.advance();
@@ -741,11 +737,7 @@ impl Parser<'_> {
                     code(".")
                 ],
                 hint: msg!["write it ", code(&fixed)],
-                fix: Some(Fix::replace(
-                    msg!["change to ", code(&fixed)],
-                    span.clone(),
-                    fixed,
-                )),
+                fix: Some(Fix::change_to(span.clone(), fixed)),
                 span,
             });
         }
@@ -859,11 +851,7 @@ impl Parser<'_> {
             self.errors.push(ParseError {
                 message: msg!["som writes a field's name first, then its type"],
                 hint: msg!["write it ", code(&fixed)],
-                fix: Some(Fix::replace(
-                    msg!["change to ", code(&fixed)],
-                    span.clone(),
-                    fixed,
-                )),
+                fix: Some(Fix::change_to(span.clone(), fixed)),
                 span,
             });
         }
@@ -1401,11 +1389,7 @@ impl Parser<'_> {
                 self.errors.push(ParseError {
                     message: msg!["som writes a parameter's name first, then its type"],
                     hint: msg!["write it ", code(&fixed)],
-                    fix: Some(Fix::replace(
-                        msg!["change to ", code(&fixed)],
-                        span.clone(),
-                        fixed,
-                    )),
+                    fix: Some(Fix::change_to(span.clone(), fixed)),
                     span,
                 });
                 params.push(Param {

@@ -136,11 +136,7 @@ impl Parser<'_> {
                 self.errors.push(ParseError {
                     message: msg!["som declares a function with ", code("fn")],
                     hint: msg!["with parameters, this is a function, not a variable"],
-                    fix: Some(Fix::replace(
-                        msg!["change to ", code(&fixed)],
-                        span.clone(),
-                        fixed,
-                    )),
+                    fix: Some(Fix::change_to(span.clone(), fixed)),
                     span,
                 });
                 self.in_recovery = true;

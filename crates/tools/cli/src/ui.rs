@@ -11,6 +11,7 @@
 //!
 //! Colour is used only when stderr is a terminal and `NO_COLOR` isn't set.
 
+use som_base::diagnostics::RenderOptions;
 use som_base::{Diagnostic, Message};
 use std::io::IsTerminal;
 use std::sync::OnceLock;
@@ -31,7 +32,10 @@ pub fn success(what: &'static str, subject: impl Into<Message>) {
 /// Shows a diagnostic. Ones with code snippets are followed by a blank line,
 /// to keep consecutive ones apart.
 pub fn diagnostic(diagnostic: &Diagnostic) {
-    let mut text = diagnostic.render(color());
+    let mut text = diagnostic.render_with(RenderOptions {
+        color: color(),
+        highlight: Some(som_driver::highlight),
+    });
     if !diagnostic.labels.is_empty() {
         text.push('\n');
     }

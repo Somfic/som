@@ -163,6 +163,14 @@ impl Message {
 
     /// The text in theme colours, or as [`plain`](Self::plain) text when `color` is false.
     pub fn render(&self, color: bool) -> String {
+        self.render_with(RenderOptions {
+            color,
+            highlight: None,
+        })
+    }
+
+    pub fn render_with(&self, options: RenderOptions) -> String {
+        let color = options.color;
         let mut out = String::new();
         for part in &self.0 {
             match part {
@@ -172,7 +180,7 @@ impl Message {
                     out.push_str(part.content());
                     out.push('`');
                 }
-                Part::Code(s) => out.push_str(&syntax_highlight(s)),
+                Part::Code(s) => out.push_str(&options.highlight(s)),
                 Part::Type(s) => out.push_str(&paint(s, YELLOW, Style::new())),
                 Part::Path(s) => out.push_str(&paint(s, LAVENDER, Style::new())),
                 Part::Command(s) => out.push_str(&paint(s, SKY, Style::new())),
@@ -185,6 +193,20 @@ impl Message {
                     Kind::Module => paint(s, GREEN, Style::new()),
                 }),
             }
+        }
+        out
+    }
+
+    /// `items` as a list: `a`, `a and b`, `a, b and c`.
+    pub fn list(items: impl IntoIterator<Item = Part>, last: &str) -> Message {
+        let items: Vec<Part> = items.into_iter().collect();
+        let mut out = Message(Vec::new());
+        let count = items.len();
+        for (i, item) in items.into_iter().enumerate() {
+            if i > 0 {
+                out.0.push(if i + 1 == count { last } else { ", " }.into());
+            }
+            out.0.push(item);
         }
         out
     }

@@ -658,13 +658,10 @@ impl TypeError {
                 fixes,
             } => {
                 let mut hint = msg![struct_name(ty.clone()), " has private fields: "];
-                for (i, (name, _)) in fields.iter().enumerate() {
-                    if i > 0 {
-                        hint.0
-                            .push(if i + 1 == fields.len() { " and " } else { ", " }.into());
-                    }
-                    hint.0.push(field(name.clone()));
-                }
+                hint.push(Message::list(
+                    fields.iter().map(|(name, _)| field(name)),
+                    " and ",
+                ));
                 let mut d =
                     Diagnostic::error(msg!["cannot construct ", struct_name(ty.clone()), " here"])
                         .with_label(Label::primary(
@@ -809,12 +806,7 @@ impl TypeError {
                     // `"ab" * 3`: it has the operator, with something else on the right.
                     None if !takes.is_empty() => {
                         let mut hint = msg![lhs.clone(), " has ", code(op), " with "];
-                        for (i, ty) in takes.iter().enumerate() {
-                            if i > 0 {
-                                hint.push(if i + 1 == takes.len() { " or " } else { ", " });
-                            }
-                            hint.push(code(ty));
-                        }
+                        hint.push(Message::list(takes.iter().map(code), " or "));
                         hint.push(" on the right");
                         let d = d
                             .with_label(Label::primary(span.clone(), "no such operation"))
@@ -1018,11 +1010,7 @@ impl TypeError {
                         span.clone(),
                         msg!["text is ", code("string")],
                     ))
-                    .with_fix(Fix::replace(
-                        msg!["change to ", code("string")],
-                        span.clone(),
-                        "string",
-                    ))
+                    .with_fix(Fix::change_to(span.clone(), "string"))
             }
             TypeError::NotForC { ty, what, span } => {
                 let d = Diagnostic::error(msg!["C can't take ", ty.clone()]).with_label(
@@ -1181,13 +1169,7 @@ impl TypeError {
                     [] => msg!["its type differs between the variants"],
                     [one] => msg![code(one), " doesn't have it"],
                     many => {
-                        let mut m = Message(Vec::new());
-                        for (i, v) in many.iter().enumerate() {
-                            if i > 0 {
-                                m.0.push(if i + 1 == many.len() { " and " } else { ", " }.into());
-                            }
-                            m.0.push(code(v));
-                        }
+                        let mut m = Message::list(many.iter().map(code), " and ");
                         m.push(" don't have it");
                         m
                     }
@@ -1438,14 +1420,7 @@ impl TypeError {
                 span,
             } => {
                 let mut message = msg![code(variant), " also has "];
-                for (i, f) in fields.iter().enumerate() {
-                    if i > 0 {
-                        message
-                            .0
-                            .push(if i + 1 == fields.len() { " and " } else { ", " }.into());
-                    }
-                    message.0.push(field(f));
-                }
+                message.push(Message::list(fields.iter().map(field), " and "));
                 Diagnostic::error(message)
                     .with_label(Label::primary(span.clone(), "not matched here"))
                     .with_hint(msg![
@@ -1472,20 +1447,7 @@ impl TypeError {
                         None => d,
                     };
                 }
-                let mut message = Message(Vec::new());
-                for (i, m) in missing.iter().enumerate() {
-                    if i > 0 {
-                        message.0.push(
-                            if i + 1 == missing.len() {
-                                " and "
-                            } else {
-                                ", "
-                            }
-                            .into(),
-                        );
-                    }
-                    message.0.push(code(m));
-                }
+                let mut message = Message::list(missing.iter().map(code), " and ");
                 let verb = if missing.len() == 1 {
                     " isn't"
                 } else {
@@ -1649,16 +1611,10 @@ impl TypeError {
             } => {
                 // `Vector<T, 2>`, `Vector<T, 2> and Vector<T, 3>`, or a list ending in `and`.
                 let mut only = msg![code(name.clone()), " is only defined for "];
-                for (i, (target, _)) in targets.iter().enumerate() {
-                    if i > 0 {
-                        only.push(if i + 1 == targets.len() {
-                            " and "
-                        } else {
-                            ", "
-                        });
-                    }
-                    only.push(code(target.clone()));
-                }
+                only.push(Message::list(
+                    targets.iter().map(|(target, _)| code(target)),
+                    " and ",
+                ));
                 let mut diagnostic =
                     Diagnostic::error(msg![ty.clone(), " has no ", *what, " ", func(name.clone())])
                         .with_label(Label::primary(span.clone(), only));
@@ -1991,11 +1947,7 @@ impl TypeError {
                     " is an optional without a value; a null pointer is ",
                     code("som::mem::null()")
                 ])
-                .with_fix(Fix::replace(
-                    msg!["change to ", code("som::mem::null()")],
-                    span.clone(),
-                    "som::mem::null()",
-                ))
+                .with_fix(Fix::change_to(span.clone(), "som::mem::null()"))
             }
             TypeError::ConstNotCount {
                 name,
@@ -2224,11 +2176,7 @@ fn member_hints(
         };
         let d = d.with_hint(hint);
         return match replaced {
-            Some(at) => d.with_fix(Fix::replace(
-                msg!["change to ", code(target)],
-                at,
-                target.to_string(),
-            )),
+            Some(at) => d.with_fix(Fix::change_to(at, target.to_string())),
             None => d,
         };
     }

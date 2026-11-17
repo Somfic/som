@@ -1598,13 +1598,7 @@ impl<'a> Resolver<'a> {
     /// A hint for a name that wasn't found, and the changes it suggests.
     fn suggest(&self, path: &Path, expect: Expect) -> Option<(Message, Vec<Fix>)> {
         let span = path.span();
-        let change_to = |text: String| {
-            vec![Fix::replace(
-                msg!["change to ", code(&text)],
-                span.clone(),
-                text,
-            )]
-        };
+        let change_to = |text: String| vec![Fix::change_to(span.clone(), text)];
         let name = &*path.name().name;
 
         if path.segments.len() > 1 {
@@ -1772,7 +1766,7 @@ impl Resolver<'_> {
         // Only those taking nothing can stand in as they are: `List::new()` → `List::empty()`.
         let fixes = (constructors.iter())
             .filter(|(_, nothing)| *nothing)
-            .map(|(c, _)| Fix::replace(msg!["change to ", code(c)], path.span(), c.clone()))
+            .map(|(c, _)| Fix::change_to(path.span(), c.clone()))
             .collect();
         Some((help, fixes))
     }
@@ -1812,7 +1806,7 @@ impl Resolver<'_> {
             };
             let read = format!("{}.len", text(*of));
             let help = msg!["som reads a length as ", code(&read), ": ", found.hint()];
-            let fix = Fix::replace(msg!["change to ", code(&read)], span, read);
+            let fix = Fix::change_to(span, read);
             (help, vec![fix])
         } else if let Some(found) = foreign::range(name) {
             let range = match args {
@@ -1821,7 +1815,7 @@ impl Resolver<'_> {
                 _ => return false,
             };
             let help = msg!["som writes a range ", code(&range), ": ", found.hint()];
-            let fix = Fix::replace(msg!["change to ", code(&range)], span, range);
+            let fix = Fix::change_to(span, range);
             (help, vec![fix])
         } else if let Some(found) = foreign::print(name) {
             let help = msg![
@@ -1830,11 +1824,7 @@ impl Resolver<'_> {
                 ": ",
                 found.hint()
             ];
-            let fix = Fix::replace(
-                msg!["change to ", code("println")],
-                segment.span.clone(),
-                "println",
-            );
+            let fix = Fix::change_to(segment.span.clone(), "println");
             (help, vec![fix])
         } else {
             return false;
@@ -1880,7 +1870,7 @@ impl Resolver<'_> {
             ": ",
             found.hint()
         ];
-        let fix = Fix::replace(msg!["change to ", code("println")], span.clone(), "println");
+        let fix = Fix::change_to(span.clone(), "println");
         let _ = id;
         self.errors.push(ResolveError::UnknownFunction {
             name: path,

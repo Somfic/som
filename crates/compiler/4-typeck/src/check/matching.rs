@@ -727,7 +727,7 @@ impl Checker<'_> {
                 Some(TypeError::RustOptionalPattern {
                     written: "None".into(),
                     span: span.clone(),
-                    fix: Some(Fix::replace(msg!["change to ", code("none")], span, "none")),
+                    fix: Some(Fix::change_to(span, "none")),
                     needs_none_first: false,
                 })
             }
@@ -740,9 +740,8 @@ impl Checker<'_> {
                 // A name binds the value only once `none` is matched: before it, the whole
                 // optional.
                 let binding = matches!(self.ast.patterns[sub], Pattern::Binding { .. });
-                let fix = (!binding || none_matched).then(|| {
-                    Fix::replace(msg!["change to ", code(&text)], span.clone(), text.clone())
-                });
+                let fix =
+                    (!binding || none_matched).then(|| Fix::change_to(span.clone(), text.clone()));
                 Some(TypeError::RustOptionalPattern {
                     written: self.ast.pattern_text(id),
                     span,

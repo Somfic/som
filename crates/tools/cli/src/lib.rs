@@ -155,7 +155,6 @@ pub fn main(args: impl IntoIterator<Item = String>) -> ExitCode {
             return ExitCode::from(e.exit_code() as u8);
         }
     };
-    som_driver::enable_highlighting();
 
     match cli.command {
         Command::Run { path, build, args } => run(&path, &build, &args),

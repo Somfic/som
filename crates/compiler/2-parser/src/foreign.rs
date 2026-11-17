@@ -41,7 +41,7 @@ impl Parser<'_> {
     fn replace_word(&mut self, foreign: &Foreign, som: &str) {
         let span = self.current_span();
         let message = msg!["som writes ", code(som), ", not ", code(foreign.written)];
-        let fix = Fix::replace(msg!["change to ", code(som)], span.clone(), som);
+        let fix = Fix::change_to(span.clone(), som);
         self.report_foreign(span, message, foreign, Some(fix));
         self.advance();
     }
@@ -75,7 +75,7 @@ impl Parser<'_> {
                 ..span.clone()
             };
             let message = msg!["som writes a comment with ", code("//")];
-            let fix = Fix::replace(msg!["change to ", code("//")], marker.clone(), "//");
+            let fix = Fix::change_to(marker.clone(), "//");
             self.report_foreign(marker, message, comment, Some(fix));
         }
     }
@@ -137,7 +137,7 @@ impl Parser<'_> {
             ", not ",
             code(found.written)
         ];
-        let fix = Fix::replace(msg!["change to ", code(&som)], span.clone(), som);
+        let fix = Fix::change_to(span.clone(), som);
         self.report_foreign(span, message, found, Some(fix));
         self.advance();
         Some(())
@@ -177,7 +177,7 @@ impl Parser<'_> {
             ", not ",
             code(found.written)
         ];
-        let fix = Fix::replace(msg!["change to ", code(found.som)], span.clone(), found.som);
+        let fix = Fix::change_to(span.clone(), found.som);
         self.report_foreign(span, message, found, Some(fix));
         self.advance();
         Some(found.som == "let mut")
@@ -193,7 +193,7 @@ impl Parser<'_> {
         let span = self.span_from(&start);
         let fixed = format!("let {} =", name.name);
         let message = msg!["som declares variables with ", code("let")];
-        let fix = Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed);
+        let fix = Fix::change_to(span.clone(), fixed);
         self.report_foreign(span, message, found, Some(fix));
         Some(name)
     }
@@ -320,11 +320,7 @@ impl Parser<'_> {
                     code("c_str"),
                     " a property, read without parentheses"
                 ],
-                fix: Some(Fix::replace(
-                    msg!["change to ", code("c_str")],
-                    span,
-                    "c_str",
-                )),
+                fix: Some(Fix::change_to(span, "c_str")),
                 span: start,
             });
         }
@@ -361,7 +357,7 @@ impl Parser<'_> {
         };
         let span = self.current_span();
         let message = msg!["som writes ", code(found.som), ", not ", code(written)];
-        let fix = Fix::replace(msg!["change to ", code(found.som)], span.clone(), found.som);
+        let fix = Fix::change_to(span.clone(), found.som);
         self.report_foreign(span, message, found, Some(fix));
         self.tokens[self.pos].kind = som;
     }
@@ -386,11 +382,7 @@ impl Parser<'_> {
         };
         let span = self.current_span();
         let message = msg!["som writes ", code("!"), ", not ", code("not")];
-        let fix = Fix::replace(
-            msg!["change to ", code("!")],
-            self.with_space_after(&span),
-            "!",
-        );
+        let fix = Fix::change_to(self.with_space_after(&span), "!");
         self.report_foreign(span, message, found, Some(fix));
         self.tokens[self.pos].kind = TokenKind::Bang;
     }
@@ -424,7 +416,7 @@ impl Parser<'_> {
         let name = target.get_text();
         let fixed = format!("{name} = {name} {} 1", &written[..1]);
         let message = msg!["som has no ", code(written), ": write ", code(&fixed)];
-        let fix = Fix::replace(msg!["change to ", code(&fixed)], target.merge(&span), fixed);
+        let fix = Fix::change_to(target.merge(&span), fixed);
         self.report_foreign(span, message, found, Some(fix));
         true
     }
@@ -443,7 +435,7 @@ impl Parser<'_> {
         let span = start.merge(&name);
         let fixed = format!("{0} = {0} + 1", name.get_text());
         let message = msg!["som has no ", code("++"), ": write ", code(&fixed)];
-        let fix = Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed);
+        let fix = Fix::change_to(span.clone(), fixed);
         self.report_foreign(span, message, found, Some(fix));
         self.advance();
         true
@@ -671,7 +663,7 @@ impl Parser<'_> {
                 format!("{a}..{b}")
             };
             let fixed = format!("{} in {range}", name.name);
-            let fix = Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed);
+            let fix = Fix::change_to(span.clone(), fixed);
             self.report_c_for(span.clone(), found, Some(fix));
         }
         let range = self.ast.exprs.alloc(
@@ -725,7 +717,7 @@ impl Parser<'_> {
         );
         let fixed = format!("{} in {a}..{b} + 1", name.name);
         let message = msg!["som loops over a range: ", code("for i in 1..n + 1")];
-        let fix = Fix::replace(msg!["change to ", code(&fixed)], span.clone(), fixed);
+        let fix = Fix::change_to(span.clone(), fixed);
         self.report_foreign(span.clone(), message, found, Some(fix));
         Some(self.ast.exprs.alloc(
             Expr::Range {

@@ -673,10 +673,7 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
     }
 }
 
-/// Installs syntax highlighting for code snippets in rendered diagnostics.
-pub fn enable_highlighting() {
-    som_base::diagnostics::set_highlighter(som_lexer::highlight);
-}
+pub use som_lexer::highlight;
 
 /// Every token of every file in the program, for `--emit tokens`. Files are named
 /// by module and file name, so the dump doesn't depend on where the program lives.
