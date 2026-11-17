@@ -1,0 +1,3 @@
+// expect: error
+
+fn f(v: string, x: i32) -> i32 { match v { "{x}" => 1, _ => 2 } }

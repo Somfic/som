@@ -1,0 +1,75 @@
+extern "c";
+
+pub struct File {
+    ptr: *,
+    mode: FileMode
+}
+
+pub enum FileMode {
+    Read,
+    Write
+}
+
+impl File {
+    pub fn open(path: string, mode: FileMode) -> Self? {
+        let flags: cstr = match mode {
+            Read => "r",
+            Write => "w",
+        };
+
+        let ptr = c::fopen(path.c_str, flags);
+
+        if ptr == som::mem::null() {
+            none
+        } else {
+            File { ptr, mode }
+        }
+    }
+
+    pub fn lines(&mut self) -> Lines {
+        Lines { file: self, buf: som::mem::null(), cap: 0 }
+    }
+
+    pub fn exists(path: string) -> bool {
+        c::access(path.c_str, c::F_OK) == 0
+    }
+}
+
+impl Drop for File {
+    fn drop(self: &mut File) {
+        c::fclose(self.ptr);
+    }
+}
+
+struct Lines {
+    file: &mut File,
+    buf: *,
+    cap: u64,
+}
+
+impl Iterator for Lines {
+    type Item = string;
+
+    fn next(self: &mut Lines) -> Item? {
+        let n = c::getline(&mut .buf, &mut .cap, .file.ptr);
+
+        if n < 0 {
+            // end of file, or an error
+            return none;
+        }
+
+        let mut len = n as usize;
+        let bytes = .buf as *u8;
+        if len > 0 && bytes.read(len - 1) == 10 {
+            len = len - 1; // drop trailing '\n'
+        }
+
+        string::from_bytes(bytes.view(len))
+    }
+}
+
+impl Drop for Lines {
+    fn drop(&mut self) {
+        c::free(.buf);
+    }
+}

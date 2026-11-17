@@ -8,12 +8,14 @@
 
 use crate::ty::TypeId;
 
-/// One way of making a value: a variant, `true`, `5`, `none`, or an optional holding a value.
+/// One way of making a value: a variant, `true`, `5`, `"yes"`, `none`, or an optional holding
+/// a value.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Ctor {
     Variant(usize),
     Bool(bool),
     Int(i128),
+    Str(Box<str>),
     None,
     Some,
 }

@@ -444,6 +444,7 @@ impl Ast {
             }
             Pattern::Int(n) => n.to_string(),
             Pattern::Bool(b) => b.to_string(),
+            Pattern::Str(s) => format!("{s:?}"),
             Pattern::None => "none".into(),
             Pattern::Variant { path, fields } => match fields {
                 PatternFields::Unit => path.to_string(),

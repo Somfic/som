@@ -4,7 +4,8 @@
 
 use som_ast::{Arm, Expr, Id, Pattern, PatternFields};
 use som_mir::*;
-use som_resolve::{DefId, DefKind};
+use som_resolve::{DefId, DefKind, LangTrait};
+use som_typeck::traits::builtin_operator;
 
 use super::FnBuilder;
 
@@ -141,6 +142,40 @@ impl FnBuilder<'_, '_> {
                     bool,
                     span.clone(),
                 );
+                self.test(equal, fail, span);
+            }
+            // `"yes"` is `== "yes"`: `Eq`'s `eq`, as the operator calls it, with the pattern's
+            // text lent as `other`; where `==` is built in, as for `cstr`, that.
+            Pattern::Str(text) => {
+                let literal = self.constant(ConstKind::Str(text.to_string()), ty);
+                let equal = if builtin_operator(self.l.mir.types.get(ty), LangTrait::Eq) {
+                    let rvalue = Rvalue::Binary {
+                        op: BinOp::Equals,
+                        lhs: Operand::Copy(place),
+                        rhs: literal,
+                    };
+                    self.compute(rvalue, bool, span.clone())
+                } else {
+                    let other = self.temp(ty, span.clone());
+                    self.assign(Place::local(other), Rvalue::Use(literal), span.clone());
+                    let reference = self.l.mir.types.intern(Ty::Ref {
+                        mutable: false,
+                        to: ty,
+                    });
+                    let mut args = Vec::new();
+                    for lent in [place, Place::local(other)] {
+                        let borrow = Rvalue::Ref {
+                            mutable: false,
+                            place: lent,
+                        };
+                        args.push(self.compute(borrow, reference, span.clone()));
+                    }
+                    let trait_ = (self.l.names.lang(LangTrait::Eq))
+                        .expect("checked: text is compared with `Eq`");
+                    let method = self.l.trait_method(trait_, "eq");
+                    let func = self.l.instance(method, vec![ty]);
+                    self.compute(Rvalue::Call { func, args }, bool, span.clone())
+                };
                 self.test(equal, fail, span);
             }
             Pattern::Bool(b) => {

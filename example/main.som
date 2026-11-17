@@ -1,11 +1,1 @@
-
-struct Struct {
-    hello: bool,
-    bye: i32
-}
-
-pub fn fields_eq<T>(a: &T, b: &T) -> bool {
-    @for f in T { if a.f != b.f { return false; } }
-    true
-}
-
+@assert(som::io::get_env("CARGO") == true, "rust is installed");

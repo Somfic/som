@@ -2326,7 +2326,11 @@ impl<'a> Checker<'a> {
             {
                 continue;
             }
-            let ret = self.u.shallow(self.sigs[f.id].ret);
+            // A `Self`, or a `Self?`: `File::open` makes one if it can.
+            let mut ret = self.u.shallow(self.sigs[f.id].ret);
+            if let Ty::Optional(inner) = *self.u.get(ret) {
+                ret = self.u.shallow(inner);
+            }
             if !matches!(self.u.get(ret), Ty::Struct(d, _) if *d == def) {
                 continue;
             }
@@ -4843,6 +4847,31 @@ impl<'a> Checker<'a> {
             }
             _ => self.u.could_fit(expected, found).then_some(0),
         }
+    }
+
+    /// For an overloaded call whose result is `result`, not decided yet: keeps the functions
+    /// whose return type `keep` accepts, and if that leaves one, takes it now. A `match` on
+    /// the call does this with what its arms can match.
+    pub(super) fn decide_pending_by(&mut self, result: TypeId, keep: &dyn Fn(&Self, TypeId) -> bool) {
+        let result = self.u.shallow(result);
+        let Some(index) = (self.pending_calls.iter())
+            .position(|p| self.u.shallow(p.result) == result)
+        else {
+            return;
+        };
+        let mut p = self.pending_calls.remove(index);
+        let kept: Vec<_> = (p.fitting.iter())
+            .filter(|(.., sig, _)| keep(self, sig.ret))
+            .cloned()
+            .collect();
+        if kept.len() != 1 {
+            self.pending_calls.insert(index, p);
+            return;
+        }
+        let (def, func, sig, type_args) = kept.into_iter().next().expect("exactly one");
+        p.fitting.clear();
+        let _ = self.u.unify(p.result, sig.ret);
+        self.finish_call(p.call, def, func, &sig, type_args, &p.args, &p.found);
     }
 
     /// Decides the calls more than one function fitted, now that more is known about their

@@ -1,0 +1,3 @@
+// expect: error NonExhaustiveMatch
+
+fn f(v: string) -> i32 { match v { "a" => 1, "b" => 2 } }

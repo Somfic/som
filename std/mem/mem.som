@@ -1,6 +1,5 @@
 pub fn null() -> * {
-    leave(out p);
-    p
+    leave(out p); p
 }
 
 pub fn null<T>() -> *T {

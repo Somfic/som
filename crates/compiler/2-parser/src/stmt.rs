@@ -337,7 +337,14 @@ impl Parser<'_> {
         name: som_ast::Ident,
         iterable: Id<Expr>,
     ) -> Option<Id<Stmt>> {
-        let body = self.parse_stmt_block("the for body")?;
+        // `for line in file` with its body not written yet: reported, and kept as a loop with
+        // none, so what it loops over is still checked and `file.` can be completed.
+        let from = self.pos;
+        let body = match self.parse_stmt_block("the for body") {
+            Some(body) => body,
+            None if self.pos == from => Vec::new(),
+            None => return None,
+        };
         let span = self.span_from(&start);
         Some(self.ast.stmts.alloc(
             Stmt::For {

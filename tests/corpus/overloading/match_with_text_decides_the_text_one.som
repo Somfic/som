@@ -1,0 +1,22 @@
+// expect: exit 42
+
+/// Matched with text arms, an overloaded call's result is the one giving text, or an
+/// optional holding it: not the `bool`.
+fn setting(name: string) -> string? {
+    if name == "on" { return "yes"; }
+    none
+}
+
+fn setting(name: string) -> bool {
+    match setting(name) {
+        "yes" => true,
+        _ => false,
+    }
+}
+
+fn main() -> i32 {
+    let on: bool = setting("on");
+    let missing: bool = setting("missing");
+    if !on || missing { return 1; }
+    42
+}
