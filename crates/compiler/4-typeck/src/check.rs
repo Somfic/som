@@ -3492,6 +3492,15 @@ impl<'a> Checker<'a> {
                 self.text_as_string(lhs_ty);
                 self.text_as_string(rhs_ty);
                 if against_none {
+                    // An overloaded call not decided yet: only one giving an optional can be
+                    // `none`; a plain value would only fit by being wrapped.
+                    for ty in [lhs_ty, rhs_ty] {
+                        if self.u.var_kind(ty) == Some(VarKind::Any) {
+                            self.decide_pending_by(ty, &|c, ret| {
+                                matches!(c.u.get(c.u.shallow(ret)), Ty::Optional(_))
+                            });
+                        }
+                    }
                     if self.u.unify(lhs_ty, rhs_ty).is_err() {
                         let ((optional, ty), none) = if matches!(self.ast.exprs[*lhs], Expr::None) {
                             ((*rhs, rhs_ty), *lhs)
