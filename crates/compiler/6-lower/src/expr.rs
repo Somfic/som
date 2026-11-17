@@ -226,7 +226,6 @@ impl FnBuilder<'_, '_> {
             }
             // A plain constant stands for its value, made where it's used.
             DefKind::Const(c) => self.operand(self.l.ast.consts[c].value),
-            // `Shape::Empty`
             DefKind::Variant { index, .. } => {
                 let value = Rvalue::Struct {
                     ty,

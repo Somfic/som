@@ -103,7 +103,6 @@ impl FnBuilder<'_, '_> {
                 };
                 self.call(expr, func, Some(*receiver), args)
             }
-            // `items.len` of an array, slice or text.
             Expr::Field { object, .. } if let Some(method) = self.typed.array_method(expr) => {
                 Rvalue::Use(self.array_method(expr, method, *object, &[]))
             }
@@ -210,7 +209,6 @@ impl FnBuilder<'_, '_> {
             .expect("checked programs are fully resolved");
         match self.l.names.def(def).kind {
             DefKind::Func(func) => self.call(expr, func, None, args),
-            // `Shape::Circle(1.0)`
             DefKind::Variant { index, .. } => {
                 let fields = args.iter().map(|&a| self.operand(a)).collect();
                 let ty = self.expr_ty(expr);

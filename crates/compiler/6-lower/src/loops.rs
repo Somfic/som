@@ -92,7 +92,6 @@ impl FnBuilder<'_, '_> {
         self.loops.pop();
     }
 
-    /// A `for` loop's variable, and its type.
     pub(super) fn loop_variable(&mut self, stmt: Id<Stmt>) -> (DefId, TypeId) {
         let def = (self.l.names.local(stmt)).expect("every for loop is resolved");
         let ty = self.typed.local(def);
