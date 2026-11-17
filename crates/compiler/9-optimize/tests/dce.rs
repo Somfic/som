@@ -2,7 +2,6 @@ use som_base::Source;
 use som_mir::Mir;
 use std::sync::Arc;
 
-/// The MIR of `source` after every optimization.
 fn optimized(source: &str) -> String {
     let (ast, errors) = som_parser::parse(Arc::new(Source::from_raw(source)));
     assert!(errors.is_empty(), "parse errors: {errors:?}");
@@ -21,7 +20,6 @@ fn optimized(source: &str) -> String {
     mir.to_string()
 }
 
-/// The MIR of the function `name` in `mir`.
 fn func<'a>(mir: &'a str, name: &str) -> &'a str {
     let start = mir.find(&format!("fn {name}(")).expect("function exists");
     let end = mir[start..].find("\n}\n").map_or(mir.len(), |e| start + e);

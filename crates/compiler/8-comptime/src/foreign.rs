@@ -16,8 +16,9 @@
 //! What C keeps of a pinned buffer after the constant is worked out points to nothing; and a
 //! constant's value can't hold an address from C, which only exists while compiling.
 
+use crate::machine::Machine;
 use crate::memory::{Byte, POINTER, decode, encode, layout};
-use crate::{Fault, Loc, Machine, Root, Stop, Value, unsupported};
+use crate::{Fault, Loc, Root, Stop, Value, unsupported};
 use libffi::middle::{Arg, Cif, CodePtr, Ret, Type};
 use som_base::Span;
 use som_mir::*;
@@ -60,6 +61,25 @@ pub(crate) enum Missing {
     Unloadable(PathBuf, String),
     /// It isn't in its library, or in the C library the compiler has.
     NotFound(Option<PathBuf>),
+}
+
+impl Missing {
+    pub(crate) fn reason(self) -> String {
+        match self {
+            Missing::Static(path) => format!(
+                "`{}` is a static library: only a shared one (`.dylib`, `.so`) can be \
+                 loaded while compiling",
+                path.display()
+            ),
+            Missing::Unloadable(path, why) => {
+                format!("`{}` can't be loaded: {why}", path.display())
+            }
+            Missing::NotFound(Some(path)) => format!("it isn't in `{}`", path.display()),
+            Missing::NotFound(None) => "it isn't in the C library the compiler has: say which \
+                 library it's in with `extern \"name\"`"
+                .to_string(),
+        }
+    }
 }
 
 /// The libraries loaded so far, never unloaded: what C gives back can outlive a constant.
@@ -161,7 +181,7 @@ impl Machine<'_, '_> {
     ) -> Result<Value, Stop> {
         let mir = self.state.mir;
         let function = &mir.funcs[func];
-        let name = function.link_name.clone().unwrap_or(function.name.clone());
+        let name = crate::c_name(function);
         let address = symbol(&name, function.library.as_deref())
             .map_err(|missing| Stop::Report(Fault::Foreign(name.clone(), missing), span.clone()))?;
 
@@ -269,7 +289,7 @@ impl Machine<'_, '_> {
 
     /// Bytes `bytes` as C sees them: a pointer's as the real address it's at, pinning the
     /// allocation it points into.
-    fn host_bytes(&mut self, bytes: &[Byte], span: &Span) -> Result<Vec<u8>, Stop> {
+    pub(crate) fn host_bytes(&mut self, bytes: &[Byte], span: &Span) -> Result<Vec<u8>, Stop> {
         let mut host = Vec::with_capacity(bytes.len());
         for byte in bytes {
             host.push(match byte {

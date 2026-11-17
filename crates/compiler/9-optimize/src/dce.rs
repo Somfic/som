@@ -33,8 +33,6 @@ fn dce_body(body: &mut Body) {
     remove_unmentioned_locals(body);
 }
 
-// --- Unused locals ---
-
 /// Drops the assignments to locals nothing with an effect depends on, and their
 /// `StorageLive` and `StorageDead`. Returns whether anything changed.
 fn remove_unused(body: &mut Body) -> bool {
@@ -87,8 +85,6 @@ fn used_locals(body: &Body) -> Vec<bool> {
         }
     }
 }
-
-// --- Dead stores ---
 
 /// Drops assignments whose value is overwritten, or never read, before anything reads
 /// it. Returns whether anything changed.
@@ -183,8 +179,6 @@ fn transfer(dest: &Place, rvalue: &Rvalue, live: &mut [bool]) {
     reads(dest, rvalue, |l| live[l.id] = true);
 }
 
-// --- Locals ---
-
 /// Removes the locals no statement mentions any more, other than `_0` and parameters.
 fn remove_unmentioned_locals(body: &mut Body) {
     let mut mentioned = vec![false; body.locals.slots()];
@@ -227,9 +221,6 @@ pub(crate) fn dropped_locals(body: &Body) -> Vec<Local> {
     locals
 }
 
-// --- Assignments ---
-
-/// Calls `read` with each local the assignment reads.
 fn reads(dest: &Place, rvalue: &Rvalue, mut read: impl FnMut(Local)) {
     // Writing through a reference reads the reference; writing an element reads its index.
     if dest.projection.contains(&Projection::Deref) {

@@ -1,9 +1,10 @@
+use crate::limits::STEP_LIMIT;
 use som_base::message::code;
 use som_base::{Diagnostic, Label, Span, msg};
 
 /// One step of the code running while compiling, from the innermost out: a call, at `span`,
 /// working out `name`; last, the `@const` being worked out, at its declaration.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Working {
     pub name: String,
     pub span: Span,
@@ -13,9 +14,8 @@ pub struct Working {
 
 /// Why a `@const`'s value couldn't be worked out. `span` is where running stopped; `trace`
 /// is how it got there.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ComptimeError {
-    /// It called an `extern` function, which only exists when the program runs.
     ConstCallsExtern {
         function: String,
         /// Why it can't be: it only exists when the program runs, or its library can't be
@@ -24,8 +24,10 @@ pub enum ComptimeError {
         span: Span,
         trace: Vec<Working>,
     },
-    /// It reached `@unreachable`.
-    ConstReachedUnreachable { span: Span, trace: Vec<Working> },
+    ConstReachedUnreachable {
+        span: Span,
+        trace: Vec<Working>,
+    },
     /// It divided by zero, or, with `overflow`, worked out `MIN / -1`.
     ConstDividedByZero {
         overflow: bool,
@@ -33,8 +35,10 @@ pub enum ComptimeError {
         trace: Vec<Working>,
     },
     /// It ran for longer than `STEP_LIMIT` steps: most likely, it never ends.
-    ConstTooLong { span: Span, trace: Vec<Working> },
-    /// Working it out needs its own value, through the functions it calls.
+    ConstTooLong {
+        span: Span,
+        trace: Vec<Working>,
+    },
     ConstCycle {
         name: String,
         span: Span,
@@ -42,14 +46,16 @@ pub enum ComptimeError {
     },
     /// It read or wrote memory it doesn't have: freed, past its end, or through a null
     /// pointer. Only unchecked pointer code can.
-    ConstOutOfBounds { span: Span, trace: Vec<Working> },
+    ConstOutOfBounds {
+        span: Span,
+        trace: Vec<Working>,
+    },
     /// It reached `@fail(message)`: a check that didn't hold, like `assert`'s.
     ConstFailed {
         message: String,
         span: Span,
         trace: Vec<Working>,
     },
-    /// It does something code run while compiling can't do yet.
     ConstNotSupported {
         what: &'static str,
         span: Span,
@@ -197,6 +203,3 @@ impl ComptimeError {
         d
     }
 }
-
-/// How many statements code run while compiling may take, for one constant.
-pub const STEP_LIMIT: u64 = 10_000_000;

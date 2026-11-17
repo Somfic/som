@@ -13,7 +13,6 @@ use std::rc::Rc;
 /// The size of a pointer, and of `usize`: the host's, like the C backend's.
 pub(crate) const POINTER: usize = std::mem::size_of::<usize>();
 
-/// A byte of memory allocated while compiling.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Byte {
     /// Never written.
@@ -233,7 +232,6 @@ pub(crate) fn encode(mir: &Mir, value: &Value, ty: TypeId) -> Option<Vec<Byte>> 
     })
 }
 
-/// The value of type `ty` that `bytes` hold.
 pub(crate) fn decode(mir: &Mir, bytes: &[Byte], ty: TypeId) -> Result<Value, Unreadable> {
     let layout = layout(mir, ty).ok_or(Unreadable::Type)?;
     let bytes = &bytes[..layout.size];
@@ -262,7 +260,7 @@ pub(crate) fn decode(mir: &Mir, bytes: &[Byte], ty: TypeId) -> Result<Value, Unr
                 wide[..data.len()].copy_from_slice(&data);
                 let n = i128::from_le_bytes(wide);
                 Value::Int(match types.get(ty) {
-                    Ty::Int(int) => crate::wrap(n, *int),
+                    Ty::Int(int) => crate::numbers::wrap(n, *int),
                     _ => n,
                 })
             }
