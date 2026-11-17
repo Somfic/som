@@ -1,12 +1,8 @@
 //! `out` parameters are assigned before they're read, and before the function returns.
-//!
-//! A forward dataflow analysis tracks which `out` parameters are definitely assigned
-//! at every point. None are on entry; assigning through one (`*p = …`, written
-//! `remainder = …` in som) assigns it. Branches merge by intersection, so a parameter
-//! only counts as assigned where every path to that point assigned it. Assigning a
+//! States merge by intersection: assigned only where every path assigned it. Assigning a
 //! single field doesn't assign the whole value.
 
-use crate::BorrowError;
+use crate::{BorrowError, fixpoint_then_report};
 use som_base::Span;
 use som_mir::*;
 use std::collections::{BTreeSet, HashSet};
@@ -21,30 +17,20 @@ pub(crate) fn check(body: &Body, errors: &mut Vec<BorrowError>) {
         errors: Vec::new(),
         reported: HashSet::new(),
     };
-    let entry = dataflow::forward(
-        body,
-        BTreeSet::new(),
-        |b, assigned| checker.block(b.id, assigned),
-        |existing, assigned| {
-            let before = existing.len();
-            existing.retain(|l| assigned.contains(l));
-            existing.len() != before
-        },
-    );
-
-    // The states are final; walk every reachable block once more, reporting errors.
-    checker.report = true;
-    for (b, assigned) in entry.into_iter().enumerate() {
-        if let Some(mut assigned) = assigned {
-            checker.block(b, &mut assigned);
-        }
-    }
+    let intersect = |existing: &mut BTreeSet<Local>, assigned: &BTreeSet<Local>| {
+        let before = existing.len();
+        existing.retain(|l| assigned.contains(l));
+        existing.len() != before
+    };
+    fixpoint_then_report(body, BTreeSet::new(), intersect, |b, assigned, report| {
+        checker.report = report;
+        checker.block(b, assigned);
+    });
     errors.extend(checker.errors);
 }
 
 struct Checker<'a> {
     body: &'a Body,
-    /// Whether to report errors. Off while iterating to a fixpoint, on for the final pass.
     report: bool,
     errors: Vec<BorrowError>,
     reported: HashSet<(Local, usize)>,

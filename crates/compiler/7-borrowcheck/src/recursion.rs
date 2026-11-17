@@ -1,5 +1,5 @@
-//! Functions that call themselves on every path: `fn f() -> i32 { f() }` can never return, and
-//! runs until the stack runs out, or forever once the call becomes a jump.
+//! `fn f() -> i32 { f() }` runs until the stack runs out, or forever once the call becomes a
+//! jump.
 
 use std::collections::HashSet;
 
@@ -8,12 +8,11 @@ use som_mir::*;
 
 use crate::BorrowError;
 
-/// Reports function `id` if every path through it calls itself before it can return.
+/// Reports `id` if no `return` is reachable without it calling itself first.
 pub(crate) fn check(id: FuncId, func: &Function, body: &Body, errors: &mut Vec<BorrowError>) {
     let Some((entry, _)) = body.blocks.iter_with_ids().next() else {
         return;
     };
-    // Every block reachable without calling itself first: if a `return` is one, it can return.
     let mut seen = HashSet::from([entry]);
     let mut work = vec![entry];
     let mut first_call: Option<Span> = None;
