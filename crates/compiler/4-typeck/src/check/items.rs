@@ -18,16 +18,26 @@ impl Checker<'_> {
     /// Checks the program; or, for an instance, everything about it but its functions' and
     /// constants' bodies, then only function `only`'s body.
     pub(super) fn check_items(&mut self, only: Option<Id<Func>>) {
-        let ast = self.ast;
+        self.lower_value_params();
+        self.check_aliases();
+        // Struct fields and function signatures first, so bodies can use them in any order.
+        self.lower_structs();
+        // Impl blocks' targets and associated types, which signatures can name.
+        self.build_impls();
+        self.lower_signatures();
+        self.check_impls();
+        self.check_requires();
+        self.check_bodies(only);
+        // After the bodies, which decide unwritten return types and what results are used as.
+        self.resolve_pending_calls();
+        self.check_overloads();
+        self.check_obligations();
+        self.check_deferred();
+    }
 
-        // The types of value parameters, which the types of fields and parameters can use.
-        let impl_blocks =
-            (ast.modules.iter())
-                .flat_map(|m| &m.items)
-                .filter_map(|item| match item {
-                    som_ast::Item::Impl(block) => Some(block),
-                    _ => None,
-                });
+    /// The types of value parameters, which the types of fields and parameters can use.
+    fn lower_value_params(&mut self) {
+        let ast = self.ast;
         let aliases = (ast.modules.iter())
             .flat_map(|m| &m.items)
             .filter_map(|item| match item {
@@ -39,7 +49,7 @@ impl Checker<'_> {
         let generics = (ast.structs.iter())
             .flat_map(|(id, s)| s.generics.iter().zip(self.names.struct_params(id)))
             .chain(
-                impl_blocks
+                super::traits::impl_blocks(ast)
                     .zip(&self.names.impls)
                     .flat_map(|(block, def)| block.generics.iter().zip(&def.params)),
             )
@@ -60,7 +70,9 @@ impl Checker<'_> {
                 self.value_params.insert(def, lowered);
             }
         }
+    }
 
+    fn check_aliases(&mut self) {
         // Every type alias, used or not, so one that refers to itself is reported.
         // Its parameters stand for themselves.
         for def in self.names.aliases().to_vec() {
@@ -70,8 +82,10 @@ impl Checker<'_> {
                 self.expanding.pop();
             }
         }
+    }
 
-        // Struct fields and function signatures first, so bodies can use them in any order.
+    fn lower_structs(&mut self) {
+        let ast = self.ast;
         for (_, s) in ast.structs.iter() {
             // An enum's payload: every variant's fields, one variant after another.
             let fields = (s.fields.iter().chain(s.payload()))
@@ -83,8 +97,10 @@ impl Checker<'_> {
             let common = self.common_fields(id, s);
             self.records.common.push(common);
         }
-        // Impl blocks' targets and associated types, which signatures can name.
-        self.build_impls();
+    }
+
+    fn lower_signatures(&mut self) {
+        let ast = self.ast;
         for (id, func) in ast.funcs.iter() {
             self.current_func = Some(id);
             let params = func
@@ -123,9 +139,11 @@ impl Checker<'_> {
                 self.locals.insert(def, self.sigs[id.id].params[i]);
             }
         }
-
         self.current_func = None;
-        self.check_impls();
+    }
+
+    fn check_requires(&mut self) {
+        let ast = self.ast;
         // `@where i < self.len`: conditions, in terms of the parameters.
         let bool = self.u.table.bool;
         for (id, func) in ast.funcs.iter() {
@@ -135,6 +153,10 @@ impl Checker<'_> {
             }
         }
         self.current_func = None;
+    }
+
+    fn check_bodies(&mut self, only: Option<Id<Func>>) {
+        let ast = self.ast;
         // Each with a name: one written in place is checked there, with what's expected of it.
         // For an instance, as they're used.
         for (id, c) in ast.consts.iter() {
@@ -153,13 +175,10 @@ impl Checker<'_> {
             self.check_listeners();
         }
         self.current_func = None;
+    }
 
-        // After the bodies, which decide unwritten return types and what results are used as.
-        self.current_func = None;
-        self.resolve_pending_calls();
-        self.check_overloads();
-        self.check_obligations();
-
+    /// The checks that waited for the bodies to say more about the types involved.
+    fn check_deferred(&mut self) {
         // Conversions chosen once what they convert is known. If it still isn't, that's
         // reported where it's made, not here.
         for (expr, expected, found, from) in std::mem::take(&mut self.deferred.conversions) {

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use som_ast::{BinOp, Expr, Flow, Id, Stmt};
+use som_ast::{BinOp, Expr, Flow, Id, Stmt, TypeExpr};
 use som_resolve::DefKind;
 
 use super::Checker;
@@ -36,93 +36,13 @@ impl Checker<'_> {
             Stmt::Const(c) => {
                 self.check_const(*c);
             }
-            Stmt::Let { ty, value, .. } => {
-                let ty = match ty {
-                    Some(annotation) => {
-                        self.hints.omitted_args_ok = true;
-                        let expected = self.lower(*annotation);
-                        self.hints.omitted_args_ok = false;
-                        let from = self.ast.types.span(*annotation).clone();
-                        self.expect(*value, expected, Some(from));
-                        expected
-                    }
-                    // `let a = "bob"`: a `string`, whatever it's used as later. Only text
-                    // passed straight to C becomes a `cstr`.
-                    None => {
-                        let ty = self.infer(*value);
-                        self.text_as_string(ty);
-                        ty
-                    }
-                };
-                if let Some(def) = self.names.local(id) {
-                    self.locals.insert(def, ty);
-                    let key = Key {
-                        root: def,
-                        path: Vec::new(),
-                    };
-                    self.narrow_if_assigned_a_value(Some(key), ty, *value);
-                }
-            }
+            Stmt::Let { ty, value, .. } => self.check_let(id, *ty, *value),
             // `@for f in T`, over a generic type: checked for each instance, with the copy for
             // `T`'s struct.
             Stmt::Expr(_) if let Some(per_type) = self.ast.per_type.get(&id) => {
-                let name = &per_type.of.name().name;
-                let param = (self.current_func).and_then(|f| {
-                    (self.names.type_params(f).iter().copied())
-                        .find(|&p| &*self.names.def(p).name == &**name)
-                });
-                let Some(param) = param else {
-                    self.errors.push(TypeError::ReflectNotStruct {
-                        name: name.to_string(),
-                        span: per_type.of.span(),
-                    });
-                    return;
-                };
-                let Some(&ty) = self.bound.get(&param) else {
-                    self.records.regions.insert(id);
-                    if let Some(func) = self.current_func {
-                        self.records.per_instance.insert(func);
-                    }
-                    return;
-                };
-                let strukt = match self.u.get(ty) {
-                    Ty::Struct(def, _) => match self.names.def(*def).kind {
-                        DefKind::Struct(s) => Some(s),
-                        _ => None,
-                    },
-                    _ => None,
-                };
-                match strukt.and_then(|s| per_type.arms.iter().find(|(a, _)| *a == s)) {
-                    Some(&(_, arm)) => {
-                        self.records.chosen_arms.insert(id, arm);
-                        self.infer(arm);
-                    }
-                    None => self.errors.push(TypeError::ReflectNotStruct {
-                        name: self.describe(ty).plain().trim_matches('`').to_string(),
-                        span: per_type.of.span(),
-                    }),
-                }
+                self.check_per_type(id, per_type)
             }
-            Stmt::Expr(expr) => {
-                // A `match` whose value isn't used can have arms of different types.
-                self.hints.discarding = matches!(self.ast.exprs[*expr], Expr::Match { .. });
-                let before = self.errors.len();
-                let ty = self.infer(*expr);
-                // `{ begin(); end() }` of a loop or `if`: the last call, without its `;`.
-                if self.ast.unterminated.contains(&id)
-                    && matches!(
-                        self.ast.exprs[*expr],
-                        Expr::Call { .. } | Expr::MethodCall { .. }
-                    )
-                {
-                    self.deferred.tail_calls.push((*expr, ty));
-                }
-                self.hints.discarding = false;
-                // Once what's wrong with it is fixed, it may not be what's meant either.
-                if self.errors.len() == before {
-                    self.check_unused(*expr);
-                }
-            }
+            Stmt::Expr(expr) => self.check_expr_stmt(id, *expr),
             Stmt::Loop { body } => self.check_loop(body),
             Stmt::While { condition, body } => {
                 // The condition runs again after the body.
@@ -148,34 +68,8 @@ impl Checker<'_> {
                 });
                 self.infer(*iterable);
             }
-            Stmt::For { iterable, body, .. } => {
-                // A later iteration sees what the body changes.
-                self.forget_changed_in(body);
-                let ty = self.infer(*iterable);
-                let element = self.loop_element(id, *iterable, ty);
-                if let Some(def) = self.names.local(id) {
-                    self.locals.insert(def, element);
-                }
-                self.check_loop(body);
-            }
-            Stmt::Return(value) => {
-                let (ret, from) = self
-                    .returns
-                    .clone()
-                    .expect("statements are inside a function");
-                match value {
-                    Some(value) => self.expect(*value, ret, from),
-                    None => {
-                        let unit = self.u.table.unit;
-                        if self.u.unify(ret, unit).is_err() {
-                            self.errors.push(TypeError::ReturnWithoutValue {
-                                ty: self.describe(ret),
-                                span: self.ast.stmts.span(id).clone(),
-                            });
-                        }
-                    }
-                }
-            }
+            Stmt::For { iterable, body, .. } => self.check_for(id, *iterable, body),
+            Stmt::Return(value) => self.check_return(id, *value),
             Stmt::Break(_) | Stmt::Continue(_) if self.loop_depth == 0 => {
                 self.errors.push(TypeError::BreakOutsideLoop {
                     keyword: if matches!(self.ast.stmts[id], Stmt::Break(_)) {
@@ -193,64 +87,194 @@ impl Checker<'_> {
                 then,
                 otherwise,
             } if self.ast.settled.contains(&id) => {
-                let bool = self.u.table.bool;
-                self.expect(*condition, bool, None);
-                match self.settled_bool(*condition) {
-                    Some(holds) => {
-                        self.records.settled_ifs.insert(id, holds);
-                        match (holds, otherwise) {
-                            (true, _) => self.check_stmts(then),
-                            (false, Some(otherwise)) => self.check_stmts(otherwise),
-                            (false, None) => {}
-                        }
-                    }
-                    // Made of a constant worked out by running code: checked again once it is.
-                    None if self.needs_unknown(*condition) => {}
-                    // `@if N >= 3`: checked for each instance of the function, where `N` is
-                    // known. What's in it can't change what's around it here.
-                    None if self.over_params(*condition) => {
-                        self.records.regions.insert(id);
-                        if let Some(func) = self.current_func {
-                            self.records.per_instance.insert(func);
-                        }
-                        self.forget_changed_in(then);
-                        if let Some(otherwise) = otherwise {
-                            self.forget_changed_in(otherwise);
-                        }
-                    }
-                    None => self.errors.push(TypeError::NotSettled {
-                        what: "an `@if`'s condition",
-                        hint: "use literals and constants; a generic function's parameters \
-                               can't be used in one yet",
-                        span: self.span(*condition),
-                    }),
-                }
+                self.check_settled_if(id, *condition, then, otherwise.as_deref())
             }
             Stmt::If {
                 condition,
                 then,
                 otherwise,
-            } => {
-                let facts = self.check_condition(*condition);
-                let (_, then_kept) = self.narrowed_during(facts.when_true, |c| c.check_stmts(then));
-                let otherwise_kept = match otherwise {
-                    Some(otherwise) => {
-                        self.narrowed_during(facts.when_false, |c| c.check_stmts(otherwise))
-                            .1
-                    }
-                    None => facts.when_false,
-                };
-                // A branch that leaves (`return`, `break`, `continue`) means the rest of the block
-                // only runs after the other: `if v == none { return 0; }` narrows `v` from here
-                // on, until the end of the block.
-                let then_leaves = self.leaves(then);
-                let otherwise_leaves = otherwise.as_ref().is_some_and(|o| self.leaves(o));
-                if then_leaves && !otherwise_leaves {
-                    self.narrowed.extend(otherwise_kept);
-                } else if otherwise_leaves && !then_leaves {
-                    self.narrowed.extend(then_kept);
+            } => self.check_if(*condition, then, otherwise.as_deref()),
+        }
+    }
+
+    fn check_if(&mut self, condition: Id<Expr>, then: &[Id<Stmt>], otherwise: Option<&[Id<Stmt>]>) {
+        let facts = self.check_condition(condition);
+        let (_, then_kept) = self.narrowed_during(facts.when_true, |c| c.check_stmts(then));
+        let otherwise_kept = match otherwise {
+            Some(otherwise) => {
+                self.narrowed_during(facts.when_false, |c| c.check_stmts(otherwise))
+                    .1
+            }
+            None => facts.when_false,
+        };
+        // A branch that leaves (`return`, `break`, `continue`) means the rest of the block
+        // only runs after the other: `if v == none { return 0; }` narrows `v` from here
+        // on, until the end of the block.
+        let then_leaves = self.leaves(then);
+        let otherwise_leaves = otherwise.as_ref().is_some_and(|o| self.leaves(o));
+        if then_leaves && !otherwise_leaves {
+            self.narrowed.extend(otherwise_kept);
+        } else if otherwise_leaves && !then_leaves {
+            self.narrowed.extend(then_kept);
+        }
+    }
+
+    fn check_for(&mut self, id: Id<Stmt>, iterable: Id<Expr>, body: &[Id<Stmt>]) {
+        // A later iteration sees what the body changes.
+        self.forget_changed_in(body);
+        let ty = self.infer(iterable);
+        let element = self.loop_element(id, iterable, ty);
+        if let Some(def) = self.names.local(id) {
+            self.locals.insert(def, element);
+        }
+        self.check_loop(body);
+    }
+
+    fn check_let(&mut self, id: Id<Stmt>, ty: Option<Id<TypeExpr>>, value: Id<Expr>) {
+        let ty = match ty {
+            Some(annotation) => {
+                self.hints.omitted_args_ok = true;
+                let expected = self.lower(annotation);
+                self.hints.omitted_args_ok = false;
+                let from = self.ast.types.span(annotation).clone();
+                self.expect(value, expected, Some(from));
+                expected
+            }
+            // `let a = "bob"`: a `string`, whatever it's used as later. Only text
+            // passed straight to C becomes a `cstr`.
+            None => {
+                let ty = self.infer(value);
+                self.text_as_string(ty);
+                ty
+            }
+        };
+        if let Some(def) = self.names.local(id) {
+            self.locals.insert(def, ty);
+            let key = Key {
+                root: def,
+                path: Vec::new(),
+            };
+            self.narrow_if_assigned_a_value(Some(key), ty, value);
+        }
+    }
+
+    fn check_per_type(&mut self, id: Id<Stmt>, per_type: &som_ast::PerType) {
+        let name = &per_type.of.name().name;
+        let param = (self.current_func).and_then(|f| {
+            (self.names.type_params(f).iter().copied())
+                .find(|&p| &*self.names.def(p).name == &**name)
+        });
+        let Some(param) = param else {
+            self.errors.push(TypeError::ReflectNotStruct {
+                name: name.to_string(),
+                span: per_type.of.span(),
+            });
+            return;
+        };
+        let Some(&ty) = self.bound.get(&param) else {
+            self.records.regions.insert(id);
+            if let Some(func) = self.current_func {
+                self.records.per_instance.insert(func);
+            }
+            return;
+        };
+        let strukt = match self.u.get(ty) {
+            Ty::Struct(def, _) => match self.names.def(*def).kind {
+                DefKind::Struct(s) => Some(s),
+                _ => None,
+            },
+            _ => None,
+        };
+        match strukt.and_then(|s| per_type.arms.iter().find(|(a, _)| *a == s)) {
+            Some(&(_, arm)) => {
+                self.records.chosen_arms.insert(id, arm);
+                self.infer(arm);
+            }
+            None => self.errors.push(TypeError::ReflectNotStruct {
+                name: self.describe(ty).plain().trim_matches('`').to_string(),
+                span: per_type.of.span(),
+            }),
+        }
+    }
+
+    fn check_expr_stmt(&mut self, id: Id<Stmt>, expr: Id<Expr>) {
+        // A `match` whose value isn't used can have arms of different types.
+        self.hints.discarding = matches!(self.ast.exprs[expr], Expr::Match { .. });
+        let before = self.errors.len();
+        let ty = self.infer(expr);
+        // `{ begin(); end() }` of a loop or `if`: the last call, without its `;`.
+        if self.ast.unterminated.contains(&id)
+            && matches!(
+                self.ast.exprs[expr],
+                Expr::Call { .. } | Expr::MethodCall { .. }
+            )
+        {
+            self.deferred.tail_calls.push((expr, ty));
+        }
+        self.hints.discarding = false;
+        // Once what's wrong with it is fixed, it may not be what's meant either.
+        if self.errors.len() == before {
+            self.check_unused(expr);
+        }
+    }
+
+    fn check_return(&mut self, id: Id<Stmt>, value: Option<Id<Expr>>) {
+        let (ret, from) = self
+            .returns
+            .clone()
+            .expect("statements are inside a function");
+        match value {
+            Some(value) => self.expect(value, ret, from),
+            None => {
+                let unit = self.u.table.unit;
+                if self.u.unify(ret, unit).is_err() {
+                    self.errors.push(TypeError::ReturnWithoutValue {
+                        ty: self.describe(ret),
+                        span: self.ast.stmts.span(id).clone(),
+                    });
                 }
             }
+        }
+    }
+
+    fn check_settled_if(
+        &mut self,
+        id: Id<Stmt>,
+        condition: Id<Expr>,
+        then: &[Id<Stmt>],
+        otherwise: Option<&[Id<Stmt>]>,
+    ) {
+        let bool = self.u.table.bool;
+        self.expect(condition, bool, None);
+        match self.settled_bool(condition) {
+            Some(holds) => {
+                self.records.settled_ifs.insert(id, holds);
+                match (holds, otherwise) {
+                    (true, _) => self.check_stmts(then),
+                    (false, Some(otherwise)) => self.check_stmts(otherwise),
+                    (false, None) => {}
+                }
+            }
+            // Made of a constant worked out by running code: checked again once it is.
+            None if self.needs_unknown(condition) => {}
+            // `@if N >= 3`: checked for each instance of the function, where `N` is
+            // known. What's in it can't change what's around it here.
+            None if self.over_params(condition) => {
+                self.records.regions.insert(id);
+                if let Some(func) = self.current_func {
+                    self.records.per_instance.insert(func);
+                }
+                self.forget_changed_in(then);
+                if let Some(otherwise) = otherwise {
+                    self.forget_changed_in(otherwise);
+                }
+            }
+            None => self.errors.push(TypeError::NotSettled {
+                what: "an `@if`'s condition",
+                hint: "use literals and constants; a generic function's parameters \
+                           can't be used in one yet",
+                span: self.span(condition),
+            }),
         }
     }
 

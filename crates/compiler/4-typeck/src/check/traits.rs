@@ -19,15 +19,7 @@ impl Checker<'_> {
     /// say, or says that the trait doesn't have.
     pub(super) fn build_impls(&mut self) {
         let ast = self.ast;
-        let blocks = ast
-            .modules
-            .iter()
-            .flat_map(|m| &m.items)
-            .filter_map(|item| match item {
-                Item::Impl(block) => Some(block),
-                _ => None,
-            });
-        for (index, block) in blocks.enumerate() {
+        for (index, block) in impl_blocks(ast).enumerate() {
             let def = &self.names.impls[index];
             let params = def.params.clone();
             let trait_ = def.trait_;
@@ -670,14 +662,18 @@ impl Checker<'_> {
     }
 }
 
-/// Impl block `index`, counting them in every module in order, as `Names::impls` does.
-fn impl_block(ast: &som_ast::Ast, index: usize) -> &som_ast::Impl {
+/// Every impl block, in every module in order, as `Names::impls` counts them.
+pub(super) fn impl_blocks(ast: &som_ast::Ast) -> impl Iterator<Item = &som_ast::Impl> {
     (ast.modules.iter())
         .flat_map(|m| &m.items)
         .filter_map(|item| match item {
             Item::Impl(block) => Some(block),
             _ => None,
         })
+}
+
+fn impl_block(ast: &som_ast::Ast, index: usize) -> &som_ast::Impl {
+    impl_blocks(ast)
         .nth(index)
         .expect("an impl block for each index")
 }
