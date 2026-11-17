@@ -392,7 +392,7 @@ impl Unifier {
             VarKind::Int => "i32".into(),
             VarKind::Float => "f64".into(),
             VarKind::Any => "_".into(),
-            VarKind::Text => "string".into(),
+            VarKind::Text => som_lang::LangStruct::String.name().into(),
             VarKind::Collection { element, len } => {
                 format!(
                     "[{}; {}]",

@@ -62,7 +62,7 @@ pub fn stubs(
     let tr = &ast.traits[t];
     // What the trait's names stand for here: `Self` the target, its parameters what the
     // implementation gives them.
-    let mut replace: Vec<(String, String)> = vec![("Self".into(), target.to_string())];
+    let mut replace: Vec<(String, String)> = vec![(som_lang::SELF_TYPE.into(), target.to_string())];
     for (generic, arg) in tr.generics.iter().zip(trait_args) {
         replace.push((generic.name.name.to_string(), arg.clone()));
     }
@@ -122,7 +122,7 @@ pub fn stubs(
         let mut stop = 0;
         let tabbed: Vec<String> = (params.iter())
             .map(|(n, t)| match n.as_str() {
-                "self" => format!("self: {t}"),
+                som_lang::SELF_VALUE => format!("{}: {t}", som_lang::SELF_VALUE),
                 _ => {
                     stop += 1;
                     format!("${{{stop}:{n}}}: {t}")
