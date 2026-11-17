@@ -2,7 +2,6 @@ use std::ops::Index;
 
 use som_base::{Arena, Id, Span};
 
-/// An arena of syntax nodes, each with the span it was parsed from.
 pub struct Nodes<T> {
     nodes: Arena<T>,
     spans: Vec<Span>,
@@ -27,7 +26,6 @@ impl<T> Nodes<T> {
         &self.spans[id.id]
     }
 
-    /// Replaces a node and its span, keeping its id.
     pub fn replace(&mut self, id: Id<T>, node: T, span: Span) {
         self.nodes[id] = node;
         self.spans[id.id] = span;

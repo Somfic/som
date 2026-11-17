@@ -7,8 +7,7 @@ pub enum Child {
 }
 
 impl Expr {
-    /// Every expression and statement directly inside this one, in source order. Patterns,
-    /// types and paths aren't children.
+    /// In source order. Patterns, types and paths aren't children.
     pub fn for_each_child(&self, mut f: impl FnMut(Child)) {
         let mut expr = |e: Id<Expr>| f(Child::Expr(e));
         match self {
@@ -78,7 +77,7 @@ impl Expr {
 }
 
 impl Stmt {
-    /// Every expression and statement directly inside this one, in source order.
+    /// In source order.
     pub fn for_each_child(&self, mut f: impl FnMut(Child)) {
         let stmts = |body: &[Id<Stmt>], f: &mut dyn FnMut(Child)| {
             body.iter().for_each(|&s| f(Child::Stmt(s)))

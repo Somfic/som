@@ -1,18 +1,6 @@
-//! A stable text form of the syntax tree, for `som ... --emit ast`.
-//!
-//! One node per line, children indented by two spaces. There are no spans or
-//! file paths, so dumps diff cleanly between machines and between compiler
-//! implementations.
-//!
-//! ```text
-//! module ""
-//!   fn add(a: i32, b: i32) -> i32
-//!     block
-//!       value
-//!         binary +
-//!           var a
-//!           var b
-//! ```
+//! A stable text form of the syntax tree, for `som ... --emit ast`: one node per line,
+//! children indented by two spaces. There are no spans or file paths, so dumps diff cleanly
+//! between machines and between compiler implementations.
 
 use std::fmt::Write;
 
@@ -39,71 +27,6 @@ impl Ast {
         }
         d.out
     }
-
-    /// A type annotation as it would be written in som.
-    pub fn type_text(&self, id: Id<TypeExpr>) -> String {
-        match &self.types[id] {
-            TypeExpr::Unit => "()".into(),
-            TypeExpr::Primitive(p) => p.name().to_string(),
-            TypeExpr::Named { path, args } if args.is_empty() => path.to_string(),
-            TypeExpr::Named { path, args } => {
-                let args: Vec<String> = args.iter().map(|&a| self.type_text(a)).collect();
-                format!("{path}<{}>", args.join(", "))
-            }
-            TypeExpr::Pointer => "*".into(),
-            TypeExpr::PointerTo(to) => format!("*{}", self.type_text(*to)),
-            TypeExpr::Shared(to) => format!("#{}", self.type_text(*to)),
-            TypeExpr::Elements(element) => format!("[{}]", self.type_text(*element)),
-            TypeExpr::Reference {
-                mutable,
-                lifetime,
-                to,
-            } => {
-                let lifetime = lifetime
-                    .as_ref()
-                    .map(|l| format!("'{l} "))
-                    .unwrap_or_default();
-                let mutability = if *mutable { "mut " } else { "" };
-                // `&i32?` is an optional reference.
-                let to = match &self.types[*to] {
-                    TypeExpr::Optional(_) => format!("({})", self.type_text(*to)),
-                    _ => self.type_text(*to),
-                };
-                format!("&{lifetime}{mutability}{to}")
-            }
-            TypeExpr::Array { element, len } => {
-                format!("[{}; {}]", self.type_text(*element), self.type_text(*len))
-            }
-            TypeExpr::Int(n) => n.to_string(),
-            TypeExpr::Bool(b) => b.to_string(),
-            TypeExpr::Binary { op, lhs, rhs } => {
-                // A sum inside a product keeps its parentheses.
-                let side = |id: Id<TypeExpr>| match (&self.types[id], op) {
-                    (TypeExpr::Binary { op: BinOp::Add, .. }, BinOp::Multiply) => {
-                        format!("({})", self.type_text(id))
-                    }
-                    _ => self.type_text(id),
-                };
-                format!("{} {} {}", side(*lhs), op.symbol(), side(*rhs))
-            }
-            TypeExpr::Slice { element, mutable } => {
-                let mutability = if *mutable { "mut " } else { "" };
-                format!("&{mutability}[{}]", self.type_text(*element))
-            }
-            // `fn() -> i32?` returns an optional.
-            TypeExpr::Optional(inner) => match &self.types[*inner] {
-                TypeExpr::Fn { .. } => format!("({})?", self.type_text(*inner)),
-                _ => format!("{}?", self.type_text(*inner)),
-            },
-            TypeExpr::Fn { params, returns } => {
-                let params: Vec<String> = params.iter().map(|&p| self.type_text(p)).collect();
-                let returns = returns
-                    .map(|r| format!(" -> {}", self.type_text(r)))
-                    .unwrap_or_default();
-                format!("fn({}){returns}", params.join(", "))
-            }
-        }
-    }
 }
 
 struct Dumper<'a> {
@@ -129,91 +52,95 @@ impl Dumper<'_> {
         self.depth -= 1;
     }
 
-    /// A line with nested children.
     fn node(&mut self, text: impl AsRef<str>, f: impl FnOnce(&mut Self)) {
         self.line(text);
         self.nested(f);
     }
 
     fn item(&mut self, item: &Item) {
-        let ast = self.ast;
         match item {
             Item::Func(id) => self.func(*id),
-            Item::Struct(id) => {
-                let s = &ast.structs[*id];
-                let keyword = if s.is_enum() { "enum" } else { "struct" };
-                self.node(format!("{keyword} {}", s.name), |d| {
-                    for f in &s.fields {
-                        d.line(format!("field {}: {}", f.name, ast.type_text(f.ty)));
-                    }
-                    for v in s.variants() {
-                        d.node(format!("variant {}", v.name), |d| {
-                            for f in &v.fields {
-                                d.line(format!("field {}: {}", f.name, ast.type_text(f.ty)));
-                            }
-                        });
-                    }
-                });
-            }
+            Item::Struct(id) => self.struct_(*id),
             Item::Use(u) => self.line(format!("use {}", u.path)),
-            Item::Alias(a) => {
-                let generics = match a.generics.is_empty() {
-                    true => String::new(),
-                    false => {
-                        let names: Vec<String> =
-                            a.generics.iter().map(|g| g.name.to_string()).collect();
-                        format!("<{}>", names.join(", "))
-                    }
-                };
-                self.line(format!(
-                    "type {}{generics} = {}",
-                    a.name,
-                    ast.type_text(a.ty)
-                ))
-            }
+            Item::Alias(a) => self.alias(a),
             Item::Const(id) => {
-                let c = &ast.consts[*id];
+                let c = &self.ast.consts[*id];
                 let header = match c.ty {
-                    Some(ty) => format!("@const {}: {}", c.name, ast.type_text(ty)),
+                    Some(ty) => format!("@const {}: {}", c.name, self.ast.type_text(ty)),
                     None => format!("@const {}", c.name),
                 };
                 self.node(header, |d| d.expr(c.value))
             }
-            Item::Extern(block) => {
-                let mut header = match &block.library {
-                    Some(lib) => format!("extern {lib:?}"),
-                    None => "extern".into(),
-                };
-                if block.use_module {
-                    header.insert_str(0, "use ");
-                }
-                if let Some((file, _)) = &block.header {
-                    header.push_str(&format!(" from {file:?}"));
-                }
-                self.node(header, |d| block.funcs.iter().for_each(|&f| d.func(f)));
-            }
-            Item::Impl(block) => {
-                let header = match &block.trait_ {
-                    Some((name, _)) => format!("impl {name} for {}", block.target),
-                    None => format!("impl {}", block.target),
-                };
-                self.node(header, |d| {
-                    for (name, ty) in &block.types {
-                        d.line(format!("type {name} = {}", ast.type_text(*ty)));
-                    }
-                    block.methods.iter().for_each(|&f| d.func(f))
-                })
-            }
-            Item::Trait(id) => {
-                let t = &ast.traits[*id];
-                self.node(format!("trait {}", t.name), |d| {
-                    for assoc in &t.types {
-                        d.line(format!("type {}", assoc.name));
-                    }
-                    t.methods.iter().for_each(|&f| d.func(f))
-                })
-            }
+            Item::Extern(block) => self.extern_block(block),
+            Item::Impl(block) => self.impl_block(block),
+            Item::Trait(id) => self.trait_(*id),
         }
+    }
+
+    fn fields(&mut self, fields: &[Field]) {
+        for f in fields {
+            self.line(format!("field {}: {}", f.name, self.ast.type_text(f.ty)));
+        }
+    }
+
+    fn struct_(&mut self, id: Id<Struct>) {
+        let s = &self.ast.structs[id];
+        let keyword = if s.is_enum() { "enum" } else { "struct" };
+        self.node(format!("{keyword} {}", s.name), |d| {
+            d.fields(&s.fields);
+            for v in s.variants() {
+                d.node(format!("variant {}", v.name), |d| d.fields(&v.fields));
+            }
+        });
+    }
+
+    fn alias(&mut self, a: &Alias) {
+        let generics = match a.generics.is_empty() {
+            true => String::new(),
+            false => {
+                let names: Vec<String> = a.generics.iter().map(|g| g.name.to_string()).collect();
+                format!("<{}>", names.join(", "))
+            }
+        };
+        let ty = self.ast.type_text(a.ty);
+        self.line(format!("type {}{generics} = {ty}", a.name))
+    }
+
+    fn extern_block(&mut self, block: &Extern) {
+        let mut header = match &block.library {
+            Some(lib) => format!("extern {lib:?}"),
+            None => "extern".into(),
+        };
+        if block.use_module {
+            header.insert_str(0, "use ");
+        }
+        if let Some((file, _)) = &block.header {
+            header.push_str(&format!(" from {file:?}"));
+        }
+        self.node(header, |d| block.funcs.iter().for_each(|&f| d.func(f)));
+    }
+
+    fn impl_block(&mut self, block: &Impl) {
+        let header = match &block.trait_ {
+            Some((name, _)) => format!("impl {name} for {}", block.target),
+            None => format!("impl {}", block.target),
+        };
+        self.node(header, |d| {
+            for (name, ty) in &block.types {
+                d.line(format!("type {name} = {}", d.ast.type_text(*ty)));
+            }
+            block.methods.iter().for_each(|&f| d.func(f))
+        })
+    }
+
+    fn trait_(&mut self, id: Id<Trait>) {
+        let t = &self.ast.traits[id];
+        self.node(format!("trait {}", t.name), |d| {
+            for assoc in &t.types {
+                d.line(format!("type {}", assoc.name));
+            }
+            t.methods.iter().for_each(|&f| d.func(f))
+        })
     }
 
     fn func(&mut self, id: Id<Func>) {
@@ -230,38 +157,31 @@ impl Dumper<'_> {
                 .collect();
             format!("<{}>", names.join(", "))
         };
-        let params: Vec<String> = f
-            .params
-            .iter()
-            .map(|p| {
-                let out = match (p.out, p.mutable) {
-                    (true, _) => "out ",
-                    (false, true) => "mut ",
-                    (false, false) => "",
-                };
-                match p.ty {
-                    Some(ty) => format!("{out}{}: {}", p.name, ast.type_text(ty)),
-                    None => format!("{out}{}", p.name),
-                }
-            })
-            .collect();
-        let returns = f
-            .returns
+        let mut params: Vec<String> = f.params.iter().map(|p| self.param(p)).collect();
+        if f.variadic {
+            params.push("...".to_string());
+        }
+        let returns = (f.returns)
             .map(|r| format!(" -> {}", ast.type_text(r)))
             .unwrap_or_default();
-        let params = if f.variadic {
-            [params, vec!["...".to_string()]].concat()
-        } else {
-            params
+        let header = format!("fn {}{generics}({}){returns}", f.name, params.join(", "));
+        self.node(header, |d| {
+            if let Some(body) = f.body {
+                d.expr(body);
+            }
+        });
+    }
+
+    fn param(&self, p: &Param) -> String {
+        let out = match (p.out, p.mutable) {
+            (true, _) => "out ",
+            (false, true) => "mut ",
+            (false, false) => "",
         };
-        self.node(
-            format!("fn {}{generics}({}){returns}", f.name, params.join(", ")),
-            |d| {
-                if let Some(body) = f.body {
-                    d.expr(body);
-                }
-            },
-        );
+        match p.ty {
+            Some(ty) => format!("{out}{}: {}", p.name, self.ast.type_text(ty)),
+            None => format!("{out}{}", p.name),
+        }
     }
 
     fn stmts(&mut self, label: &str, stmts: &[Id<Stmt>]) {
@@ -374,7 +294,7 @@ impl Dumper<'_> {
             Expr::Not(e) => self.node("not", |d| d.expr(*e)),
             Expr::Neg(e) => self.node("neg", |d| d.expr(*e)),
             Expr::BitNot(e) => self.node("bitnot", |d| d.expr(*e)),
-            Expr::Unreachable => self.line("unreachable".to_string()),
+            Expr::Unreachable => self.line("unreachable"),
             Expr::Borrow { mutable, expr } => self
                 .node(if *mutable { "borrow mut" } else { "borrow" }, |d| {
                     d.expr(*expr)
@@ -430,39 +350,6 @@ impl Dumper<'_> {
                     d.node("value", |d| d.expr(*value));
                 }
             }),
-        }
-    }
-}
-
-impl Ast {
-    /// A pattern as it would be written.
-    pub fn pattern_text(&self, id: Id<Pattern>) -> String {
-        match &self.patterns[id] {
-            Pattern::Wildcard => "_".into(),
-            Pattern::Binding { name, mutable } => {
-                format!("{}{name}", if *mutable { "mut " } else { "" })
-            }
-            Pattern::Int(n) => n.to_string(),
-            Pattern::Bool(b) => b.to_string(),
-            Pattern::Str(s) => format!("{s:?}"),
-            Pattern::None => "none".into(),
-            Pattern::Variant { path, fields } => match fields {
-                PatternFields::Unit => path.to_string(),
-                PatternFields::Tuple(fields) => {
-                    let fields: Vec<String> =
-                        fields.iter().map(|&f| self.pattern_text(f)).collect();
-                    format!("{path}({})", fields.join(", "))
-                }
-                PatternFields::Named { fields, rest } => {
-                    let mut parts: Vec<String> = (fields.iter())
-                        .map(|(name, p)| format!("{name}: {}", self.pattern_text(*p)))
-                        .collect();
-                    if *rest {
-                        parts.push("..".into());
-                    }
-                    format!("{path} {{ {} }}", parts.join(", "))
-                }
-            },
         }
     }
 }

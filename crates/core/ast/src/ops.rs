@@ -25,7 +25,6 @@ impl BinOp {
         }
     }
 
-    /// The trait a type implements to give its values this operator.
     pub fn lang_trait(self) -> Option<LangTrait> {
         Some(match self {
             BinOp::Equals | BinOp::NotEquals => LangTrait::Eq,

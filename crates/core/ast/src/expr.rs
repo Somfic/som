@@ -1,39 +1,31 @@
 use crate::{Id, Ident, Path, TypeExpr};
 
 pub enum Expr {
-    /// Placeholder for code that failed to parse.
     Hole,
-    /// A type, compared with another in an `@if`'s condition: `f32` in `@if T == f32`. Only
-    /// there: a name, `T` or `Point`, is an [`Expr::Var`] the resolver finds a type for.
+    /// `f32` in `@if T == f32`. Only a primitive: a name, `T` or `Point`, is an
+    /// [`Expr::Var`] the resolver finds a type for.
     Type(Id<TypeExpr>),
-    /// `@fail(message)`: stops, saying `message`. Gets no value, like `Unreachable`.
+    /// `@fail(message)`: gets no value, like `Unreachable`.
     Fail(Id<Expr>),
-    /// `@const f(x)`: the value of what follows, worked out while compiling, where it's
-    /// written. It's a constant with no name ([`crate::Const::in_place`]).
+    /// `@const f(x)`: a constant with no name ([`crate::Const::in_place`]).
     InPlace(Id<crate::Const>),
     Int(i128),
     Float(f64),
     Bool(bool),
     Str(Box<str>),
-    /// `none`: an optional without a value.
     None,
-    /// `[a, b, c]`
     Array(Vec<Id<Expr>>),
-    /// `value as ty`: a number converted to another number type.
     Cast {
         value: Id<Expr>,
         ty: Id<TypeExpr>,
     },
-    /// `start..end`: the integers from `start` up to, not including, `end`. Either end can be
-    /// left out where something else knows it: `s.slice(1..)`.
+    /// Either end can be left out where something else knows it: `s.slice(1..)`.
     Range {
         start: Option<Id<Expr>>,
         end: Option<Id<Expr>>,
     },
-    /// `[value; count]`: `count` copies of `value`.
     ArrayRepeat {
         value: Id<Expr>,
-        /// How many: a number, or a value parameter. Written like an array type's length.
         count: Id<TypeExpr>,
     },
     Var(Path),
@@ -42,134 +34,106 @@ pub enum Expr {
         lhs: Id<Expr>,
         rhs: Id<Expr>,
     },
-    /// `!expr`
     Not(Id<Expr>),
-    /// `-expr`. A literal's minus is part of it: `-1` is `Int(-1)`.
+    /// A literal's minus is part of it: `-1` is `Int(-1)`.
     Neg(Id<Expr>),
-    /// `~expr`: an integer with each bit flipped.
     BitNot(Id<Expr>),
-    /// `@unreachable`: a place the program can't get to. If it does after all, it says where
-    /// and stops. A value of whatever type is expected there, as it's never used.
+    /// `@unreachable`: a value of whatever type is expected there, as it's never used.
     Unreachable,
-    /// `&expr` or `&mut expr`
     Borrow {
         mutable: bool,
         expr: Id<Expr>,
     },
-    /// `*expr`
     Deref(Id<Expr>),
-    /// `out name`, as an argument: declares `name` in the surrounding block, starting
-    /// out zeroed, and passes `&mut name` for the function to fill in.
+    /// `out name`, as an argument: declares `name` in the surrounding block, zeroed, and
+    /// passes `&mut name` for the function to fill in.
     Out(Ident),
-    /// `target = value`
     Assign {
         target: Id<Expr>,
         value: Id<Expr>,
     },
-    /// `math::add(1, 2)`
-    /// `f(1)`, or `null<i32>()` with the function's type arguments written out.
     Call {
         callee: Path,
-        /// The arguments of the type whose function it is, written before its name:
-        /// `Alloc<i32>::with_capacity(10)`.
+        /// `Alloc<i32>::with_capacity(10)`: the arguments of the type whose function it is.
         owner_args: Vec<Id<TypeExpr>>,
         type_args: Vec<Id<TypeExpr>>,
         args: Vec<Id<Expr>>,
     },
-    /// `point.sum(1)`
     MethodCall {
         receiver: Id<Expr>,
         method: Ident,
         args: Vec<Id<Expr>>,
     },
-    /// `point.x`
     Field {
         object: Id<Expr>,
         field: Ident,
     },
-    /// `values[0]`: an array's element, at an index known to be in its bounds: a number
-    /// written out, less than the array's length.
     Index {
         object: Id<Expr>,
         index: Id<Expr>,
     },
-    /// `Point { x: 1, y: 2 }`, or `Pair<i32> { a: 1, b: 2 }`
     Construct {
         ty: Path,
-        /// A generic struct's type arguments, if they're written: `i32` in `Pair<i32> { … }`.
         /// Left out, the fields' values decide them.
         args: Vec<Id<TypeExpr>>,
         fields: Vec<(Ident, Id<Expr>)>,
     },
-    /// `then if condition else otherwise`
     Conditional {
         condition: Id<Expr>,
         then: Id<Expr>,
         otherwise: Id<Expr>,
     },
-    /// `optional else fallback`: the optional's value, or `fallback` if it has none.
     Fallback {
         optional: Id<Expr>,
         fallback: Id<Expr>,
     },
-    /// `match scrutinee { pattern => value, … }`: the value of the first arm whose pattern
-    /// matches.
     Match {
         scrutinee: Id<Expr>,
         arms: Vec<Arm>,
     },
-    /// `"total: {n}"`: text with values written into it, each through `Display`.
+    /// `"total: {n}"`: each value written through `Display`.
     Interpolated(Vec<Part>),
-    /// `{ stmts; value }`
     Block {
         stmts: Vec<Id<Stmt>>,
         value: Option<Id<Expr>>,
     },
 }
 
-/// A piece of interpolated text.
 #[derive(Clone, Copy)]
 pub enum Part {
-    /// Text as written, an `Expr::Str`.
+    /// An `Expr::Str`.
     Text(Id<Expr>),
-    /// `{value}`.
     Value(Id<Expr>),
 }
 
-/// `pattern => body` in a `match`.
 pub struct Arm {
     pub pattern: Id<Pattern>,
     pub body: Id<Expr>,
 }
 
-/// What a `match` arm compares a value against.
 pub enum Pattern {
-    /// `_`: anything, ignored.
     Wildcard,
-    /// `name` or `mut name`: anything, bound to `name`. A bare name that's one of an enum's
-    /// variants, like `Empty`, is that variant instead; the resolver tells them apart.
-    Binding { name: Ident, mutable: bool },
-    /// `3`, `-1`
+    /// A bare name that's one of an enum's variants, like `Empty`, is that variant instead;
+    /// the resolver tells them apart.
+    Binding {
+        name: Ident,
+        mutable: bool,
+    },
     Int(i128),
-    /// `true` or `false`
     Bool(bool),
-    /// `"yes"`: text equal to it, as `==` says.
     Str(Box<str>),
-    /// `none`: an optional without a value. Any other pattern matched against an optional
-    /// matches the value it holds.
+    /// Any other pattern matched against an optional matches the value it holds.
     None,
-    /// `Circle(r)`, `Rect { w, h }`, `Shape::Empty`: one of an enum's variants, and patterns
-    /// for what it holds.
-    Variant { path: Path, fields: PatternFields },
+    Variant {
+        path: Path,
+        fields: PatternFields,
+    },
 }
 
 pub enum PatternFields {
-    /// `Shape::Empty`
     Unit,
-    /// `Circle(r)`: a pattern for each field, in order.
     Tuple(Vec<Id<Pattern>>),
-    /// `Rect { w, h: height, .. }`: patterns for fields by name; `rest` if `..` leaves the
-    /// others out. `w` alone is short for `w: w`.
+    /// `rest` if `..` leaves the others out.
     Named {
         fields: Vec<(Ident, Id<Pattern>)>,
         rest: bool,
@@ -191,21 +155,18 @@ pub enum BinOp {
     NotEquals,
     And,
     Or,
-    /// `a & b`, `a | b`, `a ^ b`: of two integers of the same type, bit by bit.
     BitAnd,
     BitOr,
     BitXor,
-    /// `a << n`, `a >> n`: `a`'s bits moved `n` places, `n` any integer. Moved `a`'s width or
-    /// more, none are left: `0`, or for `>>` of a negative number, `-1`.
+    /// Shifted by `a`'s width or more, no bits are left: `0`, or for `>>` of a negative
+    /// number, `-1`.
     ShiftLeft,
     ShiftRight,
 }
 
 pub enum Stmt {
-    /// `use som::data;` inside a block: what the module has is in scope until the block ends.
     Use(crate::Use),
-    /// `@const LIMIT = 10;` inside a block: a constant the rest of the block sees, worked out
-    /// while compiling. Its value can't name the function's locals.
+    /// Its value can't name the function's locals.
     Const(Id<crate::Const>),
     Let {
         name: Ident,
@@ -221,24 +182,18 @@ pub enum Stmt {
         condition: Id<Expr>,
         body: Vec<Id<Stmt>>,
     },
-    /// `break;`: leaves the innermost `loop`, `while` or `for`. `break x;` leaves the `for`
-    /// loop whose variable is `x`, and every loop inside it.
+    /// `break x;` leaves the `for` loop whose variable is `x`, and every loop inside it.
     Break(Option<Ident>),
-    /// `return value;` or `return;`: leaves the function, with `value` as its result.
     Return(Option<Id<Expr>>),
-    /// `continue;`: goes on with the innermost loop's next time round. `continue x;` goes on
-    /// with the next `x` of the `for` loop whose variable it is.
+    /// `continue x;` goes on with the next `x` of the `for` loop whose variable it is.
     Continue(Option<Ident>),
-    /// `for name in iterable { body }`: runs `body` once for each integer in a range, or each
-    /// element of an array or slice, with `name` bound to it.
     For {
         name: Ident,
         mutable: bool,
         iterable: Id<Expr>,
         body: Vec<Id<Stmt>>,
     },
-    /// `if condition { then } else { otherwise }`. The condition is a `bool`, or an optional
-    /// that's true when it holds a value: `if x` is `if x != none`.
+    /// The condition is a `bool`, or an optional: `if x` is `if x != none`.
     If {
         condition: Id<Expr>,
         then: Vec<Id<Stmt>>,

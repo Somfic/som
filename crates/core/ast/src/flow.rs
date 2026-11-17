@@ -2,7 +2,6 @@ use crate::{Ast, Child, Expr, Id, Stmt};
 
 /// What type checking settles about the code, which decides where control can go.
 pub trait Settled {
-    /// Which branch an `@if` takes.
     fn settled_if(&self, stmt: Id<Stmt>) -> Option<bool>;
     /// The arm-free copy a `match` over a known value was replaced by.
     fn chosen_match(&self, expr: Id<Expr>) -> Option<Id<Expr>>;
@@ -15,7 +14,7 @@ pub struct Flow<'a, S: Settled + ?Sized> {
 
 impl<S: Settled + ?Sized> Flow<'_, S> {
     /// Whether control never gets past the end of `stmts`. Any statement that leaves counts:
-    /// what's after it is never reached.
+    /// what's after it is unreachable.
     pub fn leaves(&self, stmts: &[Id<Stmt>]) -> bool {
         stmts.iter().any(|&stmt| self.stmt_leaves(stmt))
     }
@@ -59,7 +58,7 @@ impl<S: Settled + ?Sized> Flow<'_, S> {
         }
     }
 
-    /// Whether there's a `break` anywhere in `stmts` that may leave the loop they're in.
+    /// Whether a `break` in `stmts` may leave the loop they're in.
     pub fn breaks(&self, stmts: &[Id<Stmt>]) -> bool {
         stmts
             .iter()
