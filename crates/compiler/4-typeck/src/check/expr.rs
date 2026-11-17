@@ -12,13 +12,13 @@ use crate::unify::VarKind;
 
 impl Checker<'_> {
     pub(super) fn infer(&mut self, id: Id<Expr>) -> TypeId {
-        let in_place = std::mem::replace(&mut self.in_place, false);
-        self.expected_here = self.expected.take();
+        let in_place = std::mem::replace(&mut self.hints.in_place, false);
+        self.hints.expected_here = self.hints.expected.take();
         let mut ty = self.infer_inner(id, in_place);
         // `I::Item` of an `I` the expression's arguments decided: what its implementation says.
         ty = self.normalize_assoc(ty);
         if let Some(inner) = self.narrowed_type(id) {
-            self.narrowed_reads.insert(id);
+            self.records.narrowed_reads.insert(id);
             ty = inner;
         }
         self.exprs[id.id] = Some(ty);
@@ -28,7 +28,7 @@ impl Checker<'_> {
     /// For `==` with an optional on either side, the types whose values are compared: what each
     /// optional holds. `None` if neither side is optional.
     pub(super) fn optional_operands(&self, lhs: TypeId, rhs: TypeId) -> Option<(TypeId, TypeId)> {
-        let inner = |ty: TypeId| match *self.u.get(self.u.shallow(ty)) {
+        let inner = |ty: TypeId| match *self.u.shallow_ty(ty) {
             Ty::Optional(inner) => Some(inner),
             _ => None,
         };
@@ -55,7 +55,7 @@ impl Checker<'_> {
 
     /// Infers `object`, whose place is part of a larger one: the `p` in `p.x` or `*p`.
     pub(super) fn infer_object(&mut self, object: Id<Expr>) -> TypeId {
-        self.in_place = true;
+        self.hints.in_place = true;
         self.infer(object)
     }
 
@@ -84,22 +84,24 @@ impl Checker<'_> {
             // it's checked here like anything else.
             Expr::InPlace(c) => {
                 self.checked_consts.insert(*c);
-                self.expected = self.expected_here.take();
+                self.hints.expected = self.hints.expected_here.take();
                 self.infer(self.ast.consts[*c].value)
             }
             // Never gets a value: it's whatever's expected here, or if nothing decides,
             // `()` once checking is done.
             Expr::Unreachable => {
-                let ty = (self.expected_here.take()).unwrap_or_else(|| self.u.fresh(VarKind::Any));
-                self.unreachables.push(ty);
+                let ty =
+                    (self.hints.expected_here.take()).unwrap_or_else(|| self.u.fresh(VarKind::Any));
+                self.deferred.unreachables.push(ty);
                 ty
             }
             // `@fail("…")`: like `@unreachable`, of whatever's expected; its message is text.
             Expr::Fail(message) => {
-                let ty = (self.expected_here.take()).unwrap_or_else(|| self.u.fresh(VarKind::Any));
+                let ty =
+                    (self.hints.expected_here.take()).unwrap_or_else(|| self.u.fresh(VarKind::Any));
                 let text = self.u.table.text;
                 self.expect(*message, text, None);
-                self.unreachables.push(ty);
+                self.deferred.unreachables.push(ty);
                 ty
             }
             Expr::Int(_) => self.u.fresh(VarKind::Int),
@@ -139,14 +141,14 @@ impl Checker<'_> {
                     });
                 }
                 let len = self.lower_value(*count, None);
-                self.counts.insert(id, len);
+                self.records.counts.insert(id, len);
                 self.u.fresh(VarKind::Collection { element, len })
             }
             Expr::Fallback { optional, fallback } => {
                 // What's expected of the whole, `&mut Pair`, is expected of the optional
                 // wrapped: so `get(i) else …` picks the `get` giving a `&mut Pair?`.
-                if let Some(expected) = self.expected_here.take() {
-                    self.expected = Some(self.u.intern(Ty::Optional(expected)));
+                if let Some(expected) = self.hints.expected_here.take() {
+                    self.hints.expected = Some(self.u.intern(Ty::Optional(expected)));
                 }
                 let ty = self.infer_optional(*optional);
                 let inner = self.optional_inner(ty, *optional);
@@ -235,7 +237,7 @@ impl Checker<'_> {
                 self.infer_per_type_match(id, *scrutinee, per_type)
             }
             Expr::Match { scrutinee, arms } => {
-                let discarded = std::mem::take(&mut self.discarding);
+                let discarded = std::mem::take(&mut self.hints.discarding);
                 self.check_match(id, *scrutinee, arms, discarded)
             }
 
@@ -291,7 +293,7 @@ impl Checker<'_> {
             // `N` in `struct Buffer<N: usize>`: the number it is in each copy.
             Some((def, _)) if let Some(&ty) = self.value_params.get(&def) => ty,
             Some((def, DefKind::Func(func))) => {
-                let expected = self.expected_here.take();
+                let expected = self.hints.expected_here.take();
                 let func = self.pick_function(id, def, expected).unwrap_or(*func);
                 let (sig, args) = self.instantiate(func);
                 self.require_bounds(func, &args, self.span(id));
@@ -317,7 +319,7 @@ impl Checker<'_> {
                 som_ast::Part::Value(value) => {
                     let ty = self.infer(value);
                     self.text_as_string(ty);
-                    self.displayed.push((value, ty));
+                    self.deferred.displayed.push((value, ty));
                 }
             }
         }
@@ -345,9 +347,7 @@ impl Checker<'_> {
         let ty = self.infer_object(inner);
         let ty = self.u.shallow(ty);
         match self.u.get(ty).clone() {
-            Ty::Ref { to, .. }
-                if matches!(self.u.get(self.u.shallow(to)), Ty::Slice(_) | Ty::Str) =>
-            {
+            Ty::Ref { to, .. } if matches!(self.u.shallow_ty(to), Ty::Slice(_) | Ty::Str) => {
                 self.errors.push(TypeError::DerefSlice {
                     span: self.span(id),
                 });
@@ -379,9 +379,9 @@ impl Checker<'_> {
             .into_iter()
             .partition(|n| assigned.as_ref().is_some_and(|a| n.key.same(a)));
         self.narrowed = kept;
-        let outer = std::mem::replace(&mut self.assigning, true);
+        let outer = std::mem::replace(&mut self.hints.assigning, true);
         let target_ty = self.infer(target);
-        self.assigning = outer;
+        self.hints.assigning = outer;
         // After inferring it: whether `p.x` is a field or a property depends on `p`.
         if let Expr::Field { object, field } = &self.ast.exprs[target]
             && self.is_prop(target)
@@ -425,7 +425,7 @@ impl Checker<'_> {
         let (then_leaves, otherwise_leaves) = (self.expr_leaves(then), self.expr_leaves(otherwise));
         for (branch, leaves) in [(then, then_leaves), (otherwise, otherwise_leaves)] {
             if leaves {
-                self.diverging.insert(branch);
+                self.records.diverging.insert(branch);
             }
         }
         match (then_leaves, otherwise_leaves) {
@@ -468,11 +468,11 @@ impl Checker<'_> {
         let Some(&ty) = self.bound.get(&param) else {
             // What it gives is what it's expected to: it's checked to be, per instance.
             self.infer(scrutinee);
-            self.match_regions.insert(id);
+            self.records.match_regions.insert(id);
             if let Some(func) = self.current_func {
-                self.per_instance.insert(func);
+                self.records.per_instance.insert(func);
             }
-            return match self.expected_here.take() {
+            return match self.hints.expected_here.take() {
                 Some(expected) => expected,
                 None => self.u.fresh(VarKind::Any),
             };
@@ -486,7 +486,7 @@ impl Checker<'_> {
         };
         match enum_.and_then(|s| per_type.arms.iter().find(|(a, _)| *a == s)) {
             Some(&(_, copy)) => {
-                self.chosen_matches.insert(id, copy);
+                self.records.chosen_matches.insert(id, copy);
                 self.infer(copy)
             }
             None => {
@@ -502,7 +502,7 @@ impl Checker<'_> {
     fn infer_block(&mut self, stmts: &[Id<Stmt>], value: Option<Id<Expr>>) -> TypeId {
         let unit = self.u.table.unit;
         // What the block is expected to be is what its final value is.
-        let expected = self.expected_here.take();
+        let expected = self.hints.expected_here.take();
         // Like `check_stmts`, but what's narrowed in here lasts into the final value.
         let outer: HashSet<usize> = self.narrowed.iter().map(|n| n.id).collect();
         for &stmt in stmts {
@@ -510,13 +510,13 @@ impl Checker<'_> {
         }
         let ty = match value {
             Some(value) => {
-                self.expected = expected;
+                self.hints.expected = expected;
                 let ty = self.infer(value);
                 if matches!(
                     self.ast.exprs[value],
                     Expr::Call { .. } | Expr::MethodCall { .. }
                 ) {
-                    self.tail_calls.push((value, ty));
+                    self.deferred.tail_calls.push((value, ty));
                 }
                 ty
             }
@@ -524,7 +524,7 @@ impl Checker<'_> {
             // whatever's expected, as in `get(i) else { return none; }`.
             None if self.leaves(stmts) => {
                 let ty = expected.unwrap_or_else(|| self.u.fresh(VarKind::Any));
-                self.unreachables.push(ty);
+                self.deferred.unreachables.push(ty);
                 ty
             }
             None => unit,

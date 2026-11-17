@@ -16,7 +16,7 @@ impl Checker<'_> {
         // plain values are wrapped, as in `x if c else none`.
         if let Some(&optional) = found
             .iter()
-            .find(|&&ty| matches!(self.u.get(self.u.shallow(ty)), Ty::Optional(_)))
+            .find(|&&ty| matches!(self.u.shallow_ty(ty), Ty::Optional(_)))
         {
             let _ = self.u.unify(element, optional);
         }
@@ -65,7 +65,7 @@ impl Checker<'_> {
                     .expr_alias(id)
                     .map(|alias| self.alias_value(alias))
             })
-            .and_then(|t| match self.u.get(self.u.shallow(t)) {
+            .and_then(|t| match self.u.shallow_ty(t) {
                 Ty::Struct(d, args) if *d == def => Some(args.clone()),
                 _ => None,
             });
@@ -115,7 +115,7 @@ impl Checker<'_> {
             ),
             None => {
                 let tys = (0..ast_struct.fields.len())
-                    .map(|i| self.substitute(self.structs[s.id][i], &subst))
+                    .map(|i| self.substitute(self.records.structs[s.id][i], &subst))
                     .collect();
                 (
                     self.names.def(def).name.to_string(),

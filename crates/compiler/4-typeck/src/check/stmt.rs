@@ -24,9 +24,9 @@ impl Checker<'_> {
     fn check_loop(&mut self, body: &[Id<Stmt>]) {
         // A later iteration sees what the body changes, even further down.
         self.forget_changed_in(body);
-        self.loops += 1;
+        self.loop_depth += 1;
         self.check_stmts(body);
-        self.loops -= 1;
+        self.loop_depth -= 1;
     }
 
     pub(super) fn check_stmt(&mut self, id: Id<Stmt>) {
@@ -39,9 +39,9 @@ impl Checker<'_> {
             Stmt::Let { ty, value, .. } => {
                 let ty = match ty {
                     Some(annotation) => {
-                        self.omitted_args_ok = true;
+                        self.hints.omitted_args_ok = true;
                         let expected = self.lower(*annotation);
-                        self.omitted_args_ok = false;
+                        self.hints.omitted_args_ok = false;
                         let from = self.ast.types.span(*annotation).clone();
                         self.expect(*value, expected, Some(from));
                         expected
@@ -79,9 +79,9 @@ impl Checker<'_> {
                     return;
                 };
                 let Some(&ty) = self.bound.get(&param) else {
-                    self.regions.insert(id);
+                    self.records.regions.insert(id);
                     if let Some(func) = self.current_func {
-                        self.per_instance.insert(func);
+                        self.records.per_instance.insert(func);
                     }
                     return;
                 };
@@ -94,7 +94,7 @@ impl Checker<'_> {
                 };
                 match strukt.and_then(|s| per_type.arms.iter().find(|(a, _)| *a == s)) {
                     Some(&(_, arm)) => {
-                        self.chosen_arms.insert(id, arm);
+                        self.records.chosen_arms.insert(id, arm);
                         self.infer(arm);
                     }
                     None => self.errors.push(TypeError::ReflectNotStruct {
@@ -105,7 +105,7 @@ impl Checker<'_> {
             }
             Stmt::Expr(expr) => {
                 // A `match` whose value isn't used can have arms of different types.
-                self.discarding = matches!(self.ast.exprs[*expr], Expr::Match { .. });
+                self.hints.discarding = matches!(self.ast.exprs[*expr], Expr::Match { .. });
                 let before = self.errors.len();
                 let ty = self.infer(*expr);
                 // `{ begin(); end() }` of a loop or `if`: the last call, without its `;`.
@@ -115,9 +115,9 @@ impl Checker<'_> {
                         Expr::Call { .. } | Expr::MethodCall { .. }
                     )
                 {
-                    self.tail_calls.push((*expr, ty));
+                    self.deferred.tail_calls.push((*expr, ty));
                 }
-                self.discarding = false;
+                self.hints.discarding = false;
                 // Once what's wrong with it is fixed, it may not be what's meant either.
                 if self.errors.len() == before {
                     self.check_unused(*expr);
@@ -176,7 +176,7 @@ impl Checker<'_> {
                     }
                 }
             }
-            Stmt::Break(_) | Stmt::Continue(_) if self.loops == 0 => {
+            Stmt::Break(_) | Stmt::Continue(_) if self.loop_depth == 0 => {
                 self.errors.push(TypeError::BreakOutsideLoop {
                     keyword: if matches!(self.ast.stmts[id], Stmt::Break(_)) {
                         "break"
@@ -197,7 +197,7 @@ impl Checker<'_> {
                 self.expect(*condition, bool, None);
                 match self.settled_bool(*condition) {
                     Some(holds) => {
-                        self.settled_ifs.insert(id, holds);
+                        self.records.settled_ifs.insert(id, holds);
                         match (holds, otherwise) {
                             (true, _) => self.check_stmts(then),
                             (false, Some(otherwise)) => self.check_stmts(otherwise),
@@ -209,9 +209,9 @@ impl Checker<'_> {
                     // `@if N >= 3`: checked for each instance of the function, where `N` is
                     // known. What's in it can't change what's around it here.
                     None if self.over_params(*condition) => {
-                        self.regions.insert(id);
+                        self.records.regions.insert(id);
                         if let Some(func) = self.current_func {
-                            self.per_instance.insert(func);
+                            self.records.per_instance.insert(func);
                         }
                         self.forget_changed_in(then);
                         if let Some(otherwise) = otherwise {
@@ -272,10 +272,12 @@ impl Checker<'_> {
             }
             Expr::MethodCall { .. } => {
                 let pure_pointer = self
+                    .records
                     .pointer_methods
                     .get(&expr)
                     .is_some_and(|m| !matches!(m, PointerMethod::Free | PointerMethod::Write));
                 let pure_array = self
+                    .records
                     .array_methods
                     .get(&expr)
                     .is_some_and(|m| !matches!(m, ArrayMethod::Set));
@@ -345,7 +347,7 @@ impl Checker<'_> {
         let viewed = self.u.shallow(viewed);
         let element = match *self.u.get(shallow) {
             Ty::Range(int) => {
-                self.for_loops.insert(stmt, Loop::Range);
+                self.records.loops.insert(stmt, Loop::Range);
                 return int;
             }
             Ty::Error => return error,
@@ -380,7 +382,7 @@ impl Checker<'_> {
             _ if self.is_copy(element) => Take::Copy,
             _ => Take::Ref,
         };
-        self.for_loops.insert(stmt, Loop::Elements { take });
+        self.records.loops.insert(stmt, Loop::Elements { take });
         match take {
             Take::Copy => element,
             Take::Ref | Take::RefMut => self.u.intern(Ty::Ref {

@@ -49,8 +49,8 @@ impl Checker<'_> {
             }
             Expr::Field { object, .. } => {
                 // A property is a call, giving a value of its own; its object is borrowed.
-                let place =
-                    self.methods.get(&id).is_none() && self.array_methods.get(&id).is_none();
+                let place = self.records.methods.get(&id).is_none()
+                    && self.records.array_methods.get(&id).is_none();
                 if by_value && place && self.behind_reference(id) {
                     self.check_move_out(id);
                 }
@@ -86,7 +86,7 @@ impl Checker<'_> {
             }
             // A trait's operator borrows both sides: `a == b` is `eq(&a, &b)`.
             Expr::Binary { lhs, rhs, .. } => {
-                let by_value = !self.trait_ops.contains_key(&id);
+                let by_value = !self.records.trait_ops.contains_key(&id);
                 self.moves_in(*lhs, by_value);
                 self.moves_in(*rhs, by_value);
             }
@@ -97,16 +97,14 @@ impl Checker<'_> {
             }
             // The receiver is taken only by a method whose `self` isn't a reference.
             Expr::MethodCall { receiver, args, .. } => {
-                let takes_self = (self.methods.get(&id).copied())
+                let takes_self = (self.records.methods.get(&id).copied())
                     .and_then(|def| match self.names.def(def).kind {
                         som_resolve::DefKind::Func(func) => {
                             self.sigs[func.id].params.first().copied()
                         }
                         _ => None,
                     })
-                    .is_some_and(|self_ty| {
-                        !matches!(self.u.get(self.u.shallow(self_ty)), Ty::Ref { .. })
-                    });
+                    .is_some_and(|self_ty| !matches!(self.u.shallow_ty(self_ty), Ty::Ref { .. }));
                 self.moves_in(*receiver, takes_self);
                 for &arg in args {
                     self.moves_in(arg, true);
@@ -132,7 +130,7 @@ impl Checker<'_> {
             }
             // The arms' patterns decide what's taken; the borrow checker sees to that.
             // Over a generic enum's variants, in one instance: its copy for `T`'s enum.
-            Expr::Match { .. } if let Some(&copy) = self.chosen_matches.get(&id) => {
+            Expr::Match { .. } if let Some(&copy) = self.records.chosen_matches.get(&id) => {
                 self.moves_in(copy, by_value);
             }
             Expr::Match { scrutinee, arms } => {
@@ -155,7 +153,9 @@ impl Checker<'_> {
     fn moves_in_stmt(&mut self, id: Id<Stmt>) {
         match &self.ast.stmts[id] {
             // `@for f in T`, checking one instance: its copy for `T`'s struct.
-            Stmt::Expr(_) if let Some(&arm) = self.chosen_arms.get(&id) => self.moves_in(arm, true),
+            Stmt::Expr(_) if let Some(&arm) = self.records.chosen_arms.get(&id) => {
+                self.moves_in(arm, true)
+            }
             // A constant's value is worked out on its own, while compiling.
             Stmt::Use(_)
             | Stmt::Const(_)
@@ -175,11 +175,11 @@ impl Checker<'_> {
                 body.iter().for_each(|&s| self.moves_in_stmt(s));
             }
             // An `@if` checked for each instance: nothing's known of it here.
-            Stmt::If { .. } if self.regions.contains(&id) => {}
+            Stmt::If { .. } if self.records.regions.contains(&id) => {}
             // `@if`: only the branch it picks is there.
             Stmt::If {
                 then, otherwise, ..
-            } if let Some(&holds) = self.settled_ifs.get(&id) => {
+            } if let Some(&holds) = self.records.settled_ifs.get(&id) => {
                 let branch = if holds {
                     Some(then)
                 } else {
@@ -218,7 +218,7 @@ impl Checker<'_> {
     }
 
     fn is_reference(&self, id: Id<Expr>) -> bool {
-        self.exprs[id.id].is_some_and(|ty| matches!(self.u.get(self.u.shallow(ty)), Ty::Ref { .. }))
+        self.exprs[id.id].is_some_and(|ty| matches!(self.u.shallow_ty(ty), Ty::Ref { .. }))
     }
 
     /// Reports taking place `id` out of the reference it's behind, if its type may move

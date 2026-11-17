@@ -35,7 +35,7 @@ impl Checker<'_> {
         args: &[Id<Expr>],
     ) -> TypeId {
         let error = self.u.table.error;
-        let expected = self.expected_here.take();
+        let expected = self.hints.expected_here.take();
         if let Some(def) = self.names.expr(id)
             && self.names.overloads(def).len() > 1
         {
@@ -188,8 +188,8 @@ impl Checker<'_> {
                 .filter(|(_, _, sig, _)| {
                     (sig.params.iter().zip(&found)).all(|(&param, &arg)| match pass {
                         0 => {
-                            matches!(self.u.get(self.u.shallow(arg)), Ty::Optional(_))
-                                || !matches!(self.u.get(self.u.shallow(param)), Ty::Optional(_))
+                            matches!(self.u.shallow_ty(arg), Ty::Optional(_))
+                                || !matches!(self.u.shallow_ty(param), Ty::Optional(_))
                         }
                         _ => self.fits_as_default(param, arg),
                     })
@@ -220,7 +220,7 @@ impl Checker<'_> {
         // Several fit: what the result is used as later may decide.
         if fitting.len() > 1 {
             let result = self.u.fresh(VarKind::Any);
-            self.pending_calls.push(PendingCall {
+            self.deferred.calls.push(PendingCall {
                 call,
                 name: callee.to_string(),
                 args: args.to_vec(),
@@ -274,17 +274,17 @@ impl Checker<'_> {
     ) {
         let result = self.u.shallow(result);
         let Some(index) =
-            (self.pending_calls.iter()).position(|p| self.u.shallow(p.result) == result)
+            (self.deferred.calls.iter()).position(|p| self.u.shallow(p.result) == result)
         else {
             return;
         };
-        let mut p = self.pending_calls.remove(index);
+        let mut p = self.deferred.calls.remove(index);
         let kept: Vec<_> = (p.fitting.iter())
             .filter(|(.., sig, _)| keep(self, sig.ret))
             .cloned()
             .collect();
         if kept.len() != 1 {
-            self.pending_calls.insert(index, p);
+            self.deferred.calls.insert(index, p);
             return;
         }
         let (def, func, sig, type_args) = kept.into_iter().next().expect("exactly one");
@@ -297,7 +297,7 @@ impl Checker<'_> {
     /// results: `let a = make(); a + 1` takes the `make` giving a number. One decided can tell
     /// another's result, so until nothing changes; what's still undecided is reported.
     pub(super) fn resolve_pending_calls(&mut self) {
-        let mut pending = std::mem::take(&mut self.pending_calls);
+        let mut pending = std::mem::take(&mut self.deferred.calls);
         loop {
             let mut progress = false;
             let mut undecided = Vec::new();
@@ -366,7 +366,7 @@ impl Checker<'_> {
         args: &[Id<Expr>],
         found: &[TypeId],
     ) {
-        self.callees.insert(call, def);
+        self.records.callees.insert(call, def);
         self.require_bounds(func, &type_args, self.span(call));
         if !type_args.is_empty() {
             self.type_args.insert(call, type_args);
@@ -421,7 +421,7 @@ impl Checker<'_> {
             }
         }
         let (def, f) = chosen.unwrap_or(funcs[0]);
-        self.callees.insert(expr, def);
+        self.records.callees.insert(expr, def);
         Some(f)
     }
 
@@ -486,7 +486,7 @@ impl Checker<'_> {
                                 mutable: my,
                                 to: ty,
                             },
-                        ) = (self.u.get(self.u.shallow(x)), self.u.get(self.u.shallow(y)))
+                        ) = (self.u.shallow_ty(x), self.u.shallow_ty(y))
                         else {
                             return None;
                         };

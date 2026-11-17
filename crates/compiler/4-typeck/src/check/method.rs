@@ -18,7 +18,7 @@ impl Checker<'_> {
         args: &[Id<Expr>],
     ) -> TypeId {
         let error = self.u.table.error;
-        let expected = self.expected_here.take();
+        let expected = self.hints.expected_here.take();
         let receiver_ty = self.infer(receiver);
         // `node.total()` of a `#Node`: what it shares.
         let receiver_ty = self.through_shared(receiver, receiver_ty, &method.name);
@@ -153,7 +153,7 @@ impl Checker<'_> {
             });
             return error;
         }
-        self.methods.insert(id, def);
+        self.records.methods.insert(id, def);
         self.check_visible(def, &method.span);
         self.require_bounds(func, &type_args, self.span(id));
         if !type_args.is_empty() {
@@ -273,7 +273,7 @@ impl Checker<'_> {
             infer_args(self);
             return Some(error);
         }
-        self.array_methods.insert(call, kind);
+        self.records.array_methods.insert(call, kind);
 
         // A range of any integer type, or any integer, says which elements.
         if matches!(kind, ArrayMethod::Slice | ArrayMethod::SliceMut) {
@@ -485,7 +485,7 @@ impl Checker<'_> {
         if !self.check_member_there(func, receiver_ty, name, method_span) {
             return self.u.table.error;
         }
-        self.methods.insert(call, def);
+        self.records.methods.insert(call, def);
         if let Expr::MethodCall { method, .. } = &self.ast.exprs[call] {
             self.check_visible(def, &method.span);
         }
@@ -508,7 +508,7 @@ impl Checker<'_> {
 
     /// What `ty` refers to, if it's a reference; otherwise `ty`.
     fn referent(&self, ty: TypeId) -> TypeId {
-        match self.u.get(self.u.shallow(ty)) {
+        match self.u.shallow_ty(ty) {
             Ty::Ref { to, .. } => *to,
             _ => ty,
         }
@@ -518,8 +518,8 @@ impl Checker<'_> {
     /// changing anything: 0 as it is, 1 borrowed, 2 borrowed as `&mut`, 1 copied out of a
     /// reference; `None` if it can't be.
     fn receiver_cost(&self, expected: TypeId, found: TypeId) -> Option<u8> {
-        let wanted = self.u.get(self.u.shallow(expected)).clone();
-        let given = self.u.get(self.u.shallow(found)).clone();
+        let wanted = self.u.shallow_ty(expected).clone();
+        let given = self.u.shallow_ty(found).clone();
         match (wanted, given) {
             (Ty::Ref { mutable, to }, given) if !matches!(given, Ty::Ref { .. } | Ty::Error) => {
                 self.u
@@ -549,7 +549,7 @@ impl Checker<'_> {
         method: &som_ast::Ident,
         args: &[Id<Expr>],
     ) -> Option<TypeId> {
-        let Ty::Ptr(element) = *self.u.get(self.u.shallow(receiver_ty)) else {
+        let Ty::Ptr(element) = *self.u.shallow_ty(receiver_ty) else {
             return None;
         };
         let (error, unit, bool) = (self.u.table.error, self.u.table.unit, self.u.table.bool);
@@ -584,7 +584,7 @@ impl Checker<'_> {
             });
             return Some(error);
         }
-        self.pointer_methods.insert(call, kind);
+        self.records.pointer_methods.insert(call, kind);
         // The first argument is a count or an index.
         let usize = self.u.table.usize;
         if let Some(&first) = args.first() {
@@ -757,7 +757,7 @@ impl Checker<'_> {
         let wanted = crate::traits::substitute(&mut self.u.table, target, &params, args);
         let wanted = self.u.normalize(wanted);
         // Through a reference on either side: a `str` is one already.
-        let unref = |u: &Unifier, ty: TypeId| match *u.get(u.shallow(ty)) {
+        let unref = |u: &Unifier, ty: TypeId| match *u.shallow_ty(ty) {
             Ty::Ref { to, .. } => u.shallow(to),
             _ => u.shallow(ty),
         };

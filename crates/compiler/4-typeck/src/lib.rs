@@ -336,70 +336,76 @@ pub struct Typed {
     /// Parameters and `let` locals.
     locals: HashMap<DefId, TypeId>,
     funcs: Vec<Signature>,
-    /// Field types of each struct, in declaration order; for an enum, every variant's fields,
-    /// one variant after another.
-    structs: Vec<Vec<TypeId>>,
-    /// Each enum's common fields: see `CommonField`.
-    common: Vec<Vec<CommonField>>,
-    /// What each `match` arm's pattern turned out to be.
-    patterns: HashMap<Id<Pattern>, PatternInfo>,
-    /// Method receivers passed other than as they are: see `Receiver`.
-    receivers: HashMap<Id<Expr>, Receiver>,
-    /// Calls and function values naming a function that shares its name with others → the
-    /// one they name.
-    callees: HashMap<Id<Expr>, DefId>,
-    /// Values that become a struct → `From`'s `from` and its
-    /// type arguments.
+    /// Values that become a struct → `From`'s `from` and its type arguments.
     conversions: HashMap<Id<Expr>, (DefId, Vec<TypeId>)>,
-    /// Every `impl` block, indexed like `Names::impls`.
-    pub impls: Vec<traits::ImplInfo>,
-    /// `==` and `!=` that compare with `Eq`'s `eq`.
-    trait_ops: HashMap<Id<Expr>, som_lang::LangTrait>,
-    /// `match` arms that never finish, like `{ return 0; }`: they have no value to give.
-    diverging: HashSet<Id<Expr>>,
-    /// `[value; N]` → `N`, as an array type's length.
-    counts: HashMap<Id<Expr>, TypeId>,
-    /// `MethodCall` → the method it calls.
-    methods: HashMap<Id<Expr>, DefId>,
-    /// `Field` → the index of the field it reads.
-    fields: HashMap<Id<Expr>, usize>,
     /// Calls to generic functions (`Call`, `MethodCall`, or `Var` naming one) → the
     /// types their type parameters were instantiated with.
     type_args: HashMap<Id<Expr>, Vec<TypeId>>,
-    /// Expressions whose value becomes an optional's where it's used: `5` in
-    /// `let x: i32? = 5`.
-    wrapped: HashSet<Id<Expr>>,
-    /// `&mut T`s used where a `&T` is expected: each lent as `&*r`.
-    downgraded: HashSet<Id<Expr>>,
-    /// Reads of an optional place inside `if x { … }`: they read the value it holds.
-    narrowed_reads: HashSet<Id<Expr>>,
-    /// Operands read through the reference they are: `self * self` of a `&i32`.
-    read_through: HashSet<Id<Expr>>,
-    /// `#T`s read through to what they share: `node` in `node.value`, a `&T` from its `get`.
-    shared: HashSet<Id<Expr>>,
     /// References to arrays used where a slice is expected (`&numbers` for a `[i32]`), and
     /// `[mut T]`s used where a `[T]` is.
     sliced: HashMap<Id<Expr>, TypeId>,
-    /// `for` loops → what they loop over.
-    loops: HashMap<Id<Stmt>, Loop>,
-    /// `@if`s → whether the condition holds: which branch there is.
-    settled_ifs: HashMap<Id<Stmt>, bool>,
+    /// Every `impl` block, indexed like `Names::impls`.
+    pub impls: Vec<traits::ImplInfo>,
     /// The values of the constants worked out by running them, that it was checked with.
     const_values: ConstValues,
+    records: Records,
+}
+
+/// What checking records about a program that holds no inference variables, so it moves into
+/// `Typed` as it is.
+#[derive(Default)]
+pub(crate) struct Records {
+    /// Field types of each struct, in declaration order; for an enum, every variant's fields,
+    /// one variant after another.
+    pub(crate) structs: Vec<Vec<TypeId>>,
+    /// Each enum's common fields: see `CommonField`.
+    pub(crate) common: Vec<Vec<CommonField>>,
+    /// What each `match` arm's pattern turned out to be.
+    pub(crate) patterns: HashMap<Id<Pattern>, PatternInfo>,
+    /// Method receivers passed other than as they are: see `Receiver`.
+    pub(crate) receivers: HashMap<Id<Expr>, Receiver>,
+    /// Calls and function values naming a function that shares its name with others → the
+    /// one they name.
+    pub(crate) callees: HashMap<Id<Expr>, DefId>,
+    /// `==` and `!=` that compare with `Eq`'s `eq`.
+    pub(crate) trait_ops: HashMap<Id<Expr>, som_lang::LangTrait>,
+    /// `match` arms that never finish, like `{ return 0; }`: they have no value to give.
+    pub(crate) diverging: HashSet<Id<Expr>>,
+    /// `[value; N]` → `N`, as an array type's length.
+    pub(crate) counts: HashMap<Id<Expr>, TypeId>,
+    /// `MethodCall` → the method it calls.
+    pub(crate) methods: HashMap<Id<Expr>, DefId>,
+    /// `Field` → the index of the field it reads.
+    pub(crate) fields: HashMap<Id<Expr>, usize>,
+    /// Expressions whose value becomes an optional's where it's used: `5` in
+    /// `let x: i32? = 5`.
+    pub(crate) wrapped: HashSet<Id<Expr>>,
+    /// `&mut T`s used where a `&T` is expected: each lent as `&*r`.
+    pub(crate) downgraded: HashSet<Id<Expr>>,
+    /// Reads of an optional place inside `if x { … }`: they read the value it holds.
+    pub(crate) narrowed_reads: HashSet<Id<Expr>>,
+    /// Operands read through the reference they are: `self * self` of a `&i32`.
+    pub(crate) read_through: HashSet<Id<Expr>>,
+    /// `#T`s read through to what they share: `node` in `node.value`, a `&T` from its `get`.
+    pub(crate) shared: HashSet<Id<Expr>>,
+    /// `for` loops → what they loop over.
+    pub(crate) loops: HashMap<Id<Stmt>, Loop>,
+    /// `@if`s → whether the condition holds: which branch there is.
+    pub(crate) settled_ifs: HashMap<Id<Stmt>, bool>,
     /// `@if`s whose condition is a function's generic parameters: checked for each instance.
-    regions: HashSet<Id<Stmt>>,
+    pub(crate) regions: HashSet<Id<Stmt>>,
     /// The functions with such an `@if`.
-    per_instance: HashSet<Id<Func>>,
+    pub(crate) per_instance: HashSet<Id<Func>>,
     /// `@for f in T` over a generic type, in one instance: the copy for `T`'s struct.
-    chosen_arms: HashMap<Id<Stmt>, Id<Expr>>,
+    pub(crate) chosen_arms: HashMap<Id<Stmt>, Id<Expr>>,
     /// `match`es over a generic enum's variants: checked for each instance.
-    match_regions: HashSet<Id<Expr>>,
+    pub(crate) match_regions: HashSet<Id<Expr>>,
     /// Those, in one instance: the copy for `T`'s enum.
-    chosen_matches: HashMap<Id<Expr>, Id<Expr>>,
+    pub(crate) chosen_matches: HashMap<Id<Expr>, Id<Expr>>,
     /// Method calls on arrays → the built-in method they call.
-    array_methods: HashMap<Id<Expr>, ArrayMethod>,
+    pub(crate) array_methods: HashMap<Id<Expr>, ArrayMethod>,
     /// Method calls on typed pointers → the built-in method they call.
-    pointer_methods: HashMap<Id<Expr>, PointerMethod>,
+    pub(crate) pointer_methods: HashMap<Id<Expr>, PointerMethod>,
 }
 
 /// A field every variant of an enum has, by the same name and of the same type: `base` in
@@ -594,24 +600,27 @@ impl Typed {
 
     /// A struct's field types, or an enum's payload: every variant's fields, one after another.
     pub fn fields(&self, s: Id<Struct>) -> &[TypeId] {
-        &self.structs[s.id]
+        &self.records.structs[s.id]
     }
 
     /// An enum's common fields, in the order its first variant declares them. A `Field`
     /// expression on an enum reads the one at its `field` index.
     pub fn common_fields(&self, s: Id<Struct>) -> &[CommonField] {
-        &self.common[s.id]
+        &self.records.common[s.id]
     }
 
     /// Whether payload field `index` of enum `s` is one of its common fields.
     pub fn is_common(&self, s: Id<Struct>, index: usize) -> bool {
-        self.common[s.id].iter().any(|c| c.payload.contains(&index))
+        self.records.common[s.id]
+            .iter()
+            .any(|c| c.payload.contains(&index))
     }
 
     /// The function call or function value `expr` names: the one of those sharing its name
     /// whose types fit, or what the resolver found if it's alone.
     pub fn callee(&self, expr: Id<Expr>, names: &Names) -> Option<DefId> {
-        self.callees
+        self.records
+            .callees
             .get(&expr)
             .copied()
             .or_else(|| names.expr(expr))
@@ -620,7 +629,7 @@ impl Typed {
     /// The trait operator expression `expr` goes through: `Eq` for `==` on a struct
     /// implementing it, `Add` for `+`.
     pub fn operator_trait(&self, expr: Id<Expr>) -> Option<som_lang::LangTrait> {
-        self.trait_ops.get(&expr).copied()
+        self.records.trait_ops.get(&expr).copied()
     }
 
     /// `From`'s `from`, which `expr` is passed to to become the struct expected where it's
@@ -633,33 +642,33 @@ impl Typed {
 
     /// How method call receiver `expr` becomes the method's `self`, if not as it is.
     pub fn receiver(&self, expr: Id<Expr>) -> Option<Receiver> {
-        self.receivers.get(&expr).copied()
+        self.records.receivers.get(&expr).copied()
     }
 
     /// What a `match` arm's pattern turned out to be.
     pub fn pattern(&self, pattern: Id<Pattern>) -> Option<&PatternInfo> {
-        self.patterns.get(&pattern)
+        self.records.patterns.get(&pattern)
     }
 
     /// Whether `match` arm body `expr` never finishes, so it has no value.
     pub fn diverges(&self, expr: Id<Expr>) -> bool {
-        self.diverging.contains(&expr)
+        self.records.diverging.contains(&expr)
     }
 
     /// How many copies `[value; N]` makes: `N`, as an array type's length. It's in terms of
     /// the enclosing function's value parameters, if it has any.
     pub fn count(&self, expr: Id<Expr>) -> TypeId {
-        self.counts[&expr]
+        self.records.counts[&expr]
     }
 
     /// The method a `MethodCall` expression calls.
     pub fn method(&self, expr: Id<Expr>) -> Option<DefId> {
-        self.methods.get(&expr).copied()
+        self.records.methods.get(&expr).copied()
     }
 
     /// The field index a `Field` expression reads.
     pub fn field(&self, expr: Id<Expr>) -> Option<usize> {
-        self.fields.get(&expr).copied()
+        self.records.fields.get(&expr).copied()
     }
 
     /// The type arguments of a call to a generic function. Empty if it isn't generic.
@@ -678,7 +687,7 @@ impl Typed {
     /// `else`. `None` for an `if` decided when the program runs.
     /// Whether `@if` `stmt` is checked for each instance of its function, not here.
     pub fn is_region(&self, stmt: Id<Stmt>) -> bool {
-        self.regions.contains(&stmt)
+        self.records.regions.contains(&stmt)
     }
 
     /// Where what's checked for each instance is: the `@if`s on a function's generic
@@ -686,18 +695,20 @@ impl Typed {
     /// instance are said if they're in one of these.
     pub fn region_spans(&self, ast: &Ast) -> Vec<som_base::Span> {
         let regions = self
+            .records
             .regions
             .iter()
             .map(|&stmt| ast.stmts.span(stmt).clone());
-        let members = (self.per_instance.iter())
+        let members = (self.records.per_instance.iter())
             .filter(|&&func| !ast.funcs[func].when.is_empty())
             .map(|&func| ast.funcs.span(func).clone());
         // A function's end, where one not returning on every path is said: whether it does
         // depends on which way its `@if`s go.
-        let ends = (self.per_instance.iter())
+        let ends = (self.records.per_instance.iter())
             .filter_map(|&func| ast.funcs[func].body)
             .map(|body| ast.exprs.span(body).last_char());
         let matches = self
+            .records
             .match_regions
             .iter()
             .map(|&m| ast.exprs.span(m).clone());
@@ -707,23 +718,23 @@ impl Typed {
     /// `match` `expr` with `@for (i, k) in T` among its arms, over a generic enum, in one
     /// instance: the copy written out for `T`'s enum.
     pub fn chosen_match(&self, expr: Id<Expr>) -> Option<Id<Expr>> {
-        self.chosen_matches.get(&expr).copied()
+        self.records.chosen_matches.get(&expr).copied()
     }
 
     /// The `@if`s checked for each instance.
     pub fn regions(&self) -> impl Iterator<Item = Id<Stmt>> + '_ {
-        self.regions.iter().copied()
+        self.records.regions.iter().copied()
     }
 
     /// `@for f in T` over a generic type, statement `stmt`, in one instance: the copy written
     /// out for `T`'s struct, a block.
     pub fn chosen_arm(&self, stmt: Id<Stmt>) -> Option<Id<Expr>> {
-        self.chosen_arms.get(&stmt).copied()
+        self.records.chosen_arms.get(&stmt).copied()
     }
 
     /// Whether generic function `func` is checked for each instance (it has a region).
     pub fn is_per_instance(&self, func: Id<Func>) -> bool {
-        self.per_instance.contains(&func)
+        self.records.per_instance.contains(&func)
     }
 
     /// The values of the constants worked out by running them, that it was checked with.
@@ -742,49 +753,49 @@ impl Typed {
     }
 
     pub fn settled_if(&self, stmt: Id<Stmt>) -> Option<bool> {
-        self.settled_ifs.get(&stmt).copied()
+        self.records.settled_ifs.get(&stmt).copied()
     }
 
     pub fn for_loop(&self, stmt: Id<Stmt>) -> Option<Loop> {
-        self.loops.get(&stmt).copied()
+        self.records.loops.get(&stmt).copied()
     }
 
     /// The built-in method a method call on an array calls.
     pub fn array_method(&self, expr: Id<Expr>) -> Option<ArrayMethod> {
-        self.array_methods.get(&expr).copied()
+        self.records.array_methods.get(&expr).copied()
     }
 
     /// The built-in method a method call on a typed pointer calls.
     pub fn pointer_method(&self, expr: Id<Expr>) -> Option<PointerMethod> {
-        self.pointer_methods.get(&expr).copied()
+        self.records.pointer_methods.get(&expr).copied()
     }
 
     /// Whether `expr` reads the value a narrowed optional holds, rather than the optional.
     pub fn is_narrowed(&self, expr: Id<Expr>) -> bool {
-        self.narrowed_reads.contains(&expr)
+        self.records.narrowed_reads.contains(&expr)
     }
 
     /// Whether operand `expr`, a reference to a number or `bool`, is read through: `self *
     /// self` of a `&i32` multiplies the numbers.
     pub fn is_read_through(&self, expr: Id<Expr>) -> bool {
-        self.read_through.contains(&expr)
+        self.records.read_through.contains(&expr)
     }
 
     /// Whether `expr`, a `#T`, is read through to what it shares, `node` in `node.value`:
     /// what it's used as is the `&T` its `get` gives.
     pub fn is_shared_read(&self, expr: Id<Expr>) -> bool {
-        self.shared.contains(&expr)
+        self.records.shared.contains(&expr)
     }
 
     /// Whether `expr`, a `&mut T`, is used where a `&T` is expected: it's lent as `&*expr`,
     /// so it's still there to use after.
     pub fn is_downgraded(&self, expr: Id<Expr>) -> bool {
-        self.downgraded.contains(&expr)
+        self.records.downgraded.contains(&expr)
     }
 
     /// Whether `expr`'s value is wrapped in an optional where it's used.
     pub fn is_wrapped(&self, expr: Id<Expr>) -> bool {
-        self.wrapped.contains(&expr)
+        self.records.wrapped.contains(&expr)
     }
 
     pub fn display(&self, id: TypeId, names: &Names) -> String {

@@ -10,7 +10,7 @@ use crate::unify::VarKind;
 impl Checker<'_> {
     /// Infers the type of `expr` and requires it to be `expected`.
     pub(super) fn expect(&mut self, expr: Id<Expr>, expected: TypeId, expected_from: Option<Span>) {
-        self.expected = Some(expected);
+        self.hints.expected = Some(expected);
         let found = self.infer(expr);
         if self.coerce(expr, expected, found) {
             return;
@@ -27,7 +27,8 @@ impl Checker<'_> {
         // `println(xs.get(0))` of a list nothing's said the values of yet: which `From`
         // converts it is chosen once it has, after the bodies.
         if self.conversion_undecided(expected, found) {
-            self.deferred_conversions
+            self.deferred
+                .conversions
                 .push((expr, expected, found, expected_from));
             return;
         }
@@ -51,10 +52,10 @@ impl Checker<'_> {
             && let Ty::Ref {
                 mutable: true,
                 to: given,
-            } = *self.u.get(self.u.shallow(found))
+            } = *self.u.shallow_ty(found)
             && self.u.unify(wanted, given).is_ok()
         {
-            self.downgraded.insert(expr);
+            self.records.downgraded.insert(expr);
             return true;
         }
         if self.slices_to(expected, found) {
@@ -63,12 +64,12 @@ impl Checker<'_> {
         }
         if let Ty::Optional(inner) = *self.u.get(expected) {
             if self.u.unify(inner, found).is_ok() {
-                self.wrapped.insert(expr);
+                self.records.wrapped.insert(expr);
                 return true;
             }
             if self.slices_to(inner, found) {
                 self.sliced.insert(expr, inner);
-                self.wrapped.insert(expr);
+                self.records.wrapped.insert(expr);
                 return true;
             }
         }
@@ -81,7 +82,7 @@ impl Checker<'_> {
             mutable,
             expr: borrowed,
         } = self.ast.exprs[expr]
-            && self.narrowed_reads.contains(&borrowed)
+            && self.records.narrowed_reads.contains(&borrowed)
         {
             let value = self.exprs[borrowed.id].unwrap_or(self.u.table.error);
             let optional = self.u.intern(Ty::Optional(value));
@@ -90,7 +91,7 @@ impl Checker<'_> {
                 to: optional,
             });
             if self.u.unify(expected, reference).is_ok() {
-                self.narrowed_reads.remove(&borrowed);
+                self.records.narrowed_reads.remove(&borrowed);
                 self.exprs[borrowed.id] = Some(optional);
                 self.exprs[expr.id] = Some(reference);
                 // Through `&mut` of the optional, it can be made `none`.
@@ -107,7 +108,7 @@ impl Checker<'_> {
     /// the same elements (`&numbers` for a `[i32]`, `&mut numbers` for a `[mut i32]`), or a
     /// `[mut T]` where a `[T]` is.
     fn slices_to(&mut self, expected: TypeId, found: TypeId) -> bool {
-        let shallow = |c: &Self, ty: TypeId| c.u.get(c.u.shallow(ty)).clone();
+        let shallow = |c: &Self, ty: TypeId| c.u.shallow_ty(ty).clone();
         let Ty::Ref {
             mutable: wants_mut,
             to: slice,
@@ -147,7 +148,7 @@ impl Checker<'_> {
     pub(super) fn optional_inner(&mut self, ty: TypeId, expr: Id<Expr>) -> TypeId {
         let shallow = self.u.shallow(ty);
         if let Ty::Ref { mutable, to } = *self.u.get(shallow)
-            && let Ty::Optional(inner) = *self.u.get(self.u.shallow(to))
+            && let Ty::Optional(inner) = *self.u.shallow_ty(to)
         {
             return self.u.intern(Ty::Ref { mutable, to: inner });
         }
@@ -168,8 +169,8 @@ impl Checker<'_> {
     /// reference to what it is (`a.len()` for `self: &List`); or copied out of a reference to
     /// what the method takes, if that copies.
     pub(super) fn receive(&mut self, receiver: Id<Expr>, expected: TypeId, found: TypeId) -> bool {
-        let wanted = self.u.get(self.u.shallow(expected)).clone();
-        let given = self.u.get(self.u.shallow(found)).clone();
+        let wanted = self.u.shallow_ty(expected).clone();
+        let given = self.u.shallow_ty(found).clone();
         let adjusted = match (wanted, given) {
             (Ty::Ref { mutable, to }, given) if !matches!(given, Ty::Ref { .. } | Ty::Error) => {
                 if self.u.unify(to, found).is_err() {
@@ -216,14 +217,14 @@ impl Checker<'_> {
             }
             _ => return self.u.unify(expected, found).is_ok(),
         };
-        self.receivers.insert(receiver, adjusted);
+        self.records.receivers.insert(receiver, adjusted);
         true
     }
 
     /// Whether values of `ty` are copied rather than moved. A type that isn't known yet is
     /// taken to be.
     pub(super) fn is_copy(&self, ty: TypeId) -> bool {
-        match *self.u.get(self.u.shallow(ty)) {
+        match *self.u.shallow_ty(ty) {
             Ty::Struct(def, _) => match self.names.def(def).kind {
                 DefKind::Struct(s) => self.ast.structs[s].copy || self.implements_copy(def),
                 _ => true,

@@ -141,26 +141,27 @@ impl Checker<'_> {
         let params = self.names.alias_params(def).to_vec();
         let span = self.ast.types.span(id).clone();
         // `Vector3` in a `let` annotation: what its arguments are is worked out from the value.
-        let args: Vec<TypeId> = if args.is_empty() && !params.is_empty() && self.omitted_args_ok {
-            (0..params.len())
-                .map(|_| self.u.fresh(VarKind::Any))
-                .collect()
-        } else if args.len() != params.len() {
-            args.iter().for_each(|&a| {
-                self.lower_arg(a, None);
-            });
-            self.errors.push(TypeError::WrongTypeArgCount {
-                name: self.names.def(def).name.to_string(),
-                expected: params.len(),
-                found: args.len(),
-                span,
-            });
-            return self.u.table.error;
-        } else {
-            (args.iter().zip(&params))
-                .map(|(&arg, &param)| self.lower_arg(arg, Some(param)))
-                .collect()
-        };
+        let args: Vec<TypeId> =
+            if args.is_empty() && !params.is_empty() && self.hints.omitted_args_ok {
+                (0..params.len())
+                    .map(|_| self.u.fresh(VarKind::Any))
+                    .collect()
+            } else if args.len() != params.len() {
+                args.iter().for_each(|&a| {
+                    self.lower_arg(a, None);
+                });
+                self.errors.push(TypeError::WrongTypeArgCount {
+                    name: self.names.def(def).name.to_string(),
+                    expected: params.len(),
+                    found: args.len(),
+                    span,
+                });
+                return self.u.table.error;
+            } else {
+                (args.iter().zip(&params))
+                    .map(|(&arg, &param)| self.lower_arg(arg, Some(param)))
+                    .collect()
+            };
 
         if self.expanding.contains(&def) {
             let start = self.expanding.iter().position(|&d| d == def).unwrap_or(0);
@@ -198,11 +199,11 @@ impl Checker<'_> {
             .map(|(&param, &arg)| (param, self.alias_args.insert(param, arg)))
             .collect();
         // What it stands for is written out in full; nothing in it can be left out.
-        let omitted = std::mem::take(&mut self.omitted_args_ok);
+        let omitted = std::mem::take(&mut self.hints.omitted_args_ok);
         self.expanding.push(def);
         let lowered = self.lower(ty);
         self.expanding.pop();
-        self.omitted_args_ok = omitted;
+        self.hints.omitted_args_ok = omitted;
         for (param, outer) in outer {
             match outer {
                 Some(ty) => self.alias_args.insert(param, ty),
@@ -322,7 +323,7 @@ impl Checker<'_> {
     ) -> Vec<TypeId> {
         let params = self.names.struct_params(s);
         // `List` in a `let` annotation: what they are is worked out from the value.
-        if args.is_empty() && !params.is_empty() && self.omitted_args_ok {
+        if args.is_empty() && !params.is_empty() && self.hints.omitted_args_ok {
             return (0..params.len())
                 .map(|_| self.u.fresh(VarKind::Any))
                 .collect();
@@ -532,7 +533,7 @@ impl Checker<'_> {
         // Still undecided: called from inside its own body, or one it's being checked for.
         // The call works its type out on its own, rather than deciding the body's for every
         // instantiation.
-        if matches!(self.u.get(self.u.shallow(sig.ret)), Ty::Var(_)) {
+        if matches!(self.u.shallow_ty(sig.ret), Ty::Var(_)) {
             sig.ret = self.u.fresh(VarKind::Any);
         }
         let args: Vec<TypeId> = type_params

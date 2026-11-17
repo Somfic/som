@@ -18,7 +18,7 @@ impl Checker<'_> {
             Some(VarKind::Float) => "a float".to_string(),
             Some(VarKind::Text) => "a string".to_string(),
             Some(VarKind::Collection { len, .. })
-                if *self.u.get(self.u.shallow(len)) == Ty::Value(Value::Int(1)) =>
+                if *self.u.shallow_ty(len) == Ty::Value(Value::Int(1)) =>
             {
                 "a collection of 1 element".to_string()
             }
@@ -69,10 +69,7 @@ impl Checker<'_> {
         }
         // `fflush(none)`: a null pointer is `mem::null()`; `none` is an optional's.
         if matches!(self.ast.exprs[expr], Expr::None)
-            && matches!(
-                self.u.get(self.u.shallow(expected)),
-                Ty::Pointer | Ty::Ptr(_)
-            )
+            && matches!(self.u.shallow_ty(expected), Ty::Pointer | Ty::Ptr(_))
         {
             self.errors.push(TypeError::NoneAsPointer {
                 ty: self.describe(expected),
@@ -104,7 +101,7 @@ impl Checker<'_> {
     /// `none`, where there's an obvious one. `x else 0`, or for a reference to a copy,
     /// `*(nums.get(0) else &0)`.
     fn fallback_fix(&self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> Option<Fix> {
-        let Ty::Optional(inner) = *self.u.get(self.u.shallow(found)) else {
+        let Ty::Optional(inner) = *self.u.shallow_ty(found) else {
             return None;
         };
         let literal = |ty: TypeId| {
@@ -130,7 +127,7 @@ impl Checker<'_> {
             } else {
                 format!("({fallback})")
             }
-        } else if let Ty::Ref { to, .. } = *self.u.get(self.u.shallow(inner))
+        } else if let Ty::Ref { to, .. } = *self.u.shallow_ty(inner)
             && self.u.could_fit(expected, to)
             && self.is_copy(to)
         {
@@ -152,7 +149,7 @@ impl Checker<'_> {
 
     /// An optional, `found`, where `expected` isn't one: what it holds has to be got at.
     fn unexpected_optional(&self, expected: TypeId, found: TypeId) -> bool {
-        let is_optional = |ty| matches!(self.u.get(self.u.shallow(ty)), Ty::Optional(_));
+        let is_optional = |ty| matches!(self.u.shallow_ty(ty), Ty::Optional(_));
         is_optional(found) && !is_optional(expected)
     }
 
@@ -176,7 +173,7 @@ impl Checker<'_> {
             return None;
         };
         if matches!(
-            self.u.get(self.u.shallow(found)),
+            self.u.shallow_ty(found),
             Ty::Ref { .. } | Ty::Optional(_) | Ty::Error
         ) || !self.u.could_fit(to, found)
         {
@@ -235,13 +232,13 @@ impl Checker<'_> {
     }
 
     fn deref_fix(&self, expr: Id<Expr>, expected: TypeId, found: TypeId) -> Option<Fix> {
-        let Ty::Ref { to, .. } = *self.u.get(self.u.shallow(found)) else {
+        let Ty::Ref { to, .. } = *self.u.shallow_ty(found) else {
             return None;
         };
         if !self.u.could_fit(expected, to) || self.u.could_fit(expected, found) {
             return None;
         }
-        let param = matches!(self.u.get(self.u.shallow(to)), Ty::Param(_));
+        let param = matches!(self.u.shallow_ty(to), Ty::Param(_));
         if !self.is_copy(to) && !param {
             return None;
         }
@@ -290,7 +287,7 @@ impl Checker<'_> {
             return false;
         };
         matches!(
-            self.for_loops.get(&stmt),
+            self.records.loops.get(&stmt),
             Some(Loop::Elements { take: Take::Ref })
                 | Some(Loop::Iterator {
                     start: crate::Start::Iter,
@@ -314,7 +311,7 @@ impl Checker<'_> {
         // A struct's operators are its traits': say which to implement, or for a type
         // parameter, to require.
         let implement = op.lang_trait().and_then(|lang| {
-            let ty = self.u.get(self.u.shallow(lhs));
+            let ty = self.u.shallow_ty(lhs);
             match ty {
                 Ty::Param(def) => Some((lang.name(), Some(self.names.def(*def).name.to_string()))),
                 Ty::Var(_) | Ty::Error | Ty::Optional(_) => None,
@@ -389,14 +386,14 @@ impl Checker<'_> {
     /// For an operand `expr` of optional type `ty`: how it's written, a fallback value to
     /// suggest for it, and where it is.
     fn optional_operand(&self, expr: Id<Expr>, ty: TypeId) -> Option<(String, String, Span)> {
-        let Ty::Optional(inner) = *self.u.get(self.u.shallow(ty)) else {
+        let Ty::Optional(inner) = *self.u.shallow_ty(ty) else {
             return None;
         };
         let text = self.span(expr).get_text().to_string();
         if text.len() > 30 || text.contains('\n') {
             return None;
         }
-        let fallback = match (self.u.get(self.u.shallow(inner)), self.u.var_kind(inner)) {
+        let fallback = match (self.u.shallow_ty(inner), self.u.var_kind(inner)) {
             (_, Some(VarKind::Int)) | (Ty::Int(_), _) => "0",
             (_, Some(VarKind::Float)) | (Ty::Float(_), _) => "0.0",
             _ => "…",
@@ -416,7 +413,7 @@ impl Checker<'_> {
             .map(|(p, &t)| format!("{}: {}", p.name, self.u.display(t, self.names)))
             .collect();
         let ret = self.sigs[func.id].ret;
-        let ret = match self.u.get(self.u.shallow(ret)) {
+        let ret = match self.u.shallow_ty(ret) {
             Ty::Unit => String::new(),
             _ => format!(" -> {}", self.u.display(ret, self.names)),
         };

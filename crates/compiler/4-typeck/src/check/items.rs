@@ -77,11 +77,11 @@ impl Checker<'_> {
             let fields = (s.fields.iter().chain(s.payload()))
                 .map(|f| self.lower(f.ty))
                 .collect();
-            self.structs.push(fields);
+            self.records.structs.push(fields);
         }
         for (id, s) in ast.structs.iter() {
             let common = self.common_fields(id, s);
-            self.common.push(common);
+            self.records.common.push(common);
         }
         // Impl blocks' targets and associated types, which signatures can name.
         self.build_impls();
@@ -109,9 +109,9 @@ impl Checker<'_> {
                 // `prop xy: Vector = …`: a property's type can leave its arguments to its value,
                 // as a `let`'s can.
                 (Some(ty), _) if func.prop => {
-                    self.omitted_args_ok = true;
+                    self.hints.omitted_args_ok = true;
                     let ret = self.lower(ty);
-                    self.omitted_args_ok = false;
+                    self.hints.omitted_args_ok = false;
                     ret
                 }
                 (Some(ty), _) => self.lower(ty),
@@ -162,7 +162,7 @@ impl Checker<'_> {
 
         // Conversions chosen once what they convert is known. If it still isn't, that's
         // reported where it's made, not here.
-        for (expr, expected, found, from) in std::mem::take(&mut self.deferred_conversions) {
+        for (expr, expected, found, from) in std::mem::take(&mut self.deferred.conversions) {
             if self.from_conversion(expr, expected, found)
                 || self.conversion_undecided(expected, found)
             {
@@ -173,8 +173,8 @@ impl Checker<'_> {
 
         // `{ draw(); end() }`: a call giving nothing ends with a `;`, as a statement; only a
         // value is left without one.
-        for (call, ty) in std::mem::take(&mut self.tail_calls) {
-            if matches!(self.u.get(self.u.shallow(ty)), Ty::Unit) {
+        for (call, ty) in std::mem::take(&mut self.deferred.tail_calls) {
+            if matches!(self.u.shallow_ty(ty), Ty::Unit) {
                 self.errors.push(TypeError::UnitTail {
                     span: self.span(call),
                 });
@@ -182,7 +182,7 @@ impl Checker<'_> {
         }
         // `"total: {n}"`: what's written in has to be shown as text. Through references.
         if let Some(display) = self.names.lang(LangTrait::Display) {
-            for (expr, ty) in std::mem::take(&mut self.displayed) {
+            for (expr, ty) in std::mem::take(&mut self.deferred.displayed) {
                 // `"{5}"`: a number nothing else decides is an `i32` or `f64`.
                 self.default_numbers(ty);
                 let mut shown = self.u.shallow(ty);
@@ -197,7 +197,7 @@ impl Checker<'_> {
                 }
             }
         }
-        for (expr, op, lhs, rhs) in std::mem::take(&mut self.deferred_ops) {
+        for (expr, op, lhs, rhs) in std::mem::take(&mut self.deferred.ops) {
             if self.trait_op(expr, op, lhs).is_some() {
                 continue;
             }
@@ -221,12 +221,8 @@ impl Checker<'_> {
         let narrowed = std::mem::take(&mut self.narrowed);
         let outer = (
             self.current_func.replace(id),
-            std::mem::take(&mut self.in_place),
-            std::mem::take(&mut self.loops),
-            std::mem::take(&mut self.discarding),
-            self.expected.take(),
-            self.expected_here.take(),
-            std::mem::take(&mut self.omitted_args_ok),
+            std::mem::take(&mut self.loop_depth),
+            self.take_hints(),
         );
         // A member only some instances have (`@if N >= 3 { prop z … }`), checked generically:
         // for its type, which its body can decide. What's wrong in it is said per instance.
@@ -252,19 +248,11 @@ impl Checker<'_> {
         }
         if quiet {
             self.errors.truncate(before);
-            self.per_instance.insert(id);
+            self.records.per_instance.insert(id);
         }
         self.returns = returns;
         self.narrowed = narrowed;
-        (
-            self.current_func,
-            self.in_place,
-            self.loops,
-            self.discarding,
-            self.expected,
-            self.expected_here,
-            self.omitted_args_ok,
-        ) = outer;
+        (self.current_func, self.loop_depth, self.hints) = outer;
     }
 
     /// Each `@on fail` function is called with a `&Failure`, and gives nothing back.
@@ -302,8 +290,8 @@ impl Checker<'_> {
             self.current_func.take(),
             self.returns.take(),
             std::mem::take(&mut self.narrowed),
-            self.expected.take(),
-            self.expected_here.take(),
+            self.hints.expected.take(),
+            self.hints.expected_here.take(),
         );
         let ty = match c.ty {
             Some(written) => {
@@ -327,8 +315,8 @@ impl Checker<'_> {
             self.current_func,
             self.returns,
             self.narrowed,
-            self.expected,
-            self.expected_here,
+            self.hints.expected,
+            self.hints.expected_here,
         ) = outer;
         ty
     }
@@ -402,7 +390,7 @@ impl Checker<'_> {
         let from = func.returns.map(|t| self.ast.types.span(t).clone());
         self.returns = Some((ret, from.clone()));
         // What it returns is what its value is expected to be: it can choose an overload.
-        self.expected = Some(ret);
+        self.hints.expected = Some(ret);
         let body_ty = self.infer(body);
         // A body without a final value is fine if no path gets to its end: every one returns.
         if let Expr::Block { stmts, value: None } = &self.ast.exprs[body] {
@@ -412,7 +400,7 @@ impl Checker<'_> {
             // `@if N >= 3 { return a; } else @if N < 3 { return b; }`: whether each instance
             // returns is said checking it, where they're worked out.
             let instance = (self.names.type_params(id).iter()).any(|p| self.bound.contains_key(p));
-            if self.per_instance.contains(&id) && !instance {
+            if self.records.per_instance.contains(&id) && !instance {
                 return;
             }
             // Some path gets to the end with nothing to return.
@@ -442,7 +430,7 @@ impl Checker<'_> {
     /// A property is read like a field, so it has to give a value.
     fn check_prop(&mut self, id: Id<Func>, func: &Func) {
         let ret = self.sigs[id.id].ret;
-        if matches!(self.u.get(self.u.shallow(ret)), Ty::Unit) {
+        if matches!(self.u.shallow_ty(ret), Ty::Unit) {
             let span = match func.returns {
                 Some(ty) => self.ast.types.span(ty).clone(),
                 None => func.name.span.clone(),
@@ -485,7 +473,7 @@ impl Checker<'_> {
         let mut reported = HashSet::new();
         let error = self.u.table.error;
         // `@unreachable` where nothing decided a type: as a statement, it's `()`.
-        for ty in std::mem::take(&mut self.unreachables) {
+        for ty in std::mem::take(&mut self.deferred.unreachables) {
             if self.u.var_kind(ty) == Some(VarKind::Any) {
                 let unit = self.u.table.unit;
                 let _ = self.u.unify(ty, unit);
@@ -571,35 +559,12 @@ impl Checker<'_> {
             exprs,
             locals,
             funcs,
-            structs: self.structs,
-            counts: self.counts,
-            methods: self.methods,
-            fields: self.fields,
-            type_args,
-            wrapped: self.wrapped,
-            downgraded: self.downgraded,
-            narrowed_reads: self.narrowed_reads,
-            read_through: self.read_through,
-            shared: self.shared,
-            array_methods: self.array_methods,
-            pointer_methods: self.pointer_methods,
-            sliced,
-            loops: self.for_loops,
-            settled_ifs: self.settled_ifs,
-            const_values: self.known,
-            regions: self.regions,
-            per_instance: self.per_instance,
-            chosen_arms: self.chosen_arms,
-            match_regions: self.match_regions,
-            chosen_matches: self.chosen_matches,
-            patterns: self.patterns,
-            receivers: self.receivers,
-            callees: self.callees,
             conversions,
+            type_args,
+            sliced,
             impls: self.impls,
-            trait_ops: self.trait_ops,
-            common: self.common,
-            diverging: self.diverging,
+            const_values: self.known,
+            records: self.records,
         };
         (typed, self.errors)
     }

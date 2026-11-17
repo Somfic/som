@@ -150,7 +150,7 @@ impl Checker<'_> {
                 && let DefKind::Struct(s) = self.names.def(def).kind
             {
                 let params = self.names.struct_params(s).to_vec();
-                let types = self.structs[s.id].clone();
+                let types = self.records.structs[s.id].clone();
                 for (field, &ty) in self.ast.structs[s].fields.iter().zip(&types) {
                     let ty = traits::substitute(&mut self.u.table, ty, &params, &args);
                     if !self.is_copy(ty) && !matches!(self.u.get(ty), Ty::Param(_)) {
@@ -294,7 +294,7 @@ impl Checker<'_> {
                 .map(|&p| self.u.display(p, self.names))
                 .collect();
             let name = self.ast.funcs[written].name.clone();
-            let ret = match self.u.get(self.u.shallow(ret)) {
+            let ret = match self.u.shallow_ty(ret) {
                 Ty::Unit => String::new(),
                 _ => format!(" -> {}", self.u.display(ret, self.names)),
             };
@@ -448,14 +448,14 @@ impl Checker<'_> {
         let params = self.names.type_params(func);
         for (&param, &arg) in params.iter().zip(args) {
             for &trait_ in self.names.bounds(param) {
-                self.obligations.push((arg, trait_, span.clone()));
+                self.deferred.obligations.push((arg, trait_, span.clone()));
             }
         }
     }
 
     /// Reports type arguments that turned out not to implement what their parameter needs.
     pub(super) fn check_obligations(&mut self) {
-        for (ty, trait_, span) in std::mem::take(&mut self.obligations) {
+        for (ty, trait_, span) in std::mem::take(&mut self.deferred.obligations) {
             let mut ty = self.normalize_assoc(ty);
             // A number nothing else decides becomes an `i32` or `f64`: that's what has to
             // implement it.
@@ -567,7 +567,7 @@ impl Checker<'_> {
             .map(|&p| self.normalize_assoc(p))
             .collect();
         let ret = self.normalize_assoc(sig.ret);
-        self.methods.insert(call, self.names.func(func));
+        self.records.methods.insert(call, self.names.func(func));
         self.type_args.insert(call, type_args.clone());
         self.require_bounds(func, &type_args, self.span(call));
         let name = format!("{}::{}", self.u.display(base, self.names), method.name);
@@ -642,13 +642,14 @@ impl Checker<'_> {
         // Lent values that copy are copied: `for n in &numbers` gives numbers.
         let mut copied = false;
         if start == Start::Iter
-            && let Ty::Ref { mutable: false, to } = *self.u.get(self.u.shallow(element))
+            && let Ty::Ref { mutable: false, to } = *self.u.shallow_ty(element)
             && self.is_copy(to)
         {
             element = to;
             copied = true;
         }
-        self.for_loops
+        self.records
+            .loops
             .insert(stmt, crate::Loop::Iterator { start, copied });
         Some(element)
     }
@@ -670,7 +671,7 @@ impl Checker<'_> {
             return None;
         }
         let output = self.self_operator(shallow, lang)?;
-        self.trait_ops.insert(expr, lang);
+        self.records.trait_ops.insert(expr, lang);
         if self.operator_generics(lang) {
             self.type_args.insert(expr, vec![shallow, shallow, output]);
         }
@@ -764,13 +765,15 @@ impl Checker<'_> {
         let (target, other, output, bounded) = fitting.into_iter().next()?;
         for (param, fresh) in bounded {
             for &bound in self.names.bounds(param) {
-                self.obligations.push((fresh, bound, self.span(expr)));
+                self.deferred
+                    .obligations
+                    .push((fresh, bound, self.span(expr)));
             }
         }
         if self.u.unify(target, base).is_err() || self.u.unify(other, rhs).is_err() {
             return None;
         }
-        self.trait_ops.insert(expr, lang);
+        self.records.trait_ops.insert(expr, lang);
         self.type_args.insert(expr, vec![base, other, output]);
         Some(output)
     }
@@ -865,7 +868,7 @@ impl Checker<'_> {
             return None;
         };
         let trait_name = lang.name();
-        match self.u.get(self.u.shallow(ty)).clone() {
+        match self.u.shallow_ty(ty).clone() {
             // `fn f<T>` gets `<T: Compare>`, `<T: Eq>` gets `<T: Eq + Compare>`.
             Ty::Param(def) => {
                 let DefKind::TypeParam { func, index, .. } = self.names.def(def).kind else {
@@ -998,7 +1001,7 @@ impl Checker<'_> {
 
     /// Whether values of `ty` have the operators of `lang` built in, as numbers have `+`.
     pub(super) fn has_builtin(&self, ty: TypeId, lang: LangTrait) -> bool {
-        traits::builtin_operator(self.u.get(self.u.shallow(ty)), lang)
+        traits::builtin_operator(self.u.shallow_ty(ty), lang)
     }
 
     /// Whether `expr`, of type `found`, becomes the struct `expected` through its `From`
@@ -1020,7 +1023,9 @@ impl Checker<'_> {
         // What the implementation requires of its parameters: `T: Copy`.
         for &(param, fresh) in bounded {
             for &bound in self.names.bounds(param) {
-                self.obligations.push((fresh, bound, self.span(expr)));
+                self.deferred
+                    .obligations
+                    .push((fresh, bound, self.span(expr)));
             }
         }
         let (expected, shallow) = (self.u.shallow(expected), self.u.shallow(found));
@@ -1134,7 +1139,7 @@ impl Checker<'_> {
         // taking it as it is goes first.
         if fitting.len() > 1 && !matches!(self.u.get(shallow), Ty::Optional(_)) {
             let exact: Vec<_> = (fitting.iter())
-                .filter(|&&(_, arg, _)| !matches!(self.u.get(self.u.shallow(arg)), Ty::Optional(_)))
+                .filter(|&&(_, arg, _)| !matches!(self.u.shallow_ty(arg), Ty::Optional(_)))
                 .cloned()
                 .collect();
             if !exact.is_empty() {

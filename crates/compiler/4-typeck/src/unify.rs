@@ -78,6 +78,10 @@ impl Unifier {
         id
     }
 
+    pub fn shallow_ty(&self, id: TypeId) -> &Ty {
+        self.get(self.shallow(id))
+    }
+
     /// The kind of `id` if it's an unbound variable.
     pub fn var_kind(&self, id: TypeId) -> Option<VarKind> {
         match self.table.get(self.shallow(id)) {

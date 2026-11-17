@@ -38,7 +38,7 @@ impl Checker<'_> {
         let count = ast_struct.variants()[index].fields.len();
         let subst = self.struct_subst(s, args);
         (start..start + count)
-            .map(|i| self.substitute(self.structs[s.id][i], &subst))
+            .map(|i| self.substitute(self.records.structs[s.id][i], &subst))
             .collect()
     }
 
@@ -79,7 +79,7 @@ impl Checker<'_> {
 
     /// The enum `ty` is, and its type arguments.
     fn enum_of(&self, ty: TypeId) -> Option<(Id<Struct>, Vec<TypeId>)> {
-        match self.u.get(self.u.shallow(ty)) {
+        match self.u.shallow_ty(ty) {
             Ty::Struct(def, args) => match self.names.def(*def).kind {
                 DefKind::Struct(s) if self.ast.structs[s].is_enum() => Some((s, args.clone())),
                 _ => None,
@@ -93,7 +93,7 @@ impl Checker<'_> {
         let Some(first) = s.variants().first() else {
             return Vec::new();
         };
-        let payload = &self.structs[id.id];
+        let payload = &self.records.structs[id.id];
         let mut common = Vec::new();
         for (k, field) in first.fields.iter().enumerate() {
             let ty = payload[s.payload_start(0) + k];
@@ -128,12 +128,12 @@ impl Checker<'_> {
         args: &[TypeId],
         field: &Ident,
     ) -> TypeId {
-        let common = &self.common[s.id];
+        let common = &self.records.common[s.id];
         if let Some(k) = common.iter().position(|c| c.name == field.name) {
-            self.fields.insert(expr, k);
+            self.records.fields.insert(expr, k);
             let at = common[k].payload[0];
             let subst = self.struct_subst(s, args);
-            return self.substitute(self.structs[s.id][at], &subst);
+            return self.substitute(self.records.structs[s.id][at], &subst);
         }
         let ast_struct = &self.ast.structs[s];
         let without: Vec<String> = (ast_struct.variants().iter())
@@ -180,7 +180,7 @@ impl Checker<'_> {
             let _ = self.u.unify(found, array);
         }
         // Through a reference, what it points to is matched, and bindings borrow from it.
-        let (matched, by_ref) = match *self.u.get(self.u.shallow(found)) {
+        let (matched, by_ref) = match *self.u.shallow_ty(found) {
             Ty::Ref { mutable, to } => (to, Some(mutable)),
             _ => (found, None),
         };
@@ -234,7 +234,7 @@ impl Checker<'_> {
             // What an arm narrowed doesn't hold in the others, or after the `match`.
             self.narrowed.retain(|n| outer.contains(&n.id));
             if self.expr_leaves(arm.body) {
-                self.diverging.insert(arm.body);
+                self.records.diverging.insert(arm.body);
                 continue;
             }
             if discarded {
@@ -245,11 +245,11 @@ impl Checker<'_> {
                 Some((expected, first)) => {
                     if self.coerce(arm.body, expected, ty) {
                         // Fine as it is.
-                    } else if let Ty::Optional(inner) = *self.u.get(self.u.shallow(ty))
+                    } else if let Ty::Optional(inner) = *self.u.shallow_ty(ty)
                         && self.u.unify(inner, expected).is_ok()
                     {
                         // `none` after values: they're all optionals, the values wrapped.
-                        self.wrapped.extend(valued.iter().copied());
+                        self.records.wrapped.extend(valued.iter().copied());
                         result = Some((ty, first));
                     } else {
                         let from = self.span(first);
@@ -260,7 +260,7 @@ impl Checker<'_> {
             valued.push(arm.body);
         }
 
-        if rows.iter().all(Option::is_some) && *self.u.get(self.u.shallow(matched)) != Ty::Error {
+        if rows.iter().all(Option::is_some) && *self.u.shallow_ty(matched) != Ty::Error {
             let pats: Vec<Pat> = rows.into_iter().flatten().collect();
             self.check_coverage(id, arms, &pats, matched);
         }
@@ -362,7 +362,7 @@ impl Checker<'_> {
 
     /// The ways of making a value of `ty`, for `useful`.
     fn ctors(&mut self, ty: TypeId) -> Option<Vec<(Ctor, Vec<TypeId>)>> {
-        match self.u.get(self.u.shallow(ty)).clone() {
+        match self.u.shallow_ty(ty).clone() {
             Ty::Bool => Some(vec![
                 (Ctor::Bool(false), vec![]),
                 (Ctor::Bool(true), vec![]),
@@ -389,7 +389,7 @@ impl Checker<'_> {
             Pat::Ctor(Ctor::Str(s), _) => format!("{s:?}"),
             Pat::Ctor(Ctor::None, _) => "none".into(),
             // A pattern for an optional's value is written as one for the value.
-            Pat::Ctor(Ctor::Some, inner) => match *self.u.get(self.u.shallow(ty)) {
+            Pat::Ctor(Ctor::Some, inner) => match *self.u.shallow_ty(ty) {
                 Ty::Optional(value) => self.render(&inner[0], value),
                 _ => "_".into(),
             },
@@ -459,7 +459,7 @@ impl Checker<'_> {
         {
             self.errors.push(error);
             self.bind_all(id, error_ty(self));
-            self.patterns.insert(id, info);
+            self.records.patterns.insert(id, info);
             return Pat::Wild;
         }
         let pat = match &ast.patterns[id] {
@@ -537,7 +537,7 @@ impl Checker<'_> {
             }
         };
         let _ = span;
-        self.patterns.insert(id, info);
+        self.records.patterns.insert(id, info);
         pat
     }
 
@@ -774,7 +774,7 @@ impl Checker<'_> {
 
     /// Gives every name pattern `id` binds type `ty`, after an error.
     fn bind_all(&mut self, id: Id<Pattern>, ty: TypeId) {
-        self.patterns.entry(id).or_default();
+        self.records.patterns.entry(id).or_default();
         match &self.ast.patterns[id] {
             Pattern::Binding { .. } => {
                 if let Some(def) = self.names.pattern(id)

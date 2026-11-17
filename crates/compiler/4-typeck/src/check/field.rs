@@ -86,7 +86,7 @@ impl Checker<'_> {
                     return error;
                 }
             };
-            self.fields.insert(id, index);
+            self.records.fields.insert(id, index);
             return int;
         }
         let Some((owner, args)) = self.struct_of(object_ty, object) else {
@@ -101,11 +101,11 @@ impl Checker<'_> {
         let fields = &self.ast.structs[s].fields;
         match fields.iter().position(|f| f.name.name == field.name) {
             Some(index) => {
-                self.fields.insert(id, index);
+                self.records.fields.insert(id, index);
                 self.check_field_visible(s, index, &field.span);
                 // Written in terms of the struct's type parameters: fill in its arguments.
                 let subst = self.struct_subst(s, &args);
-                self.substitute(self.structs[s.id][index], &subst)
+                self.substitute(self.records.structs[s.id][index], &subst)
             }
             None if self.names.method(owner, &field.name).is_some() => {
                 self.errors.push(TypeError::FieldIsMethod {
@@ -138,7 +138,7 @@ impl Checker<'_> {
         }
         // `&mut x` of an `x` that's already a reference: say so, not that it isn't a struct.
         if let Ty::Ref { to, .. } = *self.u.get(ty)
-            && matches!(self.u.get(self.u.shallow(to)), Ty::Struct(..))
+            && matches!(self.u.shallow_ty(to), Ty::Struct(..))
         {
             let span = self.span(expr);
             self.errors.push(TypeError::ReferenceToReference {
@@ -243,7 +243,7 @@ impl Checker<'_> {
         let Expr::Int(at) = self.ast.exprs[index] else {
             return element;
         };
-        match *self.u.get(self.u.shallow(len_ty)) {
+        match *self.u.shallow_ty(len_ty) {
             Ty::Value(Value::Int(n)) if (at as u128) < n => {}
             Ty::Value(Value::Int(n)) => self.errors.push(TypeError::IndexOutOfBounds {
                 index: at as u128,
@@ -269,7 +269,7 @@ impl Checker<'_> {
         let Some(rc) = self.names.lang_struct(som_lang::LangStruct::Rc) else {
             return ty;
         };
-        let Ty::Struct(def, ref args) = *self.u.get(self.u.shallow(ty)) else {
+        let Ty::Struct(def, ref args) = *self.u.shallow_ty(ty) else {
             return ty;
         };
         let [inner] = args[..] else {
@@ -283,7 +283,7 @@ impl Checker<'_> {
             mutable: false,
             to: inner,
         });
-        self.shared.insert(object);
+        self.records.shared.insert(object);
         lent
     }
 
@@ -309,7 +309,7 @@ impl Checker<'_> {
         let func = (self.impls[at].methods.iter().copied())
             .find(|&m| &*self.ast.funcs[m].name.name == method)?;
         let (sig, type_args) = self.instantiate(func);
-        self.methods.insert(id, self.names.func(func));
+        self.records.methods.insert(id, self.names.func(func));
         self.require_bounds(func, &type_args, self.span(id));
         if !type_args.is_empty() {
             self.type_args.insert(id, type_args);
@@ -321,7 +321,7 @@ impl Checker<'_> {
         let label = format!("{}::{method}", self.u.display(base, self.names));
         self.check_args_from(id, &label, func, 1, rest, &[key]);
         let ret = self.normalize_assoc(sig.ret);
-        Some(match *self.u.get(self.u.shallow(ret)) {
+        Some(match *self.u.shallow_ty(ret) {
             Ty::Ref { to, .. } => to,
             _ => ret,
         })
@@ -334,7 +334,7 @@ impl Checker<'_> {
         let Expr::Index { object, index } = self.ast.exprs[expr] else {
             return false;
         };
-        let Some(&def) = self.methods.get(&expr) else {
+        let Some(&def) = self.records.methods.get(&expr) else {
             return false;
         };
         let DefKind::Func(func) = self.names.def(def).kind else {
@@ -352,7 +352,7 @@ impl Checker<'_> {
         }
         let read = self.exprs[expr.id];
         // How `at` took `xs` doesn't count: `at_mut` takes it its own way.
-        self.receivers.remove(&object);
+        self.records.receivers.remove(&object);
         let changed = self.index_call(expr, object, object_ty, base, index, LangTrait::IndexMut);
         match (changed, read) {
             (Some(changed), Some(read)) => {
@@ -401,7 +401,8 @@ impl Checker<'_> {
     /// Whether `expr` reads a property, `list.len`, rather than a field. Known once it's
     /// inferred.
     pub(super) fn is_prop(&self, expr: Id<Expr>) -> bool {
-        matches!(self.ast.exprs[expr], Expr::Field { .. }) && self.methods.contains_key(&expr)
+        matches!(self.ast.exprs[expr], Expr::Field { .. })
+            && self.records.methods.contains_key(&expr)
     }
 
     /// `list.len` of a property, `prop len: usize`: a call of it, without
@@ -476,7 +477,7 @@ impl Checker<'_> {
         if !self.check_member_there(func, object_ty, &field.name, field.span.clone()) {
             return Some(self.u.table.error);
         }
-        self.methods.insert(id, def);
+        self.records.methods.insert(id, def);
         self.check_visible(def, &field.span);
         self.require_bounds(func, &type_args, self.span(id));
         if !type_args.is_empty() {
@@ -529,7 +530,7 @@ impl Checker<'_> {
         })?;
         let (sig, type_args) = self.instantiate(func);
         let _ = self.u.unify(type_args[0], base);
-        self.methods.insert(id, self.names.func(func));
+        self.records.methods.insert(id, self.names.func(func));
         self.type_args.insert(id, type_args);
         if let Some(&self_ty) = sig.params.first()
             && !self.receive(object, self_ty, object_ty)

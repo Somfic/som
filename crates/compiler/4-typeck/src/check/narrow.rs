@@ -80,7 +80,7 @@ impl Checker<'_> {
         let ty = self.infer_optional(condition);
         let shallow = self.u.shallow(ty);
         if let Ty::Optional(inner) = *self.u.get(shallow) {
-            if matches!(self.u.get(self.u.shallow(inner)), Ty::Bool) {
+            if matches!(self.u.shallow_ty(inner), Ty::Bool) {
                 self.errors.push(TypeError::OptionalBoolCondition {
                     span: self.span(condition),
                 });
@@ -106,7 +106,7 @@ impl Checker<'_> {
         // Equal to `none` means it holds nothing; equal to a value means it holds one.
         let holds_value = equals != against_none;
         let is_optional = |c: &Self, e: Id<Expr>| {
-            c.exprs[e.id].is_some_and(|ty| matches!(c.u.get(c.u.shallow(ty)), Ty::Optional(_)))
+            c.exprs[e.id].is_some_and(|ty| matches!(c.u.shallow_ty(ty), Ty::Optional(_)))
         };
         let optional = match (&self.ast.exprs[*lhs], &self.ast.exprs[*rhs]) {
             (_, Expr::None) => *lhs,
@@ -120,7 +120,7 @@ impl Checker<'_> {
             },
         };
         let ty = self.exprs[optional.id]?;
-        let Ty::Optional(inner) = *self.u.get(self.u.shallow(ty)) else {
+        let Ty::Optional(inner) = *self.u.shallow_ty(ty) else {
             return None;
         };
         Some((self.narrowing(optional, inner)?, holds_value))
@@ -146,10 +146,10 @@ impl Checker<'_> {
         value: Id<Expr>,
     ) {
         let Some(key) = key else { return };
-        if !self.wrapped.contains(&value) {
+        if !self.records.wrapped.contains(&value) {
             return;
         }
-        let Ty::Optional(inner) = *self.u.get(self.u.shallow(ty)) else {
+        let Ty::Optional(inner) = *self.u.shallow_ty(ty) else {
             return;
         };
         self.next_narrowing += 1;
@@ -288,10 +288,7 @@ impl Checker<'_> {
     }
 
     pub(super) fn is_mut_ref(&self, ty: TypeId) -> bool {
-        matches!(
-            self.u.get(self.u.shallow(ty)),
-            Ty::Ref { mutable: true, .. }
-        )
+        matches!(self.u.shallow_ty(ty), Ty::Ref { mutable: true, .. })
     }
 
     /// Ends the narrowings of the places `stmts` could change.
@@ -318,7 +315,7 @@ impl Checker<'_> {
     /// Ends the narrowings of the places `expr` could change. `in_place`: it's the object of
     /// a field access or dereference.
     fn forget_changed_by(&mut self, expr: Id<Expr>, in_place: bool) {
-        if let Some(&copy) = self.chosen_matches.get(&expr) {
+        if let Some(&copy) = self.records.chosen_matches.get(&expr) {
             return self.forget_changed_by(copy, false);
         }
         match &self.ast.exprs[expr] {

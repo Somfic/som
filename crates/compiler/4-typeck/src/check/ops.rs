@@ -29,28 +29,25 @@ impl Checker<'_> {
         // wrapped: `18446744073709551617 as u64` is 1, `-1 as u64` the largest.
         if matches!(self.ast.exprs[value], Expr::Int(_))
             && self.u.var_kind(found) == Some(VarKind::Int)
-            && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_))
+            && matches!(self.u.shallow_ty(target), Ty::Int(_))
         {
             let i128 = self.u.intern(Ty::Int(IntTy::I128));
             let _ = self.u.unify(found, i128);
         }
         // The value converts at run time: `300 as u8` is the `i32` 300, wrapped to 44.
         let number = |c: &Self, ty: TypeId| {
-            matches!(
-                c.u.get(c.u.shallow(ty)),
-                Ty::Int(_) | Ty::Float(_) | Ty::Error
-            ) || matches!(c.u.var_kind(ty), Some(VarKind::Int | VarKind::Float))
+            matches!(c.u.shallow_ty(ty), Ty::Int(_) | Ty::Float(_) | Ty::Error)
+                || matches!(c.u.var_kind(ty), Some(VarKind::Int | VarKind::Float))
         };
         // An enum whose variants hold nothing converts to the number of its variant.
-        let plain_enum = self.is_plain_enum(self.u.get(self.u.shallow(found)))
-            && matches!(self.u.get(self.u.shallow(target)), Ty::Int(_));
+        let plain_enum = self.is_plain_enum(self.u.shallow_ty(found))
+            && matches!(self.u.shallow_ty(target), Ty::Int(_));
         // A raw pointer to another, `null() as *T`; or a reference to one, `&items as *T`.
-        let pointer =
-            |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::Pointer | Ty::Ptr(_));
-        let reference = |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::Ref { .. });
+        let pointer = |c: &Self, ty: TypeId| matches!(c.u.shallow_ty(ty), Ty::Pointer | Ty::Ptr(_));
+        let reference = |c: &Self, ty: TypeId| matches!(c.u.shallow_ty(ty), Ty::Ref { .. });
         let pointers = (pointer(self, found) || reference(self, found)) && pointer(self, target);
         // C's text is a pointer to its bytes: `bytes as cstr`, `text as *u8`.
-        let cstr = |c: &Self, ty: TypeId| matches!(c.u.get(c.u.shallow(ty)), Ty::CStr);
+        let cstr = |c: &Self, ty: TypeId| matches!(c.u.shallow_ty(ty), Ty::CStr);
         let c_text = (cstr(self, found) && pointer(self, target))
             || (pointer(self, found) && cstr(self, target));
         if !plain_enum && !pointers && !c_text && (!number(self, found) || !number(self, target)) {
@@ -90,7 +87,7 @@ impl Checker<'_> {
             for ty in [lhs_ty, rhs_ty] {
                 if self.u.var_kind(ty) == Some(VarKind::Any) {
                     self.decide_pending_by(ty, &|c, ret| {
-                        matches!(c.u.get(c.u.shallow(ret)), Ty::Optional(_))
+                        matches!(c.u.shallow_ty(ret), Ty::Optional(_))
                     });
                 }
             }
@@ -117,7 +114,7 @@ impl Checker<'_> {
             let comparable = self.u.unify(lhs_inner, rhs_inner).is_ok();
             match self.operand_ok(op, lhs_inner) {
                 Some(true) if comparable => {}
-                None if comparable => self.deferred_ops.push((id, op, lhs_inner, rhs_inner)),
+                None if comparable => self.deferred.ops.push((id, op, lhs_inner, rhs_inner)),
                 _ => self.invalid_operands(id, op, lhs_ty, rhs_ty),
             }
             return bool;
@@ -191,7 +188,7 @@ impl Checker<'_> {
             match self.operand_ok(op, lhs) {
                 Some(true) => {}
                 Some(false) => self.invalid_operands(id, op, lhs, rhs),
-                None => self.deferred_ops.push((id, op, lhs, lhs)),
+                None => self.deferred.ops.push((id, op, lhs, lhs)),
             }
             return lhs;
         }
@@ -240,7 +237,7 @@ impl Checker<'_> {
         match self.operand_ok(op, lhs) {
             Some(true) => {}
             Some(false) => self.invalid_operands(id, op, lhs, rhs),
-            None => self.deferred_ops.push((id, op, lhs, rhs)),
+            None => self.deferred.ops.push((id, op, lhs, rhs)),
         }
         result
     }
@@ -249,7 +246,7 @@ impl Checker<'_> {
     /// number, `bool` or struct is read through, so `self * self` works for a `&i32`, and
     /// `"arg: " + arg` for a `&string`.
     fn through_reference(&mut self, operand: Id<Expr>, ty: TypeId) -> TypeId {
-        let Ty::Ref { to, .. } = *self.u.get(self.u.shallow(ty)) else {
+        let Ty::Ref { to, .. } = *self.u.shallow_ty(ty) else {
             return ty;
         };
         let to = self.u.shallow(to);
@@ -259,7 +256,7 @@ impl Checker<'_> {
         if !readable {
             return ty;
         }
-        self.read_through.insert(operand);
+        self.records.read_through.insert(operand);
         to
     }
 
@@ -288,7 +285,7 @@ impl Checker<'_> {
                 VarKind::Collection { .. } | VarKind::Text => Some(false),
             };
         }
-        let ty = self.u.get(self.u.shallow(ty));
+        let ty = self.u.shallow_ty(ty);
         Some(match op {
             _ if matches!(ty, Ty::Error) => true,
             BinOp::Add | BinOp::Subtract | BinOp::Multiply | BinOp::Divide | BinOp::Modulo => {

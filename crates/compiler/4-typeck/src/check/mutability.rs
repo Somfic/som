@@ -29,7 +29,7 @@ impl Checker<'_> {
                 {
                     place = object
                 }
-                Expr::Index { .. } if self.methods.contains_key(&place) => {
+                Expr::Index { .. } if self.records.methods.contains_key(&place) => {
                     self.index_mut(place);
                     return;
                 }
@@ -98,7 +98,7 @@ impl Checker<'_> {
             Expr::Field { .. } if self.is_prop(expr) => None,
             // What a `#T` shares is lent by its `get`: shared, never changed.
             Expr::Field { object, .. } | Expr::Index { object, .. }
-                if self.shared.contains(object) =>
+                if self.records.shared.contains(object) =>
             {
                 Some(Immutable::Shared)
             }
@@ -120,7 +120,7 @@ impl Checker<'_> {
     /// Whether `expr` is a `&mut` reference, a `&` one, or not a reference.
     fn reference(&self, expr: Id<Expr>) -> Option<bool> {
         let ty = self.exprs[expr.id]?;
-        match self.u.get(self.u.shallow(ty)) {
+        match self.u.shallow_ty(ty) {
             Ty::Ref { mutable, .. } => Some(*mutable),
             _ => None,
         }
