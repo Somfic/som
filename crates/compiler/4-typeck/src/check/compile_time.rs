@@ -189,16 +189,7 @@ impl Checker<'_> {
                             _ => None,
                         };
                     }
-                    let (a, b) = (self.number(*lhs)?, self.number(*rhs)?);
-                    match op {
-                        BinOp::Equals => Some(a == b),
-                        BinOp::NotEquals => Some(a != b),
-                        BinOp::LessThan => Some(a < b),
-                        BinOp::GreaterThan => Some(a > b),
-                        BinOp::LessThanOrEqual => Some(a <= b),
-                        BinOp::GreaterThanOrEqual => Some(a >= b),
-                        _ => None,
-                    }
+                    crate::consts::compare(*op, self.number(*lhs)?, self.number(*rhs)?)
                 }
             },
             _ => None,
@@ -275,15 +266,7 @@ impl Checker<'_> {
             Expr::Neg(inner) => self.number(*inner)?.checked_neg()?,
             Expr::Cast { value, .. } => self.number(*value)?,
             Expr::Binary { op, lhs, rhs } => {
-                let (a, b) = (self.number(*lhs)?, self.number(*rhs)?);
-                match op {
-                    BinOp::Add => a.checked_add(b)?,
-                    BinOp::Subtract => a.checked_sub(b)?,
-                    BinOp::Multiply => a.checked_mul(b)?,
-                    BinOp::Divide => a.checked_div(b)?,
-                    BinOp::Modulo => a.checked_rem(b)?,
-                    _ => return None,
-                }
+                crate::consts::fold(*op, self.number(*lhs)?, self.number(*rhs)?)?
             }
             _ => return None,
         })

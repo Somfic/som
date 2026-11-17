@@ -190,6 +190,17 @@ impl<'a> Checker<'a> {
         self.finish()
     }
 
+    /// `member_holds`, in a program already checked, whose impl blocks are `impls`.
+    pub(crate) fn member_holds_in(
+        mut self,
+        impls: Vec<crate::traits::ImplInfo>,
+        func: Id<Func>,
+        receiver: TypeId,
+    ) -> Option<bool> {
+        self.impls = impls;
+        self.member_holds(func, receiver)
+    }
+
     /// The hints, leaving none: for checking a body elsewhere, from inside an expression.
     /// Whether an assignment's target is being inferred lasts, as it did.
     fn take_hints(&mut self) -> Hints {
