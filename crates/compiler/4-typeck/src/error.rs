@@ -1379,8 +1379,9 @@ impl TypeError {
                 }
             }
             TypeError::PatternMismatch { pattern, ty, span } => {
-                Diagnostic::error(msg![code(pattern), " can't match a ", ty.clone()]).with_label(
-                    Label::primary(span.clone(), msg!["a ", ty.clone(), " is matched here"]),
+                // `ty` brings its own article when it's in words: "a string", "an integer".
+                Diagnostic::error(msg![code(pattern), " can't match ", ty.clone()]).with_label(
+                    Label::primary(span.clone(), msg![ty.clone(), " is matched here"]),
                 )
             }
             TypeError::PatternFieldCount {

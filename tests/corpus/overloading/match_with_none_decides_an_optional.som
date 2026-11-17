@@ -1,0 +1,25 @@
+// expect: exit 42
+
+/// Matched with a `none` arm, an overloaded call's result is the optional one: the text
+/// arms before it match the value it holds.
+fn setting(name: string) -> string? {
+    if name == "on" { return "yes"; }
+    if name == "off" { return "no"; }
+    none
+}
+
+fn setting(name: string) -> bool {
+    match setting(name) {
+        "yes" => true,
+        none => false,
+        _ => false,
+    }
+}
+
+fn main() -> i32 {
+    let on: bool = setting("on");
+    let off: bool = setting("off");
+    let missing: bool = setting("missing");
+    if !on || off || missing { return 1; }
+    42
+}

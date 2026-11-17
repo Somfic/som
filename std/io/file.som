@@ -12,12 +12,12 @@ pub enum FileMode {
 
 impl File {
     pub fn open(path: string, mode: FileMode) -> Self? {
-        let mode2: cstr = match mode {
+        let flags: cstr = match mode {
             Read => "r",
-            Write => "rw",
+            Write => "w",
         };
 
-        let ptr = c::fopen(path.c_str, mode2);
+        let ptr = c::fopen(path.c_str, flags);
 
         if ptr == som::mem::null() {
             none
@@ -26,9 +26,12 @@ impl File {
         }
     }
 
-    pub fn lines_mut(&mut self) -> Lines {
-        assert(self.mode == FileMode::Read, "oh no!");
+    pub fn lines(&mut self) -> Lines {
         Lines { file: self, buf: som::mem::null(), cap: 0 }
+    }
+
+    pub fn exists(path: string) -> bool {
+        c::access(path.c_str, c::F_OK) == 0
     }
 }
 
@@ -62,5 +65,11 @@ impl Iterator for Lines {
         }
 
         string::from_bytes(bytes.view(len))
+    }
+}
+
+impl Drop for Lines {
+    fn drop(&mut self) {
+        c::free(.buf);
     }
 }

@@ -1095,7 +1095,11 @@ impl<'a> Resolver<'a> {
 
     fn resolve_pattern(&mut self, id: Id<Pattern>) {
         match &self.ast.patterns[id] {
-            Pattern::Wildcard | Pattern::Int(_) | Pattern::Bool(_) | Pattern::None => {}
+            Pattern::Wildcard
+            | Pattern::Int(_)
+            | Pattern::Bool(_)
+            | Pattern::Str(_)
+            | Pattern::None => {}
             // `Empty`, if some enum in scope has a variant of that name: the type matched
             // decides whose.
             Pattern::Binding { name, mutable } => {

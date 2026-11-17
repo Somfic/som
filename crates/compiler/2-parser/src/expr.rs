@@ -1256,7 +1256,7 @@ impl Parser<'_> {
         Some(id)
     }
 
-    /// A `match` arm's pattern: `_`, `name`, `3`, `true`, `none`, `Circle(r)`,
+    /// A `match` arm's pattern: `_`, `name`, `3`, `true`, `"yes"`, `none`, `Circle(r)`,
     /// `Rect { w, h }` or `Shape::Empty`.
     pub(crate) fn parse_pattern(&mut self) -> Option<Id<Pattern>> {
         let start = self.current_span();
@@ -1281,6 +1281,27 @@ impl Parser<'_> {
                 let value = self.at(TokenKind::True);
                 self.advance();
                 Pattern::Bool(value)
+            }
+            // `"yes"`: plain text. A value in it, `"{x}"`, isn't known until the program runs.
+            TokenKind::Text => {
+                let token = self.peek_token().clone();
+                self.advance();
+                let raw = &token.text[1..token.text.len() - 1];
+                let text = match raw.contains('{') || raw.contains('}') {
+                    true => self.interpolated(&token),
+                    false => Expr::Str(self.unescape(raw, &token.span).into()),
+                };
+                match text {
+                    Expr::Str(text) => Pattern::Str(text),
+                    _ => {
+                        self.error_at(
+                            token.span.clone(),
+                            "a pattern's text can't hold values",
+                            msg!["for a brace itself, write ", code("{{"), " or ", code("}}")],
+                        );
+                        Pattern::Wildcard
+                    }
+                }
             }
             TokenKind::None => {
                 self.advance();

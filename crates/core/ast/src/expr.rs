@@ -150,6 +150,8 @@ pub enum Pattern {
     Int(i128),
     /// `true` or `false`
     Bool(bool),
+    /// `"yes"`: text equal to it, as `==` says.
+    Str(Box<str>),
     /// `none`: an optional without a value. Any other pattern matched against an optional
     /// matches the value it holds.
     None,

@@ -1,6 +1,1 @@
-let mut file = som::io::File::open("/Users/lucas/som/example/main.som", som::io::FileMode::Read);
-if file == none @unreachable;
-
-for line in file.lines() {
-    som::io::println(line);
-}
+@assert(som::io::get_env("CARGO") == true, "rust is installed");

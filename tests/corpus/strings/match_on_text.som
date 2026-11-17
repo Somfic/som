@@ -1,0 +1,39 @@
+// expect: exit 42
+
+/// Text patterns compare with `==`: through a reference, inside an optional, while compiling.
+fn flag(value: string) -> bool {
+    match value {
+        "true" => true,
+        "1" => true,
+        "yes" => true,
+        _ => false
+    }
+}
+
+fn kind(value: &string) -> i32 {
+    match value {
+        "a\"b" => 1,
+        "{{x}}" => 2,
+        other => other.len as i32 + 100,
+    }
+}
+
+fn maybe(value: string?) -> i32 {
+    match value {
+        none => 0,
+        "x" => 1,
+        _ => 2,
+    }
+}
+
+@assert(flag("yes"), "matched while compiling");
+
+fn main() -> i32 {
+    if !flag("true") || !flag("1") || flag("no") || flag("") { return 1; }
+    let quoted = "a\"b";
+    let braces = "{{x}}";
+    let other = "hello";
+    if kind(&quoted) != 1 || kind(&braces) != 2 || kind(&other) != 105 { return 2; }
+    if maybe(none) != 0 || maybe("x") != 1 || maybe("y") != 2 { return 3; }
+    42
+}

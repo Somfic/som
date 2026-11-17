@@ -185,6 +185,37 @@ impl Checker<'_> {
             _ => (found, None),
         };
 
+        // An overloaded call not decided yet: the function giving what the arms can match.
+        // `"yes"` matches text, or an optional's text; `none` only an optional.
+        if self.u.var_kind(matched) == Some(VarKind::Any) {
+            let has = |f: fn(&Pattern) -> bool| (arms.iter()).any(|arm| f(&self.ast.patterns[arm.pattern]));
+            let none = has(|p| matches!(p, Pattern::None));
+            let text = has(|p| matches!(p, Pattern::Str(_)));
+            let int = has(|p| matches!(p, Pattern::Int(_)));
+            self.decide_pending_by(matched, &|c, ret| {
+                let ret = c.u.shallow(ret);
+                let (optional, value) = match *c.u.get(ret) {
+                    Ty::Optional(inner) => (true, c.u.shallow(inner)),
+                    _ => (false, ret),
+                };
+                let value_ty = c.u.get(value);
+                (optional || !none)
+                    && (!text || value == c.u.table.text || matches!(value_ty, Ty::CStr))
+                    && (!int || matches!(value_ty, Ty::Int(_)))
+            });
+        }
+
+        // Not decided yet, as an overloaded call's result isn't, and an arm is `none`: an
+        // optional, so `"yes"` before it matches the value it holds rather than deciding
+        // the type is text.
+        if self.u.var_kind(matched).is_some()
+            && (arms.iter()).any(|arm| matches!(self.ast.patterns[arm.pattern], Pattern::None))
+        {
+            let inner = self.u.fresh(VarKind::Any);
+            let optional = self.u.intern(Ty::Optional(inner));
+            let _ = self.u.unify(matched, optional);
+        }
+
         let outer: HashSet<usize> = self.narrowed.iter().map(|n| n.id).collect();
         let mut result: Option<(TypeId, Id<Expr>)> = None;
         let mut valued = Vec::new();
@@ -353,6 +384,7 @@ impl Checker<'_> {
             Pat::Wild => "_".into(),
             Pat::Ctor(Ctor::Bool(b), _) => b.to_string(),
             Pat::Ctor(Ctor::Int(n), _) => n.to_string(),
+            Pat::Ctor(Ctor::Str(s), _) => format!("{s:?}"),
             Pat::Ctor(Ctor::None, _) => "none".into(),
             // A pattern for an optional's value is written as one for the value.
             Pat::Ctor(Ctor::Some, inner) => match *self.u.get(self.u.shallow(ty)) {
@@ -473,6 +505,13 @@ impl Checker<'_> {
                     c.pattern_mismatch(id, ty);
                 }
                 Pat::Ctor(Ctor::Int(*n), Vec::new())
+            }),
+            Pattern::Str(s) => self.unwrapped(ty, optional, &mut info, |c, ty, _| {
+                let text = c.u.fresh(VarKind::Text);
+                if c.u.unify(ty, text).is_err() {
+                    c.pattern_mismatch(id, ty);
+                }
+                Pat::Ctor(Ctor::Str(s.clone()), Vec::new())
             }),
             Pattern::Bool(b) => self.unwrapped(ty, optional, &mut info, |c, ty, _| {
                 let bool = c.u.table.bool;
