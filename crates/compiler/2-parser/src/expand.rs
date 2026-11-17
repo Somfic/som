@@ -491,8 +491,7 @@ fn parse_block(
         match parser.parse_stmt_or_expr() {
             StmtOrExpr::Stmt(s) => stmts.push(s),
             StmtOrExpr::Expr(e) => {
-                let span = parser.ast.exprs.span(e).clone();
-                stmts.push(parser.ast.stmts.alloc(Stmt::Expr(e), span));
+                stmts.push(parser.expr_stmt(e));
                 parser.eat(TokenKind::Semicolon);
             }
             StmtOrExpr::Error => parser.recover(RecoveryLevel::Statement),

@@ -1,6 +1,6 @@
 //! Bodies written without braces: `then … end`, `do … end`, Python's `:` and indentation.
 
-use som_ast::{Span, Stmt};
+use som_ast::Span;
 use som_base::foreign::{self, Foreign};
 use som_base::message::code;
 use som_base::{Fix, msg};
@@ -150,8 +150,7 @@ impl Parser<'_> {
                         let at = self.previous_span().after();
                         self.ctx.foreign_semicolons.push(at);
                     }
-                    let span = self.ast.exprs.span(expr).clone();
-                    stmts.push(self.ast.stmts.alloc(Stmt::Expr(expr), span));
+                    stmts.push(self.expr_stmt(expr));
                 }
                 StmtOrExpr::Error => self.recover(RecoveryLevel::Statement),
             }

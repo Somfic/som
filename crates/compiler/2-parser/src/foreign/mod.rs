@@ -19,6 +19,8 @@ use crate::ty::primitive;
 const STATIC: &str = "static";
 const VOID: &str = "void";
 const NEW: &str = "new";
+/// The standard library's property for a `string`'s text for C.
+const C_STR: &str = "c_str";
 /// Python's f-string, `f"total: {n}"`: som's text writes values in it as it is.
 const F_STRING_PREFIXES: &[&str] = &["f", "F"];
 
@@ -315,11 +317,11 @@ impl Parser<'_> {
                 code("c_str"),
                 " a property, read without parentheses"
             ],
-            Some(Fix::change_to(span, "c_str")),
+            Some(Fix::change_to(span, C_STR)),
         );
         // Read on as the property: `c_str`, without the `()`.
         self.tokens[self.pos].kind = TokenKind::Ident;
-        self.tokens[self.pos].text = "c_str".into();
+        self.tokens[self.pos].text = C_STR.into();
         if called {
             let skipped: Vec<usize> = (self.pos + 1..self.tokens.len())
                 .filter(|&i| !self.tokens[i].kind.is_trivia())

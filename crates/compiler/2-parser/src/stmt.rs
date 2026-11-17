@@ -21,18 +21,7 @@ impl Parser<'_> {
         // `++x`: reported, and `x` read on.
         self.eat_foreign_prefix_step();
         let stmt = match self.peek() {
-            // `use som::data;`, for the rest of the block.
-            TokenKind::Use => {
-                let start = self.current_span();
-                let Some(u) = self.parse_use() else {
-                    return StmtOrExpr::Error;
-                };
-                self.ast.modules[self.module]
-                    .block_uses
-                    .push(u.path.clone());
-                let span = self.span_from(&start);
-                Some(self.ast.stmts.alloc(Stmt::Use(u), span))
-            }
+            TokenKind::Use => self.parse_block_use(),
             TokenKind::Let => self.parse_let(),
             TokenKind::Builtin if self.at_const(0) => self.parse_local_const(),
             TokenKind::Ident if self.foreign_let().is_some() || self.go_define() => {
@@ -41,7 +30,6 @@ impl Parser<'_> {
             TokenKind::Loop => self.parse_loop(),
             TokenKind::While => self.parse_while(),
             TokenKind::For => self.parse_for(),
-            // `@for i in 0..4 { … }`, `@if DEBUG { … }`: settled while compiling.
             // `@for f in Point { … }`: written out once `Point` is known.
             TokenKind::Builtin if self.at_reflected_for() => self.parse_reflected_stmt(),
             _ if self.at_builtin(Builtin::For) => self.parse_settled_for(),
@@ -49,52 +37,71 @@ impl Parser<'_> {
             TokenKind::Break => self.parse_break(),
             TokenKind::Continue => self.parse_continue(),
             TokenKind::Return => self.parse_return(),
-            // An `if` ending a block, each branch ending in a value, gives that value.
-            TokenKind::If => {
-                let Some(parts) = self.parse_if_parts() else {
-                    return StmtOrExpr::Error;
-                };
-                let ends_block = self.at(TokenKind::CloseBrace) || self.at_eof();
-                if ends_block && parts.gives_value() {
-                    return StmtOrExpr::Expr(self.if_expr(parts));
-                }
-                Some(self.if_stmt(parts))
-            }
-            // Like `if`, a `match` or block that starts a statement ends at its brace: no `;`
-            // needed.
-            TokenKind::Match | TokenKind::OpenBrace => {
-                let expr = match self.peek() {
-                    TokenKind::Match => self.parse_match(),
-                    _ => self.parse_block(),
-                };
-                let Some(expr) = expr else {
-                    return StmtOrExpr::Error;
-                };
-                let ends_block = self.at(TokenKind::CloseBrace) || self.at_eof();
-                if !self.eat(TokenKind::Semicolon) && ends_block {
-                    return StmtOrExpr::Expr(expr);
-                }
-                let span = self.ast.exprs.span(expr).clone();
-                Some(self.ast.stmts.alloc(Stmt::Expr(expr), span))
-            }
-            _ => {
-                let Some(expr) = self.parse_expr() else {
-                    return StmtOrExpr::Error;
-                };
-                if !self.eat(TokenKind::Semicolon) {
-                    return StmtOrExpr::Expr(expr);
-                }
-                let span = self.ast.exprs.span(expr).clone();
-                Some(self.ast.stmts.alloc(Stmt::Expr(expr), span))
-            }
+            TokenKind::If => return self.parse_if_stmt(),
+            TokenKind::Match | TokenKind::OpenBrace => return self.parse_braced_stmt(),
+            _ => return self.parse_expr_stmt(),
         };
-        match stmt {
-            Some(stmt) => StmtOrExpr::Stmt(stmt),
-            None => StmtOrExpr::Error,
-        }
+        stmt.map_or(StmtOrExpr::Error, StmtOrExpr::Stmt)
     }
 
-    /// `@const LIMIT = 10;` in a block.
+    fn ends_block(&self) -> bool {
+        self.at(TokenKind::CloseBrace) || self.at_eof()
+    }
+
+    /// `use som::data;`, for the rest of the block.
+    fn parse_block_use(&mut self) -> Option<Id<Stmt>> {
+        let start = self.current_span();
+        let u = self.parse_use()?;
+        self.ast.modules[self.module]
+            .block_uses
+            .push(u.path.clone());
+        let span = self.span_from(&start);
+        Some(self.ast.stmts.alloc(Stmt::Use(u), span))
+    }
+
+    /// An `if` ending a block, each branch ending in a value, gives that value.
+    fn parse_if_stmt(&mut self) -> StmtOrExpr {
+        let Some(parts) = self.parse_if_parts() else {
+            return StmtOrExpr::Error;
+        };
+        if self.ends_block() && parts.gives_value() {
+            return StmtOrExpr::Expr(self.if_expr(parts));
+        }
+        StmtOrExpr::Stmt(self.if_stmt(parts))
+    }
+
+    /// Like `if`, a `match` or block that starts a statement ends at its brace: no `;`
+    /// needed.
+    fn parse_braced_stmt(&mut self) -> StmtOrExpr {
+        let expr = match self.peek() {
+            TokenKind::Match => self.parse_match(),
+            _ => self.parse_block(),
+        };
+        let Some(expr) = expr else {
+            return StmtOrExpr::Error;
+        };
+        let ends_block = self.ends_block();
+        if !self.eat(TokenKind::Semicolon) && ends_block {
+            return StmtOrExpr::Expr(expr);
+        }
+        StmtOrExpr::Stmt(self.expr_stmt(expr))
+    }
+
+    fn parse_expr_stmt(&mut self) -> StmtOrExpr {
+        let Some(expr) = self.parse_expr() else {
+            return StmtOrExpr::Error;
+        };
+        if !self.eat(TokenKind::Semicolon) {
+            return StmtOrExpr::Expr(expr);
+        }
+        StmtOrExpr::Stmt(self.expr_stmt(expr))
+    }
+
+    pub(crate) fn expr_stmt(&mut self, expr: Id<Expr>) -> Id<Stmt> {
+        let span = self.ast.exprs.span(expr).clone();
+        self.ast.stmts.alloc(Stmt::Expr(expr), span)
+    }
+
     fn parse_local_const(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         let c = self.parse_const()?;
@@ -204,7 +211,6 @@ impl Parser<'_> {
         Some(self.ast.stmts.alloc(Stmt::Break(target), span))
     }
 
-    /// `return value;` or `return;`
     fn parse_return(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::Return, "a return statement")?;
@@ -248,7 +254,6 @@ impl Parser<'_> {
         Some(self.ast.stmts.alloc(Stmt::While { condition, body }, span))
     }
 
-    /// `for name in iterable { body }`
     fn parse_for(&mut self) -> Option<Id<Stmt>> {
         let start = self.current_span();
         self.expect(TokenKind::For, "a for loop")?;
@@ -526,8 +531,7 @@ impl Parser<'_> {
     fn block_stmts(&mut self, block: BlockParts) -> Vec<Id<Stmt>> {
         let mut stmts = block.stmts;
         if let Some(value) = block.value {
-            let span = self.ast.exprs.span(value).clone();
-            let stmt = self.ast.stmts.alloc(Stmt::Expr(value), span);
+            let stmt = self.expr_stmt(value);
             self.ast.unterminated.insert(stmt);
             stmts.push(stmt);
         }
@@ -555,8 +559,8 @@ impl Parser<'_> {
         if self.pos == before {
             return false;
         }
-        let span = self.ast.exprs.span(expr).clone();
-        stmts.push(self.ast.stmts.alloc(Stmt::Expr(expr), span));
+        let stmt = self.expr_stmt(expr);
+        stmts.push(stmt);
         true
     }
 

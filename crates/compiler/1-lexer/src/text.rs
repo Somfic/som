@@ -52,7 +52,7 @@ pub fn text_parts(text: &str) -> Vec<TextPart> {
 }
 
 /// How long the escape at the start of `text`, a `\`, is as written: `\n` is 2, `\u{41}` 6.
-pub fn escape_len(text: &str) -> usize {
+fn escape_len(text: &str) -> usize {
     match text[1..].chars().next() {
         Some('u') if text[2..].starts_with('{') => text.find('}').map_or(2, |end| end + 1),
         Some(c) => 1 + c.len_utf8(),

@@ -7,7 +7,7 @@ use som_base::message::{Part, code};
 use som_base::{Source, Span};
 use som_lang::Primitive;
 use std::sync::Arc;
-pub use text::{TextPart, escape_len, text_parts};
+pub use text::{TextPart, text_parts};
 
 // The token attributes are the source of truth; the `keywords_are_tokens` test keeps this
 // in step with them.
