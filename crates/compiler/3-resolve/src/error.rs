@@ -23,28 +23,24 @@ pub enum ResolveError {
         name: String,
         span: Span,
         help: Option<Message>,
-        /// Changes that would fix it: the suggested name, or a `use`.
         fixes: Vec<Fix>,
     },
     UnknownStruct {
         name: String,
         span: Span,
         help: Option<Message>,
-        /// Changes that would fix it: the suggested name, or a `use`.
         fixes: Vec<Fix>,
     },
     UnknownType {
         name: String,
         span: Span,
         help: Option<Message>,
-        /// Changes that would fix it: the suggested name, or a `use`.
         fixes: Vec<Fix>,
     },
     UnknownTrait {
         name: String,
         span: Span,
         help: Option<Message>,
-        /// Changes that would fix it: the suggested name, or a `use`.
         fixes: Vec<Fix>,
     },
     DuplicateDefinition {

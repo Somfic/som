@@ -8,24 +8,33 @@ pub type DefId = Id<Def>;
 
 #[derive(Clone, Debug)]
 pub enum DefKind {
-    /// A function, method or extern function.
     Func(Id<Func>),
     /// A built-in type with methods of its own: `i32` in `impl i32 { … }`.
     Primitive(som_ast::Primitive),
     /// A struct, or an enum.
     Struct(Id<Struct>),
     /// The `index`th variant of enum `strukt`: `Shape::Circle`.
-    Variant { strukt: Id<Struct>, index: usize },
+    Variant {
+        strukt: Id<Struct>,
+        index: usize,
+    },
     /// A name a `match` arm's pattern binds: `r` in `Circle(r) => …`.
     Binding(Id<Pattern>),
-    /// `trait Iterator { … }`
     Trait(Id<Trait>),
     /// `type Vector3 = Vector<3, f32>;`: another name for the type `ty` describes.
-    Alias { ty: Id<TypeExpr> },
+    Alias {
+        ty: Id<TypeExpr>,
+    },
     /// The `index`th generic parameter of a type alias: `T` in `type Vector3<T> = Vector<3, T>`.
-    AliasParam { index: usize, value: bool },
+    AliasParam {
+        index: usize,
+        value: bool,
+    },
     /// The `index`th associated type of a trait: `Item` in `trait Iterator { type Item; }`.
-    AssocType { trait_: Id<Trait>, index: usize },
+    AssocType {
+        trait_: Id<Trait>,
+        index: usize,
+    },
     /// The `index`th generic parameter of impl block `impl_` (see `Names::impls`), as its
     /// target and associated types are written: `T` in `impl<T> Iterator for ListIter<T>`.
     ImplParam {
@@ -35,14 +44,23 @@ pub enum DefKind {
     },
     /// A trait's own `Self` (`index` 0) or `index - 1`th generic parameter, as its
     /// parameters' defaults name them: `Self` in `trait Add<Other = Self>`.
-    TraitParam { trait_: Id<Trait>, index: usize },
+    TraitParam {
+        trait_: Id<Trait>,
+        index: usize,
+    },
     /// `Self` inside impl block `impl_`: its target type.
-    SelfType { impl_: usize },
+    SelfType {
+        impl_: usize,
+    },
     /// The `index`th associated type impl block `impl_` says: `Item` in `type Item = &T;`.
-    ImplType { impl_: usize, index: usize },
-    /// The `index`th parameter of `func`.
-    Param { func: Id<Func>, index: usize },
-    /// A `let` binding.
+    ImplType {
+        impl_: usize,
+        index: usize,
+    },
+    Param {
+        func: Id<Func>,
+        index: usize,
+    },
     Local(Id<Stmt>),
     /// `@const W = 60;`: a value known while compiling.
     Const(Id<som_ast::Const>),
@@ -64,6 +82,25 @@ pub enum DefKind {
     },
 }
 
+impl DefKind {
+    /// Whether this names a type rather than a value or a trait.
+    pub(crate) fn is_type(&self) -> bool {
+        matches!(
+            self,
+            DefKind::Struct(_)
+                | DefKind::TypeParam { .. }
+                | DefKind::TraitParam { .. }
+                | DefKind::StructParam { .. }
+                | DefKind::AssocType { .. }
+                | DefKind::ImplParam { .. }
+                | DefKind::SelfType { .. }
+                | DefKind::ImplType { .. }
+                | DefKind::Alias { .. }
+                | DefKind::AliasParam { .. }
+        )
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Def {
     pub name: Box<str>,
@@ -76,9 +113,7 @@ pub struct Def {
 /// An `impl` block, by its index in `Names::impls`.
 pub struct ImplDef {
     pub module: usize,
-    /// The trait it implements, if it does.
     pub trait_: Option<DefId>,
-    /// The struct it's for.
     pub owner: Option<DefId>,
     /// Its generic parameters, as its target and associated types use them: `ImplParam`s.
     /// Each method has its own copies, first among its generics.
@@ -86,6 +121,14 @@ pub struct ImplDef {
     pub methods: Vec<Id<Func>>,
     /// The associated types it says, `ImplType`s, in the order written.
     pub types: Vec<DefId>,
+}
+
+/// The traits, structs and functions the language uses, where the standard library defines them.
+#[derive(Default)]
+struct LangItems {
+    traits: HashMap<LangTrait, DefId>,
+    structs: HashMap<LangStruct, DefId>,
+    funcs: HashMap<LangFunc, DefId>,
 }
 
 /// The result of name resolution: what every name in the program refers to.
@@ -101,24 +144,19 @@ pub struct Names {
     lets: Vec<Option<DefId>>,
     /// `break x;` and `continue x;` → the variable of the `for` loop they name.
     loop_targets: Vec<Option<DefId>>,
-    /// Each function's own definition and its parameters.
     funcs: Vec<Option<DefId>>,
     params: Vec<Vec<DefId>>,
     type_params: Vec<Vec<DefId>>,
-    /// Every type alias's definition, in the order written, module by module.
     aliases: Vec<DefId>,
-    /// Each constant's definition.
     consts: Vec<Option<DefId>>,
     /// Constants in impl blocks, by the type they're for and their name: `f32::PI`.
     assoc_consts: HashMap<(DefId, Box<str>), DefId>,
     /// The type each constant in an impl block is for.
     const_owners: HashMap<Id<som_ast::Const>, DefId>,
-    /// Each type alias's generic parameters.
     alias_params: HashMap<DefId, Vec<DefId>>,
     /// `Vector3::zero()`, `Vector3 { … }`: expressions whose path names a struct through an
     /// alias → the alias, whose type the struct's value has.
     expr_aliases: HashMap<Id<Expr>, DefId>,
-    /// Each struct's type parameters.
     struct_params: Vec<Vec<DefId>>,
     structs: Vec<Option<DefId>>,
     /// `(struct, method name)` → the method, for `impl` blocks.
@@ -128,14 +166,11 @@ pub struct Names {
     /// a generic struct can each have one, `x` of `Vector<2, T>` and of `Vector<3, T>`; the
     /// type checker picks the one whose block the value's type is for.
     props: HashMap<(DefId, Box<str>), Vec<(usize, DefId)>>,
-    /// Each enum's variants, in order.
     variants: Vec<Vec<DefId>>,
     /// Functions sharing a name in a module: the first one's definition → all of them, in
     /// order. A call names the first; the type checker picks the one that fits.
     overloads: HashMap<DefId, Vec<DefId>>,
-    /// Each trait's definition.
     traits: Vec<Option<DefId>>,
-    /// Each trait's associated types, in order.
     trait_types: Vec<Vec<DefId>>,
     /// Each trait's `Self`, then its generic parameters: what its defaults are written in.
     trait_params: Vec<Vec<DefId>>,
@@ -143,17 +178,11 @@ pub struct Names {
     supers: Vec<Vec<DefId>>,
     /// Every `impl` block, in the order they're written, module by module.
     pub impls: Vec<ImplDef>,
-    /// A method → the impl block it's in.
     impl_of: HashMap<Id<Func>, usize>,
-    /// A type parameter → the traits it has to implement.
     bounds: HashMap<DefId, Vec<DefId>>,
     /// `T::Item`, `Self::Item` → the type parameter or `Self` it's of.
     projection_bases: HashMap<Id<TypeExpr>, DefId>,
-    /// The traits the language uses, where the standard library defines them.
-    lang: HashMap<LangTrait, DefId>,
-    /// The structs the language uses, where the standard library defines them.
-    lang_structs: HashMap<LangStruct, DefId>,
-    lang_funcs: HashMap<LangFunc, DefId>,
+    lang: LangItems,
     /// The functions called when the program fails (see `fail_listeners`).
     fail_listeners: Vec<Id<Func>>,
     /// Patterns → the name they bind, or the variant a qualified one names. A bare variant
@@ -194,9 +223,7 @@ impl Names {
             impl_of: HashMap::new(),
             bounds: HashMap::new(),
             projection_bases: HashMap::new(),
-            lang: HashMap::new(),
-            lang_structs: HashMap::new(),
-            lang_funcs: HashMap::new(),
+            lang: LangItems::default(),
             fail_listeners: Vec::new(),
             patterns: vec![None; ast.patterns.len()],
             primitives: HashMap::new(),
@@ -224,15 +251,15 @@ impl Names {
     }
 
     pub(crate) fn set_lang(&mut self, lang: LangTrait, def: DefId) {
-        self.lang.insert(lang, def);
+        self.lang.traits.insert(lang, def);
     }
 
     pub(crate) fn set_lang_struct(&mut self, lang: LangStruct, def: DefId) {
-        self.lang_structs.insert(lang, def);
+        self.lang.structs.insert(lang, def);
     }
 
     pub(crate) fn set_lang_func(&mut self, lang: LangFunc, def: DefId) {
-        self.lang_funcs.insert(lang, def);
+        self.lang.funcs.insert(lang, def);
     }
 
     pub(crate) fn set_fail_listeners(&mut self, listeners: Vec<Id<Func>>) {
@@ -297,13 +324,12 @@ impl Names {
         self.alias_params.insert(def, params);
     }
 
-    /// Every type alias's definition, in the order they're written, module by module.
-    pub fn set_const(&mut self, c: Id<som_ast::Const>, def: DefId) {
+    pub(crate) fn set_const(&mut self, c: Id<som_ast::Const>, def: DefId) {
         self.consts[c.id] = Some(def);
     }
 
     /// Adds constant `c`, `def`, to the type `owner`; the one already called that, if there is.
-    pub fn add_assoc_const(
+    pub(crate) fn add_assoc_const(
         &mut self,
         owner: DefId,
         c: Id<som_ast::Const>,
@@ -324,7 +350,6 @@ impl Names {
         self.assoc_consts.get(&(owner, name.into())).copied()
     }
 
-    /// The constants `owner` has, by name.
     pub fn assoc_consts_of(&self, owner: DefId) -> Vec<(&str, DefId)> {
         let mut consts: Vec<(&str, DefId)> = (self.assoc_consts.iter())
             .filter(|((o, _), _)| *o == owner)
@@ -339,7 +364,6 @@ impl Names {
         self.const_owners.get(&c).copied()
     }
 
-    /// Constant `c`'s own definition.
     pub fn const_def(&self, c: Id<som_ast::Const>) -> DefId {
         self.consts[c.id].expect("every constant is defined")
     }
@@ -348,7 +372,6 @@ impl Names {
         &self.aliases
     }
 
-    /// A type alias's generic parameters.
     pub fn alias_params(&self, alias: DefId) -> &[DefId] {
         self.alias_params.get(&alias).map_or(&[], Vec::as_slice)
     }
@@ -402,8 +425,6 @@ impl Names {
         None
     }
 
-    // --- Queries ---
-
     pub fn def(&self, id: DefId) -> &Def {
         &self.defs[id]
     }
@@ -429,12 +450,11 @@ impl Names {
         self.types[ty.id]
     }
 
-    /// The local introduced by a `let` statement.
     pub fn local(&self, stmt: Id<Stmt>) -> Option<DefId> {
         self.lets[stmt.id]
     }
 
-    pub fn set_loop_target(&mut self, stmt: Id<Stmt>, def: DefId) {
+    pub(crate) fn set_loop_target(&mut self, stmt: Id<Stmt>, def: DefId) {
         self.loop_targets[stmt.id] = Some(def);
     }
 
@@ -473,7 +493,6 @@ impl Names {
         self.structs[s.id].expect("every struct is defined")
     }
 
-    /// Every method defined on `owner`, by name.
     pub fn methods_of(&self, owner: DefId) -> Vec<(&str, DefId)> {
         let mut methods: Vec<(&str, DefId)> = self
             .methods
@@ -494,12 +513,10 @@ impl Names {
         }
     }
 
-    /// The definition of a trait.
     pub fn trait_def(&self, t: Id<Trait>) -> DefId {
         self.traits[t.id].expect("every trait is defined")
     }
 
-    /// A trait's associated types, in order.
     pub fn trait_types(&self, t: Id<Trait>) -> &[DefId] {
         &self.trait_types[t.id]
     }
@@ -519,16 +536,14 @@ impl Names {
         &self.supers[t.id]
     }
 
-    pub fn set_supers(&mut self, t: Id<Trait>, supers: Vec<DefId>) {
+    pub(crate) fn set_supers(&mut self, t: Id<Trait>, supers: Vec<DefId>) {
         self.supers[t.id] = supers;
     }
 
-    /// The impl block method `func` is in, by its index in `impls`.
     pub fn impl_of(&self, func: Id<Func>) -> Option<usize> {
         self.impl_of.get(&func).copied()
     }
 
-    /// The traits type parameter `param` has to implement.
     pub fn bounds(&self, param: DefId) -> &[DefId] {
         self.bounds.get(&param).map(Vec::as_slice).unwrap_or(&[])
     }
@@ -540,16 +555,16 @@ impl Names {
 
     /// The standard library's trait the language uses as `lang`, if it's loaded.
     pub fn lang(&self, lang: LangTrait) -> Option<DefId> {
-        self.lang.get(&lang).copied()
+        self.lang.traits.get(&lang).copied()
     }
 
     /// The standard library's struct the language uses as `lang`, if it's loaded.
     pub fn lang_struct(&self, lang: LangStruct) -> Option<DefId> {
-        self.lang_structs.get(&lang).copied()
+        self.lang.structs.get(&lang).copied()
     }
 
     pub fn lang_func(&self, lang: LangFunc) -> Option<DefId> {
-        self.lang_funcs.get(&lang).copied()
+        self.lang.funcs.get(&lang).copied()
     }
 
     /// What's called, in order, when the program fails: its own `@on fail` functions, or if
@@ -558,9 +573,12 @@ impl Names {
         &self.fail_listeners
     }
 
-    /// Which lang trait `def` is, if any.
     pub fn lang_of(&self, def: DefId) -> Option<LangTrait> {
-        self.lang.iter().find(|&(_, &d)| d == def).map(|(&l, _)| l)
+        self.lang
+            .traits
+            .iter()
+            .find(|&(_, &d)| d == def)
+            .map(|(&l, _)| l)
     }
 
     /// An enum's variants, in order. Empty for a struct.
@@ -581,7 +599,6 @@ impl Names {
         self.patterns[pattern.id]
     }
 
-    /// The method `name` defined on `owner` by an `impl` block.
     pub fn method(&self, owner: DefId, name: &str) -> Option<DefId> {
         self.methods.get(&(owner, name.into())).copied()
     }
@@ -593,7 +610,6 @@ impl Names {
             .collect()
     }
 
-    /// Every property defined on `owner`, by name.
     pub fn props_of(&self, owner: DefId) -> Vec<(&str, DefId)> {
         let mut props: Vec<(&str, DefId)> = (self.props.iter())
             .filter(|((o, _), _)| *o == owner)
