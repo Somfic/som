@@ -281,6 +281,20 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         self.subst.apply(&mut self.l.mir.types, ty)
     }
 
+    /// `rvalue` in a new temporary, read.
+    pub(super) fn temp_read(&mut self, ty: TypeId, rvalue: Rvalue, span: Span) -> Operand {
+        let temp = self.temp(ty, span.clone());
+        self.assign(Place::local(temp), rvalue, span);
+        self.read(Place::local(temp), ty)
+    }
+
+    /// `rvalue` in a new temporary, copied.
+    pub(super) fn temp_copy(&mut self, ty: TypeId, rvalue: Rvalue, span: Span) -> Operand {
+        let temp = self.temp(ty, span.clone());
+        self.assign(Place::local(temp), rvalue, span);
+        Operand::Copy(Place::local(temp))
+    }
+
     /// What value parameter `def` stands for in this instance.
     pub(super) fn value_param(&mut self, def: DefId) -> Value {
         let param = self.l.mir.types.intern(Ty::Param(def));

@@ -14,6 +14,7 @@ mod loops;
 mod matching;
 mod optional;
 mod place;
+mod rvalue;
 mod stmt;
 mod traits;
 
