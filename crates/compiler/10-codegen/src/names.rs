@@ -176,10 +176,10 @@ impl Names {
 /// An enum's members: `tag`, the common fields beside it, then each variant's own fields,
 /// reached through the union of variants: `as.Rect.w`, `as.Circle._0`.
 fn enum_field_names(s: &StructDef, variants: &[VariantDef]) -> Vec<String> {
-    let mut taken_common: HashSet<String> = ["tag", "as"].into_iter().map(String::from).collect();
+    let mut taken_common: HashSet<String> = [som_mir::ENUM_TAG, "as"].into_iter().map(String::from).collect();
     let mut names: Vec<String> = (s.fields.iter().enumerate())
         .map(|(i, (name, _))| match i {
-            0 => "tag".to_string(),
+            0 => som_mir::ENUM_TAG.to_string(),
             _ if !name.contains('.') => unique(name, "f", &mut taken_common, |_| false),
             _ => String::new(),
         })
