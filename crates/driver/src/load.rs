@@ -199,15 +199,13 @@ pub fn load_with(
             let name: Vec<String> = (within.components())
                 .map(|c| c.as_os_str().to_string_lossy().into_owned())
                 .collect();
-            let nowhere = Span::empty(Arc::new(Source::from_raw("")));
-            loader.load_module(name.join("::"), folder, nowhere);
+            loader.load_module(name.join("::"), folder, nowhere());
         }
     }
     // The standard library is always there by its full name, `som::io::printf`, without a
     // `use`; `use som::io;` is for naming what's in it unqualified.
     if !loader.loaded.contains(som_lang::PRELUDE_MODULE) {
-        let nowhere = Span::empty(Arc::new(Source::from_raw("")));
-        loader.load_module(som_lang::PRELUDE_MODULE.into(), &folder_of(path), nowhere);
+        loader.load_module(som_lang::PRELUDE_MODULE.into(), &folder_of(path), nowhere());
     }
     // `@for v in Kind { … }`: written out now that every module, and `Kind`, is loaded.
     let errors = som_parser::expand_reflected(&mut loader.ast);
@@ -225,6 +223,11 @@ fn generated_for(path: &Path) -> Option<PathBuf> {
         .file_name()
         .is_some_and(|name| name == toolchain::CACHE_DIR);
     generated.then(|| folder.parent().map(Path::to_path_buf))?
+}
+
+/// Where a module no `use` asked for is used from.
+fn nowhere() -> Span {
+    Span::empty(Arc::new(Source::from_raw("")))
 }
 
 fn folder_of(path: &Path) -> PathBuf {

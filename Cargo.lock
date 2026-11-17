@@ -902,6 +902,7 @@ dependencies = [
  "clap",
  "som_base",
  "som_driver",
+ "som_lang",
  "som_lsp",
  "tempfile",
 ]

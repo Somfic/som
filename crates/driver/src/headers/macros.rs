@@ -202,7 +202,6 @@ enum Val {
 }
 
 impl Val {
-    /// `pub @const NAME: i32 = 10;`
     fn declaration(&self, name: &str) -> Option<String> {
         Some(match self {
             Val::Int(n, int) => format!("pub @const {name}: {} = {n};", int.ty().name()),
@@ -274,6 +273,9 @@ enum Tok {
     Ident(String),
     Punct(&'static str),
 }
+
+/// raylib's `CLITERAL(Color){ … }`, a compound literal C++ can read too.
+const RAYLIB_COMPOUND_LITERAL: &str = "CLITERAL";
 
 const PUNCTS: &[&str] = &[
     "<<", ">>", "(", ")", "{", "}", ",", "+", "-", "*", "/", "%", "&", "|", "^", "~",
@@ -469,7 +471,6 @@ fn number(text: &str) -> Option<Val> {
 struct Evaluator<'a> {
     defines: &'a HashMap<&'a str, &'a Define>,
     record: &'a dyn Fn(&str) -> Option<Record>,
-    /// What each definition worked out to, once it has.
     values: HashMap<String, Option<Val>>,
     /// The definitions being worked out, which one naming itself never finishes.
     evaluating: HashSet<String>,
@@ -529,9 +530,8 @@ impl Evaluator<'_> {
                 _ => None,
             },
             Tok::Punct("(") => self.parenthesised(p),
-            // raylib's `CLITERAL(Color){ … }`.
             Tok::Ident(name)
-                if name == "CLITERAL"
+                if name == RAYLIB_COMPOUND_LITERAL
                     && p.peek() == Some(&Tok::Punct("("))
                     && matches!(p.tokens.get(p.at + 1), Some(Tok::Ident(_)))
                     && p.tokens.get(p.at + 2) == Some(&Tok::Punct(")")) =>
