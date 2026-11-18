@@ -6,7 +6,7 @@ use std::process::{Command, ExitStatus};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::Checked;
-use crate::toolchain;
+use crate::toolchain::{self, Os};
 
 #[derive(Debug)]
 pub enum BuildError {
@@ -69,20 +69,10 @@ impl BuildError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BuildOptions {
-    pub cc: String,
     /// Called with the C compiler command line before it runs, to show it.
     pub on_command: Option<fn(&str)>,
-}
-
-impl Default for BuildOptions {
-    fn default() -> Self {
-        BuildOptions {
-            cc: toolchain::c_compiler(),
-            on_command: None,
-        }
-    }
 }
 
 pub fn emit_c(checked: &Checked) -> Result<String, BuildError> {
@@ -143,7 +133,8 @@ fn no_main(end: Option<&som_base::Span>) -> Diagnostic {
     })
 }
 
-/// Compiles a checked program to an executable at `output`. The generated C goes
+/// Compiles a checked program to an executable at `output`, with the toolchain it was
+/// checked for, and returns where it went: `output.exe` for Windows. The generated C goes
 /// to a temporary file, which is kept only if the C compiler rejects it.
 pub fn build(
     checked: &Checked,
@@ -164,22 +155,22 @@ pub fn build(
         message: e.to_string(),
     })?;
 
-    let compiler = options.cc.clone();
-    let mut cmd = Command::new(&compiler);
+    let toolchain = &checked.toolchain;
+    let compiler = toolchain.cc.clone();
+    let output = toolchain.target.executable(output);
+    let mut cmd = toolchain.c_command();
     cmd.args(toolchain::C_FLAGS)
         .arg("-o")
-        .arg(output)
+        .arg(&output)
         .arg(&c_file);
     // The exact files that were checked, rather than letting the linker search.
     cmd.args(&checked.libraries);
-    cmd.args(toolchain::c_link_flags());
+    cmd.args(toolchain.target.link_flags());
 
     if let Some(show) = options.on_command {
-        let args: Vec<String> = cmd
-            .get_args()
-            .map(|a| a.to_string_lossy().into_owned())
-            .collect();
-        show(&format!("{compiler} {}", args.join(" ")));
+        let words = std::iter::once(cmd.get_program()).chain(cmd.get_args());
+        let words: Vec<String> = words.map(|a| a.to_string_lossy().into_owned()).collect();
+        show(&words.join(" "));
     }
     let result = cmd.output().map_err(|e| BuildError::NoCompiler {
         compiler: compiler.clone(),
@@ -192,7 +183,7 @@ pub fn build(
         });
     }
     let _ = std::fs::remove_file(&c_file);
-    Ok(output.to_path_buf())
+    Ok(output)
 }
 
 /// Runs a built program, making the libraries it was linked against findable.
@@ -210,12 +201,16 @@ pub fn command(checked: &Checked, executable: &Path, args: &[String]) -> Command
         .filter_map(|lib| lib.parent().map(Path::to_path_buf))
         .collect();
     if !dirs.is_empty() {
+        let target = &checked.toolchain.target;
+        let var = target.library_path_var();
+        let mut dirs = dirs;
+        // Windows finds DLLs through `PATH`, which still has to find everything else.
+        if target.os() == Os::Windows
+            && let Some(existing) = std::env::var_os(var)
+        {
+            dirs.extend(std::env::split_paths(&existing));
+        }
         let joined = std::env::join_paths(&dirs).unwrap_or_default();
-        let var = if cfg!(target_os = "macos") {
-            "DYLD_LIBRARY_PATH"
-        } else {
-            "LD_LIBRARY_PATH"
-        };
         cmd.env(var, joined);
     }
     cmd

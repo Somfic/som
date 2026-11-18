@@ -8,13 +8,14 @@ mod libraries;
 mod load;
 mod pipeline;
 pub mod stdlib;
+pub mod targets;
 mod tests;
 mod tokens;
 pub mod toolchain;
 
 pub use build::{BuildError, BuildOptions, build, command, emit_c, run};
 pub use error::{Error, Warning};
-pub use headers::origins;
+pub use headers::{libc_bindings, origins};
 pub use imports::{Importable, importable, locate};
 pub use libraries::{LibraryError, LibraryWarning, SameAsHeader};
 pub use load::{LoadError, load};
@@ -29,6 +30,7 @@ use som_resolve::Names;
 use som_typeck::Typed;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use toolchain::Toolchain;
 
 /// Everything the front end knows about a program that passed all checks so far.
 pub struct Checked {
@@ -39,6 +41,8 @@ pub struct Checked {
     /// The library files to link: those of the `extern "…"` blocks whose functions the
     /// program still uses after tree shaking.
     pub libraries: Vec<PathBuf>,
+    /// What it was checked for, and so has to be built with.
+    pub toolchain: Toolchain,
     pub warnings: Vec<Warning>,
 }
 
@@ -51,8 +55,7 @@ pub struct Failed {
 
 #[derive(Debug, Clone, Default)]
 pub struct Options {
-    /// Extra directories to look for libraries in, before the system's.
-    pub library_dirs: Vec<PathBuf>,
+    pub toolchain: Toolchain,
     /// Files' contents to use instead of what's on disk: an editor's unsaved changes.
     pub overlay: HashMap<PathBuf, String>,
     /// The file an editor has open: its module is loaded too, even if nothing uses it yet,
@@ -61,6 +64,9 @@ pub struct Options {
     /// Leave the MIR as lowering made it, once constants are worked out: no folding, and
     /// nothing unused removed. To see what the program is before the optimizer changes it.
     pub no_optimize: bool,
+    /// Check for every system, as warnings, the way an editor shows a program; otherwise
+    /// only for the toolchain's target, where what it can't do is an error.
+    pub every_system: bool,
     /// Build the program's tests: it starts at `som::run_tests`, which runs each `@test`,
     /// instead of at `main`.
     pub test: bool,
@@ -78,7 +84,7 @@ pub fn program_root(file: &Path) -> PathBuf {
 
 /// Loads `path` and runs every check, stopping after the first pass that reports errors.
 pub fn check(path: &Path, options: &Options) -> Result<Checked, Failed> {
-    let (ast, errors) = load(path, &options.library_dirs);
+    let (ast, errors) = load(path, &options.toolchain);
     if !errors.is_empty() {
         return Err(Failed {
             errors: errors.into_iter().map(Error::Load).collect(),
@@ -132,6 +138,7 @@ fn check_passes(ast: Ast, options: &Options, passes: &mut Passes) -> Result<Chec
         typed: front.typed,
         mir,
         libraries,
+        toolchain: options.toolchain.clone(),
         warnings: Vec::new(),
     })
 }
@@ -153,7 +160,7 @@ pub struct Analysis {
 pub fn analyze(path: &Path, options: &Options) -> Analysis {
     let (ast, load_errors) = load::load_with(
         path,
-        &options.library_dirs,
+        &options.toolchain,
         &options.overlay,
         options.opened.as_deref(),
     );

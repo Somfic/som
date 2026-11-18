@@ -76,8 +76,8 @@ pub fn submodules(name: &str) -> Vec<String> {
     children
 }
 
-/// Whether a folder called `name` is a module: named like one, which `.som/`, where
-/// imported C headers are cached, isn't.
+/// Whether a folder called `name` is a module: named like one, which `.build/`, where
+/// building puts what it makes, isn't.
 fn is_module_name(name: &str) -> bool {
     name.starts_with(|c: char| c.is_alphabetic() || c == '_')
         && name.chars().all(|c| c.is_alphanumeric() || c == '_')
@@ -114,7 +114,7 @@ mod tests {
     fn only_folders_named_like_modules_are_modules() {
         assert!(is_module_name("data"));
         assert!(is_module_name("io_2"));
-        assert!(!is_module_name(".som"));
+        assert!(!is_module_name(".build"));
         assert!(!is_module_name(".git"));
         assert!(!is_module_name("2d"));
         assert!(!is_module_name("my-lib"));

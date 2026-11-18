@@ -1,11 +1,9 @@
+extern "raylib";
 
-let mut queue =  Queue::empty();
-queue.enqueue("Hello");
-queue.enqueue("Hello 2");
-queue.enqueue("Hello 3");
-queue.enqueue("Hello 4");
-queue.enqueue("Hello 5");
+let a = 12;
+print();
 
-for item in queue {
-    som::io::println(item);
+
+fn print() {
+    let a = som::c::_getpid();
 }

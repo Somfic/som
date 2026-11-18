@@ -1,5 +1,6 @@
 //! `extern "library"` checks, against small libraries compiled with the system C compiler.
 
+use som_driver::toolchain::Toolchain;
 use som_driver::{Error, LibraryError, Options, check};
 use std::path::Path;
 use std::process::Command;
@@ -113,7 +114,10 @@ fn library_directories_are_searched() {
         [LibraryError::LibraryNotFound { .. }]
     ));
     let options = Options {
-        library_dirs: vec![libs],
+        toolchain: Toolchain {
+            library_dirs: vec![libs],
+            ..Toolchain::default()
+        },
         ..Options::default()
     };
     assert!(check(&main, &options).is_ok());

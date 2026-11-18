@@ -14,7 +14,7 @@ use som_base::{Diagnostic, Fix, Label, Message, msg};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use crate::toolchain;
+use crate::toolchain::{self, Target, Toolchain};
 
 #[derive(Debug)]
 pub enum LibraryError {
@@ -312,9 +312,9 @@ impl LibraryError {
     }
 }
 
-/// Checks every `extern "library"` block in the program, looking in `extra` directories
-/// as well. Returns the library files found, for linking, and the problems.
-pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryError>) {
+/// Checks every `extern "library"` block in the program. Returns the library files found,
+/// for linking, and the problems.
+pub fn check(ast: &mut Ast, toolchain: &Toolchain) -> (Vec<PathBuf>, Vec<LibraryError>) {
     let root = ast.modules[0].path.clone();
     let mut found: Vec<PathBuf> = Vec::new();
     let mut symbols: HashMap<PathBuf, Result<Symbols, String>> = HashMap::new();
@@ -331,18 +331,18 @@ pub fn check(ast: &mut Ast, extra: &[PathBuf]) -> (Vec<PathBuf>, Vec<LibraryErro
             continue;
         }
 
-        let path = match find(library, &root, extra) {
+        let path = match find(library, &root, toolchain) {
             Ok(path) => path,
             Err(searched) => {
                 let suggestion = if is_path(library) {
                     None
                 } else {
-                    similar_library(library, &searched)
+                    similar_library(library, &searched, &toolchain.target)
                 };
                 errors.push(LibraryError::LibraryNotFound {
                     library: library.clone(),
                     span: span.clone(),
-                    files: toolchain::library_files(library),
+                    files: toolchain.target.library_files(library),
                     searched,
                     suggestion,
                 });
@@ -445,12 +445,15 @@ fn is_path(library: &str) -> bool {
         || (toolchain::LIBRARY_EXTENSIONS.iter()).any(|ext| library.ends_with(&format!(".{ext}")))
 }
 
-/// The program's directory, then `extra` (from `-L`), then the system's, then
-/// `LIBRARY_PATH` and Nix's `NIX_LDFLAGS`.
-pub(crate) fn search_dirs(root: &Path, extra: &[PathBuf]) -> Vec<PathBuf> {
+/// The program's directory, then the toolchain's (from `-L`), then the system's, then
+/// `LIBRARY_PATH` and Nix's `NIX_LDFLAGS`, which are only for the system som runs on.
+pub(crate) fn search_dirs(root: &Path, toolchain: &Toolchain) -> Vec<PathBuf> {
     let mut dirs = vec![toolchain::program_dir(root).to_path_buf()];
-    dirs.extend(extra.iter().cloned());
-    dirs.extend(toolchain::system_library_dirs());
+    dirs.extend(toolchain.library_dirs.iter().cloned());
+    dirs.extend(toolchain.target.system_library_dirs());
+    if toolchain.target.is_cross() {
+        return dirs;
+    }
     if let Some(paths) = std::env::var_os("LIBRARY_PATH") {
         dirs.extend(std::env::split_paths(&paths));
     }
@@ -484,7 +487,7 @@ pub(crate) fn flag_dirs(line: &str, flags: &[&str]) -> Vec<PathBuf> {
 
 /// The name of a library in `dirs` that's spelled almost like `library`. Of equally
 /// close names, the one in the earliest directory wins, so the program's own come first.
-fn similar_library(library: &str, dirs: &[PathBuf]) -> Option<String> {
+fn similar_library(library: &str, dirs: &[PathBuf], target: &Target) -> Option<String> {
     let mut best: Option<(usize, String)> = None;
     for dir in dirs {
         let Ok(entries) = std::fs::read_dir(dir) else {
@@ -495,7 +498,7 @@ fn similar_library(library: &str, dirs: &[PathBuf]) -> Option<String> {
             .filter_map(|entry| {
                 let file = entry.file_name().into_string().ok()?;
                 let name = toolchain::library_name(&file)?;
-                (toolchain::library_files(name).contains(&file)).then(|| name.to_string())
+                (target.library_files(name).contains(&file)).then(|| name.to_string())
             })
             .collect();
         names.sort();
@@ -510,7 +513,11 @@ fn similar_library(library: &str, dirs: &[PathBuf]) -> Option<String> {
 }
 
 /// The file `library` refers to, or the directories that were searched for it.
-pub(crate) fn find(library: &str, root: &Path, extra: &[PathBuf]) -> Result<PathBuf, Vec<PathBuf>> {
+pub(crate) fn find(
+    library: &str,
+    root: &Path,
+    toolchain: &Toolchain,
+) -> Result<PathBuf, Vec<PathBuf>> {
     if is_path(library) {
         let path = root.join(library);
         return if path.is_file() {
@@ -519,9 +526,9 @@ pub(crate) fn find(library: &str, root: &Path, extra: &[PathBuf]) -> Result<Path
             Err(vec![root.to_path_buf()])
         };
     }
-    let dirs = search_dirs(root, extra);
+    let dirs = search_dirs(root, toolchain);
     for dir in &dirs {
-        for file in toolchain::library_files(library) {
+        for file in toolchain.target.library_files(library) {
             let path = dir.join(file);
             if path.is_file() {
                 return Ok(path);

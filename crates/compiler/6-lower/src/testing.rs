@@ -124,7 +124,8 @@ impl Lowerer<'_> {
                     span: at.clone(),
                 },
             });
-            // The child runs the test, and leaves in `test_passed` if it returns.
+            // The child runs the test, and leaves in `test_passed` if it returns. Where tests
+            // run in the one process (Windows, which can't `fork`), it goes on to the next.
             let ran = local(&mut b, unit, None, false);
             let left = local(&mut b, unit, None, false);
             let in_child = b.blocks.alloc(Block {
@@ -167,6 +168,7 @@ impl Lowerer<'_> {
                 then: in_child,
                 otherwise: next,
             };
+            b.blocks[in_child].terminator.kind = TerminatorKind::Goto(next);
         }
 
         let mut function = internal_function(RUN_TESTS.into(), Vec::new(), ret, span);

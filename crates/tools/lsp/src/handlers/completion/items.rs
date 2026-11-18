@@ -10,7 +10,7 @@ use tower_lsp::lsp_types::{
     CompletionItem, CompletionItemKind, CompletionItemLabelDetails, Documentation, InsertTextFormat,
 };
 
-use crate::docs::{describe, doc_of, markdown, signature, ty};
+use crate::docs::{describe, doc_of, markdown, signature, ty, with_availability};
 use crate::lookup::aliased_struct;
 use crate::text_scan::{is_word, type_position};
 use crate::types::{impl_target_matches, method_subst};
@@ -71,7 +71,10 @@ pub(super) fn func_item(
         CompletionItemKind::FUNCTION,
         snippet,
         signature(a, f),
-        markdown(a.ast.funcs[f].doc.clone()),
+        markdown(with_availability(
+            a.ast.funcs[f].doc.clone(),
+            &a.ast.funcs[f].name,
+        )),
     )
 }
 

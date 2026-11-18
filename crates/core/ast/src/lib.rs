@@ -40,6 +40,10 @@ pub struct Ast {
     pub unterminated: std::collections::HashSet<Id<Stmt>>,
     /// `@for` and `@if`: settled while compiling.
     pub settled: std::collections::HashSet<Id<Stmt>>,
+    /// `@if`s on the target's system, decided while loading: whether the first branch is
+    /// the one compiled. The other is never resolved, so it can name what only exists on
+    /// other systems.
+    pub decided: std::collections::HashMap<Id<Stmt>, bool>,
     /// Written out once every module is loaded (`som_parser::expand_reflected`).
     pub reflected: Vec<Reflected>,
     /// `@for f in T { … }` over a generic `T`, among statements: written out for every

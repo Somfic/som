@@ -9,6 +9,7 @@ use super::items::{
 use crate::docs::{describe, doc_of, markdown, signature, variant_text};
 use crate::lookup::{find_struct, module_named, modules_in_scope, undeclared_library};
 use crate::text_scan::qualifier;
+use som_driver::targets::{self, LibcKind};
 
 pub(super) enum Answer {
     Items(Vec<CompletionItem>),
@@ -31,7 +32,15 @@ pub(super) fn complete(request: &Request) -> Answer {
         if undeclared_library(a, here, m) {
             return Answer::Nothing;
         }
-        module_items(a, m, None, request.insert)
+        let mut items = module_items(a, m, None, request.insert);
+        if *a.ast.modules[m].name == *som_lang::LIBC_MODULE {
+            let others = other_systems_libc(&items);
+            items.extend(others);
+            for item in &mut items {
+                label_availability(item);
+            }
+        }
+        items
     } else if let Some(owner) = a.names.primitives_named(last) {
         primitive_items(request, owner)
     } else if let Some((t, _)) = (a.ast.traits.iter()).find(|(_, t)| *t.name.name == *last) {
@@ -42,6 +51,40 @@ pub(super) fn complete(request: &Request) -> Answer {
         Vec::new()
     };
     Answer::Items(items)
+}
+
+/// What the C library has only on other systems than the one being compiled for, which
+/// `som::c` doesn't load: `_getpid` on Windows, for code in an `@if WINDOWS`.
+fn other_systems_libc(loaded: &[CompletionItem]) -> Vec<CompletionItem> {
+    (targets::libc_declarations().iter())
+        .filter(|d| !loaded.iter().any(|item| item.label == d.name))
+        .map(|d| CompletionItem {
+            label: d.name.clone(),
+            kind: Some(match d.kind {
+                LibcKind::Func => CompletionItemKind::FUNCTION,
+                LibcKind::Struct => CompletionItemKind::STRUCT,
+                LibcKind::Const => CompletionItemKind::CONSTANT,
+            }),
+            detail: Some({
+                let declared = d.text.trim_start_matches("pub ").trim_end_matches(';');
+                match d.kind {
+                    LibcKind::Func => format!("extern {declared}"),
+                    _ => declared.to_string(),
+                }
+            }),
+            documentation: markdown(targets::availability_note(&d.name)),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// `only windows` beside a C library name not on every system.
+fn label_availability(item: &mut CompletionItem) {
+    let Some(label) = targets::availability_label(&item.label) else {
+        return;
+    };
+    let details = item.label_details.get_or_insert_with(Default::default);
+    details.description = Some(label);
 }
 
 /// `i32::` lists its constants, functions and methods.

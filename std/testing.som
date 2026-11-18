@@ -1,4 +1,4 @@
-extern "c";
+use som::c;
 
 // What `som test` runs. The compiler writes the loop: for each `@test`, `test_start`, and
 // where that's true, the test, then `test_passed`; then `test_summary` is the exit code.
@@ -6,7 +6,20 @@ extern "c";
 /// Starts the test `name`, at `at`, in a child process of its own, so a failure ends only
 /// that test. True in the child, which runs it. Here it's false, once the child is done,
 /// and `failed` counts the test if the child didn't pass it.
+///
+/// Windows has no `fork`: there each test runs in this process, and one that fails stops
+/// the rest.
 fn test_start(failed: &mut i32, name: string, at: Location) -> bool {
+    @if WINDOWS {
+        c::printf("%s ... ", name.c_str);
+        return true;
+    } else {
+        return forked(failed, name, at);
+    }
+}
+
+/// `test_start` where there's `fork`: the test runs in a child process.
+fn forked(failed: &mut i32, name: string, at: Location) -> bool {
     // What's printed so far would otherwise be printed by the child too.
     c::fflush(null());
     let child = c::fork();
@@ -32,7 +45,7 @@ fn test_start(failed: &mut i32, name: string, at: Location) -> bool {
         let line = "exited with code {(status >> 8) & 255}";
         c::printf("%s\n", line.c_str);
     }
-    finished(failed, name, at, status)
+    return finished(failed, name, at, status);
 }
 
 /// `SIGABRT`, which `abort` stops a process with.
@@ -50,10 +63,14 @@ fn finished(failed: &mut i32, name: string, at: Location, status: i32) -> bool {
     false
 }
 
-/// The test returned: it passed.
+/// The test returned: it passed. The child it ran in is done.
 fn test_passed() {
-    c::fflush(null());
-    c::exit(0);
+    @if WINDOWS {
+        c::printf("ok\n");
+    } else {
+        c::fflush(null());
+        c::exit(0);
+    }
 }
 
 /// How many passed and how many failed; the exit code is 1 if any failed.

@@ -1,4 +1,4 @@
-extern "c";
+use som::c;
 
 pub fn println<T: Display>(value: T) {
     let text = "{value}";

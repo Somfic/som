@@ -5,6 +5,7 @@
 //! function using something som can't express yet (arrays, unions, `long double`) is
 //! skipped, with a comment in the generated source saying why.
 
+use crate::toolchain::{Os, Target};
 use serde_json::Value;
 use som_base::diagnostics::{pascal_case, snake_case};
 use std::collections::{HashMap, HashSet};
@@ -23,6 +24,7 @@ pub(super) fn generate(
     header: &str,
     exported: Option<&HashSet<String>>,
     preprocessed: &str,
+    target: &Target,
 ) -> (String, String) {
     let decls = top_level(json);
     let mut emitter = Emitter {
@@ -32,7 +34,7 @@ pub(super) fn generate(
         header,
         origins: String::new(),
     };
-    let mut c = Converter::of(decls);
+    let mut c = Converter::of(decls, target);
     let functions = emitter.functions(&mut c, exported);
 
     let mut out = format!("// Imported from {header} by the som compiler.\n");
@@ -97,8 +99,19 @@ impl Emitter<'_> {
             if exported.is_some_and(|names| !names.contains(name)) {
                 continue;
             }
-            // The C library's own internals: `__error`, `_exit`'s relatives.
-            if self.library == Some(LIBC) && name.starts_with('_') {
+            // Only in the header, so no library has it to link: Windows' `printf_s`.
+            if decl["storageClass"] == "static" {
+                let _ = writeln!(
+                    functions.skipped,
+                    "// skipped {name}: it's `static`, defined in the header"
+                );
+                continue;
+            }
+            // The C library's own internals: `__error`, `_IO_getc`. Windows spells its
+            // POSIX functions with one: `_access`, `_putenv_s`.
+            let internal =
+                name.starts_with("__") || (name.starts_with('_') && c.target.os() != Os::Windows);
+            if self.library == Some(LIBC) && internal {
                 continue;
             }
             // `InitWindow` is `init_window`, and links back to it.
@@ -183,7 +196,8 @@ impl Emitter<'_> {
                     .collect(),
             })
         };
-        let (constants, origins) = macros::constants(preprocessed, &wanted, &record, &taken);
+        let (constants, origins) =
+            macros::constants(preprocessed, &wanted, &record, &taken, &c.target);
         self.origins.push_str(&origins);
         constants
     }

@@ -12,8 +12,9 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::LoadError;
 use crate::libraries;
-use crate::{LoadError, toolchain};
+use crate::toolchain::{self, Toolchain};
 
 mod cache;
 mod check;
@@ -38,7 +39,7 @@ pub(crate) const LIBC: &str = "c";
 pub fn import(
     ast: &mut Ast,
     module: usize,
-    library_dirs: &[PathBuf],
+    toolchain: &Toolchain,
     imported: &mut HashSet<String>,
     errors: &mut Vec<LoadError>,
 ) -> Vec<String> {
@@ -65,6 +66,23 @@ pub fn import(
             .library_span
             .clone()
             .or_else(|| header.as_ref().map(|(_, s)| s.clone()));
+        // The C library is the standard library's `som::c`, whose files declare it for
+        // each system: `extern "c";` only `use`s it.
+        if library.as_deref() == Some(LIBC) && header.is_some() {
+            if use_module && let Some(span) = span {
+                let segments = (som_lang::LIBC_MODULE.split("::"))
+                    .map(|part| Ident {
+                        name: part.into(),
+                        span: span.clone(),
+                    })
+                    .collect();
+                ast.modules[module].items.push(Item::Use(Use {
+                    path: SomPath { segments },
+                    public: false,
+                }));
+            }
+            continue;
+        }
         let name = module_name(library.as_deref(), header.as_ref().map_or("", |(h, _)| h));
 
         let target = match ast.modules.iter().position(|m| *m.name == name) {
@@ -98,7 +116,7 @@ pub fn import(
                 header: &header,
                 span,
                 root: &root,
-                library_dirs,
+                toolchain,
             };
             import.into_module(ast, target, errors);
         }
@@ -112,43 +130,21 @@ struct HeaderImport<'a> {
     header: &'a str,
     span: Span,
     root: &'a Path,
-    library_dirs: &'a [PathBuf],
+    toolchain: &'a Toolchain,
 }
 
 impl HeaderImport<'_> {
     /// Parses the header's declarations, as som, into `module`.
     fn into_module(self, ast: &mut Ast, module: usize, errors: &mut Vec<LoadError>) {
-        let path = match self.find() {
-            Ok(path) => path,
-            Err(searched) => {
-                errors.push(LoadError::HeaderNotFound {
-                    header: self.header.to_string(),
-                    span: self.span,
-                    searched,
-                });
+        let (text, path) = match self.import(&ast.modules[module].name) {
+            Ok(loaded) => loaded,
+            Err(error) => {
+                errors.push(error);
                 return;
             }
         };
-        let library_file = (self.library)
-            .and_then(|library| libraries::find(library, self.root, self.library_dirs).ok());
-        let module_name = ast.modules[module].name.to_string();
-        let cache = cache::Cache::new(self.root, &module_name, &path, library_file.as_deref());
-        let text = match cache.read() {
-            Some(text) => text,
-            None => match self.generate(&path, library_file.as_deref()) {
-                Ok((generated, origins)) => cache.write(&generated, &origins),
-                Err(message) => {
-                    errors.push(LoadError::HeaderFailed {
-                        header: self.header.to_string(),
-                        span: self.span,
-                        message,
-                    });
-                    return;
-                }
-            },
-        };
-        ast.modules[module].path = cache.dir().to_path_buf();
-        let source = Source::from_raw_at(text, cache.path);
+        ast.modules[module].path = path.parent().map(Path::to_path_buf).unwrap_or_default();
+        let source = Source::from_raw_at(text, path);
         let parse_errors = som_parser::parse_file(Arc::new(source), ast, module);
         errors.extend(parse_errors.into_iter().map(LoadError::Parse));
         // C copies its structs whenever it passes them, and so does som.
@@ -159,11 +155,38 @@ impl HeaderImport<'_> {
         }
     }
 
-    fn find(&self) -> Result<PathBuf, Vec<PathBuf>> {
-        match self.library {
-            Some(LIBC) => cache::libc_header(self.root).map_err(|_| Vec::new()),
-            _ => find_header(self.header, self.root, self.library_dirs),
-        }
+    /// The header's declarations as som source, from the cache if they're still current,
+    /// and where they're kept.
+    fn import(&self, module_name: &str) -> Result<(String, PathBuf), LoadError> {
+        let path = find_header(self.header, self.root, self.toolchain).map_err(|searched| {
+            LoadError::HeaderNotFound {
+                header: self.header.to_string(),
+                span: self.span.clone(),
+                searched,
+            }
+        })?;
+        let library_file = (self.library)
+            .and_then(|library| libraries::find(library, self.root, self.toolchain).ok());
+        let cache = cache::Cache::new(
+            self.root,
+            &self.toolchain.target,
+            module_name,
+            &path,
+            library_file.as_deref(),
+        );
+        let text = match cache.read() {
+            Some(text) => text,
+            None => {
+                let (generated, origins) = (self.generate(&path, library_file.as_deref()))
+                    .map_err(|message| LoadError::HeaderFailed {
+                        header: self.header.to_string(),
+                        span: self.span.clone(),
+                        message,
+                    })?;
+                cache.write(&generated, &origins)
+            }
+        };
+        Ok((text, cache.path))
     }
 
     /// The som source for the header at `path`, and its origins.
@@ -177,17 +200,35 @@ impl HeaderImport<'_> {
             .and_then(|file| libraries::read_symbols(file).ok())
             .map(|names| names.into_iter().collect());
         // Without the `#define`s, there are no constants.
-        let preprocessed =
-            clang::preprocessed(path, self.root, self.library_dirs).unwrap_or_default();
-        let json = clang::syntax_tree(path, self.root, self.library_dirs)?;
+        let preprocessed = clang::preprocessed(path, self.root, self.toolchain).unwrap_or_default();
+        let json = clang::syntax_tree(path, self.root, self.toolchain)?;
         Ok(emit::generate(
             &json,
             self.library,
             self.header,
             exported.as_ref(),
             &preprocessed,
+            &self.toolchain.target,
         ))
     }
+}
+
+/// The C library's declarations on `toolchain`'s target, as som source: what's kept in
+/// the standard library's `c-library/` folder. `scratch` is where the header including
+/// all of the C library's goes.
+pub fn libc_bindings(scratch: &Path, toolchain: &Toolchain) -> Result<String, String> {
+    let header = cache::libc_header(scratch, &toolchain.target).map_err(|e| e.to_string())?;
+    let preprocessed = clang::preprocessed(&header, scratch, toolchain).unwrap_or_default();
+    let json = clang::syntax_tree(&header, scratch, toolchain)?;
+    let (generated, _) = emit::generate(
+        &json,
+        Some(LIBC),
+        "c.h",
+        None,
+        &preprocessed,
+        &toolchain.target,
+    );
+    Ok(generated)
 }
 
 /// The declarations at the top of clang's JSON.
@@ -233,9 +274,9 @@ fn identifier(name: &str) -> String {
 pub(crate) fn find_header(
     header: &str,
     root: &Path,
-    library_dirs: &[PathBuf],
+    toolchain: &Toolchain,
 ) -> Result<PathBuf, Vec<PathBuf>> {
-    let dirs = include_dirs(root, library_dirs);
+    let dirs = include_dirs(root, toolchain);
     let nested = Path::new(header)
         .file_stem()
         .filter(|_| !header.contains('/'))
@@ -250,8 +291,8 @@ pub(crate) fn find_header(
 /// The libraries `extern "name";` could import for a program in `root`: those with
 /// both a library file (`libraylib.dylib`) and a header (`raylib.h`) where som looks,
 /// each with the file it would link.
-pub fn importable_libraries(root: &Path, library_dirs: &[PathBuf]) -> Vec<(String, PathBuf)> {
-    let mut names: Vec<String> = libraries::search_dirs(root, library_dirs)
+pub fn importable_libraries(root: &Path, toolchain: &Toolchain) -> Vec<(String, PathBuf)> {
+    let mut names: Vec<String> = libraries::search_dirs(root, toolchain)
         .iter()
         .filter_map(|dir| std::fs::read_dir(dir).ok())
         .flatten()
@@ -262,11 +303,11 @@ pub fn importable_libraries(root: &Path, library_dirs: &[PathBuf]) -> Vec<(Strin
         .collect();
     names.sort();
     names.dedup();
-    names.retain(|name| find_header(&format!("{name}.h"), root, library_dirs).is_ok());
+    names.retain(|name| find_header(&format!("{name}.h"), root, toolchain).is_ok());
     names
         .into_iter()
         .filter_map(|name| {
-            let path = libraries::find(&name, root, library_dirs).ok()?;
+            let path = libraries::find(&name, root, toolchain).ok()?;
             Some((name, path))
         })
         .collect()
@@ -275,9 +316,22 @@ pub fn importable_libraries(root: &Path, library_dirs: &[PathBuf]) -> Vec<(Strin
 /// Where headers are looked for: the program's directory, then `CPATH` and
 /// `C_INCLUDE_PATH`, then the `-isystem` and `-I` directories in Nix's
 /// `NIX_CFLAGS_COMPILE` (packages like sqlite keep their headers apart from their
-/// libraries), then the `include` directory next to each library directory.
-fn include_dirs(root: &Path, library_dirs: &[PathBuf]) -> Vec<PathBuf> {
+/// libraries), then the `include` directory next to each library directory. The
+/// environment's are only for the system som runs on.
+fn include_dirs(root: &Path, toolchain: &Toolchain) -> Vec<PathBuf> {
     let root = toolchain::program_dir(root);
+    let next_to_libraries = libraries::search_dirs(root, toolchain)
+        .into_iter()
+        .filter_map(|dir| Some(dir.parent()?.join("include")));
+    let mut dirs = vec![root.to_path_buf()];
+    if toolchain.target.is_cross() {
+        for include in next_to_libraries {
+            if !dirs.contains(&include) {
+                dirs.push(include);
+            }
+        }
+        return dirs;
+    }
     let from_env = ["CPATH", "C_INCLUDE_PATH"]
         .into_iter()
         .filter_map(std::env::var_os)
@@ -287,10 +341,6 @@ fn include_dirs(root: &Path, library_dirs: &[PathBuf]) -> Vec<PathBuf> {
     let from_nix = std::env::var("NIX_CFLAGS_COMPILE")
         .map(|flags| libraries::flag_dirs(&flags, &["-isystem", "-I"]))
         .unwrap_or_default();
-    let next_to_libraries = libraries::search_dirs(root, library_dirs)
-        .into_iter()
-        .filter_map(|dir| Some(dir.parent()?.join("include")));
-    let mut dirs = vec![root.to_path_buf()];
     for include in from_env.chain(from_nix).chain(next_to_libraries) {
         if !dirs.contains(&include) {
             dirs.push(include);

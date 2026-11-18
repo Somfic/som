@@ -11,6 +11,7 @@
 //! | `struct Color` (by value)           | `Color`, with the same fields |
 //! | `enum …`                            | `i32`          |
 
+use crate::toolchain::Target;
 use serde_json::Value;
 use som_base::diagnostics::{pascal_case, snake_case};
 use som_lang::Primitive;
@@ -33,28 +34,37 @@ const PRIMITIVES: &[(Primitive, &[&str])] = &[
     (Primitive::U32, &["unsigned", "unsigned int"]),
     (
         Primitive::I64,
-        &[
-            "long",
-            "long int",
-            "long long",
-            "long long int",
-            "signed long",
-        ],
+        &["long long", "long long int", "signed long long"],
     ),
     (
         Primitive::U64,
-        &[
-            "unsigned long",
-            "unsigned long int",
-            "unsigned long long",
-            "unsigned long long int",
-        ],
+        &["unsigned long long", "unsigned long long int"],
     ),
     (Primitive::F32, &["float"]),
     (Primitive::F64, &["double"]),
 ];
 
-fn primitive(c: &str) -> Option<Primitive> {
+/// `long`, whose width depends on the target.
+const LONG: &[&str] = &["long", "long int", "signed long", "signed long int"];
+const UNSIGNED_LONG: &[&str] = &["unsigned long", "unsigned long int"];
+
+/// A C `long` on `target`, signed or not.
+pub(super) fn long(target: &Target, signed: bool) -> Primitive {
+    match (target.long_bits(), signed) {
+        (32, true) => Primitive::I32,
+        (32, false) => Primitive::U32,
+        (_, true) => Primitive::I64,
+        (_, false) => Primitive::U64,
+    }
+}
+
+fn primitive(c: &str, target: &Target) -> Option<Primitive> {
+    if LONG.contains(&c) {
+        return Some(long(target, true));
+    }
+    if UNSIGNED_LONG.contains(&c) {
+        return Some(long(target, false));
+    }
     (PRIMITIVES.iter())
         .find(|(_, spellings)| spellings.contains(&c))
         .map(|&(primitive, _)| primitive)
@@ -62,7 +72,7 @@ fn primitive(c: &str) -> Option<Primitive> {
 
 /// The type a cast in a `#define` names, `(unsigned int)`, if it's one a constant can
 /// have: `int`, `unsigned`, `long`, `unsigned long`, `float` or `double`.
-pub(super) fn cast_type(words: &[&str]) -> Option<Primitive> {
+pub(super) fn cast_type(words: &[&str], target: &Target) -> Option<Primitive> {
     let has = |w: &str| words.contains(&w);
     if words.iter().any(|w| {
         !matches!(
@@ -76,12 +86,16 @@ pub(super) fn cast_type(words: &[&str]) -> Option<Primitive> {
         Primitive::F64
     } else if has("float") {
         Primitive::F32
-    } else if has("unsigned") && has("long") {
-        Primitive::U64
+    } else if words.iter().filter(|w| **w == "long").count() >= 2 {
+        if has("unsigned") {
+            Primitive::U64
+        } else {
+            Primitive::I64
+        }
+    } else if has("long") {
+        long(target, !has("unsigned"))
     } else if has("unsigned") {
         Primitive::U32
-    } else if has("long") {
-        Primitive::I64
     } else {
         Primitive::I32
     })
@@ -118,6 +132,7 @@ impl Signature {
 /// Converts a header's C types, importing the structs they use as it goes.
 #[derive(Default)]
 pub(super) struct Converter {
+    pub target: Target,
     /// Struct tag → its field declarations, from the header.
     records: HashMap<String, Vec<Value>>,
     typedefs: HashMap<String, String>,
@@ -132,9 +147,23 @@ pub(super) struct Converter {
     pub handles: BTreeMap<String, String>,
 }
 
+/// The names clang (21 and later) gives the types of library builtins, like `strlen`'s
+/// `__size_t`, each with the header's own name for it, which says what it is on the target.
+const CLANG_BUILTIN_TYPEDEFS: &[(&str, &str)] = &[
+    ("__size_t", "size_t"),
+    ("__signed_size_t", "ptrdiff_t"),
+    ("__ptrdiff_t", "ptrdiff_t"),
+];
+
 impl Converter {
-    pub fn of(decls: &[Value]) -> Converter {
-        let mut c = Converter::default();
+    pub fn of(decls: &[Value], target: &Target) -> Converter {
+        let mut c = Converter {
+            target: target.clone(),
+            ..Converter::default()
+        };
+        for (builtin, named) in CLANG_BUILTIN_TYPEDEFS {
+            c.typedefs.insert(builtin.to_string(), named.to_string());
+        }
         for decl in decls {
             match decl["kind"].as_str() {
                 Some("RecordDecl") if decl["tagUsed"] == "struct" => {
@@ -200,6 +229,9 @@ impl Converter {
         if self.ty(text)? == CSTR {
             return Ok(CSTR.into());
         }
+        if self.is_internal(pointee) {
+            return Ok(POINTER.into());
+        }
         let constant = pointee.starts_with("const ") || pointee.ends_with(" const");
         match self.ty(pointee) {
             Ok(to)
@@ -235,7 +267,7 @@ impl Converter {
         if text == "void" {
             return Ok(UNIT.into());
         }
-        if let Some(primitive) = primitive(text) {
+        if let Some(primitive) = primitive(text, &self.target) {
             return Ok(primitive.name().into());
         }
         if text == "long double" {
@@ -256,12 +288,40 @@ impl Converter {
         }
     }
 
+    /// Whether `ty` is a struct only the library looks inside, every field named `_…`, like
+    /// Windows' `FILE`, `struct _iobuf`. Other systems don't show theirs, so it's used
+    /// through pointers everywhere.
+    fn is_internal(&self, ty: &str) -> bool {
+        let mut ty = ty
+            .trim()
+            .trim_start_matches("const ")
+            .trim_end_matches(" const")
+            .trim();
+        while let Some(underlying) = self.typedefs.get(ty).filter(|u| **u != ty) {
+            ty = underlying.trim();
+        }
+        let Some(fields) = ty
+            .strip_prefix("struct ")
+            .and_then(|tag| self.records.get(tag))
+        else {
+            return false;
+        };
+        let names: Vec<&str> = (fields.iter())
+            .filter(|f| f["kind"] == "FieldDecl")
+            .filter_map(|f| f["name"].as_str())
+            .collect();
+        !names.is_empty() && names.iter().all(|name| name.starts_with('_'))
+    }
+
     fn pointer(&mut self, pointee: &str, constant: bool) -> String {
         let pointee = pointee.trim().trim_start_matches("const ").trim();
         if constant && pointee == "char" {
             return CSTR.into();
         }
         // `sqlite3 *`, where the header never says what's in a `sqlite3`.
+        if self.is_internal(pointee) {
+            return POINTER.into();
+        }
         let mut pointee = pointee.to_string();
         while let Some(underlying) = self.typedefs.get(&pointee).filter(|u| **u != pointee) {
             pointee = underlying.trim().to_string();
@@ -356,7 +416,13 @@ fn without_restrict(text: &str) -> String {
 /// The return type in a function type like `const char *(int, float)`: everything
 /// before the parenthesised parameter list at the end.
 fn return_type(signature: &str) -> Option<&str> {
-    let signature = signature.trim();
+    let mut signature = signature.trim();
+    // `int (const char *, int) __attribute__((cdecl))`: Windows' calling convention.
+    while let Some(at) = signature.rfind(" __attribute__((")
+        && signature[..at].ends_with(')')
+    {
+        signature = signature[..at].trim_end();
+    }
     if !signature.ends_with(')') {
         return None;
     }
@@ -387,6 +453,10 @@ mod tests {
         assert_eq!(return_type("void (int, int, const char *)"), Some("void"));
         assert_eq!(return_type("const char *(void)"), Some("const char *"));
         assert_eq!(return_type("Color (int, int (*)(int))"), Some("Color"));
+        assert_eq!(
+            return_type("int (const char *, int) __attribute__((cdecl))"),
+            Some("int")
+        );
     }
 
     #[test]

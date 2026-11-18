@@ -1,4 +1,4 @@
-//! The generated source is kept in `.som/<module>.som` next to the program, for reuse and
+//! The generated source is kept in `.build/imports/<module>.som` next to the program, for reuse and
 //! for reading: errors and go-to-definition point into it. Its first line says what it was
 //! made from; while that still matches, the header doesn't need to be read again.
 
@@ -6,10 +6,10 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::path::{Path, PathBuf};
 
-use crate::toolchain;
+use crate::toolchain::{self, Target};
 
 /// Bumped whenever the generated source changes, so old caches are regenerated.
-const GENERATOR_VERSION: u32 = 26;
+const GENERATOR_VERSION: u32 = 29;
 
 const ORIGINS_EXTENSION: &str = "origins";
 
@@ -19,10 +19,16 @@ pub(super) struct Cache {
 }
 
 impl Cache {
-    pub fn new(root: &Path, module: &str, header: &Path, library: Option<&Path>) -> Cache {
+    pub fn new(
+        root: &Path,
+        target: &Target,
+        module: &str,
+        header: &Path,
+        library: Option<&Path>,
+    ) -> Cache {
         let file = format!("{module}.{}", toolchain::SOURCE_EXTENSION);
         Cache {
-            path: toolchain::cache_dir(root).join(file),
+            path: toolchain::imports_dir(root, target).join(file),
             stamp: stamp(header, library),
         }
     }
@@ -70,7 +76,7 @@ fn stamp(header: &Path, library: Option<&Path>) -> String {
     stamp
 }
 
-/// Where each function in a generated file (`.som/raylib.som`) is declared in C: its
+/// Where each function in a generated file (`.build/imports/raylib.som`) is declared in C: its
 /// som name → the header and line, from the `.origins` file written next to it.
 pub fn origins(generated: &Path) -> HashMap<String, (PathBuf, usize)> {
     let text =
@@ -84,26 +90,15 @@ pub fn origins(generated: &Path) -> HashMap<String, (PathBuf, usize)> {
         .collect()
 }
 
-/// The headers `extern "c";` imports from.
-#[cfg(unix)]
-const LIBC_HEADERS: &[&str] = &[
-    "stdio.h", "stdlib.h", "string.h", "math.h", "ctype.h", "time.h", "unistd.h", "fcntl.h",
-];
-#[cfg(not(unix))]
-const LIBC_HEADERS: &[&str] = &[
-    "stdio.h", "stdlib.h", "string.h", "math.h", "ctype.h", "time.h",
-];
-
-/// A header including all of `LIBC_HEADERS`, written only when it changes so the import
-/// it's stamped into stays cached.
-pub(super) fn libc_header(root: &Path) -> std::io::Result<PathBuf> {
-    let path = toolchain::cache_dir(root).join("c.h");
-    let text: String = LIBC_HEADERS
-        .iter()
+/// A header including all of the target's C library headers, written only when it
+/// changes so the import it's stamped into stays cached.
+pub(super) fn libc_header(root: &Path, target: &Target) -> std::io::Result<PathBuf> {
+    let path = toolchain::imports_dir(root, target).join("c.h");
+    let text: String = (target.libc_headers().iter())
         .map(|h| format!("#include <{h}>\n"))
         .collect();
     if std::fs::read_to_string(&path).ok().as_deref() != Some(text.as_str()) {
-        std::fs::create_dir_all(path.parent().expect("in .som"))?;
+        std::fs::create_dir_all(path.parent().expect("in the cache dir"))?;
         std::fs::write(&path, text)?;
     }
     Ok(path)

@@ -1,4 +1,4 @@
-extern "c";
+use som::c;
 use som::mem;
 
 // Numbers from text: `i32::parse("42")`, `none` if it isn't one.

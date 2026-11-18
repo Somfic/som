@@ -16,6 +16,8 @@ pub enum Error {
     Prove(som_prove::ProveError),
     Borrow(BorrowError),
     Comptime(som_comptime::ComptimeError),
+    Unavailable(crate::targets::Unavailable),
+    CantRun(crate::targets::CantRun),
     /// An error in one instance of a function checked for each instance (`@if N >= 3`):
     /// `describe<2>`, first used at `used_at`.
     InInstance {
@@ -36,6 +38,8 @@ impl Error {
             Error::Prove(e) => format!("{e:?}"),
             Error::Borrow(e) => format!("{e:?}"),
             Error::Comptime(e) => format!("{e:?}"),
+            Error::Unavailable(e) => format!("{e:?}"),
+            Error::CantRun(e) => format!("{e:?}"),
             Error::InInstance { inner, .. } => return inner.kind(),
         };
         variant_name(&debug)
@@ -50,6 +54,8 @@ impl Error {
             Error::Prove(e) => e.to_diagnostic(),
             Error::Borrow(e) => e.to_diagnostic(),
             Error::Comptime(e) => e.to_diagnostic(),
+            Error::Unavailable(e) => e.to_diagnostic(),
+            Error::CantRun(e) => e.to_diagnostic(),
             Error::InInstance {
                 instance,
                 used_at,
@@ -76,6 +82,9 @@ pub enum Warning {
     /// `fib(20)`, which could be worked out while compiling: `@fib(20)`. A hint, not a
     /// warning: nothing's wrong with it.
     CouldBeConst(som_comptime::CouldBeConst),
+    /// What only stops it running on some other system than the one it's compiled for.
+    Unavailable(crate::targets::Unavailable),
+    CantRun(crate::targets::CantRun),
 }
 
 impl Warning {
@@ -84,6 +93,8 @@ impl Warning {
         let debug = match self {
             Warning::Library(w) => format!("{w:?}"),
             Warning::CouldBeConst(w) => format!("{w:?}"),
+            Warning::Unavailable(w) => format!("{w:?}"),
+            Warning::CantRun(w) => format!("{w:?}"),
         };
         variant_name(&debug)
     }
@@ -92,8 +103,15 @@ impl Warning {
         match self {
             Warning::Library(w) => w.to_diagnostic(),
             Warning::CouldBeConst(w) => could_be_const_diagnostic(w),
+            Warning::Unavailable(w) => as_warning(w.to_diagnostic()),
+            Warning::CantRun(w) => as_warning(w.to_diagnostic()),
         }
     }
+}
+
+fn as_warning(mut diagnostic: Diagnostic) -> Diagnostic {
+    diagnostic.severity = som_base::diagnostics::Severity::Warning;
+    diagnostic
 }
 
 /// `UseAfterMove` of `UseAfterMove { … }`.

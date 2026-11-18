@@ -7,11 +7,11 @@ use som_base::diagnostics::snake_case;
 use som_base::message::{self as m, Message};
 use som_base::msg;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::path::PathBuf;
 
 use super::ctype::{CSTR, Converter, POINTER, Signature, UNIT};
 use super::{LIBC, clang, find_header, identifier, module_name, top_level};
 use crate::libraries::{LibraryError, LibraryWarning, SameAsHeader};
+use crate::toolchain::{Target, Toolchain};
 
 /// Struct name → its fields' names and som types.
 type Structs = BTreeMap<String, Vec<(String, String)>>;
@@ -25,9 +25,9 @@ struct Declarations {
 }
 
 impl Declarations {
-    fn of(json: &Value) -> Declarations {
+    fn of(json: &Value, target: &Target) -> Declarations {
         let decls = top_level(json);
-        let mut c = Converter::of(decls);
+        let mut c = Converter::of(decls, target);
         let functions = decls
             .iter()
             .filter(|d| d["kind"] == "FunctionDecl")
@@ -47,7 +47,7 @@ impl Declarations {
 /// are warnings.
 pub fn check_declarations(
     ast: &Ast,
-    library_dirs: &[PathBuf],
+    toolchain: &Toolchain,
 ) -> (Vec<LibraryError>, Vec<LibraryWarning>) {
     let root = ast.modules[0].path.clone();
     let mut headers: HashMap<String, Option<Declarations>> = HashMap::new();
@@ -62,9 +62,9 @@ pub fn check_declarations(
         };
         let header = format!("{library}.h");
         let declared = headers.entry(library.clone()).or_insert_with(|| {
-            let path = find_header(&header, &root, library_dirs).ok()?;
-            let json = clang::syntax_tree(&path, &root, library_dirs).ok()?;
-            Some(Declarations::of(&json))
+            let path = find_header(&header, &root, toolchain).ok()?;
+            let json = clang::syntax_tree(&path, &root, toolchain).ok()?;
+            Some(Declarations::of(&json, &toolchain.target))
         });
         let Some(declared) = declared else { continue };
         let module = module_name(Some(library), &header);

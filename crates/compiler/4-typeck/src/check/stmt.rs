@@ -242,7 +242,9 @@ impl Checker<'_> {
     ) {
         let bool = self.u.table.bool;
         self.expect(condition, bool, None);
-        match self.settled_bool(condition) {
+        // `@if target::OS == …`, decided while loading.
+        let decided = self.ast.decided.get(&id).copied();
+        match decided.or_else(|| self.settled_bool(condition)) {
             Some(holds) => {
                 self.records.settled_ifs.insert(id, holds);
                 match (holds, otherwise) {

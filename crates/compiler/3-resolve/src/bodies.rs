@@ -385,8 +385,13 @@ impl<'a> Resolver<'a> {
                 let outer = std::mem::replace(&mut self.cx.settled_condition, settled);
                 self.resolve_expr(*condition);
                 self.cx.settled_condition = outer;
-                self.resolve_stmts(then);
-                if let Some(otherwise) = otherwise {
+                let taken = self.ast.decided.get(&id).copied();
+                if taken != Some(false) {
+                    self.resolve_stmts(then);
+                }
+                if let Some(otherwise) = otherwise
+                    && taken != Some(true)
+                {
                     self.resolve_stmts(otherwise);
                 }
             }

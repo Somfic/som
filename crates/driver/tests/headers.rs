@@ -128,7 +128,7 @@ fn warnings(main: &Path) -> Vec<String> {
             Warning::Library(LibraryWarning::StructInHeader { name, imported, .. }) => {
                 format!("{} {name} as {imported}", w.kind())
             }
-            Warning::CouldBeConst(_) => w.kind(),
+            Warning::CouldBeConst(_) | Warning::Unavailable(_) | Warning::CantRun(_) => w.kind(),
         })
         .collect()
 }
@@ -188,7 +188,7 @@ fn structs_the_header_only_declares_are_handles() {
          }",
     );
     let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
-    let generated = std::fs::read_to_string(dir.path().join(".som/demo.som")).unwrap();
+    let generated = std::fs::read_to_string(dir.path().join(".build/imports/demo.som")).unwrap();
     assert!(generated.contains("extern struct DemoDb;"), "{generated}");
     assert!(
         generated.contains("fn demo_open(answer: i32, db: &mut DemoDb) -> i32;"),
@@ -319,7 +319,8 @@ fn a_header_can_include_others_from_where_it_was_found() {
         "use extern \"demo\"; fn main() -> i32 { demo_add(40, 2) }",
     );
     check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
-    let text = std::fs::read_to_string(dir.path().join(".som").join("demo.som")).unwrap();
+    let text = std::fs::read_to_string(dir.path().join(".build").join("imports").join("demo.som"))
+        .unwrap();
     assert!(
         text.contains("    /// Frees nothing,\n    /// in two lines.\n    pub fn demo_free();"),
         "documentation comes from the included header:\n{text}"
@@ -416,7 +417,7 @@ fn imports_are_cached_in_a_readable_file_and_refreshed_when_the_header_changes()
     );
     check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
 
-    let cache = dir.path().join(".som").join("demo.som");
+    let cache = dir.path().join(".build").join("imports").join("demo.som");
     let text = std::fs::read_to_string(&cache).unwrap();
     assert!(
         text.contains("fn add_numbers(a: i32, b: i32) -> i32;"),
@@ -475,7 +476,8 @@ fn header_comments_become_doc_comments() {
         "use extern \"demo\"; fn main() -> i32 { get_fps() }",
     );
     check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
-    let text = std::fs::read_to_string(dir.path().join(".som").join("demo.som")).unwrap();
+    let text = std::fs::read_to_string(dir.path().join(".build").join("imports").join("demo.som"))
+        .unwrap();
 
     for expected in [
         "/// A pair of numbers\npub struct Pair {\n    /// The left one\n    pub left: i32,\n    /// The right one\n    pub right: f32,",
@@ -501,13 +503,14 @@ fn checking_a_generated_file_checks_its_program() {
         "use extern \"demo\"; fn main() -> i32 { demo_add(40, 2) }",
     );
     check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
-    let generated = dir.path().join(".som").join("demo.som");
+    let generated = dir.path().join(".build").join("imports").join("demo.som");
 
     // Opening it in an editor checks it; that mustn't import the header again, into
-    // `.som/.som/`.
+    // `.build/imports/.build/`.
+    let imports = dir.path().join(".build").join("imports");
     check(&generated, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
-    check(&dir.path().join(".som"), &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
-    assert!(!dir.path().join(".som").join(".som").exists());
+    check(&imports, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(!imports.join(".build").exists());
 }
 
 #[test]
@@ -545,7 +548,7 @@ fn origins_say_where_functions_and_structs_are_declared() {
     );
     check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
 
-    let origins = som_driver::origins(&dir.path().join(".som").join("demo.som"));
+    let origins = som_driver::origins(&dir.path().join(".build").join("imports").join("demo.som"));
     let header = std::fs::read_to_string(dir.path().join("demo/demo.h")).unwrap();
     let line_of = |text: &str| header.lines().position(|l| l.contains(text)).unwrap() + 1;
     for (name, declared) in [
@@ -618,7 +621,7 @@ fn defines_that_stand_for_values_become_constants() {
          fn demo_left(p: demo::Pair) -> i32 = demo::demo_left(p);",
     );
     let checked = check(&main, &Options::default()).unwrap_or_else(|e| panic!("{e:?}"));
-    let generated = std::fs::read_to_string(dir.path().join(".som/demo.som")).unwrap();
+    let generated = std::fs::read_to_string(dir.path().join(".build/imports/demo.som")).unwrap();
     for expected in [
         "pub @const DEMO_MAX: i32 = 40;",
         "pub @const DEMO_PI: f32 = 3.5;",

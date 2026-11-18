@@ -1,0 +1,1468 @@
+// Imported from c.h by the som compiler.
+// skipped _vfscanf_s_l: it's `static`, defined in the header
+// skipped vfscanf_s: it's `static`, defined in the header
+// skipped _vscanf_s_l: it's `static`, defined in the header
+// skipped vscanf_s: it's `static`, defined in the header
+// skipped _fscanf_s_l: it's `static`, defined in the header
+// skipped fscanf_s: it's `static`, defined in the header
+// skipped _scanf_s_l: it's `static`, defined in the header
+// skipped scanf_s: it's `static`, defined in the header
+// skipped _vfscanf_l: it's `static`, defined in the header
+// skipped _vscanf_l: it's `static`, defined in the header
+// skipped _fscanf_l: it's `static`, defined in the header
+// skipped _scanf_l: it's `static`, defined in the header
+// skipped _vsscanf_s_l: it's `static`, defined in the header
+// skipped vsscanf_s: it's `static`, defined in the header
+// skipped _sscanf_s_l: it's `static`, defined in the header
+// skipped sscanf_s: it's `static`, defined in the header
+// skipped _vsscanf_l: it's `static`, defined in the header
+// skipped _sscanf_l: it's `static`, defined in the header
+// skipped _snscanf_s_l: it's `static`, defined in the header
+// skipped _snscanf_s: it's `static`, defined in the header
+// skipped _snscanf_l: it's `static`, defined in the header
+// skipped _vfprintf_s_l: it's `static`, defined in the header
+// skipped vfprintf_s: it's `static`, defined in the header
+// skipped _vprintf_s_l: it's `static`, defined in the header
+// skipped vprintf_s: it's `static`, defined in the header
+// skipped _fprintf_s_l: it's `static`, defined in the header
+// skipped _printf_s_l: it's `static`, defined in the header
+// skipped fprintf_s: it's `static`, defined in the header
+// skipped printf_s: it's `static`, defined in the header
+// skipped _vsnprintf_c_l: it's `static`, defined in the header
+// skipped _vsnprintf_c: it's `static`, defined in the header
+// skipped _snprintf_c_l: it's `static`, defined in the header
+// skipped _snprintf_c: it's `static`, defined in the header
+// skipped _vsnprintf_s_l: it's `static`, defined in the header
+// skipped vsnprintf_s: it's `static`, defined in the header
+// skipped _vsnprintf_s: it's `static`, defined in the header
+// skipped _snprintf_s_l: it's `static`, defined in the header
+// skipped _snprintf_s: it's `static`, defined in the header
+// skipped _vsprintf_s_l: it's `static`, defined in the header
+// skipped vsprintf_s: it's `static`, defined in the header
+// skipped _sprintf_s_l: it's `static`, defined in the header
+// skipped sprintf_s: it's `static`, defined in the header
+// skipped _vfprintf_p_l: it's `static`, defined in the header
+// skipped _vfprintf_p: it's `static`, defined in the header
+// skipped _vprintf_p_l: it's `static`, defined in the header
+// skipped _vprintf_p: it's `static`, defined in the header
+// skipped _fprintf_p_l: it's `static`, defined in the header
+// skipped _fprintf_p: it's `static`, defined in the header
+// skipped _printf_p_l: it's `static`, defined in the header
+// skipped _printf_p: it's `static`, defined in the header
+// skipped _vsprintf_p_l: it's `static`, defined in the header
+// skipped _vsprintf_p: it's `static`, defined in the header
+// skipped _sprintf_p_l: it's `static`, defined in the header
+// skipped _sprintf_p: it's `static`, defined in the header
+// skipped _vscprintf_p_l: it's `static`, defined in the header
+// skipped _vscprintf_p: it's `static`, defined in the header
+// skipped _scprintf_p_l: it's `static`, defined in the header
+// skipped _scprintf_p: it's `static`, defined in the header
+// skipped _vfprintf_l: it's `static`, defined in the header
+// skipped _vprintf_l: it's `static`, defined in the header
+// skipped _fprintf_l: it's `static`, defined in the header
+// skipped _printf_l: it's `static`, defined in the header
+// skipped _vsnprintf_l: it's `static`, defined in the header
+// skipped _snprintf_l: it's `static`, defined in the header
+// skipped _vsprintf_l: it's `static`, defined in the header
+// skipped _sprintf_l: it's `static`, defined in the header
+// skipped _vscprintf_l: it's `static`, defined in the header
+// skipped _scprintf_l: it's `static`, defined in the header
+// skipped _vfwscanf_s_l: it's `static`, defined in the header
+// skipped vfwscanf_s: it's `static`, defined in the header
+// skipped _vwscanf_s_l: it's `static`, defined in the header
+// skipped vwscanf_s: it's `static`, defined in the header
+// skipped _fwscanf_s_l: it's `static`, defined in the header
+// skipped fwscanf_s: it's `static`, defined in the header
+// skipped _wscanf_s_l: it's `static`, defined in the header
+// skipped wscanf_s: it's `static`, defined in the header
+// skipped _vswscanf_s_l: it's `static`, defined in the header
+// skipped vswscanf_s: it's `static`, defined in the header
+// skipped _swscanf_s_l: it's `static`, defined in the header
+// skipped swscanf_s: it's `static`, defined in the header
+// skipped _vsnwscanf_s_l: it's `static`, defined in the header
+// skipped _snwscanf_s_l: it's `static`, defined in the header
+// skipped _snwscanf_s: it's `static`, defined in the header
+// skipped _vfwprintf_s_l: it's `static`, defined in the header
+// skipped _vwprintf_s_l: it's `static`, defined in the header
+// skipped vfwprintf_s: it's `static`, defined in the header
+// skipped vwprintf_s: it's `static`, defined in the header
+// skipped _fwprintf_s_l: it's `static`, defined in the header
+// skipped _wprintf_s_l: it's `static`, defined in the header
+// skipped fwprintf_s: it's `static`, defined in the header
+// skipped wprintf_s: it's `static`, defined in the header
+// skipped _vswprintf_s_l: it's `static`, defined in the header
+// skipped vswprintf_s: it's `static`, defined in the header
+// skipped _swprintf_s_l: it's `static`, defined in the header
+// skipped swprintf_s: it's `static`, defined in the header
+// skipped _vsnwprintf_s_l: it's `static`, defined in the header
+// skipped _vsnwprintf_s: it's `static`, defined in the header
+// skipped _snwprintf_s_l: it's `static`, defined in the header
+// skipped _snwprintf_s: it's `static`, defined in the header
+// skipped _Exit: in som it would be called _exit, like _exit
+// skipped atexit: its return type is too complex
+// skipped at_quick_exit: its return type is too complex
+// skipped bsearch: its return type is too complex
+// skipped qsort: its return type is too complex
+// skipped strtold: it uses `long double`
+// skipped wcstold: it uses `long double`
+// skipped _beep: it uses `__MINGW_ATTRIB_DEPRECATED void`, which som can't express yet
+// skipped _seterrormode: it uses `__MINGW_ATTRIB_DEPRECATED void`, which som can't express yet
+// skipped _sleep: it uses `__MINGW_ATTRIB_DEPRECATED void`, which som can't express yet
+// skipped lldiv: it uses `struct lldiv_t`, which the header doesn't define
+// skipped bsearch_s: its return type is too complex
+// skipped qsort_s: its return type is too complex
+// skipped _mm_malloc: it's `static`, defined in the header
+// skipped _mm_free: it's `static`, defined in the header
+// skipped _MarkAllocaS: it's `static`, defined in the header
+// skipped _freea: it's `static`, defined in the header
+// skipped fabsl: it uses `long double`
+// skipped sincosl: it uses `long double`
+// skipped sinl: it uses `long double`
+// skipped cosl: it uses `long double`
+// skipped tanl: it uses `long double`
+// skipped asinl: it uses `long double`
+// skipped acosl: it uses `long double`
+// skipped atanl: it uses `long double`
+// skipped atan2l: it uses `long double`
+// skipped sinhl: it uses `long double`
+// skipped coshl: it uses `long double`
+// skipped tanhl: it uses `long double`
+// skipped acoshl: it uses `long double`
+// skipped asinhl: it uses `long double`
+// skipped atanhl: it uses `long double`
+// skipped expl: it uses `long double`
+// skipped exp2l: it uses `long double`
+// skipped expm1l: it uses `long double`
+// skipped frexpl: it uses `long double`
+// skipped ilogbl: it uses `long double`
+// skipped ldexpl: it uses `long double`
+// skipped logl: it uses `long double`
+// skipped log10l: it uses `long double`
+// skipped log1pl: it uses `long double`
+// skipped log2l: it uses `long double`
+// skipped logbl: it uses `long double`
+// skipped modfl: it uses `long double`
+// skipped scalbnl: it uses `long double`
+// skipped scalblnl: it uses `long double`
+// skipped cbrtl: it uses `long double`
+// skipped hypotl: it uses `long double`
+// skipped powl: it uses `long double`
+// skipped sqrtl: it uses `long double`
+// skipped erfl: it uses `long double`
+// skipped erfcl: it uses `long double`
+// skipped lgammal: it uses `long double`
+// skipped tgammal: it uses `long double`
+// skipped ceill: it uses `long double`
+// skipped floorl: it uses `long double`
+// skipped nearbyintl: it uses `long double`
+// skipped rintl: it uses `long double`
+// skipped lrintl: it uses `long double`
+// skipped llrintl: it uses `long double`
+// skipped roundl: it uses `long double`
+// skipped lroundl: it uses `long double`
+// skipped llroundl: it uses `long double`
+// skipped truncl: it uses `long double`
+// skipped fmodl: it uses `long double`
+// skipped remainderl: it uses `long double`
+// skipped remquol: it uses `long double`
+// skipped copysignl: it uses `long double`
+// skipped nanl: it uses `long double`
+// skipped nextafterl: it uses `long double`
+// skipped nexttoward: it uses `long double`
+// skipped nexttowardf: it uses `long double`
+// skipped nexttowardl: it uses `long double`
+// skipped fdiml: it uses `long double`
+// skipped fmaxl: it uses `long double`
+// skipped fminl: it uses `long double`
+// skipped fmal: it uses `long double`
+// skipped _chgsignl: it uses `long double`
+// skipped nanosleep: it's `static`, defined in the header
+// skipped clock_nanosleep: it's `static`, defined in the header
+// skipped clock_getres: it's `static`, defined in the header
+// skipped clock_gettime: it's `static`, defined in the header
+// skipped clock_settime: it's `static`, defined in the header
+// skipped _getdllprocaddr: its return type is too complex
+
+pub struct Complex {
+    pub x: f64,
+    pub y: f64,
+}
+
+pub struct DivT {
+    pub quot: i32,
+    pub rem: i32,
+}
+
+pub struct Exception {
+    pub type_: i32,
+    pub name: cstr,
+    pub arg1: f64,
+    pub arg2: f64,
+    pub retval: f64,
+}
+
+pub struct LdivT {
+    pub quot: i32,
+    pub rem: i32,
+}
+
+pub struct LocaleinfoStruct {
+    pub locinfo: Threadlocaleinfostruct,
+    pub mbcinfo: Threadmbcinfostruct,
+}
+
+pub struct Timeb {
+    pub time: i64,
+    pub millitm: u16,
+    pub timezone: i16,
+    pub dstflag: i16,
+}
+
+pub struct Timeb32 {
+    pub time: i32,
+    pub millitm: u16,
+    pub timezone: i16,
+    pub dstflag: i16,
+}
+
+pub struct Timeb64 {
+    pub time: i64,
+    pub millitm: u16,
+    pub timezone: i16,
+    pub dstflag: i16,
+}
+
+pub struct Timespec {
+    /// Seconds
+    pub tv_sec: i64,
+    /// Nanoseconds
+    pub tv_nsec: i32,
+}
+
+pub struct Timespec32 {
+    pub tv_sec: i32,
+    pub tv_nsec: i32,
+}
+
+pub struct Timespec64 {
+    pub tv_sec: i64,
+    pub tv_nsec: i32,
+}
+
+pub struct Timeval {
+    pub tv_sec: i32,
+    pub tv_usec: i32,
+}
+
+pub struct Timezone {
+    pub tz_minuteswest: i32,
+    pub tz_dsttime: i32,
+}
+
+pub struct Tm {
+    pub tm_sec: i32,
+    pub tm_min: i32,
+    pub tm_hour: i32,
+    pub tm_mday: i32,
+    pub tm_mon: i32,
+    pub tm_year: i32,
+    pub tm_wday: i32,
+    pub tm_yday: i32,
+    pub tm_isdst: i32,
+}
+
+pub @const USE___UUIDOF: i32 = 0;
+pub @const BUFSIZ: i32 = 512;
+pub @const EOF: i32 = -1;
+pub @const L_tmpnam: i32 = 260;
+pub @const SEEK_CUR: i32 = 1;
+pub @const SEEK_END: i32 = 2;
+pub @const SEEK_SET: i32 = 0;
+pub @const STDIN_FILENO: i32 = 0;
+pub @const STDOUT_FILENO: i32 = 1;
+pub @const STDERR_FILENO: i32 = 2;
+pub @const FILENAME_MAX: i32 = 260;
+pub @const FOPEN_MAX: i32 = 20;
+pub @const TMP_MAX: i32 = 2147483647;
+pub @const P_tmpdir: cstr = "\\";
+pub @const SYS_OPEN: i32 = 20;
+pub @const L_tmpnam_s: i32 = 260;
+pub @const TMP_MAX_S: i32 = 2147483647;
+pub @const PATH_MAX: i32 = 260;
+pub @const MB_LEN_MAX: i32 = 5;
+pub @const SIZE_MAX: u64 = 18446744073709551615;
+pub @const SSIZE_MAX: i64 = 9223372036854775807;
+pub @const SCHAR_MAX: i32 = 127;
+pub @const SHRT_MAX: i32 = 32767;
+pub @const INT_MAX: i32 = 2147483647;
+pub @const LONG_MAX: i64 = 2147483647;
+pub @const SCHAR_MIN: i32 = -128;
+pub @const SHRT_MIN: i32 = -32768;
+pub @const INT_MIN: i32 = -2147483648;
+pub @const LONG_MIN: i64 = -2147483648;
+pub @const UCHAR_MAX: i32 = 255;
+pub @const USHRT_MAX: i32 = 65535;
+pub @const UINT_MAX: u32 = 4294967295;
+pub @const ULONG_MAX: u64 = 4294967295;
+pub @const CHAR_BIT: i32 = 8;
+pub @const CHAR_MIN: i32 = -128;
+pub @const CHAR_MAX: i32 = 127;
+pub @const LLONG_MAX: i64 = 9223372036854775807;
+pub @const LLONG_MIN: i64 = -9223372036854775808;
+pub @const ULLONG_MAX: u64 = 18446744073709551615;
+pub @const LONG_LONG_MAX: i64 = 9223372036854775807;
+pub @const LONG_LONG_MIN: i64 = -9223372036854775808;
+pub @const ULONG_LONG_MAX: u64 = 18446744073709551615;
+pub @const EXIT_SUCCESS: i32 = 0;
+pub @const EXIT_FAILURE: i32 = 1;
+pub @const RAND_MAX: i32 = 32767;
+pub @const DOMAIN: i32 = 1;
+pub @const SING: i32 = 2;
+pub @const OVERFLOW: i32 = 3;
+pub @const UNDERFLOW: i32 = 4;
+pub @const TLOSS: i32 = 5;
+pub @const PLOSS: i32 = 6;
+pub @const M_E: f64 = 2.718281828459045;
+pub @const M_LOG2E: f64 = 1.4426950408889634;
+pub @const M_LOG10E: f64 = 0.4342944819032518;
+pub @const M_LN2: f64 = 0.6931471805599453;
+pub @const M_LN10: f64 = 2.302585092994046;
+pub @const M_PI: f64 = 3.141592653589793;
+pub @const M_PI_2: f64 = 1.5707963267948966;
+pub @const M_PI_4: f64 = 0.7853981633974483;
+pub @const M_1_PI: f64 = 0.3183098861837907;
+pub @const M_2_PI: f64 = 0.6366197723675814;
+pub @const M_2_SQRTPI: f64 = 1.1283791670955126;
+pub @const M_SQRT2: f64 = 1.4142135623730951;
+pub @const M_SQRT1_2: f64 = 0.7071067811865476;
+pub @const MATH_ERRNO: i32 = 1;
+pub @const MATH_ERREXCEPT: i32 = 2;
+pub @const math_errhandling: i32 = 3;
+pub @const EDOM: i32 = 33;
+pub @const ERANGE: i32 = 34;
+pub @const FP_SNAN: i32 = 1;
+pub @const FP_QNAN: i32 = 2;
+pub @const FP_NINF: i32 = 4;
+pub @const FP_PINF: i32 = 512;
+pub @const FP_NDENORM: i32 = 16;
+pub @const FP_PDENORM: i32 = 128;
+pub @const FP_NZERO: i32 = 32;
+pub @const FP_PZERO: i32 = 64;
+pub @const FP_NNORM: i32 = 8;
+pub @const FP_PNORM: i32 = 256;
+pub @const FP_NAN: i32 = 256;
+pub @const FP_NORMAL: i32 = 1024;
+pub @const FP_INFINITE: i32 = 1280;
+pub @const FP_ZERO: i32 = 16384;
+pub @const FP_SUBNORMAL: i32 = 17408;
+pub @const FP_ILOGBNAN: i32 = 2147483647;
+pub @const CLOCKS_PER_SEC: i32 = 1000;
+pub @const TIME_UTC: i32 = 1;
+pub @const CLK_TCK: i32 = 1000;
+pub @const WINPTHREADS_TIME_BITS: i32 = 64;
+pub @const ETIMEDOUT: i32 = 138;
+pub @const ENOTSUP: i32 = 129;
+pub @const EWOULDBLOCK: i32 = 140;
+pub @const TIMER_ABSTIME: i32 = 1;
+pub @const CLOCK_REALTIME: i32 = 0;
+pub @const CLOCK_MONOTONIC: i32 = 1;
+pub @const CLOCK_PROCESS_CPUTIME_ID: i32 = 2;
+pub @const CLOCK_THREAD_CPUTIME_ID: i32 = 3;
+pub @const CLOCK_REALTIME_COARSE: i32 = 4;
+/// Check for file existence
+pub @const F_OK: i32 = 0;
+/// Check for execute permission.
+pub @const X_OK: i32 = 1;
+/// Check for write permission
+pub @const W_OK: i32 = 2;
+/// Check for read permission
+pub @const R_OK: i32 = 4;
+pub @const P_WAIT: i32 = 0;
+pub @const P_NOWAIT: i32 = 1;
+pub @const P_OVERLAY: i32 = 2;
+pub @const OLD_P_OVERLAY: i32 = 2;
+pub @const P_NOWAITO: i32 = 3;
+pub @const P_DETACH: i32 = 4;
+pub @const WAIT_CHILD: i32 = 0;
+pub @const WAIT_GRANDCHILD: i32 = 1;
+
+pub extern struct CRTDOUBLE;
+
+pub extern struct CRTFLOAT;
+
+pub extern struct LDOUBLE;
+
+pub extern struct Threadlocaleinfostruct;
+
+pub extern struct Threadmbcinfostruct;
+
+extern "c" from "c.h" {
+    pub fn _invalid_parameter_noinfo();
+    pub fn _invalid_parameter_noinfo_noreturn();
+    pub fn _invoke_watson(expression: &u16, function_name: &u16, file_name: &u16, line_number: u32, reserved: u64);
+    pub fn fprintf(_file: *, _format: cstr, ...) -> i32;
+    pub fn printf(_format: cstr, ...) -> i32;
+    pub fn sprintf(_dest: &mut i8, _format: cstr, ...) -> i32;
+    pub fn vfprintf(_file: *, _format: cstr, _arg_list: &mut i8) -> i32;
+    pub fn vprintf(_format: cstr, _arg_list: &mut i8) -> i32;
+    pub fn vsprintf(_dest: &mut i8, _format: cstr, _args: &mut i8) -> i32;
+    pub fn fscanf(_file: *, _format: cstr, ...) -> i32;
+    pub fn scanf(_format: cstr, ...) -> i32;
+    pub fn sscanf(_src: cstr, _format: cstr, ...) -> i32;
+    pub fn vfscanf(__stream: *, __format: cstr, __local_argv: &mut i8) -> i32;
+    pub fn vsscanf(__source: cstr, __format: cstr, __local_argv: &mut i8) -> i32;
+    pub fn vscanf(__format: cstr, __local_argv: &mut i8) -> i32;
+    pub fn _filbuf(_file: *) -> i32;
+    pub fn _flsbuf(_ch: i32, _file: *) -> i32;
+    pub fn _fsopen(_filename: cstr, _mode: cstr, _sh_flag: i32) -> *;
+    pub fn clearerr(_file: *);
+    pub fn fclose(_file: *) -> i32;
+    pub fn _fcloseall() -> i32;
+    pub fn _fdopen(_file_handle: i32, _mode: cstr) -> *;
+    pub fn feof(_file: *) -> i32;
+    pub fn ferror(_file: *) -> i32;
+    pub fn fflush(_file: *) -> i32;
+    pub fn fgetc(_file: *) -> i32;
+    pub fn _fgetchar() -> i32;
+    /// 64bit only, no 32bit version
+    pub fn fgetpos(_file: *, _pos: &mut i64) -> i32;
+    /// fgetpos already 64bit
+    pub fn fgetpos64(_file: *, _pos: &mut i64) -> i32;
+    pub fn fgets(_buf: &mut i8, _max_count: i32, _file: *) -> *;
+    pub fn _fileno(_file: *) -> i32;
+    pub fn _tempnam(_dir_name: cstr, _file_prefix: cstr) -> *;
+    pub fn _flushall() -> i32;
+    pub fn fopen(_filename: cstr, _mode: cstr) -> *;
+    pub fn fopen64(filename: cstr, mode: cstr) -> *;
+    pub fn fputc(_ch: i32, _file: *) -> i32;
+    pub fn _fputchar(_ch: i32) -> i32;
+    pub fn fputs(_str: cstr, _file: *) -> i32;
+    pub fn fread(_dst_buf: *, _element_size: u64, _count: u64, _file: *) -> u64;
+    pub fn freopen(_filename: cstr, _mode: cstr, _file: *) -> *;
+    pub fn freopen64(_filename: cstr, _mode: cstr, _file: *) -> *;
+    pub fn fsetpos(_file: *, _pos: &i64) -> i32;
+    /// fsetpos already 64bit
+    pub fn fsetpos64(_file: *, _pos: &i64) -> i32;
+    pub fn fseek(_file: *, _offset: i32, _origin: i32) -> i32;
+    pub fn ftell(_file: *) -> i32;
+    pub fn _fseeki64(_file: *, _offset: i64, _origin: i32) -> i32;
+    pub fn _ftelli64(_file: *) -> i64;
+    pub fn fseeko(_file: *, _offset: i32, _origin: i32) -> i32;
+    pub fn fseeko64(_file: *, _offset: i64, _origin: i32) -> i32;
+    pub fn ftello(_file: *) -> i32;
+    pub fn ftello64(_file: *) -> i64;
+    pub fn fwrite(_str: *, _size: u64, _count: u64, _file: *) -> u64;
+    pub fn getc(_file: *) -> i32;
+    pub fn getchar() -> i32;
+    pub fn _getmaxstdio() -> i32;
+    pub fn gets(_buffer: &mut i8) -> *;
+    pub fn _getw(_file: *) -> i32;
+    pub fn perror(_err_msg: cstr);
+    pub fn _pclose(_file: *) -> i32;
+    pub fn _popen(_command: cstr, _mode: cstr) -> *;
+    pub fn putc(_ch: i32, _file: *) -> i32;
+    pub fn putchar(_ch: i32) -> i32;
+    pub fn puts(_str: cstr) -> i32;
+    pub fn _putw(_word: i32, _file: *) -> i32;
+    pub fn remove(_filename: cstr) -> i32;
+    pub fn rename(_old_filename: cstr, _new_filename: cstr) -> i32;
+    pub fn _unlink(_filename: cstr) -> i32;
+    pub fn unlink(_filename: cstr) -> i32;
+    pub fn rewind(_file: *);
+    pub fn _rmtmp() -> i32;
+    pub fn setbuf(_file: *, _buffer: &mut i8);
+    pub fn _setmaxstdio(_max: i32) -> i32;
+    pub fn _set_output_format(_format: u32) -> u32;
+    pub fn _get_output_format() -> u32;
+    pub fn setvbuf(_file: *, _buf: &mut i8, _mode: i32, _size: u64) -> i32;
+    pub fn _scprintf(_format: cstr, ...) -> i32;
+    pub fn _snscanf(_src: cstr, _max_count: u64, _format: cstr, ...) -> i32;
+    pub fn _vscprintf(_format: cstr, _arg_list: &mut i8) -> i32;
+    pub fn tmpfile() -> *;
+    pub fn tmpfile64() -> *;
+    pub fn tmpnam(_buffer: &mut i8) -> *;
+    pub fn ungetc(_ch: i32, _file: *) -> i32;
+    pub fn _vsnprintf(_dest: &mut i8, _count: u64, _format: cstr, _args: &mut i8) -> i32;
+    pub fn _snprintf(_dest: &mut i8, _count: u64, _format: cstr, ...) -> i32;
+    pub fn vsnprintf(__stream: &mut i8, __n: u64, __format: cstr, __local_argv: &mut i8) -> i32;
+    pub fn snprintf(__stream: &mut i8, __n: u64, __format: cstr, ...) -> i32;
+    pub fn _set_printf_count_output(_value: i32) -> i32;
+    pub fn _get_printf_count_output() -> i32;
+    pub fn fwscanf(_file: *, _format: &u16, ...) -> i32;
+    pub fn swscanf(_src: &u16, _format: &u16, ...) -> i32;
+    pub fn wscanf(_format: &u16, ...) -> i32;
+    pub fn vfwscanf(__stream: *, __format: &u16, __local_argv: &mut i8) -> i32;
+    pub fn vswscanf(__source: &u16, __format: &u16, __local_argv: &mut i8) -> i32;
+    pub fn vwscanf(__format: &u16, __local_argv: &mut i8) -> i32;
+    pub fn fwprintf(_file: *, _format: &u16, ...) -> i32;
+    pub fn wprintf(_format: &u16, ...) -> i32;
+    pub fn vfwprintf(_file: *, _format: &u16, _arg_list: &mut i8) -> i32;
+    pub fn vwprintf(_format: &u16, _arg_list: &mut i8) -> i32;
+    pub fn swprintf(_dest: &mut u16, _count: u64, _format: &u16, ...) -> i32;
+    pub fn vswprintf(_dest: &mut u16, _count: u64, _format: &u16, _args: &mut i8) -> i32;
+    pub fn snwprintf(s: &mut u16, n: u64, format: &u16, ...) -> i32;
+    pub fn vsnwprintf(s: &mut u16, n: u64, format: &u16, arg: &mut i8) -> i32;
+    pub fn _wfsopen(_filename: &u16, _mode: &u16, _sh_flag: i32) -> *;
+    pub fn fgetwc(_file: *) -> u16;
+    pub fn _fgetwchar() -> u16;
+    pub fn fputwc(_ch: u16, _file: *) -> u16;
+    pub fn _fputwchar(_ch: u16) -> u16;
+    pub fn getwc(_file: *) -> u16;
+    pub fn getwchar() -> u16;
+    pub fn putwc(_ch: u16, _file: *) -> u16;
+    pub fn putwchar(_ch: u16) -> u16;
+    pub fn ungetwc(_ch: u16, _file: *) -> u16;
+    pub fn fgetws(_dst: &mut u16, _size_in_words: i32, _file: *) -> *;
+    pub fn fputws(_str: &u16, _file: *) -> i32;
+    pub fn _getws(_string: &mut u16) -> *;
+    pub fn _putws(_str: &u16) -> i32;
+    pub fn _scwprintf(_format: &u16, ...) -> i32;
+    pub fn _snwprintf(_dest: &mut u16, _count: u64, _format: &u16, ...) -> i32;
+    pub fn _vsnwprintf(_dest: &mut u16, _count: u64, _format: &u16, _args: &mut i8) -> i32;
+    pub fn _vscwprintf(_format: &u16, _arg_list: &mut i8) -> i32;
+    pub fn _swprintf(_dest: &mut u16, _format: &u16, ...) -> i32;
+    pub fn _vswprintf(_dest: &mut u16, _format: &u16, _args: &mut i8) -> i32;
+    pub fn _wtempnam(_directory: &u16, _file_prefix: &u16) -> *;
+    pub fn _snwscanf(_src: &u16, _max_count: u64, _format: &u16, ...) -> i32;
+    pub fn _wfdopen(_file_handle: i32, _mode: &u16) -> *;
+    pub fn _wfopen(_filename: &u16, _mode: &u16) -> *;
+    pub fn _wfreopen(_filename: &u16, _mode: &u16, _old_file: *) -> *;
+    pub fn _wperror(_err_msg: &u16);
+    pub fn _wpopen(_command: &u16, _mode: &u16) -> *;
+    pub fn _wremove(_filename: &u16) -> i32;
+    pub fn _wtmpnam(_buffer: &mut u16) -> *;
+    pub fn _fgetwc_nolock(_file: *) -> u16;
+    pub fn _fputwc_nolock(_ch: u16, _file: *) -> u16;
+    pub fn _ungetwc_nolock(_ch: u16, _file: *) -> u16;
+    pub fn _fgetc_nolock(_file: *) -> i32;
+    pub fn _fputc_nolock(_char: i32, _file: *) -> i32;
+    pub fn _getc_nolock(_file: *) -> i32;
+    pub fn _putc_nolock(_char: i32, _file: *) -> i32;
+    pub fn _lock_file(_file: *);
+    pub fn _unlock_file(_file: *);
+    pub fn _fclose_nolock(_file: *) -> i32;
+    pub fn _fflush_nolock(_file: *) -> i32;
+    pub fn _fread_nolock(_dst_buf: *, _element_size: u64, _count: u64, _file: *) -> u64;
+    pub fn _fseek_nolock(_file: *, _offset: i32, _origin: i32) -> i32;
+    pub fn _ftell_nolock(_file: *) -> i32;
+    pub fn _fseeki64_nolock(_file: *, _offset: i64, _origin: i32) -> i32;
+    pub fn _ftelli64_nolock(_file: *) -> i64;
+    pub fn _fwrite_nolock(_dst_buf: *, _size: u64, _count: u64, _file: *) -> u64;
+    pub fn _ungetc_nolock(_ch: i32, _file: *) -> i32;
+    pub fn tempnam(_directory: cstr, _file_prefix: cstr) -> *;
+    pub fn fcloseall() -> i32;
+    pub fn fdopen(_file_handle: i32, _format: cstr) -> *;
+    pub fn fgetchar() -> i32;
+    pub fn fileno(_file: *) -> i32;
+    pub fn flushall() -> i32;
+    pub fn fputchar(_ch: i32) -> i32;
+    pub fn getw(_file: *) -> i32;
+    pub fn putw(_ch: i32, _file: *) -> i32;
+    pub fn rmtmp() -> i32;
+    pub fn _wspawnl(_mode: i32, _filename: &u16, _arg_list: &u16, ...) -> i64;
+    pub fn _wspawnle(_mode: i32, _filename: &u16, _arg_list: &u16, ...) -> i64;
+    pub fn _wspawnlp(_mode: i32, _filename: &u16, _arg_list: &u16, ...) -> i64;
+    pub fn _wspawnlpe(_mode: i32, _filename: &u16, _arg_list: &u16, ...) -> i64;
+    pub fn _wspawnv(_mode: i32, _filename: &u16, _arg_list: *) -> i64;
+    pub fn _wspawnve(_mode: i32, _filename: &u16, _arg_list: *, _env: *) -> i64;
+    pub fn _wspawnvp(_mode: i32, _filename: &u16, _arg_list: *) -> i64;
+    pub fn _wspawnvpe(_mode: i32, _filename: &u16, _arg_list: *, _env: *) -> i64;
+    pub fn _spawnv(_mode: i32, _filename: cstr, _arg_list: *) -> i64;
+    pub fn _spawnve(_mode: i32, _filename: cstr, _arg_list: *, _env: *) -> i64;
+    pub fn _spawnvp(_mode: i32, _filename: cstr, _arg_list: *) -> i64;
+    pub fn _spawnvpe(_mode: i32, _filename: cstr, _arg_list: *, _env: *) -> i64;
+    pub fn clearerr_s(_file: *) -> i32;
+    pub fn fread_s(_dst_buf: *, _dst_size: u64, _element_size: u64, _count: u64, _file: *) -> u64;
+    pub fn fopen_s(_file: &mut *, _filename: cstr, _mode: cstr) -> i32;
+    pub fn freopen_s(_file: &mut *, _filename: cstr, _mode: cstr, _stream: *) -> i32;
+    pub fn gets_s(arg0: &mut i8, arg1: u64) -> *;
+    pub fn tmpfile_s(_file: &mut *) -> i32;
+    pub fn tmpnam_s(arg0: &mut i8, arg1: u64) -> i32;
+    pub fn _getws_s(_str: &mut u16, _size_in_words: u64) -> *;
+    pub fn _wfopen_s(_file: &mut *, _filename: &u16, _mode: &u16) -> i32;
+    pub fn _wfreopen_s(_file: &mut *, _filename: &u16, _mode: &u16, _old_file: *) -> i32;
+    pub fn _wtmpnam_s(_dst_buf: &mut u16, _size_in_words: u64) -> i32;
+    pub fn _fread_nolock_s(_dst_buf: *, _dst_size: u64, _element_size: u64, _count: u64, _file: *) -> u64;
+    pub fn _wdupenv_s(_buffer: &mut *, _buffer_size_in_words: &mut u64, _var_name: &u16) -> i32;
+    pub fn _itow_s(_val: i32, _dst_buf: &mut u16, _size_in_words: u64, _radix: i32) -> i32;
+    pub fn _ltow_s(_val: i32, _dst_buf: &mut u16, _size_in_words: u64, _radix: i32) -> i32;
+    pub fn _ultow_s(_val: u32, _dst_buf: &mut u16, _size_in_words: u64, _radix: i32) -> i32;
+    pub fn _wgetenv_s(_return_size: &mut u64, _dst_buf: &mut u16, _dst_size_in_words: u64, _var_name: &u16) -> i32;
+    pub fn _i64tow_s(_val: i64, _dst_buf: &mut u16, _size_in_words: u64, _radix: i32) -> i32;
+    pub fn _ui64tow_s(_val: u64, _dst_buf: &mut u16, _size_in_words: u64, _radix: i32) -> i32;
+    pub fn _wmakepath_s(_path_result: &mut u16, _size_in_words: u64, _drive: &u16, _dir: &u16, _filename: &u16, _ext: &u16) -> i32;
+    pub fn _wputenv_s(_name: &u16, _value: &u16) -> i32;
+    pub fn _wsearchenv_s(_filename: &u16, _env_var: &u16, _result_path: &mut u16, _size_in_words: u64) -> i32;
+    pub fn _wsplitpath_s(_full_path: &u16, _drive: &mut u16, _drive_size_in_words: u64, _dir: &mut u16, _dir_size_in_words: u64, _filename: &mut u16, _filename_size_in_words: u64, _ext: &mut u16, _ext_size_in_words: u64) -> i32;
+    pub fn _set_purecall_handler(_handler: *) -> *;
+    pub fn _get_purecall_handler() -> *;
+    pub fn _set_invalid_parameter_handler(_handler: *) -> *;
+    pub fn _get_invalid_parameter_handler() -> *;
+    pub fn _errno() -> *;
+    pub fn _set_errno(_value: i32) -> i32;
+    pub fn _get_errno(_value: &mut i32) -> i32;
+    pub fn _set_doserrno(_value: u32) -> i32;
+    pub fn _get_doserrno(_value: &mut u32) -> i32;
+    pub fn _get_pgmptr(_value: &mut *) -> i32;
+    pub fn _get_wpgmptr(_value: &mut *) -> i32;
+    pub fn _set_fmode(_mode: i32) -> i32;
+    pub fn _get_fmode(_p_mode: &mut i32) -> i32;
+    pub fn _get_osplatform(_value: &mut u32) -> i32;
+    pub fn _get_osver(_value: &mut u32) -> i32;
+    pub fn _get_winver(_value: &mut u32) -> i32;
+    pub fn _get_winmajor(_value: &mut u32) -> i32;
+    pub fn _get_winminor(_value: &mut u32) -> i32;
+    pub fn exit(_code: i32);
+    pub fn _exit(_code: i32);
+    pub fn quick_exit(_code: i32);
+    pub fn abort();
+    pub fn _set_abort_behavior(_flags: u32, _mask: u32) -> u32;
+    pub fn abs(_x: i32) -> i32;
+    pub fn labs(_x: i32) -> i32;
+    pub fn _abs64(arg0: i64) -> i64;
+    pub fn atof(_string: cstr) -> f64;
+    pub fn _atof_l(_string: cstr, _locale: &mut LocaleinfoStruct) -> f64;
+    pub fn atoi(_str: cstr) -> i32;
+    pub fn _atoi_l(_str: cstr, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn atol(_str: cstr) -> i32;
+    pub fn _atol_l(_str: cstr, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _byteswap_ushort(_short: u16) -> u16;
+    pub fn _byteswap_ulong(_long: u32) -> u32;
+    pub fn _byteswap_uint64(_int64: u64) -> u64;
+    pub fn div(_numerator: i32, _denominator: i32) -> DivT;
+    pub fn getenv(_var_name: cstr) -> *;
+    pub fn _itoa(_value: i32, _dest: &mut i8, _radix: i32) -> *;
+    pub fn _i64toa(_val: i64, _dst_buf: &mut i8, _radix: i32) -> *;
+    pub fn _ui64toa(_val: u64, _dst_buf: &mut i8, _radix: i32) -> *;
+    pub fn _atoi64(_string: cstr) -> i64;
+    pub fn _atoi64_l(_string: cstr, _locale: &mut LocaleinfoStruct) -> i64;
+    pub fn _strtoi64(_string: cstr, _end_ptr: &mut *, _radix: i32) -> i64;
+    pub fn _strtoi64_l(_string: cstr, _end_ptr: &mut *, _radix: i32, _locale: &mut LocaleinfoStruct) -> i64;
+    pub fn _strtoui64(_string: cstr, _end_ptr: &mut *, _radix: i32) -> u64;
+    pub fn _strtoui64_l(_string: cstr, _end_ptr: &mut *, _radix: i32, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn ldiv(_numerator: i32, _denominator: i32) -> LdivT;
+    pub fn _ltoa(_value: i32, _dest: &mut i8, _radix: i32) -> *;
+    pub fn mblen(_ch: cstr, _max_count: u64) -> i32;
+    pub fn _mblen_l(_ch: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _mbstrlen(_str: cstr) -> u64;
+    pub fn _mbstrlen_l(_str: cstr, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn _mbstrnlen(_str: cstr, _max_count: u64) -> u64;
+    pub fn _mbstrnlen_l(_str: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn mbtowc(_dst_ch: &mut u16, _src_ch: cstr, _src_size_in_bytes: u64) -> i32;
+    pub fn _mbtowc_l(_dst_ch: &mut u16, _src_ch: cstr, _src_size_in_bytes: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn mbstowcs(_dest: &mut u16, _source: cstr, _max_count: u64) -> u64;
+    pub fn _mbstowcs_l(_dest: &mut u16, _source: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn mkstemp(_template_name: &mut i8) -> i32;
+    pub fn mkdtemp(_template_name: &mut i8) -> *;
+    pub fn rand() -> i32;
+    pub fn _set_error_mode(_mode: i32) -> i32;
+    pub fn srand(_seed: u32);
+    pub fn strtod(_str: cstr, _end_ptr: &mut *) -> f64;
+    pub fn strtof(nptr: cstr, endptr: &mut *) -> f32;
+    pub fn _strtof_l(_str: cstr, _end_ptr: &mut *, _locale: &mut LocaleinfoStruct) -> f32;
+    pub fn _strtod_l(_str: cstr, _end_ptr: &mut *, _locale: &mut LocaleinfoStruct) -> f64;
+    pub fn strtol(_str: cstr, _end_ptr: &mut *, _radix: i32) -> i32;
+    pub fn _strtol_l(_str: cstr, _end_ptr: &mut *, _radix: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn strtoul(_str: cstr, _end_ptr: &mut *, _radix: i32) -> u32;
+    pub fn _strtoul_l(_str: cstr, _end_ptr: &mut *, _radix: i32, _locale: &mut LocaleinfoStruct) -> u32;
+    pub fn system(_command: cstr) -> i32;
+    pub fn _ultoa(_value: u32, _dest: &mut i8, _radix: i32) -> *;
+    pub fn wctomb(_mb_ch: &mut i8, _w_ch: u16) -> i32;
+    pub fn _wctomb_l(_mb_ch: &mut i8, _w_ch: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn wcstombs(_dest: &mut i8, _source: &u16, _max_count: u64) -> u64;
+    pub fn _wcstombs_l(_dest: &mut i8, _source: &u16, _max_count: u64, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn calloc(_num_of_elements: u64, _size_of_elements: u64) -> *;
+    pub fn free(_memory: *);
+    pub fn malloc(_size: u64) -> *;
+    pub fn realloc(_memory: *, _new_size: u64) -> *;
+    pub fn _aligned_free(_memory: *);
+    pub fn _aligned_malloc(_size: u64, _alignment: u64) -> *;
+    pub fn _aligned_offset_malloc(_size: u64, _alignment: u64, _offset: u64) -> *;
+    pub fn _aligned_realloc(_memory: *, _size: u64, _alignment: u64) -> *;
+    pub fn _aligned_offset_realloc(_memory: *, _size: u64, _alignment: u64, _offset: u64) -> *;
+    pub fn _recalloc(_memory: *, _count: u64, _size: u64) -> *;
+    pub fn _aligned_recalloc(_memory: *, _count: u64, _size: u64, _alignment: u64) -> *;
+    pub fn _aligned_offset_recalloc(_memory: *, _count: u64, _size: u64, _alignment: u64, _offset: u64) -> *;
+    pub fn _aligned_msize(_memory: *, _alignment: u64, _offset: u64) -> u64;
+    pub fn _itow(_value: i32, _dest: &mut u16, _radix: i32) -> *;
+    pub fn _ltow(_value: i32, _dest: &mut u16, _radix: i32) -> *;
+    pub fn _ultow(_value: u32, _dest: &mut u16, _radix: i32) -> *;
+    pub fn wcstod(_str: &u16, _end_ptr: &mut *) -> f64;
+    pub fn wcstof(nptr: &u16, endptr: &mut *) -> f32;
+    pub fn _wcstod_l(_str: &u16, _end_ptr: &mut *, _locale: &mut LocaleinfoStruct) -> f64;
+    pub fn _wcstof_l(_str: &u16, _end_ptr: &mut *, _locale: &mut LocaleinfoStruct) -> f32;
+    pub fn wcstol(_str: &u16, _end_ptr: &mut *, _radix: i32) -> i32;
+    pub fn _wcstol_l(_str: &u16, _end_ptr: &mut *, _radix: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn wcstoul(_str: &u16, _end_ptr: &mut *, _radix: i32) -> u32;
+    pub fn _wcstoul_l(_str: &u16, _end_ptr: &mut *, _radix: i32, _locale: &mut LocaleinfoStruct) -> u32;
+    pub fn _wgetenv(_var_name: &u16) -> *;
+    pub fn _wsystem(_command: &u16) -> i32;
+    pub fn _wtof(_str: &u16) -> f64;
+    pub fn _wtof_l(_str: &u16, _locale: &mut LocaleinfoStruct) -> f64;
+    pub fn _wtoi(_str: &u16) -> i32;
+    pub fn _wtoi_l(_str: &u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _wtol(_str: &u16) -> i32;
+    pub fn _wtol_l(_str: &u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _i64tow(_val: i64, _dst_buf: &mut u16, _radix: i32) -> *;
+    pub fn _ui64tow(_val: u64, _dst_buf: &mut u16, _radix: i32) -> *;
+    pub fn _wtoi64(_str: &u16) -> i64;
+    pub fn _wtoi64_l(_str: &u16, _locale: &mut LocaleinfoStruct) -> i64;
+    pub fn _wcstoi64(_str: &u16, _end_ptr: &mut *, _radix: i32) -> i64;
+    pub fn _wcstoi64_l(_str: &u16, _end_ptr: &mut *, _radix: i32, _locale: &mut LocaleinfoStruct) -> i64;
+    pub fn _wcstoui64(_str: &u16, _end_ptr: &mut *, _radix: i32) -> u64;
+    pub fn _wcstoui64_l(_str: &u16, _end_ptr: &mut *, _radix: i32, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn _putenv(_env_string: cstr) -> i32;
+    pub fn _wputenv(_env_string: &u16) -> i32;
+    pub fn _fullpath(_full_path: &mut i8, _path: cstr, _size_in_bytes: u64) -> *;
+    pub fn _ecvt(_val: f64, _num_of_digits: i32, _pt_dec: &mut i32, _pt_sign: &mut i32) -> *;
+    pub fn _fcvt(_val: f64, _num_of_dec: i32, _pt_dec: &mut i32, _pt_sign: &mut i32) -> *;
+    pub fn _gcvt(_val: f64, _num_of_digits: i32, _dst_buf: &mut i8) -> *;
+    pub fn _atodbl(_result: CRTDOUBLE, _str: &mut i8) -> i32;
+    pub fn _atoldbl(_result: LDOUBLE, _str: &mut i8) -> i32;
+    pub fn _atoflt(_result: CRTFLOAT, _str: &mut i8) -> i32;
+    pub fn _atodbl_l(_result: CRTDOUBLE, _str: &mut i8, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _atoldbl_l(_result: LDOUBLE, _str: &mut i8, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _atoflt_l(_result: CRTFLOAT, _str: &mut i8, _locale: &mut LocaleinfoStruct) -> i32;
+    /// These prototypes work for x86, x64 (native Windows), and cyginwin64.
+    pub fn _lrotl(arg0: u32, arg1: i32) -> u32;
+    pub fn _lrotr(arg0: u32, arg1: i32) -> u32;
+    pub fn _makepath(_path: &mut i8, _drive: cstr, _dir: cstr, _filename: cstr, _ext: cstr);
+    pub fn _onexit(_func: *) -> *;
+    pub fn _rotl64(_val: u64, _shift: i32) -> u64;
+    pub fn _rotr64(value: u64, shift: i32) -> u64;
+    pub fn _rotr(_val: u32, _shift: i32) -> u32;
+    pub fn _rotl(_val: u32, _shift: i32) -> u32;
+    pub fn _searchenv(_filename: cstr, _env_var: cstr, _result_path: &mut i8);
+    pub fn _splitpath(_full_path: cstr, _drive: &mut i8, _dir: &mut i8, _filename: &mut i8, _ext: &mut i8);
+    pub fn _swab(_buf1: &mut i8, _buf2: &mut i8, _size_in_bytes: i32);
+    pub fn _wfullpath(_full_path: &mut u16, _path: &u16, _size_in_words: u64) -> *;
+    pub fn _wmakepath(_result_path: &mut u16, _drive: &u16, _dir: &u16, _filename: &u16, _ext: &u16);
+    pub fn _wsearchenv(_filename: &u16, _env_var: &u16, _result_path: &mut u16);
+    pub fn _wsplitpath(_full_path: &u16, _drive: &mut u16, _dir: &mut u16, _filename: &mut u16, _ext: &mut u16);
+    pub fn ecvt(_val: f64, _num_of_digits: i32, _pt_dec: &mut i32, _pt_sign: &mut i32) -> *;
+    pub fn fcvt(_val: f64, _num_of_dec: i32, _pt_dec: &mut i32, _pt_sign: &mut i32) -> *;
+    pub fn gcvt(_val: f64, _num_of_digits: i32, _dst_buf: &mut i8) -> *;
+    pub fn itoa(_val: i32, _dst_buf: &mut i8, _radix: i32) -> *;
+    pub fn ltoa(_val: i32, _dst_buf: &mut i8, _radix: i32) -> *;
+    pub fn putenv(_env_string: cstr) -> i32;
+    pub fn swab(_buf1: &mut i8, _buf2: &mut i8, _size_in_bytes: i32);
+    pub fn ultoa(_val: u32, _dstbuf: &mut i8, _radix: i32) -> *;
+    pub fn onexit(_func: *) -> *;
+    pub fn llabs(arg0: i64) -> i64;
+    pub fn strtoll(arg0: cstr, arg1: &mut *, arg2: i32) -> i64;
+    pub fn strtoull(arg0: cstr, arg1: &mut *, arg2: i32) -> u64;
+    /// these are stubs for MS _i64 versions
+    pub fn atoll(arg0: cstr) -> i64;
+    pub fn wtoll(arg0: &u16) -> i64;
+    pub fn lltoa(arg0: i64, arg1: &mut i8, arg2: i32) -> *;
+    pub fn ulltoa(arg0: u64, arg1: &mut i8, arg2: i32) -> *;
+    pub fn lltow(arg0: i64, arg1: &mut u16, arg2: i32) -> *;
+    pub fn ulltow(arg0: u64, arg1: &mut u16, arg2: i32) -> *;
+    pub fn _dupenv_s(_p_buffer: &mut *, _p_buffer_size_in_bytes: &mut u64, _var_name: cstr) -> i32;
+    pub fn getenv_s(_return_size: &mut u64, _dst_buf: &mut i8, _dst_size: u64, _var_name: cstr) -> i32;
+    pub fn _itoa_s(_value: i32, _dst_buf: &mut i8, _size: u64, _radix: i32) -> i32;
+    pub fn _i64toa_s(_val: i64, _dst_buf: &mut i8, _size: u64, _radix: i32) -> i32;
+    pub fn _ui64toa_s(_val: u64, _dst_buf: &mut i8, _size: u64, _radix: i32) -> i32;
+    pub fn _ltoa_s(_val: i32, _dst_buf: &mut i8, _size: u64, _radix: i32) -> i32;
+    pub fn mbstowcs_s(_pt_num_of_char_converted: &mut u64, _dst_buf: &mut u16, _size_in_words: u64, _src_buf: cstr, _max_count: u64) -> i32;
+    pub fn _mbstowcs_s_l(_pt_num_of_char_converted: &mut u64, _dst_buf: &mut u16, _size_in_words: u64, _src_buf: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _ultoa_s(_val: u32, _dst_buf: &mut i8, _size: u64, _radix: i32) -> i32;
+    pub fn wctomb_s(_size_converted: &mut i32, _mb_ch: &mut i8, _size_in_bytes: u64, _w_ch: u16) -> i32;
+    pub fn _wctomb_s_l(_size_converted: &mut i32, _mb_ch: &mut i8, _size_in_bytes: u64, _w_ch: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn wcstombs_s(_pt_num_of_char_converted: &mut u64, _dst: &mut i8, _dst_size_in_bytes: u64, _src: &u16, _max_count_in_bytes: u64) -> i32;
+    pub fn _wcstombs_s_l(_pt_num_of_char_converted: &mut u64, _dst: &mut i8, _dst_size_in_bytes: u64, _src: &u16, _max_count_in_bytes: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _ecvt_s(_dst_buf: &mut i8, _size: u64, _val: f64, _num_of_dights: i32, _pt_dec: &mut i32, _pt_sign: &mut i32) -> i32;
+    pub fn _fcvt_s(_dst_buf: &mut i8, _size: u64, _val: f64, _num_of_dec: i32, _pt_dec: &mut i32, _pt_sign: &mut i32) -> i32;
+    pub fn _gcvt_s(_dst_buf: &mut i8, _size: u64, _val: f64, _num_of_digits: i32) -> i32;
+    pub fn _makepath_s(_path_result: &mut i8, _size: u64, _drive: cstr, _dir: cstr, _filename: cstr, _ext: cstr) -> i32;
+    pub fn _putenv_s(_name: cstr, _value: cstr) -> i32;
+    pub fn _searchenv_s(_filename: cstr, _env_var: cstr, _result_path: &mut i8, _size_in_bytes: u64) -> i32;
+    pub fn _splitpath_s(_full_path: cstr, _drive: &mut i8, _drive_size: u64, _dir: &mut i8, _dir_size: u64, _filename: &mut i8, _filename_size: u64, _ext: &mut i8, _ext_size: u64) -> i32;
+    pub fn _resetstkoflw() -> i32;
+    pub fn _set_malloc_crt_max_wait(_new_value: u32) -> u32;
+    pub fn _expand(_memory: *, _new_size: u64) -> *;
+    pub fn _msize(_memory: *) -> u64;
+    pub fn _get_sbh_threshold() -> u64;
+    pub fn _set_sbh_threshold(_new_value: u64) -> i32;
+    pub fn _set_amblksiz(_value: u64) -> i32;
+    pub fn _get_amblksiz(_value: &mut u64) -> i32;
+    pub fn _heapadd(_memory: *, _size: u64) -> i32;
+    pub fn _heapchk() -> i32;
+    pub fn _heapmin() -> i32;
+    pub fn _heapset(_fill: u32) -> i32;
+    pub fn _heapwalk(_entry_info: *) -> i32;
+    pub fn _heapused(_used: &mut u64, _commit: &mut u64) -> u64;
+    pub fn _get_heap_handle() -> i64;
+    pub fn _memccpy(_dst: *, _src: *, _val: i32, _max_count: u64) -> *;
+    pub fn memccpy(_dst: *, _src: *, _val: i32, _size: u64) -> *;
+    pub fn memchr(_buf: *, _val: i32, _max_count: u64) -> *;
+    pub fn _memicmp(_buf1: *, _buf2: *, _size: u64) -> i32;
+    pub fn _memicmp_l(_buf1: *, _buf2: *, _size: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn memcmp(_buf1: *, _buf2: *, _size: u64) -> i32;
+    pub fn memcpy(_dst: *, _src: *, _size: u64) -> *;
+    pub fn memcpy_s(_dest: *, _number_of_elements: u64, _src: *, _count: u64) -> i32;
+    pub fn mempcpy(_dst: *, _src: *, _size: u64) -> *;
+    pub fn memset(_dst: *, _val: i32, _size: u64) -> *;
+    pub fn memset_explicit(_dst: *, _val: i32, _size: u64) -> *;
+    pub fn memicmp(_buf1: *, _buf2: *, _size: u64) -> i32;
+    pub fn _strset(_str: &mut i8, _val: i32) -> *;
+    pub fn _strset_l(_str: &mut i8, _val: i32, _locale: &mut LocaleinfoStruct) -> *;
+    pub fn strcpy(_dest: &mut i8, _source: cstr) -> *;
+    pub fn strcat(_dest: &mut i8, _source: cstr) -> *;
+    pub fn strcmp(_str1: cstr, _str2: cstr) -> i32;
+    pub fn strlen(_str: cstr) -> u64;
+    pub fn strnlen(_str: cstr, _max_count: u64) -> u64;
+    pub fn memmove(_dst: *, _src: *, _size: u64) -> *;
+    pub fn _strdup(_src: cstr) -> *;
+    pub fn strdup(_src: cstr) -> *;
+    pub fn strndup(_src: cstr, _max_count: u64) -> *;
+    pub fn strchr(_str: cstr, _val: i32) -> *;
+    pub fn _stricmp(_str1: cstr, _str2: cstr) -> i32;
+    pub fn _strcmpi(_str1: cstr, _str2: cstr) -> i32;
+    pub fn _stricmp_l(_str1: cstr, _str2: cstr, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn strcoll(_str1: cstr, _str2: cstr) -> i32;
+    pub fn _strcoll_l(_str1: cstr, _str2: cstr, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _stricoll(_str1: cstr, _str2: cstr) -> i32;
+    pub fn _stricoll_l(_str1: cstr, _str2: cstr, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _strncoll(_str1: cstr, _str2: cstr, _max_count: u64) -> i32;
+    pub fn _strncoll_l(_str1: cstr, _str2: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _strnicoll(_str1: cstr, _str2: cstr, _max_count: u64) -> i32;
+    pub fn _strnicoll_l(_str1: cstr, _str2: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn strcspn(_str: cstr, _control: cstr) -> u64;
+    pub fn _strerror(_err_msg: cstr) -> *;
+    pub fn strerror(arg0: i32) -> *;
+    pub fn _strlwr(_string: &mut i8) -> *;
+    pub fn strlwr_l(_string: &mut i8, _locale: &mut LocaleinfoStruct) -> *;
+    pub fn strncat(_dest: &mut i8, _source: cstr, _count: u64) -> *;
+    pub fn strncmp(_str1: cstr, _str2: cstr, _max_count: u64) -> i32;
+    pub fn _strnicmp(_str1: cstr, _str2: cstr, _max_count: u64) -> i32;
+    pub fn _strnicmp_l(_str1: cstr, _str2: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn strncpy(_dest: &mut i8, _source: cstr, _count: u64) -> *;
+    pub fn _strnset(_str: &mut i8, _val: i32, _max_count: u64) -> *;
+    pub fn _strnset_l(str_: &mut i8, c: i32, count: u64, _locale: &mut LocaleinfoStruct) -> *;
+    pub fn strpbrk(_str: cstr, _control: cstr) -> *;
+    pub fn strrchr(_str: cstr, _ch: i32) -> *;
+    pub fn _strrev(_str: &mut i8) -> *;
+    pub fn strspn(_str: cstr, _control: cstr) -> u64;
+    pub fn strstr(_str: cstr, _sub_str: cstr) -> *;
+    pub fn strtok(_str: &mut i8, _delim: cstr) -> *;
+    pub fn strtok_r(_str: &mut i8, _delim: cstr, __last: &mut *) -> *;
+    pub fn _strupr(_string: &mut i8) -> *;
+    pub fn _strupr_l(_string: &mut i8, _locale: &mut LocaleinfoStruct) -> *;
+    pub fn strxfrm(_dst: &mut i8, _src: cstr, _max_count: u64) -> u64;
+    pub fn _strxfrm_l(_dst: &mut i8, _src: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn strcmpi(_str1: cstr, _str2: cstr) -> i32;
+    pub fn stricmp(_str1: cstr, _str2: cstr) -> i32;
+    pub fn strlwr(_str: &mut i8) -> *;
+    pub fn strnicmp(_str1: cstr, _str: cstr, _max_count: u64) -> i32;
+    pub fn strncasecmp(arg0: cstr, arg1: cstr, arg2: u64) -> i32;
+    pub fn strcasecmp(arg0: cstr, arg1: cstr) -> i32;
+    pub fn strnset(_str: &mut i8, _val: i32, _max_count: u64) -> *;
+    pub fn strrev(_str: &mut i8) -> *;
+    pub fn strset(_str: &mut i8, _val: i32) -> *;
+    pub fn strupr(_str: &mut i8) -> *;
+    pub fn _wcsdup(_str: &u16) -> *;
+    pub fn wcscat(_dest: &mut u16, _source: &u16) -> *;
+    pub fn wcschr(_str: &u16, _ch: u16) -> *;
+    pub fn wcscmp(_str1: &u16, _str2: &u16) -> i32;
+    pub fn wcscpy(_dest: &mut u16, _source: &u16) -> *;
+    pub fn wcscspn(_str: &u16, _control: &u16) -> u64;
+    pub fn wcslen(_str: &u16) -> u64;
+    pub fn wcsnlen(_src: &u16, _max_count: u64) -> u64;
+    pub fn wcsncat(_dest: &mut u16, _source: &u16, _count: u64) -> *;
+    pub fn wcsncmp(_str1: &u16, _str2: &u16, _max_count: u64) -> i32;
+    pub fn wcsncpy(_dest: &mut u16, _source: &u16, _count: u64) -> *;
+    pub fn _wcsncpy_l(_dest: &mut u16, _source: &u16, _count: u64, _locale: &mut LocaleinfoStruct) -> *;
+    pub fn wcspbrk(_str: &u16, _control: &u16) -> *;
+    pub fn wcsrchr(_str: &u16, _ch: u16) -> *;
+    pub fn wcsspn(_str: &u16, _control: &u16) -> u64;
+    pub fn wcsstr(_str: &u16, _sub_str: &u16) -> *;
+    pub fn wcstok(_str: &mut u16, _delim: &u16, _ptr: &mut *) -> *;
+    pub fn _wcstok(_str: &mut u16, _delim: &u16) -> *;
+    pub fn _wcserror(_err_num: i32) -> *;
+    pub fn _wcsicmp(_str1: &u16, _str2: &u16) -> i32;
+    pub fn _wcsicmp_l(_str1: &u16, _str2: &u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _wcsnicmp(_str1: &u16, _str2: &u16, _max_count: u64) -> i32;
+    pub fn _wcsnicmp_l(_str1: &u16, _str2: &u16, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _wcsnset(_str: &mut u16, _val: u16, _max_count: u64) -> *;
+    pub fn _wcsrev(_str: &mut u16) -> *;
+    pub fn _wcsset(_str: &mut u16, _val: u16) -> *;
+    pub fn _wcslwr(_string: &mut u16) -> *;
+    pub fn _wcslwr_l(_string: &mut u16, _locale: &mut LocaleinfoStruct) -> *;
+    pub fn _wcsupr(_string: &mut u16) -> *;
+    pub fn _wcsupr_l(_string: &mut u16, _locale: &mut LocaleinfoStruct) -> *;
+    pub fn wcsxfrm(_dst: &mut u16, _src: &u16, _max_count: u64) -> u64;
+    pub fn _wcsxfrm_l(_dst: &mut u16, _src: &u16, _max_count: u64, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn wcscoll(_str1: &u16, _str2: &u16) -> i32;
+    pub fn _wcscoll_l(_str1: &u16, _str2: &u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _wcsicoll(_str1: &u16, _str2: &u16) -> i32;
+    pub fn _wcsicoll_l(_str1: &u16, _str2: &u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _wcsncoll(_str1: &u16, _str2: &u16, _max_count: u64) -> i32;
+    pub fn _wcsncoll_l(_str1: &u16, _str2: &u16, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _wcsnicoll(_str1: &u16, _str2: &u16, _max_count: u64) -> i32;
+    pub fn _wcsnicoll_l(_str1: &u16, _str2: &u16, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn wcsdup(_str: &u16) -> *;
+    pub fn wcsicmp(_str1: &u16, _str2: &u16) -> i32;
+    pub fn wcsnicmp(_str1: &u16, _str2: &u16, _max_count: u64) -> i32;
+    pub fn wcsnset(_str: &mut u16, _val: u16, _max_count: u64) -> *;
+    pub fn wcsrev(_str: &mut u16) -> *;
+    pub fn wcsset(_str: &mut u16, _val: u16) -> *;
+    pub fn wcslwr(_str: &mut u16) -> *;
+    pub fn wcsupr(_str: &mut u16) -> *;
+    pub fn wcsicoll(_str1: &u16, _str2: &u16) -> i32;
+    pub fn _strset_s(_dst: &mut i8, _dst_size: u64, _value: i32) -> i32;
+    pub fn _strerror_s(_buf: &mut i8, _size_in_bytes: u64, _err_msg: cstr) -> i32;
+    pub fn strerror_s(_buf: &mut i8, _size_in_bytes: u64, _err_num: i32) -> i32;
+    pub fn _strlwr_s(_str: &mut i8, _size: u64) -> i32;
+    pub fn _strlwr_s_l(_str: &mut i8, _size: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _strnset_s(_str: &mut i8, _size: u64, _val: i32, _max_count: u64) -> i32;
+    pub fn _strupr_s(_str: &mut i8, _size: u64) -> i32;
+    pub fn _strupr_s_l(_str: &mut i8, _size: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn strncat_s(_dst: &mut i8, _dst_size_in_chars: u64, _src: cstr, _max_count: u64) -> i32;
+    pub fn _strncat_s_l(_dst: &mut i8, _dst_size_in_chars: u64, _src: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn strcpy_s(_dst: &mut i8, _size_in_bytes: u64, _src: cstr) -> i32;
+    pub fn strncpy_s(_dst: &mut i8, _dst_size_in_chars: u64, _src: cstr, _max_count: u64) -> i32;
+    pub fn _strncpy_s_l(_dst: &mut i8, _dst_size_in_chars: u64, _src: cstr, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn strtok_s(_str: &mut i8, _delim: cstr, _context: &mut *) -> *;
+    pub fn _strtok_s_l(_str: &mut i8, _delim: cstr, _context: &mut *, _locale: &mut LocaleinfoStruct) -> *;
+    pub fn strcat_s(_dst: &mut i8, _size_in_bytes: u64, _src: cstr) -> i32;
+    pub fn strnlen_s(_src: cstr, _count: u64) -> u64;
+    pub fn memmove_s(_dest: *, _number_of_elements: u64, _src: *, _count: u64) -> i32;
+    pub fn wcstok_s(_str: &mut u16, _delim: &u16, _context: &mut *) -> *;
+    pub fn _wcserror_s(_buf: &mut u16, _size_in_words: u64, _err_num: i32) -> i32;
+    pub fn _wcsnset_s(_dst: &mut u16, _dst_size_in_words: u64, _val: u16, _max_count: u64) -> i32;
+    pub fn _wcsset_s(_str: &mut u16, _size_in_words: u64, _val: u16) -> i32;
+    pub fn _wcslwr_s(_str: &mut u16, _size_in_words: u64) -> i32;
+    pub fn _wcslwr_s_l(_str: &mut u16, _size_in_words: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _wcsupr_s(_str: &mut u16, _size: u64) -> i32;
+    pub fn _wcsupr_s_l(_str: &mut u16, _size: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn wcscpy_s(_dst: &mut u16, _size_in_words: u64, _src: &u16) -> i32;
+    pub fn wcscat_s(_dst: &mut u16, _size_in_words: u64, _src: &u16) -> i32;
+    pub fn wcsncat_s(_dst: &mut u16, _dst_size_in_chars: u64, _src: &u16, _max_count: u64) -> i32;
+    pub fn _wcsncat_s_l(_dst: &mut u16, _dst_size_in_chars: u64, _src: &u16, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn wcsncpy_s(_dst: &mut u16, _dst_size_in_chars: u64, _src: &u16, _max_count: u64) -> i32;
+    pub fn _wcsncpy_s_l(_dst: &mut u16, _dst_size_in_chars: u64, _src: &u16, _max_count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _wcstok_s_l(_str: &mut u16, _delim: &u16, _context: &mut *, _locale: &mut LocaleinfoStruct) -> *;
+    pub fn _wcsset_s_l(_str: &mut u16, _size_in_chars: u64, _val: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _wcsnset_s_l(_str: &mut u16, _size_in_chars: u64, _val: u16, _count: u64, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn wcsnlen_s(_src: &u16, _count: u64) -> u64;
+    pub fn sin(_x: f64) -> f64;
+    pub fn cos(_x: f64) -> f64;
+    pub fn tan(_x: f64) -> f64;
+    pub fn sinh(_x: f64) -> f64;
+    pub fn cosh(_x: f64) -> f64;
+    pub fn tanh(_x: f64) -> f64;
+    pub fn asin(_x: f64) -> f64;
+    pub fn acos(_x: f64) -> f64;
+    pub fn atan(_x: f64) -> f64;
+    pub fn atan2(_y: f64, _x: f64) -> f64;
+    pub fn exp(_x: f64) -> f64;
+    pub fn log(_x: f64) -> f64;
+    pub fn log10(_x: f64) -> f64;
+    pub fn pow(_x: f64, _y: f64) -> f64;
+    pub fn sqrt(_x: f64) -> f64;
+    pub fn ceil(_x: f64) -> f64;
+    pub fn floor(_x: f64) -> f64;
+    /// 7.12.7.2 The fabs functions: Double in C89
+    pub fn fabsf(x: f32) -> f32;
+    pub fn fabs(_x: f64) -> f64;
+    pub fn ldexp(_x: f64, _y: i32) -> f64;
+    pub fn frexp(_x: f64, _y: &mut i32) -> f64;
+    pub fn modf(_x: f64, _y: &mut f64) -> f64;
+    pub fn fmod(_x: f64, _y: f64) -> f64;
+    pub fn sincos(__x: f64, p_sin: &mut f64, p_cos: &mut f64);
+    pub fn sincosf(__x: f32, p_sin: &mut f32, p_cos: &mut f32);
+    /// Overridden to use our cabs.
+    pub fn _cabs(_complex_a: Complex) -> f64;
+    pub fn _hypot(_x: f64, _y: f64) -> f64;
+    pub fn _j0(_x: f64) -> f64;
+    pub fn _j1(_x: f64) -> f64;
+    pub fn _jn(_x: i32, _y: f64) -> f64;
+    pub fn _y0(_x: f64) -> f64;
+    pub fn _y1(_x: f64) -> f64;
+    pub fn _yn(_x: i32, _y: f64) -> f64;
+    pub fn _matherr(arg0: &mut Exception) -> i32;
+    pub fn _chgsign(_x: f64) -> f64;
+    pub fn _copysign(_number: f64, _sign: f64) -> f64;
+    pub fn _logb(arg0: f64) -> f64;
+    pub fn _nextafter(arg0: f64, arg1: f64) -> f64;
+    pub fn _scalb(arg0: f64, arg1: i32) -> f64;
+    pub fn _finite(arg0: f64) -> i32;
+    pub fn _fpclass(arg0: f64) -> i32;
+    pub fn _isnan(arg0: f64) -> i32;
+    pub fn j0(arg0: f64) -> f64;
+    pub fn j1(arg0: f64) -> f64;
+    pub fn jn(arg0: i32, arg1: f64) -> f64;
+    pub fn y0(arg0: f64) -> f64;
+    pub fn y1(arg0: f64) -> f64;
+    pub fn yn(arg0: i32, arg1: f64) -> f64;
+    pub fn chgsign(arg0: f64) -> f64;
+    ///  * scalb() is a GCC built-in.
+    ///  * Exclude this _scalb() stub; the semantics are incompatible
+    ///  * with the built-in implementation.
+    ///  *
+    /// _CRTIMP double __cdecl scalb (double, long);
+    ///  *
+    pub fn finite(arg0: f64) -> i32;
+    pub fn fpclass(arg0: f64) -> i32;
+    /// 7.12.4 Trigonometric functions: Double in C89
+    pub fn sinf(_x: f32) -> f32;
+    pub fn cosf(_x: f32) -> f32;
+    pub fn tanf(_x: f32) -> f32;
+    pub fn asinf(_x: f32) -> f32;
+    pub fn acosf(arg0: f32) -> f32;
+    pub fn atanf(arg0: f32) -> f32;
+    pub fn atan2f(arg0: f32, arg1: f32) -> f32;
+    /// 7.12.5 Hyperbolic functions: Double in C89
+    pub fn sinhf(_x: f32) -> f32;
+    pub fn coshf(_x: f32) -> f32;
+    pub fn tanhf(_x: f32) -> f32;
+    /// Inverse hyperbolic trig functions
+    /// 7.12.5.1
+    pub fn acosh(arg0: f64) -> f64;
+    pub fn acoshf(arg0: f32) -> f32;
+    /// 7.12.5.2
+    pub fn asinh(arg0: f64) -> f64;
+    pub fn asinhf(arg0: f32) -> f32;
+    /// 7.12.5.3
+    pub fn atanh(arg0: f64) -> f64;
+    pub fn atanhf(arg0: f32) -> f32;
+    /// Exponentials and logarithms
+    /// 7.12.6.1 Double in C89
+    pub fn expf(_x: f32) -> f32;
+    /// 7.12.6.2
+    pub fn exp2(arg0: f64) -> f64;
+    pub fn exp2f(arg0: f32) -> f32;
+    /// 7.12.6.3 The expm1 functions
+    /// TODO: These could be inlined
+    pub fn expm1(arg0: f64) -> f64;
+    pub fn expm1f(arg0: f32) -> f32;
+    /// 7.12.6.4 Double in C89
+    pub fn frexpf(_x: f32, _y: &mut i32) -> f32;
+    pub fn ilogb(arg0: f64) -> i32;
+    pub fn ilogbf(arg0: f32) -> i32;
+    /// 7.12.6.6  Double in C89
+    pub fn ldexpf(_x: f32, _y: i32) -> f32;
+    /// 7.12.6.7 Double in C89
+    pub fn logf(arg0: f32) -> f32;
+    /// 7.12.6.8 Double in C89
+    pub fn log10f(arg0: f32) -> f32;
+    /// 7.12.6.9
+    pub fn log1p(arg0: f64) -> f64;
+    pub fn log1pf(arg0: f32) -> f32;
+    /// 7.12.6.10
+    pub fn log2(arg0: f64) -> f64;
+    pub fn log2f(arg0: f32) -> f32;
+    /// 7.12.6.11
+    pub fn logb(arg0: f64) -> f64;
+    pub fn logbf(arg0: f32) -> f32;
+    /// 7.12.6.12  Double in C89
+    pub fn modff(arg0: f32, arg1: &mut f32) -> f32;
+    /// 7.12.6.13
+    pub fn scalbn(arg0: f64, arg1: i32) -> f64;
+    pub fn scalbnf(arg0: f32, arg1: i32) -> f32;
+    pub fn scalbln(arg0: f64, arg1: i32) -> f64;
+    pub fn scalblnf(arg0: f32, arg1: i32) -> f32;
+    /// 7.12.7.1
+    /// Implementations adapted from Cephes versions
+    pub fn cbrt(arg0: f64) -> f64;
+    pub fn cbrtf(arg0: f32) -> f32;
+    /// __MINGW_ATTRIB_DEPRECATED_MSVC2005; /* in libmoldname.a
+    pub fn hypot(arg0: f64, arg1: f64) -> f64;
+    pub fn hypotf(x: f32, y: f32) -> f32;
+    /// 7.12.7.4 The pow functions. Double in C89
+    pub fn powf(_x: f32, _y: f32) -> f32;
+    /// 7.12.7.5 The sqrt functions. Double in C89.
+    pub fn sqrtf(arg0: f32) -> f32;
+    /// 7.12.8.1 The erf functions
+    pub fn erf(arg0: f64) -> f64;
+    pub fn erff(arg0: f32) -> f32;
+    /// 7.12.8.2 The erfc functions
+    pub fn erfc(arg0: f64) -> f64;
+    pub fn erfcf(arg0: f32) -> f32;
+    /// 7.12.8.3 The lgamma functions
+    pub fn lgamma(arg0: f64) -> f64;
+    pub fn lgammaf(arg0: f32) -> f32;
+    /// 7.12.8.4 The tgamma functions
+    pub fn tgamma(arg0: f64) -> f64;
+    pub fn tgammaf(arg0: f32) -> f32;
+    /// 7.12.9.1 Double in C89
+    pub fn ceilf(arg0: f32) -> f32;
+    /// 7.12.9.2 Double in C89
+    pub fn floorf(arg0: f32) -> f32;
+    /// 7.12.9.3
+    pub fn nearbyint(arg0: f64) -> f64;
+    pub fn nearbyintf(arg0: f32) -> f32;
+    /// 7.12.9.4
+    /// round, using fpu control word settings
+    pub fn rint(arg0: f64) -> f64;
+    pub fn rintf(arg0: f32) -> f32;
+    /// 7.12.9.5
+    pub fn lrint(arg0: f64) -> i32;
+    pub fn lrintf(arg0: f32) -> i32;
+    pub fn llrint(arg0: f64) -> i64;
+    pub fn llrintf(arg0: f32) -> i64;
+    /// 7.12.9.6
+    /// round away from zero, regardless of fpu control word settings
+    pub fn round(arg0: f64) -> f64;
+    pub fn roundf(arg0: f32) -> f32;
+    /// 7.12.9.7
+    pub fn lround(arg0: f64) -> i32;
+    pub fn lroundf(arg0: f32) -> i32;
+    pub fn llround(arg0: f64) -> i64;
+    pub fn llroundf(arg0: f32) -> i64;
+    /// 7.12.9.8
+    /// round towards zero, regardless of fpu control word settings
+    pub fn trunc(arg0: f64) -> f64;
+    pub fn truncf(arg0: f32) -> f32;
+    /// 7.12.10.1 Double in C89
+    pub fn fmodf(arg0: f32, arg1: f32) -> f32;
+    /// 7.12.10.2
+    pub fn remainder(arg0: f64, arg1: f64) -> f64;
+    pub fn remainderf(arg0: f32, arg1: f32) -> f32;
+    /// 7.12.10.3
+    pub fn remquo(arg0: f64, arg1: f64, arg2: &mut i32) -> f64;
+    pub fn remquof(arg0: f32, arg1: f32, arg2: &mut i32) -> f32;
+    /// in libmoldname.a
+    pub fn copysign(arg0: f64, arg1: f64) -> f64;
+    pub fn copysignf(arg0: f32, arg1: f32) -> f32;
+    /// 7.12.11.2 Return a NaN
+    pub fn nan(tagp: cstr) -> f64;
+    pub fn nanf(tagp: cstr) -> f32;
+    /// in libmoldname.a
+    pub fn nextafter(arg0: f64, arg1: f64) -> f64;
+    pub fn nextafterf(arg0: f32, arg1: f32) -> f32;
+    /// 7.12.12.1
+    /// x > y ? (x - y) : 0.0
+    pub fn fdim(x: f64, y: f64) -> f64;
+    pub fn fdimf(x: f32, y: f32) -> f32;
+    /// 7.12.12.2
+    pub fn fmax(arg0: f64, arg1: f64) -> f64;
+    pub fn fmaxf(arg0: f32, arg1: f32) -> f32;
+    /// 7.12.12.3
+    pub fn fmin(arg0: f64, arg1: f64) -> f64;
+    pub fn fminf(arg0: f32, arg1: f32) -> f32;
+    /// 7.12.13.1
+    /// return x * y + z as a ternary op
+    pub fn fma(arg0: f64, arg1: f64, arg2: f64) -> f64;
+    pub fn fmaf(arg0: f32, arg1: f32, arg2: f32) -> f32;
+    pub fn _copysignf(_number: f32, _sign: f32) -> f32;
+    pub fn _chgsignf(_x: f32) -> f32;
+    pub fn _logbf(_x: f32) -> f32;
+    pub fn _nextafterf(_x: f32, _y: f32) -> f32;
+    pub fn _finitef(_x: f32) -> i32;
+    pub fn _isnanf(_x: f32) -> i32;
+    pub fn _fpclassf(_x: f32) -> i32;
+    /// Standard C functions.
+    pub fn iswctype(_c: u16, _type: u16) -> i32;
+    pub fn iswalnum(_c: u16) -> i32;
+    pub fn iswalpha(_c: u16) -> i32;
+    pub fn iswblank(_c: u16) -> i32;
+    pub fn iswcntrl(_c: u16) -> i32;
+    pub fn iswdigit(_c: u16) -> i32;
+    pub fn iswgraph(_c: u16) -> i32;
+    pub fn iswlower(_c: u16) -> i32;
+    pub fn iswprint(_c: u16) -> i32;
+    pub fn iswpunct(_c: u16) -> i32;
+    pub fn iswspace(_c: u16) -> i32;
+    pub fn iswupper(_c: u16) -> i32;
+    pub fn iswxdigit(_c: u16) -> i32;
+    pub fn towlower(_c: u16) -> u16;
+    pub fn towupper(_c: u16) -> u16;
+    pub fn _iswctype_l(_c: u16, _type: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswalnum_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswalpha_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswblank_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswcntrl_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswdigit_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswgraph_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswlower_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswprint_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswpunct_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswspace_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswupper_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswxdigit_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _towlower_l(_c: u16, _locale: &mut LocaleinfoStruct) -> u16;
+    pub fn _towupper_l(_c: u16, _locale: &mut LocaleinfoStruct) -> u16;
+    pub fn iswascii(_c: u16) -> i32;
+    pub fn is_wctype(_c: u16, _type: u16) -> i32;
+    pub fn isleadbyte(_c: i32) -> i32;
+    pub fn _iswcsym_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iswcsymf_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isleadbyte_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    /// Standard C functions.
+    pub fn isalnum(_c: i32) -> i32;
+    pub fn isalpha(_c: i32) -> i32;
+    pub fn isblank(_c: i32) -> i32;
+    pub fn iscntrl(_c: i32) -> i32;
+    pub fn isdigit(_c: i32) -> i32;
+    pub fn isgraph(_c: i32) -> i32;
+    pub fn islower(_c: i32) -> i32;
+    pub fn isprint(_c: i32) -> i32;
+    pub fn ispunct(_c: i32) -> i32;
+    pub fn isspace(_c: i32) -> i32;
+    pub fn isupper(_c: i32) -> i32;
+    pub fn isxdigit(_c: i32) -> i32;
+    pub fn tolower(_c: i32) -> i32;
+    pub fn toupper(_c: i32) -> i32;
+    pub fn _isalnum_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isalpha_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isblank_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iscntrl_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isdigit_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isgraph_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _islower_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isprint_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _ispunct_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isspace_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isupper_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isxdigit_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _tolower_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _toupper_l(_c: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _tolower(_c: i32) -> i32;
+    pub fn _toupper(_c: i32) -> i32;
+    /// Microsoft-specific functions.
+    pub fn _isctype(_c: i32, _type: i32) -> i32;
+    pub fn _iscsym_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _iscsymf_l(_c: u16, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _isctype_l(_c: i32, _type: i32, _locale: &mut LocaleinfoStruct) -> i32;
+    pub fn _ftime64(_time: &mut Timeb64);
+    pub fn _ftime32(_time: &mut Timeb32);
+    pub fn ftime(arg0: &mut Timeb) -> i32;
+    pub fn _ftime32_s(_time: &mut Timeb32) -> i32;
+    pub fn _ftime64_s(_time: &mut Timeb64) -> i32;
+    pub fn _get_daylight(_daylight: &mut i32) -> i32;
+    pub fn _get_dstbias(_daylight_savings_bias: &mut i32) -> i32;
+    pub fn _get_timezone(_timezone: &mut i32) -> i32;
+    pub fn _get_tzname(_return_value: &mut u64, _buffer: &mut i8, _size_in_bytes: u64, _index: i32) -> i32;
+    pub fn asctime(_tm: &Tm) -> *;
+    pub fn asctime_s(_buf: &mut i8, _size_in_words: u64, _tm: &Tm) -> i32;
+    pub fn _ctime32(_time: &i32) -> *;
+    pub fn _ctime32_s(_buf: &mut i8, _size_in_bytes: u64, _time: &i32) -> i32;
+    pub fn clock() -> i32;
+    pub fn _difftime32(_time1: i32, _time2: i32) -> f64;
+    pub fn _gmtime32(_time: &i32) -> *;
+    pub fn _gmtime32_s(_tm: &mut Tm, _time: &i32) -> i32;
+    pub fn _localtime32(_time: &i32) -> *;
+    pub fn _localtime32_s(_tm: &mut Tm, _time: &i32) -> i32;
+    pub fn strftime(_buf: &mut i8, _size_in_bytes: u64, _format: cstr, _tm: &Tm) -> u64;
+    pub fn _strftime_l(_buf: &mut i8, _max_size: u64, _format: cstr, _tm: &Tm, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn _strdate(_buffer: &mut i8) -> *;
+    pub fn _strdate_s(_buf: &mut i8, _size_in_bytes: u64) -> i32;
+    pub fn _strtime(_buffer: &mut i8) -> *;
+    pub fn _strtime_s(_buf: &mut i8, _size_in_bytes: u64) -> i32;
+    pub fn _time32(_time: &mut i32) -> i32;
+    pub fn _timespec32_get(_ts: &mut Timespec32, _base: i32) -> i32;
+    pub fn _mktime32(_tm: &mut Tm) -> i32;
+    pub fn _mkgmtime32(_tm: &mut Tm) -> i32;
+    pub fn tzset();
+    pub fn _tzset();
+    pub fn _difftime64(_time1: i64, _time2: i64) -> f64;
+    pub fn _ctime64(_time: &i64) -> *;
+    pub fn _ctime64_s(_buf: &mut i8, _size_in_bytes: u64, _time: &i64) -> i32;
+    pub fn _gmtime64(_time: &i64) -> *;
+    pub fn _gmtime64_s(_tm: &mut Tm, _time: &i64) -> i32;
+    pub fn _localtime64(_time: &i64) -> *;
+    pub fn _localtime64_s(_tm: &mut Tm, _time: &i64) -> i32;
+    pub fn _mktime64(_tm: &mut Tm) -> i64;
+    pub fn _mkgmtime64(_tm: &mut Tm) -> i64;
+    pub fn _time64(_time: &mut i64) -> i64;
+    pub fn _timespec64_get(_ts: &mut Timespec64, _base: i32) -> i32;
+    pub fn _getsystime(_tm: &mut Tm) -> u32;
+    pub fn _setsystime(_tm: &mut Tm, _milli_sec: u32) -> u32;
+    pub fn _wasctime(_tm: &Tm) -> *;
+    pub fn _wasctime_s(_buf: &mut u16, _size_in_words: u64, _tm: &Tm) -> i32;
+    pub fn _wctime32(_time: &i32) -> *;
+    pub fn _wctime32_s(_buf: &mut u16, _size_in_words: u64, _time: &i32) -> i32;
+    pub fn wcsftime(_buf: &mut u16, _size_in_words: u64, _format: &u16, _tm: &Tm) -> u64;
+    pub fn _wcsftime_l(_buf: &mut u16, _size_in_words: u64, _format: &u16, _tm: &Tm, _locale: &mut LocaleinfoStruct) -> u64;
+    pub fn _wstrdate(_buffer: &mut u16) -> *;
+    pub fn _wstrdate_s(_buf: &mut u16, _size_in_words: u64) -> i32;
+    pub fn _wstrtime(_buffer: &mut u16) -> *;
+    pub fn _wstrtime_s(_buf: &mut u16, _size_in_words: u64) -> i32;
+    pub fn _wctime64(_time: &i64) -> *;
+    pub fn _wctime64_s(_buf: &mut u16, _size_in_words: u64, _time: &i64) -> i32;
+    pub fn _wctime(_time: &i64) -> *;
+    pub fn _wctime_s(_buffer: &mut u16, _size_in_words: u64, _time: &i64) -> i32;
+    pub fn time(_time: &mut i64) -> i64;
+    pub fn timespec_get(_ts: &mut Timespec, _base: i32) -> i32;
+    pub fn difftime(_time1: i64, _time2: i64) -> f64;
+    pub fn localtime(_time: &i64) -> *;
+    pub fn localtime_s(_tm: &mut Tm, _time: &i64) -> i32;
+    pub fn gmtime(_time: &i64) -> *;
+    pub fn gmtime_s(_tm: &mut Tm, _time: &i64) -> i32;
+    pub fn ctime(_time: &i64) -> *;
+    pub fn ctime_s(_buf: &mut i8, _size_in_bytes: u64, _time: &i64) -> i32;
+    pub fn mktime(_tm: &mut Tm) -> i64;
+    pub fn _mkgmtime(_tm: &mut Tm) -> i64;
+    pub fn mingw_gettimeofday(p: &mut Timeval, z: &mut Timezone) -> i32;
+    pub fn nanosleep32(request: &Timespec32, remain: &mut Timespec32) -> i32;
+    pub fn nanosleep64(request: &Timespec64, remain: &mut Timespec64) -> i32;
+    pub fn clock_nanosleep32(clock_id: i32, flags: i32, request: &Timespec32, remain: &mut Timespec32) -> i32;
+    pub fn clock_nanosleep64(clock_id: i32, flags: i32, request: &Timespec64, remain: &mut Timespec64) -> i32;
+    pub fn clock_getres32(clock_id: i32, res: &mut Timespec32) -> i32;
+    pub fn clock_getres64(clock_id: i32, res: &mut Timespec64) -> i32;
+    pub fn clock_gettime32(clock_id: i32, tp: &mut Timespec32) -> i32;
+    pub fn clock_gettime64(clock_id: i32, tp: &mut Timespec64) -> i32;
+    pub fn clock_settime32(clock_id: i32, tp: &Timespec32) -> i32;
+    pub fn clock_settime64(clock_id: i32, tp: &Timespec64) -> i32;
+    pub fn _getcwd(arg0: &mut i8, arg1: i32) -> *;
+    pub fn _access(_filename: cstr, _access_mode: i32) -> i32;
+    pub fn _access_s(_filename: cstr, _access_mode: i32) -> i32;
+    pub fn _chmod(_filename: cstr, _mode: i32) -> i32;
+    pub fn _chsize(_file_handle: i32, _size: i32) -> i32;
+    pub fn _chsize_s(_file_handle: i32, _size: i64) -> i32;
+    pub fn _close(_file_handle: i32) -> i32;
+    pub fn _commit(_file_handle: i32) -> i32;
+    pub fn _creat(_filename: cstr, _permission_mode: i32) -> i32;
+    pub fn _dup(_file_handle: i32) -> i32;
+    pub fn _dup2(_file_handle_src: i32, _file_handle_dst: i32) -> i32;
+    pub fn _eof(_file_handle: i32) -> i32;
+    pub fn _filelength(_file_handle: i32) -> i32;
+    pub fn _findfirst32(_filename: cstr, _find_data: *) -> i64;
+    pub fn _findnext32(_find_handle: i64, _find_data: *) -> i32;
+    pub fn _findclose(_find_handle: i64) -> i32;
+    pub fn _isatty(_file_handle: i32) -> i32;
+    pub fn _locking(_file_handle: i32, _lock_mode: i32, _num_of_bytes: i32) -> i32;
+    pub fn _lseek(_file_handle: i32, _offset: i32, _origin: i32) -> i32;
+    pub fn lseek64(fd: i32, offset: i64, whence: i32) -> i64;
+    pub fn _mktemp(_template_name: &mut i8) -> *;
+    pub fn _mktemp_s(_template_name: &mut i8, _size: u64) -> i32;
+    pub fn _pipe(_pt_handles: &mut i32, _pipe_size: u32, _text_mode: i32) -> i32;
+    pub fn _read(_file_handle: i32, _dst_buf: *, _max_char_count: u32) -> i32;
+    pub fn _setmode(_file_handle: i32, _mode: i32) -> i32;
+    pub fn _tell(_file_handle: i32) -> i32;
+    pub fn _umask(_mode: i32) -> i32;
+    pub fn _umask_s(_new_mode: i32, _old_mode: &mut i32) -> i32;
+    pub fn _write(_file_handle: i32, _buf: *, _max_char_count: u32) -> i32;
+    pub fn _filelengthi64(_file_handle: i32) -> i64;
+    pub fn _findfirst32i64(_filename: cstr, _find_data: *) -> i64;
+    pub fn _findfirst64(_filename: cstr, _find_data: *) -> i64;
+    pub fn _findfirst64i32(_filename: cstr, _find_data: *) -> i64;
+    pub fn _findnext32i64(_find_handle: i64, _find_data: *) -> i32;
+    pub fn _findnext64(_find_handle: i64, _find_data: *) -> i32;
+    pub fn _findnext64i32(_find_handle: i64, _find_data: *) -> i32;
+    pub fn _lseeki64(_file_handle: i32, _offset: i64, _origin: i32) -> i64;
+    pub fn _telli64(_file_handle: i32) -> i64;
+    pub fn chdir(arg0: cstr) -> i32;
+    pub fn getcwd(arg0: &mut i8, arg1: i32) -> *;
+    pub fn mkdir(arg0: cstr) -> i32;
+    pub fn mktemp(arg0: &mut i8) -> *;
+    pub fn rmdir(arg0: cstr) -> i32;
+    pub fn chmod(arg0: cstr, arg1: i32) -> i32;
+    pub fn _sopen_s(_file_handle: &mut i32, _filename: cstr, _open_flag: i32, _share_flag: i32, _permission_mode: i32) -> i32;
+    pub fn _open(_filename: cstr, _open_flag: i32, ...) -> i32;
+    pub fn _sopen(_filename: cstr, _open_flag: i32, _share_flag: i32, ...) -> i32;
+    pub fn _waccess(_filename: &u16, _access_mode: i32) -> i32;
+    pub fn _waccess_s(_filename: &u16, _access_mode: i32) -> i32;
+    pub fn _wchmod(_filename: &u16, _mode: i32) -> i32;
+    pub fn _wcreat(_filename: &u16, _permission_mode: i32) -> i32;
+    pub fn _wfindfirst32(_filename: &u16, _find_data: *) -> i64;
+    pub fn _wfindnext32(_find_handle: i64, _find_data: *) -> i32;
+    pub fn _wunlink(_filename: &u16) -> i32;
+    pub fn _wrename(_old_filename: &u16, _new_filename: &u16) -> i32;
+    pub fn _wmktemp(_template_name: &mut u16) -> *;
+    pub fn _wmktemp_s(_template_name: &mut u16, _size_in_words: u64) -> i32;
+    pub fn _wfindfirst32i64(_filename: &u16, _find_data: *) -> i64;
+    pub fn _wfindfirst64i32(_filename: &u16, _find_data: *) -> i64;
+    pub fn _wfindfirst64(_filename: &u16, _find_data: *) -> i64;
+    pub fn _wfindnext32i64(_find_handle: i64, _find_data: *) -> i32;
+    pub fn _wfindnext64i32(_find_handle: i64, _find_data: *) -> i32;
+    pub fn _wfindnext64(_find_handle: i64, _find_data: *) -> i32;
+    pub fn _wsopen_s(_file_handle: &mut i32, _filename: &u16, _open_flag: i32, _share_flag: i32, _permission_flag: i32) -> i32;
+    pub fn _wopen(_filename: &u16, _open_flag: i32, ...) -> i32;
+    pub fn _wsopen(_filename: &u16, _open_flag: i32, _share_flag: i32, ...) -> i32;
+    pub fn _unlock_fhandle(_filehandle: i32);
+    pub fn _get_osfhandle(_file_handle: i32) -> i64;
+    pub fn _open_osfhandle(_os_file_handle: i64, _flags: i32) -> i32;
+    pub fn access(_filename: cstr, _access_mode: i32) -> i32;
+    pub fn chsize(_file_handle: i32, _size: i32) -> i32;
+    pub fn close(_file_handle: i32) -> i32;
+    pub fn creat(_filename: cstr, _permission_mode: i32) -> i32;
+    pub fn creat64(_filename: cstr, _permission_mode: i32) -> i32;
+    pub fn dup(_file_handle: i32) -> i32;
+    pub fn dup2(_file_handle_src: i32, _file_handle_dst: i32) -> i32;
+    pub fn eof(_file_handle: i32) -> i32;
+    pub fn filelength(_file_handle: i32) -> i32;
+    pub fn isatty(_file_handle: i32) -> i32;
+    pub fn locking(_file_handle: i32, _lock_mode: i32, _num_of_bytes: i32) -> i32;
+    pub fn lseek(_file_handle: i32, _offset: i32, _origin: i32) -> i32;
+    pub fn open(_filename: cstr, _open_flag: i32, ...) -> i32;
+    pub fn open64(_filename: cstr, _open_flag: i32, ...) -> i32;
+    pub fn read(_file_handle: i32, _dst_buf: *, _max_char_count: u32) -> i32;
+    pub fn setmode(_file_handle: i32, _mode: i32) -> i32;
+    pub fn sopen(_filename: cstr, _open_flag: i32, _share_flag: i32, ...) -> i32;
+    pub fn tell(_file_handle: i32) -> i32;
+    pub fn umask(_mode: i32) -> i32;
+    pub fn write(_filehandle: i32, _buf: *, _max_char_count: u32) -> i32;
+    pub fn _query_app_type() -> i32;
+    pub fn _set_app_type(_type: i32);
+    pub fn _configure_narrow_argv(mode: i32) -> i32;
+    pub fn _configure_wide_argv(mode: i32) -> i32;
+    pub fn _initialize_narrow_environment() -> i32;
+    pub fn _initialize_wide_environment() -> i32;
+    pub fn _get_initial_narrow_environment() -> *;
+    pub fn _get_initial_wide_environment() -> *;
+    pub fn _get_narrow_winmain_command_line() -> *;
+    pub fn _get_wide_winmain_command_line() -> *;
+    pub fn _initterm(_first: &mut *, _last: &mut *);
+    pub fn _initterm_e(_first: &mut *, _last: &mut *) -> i32;
+    pub fn _initialize_onexit_table(arg0: *) -> i32;
+    pub fn _register_onexit_function(arg0: *, arg1: *) -> i32;
+    pub fn _execute_onexit_table(arg0: *) -> i32;
+    pub fn _crt_atexit(func: *) -> i32;
+    pub fn _crt_at_quick_exit(func: *) -> i32;
+    pub fn _beginthread(_start_address: *, _stack_size: u32, _arg_list: *) -> u64;
+    pub fn _endthread();
+    pub fn _beginthreadex(_security: *, _stack_size: u32, _start_address: *, _arg_list: *, _init_flag: u32, _thrd_addr: &mut u32) -> u64;
+    pub fn _endthreadex(_retval: u32);
+    pub fn _register_thread_local_exe_atexit_callback(callback: *);
+    pub fn _cexit();
+    pub fn _c_exit();
+    pub fn _getpid() -> i32;
+    pub fn _cwait(_term_stat: &mut i32, _proc_handle: i64, _action: i32) -> i64;
+    pub fn _execl(_filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn _execle(_filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn _execlp(_filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn _execlpe(_filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn _execv(_filename: cstr, _arg_list: *) -> i64;
+    pub fn _execve(_filename: cstr, _arg_list: *, _env: *) -> i64;
+    pub fn _execvp(_filename: cstr, _arg_list: *) -> i64;
+    pub fn _execvpe(_filename: cstr, _arg_list: *, _env: *) -> i64;
+    pub fn _spawnl(_mode: i32, _filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn _spawnle(_mode: i32, _filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn _spawnlp(_mode: i32, _filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn _spawnlpe(_mode: i32, _filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn _wexecl(_filename: &u16, _arg_list: &u16, ...) -> i64;
+    pub fn _wexecle(_filename: &u16, _arg_list: &u16, ...) -> i64;
+    pub fn _wexeclp(_filename: &u16, _arg_list: &u16, ...) -> i64;
+    pub fn _wexeclpe(_filename: &u16, _arg_list: &u16, ...) -> i64;
+    pub fn _wexecv(_filename: &u16, _arg_list: *) -> i64;
+    pub fn _wexecve(_filename: &u16, _arg_list: *, _env: *) -> i64;
+    pub fn _wexecvp(_filename: &u16, _arg_list: *) -> i64;
+    pub fn _wexecvpe(_filename: &u16, _arg_list: *, _env: *) -> i64;
+    pub fn _loaddll(_filename: &mut i8) -> i64;
+    pub fn _unloaddll(_handle: i64) -> i32;
+    pub fn getpid() -> i32;
+    pub fn cwait(_term_stat: &mut i32, _proc_handle: i64, _action: i32) -> i64;
+    pub fn execl(_filename: cstr, _arg_list: cstr, ...) -> i32;
+    pub fn execle(_filename: cstr, _arg_list: cstr, ...) -> i32;
+    pub fn execlp(_filename: cstr, _arg_list: cstr, ...) -> i32;
+    pub fn execlpe(_filename: cstr, _arg_list: cstr, ...) -> i32;
+    pub fn spawnl(arg0: i32, _filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn spawnle(arg0: i32, _filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn spawnlp(arg0: i32, _filename: cstr, _arg_list: cstr, ...) -> i64;
+    pub fn spawnlpe(arg0: i32, _filename: cstr, _arg_list: cstr, ...) -> i64;
+    /// Those methods are predefined by gcc builtins to return int. So to prevent
+    /// stupid warnings, define them in POSIX way.  This is save, because those
+    /// methods do not return in success case, so that the return value is not
+    /// really dependent to its scalar width.
+    pub fn execv(_filename: cstr, _arg_list: *) -> i32;
+    pub fn execve(_filename: cstr, _arg_list: *, _env: *) -> i32;
+    pub fn execvp(_filename: cstr, _arg_list: *) -> i32;
+    pub fn execvpe(_filename: cstr, _arg_list: *, _env: *) -> i32;
+    pub fn spawnv(arg0: i32, _filename: cstr, _arg_list: *) -> i64;
+    pub fn spawnve(arg0: i32, _filename: cstr, _arg_list: *, _env: *) -> i64;
+    pub fn spawnvp(arg0: i32, _filename: cstr, _arg_list: *) -> i64;
+    pub fn spawnvpe(arg0: i32, _filename: cstr, _arg_list: *, _env: *) -> i64;
+}

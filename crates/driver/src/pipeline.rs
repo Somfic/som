@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use crate::imports::suggest_imports;
-use crate::{Error, Options, Warning, headers, libraries};
+use crate::{Error, Options, Warning, headers, libraries, targets};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum OnError {
@@ -57,10 +57,10 @@ impl<'a> Passes<'a> {
 
     /// Checks libraries, resolves names and checks types.
     pub fn front(&mut self, mut ast: Ast) -> Result<Front, Stopped> {
-        let library_dirs = &self.options.library_dirs;
+        let toolchain = &self.options.toolchain;
         // Missing functions and mismatched ones are reported together.
-        let (libraries, library_errors) = libraries::check(&mut ast, library_dirs);
-        let (header_errors, header_warnings) = headers::check_declarations(&ast, library_dirs);
+        let (libraries, library_errors) = libraries::check(&mut ast, toolchain);
+        let (header_errors, header_warnings) = headers::check_declarations(&ast, toolchain);
         self.warnings
             .extend(header_warnings.into_iter().map(Warning::Library));
         self.report(
@@ -69,9 +69,28 @@ impl<'a> Passes<'a> {
                 .map(Error::Library),
         )?;
 
+        let checking = match self.options.every_system {
+            true => targets::Checking::EverySystem,
+            false => targets::Checking::Target(toolchain.target.os()),
+        };
+        // Whatever's found is about another system, but for a name no system has.
+        let left_out = targets::check_left_out(&ast, checking);
+        self.warnings
+            .extend(left_out.into_iter().map(Warning::Unavailable));
         let (names, mut resolve_errors) = som_resolve::resolve(&ast);
         suggest_imports(&ast, &mut resolve_errors, self.options);
-        self.report(resolve_errors.into_iter().map(Error::Resolve))?;
+        let inferred = targets::infer(&ast, &names);
+        let cant_run = targets::check_entries(&ast, &names, &inferred, checking);
+        if self.options.every_system {
+            self.warnings
+                .extend(cant_run.into_iter().map(Warning::CantRun));
+            self.report(resolve_errors.into_iter().map(Error::Resolve))?;
+        } else {
+            self.report(
+                (resolve_errors.into_iter().map(Error::Resolve))
+                    .chain(cant_run.into_iter().map(Error::CantRun)),
+            )?;
+        }
 
         let (typed, type_errors) = typecheck_rounds(&ast, &names);
         self.report(type_errors)?;

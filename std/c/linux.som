@@ -1,0 +1,1906 @@
+// Imported from c.h by the som compiler.
+// skipped strtold: it uses `long double`
+// skipped __bswap_16: it's `static`, defined in the header
+// skipped __bswap_32: it's `static`, defined in the header
+// skipped __bswap_64: it's `static`, defined in the header
+// skipped __uint16_identity: it's `static`, defined in the header
+// skipped __uint32_identity: it's `static`, defined in the header
+// skipped __uint64_identity: it's `static`, defined in the header
+// skipped div: it uses `struct div_t`, which the header doesn't define
+// skipped ldiv: it uses `struct ldiv_t`, which the header doesn't define
+// skipped lldiv: it uses `struct lldiv_t`, which the header doesn't define
+// skipped qecvt: it uses `long double`
+// skipped qfcvt: it uses `long double`
+// skipped qgcvt: it uses `long double`
+// skipped qecvt_r: it uses `long double`
+// skipped qfcvt_r: it uses `long double`
+// skipped nexttoward: it uses `long double`
+// skipped nexttowardf: it uses `long double`
+// skipped acosl: it uses `long double`
+// skipped asinl: it uses `long double`
+// skipped atanl: it uses `long double`
+// skipped atan2l: it uses `long double`
+// skipped cosl: it uses `long double`
+// skipped sinl: it uses `long double`
+// skipped tanl: it uses `long double`
+// skipped coshl: it uses `long double`
+// skipped sinhl: it uses `long double`
+// skipped tanhl: it uses `long double`
+// skipped acoshl: it uses `long double`
+// skipped asinhl: it uses `long double`
+// skipped atanhl: it uses `long double`
+// skipped expl: it uses `long double`
+// skipped frexpl: it uses `long double`
+// skipped ldexpl: it uses `long double`
+// skipped logl: it uses `long double`
+// skipped log10l: it uses `long double`
+// skipped modfl: it uses `long double`
+// skipped expm1l: it uses `long double`
+// skipped log1pl: it uses `long double`
+// skipped logbl: it uses `long double`
+// skipped exp2l: it uses `long double`
+// skipped log2l: it uses `long double`
+// skipped powl: it uses `long double`
+// skipped sqrtl: it uses `long double`
+// skipped hypotl: it uses `long double`
+// skipped cbrtl: it uses `long double`
+// skipped ceill: it uses `long double`
+// skipped fabsl: it uses `long double`
+// skipped floorl: it uses `long double`
+// skipped fmodl: it uses `long double`
+// skipped isinfl: it uses `long double`
+// skipped finitel: it uses `long double`
+// skipped dreml: it uses `long double`
+// skipped significandl: it uses `long double`
+// skipped copysignl: it uses `long double`
+// skipped nanl: it uses `long double`
+// skipped isnanl: it uses `long double`
+// skipped j0l: it uses `long double`
+// skipped j1l: it uses `long double`
+// skipped jnl: it uses `long double`
+// skipped y0l: it uses `long double`
+// skipped y1l: it uses `long double`
+// skipped ynl: it uses `long double`
+// skipped erfl: it uses `long double`
+// skipped erfcl: it uses `long double`
+// skipped lgammal: it uses `long double`
+// skipped tgammal: it uses `long double`
+// skipped gammal: it uses `long double`
+// skipped lgammal_r: it uses `long double`
+// skipped rintl: it uses `long double`
+// skipped nextafterl: it uses `long double`
+// skipped nexttowardl: it uses `long double`
+// skipped remainderl: it uses `long double`
+// skipped scalbnl: it uses `long double`
+// skipped ilogbl: it uses `long double`
+// skipped scalblnl: it uses `long double`
+// skipped nearbyintl: it uses `long double`
+// skipped roundl: it uses `long double`
+// skipped truncl: it uses `long double`
+// skipped remquol: it uses `long double`
+// skipped lrintl: it uses `long double`
+// skipped llrintl: it uses `long double`
+// skipped lroundl: it uses `long double`
+// skipped llroundl: it uses `long double`
+// skipped fdiml: it uses `long double`
+// skipped fmaxl: it uses `long double`
+// skipped fminl: it uses `long double`
+// skipped fmal: it uses `long double`
+// skipped scalbl: it uses `long double`
+// skipped sigqueue: it uses a union
+
+/// The structure with the cookie function pointers.
+/// The tag name of this struct is _IO_cookie_io_functions_t to
+/// preserve historic C++ mangled names for functions taking
+/// cookie_io_functions_t arguments.  That name should not be used in
+/// new code.
+pub struct IOCookieIoFunctionsT {
+    /// Read bytes.
+    pub read: *,
+    /// Write bytes.
+    pub write: *,
+    /// Seek/tell file position.
+    pub seek: *,
+    /// Close file.
+    pub close: *,
+}
+
+/// POSIX.1b structure for timer start values and intervals.
+pub struct Itimerspec {
+    pub it_interval: Timespec,
+    pub it_value: Timespec,
+}
+
+/// Reentrant versions of the `random' family of functions.
+/// These functions all use the following data structure to contain
+/// state, rather than global state variables.
+pub struct RandomData {
+    /// Front pointer.
+    pub fptr: *,
+    /// Rear pointer.
+    pub rptr: *,
+    /// Array of state values.
+    pub state: *,
+    /// Type of random number generator.
+    pub rand_type: i32,
+    /// Degree of random number generator.
+    pub rand_deg: i32,
+    /// Distance between front and rear.
+    pub rand_sep: i32,
+    /// Pointer behind state table.
+    pub end_ptr: *,
+}
+
+/// Structure describing a signal stack (obsolete).
+pub struct Sigstack {
+    /// Signal stack pointer.
+    pub ss_sp: *,
+    /// Nonzero if executing on this stack.
+    pub ss_onstack: i32,
+}
+
+/// POSIX.1b structure for a time value.  This is like a `struct timeval' but
+/// has nanoseconds instead of microseconds.
+pub struct Timespec {
+    /// Seconds.
+    pub tv_sec: i64,
+    /// Nanoseconds.
+    pub tv_nsec: i64,
+}
+
+/// A time value that is accurate to the nearest
+/// microsecond but also has a range of years.
+pub struct Timeval {
+    /// Seconds.
+    pub tv_sec: i64,
+    /// Microseconds.
+    pub tv_usec: i64,
+}
+
+/// ISO C `broken-down time' structure.
+pub struct Tm {
+    /// Seconds.	[0-60] (1 leap second)
+    pub tm_sec: i32,
+    /// Minutes.	[0-59]
+    pub tm_min: i32,
+    /// Hours.	[0-23]
+    pub tm_hour: i32,
+    /// Day.		[1-31]
+    pub tm_mday: i32,
+    /// Month.	[0-11]
+    pub tm_mon: i32,
+    /// Year	- 1900.
+    pub tm_year: i32,
+    /// Day of week.	[0-6]
+    pub tm_wday: i32,
+    /// Days in year.[0-365]
+    pub tm_yday: i32,
+    /// DST.		[-1/0/1]
+    pub tm_isdst: i32,
+    /// Seconds east of UTC.
+    pub tm_gmtoff: i64,
+    /// Timezone abbreviation.
+    pub tm_zone: cstr,
+}
+
+pub @const BUFSIZ: i32 = 8192;
+pub @const EOF: i32 = -1;
+pub @const P_tmpdir: cstr = "/tmp";
+pub @const L_tmpnam: i32 = 20;
+pub @const TMP_MAX: i32 = 238328;
+pub @const FILENAME_MAX: i32 = 4096;
+pub @const L_ctermid: i32 = 9;
+pub @const FOPEN_MAX: i32 = 16;
+/// Don't block waiting.
+pub @const WNOHANG: i32 = 1;
+/// Report status of stopped children.
+pub @const WUNTRACED: i32 = 2;
+/// Report stopped child (same as WUNTRACED).
+pub @const WSTOPPED: i32 = 2;
+/// Report dead child.
+pub @const WEXITED: i32 = 4;
+/// Report continued child.
+pub @const WCONTINUED: i32 = 8;
+/// Don't reap, just poll status.
+pub @const WNOWAIT: i32 = 16777216;
+pub @const RAND_MAX: i32 = 2147483647;
+/// Failing exit status.
+pub @const EXIT_FAILURE: i32 = 1;
+/// Successful exit status.
+pub @const EXIT_SUCCESS: i32 = 0;
+pub @const LITTLE_ENDIAN: i32 = 1234;
+pub @const BIG_ENDIAN: i32 = 4321;
+pub @const PDP_ENDIAN: i32 = 3412;
+pub @const BYTE_ORDER: i32 = 1234;
+pub @const FD_SETSIZE: i32 = 1024;
+pub @const FP_ILOGB0: i32 = -2147483648;
+pub @const FP_ILOGBNAN: i32 = -2147483648;
+pub @const FP_NAN: i32 = 0;
+pub @const FP_INFINITE: i32 = 1;
+pub @const FP_ZERO: i32 = 2;
+pub @const FP_SUBNORMAL: i32 = 3;
+pub @const FP_NORMAL: i32 = 4;
+/// errno set by math functions.
+pub @const MATH_ERRNO: i32 = 1;
+/// Exceptions raised by math functions.
+pub @const MATH_ERREXCEPT: i32 = 2;
+pub @const math_errhandling: i32 = 3;
+/// e
+pub @const M_E: f64 = 2.718281828459045;
+/// log_2 e
+pub @const M_LOG2E: f64 = 1.4426950408889634;
+/// log_10 e
+pub @const M_LOG10E: f64 = 0.4342944819032518;
+/// log_e 2
+pub @const M_LN2: f64 = 0.6931471805599453;
+/// log_e 10
+pub @const M_LN10: f64 = 2.302585092994046;
+/// pi
+pub @const M_PI: f64 = 3.141592653589793;
+/// pi/2
+pub @const M_PI_2: f64 = 1.5707963267948966;
+/// pi/4
+pub @const M_PI_4: f64 = 0.7853981633974483;
+/// 1/pi
+pub @const M_1_PI: f64 = 0.3183098861837907;
+/// 2/pi
+pub @const M_2_PI: f64 = 0.6366197723675814;
+/// 2/sqrt(pi)
+pub @const M_2_SQRTPI: f64 = 1.1283791670955126;
+/// sqrt(2)
+pub @const M_SQRT2: f64 = 1.4142135623730951;
+/// 1/sqrt(2)
+pub @const M_SQRT1_2: f64 = 0.7071067811865476;
+pub @const CLOCK_REALTIME: i32 = 0;
+pub @const CLOCK_MONOTONIC: i32 = 1;
+pub @const CLOCK_PROCESS_CPUTIME_ID: i32 = 2;
+pub @const CLOCK_THREAD_CPUTIME_ID: i32 = 3;
+pub @const CLOCK_MONOTONIC_RAW: i32 = 4;
+pub @const CLOCK_REALTIME_COARSE: i32 = 5;
+pub @const CLOCK_MONOTONIC_COARSE: i32 = 6;
+pub @const CLOCK_BOOTTIME: i32 = 7;
+pub @const CLOCK_REALTIME_ALARM: i32 = 8;
+pub @const CLOCK_BOOTTIME_ALARM: i32 = 9;
+pub @const CLOCK_TAI: i32 = 11;
+pub @const TIMER_ABSTIME: i32 = 1;
+pub @const TIME_UTC: i32 = 1;
+/// Standard input.
+pub @const STDIN_FILENO: i32 = 0;
+/// Standard output.
+pub @const STDOUT_FILENO: i32 = 1;
+/// Standard error output.
+pub @const STDERR_FILENO: i32 = 2;
+/// Test for read permission.
+pub @const R_OK: i32 = 4;
+/// Test for write permission.
+pub @const W_OK: i32 = 2;
+/// Test for execute permission.
+pub @const X_OK: i32 = 1;
+/// Test for existence.
+pub @const F_OK: i32 = 0;
+pub @const L_SET: i32 = 0;
+pub @const L_INCR: i32 = 1;
+pub @const L_XTND: i32 = 2;
+/// Unlock a previously locked region.
+pub @const F_ULOCK: i32 = 0;
+/// Lock a region for exclusive use.
+pub @const F_LOCK: i32 = 1;
+/// Test and lock a region for exclusive use.
+pub @const F_TLOCK: i32 = 2;
+/// Test a region for other processes locks.
+pub @const F_TEST: i32 = 3;
+/// Get record locking info.
+pub @const F_GETLK64: i32 = 5;
+/// Set record locking info (non-blocking).
+pub @const F_SETLK64: i32 = 6;
+/// Set record locking info (blocking).
+pub @const F_SETLKW64: i32 = 7;
+pub @const O_ACCMODE: i32 = 3;
+pub @const O_RDONLY: i32 = 0;
+pub @const O_WRONLY: i32 = 1;
+pub @const O_RDWR: i32 = 2;
+/// Not fcntl.
+pub @const O_CREAT: i32 = 64;
+/// Not fcntl.
+pub @const O_EXCL: i32 = 128;
+/// Not fcntl.
+pub @const O_NOCTTY: i32 = 256;
+/// Not fcntl.
+pub @const O_TRUNC: i32 = 512;
+pub @const O_APPEND: i32 = 1024;
+pub @const O_NONBLOCK: i32 = 2048;
+pub @const O_NDELAY: i32 = 2048;
+pub @const O_SYNC: i32 = 1052672;
+pub @const O_FSYNC: i32 = 1052672;
+pub @const O_ASYNC: i32 = 8192;
+/// Get record locking info.
+pub @const F_GETLK: i32 = 5;
+/// Set record locking info (non-blocking).
+pub @const F_SETLK: i32 = 6;
+/// Set record locking info (blocking).
+pub @const F_SETLKW: i32 = 7;
+/// Must be a directory.
+pub @const O_DIRECTORY: i32 = 65536;
+/// Do not follow links.
+pub @const O_NOFOLLOW: i32 = 131072;
+/// Set close_on_exec.
+pub @const O_CLOEXEC: i32 = 524288;
+/// Synchronize data.
+pub @const O_DSYNC: i32 = 4096;
+/// Synchronize read operations.
+pub @const O_RSYNC: i32 = 1052672;
+/// Duplicate file descriptor.
+pub @const F_DUPFD: i32 = 0;
+/// Get file descriptor flags.
+pub @const F_GETFD: i32 = 1;
+/// Set file descriptor flags.
+pub @const F_SETFD: i32 = 2;
+/// Get file status flags.
+pub @const F_GETFL: i32 = 3;
+/// Set file status flags.
+pub @const F_SETFL: i32 = 4;
+/// Set owner (process receiving SIGIO).
+pub @const F_SETOWN: i32 = 8;
+/// Get owner (process receiving SIGIO).
+pub @const F_GETOWN: i32 = 9;
+/// Duplicate file descriptor with
+pub @const F_DUPFD_CLOEXEC: i32 = 1030;
+/// Actually anything with low bit set goes
+pub @const FD_CLOEXEC: i32 = 1;
+/// Read lock.
+pub @const F_RDLCK: i32 = 0;
+/// Write lock.
+pub @const F_WRLCK: i32 = 1;
+/// Remove lock.
+pub @const F_UNLCK: i32 = 2;
+/// or 3
+pub @const F_EXLCK: i32 = 4;
+/// or 4
+pub @const F_SHLCK: i32 = 8;
+/// Shared lock.
+pub @const LOCK_SH: i32 = 1;
+/// Exclusive lock.
+pub @const LOCK_EX: i32 = 2;
+/// Or'd with one of the above to prevent
+pub @const LOCK_NB: i32 = 4;
+/// Remove lock.
+pub @const LOCK_UN: i32 = 8;
+pub @const FAPPEND: i32 = 1024;
+pub @const FFSYNC: i32 = 1052672;
+pub @const FASYNC: i32 = 8192;
+pub @const FNONBLOCK: i32 = 2048;
+pub @const FNDELAY: i32 = 2048;
+/// No further special treatment.
+pub @const POSIX_FADV_NORMAL: i32 = 0;
+/// Expect random page references.
+pub @const POSIX_FADV_RANDOM: i32 = 1;
+/// Expect sequential page references.
+pub @const POSIX_FADV_SEQUENTIAL: i32 = 2;
+/// Will need these pages.
+pub @const POSIX_FADV_WILLNEED: i32 = 3;
+/// Don't need these pages.
+pub @const POSIX_FADV_DONTNEED: i32 = 4;
+/// Data will be accessed once.
+pub @const POSIX_FADV_NOREUSE: i32 = 5;
+pub @const UTIME_NOW: i64 = 1073741823;
+pub @const UTIME_OMIT: i64 = 1073741822;
+pub @const S_IFMT: i32 = 61440;
+pub @const S_IFDIR: i32 = 16384;
+pub @const S_IFCHR: i32 = 8192;
+pub @const S_IFBLK: i32 = 24576;
+pub @const S_IFREG: i32 = 32768;
+pub @const S_IFIFO: i32 = 4096;
+pub @const S_IFLNK: i32 = 40960;
+pub @const S_IFSOCK: i32 = 49152;
+/// Set user ID on execution.
+pub @const S_ISUID: i32 = 2048;
+/// Set group ID on execution.
+pub @const S_ISGID: i32 = 1024;
+pub @const S_ISVTX: i32 = 512;
+/// Read by owner.
+pub @const S_IRUSR: i32 = 256;
+/// Write by owner.
+pub @const S_IWUSR: i32 = 128;
+/// Execute by owner.
+pub @const S_IXUSR: i32 = 64;
+pub @const S_IRWXU: i32 = 448;
+/// Read by group.
+pub @const S_IRGRP: i32 = 32;
+/// Write by group.
+pub @const S_IWGRP: i32 = 16;
+/// Execute by group.
+pub @const S_IXGRP: i32 = 8;
+pub @const S_IRWXG: i32 = 56;
+/// Read by others.
+pub @const S_IROTH: i32 = 4;
+/// Write by others.
+pub @const S_IWOTH: i32 = 2;
+/// Execute by others.
+pub @const S_IXOTH: i32 = 1;
+pub @const S_IRWXO: i32 = 7;
+/// Seek from beginning of file.
+pub @const SEEK_SET: i32 = 0;
+/// Seek from current position.
+pub @const SEEK_CUR: i32 = 1;
+/// Seek from end of file.
+pub @const SEEK_END: i32 = 2;
+/// Special value used to indicate
+pub @const AT_FDCWD: i32 = -100;
+/// Do not follow symbolic links.
+pub @const AT_SYMLINK_NOFOLLOW: i32 = 256;
+/// Remove directory instead of
+pub @const AT_REMOVEDIR: i32 = 512;
+/// Follow symbolic links.
+pub @const AT_SYMLINK_FOLLOW: i32 = 1024;
+/// Test access permitted for
+pub @const AT_EACCESS: i32 = 512;
+/// Interactive attention signal.
+pub @const SIGINT: i32 = 2;
+/// Illegal instruction.
+pub @const SIGILL: i32 = 4;
+/// Abnormal termination.
+pub @const SIGABRT: i32 = 6;
+/// Erroneous arithmetic operation.
+pub @const SIGFPE: i32 = 8;
+/// Invalid access to storage.
+pub @const SIGSEGV: i32 = 11;
+/// Termination request.
+pub @const SIGTERM: i32 = 15;
+/// Hangup.
+pub @const SIGHUP: i32 = 1;
+/// Quit.
+pub @const SIGQUIT: i32 = 3;
+/// Trace/breakpoint trap.
+pub @const SIGTRAP: i32 = 5;
+/// Killed.
+pub @const SIGKILL: i32 = 9;
+/// Broken pipe.
+pub @const SIGPIPE: i32 = 13;
+/// Alarm clock.
+pub @const SIGALRM: i32 = 14;
+/// Stack fault (obsolete).
+pub @const SIGSTKFLT: i32 = 16;
+/// Power failure imminent.
+pub @const SIGPWR: i32 = 30;
+/// Bus error.
+pub @const SIGBUS: i32 = 7;
+/// Bad system call.
+pub @const SIGSYS: i32 = 31;
+/// Urgent data is available at a socket.
+pub @const SIGURG: i32 = 23;
+/// Stop, unblockable.
+pub @const SIGSTOP: i32 = 19;
+/// Keyboard stop.
+pub @const SIGTSTP: i32 = 20;
+/// Continue.
+pub @const SIGCONT: i32 = 18;
+/// Child terminated or stopped.
+pub @const SIGCHLD: i32 = 17;
+/// Background read from control terminal.
+pub @const SIGTTIN: i32 = 21;
+/// Background write to control terminal.
+pub @const SIGTTOU: i32 = 22;
+/// Pollable event occurred (System V).
+pub @const SIGPOLL: i32 = 29;
+/// File size limit exceeded.
+pub @const SIGXFSZ: i32 = 25;
+/// CPU time limit exceeded.
+pub @const SIGXCPU: i32 = 24;
+/// Virtual timer expired.
+pub @const SIGVTALRM: i32 = 26;
+/// Profiling timer expired.
+pub @const SIGPROF: i32 = 27;
+/// User-defined signal 1.
+pub @const SIGUSR1: i32 = 10;
+/// User-defined signal 2.
+pub @const SIGUSR2: i32 = 12;
+/// Window size change (4.3 BSD, Sun).
+pub @const SIGWINCH: i32 = 28;
+/// I/O now possible (4.2 BSD).
+pub @const SIGIO: i32 = 29;
+/// IOT instruction, abort() on a PDP-11.
+pub @const SIGIOT: i32 = 6;
+/// Old System V name
+pub @const SIGCLD: i32 = 17;
+pub @const NSIG: i32 = 65;
+/// Don't send SIGCHLD when children stop.
+pub @const SA_NOCLDSTOP: i32 = 1;
+/// Don't create zombie on child death.
+pub @const SA_NOCLDWAIT: i32 = 2;
+/// Invoke signal-catching function with
+pub @const SA_SIGINFO: i32 = 4;
+/// Use signal stack by using `sa_restorer'.
+pub @const SA_ONSTACK: i32 = 134217728;
+/// Restart syscall on signal return.
+pub @const SA_RESTART: i32 = 268435456;
+/// Don't automatically block the signal when
+pub @const SA_NODEFER: i32 = 1073741824;
+/// Reset to SIG_DFL on entry to handler.
+pub @const SA_RESETHAND: u32 = 2147483648;
+/// Historical no-op.
+pub @const SA_INTERRUPT: i32 = 536870912;
+pub @const SA_NOMASK: i32 = 1073741824;
+pub @const SA_ONESHOT: u32 = 2147483648;
+pub @const SA_STACK: i32 = 134217728;
+/// Block signals.
+pub @const SIG_BLOCK: i32 = 0;
+/// Unblock signals.
+pub @const SIG_UNBLOCK: i32 = 1;
+/// Set the set of blocked signals.
+pub @const SIG_SETMASK: i32 = 2;
+pub @const FP_XSTATE_MAGIC1: u32 = 1179670611;
+pub @const FP_XSTATE_MAGIC2: u32 = 1179670597;
+pub @const NGREG: i32 = 23;
+pub @const MINSIGSTKSZ: i32 = 2048;
+pub @const SIGSTKSZ: i32 = 8192;
+pub @const WCOREFLAG: i32 = 128;
+/// Any process.
+pub @const WAIT_ANY: i32 = -1;
+/// Any process in my process group.
+pub @const WAIT_MYPGRP: i32 = 0;
+
+pub extern struct FdSet;
+
+/// This being here makes the prototypes valid whether or not
+/// we have already included <sys/resource.h> to define `struct rusage'.
+pub extern struct Rusage;
+
+pub extern struct SiginfoT;
+
+pub extern struct SigsetT;
+
+pub extern struct StackT;
+
+pub extern struct VaListTag;
+
+extern "c" from "c.h" {
+    /// Remove file FILENAME.
+    pub fn remove(__filename: cstr) -> i32;
+    /// Rename file OLD to NEW.
+    pub fn rename(__old: cstr, __new: cstr) -> i32;
+    /// Rename file OLD relative to OLDFD to NEW relative to NEWFD.
+    pub fn renameat(__oldfd: i32, __old: cstr, __newfd: i32, __new: cstr) -> i32;
+    /// Close STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fclose(__stream: *) -> i32;
+    pub fn tmpfile() -> *;
+    /// Generate a temporary filename.
+    pub fn tmpnam(arg0: &mut i8) -> *;
+    /// This is the reentrant variant of `tmpnam'.  The only difference is
+    /// that it does not allow S to be NULL.
+    pub fn tmpnam_r(__s: &mut i8) -> *;
+    /// Generate a unique temporary filename using up to five characters of PFX
+    /// if it is not NULL.  The directory to put this file in is searched for
+    /// as follows: First the environment variable "TMPDIR" is checked.
+    /// If it contains the name of a writable directory, that directory is used.
+    /// If not and if DIR is not NULL, that value is checked.  If that fails,
+    /// P_tmpdir is tried and finally "/tmp".  The storage for the filename
+    /// is allocated by `malloc'.
+    pub fn tempnam(__dir: cstr, __pfx: cstr) -> *;
+    /// Flush STREAM, or all streams if STREAM is NULL.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fflush(__stream: *) -> i32;
+    /// Faster versions when locking is not required.
+    ///
+    /// This function is not part of POSIX and therefore no official
+    /// cancellation point.  But due to similarity with an POSIX interface
+    /// or due to the implementation it is a cancellation point and
+    /// therefore not marked with __THROW.
+    pub fn fflush_unlocked(__stream: *) -> i32;
+    /// Open a file and create a new stream for it.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fopen(__filename: cstr, __modes: cstr) -> *;
+    /// Open a file, replacing an existing stream with it.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn freopen(__filename: cstr, __modes: cstr, __stream: *) -> *;
+    /// Create a new stream that refers to an existing system file descriptor.
+    pub fn fdopen(__fd: i32, __modes: cstr) -> *;
+    /// Create a new stream that refers to the given magic cookie,
+    /// and uses the given functions for input and output.
+    pub fn fopencookie(__magic_cookie: *, __modes: cstr, __io_funcs: IOCookieIoFunctionsT) -> *;
+    /// Create a new stream that refers to a memory buffer.
+    pub fn fmemopen(__s: *, __len: u64, __modes: cstr) -> *;
+    /// Open a stream that writes into a malloc'd buffer that is expanded as
+    /// necessary.  *BUFLOC and *SIZELOC are updated with the buffer's location
+    /// and the number of characters written on fflush or fclose.
+    pub fn open_memstream(__bufloc: &mut *, __sizeloc: &mut u64) -> *;
+    /// If BUF is NULL, make STREAM unbuffered.
+    /// Else make it use buffer BUF, of size BUFSIZ.
+    pub fn setbuf(__stream: *, __buf: &mut i8);
+    /// Make STREAM use buffering mode MODE.
+    /// If BUF is not NULL, use N bytes of it for buffering;
+    /// else allocate an internal buffer N bytes long.
+    pub fn setvbuf(__stream: *, __buf: &mut i8, __modes: i32, __n: u64) -> i32;
+    /// If BUF is NULL, make STREAM unbuffered.
+    /// Else make it use SIZE bytes of BUF for buffering.
+    pub fn setbuffer(__stream: *, __buf: &mut i8, __size: u64);
+    /// Make STREAM line-buffered.
+    pub fn setlinebuf(__stream: *);
+    /// Write formatted output to STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fprintf(__stream: *, __format: cstr, ...) -> i32;
+    /// Write formatted output to stdout.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn printf(__format: cstr, ...) -> i32;
+    /// Write formatted output to S.
+    pub fn sprintf(__s: &mut i8, __format: cstr, ...) -> i32;
+    /// Write formatted output to S from argument list ARG.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn vfprintf(__s: *, __format: cstr, __arg: VaListTag) -> i32;
+    /// Write formatted output to stdout from argument list ARG.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn vprintf(__format: cstr, __arg: VaListTag) -> i32;
+    /// Write formatted output to S from argument list ARG.
+    pub fn vsprintf(__s: &mut i8, __format: cstr, __arg: VaListTag) -> i32;
+    /// Maximum chars of output to write in MAXLEN.
+    pub fn snprintf(__s: &mut i8, __maxlen: u64, __format: cstr, ...) -> i32;
+    pub fn vsnprintf(__s: &mut i8, __maxlen: u64, __format: cstr, __arg: VaListTag) -> i32;
+    /// Write formatted output to a string dynamically allocated with `malloc'.
+    /// Store the address of the string in *PTR.
+    pub fn vasprintf(__ptr: &mut *, __f: cstr, __arg: VaListTag) -> i32;
+    pub fn asprintf(__ptr: &mut *, __fmt: cstr, ...) -> i32;
+    /// Write formatted output to a file descriptor.
+    pub fn vdprintf(__fd: i32, __fmt: cstr, __arg: VaListTag) -> i32;
+    pub fn dprintf(__fd: i32, __fmt: cstr, ...) -> i32;
+    /// Read formatted input from STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fscanf(__stream: *, __format: cstr, ...) -> i32;
+    /// Read formatted input from stdin.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn scanf(__format: cstr, ...) -> i32;
+    /// Read formatted input from S.
+    pub fn sscanf(__s: cstr, __format: cstr, ...) -> i32;
+    /// Read formatted input from S into argument list ARG.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn vfscanf(__s: *, __format: cstr, __arg: VaListTag) -> i32;
+    /// Read formatted input from stdin into argument list ARG.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn vscanf(__format: cstr, __arg: VaListTag) -> i32;
+    /// Read formatted input from S into argument list ARG.
+    pub fn vsscanf(__s: cstr, __format: cstr, __arg: VaListTag) -> i32;
+    /// Read a character from STREAM.
+    ///
+    /// These functions are possible cancellation points and therefore not
+    /// marked with __THROW.
+    pub fn fgetc(__stream: *) -> i32;
+    pub fn getc(__stream: *) -> i32;
+    /// Read a character from stdin.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn getchar() -> i32;
+    /// These are defined in POSIX.1:1996.
+    ///
+    /// These functions are possible cancellation points and therefore not
+    /// marked with __THROW.
+    pub fn getc_unlocked(__stream: *) -> i32;
+    pub fn getchar_unlocked() -> i32;
+    /// Faster version when locking is not necessary.
+    ///
+    /// This function is not part of POSIX and therefore no official
+    /// cancellation point.  But due to similarity with an POSIX interface
+    /// or due to the implementation it is a cancellation point and
+    /// therefore not marked with __THROW.
+    pub fn fgetc_unlocked(__stream: *) -> i32;
+    /// Write a character to STREAM.
+    ///
+    /// These functions are possible cancellation points and therefore not
+    /// marked with __THROW.
+    pub fn fputc(__c: i32, __stream: *) -> i32;
+    pub fn putc(__c: i32, __stream: *) -> i32;
+    /// Write a character to stdout.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn putchar(__c: i32) -> i32;
+    /// Faster version when locking is not necessary.
+    ///
+    /// This function is not part of POSIX and therefore no official
+    /// cancellation point.  But due to similarity with an POSIX interface
+    /// or due to the implementation it is a cancellation point and
+    /// therefore not marked with __THROW.
+    pub fn fputc_unlocked(__c: i32, __stream: *) -> i32;
+    /// These are defined in POSIX.1:1996.
+    ///
+    /// These functions are possible cancellation points and therefore not
+    /// marked with __THROW.
+    pub fn putc_unlocked(__c: i32, __stream: *) -> i32;
+    pub fn putchar_unlocked(__c: i32) -> i32;
+    /// Get a word (int) from STREAM.
+    pub fn getw(__stream: *) -> i32;
+    /// Write a word (int) to STREAM.
+    pub fn putw(__w: i32, __stream: *) -> i32;
+    /// Get a newline-terminated string of finite length from STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fgets(__s: &mut i8, __n: i32, __stream: *) -> *;
+    pub fn getdelim(__lineptr: &mut *, __n: &mut u64, __delimiter: i32, __stream: *) -> i64;
+    /// Like `getdelim', but reads up to a newline.
+    pub fn getline(__lineptr: &mut *, __n: &mut u64, __stream: *) -> i64;
+    /// Write a string to STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fputs(__s: cstr, __stream: *) -> i32;
+    /// Write a string, followed by a newline, to stdout.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn puts(__s: cstr) -> i32;
+    /// Push a character back onto the input buffer of STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn ungetc(__c: i32, __stream: *) -> i32;
+    /// Read chunks of generic data from STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fread(__ptr: *, __size: u64, __n: u64, __stream: *) -> u64;
+    /// Write chunks of generic data to STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fwrite(__ptr: *, __size: u64, __n: u64, __s: *) -> u64;
+    /// Faster versions when locking is not necessary.
+    ///
+    /// These functions are not part of POSIX and therefore no official
+    /// cancellation point.  But due to similarity with an POSIX interface
+    /// or due to the implementation they are cancellation points and
+    /// therefore not marked with __THROW.
+    pub fn fread_unlocked(__ptr: *, __size: u64, __n: u64, __stream: *) -> u64;
+    pub fn fwrite_unlocked(__ptr: *, __size: u64, __n: u64, __stream: *) -> u64;
+    /// Seek to a certain position on STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fseek(__stream: *, __off: i64, __whence: i32) -> i32;
+    /// Return the current position of STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn ftell(__stream: *) -> i64;
+    /// Rewind to the beginning of STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn rewind(__stream: *);
+    /// Seek to a certain position on STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fseeko(__stream: *, __off: i64, __whence: i32) -> i32;
+    /// Return the current position of STREAM.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn ftello(__stream: *) -> i64;
+    /// Get STREAM's position.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fgetpos(__stream: *, __pos: *) -> i32;
+    /// Set STREAM's position.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn fsetpos(__stream: *, __pos: *) -> i32;
+    /// Clear the error and EOF indicators for STREAM.
+    pub fn clearerr(__stream: *);
+    /// Return the EOF indicator for STREAM.
+    pub fn feof(__stream: *) -> i32;
+    /// Return the error indicator for STREAM.
+    pub fn ferror(__stream: *) -> i32;
+    /// Faster versions when locking is not required.
+    pub fn clearerr_unlocked(__stream: *);
+    pub fn feof_unlocked(__stream: *) -> i32;
+    pub fn ferror_unlocked(__stream: *) -> i32;
+    /// Print a message describing the meaning of the value of errno.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn perror(__s: cstr);
+    /// Return the system file descriptor for STREAM.
+    pub fn fileno(__stream: *) -> i32;
+    /// Faster version when locking is not required.
+    pub fn fileno_unlocked(__stream: *) -> i32;
+    /// Close a stream opened by popen and return the status of its child.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn pclose(__stream: *) -> i32;
+    /// Create a new stream connected to a pipe running the given command.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn popen(__command: cstr, __modes: cstr) -> *;
+    /// Return the name of the controlling terminal.
+    pub fn ctermid(__s: &mut i8) -> *;
+    /// Acquire ownership of STREAM.
+    pub fn flockfile(__stream: *);
+    /// Try to acquire ownership of STREAM but do not block if it is not
+    /// possible.
+    pub fn ftrylockfile(__stream: *) -> i32;
+    /// Relinquish the ownership granted for STREAM.
+    pub fn funlockfile(__stream: *);
+    /// Convert a string to a floating-point number.
+    pub fn atof(__nptr: cstr) -> f64;
+    /// Convert a string to an integer.
+    pub fn atoi(__nptr: cstr) -> i32;
+    /// Convert a string to a long integer.
+    pub fn atol(__nptr: cstr) -> i64;
+    /// Convert a string to a long long integer.
+    pub fn atoll(__nptr: cstr) -> i64;
+    /// Convert a string to a floating-point number.
+    pub fn strtod(__nptr: cstr, __endptr: &mut *) -> f64;
+    /// Likewise for `float' and `long double' sizes of floating-point numbers.
+    pub fn strtof(__nptr: cstr, __endptr: &mut *) -> f32;
+    /// Convert a string to a long integer.
+    pub fn strtol(__nptr: cstr, __endptr: &mut *, __base: i32) -> i64;
+    /// Convert a string to an unsigned long integer.
+    pub fn strtoul(__nptr: cstr, __endptr: &mut *, __base: i32) -> u64;
+    pub fn strtoq(__nptr: cstr, __endptr: &mut *, __base: i32) -> i64;
+    pub fn strtouq(__nptr: cstr, __endptr: &mut *, __base: i32) -> u64;
+    pub fn strtoll(__nptr: cstr, __endptr: &mut *, __base: i32) -> i64;
+    pub fn strtoull(__nptr: cstr, __endptr: &mut *, __base: i32) -> u64;
+    /// Convert N to base 64 using the digits "./0-9A-Za-z", least-significant
+    /// digit first.  Returns a pointer to static storage overwritten by the
+    /// next call.
+    pub fn l64a(__n: i64) -> *;
+    /// Read a number from a string S in base 64 as above.
+    pub fn a64l(__s: cstr) -> i64;
+    pub fn select(__nfds: i32, __readfds: FdSet, __writefds: FdSet, __exceptfds: FdSet, __timeout: &mut Timeval) -> i32;
+    pub fn pselect(__nfds: i32, __readfds: FdSet, __writefds: FdSet, __exceptfds: FdSet, __timeout: &Timespec, __sigmask: SigsetT) -> i32;
+    /// Return a random long integer between 0 and 2^31-1 inclusive.
+    pub fn random() -> i64;
+    /// Seed the random number generator with the given number.
+    pub fn srandom(__seed: u32);
+    /// Initialize the random number generator to use state buffer STATEBUF,
+    /// of length STATELEN, and seed it with SEED.  Optimal lengths are 8, 16,
+    /// 32, 64, 128 and 256, the bigger the better; values less than 8 will
+    /// cause an error and values greater than 256 will be rounded down.
+    pub fn initstate(__seed: u32, __statebuf: &mut i8, __statelen: u64) -> *;
+    /// Switch the random number generator to state buffer STATEBUF,
+    /// which should have been previously initialized by `initstate'.
+    pub fn setstate(__statebuf: &mut i8) -> *;
+    pub fn random_r(__buf: &mut RandomData, __result: &mut i32) -> i32;
+    pub fn srandom_r(__seed: u32, __buf: &mut RandomData) -> i32;
+    pub fn initstate_r(__seed: u32, __statebuf: &mut i8, __statelen: u64, __buf: &mut RandomData) -> i32;
+    pub fn setstate_r(__statebuf: &mut i8, __buf: &mut RandomData) -> i32;
+    /// Return a random integer between 0 and RAND_MAX inclusive.
+    pub fn rand() -> i32;
+    /// Seed the random number generator with the given number.
+    pub fn srand(__seed: u32);
+    /// Reentrant interface according to POSIX.1.
+    pub fn rand_r(__seed: &mut u32) -> i32;
+    /// Return non-negative, double-precision floating-point value in [0.0,1.0).
+    pub fn drand48() -> f64;
+    pub fn erand48(__xsubi: &mut u16) -> f64;
+    /// Return non-negative, long integer in [0,2^31).
+    pub fn lrand48() -> i64;
+    pub fn nrand48(__xsubi: &mut u16) -> i64;
+    /// Return signed, long integers in [-2^31,2^31).
+    pub fn mrand48() -> i64;
+    pub fn jrand48(__xsubi: &mut u16) -> i64;
+    /// Seed random number generator.
+    pub fn srand48(__seedval: i64);
+    pub fn seed48(__seed16v: &mut u16) -> *;
+    pub fn lcong48(__param: &mut u16);
+    /// Return non-negative, double-precision floating-point value in [0.0,1.0).
+    pub fn drand48_r(__buffer: *, __result: &mut f64) -> i32;
+    pub fn erand48_r(__xsubi: &mut u16, __buffer: *, __result: &mut f64) -> i32;
+    /// Return non-negative, long integer in [0,2^31).
+    pub fn lrand48_r(__buffer: *, __result: &mut i64) -> i32;
+    pub fn nrand48_r(__xsubi: &mut u16, __buffer: *, __result: &mut i64) -> i32;
+    /// Return signed, long integers in [-2^31,2^31).
+    pub fn mrand48_r(__buffer: *, __result: &mut i64) -> i32;
+    pub fn jrand48_r(__xsubi: &mut u16, __buffer: *, __result: &mut i64) -> i32;
+    /// Seed random number generator.
+    pub fn srand48_r(__seedval: i64, __buffer: *) -> i32;
+    pub fn seed48_r(__seed16v: &mut u16, __buffer: *) -> i32;
+    pub fn lcong48_r(__param: &mut u16, __buffer: *) -> i32;
+    /// Allocate SIZE bytes of memory.
+    pub fn malloc(__size: u64) -> *;
+    /// Allocate NMEMB elements of SIZE bytes each, all initialized to 0.
+    pub fn calloc(__nmemb: u64, __size: u64) -> *;
+    /// __attribute_malloc__ is not used, because if realloc returns
+    /// the same pointer that was passed to it, aliasing needs to be allowed
+    /// between objects pointed by the old and new pointers.
+    pub fn realloc(__ptr: *, __size: u64) -> *;
+    /// Free a block allocated by `malloc', `realloc' or `calloc'.
+    pub fn free(__ptr: *);
+    /// __attribute_malloc__ is not used, because if reallocarray returns
+    /// the same pointer that was passed to it, aliasing needs to be allowed
+    /// between objects pointed by the old and new pointers.
+    pub fn reallocarray(__ptr: *, __nmemb: u64, __size: u64) -> *;
+    /// Allocate a block that will be freed when the calling function exits.
+    pub fn alloca(__size: u64) -> *;
+    /// Allocate SIZE bytes on a page boundary.  The storage cannot be freed.
+    pub fn valloc(__size: u64) -> *;
+    /// Allocate memory of SIZE bytes with an alignment of ALIGNMENT.
+    pub fn posix_memalign(__memptr: &mut *, __alignment: u64, __size: u64) -> i32;
+    /// ISO C variant of aligned allocation.
+    pub fn aligned_alloc(__alignment: u64, __size: u64) -> *;
+    /// Abort execution and generate a core-dump.
+    pub fn abort();
+    /// Register a function to be called when `exit' is called.
+    pub fn atexit(__func: *) -> i32;
+    pub fn at_quick_exit(__func: *) -> i32;
+    /// Register a function to be called with the status
+    /// given to `exit' and the given argument.
+    pub fn on_exit(__func: *, __arg: *) -> i32;
+    /// Call all functions registered with `atexit' and `on_exit',
+    /// in the reverse of the order in which they were registered,
+    /// perform stdio cleanup, and terminate program execution with STATUS.
+    pub fn exit(__status: i32);
+    /// Call all functions registered with `at_quick_exit' in the reverse
+    /// of the order in which they were registered and terminate program
+    /// execution with STATUS.
+    pub fn quick_exit(__status: i32);
+    /// Return the value of envariable NAME, or NULL if it doesn't exist.
+    pub fn getenv(__name: cstr) -> *;
+    /// Put STRING, which is of the form "NAME=VALUE", in the environment.
+    /// If there is no `=', remove NAME from the environment.
+    pub fn putenv(__string: &mut i8) -> i32;
+    /// Set NAME to VALUE in the environment.
+    /// If REPLACE is nonzero, overwrite an existing value.
+    pub fn setenv(__name: cstr, __value: cstr, __replace: i32) -> i32;
+    /// Remove the variable NAME from the environment.
+    pub fn unsetenv(__name: cstr) -> i32;
+    /// The `clearenv' was planned to be added to POSIX.1 but probably
+    /// never made it.  Nevertheless the POSIX.9 standard (POSIX bindings
+    /// for Fortran 77) requires this function.
+    pub fn clearenv() -> i32;
+    /// Generate a unique temporary file name from TEMPLATE.
+    /// The last six characters of TEMPLATE must be "XXXXXX";
+    /// they are replaced with a string that makes the file name unique.
+    /// Always returns TEMPLATE, it's either a temporary file name or a null
+    /// string if it cannot get a unique file name.
+    pub fn mktemp(__template: &mut i8) -> *;
+    pub fn mkstemp(__template: &mut i8) -> i32;
+    pub fn mkstemps(__template: &mut i8, __suffixlen: i32) -> i32;
+    /// Create a unique temporary directory from TEMPLATE.
+    /// The last six characters of TEMPLATE must be "XXXXXX";
+    /// they are replaced with a string that makes the directory name unique.
+    /// Returns TEMPLATE, or a null pointer if it cannot get a unique name.
+    /// The directory is created mode 700.
+    pub fn mkdtemp(__template: &mut i8) -> *;
+    /// Execute the given line as a shell command.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn system(__command: cstr) -> i32;
+    /// Return the canonical absolute name of file NAME.  If RESOLVED is
+    /// null, the result is malloc'd; otherwise, if the canonical name is
+    /// PATH_MAX chars or more, returns null with `errno' set to
+    /// ENAMETOOLONG; if the name fits in fewer than PATH_MAX chars,
+    /// returns the name in RESOLVED.
+    pub fn realpath(__name: cstr, __resolved: &mut i8) -> *;
+    /// Do a binary search for KEY in BASE, which consists of NMEMB elements
+    /// of SIZE bytes each, using COMPAR to perform the comparisons.
+    pub fn bsearch(__key: *, __base: *, __nmemb: u64, __size: u64, __compar: *) -> *;
+    /// Sort NMEMB elements of BASE, of SIZE bytes each,
+    /// using COMPAR to perform the comparisons.
+    pub fn qsort(__base: *, __nmemb: u64, __size: u64, __compar: *);
+    /// Return the absolute value of X.
+    pub fn abs(__x: i32) -> i32;
+    pub fn labs(__x: i64) -> i64;
+    pub fn llabs(__x: i64) -> i64;
+    /// Convert VALUE to a string with NDIGIT digits and return a pointer to
+    /// this.  Set *DECPT with the position of the decimal character and *SIGN
+    /// with the sign of the number.
+    pub fn ecvt(__value: f64, __ndigit: i32, __decpt: &mut i32, __sign: &mut i32) -> *;
+    /// Convert VALUE to a string rounded to NDIGIT decimal digits.  Set *DECPT
+    /// with the position of the decimal character and *SIGN with the sign of
+    /// the number.
+    pub fn fcvt(__value: f64, __ndigit: i32, __decpt: &mut i32, __sign: &mut i32) -> *;
+    /// If possible convert VALUE to a string with NDIGIT significant digits.
+    /// Otherwise use exponential representation.  The resulting string will
+    /// be written to BUF.
+    pub fn gcvt(__value: f64, __ndigit: i32, __buf: &mut i8) -> *;
+    /// Reentrant version of the functions above which provide their own
+    /// buffers.
+    pub fn ecvt_r(__value: f64, __ndigit: i32, __decpt: &mut i32, __sign: &mut i32, __buf: &mut i8, __len: u64) -> i32;
+    pub fn fcvt_r(__value: f64, __ndigit: i32, __decpt: &mut i32, __sign: &mut i32, __buf: &mut i8, __len: u64) -> i32;
+    /// Return the length of the multibyte character
+    /// in S, which is no longer than N.
+    pub fn mblen(__s: cstr, __n: u64) -> i32;
+    /// Return the length of the given multibyte character,
+    /// putting its `wchar_t' representation in *PWC.
+    pub fn mbtowc(__pwc: &mut i32, __s: cstr, __n: u64) -> i32;
+    /// Put the multibyte character represented
+    /// by WCHAR in S, returning its length.
+    pub fn wctomb(__s: &mut i8, __wchar: i32) -> i32;
+    /// Convert a multibyte string to a wide char string.
+    pub fn mbstowcs(__pwcs: &mut i32, __s: cstr, __n: u64) -> u64;
+    /// Convert a wide char string to multibyte string.
+    pub fn wcstombs(__s: &mut i8, __pwcs: &i32, __n: u64) -> u64;
+    /// Determine whether the string value of RESPONSE matches the affirmation
+    /// or negative response expression as specified by the LC_MESSAGES category
+    /// in the program's current locale.  Returns 1 if affirmative, 0 if
+    /// negative, and -1 if not matching.
+    pub fn rpmatch(__response: cstr) -> i32;
+    /// Parse comma separated suboption from *OPTIONP and match against
+    /// strings in TOKENS.  If found return index and set *VALUEP to
+    /// optional value introduced by an equal sign.  If the suboption is
+    /// not part of TOKENS return in *VALUEP beginning of unknown
+    /// suboption.  On exit *OPTIONP is set to the beginning of the next
+    /// token or at the terminating NUL character.
+    pub fn getsubopt(__optionp: &mut *, __tokens: *, __valuep: &mut *) -> i32;
+    /// Put the 1 minute, 5 minute and 15 minute load averages into the first
+    /// NELEM elements of LOADAVG.  Return the number written (never more than
+    /// three, but may be less than NELEM), or -1 if an error occurred.
+    pub fn getloadavg(__loadavg: &mut f64, __nelem: i32) -> i32;
+    /// Copy N bytes of SRC to DEST.
+    pub fn memcpy(__dest: *, __src: *, __n: u64) -> *;
+    /// Copy N bytes of SRC to DEST, guaranteeing
+    /// correct behavior for overlapping strings.
+    pub fn memmove(__dest: *, __src: *, __n: u64) -> *;
+    pub fn memccpy(__dest: *, __src: *, __c: i32, __n: u64) -> *;
+    /// Set N bytes of S to C.
+    pub fn memset(__s: *, __c: i32, __n: u64) -> *;
+    /// Like memset, but the compiler will not delete a call to this
+    /// function, even if S is dead after the call.
+    pub fn memset_explicit(__s: *, __c: i32, __n: u64) -> *;
+    /// Compare N bytes of S1 and S2.
+    pub fn memcmp(__s1: *, __s2: *, __n: u64) -> i32;
+    pub fn memchr(__s: *, __c: i32, __n: u64) -> *;
+    /// Copy SRC to DEST.
+    pub fn strcpy(__dest: &mut i8, __src: cstr) -> *;
+    /// Copy no more than N characters of SRC to DEST.
+    pub fn strncpy(__dest: &mut i8, __src: cstr, __n: u64) -> *;
+    /// Append SRC onto DEST.
+    pub fn strcat(__dest: &mut i8, __src: cstr) -> *;
+    /// Append no more than N characters from SRC onto DEST.
+    pub fn strncat(__dest: &mut i8, __src: cstr, __n: u64) -> *;
+    /// Compare S1 and S2.
+    pub fn strcmp(__s1: cstr, __s2: cstr) -> i32;
+    /// Compare N characters of S1 and S2.
+    pub fn strncmp(__s1: cstr, __s2: cstr, __n: u64) -> i32;
+    /// Compare the collated forms of S1 and S2.
+    pub fn strcoll(__s1: cstr, __s2: cstr) -> i32;
+    /// Put a transformation of SRC into no more than N bytes of DEST.
+    pub fn strxfrm(__dest: &mut i8, __src: cstr, __n: u64) -> u64;
+    /// Compare the collated forms of S1 and S2, using sorting rules from L.
+    pub fn strcoll_l(__s1: cstr, __s2: cstr, __l: *) -> i32;
+    /// Put a transformation of SRC into no more than N bytes of DEST,
+    /// using sorting rules from L.
+    pub fn strxfrm_l(__dest: &mut i8, __src: cstr, __n: u64, __l: *) -> u64;
+    /// Duplicate S, returning an identical malloc'd string.
+    pub fn strdup(__s: cstr) -> *;
+    pub fn strndup(__string: cstr, __n: u64) -> *;
+    pub fn strchr(__s: cstr, __c: i32) -> *;
+    pub fn strrchr(__s: cstr, __c: i32) -> *;
+    pub fn strchrnul(__s: cstr, __c: i32) -> *;
+    /// Return the length of the initial segment of S which
+    /// consists entirely of characters not in REJECT.
+    pub fn strcspn(__s: cstr, __reject: cstr) -> u64;
+    /// Return the length of the initial segment of S which
+    /// consists entirely of characters in ACCEPT.
+    pub fn strspn(__s: cstr, __accept: cstr) -> u64;
+    pub fn strpbrk(__s: cstr, __accept: cstr) -> *;
+    pub fn strstr(__haystack: cstr, __needle: cstr) -> *;
+    /// Divide S into tokens separated by characters in DELIM.
+    pub fn strtok(__s: &mut i8, __delim: cstr) -> *;
+    pub fn strtok_r(__s: &mut i8, __delim: cstr, __save_ptr: &mut *) -> *;
+    pub fn strcasestr(__haystack: cstr, __needle: cstr) -> *;
+    /// Find the first occurrence of NEEDLE in HAYSTACK.
+    /// NEEDLE is NEEDLELEN bytes long;
+    /// HAYSTACK is HAYSTACKLEN bytes long.
+    pub fn memmem(__haystack: *, __haystacklen: u64, __needle: *, __needlelen: u64) -> *;
+    pub fn mempcpy(__dest: *, __src: *, __n: u64) -> *;
+    /// Return the length of S.
+    pub fn strlen(__s: cstr) -> u64;
+    /// Find the length of STRING, but scan at most MAXLEN characters.
+    /// If no '\0' terminator is found in that many characters, return MAXLEN.
+    pub fn strnlen(__string: cstr, __maxlen: u64) -> u64;
+    /// Return a string describing the meaning of the `errno' code in ERRNUM.
+    pub fn strerror(__errnum: i32) -> *;
+    pub fn strerror_r(__errnum: i32, __buf: &mut i8, __buflen: u64) -> i32;
+    /// Translate error number to string according to the locale L.
+    pub fn strerror_l(__errnum: i32, __l: *) -> *;
+    /// Compare N bytes of S1 and S2 (same as memcmp).
+    pub fn bcmp(__s1: *, __s2: *, __n: u64) -> i32;
+    /// Copy N bytes of SRC to DEST (like memmove, but args reversed).
+    pub fn bcopy(__src: *, __dest: *, __n: u64);
+    /// Set N bytes of S to 0.
+    pub fn bzero(__s: *, __n: u64);
+    pub fn index(__s: cstr, __c: i32) -> *;
+    pub fn rindex(__s: cstr, __c: i32) -> *;
+    /// Return the position of the first bit set in I, or 0 if none are set.
+    /// The least-significant bit is position 1, the most-significant 32.
+    pub fn ffs(__i: i32) -> i32;
+    pub fn ffsl(__l: i64) -> i32;
+    pub fn ffsll(__ll: i64) -> i32;
+    /// Compare S1 and S2, ignoring case.
+    pub fn strcasecmp(__s1: cstr, __s2: cstr) -> i32;
+    /// Compare no more than N chars of S1 and S2, ignoring case.
+    pub fn strncasecmp(__s1: cstr, __s2: cstr, __n: u64) -> i32;
+    /// Compare S1 and S2, ignoring case, using collation rules from LOC.
+    pub fn strcasecmp_l(__s1: cstr, __s2: cstr, __loc: *) -> i32;
+    /// Compare no more than N chars of S1 and S2, ignoring case, using
+    /// collation rules from LOC.
+    pub fn strncasecmp_l(__s1: cstr, __s2: cstr, __n: u64, __loc: *) -> i32;
+    /// Set N bytes of S to 0.  The compiler will not delete a call to this
+    /// function, even if S is dead after the call.
+    pub fn explicit_bzero(__s: *, __n: u64);
+    /// Return the next DELIM-delimited token from *STRINGP,
+    /// terminating it with a '\0', and update *STRINGP to point past it.
+    pub fn strsep(__stringp: &mut *, __delim: cstr) -> *;
+    /// Return a string describing the meaning of the signal number in SIG.
+    pub fn strsignal(__sig: i32) -> *;
+    pub fn stpcpy(__dest: &mut i8, __src: cstr) -> *;
+    pub fn stpncpy(__dest: &mut i8, __src: cstr, __n: u64) -> *;
+    pub fn acos(__x: f64) -> f64;
+    pub fn asin(__x: f64) -> f64;
+    pub fn atan(__x: f64) -> f64;
+    pub fn atan2(__y: f64, __x: f64) -> f64;
+    pub fn cos(__x: f64) -> f64;
+    pub fn sin(__x: f64) -> f64;
+    pub fn tan(__x: f64) -> f64;
+    pub fn cosh(__x: f64) -> f64;
+    pub fn sinh(__x: f64) -> f64;
+    pub fn tanh(__x: f64) -> f64;
+    pub fn acosh(__x: f64) -> f64;
+    pub fn asinh(__x: f64) -> f64;
+    pub fn atanh(__x: f64) -> f64;
+    pub fn exp(__x: f64) -> f64;
+    pub fn frexp(__x: f64, __exponent: &mut i32) -> f64;
+    pub fn ldexp(__x: f64, __exponent: i32) -> f64;
+    pub fn log(__x: f64) -> f64;
+    pub fn log10(__x: f64) -> f64;
+    pub fn modf(__x: f64, __iptr: &mut f64) -> f64;
+    pub fn expm1(__x: f64) -> f64;
+    pub fn log1p(__x: f64) -> f64;
+    pub fn logb(__x: f64) -> f64;
+    pub fn exp2(__x: f64) -> f64;
+    pub fn log2(__x: f64) -> f64;
+    pub fn pow(__x: f64, __y: f64) -> f64;
+    pub fn sqrt(__x: f64) -> f64;
+    pub fn hypot(__x: f64, __y: f64) -> f64;
+    pub fn cbrt(__x: f64) -> f64;
+    pub fn ceil(__x: f64) -> f64;
+    pub fn fabs(__x: f64) -> f64;
+    pub fn floor(__x: f64) -> f64;
+    pub fn fmod(__x: f64, __y: f64) -> f64;
+    /// Return 0 if VALUE is finite or NaN, +1 if it
+    /// is +Infinity, -1 if it is -Infinity.
+    pub fn isinf(__value: f64) -> i32;
+    /// Return nonzero if VALUE is finite and not NaN.
+    pub fn finite(__value: f64) -> i32;
+    pub fn drem(__x: f64, __y: f64) -> f64;
+    pub fn significand(__x: f64) -> f64;
+    pub fn copysign(__x: f64, __y: f64) -> f64;
+    pub fn nan(__tagb: cstr) -> f64;
+    /// Return nonzero if VALUE is not a number.
+    pub fn isnan(__value: f64) -> i32;
+    pub fn j0(arg0: f64) -> f64;
+    pub fn j1(arg0: f64) -> f64;
+    pub fn jn(arg0: i32, arg1: f64) -> f64;
+    pub fn y0(arg0: f64) -> f64;
+    pub fn y1(arg0: f64) -> f64;
+    pub fn yn(arg0: i32, arg1: f64) -> f64;
+    pub fn erf(arg0: f64) -> f64;
+    pub fn erfc(arg0: f64) -> f64;
+    pub fn lgamma(arg0: f64) -> f64;
+    pub fn tgamma(arg0: f64) -> f64;
+    pub fn gamma(arg0: f64) -> f64;
+    pub fn lgamma_r(arg0: f64, __signgamp: &mut i32) -> f64;
+    pub fn rint(__x: f64) -> f64;
+    pub fn nextafter(__x: f64, __y: f64) -> f64;
+    pub fn remainder(__x: f64, __y: f64) -> f64;
+    pub fn scalbn(__x: f64, __n: i32) -> f64;
+    pub fn ilogb(__x: f64) -> i32;
+    pub fn scalbln(__x: f64, __n: i64) -> f64;
+    pub fn nearbyint(__x: f64) -> f64;
+    pub fn round(__x: f64) -> f64;
+    pub fn trunc(__x: f64) -> f64;
+    pub fn remquo(__x: f64, __y: f64, __quo: &mut i32) -> f64;
+    pub fn lrint(__x: f64) -> i64;
+    pub fn llrint(__x: f64) -> i64;
+    pub fn lround(__x: f64) -> i64;
+    pub fn llround(__x: f64) -> i64;
+    pub fn fdim(__x: f64, __y: f64) -> f64;
+    pub fn fmax(__x: f64, __y: f64) -> f64;
+    pub fn fmin(__x: f64, __y: f64) -> f64;
+    pub fn fma(__x: f64, __y: f64, __z: f64) -> f64;
+    pub fn scalb(__x: f64, __n: f64) -> f64;
+    pub fn acosf(__x: f32) -> f32;
+    pub fn asinf(__x: f32) -> f32;
+    pub fn atanf(__x: f32) -> f32;
+    pub fn atan2f(__y: f32, __x: f32) -> f32;
+    pub fn cosf(__x: f32) -> f32;
+    pub fn sinf(__x: f32) -> f32;
+    pub fn tanf(__x: f32) -> f32;
+    pub fn coshf(__x: f32) -> f32;
+    pub fn sinhf(__x: f32) -> f32;
+    pub fn tanhf(__x: f32) -> f32;
+    pub fn acoshf(__x: f32) -> f32;
+    pub fn asinhf(__x: f32) -> f32;
+    pub fn atanhf(__x: f32) -> f32;
+    pub fn expf(__x: f32) -> f32;
+    pub fn frexpf(__x: f32, __exponent: &mut i32) -> f32;
+    pub fn ldexpf(__x: f32, __exponent: i32) -> f32;
+    pub fn logf(__x: f32) -> f32;
+    pub fn log10f(__x: f32) -> f32;
+    pub fn modff(__x: f32, __iptr: &mut f32) -> f32;
+    pub fn expm1f(__x: f32) -> f32;
+    pub fn log1pf(__x: f32) -> f32;
+    pub fn logbf(__x: f32) -> f32;
+    pub fn exp2f(__x: f32) -> f32;
+    pub fn log2f(__x: f32) -> f32;
+    pub fn powf(__x: f32, __y: f32) -> f32;
+    pub fn sqrtf(__x: f32) -> f32;
+    pub fn hypotf(__x: f32, __y: f32) -> f32;
+    pub fn cbrtf(__x: f32) -> f32;
+    pub fn ceilf(__x: f32) -> f32;
+    pub fn fabsf(__x: f32) -> f32;
+    pub fn floorf(__x: f32) -> f32;
+    pub fn fmodf(__x: f32, __y: f32) -> f32;
+    pub fn isinff(__value: f32) -> i32;
+    pub fn finitef(__value: f32) -> i32;
+    pub fn dremf(__x: f32, __y: f32) -> f32;
+    pub fn significandf(__x: f32) -> f32;
+    pub fn copysignf(__x: f32, __y: f32) -> f32;
+    pub fn nanf(__tagb: cstr) -> f32;
+    pub fn isnanf(__value: f32) -> i32;
+    pub fn j0f(arg0: f32) -> f32;
+    pub fn j1f(arg0: f32) -> f32;
+    pub fn jnf(arg0: i32, arg1: f32) -> f32;
+    pub fn y0f(arg0: f32) -> f32;
+    pub fn y1f(arg0: f32) -> f32;
+    pub fn ynf(arg0: i32, arg1: f32) -> f32;
+    pub fn erff(arg0: f32) -> f32;
+    pub fn erfcf(arg0: f32) -> f32;
+    pub fn lgammaf(arg0: f32) -> f32;
+    pub fn tgammaf(arg0: f32) -> f32;
+    pub fn gammaf(arg0: f32) -> f32;
+    pub fn lgammaf_r(arg0: f32, __signgamp: &mut i32) -> f32;
+    pub fn rintf(__x: f32) -> f32;
+    pub fn nextafterf(__x: f32, __y: f32) -> f32;
+    pub fn remainderf(__x: f32, __y: f32) -> f32;
+    pub fn scalbnf(__x: f32, __n: i32) -> f32;
+    pub fn ilogbf(__x: f32) -> i32;
+    pub fn scalblnf(__x: f32, __n: i64) -> f32;
+    pub fn nearbyintf(__x: f32) -> f32;
+    pub fn roundf(__x: f32) -> f32;
+    pub fn truncf(__x: f32) -> f32;
+    pub fn remquof(__x: f32, __y: f32, __quo: &mut i32) -> f32;
+    pub fn lrintf(__x: f32) -> i64;
+    pub fn llrintf(__x: f32) -> i64;
+    pub fn lroundf(__x: f32) -> i64;
+    pub fn llroundf(__x: f32) -> i64;
+    pub fn fdimf(__x: f32, __y: f32) -> f32;
+    pub fn fmaxf(__x: f32, __y: f32) -> f32;
+    pub fn fminf(__x: f32, __y: f32) -> f32;
+    pub fn fmaf(__x: f32, __y: f32, __z: f32) -> f32;
+    pub fn scalbf(__x: f32, __n: f32) -> f32;
+    pub fn isalnum(arg0: i32) -> i32;
+    pub fn isalpha(arg0: i32) -> i32;
+    pub fn iscntrl(arg0: i32) -> i32;
+    pub fn isdigit(arg0: i32) -> i32;
+    pub fn islower(arg0: i32) -> i32;
+    pub fn isgraph(arg0: i32) -> i32;
+    pub fn isprint(arg0: i32) -> i32;
+    pub fn ispunct(arg0: i32) -> i32;
+    pub fn isspace(arg0: i32) -> i32;
+    pub fn isupper(arg0: i32) -> i32;
+    pub fn isxdigit(arg0: i32) -> i32;
+    /// Return the lowercase version of C.
+    pub fn tolower(__c: i32) -> i32;
+    /// Return the uppercase version of C.
+    pub fn toupper(__c: i32) -> i32;
+    pub fn isblank(arg0: i32) -> i32;
+    /// Return nonzero iff C is in the ASCII set
+    /// (i.e., is no more than 7 bits wide).
+    pub fn isascii(__c: i32) -> i32;
+    /// Return the part of C that is in the ASCII set
+    /// (i.e., the low-order 7 bits of C).
+    pub fn toascii(__c: i32) -> i32;
+    pub fn isalnum_l(arg0: i32, arg1: *) -> i32;
+    pub fn isalpha_l(arg0: i32, arg1: *) -> i32;
+    pub fn iscntrl_l(arg0: i32, arg1: *) -> i32;
+    pub fn isdigit_l(arg0: i32, arg1: *) -> i32;
+    pub fn islower_l(arg0: i32, arg1: *) -> i32;
+    pub fn isgraph_l(arg0: i32, arg1: *) -> i32;
+    pub fn isprint_l(arg0: i32, arg1: *) -> i32;
+    pub fn ispunct_l(arg0: i32, arg1: *) -> i32;
+    pub fn isspace_l(arg0: i32, arg1: *) -> i32;
+    pub fn isupper_l(arg0: i32, arg1: *) -> i32;
+    pub fn isxdigit_l(arg0: i32, arg1: *) -> i32;
+    pub fn isblank_l(arg0: i32, arg1: *) -> i32;
+    pub fn tolower_l(__c: i32, __l: *) -> i32;
+    pub fn toupper_l(__c: i32, __l: *) -> i32;
+    /// Time used by the program so far (user time + system time).
+    /// The result / CLOCKS_PER_SEC is program time in seconds.
+    pub fn clock() -> i64;
+    /// Return the current time and put it in *TIMER if TIMER is not NULL.
+    pub fn time(__timer: &mut i64) -> i64;
+    /// Return the difference between TIME1 and TIME0.
+    pub fn difftime(__time1: i64, __time0: i64) -> f64;
+    /// Return the `time_t' representation of TP and normalize TP.
+    pub fn mktime(__tp: &mut Tm) -> i64;
+    /// Format TP into S according to FORMAT.
+    /// Write no more than MAXSIZE characters and return the number
+    /// of characters written, or 0 if it would exceed MAXSIZE.
+    pub fn strftime(__s: &mut i8, __maxsize: u64, __format: cstr, __tp: &Tm) -> u64;
+    /// Similar to the two functions above but take the information from
+    /// the provided locale and not the global locale.
+    pub fn strftime_l(__s: &mut i8, __maxsize: u64, __format: cstr, __tp: &Tm, __loc: *) -> u64;
+    /// Return the `struct tm' representation of *TIMER
+    /// in Universal Coordinated Time (aka Greenwich Mean Time).
+    pub fn gmtime(__timer: &i64) -> *;
+    /// Return the `struct tm' representation
+    /// of *TIMER in the local timezone.
+    pub fn localtime(__timer: &i64) -> *;
+    /// Return the `struct tm' representation of *TIMER in UTC,
+    /// using *TP to store the result.
+    pub fn gmtime_r(__timer: &i64, __tp: &mut Tm) -> *;
+    /// Return the `struct tm' representation of *TIMER in local time,
+    /// using *TP to store the result.
+    pub fn localtime_r(__timer: &i64, __tp: &mut Tm) -> *;
+    /// Return a string of the form "Day Mon dd hh:mm:ss yyyy\n"
+    /// that is the representation of TP in this format.
+    pub fn asctime(__tp: &Tm) -> *;
+    pub fn ctime(__timer: &i64) -> *;
+    /// Return in BUF a string of the form "Day Mon dd hh:mm:ss yyyy\n"
+    /// that is the representation of TP in this format.
+    pub fn asctime_r(__tp: &Tm, __buf: &mut i8) -> *;
+    pub fn ctime_r(__timer: &i64, __buf: &mut i8) -> *;
+    /// Set time conversion information from the TZ environment variable.
+    /// If TZ is not defined, a locale-dependent default is used.
+    pub fn tzset();
+    /// Like `mktime', but for TP represents Universal Time, not local time.
+    pub fn timegm(__tp: &mut Tm) -> i64;
+    /// Another name for `mktime'.
+    pub fn timelocal(__tp: &mut Tm) -> i64;
+    /// Return the number of days in YEAR.
+    pub fn dysize(__year: i32) -> i32;
+    /// Pause execution for a number of nanoseconds.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn nanosleep(__requested_time: &Timespec, __remaining: &mut Timespec) -> i32;
+    /// Get resolution of clock CLOCK_ID.
+    pub fn clock_getres(__clock_id: i32, __res: &mut Timespec) -> i32;
+    /// Get current value of clock CLOCK_ID and store it in TP.
+    pub fn clock_gettime(__clock_id: i32, __tp: &mut Timespec) -> i32;
+    /// Set clock CLOCK_ID to value TP.
+    pub fn clock_settime(__clock_id: i32, __tp: &Timespec) -> i32;
+    pub fn clock_nanosleep(__clock_id: i32, __flags: i32, __req: &Timespec, __rem: &mut Timespec) -> i32;
+    /// Return clock ID for CPU-time clock.
+    pub fn clock_getcpuclockid(__pid: i32, __clock_id: &mut i32) -> i32;
+    /// Create new per-process timer using CLOCK_ID.
+    pub fn timer_create(__clock_id: i32, __evp: *, __timerid: &mut *) -> i32;
+    /// Delete timer TIMERID.
+    pub fn timer_delete(__timerid: *) -> i32;
+    pub fn timer_settime(__timerid: *, __flags: i32, __value: &Itimerspec, __ovalue: &mut Itimerspec) -> i32;
+    /// Get current value of timer TIMERID and store it in VALUE.
+    pub fn timer_gettime(__timerid: *, __value: &mut Itimerspec) -> i32;
+    /// Get expiration overrun for timer TIMERID.
+    pub fn timer_getoverrun(__timerid: *) -> i32;
+    /// Set TS to calendar time based in time base BASE.
+    pub fn timespec_get(__ts: &mut Timespec, __base: i32) -> i32;
+    /// Test for access to NAME using the real UID and real GID.
+    pub fn access(__name: cstr, __type: i32) -> i32;
+    /// Test for access to FILE relative to the directory FD is open on.
+    /// If AT_EACCESS is set in FLAG, then use effective IDs like `eaccess',
+    /// otherwise use real IDs like `access'.
+    pub fn faccessat(__fd: i32, __file: cstr, __type: i32, __flag: i32) -> i32;
+    pub fn lseek(__fd: i32, __offset: i64, __whence: i32) -> i64;
+    /// Close the file descriptor FD.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn close(__fd: i32) -> i32;
+    /// Close all open file descriptors greater than or equal to LOWFD.
+    /// Negative LOWFD is clamped to 0.
+    pub fn closefrom(__lowfd: i32);
+    /// Read NBYTES into BUF from FD.  Return the
+    /// number read, -1 for errors or 0 for EOF.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn read(__fd: i32, __buf: *, __nbytes: u64) -> i64;
+    /// Write N bytes of BUF to FD.  Return the number written, or -1.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn write(__fd: i32, __buf: *, __n: u64) -> i64;
+    /// Read NBYTES into BUF from FD at the given position OFFSET without
+    /// changing the file pointer.  Return the number read, -1 for errors
+    /// or 0 for EOF.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn pread(__fd: i32, __buf: *, __nbytes: u64, __offset: i64) -> i64;
+    /// Write N bytes of BUF to FD at the given position OFFSET without
+    /// changing the file pointer.  Return the number written, or -1.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn pwrite(__fd: i32, __buf: *, __n: u64, __offset: i64) -> i64;
+    /// Create a one-way communication channel (pipe).
+    /// If successful, two file descriptors are stored in PIPEDES;
+    /// bytes written on PIPEDES[1] can be read from PIPEDES[0].
+    /// Returns 0 if successful, -1 if not.
+    pub fn pipe(__pipedes: &mut i32) -> i32;
+    /// Schedule an alarm.  In SECONDS seconds, the process will get a SIGALRM.
+    /// If SECONDS is zero, any currently scheduled alarm will be cancelled.
+    /// The function returns the number of seconds remaining until the last
+    /// alarm scheduled would have signaled, or zero if there wasn't one.
+    /// There is no return value to indicate an error, but you can set `errno'
+    /// to 0 and check its value after calling `alarm', and this might tell you.
+    /// The signal may come late due to processor scheduling.
+    pub fn alarm(__seconds: u32) -> u32;
+    /// Make the process sleep for SECONDS seconds, or until a signal arrives
+    /// and is not ignored.  The function returns the number of seconds less
+    /// than SECONDS which it actually slept (thus zero if it slept the full time).
+    /// If a signal handler does a `longjmp' or modifies the handling of the
+    /// SIGALRM signal while inside `sleep' call, the handling of the SIGALRM
+    /// signal afterwards is undefined.  There is no return value to indicate
+    /// error, but if `sleep' returns SECONDS, it probably didn't work.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn sleep(__seconds: u32) -> u32;
+    /// Set an alarm to go off (generating a SIGALRM signal) in VALUE
+    /// microseconds.  If INTERVAL is nonzero, when the alarm goes off, the
+    /// timer is reset to go off every INTERVAL microseconds thereafter.
+    /// Returns the number of microseconds remaining before the alarm.
+    pub fn ualarm(__value: u32, __interval: u32) -> u32;
+    /// Sleep USECONDS microseconds, or until a signal arrives that is not blocked
+    /// or ignored.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn usleep(__useconds: u32) -> i32;
+    /// Suspend the process until a signal arrives.
+    /// This always returns -1 and sets `errno' to EINTR.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn pause() -> i32;
+    /// Change the owner and group of FILE.
+    pub fn chown(__file: cstr, __owner: u32, __group: u32) -> i32;
+    /// Change the owner and group of the file that FD is open on.
+    pub fn fchown(__fd: i32, __owner: u32, __group: u32) -> i32;
+    /// Change owner and group of FILE, if it is a symbolic
+    /// link the ownership of the symbolic link is changed.
+    pub fn lchown(__file: cstr, __owner: u32, __group: u32) -> i32;
+    /// Change the owner and group of FILE relative to the directory FD is open
+    /// on.
+    pub fn fchownat(__fd: i32, __file: cstr, __owner: u32, __group: u32, __flag: i32) -> i32;
+    /// Change the process's working directory to PATH.
+    pub fn chdir(__path: cstr) -> i32;
+    /// Change the process's working directory to the one FD is open on.
+    pub fn fchdir(__fd: i32) -> i32;
+    /// Get the pathname of the current working directory,
+    /// and put it in SIZE bytes of BUF.  Returns NULL if the
+    /// directory couldn't be determined or SIZE was too small.
+    /// If successful, returns BUF.  In GNU, if BUF is NULL,
+    /// an array is allocated with `malloc'; the array is SIZE
+    /// bytes long, unless SIZE == 0, in which case it is as
+    /// big as necessary.
+    pub fn getcwd(__buf: &mut i8, __size: u64) -> *;
+    /// Put the absolute pathname of the current working directory in BUF.
+    /// If successful, return BUF.  If not, put an error message in
+    /// BUF and return NULL.  BUF should be at least PATH_MAX bytes long.
+    pub fn getwd(__buf: &mut i8) -> *;
+    /// Duplicate FD, returning a new file descriptor on the same file.
+    pub fn dup(__fd: i32) -> i32;
+    /// Duplicate FD to FD2, closing FD2 and making it open on the same file.
+    pub fn dup2(__fd: i32, __fd2: i32) -> i32;
+    /// Replace the current process, executing PATH with arguments ARGV and
+    /// environment ENVP.  ARGV and ENVP are terminated by NULL pointers.
+    pub fn execve(__path: cstr, __argv: *, __envp: *) -> i32;
+    /// Execute the file FD refers to, overlaying the running program image.
+    /// ARGV and ENVP are passed to the new program, as for `execve'.
+    pub fn fexecve(__fd: i32, __argv: *, __envp: *) -> i32;
+    /// Execute PATH with arguments ARGV and environment from `environ'.
+    pub fn execv(__path: cstr, __argv: *) -> i32;
+    /// Execute PATH with all arguments after PATH until a NULL pointer,
+    /// and the argument after that for environment.
+    pub fn execle(__path: cstr, __arg: cstr, ...) -> i32;
+    /// Execute PATH with all arguments after PATH until
+    /// a NULL pointer and environment from `environ'.
+    pub fn execl(__path: cstr, __arg: cstr, ...) -> i32;
+    /// Execute FILE, searching in the `PATH' environment variable if it contains
+    /// no slashes, with arguments ARGV and environment from `environ'.
+    pub fn execvp(__file: cstr, __argv: *) -> i32;
+    /// Execute FILE, searching in the `PATH' environment variable if
+    /// it contains no slashes, with all arguments after FILE until a
+    /// NULL pointer and environment from `environ'.
+    pub fn execlp(__file: cstr, __arg: cstr, ...) -> i32;
+    /// Add INC to priority of the current process.
+    pub fn nice(__inc: i32) -> i32;
+    /// Get file-specific configuration information about PATH.
+    pub fn pathconf(__path: cstr, __name: i32) -> i64;
+    /// Get file-specific configuration about descriptor FD.
+    pub fn fpathconf(__fd: i32, __name: i32) -> i64;
+    /// Get the value of the system variable NAME.
+    pub fn sysconf(__name: i32) -> i64;
+    /// Get the value of the string-valued system variable NAME.
+    pub fn confstr(__name: i32, __buf: &mut i8, __len: u64) -> u64;
+    /// Get the process ID of the calling process.
+    pub fn getpid() -> i32;
+    /// Get the process ID of the calling process's parent.
+    pub fn getppid() -> i32;
+    /// Get the process group ID of the calling process.
+    pub fn getpgrp() -> i32;
+    pub fn getpgid(__pid: i32) -> i32;
+    /// Set the process group ID of the process matching PID to PGID.
+    /// If PID is zero, the current process's process group ID is set.
+    /// If PGID is zero, the process ID of the process is used.
+    pub fn setpgid(__pid: i32, __pgid: i32) -> i32;
+    /// Set the process group ID of the calling process to its own PID.
+    /// This is exactly the same as `setpgid (0, 0)'.
+    pub fn setpgrp() -> i32;
+    /// Create a new session with the calling process as its leader.
+    /// The process group IDs of the session and the calling process
+    /// are set to the process ID of the calling process, which is returned.
+    pub fn setsid() -> i32;
+    /// Return the session ID of the given process.
+    pub fn getsid(__pid: i32) -> i32;
+    /// Get the real user ID of the calling process.
+    pub fn getuid() -> u32;
+    /// Get the effective user ID of the calling process.
+    pub fn geteuid() -> u32;
+    /// Get the real group ID of the calling process.
+    pub fn getgid() -> u32;
+    /// Get the effective group ID of the calling process.
+    pub fn getegid() -> u32;
+    /// If SIZE is zero, return the number of supplementary groups
+    /// the calling process is in.  Otherwise, fill in the group IDs
+    /// of its supplementary groups in LIST and return the number written.
+    pub fn getgroups(__size: i32, __list: &mut u32) -> i32;
+    /// Set the user ID of the calling process to UID.
+    /// If the calling process is the super-user, set the real
+    /// and effective user IDs, and the saved set-user-ID to UID;
+    /// if not, the effective user ID is set to UID.
+    pub fn setuid(__uid: u32) -> i32;
+    /// Set the real user ID of the calling process to RUID,
+    /// and the effective user ID of the calling process to EUID.
+    pub fn setreuid(__ruid: u32, __euid: u32) -> i32;
+    /// Set the effective user ID of the calling process to UID.
+    pub fn seteuid(__uid: u32) -> i32;
+    /// Set the group ID of the calling process to GID.
+    /// If the calling process is the super-user, set the real
+    /// and effective group IDs, and the saved set-group-ID to GID;
+    /// if not, the effective group ID is set to GID.
+    pub fn setgid(__gid: u32) -> i32;
+    /// Set the real group ID of the calling process to RGID,
+    /// and the effective group ID of the calling process to EGID.
+    pub fn setregid(__rgid: u32, __egid: u32) -> i32;
+    /// Set the effective group ID of the calling process to GID.
+    pub fn setegid(__gid: u32) -> i32;
+    /// Clone the calling process, creating an exact copy.
+    /// Return -1 for errors, 0 to the new process,
+    /// and the process ID of the new process to the old process.
+    pub fn fork() -> i32;
+    /// Clone the calling process, but without copying the whole address space.
+    /// The calling process is suspended until the new process exits or is
+    /// replaced by a call to `execve'.  Return -1 for errors, 0 to the new process,
+    /// and the process ID of the new process to the old process.
+    pub fn vfork() -> i32;
+    /// Return the pathname of the terminal FD is open on, or NULL on errors.
+    /// The returned storage is good only until the next call to this function.
+    pub fn ttyname(__fd: i32) -> *;
+    /// Store at most BUFLEN characters of the pathname of the terminal FD is
+    /// open on in BUF.  Return 0 on success, otherwise an error number.
+    pub fn ttyname_r(__fd: i32, __buf: &mut i8, __buflen: u64) -> i32;
+    /// Return 1 if FD is a valid descriptor associated
+    /// with a terminal, zero if not.
+    pub fn isatty(__fd: i32) -> i32;
+    /// Return the index into the active-logins file (utmp) for
+    /// the controlling terminal.
+    pub fn ttyslot() -> i32;
+    /// Make a link to FROM named TO.
+    pub fn link(__from: cstr, __to: cstr) -> i32;
+    /// Like link but relative paths in TO and FROM are interpreted relative
+    /// to FROMFD and TOFD respectively.
+    pub fn linkat(__fromfd: i32, __from: cstr, __tofd: i32, __to: cstr, __flags: i32) -> i32;
+    /// Make a symbolic link to FROM named TO.
+    pub fn symlink(__from: cstr, __to: cstr) -> i32;
+    /// Read the contents of the symbolic link PATH into no more than
+    /// LEN bytes of BUF.  The contents are not null-terminated.
+    /// Returns the number of characters read, or -1 for errors.
+    pub fn readlink(__path: cstr, __buf: &mut i8, __len: u64) -> i64;
+    /// Like symlink but a relative path in TO is interpreted relative to TOFD.
+    pub fn symlinkat(__from: cstr, __tofd: i32, __to: cstr) -> i32;
+    /// Like readlink but a relative PATH is interpreted relative to FD.
+    pub fn readlinkat(__fd: i32, __path: cstr, __buf: &mut i8, __len: u64) -> i64;
+    /// Remove the link NAME.
+    pub fn unlink(__name: cstr) -> i32;
+    /// Remove the link NAME relative to FD.
+    pub fn unlinkat(__fd: i32, __name: cstr, __flag: i32) -> i32;
+    /// Remove the directory PATH.
+    pub fn rmdir(__path: cstr) -> i32;
+    /// Return the foreground process group ID of FD.
+    pub fn tcgetpgrp(__fd: i32) -> i32;
+    /// Set the foreground process group ID of FD set PGRP_ID.
+    pub fn tcsetpgrp(__fd: i32, __pgrp_id: i32) -> i32;
+    /// Return the login name of the user.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn getlogin() -> *;
+    /// Return at most NAME_LEN characters of the login name of the user in NAME.
+    /// If it cannot be determined or some other error occurred, return the error
+    /// code.  Otherwise return 0.
+    ///
+    /// This function is a possible cancellation point and therefore not
+    /// marked with __THROW.
+    pub fn getlogin_r(__name: &mut i8, __name_len: u64) -> i32;
+    /// Set the login name returned by `getlogin'.
+    pub fn setlogin(__name: cstr) -> i32;
+    /// Get definitions and prototypes for functions to process the
+    /// arguments in ARGV (ARGC of them, minus the program name) for
+    /// options given in OPTS.
+    ///
+    /// Return the option character from OPTS just read.  Return -1 when
+    /// there are no more options.  For unrecognized options, or options
+    /// missing arguments, 'optopt' is set to the option letter, and '?' is
+    /// returned.
+    ///
+    /// The OPTS string is a list of characters which are recognized option
+    /// letters, optionally followed by colons, specifying that that letter
+    /// takes an argument, to be placed in 'optarg'.
+    ///
+    /// If a letter in OPTS is followed by two colons, its argument is
+    /// optional.  This behavior is specific to the GNU 'getopt'.
+    ///
+    /// The argument '--' causes premature termination of argument
+    /// scanning, explicitly telling 'getopt' that there are no more
+    /// options.
+    ///
+    /// If OPTS begins with '-', then non-option arguments are treated as
+    /// arguments to the option '\1'.  This behavior is specific to the GNU
+    /// 'getopt'.  If OPTS begins with '+', or POSIXLY_CORRECT is set in
+    /// the environment, then do not permute arguments.
+    ///
+    /// For standards compliance, the 'argv' argument has the type
+    /// char *const *, but this is inaccurate; if argument permutation is
+    /// enabled, the argv array (not the strings it points to) must be
+    /// writable.
+    pub fn getopt(___argc: i32, ___argv: *, __shortopts: cstr) -> i32;
+    /// Put the name of the current host in no more than LEN bytes of NAME.
+    /// The result is null-terminated if LEN is large enough for the full
+    /// name and the terminator.
+    pub fn gethostname(__name: &mut i8, __len: u64) -> i32;
+    /// Set the name of the current host to NAME, which is LEN bytes long.
+    /// This call is restricted to the super-user.
+    pub fn sethostname(__name: cstr, __len: u64) -> i32;
+    /// Set the current machine's Internet number to ID.
+    /// This call is restricted to the super-user.
+    pub fn sethostid(__id: i64) -> i32;
+    /// Get and set the NIS (aka YP) domain name, if any.
+    /// Called just like `gethostname' and `sethostname'.
+    /// The NIS domain name is usually the empty string when not using NIS.
+    pub fn getdomainname(__name: &mut i8, __len: u64) -> i32;
+    pub fn setdomainname(__name: cstr, __len: u64) -> i32;
+    /// Revoke access permissions to all processes currently communicating
+    /// with the control terminal, and then send a SIGHUP signal to the process
+    /// group of the control terminal.
+    pub fn vhangup() -> i32;
+    /// Revoke the access of all descriptors currently open on FILE.
+    pub fn revoke(__file: cstr) -> i32;
+    /// Enable statistical profiling, writing samples of the PC into at most
+    /// SIZE bytes of SAMPLE_BUFFER; every processor clock tick while profiling
+    /// is enabled, the system examines the user PC and increments
+    /// SAMPLE_BUFFER[((PC - OFFSET) / 2) * SCALE / 65536].  If SCALE is zero,
+    /// disable profiling.  Returns zero on success, -1 on error.
+    pub fn profil(__sample_buffer: &mut u16, __size: u64, __offset: u64, __scale: u32) -> i32;
+    /// Turn accounting on if NAME is an existing file.  The system will then write
+    /// a record for each process as it terminates, to this file.  If NAME is NULL,
+    /// turn accounting off.  This call is restricted to the super-user.
+    pub fn acct(__name: cstr) -> i32;
+    /// Successive calls return the shells listed in `/etc/shells'.
+    pub fn getusershell() -> *;
+    /// Discard cached info.
+    pub fn endusershell();
+    /// Rewind and re-read the file.
+    pub fn setusershell();
+    /// Put the program in the background, and dissociate from the controlling
+    /// terminal.  If NOCHDIR is zero, do `chdir ("/")'.  If NOCLOSE is zero,
+    /// redirects stdin, stdout, and stderr to /dev/null.
+    pub fn daemon(__nochdir: i32, __noclose: i32) -> i32;
+    /// Make PATH be the root directory (the starting point for absolute paths).
+    /// This call is restricted to the super-user.
+    pub fn chroot(__path: cstr) -> i32;
+    /// Prompt with PROMPT and read a string from the terminal without echoing.
+    /// Uses /dev/tty if possible; otherwise stderr and stdin.
+    pub fn getpass(__prompt: cstr) -> *;
+    /// Make all changes done to FD actually appear on disk.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn fsync(__fd: i32) -> i32;
+    /// Return identifier for the current host.
+    pub fn gethostid() -> i64;
+    /// Make all changes done to all files actually appear on disk.
+    pub fn sync();
+    /// Return the number of bytes in a page.  This is the system's page size,
+    /// which is not necessarily the same as the hardware page size.
+    pub fn getpagesize() -> i32;
+    /// Return the maximum number of file descriptors
+    /// the current process could possibly have.
+    pub fn getdtablesize() -> i32;
+    pub fn truncate(__file: cstr, __length: i64) -> i32;
+    pub fn ftruncate(__fd: i32, __length: i64) -> i32;
+    /// Set the end of accessible data space (aka "the break") to ADDR.
+    /// Returns zero on success and -1 for errors (with errno set).
+    pub fn brk(__addr: *) -> i32;
+    /// Increase or decrease the end of accessible data space by DELTA bytes.
+    /// If successful, returns the address the previous end of data space
+    /// (i.e. the beginning of the new space, if DELTA > 0);
+    /// returns (void *) -1 for errors (with errno set).
+    pub fn sbrk(__delta: i64) -> *;
+    /// Invoke `system call' number SYSNO, passing it the remaining arguments.
+    /// This is completely system-dependent, and not often useful.
+    ///
+    /// In Unix, `syscall' sets `errno' for all errors and most calls return -1
+    /// for errors; in many systems you cannot pass arguments or get return
+    /// values for all system calls (`pipe', `fork', and `getppid' typically
+    /// among them).
+    ///
+    /// In Mach, all system calls take normal arguments and always return an
+    /// error code (zero for success).
+    pub fn syscall(__sysno: i64, ...) -> i64;
+    pub fn lockf(__fd: i32, __cmd: i32, __len: i64) -> i32;
+    /// Synchronize at least the data part of a file with the underlying
+    /// media.
+    pub fn fdatasync(__fildes: i32) -> i32;
+    /// One-way hash PHRASE, returning a string suitable for storage in the
+    /// user database.  SALT selects the one-way function to use, and
+    /// ensures that no two users' hashes are the same, even if they use
+    /// the same passphrase.  The return value points to static storage
+    /// which will be overwritten by the next call to crypt.
+    ///
+    /// This declaration is deprecated; applications should include
+    /// <crypt.h> instead.
+    pub fn crypt(__key: cstr, __salt: cstr) -> *;
+    /// Write LENGTH bytes of randomness starting at BUFFER.  Return 0 on
+    /// success or -1 on error.
+    pub fn getentropy(__buffer: *, __length: u64) -> i32;
+    pub fn fcntl(__fd: i32, __cmd: i32, ...) -> i32;
+    pub fn open(__file: cstr, __oflag: i32, ...) -> i32;
+    pub fn openat(__fd: i32, __file: cstr, __oflag: i32, ...) -> i32;
+    pub fn creat(__file: cstr, __mode: u32) -> i32;
+    pub fn posix_fadvise(__fd: i32, __offset: i64, __len: i64, __advise: i32) -> i32;
+    pub fn posix_fallocate(__fd: i32, __offset: i64, __len: i64) -> i32;
+    pub fn signal(__sig: i32, __handler: *) -> *;
+    pub fn kill(__pid: i32, __sig: i32) -> i32;
+    /// Send SIG to all processes in process group PGRP.
+    /// If PGRP is zero, send SIG to all processes in
+    /// the current process's process group.
+    pub fn killpg(__pgrp: i32, __sig: i32) -> i32;
+    /// Raise signal SIG, i.e., send SIG to yourself.
+    pub fn raise(__sig: i32) -> i32;
+    /// SVID names for the same things.
+    pub fn ssignal(__sig: i32, __handler: *) -> *;
+    pub fn gsignal(__sig: i32) -> i32;
+    /// Print a message describing the meaning of the given signal number.
+    pub fn psignal(__sig: i32, __s: cstr);
+    /// Print a message describing the meaning of the given signal information.
+    pub fn psiginfo(__pinfo: SiginfoT, __s: cstr);
+    /// Block signals in MASK, returning the old mask.
+    pub fn sigblock(__mask: i32) -> i32;
+    /// Set the mask of blocked signals to MASK, returning the old mask.
+    pub fn sigsetmask(__mask: i32) -> i32;
+    /// Return currently selected signal mask.
+    pub fn siggetmask() -> i32;
+    /// Clear all signals from SET.
+    pub fn sigemptyset(__set: SigsetT) -> i32;
+    /// Set all signals in SET.
+    pub fn sigfillset(__set: SigsetT) -> i32;
+    /// Add SIGNO to SET.
+    pub fn sigaddset(__set: SigsetT, __signo: i32) -> i32;
+    /// Remove SIGNO from SET.
+    pub fn sigdelset(__set: SigsetT, __signo: i32) -> i32;
+    /// Return 1 if SIGNO is in SET, 0 if not.
+    pub fn sigismember(__set: SigsetT, __signo: i32) -> i32;
+    /// Get and/or change the set of blocked signals.
+    pub fn sigprocmask(__how: i32, __set: SigsetT, __oset: SigsetT) -> i32;
+    /// Change the set of blocked signals to SET,
+    /// wait until a signal arrives, and restore the set of blocked signals.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn sigsuspend(__set: SigsetT) -> i32;
+    /// Get and/or set the action for signal SIG.
+    pub fn sigaction(__sig: i32, __act: *, __oact: *) -> i32;
+    /// Put in SET all signals that are blocked and waiting to be delivered.
+    pub fn sigpending(__set: SigsetT) -> i32;
+    /// Select any of pending signals from SET or wait for any to arrive.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn sigwait(__set: SigsetT, __sig: &mut i32) -> i32;
+    /// Select any of pending signals from SET and place information in INFO.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn sigwaitinfo(__set: SigsetT, __info: SiginfoT) -> i32;
+    pub fn sigtimedwait(__set: SigsetT, __info: SiginfoT, __timeout: &Timespec) -> i32;
+    /// Restore the state saved in SCP.
+    pub fn sigreturn(__scp: *) -> i32;
+    /// If INTERRUPT is nonzero, make signal SIG interrupt system calls
+    /// (causing them to fail with EINTR); if INTERRUPT is zero, make system
+    /// calls be restarted after signal SIG.
+    pub fn siginterrupt(__sig: i32, __interrupt: i32) -> i32;
+    /// Alternate signal handler stack interface.
+    /// This interface should always be preferred over `sigstack'.
+    pub fn sigaltstack(__ss: StackT, __oss: StackT) -> i32;
+    /// Run signals handlers on the stack specified by SS (if not NULL).
+    /// If OSS is not NULL, it is filled in with the old signal stack status.
+    /// This interface is obsolete and on many platform not implemented.
+    pub fn sigstack(__ss: &mut Sigstack, __oss: &mut Sigstack) -> i32;
+    /// Modify the signal mask for the calling thread.  The arguments have
+    /// the same meaning as for sigprocmask(2).
+    pub fn pthread_sigmask(__how: i32, __newmask: SigsetT, __oldmask: SigsetT) -> i32;
+    /// Send signal SIGNO to the given thread.
+    pub fn pthread_kill(__threadid: u64, __signo: i32) -> i32;
+    /// Wait for a child to die.  When one does, put its status in *STAT_LOC
+    /// and return its process ID.  For errors, return (pid_t) -1.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn wait(__stat_loc: &mut i32) -> i32;
+    /// Wait for a child matching PID to die.
+    /// If PID is greater than 0, match any process whose process ID is PID.
+    /// If PID is (pid_t) -1, match any process.
+    /// If PID is (pid_t) 0, match any process with the
+    /// same process group as the current process.
+    /// If PID is less than -1, match any process whose
+    /// process group is the absolute value of PID.
+    /// If the WNOHANG bit is set in OPTIONS, and that child
+    /// is not already dead, return (pid_t) 0.  If successful,
+    /// return PID and store the dead child's status in STAT_LOC.
+    /// Return (pid_t) -1 for errors.  If the WUNTRACED bit is
+    /// set in OPTIONS, return status for stopped children; otherwise don't.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn waitpid(__pid: i32, __stat_loc: &mut i32, __options: i32) -> i32;
+    /// Wait for a childing matching IDTYPE and ID to change the status and
+    /// place appropriate information in *INFOP.
+    /// If IDTYPE is P_PID, match any process whose process ID is ID.
+    /// If IDTYPE is P_PGID, match any process whose process group is ID.
+    /// If IDTYPE is P_ALL, match any process.
+    /// If the WNOHANG bit is set in OPTIONS, and that child
+    /// is not already dead, clear *INFOP and return 0.  If successful, store
+    /// exit code and status in *INFOP.
+    ///
+    /// This function is a cancellation point and therefore not marked with
+    /// __THROW.
+    pub fn waitid(__idtype: i32, __id: u32, __infop: SiginfoT, __options: i32) -> i32;
+    pub fn wait3(__stat_loc: &mut i32, __options: i32, __usage: Rusage) -> i32;
+    /// PID is like waitpid.  Other args are like wait3.
+    pub fn wait4(__pid: i32, __stat_loc: &mut i32, __options: i32, __usage: Rusage) -> i32;
+}

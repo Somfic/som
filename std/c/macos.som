@@ -1,0 +1,1731 @@
+// Imported from c.h by the som compiler.
+// skipped signal: its return type is too complex
+// skipped _OSSwapInt16: it's `static`, defined in the header
+// skipped _OSSwapInt32: it's `static`, defined in the header
+// skipped _OSSwapInt64: it's `static`, defined in the header
+// skipped div: it uses `struct div_t`, which the header doesn't define
+// skipped ldiv: it uses `struct ldiv_t`, which the header doesn't define
+// skipped lldiv: it uses `struct lldiv_t`, which the header doesn't define
+// skipped strtold: it uses `long double`
+// skipped acosl: it uses `long double`
+// skipped asinl: it uses `long double`
+// skipped atanl: it uses `long double`
+// skipped atan2l: it uses `long double`
+// skipped cosl: it uses `long double`
+// skipped sinl: it uses `long double`
+// skipped tanl: it uses `long double`
+// skipped acoshl: it uses `long double`
+// skipped asinhl: it uses `long double`
+// skipped atanhl: it uses `long double`
+// skipped coshl: it uses `long double`
+// skipped sinhl: it uses `long double`
+// skipped tanhl: it uses `long double`
+// skipped expl: it uses `long double`
+// skipped exp2l: it uses `long double`
+// skipped expm1l: it uses `long double`
+// skipped logl: it uses `long double`
+// skipped log10l: it uses `long double`
+// skipped log2l: it uses `long double`
+// skipped log1pl: it uses `long double`
+// skipped logbl: it uses `long double`
+// skipped modfl: it uses `long double`
+// skipped ldexpl: it uses `long double`
+// skipped frexpl: it uses `long double`
+// skipped ilogbl: it uses `long double`
+// skipped scalbnl: it uses `long double`
+// skipped scalblnl: it uses `long double`
+// skipped fabsl: it uses `long double`
+// skipped cbrtl: it uses `long double`
+// skipped hypotl: it uses `long double`
+// skipped powl: it uses `long double`
+// skipped sqrtl: it uses `long double`
+// skipped erfl: it uses `long double`
+// skipped erfcl: it uses `long double`
+// skipped lgammal: it uses `long double`
+// skipped tgammal: it uses `long double`
+// skipped ceill: it uses `long double`
+// skipped floorl: it uses `long double`
+// skipped nearbyintl: it uses `long double`
+// skipped rintl: it uses `long double`
+// skipped lrintl: it uses `long double`
+// skipped roundl: it uses `long double`
+// skipped lroundl: it uses `long double`
+// skipped llrintl: it uses `long double`
+// skipped llroundl: it uses `long double`
+// skipped truncl: it uses `long double`
+// skipped fmodl: it uses `long double`
+// skipped remainderl: it uses `long double`
+// skipped remquol: it uses `long double`
+// skipped copysignl: it uses `long double`
+// skipped nanl: it uses `long double`
+// skipped nextafterl: it uses `long double`
+// skipped nexttoward: it uses `long double`
+// skipped nexttowardf: it uses `long double`
+// skipped nexttowardl: it uses `long double`
+// skipped fdiml: it uses `long double`
+// skipped fmaxl: it uses `long double`
+// skipped fminl: it uses `long double`
+// skipped fmal: it uses `long double`
+
+/// A structure representing a resource limit.  The address of an instance
+/// of this structure is the second parameter to getrlimit()/setrlimit().
+pub struct Rlimit {
+    /// current (soft) limit
+    pub rlim_cur: u64,
+    /// maximum value for rlim_cur
+    pub rlim_max: u64,
+}
+
+/// A structure representing an accounting of resource utilization.  The
+/// address of an instance of this structure is the second parameter to
+/// getrusage().
+///
+/// Note: All values other than ru_utime and ru_stime are implementaiton
+///       defined and subject to change in a future release.  Their use
+///       is discouraged for standards compliant programs.
+pub struct Rusage {
+    /// user time used (PL)
+    pub ru_utime: Timeval,
+    /// system time used (PL)
+    pub ru_stime: Timeval,
+    /// max resident set size (PL)
+    pub ru_maxrss: i64,
+    /// integral shared memory size (NU)
+    pub ru_ixrss: i64,
+    /// integral unshared data (NU)
+    pub ru_idrss: i64,
+    /// integral unshared stack (NU)
+    pub ru_isrss: i64,
+    /// page reclaims (NU)
+    pub ru_minflt: i64,
+    /// page faults (NU)
+    pub ru_majflt: i64,
+    /// swaps (NU)
+    pub ru_nswap: i64,
+    /// block input operations (atomic)
+    pub ru_inblock: i64,
+    /// block output operations (atomic)
+    pub ru_oublock: i64,
+    /// messages sent (atomic)
+    pub ru_msgsnd: i64,
+    /// messages received (atomic)
+    pub ru_msgrcv: i64,
+    /// signals received (atomic)
+    pub ru_nsignals: i64,
+    /// voluntary context switches (atomic)
+    pub ru_nvcsw: i64,
+    /// involuntary "
+    pub ru_nivcsw: i64,
+}
+
+pub struct Timespec {
+    pub tv_sec: i64,
+    pub tv_nsec: i64,
+}
+
+pub struct Timeval {
+    /// seconds
+    pub tv_sec: i64,
+    /// and microseconds
+    pub tv_usec: i32,
+}
+
+pub struct Tm {
+    /// seconds after the minute [0-60]
+    pub tm_sec: i32,
+    /// minutes after the hour [0-59]
+    pub tm_min: i32,
+    /// hours since midnight [0-23]
+    pub tm_hour: i32,
+    /// day of the month [1-31]
+    pub tm_mday: i32,
+    /// months since January [0-11]
+    pub tm_mon: i32,
+    /// years since 1900
+    pub tm_year: i32,
+    /// days since Sunday [0-6]
+    pub tm_wday: i32,
+    /// days since January 1 [0-365]
+    pub tm_yday: i32,
+    /// Daylight Savings Time flag
+    pub tm_isdst: i32,
+    /// offset from UTC in seconds
+    pub tm_gmtoff: i64,
+    /// timezone abbreviation
+    pub tm_zone: *,
+}
+
+pub @const MAC_OS_X_VERSION_10_0: i32 = 1000;
+pub @const MAC_OS_X_VERSION_10_1: i32 = 1010;
+pub @const MAC_OS_X_VERSION_10_2: i32 = 1020;
+pub @const MAC_OS_X_VERSION_10_3: i32 = 1030;
+pub @const MAC_OS_X_VERSION_10_4: i32 = 1040;
+pub @const MAC_OS_X_VERSION_10_5: i32 = 1050;
+pub @const MAC_OS_X_VERSION_10_6: i32 = 1060;
+pub @const MAC_OS_X_VERSION_10_7: i32 = 1070;
+pub @const MAC_OS_X_VERSION_10_8: i32 = 1080;
+pub @const MAC_OS_X_VERSION_10_9: i32 = 1090;
+pub @const MAC_OS_X_VERSION_10_10: i32 = 101000;
+pub @const MAC_OS_X_VERSION_10_10_2: i32 = 101002;
+pub @const MAC_OS_X_VERSION_10_10_3: i32 = 101003;
+pub @const MAC_OS_X_VERSION_10_11: i32 = 101100;
+pub @const MAC_OS_X_VERSION_10_11_2: i32 = 101102;
+pub @const MAC_OS_X_VERSION_10_11_3: i32 = 101103;
+pub @const MAC_OS_X_VERSION_10_11_4: i32 = 101104;
+pub @const MAC_OS_X_VERSION_10_12: i32 = 101200;
+pub @const MAC_OS_X_VERSION_10_12_1: i32 = 101201;
+pub @const MAC_OS_X_VERSION_10_12_2: i32 = 101202;
+pub @const MAC_OS_X_VERSION_10_12_4: i32 = 101204;
+pub @const MAC_OS_X_VERSION_10_13: i32 = 101300;
+pub @const MAC_OS_X_VERSION_10_13_1: i32 = 101301;
+pub @const MAC_OS_X_VERSION_10_13_2: i32 = 101302;
+pub @const MAC_OS_X_VERSION_10_13_4: i32 = 101304;
+pub @const MAC_OS_X_VERSION_10_14: i32 = 101400;
+pub @const MAC_OS_X_VERSION_10_14_1: i32 = 101401;
+pub @const MAC_OS_X_VERSION_10_14_4: i32 = 101404;
+pub @const MAC_OS_X_VERSION_10_14_5: i32 = 101405;
+pub @const MAC_OS_X_VERSION_10_14_6: i32 = 101406;
+pub @const MAC_OS_X_VERSION_10_15: i32 = 101500;
+pub @const MAC_OS_X_VERSION_10_15_1: i32 = 101501;
+pub @const MAC_OS_X_VERSION_10_15_4: i32 = 101504;
+pub @const MAC_OS_X_VERSION_10_16: i32 = 101600;
+pub @const MAC_OS_VERSION_11_0: i32 = 110000;
+pub @const MAC_OS_VERSION_11_1: i32 = 110100;
+pub @const MAC_OS_VERSION_11_3: i32 = 110300;
+pub @const MAC_OS_VERSION_11_4: i32 = 110400;
+pub @const MAC_OS_VERSION_11_5: i32 = 110500;
+pub @const MAC_OS_VERSION_11_6: i32 = 110600;
+pub @const MAC_OS_VERSION_12_0: i32 = 120000;
+pub @const MAC_OS_VERSION_12_1: i32 = 120100;
+pub @const MAC_OS_VERSION_12_2: i32 = 120200;
+pub @const MAC_OS_VERSION_12_3: i32 = 120300;
+pub @const MAC_OS_VERSION_12_4: i32 = 120400;
+pub @const MAC_OS_VERSION_12_5: i32 = 120500;
+pub @const MAC_OS_VERSION_12_6: i32 = 120600;
+pub @const MAC_OS_VERSION_12_7: i32 = 120700;
+pub @const MAC_OS_VERSION_13_0: i32 = 130000;
+pub @const MAC_OS_VERSION_13_1: i32 = 130100;
+pub @const MAC_OS_VERSION_13_2: i32 = 130200;
+pub @const MAC_OS_VERSION_13_3: i32 = 130300;
+pub @const MAC_OS_VERSION_13_4: i32 = 130400;
+pub @const MAC_OS_VERSION_13_5: i32 = 130500;
+pub @const MAC_OS_VERSION_13_6: i32 = 130600;
+pub @const MAC_OS_VERSION_13_7: i32 = 130700;
+pub @const MAC_OS_VERSION_14_0: i32 = 140000;
+pub @const MAC_OS_VERSION_14_1: i32 = 140100;
+pub @const MAC_OS_VERSION_14_2: i32 = 140200;
+pub @const MAC_OS_VERSION_14_3: i32 = 140300;
+pub @const MAC_OS_VERSION_14_4: i32 = 140400;
+pub @const MAC_OS_VERSION_14_5: i32 = 140500;
+pub @const MAC_OS_VERSION_14_6: i32 = 140600;
+pub @const MAC_OS_VERSION_14_7: i32 = 140700;
+pub @const MAC_OS_VERSION_15_0: i32 = 150000;
+pub @const MAC_OS_VERSION_15_1: i32 = 150100;
+pub @const MAC_OS_VERSION_15_2: i32 = 150200;
+pub @const MAC_OS_VERSION_15_3: i32 = 150300;
+pub @const MAC_OS_VERSION_15_4: i32 = 150400;
+pub @const MAC_OS_VERSION_15_5: i32 = 150500;
+pub @const MAC_OS_VERSION_15_6: i32 = 150600;
+pub @const MAC_OS_VERSION_16_0: i32 = 160000;
+pub @const MAC_OS_VERSION_26_0: i32 = 260000;
+pub @const MAC_OS_VERSION_26_1: i32 = 260100;
+pub @const MAC_OS_VERSION_26_2: i32 = 260200;
+pub @const MAC_OS_VERSION_26_3: i32 = 260300;
+pub @const MAC_OS_VERSION_26_4: i32 = 260400;
+pub @const MAC_OS_VERSION_26_5: i32 = 260500;
+pub @const MAC_OS_VERSION_26_6: i32 = 260600;
+pub @const MAC_OS_VERSION_27_0: i32 = 270000;
+pub @const RENAME_SECLUDE: i32 = 1;
+pub @const RENAME_SWAP: i32 = 2;
+pub @const RENAME_EXCL: i32 = 4;
+pub @const RENAME_RESERVED1: i32 = 8;
+pub @const RENAME_NOFOLLOW_ANY: i32 = 16;
+pub @const RENAME_RESOLVE_BENEATH: i32 = 32;
+/// set file offset to offset
+pub @const SEEK_SET: i32 = 0;
+/// set file offset to current plus offset
+pub @const SEEK_CUR: i32 = 1;
+/// set file offset to EOF plus offset
+pub @const SEEK_END: i32 = 2;
+/// set file offset to the start of the next hole greater than or equal to the supplied offset
+pub @const SEEK_HOLE: i32 = 3;
+/// set file offset to the start of the next non-hole file region greater than or equal to the supplied offset
+pub @const SEEK_DATA: i32 = 4;
+/// size of buffer used by setbuf
+pub @const BUFSIZ: i32 = 1024;
+pub @const EOF: i32 = -1;
+/// must be <= OPEN_MAX <sys/syslimits.h>
+pub @const FOPEN_MAX: i32 = 20;
+/// must be <= PATH_MAX <sys/syslimits.h>
+pub @const FILENAME_MAX: i32 = 1024;
+pub @const P_tmpdir: cstr = "/var/tmp/";
+/// XXX must be == PATH_MAX
+pub @const L_tmpnam: i32 = 1024;
+pub @const TMP_MAX: i32 = 308915776;
+/// size for ctermid(); PATH_MAX
+pub @const L_ctermid: i32 = 1024;
+pub @const NSIG: i32 = 32;
+/// hangup
+pub @const SIGHUP: i32 = 1;
+/// interrupt
+pub @const SIGINT: i32 = 2;
+/// quit
+pub @const SIGQUIT: i32 = 3;
+/// illegal instruction (not reset when caught)
+pub @const SIGILL: i32 = 4;
+/// trace trap (not reset when caught)
+pub @const SIGTRAP: i32 = 5;
+/// abort()
+pub @const SIGABRT: i32 = 6;
+/// compatibility
+pub @const SIGIOT: i32 = 6;
+/// EMT instruction
+pub @const SIGEMT: i32 = 7;
+/// floating point exception
+pub @const SIGFPE: i32 = 8;
+/// kill (cannot be caught or ignored)
+pub @const SIGKILL: i32 = 9;
+/// bus error
+pub @const SIGBUS: i32 = 10;
+/// segmentation violation
+pub @const SIGSEGV: i32 = 11;
+/// bad argument to system call
+pub @const SIGSYS: i32 = 12;
+/// write on a pipe with no one to read it
+pub @const SIGPIPE: i32 = 13;
+/// alarm clock
+pub @const SIGALRM: i32 = 14;
+/// software termination signal from kill
+pub @const SIGTERM: i32 = 15;
+/// urgent condition on IO channel
+pub @const SIGURG: i32 = 16;
+/// sendable stop signal not from tty
+pub @const SIGSTOP: i32 = 17;
+/// stop signal from tty
+pub @const SIGTSTP: i32 = 18;
+/// continue a stopped process
+pub @const SIGCONT: i32 = 19;
+/// to parent on child stop or exit
+pub @const SIGCHLD: i32 = 20;
+/// to readers pgrp upon background tty read
+pub @const SIGTTIN: i32 = 21;
+/// like TTIN for output if (tp->t_local&LTOSTOP)
+pub @const SIGTTOU: i32 = 22;
+/// input/output possible signal
+pub @const SIGIO: i32 = 23;
+/// exceeded CPU time limit
+pub @const SIGXCPU: i32 = 24;
+/// exceeded file size limit
+pub @const SIGXFSZ: i32 = 25;
+/// virtual time alarm
+pub @const SIGVTALRM: i32 = 26;
+/// profiling time alarm
+pub @const SIGPROF: i32 = 27;
+/// window size changes
+pub @const SIGWINCH: i32 = 28;
+/// information request
+pub @const SIGINFO: i32 = 29;
+/// user defined signal 1
+pub @const SIGUSR1: i32 = 30;
+/// user defined signal 2
+pub @const SIGUSR2: i32 = 31;
+/// No async notification
+pub @const SIGEV_NONE: i32 = 0;
+/// aio - completion notification
+pub @const SIGEV_SIGNAL: i32 = 1;
+/// [NOTIMP] [RTS] call notification function
+pub @const SIGEV_THREAD: i32 = 3;
+/// Generate a kevent
+pub @const SIGEV_KEVENT: i32 = 4;
+/// if only I knew...
+pub @const ILL_NOOP: i32 = 0;
+/// [XSI] illegal opcode
+pub @const ILL_ILLOPC: i32 = 1;
+/// [XSI] illegal trap
+pub @const ILL_ILLTRP: i32 = 2;
+/// [XSI] privileged opcode
+pub @const ILL_PRVOPC: i32 = 3;
+/// [XSI] illegal operand -NOTIMP
+pub @const ILL_ILLOPN: i32 = 4;
+/// [XSI] illegal addressing mode -NOTIMP
+pub @const ILL_ILLADR: i32 = 5;
+/// [XSI] privileged register -NOTIMP
+pub @const ILL_PRVREG: i32 = 6;
+/// [XSI] coprocessor error -NOTIMP
+pub @const ILL_COPROC: i32 = 7;
+/// [XSI] internal stack error -NOTIMP
+pub @const ILL_BADSTK: i32 = 8;
+/// if only I knew...
+pub @const FPE_NOOP: i32 = 0;
+/// [XSI] floating point divide by zero
+pub @const FPE_FLTDIV: i32 = 1;
+/// [XSI] floating point overflow
+pub @const FPE_FLTOVF: i32 = 2;
+/// [XSI] floating point underflow
+pub @const FPE_FLTUND: i32 = 3;
+/// [XSI] floating point inexact result
+pub @const FPE_FLTRES: i32 = 4;
+/// [XSI] invalid floating point operation
+pub @const FPE_FLTINV: i32 = 5;
+/// [XSI] subscript out of range -NOTIMP
+pub @const FPE_FLTSUB: i32 = 6;
+/// [XSI] integer divide by zero
+pub @const FPE_INTDIV: i32 = 7;
+/// [XSI] integer overflow
+pub @const FPE_INTOVF: i32 = 8;
+/// if only I knew...
+pub @const SEGV_NOOP: i32 = 0;
+/// [XSI] address not mapped to object
+pub @const SEGV_MAPERR: i32 = 1;
+/// [XSI] invalid permission for mapped object
+pub @const SEGV_ACCERR: i32 = 2;
+/// if only I knew...
+pub @const BUS_NOOP: i32 = 0;
+/// [XSI] Invalid address alignment
+pub @const BUS_ADRALN: i32 = 1;
+/// [XSI] Nonexistent physical address -NOTIMP
+pub @const BUS_ADRERR: i32 = 2;
+/// [XSI] Object-specific HW error - NOTIMP
+pub @const BUS_OBJERR: i32 = 3;
+/// [XSI] Process breakpoint -NOTIMP
+pub @const TRAP_BRKPT: i32 = 1;
+/// [XSI] Process trace trap -NOTIMP
+pub @const TRAP_TRACE: i32 = 2;
+/// if only I knew...
+pub @const CLD_NOOP: i32 = 0;
+/// [XSI] child has exited
+pub @const CLD_EXITED: i32 = 1;
+/// [XSI] terminated abnormally, no core file
+pub @const CLD_KILLED: i32 = 2;
+/// [XSI] terminated abnormally, core file
+pub @const CLD_DUMPED: i32 = 3;
+/// [XSI] traced child has trapped
+pub @const CLD_TRAPPED: i32 = 4;
+/// [XSI] child has stopped
+pub @const CLD_STOPPED: i32 = 5;
+/// [XSI] stopped child has continued
+pub @const CLD_CONTINUED: i32 = 6;
+/// [XSR] Data input available
+pub @const POLL_IN: i32 = 1;
+/// [XSR] Output buffers available
+pub @const POLL_OUT: i32 = 2;
+/// [XSR] Input message available
+pub @const POLL_MSG: i32 = 3;
+/// [XSR] I/O error
+pub @const POLL_ERR: i32 = 4;
+/// [XSR] High priority input available
+pub @const POLL_PRI: i32 = 5;
+/// [XSR] Device disconnected
+pub @const POLL_HUP: i32 = 6;
+/// take signal on signal stack
+pub @const SA_ONSTACK: i32 = 1;
+/// restart system on signal return
+pub @const SA_RESTART: i32 = 2;
+/// reset to SIG_DFL when taking signal
+pub @const SA_RESETHAND: i32 = 4;
+/// do not generate SIGCHLD on child stop
+pub @const SA_NOCLDSTOP: i32 = 8;
+/// don't mask the signal we're delivering
+pub @const SA_NODEFER: i32 = 16;
+/// don't keep zombies around
+pub @const SA_NOCLDWAIT: i32 = 32;
+/// signal handler with SA_SIGINFO args
+pub @const SA_SIGINFO: i32 = 64;
+/// do not bounce off kernel's sigtramp
+pub @const SA_USERTRAMP: i32 = 256;
+/// signal handler with SA_SIGINFO args with 64bit regs information
+pub @const SA_64REGSET: i32 = 512;
+pub @const SA_USERSPACE_MASK: i32 = 127;
+/// block specified signal set
+pub @const SIG_BLOCK: i32 = 1;
+/// unblock specified signal set
+pub @const SIG_UNBLOCK: i32 = 2;
+/// set specified signal set
+pub @const SIG_SETMASK: i32 = 3;
+/// [CX] signal from kill()
+pub @const SI_USER: i32 = 65537;
+/// [CX] signal from sigqueue()
+pub @const SI_QUEUE: i32 = 65538;
+/// [CX] timer expiration
+pub @const SI_TIMER: i32 = 65539;
+/// [CX] aio request completion
+pub @const SI_ASYNCIO: i32 = 65540;
+/// [CX]	from message arrival on empty queue
+pub @const SI_MESGQ: i32 = 65541;
+/// take signal on signal stack
+pub @const SS_ONSTACK: i32 = 1;
+/// disable taking signals on alternate stack
+pub @const SS_DISABLE: i32 = 4;
+/// (32K)minimum allowable stack
+pub @const MINSIGSTKSZ: i32 = 32768;
+/// (128K)recommended stack size
+pub @const SIGSTKSZ: i32 = 131072;
+pub @const SV_ONSTACK: i32 = 1;
+/// same bit, opposite sense
+pub @const SV_INTERRUPT: i32 = 2;
+pub @const SV_RESETHAND: i32 = 4;
+pub @const SV_NODEFER: i32 = 16;
+pub @const SV_NOCLDSTOP: i32 = 8;
+pub @const SV_SIGINFO: i32 = 64;
+pub @const INT8_MAX: i32 = 127;
+pub @const INT16_MAX: i32 = 32767;
+pub @const INT32_MAX: i32 = 2147483647;
+pub @const INT64_MAX: i64 = 9223372036854775807;
+pub @const INT8_MIN: i32 = -128;
+pub @const INT16_MIN: i32 = -32768;
+pub @const INT32_MIN: i32 = -2147483648;
+pub @const INT64_MIN: i64 = -9223372036854775808;
+pub @const UINT8_MAX: i32 = 255;
+pub @const UINT16_MAX: i32 = 65535;
+pub @const UINT32_MAX: u32 = 4294967295;
+pub @const UINT64_MAX: u64 = 18446744073709551615;
+pub @const INT_LEAST8_MIN: i32 = -128;
+pub @const INT_LEAST16_MIN: i32 = -32768;
+pub @const INT_LEAST32_MIN: i32 = -2147483648;
+pub @const INT_LEAST64_MIN: i64 = -9223372036854775808;
+pub @const INT_LEAST8_MAX: i32 = 127;
+pub @const INT_LEAST16_MAX: i32 = 32767;
+pub @const INT_LEAST32_MAX: i32 = 2147483647;
+pub @const INT_LEAST64_MAX: i64 = 9223372036854775807;
+pub @const UINT_LEAST8_MAX: i32 = 255;
+pub @const UINT_LEAST16_MAX: i32 = 65535;
+pub @const UINT_LEAST32_MAX: u32 = 4294967295;
+pub @const UINT_LEAST64_MAX: u64 = 18446744073709551615;
+pub @const INT_FAST8_MIN: i32 = -128;
+pub @const INT_FAST16_MIN: i32 = -32768;
+pub @const INT_FAST32_MIN: i32 = -2147483648;
+pub @const INT_FAST64_MIN: i64 = -9223372036854775808;
+pub @const INT_FAST8_MAX: i32 = 127;
+pub @const INT_FAST16_MAX: i32 = 32767;
+pub @const INT_FAST32_MAX: i32 = 2147483647;
+pub @const INT_FAST64_MAX: i64 = 9223372036854775807;
+pub @const UINT_FAST8_MAX: i32 = 255;
+pub @const UINT_FAST16_MAX: i32 = 65535;
+pub @const UINT_FAST32_MAX: u32 = 4294967295;
+pub @const UINT_FAST64_MAX: u64 = 18446744073709551615;
+pub @const INTPTR_MAX: i64 = 9223372036854775807;
+pub @const INTPTR_MIN: i64 = -9223372036854775808;
+pub @const UINTPTR_MAX: u64 = 18446744073709551615;
+pub @const SIZE_MAX: u64 = 18446744073709551615;
+pub @const RSIZE_MAX: u64 = 9223372036854775807;
+pub @const WCHAR_MAX: i32 = 2147483647;
+pub @const WCHAR_MIN: i32 = -2147483648;
+pub @const WINT_MIN: i32 = -2147483648;
+pub @const WINT_MAX: i32 = 2147483647;
+pub @const SIG_ATOMIC_MIN: i32 = -2147483648;
+pub @const SIG_ATOMIC_MAX: i32 = 2147483647;
+/// Second argument is a PID
+pub @const PRIO_PROCESS: i32 = 0;
+/// Second argument is a GID
+pub @const PRIO_PGRP: i32 = 1;
+/// Second argument is a UID
+pub @const PRIO_USER: i32 = 2;
+/// Second argument is always 0 (current thread)
+pub @const PRIO_DARWIN_THREAD: i32 = 3;
+/// Second argument is a PID
+pub @const PRIO_DARWIN_PROCESS: i32 = 4;
+pub @const PRIO_MIN: i32 = -20;
+pub @const PRIO_MAX: i32 = 20;
+pub @const PRIO_DARWIN_BG: i32 = 4096;
+pub @const PRIO_DARWIN_NONUI: i32 = 4097;
+/// Current process information
+pub @const RUSAGE_SELF: i32 = 0;
+/// Current process' children
+pub @const RUSAGE_CHILDREN: i32 = -1;
+pub @const RUSAGE_INFO_V0: i32 = 0;
+pub @const RUSAGE_INFO_V1: i32 = 1;
+pub @const RUSAGE_INFO_V2: i32 = 2;
+pub @const RUSAGE_INFO_V3: i32 = 3;
+pub @const RUSAGE_INFO_V4: i32 = 4;
+pub @const RUSAGE_INFO_V5: i32 = 5;
+pub @const RUSAGE_INFO_V6: i32 = 6;
+pub @const RUSAGE_INFO_CURRENT: i32 = 6;
+/// proc has reslid shared cache
+pub @const RU_PROC_RUNS_RESLIDE: i32 = 1;
+/// cpu time per process
+pub @const RLIMIT_CPU: i32 = 0;
+/// file size
+pub @const RLIMIT_FSIZE: i32 = 1;
+/// data segment size
+pub @const RLIMIT_DATA: i32 = 2;
+/// stack size
+pub @const RLIMIT_STACK: i32 = 3;
+/// core file size
+pub @const RLIMIT_CORE: i32 = 4;
+/// address space (resident set size)
+pub @const RLIMIT_AS: i32 = 5;
+/// source compatibility alias
+pub @const RLIMIT_RSS: i32 = 5;
+/// locked-in-memory address space
+pub @const RLIMIT_MEMLOCK: i32 = 6;
+/// number of processes
+pub @const RLIMIT_NPROC: i32 = 7;
+/// number of open files
+pub @const RLIMIT_NOFILE: i32 = 8;
+/// total number of resource limits
+pub @const RLIM_NLIMITS: i32 = 9;
+/// Configure the wakeups monitor.
+pub @const RLIMIT_WAKEUPS_MONITOR: i32 = 1;
+/// Configure the CPU usage monitor.
+pub @const RLIMIT_CPU_USAGE_MONITOR: i32 = 2;
+/// Configure a blocking, per-thread, CPU limits.
+pub @const RLIMIT_THREAD_CPULIMITS: i32 = 3;
+/// Configure memory footprint interval tracking
+pub @const RLIMIT_FOOTPRINT_INTERVAL: i32 = 4;
+pub @const WAKEMON_ENABLE: i32 = 1;
+pub @const WAKEMON_DISABLE: i32 = 2;
+pub @const WAKEMON_GET_PARAMS: i32 = 4;
+pub @const WAKEMON_SET_DEFAULTS: i32 = 8;
+/// Configure the task so that violations are fatal.
+pub @const WAKEMON_MAKE_FATAL: i32 = 16;
+pub @const CPUMON_MAKE_FATAL: i32 = 4096;
+/// Reset the footprint interval counter to zero
+pub @const FOOTPRINT_INTERVAL_RESET: i32 = 1;
+pub @const IOPOL_TYPE_DISK: i32 = 0;
+pub @const IOPOL_TYPE_VFS_ATIME_UPDATES: i32 = 2;
+pub @const IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES: i32 = 3;
+pub @const IOPOL_TYPE_VFS_STATFS_NO_DATA_VOLUME: i32 = 4;
+pub @const IOPOL_TYPE_VFS_TRIGGER_RESOLVE: i32 = 5;
+pub @const IOPOL_TYPE_VFS_CONTENT_PROTECTION: i32 = 6;
+pub @const IOPOL_TYPE_VFS_IGNORE_PERMISSIONS: i32 = 7;
+pub @const IOPOL_TYPE_VFS_SKIP_MTIME_UPDATE: i32 = 8;
+pub @const IOPOL_TYPE_VFS_ALLOW_LOW_SPACE_WRITES: i32 = 9;
+pub @const IOPOL_TYPE_VFS_DISALLOW_RW_FOR_O_EVTONLY: i32 = 10;
+pub @const IOPOL_TYPE_VFS_ENTITLED_RESERVE_ACCESS: i32 = 14;
+pub @const IOPOL_TYPE_VFS_IGNORE_CONTENT_PROTECTION: i32 = 6;
+pub @const IOPOL_SCOPE_PROCESS: i32 = 0;
+pub @const IOPOL_SCOPE_THREAD: i32 = 1;
+pub @const IOPOL_SCOPE_DARWIN_BG: i32 = 2;
+pub @const IOPOL_DEFAULT: i32 = 0;
+pub @const IOPOL_IMPORTANT: i32 = 1;
+pub @const IOPOL_PASSIVE: i32 = 2;
+pub @const IOPOL_THROTTLE: i32 = 3;
+pub @const IOPOL_UTILITY: i32 = 4;
+pub @const IOPOL_STANDARD: i32 = 5;
+pub @const IOPOL_APPLICATION: i32 = 5;
+pub @const IOPOL_NORMAL: i32 = 1;
+pub @const IOPOL_ATIME_UPDATES_DEFAULT: i32 = 0;
+pub @const IOPOL_ATIME_UPDATES_OFF: i32 = 1;
+pub @const IOPOL_MATERIALIZE_DATALESS_FILES_DEFAULT: i32 = 0;
+pub @const IOPOL_MATERIALIZE_DATALESS_FILES_OFF: i32 = 1;
+pub @const IOPOL_MATERIALIZE_DATALESS_FILES_ON: i32 = 2;
+pub @const IOPOL_MATERIALIZE_DATALESS_FILES_ORIG: i32 = 4;
+pub @const IOPOL_MATERIALIZE_DATALESS_FILES_BASIC_MASK: i32 = 3;
+pub @const IOPOL_VFS_STATFS_NO_DATA_VOLUME_DEFAULT: i32 = 0;
+pub @const IOPOL_VFS_STATFS_FORCE_NO_DATA_VOLUME: i32 = 1;
+pub @const IOPOL_VFS_TRIGGER_RESOLVE_DEFAULT: i32 = 0;
+pub @const IOPOL_VFS_TRIGGER_RESOLVE_OFF: i32 = 1;
+pub @const IOPOL_VFS_CONTENT_PROTECTION_DEFAULT: i32 = 0;
+pub @const IOPOL_VFS_CONTENT_PROTECTION_IGNORE: i32 = 1;
+pub @const IOPOL_VFS_CONTENT_PROTECTION_STRICT: i32 = 2;
+pub @const IOPOL_VFS_IGNORE_PERMISSIONS_OFF: i32 = 0;
+pub @const IOPOL_VFS_IGNORE_PERMISSIONS_ON: i32 = 1;
+pub @const IOPOL_VFS_SKIP_MTIME_UPDATE_OFF: i32 = 0;
+pub @const IOPOL_VFS_SKIP_MTIME_UPDATE_ON: i32 = 1;
+pub @const IOPOL_VFS_SKIP_MTIME_UPDATE_IGNORE: i32 = 2;
+pub @const IOPOL_VFS_ALLOW_LOW_SPACE_WRITES_OFF: i32 = 0;
+pub @const IOPOL_VFS_ALLOW_LOW_SPACE_WRITES_ON: i32 = 1;
+pub @const IOPOL_VFS_DISALLOW_RW_FOR_O_EVTONLY_DEFAULT: i32 = 0;
+pub @const IOPOL_VFS_DISALLOW_RW_FOR_O_EVTONLY_ON: i32 = 1;
+pub @const IOPOL_VFS_NOCACHE_WRITE_FS_BLKSIZE_DEFAULT: i32 = 0;
+pub @const IOPOL_VFS_NOCACHE_WRITE_FS_BLKSIZE_ON: i32 = 1;
+pub @const IOPOL_VFS_ENTITLED_RESERVE_ACCESS_OFF: i32 = 0;
+pub @const IOPOL_VFS_ENTITLED_RESERVE_ACCESS_ON: i32 = 1;
+/// [XSI] no hang in wait/no child to reap
+pub @const WNOHANG: i32 = 1;
+/// [XSI] notify on stop, untraced child
+pub @const WUNTRACED: i32 = 2;
+pub @const WCOREFLAG: i32 = 128;
+/// [XSI] Processes which have exitted
+pub @const WEXITED: i32 = 4;
+/// [XSI] Any child stopped by signal
+pub @const WSTOPPED: i32 = 8;
+/// [XSI] Any child stopped then continued
+pub @const WCONTINUED: i32 = 16;
+/// [XSI] Leave process returned waitable
+pub @const WNOWAIT: i32 = 32;
+/// any process
+pub @const WAIT_ANY: i32 = -1;
+/// any process in my process group
+pub @const WAIT_MYPGRP: i32 = 0;
+pub @const LITTLE_ENDIAN: i32 = 1234;
+pub @const BIG_ENDIAN: i32 = 4321;
+pub @const PDP_ENDIAN: i32 = 3412;
+pub @const BYTE_ORDER: i32 = 1234;
+pub @const EXIT_FAILURE: i32 = 1;
+pub @const EXIT_SUCCESS: i32 = 0;
+pub @const RAND_MAX: i32 = 2147483647;
+pub @const FP_NAN: i32 = 1;
+pub @const FP_INFINITE: i32 = 2;
+pub @const FP_ZERO: i32 = 3;
+pub @const FP_NORMAL: i32 = 4;
+pub @const FP_SUBNORMAL: i32 = 5;
+/// legacy PowerPC support; this is otherwise unused
+pub @const FP_SUPERNORMAL: i32 = 6;
+pub @const FP_FAST_FMA: i32 = 1;
+pub @const FP_FAST_FMAF: i32 = 1;
+pub @const FP_FAST_FMAL: i32 = 1;
+pub @const FP_ILOGB0: i32 = -2147483648;
+pub @const FP_ILOGBNAN: i32 = -2147483648;
+/// errno set by math functions.
+pub @const MATH_ERRNO: i32 = 1;
+/// Exceptions raised by math functions.
+pub @const MATH_ERREXCEPT: i32 = 2;
+/// e
+pub @const M_E: f64 = 2.718281828459045;
+/// log2(e)
+pub @const M_LOG2E: f64 = 1.4426950408889634;
+/// log10(e)
+pub @const M_LOG10E: f64 = 0.4342944819032518;
+/// loge(2)
+pub @const M_LN2: f64 = 0.6931471805599453;
+/// loge(10)
+pub @const M_LN10: f64 = 2.302585092994046;
+/// pi
+pub @const M_PI: f64 = 3.141592653589793;
+/// pi/2
+pub @const M_PI_2: f64 = 1.5707963267948966;
+/// pi/4
+pub @const M_PI_4: f64 = 0.7853981633974483;
+/// 1/pi
+pub @const M_1_PI: f64 = 0.3183098861837907;
+/// 2/pi
+pub @const M_2_PI: f64 = 0.6366197723675814;
+/// 2/sqrt(pi)
+pub @const M_2_SQRTPI: f64 = 1.1283791670955126;
+/// sqrt(2)
+pub @const M_SQRT2: f64 = 1.4142135623730951;
+/// 1/sqrt(2)
+pub @const M_SQRT1_2: f64 = 0.7071067811865476;
+pub @const FP_SNAN: i32 = 1;
+pub @const FP_QNAN: i32 = 1;
+pub @const X_TLOSS: f64 = 14148475504056880.0;
+pub @const DOMAIN: i32 = 1;
+pub @const SING: i32 = 2;
+pub @const OVERFLOW: i32 = 3;
+pub @const UNDERFLOW: i32 = 4;
+pub @const TLOSS: i32 = 5;
+pub @const PLOSS: i32 = 6;
+/// time elapsed since epoch
+pub @const TIME_UTC: i32 = 1;
+/// test for existence of file
+pub @const F_OK: i32 = 0;
+/// test for execute or search permission
+pub @const X_OK: i32 = 1;
+/// test for write permission
+pub @const W_OK: i32 = 2;
+/// test for read permission
+pub @const R_OK: i32 = 4;
+pub @const L_SET: i32 = 0;
+pub @const L_INCR: i32 = 1;
+pub @const L_XTND: i32 = 2;
+pub @const ACCESSX_MAX_DESCRIPTORS: i32 = 100;
+pub @const ACCESSX_MAX_TABLESIZE: i32 = 16384;
+/// standard input file descriptor
+pub @const STDIN_FILENO: i32 = 0;
+/// standard output file descriptor
+pub @const STDOUT_FILENO: i32 = 1;
+/// standard error file descriptor
+pub @const STDERR_FILENO: i32 = 2;
+/// unlock locked section
+pub @const F_ULOCK: i32 = 0;
+/// lock a section for exclusive use
+pub @const F_LOCK: i32 = 1;
+/// test and lock a section for exclusive use
+pub @const F_TLOCK: i32 = 2;
+/// test a section for locks by other procs
+pub @const F_TEST: i32 = 3;
+pub @const FD_SETSIZE: i32 = 1024;
+/// Flush data and metadata to platter, not just to disk cache
+pub @const SYNC_VOLUME_FULLSYNC: i32 = 1;
+/// Wait for sync to complete
+pub @const SYNC_VOLUME_WAIT: i32 = 2;
+/// open for reading only
+pub @const O_RDONLY: i32 = 0;
+/// open for writing only
+pub @const O_WRONLY: i32 = 1;
+/// open for reading and writing
+pub @const O_RDWR: i32 = 2;
+/// mask for above modes
+pub @const O_ACCMODE: i32 = 3;
+pub @const FREAD: i32 = 1;
+pub @const FWRITE: i32 = 2;
+/// no delay
+pub @const O_NONBLOCK: i32 = 4;
+/// set append mode
+pub @const O_APPEND: i32 = 8;
+/// synch I/O file integrity
+pub @const O_SYNC: i32 = 128;
+/// open with shared file lock
+pub @const O_SHLOCK: i32 = 16;
+/// open with exclusive file lock
+pub @const O_EXLOCK: i32 = 32;
+/// signal pgrp when data ready
+pub @const O_ASYNC: i32 = 64;
+/// source compatibility: do not use
+pub @const O_FSYNC: i32 = 128;
+/// don't follow symlinks
+pub @const O_NOFOLLOW: i32 = 256;
+/// create if nonexistant
+pub @const O_CREAT: i32 = 512;
+/// truncate to zero length
+pub @const O_TRUNC: i32 = 1024;
+/// error if already exists
+pub @const O_EXCL: i32 = 2048;
+/// only for open(2), same value as FMARK
+pub @const O_RESOLVE_BENEATH: i32 = 4096;
+/// only for open(2), same value as FDEFER
+pub @const O_UNIQUE: i32 = 8192;
+/// descriptor requested for event notifications only
+pub @const O_EVTONLY: i32 = 32768;
+/// don't assign controlling terminal
+pub @const O_NOCTTY: i32 = 131072;
+pub @const O_DIRECTORY: i32 = 1048576;
+/// allow open of a symlink
+pub @const O_SYMLINK: i32 = 2097152;
+/// synch I/O data integrity
+pub @const O_DSYNC: i32 = 4194304;
+/// implicitly set FD_CLOEXEC
+pub @const O_CLOEXEC: i32 = 16777216;
+/// implicitly set FD_CLOFORK
+pub @const O_CLOFORK: i32 = 134217728;
+/// no symlinks allowed in path
+pub @const O_NOFOLLOW_ANY: i32 = 536870912;
+/// open file for execute only
+pub @const O_EXEC: i32 = 1073741824;
+/// open directory for search only
+pub @const O_SEARCH: i32 = 1074790400;
+pub @const AT_FDCWD: i32 = -2;
+/// Use effective ids in access check
+pub @const AT_EACCESS: i32 = 16;
+/// Act on the symlink itself not the target
+pub @const AT_SYMLINK_NOFOLLOW: i32 = 32;
+/// Act on target of symlink
+pub @const AT_SYMLINK_FOLLOW: i32 = 64;
+/// Path refers to directory
+pub @const AT_REMOVEDIR: i32 = 128;
+/// Return real device inodes resides on for fstatat(2)
+pub @const AT_REALDEV: i32 = 512;
+/// Use only the fd and Ignore the path for fstatat(2)
+pub @const AT_FDONLY: i32 = 1024;
+/// Path should not contain any symlinks
+pub @const AT_SYMLINK_NOFOLLOW_ANY: i32 = 2048;
+/// Path must reside in the hierarchy beneath the starting directory
+pub @const AT_RESOLVE_BENEATH: i32 = 8192;
+/// Don't delete busy files
+pub @const AT_NODELETEBUSY: i32 = 16384;
+/// prevent a path lookup from succeeding on a vnode with multiple links
+pub @const AT_UNIQUE: i32 = 32768;
+pub @const O_DP_GETRAWENCRYPTED: i32 = 1;
+pub @const O_DP_GETRAWUNENCRYPTED: i32 = 2;
+pub @const O_DP_AUTHENTICATE: i32 = 4;
+pub @const AUTH_OPEN_NOAUTHFD: i32 = -1;
+/// kernel/compat
+pub @const FAPPEND: i32 = 8;
+/// kernel/compat
+pub @const FASYNC: i32 = 64;
+/// kernel
+pub @const FFSYNC: i32 = 128;
+/// kernel
+pub @const FFDSYNC: i32 = 4194304;
+/// kernel
+pub @const FNONBLOCK: i32 = 4;
+/// compat
+pub @const FNDELAY: i32 = 4;
+/// compat
+pub @const O_NDELAY: i32 = 4;
+pub @const CPF_OVERWRITE: i32 = 1;
+pub @const CPF_IGNORE_MODE: i32 = 2;
+pub @const CPF_MASK: i32 = 3;
+/// duplicate file descriptor
+pub @const F_DUPFD: i32 = 0;
+/// get file descriptor flags
+pub @const F_GETFD: i32 = 1;
+/// set file descriptor flags
+pub @const F_SETFD: i32 = 2;
+/// get file status flags
+pub @const F_GETFL: i32 = 3;
+/// set file status flags
+pub @const F_SETFL: i32 = 4;
+/// get SIGIO/SIGURG proc/pgrp
+pub @const F_GETOWN: i32 = 5;
+/// set SIGIO/SIGURG proc/pgrp
+pub @const F_SETOWN: i32 = 6;
+/// get record locking information
+pub @const F_GETLK: i32 = 7;
+/// set record locking information
+pub @const F_SETLK: i32 = 8;
+/// F_SETLK; wait if blocked
+pub @const F_SETLKW: i32 = 9;
+/// F_SETLK; wait if blocked, return on timeout
+pub @const F_SETLKWTIMEOUT: i32 = 10;
+pub @const F_FLUSH_DATA: i32 = 40;
+/// Used for regression test
+pub @const F_CHKCLEAN: i32 = 41;
+/// Preallocate storage
+pub @const F_PREALLOCATE: i32 = 42;
+/// Truncate a file. Equivalent to calling truncate(2)
+pub @const F_SETSIZE: i32 = 43;
+/// Issue an advisory read async with no copy to user
+pub @const F_RDADVISE: i32 = 44;
+/// turn read ahead off/on for this fd
+pub @const F_RDAHEAD: i32 = 45;
+/// turn data caching off/on for this fd
+pub @const F_NOCACHE: i32 = 48;
+/// file offset to device offset
+pub @const F_LOG2PHYS: i32 = 49;
+/// return the full path of the fd
+pub @const F_GETPATH: i32 = 50;
+/// fsync + ask the drive to flush to the media
+pub @const F_FULLFSYNC: i32 = 51;
+/// find which component (if any) is a package
+pub @const F_PATHPKG_CHECK: i32 = 52;
+/// "freeze" all fs operations
+pub @const F_FREEZE_FS: i32 = 53;
+/// "thaw" all fs operations
+pub @const F_THAW_FS: i32 = 54;
+/// turn data caching off/on (globally) for this file
+pub @const F_GLOBAL_NOCACHE: i32 = 55;
+/// add detached signatures
+pub @const F_ADDSIGS: i32 = 59;
+/// add signature from same file (used by dyld for shared libs)
+pub @const F_ADDFILESIGS: i32 = 61;
+/// used in conjunction with F_NOCACHE to indicate that DIRECT, synchonous writes
+pub @const F_NODIRECT: i32 = 62;
+/// Get the protection class of a file from the EA, returns int
+pub @const F_GETPROTECTIONCLASS: i32 = 63;
+/// Set the protection class of a file for the EA, requires int
+pub @const F_SETPROTECTIONCLASS: i32 = 64;
+/// file offset to device offset, extended
+pub @const F_LOG2PHYS_EXT: i32 = 65;
+/// See man fcntl(2) F_GETLK
+pub @const F_GETLKPID: i32 = 66;
+/// Mark the file as being the backing store for another filesystem
+pub @const F_SETBACKINGSTORE: i32 = 70;
+/// return the full path of the FD, but error in specific mtmd circumstances
+pub @const F_GETPATH_MTMINFO: i32 = 71;
+/// Returns the code directory, with associated hashes, to the caller
+pub @const F_GETCODEDIR: i32 = 72;
+/// No SIGPIPE generated on EPIPE
+pub @const F_SETNOSIGPIPE: i32 = 73;
+/// Status of SIGPIPE for this fd
+pub @const F_GETNOSIGPIPE: i32 = 74;
+/// For some cases, we need to rewrap the key for AKS/MKB
+pub @const F_TRANSCODEKEY: i32 = 75;
+/// file being written to a by single writer... if throttling enabled, writes
+pub @const F_SINGLE_WRITER: i32 = 76;
+/// Get the protection version number for this filesystem
+pub @const F_GETPROTECTIONLEVEL: i32 = 77;
+/// Add detached code signatures (used by dyld for shared libs)
+pub @const F_FINDSIGS: i32 = 78;
+/// Add signature from same file, only if it is signed by Apple (used by dyld for simulator)
+pub @const F_ADDFILESIGS_FOR_DYLD_SIM: i32 = 83;
+/// fsync + issue barrier to drive
+pub @const F_BARRIERFSYNC: i32 = 85;
+/// Acquire or release open file description lock
+pub @const F_OFD_SETLK: i32 = 90;
+/// (as F_OFD_SETLK but blocking if conflicting lock)
+pub @const F_OFD_SETLKW: i32 = 91;
+/// Examine OFD lock
+pub @const F_OFD_GETLK: i32 = 92;
+/// (as F_OFD_SETLKW but return if timeout)
+pub @const F_OFD_SETLKWTIMEOUT: i32 = 93;
+/// Add signature from same file, return end offset in structure on success
+pub @const F_ADDFILESIGS_RETURN: i32 = 97;
+/// Check if Library Validation allows this Mach-O file to be mapped into the calling process
+pub @const F_CHECK_LV: i32 = 98;
+/// Deallocate a range of the file
+pub @const F_PUNCHHOLE: i32 = 99;
+/// Trim an active file
+pub @const F_TRIM_ACTIVE_FILE: i32 = 100;
+/// Asynchronous advisory read fcntl for regular and compressed file
+pub @const F_SPECULATIVE_READ: i32 = 101;
+/// return the full path without firmlinks of the fd
+pub @const F_GETPATH_NOFIRMLINK: i32 = 102;
+/// Add signature from same file, return information
+pub @const F_ADDFILESIGS_INFO: i32 = 103;
+/// Add supplemental signature from same file with fd reference to original
+pub @const F_ADDFILESUPPL: i32 = 104;
+/// Look up code signature information attached to a file or slice
+pub @const F_GETSIGSINFO: i32 = 105;
+/// Acquire or release lease
+pub @const F_SETLEASE: i32 = 106;
+/// Retrieve lease information
+pub @const F_GETLEASE: i32 = 107;
+/// Transfer allocated extents beyond leof to a different file
+pub @const F_TRANSFEREXTENTS: i32 = 110;
+/// Based on flags, query/set/delete a file's attribution tag
+pub @const F_ATTRIBUTION_TAG: i32 = 111;
+/// turn data caching off/on for this fd and relax size and alignment restrictions for write
+pub @const F_NOCACHE_EXT: i32 = 112;
+/// add detached signatures for main binary -- development only
+pub @const F_ADDSIGS_MAIN_BINARY: i32 = 113;
+pub @const FCNTL_FS_SPECIFIC_BASE: i32 = 65536;
+/// mark the dup with FD_CLOEXEC
+pub @const F_DUPFD_CLOEXEC: i32 = 67;
+/// mark the dup with FD_CLOFORK
+pub @const F_DUPFD_CLOFORK: i32 = 115;
+/// Issue multiple advisory reads async with no copy to user
+pub @const F_RDADVISEV: i32 = 116;
+/// close-on-exec flag
+pub @const FD_CLOEXEC: i32 = 1;
+/// close-on-fork flag
+pub @const FD_CLOFORK: i32 = 2;
+/// shared or read lock
+pub @const F_RDLCK: i32 = 1;
+/// unlock
+pub @const F_UNLCK: i32 = 2;
+/// exclusive or write lock
+pub @const F_WRLCK: i32 = 3;
+/// [XSI] type of file mask
+pub @const S_IFMT: i32 = 61440;
+/// [XSI] named pipe (fifo)
+pub @const S_IFIFO: i32 = 4096;
+/// [XSI] character special
+pub @const S_IFCHR: i32 = 8192;
+/// [XSI] directory
+pub @const S_IFDIR: i32 = 16384;
+/// [XSI] block special
+pub @const S_IFBLK: i32 = 24576;
+/// [XSI] regular
+pub @const S_IFREG: i32 = 32768;
+/// [XSI] symbolic link
+pub @const S_IFLNK: i32 = 40960;
+/// [XSI] socket
+pub @const S_IFSOCK: i32 = 49152;
+/// OBSOLETE: whiteout
+pub @const S_IFWHT: i32 = 57344;
+/// [XSI] RWX mask for owner
+pub @const S_IRWXU: i32 = 448;
+/// [XSI] R for owner
+pub @const S_IRUSR: i32 = 256;
+/// [XSI] W for owner
+pub @const S_IWUSR: i32 = 128;
+/// [XSI] X for owner
+pub @const S_IXUSR: i32 = 64;
+/// [XSI] RWX mask for group
+pub @const S_IRWXG: i32 = 56;
+/// [XSI] R for group
+pub @const S_IRGRP: i32 = 32;
+/// [XSI] W for group
+pub @const S_IWGRP: i32 = 16;
+/// [XSI] X for group
+pub @const S_IXGRP: i32 = 8;
+/// [XSI] RWX mask for other
+pub @const S_IRWXO: i32 = 7;
+/// [XSI] R for other
+pub @const S_IROTH: i32 = 4;
+/// [XSI] W for other
+pub @const S_IWOTH: i32 = 2;
+/// [XSI] X for other
+pub @const S_IXOTH: i32 = 1;
+/// [XSI] set user id on execution
+pub @const S_ISUID: i32 = 2048;
+/// [XSI] set group id on execution
+pub @const S_ISGID: i32 = 1024;
+/// [XSI] directory restrcted delete
+pub @const S_ISVTX: i32 = 512;
+/// sticky bit: not supported
+pub @const S_ISTXT: i32 = 512;
+/// backward compatability
+pub @const S_IREAD: i32 = 256;
+/// backward compatability
+pub @const S_IWRITE: i32 = 128;
+/// backward compatability
+pub @const S_IEXEC: i32 = 64;
+/// allocate contigious space
+pub @const F_ALLOCATECONTIG: i32 = 2;
+/// allocate all requested space or no space at all
+pub @const F_ALLOCATEALL: i32 = 4;
+/// do not free space upon close(2)
+pub @const F_ALLOCATEPERSIST: i32 = 8;
+/// Make it past all of the SEEK pos modes so that
+pub @const F_PEOFPOSMODE: i32 = 3;
+/// specify volume starting postion
+pub @const F_VOLPOSMODE: i32 = 4;
+pub @const READ_ADVISE_RANGES_MAX: i32 = 64;
+/// keep read pages in the active queue
+pub @const F_RDADVISEV_NOAGE: i32 = 1;
+pub @const USER_FSIGNATURES_CDHASH_LEN: i32 = 20;
+pub @const GETSIGSINFO_PLATFORM_BINARY: i32 = 1;
+/// shared file lock
+pub @const LOCK_SH: i32 = 1;
+/// exclusive file lock
+pub @const LOCK_EX: i32 = 2;
+/// don't block when locking
+pub @const LOCK_NB: i32 = 4;
+/// unlock file
+pub @const LOCK_UN: i32 = 8;
+pub @const ATTRIBUTION_NAME_MAX: i32 = 255;
+pub @const F_CREATE_TAG: i32 = 1;
+pub @const F_DELETE_TAG: i32 = 2;
+pub @const F_QUERY_TAG: i32 = 4;
+/// force window to popup on open
+pub @const O_POPUP: u32 = 2147483648;
+/// small, clean popup window
+pub @const O_ALERT: i32 = 536870912;
+
+pub extern struct Filesec;
+
+pub extern struct Fssearchblock;
+
+/// <malloc/malloc.h>
+pub extern struct MallocZoneT;
+
+pub extern struct Searchstate;
+
+extern "c" from "c.h" {
+    pub fn renameat(arg0: i32, arg1: cstr, arg2: i32, arg3: cstr) -> i32;
+    pub fn renamex_np(arg0: cstr, arg1: cstr, arg2: u32) -> i32;
+    pub fn renameatx_np(arg0: i32, arg1: cstr, arg2: i32, arg3: cstr, arg4: u32) -> i32;
+    pub fn printf(arg0: cstr, ...) -> i32;
+    pub fn clearerr(arg0: *);
+    pub fn fclose(arg0: *) -> i32;
+    pub fn feof(arg0: *) -> i32;
+    pub fn ferror(arg0: *) -> i32;
+    pub fn fflush(arg0: *) -> i32;
+    pub fn fgetc(arg0: *) -> i32;
+    pub fn fgetpos(arg0: *, arg1: &mut i64) -> i32;
+    pub fn fgets(arg0: &mut i8, __size: i32, arg2: *) -> *;
+    pub fn fopen(__filename: cstr, __mode: cstr) -> *;
+    pub fn fprintf(arg0: *, arg1: cstr, ...) -> i32;
+    pub fn fputc(arg0: i32, arg1: *) -> i32;
+    pub fn fputs(arg0: cstr, arg1: *) -> i32;
+    pub fn fread(__ptr: *, __size: u64, __nitems: u64, __stream: *) -> u64;
+    pub fn freopen(arg0: cstr, arg1: cstr, arg2: *) -> *;
+    pub fn fscanf(arg0: *, arg1: cstr, ...) -> i32;
+    pub fn fseek(arg0: *, arg1: i64, arg2: i32) -> i32;
+    pub fn fsetpos(arg0: *, arg1: &i64) -> i32;
+    pub fn ftell(arg0: *) -> i64;
+    pub fn fwrite(__ptr: *, __size: u64, __nitems: u64, __stream: *) -> u64;
+    pub fn getc(arg0: *) -> i32;
+    pub fn getchar() -> i32;
+    pub fn gets(arg0: &mut i8) -> *;
+    pub fn perror(arg0: cstr);
+    pub fn putc(arg0: i32, arg1: *) -> i32;
+    pub fn putchar(arg0: i32) -> i32;
+    pub fn puts(arg0: cstr) -> i32;
+    pub fn remove(arg0: cstr) -> i32;
+    pub fn rename(__old: cstr, __new: cstr) -> i32;
+    pub fn rewind(arg0: *);
+    pub fn scanf(arg0: cstr, ...) -> i32;
+    pub fn setbuf(arg0: *, arg1: &mut i8);
+    pub fn setvbuf(arg0: *, arg1: &mut i8, arg2: i32, __size: u64) -> i32;
+    pub fn sprintf(arg0: &mut i8, arg1: cstr, ...) -> i32;
+    pub fn sscanf(arg0: cstr, arg1: cstr, ...) -> i32;
+    pub fn tmpfile() -> *;
+    pub fn tmpnam(arg0: &mut i8) -> *;
+    pub fn ungetc(arg0: i32, arg1: *) -> i32;
+    pub fn vfprintf(arg0: *, arg1: cstr, arg2: &mut i8) -> i32;
+    pub fn vprintf(arg0: cstr, arg1: &mut i8) -> i32;
+    pub fn vsprintf(arg0: &mut i8, arg1: cstr, arg2: &mut i8) -> i32;
+    pub fn ctermid(arg0: &mut i8) -> *;
+    pub fn fdopen(arg0: i32, arg1: cstr) -> *;
+    pub fn fileno(arg0: *) -> i32;
+    pub fn pclose(arg0: *) -> i32;
+    pub fn popen(arg0: cstr, arg1: cstr) -> *;
+    pub fn flockfile(arg0: *);
+    pub fn ftrylockfile(arg0: *) -> i32;
+    pub fn funlockfile(arg0: *);
+    pub fn getc_unlocked(arg0: *) -> i32;
+    pub fn getchar_unlocked() -> i32;
+    pub fn putc_unlocked(arg0: i32, arg1: *) -> i32;
+    pub fn putchar_unlocked(arg0: i32) -> i32;
+    pub fn getw(arg0: *) -> i32;
+    pub fn putw(arg0: i32, arg1: *) -> i32;
+    pub fn tempnam(__dir: cstr, __prefix: cstr) -> *;
+    pub fn fseeko(__stream: *, __offset: i64, __whence: i32) -> i32;
+    pub fn ftello(__stream: *) -> i64;
+    pub fn snprintf(__str: &mut i8, __size: u64, __format: cstr, ...) -> i32;
+    pub fn vfscanf(__stream: *, __format: cstr, arg2: &mut i8) -> i32;
+    pub fn vscanf(__format: cstr, arg1: &mut i8) -> i32;
+    pub fn vsnprintf(__str: &mut i8, __size: u64, __format: cstr, arg3: &mut i8) -> i32;
+    pub fn vsscanf(__str: cstr, __format: cstr, arg2: &mut i8) -> i32;
+    pub fn dprintf(arg0: i32, arg1: cstr, ...) -> i32;
+    pub fn vdprintf(arg0: i32, arg1: cstr, arg2: &mut i8) -> i32;
+    pub fn getdelim(__linep: &mut *, __linecapp: &mut u64, __delimiter: i32, __stream: *) -> i64;
+    pub fn getline(__linep: &mut *, __linecapp: &mut u64, __stream: *) -> i64;
+    pub fn fmemopen(__buf: *, __size: u64, __mode: cstr) -> *;
+    pub fn open_memstream(__bufp: &mut *, __sizep: &mut u64) -> *;
+    pub fn asprintf(arg0: &mut *, arg1: cstr, ...) -> i32;
+    pub fn ctermid_r(arg0: &mut i8) -> *;
+    pub fn fgetln(arg0: *, __len: &mut u64) -> *;
+    pub fn fmtcheck(arg0: cstr, arg1: cstr) -> cstr;
+    pub fn fpurge(arg0: *) -> i32;
+    pub fn setbuffer(arg0: *, arg1: &mut i8, __size: i32);
+    pub fn setlinebuf(arg0: *) -> i32;
+    pub fn vasprintf(arg0: &mut *, arg1: cstr, arg2: &mut i8) -> i32;
+    /// Stdio function-access interface.
+    pub fn funopen(arg0: *, arg1: *, arg2: *, arg3: *, arg4: *) -> *;
+    pub fn getpriority(arg0: i32, arg1: u32) -> i32;
+    pub fn getiopolicy_np(arg0: i32, arg1: i32) -> i32;
+    pub fn getrlimit(arg0: i32, arg1: &mut Rlimit) -> i32;
+    pub fn getrusage(arg0: i32, arg1: &mut Rusage) -> i32;
+    pub fn setpriority(arg0: i32, arg1: u32, arg2: i32) -> i32;
+    pub fn setiopolicy_np(arg0: i32, arg1: i32, arg2: i32) -> i32;
+    pub fn setrlimit(arg0: i32, arg1: &Rlimit) -> i32;
+    pub fn wait(arg0: &mut i32) -> i32;
+    pub fn waitpid(arg0: i32, arg1: &mut i32, arg2: i32) -> i32;
+    pub fn waitid(arg0: i32, arg1: u32, arg2: *, arg3: i32) -> i32;
+    pub fn wait3(arg0: &mut i32, arg1: i32, arg2: &mut Rusage) -> i32;
+    pub fn wait4(arg0: i32, arg1: &mut i32, arg2: i32, arg3: &mut Rusage) -> i32;
+    /// built-in for gcc
+    pub fn alloca(__size: u64) -> *;
+    /// <malloc/_malloc.h>
+    pub fn malloc_type_malloc(size: u64, type_id: u64) -> *;
+    pub fn malloc_type_calloc(count: u64, size: u64, type_id: u64) -> *;
+    pub fn malloc_type_free(ptr: *, type_id: u64);
+    pub fn malloc_type_realloc(ptr: *, size: u64, type_id: u64) -> *;
+    pub fn malloc_type_valloc(size: u64, type_id: u64) -> *;
+    pub fn malloc_type_aligned_alloc(alignment: u64, size: u64, type_id: u64) -> *;
+    /// __alloc_align(2) __alloc_size(3)*/;
+    pub fn malloc_type_posix_memalign(memptr: &mut *, alignment: u64, size: u64, type_id: u64) -> i32;
+    pub fn malloc_type_zone_malloc(zone: MallocZoneT, size: u64, type_id: u64) -> *;
+    pub fn malloc_type_zone_calloc(zone: MallocZoneT, count: u64, size: u64, type_id: u64) -> *;
+    pub fn malloc_type_zone_free(zone: MallocZoneT, ptr: *, type_id: u64);
+    pub fn malloc_type_zone_realloc(zone: MallocZoneT, ptr: *, size: u64, type_id: u64) -> *;
+    pub fn malloc_type_zone_valloc(zone: MallocZoneT, size: u64, type_id: u64) -> *;
+    pub fn malloc_type_zone_memalign(zone: MallocZoneT, alignment: u64, size: u64, type_id: u64) -> *;
+    pub fn malloc(__size: u64) -> *;
+    pub fn calloc(__count: u64, __size: u64) -> *;
+    pub fn free(arg0: *);
+    pub fn realloc(__ptr: *, __size: u64) -> *;
+    pub fn reallocf(__ptr: *, __size: u64) -> *;
+    pub fn valloc(__size: u64) -> *;
+    pub fn aligned_alloc(__alignment: u64, __size: u64) -> *;
+    /// rdar://120689514
+    pub fn posix_memalign(__memptr: &mut *, __alignment: u64, __size: u64) -> i32;
+    pub fn abort();
+    pub fn abs(arg0: i32) -> i32;
+    pub fn atexit(arg0: *) -> i32;
+    pub fn at_quick_exit(arg0: *) -> i32;
+    pub fn atof(arg0: cstr) -> f64;
+    pub fn atoi(arg0: cstr) -> i32;
+    pub fn atol(arg0: cstr) -> i64;
+    pub fn atoll(arg0: cstr) -> i64;
+    pub fn bsearch(__key: *, __base: *, __nel: u64, __width: u64, __compar: *) -> *;
+    pub fn exit(arg0: i32);
+    /// free is now declared in _malloc.h
+    pub fn getenv(arg0: cstr) -> *;
+    pub fn labs(arg0: i64) -> i64;
+    pub fn llabs(arg0: i64) -> i64;
+    /// malloc is now declared in _malloc.h
+    pub fn mblen(__s: cstr, __n: u64) -> i32;
+    pub fn mbstowcs(arg0: &mut i32, arg1: cstr, __n: u64) -> u64;
+    pub fn mbtowc(arg0: &mut i32, arg1: cstr, __n: u64) -> i32;
+    /// posix_memalign is now declared in _malloc.h
+    pub fn qsort(__base: *, __nel: u64, __width: u64, __compar: *);
+    pub fn quick_exit(arg0: i32);
+    pub fn rand() -> i32;
+    /// realloc is now declared in _malloc.h
+    pub fn srand(arg0: u32);
+    pub fn strtod(arg0: cstr, arg1: &mut *) -> f64;
+    pub fn strtof(arg0: cstr, arg1: &mut *) -> f32;
+    pub fn strtol(__str: cstr, __endptr: &mut *, __base: i32) -> i64;
+    pub fn strtoll(__str: cstr, __endptr: &mut *, __base: i32) -> i64;
+    pub fn strtoul(__str: cstr, __endptr: &mut *, __base: i32) -> u64;
+    pub fn strtoull(__str: cstr, __endptr: &mut *, __base: i32) -> u64;
+    pub fn system(arg0: cstr) -> i32;
+    pub fn wcstombs(arg0: &mut i8, arg1: &i32, __n: u64) -> u64;
+    pub fn wctomb(arg0: &mut i8, arg1: i32) -> i32;
+    pub fn a64l(arg0: cstr) -> i64;
+    pub fn drand48() -> f64;
+    /// LEGACY
+    pub fn ecvt(arg0: f64, arg1: i32, arg2: &mut i32, arg3: &mut i32) -> *;
+    pub fn erand48(arg0: &mut u16) -> f64;
+    /// LEGACY
+    pub fn fcvt(arg0: f64, arg1: i32, arg2: &mut i32, arg3: &mut i32) -> *;
+    /// _LIBC_PTRCHECK_REPLACED(snprintf); /* LEGACY
+    pub fn gcvt(arg0: f64, arg1: i32, arg2: &mut i8) -> *;
+    pub fn getsubopt(arg0: &mut *, arg1: *, arg2: &mut *) -> i32;
+    pub fn grantpt(arg0: i32) -> i32;
+    /// no  __DARWIN_ALIAS needed
+    pub fn initstate(arg0: u32, arg1: &mut i8, __size: u64) -> *;
+    pub fn jrand48(arg0: &mut u16) -> i64;
+    pub fn l64a(arg0: i64) -> *;
+    pub fn lcong48(arg0: &mut u16);
+    pub fn lrand48() -> i64;
+    pub fn mktemp(arg0: &mut i8) -> *;
+    pub fn mkstemp(arg0: &mut i8) -> i32;
+    pub fn mrand48() -> i64;
+    pub fn nrand48(arg0: &mut u16) -> i64;
+    pub fn posix_openpt(arg0: i32) -> i32;
+    pub fn ptsname(arg0: i32) -> *;
+    pub fn ptsname_r(fildes: i32, buffer: &mut i8, buflen: u64) -> i32;
+    pub fn putenv(arg0: &mut i8) -> i32;
+    pub fn random() -> i64;
+    pub fn rand_r(arg0: &mut u32) -> i32;
+    pub fn realpath(arg0: cstr, arg1: &mut i8) -> *;
+    pub fn seed48(arg0: &mut u16) -> *;
+    pub fn setenv(__name: cstr, __value: cstr, __overwrite: i32) -> i32;
+    pub fn setkey(arg0: cstr);
+    pub fn setstate(arg0: cstr) -> *;
+    pub fn srand48(arg0: i64);
+    pub fn srandom(arg0: u32);
+    pub fn unlockpt(arg0: i32) -> i32;
+    pub fn unsetenv(arg0: cstr) -> i32;
+    pub fn arc4random() -> u32;
+    pub fn arc4random_addrandom(arg0: &mut u8, __datlen: i32);
+    pub fn arc4random_buf(__buf: *, __nbytes: u64);
+    pub fn arc4random_stir();
+    pub fn arc4random_uniform(__upper_bound: u32) -> u32;
+    pub fn atexit_b(arg0: *) -> i32;
+    pub fn bsearch_b(__key: *, __base: *, __nel: u64, __width: u64, __compar: *) -> *;
+    /// getcap(3) functions
+    pub fn cgetcap(arg0: &mut i8, arg1: cstr, arg2: i32) -> *;
+    pub fn cgetclose() -> i32;
+    pub fn cgetent(arg0: &mut *, arg1: &mut *, arg2: cstr) -> i32;
+    pub fn cgetfirst(arg0: &mut *, arg1: &mut *) -> i32;
+    pub fn cgetmatch(arg0: cstr, arg1: cstr) -> i32;
+    pub fn cgetnext(arg0: &mut *, arg1: &mut *) -> i32;
+    pub fn cgetnum(arg0: &mut i8, arg1: cstr, arg2: &mut i64) -> i32;
+    pub fn cgetset(arg0: cstr) -> i32;
+    pub fn cgetstr(arg0: &mut i8, arg1: cstr, arg2: &mut *) -> i32;
+    pub fn cgetustr(arg0: &mut i8, arg1: cstr, arg2: &mut *) -> i32;
+    pub fn daemon(arg0: i32, arg1: i32) -> i32;
+    pub fn devname(arg0: i32, arg1: u16) -> *;
+    pub fn devname_r(arg0: i32, arg1: u16, buf: &mut i8, len: i32) -> *;
+    pub fn getbsize(arg0: &mut i32, arg1: &mut i64) -> *;
+    pub fn getloadavg(arg0: &mut f64, __nelem: i32) -> i32;
+    pub fn getprogname() -> cstr;
+    pub fn setprogname(arg0: cstr);
+    pub fn heapsort(__base: *, __nel: u64, __width: u64, __compar: *) -> i32;
+    pub fn heapsort_b(__base: *, __nel: u64, __width: u64, __compar: *) -> i32;
+    pub fn mergesort(__base: *, __nel: u64, __width: u64, __compar: *) -> i32;
+    pub fn mergesort_b(__base: *, __nel: u64, __width: u64, __compar: *) -> i32;
+    pub fn psort(__base: *, __nel: u64, __width: u64, __compar: *);
+    pub fn psort_b(__base: *, __nel: u64, __width: u64, __compar: *);
+    pub fn psort_r(__base: *, __nel: u64, __width: u64, arg3: *, __compar: *);
+    pub fn qsort_b(__base: *, __nel: u64, __width: u64, __compar: *);
+    pub fn qsort_r(__base: *, __nel: u64, __width: u64, arg3: *, __compar: *);
+    pub fn radixsort(__base: &*, __nel: i32, __table: &u8, __endbyte: u32) -> i32;
+    pub fn rpmatch(arg0: cstr) -> i32;
+    pub fn sradixsort(__base: &*, __nel: i32, __table: &u8, __endbyte: u32) -> i32;
+    pub fn sranddev();
+    pub fn srandomdev();
+    /// reallocf is now declared in _malloc.h
+    pub fn strtonum(__numstr: cstr, __minval: i64, __maxval: i64, __errstrp: *) -> i64;
+    pub fn strtoq(__str: cstr, __endptr: &mut *, __base: i32) -> i64;
+    pub fn strtouq(__str: cstr, __endptr: &mut *, __base: i32) -> u64;
+    pub fn memchr(__s: *, __c: i32, __n: u64) -> *;
+    pub fn memcmp(__s1: *, __s2: *, __n: u64) -> i32;
+    pub fn memcpy(__dst: *, __src: *, __n: u64) -> *;
+    pub fn memmove(__dst: *, __src: *, __len: u64) -> *;
+    pub fn memset(__b: *, __c: i32, __len: u64) -> *;
+    pub fn strcat(__s1: &mut i8, __s2: cstr) -> *;
+    pub fn strchr(__s: cstr, __c: i32) -> *;
+    pub fn strcmp(__s1: cstr, __s2: cstr) -> i32;
+    pub fn strcoll(__s1: cstr, __s2: cstr) -> i32;
+    pub fn strcpy(__dst: &mut i8, __src: cstr) -> *;
+    pub fn strcspn(__s: cstr, __charset: cstr) -> u64;
+    pub fn strerror(__errnum: i32) -> *;
+    pub fn strlen(__s: cstr) -> u64;
+    pub fn strncat(__s1: &mut i8, __s2: cstr, __n: u64) -> *;
+    pub fn strncmp(__s1: cstr, __s2: cstr, __n: u64) -> i32;
+    pub fn strncpy(__dst: &mut i8, __src: cstr, __n: u64) -> *;
+    pub fn strpbrk(__s: cstr, __charset: cstr) -> *;
+    pub fn strrchr(__s: cstr, __c: i32) -> *;
+    pub fn strspn(__s: cstr, __charset: cstr) -> u64;
+    pub fn strstr(__big: cstr, __little: cstr) -> *;
+    pub fn strtok(__str: &mut i8, __sep: cstr) -> *;
+    pub fn strxfrm(__s1: &mut i8, __s2: cstr, __n: u64) -> u64;
+    pub fn strtok_r(__str: &mut i8, __sep: cstr, __lasts: &mut *) -> *;
+    pub fn strerror_r(__errnum: i32, __strerrbuf: &mut i8, __buflen: u64) -> i32;
+    pub fn strdup(__s1: cstr) -> *;
+    pub fn memccpy(__dst: *, __src: *, __c: i32, __n: u64) -> *;
+    pub fn stpcpy(__dst: &mut i8, __src: cstr) -> *;
+    pub fn stpncpy(__dst: &mut i8, __src: cstr, __n: u64) -> *;
+    pub fn strndup(__s1: cstr, __n: u64) -> *;
+    pub fn strnlen(__s1: cstr, __n: u64) -> u64;
+    pub fn strsignal(__sig: i32) -> *;
+    pub fn memset_s(__s: *, __smax: u64, __c: i32, __n: u64) -> i32;
+    pub fn memmem(__big: *, __big_len: u64, __little: *, __little_len: u64) -> *;
+    pub fn memset_pattern4(__b: *, __pattern4: *, __len: u64);
+    pub fn memset_pattern8(__b: *, __pattern8: *, __len: u64);
+    pub fn memset_pattern16(__b: *, __pattern16: *, __len: u64);
+    pub fn strcasestr(__big: cstr, __little: cstr) -> *;
+    pub fn strchrnul(__s: cstr, __c: i32) -> *;
+    pub fn strnstr(__big: cstr, __little: cstr, __len: u64) -> *;
+    pub fn strlcat(__dst: &mut i8, __source: cstr, __size: u64) -> u64;
+    pub fn strlcpy(__dst: &mut i8, __source: cstr, __size: u64) -> u64;
+    pub fn strmode(__mode: i32, __bp: &mut i8);
+    pub fn strsep(__stringp: &mut *, __delim: cstr) -> *;
+    /// SUS places swab() in unistd.h.  It is listed here for source compatibility
+    pub fn swab(arg0: *, arg1: *, __len: i64);
+    pub fn timingsafe_bcmp(__b1: *, __b2: *, __len: u64) -> i32;
+    pub fn strsignal_r(__sig: i32, __strsignalbuf: &mut i8, __buflen: u64) -> i32;
+    pub fn bcmp(arg0: *, arg1: *, __n: u64) -> i32;
+    pub fn bcopy(arg0: *, arg1: *, __n: u64);
+    pub fn bzero(arg0: *, __n: u64);
+    pub fn index(arg0: cstr, arg1: i32) -> *;
+    pub fn rindex(arg0: cstr, arg1: i32) -> *;
+    pub fn ffs(arg0: i32) -> i32;
+    pub fn strcasecmp(arg0: cstr, arg1: cstr) -> i32;
+    pub fn strncasecmp(arg0: cstr, arg1: cstr, arg2: u64) -> i32;
+    pub fn ffsl(arg0: i64) -> i32;
+    pub fn ffsll(arg0: i64) -> i32;
+    pub fn fls(arg0: i32) -> i32;
+    pub fn flsl(arg0: i64) -> i32;
+    pub fn flsll(arg0: i64) -> i32;
+    pub fn acosf(arg0: f32) -> f32;
+    pub fn acos(arg0: f64) -> f64;
+    pub fn asinf(arg0: f32) -> f32;
+    pub fn asin(arg0: f64) -> f64;
+    pub fn atanf(arg0: f32) -> f32;
+    pub fn atan(arg0: f64) -> f64;
+    pub fn atan2f(arg0: f32, arg1: f32) -> f32;
+    pub fn atan2(arg0: f64, arg1: f64) -> f64;
+    pub fn cosf(arg0: f32) -> f32;
+    pub fn cos(arg0: f64) -> f64;
+    pub fn sinf(arg0: f32) -> f32;
+    pub fn sin(arg0: f64) -> f64;
+    pub fn tanf(arg0: f32) -> f32;
+    pub fn tan(arg0: f64) -> f64;
+    pub fn acoshf(arg0: f32) -> f32;
+    pub fn acosh(arg0: f64) -> f64;
+    pub fn asinhf(arg0: f32) -> f32;
+    pub fn asinh(arg0: f64) -> f64;
+    pub fn atanhf(arg0: f32) -> f32;
+    pub fn atanh(arg0: f64) -> f64;
+    pub fn coshf(arg0: f32) -> f32;
+    pub fn cosh(arg0: f64) -> f64;
+    pub fn sinhf(arg0: f32) -> f32;
+    pub fn sinh(arg0: f64) -> f64;
+    pub fn tanhf(arg0: f32) -> f32;
+    pub fn tanh(arg0: f64) -> f64;
+    pub fn expf(arg0: f32) -> f32;
+    pub fn exp(arg0: f64) -> f64;
+    pub fn exp2f(arg0: f32) -> f32;
+    pub fn exp2(arg0: f64) -> f64;
+    pub fn expm1f(arg0: f32) -> f32;
+    pub fn expm1(arg0: f64) -> f64;
+    pub fn logf(arg0: f32) -> f32;
+    pub fn log(arg0: f64) -> f64;
+    pub fn log10f(arg0: f32) -> f32;
+    pub fn log10(arg0: f64) -> f64;
+    pub fn log2f(arg0: f32) -> f32;
+    pub fn log2(arg0: f64) -> f64;
+    pub fn log1pf(arg0: f32) -> f32;
+    pub fn log1p(arg0: f64) -> f64;
+    pub fn logbf(arg0: f32) -> f32;
+    pub fn logb(arg0: f64) -> f64;
+    pub fn modff(arg0: f32, arg1: &mut f32) -> f32;
+    pub fn modf(arg0: f64, arg1: &mut f64) -> f64;
+    pub fn ldexpf(arg0: f32, arg1: i32) -> f32;
+    pub fn ldexp(arg0: f64, arg1: i32) -> f64;
+    pub fn frexpf(arg0: f32, arg1: &mut i32) -> f32;
+    pub fn frexp(arg0: f64, arg1: &mut i32) -> f64;
+    pub fn ilogbf(arg0: f32) -> i32;
+    pub fn ilogb(arg0: f64) -> i32;
+    pub fn scalbnf(arg0: f32, arg1: i32) -> f32;
+    pub fn scalbn(arg0: f64, arg1: i32) -> f64;
+    pub fn scalblnf(arg0: f32, arg1: i64) -> f32;
+    pub fn scalbln(arg0: f64, arg1: i64) -> f64;
+    pub fn fabsf(arg0: f32) -> f32;
+    pub fn fabs(arg0: f64) -> f64;
+    pub fn cbrtf(arg0: f32) -> f32;
+    pub fn cbrt(arg0: f64) -> f64;
+    pub fn hypotf(arg0: f32, arg1: f32) -> f32;
+    pub fn hypot(arg0: f64, arg1: f64) -> f64;
+    pub fn powf(arg0: f32, arg1: f32) -> f32;
+    pub fn pow(arg0: f64, arg1: f64) -> f64;
+    pub fn sqrtf(arg0: f32) -> f32;
+    pub fn sqrt(arg0: f64) -> f64;
+    pub fn erff(arg0: f32) -> f32;
+    pub fn erf(arg0: f64) -> f64;
+    pub fn erfcf(arg0: f32) -> f32;
+    pub fn erfc(arg0: f64) -> f64;
+    /// lgammaf, lgamma, and lgammal are not thread-safe. The thread-safe
+    /// variants lgammaf_r, lgamma_r, and lgammal_r are made available if
+    /// you define the _REENTRANT symbol before including <math.h>
+    pub fn lgammaf(arg0: f32) -> f32;
+    pub fn lgamma(arg0: f64) -> f64;
+    pub fn tgammaf(arg0: f32) -> f32;
+    pub fn tgamma(arg0: f64) -> f64;
+    pub fn ceilf(arg0: f32) -> f32;
+    pub fn ceil(arg0: f64) -> f64;
+    pub fn floorf(arg0: f32) -> f32;
+    pub fn floor(arg0: f64) -> f64;
+    pub fn nearbyintf(arg0: f32) -> f32;
+    pub fn nearbyint(arg0: f64) -> f64;
+    pub fn rintf(arg0: f32) -> f32;
+    pub fn rint(arg0: f64) -> f64;
+    pub fn lrintf(arg0: f32) -> i64;
+    pub fn lrint(arg0: f64) -> i64;
+    pub fn roundf(arg0: f32) -> f32;
+    pub fn round(arg0: f64) -> f64;
+    pub fn lroundf(arg0: f32) -> i64;
+    pub fn lround(arg0: f64) -> i64;
+    pub fn llrintf(arg0: f32) -> i64;
+    pub fn llrint(arg0: f64) -> i64;
+    pub fn llroundf(arg0: f32) -> i64;
+    pub fn llround(arg0: f64) -> i64;
+    pub fn truncf(arg0: f32) -> f32;
+    pub fn trunc(arg0: f64) -> f64;
+    pub fn fmodf(arg0: f32, arg1: f32) -> f32;
+    pub fn fmod(arg0: f64, arg1: f64) -> f64;
+    pub fn remainderf(arg0: f32, arg1: f32) -> f32;
+    pub fn remainder(arg0: f64, arg1: f64) -> f64;
+    pub fn remquof(arg0: f32, arg1: f32, arg2: &mut i32) -> f32;
+    pub fn remquo(arg0: f64, arg1: f64, arg2: &mut i32) -> f64;
+    pub fn copysignf(arg0: f32, arg1: f32) -> f32;
+    pub fn copysign(arg0: f64, arg1: f64) -> f64;
+    pub fn nanf(arg0: cstr) -> f32;
+    pub fn nan(arg0: cstr) -> f64;
+    pub fn nextafterf(arg0: f32, arg1: f32) -> f32;
+    pub fn nextafter(arg0: f64, arg1: f64) -> f64;
+    pub fn fdimf(arg0: f32, arg1: f32) -> f32;
+    pub fn fdim(arg0: f64, arg1: f64) -> f64;
+    pub fn fmaxf(arg0: f32, arg1: f32) -> f32;
+    pub fn fmax(arg0: f64, arg1: f64) -> f64;
+    pub fn fminf(arg0: f32, arg1: f32) -> f32;
+    pub fn fmin(arg0: f64, arg1: f64) -> f64;
+    pub fn fmaf(arg0: f32, arg1: f32, arg2: f32) -> f32;
+    pub fn fma(arg0: f64, arg1: f64, arg2: f64) -> f64;
+    pub fn j0(arg0: f64) -> f64;
+    pub fn j1(arg0: f64) -> f64;
+    pub fn jn(arg0: i32, arg1: f64) -> f64;
+    pub fn y0(arg0: f64) -> f64;
+    pub fn y1(arg0: f64) -> f64;
+    pub fn yn(arg0: i32, arg1: f64) -> f64;
+    pub fn scalb(arg0: f64, arg1: f64) -> f64;
+    pub fn isascii(_c: i32) -> i32;
+    pub fn isalnum(_c: i32) -> i32;
+    pub fn isalpha(_c: i32) -> i32;
+    pub fn isblank(_c: i32) -> i32;
+    pub fn iscntrl(_c: i32) -> i32;
+    /// ANSI -- locale independent
+    pub fn isdigit(_c: i32) -> i32;
+    pub fn isgraph(_c: i32) -> i32;
+    pub fn islower(_c: i32) -> i32;
+    pub fn isprint(_c: i32) -> i32;
+    pub fn ispunct(_c: i32) -> i32;
+    pub fn isspace(_c: i32) -> i32;
+    pub fn isupper(_c: i32) -> i32;
+    /// ANSI -- locale independent
+    pub fn isxdigit(_c: i32) -> i32;
+    pub fn toascii(_c: i32) -> i32;
+    pub fn tolower(_c: i32) -> i32;
+    pub fn toupper(_c: i32) -> i32;
+    pub fn digittoint(_c: i32) -> i32;
+    pub fn ishexnumber(_c: i32) -> i32;
+    pub fn isideogram(_c: i32) -> i32;
+    pub fn isnumber(_c: i32) -> i32;
+    pub fn isphonogram(_c: i32) -> i32;
+    pub fn isrune(_c: i32) -> i32;
+    pub fn isspecial(_c: i32) -> i32;
+    pub fn asctime(arg0: &Tm) -> *;
+    pub fn clock() -> u64;
+    pub fn ctime(arg0: &i64) -> *;
+    pub fn difftime(arg0: i64, arg1: i64) -> f64;
+    pub fn getdate(arg0: cstr) -> *;
+    pub fn gmtime(arg0: &i64) -> *;
+    pub fn localtime(arg0: &i64) -> *;
+    pub fn mktime(arg0: &mut Tm) -> i64;
+    pub fn strftime(arg0: &mut i8, __maxsize: u64, arg2: cstr, arg3: &Tm) -> u64;
+    pub fn strptime(arg0: cstr, arg1: cstr, arg2: &mut Tm) -> *;
+    pub fn time(arg0: &mut i64) -> i64;
+    pub fn tzset();
+    /// [TSF] Thread safe functions
+    pub fn asctime_r(arg0: &Tm, arg1: &mut i8) -> *;
+    pub fn ctime_r(arg0: &i64, arg1: &mut i8) -> *;
+    pub fn gmtime_r(arg0: &i64, arg1: &mut Tm) -> *;
+    pub fn localtime_r(arg0: &i64, arg1: &mut Tm) -> *;
+    pub fn posix2time(arg0: i64) -> i64;
+    pub fn tzsetwall();
+    pub fn time2posix(arg0: i64) -> i64;
+    pub fn timelocal(arg0: &mut Tm) -> i64;
+    pub fn timegm(arg0: &mut Tm) -> i64;
+    pub fn nanosleep(__rqtp: &Timespec, __rmtp: &mut Timespec) -> i32;
+    pub fn clock_getres(__clock_id: i32, __res: &mut Timespec) -> i32;
+    pub fn clock_gettime(__clock_id: i32, __tp: &mut Timespec) -> i32;
+    pub fn clock_gettime_nsec_np(__clock_id: i32) -> u64;
+    pub fn clock_settime(__clock_id: i32, __tp: &Timespec) -> i32;
+    pub fn timespec_get(ts: &mut Timespec, base: i32) -> i32;
+    pub fn getattrlistbulk(arg0: i32, arg1: *, arg2: *, arg3: u64, arg4: u64) -> i32;
+    pub fn getattrlistat(arg0: i32, arg1: cstr, arg2: *, arg3: *, arg4: u64, arg5: u64) -> i32;
+    pub fn setattrlistat(arg0: i32, arg1: cstr, arg2: *, arg3: *, arg4: u64, arg5: u32) -> i32;
+    pub fn freadlink(arg0: i32, arg1: &mut i8, arg2: u64) -> i64;
+    pub fn faccessat(arg0: i32, arg1: cstr, arg2: i32, arg3: i32) -> i32;
+    pub fn fchownat(arg0: i32, arg1: cstr, arg2: u32, arg3: u32, arg4: i32) -> i32;
+    pub fn linkat(arg0: i32, arg1: cstr, arg2: i32, arg3: cstr, arg4: i32) -> i32;
+    pub fn readlinkat(arg0: i32, arg1: cstr, arg2: &mut i8, arg3: u64) -> i64;
+    pub fn symlinkat(arg0: cstr, arg1: i32, arg2: cstr) -> i32;
+    pub fn unlinkat(arg0: i32, arg1: cstr, arg2: i32) -> i32;
+    pub fn dup3(arg0: i32, arg1: i32, arg2: i32) -> i32;
+    pub fn pipe2(arg0: &mut i32, arg1: i32) -> i32;
+    pub fn access(arg0: cstr, arg1: i32) -> i32;
+    pub fn alarm(arg0: u32) -> u32;
+    pub fn chdir(arg0: cstr) -> i32;
+    pub fn chown(arg0: cstr, arg1: u32, arg2: u32) -> i32;
+    pub fn close(arg0: i32) -> i32;
+    pub fn dup(arg0: i32) -> i32;
+    pub fn dup2(arg0: i32, arg1: i32) -> i32;
+    pub fn execl(__path: cstr, __arg0: cstr, ...) -> i32;
+    pub fn execle(__path: cstr, __arg0: cstr, ...) -> i32;
+    pub fn execlp(__file: cstr, __arg0: cstr, ...) -> i32;
+    pub fn execv(__path: cstr, __argv: *) -> i32;
+    pub fn execve(__file: cstr, __argv: *, __envp: *) -> i32;
+    pub fn execvp(__file: cstr, __argv: *) -> i32;
+    pub fn fork() -> i32;
+    pub fn fpathconf(arg0: i32, arg1: i32) -> i64;
+    pub fn getcwd(arg0: &mut i8, __size: u64) -> *;
+    pub fn getegid() -> u32;
+    pub fn geteuid() -> u32;
+    pub fn getgid() -> u32;
+    pub fn getgroups(__gidsetsize: i32, arg1: &mut u32) -> i32;
+    pub fn getlogin() -> *;
+    pub fn getpgrp() -> i32;
+    pub fn getpid() -> i32;
+    pub fn getppid() -> i32;
+    pub fn getuid() -> u32;
+    pub fn isatty(arg0: i32) -> i32;
+    pub fn link(arg0: cstr, arg1: cstr) -> i32;
+    pub fn lseek(arg0: i32, arg1: i64, arg2: i32) -> i64;
+    pub fn pathconf(arg0: cstr, arg1: i32) -> i64;
+    pub fn pause() -> i32;
+    pub fn pipe(arg0: &mut i32) -> i32;
+    pub fn read(arg0: i32, arg1: *, __nbyte: u64) -> i64;
+    pub fn rmdir(arg0: cstr) -> i32;
+    pub fn setgid(arg0: u32) -> i32;
+    pub fn setpgid(arg0: i32, arg1: i32) -> i32;
+    pub fn setsid() -> i32;
+    pub fn setuid(arg0: u32) -> i32;
+    pub fn sleep(arg0: u32) -> u32;
+    pub fn sysconf(arg0: i32) -> i64;
+    pub fn tcgetpgrp(arg0: i32) -> i32;
+    pub fn tcsetpgrp(arg0: i32, arg1: i32) -> i32;
+    pub fn ttyname(arg0: i32) -> *;
+    pub fn ttyname_r(arg0: i32, arg1: &mut i8, __len: u64) -> i32;
+    pub fn unlink(arg0: cstr) -> i32;
+    pub fn write(__fd: i32, __buf: *, __nbyte: u64) -> i64;
+    pub fn confstr(arg0: i32, arg1: &mut i8, __len: u64) -> u64;
+    pub fn getopt(__argc: i32, arg1: *, arg2: cstr) -> i32;
+    pub fn brk(arg0: *) -> *;
+    pub fn chroot(arg0: cstr) -> i32;
+    pub fn crypt(arg0: cstr, arg1: cstr) -> *;
+    pub fn encrypt(arg0: &mut i8, arg1: i32);
+    pub fn fchdir(arg0: i32) -> i32;
+    pub fn gethostid() -> i64;
+    pub fn getpgid(arg0: i32) -> i32;
+    pub fn getsid(arg0: i32) -> i32;
+    pub fn getdtablesize() -> i32;
+    pub fn getpagesize() -> i32;
+    pub fn getpass(arg0: cstr) -> *;
+    /// __POSIX_C_DEPRECATED(200112L); /* obsoleted by getcwd()
+    pub fn getwd(arg0: &mut i8) -> *;
+    pub fn lchown(arg0: cstr, arg1: u32, arg2: u32) -> i32;
+    pub fn lockf(arg0: i32, arg1: i32, arg2: i64) -> i32;
+    pub fn nice(arg0: i32) -> i32;
+    pub fn pread(__fd: i32, __buf: *, __nbyte: u64, __offset: i64) -> i64;
+    pub fn pwrite(__fd: i32, __buf: *, __nbyte: u64, __offset: i64) -> i64;
+    pub fn sbrk(arg0: i32) -> *;
+    pub fn setpgrp() -> i32;
+    pub fn setregid(arg0: u32, arg1: u32) -> i32;
+    pub fn setreuid(arg0: u32, arg1: u32) -> i32;
+    pub fn sync();
+    pub fn truncate(arg0: cstr, arg1: i64) -> i32;
+    pub fn ualarm(arg0: u32, arg1: u32) -> u32;
+    pub fn usleep(arg0: u32) -> i32;
+    pub fn vfork() -> i32;
+    /// End XSI
+    pub fn fsync(arg0: i32) -> i32;
+    pub fn ftruncate(arg0: i32, arg1: i64) -> i32;
+    pub fn getlogin_r(arg0: &mut i8, __namelen: u64) -> i32;
+    pub fn fchown(arg0: i32, arg1: u32, arg2: u32) -> i32;
+    pub fn gethostname(arg0: &mut i8, __namelen: u64) -> i32;
+    pub fn readlink(arg0: cstr, arg1: &mut i8, __bufsize: u64) -> i64;
+    pub fn setegid(arg0: u32) -> i32;
+    pub fn seteuid(arg0: u32) -> i32;
+    pub fn symlink(arg0: cstr, arg1: cstr) -> i32;
+    pub fn pselect(arg0: i32, arg1: *, arg2: *, arg3: *, arg4: &Timespec, arg5: &u32) -> i32;
+    pub fn select(arg0: i32, arg1: *, arg2: *, arg3: *, arg4: &mut Timeval) -> i32;
+    pub fn accessx_np(arg0: *, __sz: u64, arg2: &mut i32, arg3: u32) -> i32;
+    pub fn acct(arg0: cstr) -> i32;
+    pub fn add_profil(arg0: &mut i8, __bufsiz: u64, arg2: u64, arg3: u32) -> i32;
+    pub fn endusershell();
+    pub fn execv_p(__file: cstr, __searchpath: cstr, __argv: *) -> i32;
+    pub fn fflagstostr(arg0: u64) -> *;
+    pub fn getdomainname(arg0: &mut i8, __namelen: i32) -> i32;
+    pub fn getgrouplist(arg0: cstr, arg1: i32, arg2: &mut i32, __ngroups: &mut i32) -> i32;
+    pub fn gethostuuid(arg0: &mut u8, arg1: &Timespec) -> i32;
+    pub fn getmode(arg0: *, arg1: u16) -> u16;
+    pub fn getpeereid(arg0: i32, arg1: &mut u32, arg2: &mut u32) -> i32;
+    pub fn getsgroups_np(arg0: &mut i32, arg1: &mut u8) -> i32;
+    pub fn getusershell() -> *;
+    pub fn getwgroups_np(arg0: &mut i32, arg1: &mut u8) -> i32;
+    pub fn initgroups(arg0: cstr, arg1: i32) -> i32;
+    pub fn issetugid() -> i32;
+    pub fn mkdtemp(arg0: &mut i8) -> *;
+    pub fn mknod(arg0: cstr, arg1: u16, arg2: i32) -> i32;
+    /// (__MAC_10_8, __IPHONE_5_0); /* returns errno
+    pub fn mkpath_np(path: cstr, omode: u16) -> i32;
+    pub fn mkpathat_np(dfd: i32, path: cstr, omode: u16) -> i32;
+    pub fn mkstemps(arg0: &mut i8, arg1: i32) -> i32;
+    pub fn mkostemp(path: &mut i8, oflags: i32) -> i32;
+    pub fn mkostemps(path: &mut i8, slen: i32, oflags: i32) -> i32;
+    /// Non-portable mkstemp that uses open_dprotected_np
+    pub fn mkstemp_dprotected_np(path: &mut i8, dpclass: i32, dpflags: i32) -> i32;
+    pub fn mkdtempat_np(dfd: i32, path: &mut i8) -> *;
+    pub fn mkstempsat_np(dfd: i32, path: &mut i8, slen: i32) -> i32;
+    pub fn mkostempsat_np(dfd: i32, path: &mut i8, slen: i32, oflags: i32) -> i32;
+    pub fn nfssvc(arg0: i32, arg1: *) -> i32;
+    pub fn profil(arg0: &mut i8, __bufsiz: u64, arg2: u64, arg3: u32) -> i32;
+    pub fn pthread_setugid_np(arg0: u32, arg1: u32) -> i32;
+    pub fn pthread_getugid_np(arg0: &mut u32, arg1: &mut u32) -> i32;
+    pub fn reboot(arg0: i32) -> i32;
+    pub fn revoke(arg0: cstr) -> i32;
+    pub fn rcmd(arg0: &mut *, arg1: i32, arg2: cstr, arg3: cstr, arg4: cstr, arg5: &mut i32) -> i32;
+    pub fn rcmd_af(arg0: &mut *, arg1: i32, arg2: cstr, arg3: cstr, arg4: cstr, arg5: &mut i32, arg6: i32) -> i32;
+    pub fn rresvport(arg0: &mut i32) -> i32;
+    pub fn rresvport_af(arg0: &mut i32, arg1: i32) -> i32;
+    pub fn iruserok(arg0: u64, arg1: i32, arg2: cstr, arg3: cstr) -> i32;
+    pub fn iruserok_sa(arg0: *, arg1: i32, arg2: i32, arg3: cstr, arg4: cstr) -> i32;
+    pub fn ruserok(arg0: cstr, arg1: i32, arg2: cstr, arg3: cstr) -> i32;
+    pub fn setdomainname(arg0: cstr, __namelen: i32) -> i32;
+    pub fn setgroups(arg0: i32, arg1: &u32) -> i32;
+    pub fn sethostid(arg0: i64);
+    pub fn sethostname(arg0: cstr, __namelen: i32) -> i32;
+    pub fn setlogin(arg0: cstr) -> i32;
+    pub fn setmode(arg0: cstr) -> *;
+    pub fn setrgid(arg0: u32) -> i32;
+    pub fn setruid(arg0: u32) -> i32;
+    pub fn setsgroups_np(arg0: i32, arg1: &u8) -> i32;
+    pub fn setusershell();
+    pub fn setwgroups_np(arg0: i32, arg1: &u8) -> i32;
+    pub fn strtofflags(arg0: &mut *, arg1: &mut u64, arg2: &mut u64) -> i32;
+    pub fn swapon(arg0: cstr) -> i32;
+    pub fn ttyslot() -> i32;
+    pub fn undelete(arg0: cstr) -> i32;
+    pub fn unwhiteout(arg0: cstr) -> i32;
+    pub fn syscall(arg0: i32, ...) -> i32;
+    pub fn fgetattrlist(arg0: i32, arg1: *, arg2: *, __attr_buf_size: u64, arg4: u32) -> i32;
+    pub fn fsetattrlist(arg0: i32, arg1: *, arg2: *, __attr_buf_size: u64, arg4: u32) -> i32;
+    pub fn getattrlist(arg0: cstr, arg1: *, arg2: *, __attr_buf_size: u64, arg4: u32) -> i32;
+    pub fn setattrlist(arg0: cstr, arg1: *, arg2: *, __attr_buf_size: u64, arg4: u32) -> i32;
+    pub fn exchangedata(arg0: cstr, arg1: cstr, arg2: u32) -> i32;
+    pub fn getdirentriesattr(arg0: i32, arg1: *, arg2: *, __attr_buf_size: u64, arg4: &mut u32, arg5: &mut u32, arg6: &mut u32, arg7: u32) -> i32;
+    pub fn searchfs(arg0: cstr, arg1: Fssearchblock, arg2: &mut u64, arg3: u32, arg4: u32, arg5: Searchstate) -> i32;
+    pub fn fsctl(arg0: cstr, arg1: u64, arg2: *, arg3: u32) -> i32;
+    pub fn ffsctl(arg0: i32, arg1: u64, arg2: *, arg3: u32) -> i32;
+    pub fn fsync_volume_np(arg0: i32, arg1: i32) -> i32;
+    pub fn sync_volume_np(arg0: cstr, arg1: i32) -> i32;
+    pub fn open(arg0: cstr, arg1: i32, ...) -> i32;
+    pub fn openat(arg0: i32, arg1: cstr, arg2: i32, ...) -> i32;
+    pub fn creat(arg0: cstr, arg1: u16) -> i32;
+    pub fn fcntl(arg0: i32, arg1: i32, ...) -> i32;
+    pub fn openx_np(arg0: cstr, arg1: i32, arg2: Filesec) -> i32;
+    /// data-protected non-portable open(2) :
+    ///  int open_dprotected_np(user_addr_t path, int flags, int class, int dpflags, int mode)
+    pub fn open_dprotected_np(arg0: cstr, arg1: i32, arg2: i32, arg3: i32, ...) -> i32;
+    pub fn openat_dprotected_np(arg0: i32, arg1: cstr, arg2: i32, arg3: i32, arg4: i32, ...) -> i32;
+    pub fn openat_authenticated_np(arg0: i32, arg1: cstr, arg2: i32, arg3: i32) -> i32;
+    pub fn flock(arg0: i32, arg1: i32) -> i32;
+    pub fn filesec_init() -> Filesec;
+    pub fn filesec_dup(arg0: Filesec) -> Filesec;
+    pub fn filesec_free(arg0: Filesec);
+    pub fn filesec_get_property(arg0: Filesec, arg1: i32, arg2: *) -> i32;
+    pub fn filesec_query_property(arg0: Filesec, arg1: i32, arg2: &mut i32) -> i32;
+    pub fn filesec_set_property(arg0: Filesec, arg1: i32, arg2: *) -> i32;
+    pub fn filesec_unset_property(arg0: Filesec, arg1: i32) -> i32;
+}

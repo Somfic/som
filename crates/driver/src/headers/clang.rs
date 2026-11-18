@@ -1,21 +1,21 @@
 use serde_json::Value;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::path::Path;
+use std::process::Output;
 
 use super::include_dirs;
-use crate::toolchain;
+use crate::toolchain::Toolchain;
 
 /// The header's syntax tree, as clang's JSON.
 pub(super) fn syntax_tree(
     header: &Path,
     root: &Path,
-    library_dirs: &[PathBuf],
+    toolchain: &Toolchain,
 ) -> Result<Value, String> {
     let (compiler, output) = run(
         &["-Xclang", "-ast-dump=json", "-fsyntax-only", "-x", "c"],
         header,
         root,
-        library_dirs,
+        toolchain,
     );
     let output = output.map_err(|e| format!("could not run `{compiler}`: {e}"))?;
     if !output.status.success() {
@@ -32,8 +32,8 @@ pub(super) fn syntax_tree(
 
 /// The header after the preprocessor, keeping its `#define`s (`-E -dD`), which say what
 /// each name stands for, and lines saying which file each is in.
-pub(super) fn preprocessed(header: &Path, root: &Path, library_dirs: &[PathBuf]) -> Option<String> {
-    let (_, output) = run(&["-E", "-dD", "-x", "c"], header, root, library_dirs);
+pub(super) fn preprocessed(header: &Path, root: &Path, toolchain: &Toolchain) -> Option<String> {
+    let (_, output) = run(&["-E", "-dD", "-x", "c"], header, root, toolchain);
     let output = output.ok()?;
     (output.status.success()).then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
@@ -44,18 +44,18 @@ fn run(
     args: &[&str],
     header: &Path,
     root: &Path,
-    library_dirs: &[PathBuf],
+    toolchain: &Toolchain,
 ) -> (String, std::io::Result<Output>) {
-    let compiler = toolchain::c_compiler();
-    let output = Command::new(&compiler)
+    let output = toolchain
+        .header_command()
         .args(args)
         .args(
-            include_dirs(root, library_dirs)
+            include_dirs(root, toolchain)
                 .iter()
                 .filter(|dir| dir.is_dir())
                 .map(|dir| format!("-I{}", dir.display())),
         )
         .arg(header)
         .output();
-    (compiler, output)
+    (toolchain.cc.clone(), output)
 }

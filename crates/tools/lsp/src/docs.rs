@@ -1,8 +1,8 @@
 //! Definitions as they're declared in som, and their documentation: what hover, completion
 //! and signature help show.
 
-use som_ast::{Func, Id, Struct, Trait};
-use som_driver::Analysis;
+use som_ast::{Func, Id, Ident, Struct, Trait};
+use som_driver::{Analysis, targets};
 use som_resolve::{DefId, DefKind};
 use som_typeck::{ArrayMethod, PointerMethod, Ty, TypeId};
 use tower_lsp::lsp_types::{Documentation, MarkupContent, MarkupKind};
@@ -117,19 +117,35 @@ pub(crate) fn doc_of(a: &Analysis, def: DefId) -> Option<String> {
         DefKind::Struct(s) => struct_doc(a, s),
         DefKind::Const(c) => {
             let c = &a.ast.consts[c];
-            origin::with_link(c.doc.clone(), origin::of_name(&c.name))
+            let doc = with_availability(c.doc.clone(), &c.name);
+            origin::with_link(doc, origin::of_name(&c.name))
         }
         _ => None,
     }
 }
 
 pub(crate) fn func_doc(a: &Analysis, f: Id<Func>) -> Option<String> {
-    origin::with_link(a.ast.funcs[f].doc.clone(), origin::of_func(a, f))
+    let doc = with_availability(a.ast.funcs[f].doc.clone(), &a.ast.funcs[f].name);
+    origin::with_link(doc, origin::of_func(a, f))
 }
 
 pub(crate) fn struct_doc(a: &Analysis, s: Id<Struct>) -> Option<String> {
-    let doc = a.ast.structs[s].doc.clone();
+    let doc = with_availability(a.ast.structs[s].doc.clone(), &a.ast.structs[s].name);
     origin::with_link(doc, origin::of_name(&a.ast.structs[s].name))
+}
+
+/// `doc`, and for a C library name that's not on every system, which it's on.
+pub(crate) fn with_availability(doc: Option<String>, name: &Ident) -> Option<String> {
+    if !targets::in_libc(&name.span) {
+        return doc;
+    }
+    let Some(note) = targets::availability_note(&name.name) else {
+        return doc;
+    };
+    Some(match doc {
+        Some(doc) => format!("{doc}\n\n{note}"),
+        None => note,
+    })
 }
 
 pub(crate) fn field_doc(

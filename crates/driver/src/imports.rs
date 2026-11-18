@@ -22,7 +22,7 @@ pub fn importable(root: &Path, options: &Options) -> Importable {
     };
     Importable {
         modules: stdlib::modules(),
-        libraries: headers::importable_libraries(root, &options.library_dirs),
+        libraries: headers::importable_libraries(root, &options.toolchain),
     }
 }
 
@@ -34,12 +34,11 @@ pub fn locate(
     root: &Path,
     options: &Options,
 ) -> (Option<PathBuf>, Option<PathBuf>) {
-    let library_file = library.and_then(|l| libraries::find(l, root, &options.library_dirs).ok());
+    let library_file = library.and_then(|l| libraries::find(l, root, &options.toolchain).ok());
     let header = header
         .map(str::to_string)
         .or_else(|| library.map(|l| format!("{l}.h")));
-    let header_file =
-        header.and_then(|h| headers::find_header(&h, root, &options.library_dirs).ok());
+    let header_file = header.and_then(|h| headers::find_header(&h, root, &options.toolchain).ok());
     (library_file, header_file)
 }
 

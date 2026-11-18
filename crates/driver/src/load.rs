@@ -10,7 +10,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::{stdlib, toolchain};
+use crate::toolchain::{self, Toolchain};
+use crate::{stdlib, targets};
 
 #[derive(Debug)]
 pub enum LoadError {
@@ -150,8 +151,8 @@ impl LoadError {
 }
 
 /// Loads the program at `path` (a file or a directory) and everything it uses.
-pub fn load(path: &Path, library_dirs: &[PathBuf]) -> (Ast, Vec<LoadError>) {
-    load_with(path, library_dirs, &HashMap::new(), None)
+pub fn load(path: &Path, toolchain: &Toolchain) -> (Ast, Vec<LoadError>) {
+    load_with(path, toolchain, &HashMap::new(), None)
 }
 
 /// Like [`load`], reading files in `overlay` from there instead of from disk: an
@@ -159,23 +160,23 @@ pub fn load(path: &Path, library_dirs: &[PathBuf]) -> (Ast, Vec<LoadError>) {
 /// module is loaded too, whether anything uses it or not.
 pub fn load_with(
     path: &Path,
-    library_dirs: &[PathBuf],
+    toolchain: &Toolchain,
     overlay: &HashMap<PathBuf, String>,
     opened: Option<&Path>,
 ) -> (Ast, Vec<LoadError>) {
-    // `.som/raylib.som` is generated for the program around it, so it's that program that
-    // gets loaded. Loaded on its own, it would import its header into `.som/.som/`.
+    // `.build/imports/raylib.som` is generated for the program around the build folder, so
+    // it's that program that gets loaded, not one of its own in `imports/`.
     let program = generated_for(path);
     let path = program.as_deref().unwrap_or(path);
 
     let mut loader = Loader {
-        library_dirs: library_dirs.to_vec(),
+        toolchain: toolchain.clone(),
         overlay: overlay.clone(),
         ..Loader::default()
     };
     // A file in the standard library is checked as part of it: the program is the standard
     // library itself, loaded once, as `som`, around an empty program in its folder (where
-    // imported headers are cached, in `.som/`).
+    // imported headers are cached, in `.build/imports/`).
     let in_std = stdlib::contains(path).then(stdlib::root).flatten();
     let root = loader.ast.add_module(
         "",
@@ -209,6 +210,7 @@ pub fn load_with(
     }
     // `@for v in Kind { … }`: written out now that every module, and `Kind`, is loaded.
     let errors = som_parser::expand_reflected(&mut loader.ast);
+    targets::decide(&mut loader.ast, toolchain.target.os());
     loader
         .errors
         .extend(errors.into_iter().map(LoadError::Parse));
@@ -216,13 +218,18 @@ pub fn load_with(
     (loader.ast, loader.errors)
 }
 
-/// The program a `.som` folder, or a file in one, was generated for: the folder around it.
+/// The program a `.build/imports/` folder (`.build/<triple>/imports/` for another system), or
+/// a file in one, was generated for: the folder around `.build/`.
 fn generated_for(path: &Path) -> Option<PathBuf> {
     let folder = std::path::absolute(folder_of(path)).ok()?;
-    let generated = folder
-        .file_name()
-        .is_some_and(|name| name == toolchain::CACHE_DIR);
-    generated.then(|| folder.parent().map(Path::to_path_buf))?
+    if folder.file_name()? != toolchain::IMPORTS_DIR {
+        return None;
+    }
+    let build = (folder.ancestors().skip(1).take(2)).find(|dir| {
+        dir.file_name()
+            .is_some_and(|name| name == toolchain::BUILD_DIR)
+    })?;
+    build.parent().map(Path::to_path_buf)
 }
 
 /// Where a module no `use` asked for is used from.
@@ -244,7 +251,7 @@ struct Loader {
     errors: Vec<LoadError>,
     loaded: HashSet<String>,
     loading: HashSet<String>,
-    library_dirs: Vec<PathBuf>,
+    toolchain: Toolchain,
     /// Library modules whose header has been imported.
     imported: HashSet<String>,
     overlay: HashMap<PathBuf, String>,
@@ -324,13 +331,13 @@ impl Loader {
     /// Imports the C headers `module` names, before its `use`s are followed, so `use raylib;`
     /// finds the imported module.
     fn import_headers(&mut self, module: usize) {
-        let (ast, dirs, imported, errors) = (
+        let (ast, toolchain, imported, errors) = (
             &mut self.ast,
-            &self.library_dirs,
+            &self.toolchain,
             &mut self.imported,
             &mut self.errors,
         );
-        for name in crate::headers::import(ast, module, dirs, imported, errors) {
+        for name in crate::headers::import(ast, module, toolchain, imported, errors) {
             self.loaded.insert(name);
         }
     }
@@ -351,7 +358,18 @@ impl Loader {
 
         let module = if let Some(folder) = stdlib::folder(&name) {
             let module = self.ast.add_module(name.as_str(), folder.clone());
-            self.load_dir(module, &folder);
+            // `som::OS`, the system it's compiled for, written for each build.
+            if name == som_lang::PRELUDE_MODULE {
+                self.parse(module, targets::target_source(&self.toolchain.target));
+            }
+            // Every system's C library, the target's first.
+            if name == som_lang::LIBC_MODULE {
+                for source in targets::libc_sources(self.toolchain.target.os()) {
+                    self.parse(module, source);
+                }
+            } else {
+                self.load_dir(module, &folder);
+            }
             module
         } else if stdlib::is_std_module(&name) && stdlib::root().is_none() {
             self.errors.push(LoadError::NoStandardLibrary {

@@ -20,6 +20,7 @@ use std::path::Path;
 
 use super::ctype::cast_type;
 use super::docs::comment_lines;
+use crate::toolchain::Target;
 
 /// A struct a compound literal can make: its som name, and its fields' som names and types.
 pub(super) struct Record {
@@ -43,6 +44,7 @@ pub(super) fn constants(
     wanted: &dyn Fn(&str, &str) -> bool,
     record: &dyn Fn(&str) -> Option<Record>,
     taken: &HashSet<String>,
+    target: &Target,
 ) -> (String, String) {
     let defines = defines(preprocessed);
     let by_name: HashMap<&str, &Define> = defines.iter().map(|d| (d.name.as_str(), d)).collect();
@@ -51,6 +53,7 @@ pub(super) fn constants(
         record,
         values: HashMap::new(),
         evaluating: HashSet::new(),
+        target,
     };
     let mut texts: HashMap<String, Option<String>> = HashMap::new();
     let mut out = String::new();
@@ -474,6 +477,7 @@ struct Evaluator<'a> {
     values: HashMap<String, Option<Val>>,
     /// The definitions being worked out, which one naming itself never finishes.
     evaluating: HashSet<String>,
+    target: &'a Target,
 }
 
 impl Evaluator<'_> {
@@ -559,7 +563,7 @@ impl Evaluator<'_> {
         let closes = p.tokens.get(p.at + words.len()) == Some(&Tok::Punct(")"));
         if !words.is_empty() && closes {
             let refs: Vec<&str> = words.iter().map(String::as_str).collect();
-            if let Some(ty) = cast_type(&refs) {
+            if let Some(ty) = cast_type(&refs, self.target) {
                 p.at += words.len() + 1;
                 let value = self.unary(p)?;
                 return match Int::of(ty) {

@@ -137,7 +137,7 @@ pub(crate) fn document_links(a: &Analysis, file: &str) -> Vec<DocumentLink> {
     links
 }
 
-/// `path` from the directory of `file`: `.som/raylib.som`.
+/// `path` from the directory of `file`: `.build/imports/raylib.som`.
 fn relative(path: &Path, file: &str) -> String {
     Path::new(file)
         .parent()

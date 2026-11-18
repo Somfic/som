@@ -1,4 +1,4 @@
-extern "c";
+use som::c;
 
 impl f32 {
     pub @const PI = c::M_PI as f32;

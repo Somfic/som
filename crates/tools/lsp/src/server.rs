@@ -168,6 +168,7 @@ impl SomLanguageServer {
         let options = som_driver::Options {
             overlay,
             opened: Some(path),
+            every_system: true,
             ..Default::default()
         };
         tokio::task::spawn_blocking(move || som_driver::analyze(&root, &options))
@@ -220,6 +221,7 @@ async fn analyze_root(client: &Client, state: &State, root: PathBuf, opened: Str
     let options = som_driver::Options {
         overlay: state.overlay().await,
         opened: (!opened.is_empty()).then(|| PathBuf::from(&opened)),
+        every_system: true,
         ..Default::default()
     };
     let analyzed_root = root.clone();

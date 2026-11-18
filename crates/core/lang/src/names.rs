@@ -5,6 +5,12 @@ pub const SELF_TYPE: &str = "Self";
 pub const FAIL_EVENT: &str = "fail";
 
 pub const MEM_MODULE: &str = "som::mem";
+/// Next to a program's `main.som`: what building it makes, executables and all.
+pub const BUILD_DIR: &str = ".build";
+/// In the build folder: the som source generated from C headers (`raylib.som`).
+pub const IMPORTS_DIR: &str = "imports";
+/// The C library, which `extern "c";` also `use`s.
+pub const LIBC_MODULE: &str = "som::c";
 pub const FORGET: &str = "forget";
 
 pub const LEN: &str = "len";

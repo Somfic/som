@@ -1,4 +1,4 @@
-extern "c";
+use som::c;
 use som::mem;
 
 pub struct string {

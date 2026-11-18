@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use som_ast::{Func, Id, Ident};
 use som_driver::Analysis;
-use som_driver::toolchain::CACHE_DIR;
+use som_driver::toolchain::IMPORTS_DIR;
 use som_resolve::{DefId, DefKind};
 use tower_lsp::lsp_types::{Location, Position, Range, Url};
 
@@ -18,7 +18,7 @@ pub(crate) fn of_func(a: &Analysis, f: Id<Func>) -> Option<Origin> {
 /// Where `name`, declared in a file generated from a header, is declared in the header.
 pub(crate) fn of_name(name: &Ident) -> Option<Origin> {
     let generated = PathBuf::from(name.span.source.identifier());
-    let in_generated_dir = generated.parent()?.file_name()? == CACHE_DIR;
+    let in_generated_dir = generated.parent()?.file_name()? == IMPORTS_DIR;
     in_generated_dir.then_some(())?;
     som_driver::origins(&generated).remove(&*name.name)
 }
