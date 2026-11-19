@@ -92,11 +92,82 @@ impl Checker<'_> {
                 }
                 ty
             }
+            // `test(x)`, `test` a variable holding a function.
+            Some(DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_)) => {
+                let def = self.names.expr(id).expect("matched above");
+                let ty = self.locals.get(&def).copied().unwrap_or(error);
+                self.call_value(id, ty, &callee.to_string(), args)
+            }
             _ => {
                 self.infer_all(args);
                 error
             }
         }
+    }
+
+    /// `name(args)` through a value of type `callee`: a function's address, `fn(&i32) ->
+    /// bool`. Returns what the call gives.
+    pub(super) fn call_value(
+        &mut self,
+        call: Id<Expr>,
+        callee: TypeId,
+        name: &str,
+        args: &[Id<Expr>],
+    ) -> TypeId {
+        let error = self.u.table.error;
+        let callee = self.u.shallow(callee);
+        let signature = self.signature_of(callee).unwrap_or(callee);
+        match self.u.get(signature).clone() {
+            Ty::Fn { params, ret } => {
+                if args.len() != params.len() {
+                    self.errors.push(TypeError::WrongArgCount {
+                        name: name.to_string(),
+                        expected: params.len(),
+                        at_least: false,
+                        found: args.len(),
+                        span: self.span(call),
+                    });
+                    self.infer_all(args);
+                    return ret;
+                }
+                for (&arg, &param) in args.iter().zip(&params) {
+                    self.expect(arg, param, None);
+                }
+                ret
+            }
+            Ty::Error => {
+                self.infer_all(args);
+                error
+            }
+            _ => {
+                self.errors.push(TypeError::NotAFunction {
+                    name: name.to_string(),
+                    ty: self.describe(callee),
+                    span: self.span(call),
+                });
+                self.infer_all(args);
+                error
+            }
+        }
+    }
+
+    /// What calling a value of type `ty` takes and gives, as a `fn(…) -> …`: a function's
+    /// address, or a function's own type. `None` if it can't be called.
+    pub(super) fn signature_of(&mut self, ty: TypeId) -> Option<TypeId> {
+        let ty = self.u.shallow(ty);
+        match self.u.get(ty).clone() {
+            Ty::Fn { .. } => Some(ty),
+            Ty::FnItem(def, args) => self.item_signature(def, &args),
+            // `F: fn(&T) -> bool`.
+            Ty::Param(param) => self.signatures.get(&param).copied(),
+            _ => None,
+        }
+    }
+
+    /// Whether a value of type `ty` can be called: `.on_click(event)` of a field holding a
+    /// function.
+    pub(super) fn is_callable(&mut self, ty: TypeId) -> bool {
+        self.signature_of(ty).is_some()
     }
 
     /// A call `callee(args)` naming function `first` and others with its name: the one whose

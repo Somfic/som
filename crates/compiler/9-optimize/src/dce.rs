@@ -246,7 +246,7 @@ fn has_effect(dest: &Place, rvalue: &Rvalue) -> bool {
         return true;
     }
     match rvalue {
-        Rvalue::Call { .. } => true,
+        Rvalue::Call { .. } | Rvalue::CallIndirect { .. } => true,
         Rvalue::Intrinsic { intrinsic, .. } => intrinsic.has_effect(),
         // Dividing by zero, or `MIN / -1`, traps; leave that for run time, as folding does.
         // Only a constant divisor shows it can't.

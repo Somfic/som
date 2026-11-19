@@ -1,0 +1,74 @@
+// expect: exit 26
+
+/// Adapters taking functions: `F: fn(&I::Item) -> bool` is anything called that way. Each
+/// instance knows the function it was given, so it's called directly.
+struct Countdown { n: i32 }
+
+impl Iterator for Countdown {
+    type Item = i32;
+
+    fn next(&mut self) -> i32? {
+        if .n == 0 { return none; }
+        .n = .n - 1;
+        .n + 1
+    }
+}
+
+struct Where<I: Iterator, P: fn(&I::Item) -> bool> {
+    inner: I,
+    test: P,
+}
+
+impl<I: Iterator, P: fn(&I::Item) -> bool> Iterator for Where<I, P> {
+    type Item = I::Item;
+
+    fn next(&mut self) -> I::Item? {
+        loop {
+            let item = .inner.next() else return none;
+            if .test(&item) {
+                return item;
+            }
+        }
+    }
+}
+
+struct Map<I: Iterator, O, F: fn(I::Item) -> O> {
+    inner: I,
+    change: F,
+}
+
+impl<I: Iterator, O, F: fn(I::Item) -> O> Iterator for Map<I, O, F> {
+    type Item = O;
+
+    fn next(&mut self) -> O? {
+        let item = .inner.next() else return none;
+        .change(item)
+    }
+}
+
+trait Adapters: Iterator {
+    fn keep<P: fn(&Self::Item) -> bool>(self, test: P) -> Where<Self, P>;
+    fn map<O, F: fn(Self::Item) -> O>(self, change: F) -> Map<Self, O, F>;
+}
+
+impl<I: Iterator> Adapters for I {
+    fn keep<P: fn(&I::Item) -> bool>(self, test: P) -> Where<I, P> = Where { inner: self, test };
+    fn map<O, F: fn(I::Item) -> O>(self, change: F) -> Map<I, O, F> = Map { inner: self, change };
+}
+
+fn is_even(n: &i32) -> bool = *n % 2 == 0;
+fn is_odd(n: &i32) -> bool = *n % 2 == 1;
+fn times_ten(n: i32) -> i32 = n * 10;
+
+fn main() -> i32 {
+    // 4 2 -> 40 20, then 5 3 1
+    let mut sum = 0;
+    for x in (Countdown { n: 5 }).keep(is_even).map(times_ten) {
+        sum = sum + x;
+    }
+    for x in (Countdown { n: 5 }).keep(is_odd) {
+        sum = sum - x;
+    }
+    // 60 - 9 = 51; minus 25 for 5 * 5
+    sum - 25
+}

@@ -205,8 +205,10 @@ impl<'a> Lowerer<'a> {
         }
         let ty = self.mir.types.intern(Ty::Struct(param, Vec::new()));
         if !self.mir.has_struct(param, &[]) {
-            let copy = (self.names.lang(LangTrait::Copy))
-                .is_some_and(|copy| self.names.bounds(param).contains(&copy));
+            // Only functions and their addresses are called, and they copy.
+            let copy = self.names.signature(param).is_some()
+                || (self.names.lang(LangTrait::Copy))
+                    .is_some_and(|copy| self.names.bounds(param).contains(&copy));
             self.mir.add_struct(StructDef {
                 def: param,
                 args: Vec::new(),

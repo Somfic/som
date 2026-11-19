@@ -34,6 +34,26 @@ impl FnBuilder<'_, '_> {
         Rvalue::Call { func, args }
     }
 
+    /// `callee(args)`, of a value of type `callee_ty`: a call of the function its type names,
+    /// if it's a function's own type, or else through the address it holds.
+    pub(super) fn call_value(
+        &mut self,
+        callee: Operand,
+        callee_ty: TypeId,
+        args: &[Id<Expr>],
+    ) -> Rvalue {
+        let args: Vec<(Operand, TypeId, Span)> = (args.iter())
+            .map(|&a| (self.operand(a), self.expr_ty(a), self.span(a)))
+            .collect();
+        let args = (args.into_iter())
+            .map(|(arg, ty, span)| self.reborrow(arg, ty, span))
+            .collect();
+        match self.l.fn_item_instance(callee_ty) {
+            Some(func) => Rvalue::Call { func, args },
+            None => Rvalue::CallIndirect { callee, args },
+        }
+    }
+
     /// As the method's `self`: as it is, borrowed (`a.len()` for `self: &List`), or copied
     /// out of the reference it is.
     pub(super) fn receiver(&mut self, receiver: Id<Expr>) -> (Operand, TypeId, Span) {

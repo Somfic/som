@@ -380,6 +380,12 @@ pub enum TypeError {
         trait_: String,
         span: Span,
     },
+    /// `where(is_odd)` for an `F: fn(&i32) -> bool` of what isn't called that way.
+    NotCalledSo {
+        ty: Message,
+        signature: String,
+        span: Span,
+    },
     UnknownVariant {
         ty: String,
         variant: String,
@@ -657,6 +663,7 @@ impl TypeError {
             | TypeError::NotInTrait { .. }
             | TypeError::ImplSignatureMismatch { .. }
             | TypeError::DoesNotImplement { .. }
+            | TypeError::NotCalledSo { .. }
             | TypeError::CopyWithMovedField { .. }
             | TypeError::NotDisplay { .. }
             | TypeError::DropOnCopy { .. }

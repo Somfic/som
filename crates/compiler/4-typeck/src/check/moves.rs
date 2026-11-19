@@ -92,6 +92,13 @@ impl Checker<'_> {
                     self.moves_in(arg, true);
                 }
             }
+            // Calling what the callee holds doesn't take it.
+            Expr::CallValue { callee, args } => {
+                self.moves_in(*callee, false);
+                for &arg in args {
+                    self.moves_in(arg, true);
+                }
+            }
             // The receiver is taken only by a method whose `self` isn't a reference.
             Expr::MethodCall { receiver, args, .. } => {
                 let takes_self = (self.records.methods.get(&id).copied())

@@ -33,6 +33,7 @@ impl Checker<'_> {
         // After the bodies, which decide unwritten return types and what results are used as.
         self.resolve_pending_calls();
         self.check_overloads();
+        self.check_called();
         self.check_obligations();
         self.check_deferred();
     }

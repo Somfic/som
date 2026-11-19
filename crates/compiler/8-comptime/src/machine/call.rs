@@ -157,37 +157,48 @@ impl Machine<'_, '_> {
         Ok(())
     }
 
+    /// `place = func(operands)`: C's functions run here, or for real; the program's get a
+    /// frame of their own.
+    fn call(
+        &mut self,
+        place: &Place,
+        func: FuncId,
+        operands: &[Operand],
+        span: &Span,
+    ) -> Result<(), Stop> {
+        let args = (operands.iter())
+            .map(|a| self.operand(a, span))
+            .collect::<Result<Vec<_>, _>>()?;
+        let dest = self.loc(place, span)?;
+        let function = &self.mir().funcs[func];
+        if function.body.is_none() {
+            // One of C's done here; any other, called for real.
+            let name = c_name(function);
+            let value = match self.native(&name, &args, span)? {
+                Some(value) => value,
+                None => {
+                    let tys: Vec<TypeId> = operands.iter().map(|a| self.operand_ty(a)).collect();
+                    self.call_foreign(func, &args, &tys, span)?
+                }
+            };
+            let (dest, ty) = dest;
+            return self.write(&dest, ty, value, span);
+        }
+        self.push_frame(func, args, Some(dest), span.clone())
+    }
+
     pub(crate) fn statement(&mut self, statement: &Statement) -> Result<(), Stop> {
         let span = &statement.span;
         let top = self.frames.len() - 1;
         match &statement.kind {
-            StatementKind::Assign(
-                place,
-                Rvalue::Call {
-                    func,
-                    args: operands,
-                },
-            ) => {
-                let args = (operands.iter())
-                    .map(|a| self.operand(a, span))
-                    .collect::<Result<Vec<_>, _>>()?;
-                let dest = self.loc(place, span)?;
-                let function = &self.mir().funcs[*func];
-                if function.body.is_none() {
-                    // One of C's done here; any other, called for real.
-                    let name = c_name(function);
-                    let value = match self.native(&name, &args, span)? {
-                        Some(value) => value,
-                        None => {
-                            let tys: Vec<TypeId> =
-                                operands.iter().map(|a| self.operand_ty(a)).collect();
-                            self.call_foreign(*func, &args, &tys, span)?
-                        }
-                    };
-                    let (dest, ty) = dest;
-                    return self.write(&dest, ty, value, span);
+            StatementKind::Assign(place, Rvalue::Call { func, args }) => {
+                self.call(place, *func, args, span)
+            }
+            StatementKind::Assign(place, Rvalue::CallIndirect { callee, args }) => {
+                match self.operand(callee, span)? {
+                    Value::Func(func) => self.call(place, func, args, span),
+                    _ => unsupported("calling through this address", span),
                 }
-                self.push_frame(*func, args, Some(dest), span.clone())
             }
             StatementKind::Assign(place, rvalue) => {
                 let value = self.rvalue(rvalue, span)?;

@@ -13,6 +13,9 @@ impl FnBuilder<'_, '_> {
         if let Some((method, type_args)) = typed.conversion(expr) {
             return self.convert(expr, method, type_args.to_vec());
         }
+        if typed.is_fn_pointer(expr) {
+            return self.address_of(expr);
+        }
         if !typed.is_wrapped(expr) && typed.sliced_to(expr).is_none() && !typed.is_downgraded(expr)
         {
             return self.operand_unwrapped(expr);
@@ -20,6 +23,22 @@ impl FnBuilder<'_, '_> {
         let rvalue = self.rvalue(expr);
         let ty = self.used_ty(expr);
         self.temp_read(ty, rvalue, self.span(expr))
+    }
+
+    /// `is_even` where a `fn(&i32) -> bool` is expected: the address of the function its
+    /// type names.
+    fn address_of(&mut self, expr: Id<Expr>) -> Operand {
+        // Worked out for what doing so does; a function's own type holds nothing.
+        self.operand_unwrapped(expr);
+        let item = self.expr_ty(expr);
+        let id = self.l.fn_item_instance(item).expect("only a function's own type has an address");
+        let function = &self.l.mir.funcs[id];
+        let ty = Ty::Fn {
+            params: function.params.clone(),
+            ret: function.ret,
+        };
+        let ty = self.l.mir.types.intern(ty);
+        self.constant(ConstKind::Func(id), ty)
     }
 
     /// `expr` passed to `From::from`, `method`.
@@ -73,7 +92,7 @@ impl FnBuilder<'_, '_> {
     /// Made a slice or wrapped in an optional where that's what's expected.
     pub(super) fn rvalue(&mut self, expr: Id<Expr>) -> Rvalue {
         let typed = self.typed.clone();
-        if typed.conversion(expr).is_some() {
+        if typed.conversion(expr).is_some() || typed.is_fn_pointer(expr) {
             return Rvalue::Use(self.operand(expr));
         }
         // A `&mut T` where a `&T` is expected: `&*r`, lending what it refers to.
@@ -117,6 +136,16 @@ impl FnBuilder<'_, '_> {
 
     /// The type `expr` has where it's used: made a slice, or wrapped in an optional.
     pub(super) fn used_ty(&mut self, expr: Id<Expr>) -> TypeId {
+        if self.typed.is_fn_pointer(expr) {
+            let item = self.expr_ty(expr);
+            let id = self.l.fn_item_instance(item).expect("a function's own type");
+            let function = &self.l.mir.funcs[id];
+            let ty = Ty::Fn {
+                params: function.params.clone(),
+                ret: function.ret,
+            };
+            return self.l.mir.types.intern(ty);
+        }
         let ty = match self.typed.sliced_to(expr) {
             Some(slice) => self.ty(slice),
             None => self.expr_ty(expr),
@@ -214,6 +243,11 @@ impl FnBuilder<'_, '_> {
             .callee(expr, self.l.names)
             .expect("checked programs are fully resolved");
         match self.l.names.def(def).kind {
+            // Of its own type, it holds nothing: the type says which function it is. Its address
+            // is made where one is expected (`address_of`).
+            DefKind::Func(_) if matches!(self.l.mir.types.get(ty), Ty::FnItem(..)) => {
+                self.constant(ConstKind::Unit, ty)
+            }
             DefKind::Func(func) => {
                 let type_args = self.type_args(expr);
                 let id = self.l.instance(func, type_args);

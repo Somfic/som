@@ -466,6 +466,11 @@ pub enum Rvalue {
         func: FuncId,
         args: Vec<Operand>,
     },
+    /// Through a function's address, a `fn(…) -> …`: `ops[0](5)`.
+    CallIndirect {
+        callee: Operand,
+        args: Vec<Operand>,
+    },
     /// Raw memory through a `*T`; nothing checks it. It's what `List` is built on.
     Intrinsic {
         intrinsic: Intrinsic,
@@ -475,6 +480,11 @@ pub enum Rvalue {
 }
 
 impl Rvalue {
+    /// Whether it calls a function, named or through its address.
+    pub fn is_call(&self) -> bool {
+        matches!(self, Rvalue::Call { .. } | Rvalue::CallIndirect { .. })
+    }
+
     pub fn operands(&self) -> Vec<&Operand> {
         match self {
             Rvalue::Use(op)
@@ -497,6 +507,7 @@ impl Rvalue {
             | Rvalue::Array { items: ops, .. }
             | Rvalue::Call { args: ops, .. }
             | Rvalue::Intrinsic { args: ops, .. } => ops.iter().collect(),
+            Rvalue::CallIndirect { callee, args } => std::iter::once(callee).chain(args).collect(),
             Rvalue::Ref { .. } => Vec::new(),
         }
     }
@@ -523,6 +534,9 @@ impl Rvalue {
             | Rvalue::Array { items: ops, .. }
             | Rvalue::Call { args: ops, .. }
             | Rvalue::Intrinsic { args: ops, .. } => ops.iter_mut().collect(),
+            Rvalue::CallIndirect { callee, args } => {
+                std::iter::once(callee).chain(args.iter_mut()).collect()
+            }
             Rvalue::Ref { .. } => Vec::new(),
         }
     }

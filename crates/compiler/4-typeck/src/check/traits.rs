@@ -488,6 +488,37 @@ impl Checker<'_> {
                 let given = given.into_iter().map(|ty| self.substitute(ty, &subst)).collect();
                 self.deferred.obligations.push((arg, trait_, given, span.clone()));
             }
+            if let Some(&signature) = self.signatures.get(&param) {
+                let signature = self.substitute(signature, &subst);
+                self.deferred.called.push((arg, signature, span.clone()));
+            }
+        }
+    }
+
+    /// What's given for `F: fn(&T) -> bool` has to be called so: a function that is, its
+    /// address, or a parameter called so too. Working that out can decide a generic
+    /// function's type arguments: `to_text` given for an `F: fn(i32) -> string`.
+    pub(super) fn check_called(&mut self) {
+        for (ty, signature, span) in std::mem::take(&mut self.deferred.called) {
+            let ty = self.normalize_assoc(ty);
+            let signature = self.normalize_assoc(signature);
+            if self.u.var_kind(ty) == Some(VarKind::Any) {
+                continue;
+            }
+            let fits = match self.signature_of(ty) {
+                Some(found) => {
+                    let found = self.normalize_assoc(found);
+                    self.u.unify(signature, found).is_ok()
+                }
+                None => matches!(self.u.shallow_ty(ty), Ty::Error),
+            };
+            if !fits {
+                self.errors.push(TypeError::NotCalledSo {
+                    ty: self.describe(ty),
+                    signature: self.u.display(signature, self.names),
+                    span,
+                });
+            }
         }
     }
 
@@ -508,6 +539,11 @@ impl Checker<'_> {
             let this = self.u.intern(Ty::Param(param));
             let args = self.trait_args(trait_, t, this, given, span);
             self.bound_args.insert((param, trait_), args);
+        }
+        for param in names.called_params() {
+            let written = names.signature(param).expect("listed as called");
+            let signature = self.lower(written);
+            self.signatures.insert(param, signature);
         }
     }
 

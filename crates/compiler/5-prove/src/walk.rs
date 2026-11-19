@@ -253,6 +253,11 @@ impl Prover<'_> {
                     self.check_call(id, func, 0, None, args);
                 }
             }
+            // Nothing's known of the function: `&mut` arguments are changed where they're lent.
+            Expr::CallValue { callee, args } => {
+                self.expr(*callee);
+                args.iter().for_each(|&a| self.expr(a));
+            }
             Expr::MethodCall { receiver, args, .. } => {
                 self.expr(*receiver);
                 args.iter().for_each(|&a| self.expr(a));

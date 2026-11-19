@@ -66,6 +66,9 @@ impl Checker<'_> {
             return error;
         };
         let Some(def) = self.names.method(owner, &method.name) else {
+            if let Some(ty) = self.field_call(id, receiver, receiver_ty, owner, method, args) {
+                return ty;
+            }
             self.report_missing_method(id, owner, receiver_ty, method, args);
             self.infer_all(args);
             return error;
@@ -130,6 +133,37 @@ impl Checker<'_> {
         }
         self.struct_of(receiver_ty, receiver)
             .map(|(owner, _)| owner)
+    }
+
+    /// `.on_click(event)`, of a struct with no such method: its field holding a function,
+    /// called through it. `None` if there's no field by that name that can be called.
+    fn field_call(
+        &mut self,
+        id: Id<Expr>,
+        receiver: Id<Expr>,
+        receiver_ty: TypeId,
+        owner: DefId,
+        method: &som_ast::Ident,
+        args: &[Id<Expr>],
+    ) -> Option<TypeId> {
+        let DefKind::Struct(s) = self.names.def(owner).kind else {
+            return None;
+        };
+        let strukt = &self.ast.structs[s];
+        if strukt.is_enum() {
+            return None;
+        }
+        let index = (strukt.fields.iter()).position(|f| f.name.name == method.name)?;
+        let (_, struct_args) = self.struct_of(receiver_ty, receiver)?;
+        let subst = self.struct_subst(s, &struct_args);
+        let declared = self.records.structs[s.id][index];
+        let ty = crate::impls::substitute(&mut self.u.table, declared, &subst);
+        if !self.is_callable(ty) {
+            return None;
+        }
+        self.check_field_visible(s, index, &method.span);
+        self.records.field_calls.insert(id, index);
+        Some(self.call_value(id, ty, &method.name, args))
     }
 
     /// Reports `method`, which `owner` doesn't have: a prop called, or what it has instead.

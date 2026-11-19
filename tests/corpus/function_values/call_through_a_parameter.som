@@ -1,0 +1,16 @@
+// expect: exit 2
+
+/// A function given as an argument is called through its address.
+fn is_even(n: &i32) -> bool = *n % 2 == 0;
+
+fn count(values: &[i32], test: fn(&i32) -> bool) -> i32 {
+    let mut n = 0;
+    for v in values {
+        if test(&v) {
+            n = n + 1;
+        }
+    }
+    n
+}
+
+fn main() -> i32 = count(&[1, 2, 3, 4], is_even);

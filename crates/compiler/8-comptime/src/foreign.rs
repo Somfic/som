@@ -152,7 +152,7 @@ fn ffi_type(mir: &Mir, ty: TypeId) -> Option<Type> {
             }
             // Without its `()` fields, which the C backend leaves out.
             let fields = (parts.iter())
-                .filter(|&&(part, _)| !matches!(mir.types.get(part), Ty::Unit))
+                .filter(|&&(part, _)| !matches!(mir.types.get(part), Ty::Unit | Ty::FnItem(..)))
                 .map(|&(part, _)| ffi_type(mir, part))
                 .collect::<Option<Vec<_>>>()?;
             Type::structure(fields)

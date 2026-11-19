@@ -510,7 +510,7 @@ impl<'a> FnChecker<'a> {
             Ty::Struct(def, args) => (self.mir.struct_def(*def, args).fields.iter())
                 .any(|&(_, f)| self.has_ref_in(f, seen)),
             // A function's parameters and result are only types: a function value holds no loan.
-            Ty::Fn { .. } => false,
+            Ty::Fn { .. } | Ty::FnItem(..) => false,
             t => t
                 .children()
                 .into_iter()

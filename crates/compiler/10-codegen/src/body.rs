@@ -151,7 +151,7 @@ impl<'a> Emitter<'a> {
         let value = self.rvalue(f, rvalue);
         // A `()` in a field has nowhere to go: only what working it out does is kept.
         if self.is_absent(f, dest) {
-            if matches!(rvalue, Rvalue::Call { .. }) {
+            if rvalue.is_call() {
                 code.push(format!("    {};", value.text));
             }
             *returned = None;
@@ -177,7 +177,7 @@ impl<'a> Emitter<'a> {
             // Nothing reads it: a call is kept for what it does, anything else dropped.
             if reads == 0 {
                 let effect = match rvalue {
-                    Rvalue::Call { .. } => true,
+                    Rvalue::Call { .. } | Rvalue::CallIndirect { .. } => true,
                     Rvalue::Intrinsic { intrinsic, .. } => intrinsic.has_effect(),
                     _ => false,
                 };
@@ -265,7 +265,7 @@ impl<'a> Emitter<'a> {
         }
         memory |= reads.iter().any(|l| f.address_taken.contains(l));
         match rvalue {
-            Rvalue::Call { .. } => effect = true,
+            Rvalue::Call { .. } | Rvalue::CallIndirect { .. } => effect = true,
             Rvalue::Intrinsic { intrinsic, .. } => {
                 memory = true;
                 effect |= intrinsic.has_effect();
@@ -287,7 +287,7 @@ impl<'a> Emitter<'a> {
     fn flush_before(&self, f: &FnState, dest: &Place, rvalue: &Rvalue, code: &mut Vec<String>) {
         let read = statement_reads(dest, rvalue);
         let pending = f.pending.borrow();
-        let effect = matches!(rvalue, Rvalue::Call { .. })
+        let effect = rvalue.is_call()
             || matches!(rvalue, Rvalue::Intrinsic { intrinsic, .. } if intrinsic.has_effect())
             || read
                 .iter()

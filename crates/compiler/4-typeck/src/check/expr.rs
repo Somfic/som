@@ -209,6 +209,12 @@ impl Checker<'_> {
                 args,
             } => self.infer_call(id, callee, owner_args, written, args),
 
+            Expr::CallValue { callee, args } => {
+                let ty = self.infer(*callee);
+                let name = self.span(*callee).get_text().to_string();
+                self.call_value(id, ty, &name, args)
+            }
+
             Expr::MethodCall {
                 receiver,
                 method,
@@ -294,15 +300,12 @@ impl Checker<'_> {
             Some((def, DefKind::Func(func))) => {
                 let expected = self.hints.expected_here.take();
                 let func = self.pick_function(id, def, expected).unwrap_or(*func);
-                let (sig, args) = self.instantiate(func);
+                let (_, args) = self.instantiate(func);
                 self.require_bounds(func, &args, self.span(id));
                 if !args.is_empty() {
-                    self.type_args.insert(id, args);
+                    self.type_args.insert(id, args.clone());
                 }
-                self.u.intern(Ty::Fn {
-                    params: sig.params,
-                    ret: sig.ret,
-                })
+                self.u.intern(Ty::FnItem(self.names.func(func), args))
             }
             _ => error,
         }

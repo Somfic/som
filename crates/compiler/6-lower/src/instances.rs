@@ -1,7 +1,7 @@
 use som_ast::{Func, Id, Span, Struct};
 use som_lang::Builtin;
 use som_mir::*;
-use som_resolve::DefId;
+use som_resolve::{DefId, DefKind};
 use som_typeck::traits::{ImplInfo, resolve_assoc};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -98,6 +98,17 @@ impl<'a> Lowerer<'a> {
         } else {
             format!("{module}::{name}")
         }
+    }
+
+    /// For a function's own type, `is_even`'s: the instance of the function it names.
+    pub(super) fn fn_item_instance(&mut self, ty: TypeId) -> Option<FuncId> {
+        let Ty::FnItem(def, args) = self.mir.types.get(ty).clone() else {
+            return None;
+        };
+        let DefKind::Func(func) = self.names.def(def).kind else {
+            return None;
+        };
+        Some(self.instance(func, args))
     }
 
     pub(super) fn instance(&mut self, func: Id<Func>, type_args: Vec<TypeId>) -> FuncId {

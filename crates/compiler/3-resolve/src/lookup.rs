@@ -48,6 +48,11 @@ impl<'a> Resolver<'a> {
         Some(def)
     }
 
+    /// The variable `name` names here, innermost first: a local, parameter or binding.
+    pub(crate) fn local(&self, name: &str) -> Option<DefId> {
+        (self.cx.scopes.iter().rev()).find_map(|scope| scope.get(name).copied())
+    }
+
     pub(crate) fn lookup(&self, name: &str, expect: Expect) -> Option<DefId> {
         if expect == Expect::Value
             && let Some(&def) = self

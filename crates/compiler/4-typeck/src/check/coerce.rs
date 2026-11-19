@@ -1,5 +1,5 @@
 use som_ast::{Expr, Id, Span};
-use som_resolve::DefKind;
+use som_resolve::{DefId, DefKind};
 
 use super::Checker;
 use crate::Receiver;
@@ -70,6 +70,15 @@ impl Checker<'_> {
                 return true;
             }
         }
+        // `is_even` where a `fn(&i32) -> bool` is expected: its address.
+        if matches!(self.u.get(expected), Ty::Fn { .. })
+            && let Ty::FnItem(def, args) = self.u.shallow_ty(found).clone()
+            && let Some(signature) = self.item_signature(def, &args)
+            && self.u.unify(expected, signature).is_ok()
+        {
+            self.records.fn_pointers.insert(expr);
+            return true;
+        }
         if self.from_conversion(expr, expected, found) {
             return true;
         }
@@ -99,6 +108,28 @@ impl Checker<'_> {
             }
         }
         false
+    }
+
+    /// What function `def` takes and gives, with type arguments `args`: `fn(&i32) -> bool`.
+    /// `None` if `def` isn't a function.
+    pub(super) fn item_signature(&mut self, def: DefId, args: &[TypeId]) -> Option<TypeId> {
+        let DefKind::Func(func) = self.names.def(def).kind else {
+            return None;
+        };
+        let subst: Vec<(DefId, TypeId)> =
+            (self.names.type_params(func).iter().copied()).zip(args.iter().copied()).collect();
+        let sig = &self.sigs[func.id];
+        let (params, ret) = (sig.params.clone(), sig.ret);
+        let params = params
+            .into_iter()
+            .map(|p| {
+                let p = self.substitute(p, &subst);
+                self.normalize_assoc(p)
+            })
+            .collect();
+        let ret = self.substitute(ret, &subst);
+        let ret = self.normalize_assoc(ret);
+        Some(self.u.intern(Ty::Fn { params, ret }))
     }
 
     /// Whether a value of type `found` becomes the slice `expected`: a reference to an array of
@@ -226,9 +257,13 @@ impl Checker<'_> {
             },
             Ty::Ref { mutable: true, .. } => false,
             Ty::Optional(inner) | Ty::Array { element: inner, .. } => self.is_copy(inner),
-            // Whatever it stands for might move: only copied if it's required to be `Copy`.
-            Ty::Param(def) => (self.names.lang(som_lang::LangTrait::Copy))
-                .is_some_and(|copy| self.names.bounds(def).contains(&copy)),
+            // Whatever it stands for might move: only copied if it's required to be `Copy`, or
+            // called, as only functions and their addresses are.
+            Ty::Param(def) => {
+                self.signatures.contains_key(&def)
+                    || (self.names.lang(som_lang::LangTrait::Copy))
+                        .is_some_and(|copy| self.names.bounds(def).contains(&copy))
+            }
             _ => true,
         }
     }

@@ -211,16 +211,30 @@ impl Parser<'_> {
 
     fn parse_generic(&mut self, with_defaults: bool, defaulted: &mut bool) -> Option<Generic> {
         let name = self.parse_ident("a generic parameter name")?;
-        let (mut ty, mut bounds) = (None, Vec::new());
+        let (mut ty, mut bounds, mut signature) = (None, Vec::new(), None);
         if self.eat(TokenKind::Colon) {
             // `N: usize` is a value parameter; `T: Hash + Eq` a type that has to implement
-            // traits.
+            // traits; `F: fn(&T) -> bool` one that can be called so.
             if self.at_primitive_type() {
                 ty = Some(self.parse_type()?);
             } else {
-                bounds.push(self.parse_bound()?);
-                while self.eat(TokenKind::Plus) {
-                    bounds.push(self.parse_bound()?);
+                loop {
+                    if self.at(TokenKind::Fn) {
+                        let at = self.current_span();
+                        let written = self.parse_type()?;
+                        if signature.replace(written).is_some() {
+                            self.error_at(
+                                self.span_from(&at),
+                                "a parameter is called one way",
+                                "a second way to call it",
+                            );
+                        }
+                    } else {
+                        bounds.push(self.parse_bound()?);
+                    }
+                    if !self.eat(TokenKind::Plus) {
+                        break;
+                    }
                 }
             }
         }
@@ -254,6 +268,7 @@ impl Parser<'_> {
             name,
             ty,
             bounds,
+            signature,
             default,
         })
     }

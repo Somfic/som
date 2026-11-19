@@ -87,6 +87,18 @@ impl Emitter<'_> {
                 let args: Vec<String> = args.iter().map(|a| self.operand(f, a).text).collect();
                 Expr::atom(format!("{}({})", self.func_name(*func), args.join(", ")))
             }
+            // An address is a `void*`: called as a pointer to a function of its type.
+            Rvalue::CallIndirect { callee, args } => {
+                let Ty::Fn { params, ret } = self.mir.types.get(self.operand_ty(f, callee)).clone()
+                else {
+                    unreachable!("only functions are called")
+                };
+                let params: Vec<String> = params.iter().map(|&p| self.ty(p)).collect();
+                let pointer = format!("{} (*)({})", self.ty(ret), params.join(", "));
+                let callee = self.operand(f, callee).operand();
+                let args: Vec<String> = args.iter().map(|a| self.operand(f, a).text).collect();
+                Expr::atom(format!("(({pointer}){callee})({})", args.join(", ")))
+            }
         }
     }
 

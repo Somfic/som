@@ -150,6 +150,9 @@ pub struct Generic {
     pub name: Ident,
     pub ty: Option<Id<TypeExpr>>,
     pub bounds: Vec<Bound>,
+    /// `F: fn(&T) -> bool`: what calling an `F` takes and gives. A function, or a function's
+    /// address, that does.
+    pub signature: Option<Id<TypeExpr>>,
     /// `Self` in `trait Add<Other = Self>`. Only a struct's or a trait's parameters have one.
     pub default: Option<Id<TypeExpr>>,
 }

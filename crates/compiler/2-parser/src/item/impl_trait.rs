@@ -314,6 +314,7 @@ impl Parser<'_> {
             },
             ty: None,
             default: None,
+            signature: None,
             bounds: std::iter::once(Path {
                 segments: vec![trait_name.clone()],
             })

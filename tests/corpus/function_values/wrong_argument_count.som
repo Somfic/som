@@ -1,0 +1,8 @@
+// expect: error WrongArgCount
+
+fn double(x: i32) -> i32 = x * 2;
+
+fn main() -> i32 {
+    let f = double;
+    f(1, 2)
+}

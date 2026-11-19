@@ -84,6 +84,11 @@ impl FnBuilder<'_, '_> {
 
     fn field_place(&mut self, expr: Id<Expr>, object: Id<Expr>) -> Place {
         let index = self.typed.field(expr).expect("checked fields are resolved");
+        self.field_place_at(object, index)
+    }
+
+    /// Field `index` of `object`, through one reference or a `#T`.
+    pub(super) fn field_place_at(&mut self, object: Id<Expr>, index: usize) -> Place {
         let mut object_ty = self.expr_ty(object);
         // `node.value` of a `#Node`: through the `&Node` its `get` lends.
         let mut place = if self.typed.is_shared_read(object) {

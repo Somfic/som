@@ -139,6 +139,11 @@ pub(crate) struct Records {
     pub(crate) counts: HashMap<Id<Expr>, TypeId>,
     pub(crate) methods: HashMap<Id<Expr>, DefId>,
     pub(crate) fields: HashMap<Id<Expr>, usize>,
+    /// Functions used where a `fn(…)` is expected, `is_even` in `count(xs, is_even)`: each
+    /// gives its address.
+    pub(crate) fn_pointers: HashSet<Id<Expr>>,
+    /// `.on_click(event)` → the field `on_click` is, holding the function called.
+    pub(crate) field_calls: HashMap<Id<Expr>, usize>,
     /// Expressions that become an optional where used: `5` in `let x: i32? = 5`.
     pub(crate) wrapped: HashSet<Id<Expr>>,
     /// `&mut T`s used where a `&T` is expected: each lent as `&*r`.
@@ -413,6 +418,11 @@ impl Typed {
         self.records.fields.get(&expr).copied()
     }
 
+    /// For a method call that calls a field's function, `.on_click(event)`: the field.
+    pub fn field_call(&self, expr: Id<Expr>) -> Option<usize> {
+        self.records.field_calls.get(&expr).copied()
+    }
+
     pub fn type_args(&self, expr: Id<Expr>) -> &[TypeId] {
         self.type_args.get(&expr).map(Vec::as_slice).unwrap_or(&[])
     }
@@ -522,6 +532,11 @@ impl Typed {
     /// A `&mut T` used where a `&T` is expected: lent as `&*expr`, so it's still usable after.
     pub fn is_downgraded(&self, expr: Id<Expr>) -> bool {
         self.records.downgraded.contains(&expr)
+    }
+
+    /// Whether `expr`, of a function's own type, gives the function's address.
+    pub fn is_fn_pointer(&self, expr: Id<Expr>) -> bool {
+        self.records.fn_pointers.contains(&expr)
     }
 
     pub fn is_wrapped(&self, expr: Id<Expr>) -> bool {

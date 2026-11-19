@@ -1,0 +1,12 @@
+// expect: exit 33
+
+/// `f(x)` of an `F: fn(i32) -> i32`: given a function, a generic one, or an address.
+fn apply<F: fn(i32) -> i32>(f: F, x: i32) -> i32 = f(x);
+
+fn double(x: i32) -> i32 = x * 2;
+fn same<T>(x: T) -> T = x;
+
+fn main() -> i32 {
+    let pointer: fn(i32) -> i32 = double;
+    apply(double, 5) + apply(same, 3) + apply(pointer, 10)
+}

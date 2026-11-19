@@ -307,6 +307,10 @@ impl Dumper<'_> {
             Expr::Call { callee, args, .. } => {
                 self.node(format!("call {callee}"), |d| d.exprs(args))
             }
+            Expr::CallValue { callee, args } => self.node("call value", |d| {
+                d.expr(*callee);
+                d.exprs(args);
+            }),
             Expr::MethodCall {
                 receiver,
                 method,

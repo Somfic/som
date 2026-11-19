@@ -182,7 +182,7 @@ impl Machine<'_, '_> {
     pub(crate) fn zero(&self, ty: TypeId, span: &Span) -> Result<Value, Stop> {
         let mir = self.mir();
         Ok(match mir.types.get(ty) {
-            Ty::Unit => Value::Unit,
+            Ty::Unit | Ty::FnItem(..) => Value::Unit,
             Ty::Bool => Value::Bool(false),
             Ty::Char | Ty::Int(_) => Value::Int(0),
             Ty::Float(_) => Value::Float(0.0),
@@ -307,7 +307,9 @@ impl Machine<'_, '_> {
                 let args = operands(self, args)?;
                 self.intrinsic(*intrinsic, element, args, span)?
             }
-            Rvalue::Call { .. } => unreachable!("calls are statements of their own"),
+            Rvalue::Call { .. } | Rvalue::CallIndirect { .. } => {
+                unreachable!("calls are statements of their own")
+            }
         })
     }
 

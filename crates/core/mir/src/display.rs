@@ -35,6 +35,8 @@ impl Mir {
                 let params: Vec<String> = params.iter().map(|&p| self.display_ty(p)).collect();
                 format!("fn({}) -> {}", params.join(", "), self.display_ty(*ret))
             }
+            // A function's own type, holding nothing: MIR has no names for definitions.
+            Ty::FnItem(def, _) => format!("{{fn {}}}", def.id),
             Ty::Error => "{unknown}".into(),
             Ty::Unit => "()".into(),
             Ty::Bool => "bool".into(),
@@ -229,6 +231,10 @@ impl Mir {
             Rvalue::Call { func, args } => {
                 let args: Vec<String> = args.iter().map(|a| self.display_operand(a)).collect();
                 format!("call {}({})", self.func(*func).name, args.join(", "))
+            }
+            Rvalue::CallIndirect { callee, args } => {
+                let args: Vec<String> = args.iter().map(|a| self.display_operand(a)).collect();
+                format!("call ({})({})", self.display_operand(callee), args.join(", "))
             }
         }
     }

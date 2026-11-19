@@ -185,6 +185,8 @@ pub struct Names {
     bounds: HashMap<DefId, Vec<DefId>>,
     /// `P: Call<&I::Item, bool>` → the arguments given trait `Call`, for `P`.
     bound_args: HashMap<(DefId, DefId), Vec<Id<TypeExpr>>>,
+    /// `F: fn(&T) -> bool` → how an `F` is called, for `F`.
+    signatures: HashMap<DefId, Id<TypeExpr>>,
     /// `T::Item`, `Self::Item` → the type parameter or `Self` it's of.
     projection_bases: HashMap<Id<TypeExpr>, DefId>,
     lang: LangItems,
@@ -230,6 +232,7 @@ impl Names {
             impl_of: HashMap::new(),
             bounds: HashMap::new(),
             bound_args: HashMap::new(),
+            signatures: HashMap::new(),
             projection_bases: HashMap::new(),
             lang: LangItems::default(),
             fail_listeners: Vec::new(),
@@ -257,6 +260,10 @@ impl Names {
 
     pub(crate) fn set_bound_args(&mut self, param: DefId, trait_: DefId, args: Vec<Id<TypeExpr>>) {
         self.bound_args.insert((param, trait_), args);
+    }
+
+    pub(crate) fn set_signature(&mut self, param: DefId, signature: Id<TypeExpr>) {
+        self.signatures.insert(param, signature);
     }
 
     pub(crate) fn set_projection_base(&mut self, ty: Id<TypeExpr>, base: DefId) {
@@ -569,6 +576,19 @@ impl Names {
     /// Call<&I::Item, bool>`. Empty if it gives nothing, leaving the trait's defaults.
     pub fn bound_args(&self, param: DefId, trait_: DefId) -> &[Id<TypeExpr>] {
         (self.bound_args.get(&(param, trait_))).map_or(&[], Vec::as_slice)
+    }
+
+    /// How a value of type parameter `param` is called: `fn(&T) -> bool` for `F: fn(&T) ->
+    /// bool`.
+    pub fn signature(&self, param: DefId) -> Option<Id<TypeExpr>> {
+        self.signatures.get(&param).copied()
+    }
+
+    /// Every type parameter called some way, in the order defined.
+    pub fn called_params(&self) -> Vec<DefId> {
+        let mut params: Vec<_> = self.signatures.keys().copied().collect();
+        params.sort();
+        params
     }
 
     /// Every type parameter and trait its bound gives arguments, in the order defined.

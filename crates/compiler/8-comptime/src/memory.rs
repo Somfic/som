@@ -60,7 +60,8 @@ pub(crate) fn layout(mir: &Mir, ty: TypeId) -> Option<Layout> {
     };
     let types = &mir.types;
     match types.get(ty) {
-        Ty::Unit | Ty::Bool => scalar(1),
+        // A function's own type holds nothing, like `()`.
+        Ty::Unit | Ty::FnItem(..) | Ty::Bool => scalar(1),
         Ty::Char => scalar(4),
         Ty::Int(int) => scalar(match int {
             IntTy::I8 | IntTy::U8 => 1,
@@ -90,7 +91,7 @@ pub(crate) fn layout(mir: &Mir, ty: TypeId) -> Option<Layout> {
                 // A `()` field takes no room, as the C backend leaves it out: it's at 0, where
                 // nothing is read or written for it.
                 let stored: Vec<TypeId> = (types.iter().copied())
-                    .filter(|&t| !matches!(mir.types.get(t), Ty::Unit))
+                    .filter(|&t| !matches!(mir.types.get(t), Ty::Unit | Ty::FnItem(..)))
                     .collect();
                 // C has no empty structs: one with nothing in it holds a `som_unit`.
                 if stored.is_empty() {
@@ -104,7 +105,7 @@ pub(crate) fn layout(mir: &Mir, ty: TypeId) -> Option<Layout> {
                 let mut offsets = offsets.into_iter();
                 let parts = (types.into_iter())
                     .map(|t| match mir.types.get(t) {
-                        Ty::Unit => (t, 0),
+                        Ty::Unit | Ty::FnItem(..) => (t, 0),
                         _ => (t, offsets.next().expect("one for each stored field")),
                     })
                     .collect();
@@ -241,7 +242,7 @@ pub(crate) fn encode(mir: &Mir, value: &Value, ty: TypeId) -> Option<Vec<Byte>> 
             // A struct's `()` fields take no room: see `layout`.
             let in_struct = matches!(mir.types.get(ty), Ty::Struct(..));
             for (i, &(ty, offset)) in layout.parts.iter().enumerate() {
-                if in_struct && matches!(mir.types.get(ty), Ty::Unit) {
+                if in_struct && matches!(mir.types.get(ty), Ty::Unit | Ty::FnItem(..)) {
                     continue;
                 }
                 let part = encode(mir, parts.get(i).unwrap_or(&Value::Uninit), ty)?;
@@ -270,7 +271,7 @@ pub(crate) fn decode(mir: &Mir, bytes: &[Byte], ty: TypeId) -> Result<Value, Unr
     };
     let types = &mir.types;
     Ok(match types.get(ty) {
-        Ty::Unit => Value::Unit,
+        Ty::Unit | Ty::FnItem(..) => Value::Unit,
         Ty::Bool => match data()? {
             Some(data) => Value::Bool(data[0] != 0),
             None => Value::Uninit,

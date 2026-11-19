@@ -62,6 +62,11 @@ pub enum Ty {
         params: Vec<TypeId>,
         ret: TypeId,
     },
+    /// A function's own type: `is_even`'s, no other's. It holds nothing, since the type says
+    /// which function it is, so a call through it is a call of that function. It becomes a
+    /// `Fn`, the function's address, where one is expected. With a generic function's type
+    /// arguments.
+    FnItem(DefId, Vec<TypeId>),
     /// An inference variable. Never appears in the final `Typed` result.
     Var(u32),
 }
@@ -97,7 +102,7 @@ impl Ty {
             Ty::Array { element, len } => vec![*element, *len],
             Ty::Add(a, b) | Ty::Mul(a, b) => vec![*a, *b],
             Ty::Fn { params, ret } => params.iter().chain([ret]).copied().collect(),
-            Ty::Struct(_, args) => args.clone(),
+            Ty::Struct(_, args) | Ty::FnItem(_, args) => args.clone(),
             Ty::Error
             | Ty::Unit
             | Ty::Bool
@@ -141,6 +146,7 @@ impl Ty {
                 ret: f(*ret),
             },
             Ty::Struct(def, args) => Ty::Struct(*def, args.iter().map(|&a| f(a)).collect()),
+            Ty::FnItem(def, args) => Ty::FnItem(*def, args.iter().map(|&a| f(a)).collect()),
             Ty::Add(a, b) => Ty::Add(f(*a), f(*b)),
             Ty::Mul(a, b) => Ty::Mul(f(*a), f(*b)),
             leaf => leaf.clone(),
@@ -419,6 +425,8 @@ impl TypeTable {
                 let params: Vec<String> = params.iter().map(|&p| show(p)).collect();
                 format!("fn({}) -> {}", params.join(", "), show(*ret))
             }
+            // Named as in Rust's messages: `fn is_even`.
+            Ty::FnItem(def, _) => format!("fn {}", names.def(*def).name),
             Ty::Var(v) => match vars {
                 Some(u) => u.display_var(*v, names),
                 None => "_".into(),

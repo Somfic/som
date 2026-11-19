@@ -25,7 +25,9 @@ impl Use {
         match rvalue {
             // C doesn't fix the order of evaluation inside an expression, so a call is only
             // folded where nothing else is evaluated around it.
-            Rvalue::Call { .. } => matches!(self, Use::Assign | Use::Branch),
+            Rvalue::Call { .. } | Rvalue::CallIndirect { .. } => {
+                matches!(self, Use::Assign | Use::Branch)
+            }
             Rvalue::Intrinsic { intrinsic, .. } if intrinsic.has_effect() => {
                 matches!(self, Use::Assign | Use::Branch)
             }
@@ -128,6 +130,10 @@ impl Usage {
                 for (i, a) in args.iter().enumerate() {
                     self.operand(a, if i < fixed { Use::Arg } else { Use::Operand });
                 }
+            }
+            Rvalue::CallIndirect { callee, args } => {
+                self.operand(callee, Use::Operand);
+                args.iter().for_each(|a| self.operand(a, Use::Arg));
             }
         }
     }

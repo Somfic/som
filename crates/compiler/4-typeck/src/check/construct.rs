@@ -20,6 +20,25 @@ impl Checker<'_> {
         {
             let _ = self.u.unify(element, optional);
         }
+        // `[double, negate]`: different functions, so all are their addresses, of the type
+        // they share.
+        let items_of = |c: &Self, ty: TypeId| match c.u.shallow_ty(ty) {
+            Ty::FnItem(def, args) => Some((*def, args.clone())),
+            _ => None,
+        };
+        let functions: Vec<_> = found.iter().filter_map(|&ty| items_of(self, ty)).collect();
+        let pointer = found
+            .iter()
+            .copied()
+            .find(|&ty| matches!(self.u.shallow_ty(ty), Ty::Fn { .. }));
+        if let Some(pointer) = pointer.filter(|_| !functions.is_empty()) {
+            let _ = self.u.unify(element, pointer);
+        } else if let Some((def, args)) = functions.first().cloned()
+            && functions.iter().any(|f| f.0 != def)
+            && let Some(signature) = self.item_signature(def, &args)
+        {
+            let _ = self.u.unify(element, signature);
+        }
         for (&item, &ty) in items.iter().zip(&found) {
             if !self.coerce(item, element, ty) {
                 self.mismatch(element, ty, self.span(item), None);

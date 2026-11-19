@@ -59,6 +59,12 @@ pub enum Expr {
         type_args: Vec<Id<TypeExpr>>,
         args: Vec<Id<Expr>>,
     },
+    /// Calling a function's address: `ops[0](5)`, `(pick())(x)`. A name, `f(x)`, is a
+    /// `Call`, even when it names a variable.
+    CallValue {
+        callee: Id<Expr>,
+        args: Vec<Id<Expr>>,
+    },
     MethodCall {
         receiver: Id<Expr>,
         method: Ident,

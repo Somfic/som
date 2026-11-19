@@ -1,0 +1,10 @@
+// expect: exit 7
+
+/// `ops[1](x)`: whatever an expression gives can be called.
+fn double(x: i32) -> i32 = x * 2;
+fn negate(x: i32) -> i32 = -x;
+
+fn main() -> i32 {
+    let ops: [fn(i32) -> i32; 2] = [double, negate];
+    ops[0](5) + ops[1](3)
+}

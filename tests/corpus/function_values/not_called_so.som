@@ -1,0 +1,8 @@
+// expect: error NotCalledSo
+
+/// What's given for an `F: fn(i32) -> i32` has to be called that way.
+fn apply<F: fn(i32) -> i32>(f: F, x: i32) -> i32 = f(x);
+
+fn is_even(n: &i32) -> bool = *n % 2 == 0;
+
+fn main() -> i32 = apply(is_even, 5);

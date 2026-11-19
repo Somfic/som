@@ -248,7 +248,11 @@ impl<'a> Resolver<'a> {
     /// parameter's trait has: `P: Call<&I::Item, bool>`.
     fn resolve_generics(&mut self, generics: &'a [Generic], defs: &[DefId]) {
         let mut given = Vec::new();
+        let mut called = Vec::new();
         for (generic, &def) in generics.iter().zip(defs) {
+            if let Some(signature) = generic.signature {
+                called.push((def, signature));
+            }
             if let Some(ty) = generic.ty {
                 self.resolve_type(ty);
             }
@@ -272,6 +276,10 @@ impl<'a> Resolver<'a> {
         for (def, trait_, args) in given {
             args.iter().for_each(|&arg| self.resolve_type(arg));
             self.names.set_bound_args(def, trait_, args.clone());
+        }
+        for (def, signature) in called {
+            self.resolve_type(signature);
+            self.names.set_signature(def, signature);
         }
     }
 
@@ -529,9 +537,23 @@ impl<'a> Resolver<'a> {
                 args,
             } => {
                 if !self.foreign_call(id, callee, args) {
-                    self.bind_expr(id, callee, Expect::Func);
+                    // `test(x)`, `test` a variable holding a function: called through it.
+                    let local = match &callee.segments[..] {
+                        [name] => self.local(&name.name),
+                        _ => None,
+                    };
+                    let expect = if local.is_some() {
+                        Expect::Value
+                    } else {
+                        Expect::Func
+                    };
+                    self.bind_expr(id, callee, expect);
                     (owner_args.iter().chain(type_args)).for_each(|&t| self.resolve_type(t));
                 }
+                args.iter().for_each(|&a| self.resolve_expr(a));
+            }
+            Expr::CallValue { callee, args } => {
+                self.resolve_expr(*callee);
                 args.iter().for_each(|&a| self.resolve_expr(a));
             }
             // The method itself depends on the receiver's type, so the type checker finds it.

@@ -51,7 +51,11 @@ impl Expr {
                 expr(*a);
                 expr(*b);
             }
-            Expr::MethodCall { receiver, args, .. } => {
+            Expr::MethodCall { receiver, args, .. }
+            | Expr::CallValue {
+                callee: receiver,
+                args,
+            } => {
                 expr(*receiver);
                 args.iter().for_each(|&e| expr(e));
             }

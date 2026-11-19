@@ -1,0 +1,7 @@
+// expect: error NotAFunction
+
+/// Only a function can be called.
+fn main() -> i32 {
+    let n = 4;
+    n(2)
+}

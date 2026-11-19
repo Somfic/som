@@ -68,6 +68,15 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
                 Label::primary(span.clone(), msg![code(trait_), " is needed here"]),
             )
         }
+        TypeError::NotCalledSo { ty, signature, span } => Diagnostic::error(msg![
+            ty.clone(),
+            " can't be called as ",
+            code(signature)
+        ])
+        .with_label(Label::primary(
+            span.clone(),
+            msg!["something called as ", code(signature), " is needed here"],
+        )),
         TypeError::CopyWithMovedField {
             ty,
             field,

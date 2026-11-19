@@ -1,0 +1,14 @@
+// expect: exit 6
+
+/// Without a type written, different functions in an array are their addresses.
+fn double(x: i32) -> i32 = x * 2;
+fn negate(x: i32) -> i32 = -x;
+
+fn main() -> i32 {
+    let ops = [double, negate];
+    let mut total = 0;
+    for op in ops {
+        total = total + op(2);
+    }
+    total + 4
+}

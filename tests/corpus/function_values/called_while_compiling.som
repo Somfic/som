@@ -1,0 +1,10 @@
+// expect: exit 12
+
+/// Worked out while compiling, through the address too.
+fn triple(x: i32) -> i32 = x * 3;
+
+fn apply(f: fn(i32) -> i32, x: i32) -> i32 = f(x);
+
+@const TWELVE: i32 = apply(triple, 4);
+
+fn main() -> i32 = TWELVE;

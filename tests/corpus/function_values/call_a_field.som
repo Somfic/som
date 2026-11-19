@@ -1,0 +1,22 @@
+// expect: exit 30
+
+/// `.on_click(x)` of a struct with no such method calls the function its field holds.
+struct Button {
+    clicks: i32,
+    on_click: fn(i32) -> i32,
+}
+
+impl Button {
+    fn press(&mut self) {
+        .clicks = .on_click(.clicks);
+    }
+}
+
+fn add_ten(x: i32) -> i32 = x + 10;
+
+fn main() -> i32 {
+    let mut button = Button { clicks: 0, on_click: add_ten };
+    button.press();
+    button.press();
+    button.on_click(button.clicks)
+}

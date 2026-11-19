@@ -229,6 +229,15 @@ impl Validator<'_> {
                 Some(*ty)
             }
             Rvalue::Call { func, args } => self.call_ty(*func, args),
+            Rvalue::CallIndirect { callee, args } => {
+                let ty = self.operand_ty(callee)?;
+                let Ty::Fn { params, ret } = self.mir.types.get(ty).clone() else {
+                    self.problem("calls what isn't a function".to_string());
+                    return None;
+                };
+                self.check_operands("indirect call", &params, args);
+                Some(ret)
+            }
         }
     }
 

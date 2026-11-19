@@ -408,7 +408,7 @@ impl Parser<'_> {
         Some(args)
     }
 
-    /// Only named functions can be called: `foo(..)` or `math::add(..)`.
+    /// `foo(..)` or `math::add(..)`, by name; or what an expression gives, `ops[0](..)`.
     pub(super) fn parse_call(&mut self, callee: Id<Expr>, start: &Span) -> Option<Id<Expr>> {
         let args = self.parse_args()?;
         let expr = match &self.ast.exprs[callee] {
@@ -421,8 +421,8 @@ impl Parser<'_> {
             // `str(5)`: what isn't a value is already reported.
             Expr::Hole => Expr::Hole,
             _ => {
-                self.error_missing("expected function name", "a function name");
-                Expr::Hole
+                let call = Expr::CallValue { callee, args };
+                return Some(self.alloc_expr(call, start));
             }
         };
         // The callee node becomes the call, so no unreferenced node is left behind.

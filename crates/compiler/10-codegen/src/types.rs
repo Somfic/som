@@ -6,7 +6,8 @@ use std::collections::HashSet;
 impl Emitter<'_> {
     pub(crate) fn ty(&self, ty: TypeId) -> String {
         match self.mir.types.get(ty) {
-            Ty::Unit => "som_unit".into(),
+            // A function's own type holds nothing, like `()`.
+            Ty::Unit | Ty::FnItem(..) => "som_unit".into(),
             Ty::Bool => "bool".into(),
             Ty::Char => "uint32_t".into(),
             Ty::Str => format!("struct {}", self.names.generated[&ty]),
@@ -47,8 +48,9 @@ impl Emitter<'_> {
         matches!(self.mir.types.get(ty), Ty::Slice(_) | Ty::Str)
     }
 
+    /// `()`, or a function's own type: nothing to hold.
     pub(crate) fn is_unit(&self, ty: TypeId) -> bool {
-        matches!(self.mir.types.get(ty), Ty::Unit)
+        matches!(self.mir.types.get(ty), Ty::Unit | Ty::FnItem(..))
     }
 
     pub(crate) fn is_narrow(&self, ty: TypeId) -> bool {
