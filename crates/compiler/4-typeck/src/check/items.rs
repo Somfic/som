@@ -24,6 +24,8 @@ impl Checker<'_> {
         self.lower_structs();
         // Impl blocks' targets and associated types, which signatures can name.
         self.build_impls();
+        // After the impls, so `I::Item` in a bound's arguments is known for any `I`.
+        self.lower_bound_args();
         self.lower_signatures();
         self.check_impls();
         self.check_requires();

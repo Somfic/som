@@ -1,0 +1,8 @@
+// expect: error WrongTypeArgCount
+
+/// A bound gives a trait no more arguments than it has.
+trait Test<T> {
+    fn test(&self, value: &T) -> bool;
+}
+
+fn check<P: Test<i32, bool>>(test: &P) -> bool = test.test(&1);

@@ -1,0 +1,18 @@
+// expect: error DoesNotImplement
+
+/// `IsEven` is a `Test<i32>`, not the `Test<bool>` the bound asks for.
+trait Test<T> {
+    fn test(&self, value: &T) -> bool;
+}
+
+struct IsEven {}
+
+impl Test<i32> for IsEven {
+    fn test(&self, value: &i32) -> bool = *value % 2 == 0;
+}
+
+fn check<P: Test<bool>>(test: &P) -> bool = test.test(&true);
+
+fn main() {
+    let ok = check(&IsEven {});
+}

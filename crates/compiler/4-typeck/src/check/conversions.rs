@@ -28,7 +28,7 @@ impl Checker<'_> {
             for &bound in self.names.bounds(param) {
                 self.deferred
                     .obligations
-                    .push((fresh, bound, self.span(expr)));
+                    .push((fresh, bound, Vec::new(), self.span(expr)));
             }
         }
         let (expected, shallow) = (self.u.shallow(expected), self.u.shallow(found));

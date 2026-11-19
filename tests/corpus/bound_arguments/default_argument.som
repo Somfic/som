@@ -1,0 +1,16 @@
+// expect: exit 7
+
+/// What a bound leaves out is the trait's default: `Mix<f32>` is `Mix<f32, Self>`.
+trait Mix<Other, Output = Self> {
+    fn mix(&self, other: Other) -> Output;
+}
+
+struct Paint { amount: i32 }
+
+impl Mix<i32> for Paint {
+    fn mix(&self, other: i32) -> Paint = Paint { amount: .amount + other };
+}
+
+fn mixed<P: Mix<i32>>(paint: &P) -> P = paint.mix(4);
+
+fn main() -> i32 = mixed(&Paint { amount: 3 }).amount;

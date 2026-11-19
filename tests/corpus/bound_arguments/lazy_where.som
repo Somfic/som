@@ -1,0 +1,51 @@
+// expect: exit 6
+
+/// `P: Test<I::Item>`: a bound gives its trait arguments, which can name what another
+/// parameter's trait has. `Where` tests each item as it's asked for.
+struct Countdown { n: i32 }
+
+impl Iterator for Countdown {
+    type Item = i32;
+
+    fn next(&mut self) -> i32? {
+        if .n == 0 { return none; }
+        .n = .n - 1;
+        .n + 1
+    }
+}
+
+trait Test<T> {
+    fn test(&self, value: &T) -> bool;
+}
+
+struct Where<I: Iterator, P: Test<I::Item>> {
+    inner: I,
+    test: P,
+}
+
+impl<I: Iterator, P: Test<I::Item>> Iterator for Where<I, P> {
+    type Item = I::Item;
+
+    fn next(&mut self) -> I::Item? {
+        loop {
+            let item = .inner.next() else return none;
+            if .test.test(&item) {
+                return item;
+            }
+        }
+    }
+}
+
+struct IsEven {}
+
+impl Test<i32> for IsEven {
+    fn test(&self, value: &i32) -> bool = *value % 2 == 0;
+}
+
+fn main() -> i32 {
+    let mut sum = 0;
+    for x in (Where { inner: Countdown { n: 5 }, test: IsEven {} }) {
+        sum = sum + x;
+    }
+    sum
+}

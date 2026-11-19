@@ -183,6 +183,8 @@ pub struct Names {
     pub impls: Vec<ImplDef>,
     impl_of: HashMap<Id<Func>, usize>,
     bounds: HashMap<DefId, Vec<DefId>>,
+    /// `P: Call<&I::Item, bool>` → the arguments given trait `Call`, for `P`.
+    bound_args: HashMap<(DefId, DefId), Vec<Id<TypeExpr>>>,
     /// `T::Item`, `Self::Item` → the type parameter or `Self` it's of.
     projection_bases: HashMap<Id<TypeExpr>, DefId>,
     lang: LangItems,
@@ -227,6 +229,7 @@ impl Names {
             impls: Vec::new(),
             impl_of: HashMap::new(),
             bounds: HashMap::new(),
+            bound_args: HashMap::new(),
             projection_bases: HashMap::new(),
             lang: LangItems::default(),
             fail_listeners: Vec::new(),
@@ -250,6 +253,10 @@ impl Names {
 
     pub(crate) fn set_bounds(&mut self, param: DefId, traits: Vec<DefId>) {
         self.bounds.insert(param, traits);
+    }
+
+    pub(crate) fn set_bound_args(&mut self, param: DefId, trait_: DefId, args: Vec<Id<TypeExpr>>) {
+        self.bound_args.insert((param, trait_), args);
     }
 
     pub(crate) fn set_projection_base(&mut self, ty: Id<TypeExpr>, base: DefId) {
@@ -556,6 +563,19 @@ impl Names {
 
     pub fn bounds(&self, param: DefId) -> &[DefId] {
         self.bounds.get(&param).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    /// What type parameter `param`'s bound gives trait `trait_`: `&I::Item, bool` for `P:
+    /// Call<&I::Item, bool>`. Empty if it gives nothing, leaving the trait's defaults.
+    pub fn bound_args(&self, param: DefId, trait_: DefId) -> &[Id<TypeExpr>] {
+        (self.bound_args.get(&(param, trait_))).map_or(&[], Vec::as_slice)
+    }
+
+    /// Every type parameter and trait its bound gives arguments, in the order defined.
+    pub fn bounds_given(&self) -> Vec<(DefId, DefId)> {
+        let mut given: Vec<_> = self.bound_args.keys().copied().collect();
+        given.sort();
+        given
     }
 
     /// For `T::Item` or `Self::Item`: the `T` or `Self`.

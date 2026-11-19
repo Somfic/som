@@ -422,6 +422,12 @@ impl Checker<'_> {
     }
 
     pub(super) fn implements(&self, ty: TypeId, trait_: DefId) -> bool {
+        self.implements_given(ty, trait_, &[])
+    }
+
+    /// Whether `ty` implements `trait_` given `args`: `Test<i32>`, not just any `Test`. None
+    /// given is any.
+    pub(super) fn implements_given(&self, ty: TypeId, trait_: DefId, args: &[TypeId]) -> bool {
         let ty = self.u.shallow(ty);
         if let Some(lang) = self.names.lang_of(trait_)
             && self.has_builtin(ty, lang)
@@ -446,7 +452,7 @@ impl Checker<'_> {
             Ty::Param(def) => self.bound_has(*def, trait_),
             _ => {
                 let u = &self.u;
-                find_impl(&self.impls, &u.table, trait_, ty, &[], &|t| u.shallow(t)).is_some()
+                find_impl(&self.impls, &u.table, trait_, ty, args, &|t| u.shallow(t)).is_some()
             }
         }
     }
@@ -473,26 +479,67 @@ impl Checker<'_> {
 
     /// `func`'s type arguments `args` have to meet their bounds: checked once they're known.
     pub(super) fn require_bounds(&mut self, func: Id<Func>, args: &[TypeId], span: Span) {
-        let params = self.names.type_params(func);
+        let names = self.names;
+        let params = names.type_params(func);
+        let subst: Vec<(DefId, TypeId)> = params.iter().copied().zip(args.iter().copied()).collect();
         for (&param, &arg) in params.iter().zip(args) {
-            for &trait_ in self.names.bounds(param) {
-                self.deferred.obligations.push((arg, trait_, span.clone()));
+            for &trait_ in names.bounds(param) {
+                let given = self.bound_args.get(&(param, trait_)).cloned().unwrap_or_default();
+                let given = given.into_iter().map(|ty| self.substitute(ty, &subst)).collect();
+                self.deferred.obligations.push((arg, trait_, given, span.clone()));
             }
         }
     }
 
+    /// Lowers what every bound gives its trait, `[&I::Item, bool]` for `P: Call<&I::Item,
+    /// bool>`, with the trait's defaults for what it leaves out.
+    pub(super) fn lower_bound_args(&mut self) {
+        let names = self.names;
+        for (param, trait_) in names.bounds_given() {
+            let DefKind::Trait(t) = names.def(trait_).kind else {
+                continue;
+            };
+            let written = names.bound_args(param, trait_);
+            let (Some(&first), Some(&last)) = (written.first(), written.last()) else {
+                continue;
+            };
+            let span = self.ast.types.span(first).merge(self.ast.types.span(last));
+            let given = written.iter().map(|&ty| self.lower(ty)).collect();
+            let this = self.u.intern(Ty::Param(param));
+            let args = self.trait_args(trait_, t, this, given, span);
+            self.bound_args.insert((param, trait_), args);
+        }
+    }
+
     pub(super) fn check_obligations(&mut self) {
-        for (ty, trait_, span) in std::mem::take(&mut self.deferred.obligations) {
+        for (ty, trait_, given, span) in std::mem::take(&mut self.deferred.obligations) {
             let ty = self.normalize_assoc(ty);
             let Some(ty) = self.as_decided(ty) else {
                 continue;
             };
-            if self.implements(ty, trait_) {
+            // With one still unknown, any implementation does.
+            let mut args = Vec::new();
+            for arg in given {
+                let arg = self.normalize_assoc(arg);
+                match self.as_decided(arg) {
+                    Some(arg) => args.push(arg),
+                    None => {
+                        args.clear();
+                        break;
+                    }
+                }
+            }
+            if self.implements_given(ty, trait_, &args) {
                 continue;
+            }
+            let mut trait_name = self.names.def(trait_).name.to_string();
+            if !args.is_empty() {
+                let args: Vec<String> = (args.iter()).map(|&a| self.u.display(a, self.names)).collect();
+                trait_name = format!("{trait_name}<{}>", args.join(", "));
             }
             self.errors.push(TypeError::DoesNotImplement {
                 ty: self.describe(ty),
-                trait_: self.names.def(trait_).name.to_string(),
+                trait_: trait_name,
                 span,
             });
         }

@@ -94,7 +94,7 @@ pub fn stubs(
                 if let Some(ty) = g.ty {
                     text += &format!(": {}", fill(ty));
                 } else if !g.bounds.is_empty() {
-                    let bounds: Vec<String> = g.bounds.iter().map(|b| b.to_string()).collect();
+                    let bounds: Vec<String> = g.bounds.iter().map(|b| b.span.get_text().to_string()).collect();
                     text += &format!(": {}", bounds.join(" + "));
                 }
                 text

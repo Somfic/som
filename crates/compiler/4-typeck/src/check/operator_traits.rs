@@ -113,7 +113,7 @@ impl Checker<'_> {
             for &bound in self.names.bounds(param) {
                 self.deferred
                     .obligations
-                    .push((fresh, bound, self.span(expr)));
+                    .push((fresh, bound, Vec::new(), self.span(expr)));
             }
         }
         if self.u.unify(target, base).is_err() || self.u.unify(other, rhs).is_err() {
@@ -140,6 +140,15 @@ impl Checker<'_> {
             return;
         }
         let base = self.u.shallow(base);
+        // A type parameter's bound decides, if it says them: `P: Test<I::Item>`.
+        if let Ty::Param(param) = *self.u.get(base)
+            && let Some(given) = self.bound_args.get(&(param, trait_)).cloned()
+        {
+            for (&arg, ty) in args.iter().zip(given) {
+                let _ = self.u.unify(arg, ty);
+            }
+            return;
+        }
         // A known type's implementation decides, if it has one: numbers' built-in
         // operators have none, and get the defaults.
         if !matches!(self.u.get(base), Ty::Var(_) | Ty::Param(_) | Ty::Error) {
@@ -221,7 +230,7 @@ impl Checker<'_> {
                 };
                 let generic = self.ast.funcs[func].generics.get(index)?;
                 let (end, text) = match generic.bounds.last() {
-                    Some(last) => (last.span(), format!(" + {trait_name}")),
+                    Some(last) => (last.span.clone(), format!(" + {trait_name}")),
                     None => (generic.name.span.clone(), format!(": {trait_name}")),
                 };
                 let at = end.after();

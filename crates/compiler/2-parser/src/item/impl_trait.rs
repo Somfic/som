@@ -1,4 +1,4 @@
-use som_ast::{AssocType, Const, Expr, Func, Generic, Id, Ident, Impl, Path, Trait, TypeExpr};
+use som_ast::{AssocType, Bound, Const, Expr, Func, Generic, Id, Ident, Impl, Path, Trait, TypeExpr};
 use som_base::message::code;
 use som_base::msg;
 use som_lang::Builtin;
@@ -318,6 +318,7 @@ impl Parser<'_> {
                 segments: vec![trait_name.clone()],
             })
             .chain(self.trait_supers.iter().cloned())
+            .map(Bound::of)
             .collect(),
         };
         // The defaults are the trait's: a method's copies don't have them.

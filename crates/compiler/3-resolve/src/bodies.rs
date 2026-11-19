@@ -76,15 +76,7 @@ impl<'a> Resolver<'a> {
             self.cx.type_params.push((&param.name.name, def));
         }
         let defs = self.names.struct_params(id).to_vec();
-        for (param, def) in strukt.generics.iter().zip(defs) {
-            if let Some(ty) = param.ty {
-                self.resolve_type(ty);
-            }
-            if let Some(default) = param.default {
-                self.resolve_type(default);
-            }
-            self.resolve_bounds(param, def);
-        }
+        self.resolve_generics(&strukt.generics, &defs);
         for field in strukt.fields.iter().chain(strukt.payload()) {
             self.resolve_type(field.ty);
         }
@@ -130,12 +122,7 @@ impl<'a> Resolver<'a> {
                 for (g, &param) in alias.generics.iter().zip(&params) {
                     self.cx.type_params.push((&g.name.name, param));
                 }
-                for (g, &param) in alias.generics.iter().zip(&params) {
-                    if let Some(ty) = g.ty {
-                        self.resolve_type(ty);
-                    }
-                    self.resolve_bounds(g, param);
-                }
+                self.resolve_generics(&alias.generics, &params);
                 self.resolve_type(alias.ty);
                 self.cx.type_params.clear();
             }
@@ -149,12 +136,7 @@ impl<'a> Resolver<'a> {
         self.cx.type_params = (block.generics.iter().zip(&params))
             .map(|(g, &def)| (&*g.name.name, def))
             .collect();
-        for (g, &def) in block.generics.iter().zip(&params) {
-            if let Some(ty) = g.ty {
-                self.resolve_type(ty);
-            }
-            self.resolve_bounds(g, def);
-        }
+        self.resolve_generics(&block.generics, &params);
         let written = (block.target_args.iter())
             .chain(&block.target_ty)
             .chain(block.trait_.iter().flat_map(|(_, args)| args))
@@ -261,13 +243,35 @@ impl<'a> Resolver<'a> {
         self.cx.block_types.clear();
     }
 
-    /// The traits generic parameter `generic`, defined as `def`, has to implement.
-    fn resolve_bounds(&mut self, generic: &'a Generic, def: DefId) {
-        let traits = (generic.bounds.iter())
-            .filter_map(|path| self.resolve_path(path, Expect::Trait))
-            .collect::<Vec<_>>();
-        if !traits.is_empty() {
-            self.names.set_bounds(def, traits);
+    /// Generic parameters `generics`, defined as `defs`: their types, defaults and bounds.
+    /// Every bound's trait comes before any bound's arguments, which can name what another
+    /// parameter's trait has: `P: Call<&I::Item, bool>`.
+    fn resolve_generics(&mut self, generics: &'a [Generic], defs: &[DefId]) {
+        let mut given = Vec::new();
+        for (generic, &def) in generics.iter().zip(defs) {
+            if let Some(ty) = generic.ty {
+                self.resolve_type(ty);
+            }
+            if let Some(default) = generic.default {
+                self.resolve_type(default);
+            }
+            let mut traits = Vec::new();
+            for bound in &generic.bounds {
+                let Some(trait_) = self.resolve_path(&bound.trait_, Expect::Trait) else {
+                    continue;
+                };
+                traits.push(trait_);
+                if !bound.args.is_empty() {
+                    given.push((def, trait_, &bound.args));
+                }
+            }
+            if !traits.is_empty() {
+                self.names.set_bounds(def, traits);
+            }
+        }
+        for (def, trait_, args) in given {
+            args.iter().for_each(|&arg| self.resolve_type(arg));
+            self.names.set_bound_args(def, trait_, args.clone());
         }
     }
 
@@ -286,12 +290,7 @@ impl<'a> Resolver<'a> {
             self.cx.type_params.push((&param.name.name, def));
         }
         let defs = self.names.type_params(id).to_vec();
-        for (param, def) in func.generics.iter().zip(defs) {
-            if let Some(ty) = param.ty {
-                self.resolve_type(ty);
-            }
-            self.resolve_bounds(param, def);
-        }
+        self.resolve_generics(&func.generics, &defs);
 
         self.cx.scopes.push(HashMap::new());
         for (index, param) in func.params.iter().enumerate() {

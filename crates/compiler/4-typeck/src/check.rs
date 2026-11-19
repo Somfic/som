@@ -80,6 +80,9 @@ pub(crate) struct Checker<'a> {
     /// Functions whose bodies have been checked, or are being.
     checked: HashSet<Id<Func>>,
     checked_consts: HashSet<Id<som_ast::Const>>,
+    /// `P: Call<&I::Item, bool>` → `[&I::Item, bool]` for `P` and `Call`, the trait's
+    /// defaults filled in. Lowered once, before any instance binds the parameters.
+    bound_args: HashMap<(DefId, DefId), Vec<TypeId>>,
 }
 
 /// What the expression about to be inferred is to its caller: set just before `infer`, which
@@ -112,7 +115,9 @@ struct Deferred {
     /// `From` conversions whose types weren't known well enough to choose one, with where what's
     /// expected came from.
     conversions: Vec<(Id<Expr>, TypeId, TypeId, Option<Span>)>,
-    obligations: Vec<(TypeId, DefId, Span)>,
+    /// A type that has to implement a trait, with the trait's arguments if it has to for
+    /// those: `IsEven` and `Test<i32>`. None given is any.
+    obligations: Vec<(TypeId, DefId, Vec<TypeId>, Span)>,
     /// The types of the `@unreachable`s: what they're used as, or `()`.
     unreachables: Vec<TypeId>,
     /// Calls that more than one function fits.
@@ -155,6 +160,7 @@ impl<'a> Checker<'a> {
             alias_args: HashMap::new(),
             checked: HashSet::new(),
             checked_consts: HashSet::new(),
+            bound_args: HashMap::new(),
         };
         if let Some(def) = names.lang_struct(som_lang::LangStruct::String) {
             checker.u.table.text = checker.u.table.intern(Ty::Struct(def, Vec::new()));

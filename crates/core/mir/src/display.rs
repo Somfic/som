@@ -45,7 +45,10 @@ impl Mir {
             Ty::Float(float) => float.name().to_string(),
             Ty::Pointer => "*".into(),
             Ty::Ptr(to) => format!("*{}", self.display_ty(*to)),
-            Ty::Param(_) | Ty::Var(_) | Ty::Add(..) | Ty::Mul(..) | Ty::Assoc { .. } => {
+            // Only where a generic function is lowered with stand-ins for the borrow checker:
+            // `I::Item` of `I`'s stand-in, which implements nothing.
+            Ty::Assoc { base, index, .. } => format!("{}::{index}", self.display_ty(*base)),
+            Ty::Param(_) | Ty::Var(_) | Ty::Add(..) | Ty::Mul(..) => {
                 unreachable!("MIR only has concrete types")
             }
         }

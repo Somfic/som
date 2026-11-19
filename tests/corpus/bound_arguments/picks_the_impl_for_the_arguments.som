@@ -1,0 +1,25 @@
+// expect: exit 21
+
+/// A type implementing a trait for two arguments: the bound's says which is called.
+trait Score<T> {
+    fn score(&self, value: T) -> i32;
+}
+
+struct Judge {}
+
+impl Score<i32> for Judge {
+    fn score(&self, value: i32) -> i32 = value;
+}
+
+impl Score<bool> for Judge {
+    fn score(&self, value: bool) -> i32 = if value { 10 } else { 0 };
+}
+
+fn of_number<J: Score<i32>>(judge: &J) -> i32 = judge.score(11);
+
+fn of_flag<J: Score<bool>>(judge: &J) -> i32 = judge.score(true);
+
+fn main() -> i32 {
+    let judge = Judge {};
+    of_number(&judge) + of_flag(&judge)
+}

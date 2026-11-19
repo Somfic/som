@@ -149,9 +149,31 @@ pub struct Where {
 pub struct Generic {
     pub name: Ident,
     pub ty: Option<Id<TypeExpr>>,
-    pub bounds: Vec<Path>,
+    pub bounds: Vec<Bound>,
     /// `Self` in `trait Add<Other = Self>`. Only a struct's or a trait's parameters have one.
     pub default: Option<Id<TypeExpr>>,
+}
+
+/// A trait a generic parameter has to implement: `Hash`, or `Call<&I::Item, bool>`.
+#[derive(Clone)]
+pub struct Bound {
+    pub trait_: Path,
+    /// What's left out is the trait's default.
+    pub args: Vec<Id<TypeExpr>>,
+    /// The trait and its arguments, `>` included.
+    pub span: Span,
+}
+
+impl Bound {
+    /// Just a trait, nothing given: `Self: Trait` in a trait's own methods.
+    pub fn of(trait_: Path) -> Bound {
+        let span = trait_.span();
+        Bound {
+            trait_,
+            args: Vec::new(),
+            span,
+        }
+    }
 }
 
 pub struct Param {

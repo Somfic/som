@@ -1,4 +1,4 @@
-use som_ast::{Expr, Func, Generic, Id, Ident, Param, Path, Span, TypeExpr};
+use som_ast::{Bound, Expr, Func, Generic, Id, Ident, Param, Path, Span, TypeExpr};
 use som_base::message::code;
 use som_base::{Fix, msg};
 use som_lexer::TokenKind;
@@ -218,9 +218,9 @@ impl Parser<'_> {
             if self.at_primitive_type() {
                 ty = Some(self.parse_type()?);
             } else {
-                bounds.push(self.parse_path("a trait")?);
+                bounds.push(self.parse_bound()?);
                 while self.eat(TokenKind::Plus) {
-                    bounds.push(self.parse_path("a trait")?);
+                    bounds.push(self.parse_bound()?);
                 }
             }
         }
@@ -255,6 +255,18 @@ impl Parser<'_> {
             ty,
             bounds,
             default,
+        })
+    }
+
+    /// `Hash`, or a trait given arguments: `Call<&I::Item, bool>`.
+    fn parse_bound(&mut self) -> Option<Bound> {
+        let start = self.current_span();
+        let trait_ = self.parse_path("a trait")?;
+        let args = self.parse_type_args()?;
+        Some(Bound {
+            trait_,
+            args,
+            span: self.span_from(&start),
         })
     }
 
