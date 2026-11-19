@@ -1,0 +1,16 @@
+// expect: exit 8
+
+/// An operator reads a number through however many references it's behind.
+fn main() -> i32 {
+    let a = 5;
+    let r = &a;
+    let rr = &r;
+    let mut n = 0;
+    if rr % 2 == 1 {
+        n = n + 1;
+    }
+    if rr * 2 == 10 {
+        n = n + 2;
+    }
+    n + rr
+}

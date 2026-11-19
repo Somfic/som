@@ -59,6 +59,12 @@ pub enum Expr {
         type_args: Vec<Id<TypeExpr>>,
         args: Vec<Id<Expr>>,
     },
+    /// An anonymous function: `n => *n > limit`, `(a, b) => a + b`, `() => { … }`. It reads
+    /// the variables around it that its body uses: its captures.
+    Closure {
+        params: Vec<crate::Param>,
+        body: Id<Expr>,
+    },
     /// Calling a function's address: `ops[0](5)`, `(pick())(x)`. A name, `f(x)`, is a
     /// `Call`, even when it names a variable.
     CallValue {

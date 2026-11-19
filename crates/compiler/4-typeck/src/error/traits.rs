@@ -68,6 +68,28 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
                 Label::primary(span.clone(), msg![code(trait_), " is needed here"]),
             )
         }
+        TypeError::MissingSuperImpl {
+            ty,
+            trait_,
+            missing,
+            span,
+        } => Diagnostic::error(msg![
+            ty.clone(),
+            " implements ",
+            code(trait_),
+            " but not ",
+            code(missing),
+            ", which it builds on"
+        ])
+        .with_label(Label::primary(
+            span.clone(),
+            msg![code(trait_), " needs ", code(missing), " too"],
+        ))
+        .with_hint(msg![
+            "add ",
+            code(format!("impl {missing} for …")),
+            " for the same type"
+        ]),
         TypeError::NotCalledSo { ty, signature, span } => Diagnostic::error(msg![
             ty.clone(),
             " can't be called as ",

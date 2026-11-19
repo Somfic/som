@@ -30,6 +30,7 @@ impl Checker<'_> {
         self.check_impls();
         self.check_requires();
         self.check_bodies(only);
+        self.settle_trait_calls();
         // After the bodies, which decide unwritten return types and what results are used as.
         self.resolve_pending_calls();
         self.check_overloads();
@@ -591,6 +592,18 @@ impl Checker<'_> {
         let sliced = std::mem::take(&mut self.sliced)
             .into_iter()
             .map(|(expr, ty)| (expr, self.u.finish(ty, &mut ignore)))
+            .collect();
+        let closures = std::mem::take(&mut self.records.closures);
+        self.records.closures = (closures.into_iter())
+            .map(|(expr, mut sig)| {
+                for ty in sig.params.iter_mut().chain([&mut sig.ret]) {
+                    *ty = self.u.finish(*ty, &mut ignore);
+                }
+                for (_, ty) in &mut sig.captures {
+                    *ty = self.u.finish(*ty, &mut ignore);
+                }
+                (expr, sig)
+            })
             .collect();
         self.check_literals_fit(&exprs);
         let typed = Typed {

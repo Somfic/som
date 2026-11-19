@@ -275,11 +275,10 @@ pub static STATEMENT: Table = Table(&[
 ]);
 
 pub static LAMBDA: Table = Table(&[
-    f("lambda", "fn", &[Python]),
-    f("=>", "fn", &[JavaScript, TypeScript, CSharp]),
-    f("->", "fn", &[Fsharp, Kotlin, Java]),
-    f("function", "fn", &[JavaScript, Lua, Php]),
-    f("func", "fn", &[Go, Swift]),
+    f("lambda", "=>", &[Python]),
+    f("->", "=>", &[Fsharp, Kotlin, Java]),
+    f("function", "=>", &[JavaScript, Lua, Php]),
+    f("func", "=>", &[Go, Swift]),
 ]);
 
 pub static RANGE: Table = Table(&[f("range", "..", &[Python])]);

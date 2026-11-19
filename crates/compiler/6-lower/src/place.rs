@@ -24,6 +24,9 @@ impl FnBuilder<'_, '_> {
     /// An `out` parameter is a pointer to the caller's variable, and its name means what it
     /// points to.
     pub(super) fn variable(&self, def: DefId) -> Option<Place> {
+        if let Some(place) = self.captures.get(&def) {
+            return Some(place.clone());
+        }
         let place = Place::local(*self.bindings.get(&def)?);
         Some(match self.l.names.def(def).kind {
             DefKind::Param { func, index } if self.l.ast.funcs[func].params[index].out => {

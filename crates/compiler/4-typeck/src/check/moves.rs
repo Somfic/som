@@ -28,8 +28,27 @@ impl Checker<'_> {
             | Expr::Bool(_)
             | Expr::Str(_)
             | Expr::None
-            | Expr::Var(_)
             | Expr::Out(_) => {}
+            // Taken inside a closure, a capture would move out of what the closure only reads.
+            Expr::Var(_) => {
+                if by_value
+                    && let Some(def) = self.captured_root(id)
+                    && let Some(ty) = self.exprs[id.id]
+                    && !self.is_copy(ty)
+                {
+                    self.errors.push(TypeError::CaptureChanged {
+                        name: self.names.def(def).name.to_string(),
+                        span: self.span(id),
+                        moved: true,
+                    });
+                }
+            }
+            // Its body runs later: what it takes is checked against its captures.
+            Expr::Closure { body, .. } => {
+                self.open_closures.push(id);
+                self.moves_in(*body, true);
+                self.open_closures.pop();
+            }
             // What's written into text is only read.
             Expr::Interpolated(parts) => {
                 for &part in parts {

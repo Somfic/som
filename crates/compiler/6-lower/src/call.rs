@@ -34,23 +34,37 @@ impl FnBuilder<'_, '_> {
         Rvalue::Call { func, args }
     }
 
-    /// `callee(args)`, of a value of type `callee_ty`: a call of the function its type names,
-    /// if it's a function's own type, or else through the address it holds.
-    pub(super) fn call_value(
-        &mut self,
-        callee: Operand,
-        callee_ty: TypeId,
-        args: &[Id<Expr>],
-    ) -> Rvalue {
-        let args: Vec<(Operand, TypeId, Span)> = (args.iter())
+    /// `callee(args)`, of what's at place `callee`: a call of the function its type names, if
+    /// it's a function's own type; of a closure's body, given the closure; or else through
+    /// the address it holds.
+    pub(super) fn call_value(&mut self, callee: Place, call: Id<Expr>, args: &[Id<Expr>]) -> Rvalue {
+        let callee_ty = self.place_ty(&callee);
+        let span = self.span(call);
+        // Lent before the arguments are worked out, as a method's `self` is.
+        let closure = match self.l.closure_instance(callee_ty) {
+            Some(func) => {
+                let lent = self.borrow_temp(callee.clone(), false, callee_ty, span);
+                let lent_ty = self.body_local_ty(lent);
+                Some((func, self.read(Place::local(lent), lent_ty)))
+            }
+            None => None,
+        };
+        let given: Vec<(Operand, TypeId, Span)> = (args.iter())
             .map(|&a| (self.operand(a), self.expr_ty(a), self.span(a)))
             .collect();
-        let args = (args.into_iter())
+        let mut args: Vec<Operand> = (given.into_iter())
             .map(|(arg, ty, span)| self.reborrow(arg, ty, span))
             .collect();
+        if let Some((func, closure)) = closure {
+            args.insert(0, closure);
+            return Rvalue::Call { func, args };
+        }
         match self.l.fn_item_instance(callee_ty) {
             Some(func) => Rvalue::Call { func, args },
-            None => Rvalue::CallIndirect { callee, args },
+            None => Rvalue::CallIndirect {
+                callee: Operand::Copy(callee),
+                args,
+            },
         }
     }
 

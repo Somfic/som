@@ -209,6 +209,8 @@ impl Checker<'_> {
                 args,
             } => self.infer_call(id, callee, owner_args, written, args),
 
+            Expr::Closure { params, body } => self.infer_closure(id, params, *body),
+
             Expr::CallValue { callee, args } => {
                 let ty = self.infer(*callee);
                 let name = self.span(*callee).get_text().to_string();
@@ -271,7 +273,11 @@ impl Checker<'_> {
             }
             Some((
                 def,
-                DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_),
+                DefKind::Param { .. }
+                | DefKind::Local(_)
+                | DefKind::Out(_)
+                | DefKind::Binding(_)
+                | DefKind::ClosureParam { .. },
             )) => {
                 let ty = self.locals.get(&def).copied().unwrap_or(error);
                 // Passed on, a `&mut` can change what's behind it.

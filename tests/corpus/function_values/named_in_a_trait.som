@@ -1,0 +1,39 @@
+// expect: exit 6
+
+/// A trait can name a function's type, `type Check = fn(&Self::Item) -> bool;`, and use it
+/// as a bound: in each method, `Self` is what the method is called on.
+struct Countdown { n: i32 }
+
+impl Iterator for Countdown {
+    type Item = i32;
+
+    fn next(&mut self) -> i32? {
+        if .n == 0 { return none; }
+        .n = .n - 1;
+        .n + 1
+    }
+}
+
+trait Counting: Iterator {
+    type Check = fn(&Self::Item) -> bool;
+    fn count_where<P: Check>(self, check: P) -> i32;
+}
+
+impl<I: Iterator> Counting for I {
+    fn count_where<P: fn(&I::Item) -> bool>(self, check: P) -> i32 {
+        let mut it = self;
+        let mut n = 0;
+        loop {
+            let item = it.next() else return n;
+            if check(&item) {
+                n = n + 1;
+            }
+        }
+    }
+}
+
+fn main() -> i32 {
+    let over = 1;
+    // 5 4 3 2: four over 1; 4 2: two even
+    (Countdown { n: 5 }).count_where(x => x > over) + (Countdown { n: 5 }).count_where(x => x % 2 == 0)
+}

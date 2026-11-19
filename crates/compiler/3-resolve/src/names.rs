@@ -80,9 +80,28 @@ pub enum DefKind {
         index: usize,
         value: bool,
     },
+    /// An anonymous function, `n => *n > limit`: its type is its own, holding its captures.
+    Closure(Id<Expr>),
+    /// The `index`th parameter of anonymous function `closure`: `n` in `n => *n > limit`.
+    ClosureParam {
+        closure: Id<Expr>,
+        index: usize,
+    },
 }
 
 impl DefKind {
+    /// Whether this names a variable: a local, a parameter, or a binding.
+    pub fn is_variable(&self) -> bool {
+        matches!(
+            self,
+            DefKind::Local(_)
+                | DefKind::Param { .. }
+                | DefKind::Out(_)
+                | DefKind::Binding(_)
+                | DefKind::ClosureParam { .. }
+        )
+    }
+
     /// Whether this names a type rather than a value or a trait.
     pub(crate) fn is_type(&self) -> bool {
         matches!(
@@ -185,6 +204,11 @@ pub struct Names {
     bounds: HashMap<DefId, Vec<DefId>>,
     /// `P: Call<&I::Item, bool>` → the arguments given trait `Call`, for `P`.
     bound_args: HashMap<(DefId, DefId), Vec<Id<TypeExpr>>>,
+    /// Anonymous functions → their definitions, parameters, and the variables around them
+    /// they read, in the order first read.
+    closures: HashMap<Id<Expr>, DefId>,
+    closure_params: HashMap<Id<Expr>, Vec<DefId>>,
+    captures: HashMap<Id<Expr>, Vec<DefId>>,
     /// `F: fn(&T) -> bool` → how an `F` is called, for `F`.
     signatures: HashMap<DefId, Id<TypeExpr>>,
     /// `T::Item`, `Self::Item` → the type parameter or `Self` it's of.
@@ -233,6 +257,9 @@ impl Names {
             bounds: HashMap::new(),
             bound_args: HashMap::new(),
             signatures: HashMap::new(),
+            closures: HashMap::new(),
+            closure_params: HashMap::new(),
+            captures: HashMap::new(),
             projection_bases: HashMap::new(),
             lang: LangItems::default(),
             fail_listeners: Vec::new(),
@@ -260,6 +287,19 @@ impl Names {
 
     pub(crate) fn set_bound_args(&mut self, param: DefId, trait_: DefId, args: Vec<Id<TypeExpr>>) {
         self.bound_args.insert((param, trait_), args);
+    }
+
+    pub(crate) fn set_closure(&mut self, closure: Id<Expr>, def: DefId, params: Vec<DefId>) {
+        self.closures.insert(closure, def);
+        self.closure_params.insert(closure, params);
+        self.captures.entry(closure).or_default();
+    }
+
+    pub(crate) fn add_capture(&mut self, closure: Id<Expr>, def: DefId) {
+        let captures = self.captures.entry(closure).or_default();
+        if !captures.contains(&def) {
+            captures.push(def);
+        }
     }
 
     pub(crate) fn set_signature(&mut self, param: DefId, signature: Id<TypeExpr>) {
@@ -576,6 +616,22 @@ impl Names {
     /// Call<&I::Item, bool>`. Empty if it gives nothing, leaving the trait's defaults.
     pub fn bound_args(&self, param: DefId, trait_: DefId) -> &[Id<TypeExpr>] {
         (self.bound_args.get(&(param, trait_))).map_or(&[], Vec::as_slice)
+    }
+
+    /// Anonymous function `closure`'s definition.
+    pub fn closure(&self, closure: Id<Expr>) -> Option<DefId> {
+        self.closures.get(&closure).copied()
+    }
+
+    /// Anonymous function `closure`'s parameters, in order.
+    pub fn closure_params(&self, closure: Id<Expr>) -> &[DefId] {
+        self.closure_params.get(&closure).map_or(&[], Vec::as_slice)
+    }
+
+    /// The variables around anonymous function `closure` that its body reads, in the order
+    /// first read.
+    pub fn captures(&self, closure: Id<Expr>) -> &[DefId] {
+        self.captures.get(&closure).map_or(&[], Vec::as_slice)
     }
 
     /// How a value of type parameter `param` is called: `fn(&T) -> bool` for `F: fn(&T) ->

@@ -1,0 +1,7 @@
+// expect: exit 5
+
+/// An anonymous function, called through the variable holding it.
+fn main() -> i32 {
+    let add = (a: i32, b: i32) => a + b;
+    add(2, 3)
+}

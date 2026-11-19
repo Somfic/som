@@ -1,0 +1,9 @@
+// expect: error CaptureChanged
+
+/// A closure only reads what it captures.
+fn main() -> i32 {
+    let mut total = 0;
+    let add = (n: i32) => { total = total + n; };
+    add(3);
+    total
+}

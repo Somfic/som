@@ -1,0 +1,15 @@
+// expect: exit 2
+
+/// What a closure reads around it is captured: a number, copied.
+fn count(values: [i32; 4], over: i32) -> i32 {
+    let is_over = (n: i32) => n > over;
+    let mut found = 0;
+    for v in values {
+        if is_over(v) {
+            found = found + 1;
+        }
+    }
+    found
+}
+
+fn main() -> i32 = count([1, 5, 2, 7], 3);

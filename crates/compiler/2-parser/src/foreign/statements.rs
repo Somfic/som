@@ -75,9 +75,9 @@ impl Parser<'_> {
         }
     }
 
-    /// An anonymous function, which som doesn't have, at it: `lambda x: …`,
-    /// `function(a) { … }`, `fun x -> …`, `x => …`. Reported; then nothing more's read of
-    /// the expression. Whether it was there.
+    /// Another language's anonymous function at it: `lambda x: …`, `function(a) { … }`,
+    /// `fun x -> …`. Reported; then nothing more's read of the expression. Whether it was
+    /// there.
     pub(crate) fn foreign_lambda(&mut self) -> bool {
         let word = self.ident_ahead(0);
         let written = match (word, self.peek_nth(1), self.peek_nth(2)) {
@@ -85,13 +85,12 @@ impl Parser<'_> {
             (Some("function"), TokenKind::OpenParen, _) => "function",
             (Some("func"), TokenKind::OpenParen, _) => "func",
             (Some("fun"), TokenKind::Ident, TokenKind::Arrow) => "->",
-            (Some(_), TokenKind::FatArrow, _) => "=>",
             _ => return false,
         };
         self.report_lambda(written)
     }
 
-    /// `(a, b) => …`, at the `(`: an anonymous function's parameters.
+    /// `(a, b) -> …`, at the `(`: an anonymous function's parameters, as Java writes them.
     pub(crate) fn foreign_lambda_params(&mut self) -> bool {
         let mut n = 1;
         let mut depth = 1;
@@ -105,7 +104,6 @@ impl Parser<'_> {
             n += 1;
         }
         match self.peek_nth(n) {
-            TokenKind::FatArrow => self.report_lambda("=>"),
             TokenKind::Arrow if self.peek_nth(n + 1) != TokenKind::OpenBrace => {
                 self.report_lambda("->")
             }
@@ -119,9 +117,11 @@ impl Parser<'_> {
         };
         let span = self.current_span();
         let message = msg![
-            "som has no anonymous functions: declare one with a name, ",
-            code("fn name(a, b) = …"),
-            ", and pass that"
+            "som writes an anonymous function as ",
+            code("(a, b) => …"),
+            ", or ",
+            code("x => …"),
+            " for one parameter"
         ];
         self.report_foreign(span, message, found, None);
         self.skip_expression();

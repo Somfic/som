@@ -87,17 +87,17 @@ impl FnBuilder<'_, '_> {
                 self.collection(expr, len, |ty| Rvalue::Repeat { ty, operand })
             }
             Expr::CallValue { callee, args } => {
-                let callee_ty = self.expr_ty(*callee);
-                let callee = self.operand(*callee);
-                self.call_value(callee, callee_ty, args)
+                let value = self.operand(*callee);
+                let place = self.into_place(value, *callee);
+                self.call_value(place, expr, args)
             }
+            Expr::Closure { .. } => self.closure_value(expr),
             // `.on_click(event)`: what the field holds, called.
             Expr::MethodCall { receiver, args, .. }
                 if let Some(field) = self.typed.field_call(expr) =>
             {
                 let place = self.field_place_at(*receiver, field);
-                let callee_ty = self.place_ty(&place);
-                self.call_value(Operand::Copy(place), callee_ty, args)
+                self.call_value(place, expr, args)
             }
             Expr::MethodCall { receiver, args, .. }
                 if let Some(method) = self.typed.pointer_method(expr) =>
@@ -223,10 +223,9 @@ impl FnBuilder<'_, '_> {
         match self.l.names.def(def).kind {
             DefKind::Func(func) => self.call(expr, func, None, args),
             // `test(x)`, `test` a variable holding a function.
-            DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_) => {
+            ref kind if kind.is_variable() => {
                 let place = self.variable(def).expect("variables have places");
-                let callee_ty = self.place_ty(&place);
-                self.call_value(Operand::Copy(place), callee_ty, args)
+                self.call_value(place, expr, args)
             }
             DefKind::Variant { index, .. } => {
                 let fields = args.iter().map(|&a| self.operand(a)).collect();

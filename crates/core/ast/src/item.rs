@@ -95,6 +95,9 @@ pub struct Trait {
     pub name: Ident,
     pub generics: Vec<Generic>,
     pub types: Vec<AssocType>,
+    /// `type Predicate = fn(&Self::Item) -> bool;`: names the trait gives types, in terms of
+    /// `Self` and its parameters. Implementations don't write them.
+    pub aliases: Vec<TraitAlias>,
     /// `trait IndexMut: Index`: whatever implements it implements these too.
     pub supers: Vec<Path>,
     /// Generic over `Self` first, then the trait's generics, then its own. One with a body
@@ -105,6 +108,12 @@ pub struct Trait {
 pub struct AssocType {
     pub doc: Option<String>,
     pub name: Ident,
+}
+
+pub struct TraitAlias {
+    pub doc: Option<String>,
+    pub name: Ident,
+    pub ty: Id<TypeExpr>,
 }
 
 pub struct Func {

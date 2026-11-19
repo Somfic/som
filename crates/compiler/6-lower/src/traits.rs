@@ -600,14 +600,14 @@ impl FnBuilder<'_, '_> {
         // The operands' type: the one not converted to it, as `n` is in `n + " points"`.
         let typed = self.typed.clone();
         let converted = |side| typed.conversion(side).is_some();
-        let through = |side| typed.is_read_through(side);
         let side = if converted(lhs) { rhs } else { lhs };
         // A `&string` operand is read through: the operands' type is what it refers to.
-        let side_ty = self.expr_ty(side);
-        let ty = match (through(side), self.l.mir.types.get(side_ty)) {
-            (true, &Ty::Ref { to, .. }) => to,
-            _ => side_ty,
-        };
+        let mut ty = self.expr_ty(side);
+        for _ in 0..typed.read_through(side) {
+            if let Ty::Ref { to, .. } = *self.l.mir.types.get(ty) {
+                ty = to;
+            }
+        }
         if builtin_operator(self.l.mir.types.get(ty), lang) {
             return None;
         }
@@ -638,10 +638,13 @@ impl FnBuilder<'_, '_> {
                 let made = self.temp(ty, span.clone());
                 self.assign(Place::local(made), Rvalue::Use(value), span.clone());
                 Place::local(made)
-            } else if through(side) {
-                self.place(side).project(Projection::Deref)
             } else {
-                self.place(side)
+                // Read through each reference it is, to the value the method lends.
+                let mut place = self.place(side);
+                for _ in 0..typed.read_through(side) {
+                    place = place.project(Projection::Deref);
+                }
+                place
             };
             let temp = self.temp(reference, span.clone());
             let borrow = Rvalue::Ref {

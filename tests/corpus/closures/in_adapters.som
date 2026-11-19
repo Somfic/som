@@ -1,0 +1,67 @@
+// expect: exit 70
+
+/// `keep` and `map` given closures reading the variables around them.
+struct Countdown { n: i32 }
+
+impl Iterator for Countdown {
+    type Item = i32;
+
+    fn next(&mut self) -> i32? {
+        if .n == 0 { return none; }
+        .n = .n - 1;
+        .n + 1
+    }
+}
+
+struct Where<I: Iterator, P: fn(&I::Item) -> bool> {
+    inner: I,
+    test: P,
+}
+
+impl<I: Iterator, P: fn(&I::Item) -> bool> Iterator for Where<I, P> {
+    type Item = I::Item;
+
+    fn next(&mut self) -> I::Item? {
+        loop {
+            let item = .inner.next() else return none;
+            if .test(&item) {
+                return item;
+            }
+        }
+    }
+}
+
+struct Map<I: Iterator, O, F: fn(I::Item) -> O> {
+    inner: I,
+    change: F,
+}
+
+impl<I: Iterator, O, F: fn(I::Item) -> O> Iterator for Map<I, O, F> {
+    type Item = O;
+
+    fn next(&mut self) -> O? {
+        let item = .inner.next() else return none;
+        .change(item)
+    }
+}
+
+trait Adapters: Iterator {
+    fn keep<P: fn(&Self::Item) -> bool>(self, test: P) -> Where<Self, P>;
+    fn map<O, F: fn(Self::Item) -> O>(self, change: F) -> Map<Self, O, F>;
+}
+
+impl<I: Iterator> Adapters for I {
+    fn keep<P: fn(&I::Item) -> bool>(self, test: P) -> Where<I, P> = Where { inner: self, test };
+    fn map<O, F: fn(I::Item) -> O>(self, change: F) -> Map<I, O, F> = Map { inner: self, change };
+}
+
+fn main() -> i32 {
+    let limit = 2;
+    let factor = 10;
+    // 5 4 3 -> 50 40 30, minus 50 for the last
+    let mut sum = 0;
+    for x in (Countdown { n: 5 }).keep(n => *n > limit).map(n => n * factor) {
+        sum = sum + x;
+    }
+    sum - 50
+}

@@ -221,6 +221,13 @@ pub enum TypeError {
         /// `&mut` of it, rather than an assignment.
         borrow: bool,
     },
+    /// `total = total + n` inside `n => { … }`: a closure only reads what it captures.
+    CaptureChanged {
+        name: String,
+        span: Span,
+        /// Moved out, rather than changed.
+        moved: bool,
+    },
     BehindSharedReference {
         span: Span,
         borrow: bool,
@@ -378,6 +385,13 @@ pub enum TypeError {
     DoesNotImplement {
         ty: Message,
         trait_: String,
+        span: Span,
+    },
+    /// `impl Index for [T]` without `impl Sized for [T]`, which `Index` builds on.
+    MissingSuperImpl {
+        ty: Message,
+        trait_: String,
+        missing: String,
         span: Span,
     },
     /// `where(is_odd)` for an `F: fn(&i32) -> bool` of what isn't called that way.
@@ -622,6 +636,7 @@ impl TypeError {
             | TypeError::UnusedValue { .. }
             | TypeError::BreakOutsideLoop { .. } => mismatch::diagnostic(self),
             TypeError::NotMutable { .. }
+            | TypeError::CaptureChanged { .. }
             | TypeError::BehindSharedReference { .. }
             | TypeError::AssignToProp { .. }
             | TypeError::InvalidAssignTarget { .. }
@@ -664,6 +679,7 @@ impl TypeError {
             | TypeError::ImplSignatureMismatch { .. }
             | TypeError::DoesNotImplement { .. }
             | TypeError::NotCalledSo { .. }
+            | TypeError::MissingSuperImpl { .. }
             | TypeError::CopyWithMovedField { .. }
             | TypeError::NotDisplay { .. }
             | TypeError::DropOnCopy { .. }

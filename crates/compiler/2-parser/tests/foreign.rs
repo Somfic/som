@@ -160,13 +160,19 @@ fn statements() {
 fn anonymous_functions() {
     for source in [
         "let f = lambda x: x + 1;",
-        "let f = (a, b) => a + b;",
-        "let f = x => x + 1;",
         "let f = function(a) { return a; };",
         "let ys = map(xs, fun x -> x + 1);",
     ] {
         let (_, errors) = som_parser::parse(Arc::new(Source::from_raw(source)));
         assert_eq!(errors.len(), 1, "{source:?}: {errors:?}");
+    }
+}
+
+#[test]
+fn closures_are_som() {
+    for source in ["let f = (a, b) => a + b;", "let f = x => x + 1;", "let f = () => { 1 };"] {
+        let (_, errors) = som_parser::parse(Arc::new(Source::from_raw(source)));
+        assert!(errors.is_empty(), "{source:?}: {errors:?}");
     }
 }
 

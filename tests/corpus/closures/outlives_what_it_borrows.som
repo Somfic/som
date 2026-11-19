@@ -1,0 +1,12 @@
+// expect: error
+
+/// A closure lends what it captures that doesn't copy: it can't be moved while the closure
+/// is still used.
+struct Big { n: i32 }
+
+fn main() -> i32 {
+    let big = Big { n: 3 };
+    let f = (k: i32) => big.n + k;
+    let moved = big;
+    f(1)
+}

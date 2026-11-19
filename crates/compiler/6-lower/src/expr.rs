@@ -62,12 +62,16 @@ impl FnBuilder<'_, '_> {
     /// what `==` compares and `as` converts.
     pub(super) fn number(&mut self, expr: Id<Expr>) -> Operand {
         let ty = self.expr_ty(expr);
-        // `self * self` of a `&i32`: the numbers it refers to.
-        if self.typed.is_read_through(expr) {
-            let Ty::Ref { to, .. } = *self.l.mir.types.get(ty) else {
-                unreachable!("checked: only references are read through")
-            };
-            let place = self.place(expr).project(Projection::Deref);
+        // `self * self` of a `&i32`: the numbers it refers to, through each reference.
+        let depth = self.typed.read_through(expr);
+        if depth > 0 {
+            let (mut place, mut to) = (self.place(expr), ty);
+            for _ in 0..depth {
+                let Ty::Ref { to: inner, .. } = *self.l.mir.types.get(to) else {
+                    unreachable!("checked: only references are read through")
+                };
+                (place, to) = (place.project(Projection::Deref), inner);
+            }
             return self.read(place, to);
         }
         if !self.is_enum(ty) {

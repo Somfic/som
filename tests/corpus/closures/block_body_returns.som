@@ -1,0 +1,12 @@
+// expect: exit 12
+
+/// A block body, whose `return` leaves the closure, not the function around it.
+fn main() -> i32 {
+    let clamp = (n: i32) => {
+        if n > 10 {
+            return 10;
+        }
+        n
+    };
+    clamp(25) + clamp(2)
+}

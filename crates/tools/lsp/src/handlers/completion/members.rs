@@ -25,16 +25,41 @@ pub(super) fn complete(request: &Request) -> Option<Vec<CompletionItem>> {
     };
     let t = a.typed.expr(receiver);
     Some(if let Some(sequence) = array_of(a, t) {
-        array_methods(request, sequence)
+        let mut items = array_methods(request, sequence);
+        add_trait_methods(request, t, &mut items);
+        items
     } else if let Ty::Ptr(element) = *a.typed.ty(t) {
         pointer_methods(request, element)
     } else if let Some(owner) = struct_of(a, t)
         && let DefKind::Struct(s) = a.names.def(owner).kind
     {
-        struct_members(request, receiver, owner, s)
+        let mut items = struct_members(request, receiver, owner, s);
+        add_trait_methods(request, t, &mut items);
+        items
     } else {
         other_members(request, t)
     })
+}
+
+/// The methods taking `self` of the traits values of type `t` have, `iter` of a slice's
+/// `IterRef` or `where` of an iterator's `Adapters`: those not named like one already there.
+fn add_trait_methods(request: &Request, t: TypeId, items: &mut Vec<CompletionItem>) {
+    let a = request.a;
+    for (method, signature) in trait_methods_of(a, t) {
+        let name = a.ast.funcs[method].name.name.to_string();
+        if !takes_self(a, method) || items.iter().any(|item| item.label == name) {
+            continue;
+        }
+        items.push(method_item(
+            a,
+            method,
+            &name,
+            1,
+            request.insert,
+            signature,
+            a.ast.funcs[method].doc.clone(),
+        ));
+    }
 }
 
 fn array_methods(request: &Request, sequence: Sequence) -> Vec<CompletionItem> {

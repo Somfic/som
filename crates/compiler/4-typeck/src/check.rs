@@ -8,6 +8,7 @@ use crate::unify::Unifier;
 use crate::{Records, Signature, Typed};
 
 mod call;
+mod closures;
 mod coerce;
 mod compile_time;
 mod construct;
@@ -85,6 +86,11 @@ pub(crate) struct Checker<'a> {
     bound_args: HashMap<(DefId, DefId), Vec<TypeId>>,
     /// `F: fn(&T) -> bool` → `fn(&T) -> bool`, for `F`. Lowered with `bound_args`.
     signatures: HashMap<DefId, TypeId>,
+    /// A type parameter's variable in a call → how what's given for it is called, so an
+    /// anonymous function given for it knows its parameters' types.
+    expected_calls: HashMap<TypeId, TypeId>,
+    /// The anonymous functions whose bodies are being checked, innermost last.
+    open_closures: Vec<Id<Expr>>,
 }
 
 /// What the expression about to be inferred is to its caller: set just before `infer`, which
@@ -122,6 +128,10 @@ struct Deferred {
     obligations: Vec<(TypeId, DefId, Vec<TypeId>, Span)>,
     /// A type that has to be called as a `fn(…) -> …`: what's given for `F: fn(&T) -> bool`.
     called: Vec<(TypeId, TypeId, Span)>,
+    /// `Collect::start()`: a trait's method called by the trait's name, with its type
+    /// arguments, `Self` first. What `Self` is can be learned from what the call gives, after
+    /// it's checked; the trait's own arguments are settled once it's known.
+    trait_calls: Vec<(DefId, Vec<TypeId>)>,
     /// The types of the `@unreachable`s: what they're used as, or `()`.
     unreachables: Vec<TypeId>,
     /// Calls that more than one function fits.
@@ -166,6 +176,8 @@ impl<'a> Checker<'a> {
             checked_consts: HashSet::new(),
             bound_args: HashMap::new(),
             signatures: HashMap::new(),
+            expected_calls: HashMap::new(),
+            open_closures: Vec::new(),
         };
         if let Some(def) = names.lang_struct(som_lang::LangStruct::String) {
             checker.u.table.text = checker.u.table.intern(Ty::Struct(def, Vec::new()));

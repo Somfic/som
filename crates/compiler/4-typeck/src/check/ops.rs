@@ -241,20 +241,23 @@ impl Checker<'_> {
         result
     }
 
-    /// A reference to a number, `bool` or struct is read through, so `self * self` works for a
-    /// `&i32`, and `"arg: " + arg` for a `&string`.
+    /// A reference to a number, `bool` or struct is read through, however many there are: so
+    /// `self * self` works for a `&i32`, `"arg: " + arg` for a `&string`, and `x % 2` for the
+    /// `&&i32` a `where` on lent values gives.
     fn through_reference(&mut self, operand: Id<Expr>, ty: TypeId) -> TypeId {
-        let Ty::Ref { to, .. } = *self.u.shallow_ty(ty) else {
-            return ty;
-        };
-        let to = self.u.shallow(to);
+        let mut to = self.u.shallow(ty);
+        let mut depth = 0;
+        while let Ty::Ref { to: inner, .. } = *self.u.get(to) {
+            to = self.u.shallow(inner);
+            depth += 1;
+        }
         let readable = matches!(self.u.get(to), Ty::Int(_) | Ty::Float(_) | Ty::Bool)
             || matches!(self.u.var_kind(to), Some(VarKind::Int | VarKind::Float))
             || matches!(self.u.get(to), Ty::Struct(..));
-        if !readable {
+        if depth == 0 || !readable {
             return ty;
         }
-        self.records.read_through.insert(operand);
+        self.records.read_through.insert(operand, depth);
         to
     }
 

@@ -1,0 +1,9 @@
+// expect: exit 9
+
+/// Given for an `F: fn(i32) -> i32`, a closure takes its parameter's type from the bound.
+fn apply<F: fn(i32) -> i32>(f: F, x: i32) -> i32 = f(x);
+
+fn main() -> i32 {
+    let offset = 4;
+    apply(x => x + offset, 5)
+}

@@ -39,6 +39,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             terminated: HashSet::new(),
             current: Id::new(0),
             bindings: HashMap::new(),
+            captures: HashMap::new(),
             scopes: Vec::new(),
             loops: Vec::new(),
             reads: Vec::new(),
@@ -116,7 +117,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         }
     }
 
-    fn take_body(&mut self, arg_count: usize, outs: Vec<Local>) -> Body {
+    pub(super) fn take_body(&mut self, arg_count: usize, outs: Vec<Local>) -> Body {
         let mut body = Body {
             locals: std::mem::take(&mut self.locals),
             arg_count,

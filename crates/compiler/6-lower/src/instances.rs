@@ -120,6 +120,16 @@ impl<'a> Lowerer<'a> {
         if let Some(id) = self.builtin_method(func, &type_args) {
             return id;
         }
+        // A trait's method without a body is only ever its implementation's: lowered as it
+        // is, it would be called as one of C's.
+        if !self.stand_ins
+            && self.trait_methods.contains_key(&func)
+            && self.ast.funcs[func].body.is_none()
+        {
+            let name = &self.ast.funcs[func].name.name;
+            let types: Vec<String> = type_args.iter().map(|&t| self.mir.display_ty(t)).collect();
+            panic!("no implementation of trait method `{name}` for <{}>", types.join(", "));
+        }
         let key = (func, type_args);
         if let Some(&id) = self.instances.get(&key) {
             return id;
@@ -282,7 +292,8 @@ impl<'a> Subst<'a> {
 
     pub(super) fn apply(&self, types: &mut TypeTable, ty: TypeId) -> TypeId {
         let replaced = self.replace(types, ty);
-        resolve_assoc(types, self.impls, replaced)
+        let resolved = resolve_assoc(types, self.impls, replaced);
+        closures_as_structs(types, resolved)
     }
 
     fn replace(&self, types: &mut TypeTable, ty: TypeId) -> TypeId {
@@ -324,4 +335,18 @@ pub(super) fn internal_function(
         is_entry: false,
         variadic: false,
     }
+}
+
+/// `ty` with each closure's type the struct it is in MIR: one holding its captures.
+fn closures_as_structs(types: &mut TypeTable, ty: TypeId) -> TypeId {
+    let t = types.get(ty).clone();
+    if t.children().is_empty() && !matches!(t, Ty::Closure(..)) {
+        return ty;
+    }
+    let inner = t.map_children(|child| closures_as_structs(types, child));
+    let inner = match inner {
+        Ty::Closure(def, args) => Ty::Struct(def, args),
+        other => other,
+    };
+    types.intern(inner)
 }

@@ -224,6 +224,48 @@ mod tests {
             .collect()
     }
 
+    /// The labels completed just after `marker`'s first `.` in `source`, as analyzed.
+    fn labels_after(source: &str, marker: &str) -> Vec<String> {
+        let (_dir, file, a) = analyzed(source);
+        let importable = Importable {
+            modules: Vec::new(),
+            libraries: Vec::new(),
+        };
+        let at = source.find(marker).unwrap();
+        let offset = at + marker.find('.').unwrap() + 1;
+        let line = source[..offset].lines().count() as u32 - 1;
+        let column = source[..offset].lines().last().unwrap().len() as u32;
+        let request = Request::new(
+            &a,
+            &importable,
+            &file,
+            source,
+            offset,
+            Position::new(line, column),
+        );
+        (complete(&request, None).unwrap_or_default().into_iter())
+            .map(|item| item.label)
+            .collect()
+    }
+
+    #[test]
+    fn a_slice_completes_its_traits_methods() {
+        let source = "fn main() -> i32 {\n    let a: &[i32] = [1, 2, 3, 4];\n    \
+                      let n = a.len;\n    n as i32\n}\n";
+        let labels = labels_after(source, "a.len");
+        assert!(labels.iter().any(|l| l == "len"), "{labels:?}");
+        assert!(labels.iter().any(|l| l == "iter"), "{labels:?}");
+    }
+
+    #[test]
+    fn a_struct_completes_what_a_blanket_impl_gives_it() {
+        let source = "fn main() -> i32 {\n    let a: &[i32] = [1, 2, 3, 4];\n    \
+                      let i = a.iter();\n    let n = i.next();\n    0\n}\n";
+        let labels = labels_after(source, "i.next");
+        assert!(labels.iter().any(|l| l == "next"), "{labels:?}");
+        assert!(labels.iter().any(|l| l == "where"), "{labels:?}");
+    }
+
     #[test]
     fn the_standard_library_s_root_functions_complete_without_an_import() {
         let labels = labels_at_end("fn main() -> i32 {\n    ass");

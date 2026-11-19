@@ -307,6 +307,10 @@ impl Dumper<'_> {
             Expr::Call { callee, args, .. } => {
                 self.node(format!("call {callee}"), |d| d.exprs(args))
             }
+            Expr::Closure { params, body } => {
+                let names: Vec<&str> = params.iter().map(|p| &*p.name.name).collect();
+                self.node(format!("closure ({})", names.join(", ")), |d| d.expr(*body))
+            }
             Expr::CallValue { callee, args } => self.node("call value", |d| {
                 d.expr(*callee);
                 d.exprs(args);

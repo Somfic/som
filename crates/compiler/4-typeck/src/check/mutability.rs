@@ -18,6 +18,15 @@ impl Checker<'_> {
     /// Reports it if the place `expr` can't be changed: assigned to, or with `borrow`, borrowed
     /// as `&mut`.
     pub(super) fn check_mutable(&mut self, expr: Id<Expr>, borrow: bool) {
+        // Inside a closure, what it captures only reads: through a reference it holds too.
+        if let Some(def) = self.captured_root(expr) {
+            self.errors.push(TypeError::CaptureChanged {
+                name: self.names.def(def).name.to_string(),
+                span: self.span(expr),
+                moved: false,
+            });
+            return;
+        }
         // `xs[i].x = 1`: through `at_mut`, which checks `xs` can change.
         let mut place = expr;
         loop {
@@ -86,6 +95,7 @@ impl Checker<'_> {
                         self.ast.patterns[pattern],
                         Pattern::Binding { mutable: true, .. }
                     ),
+                    DefKind::ClosureParam { .. } => false,
                     _ => true,
                 };
                 (!mutable).then_some(Immutable::Variable(def))
@@ -114,6 +124,24 @@ impl Checker<'_> {
         }
     }
 
+    /// The variable place `expr` is in, if one of the closures being checked captures it:
+    /// `total` for `total.count`.
+    pub(super) fn captured_root(&self, expr: Id<Expr>) -> Option<DefId> {
+        let mut place = expr;
+        loop {
+            match &self.ast.exprs[place] {
+                Expr::Field { object, .. } if !self.is_prop(place) => place = *object,
+                Expr::Index { object, .. } | Expr::Deref(object) => place = *object,
+                Expr::Var(_) => break,
+                _ => return None,
+            }
+        }
+        let def = self.names.expr(place)?;
+        (self.open_closures.iter())
+            .any(|&closure| self.names.captures(closure).contains(&def))
+            .then_some(def)
+    }
+
     /// Whether `expr` is a `&mut` reference, a `&` one, or not a reference.
     fn reference(&self, expr: Id<Expr>) -> Option<bool> {
         let ty = self.exprs[expr.id]?;
@@ -132,6 +160,7 @@ impl Checker<'_> {
                         | DefKind::Out(_)
                         | DefKind::Param { .. }
                         | DefKind::Binding(_)
+                        | DefKind::ClosureParam { .. }
                         // One that can't change, reported as that.
                         | DefKind::Const(_)
                 )

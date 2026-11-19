@@ -55,6 +55,9 @@ impl Checker<'_> {
                     self.fit_owner_args(id, callee, func, &type_args, owner_args);
                 }
                 self.require_bounds(func, &type_args, self.span(id));
+                if let Some(trait_) = self.trait_of(func) {
+                    self.deferred.trait_calls.push((trait_, type_args.clone()));
+                }
                 if !type_args.is_empty() {
                     self.type_args.insert(id, type_args);
                 }
@@ -93,7 +96,7 @@ impl Checker<'_> {
                 ty
             }
             // `test(x)`, `test` a variable holding a function.
-            Some(DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_)) => {
+            Some(kind) if kind.is_variable() => {
                 let def = self.names.expr(id).expect("matched above");
                 let ty = self.locals.get(&def).copied().unwrap_or(error);
                 self.call_value(id, ty, &callee.to_string(), args)
@@ -160,6 +163,7 @@ impl Checker<'_> {
             Ty::FnItem(def, args) => self.item_signature(def, &args),
             // `F: fn(&T) -> bool`.
             Ty::Param(param) => self.signatures.get(&param).copied(),
+            Ty::Closure(def, args) => self.closure_signature(def, &args),
             _ => None,
         }
     }

@@ -228,17 +228,28 @@ impl<'a> Resolver<'a> {
         self.names.set_trait_params(id, params.clone());
         self.cx.type_params = std::iter::once(som_lang::SELF_TYPE)
             .chain(t.generics.iter().map(|g| &*g.name.name))
-            .zip(params)
+            .zip(params.iter().copied())
             .collect();
         for g in &t.generics {
             if let Some(default) = g.default {
                 self.resolve_type(default);
             }
         }
-        self.cx.type_params.clear();
         self.cx.block_types = (t.types.iter().zip(types))
             .map(|(assoc, def)| (&*assoc.name.name, def))
             .collect();
+        // Its aliases, `type Predicate = fn(&Self::Item) -> bool;`: of its own `Self`, which
+        // has the trait and those it builds on, so `Self::Item` is the `Item` of those.
+        let this = params[0];
+        let mut bounds = vec![self.names.trait_def(id)];
+        bounds.extend(self.names.supers(id).iter().copied());
+        self.names.set_bounds(this, bounds);
+        for alias in &t.aliases {
+            self.resolve_type(alias.ty);
+            let def = self.define(&alias.name, DefKind::Alias { ty: alias.ty });
+            self.cx.block_types.push((&alias.name.name, def));
+        }
+        self.cx.type_params.clear();
         t.methods.iter().for_each(|&m| self.resolve_func(m));
         self.cx.block_types.clear();
     }
@@ -249,6 +260,7 @@ impl<'a> Resolver<'a> {
     fn resolve_generics(&mut self, generics: &'a [Generic], defs: &[DefId]) {
         let mut given = Vec::new();
         let mut called = Vec::new();
+        let mut aliased = Vec::new();
         for (generic, &def) in generics.iter().zip(defs) {
             if let Some(signature) = generic.signature {
                 called.push((def, signature));
@@ -261,6 +273,11 @@ impl<'a> Resolver<'a> {
             }
             let mut traits = Vec::new();
             for bound in &generic.bounds {
+                // `P: Predicate`, an alias of a function's type: called that way.
+                if let Some(signature) = self.signature_alias(bound) {
+                    aliased.push((def, signature));
+                    continue;
+                }
                 let Some(trait_) = self.resolve_path(&bound.trait_, Expect::Trait) else {
                     continue;
                 };
@@ -281,6 +298,25 @@ impl<'a> Resolver<'a> {
             self.resolve_type(signature);
             self.names.set_signature(def, signature);
         }
+        // Already resolved where the alias is: in a trait, of its own `Self`.
+        for (def, signature) in aliased {
+            self.names.set_signature(def, signature);
+        }
+    }
+
+    /// For a bound naming an alias of a function's type, `P: Predicate`: that type.
+    fn signature_alias(&self, bound: &som_ast::Bound) -> Option<Id<TypeExpr>> {
+        let [name] = &bound.trait_.segments[..] else {
+            return None;
+        };
+        if !bound.args.is_empty() {
+            return None;
+        }
+        let def = self.lookup(&name.name, Expect::Type)?;
+        let DefKind::Alias { ty } = self.names.def(def).kind else {
+            return None;
+        };
+        matches!(self.ast.types[ty], TypeExpr::Fn { .. }).then_some(ty)
     }
 
     fn resolve_func(&mut self, id: Id<Func>) {
@@ -556,6 +592,7 @@ impl<'a> Resolver<'a> {
                 self.resolve_expr(*callee);
                 args.iter().for_each(|&a| self.resolve_expr(a));
             }
+            Expr::Closure { params, body } => self.resolve_closure(id, params, *body),
             // The method itself depends on the receiver's type, so the type checker finds it.
             Expr::MethodCall {
                 receiver,
@@ -661,11 +698,54 @@ impl<'a> Resolver<'a> {
         }
     }
 
+    /// `n => *n > limit`: a scope of its own for its parameters, and what it reads of the
+    /// variables around it noted as its captures.
+    fn resolve_closure(&mut self, id: Id<Expr>, params: &'a [som_ast::Param], body: Id<Expr>) {
+        let span = self.ast.exprs.span(id).clone();
+        let module = self.cx.module;
+        let def = self.names.define("closure", DefKind::Closure(id), span, module);
+        let depth = self.cx.scopes.len();
+        self.cx.closures.push((id, depth));
+        self.in_scope(|r| {
+            let mut defs = Vec::new();
+            for (index, param) in params.iter().enumerate() {
+                if let Some(ty) = param.ty {
+                    r.resolve_type(ty);
+                }
+                let kind = DefKind::ClosureParam { closure: id, index };
+                let param_def = r.define(&param.name, kind);
+                r.bind(&param.name, param_def);
+                defs.push(param_def);
+            }
+            r.names.set_closure(id, def, defs);
+            r.resolve_expr(body);
+        });
+        self.cx.closures.pop();
+    }
+
+    /// `def`, read here: a capture of each anonymous function being resolved that it's from
+    /// outside of.
+    fn note_capture(&mut self, def: DefId) {
+        if self.cx.closures.is_empty() || !self.names.def(def).kind.is_variable() {
+            return;
+        }
+        let Some(at) = (self.cx.scopes.iter()).rposition(|scope| scope.values().any(|&d| d == def))
+        else {
+            return;
+        };
+        for &(closure, depth) in &self.cx.closures {
+            if at < depth {
+                self.names.add_capture(closure, def);
+            }
+        }
+    }
+
     fn bind_expr(&mut self, id: Id<Expr>, path: &Path, expect: Expect) {
         self.through_alias.set(None);
         let Some(def) = self.resolve_path(path, expect) else {
             return;
         };
+        self.note_capture(def);
         if self.local_outside_const(def) {
             self.errors.push(ResolveError::ConstNotKnown {
                 span: self.ast.exprs.span(id).clone(),
@@ -684,10 +764,7 @@ impl<'a> Resolver<'a> {
         let Some(depth) = self.cx.const_depth else {
             return false;
         };
-        let local = matches!(
-            self.names.def(def).kind,
-            DefKind::Local(_) | DefKind::Param { .. } | DefKind::Out(_) | DefKind::Binding(_)
-        );
+        let local = self.names.def(def).kind.is_variable();
         local
             && (self.cx.scopes.iter())
                 .rposition(|scope| scope.values().any(|&d| d == def))
@@ -749,7 +826,10 @@ impl<'a> Resolver<'a> {
             |defs: &[DefId]| (defs.iter().copied()).find(|&d| &*self.names.def(d).name == name);
         match self.names.def(base).kind {
             DefKind::SelfType { impl_ } => named(&self.names.impls[impl_].types),
-            DefKind::TypeParam { .. } | DefKind::StructParam { .. } | DefKind::ImplParam { .. } => {
+            DefKind::TypeParam { .. }
+            | DefKind::StructParam { .. }
+            | DefKind::ImplParam { .. }
+            | DefKind::TraitParam { .. } => {
                 // Its traits', then theirs' supertraits'.
                 let mut traits = self.names.bounds(base).to_vec();
                 let mut seen = Vec::new();

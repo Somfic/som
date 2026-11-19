@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use som_ast::{BinOp, Child, Expr, Id, Stmt};
-use som_resolve::{DefId, DefKind};
+use som_resolve::DefId;
 
 use super::Checker;
 use crate::error::TypeError;
@@ -234,14 +234,7 @@ impl Checker<'_> {
         match &self.ast.exprs[expr] {
             Expr::Var(_) => {
                 let def = self.names.expr(expr)?;
-                matches!(
-                    self.names.def(def).kind,
-                    DefKind::Local(_)
-                        | DefKind::Param { .. }
-                        | DefKind::Out(_)
-                        | DefKind::Binding(_)
-                )
-                .then(|| Key {
+                self.names.def(def).kind.is_variable().then(|| Key {
                     root: def,
                     path: Vec::new(),
                 })

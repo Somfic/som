@@ -14,6 +14,7 @@ use crate::types::is_self;
 
 pub(crate) fn inlay_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
     let mut hints = variable_type_hints(a, file);
+    hints.extend(closure_param_hints(a, file));
     hints.extend(return_type_hints(a, file));
     hints.extend(annotation_hints(a, file));
     hints.extend(optional_condition_hints(a, file));
@@ -64,6 +65,28 @@ fn variable_type_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
             continue;
         }
         hints.push(type_hint(&name.span, ty(a, t)));
+    }
+    hints
+}
+
+/// The type each closure parameter without one written turned out to be: `x: &&i32 =>`.
+fn closure_param_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
+    let mut hints = Vec::new();
+    for (id, expr) in a.ast.exprs.iter() {
+        let Expr::Closure { params, .. } = expr else {
+            continue;
+        };
+        for (param, &def) in params.iter().zip(a.names.closure_params(id)) {
+            if param.ty.is_some() || param.name.span.source.identifier() != file {
+                continue;
+            }
+            let Some(t) = a.typed.try_local(def) else {
+                continue;
+            };
+            if !matches!(a.typed.ty(t), Ty::Error) {
+                hints.push(type_hint(&param.name.span, ty(a, t)));
+            }
+        }
     }
     hints
 }
@@ -427,6 +450,27 @@ mod tests {
                 InlayHintLabel::LabelParts(_) => unreachable!(),
             })
             .collect()
+    }
+
+    #[test]
+    fn closure_parameters_are_hinted_with_their_types() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.som");
+        let text = "fn apply<F: fn(i32, i32) -> i32>(f: F) -> i32 = f(1, 2);\n\
+                    fn main() -> i32 {\n    let a: &[i32] = [1, 2, 3, 4];\n    \
+                    let b = a.iter().where(x => *x % 2 == 0);\n    \
+                    apply((m, n: i32) => m + n)\n}\n";
+        std::fs::write(&main, text).unwrap();
+        let analysis = som_driver::analyze(dir.path(), &som_driver::Options::default());
+        let file = main.to_string_lossy();
+        // Not `n`, whose type is written.
+        assert_eq!(
+            labels(closure_param_hints(&analysis, &file)),
+            [
+                (3, 28, ": &&i32".to_string()),
+                (4, 12, ": i32".to_string()),
+            ]
+        );
     }
 
     #[test]

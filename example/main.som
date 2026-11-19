@@ -1,0 +1,5 @@
+let a: &[i32] = [ 1, 2, 3, 4 ];
+
+for number in a.iter().where(x => x % 2 == 0) {
+    som::io::println("{number}");
+}

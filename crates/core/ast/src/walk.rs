@@ -51,6 +51,7 @@ impl Expr {
                 expr(*a);
                 expr(*b);
             }
+            Expr::Closure { body, .. } => expr(*body),
             Expr::MethodCall { receiver, args, .. }
             | Expr::CallValue {
                 callee: receiver,

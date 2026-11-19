@@ -6,6 +6,7 @@ mod builder;
 mod builtins;
 mod call;
 mod caller;
+mod closures;
 mod drops;
 mod elaborate;
 mod expr;
@@ -136,6 +137,11 @@ struct Lowerer<'a> {
     trait_methods: HashMap<Id<Func>, (DefId, usize)>,
     /// `None` for a type with nothing to drop.
     drop_glues: HashMap<TypeId, Option<FuncId>>,
+    /// Each closure's body, by the closure and its function's type arguments.
+    closure_instances: HashMap<(Id<som_ast::Expr>, Vec<TypeId>), FuncId>,
+    /// Lowering generic functions with stand-ins, for the borrow checker: a trait's method
+    /// called on one has no implementation to be.
+    stand_ins: bool,
 }
 
 impl<'a> Lowerer<'a> {
@@ -157,6 +163,8 @@ impl<'a> Lowerer<'a> {
             owners: HashMap::new(),
             trait_methods: HashMap::new(),
             drop_glues: HashMap::new(),
+            closure_instances: HashMap::new(),
+            stand_ins: false,
         }
     }
 
@@ -180,6 +188,7 @@ impl<'a> Lowerer<'a> {
     }
 
     fn run_generic(&mut self) {
+        self.stand_ins = true;
         self.prepare();
         for (id, func) in self.ast.funcs.iter() {
             let params = self.names.type_params(id).to_vec();
@@ -282,6 +291,8 @@ impl<'a> Lowerer<'a> {
                 }
                 Job::Func(func, type_args) => FnBuilder::new(self, func, type_args).build(),
                 Job::Init(c, owner) => FnBuilder::for_init(self, c, owner).build_init(c),
+                Job::Closure(closure, args) => FnBuilder::for_closure(self, closure, args)
+                    .build_closure(closure),
             };
             self.mir.funcs[func_id].body = Some(body);
         }
@@ -306,10 +317,11 @@ impl<'a> Lowerer<'a> {
                 break;
             }
             for (def, args) in wanted {
-                let DefKind::Struct(s) = self.names.def(def).kind else {
-                    unreachable!("struct types name structs")
-                };
-                self.struct_instance(s, args);
+                match self.names.def(def).kind {
+                    DefKind::Struct(s) => self.struct_instance(s, args),
+                    DefKind::Closure(_) => self.closure_struct(def, args),
+                    _ => unreachable!("struct types name structs and closures"),
+                }
             }
         }
         self.pass_caller_locations();
@@ -363,6 +375,13 @@ impl<'a> Lowerer<'a> {
         let t = self.mir.types.get(ty).clone();
         for child in t.children() {
             self.make_structs_in(child);
+        }
+        if let Ty::Struct(def, args) = &t
+            && let DefKind::Closure(_) = self.names.def(*def).kind
+            && concrete(&self.mir.types, ty)
+            && !self.mir.has_struct(*def, args)
+        {
+            self.closure_struct(*def, args.clone());
         }
         if let Ty::Struct(def, args) = t
             && !args.is_empty()
@@ -423,6 +442,8 @@ fn unreachable_body(func: &Function, span: &Span) -> Body {
 
 enum Job {
     Func(Id<Func>, Vec<TypeId>),
+    /// A closure's body, with the type arguments of the function it's in.
+    Closure(Id<som_ast::Expr>, Vec<TypeId>),
     /// A `@const`'s initializer, in the function instance it's in.
     Init(Id<som_ast::Const>, Owner),
 }
@@ -443,7 +464,8 @@ struct LoopTargets {
 
 fn concrete(types: &TypeTable, ty: TypeId) -> bool {
     match types.get(ty) {
-        Ty::Param(_) | Ty::Var(_) | Ty::Error => false,
+        // A closure's type is the type checker's: in MIR, it's the struct it becomes.
+        Ty::Param(_) | Ty::Var(_) | Ty::Error | Ty::Closure(..) => false,
         t => t.children().into_iter().all(|child| concrete(types, child)),
     }
 }
@@ -463,6 +485,9 @@ struct FnBuilder<'l, 'a> {
     terminated: HashSet<BlockId>,
     current: BlockId,
     bindings: HashMap<DefId, Local>,
+    /// Inside a closure's body: where each variable it captures is, through its first
+    /// parameter, the closure.
+    captures: HashMap<DefId, Place>,
     /// The `let` locals of each enclosing scope.
     scopes: Vec<Vec<Local>>,
     loops: Vec<LoopTargets>,

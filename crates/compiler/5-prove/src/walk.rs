@@ -253,6 +253,13 @@ impl Prover<'_> {
                     self.check_call(id, func, 0, None, args);
                 }
             }
+            // Its body runs later, called with values nothing's known of. What's known around it
+            // still holds there: it only reads what it captures, copied or lent.
+            Expr::Closure { body, .. } => {
+                let around = self.facts.clone();
+                self.expr(*body);
+                self.facts = around;
+            }
             // Nothing's known of the function: `&mut` arguments are changed where they're lent.
             Expr::CallValue { callee, args } => {
                 self.expr(*callee);

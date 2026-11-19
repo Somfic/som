@@ -127,6 +127,26 @@ impl Checker<'_> {
                 continue;
             };
             let trait_name = self.names.def(trait_).name.to_string();
+            // `trait Index: Sized`: whatever implements `Index` implements `Sized` too, which
+            // `Index`'s methods can use.
+            if let Some(target) = self.impls[index].target {
+                for &missing in self.names.supers(t) {
+                    if self.implements(target, missing) {
+                        continue;
+                    }
+                    let block = impl_block(self.ast, index);
+                    let span = match &block.trait_ {
+                        Some((path, _)) => path.span(),
+                        None => block.target.span(),
+                    };
+                    self.errors.push(TypeError::MissingSuperImpl {
+                        ty: self.describe(target),
+                        trait_: trait_name.clone(),
+                        missing: self.names.def(missing).name.to_string(),
+                        span,
+                    });
+                }
+            }
             // Copying a struct copies its fields: they have to be copied too.
             if self.names.lang_of(trait_) == Some(LangTrait::Copy)
                 && let Some(target) = self.impls[index].target
@@ -490,7 +510,41 @@ impl Checker<'_> {
             }
             if let Some(&signature) = self.signatures.get(&param) {
                 let signature = self.substitute(signature, &subst);
+                let var = self.u.shallow(arg);
+                self.expected_calls.insert(var, signature);
                 self.deferred.called.push((arg, signature, span.clone()));
+            }
+        }
+    }
+
+    /// `ty`, written in a trait in terms of its own `Self` and parameters, `fn(&Self::Item) ->
+    /// bool` of a `type Predicate`, in terms of those of its method that `param` is of.
+    fn of_trait_in_method(&mut self, param: DefId, ty: TypeId) -> TypeId {
+        let names = self.names;
+        let DefKind::TypeParam { func, .. } = names.def(param).kind else {
+            return ty;
+        };
+        let Some((t, _)) = (self.ast.traits.iter()).find(|(_, t)| t.methods.contains(&func)) else {
+            return ty;
+        };
+        let subst: Vec<(DefId, TypeId)> = (names.trait_params(t).iter().copied())
+            .zip(names.type_params(func).iter().map(|&p| self.u.intern(Ty::Param(p))))
+            .collect();
+        self.substitute(ty, &subst)
+    }
+
+    /// The trait method `func` is declared in, if it's one.
+    pub(super) fn trait_of(&self, func: Id<Func>) -> Option<DefId> {
+        let (t, _) = (self.ast.traits.iter()).find(|(_, t)| t.methods.contains(&func))?;
+        Some(self.names.trait_def(t))
+    }
+
+    /// The trait arguments of each call by a trait's name, `Collect::start()`, now that
+    /// what `Self` is is known: from its implementation, or a type parameter's bound.
+    pub(super) fn settle_trait_calls(&mut self) {
+        for (trait_, type_args) in std::mem::take(&mut self.deferred.trait_calls) {
+            if let Some(&this) = type_args.first() {
+                self.settle_trait_args(trait_, this, &type_args);
             }
         }
     }
@@ -543,6 +597,7 @@ impl Checker<'_> {
         for param in names.called_params() {
             let written = names.signature(param).expect("listed as called");
             let signature = self.lower(written);
+            let signature = self.of_trait_in_method(param, signature);
             self.signatures.insert(param, signature);
         }
     }

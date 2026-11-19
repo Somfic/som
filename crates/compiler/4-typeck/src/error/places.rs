@@ -6,6 +6,15 @@ use super::TypeError;
 
 pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
     match error {
+        TypeError::CaptureChanged { name, span, moved } => {
+            let (what, label) = match moved {
+                true => ("moved", "moved here"),
+                false => ("changed", "changed here"),
+            };
+            Diagnostic::error(msg![var(name), format!(" can't be {what} inside a closure")])
+                .with_label(Label::primary(span.clone(), label))
+                .with_hint("a closure only reads the variables around it")
+        }
         TypeError::NotMutable {
             name,
             span,

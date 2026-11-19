@@ -37,6 +37,11 @@ impl<T, N: usize> Drop for ArrayIntoIter<T, N> {
     }
 }
 
+impl<T> Sized for [T] {
+    /// How many values it has: its built-in length.
+    prop len: usize = self.len;
+}
+
 impl<T> Index for [T] {
     type Item = T;
 

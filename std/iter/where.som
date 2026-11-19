@@ -1,0 +1,17 @@
+pub struct Where<I: Iterator, P: fn(&I::Item) -> bool> {
+    mod inner: I,
+    mod test: P,
+}
+
+impl<I: Iterator, P: fn(&I::Item) -> bool> Iterator for Where<I, P> {
+    type Item = I::Item;
+
+    fn next(&mut self) -> I::Item? {
+        loop {
+            let item = .inner.next() else return none;
+            if .test(&item) {
+                return item;
+            }
+        }
+    }
+}

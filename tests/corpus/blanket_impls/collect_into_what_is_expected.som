@@ -1,0 +1,50 @@
+// expect: exit 14
+
+/// `collect` builds what the result is expected to be, through its `Collect`: `Collect::start()`
+/// is called by the trait's name, `Self` learned from the type it gives.
+struct Countdown { n: i32 }
+
+impl Iterator for Countdown {
+    type Item = i32;
+
+    fn next(&mut self) -> i32? {
+        if .n == 0 { return none; }
+        .n = .n - 1;
+        .n + 1
+    }
+}
+
+/// Can be built from values, one at a time.
+trait Collect<T> {
+    fn start() -> Self;
+    fn add(&mut self, value: T);
+}
+
+impl<T> Collect<T> for List<T> {
+    fn start() -> Self = List::empty();
+    fn add(&mut self, value: T) = self.push(value);
+}
+
+trait Collecting: Iterator {
+    fn collect<C: Collect<Self::Item>>(self) -> C;
+}
+
+impl<I: Iterator> Collecting for I {
+    fn collect<C: Collect<I::Item>>(self) -> C {
+        let mut it = self;
+        let mut all: C = Collect::start();
+        loop {
+            let item = it.next() else return all;
+            all.add(item);
+        }
+    }
+}
+
+fn main() -> i32 {
+    let all: List<i32> = (Countdown { n: 4 }).collect();
+    let mut sum = 0;
+    for x in &all {
+        sum = sum + x;
+    }
+    sum + all.len as i32
+}

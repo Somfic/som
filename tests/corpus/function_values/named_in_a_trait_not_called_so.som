@@ -1,0 +1,18 @@
+// expect: error NotCalledSo
+
+/// Given for a `P: Check`, a function has to be called as `Check` says.
+trait Checks {
+    type Check = fn(&Self) -> bool;
+    fn passes<P: Check>(&self, check: P) -> bool;
+}
+
+impl Checks for i32 {
+    fn passes<P: fn(&i32) -> bool>(&self, check: P) -> bool = check(self);
+}
+
+fn negate(n: i32) -> i32 = -n;
+
+fn main() -> i32 {
+    let ok = 3.passes(negate);
+    0
+}

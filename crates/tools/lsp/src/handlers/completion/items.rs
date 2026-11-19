@@ -489,6 +489,8 @@ pub(super) fn takes_self(a: &Analysis, f: Id<Func>) -> bool {
 /// language's traits it has built in (`compare` of a number), then the traits implemented
 /// for it.
 pub(super) fn trait_methods_of(a: &Analysis, t: TypeId) -> Vec<(Id<Func>, String)> {
+    // A method is called through one reference, as the type checker looks them up.
+    let t = crate::types::unref(a, t);
     // Each trait with what its parameters are for `t`: `Double<i32>` gives `T` as `i32`.
     let mut traits: Vec<(Id<Trait>, Vec<String>)> = Vec::new();
     let mut add = |def, args: Vec<String>| {
@@ -507,10 +509,20 @@ pub(super) fn trait_methods_of(a: &Analysis, t: TypeId) -> Vec<(Id<Func>, String
     }
     for (i, info) in a.typed.impls.iter().enumerate() {
         let Some(trait_) = info.trait_ else { continue };
-        let this = std::slice::from_ref(&a.typed.impls[i]);
-        let Some((_, args)) =
-            som_typeck::traits::find_impl(this, &a.typed.table, trait_, t, &[], &|x| x)
-        else {
+        // A blanket one, `impl<I: Iterator> Adapters for I`, is `t`'s if `t` meets its
+        // bounds, which other impls say: it's looked for among all of them.
+        let found = match info.blanket {
+            Some(_) => {
+                let impls = &a.typed.impls;
+                som_typeck::traits::find_impl(impls, &a.typed.table, trait_, t, &[], &|x| x)
+                    .filter(|&(found, _)| found == i)
+            }
+            None => {
+                let this = std::slice::from_ref(&a.typed.impls[i]);
+                som_typeck::traits::find_impl(this, &a.typed.table, trait_, t, &[], &|x| x)
+            }
+        };
+        let Some((_, args)) = found else {
             continue;
         };
         let subst: Vec<_> = info.params.iter().copied().zip(args).collect();

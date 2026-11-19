@@ -31,7 +31,12 @@ pub(crate) fn describe(a: &Analysis, def: DefId) -> String {
             let def = &a.ast.structs[*strukt];
             format!("{}::{}", def.name, variant_text(a, *strukt, *index))
         }
-        DefKind::Param { .. } | DefKind::Local(_) | DefKind::Out(_) | DefKind::Binding(_) => {
+        DefKind::Closure(_) => "closure".into(),
+        DefKind::Param { .. }
+        | DefKind::Local(_)
+        | DefKind::Out(_)
+        | DefKind::Binding(_)
+        | DefKind::ClosureParam { .. } => {
             match a.typed.try_local(def) {
                 Some(t) => format!("{}: {}", d.name, ty(a, t)),
                 None => d.name.to_string(),

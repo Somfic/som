@@ -1,0 +1,12 @@
+// expect: exit 6
+
+/// What doesn't copy is lent to the closure: the text stays where it is.
+fn main() -> i32 {
+    let name: string = "closure";
+    let longer = (n: usize) => name.len > n;
+    let mut total = 0;
+    if longer(3) { total = total + 2; }
+    if longer(6) { total = total + 4; }
+    if longer(9) { total = total + 8; }
+    total
+}

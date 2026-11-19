@@ -1,4 +1,4 @@
-use som_ast::{AssocType, Bound, Const, Expr, Func, Generic, Id, Ident, Impl, Path, Trait, TypeExpr};
+use som_ast::{AssocType, Bound, Const, TraitAlias, Expr, Func, Generic, Id, Ident, Impl, Path, Trait, TypeExpr};
 use som_base::message::code;
 use som_base::msg;
 use som_lang::Builtin;
@@ -230,6 +230,7 @@ impl Parser<'_> {
         self.expect(TokenKind::OpenBrace, "the trait's methods")?;
         self.trait_supers = supers.clone();
         let mut types = Vec::new();
+        let mut aliases = Vec::new();
         let mut methods = Vec::new();
         self.ctx.impl_block = true;
         while !self.at(TokenKind::CloseBrace) && !self.at_eof() {
@@ -240,6 +241,13 @@ impl Parser<'_> {
                     self.recover(RecoveryLevel::Member);
                     continue;
                 };
+                // `type Predicate = fn(&Self::Item) -> bool;`: the trait's own name for a type.
+                if self.eat(TokenKind::Equals) {
+                    let ty = self.parse_type()?;
+                    self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
+                    aliases.push(TraitAlias { doc, name, ty });
+                    continue;
+                }
                 self.expect(TokenKind::Semicolon, "a semicolon after the type")?;
                 types.push(AssocType { doc, name });
             } else if self.at_where() {
@@ -266,6 +274,7 @@ impl Parser<'_> {
             name,
             generics,
             types,
+            aliases,
             supers,
             methods,
         };

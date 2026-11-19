@@ -1,0 +1,10 @@
+// expect: error CaptureChanged
+
+/// Taking a captured value that doesn't copy would move it out of the closure.
+fn take(text: string) -> usize = text.len;
+
+fn main() -> i32 {
+    let name: string = "som";
+    let f = () => take(name);
+    f() as i32
+}

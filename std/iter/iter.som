@@ -1,7 +1,4 @@
-/// Gives values one at a time: each `next` is the next one, or `none` once there are no more.
-/// `for x in it` goes through them.
 pub trait Iterator {
-    /// What it gives.
     type Item;
 
     fn next(self: &mut Self) -> Item?;
@@ -9,7 +6,6 @@ pub trait Iterator {
 
 /// for x in &collection
 pub trait IterRef {
-    /// The iterator `iter` makes.
     type Iter;
 
     fn iter(self: &Self) -> Iter;
@@ -17,7 +13,6 @@ pub trait IterRef {
 
 /// for x in &mut collection
 pub trait IterMut {
-    /// The iterator `iter_mut` makes.
     type Iter;
 
     fn iter_mut(self: &mut Self) -> Iter;
@@ -25,7 +20,6 @@ pub trait IterMut {
 
 /// for x in collection
 pub trait IterOwned {
-    /// The iterator `into_iter` makes.
     type Iter;
 
     fn into_iter(self: Self) -> Iter;

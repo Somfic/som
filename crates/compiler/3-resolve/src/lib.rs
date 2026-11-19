@@ -146,6 +146,9 @@ struct Context<'a> {
     const_depth: Option<usize>,
     /// Resolving an `@if`'s condition, where a type can be compared with another: `T == f32`.
     settled_condition: bool,
+    /// The anonymous functions being resolved, innermost last, each with how many scopes were
+    /// open where it starts: a variable from one of those, it captures.
+    closures: Vec<(som_ast::Id<som_ast::Expr>, usize)>,
 }
 
 struct Resolver<'a> {

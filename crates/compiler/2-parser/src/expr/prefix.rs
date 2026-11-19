@@ -8,8 +8,11 @@ use crate::grammar::{Bp, is_prefix_op};
 impl Parser<'_> {
     pub(super) fn parse_prefix_or_atom(&mut self) -> Option<Id<Expr>> {
         let start = self.current_span();
-        // An anonymous function, which som doesn't have, stops the expression; `new
-        // Point(…)` and `not x` are read as what they mean.
+        if let Some(params_end) = self.closure_ahead() {
+            return self.parse_closure(params_end, &start);
+        }
+        // Another language's anonymous function stops the expression; `new Point(…)` and
+        // `not x` are read as what they mean.
         if self.foreign_lambda() || self.at(TokenKind::OpenParen) && self.foreign_lambda_params() {
             return Some(self.ast.exprs.alloc(Expr::Hole, start));
         }
@@ -26,6 +29,51 @@ impl Parser<'_> {
             kind if is_prefix_op(kind) => self.parse_unary(kind, &start),
             _ => self.parse_atom(),
         }
+    }
+
+    /// How far ahead the `=>` of an anonymous function starting here is: `x =>`, or `(…) =>`.
+    fn closure_ahead(&self) -> Option<usize> {
+        match self.peek() {
+            TokenKind::Ident if self.peek_nth(1) == TokenKind::FatArrow => Some(1),
+            TokenKind::OpenParen => {
+                let mut n = 1;
+                let mut depth = 1;
+                while depth > 0 {
+                    match self.peek_nth(n) {
+                        TokenKind::OpenParen => depth += 1,
+                        TokenKind::CloseParen => depth -= 1,
+                        TokenKind::Eof => return None,
+                        _ => {}
+                    }
+                    n += 1;
+                }
+                (self.peek_nth(n) == TokenKind::FatArrow).then_some(n)
+            }
+            _ => None,
+        }
+    }
+
+    /// `x => body` or `(a, b: i32) => body`, the `=>` `arrow` tokens ahead.
+    fn parse_closure(&mut self, arrow: usize, start: &Span) -> Option<Id<Expr>> {
+        let params = if arrow == 1 && self.at(TokenKind::Ident) {
+            let name = self.parse_ident("a parameter name")?;
+            vec![closure_param(name, None)]
+        } else {
+            self.expect(TokenKind::OpenParen, "the parameters")?;
+            let params = self.parse_comma_list(TokenKind::CloseParen, |p| {
+                let name = p.parse_ident("a parameter name")?;
+                let ty = match p.eat(TokenKind::Colon) {
+                    true => Some(p.parse_type()?),
+                    false => None,
+                };
+                Some(closure_param(name, ty))
+            })?;
+            self.expect(TokenKind::CloseParen, "a closing parenthesis after the parameters")?;
+            params
+        };
+        self.expect(TokenKind::FatArrow, "`=>` and the body")?;
+        let body = self.parse_expr()?;
+        Some(self.alloc_expr(Expr::Closure { params, body }, start))
     }
 
     /// `&&x`: a borrow of a borrow, lexed as one `&&`.
@@ -141,5 +189,15 @@ impl Parser<'_> {
         };
         let c = self.ast.consts.alloc(c, span);
         self.alloc_expr(Expr::InPlace(c), start)
+    }
+}
+
+/// A parameter of an anonymous function: never `out`, and only changed through a reference.
+fn closure_param(name: som_ast::Ident, ty: Option<Id<som_ast::TypeExpr>>) -> som_ast::Param {
+    som_ast::Param {
+        name,
+        ty,
+        out: false,
+        mutable: false,
     }
 }

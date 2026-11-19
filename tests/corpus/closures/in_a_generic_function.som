@@ -1,0 +1,9 @@
+// expect: exit 7
+
+/// A closure in a generic function can use its type parameters.
+fn pick<T: Copy>(a: T, b: T, first: bool) -> T {
+    let choose = (flag: bool) => if flag { a } else { b };
+    choose(first)
+}
+
+fn main() -> i32 = pick(3, 7, false);

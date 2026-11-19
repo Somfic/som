@@ -103,6 +103,16 @@ pub struct Signature {
     pub ret: TypeId,
 }
 
+/// What an anonymous function takes and gives, and the variables around it it reads, each
+/// with its type: all in terms of the type parameters of `owner`, the function it's in.
+#[derive(Clone, Debug)]
+pub struct ClosureSig {
+    pub owner: Option<Id<som_ast::Func>>,
+    pub params: Vec<TypeId>,
+    pub ret: TypeId,
+    pub captures: Vec<(DefId, TypeId)>,
+}
+
 pub struct Typed {
     pub table: TypeTable,
     exprs: Vec<TypeId>,
@@ -139,6 +149,8 @@ pub(crate) struct Records {
     pub(crate) counts: HashMap<Id<Expr>, TypeId>,
     pub(crate) methods: HashMap<Id<Expr>, DefId>,
     pub(crate) fields: HashMap<Id<Expr>, usize>,
+    /// Anonymous functions → what each takes, gives and captures.
+    pub(crate) closures: HashMap<Id<Expr>, ClosureSig>,
     /// Functions used where a `fn(…)` is expected, `is_even` in `count(xs, is_even)`: each
     /// gives its address.
     pub(crate) fn_pointers: HashSet<Id<Expr>>,
@@ -150,8 +162,9 @@ pub(crate) struct Records {
     pub(crate) downgraded: HashSet<Id<Expr>>,
     /// Reads of an optional place inside `if x { … }`: they read the value it holds.
     pub(crate) narrowed_reads: HashSet<Id<Expr>>,
-    /// Operands read through the reference they are: `self * self` of a `&i32`.
-    pub(crate) read_through: HashSet<Id<Expr>>,
+    /// Operands read through the references they are, with how many: `self * self` of a
+    /// `&i32` through one, `x % 2` of a `&&i32` through two.
+    pub(crate) read_through: HashMap<Id<Expr>, usize>,
     /// `#T`s read through to what they share: `node` in `node.value`, a `&T` from its `get`.
     pub(crate) shared: HashSet<Id<Expr>>,
     pub(crate) loops: HashMap<Id<Stmt>, Loop>,
@@ -519,8 +532,9 @@ impl Typed {
 
     /// Operand `expr`, a reference to a number or `bool`, is read through: `self * self` of a
     /// `&i32` multiplies the numbers.
-    pub fn is_read_through(&self, expr: Id<Expr>) -> bool {
-        self.records.read_through.contains(&expr)
+    /// How many references operand `expr` is read through: 0 if it's used as it is.
+    pub fn read_through(&self, expr: Id<Expr>) -> usize {
+        self.records.read_through.get(&expr).copied().unwrap_or(0)
     }
 
     /// `expr`, a `#T`, is read through to what it shares (`node` in `node.value`), as the
@@ -532,6 +546,11 @@ impl Typed {
     /// A `&mut T` used where a `&T` is expected: lent as `&*expr`, so it's still usable after.
     pub fn is_downgraded(&self, expr: Id<Expr>) -> bool {
         self.records.downgraded.contains(&expr)
+    }
+
+    /// What anonymous function `closure` takes, gives and captures.
+    pub fn closure(&self, closure: Id<Expr>) -> Option<&ClosureSig> {
+        self.records.closures.get(&closure)
     }
 
     /// Whether `expr`, of a function's own type, gives the function's address.
