@@ -1,1 +1,2 @@
 pub use som::data;
+pub use som::iter;

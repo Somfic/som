@@ -1,38 +1,4 @@
-/// Gives values one at a time: each `next` is the next one, or `none` once there are no more.
-/// `for x in it` goes through them.
-pub trait Iterator {
-    /// What it gives.
-    type Item;
 
-    fn next(self: &mut Self) -> Item?;
-}
-
-/// Can be gone through with `for x in &value`, which goes through the iterator `iter` makes:
-/// it lends the values, or copies them if they copy.
-pub trait IterRef {
-    /// The iterator `iter` makes.
-    type Iter;
-
-    fn iter(self: &Self) -> Iter;
-}
-
-/// Can be gone through with `for x in &mut value`, which goes through the iterator `iter_mut`
-/// makes: it lends the values to change.
-pub trait IterMut {
-    /// The iterator `iter_mut` makes.
-    type Iter;
-
-    fn iter_mut(self: &mut Self) -> Iter;
-}
-
-/// Can be given up to `for x in value`, which goes through the iterator `into_iter` makes:
-/// it owns the values, and gives each away in turn.
-pub trait IterOwned {
-    /// The iterator `into_iter` makes.
-    type Iter;
-
-    fn into_iter(self: Self) -> Iter;
-}
 
 /// Holds a value that's never dropped on its own: whatever holds the `Manual` drops what
 /// needs dropping. An array's iterator holds the array in one, and drops only the elements it
@@ -82,32 +48,6 @@ pub trait Compare {
 /// Copied rather than moved: using a value leaves it usable. Numbers, `bool`, pointers and
 /// `&` references are; a struct is if it implements this, and everything in it is too.
 pub trait Copy {}
-
-pub trait Index: Sized {
-    type Item;
-
-    @where index < self.len, "a position in it"
-    fn at(self: &Self, index: usize) -> &Item;
-
-    fn get(self: &Self, index: usize) -> &Item? {
-        if index < self.len {
-            return self.at(index);
-        }
-        none
-    }
-}
-
-pub trait IndexMut: Index {
-    @where index < self.len, "a position in it"
-    fn at_mut(self: &mut Self, index: usize) -> &mut Self::Item;
-
-    fn get_mut(self: &mut Self, index: usize) -> &mut Self::Item? {
-        if index < self.len {
-            return self.at_mut(index);
-        }
-        none
-    }
-}
 
 pub trait Sized {
     prop len: usize;

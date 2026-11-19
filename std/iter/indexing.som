@@ -1,0 +1,75 @@
+pub trait Index: Sized {
+    type Item;
+
+    @where index < self.len, "a position in it"
+    fn at(self: &Self, index: usize) -> &Item;
+
+    fn get(self: &Self, index: usize) -> &Item? {
+        if index < self.len {
+            return self.at(index);
+        }
+        none
+    }
+}
+
+pub trait IndexMut: Index {
+    @where index < self.len, "a position in it"
+    fn at_mut(self: &mut Self, index: usize) -> &mut Self::Item;
+
+    fn get_mut(self: &mut Self, index: usize) -> &mut Self::Item? {
+        if index < self.len {
+            return self.at_mut(index);
+        }
+        none
+    }
+}
+
+impl<T: Index> IterRef for T {
+    type Iter = IndexIter<T>;
+
+    fn iter(&self) -> IndexIter<T> = IndexIter::of(self);
+}
+
+impl<T: IndexMut> IterMut for T {
+    type Iter = IndexIterMut<T>;
+
+    fn iter_mut(&mut self) -> IndexIterMut<T> = IndexIterMut::of(self);
+}
+
+pub struct IndexIter<T: Index> {
+    of: &T,
+    index: usize,
+}
+
+impl<T: Index> IndexIter<T> {
+    pub fn of(values: &T) -> Self = IndexIter { of: values, index: 0 };
+}
+
+impl<T: Index> Iterator for IndexIter<T> {
+    type Item = &T::Item;
+
+    fn next(&mut self) -> &T::Item? {
+        let item = .of.get(.index);
+        .index = .index + 1;
+        item
+    }
+}
+
+pub struct IndexIterMut<T: IndexMut> {
+    of: &mut T,
+    index: usize,
+}
+
+impl<T: IndexMut> IndexIterMut<T> {
+    pub fn of(values: &mut T) -> Self = IndexIterMut { of: values, index: 0 };
+}
+
+impl<T: IndexMut> Iterator for IndexIterMut<T> {
+    type Item = &mut T::Item;
+
+    fn next(&mut self) -> &mut T::Item? {
+        let item = .of.get_mut(.index);
+        .index = .index + 1;
+        item
+    }
+}

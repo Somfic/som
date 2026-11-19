@@ -116,9 +116,12 @@ impl<'a> Resolver<'a> {
         let Some(&root) = self.modules.by_name.get(som_lang::PRELUDE_MODULE) else {
             return;
         };
+        // `som` and what it `pub use`s: `pub use som::iter` brings in `Iterator`.
+        let scope = self.modules.with_reexports(std::iter::once(root));
         let find = |this: &Self, name: &str, fits: fn(&DefKind) -> bool| {
-            (this.modules.items[root].get(name).copied())
-                .filter(|&def| fits(&this.names.def(def).kind))
+            (scope.iter())
+                .filter_map(|&m| this.modules.items[m].get(name).copied())
+                .find(|&def| fits(&this.names.def(def).kind))
         };
         for &lang in LangTrait::ALL {
             if let Some(def) = find(self, lang.name(), |k| matches!(k, DefKind::Trait(_))) {

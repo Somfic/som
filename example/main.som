@@ -1,9 +1,0 @@
-extern "raylib";
-
-let a = 12;
-print();
-
-
-fn print() {
-    let a = som::c::_getpid();
-}
