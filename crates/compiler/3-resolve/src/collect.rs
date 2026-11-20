@@ -116,8 +116,14 @@ impl<'a> Resolver<'a> {
         let Some(&root) = self.modules.by_name.get(som_lang::PRELUDE_MODULE) else {
             return;
         };
-        // `som` and what it `pub use`s: `pub use som::iter` brings in `Iterator`.
-        let scope = self.modules.with_reexports(std::iter::once(root));
+        // `som` and what it `pub use`s: `pub use som::iter` brings in `Iterator`. Then the
+        // rest of the standard library: `#T` is `som::mem::Rc<T>` without a `use`.
+        let mut scope = self.modules.with_reexports(std::iter::once(root));
+        let rest: Vec<usize> = (self.ast.modules.iter().enumerate())
+            .filter(|(m, module)| som_lang::is_std_module(&module.name) && !scope.contains(m))
+            .map(|(m, _)| m)
+            .collect();
+        scope.extend(rest);
         let find = |this: &Self, name: &str, fits: fn(&DefKind) -> bool| {
             (scope.iter())
                 .filter_map(|&m| this.modules.items[m].get(name).copied())

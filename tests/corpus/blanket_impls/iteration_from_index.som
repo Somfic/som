@@ -4,9 +4,12 @@
 /// `for x in &value` and `for x in &mut value`: std's blanket `IterRef` and `IterMut`.
 struct Three { values: [i32; 3] }
 
+impl Sized for Three {
+    prop len: usize = 3;
+}
+
 impl Index for Three {
     type Item = i32;
-    prop len: usize = 3;
     fn at(&self, index: usize) -> &i32 = &.values[index];
 }
 

@@ -69,7 +69,13 @@ pub fn import(
         // The C library is the standard library's `som::c`, whose files declare it for
         // each system: `extern "c";` only `use`s it.
         if library.as_deref() == Some(LIBC) && header.is_some() {
-            if use_module && let Some(span) = span {
+            // `extern "c";` names `c` where it's written, as `extern "raylib";` names
+            // `raylib`; the standard library's own blocks, which declare `som::c`, don't.
+            let bare = match &ast.modules[module].items[index] {
+                Item::Extern(block) => block.funcs.is_empty(),
+                _ => false,
+            };
+            if (use_module || bare) && let Some(span) = span {
                 let segments = (som_lang::LIBC_MODULE.split("::"))
                     .map(|part| Ident {
                         name: part.into(),
@@ -81,6 +87,10 @@ pub fn import(
                     public: false,
                 }));
             }
+            continue;
+        }
+        // GLSL's built-ins are `som::gl`'s own: the GPU has them, there's nothing to link.
+        if library.as_deref() == Some(som_lang::GL_LIBRARY) {
             continue;
         }
         let name = module_name(library.as_deref(), header.as_ref().map_or("", |(h, _)| h));

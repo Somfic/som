@@ -10,35 +10,6 @@ use crate::error::{NoGpu, Problem};
 use crate::names::ident;
 use crate::types::Scalar;
 
-/// GLSL's own functions, by the C function each does the work of.
-const MATH: &[(&str, &str)] = &[
-    ("sinf", "sin"),
-    ("cosf", "cos"),
-    ("tanf", "tan"),
-    ("asinf", "asin"),
-    ("acosf", "acos"),
-    ("atanf", "atan"),
-    ("atan2f", "atan"),
-    ("sinhf", "sinh"),
-    ("coshf", "cosh"),
-    ("tanhf", "tanh"),
-    ("asinhf", "asinh"),
-    ("acoshf", "acosh"),
-    ("atanhf", "atanh"),
-    ("sqrtf", "sqrt"),
-    ("powf", "pow"),
-    ("expf", "exp"),
-    ("exp2f", "exp2"),
-    ("logf", "log"),
-    ("log2f", "log2"),
-    ("fabsf", "abs"),
-    ("floorf", "floor"),
-    ("ceilf", "ceil"),
-    ("roundf", "round"),
-    ("truncf", "trunc"),
-    ("fminf", "min"),
-    ("fmaxf", "max"),
-];
 
 /// The name of the variable holding which block runs next.
 const NEXT: &str = "bb";
@@ -151,9 +122,20 @@ impl Body<'_> {
                 _ => None,
             })
             .collect();
+        // Blocks nothing reaches, like the end of a function whose every branch returns, are
+        // left out.
+        let mut reachable = HashSet::from([entry]);
+        let mut stack = vec![entry];
+        while let Some(id) = stack.pop() {
+            for to in body.blocks[id].terminator.kind.successors() {
+                if reachable.insert(to) {
+                    stack.push(to);
+                }
+            }
+        }
         let heads: Vec<BlockId> = (body.blocks.iter_with_ids())
             .map(|(id, _)| id)
-            .filter(|id| !joined.contains(id))
+            .filter(|id| reachable.contains(id) && !joined.contains(id))
             .collect();
         let chain_end = |mut id: BlockId| loop {
             match body.blocks[id].terminator.kind {
@@ -631,26 +613,23 @@ impl Body<'_> {
                 hint: Some("the GPU can't stop the program, or say why".into()),
             });
         }
-        // One of C's: GLSL has its own of a few.
-        let math = match callee.body.is_none() {
-            false => None,
-            true => {
+        // One of GLSL's own, from `som::gl`; any other extern function is C's.
+        let builtin = match (callee.body.is_none(), t.mir.gpu.contains(&func)) {
+            (false, _) => None,
+            (true, true) => Some(callee.link_name.clone().unwrap_or_else(|| name.clone())),
+            (true, false) => {
                 let c_name = callee.link_name.as_deref().unwrap_or(&name).to_string();
-                if c_name != "fmodf" && !MATH.iter().any(|(c, _)| *c == c_name) {
-                    return Err(Problem {
-                        message: msg![code(&c_name), " only exists on the CPU"],
-                        span: self.span.clone(),
-                        label: msg![code(format!("{name}(…)")), " is called here"],
-                        hint: Some(msg![
-                            "a shader can call C's math functions, like those ",
-                            code("f32::sin"),
-                            " and ",
-                            code("f32::sqrt"),
-                            " call"
-                        ]),
-                    });
-                }
-                Some(c_name)
+                return Err(Problem {
+                    message: msg![code(&c_name), " only exists on the CPU"],
+                    span: self.span.clone(),
+                    label: msg![code(format!("{name}(…)")), " is called here"],
+                    hint: Some(msg![
+                        "a shader calls GLSL's functions instead, from ",
+                        code("som::gl"),
+                        ", inside ",
+                        code("@if GPU { … }")
+                    ]),
+                });
             }
         };
         // What it takes and gives has to be on the GPU: said at the call, not inside it.
@@ -688,14 +667,10 @@ impl Body<'_> {
         let texts = (given.iter())
             .map(|op| self.operand(t, op))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(match math.as_deref() {
-            // C's remainder has the sign of what's divided, as `trunc` gives.
-            Some("fmodf") => {
-                let (a, b) = (&texts[0], &texts[1]);
-                format!("({a} - {b} * trunc({a} / {b}))")
-            }
-            Some(c_name) => {
-                let (_, glsl) = MATH.iter().find(|(c, _)| *c == c_name).expect("checked above");
+        Ok(match builtin {
+            Some(glsl) => {
+                // GLSL's `atan` of two, which `som::gl` names apart: externs can't overload.
+                let glsl = if glsl == "atan2" { "atan" } else { glsl.as_str() };
                 format!("{glsl}({})", texts.join(", "))
             }
             None => {

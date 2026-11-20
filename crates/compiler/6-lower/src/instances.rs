@@ -162,7 +162,7 @@ impl<'a> Lowerer<'a> {
             && !self.owners.contains_key(&func)
             && type_args.is_empty();
 
-        let id = self.mir.funcs.alloc(Function {
+        let id = self.alloc_func(Function {
             name,
             params,
             ret,
@@ -185,10 +185,20 @@ impl<'a> Lowerer<'a> {
         if let Some(stage) = ast_func.stage {
             self.mir.stages.insert(id, stage);
         }
+        // GLSL's own functions only exist on the GPU.
+        if *self.ast.modules[self.names.def(def).module].name == *som_lang::GL_MODULE {
+            self.mir.gpu.insert(id);
+        }
         if self.names.lang_func(som_lang::LangFunc::Glsl) == Some(def) {
+            // The shader as it's compiled for the GPU: its `@if GPU`s take the GPU's branch.
             let entry = match type_args.first().map(|&t| self.mir.types.get(t).clone()) {
                 Some(Ty::FnItem(shader, args)) => match self.names.def(shader).kind {
-                    DefKind::Func(shader) => Some(self.instance(shader, args)),
+                    DefKind::Func(shader) => {
+                        let outer = self.set_gpu(true);
+                        let entry = self.instance(shader, args);
+                        self.set_gpu(outer);
+                        Some(entry)
+                    }
                     _ => None,
                 },
                 _ => None,

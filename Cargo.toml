@@ -31,3 +31,8 @@ members = [
     # the corpus of test programs and its runner
     "tests",
 ]
+
+# The corpus runs the compiler about 1300 times; unoptimized, that's ~10x slower per run.
+# Level 1 keeps builds quick and debuggable.
+[profile.dev]
+opt-level = 1

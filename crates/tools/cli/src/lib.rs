@@ -126,11 +126,14 @@ struct CheckArgs {
     #[arg(long, value_name = "DIR", requires = "targets")]
     sysroot: Option<PathBuf>,
 
-    /// Also write intermediate stages: tokens, ast, mir, c.
+    /// Also write intermediate stages: tokens, ast, mir, c, glsl.
     ///
     /// Each goes next to the output by default (`main.c`). Write `c=out.c` for
     /// another file, or `c=-` for standard output. Separate several with commas:
     /// `--emit ast,mir,c`.
+    ///
+    /// `glsl` writes each `@fragment` and `@vertex` function as the GPU gets it, a file
+    /// each: `main.stripes.frag`. `glsl=DIR` puts them in DIR; `glsl=-` prints them all.
     #[arg(long, value_name = "STAGES", value_delimiter = ',', value_parser = EmitParser)]
     emit: Vec<Emit>,
 
@@ -191,6 +194,7 @@ enum Stage {
     Ast,
     Mir,
     C,
+    Glsl,
 }
 
 impl Stage {
@@ -200,6 +204,7 @@ impl Stage {
             Stage::Ast => "ast",
             Stage::Mir => "mir",
             Stage::C => "c",
+            Stage::Glsl => "glsl",
         }
     }
 }
@@ -362,7 +367,7 @@ fn compile(
         ok &= match e.stage {
             Stage::Tokens => write(e, output, &som_driver::dump_tokens(&ast)),
             Stage::Ast => write(e, output, &ast.dump()),
-            Stage::Mir | Stage::C => true,
+            Stage::Mir | Stage::C | Stage::Glsl => true,
         };
     }
     if !errors.is_empty() {
@@ -402,6 +407,7 @@ fn compile(
                     false
                 }
             },
+            Stage::Glsl => write_shaders(e, output, &checked.shaders),
             Stage::Tokens | Stage::Ast => true,
         };
     }
@@ -432,6 +438,36 @@ fn missing_program(path: &Path) -> Diagnostic {
         message::path(toolchain::MAIN_FILE),
         " in it",
     ])
+}
+
+/// Each shader in a file of its own, `main.stripes.frag`, or with `glsl=-` all of them on
+/// standard output, each after a line naming it.
+fn write_shaders(emit: &Emit, output: &Path, shaders: &[som_driver::Shader]) -> bool {
+    let extension = |shader: &som_driver::Shader| match shader.stage {
+        som_lang::Stage::Fragment => "frag",
+        som_lang::Stage::Vertex => "vert",
+    };
+    if emit.to.as_deref() == Some(Path::new(STDOUT)) {
+        for shader in shaders {
+            print!("// shader: {}\n{}\n", shader.name, shader.glsl);
+        }
+        return true;
+    }
+    let stem = output.file_stem().map_or("main".into(), |s| s.to_string_lossy());
+    let mut ok = true;
+    for shader in shaders {
+        let file = format!("{stem}.{}.{}", shader.name, extension(shader));
+        let path = match &emit.to {
+            Some(dir) => dir.join(&file),
+            None => output.with_file_name(&file),
+        };
+        let one = Emit {
+            stage: emit.stage,
+            to: Some(path),
+        };
+        ok &= write(&one, output, &shader.glsl);
+    }
+    ok
 }
 
 fn write(emit: &Emit, output: &Path, contents: &str) -> bool {

@@ -87,7 +87,7 @@ impl<'a> Lowerer<'a> {
         let ret = subst.apply(&mut self.mir.types, sig.ret);
         self.make_structs_in(ret);
         let span = self.ast.exprs.span(closure).clone();
-        let id = self.mir.funcs.alloc(Function {
+        let id = self.alloc_func(Function {
             name: format!("closure_{}", span.start.line),
             params,
             ret,

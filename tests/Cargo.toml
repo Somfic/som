@@ -7,6 +7,4 @@ description = "Runs every program in tests/corpus through the compiler"
 
 [dependencies]
 som_driver = { path = "../crates/driver" }
-som_shader = { path = "../crates/compiler/shader" }
-som_mir = { path = "../crates/core/mir" }
 tempfile = "3"

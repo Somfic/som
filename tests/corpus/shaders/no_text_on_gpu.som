@@ -1,4 +1,4 @@
-// expect: error Shader
+// expect: error CantRun
 
 use som::io;
 

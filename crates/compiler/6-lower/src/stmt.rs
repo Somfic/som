@@ -61,6 +61,19 @@ impl FnBuilder<'_, '_> {
                 let is_break = matches!(ast.stmts[id], Stmt::Break(_));
                 self.break_or_continue(id, named.is_some(), is_break, span)
             }
+            // `@if GPU`: the GPU's branch in its copy, the other in the CPU's.
+            Stmt::If {
+                then, otherwise, ..
+            } if let Some(&then_gpu) = ast.gpu_ifs.get(&id) => {
+                let branch = if self.l.gpu == then_gpu {
+                    Some(then)
+                } else {
+                    otherwise.as_ref()
+                };
+                if let Some(branch) = branch {
+                    self.stmts(branch, span);
+                }
+            }
             // `@if`: only the branch it picks.
             Stmt::If {
                 then, otherwise, ..

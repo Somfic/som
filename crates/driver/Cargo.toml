@@ -24,6 +24,7 @@ som_borrowcheck = { path = "../compiler/7-borrowcheck" }
 som_comptime = { path = "../compiler/8-comptime" }
 som_optimize = { path = "../compiler/9-optimize" }
 som_codegen = { path = "../compiler/10-codegen" }
+som_shader = { path = "../compiler/shader" }
 
 [dev-dependencies]
 tempfile = "3"

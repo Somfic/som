@@ -6,10 +6,13 @@ struct Evens {
     count: usize,
 }
 
+impl Sized for Evens {
+    prop len: usize = self.count;
+}
+
 impl Index for Evens {
     type Item = usize;
 
-    prop len: usize = self.count;
 
     @where i > 0
     fn at(&self, i: usize) -> &usize = &self.count;

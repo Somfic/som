@@ -5,6 +5,12 @@
 //! and can name what only exists there, like `c::_putenv_s`. Every C library function is
 //! still checked against each system its code is for, so `c::fork` outside such an `@if`
 //! is an error on any system.
+//!
+//! `@if GPU { … }`: code for shaders. The GPU is a system too, but it's not decided while
+//! loading: a shader is compiled for the GPU and, as an ordinary function, for the CPU, in
+//! the same build. Both branches of `@if GPU` are resolved and checked, and lowering takes
+//! the one for each copy. GLSL's built-ins (`som::gl`) are only on the GPU, C's only on the
+//! others; on the GPU, an `@if` on the system takes the target's branch.
 
 use som_ast::{Ast, BinOp, Child, Expr, Func, Id, Item, Path, Stmt, Visibility};
 use som_base::message::{self as m, Message};
@@ -40,6 +46,11 @@ pub fn target_source(target: &Target) -> Source {
             os == target.os(),
         ));
     }
+    text.push_str(&format!(
+        "\n/// Whether this code is compiled for the GPU: in a shader, or what one calls. Ask it \
+         with `@if {gpu} {{ … }}`, whose branches are both checked.\npub @const {gpu}: bool = false;\n",
+        gpu = som_lang::GPU_CONST,
+    ));
     Source::from_raw_at(text, "<target>")
 }
 
@@ -48,7 +59,11 @@ pub fn target_source(target: &Target) -> Source {
 pub struct Systems(u8);
 
 impl Systems {
-    pub const ALL: Systems = Systems((1 << Os::ALL.len()) - 1);
+    /// The systems a program is compiled for: every OS.
+    pub const OSES: Systems = Systems((1 << Os::ALL.len()) - 1);
+    /// Where shaders run.
+    pub const GPU: Systems = Systems(1 << Os::ALL.len());
+    pub const ALL: Systems = Systems(Systems::OSES.0 | Systems::GPU.0);
     const NONE: Systems = Systems(0);
 
     fn of(os: Os) -> Systems {
@@ -57,6 +72,17 @@ impl Systems {
 
     pub fn contains(self, os: Os) -> bool {
         self.0 & Systems::of(os).0 != 0
+    }
+
+    fn has(self, other: Systems) -> bool {
+        self.0 & other.0 == other.0
+    }
+
+    /// Each system in it, alone.
+    fn each(self) -> impl Iterator<Item = Systems> {
+        (Os::ALL.into_iter().map(Systems::of))
+            .chain(std::iter::once(Systems::GPU))
+            .filter(move |&one| self.has(one))
     }
 
     fn and(self, other: Systems) -> Systems {
@@ -83,18 +109,30 @@ impl Systems {
         Os::ALL.into_iter().filter(move |&os| self.contains(os))
     }
 
-    /// `linux and windows`.
+    /// `linux and windows`, `the GPU`.
     fn names(self) -> Message {
-        Message::list(self.oses().map(|os| m::code(os.name())), " and ")
+        let mut parts: Vec<m::Part> = self.oses().map(|os| m::code(os.name())).collect();
+        if self.has(Systems::GPU) {
+            parts.push("the GPU".into());
+        }
+        Message::list(parts, " and ")
     }
 
     /// The condition that holds on exactly these: `!WINDOWS`, `LINUX or MACOS`, with
     /// `som::` where it's not the standard library's own.
     fn condition(self, in_std: bool) -> String {
         let som = if in_std { "" } else { "som::" };
-        let (not, oses) = match self.not().oses().count() {
-            1 => ("!", self.not()),
-            _ => ("", self),
+        let gpu = som_lang::GPU_CONST;
+        if self == Systems::GPU {
+            return format!("{som}{gpu}");
+        }
+        if self.has(Systems::OSES) {
+            return format!("!{som}{gpu}");
+        }
+        let this = self.and(Systems::OSES);
+        let (not, oses) = match this.not().and(Systems::OSES).oses().count() {
+            1 => ("!", this.not().and(Systems::OSES)),
+            _ => ("", this),
         };
         let parts: Vec<String> = (oses.oses())
             .map(|os| format!("{not}{som}{}", os.constant()))
@@ -131,6 +169,15 @@ fn systems_of(ast: &Ast, condition: Id<Expr>) -> Option<Systems> {
     }
 }
 
+/// For `@if GPU` and `@if !GPU`: whether the first branch is the GPU's.
+fn gpu_condition(ast: &Ast, condition: Id<Expr>) -> Option<bool> {
+    match &ast.exprs[condition] {
+        Expr::Not(inner) => Some(!gpu_condition(ast, *inner)?),
+        Expr::Var(path) => (in_som(path) == [som_lang::GPU_CONST]).then_some(true),
+        _ => None,
+    }
+}
+
 /// The names of a path, without the `som::` in front.
 fn in_som(path: &Path) -> Vec<&str> {
     let names: Vec<&str> = path.segments.iter().map(|s| &*s.name).collect();
@@ -161,6 +208,15 @@ fn os_variant(ast: &Ast, expr: Id<Expr>) -> Option<Os> {
 /// Decides each statement `@if` that only asks which system it is, for `os`: the branch
 /// for other systems is left out of resolving and everything after.
 pub fn decide(ast: &mut Ast, os: Os) {
+    let gpu_ifs: Vec<(Id<Stmt>, bool)> = (ast.stmts.iter())
+        .filter_map(|(id, stmt)| match stmt {
+            Stmt::If { condition, .. } if ast.settled.contains(&id) => {
+                Some((id, gpu_condition(ast, *condition)?))
+            }
+            _ => None,
+        })
+        .collect();
+    ast.gpu_ifs.extend(gpu_ifs);
     let decided: Vec<(Id<Stmt>, bool)> = (ast.stmts.iter())
         .filter_map(|(id, stmt)| match stmt {
             Stmt::If { condition, .. } if ast.settled.contains(&id) => {
@@ -247,14 +303,14 @@ fn libc_names() -> &'static HashMap<String, Systems> {
 /// `Only on `linux` and `macos`.`
 pub fn availability_note(name: &str) -> Option<String> {
     let on = *libc_names().get(name)?;
-    (on != Systems::ALL).then(|| format!("Only on {}.", on.names().plain()))
+    (on != Systems::OSES).then(|| format!("Only on {}.", on.names().plain()))
 }
 
 /// The short form, for beside a name in a list: `only linux, macos`.
 pub fn availability_label(name: &str) -> Option<String> {
     let on = *libc_names().get(name)?;
     let names: Vec<&str> = on.oses().map(Os::name).collect();
-    (on != Systems::ALL).then(|| format!("only {}", names.join(", ")))
+    (on != Systems::OSES).then(|| format!("only {}", names.join(", ")))
 }
 
 /// Whether `span` is in one of the standard library's C library files.
@@ -417,7 +473,7 @@ pub fn check_left_out(ast: &Ast, checking: Checking) -> Vec<Unavailable> {
         let around: Vec<&Branch> = (branches.iter())
             .filter(|b| contains(&b.within, span))
             .collect();
-        let compiled_for = (around.iter()).fold(Systems::ALL, |on, b| on.and(b.systems));
+        let compiled_for = (around.iter()).fold(Systems::OSES, |on, b| on.and(b.systems));
         let left_out = around.iter().any(|b| b.left_out);
         let on = names.get(name).copied().unwrap_or(Systems::NONE);
         let missing = compiled_for.without(on);
@@ -523,6 +579,8 @@ fn contains(within: &Span, span: &Span) -> bool {
 #[derive(Debug, Clone)]
 enum Need {
     Libc(String),
+    /// One of GLSL's, in `som::gl`.
+    Gl(String),
     Func(Id<Func>),
 }
 
@@ -547,15 +605,16 @@ impl Inferred {
 
     fn needs(&self, need: &Need) -> Systems {
         match need {
-            Need::Libc(name) => libc_names().get(name).copied().unwrap_or(Systems::ALL),
+            Need::Libc(name) => libc_names().get(name).copied().unwrap_or(Systems::OSES),
+            Need::Gl(_) => Systems::GPU,
             Need::Func(f) => self.of(*f),
         }
     }
 
-    /// The first use in `f` that can't run on `os`.
-    fn blocker(&self, f: Id<Func>, os: Os) -> Option<&Use> {
+    /// The first use in `f` that can't run on `system`, one system.
+    fn blocker(&self, f: Id<Func>, system: Systems) -> Option<&Use> {
         (self.uses.get(&f)?.iter())
-            .find(|u| u.compiled_for.contains(os) && !self.needs(&u.need).contains(os))
+            .find(|u| u.compiled_for.has(system) && !self.needs(&u.need).has(system))
     }
 }
 
@@ -625,6 +684,29 @@ impl Walk<'_, '_> {
     }
 
     fn stmt(&mut self, id: Id<Stmt>, compiled_for: Systems) {
+        // `@if GPU`: both branches are compiled, the first for the GPU and the other not.
+        if let (
+            Some(&then_gpu),
+            Stmt::If {
+                condition,
+                then,
+                otherwise,
+            },
+        ) = (self.ast.gpu_ifs.get(&id), &self.ast.stmts[id])
+        {
+            self.expr(*condition, compiled_for);
+            let (on_then, on_otherwise) = match then_gpu {
+                true => (Systems::GPU, Systems::OSES),
+                false => (Systems::OSES, Systems::GPU),
+            };
+            for &s in then {
+                self.stmt(s, compiled_for.and(on_then));
+            }
+            for &s in otherwise.as_deref().unwrap_or_default() {
+                self.stmt(s, compiled_for.and(on_otherwise));
+            }
+            return;
+        }
         let systems = match &self.ast.stmts[id] {
             Stmt::If { condition, .. } if self.ast.settled.contains(&id) => {
                 systems_of(self.ast, *condition)
@@ -643,16 +725,23 @@ impl Walk<'_, '_> {
             return self.ast.stmts[id].for_each_child(|child| self.child(child, compiled_for));
         };
         self.expr(*condition, compiled_for);
-        // A branch left out for this target isn't resolved: `check_left_out` has it.
+        // A branch left out for this target isn't resolved: `check_left_out` has it. On the
+        // GPU, the target's branch is taken.
         let taken = self.ast.decided.get(&id).copied();
+        let gpu_if = |taken_here: bool| match taken_here {
+            true => Systems::GPU,
+            false => Systems::NONE,
+        };
         if taken != Some(false) {
+            let on = systems.and(Systems::OSES).or(gpu_if(taken == Some(true)));
             for &s in then {
-                self.stmt(s, compiled_for.and(systems));
+                self.stmt(s, compiled_for.and(on));
             }
         }
         if taken != Some(true) {
+            let on = (systems.not().and(Systems::OSES)).or(gpu_if(taken == Some(false)));
             for &s in otherwise.as_deref().unwrap_or_default() {
-                self.stmt(s, compiled_for.and(systems.not()));
+                self.stmt(s, compiled_for.and(on));
             }
         }
     }
@@ -663,8 +752,12 @@ impl Walk<'_, '_> {
             return None;
         }
         let def = self.names.def(self.names.expr(id)?);
+        let module = &self.ast.modules[def.module].name;
         match def.kind {
             _ if is_libc_source(&def.span.source) => Some(Need::Libc(def.name.to_string())),
+            DefKind::Func(_) if **module == *som_lang::GL_MODULE => {
+                Some(Need::Gl(def.name.to_string()))
+            }
             DefKind::Func(f) => Some(Need::Func(f)),
             _ => None,
         }
@@ -756,25 +849,32 @@ pub fn check_entries(
     inferred: &Inferred,
     checking: Checking,
 ) -> Vec<CantRun> {
-    let checked = match checking {
+    let systems = match checking {
         Checking::Target(os) => Systems::of(os),
-        Checking::EverySystem => Systems::ALL,
+        Checking::EverySystem => Systems::OSES,
     };
     let mut errors = Vec::new();
     for &f in inferred.systems.keys() {
+        // A shader runs on the GPU; an entry point on the systems it's compiled for.
+        let checked = match (ast.funcs[f].stage.is_some(), is_entry(ast, names, f)) {
+            (true, false) => Systems::GPU,
+            (true, true) => systems.or(Systems::GPU),
+            (false, true) => systems,
+            (false, false) => continue,
+        };
         let missing = checked.without(inferred.of(f));
-        if missing.is_empty() || !is_entry(ast, names, f) {
+        if missing.is_empty() {
             continue;
         }
         let mut reasons: Vec<Reason> = Vec::new();
-        for os in missing.oses() {
-            let Some(first) = inferred.blocker(f, os) else {
+        for system in missing.each() {
+            let Some(first) = inferred.blocker(f, system) else {
                 continue;
             };
             if reasons.iter().any(|r| r.site == first.site) {
                 continue;
             }
-            let (chain, on) = chain(ast, inferred, &first.need, os);
+            let (chain, on) = chain(ast, inferred, &first.need, system);
             reasons.push(Reason {
                 site: first.site.clone(),
                 chain,
@@ -803,7 +903,7 @@ pub fn check_entries(
 }
 
 /// What `need` calls, down to what `os` doesn't have, and the systems that has.
-fn chain(ast: &Ast, inferred: &Inferred, need: &Need, os: Os) -> (Vec<String>, Systems) {
+fn chain(ast: &Ast, inferred: &Inferred, need: &Need, system: Systems) -> (Vec<String>, Systems) {
     let mut chain = Vec::new();
     let mut need = need.clone();
     let mut seen = HashSet::new();
@@ -814,9 +914,13 @@ fn chain(ast: &Ast, inferred: &Inferred, need: &Need, os: Os) -> (Vec<String>, S
                 let on = libc_names().get(&name).copied().unwrap_or(Systems::NONE);
                 return (chain, on);
             }
+            Need::Gl(name) => {
+                chain.push(format!("gl::{name}"));
+                return (chain, Systems::GPU);
+            }
             Need::Func(g) => {
                 chain.push(ast.funcs[g].name.name.to_string());
-                match inferred.blocker(g, os) {
+                match inferred.blocker(g, system) {
                     Some(next) if seen.insert(g) => need = next.need.clone(),
                     _ => return (chain, inferred.of(g)),
                 }

@@ -963,8 +963,6 @@ name = "som_corpus"
 version = "0.1.0"
 dependencies = [
  "som_driver",
- "som_mir",
- "som_shader",
  "tempfile",
 ]
 
@@ -987,6 +985,7 @@ dependencies = [
  "som_parser",
  "som_prove",
  "som_resolve",
+ "som_shader",
  "som_typeck",
  "tempfile",
 ]

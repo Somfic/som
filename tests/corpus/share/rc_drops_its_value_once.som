@@ -1,5 +1,7 @@
 // expect: exit 101
 
+use som::mem;
+
 /// What an `Rc` shares is dropped once: when its last copy is, not before.
 struct Noisy { drops: *i32 }
 

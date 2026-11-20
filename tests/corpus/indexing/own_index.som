@@ -5,10 +5,13 @@ struct Grid {
     cells: [i32; 4],
 }
 
+impl Sized for Grid {
+    prop len: usize = 4;
+}
+
 impl Index for Grid {
     type Item = i32;
 
-    prop len: usize = 4;
 
     fn at(&self, i: usize) -> &i32 = self.cells.get_ref(i) else @unreachable;
 }

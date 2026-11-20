@@ -1,4 +1,5 @@
-// expect: error LibraryNotDeclared
+// expect: error UnknownFunction
 
-/// A library's functions are there where its `extern` is written: `c::puts` needs `extern "c"`.
+/// The C library is `som::c`: `c::puts` needs `use som::c;` (or `extern "c";`), like any
+/// other module.
 c::puts("hi");

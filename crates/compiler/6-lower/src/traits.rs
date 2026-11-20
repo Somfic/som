@@ -230,7 +230,7 @@ impl Lowerer<'_> {
                 });
             }
         }
-        let id = self.mir.funcs.alloc(Function {
+        let id = self.alloc_func(Function {
             name,
             params: vec![reference, reference],
             ret,
@@ -277,7 +277,7 @@ impl Lowerer<'_> {
             }
         })
         .collect();
-        let id = self.mir.funcs.alloc(Function {
+        let id = self.alloc_func(Function {
             name,
             params: vec![reference, reference],
             ret: bool,
@@ -366,7 +366,7 @@ impl Lowerer<'_> {
         })
         .collect();
         // Made before the body, so a `T??` reaching itself finds it.
-        let id = self.mir.funcs.alloc(Function {
+        let id = self.alloc_func(Function {
             name,
             params: vec![reference, reference],
             ret: bool,

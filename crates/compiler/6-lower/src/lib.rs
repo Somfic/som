@@ -118,6 +118,12 @@ struct Lowerer<'a> {
     typed: &'a Typed,
     mir: Mir,
     instances: HashMap<(Id<Func>, Vec<TypeId>), FuncId>,
+    /// Whether what's lowered now is for the GPU: a shader, or what one calls. Each function
+    /// has a copy for each, which [`Lowerer::set_gpu`] swaps in.
+    gpu: bool,
+    /// The other copies' `instances` and `closure_instances`, while these are swapped in.
+    other_instances: HashMap<(Id<Func>, Vec<TypeId>), FuncId>,
+    other_closure_instances: HashMap<(Id<som_ast::Expr>, Vec<TypeId>), FuncId>,
     queue: Vec<(FuncId, Job)>,
     /// By constant and the function instance it's in.
     inits: HashMap<(Id<som_ast::Const>, Owner), FuncId>,
@@ -152,6 +158,9 @@ impl<'a> Lowerer<'a> {
             typed,
             mir: Mir::new(typed.table.clone()),
             instances: HashMap::new(),
+            gpu: false,
+            other_instances: HashMap::new(),
+            other_closure_instances: HashMap::new(),
             queue: Vec::new(),
             inits: HashMap::new(),
             item_consts: HashSet::new(),
@@ -175,6 +184,13 @@ impl<'a> Lowerer<'a> {
         for (id, func) in self.ast.funcs.iter() {
             if func.generics.is_empty() && !self.is_alias(id) {
                 self.instance(id, Vec::new());
+                // A shader, compiled for the GPU too: each is checked, and can be emitted,
+                // whether or not `@glsl` asks for it.
+                if func.stage.is_some() {
+                    let outer = self.set_gpu(true);
+                    self.instance(id, Vec::new());
+                    self.set_gpu(outer);
+                }
             }
         }
         self.make_test_runner();
@@ -285,8 +301,32 @@ impl<'a> Lowerer<'a> {
         }
     }
 
+    /// Lowers for the GPU, or not, from now on: what's called is the GPU's copy. Gives back
+    /// what it was.
+    fn set_gpu(&mut self, gpu: bool) -> bool {
+        let was = self.gpu;
+        if gpu != was {
+            std::mem::swap(&mut self.instances, &mut self.other_instances);
+            std::mem::swap(&mut self.closure_instances, &mut self.other_closure_instances);
+            self.gpu = gpu;
+        }
+        was
+    }
+
+    /// Adds `function`, the GPU's copy if that's what's lowered now.
+    fn alloc_func(&mut self, function: Function) -> FuncId {
+        let id = self.mir.funcs.alloc(function);
+        if self.gpu {
+            self.mir.gpu.insert(id);
+        }
+        id
+    }
+
     fn finish(&mut self) {
         while let Some((func_id, job)) = self.queue.pop() {
+            // A `@const`'s initializer runs while compiling, on the CPU.
+            let gpu = self.mir.gpu.contains(&func_id) && !matches!(job, Job::Init(..));
+            self.set_gpu(gpu);
             let body = match job {
                 Job::Func(func, type_args)
                     if self.typed.is_per_instance(func)

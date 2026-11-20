@@ -1,5 +1,7 @@
 // expect: error SharedChanged
 
+use som::mem;
+
 /// What a `#T` shares is seen by every copy of it: it's never changed through one.
 struct N { v: i32 }
 

@@ -1,2 +1,28 @@
-let list: List = [ 1, 2, 3, 4 ];
-let list: List = list.where(x => x == x);
+use extern "raylib";
+use som::mem;
+
+struct Uniforms { time: f32 }
+
+@fragment
+fn fade(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
+    let t = 0.5 + 0.5 * f32::sin(u.time);
+    Vector::new([frag.uv.x, t, 1.0 - t, 1.0])
+}
+
+fn main() {
+    init_window(800, 450, "shader");
+    let shader = load_shader_from_memory(null() as cstr, @glsl(fade).c_str);
+    let time_at = get_shader_location(shader, "time");
+    let white = Color { r: 255, g: 255, b: 255, a: 255 };
+    let canvas = load_texture_from_image(gen_image_color(800, 450, white));
+
+    while !window_should_close() {
+        let time = get_time() as f32;
+        set_shader_value(shader, time_at, &time as *, ShaderUniformDataType::Float as i32);
+        begin_drawing();
+        begin_shader_mode(shader);
+        draw_texture(canvas, 0, 0, white);
+        end_shader_mode();
+        end_drawing();
+    }
+}

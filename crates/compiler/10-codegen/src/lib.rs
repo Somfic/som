@@ -72,7 +72,7 @@ pub fn emit_c(mir: &Mir) -> Result<String, CodegenError> {
     c.declarations();
     // The helpers the functions use go before them, once they're known.
     let helpers_at = c.out.len();
-    for (id, func) in mir.funcs.iter_with_ids() {
+    for (id, func) in c.cpu_funcs() {
         if let Some(body) = &func.body {
             c.function(id, func, body);
         }
@@ -94,7 +94,14 @@ struct Emitter<'a> {
     helpers: RefCell<BTreeMap<String, String>>,
 }
 
-impl Emitter<'_> {
+impl<'a> Emitter<'a> {
+    /// The functions the program runs: not the copies compiled for the GPU, which `@glsl`
+    /// has already made GLSL of.
+    fn cpu_funcs(&self) -> impl Iterator<Item = (FuncId, &'a Function)> + use<'a> {
+        let mir = self.mir;
+        (mir.funcs.iter_with_ids()).filter(move |(id, _)| !mir.gpu.contains(id))
+    }
+
     fn line(&mut self, text: impl AsRef<str>) {
         self.out.push_str(text.as_ref());
         self.out.push('\n');
@@ -148,10 +155,9 @@ impl Emitter<'_> {
 
     /// The C functions the program calls, then its own functions, each with its som name.
     fn declarations(&mut self) {
-        let mir = self.mir;
         let mut externs = HashSet::new();
         let mut any = false;
-        for (id, func) in mir.funcs.iter_with_ids() {
+        for (id, func) in self.cpu_funcs() {
             // Two modules can declare the same C function; declare it once.
             if let Some(link) = &func.link_name
                 && externs.insert(link.clone())
@@ -164,7 +170,7 @@ impl Emitter<'_> {
         if any {
             self.line("");
         }
-        for (id, func) in mir.funcs.iter_with_ids() {
+        for (id, func) in self.cpu_funcs() {
             if func.link_name.is_none() {
                 let decl = self.signature(id, func, None);
                 self.line(format!("{decl}; // {}", func.name));

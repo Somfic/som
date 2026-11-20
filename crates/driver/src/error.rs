@@ -18,6 +18,8 @@ pub enum Error {
     Comptime(som_comptime::ComptimeError),
     Unavailable(crate::targets::Unavailable),
     CantRun(crate::targets::CantRun),
+    /// A `@vertex` or `@fragment` function that can't be compiled for the GPU.
+    Shader(som_shader::ShaderError),
     /// An error in one instance of a function checked for each instance (`@if N >= 3`):
     /// `describe<2>`, first used at `used_at`.
     InInstance {
@@ -40,6 +42,7 @@ impl Error {
             Error::Comptime(e) => format!("{e:?}"),
             Error::Unavailable(e) => format!("{e:?}"),
             Error::CantRun(e) => format!("{e:?}"),
+            Error::Shader(_) => return "Shader".into(),
             Error::InInstance { inner, .. } => return inner.kind(),
         };
         variant_name(&debug)
@@ -56,6 +59,7 @@ impl Error {
             Error::Comptime(e) => e.to_diagnostic(),
             Error::Unavailable(e) => e.to_diagnostic(),
             Error::CantRun(e) => e.to_diagnostic(),
+            Error::Shader(e) => e.to_diagnostic(),
             Error::InInstance {
                 instance,
                 used_at,

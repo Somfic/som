@@ -19,19 +19,11 @@ fn shaders_are_valid_glsl() {
         if !source.starts_with("// expect: exit") && !source.starts_with("// expect: ok") {
             continue;
         }
-        // As `@glsl` sees it: before the optimizer shakes out what only it uses.
-        let options = som_driver::Options {
-            no_optimize: true,
-            ..Default::default()
-        };
-        let program = som_driver::check(&path, &options)
+        let program = som_driver::check(&path, &Default::default())
             .unwrap_or_else(|_| panic!("{} doesn't compile", path.display()));
-        for &shader in program.mir.stages.keys() {
-            let glsl = som_shader::glsl(&program.mir, shader).unwrap_or_else(|errors| {
-                panic!("{}: {}", path.display(), errors[0].to_diagnostic())
-            });
-            let file = dir.path().join(format!("shader{checked}.frag"));
-            std::fs::write(&file, &glsl).unwrap();
+        for shader in &program.shaders {
+            let file = dir.path().join(format!("{}.frag", shader.name));
+            std::fs::write(&file, &shader.glsl).unwrap();
             let out = Command::new("glslc")
                 .args(["--target-env=opengl", "-fauto-map-locations", "-o"])
                 .arg(dir.path().join("out.spv"))
@@ -40,9 +32,11 @@ fn shaders_are_valid_glsl() {
                 .unwrap();
             assert!(
                 out.status.success(),
-                "{}: glslc rejected the GLSL:\n{}\n{glsl}",
+                "{}: glslc rejected `{}`:\n{}\n{}",
                 path.display(),
-                String::from_utf8_lossy(&out.stderr)
+                shader.name,
+                String::from_utf8_lossy(&out.stderr),
+                shader.glsl
             );
             checked += 1;
         }

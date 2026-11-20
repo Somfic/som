@@ -127,3 +127,14 @@ impl<T, N: usize> From<[T; N]> for List<T> {
         list
     }
 }
+
+/// A copy of each of the slice's values.
+impl<T: Copy> From<&[T]> for List<T> {
+    fn from(items: &[T]) -> List<T> {
+        let mut list: List<T> = List::with_capacity(items.len);
+        for item in items {
+            list.push(item);
+        }
+        list
+    }
+}

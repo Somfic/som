@@ -1,5 +1,7 @@
 // expect: exit 32
 
+use som::mem;
+
 /// An `Rc` counts its copies; each can read the value they share.
 struct Point { x: i32, y: i32 }
 

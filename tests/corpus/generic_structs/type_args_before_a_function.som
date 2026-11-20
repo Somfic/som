@@ -1,11 +1,11 @@
 // expect: exit 7
 
 /// `List<i32>::empty()`: the type's arguments, written before one of its functions. Through
-/// a module's path too, and for a function with overloads.
+/// a module's path too.
 fn main() -> i32 {
     let mut list = List<i32>::empty();
     list.push(3);
-    let alloc = som::mem::Alloc<u8>::with_capacity(4, 0);
-    list.push(alloc.size as i32);
+    let alloc = som::mem::Alloc<u8>::filled(4, 0);
+    list.push(alloc.capacity as i32);
     list.len as i32 + 5
 }

@@ -44,6 +44,17 @@ pub struct Checked {
     /// What it was checked for, and so has to be built with.
     pub toolchain: Toolchain,
     pub warnings: Vec<Warning>,
+    /// Each shader, compiled for the GPU, in the order they're written.
+    pub shaders: Vec<Shader>,
+}
+
+/// A `@vertex` or `@fragment` function, compiled for the GPU.
+pub struct Shader {
+    /// The function's name, without its module: `stripes`.
+    pub name: String,
+    pub stage: som_lang::Stage,
+    /// Its GLSL 3.30 source, as `@glsl` gives it.
+    pub glsl: String,
 }
 
 /// Why a program didn't pass its checks, with whatever warnings were found on the way.
@@ -112,6 +123,8 @@ pub fn check_loaded(ast: Ast, options: &Options) -> Result<Checked, Failed> {
 fn check_passes(ast: Ast, options: &Options, passes: &mut Passes) -> Result<Checked, Stopped> {
     let front = passes.front(ast)?;
     let mut mir = passes.back(&front)?.expect("no errors, so lowered");
+    // Before the optimizer shakes out the shaders nothing uses.
+    let shaders = passes.shaders(&mir)?;
     if options.test
         && let Some(tests) = mir.tests
     {
@@ -140,6 +153,7 @@ fn check_passes(ast: Ast, options: &Options, passes: &mut Passes) -> Result<Chec
         libraries,
         toolchain: options.toolchain.clone(),
         warnings: Vec::new(),
+        shaders,
     })
 }
 
@@ -173,6 +187,14 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
     let Ok(mir) = passes.back(&front) else {
         unreachable!("{continuing}")
     };
+    // Shaders are checked as written, as the editor shows them.
+    if let Some(mir) = &mir
+        && passes.errors.is_empty()
+    {
+        let Ok(_) = passes.shaders(mir) else {
+            unreachable!("{continuing}")
+        };
+    }
     Analysis {
         ast: front.ast,
         names: front.names,

@@ -79,6 +79,14 @@ impl Checker<'_> {
             }
             Stmt::Break(_) | Stmt::Continue(_) => {}
             // `@if DEBUG { … }`: only the branch it picks is there, and checked.
+            // `@if GPU { … }`: both branches are compiled, so both are checked.
+            Stmt::If {
+                condition,
+                then,
+                otherwise,
+            } if self.ast.gpu_ifs.contains_key(&id) => {
+                self.check_if(*condition, then, otherwise.as_deref())
+            }
             Stmt::If {
                 condition,
                 then,

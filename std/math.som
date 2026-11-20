@@ -1,107 +1,114 @@
 use som::c;
+use som::gl;
 
+/// Each is GLSL's own function in a shader (`@if GPU`), and C's everywhere else.
 impl f32 {
     pub @const PI = c::M_PI as f32;
     pub @const HALF_PI = PI / 2.0;
 
     pub fn pow(self, power: f32) -> f32 {
-        c::powf(self, power)
+        @if GPU { return gl::pow(self, power); } else { return c::powf(self, power); }
     }
 
     pub fn sqrt(self) -> f32 {
-        c::sqrtf(self)
+        @if GPU { return gl::sqrt(self); } else { return c::sqrtf(self); }
     }
 
     // the trigonometric sine
     pub fn sin(rads: f32) -> f32 {
-        c::sinf(rads)
+        @if GPU { return gl::sin(rads); } else { return c::sinf(rads); }
     }
 
     // the hyperbolic sine
     pub fn sinh(rads: f32) -> f32 {
-        c::sinhf(rads)
+        @if GPU { return gl::sinh(rads); } else { return c::sinhf(rads); }
     }
 
     // the trigonometric cosine
     pub fn cos(rads: f32) -> f32 {
-        c::cosf(rads)
+        @if GPU { return gl::cos(rads); } else { return c::cosf(rads); }
     }
 
     // the hyperbolic cosine
     pub fn cosh(rads: f32) -> f32 {
-        c::coshf(rads)
+        @if GPU { return gl::cosh(rads); } else { return c::coshf(rads); }
     }
 
      // the trigonometric tangent
     pub fn tan(rads: f32) -> f32 {
-        c::tanf(rads)
+        @if GPU { return gl::tan(rads); } else { return c::tanf(rads); }
     }
 
     // the hyperbolic tangent
     pub fn tanh(rads: f32) -> f32 {
-        c::tanhf(rads)
+        @if GPU { return gl::tanh(rads); } else { return c::tanhf(rads); }
     }
 
     /// The angle from the x axis to the point `(x, y)`, from -π to π.
     pub fn atan2(y: f32, x: f32) -> f32 {
-        c::atan2f(y, x)
+        @if GPU { return gl::atan2(y, x); } else { return c::atan2f(y, x); }
     }
 
     /// e to the power of `self`.
     pub fn exp(self) -> f32 {
-        c::expf(self)
+        @if GPU { return gl::exp(self); } else { return c::expf(self); }
     }
 
     /// The natural logarithm.
     pub fn ln(self) -> f32 {
-        c::logf(self)
+        @if GPU { return gl::log(self); } else { return c::logf(self); }
     }
 
     pub fn log2(self) -> f32 {
-        c::log2f(self)
+        @if GPU { return gl::log2(self); } else { return c::log2f(self); }
     }
 
     /// Without its sign.
     pub fn abs(self) -> f32 {
-        c::fabsf(self)
+        @if GPU { return gl::abs(self); } else { return c::fabsf(self); }
     }
 
     /// The nearest whole number at or below it.
     pub fn floor(self) -> f32 {
-        c::floorf(self)
+        @if GPU { return gl::floor(self); } else { return c::floorf(self); }
     }
 
     /// The nearest whole number at or above it.
     pub fn ceil(self) -> f32 {
-        c::ceilf(self)
+        @if GPU { return gl::ceil(self); } else { return c::ceilf(self); }
     }
 
     /// The nearest whole number; halfway, the one further from zero.
     pub fn round(self) -> f32 {
-        c::roundf(self)
+        // GLSL's `round` leaves halfway open.
+        @if GPU {
+            return gl::sign(self) * gl::floor(gl::abs(self) + 0.5);
+        } else {
+            return c::roundf(self);
+        }
     }
 
     /// The whole number part: towards zero.
     pub fn trunc(self) -> f32 {
-        c::truncf(self)
+        @if GPU { return gl::trunc(self); } else { return c::truncf(self); }
     }
 
     /// What's left after its `floor`: from 0 up to 1.
     pub fn fract(self) -> f32 {
-        self - c::floorf(self)
+        self - self.floor()
     }
 
     pub fn min(self, other: f32) -> f32 {
-        c::fminf(self, other)
+        @if GPU { return gl::min(self, other); } else { return c::fminf(self, other); }
     }
 
     pub fn max(self, other: f32) -> f32 {
-        c::fmaxf(self, other)
+        @if GPU { return gl::max(self, other); } else { return c::fmaxf(self, other); }
     }
 
     /// Kept from `low` to `high`.
     pub fn clamp(self, low: f32, high: f32) -> f32 {
-        c::fminf(c::fmaxf(self, low), high)
+        self.max(low).min(high)
     }
 
     /// From `self` to `to` by `t`: `self` at 0, `to` at 1.

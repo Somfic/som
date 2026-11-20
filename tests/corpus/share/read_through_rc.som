@@ -1,5 +1,7 @@
 // expect: exit 13
 
+use som::mem;
+
 /// A `#T` is read through to what it shares: `node.value`, `node.doubled()`, as `get` would.
 /// Its own members, `count`, stay its own.
 struct Node { value: i32, next: #Node? }

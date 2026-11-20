@@ -34,6 +34,9 @@ pub struct Mir {
     /// the shader it's for: `None` if what it's given isn't a function named where it's
     /// passed.
     pub glsl: HashMap<FuncId, Option<FuncId>>,
+    /// The copies of functions compiled for the GPU, and GLSL's own functions: only shaders
+    /// use them, never the program on the CPU.
+    pub gpu: HashSet<FuncId>,
     /// The structs the language gives meaning to, by which they are.
     pub lang_structs: HashMap<DefId, som_lang::LangStruct>,
     struct_index: HashMap<(DefId, Vec<TypeId>), usize>,
@@ -52,6 +55,7 @@ impl Mir {
             stages: HashMap::new(),
             glsl: HashMap::new(),
             lang_structs: HashMap::new(),
+            gpu: HashSet::new(),
             struct_index: HashMap::new(),
         }
     }

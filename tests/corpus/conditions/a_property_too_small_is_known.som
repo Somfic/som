@@ -3,9 +3,12 @@
 /// `len` is 3, so `at(3)` is known to be past the end.
 struct Three { values: [i32; 3] }
 
+impl Sized for Three {
+    prop len: usize = 3;
+}
+
 impl Index for Three {
     type Item = i32;
-    prop len: usize = 3;
     fn at(&self, index: usize) -> &i32 = &.values[index];
 }
 

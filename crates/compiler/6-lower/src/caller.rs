@@ -40,6 +40,7 @@ impl Lowerer<'_> {
             .collect();
 
         let origin: HashMap<FuncId, som_ast::Id<som_ast::Func>> = (self.instances.iter())
+            .chain(&self.other_instances)
             .map(|((func, _), &id)| (id, *func))
             .collect();
         let tracked = self.tracked(fail, &origin);

@@ -143,6 +143,32 @@ impl<'a> Passes<'a> {
     }
 }
 
+impl Passes<'_> {
+    /// Each shader, `@vertex` or `@fragment`, compiled for the GPU: what `--emit glsl`
+    /// writes. One that can't be is an error, whether or not `@glsl` asks for it.
+    pub fn shaders(&mut self, mir: &Mir) -> Result<Vec<crate::Shader>, Stopped> {
+        let mut entries: Vec<_> = (mir.stages.iter())
+            .filter(|(f, _)| mir.gpu.contains(f))
+            .map(|(&f, &stage)| (f, stage))
+            .collect();
+        entries.sort_by_key(|(f, _)| mir.funcs[*f].span.start_offset);
+        let mut shaders = Vec::new();
+        let mut errors = Vec::new();
+        for (entry, stage) in entries {
+            match som_shader::glsl(mir, entry) {
+                Ok(glsl) => shaders.push(crate::Shader {
+                    name: som_shader::short_fn(&mir.funcs[entry].name),
+                    stage,
+                    glsl,
+                }),
+                Err(found) => errors.extend(found.into_iter().map(Error::Shader)),
+            }
+        }
+        self.report(errors)?;
+        Ok(shaders)
+    }
+}
+
 /// Checks types, working out first the constants needed to: `[i32; SIZE]` of
 /// `@const SIZE = next_power_of_two(100);` needs `SIZE` run before the type is known. Each
 /// round checks the program with what's worked out so far; the constants it needed are then

@@ -12,7 +12,7 @@
 //! | local reference                 | the place it refers to, written out where it's used   |
 //! | one block                       | its statements                                        |
 //! | more blocks                     | a `switch` on the block, in a loop                    |
-//! | `sinf`, `sqrtf`, …              | GLSL's own `sin`, `sqrt`, …                           |
+//! | `som::gl::sin`, …               | GLSL's own `sin`, …: std's math is `@if GPU` on them  |
 //!
 //! What the GPU has no way to do (text, pointers, memory, 64-bit numbers, calling C, failing,
 //! calling itself) is an error, said where the shader reaches it and through which calls.
@@ -58,7 +58,7 @@ pub(crate) fn short(name: &str) -> String {
 }
 
 /// A function as messages name it: without its modules or type arguments.
-pub(crate) fn short_fn(name: &str) -> String {
+pub fn short_fn(name: &str) -> String {
     let short = short(name);
     match short.find('<') {
         Some(at) => short[..at].to_string(),

@@ -129,14 +129,18 @@ impl<'a> Resolver<'a> {
     fn lookup_qualified(&self, path: &Path, expect: Expect) -> Option<DefId> {
         let segments = &path.segments;
         // A module this one `use`s is named by its last part too: `io::println` after
-        // `use som::io;`.
-        let module_prefix = self.module_prefix(segments).or_else(|| {
-            let first = &*segments[0].name;
-            (self.cx.block_imports.iter().rev().map(|&(_, m)| m))
-                .chain(self.modules.imports[self.cx.module].iter().copied())
-                .find(|&m| self.ast.modules[m].name.rsplit("::").next() == Some(first))
-                .map(|m| (m, 1))
-        });
+        // `use som::io;`. That's what's meant even where another module has that name:
+        // `c::printf` after `use som::c;`, in a program with a module `c` of its own.
+        let first = &*segments[0].name;
+        let imported = (self.cx.block_imports.iter().rev().map(|&(_, m)| m))
+            .chain(self.modules.imports[self.cx.module].iter().copied())
+            .find(|&m| self.ast.modules[m].name.rsplit("::").next() == Some(first))
+            .map(|m| (m, 1));
+        let module_prefix = match self.module_prefix(segments) {
+            // A path of modules, `som::io::println`, says which it means.
+            Some((m, len)) if len > 1 => Some((m, len)),
+            absolute => imported.or(absolute),
+        };
 
         let (owner, rest) = match module_prefix {
             Some((m, len)) => {

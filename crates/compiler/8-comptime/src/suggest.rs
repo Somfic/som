@@ -37,6 +37,10 @@ pub fn could_be_const(mir: &Mir) -> Vec<CouldBeConst> {
         let Some(body) = &function.body else {
             continue;
         };
+        // Shaders' copies run on the GPU, never while compiling.
+        if mir.gpu.contains(&id) {
+            continue;
+        }
         // Not the standard library's, what's already worked out while compiling, or an
         // instance of a generic function, whose arguments can be known in only some of them.
         if crate::is_std(&function.name)

@@ -327,7 +327,8 @@ pub fn check(ast: &mut Ast, toolchain: &Toolchain) -> (Vec<PathBuf>, Vec<Library
         let (Some(library), Some(span)) = (&block.library, &block.library_span) else {
             continue;
         };
-        if library == crate::headers::LIBC {
+        // C's are always there; GLSL's are the GPU's own.
+        if library == crate::headers::LIBC || library == som_lang::GL_LIBRARY {
             continue;
         }
 

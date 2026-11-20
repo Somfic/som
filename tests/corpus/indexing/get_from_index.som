@@ -7,10 +7,13 @@ struct Pair {
     b: i32,
 }
 
+impl Sized for Pair {
+    prop len: usize = 2;
+}
+
 impl Index for Pair {
     type Item = i32;
 
-    prop len: usize = 2;
 
     fn at(&self, i: usize) -> &i32 = &self.a if i == 0 else &self.b;
 }

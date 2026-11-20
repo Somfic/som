@@ -1,5 +1,7 @@
 // expect: exit 7
 
+use som::mem;
+
 /// `#T` is `Rc<T>`: a value shared by its copies.
 struct Node { value: i32, next: #Node? }
 

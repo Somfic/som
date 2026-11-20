@@ -28,6 +28,13 @@ fn main() {
 }
 ```
 
+## Seeing the GLSL
+
+`som build --emit glsl` writes every `@fragment` and `@vertex` function as the GPU gets it, a
+file each next to the output (`main.stripes.frag`); `--emit glsl=DIR` puts them in DIR, and
+`--emit glsl=-` prints them. Every shader is compiled for the GPU while checking, used or not,
+so `som check` and the editor report a broken one before anything calls `@glsl` on it.
+
 ## A fragment shader
 
 - Takes a `Fragment` (`uv`, `color`, `position`), a `&` to a struct of uniforms, or both.
@@ -38,14 +45,39 @@ fn main() {
 - Names match raylib's default shaders (`fragTexCoord`, `fragColor`, `finalColor`), so a
   som fragment shader works with raylib's own vertex shader.
 
-## What can't be on the GPU
+## `@if GPU`: the GPU is a system
 
-These are errors, reported where the shader reaches them and through which calls:
+The GPU is treated like an OS in `@if WINDOWS { … }`. `som::gl` declares GLSL's built-in
+functions (`extern "glsl" { … }`), which exist only on the GPU, as `som::c`'s exist only on
+the OSes. Code picks with `@if GPU`:
+
+```som
+pub fn sin(rads: f32) -> f32 {
+    @if GPU { return gl::sin(rads); } else { return c::sinf(rads); }
+}
+```
+
+What can run where is worked out over the call graph by the same check as for OSes
+(`driver/src/targets.rs`): a `@fragment` function has to run on the GPU, so one that reaches
+`c::printf` is reported with the chain, `chatty → helper → println → c::printf`, and calling
+`gl::floor` from `main` is reported as not available on `macos`.
+
+Unlike an OS `@if`, `@if GPU` isn't decided while loading, because a shader is compiled for
+both in one build: for the GPU by `@glsl`, and for the CPU as an ordinary function. Both
+branches are resolved and type-checked (`Ast::gpu_ifs`); lowering makes a GPU copy of each
+function a shader reaches (`Mir::gpu`), taking the GPU's branch there and the other branch in
+the CPU's copy. C codegen leaves the GPU copies out. On the GPU, an OS `@if` takes the
+target's branch.
+
+`@if` is a statement, so a function written this way `return`s from both branches.
+
+## What else can't be on the GPU
+
+These are errors from the translator, reported where the shader reaches them and through
+which calls:
 
 - Text, pointers, slices, raw memory (`List`, `string`, `Rc`, …).
 - 64-bit numbers and 8/16-bit integers. `usize` becomes `uint` (32 bits).
-- Calling C, except the math functions `f32`'s methods use (`sinf`, `sqrtf`, …), which map to
-  GLSL's own functions.
 - Failing (`@fail`, `assert`), recursion, function values, and keeping a reference rather
   than passing it to a call.
 

@@ -109,13 +109,17 @@ needed by the `@gpu` work too.
 
 `@fragment` → GLSL 3.30 via `@glsl(f)`, running through raylib (`example/shader`).
 
-- [ ] **`@if GPU` instead of the C→GLSL math table.** Treat the GPU as a target like an OS: std writes `@if GPU { glsl::sin(x) } else { c::sinf(x) }`, GLSL built-ins are declared in a std module, and "can't run on the GPU" falls out of the availability inference in `driver/src/targets.rs`. Catch: `@if WINDOWS` is decided once per build while loading, but a shader is compiled for the CPU *and* the GPU in one build, so `GPU` has to be decided per instance (an implicit compile-time parameter, like the per-instance `@if` regions). Needed before GPU-only built-ins (texture sampling, `dFdx`, `discard`), which have no CPU version.
+- [x] `@if GPU`: GPU as a system, `som::gl` built-ins, availability over the call graph, GPU copies in lowering (2026-11-20).
+- [ ] `@if` as a value (`@if GPU { gl::sin(x) } else { c::sinf(x) }` as a function's tail); std now writes `return` in both branches.
+- [ ] `@if GPU || WINDOWS`: mixing the GPU and OSes in one condition isn't understood (it's treated as an ordinary `@if`).
+- [ ] Vector versions of `som::gl` (`vec4` `mix`, `dot`, `length`, `normalize`) once `Vector` maps to GLSL's own vectors.
+- [ ] Externs can't be overloaded, so GLSL's two-argument `atan` is `gl::atan2`, renamed by the translator.
 - [ ] `@vertex` shaders (inputs from raylib's `vertexPosition`/`vertexTexCoord`/`vertexColor`, `mvp`), and loading a vertex+fragment pair.
 - [ ] Textures: a `Texture` uniform → `sampler2D`, `sample(tex, uv)`; raylib's `texture0`. Wants structured control flow first (implicit derivatives in non-uniform control flow are undefined).
 - [ ] Structured control flow for `if`/`while`/`match` instead of the `switch`-in-a-loop (reducible CFGs only, which som's are).
 - [ ] Host side: `Shader<U>` in a raylib helper, `s.set(&uniforms)` setting each field by name with `@for f in U`.
 - [ ] Native vector ops: map `Vector` `+ - * /` and `x`/`y`/… to GLSL `vecN` operations instead of the generic array code.
-- [ ] Shader errors only appear when `@glsl(f)` runs; check every `@fragment` in `som check`/the LSP even when unused.
+- [x] Every shader is checked (and `--emit glsl` writes it) whether or not `@glsl` asks for it.
 - [ ] `glsl` called without `@` fails at run time; make it a compile error.
 - [ ] Generated names are long (`som_data_Vector_4_f32`); shorten where unambiguous.
 - [ ] WGSL emitter + wgpu-native host, then compute kernels (`@compute`), see the Parallelism section.
