@@ -1,0 +1,15 @@
+// expect: error Shader
+
+use som::io;
+
+fn helper(x: f32) -> f32 {
+    println("hi");
+    x
+}
+
+@fragment
+fn chatty(frag: Fragment) -> Vector<4, f32> {
+    Vector::new([helper(frag.uv.x), 0.0, 0.0, 1.0])
+}
+
+fn main() { let s = @glsl(chatty); }

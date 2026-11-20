@@ -1,0 +1,29 @@
+// expect: exit 0
+
+/// A shader is an ordinary function too: `@glsl` compiles it for the GPU, and it can be
+/// called, and tested, on the CPU.
+struct Uniforms { time: f32, tint: Vector<4, f32> }
+
+fn wave(x: f32, t: f32) -> f32 = f32::sin(x * 10.0 + t);
+
+@fragment
+fn stripes(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
+    let k = 0.5 + 0.5 * wave(frag.uv.x, u.time);
+    let c = u.tint * k;
+    Vector::new([c.x, c.y, c.z, 1.0])
+}
+
+fn main() -> i32 {
+    let source = @glsl(stripes);
+    if source.len < 100 { return 1; }
+    let frag = Fragment {
+        uv: Vector::new([0.0, 0.0]),
+        color: Vector::new([1.0, 1.0, 1.0, 1.0]),
+        position: Vector::new([0.0, 0.0, 0.0, 1.0]),
+    };
+    let u = Uniforms { time: 0.0, tint: Vector::new([1.0, 0.5, 0.0, 1.0]) };
+    let c = stripes(frag, &u);
+    // sin(0) is 0, so k is 0.5.
+    if c.x != 0.5 || c.y != 0.25 || c.w != 1.0 { return 2; }
+    0
+}

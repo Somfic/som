@@ -10,6 +10,8 @@ named_enum! {
         If = "@if",
         Const = "@const",
         Where = "@where",
+        Vertex = "@vertex",
+        Fragment = "@fragment",
     }
 }
 
@@ -52,7 +54,33 @@ impl Builtin {
                 "Worked out while compiling: a constant, `@const CELLS = COLS * ROWS;`, or a \
                  value where it's written, `@const first_primes()`."
             }
+            Builtin::Vertex => {
+                "On a line above a function: a vertex shader, run on the GPU for each corner of \
+                 what's drawn. Its source for the GPU is `@glsl(name)`."
+            }
+            Builtin::Fragment => {
+                "On a line above a function: a fragment shader, run on the GPU for each pixel of \
+                 what's drawn, giving its colour. It takes a `Fragment`, and may take a `&` to a \
+                 struct of uniforms; its source for the GPU is `@glsl(name)`."
+            }
             Builtin::Where => return None,
         })
+    }
+}
+
+named_enum! {
+    /// Which part of drawing a shader function is: `@vertex` or `@fragment`.
+    pub enum Stage {
+        Vertex = "@vertex",
+        Fragment = "@fragment",
+    }
+}
+
+impl Stage {
+    pub fn builtin(self) -> Builtin {
+        match self {
+            Stage::Vertex => Builtin::Vertex,
+            Stage::Fragment => Builtin::Fragment,
+        }
     }
 }

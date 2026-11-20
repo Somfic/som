@@ -6,6 +6,7 @@ description = "Runs `@const` initializers while compiling, and puts what they gi
 
 [dependencies]
 som_lang = { path = "../../core/lang" }
+som_shader = { path = "../shader" }
 libffi = "5.2.0"
 libloading = "0.9.1"
 som_base = { path = "../../core/base" }

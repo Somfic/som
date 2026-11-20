@@ -1,2 +1,3 @@
 pub use som::data;
 pub use som::iter;
+pub use som::gpu;

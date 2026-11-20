@@ -238,6 +238,12 @@ impl<'a> Lowerer<'a> {
 
     fn prepare(&mut self) {
         let ast = self.ast;
+        for &lang in som_lang::LangStruct::ALL {
+            if let Some(def) = self.names.lang_struct(lang) {
+                self.mir.lang_structs.insert(def, lang);
+            }
+        }
+
         for (id, t) in ast.traits.iter() {
             let def = self.names.trait_def(id);
             for &method in &t.methods {

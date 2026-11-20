@@ -144,6 +144,8 @@ pub struct Func {
     pub listens: Vec<Ident>,
     /// `@test`: run by `som test`, and otherwise reached from nothing.
     pub test: bool,
+    /// `@vertex` or `@fragment`: a shader, also compiled for the GPU by `@glsl(name)`.
+    pub stage: Option<som_lang::Stage>,
     /// `@if N >= 3 { pub prop z … }` around it, among an impl block's members: what has to
     /// hold, of the block's parameters, for a type to have it.
     pub when: Vec<Id<Expr>>,

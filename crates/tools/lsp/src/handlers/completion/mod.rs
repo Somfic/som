@@ -293,6 +293,14 @@ mod tests {
     }
 
     #[test]
+    fn a_reference_to_a_reference_completes_what_it_refers_to() {
+        let source = "fn main() -> i32 {\n    let s: string = \"ab\";\n    let r = &s;\n    \
+                      let rr = &r;\n    let n = rr.len;\n    0\n}\n";
+        let labels = labels_after(source, "rr.len");
+        assert!(labels.iter().any(|l| l == "len"), "{labels:?}");
+    }
+
+    #[test]
     fn the_standard_library_s_root_functions_complete_without_an_import() {
         let labels = labels_at_end("fn main() -> i32 {\n    ass");
         assert!(labels.iter().any(|l| l == "assert"), "{labels:?}");

@@ -1,0 +1,10 @@
+[package]
+name = "som_shader"
+version = "0.1.0"
+edition = "2024"
+description = "Shaders: MIR to GLSL"
+
+[dependencies]
+som_base = { path = "../../core/base" }
+som_lang = { path = "../../core/lang" }
+som_mir = { path = "../../core/mir" }

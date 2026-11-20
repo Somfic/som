@@ -1,0 +1,9 @@
+// expect: error Shader
+
+@fragment
+fn wide(frag: Fragment) -> Vector<4, f32> {
+    let big: f64 = 2.0;
+    Vector::new([big as f32, 0.0, 0.0, 1.0])
+}
+
+fn main() { let s = @glsl(wide); }

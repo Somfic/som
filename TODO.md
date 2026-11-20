@@ -86,3 +86,36 @@ Rust users hit these first; give them the same treatment as `const` → `@const`
 - [ ] `Map.get` returns `&V?`, so a word count needs `*(counts.get(&w) else &0)`.
 - [ ] `List::of([…])` of structs needs `Copy`.
 - [ ] `print` has no newline (fine, `println` exists); ignoring a `bool` result (`acct.withdraw(30);`) gives no warning.
+
+## Parallelism (deferred, 2026-11-20)
+
+Multicore CPU loops: a scoped fork-join `som::par` library on closures, made safe by the
+borrow checker. Skipped for now in favour of GPU kernels; the pieces marked (shared) are
+needed by the `@gpu` work too.
+
+- [ ] Atomics: `load`/`store`/`fetch_add`/`compare_exchange` intrinsics, lowered to C11 `__atomic_*`.
+- [ ] `std/thread`: spawn/join on pthreads, `CreateThread` under `@if WINDOWS`; core count via `sysconf`/`GetSystemInfo`.
+- [ ] Pool + `par::for_each(items: &mut [T], f)` / `par::range`: chunks taken from one atomic counter, caller thread joins in, waits on a join counter. Scoped: returns only after every task ends, so lexical loans need nothing new.
+- [ ] Each instance becomes a C `void chunk(void *env, size_t start, size_t end)` with the closure inlined, so clang can vectorize it.
+- [ ] `@fail` on a worker: record the first, stop handing out chunks, raise it again on the caller after the join.
+- [ ] Safety: a `Parallel` auto-trait (all fields `Parallel`; not `Rc`, whose count isn't atomic and is copied by `Share`; not `*T` unless opted in). One trait, not `Send`/`Sync`, while all work is scoped.
+- [ ] Safety: a closure that must be `Parallel` may not write what it captures; suggest `par::sum` or writing into the element it's given.
+- [ ] Safety (shared): functions unsafe on a worker (non-reentrant libc, future `static mut`) inferred over the call graph, reported with the chain, like `driver/src/targets.rs`.
+- [ ] Reductions `par::sum`/`map_reduce` with fixed-size chunks combined in a fixed tree order, so results are bit-identical on any core count (replays, lockstep netcode).
+- [ ] Port `example/raytracer` to render rows in parallel; later an n-body/particles example.
+- [ ] Maybe later: `par for x in xs { }` sugar once the library is proven.
+
+## Shaders (2026-11-20, see docs/shaders.md)
+
+`@fragment` → GLSL 3.30 via `@glsl(f)`, running through raylib (`example/shader`).
+
+- [ ] **`@if GPU` instead of the C→GLSL math table.** Treat the GPU as a target like an OS: std writes `@if GPU { glsl::sin(x) } else { c::sinf(x) }`, GLSL built-ins are declared in a std module, and "can't run on the GPU" falls out of the availability inference in `driver/src/targets.rs`. Catch: `@if WINDOWS` is decided once per build while loading, but a shader is compiled for the CPU *and* the GPU in one build, so `GPU` has to be decided per instance (an implicit compile-time parameter, like the per-instance `@if` regions). Needed before GPU-only built-ins (texture sampling, `dFdx`, `discard`), which have no CPU version.
+- [ ] `@vertex` shaders (inputs from raylib's `vertexPosition`/`vertexTexCoord`/`vertexColor`, `mvp`), and loading a vertex+fragment pair.
+- [ ] Textures: a `Texture` uniform → `sampler2D`, `sample(tex, uv)`; raylib's `texture0`. Wants structured control flow first (implicit derivatives in non-uniform control flow are undefined).
+- [ ] Structured control flow for `if`/`while`/`match` instead of the `switch`-in-a-loop (reducible CFGs only, which som's are).
+- [ ] Host side: `Shader<U>` in a raylib helper, `s.set(&uniforms)` setting each field by name with `@for f in U`.
+- [ ] Native vector ops: map `Vector` `+ - * /` and `x`/`y`/… to GLSL `vecN` operations instead of the generic array code.
+- [ ] Shader errors only appear when `@glsl(f)` runs; check every `@fragment` in `som check`/the LSP even when unused.
+- [ ] `glsl` called without `@` fails at run time; make it a compile error.
+- [ ] Generated names are long (`som_data_Vector_4_f32`); shorten where unambiguous.
+- [ ] WGSL emitter + wgpu-native host, then compute kernels (`@compute`), see the Parallelism section.

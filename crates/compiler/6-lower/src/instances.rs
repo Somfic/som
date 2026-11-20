@@ -182,6 +182,19 @@ impl<'a> Lowerer<'a> {
         if ast_func.body.is_some() {
             self.queue.push((id, Job::Func(func, type_args.clone())));
         }
+        if let Some(stage) = ast_func.stage {
+            self.mir.stages.insert(id, stage);
+        }
+        if self.names.lang_func(som_lang::LangFunc::Glsl) == Some(def) {
+            let entry = match type_args.first().map(|&t| self.mir.types.get(t).clone()) {
+                Some(Ty::FnItem(shader, args)) => match self.names.def(shader).kind {
+                    DefKind::Func(shader) => Some(self.instance(shader, args)),
+                    _ => None,
+                },
+                _ => None,
+            };
+            self.mir.glsl.insert(id, entry);
+        }
         if let Some(at) = &self.at {
             self.requested_at.insert(id, at.clone());
         }

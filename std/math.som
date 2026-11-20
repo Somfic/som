@@ -41,6 +41,84 @@ impl f32 {
     pub fn tanh(rads: f32) -> f32 {
         c::tanhf(rads)
     }
+
+    /// The angle from the x axis to the point `(x, y)`, from -π to π.
+    pub fn atan2(y: f32, x: f32) -> f32 {
+        c::atan2f(y, x)
+    }
+
+    /// e to the power of `self`.
+    pub fn exp(self) -> f32 {
+        c::expf(self)
+    }
+
+    /// The natural logarithm.
+    pub fn ln(self) -> f32 {
+        c::logf(self)
+    }
+
+    pub fn log2(self) -> f32 {
+        c::log2f(self)
+    }
+
+    /// Without its sign.
+    pub fn abs(self) -> f32 {
+        c::fabsf(self)
+    }
+
+    /// The nearest whole number at or below it.
+    pub fn floor(self) -> f32 {
+        c::floorf(self)
+    }
+
+    /// The nearest whole number at or above it.
+    pub fn ceil(self) -> f32 {
+        c::ceilf(self)
+    }
+
+    /// The nearest whole number; halfway, the one further from zero.
+    pub fn round(self) -> f32 {
+        c::roundf(self)
+    }
+
+    /// The whole number part: towards zero.
+    pub fn trunc(self) -> f32 {
+        c::truncf(self)
+    }
+
+    /// What's left after its `floor`: from 0 up to 1.
+    pub fn fract(self) -> f32 {
+        self - c::floorf(self)
+    }
+
+    pub fn min(self, other: f32) -> f32 {
+        c::fminf(self, other)
+    }
+
+    pub fn max(self, other: f32) -> f32 {
+        c::fmaxf(self, other)
+    }
+
+    /// Kept from `low` to `high`.
+    pub fn clamp(self, low: f32, high: f32) -> f32 {
+        c::fminf(c::fmaxf(self, low), high)
+    }
+
+    /// From `self` to `to` by `t`: `self` at 0, `to` at 1.
+    pub fn mix(self, to: f32, t: f32) -> f32 {
+        self + (to - self) * t
+    }
+
+    /// 0 below `edge`, 1 from it on.
+    pub fn step(self, edge: f32) -> f32 {
+        if self < edge { 0.0 } else { 1.0 }
+    }
+
+    /// From 0 at `low` to 1 at `high`, smoothly: no sudden change at either end.
+    pub fn smoothstep(self, low: f32, high: f32) -> f32 {
+        let t = ((self - low) / (high - low)).clamp(0.0, 1.0);
+        t * t * (3.0 - 2.0 * t)
+    }
 }
 
 

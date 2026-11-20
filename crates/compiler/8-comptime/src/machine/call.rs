@@ -170,6 +170,9 @@ impl Machine<'_, '_> {
             .map(|a| self.operand(a, span))
             .collect::<Result<Vec<_>, _>>()?;
         let dest = self.loc(place, span)?;
+        if let Some(&shader) = self.mir().glsl.get(&func) {
+            return self.glsl(shader, dest, span);
+        }
         let function = &self.mir().funcs[func];
         if function.body.is_none() {
             // One of C's done here; any other, called for real.
@@ -217,6 +220,33 @@ impl Machine<'_, '_> {
                 }
                 let (at, _) = self.loc(place, span)?;
                 self.push_frame(*glue, vec![Value::Ref(at)], None, span.clone())
+            }
+        }
+    }
+}
+
+impl Machine<'_, '_> {
+    /// `@glsl(shader)`: the shader's source for the GPU, as text, into `dest`.
+    fn glsl(
+        &mut self,
+        shader: Option<FuncId>,
+        (dest, ty): (Loc, TypeId),
+        span: &Span,
+    ) -> Result<(), Stop> {
+        let Some(shader) = shader else {
+            return Err(Stop::Report(
+                Fault::Failed("`glsl` takes a shader by its name: `@glsl(wobble)`".into()),
+                span.clone(),
+            ));
+        };
+        match som_shader::glsl(self.mir(), shader) {
+            Ok(source) => {
+                let value = self.text(&source, ty, span)?;
+                self.write(&dest, ty, value, span)
+            }
+            Err(errors) => {
+                (self.state.errors).extend(errors.into_iter().map(ComptimeError::Shader));
+                Err(Stop::Quiet)
             }
         }
     }

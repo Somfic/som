@@ -1,9 +1,9 @@
-//! `@where`, `@on` and `@test`, said of the function below them.
+//! `@where`, `@on`, `@test`, `@vertex` and `@fragment`, said of the function below them.
 
 use som_ast::{Ident, Where};
 use som_base::message::code;
 use som_base::msg;
-use som_lang::Builtin;
+use som_lang::{Builtin, Stage};
 use som_lexer::TokenKind;
 
 use crate::Parser;
@@ -16,6 +16,7 @@ impl Parser<'_> {
         self.at_builtin(Builtin::Where)
             || self.at_builtin(Builtin::On)
             || self.at_builtin(Builtin::Test)
+            || Stage::ALL.iter().any(|s| self.at_builtin(s.builtin()))
     }
 
     /// `@where i < self.len`, `@on fail`, `@test`, each line of them: kept for the function
@@ -31,6 +32,10 @@ impl Parser<'_> {
             } else if self.at_builtin(Builtin::Test) {
                 self.advance();
                 self.wheres.test = true;
+                Some(())
+            } else if let Some(&stage) = Stage::ALL.iter().find(|s| self.at_builtin(s.builtin())) {
+                self.advance();
+                self.wheres.stage = Some(stage);
                 Some(())
             } else {
                 self.parse_where()
@@ -49,9 +54,9 @@ impl Parser<'_> {
                     code("@where"),
                     ", ",
                     code("@on"),
-                    " and ",
+                    ", ",
                     code("@test"),
-                    " are for a function"
+                    " and shader stages are for a function"
                 ],
                 msg!["put it on the line above a ", code("fn")],
             );
@@ -104,6 +109,7 @@ impl Parser<'_> {
             requires: wheres.conditions,
             listens: wheres.listens,
             test: wheres.test,
+            stage: wheres.stage,
         }
     }
 }
@@ -114,4 +120,5 @@ pub(crate) struct Attrs {
     pub requires: Vec<Where>,
     pub listens: Vec<Ident>,
     pub test: bool,
+    pub stage: Option<Stage>,
 }

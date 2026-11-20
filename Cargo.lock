@@ -955,6 +955,7 @@ dependencies = [
  "som_base",
  "som_lang",
  "som_mir",
+ "som_shader",
 ]
 
 [[package]]
@@ -962,6 +963,8 @@ name = "som_corpus"
 version = "0.1.0"
 dependencies = [
  "som_driver",
+ "som_mir",
+ "som_shader",
  "tempfile",
 ]
 
@@ -1084,6 +1087,15 @@ dependencies = [
  "som_base",
  "som_lang",
  "som_parser",
+]
+
+[[package]]
+name = "som_shader"
+version = "0.1.0"
+dependencies = [
+ "som_base",
+ "som_lang",
+ "som_mir",
 ]
 
 [[package]]

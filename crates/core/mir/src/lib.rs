@@ -27,6 +27,15 @@ pub struct Mir {
     /// What `som test` starts at instead of `main`: each `@test`, then a summary. Nothing
     /// else calls it, so it's shaken out of the program otherwise.
     pub tests: Option<FuncId>,
+    /// The `@vertex` and `@fragment` functions: shaders, which `@glsl(name)` compiles for the
+    /// GPU. They're ordinary functions otherwise.
+    pub stages: HashMap<FuncId, som_lang::Stage>,
+    /// Each instance of the standard library's `glsl`, which only works while compiling, and
+    /// the shader it's for: `None` if what it's given isn't a function named where it's
+    /// passed.
+    pub glsl: HashMap<FuncId, Option<FuncId>>,
+    /// The structs the language gives meaning to, by which they are.
+    pub lang_structs: HashMap<DefId, som_lang::LangStruct>,
     struct_index: HashMap<(DefId, Vec<TypeId>), usize>,
 }
 
@@ -40,6 +49,9 @@ impl Mir {
             fail: None,
             checks: Vec::new(),
             tests: None,
+            stages: HashMap::new(),
+            glsl: HashMap::new(),
+            lang_structs: HashMap::new(),
             struct_index: HashMap::new(),
         }
     }

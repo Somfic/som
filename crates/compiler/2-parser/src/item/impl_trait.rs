@@ -313,6 +313,7 @@ impl Parser<'_> {
             requires,
             listens,
             test,
+            stage,
         } = self.take_wheres();
         let start = self.current_span();
         // `pub fn next`: called on values too. A trait's methods are as visible as the trait,
@@ -389,6 +390,7 @@ impl Parser<'_> {
             requires,
             listens,
             test,
+            stage,
             when: self.when.conditions.clone(),
             // As visible as the trait.
             ..signature(doc, som_ast::Visibility::Public, name)

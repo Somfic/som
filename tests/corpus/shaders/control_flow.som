@@ -1,0 +1,38 @@
+// expect: exit 0
+
+/// Loops, enums, `match` and `&mut` all compile for the GPU.
+enum Shape { Circle(f32), Square { half: f32 } }
+
+struct Uniforms { count: i32 }
+
+fn bump(v: &mut f32, by: f32) { *v = *v + by; }
+
+fn inside(s: Shape, x: f32, y: f32) -> bool {
+    match s {
+        Shape::Circle(r) => x * x + y * y < r * r,
+        Shape::Square { half } => x.abs() < half && y.abs() < half,
+    }
+}
+
+@fragment
+fn shapes(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
+    let x = frag.uv.x * 2.0 - 1.0;
+    let y = frag.uv.y * 2.0 - 1.0;
+    let weights: [f32; 4] = [0.1, 0.2, 0.3, 0.4];
+    let mut total = 0.0;
+    let mut i: usize = 0;
+    while i < u.count as usize {
+        total = total + weights[i % 4];
+        i = i + 1;
+    }
+    let mut r = 0.0;
+    if inside(Shape::Circle(0.5), x, y) { bump(&mut r, 1.0); }
+    let g = if inside(Shape::Square { half: 0.3 }, x, y) { 1.0 } else { 0.0 };
+    Vector::new([r, g, total.fract(), 1.0])
+}
+
+fn main() -> i32 {
+    let source = @glsl(shapes);
+    if source.len < 100 { return 1; }
+    0
+}

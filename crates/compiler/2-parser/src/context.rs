@@ -30,13 +30,15 @@ pub(crate) struct PendingWheres {
     pub conditions: Vec<Where>,
     pub listens: Vec<Ident>,
     pub test: bool,
+    /// `@vertex` or `@fragment`.
+    pub stage: Option<som_lang::Stage>,
     pub doc: Option<String>,
     pub start: Option<Span>,
 }
 
 impl PendingWheres {
     pub fn is_empty(&self) -> bool {
-        self.conditions.is_empty() && self.listens.is_empty() && !self.test
+        self.conditions.is_empty() && self.listens.is_empty() && !self.test && self.stage.is_none()
     }
 }
 

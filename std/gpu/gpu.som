@@ -1,0 +1,17 @@
+/// What a `@fragment` shader is told about the pixel it colours.
+pub struct Fragment {
+    /// Where on the texture being drawn, each from 0 to 1.
+    pub uv: Vector<2, f32>,
+    /// The colour of what's drawn there, from its corners.
+    pub color: Vector<4, f32>,
+    /// Where on the screen, in pixels.
+    pub position: Vector<4, f32>,
+}
+
+impl Copy for Fragment {}
+
+/// The source of shader `entry`, a `@vertex` or `@fragment` function, in GLSL 3.30: what
+/// a graphics library like raylib loads. Only while compiling: `@glsl(wobble)`.
+pub fn glsl<F>(entry: F) -> string {
+    @fail("a shader's GLSL is made while compiling: write `@glsl(…)`")
+}

@@ -70,11 +70,14 @@ pub enum ComptimeError {
         what: &'static str,
         span: Span,
     },
+    /// `@glsl(shader)` of a shader that can't be compiled for the GPU.
+    Shader(som_shader::ShaderError),
 }
 
 impl ComptimeError {
     pub fn to_diagnostic(&self) -> Diagnostic {
         let (d, span, label, trace) = match self {
+            ComptimeError::Shader(e) => return e.to_diagnostic(),
             ComptimeError::ConstCallsExtern {
                 function,
                 reason,

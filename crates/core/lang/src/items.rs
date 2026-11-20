@@ -114,6 +114,10 @@ named_enum! {
         String = "string",
         Failure = "Failure",
         Location = "Location",
+        /// `[T; N]` as one value: on the GPU, a `vec2`, `vec3` or `vec4`.
+        Vector = "Vector",
+        /// What a `@fragment` shader is given.
+        Fragment = "Fragment",
     }
 }
 
@@ -126,6 +130,8 @@ named_enum! {
         TestSummary = "test_summary",
         /// What `let all: List<i32> = numbers.where(…)` calls to collect the values.
         CollectInto = "collect_into",
+        /// `@glsl(shader)`: a shader function's source for the GPU, made while compiling.
+        Glsl = "glsl",
     }
 }
 

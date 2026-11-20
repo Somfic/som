@@ -6,11 +6,12 @@ use som_typeck::{Ty, TypeId};
 /// What type parameters stand for, as `display_with` takes them.
 pub(crate) type Subst = Vec<(DefId, TypeId)>;
 
-pub(crate) fn unref(a: &Analysis, t: TypeId) -> TypeId {
-    match a.typed.ty(t) {
-        Ty::Ref { to, .. } => *to,
-        _ => t,
+/// What `t` refers to, through any number of references, as fields and methods are reached.
+pub(crate) fn unref(a: &Analysis, mut t: TypeId) -> TypeId {
+    while let Ty::Ref { to, .. } = a.typed.ty(t) {
+        t = *to;
     }
+    t
 }
 
 pub(crate) fn struct_of(a: &Analysis, t: TypeId) -> Option<DefId> {

@@ -132,3 +132,50 @@ impl<N: usize, T> From<Vector<N, T>> for [T; N]  {
         vector.components
     }
 }
+
+impl<N: usize, T: Copy> Copy for Vector<N, T> {}
+
+/// Component by component: `[1, 2] + [3, 4]` is `[4, 6]`.
+impl<N: usize, T: Add + Copy> Add for Vector<N, T> {
+    fn add(&self, other: &Self) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i] + other.components[i]; }
+        Vector { components: c }
+    }
+}
+
+/// Component by component.
+impl<N: usize, T: Subtract + Copy> Subtract for Vector<N, T> {
+    fn subtract(&self, other: &Self) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i] - other.components[i]; }
+        Vector { components: c }
+    }
+}
+
+/// Component by component: `[1, 2] * [3, 4]` is `[3, 8]`.
+impl<N: usize, T: Multiply + Copy> Multiply for Vector<N, T> {
+    fn multiply(&self, other: &Self) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i] * other.components[i]; }
+        Vector { components: c }
+    }
+}
+
+/// Every component times `by`: `[1, 2] * 3` is `[3, 6]`.
+impl<N: usize, T: Multiply + Copy> Multiply<T> for Vector<N, T> {
+    fn multiply(&self, by: &T) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i] * *by; }
+        Vector { components: c }
+    }
+}
+
+/// Component by component.
+impl<N: usize, T: Divide + Copy> Divide for Vector<N, T> {
+    fn divide(&self, other: &Self) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i] / other.components[i]; }
+        Vector { components: c }
+    }
+}

@@ -7,7 +7,7 @@ mod builtins;
 mod names;
 mod primitives;
 
-pub use builtins::Builtin;
+pub use builtins::{Builtin, Stage};
 pub use items::{FailureField, LangFunc, LangStruct, LangTrait, LocationField};
 pub use names::*;
 pub use primitives::{FloatTy, IntTy, Primitive};

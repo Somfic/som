@@ -4,7 +4,7 @@
 /// value made with one too many: `lend(&r)` makes a `&&P` for nothing.
 struct P { v: i32 }
 
-fn lend(r: &&P) -> &&P = r;
+fn lend(r: & &P) -> & &P = r;
 
 fn main() -> i32 {
     let p = P { v: 1 };

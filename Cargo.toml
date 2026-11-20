@@ -18,6 +18,8 @@ members = [
     "crates/compiler/8-comptime",
     "crates/compiler/9-optimize",
     "crates/compiler/10-codegen",
+    # shaders, compiled for the GPU while compiling (by `@glsl`)
+    "crates/compiler/shader",
 
     # orchestration
     "crates/driver",

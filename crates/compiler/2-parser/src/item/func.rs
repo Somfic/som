@@ -16,6 +16,7 @@ impl Parser<'_> {
             requires,
             listens,
             test,
+            stage,
         } = self.take_wheres();
         let visibility = std::mem::take(&mut self.visibility);
         let start = self.current_span();
@@ -56,6 +57,7 @@ impl Parser<'_> {
             requires,
             listens,
             test,
+            stage,
             when: self.when.conditions.clone(),
             ..signature(doc, visibility, name)
         };
