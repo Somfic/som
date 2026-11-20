@@ -3,7 +3,7 @@
 /// A trait's parameter with a default can be left out of an implementation, and the default
 /// can name `Self` and the parameters before it.
 trait Scale<By = Self, Out = By> {
-    fn scale(self: &Self, by: &By) -> Out;
+    pub fn scale(self: &Self, by: &By) -> Out;
 }
 
 struct Meters { n: i32 }

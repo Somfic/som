@@ -123,5 +123,5 @@ impl<K: Eq + Hash, V> Map<K, V> {
 }
 
 impl<K, V> Sized for Map<K, V> {
-    pub prop len = .entries.len;
+    prop len = .entries.len;
 }

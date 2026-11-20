@@ -3,9 +3,9 @@
 /// Trait methods on a bounded type parameter, default methods, `Self`, and `==` through `Eq`.
 
 trait Shape {
-    fn area(self: &Self) -> i32;
+    pub fn area(self: &Self) -> i32;
     /// A default: twice the area.
-    fn double(self: &Self) -> i32 { self.area() * 2 }
+    pub fn double(self: &Self) -> i32 { self.area() * 2 }
 }
 
 struct Square { side: i32 }

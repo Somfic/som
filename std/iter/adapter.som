@@ -1,7 +1,13 @@
 pub trait Adapters: Iterator {
-    fn where<P: fn(&Self::Item) -> bool>(self, predicate: P) -> Where<Self, P>;
+    pub fn where<P: fn(&Self::Item) -> bool>(self, predicate: P) -> Where<Self, P>;
+
+    /// Each value it gives, added to what it's expected to be:
+    /// `let all: List<i32> = numbers.collect();`.
+    pub fn collect<C: Collect<Self::Item>>(self) -> C;
 }
 
 impl<I: Iterator> Adapters for I {
     fn where<P: fn(&I::Item) -> bool>(self, predicate: P) -> Where<I, P> = Where { inner: self, test: predicate };
+
+    fn collect<C: Collect<I::Item>>(self) -> C = collect_into(self);
 }

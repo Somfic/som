@@ -1,12 +1,13 @@
 // expect: error ReferenceToReference
 
-/// `&mut` of something that's already a reference makes a reference to a reference, whose
-/// fields aren't reached through: the extra `&` is the mistake.
+/// A variable's fields are reached through any number of references, but not those of a
+/// value made with one too many: `lend(&r)` makes a `&&P` for nothing.
 struct P { v: i32 }
+
+fn lend(r: &&P) -> &&P = r;
 
 fn main() -> i32 {
     let p = P { v: 1 };
     let r = &p;
-    let rr = &r;
-    rr.v
+    lend(&r).v
 }

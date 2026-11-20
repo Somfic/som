@@ -1,0 +1,9 @@
+// expect: error
+
+/// Only what takes the iterator by value is called on what `iter` makes: `numbers.next()`
+/// would give the first value every time.
+fn main() -> i32 {
+    let numbers: List<i32> = List::empty();
+    let first = numbers.next();
+    0
+}

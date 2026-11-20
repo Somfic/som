@@ -67,6 +67,28 @@ impl Checker<'_> {
         self.infer(object)
     }
 
+    /// `n` in `n.len` of a `&&string`: a place reached through references to references is
+    /// read through all but the last, as operators read through all of them. Gives the type
+    /// it's then read as, `&string`.
+    pub(super) fn through_references(&mut self, object: Id<Expr>, ty: TypeId) -> TypeId {
+        let is_place = matches!(
+            self.ast.exprs[object],
+            Expr::Var(_) | Expr::Field { .. } | Expr::Deref(_) | Expr::Index { .. }
+        );
+        let (mut ty, mut depth) = (self.u.shallow(ty), 0);
+        while let Ty::Ref { to, .. } = *self.u.get(ty)
+            && matches!(self.u.shallow_ty(to), Ty::Ref { .. })
+            && is_place
+        {
+            (ty, depth) = (self.u.shallow(to), depth + 1);
+        }
+        if depth > 0 {
+            self.records.derefs.insert(object, depth);
+            self.exprs[object.id] = Some(ty);
+        }
+        ty
+    }
+
     fn infer_inner(&mut self, id: Id<Expr>, in_place: bool) -> TypeId {
         let table = &self.u.table;
         let (error, bool) = (table.error, table.bool);

@@ -1,26 +1,26 @@
 pub trait Iterator {
     type Item;
 
-    fn next(self: &mut Self) -> Item?;
+    pub fn next(self: &mut Self) -> Item?;
 }
 
 /// for x in &collection
 pub trait IterRef {
     type Iter;
 
-    fn iter(self: &Self) -> Iter;
+    pub fn iter(self: &Self) -> Iter;
 }
 
 /// for x in &mut collection
 pub trait IterMut {
     type Iter;
 
-    fn iter_mut(self: &mut Self) -> Iter;
+    pub fn iter_mut(self: &mut Self) -> Iter;
 }
 
 /// for x in collection
 pub trait IterOwned {
     type Iter;
 
-    fn into_iter(self: Self) -> Iter;
+    pub fn into_iter(self: Self) -> Iter;
 }

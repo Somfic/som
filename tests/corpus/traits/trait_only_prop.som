@@ -1,0 +1,19 @@
+// expect: error TraitOnly
+
+/// A property without `pub` is only read by its trait and impls.
+pub trait Area {
+    prop raw: i32;
+    pub prop area: i32;
+}
+
+pub struct Square { side: i32 }
+
+impl Area for Square {
+    prop raw: i32 = .side * .side;
+    prop area: i32 = .raw * 2;
+}
+
+fn main() -> i32 {
+    let s = Square { side: 3 };
+    s.area + s.raw
+}

@@ -44,5 +44,5 @@ fn main() -> i32 {
     r + s.x + s.y + n + m + big.x + order - 1
 }
 fn describe(a: &V, b: &V) -> i32 {
-    match a.compare(b) { Less => 1, Equal => 2, Greater => 3 }
+    match Compare::compare(a, b) { Less => 1, Equal => 2, Greater => 3 }
 }

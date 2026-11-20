@@ -263,7 +263,7 @@ impl string {
     /// Writes `value`, `len` bytes of it, at byte `at` of a string being made. Gives where it
     /// ends.
     fn write_shown<T: Display>(&self, at: usize, value: &T, len: usize) -> usize {
-        value.display(.data.at(at) as *u8);
+        Display::display(value, .data.at(at) as *u8);
         at + len
     }
 }

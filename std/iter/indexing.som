@@ -2,9 +2,9 @@ pub trait Index: Sized {
     type Item;
 
     @where index < self.len, "a position in it"
-    fn at(self: &Self, index: usize) -> &Item;
+    pub fn at(self: &Self, index: usize) -> &Item;
 
-    fn get(self: &Self, index: usize) -> &Item? {
+    pub fn get(self: &Self, index: usize) -> &Item? {
         if index < self.len {
             return self.at(index);
         }
@@ -14,9 +14,9 @@ pub trait Index: Sized {
 
 pub trait IndexMut: Index {
     @where index < self.len, "a position in it"
-    fn at_mut(self: &mut Self, index: usize) -> &mut Self::Item;
+    pub fn at_mut(self: &mut Self, index: usize) -> &mut Self::Item;
 
-    fn get_mut(self: &mut Self, index: usize) -> &mut Self::Item? {
+    pub fn get_mut(self: &mut Self, index: usize) -> &mut Self::Item? {
         if index < self.len {
             return self.at_mut(index);
         }

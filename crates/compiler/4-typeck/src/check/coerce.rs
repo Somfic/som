@@ -79,7 +79,8 @@ impl Checker<'_> {
             self.records.fn_pointers.insert(expr);
             return true;
         }
-        if self.from_conversion(expr, expected, found) {
+        if self.from_conversion(expr, expected, found) || self.collect_conversion(expr, expected, found)
+        {
             return true;
         }
         // `&x` of a narrowed `x` borrows the value, but where a reference to the optional is

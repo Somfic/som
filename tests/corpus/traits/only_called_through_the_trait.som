@@ -1,0 +1,15 @@
+// expect: error TraitOnly
+
+/// A trait's method without `pub` is only called through the trait, so implementing a
+/// trait doesn't add to what a type's values can call.
+pub trait Reset { fn reset(&mut self); }
+
+pub struct Counter { n: i32 }
+
+impl Reset for Counter { fn reset(&mut self) { .n = 0; } }
+
+fn main() -> i32 {
+    let mut c = Counter { n: 4 };
+    c.reset();
+    c.n
+}

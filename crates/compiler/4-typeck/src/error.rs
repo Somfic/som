@@ -394,6 +394,15 @@ pub enum TypeError {
         missing: String,
         span: Span,
     },
+    /// `list.add(5)`, of a trait method without `pub`: only called through its trait.
+    TraitOnly {
+        method: String,
+        prop: bool,
+        trait_: String,
+        /// `Collect::add(&mut list, 5)`, when the call can be written that way.
+        instead: Option<String>,
+        span: Span,
+    },
     /// `where(is_odd)` for an `F: fn(&i32) -> bool` of what isn't called that way.
     NotCalledSo {
         ty: Message,
@@ -680,6 +689,7 @@ impl TypeError {
             | TypeError::DoesNotImplement { .. }
             | TypeError::NotCalledSo { .. }
             | TypeError::MissingSuperImpl { .. }
+            | TypeError::TraitOnly { .. }
             | TypeError::CopyWithMovedField { .. }
             | TypeError::NotDisplay { .. }
             | TypeError::DropOnCopy { .. }

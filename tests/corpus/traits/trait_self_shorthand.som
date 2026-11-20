@@ -1,6 +1,6 @@
 // expect: exit 5
 
-trait Size { fn size(&self) -> i32; }
+trait Size { pub fn size(&self) -> i32; }
 
 struct Rect { w: i32 }
 

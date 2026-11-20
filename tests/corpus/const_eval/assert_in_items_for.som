@@ -1,7 +1,7 @@
 // expect: error ConstFailed
 
 trait Size {
-    fn bits(&self) -> i32;
+    pub fn bits(&self) -> i32;
 }
 
 /// Checked in each copy of the items: for `N` 1 it fails.

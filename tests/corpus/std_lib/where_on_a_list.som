@@ -1,0 +1,18 @@
+// expect: exit 32
+
+/// An iterator's method that takes it by value, called on a list, is called on what the
+/// list's `iter` makes: `numbers.where(…)` is `numbers.iter().where(…)`. The list is only
+/// lent, so it's still there after.
+fn main() -> i32 {
+    let mut numbers: List<i32> = List::empty();
+    numbers.push(10); numbers.push(15); numbers.push(20);
+    let mut total = 0;
+    for n in numbers.where(x => x % 2 == 0) {
+        total = total + *n;
+    }
+    let slice: &[i32] = [1, 2, 3];
+    for n in slice.where(x => x > 1) {
+        total = total + *n;
+    }
+    total + numbers.len as i32 - 3 - 3
+}

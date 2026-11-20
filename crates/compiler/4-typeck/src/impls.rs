@@ -204,7 +204,8 @@ pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
         | LangTrait::Share
         | LangTrait::Index
         | LangTrait::IndexMut
-        | LangTrait::Display => false,
+        | LangTrait::Display
+        | LangTrait::Collect => false,
     }
 }
 
@@ -234,4 +235,36 @@ pub fn primitive_of(ty: &Ty) -> Option<som_ast::Primitive> {
         Ty::CStr => P::CStr,
         _ => return None,
     })
+}
+
+/// The trait `func` is a method of, or implements one of, and that method as the trait
+/// declares it.
+pub fn declared_in_trait(
+    ast: &som_ast::Ast,
+    names: &som_resolve::Names,
+    impls: &[ImplInfo],
+    func: som_ast::Id<som_ast::Func>,
+) -> Option<(DefId, som_ast::Id<som_ast::Func>)> {
+    let f = &ast.funcs[func];
+    if f.in_trait {
+        let this = *names.type_params(func).first()?;
+        return Some((*names.bounds(this).first()?, func));
+    }
+    let trait_ = impls.iter().find(|i| i.methods.contains(&func))?.trait_?;
+    let som_resolve::DefKind::Trait(t) = names.def(trait_).kind else {
+        return None;
+    };
+    let declared = (ast.traits[t].methods.iter().copied())
+        .find(|&m| ast.funcs[m].prop == f.prop && ast.funcs[m].name.name == f.name.name)?;
+    Some((trait_, declared))
+}
+
+/// Whether values call `func` with `.`: it isn't a trait's, or its trait marks it `pub`.
+pub fn on_values(
+    ast: &som_ast::Ast,
+    names: &som_resolve::Names,
+    impls: &[ImplInfo],
+    func: som_ast::Id<som_ast::Func>,
+) -> bool {
+    declared_in_trait(ast, names, impls, func).is_none_or(|(_, declared)| ast.funcs[declared].on_values)
 }

@@ -2,11 +2,11 @@
 
 /// A type that writes its own implementation of the trait gets that one, not the blanket one.
 trait Describe {
-    fn describe(self: &Self) -> i32;
+    pub fn describe(self: &Self) -> i32;
 }
 
 trait Sized2 {
-    prop size: i32;
+    pub prop size: i32;
 }
 
 impl<C: Sized2> Describe for C {

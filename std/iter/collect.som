@@ -1,0 +1,14 @@
+pub trait Collect<T> {
+    fn init() -> Self;
+    fn add(&mut self, value: T);
+}
+
+/// Each value `values` gives, added to a new `C`, in order. What `.collect()` does, and what
+/// `let all: List<i32> = numbers.where(…);` does without it being written.
+mod fn collect_into<I: Iterator, C: Collect<I::Item>>(mut values: I) -> C {
+    let mut all: C = Collect::init();
+    loop {
+        let value = values.next() else return all;
+        Collect::add(&mut all, value);
+    }
+}

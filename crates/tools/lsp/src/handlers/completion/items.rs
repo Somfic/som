@@ -432,7 +432,9 @@ pub(super) fn prop_items(
         let DefKind::Func(f) = a.names.def(prop).kind else {
             continue;
         };
-        if !visibility::can_see(&a.ast, &a.names, prop, viewer) {
+        if !visibility::can_see(&a.ast, &a.names, prop, viewer)
+            || !som_typeck::traits::on_values(&a.ast, &a.names, &a.typed.impls, f)
+        {
             continue;
         }
         let fits = (a.names.impl_of(f))
@@ -535,11 +537,79 @@ pub(super) fn trait_methods_of(a: &Analysis, t: TypeId) -> Vec<(Id<Func>, String
     let mut methods = Vec::new();
     for (tr, args) in traits {
         let stubs = som_typeck::stubs::stubs(&a.ast, tr, &shown, &args, &|_, _| false);
+        // Only those values call: the trait's `pub` ones.
         for &method in &a.ast.traits[tr].methods {
+            if !a.ast.funcs[method].on_values {
+                continue;
+            }
             let name = &a.ast.funcs[method].name.name;
             let signature = (stubs.iter())
                 .find(|s| !s.is_type && *s.name == **name)
                 .map_or_else(|| format!("fn {name}"), |s| s.signature.clone());
+            methods.push((method, signature));
+        }
+    }
+    methods
+}
+
+/// `where` and `collect` after `numbers.` of a `List`: the methods taking an iterator by
+/// value, which a value that isn't one but makes one with `iter` is lent to it for. Each
+/// with its signature for that iterator.
+pub(super) fn auto_iter_methods_of(a: &Analysis, t: TypeId) -> Vec<(Id<Func>, String)> {
+    let t = crate::types::unref(a, t);
+    let (Some(iterator), Some(iter_ref)) =
+        (a.names.lang(LangTrait::Iterator), a.names.lang(LangTrait::IterRef))
+    else {
+        return Vec::new();
+    };
+    let (impls, table) = (&a.typed.impls, &a.typed.table);
+    let find = |trait_| som_typeck::traits::find_impl(impls, table, trait_, t, &[], &|x| x);
+    if matches!(a.typed.ty(t), Ty::Param(_) | Ty::Var(_) | Ty::Error) || find(iterator).is_some() {
+        return Vec::new();
+    }
+    let Some((i, args)) = find(iter_ref) else {
+        return Vec::new();
+    };
+    let DefKind::Trait(iter_trait) = a.names.def(iter_ref).kind else {
+        return Vec::new();
+    };
+    let Some(written) = (a.names.trait_types(iter_trait).iter())
+        .position(|&d| Some(&*a.names.def(d).name) == LangTrait::IterRef.assoc_type())
+        .and_then(|k| impls[i].types.get(k).copied().flatten())
+    else {
+        return Vec::new();
+    };
+    let subst: Vec<_> = impls[i].params.iter().copied().zip(args).collect();
+    let shown = table.display_with(written, &a.names, &subst);
+    let mut traits = vec![iterator];
+    for info in impls {
+        if let Some(trait_) = info.trait_
+            && info.blanket.as_ref().is_some_and(|b| b.contains(&iterator))
+            && !traits.contains(&trait_)
+        {
+            traits.push(trait_);
+        }
+    }
+    let mut methods = Vec::new();
+    for trait_ in traits {
+        let DefKind::Trait(tr) = a.names.def(trait_).kind else {
+            continue;
+        };
+        let stubs = som_typeck::stubs::stubs(&a.ast, tr, &shown, &[], &|_, _| false);
+        for &method in &a.ast.traits[tr].methods {
+            let f = &a.ast.funcs[method];
+            let by_value = (f.params.first()).is_some_and(|p| {
+                &*p.name.name == som_lang::SELF_VALUE
+                    && !p.ty.is_some_and(|t| {
+                        matches!(a.ast.types[t], som_ast::TypeExpr::Reference { .. })
+                    })
+            });
+            if !f.on_values || !by_value {
+                continue;
+            }
+            let signature = (stubs.iter())
+                .find(|s| !s.is_type && *s.name == *f.name.name)
+                .map_or_else(|| format!("fn {}", f.name.name), |s| s.signature.clone());
             methods.push((method, signature));
         }
     }

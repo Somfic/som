@@ -1,0 +1,10 @@
+// expect: error
+
+/// How a trait's method is called is up to the trait: its impls can't make it `pub`.
+pub trait Reset { fn reset(&mut self); }
+
+pub struct Counter { n: i32 }
+
+impl Reset for Counter { pub fn reset(&mut self) { .n = 0; } }
+
+fn main() -> i32 { 0 }

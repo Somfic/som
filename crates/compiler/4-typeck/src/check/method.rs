@@ -30,10 +30,13 @@ impl Checker<'_> {
         let error = self.u.table.error;
         let expected = self.hints.expected_here.take();
         let receiver_ty = self.infer(receiver);
+        let receiver_ty = self.through_references(receiver, receiver_ty);
         // `node.total()` of a `#Node`: what it shares.
         let receiver_ty = self.through_shared(receiver, receiver_ty, &method.name);
         // `"abc".len()`: text in quotes is a `string`, with its methods.
         self.text_as_string(receiver_ty);
+        // `numbers.where(…)`: an iterator's, called on the one `numbers.iter()` makes.
+        let receiver_ty = self.auto_iter(receiver, receiver_ty, &method.name);
         // A trait's method the type has, `x.compare(&y)`, before a pointer's own; an
         // array's or slice's own first, `get` giving a copy.
         let builtin = ArrayMethod::from_name(&method.name).is_some() && {
@@ -224,6 +227,7 @@ impl Checker<'_> {
         }
         self.records.methods.insert(id, def);
         self.check_visible(def, &method.span);
+        self.check_on_values(func, receiver, receiver_ty, method, Some(args));
         self.require_bounds(func, &type_args, self.span(id));
         if !type_args.is_empty() {
             self.type_args.insert(id, type_args);
@@ -579,6 +583,7 @@ impl Checker<'_> {
         self.records.methods.insert(call, def);
         if let Expr::MethodCall { method, .. } = &self.ast.exprs[call] {
             self.check_visible(def, &method.span);
+            self.check_on_values(func, receiver, receiver_ty, method, Some(args));
         }
         self.require_bounds(func, &type_args, self.span(call));
         if !type_args.is_empty() {

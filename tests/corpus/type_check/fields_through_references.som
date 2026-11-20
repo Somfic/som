@@ -1,0 +1,18 @@
+// expect: exit 16
+
+/// Fields, methods and properties are reached through any number of references, as
+/// operators are: `n.len` of the `&&string` a `where` over a `List<string>` gives.
+struct P { x: i32 }
+
+impl P { pub fn twice(&self) -> i32 = .x * 2; }
+
+fn main() -> i32 {
+    let p = P { x: 5 };
+    let r = &p;
+    let rr = &r;
+    let rrr = &rr;
+    let mut names: List<string> = List::empty();
+    names.push("ab"); names.push("cde");
+    let long: List = names.where(n => n.len > 2);
+    rrr.x + rr.twice() + long.len as i32
+}

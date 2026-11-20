@@ -7,7 +7,9 @@ use som_typeck::{ArrayMethod, PointerMethod, Ty, TypeId};
 use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind};
 
 use super::Request;
-use super::items::{method_item, prop_items, snippet_item, takes_self, trait_methods_of};
+use super::items::{
+    auto_iter_methods_of, method_item, prop_items, snippet_item, takes_self, trait_methods_of,
+};
 use crate::docs::{
     Sequence, array_method_doc, array_of, describe, doc_of, markdown, pointer_method_doc,
     readable_fields, signature, signature_with, ty,
@@ -45,7 +47,9 @@ pub(super) fn complete(request: &Request) -> Option<Vec<CompletionItem>> {
 /// `IterRef` or `where` of an iterator's `Adapters`: those not named like one already there.
 fn add_trait_methods(request: &Request, t: TypeId, items: &mut Vec<CompletionItem>) {
     let a = request.a;
-    for (method, signature) in trait_methods_of(a, t) {
+    // Then `where` of a `List`, which calls it on what its `iter` makes.
+    let methods = trait_methods_of(a, t).into_iter().chain(auto_iter_methods_of(a, t));
+    for (method, signature) in methods {
         let name = a.ast.funcs[method].name.name.to_string();
         if !takes_self(a, method) || items.iter().any(|item| item.label == name) {
             continue;
@@ -168,7 +172,10 @@ fn struct_members(
         };
         // Not those called on the type, `Queue::empty`: a value has only what takes `self`.
         let on_the_type = matches!(a.names.def(method).kind, DefKind::Func(f) if !takes_self(a, f));
-        if !request.visible(method) || on_the_type {
+        // Nor a trait's that only the trait calls, `Collect::add`.
+        let trait_only = matches!(a.names.def(method).kind,
+            DefKind::Func(f) if !som_typeck::traits::on_values(&a.ast, &a.names, &a.typed.impls, f));
+        if !request.visible(method) || on_the_type || trait_only {
             continue;
         }
         let item = match a.names.def(method).kind {

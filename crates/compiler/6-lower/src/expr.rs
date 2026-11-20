@@ -279,7 +279,7 @@ impl FnBuilder<'_, '_> {
                 };
                 self.constant(kind, ty)
             }
-            _ if self.typed.is_narrowed(expr) => {
+            _ if self.typed.is_narrowed(expr) || self.typed.derefs(expr) > 0 => {
                 let place = self.place(expr);
                 self.read_at(place, ty, span)
             }

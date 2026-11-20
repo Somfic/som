@@ -38,12 +38,15 @@ impl FnBuilder<'_, '_> {
 
     /// A narrowed optional's place is the value it holds.
     pub(super) fn place(&mut self, expr: Id<Expr>) -> Place {
-        let place = self.place_of(expr);
+        let mut place = self.place_of(expr);
         if self.typed.is_narrowed(expr) {
-            place.project(Projection::Field(1))
-        } else {
-            place
+            place = place.project(Projection::Field(1));
         }
+        // `n` in `n.len` of a `&&string`: read through to the `&string`.
+        for _ in 0..self.typed.derefs(expr) {
+            place = place.project(Projection::Deref);
+        }
+        place
     }
 
     /// Stored in a temporary if it isn't a place already.

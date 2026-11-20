@@ -9,7 +9,7 @@ impl P {
     pub fn same(&self) -> &Self = self;
 }
 
-pub trait Make { type Item; fn item(&self) -> Self::Item; }
+pub trait Make { type Item; pub fn item(&self) -> Self::Item; }
 
 impl Make for P {
     type Item = i32;

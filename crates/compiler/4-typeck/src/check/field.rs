@@ -18,6 +18,7 @@ impl Checker<'_> {
     ) -> TypeId {
         let error = self.u.table.error;
         let object_ty = self.infer_object(object);
+        let object_ty = self.through_references(object, object_ty);
         // `node.value` of a `#Node`: what it shares.
         let object_ty = self.through_shared(object, object_ty, &field.name);
         // `"abc".len`: text in quotes is a `string`, with its props.
@@ -466,6 +467,7 @@ impl Checker<'_> {
         }
         self.records.methods.insert(id, def);
         self.check_visible(def, &field.span);
+        self.check_on_values(func, object, object_ty, field, None);
         self.require_bounds(func, &type_args, self.span(id));
         if !type_args.is_empty() {
             self.type_args.insert(id, type_args);
@@ -519,6 +521,7 @@ impl Checker<'_> {
         let _ = self.u.unify(type_args[0], base);
         self.records.methods.insert(id, self.names.func(func));
         self.type_args.insert(id, type_args);
+        self.check_on_values(func, object, object_ty, field, None);
         if let Some(&self_ty) = sig.params.first()
             && !self.receive(object, self_ty, object_ty)
         {

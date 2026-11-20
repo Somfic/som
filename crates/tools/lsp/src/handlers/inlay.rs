@@ -22,6 +22,7 @@ pub(crate) fn inlay_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
     // Before the conversions, which go at the same place.
     hints.extend(parameter_hints(a, file));
     hints.extend(conversion_hints(a, file));
+    hints.extend(auto_iter_hints(a, file));
     hints.extend(constant_call_hints(a, file));
     hints
 }
@@ -203,11 +204,24 @@ fn worth_naming(a: &Analysis, arg: Id<Expr>, param: &str) -> bool {
 fn conversion_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
     let mut hints = Vec::new();
     for (id, _) in a.ast.exprs.iter() {
-        let Some((_, &[target, source, ..])) = a.typed.conversion(id) else {
+        let Some((func, &[target, source, ..])) = a.typed.conversion(id) else {
             continue;
         };
         let span = a.ast.exprs.span(id);
         if span.source.identifier() != file {
+            continue;
+        }
+        // `let evens: List<i32> = numbers.where(…)`: collected, `[target, source]` the
+        // iterator and what it's collected into.
+        if a.names.lang_func(som_lang::LangFunc::CollectInto) == Some(func) {
+            let tooltip = format!(
+                "collected into `{}` by its `Collect`",
+                ty(a, source)
+            );
+            hints.push(InlayHint {
+                tooltip: Some(InlayHintTooltip::String(tooltip)),
+                ..hint(convert::span_to_range(span).end, ".collect()".to_string())
+            });
             continue;
         }
         let Ty::Struct(def, _) = a.typed.ty(target) else {
@@ -228,6 +242,28 @@ fn conversion_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
                 ..hint(position, label)
             });
         }
+    }
+    hints
+}
+
+/// `.iter()` after `numbers` in `numbers.where(…)`, which is lent to its `iter` for it.
+fn auto_iter_hints(a: &Analysis, file: &str) -> Vec<InlayHint> {
+    let mut hints = Vec::new();
+    for (id, _) in a.ast.exprs.iter() {
+        if !a.typed.is_auto_iter(id) {
+            continue;
+        }
+        let span = a.ast.exprs.span(id);
+        if span.source.identifier() != file {
+            continue;
+        }
+        hints.push(InlayHint {
+            tooltip: Some(InlayHintTooltip::String(format!(
+                "called on what `{}`'s `iter` makes",
+                ty(a, a.typed.expr(id))
+            ))),
+            ..hint(convert::span_to_range(span).end, ".iter()".to_string())
+        });
     }
     hints
 }
@@ -470,6 +506,25 @@ mod tests {
                 (3, 28, ": &&i32".to_string()),
                 (4, 12, ": i32".to_string()),
             ]
+        );
+    }
+
+    #[test]
+    fn iter_and_collect_put_in_are_hinted() {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.som");
+        let text = "fn main() -> i32 {\n    let a: &[i32] = [1, 2, 3, 4];\n    \
+                    let b: List<i32> = a.where(x => x > 2);\n    b.len as i32\n}\n";
+        std::fs::write(&main, text).unwrap();
+        let analysis = som_driver::analyze(dir.path(), &som_driver::Options::default());
+        let file = main.to_string_lossy();
+        assert_eq!(
+            labels(auto_iter_hints(&analysis, &file)),
+            [(2, 24, ".iter()".to_string())]
+        );
+        assert_eq!(
+            labels(conversion_hints(&analysis, &file)),
+            [(2, 42, ".collect()".to_string())]
         );
     }
 

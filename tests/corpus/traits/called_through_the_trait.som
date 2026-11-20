@@ -1,0 +1,26 @@
+// expect: exit 7
+
+/// A method without `pub` is called through its trait, `Reset::reset(&mut c)`, also in
+/// generic code; its trait and impls call it on values. With `pub`, everyone can.
+pub trait Reset {
+    fn reset(&mut self);
+    fn reset_twice(&mut self) { self.reset(); self.reset(); }
+    pub fn value(&self) -> i32;
+}
+
+pub struct Counter { n: i32 }
+
+impl Reset for Counter {
+    fn reset(&mut self) { .n = .n + 1; }
+    fn value(&self) -> i32 = .n;
+}
+
+fn clear<T: Reset>(value: &mut T) { Reset::reset(value); }
+
+fn main() -> i32 {
+    let mut c = Counter { n: 2 };
+    Reset::reset(&mut c);
+    clear(&mut c);
+    Reset::reset_twice(&mut c);
+    c.value() + 1
+}

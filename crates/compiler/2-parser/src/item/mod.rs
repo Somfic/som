@@ -313,6 +313,7 @@ fn signature(doc: Option<String>, visibility: Visibility, name: Ident) -> Func {
         link_name: None,
         library: None,
         in_trait: false,
+        on_values: false,
         prop: false,
         requires: Vec::new(),
         listens: Vec::new(),

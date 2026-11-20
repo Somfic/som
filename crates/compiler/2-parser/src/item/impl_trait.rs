@@ -98,7 +98,11 @@ impl Parser<'_> {
                 self.parse_wheres();
                 continue;
             }
+            let start = self.current_span();
             self.visibility = self.parse_visibility();
+            if trait_.is_some() && self.visibility != som_ast::Visibility::Private {
+                self.not_in_trait_impl(start, trait_.as_ref().map(|(t, _)| t));
+            }
             self.parse_impl_member(&mut members, &generics)?;
         }
         self.ctx.impl_block = false;
@@ -120,6 +124,19 @@ impl Parser<'_> {
             consts: members.consts,
             close,
         })
+    }
+
+    /// `pub fn next` in `impl Iterator for Range`: how a trait's methods are called is the
+    /// trait's to say.
+    fn not_in_trait_impl(&mut self, start: som_base::Span, trait_: Option<&Path>) {
+        let span = start.merge(&self.previous_span());
+        let trait_ = trait_.map_or(String::new(), |t| t.to_string());
+        self.error(
+            span,
+            msg![code("pub"), " on a method of a trait's impl"],
+            msg!["whether values can call it is up to ", code(trait_), "; take this out"],
+            None,
+        );
     }
 
     /// The `}` of an `@if` among the members, at it, and an `else` or `else @if` after it.
@@ -252,7 +269,10 @@ impl Parser<'_> {
                 types.push(AssocType { doc, name });
             } else if self.at_where() {
                 self.parse_wheres();
-            } else if self.at_fn() || self.at(TokenKind::Prop) {
+            } else if self.at_fn()
+                || self.at(TokenKind::Prop)
+                || self.at(TokenKind::Pub) || self.at(TokenKind::Mod)
+            {
                 match self.parse_trait_method(&name, &generics) {
                     Some(id) => methods.push(id),
                     None => self.recover(RecoveryLevel::Member),
@@ -295,6 +315,23 @@ impl Parser<'_> {
             test,
         } = self.take_wheres();
         let start = self.current_span();
+        // `pub fn next`: called on values too. A trait's methods are as visible as the trait,
+        // so `mod` means nothing here.
+        let on_values = self.eat(TokenKind::Pub);
+        if self.at(TokenKind::Mod) {
+            self.error(
+                self.current_span(),
+                msg![code("mod"), " on a trait's method"],
+                msg![
+                    "a trait's methods are as visible as the trait; ",
+                    code("pub"),
+                    " lets values call it with ",
+                    code("."),
+                ],
+                None,
+            );
+            self.advance();
+        }
         let prop = self.eat(TokenKind::Prop);
         if !prop {
             self.expect_fn("a method declaration")?;
@@ -347,6 +384,7 @@ impl Parser<'_> {
             body,
             variadic,
             in_trait: true,
+            on_values,
             prop,
             requires,
             listens,

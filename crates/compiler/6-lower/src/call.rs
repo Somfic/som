@@ -88,6 +88,9 @@ impl FnBuilder<'_, '_> {
                 _ => (Operand::Copy(Place::local(lent)), lent_ty, span),
             };
         }
+        if self.typed.is_auto_iter(receiver) {
+            return self.auto_iter(receiver);
+        }
         let ty = self.expr_ty(receiver);
         match self.typed.receiver(receiver) {
             None => (self.operand(receiver), ty, span),
@@ -118,6 +121,35 @@ impl FnBuilder<'_, '_> {
                 (self.read(place, to), to, span)
             }
         }
+    }
+
+    /// `numbers` in `numbers.where(…)`: what `numbers.iter()` makes, which the method takes.
+    fn auto_iter(&mut self, receiver: Id<Expr>) -> (Operand, TypeId, Span) {
+        let span = self.span(receiver);
+        let ty = self.expr_ty(receiver);
+        let (lent, viewed) = match *self.l.mir.types.get(ty) {
+            Ty::Ref { mutable: false, to } => (self.operand(receiver), to),
+            // A `&mut` lent on as a `&`: `&*numbers`.
+            Ty::Ref { mutable: true, to } => {
+                let place = self.place(receiver).project(Projection::Deref);
+                let temp = self.borrow_temp(place, false, to, span.clone());
+                (Operand::Move(Place::local(temp)), to)
+            }
+            _ => {
+                let place = self.place(receiver);
+                let temp = self.borrow_temp(place, false, ty, span.clone());
+                (Operand::Move(Place::local(temp)), ty)
+            }
+        };
+        let iter = self.l.lang_method(som_lang::LangTrait::IterRef);
+        let func = self.l.instance(iter, vec![viewed]);
+        let made = self.l.mir.funcs[func].ret;
+        let call = Rvalue::Call {
+            func,
+            args: vec![lent],
+        };
+        let value = self.temp_read(made, call, span.clone());
+        (value, made, span)
     }
 
     /// Passes a `&mut` variable on as `&mut *x` rather than moving it, so it's usable again

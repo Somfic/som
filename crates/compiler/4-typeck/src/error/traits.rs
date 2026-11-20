@@ -90,6 +90,34 @@ pub(super) fn diagnostic(error: &TypeError) -> Diagnostic {
             code(format!("impl {missing} for …")),
             " for the same type"
         ]),
+        TypeError::TraitOnly {
+            method,
+            prop,
+            trait_,
+            instead,
+            span,
+        } => {
+            let diagnostic = Diagnostic::error(msg![
+                code(method),
+                if *prop { " is only read inside " } else { " is only called through " },
+                code(trait_)
+            ])
+            .with_label(Label::primary(
+                span.clone(),
+                msg![code(trait_), " doesn't mark it ", code("pub")],
+            ));
+            let call = match instead {
+                Some(call) => msg!["write ", code(call), ", or mark it "],
+                None => msg!["mark it "],
+            };
+            diagnostic.with_hint(msg![
+                call,
+                code(format!("pub {} {method}", if *prop { "prop" } else { "fn" })),
+                " in ",
+                code(trait_),
+                if *prop { " to read it on values" } else { " to call it on values" }
+            ])
+        }
         TypeError::NotCalledSo { ty, signature, span } => Diagnostic::error(msg![
             ty.clone(),
             " can't be called as ",

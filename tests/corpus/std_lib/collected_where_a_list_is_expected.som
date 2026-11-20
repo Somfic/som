@@ -1,0 +1,17 @@
+// expect: exit 123
+
+/// An iterator where a type with `Collect` of what it gives is expected is collected into
+/// one: in a `let` with a type, as an argument, and as what's returned. Without a type
+/// expected, it stays an iterator. Lent values that copy are copied in.
+fn evens(of: &List<i32>) -> List<i32> = of.where(x => x % 2 == 0);
+
+fn count(values: List<i32>) -> i32 = values.len as i32;
+
+fn main() -> i32 {
+    let mut numbers: List<i32> = List::empty();
+    numbers.push(1); numbers.push(2); numbers.push(3); numbers.push(4);
+    let big: List<i32> = numbers.where(x => x > 3);
+    let lazy = numbers.where(x => x > 1);
+    let lent: List<&i32> = lazy;
+    big.len as i32 * 100 + evens(&numbers).len as i32 * 10 + count(numbers.where(x => x > 3)) + lent.len as i32 - 1
+}

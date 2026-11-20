@@ -16,7 +16,7 @@ impl Iterator for Countdown {
 
 trait Counting: Iterator {
     type Check = fn(&Self::Item) -> bool;
-    fn count_where<P: Check>(self, check: P) -> i32;
+    pub fn count_where<P: Check>(self, check: P) -> i32;
 }
 
 impl<I: Iterator> Counting for I {

@@ -663,6 +663,59 @@ impl Checker<'_> {
         }
     }
 
+    /// The trait `func` is a method of, or implements one of, and that method as the trait
+    /// declares it.
+    pub(super) fn declared_in_trait(&self, func: Id<Func>) -> Option<(DefId, Id<Func>)> {
+        crate::impls::declared_in_trait(self.ast, self.names, &self.impls, func)
+    }
+
+    /// Reports `receiver.method(args)` of a trait's method not marked `pub`, which is only
+    /// called through the trait, `Collect::add(&mut all, value)`. The trait and its impls
+    /// call it on values as they like: it's theirs.
+    pub(super) fn check_on_values(
+        &mut self,
+        func: Id<Func>,
+        receiver: Id<Expr>,
+        receiver_ty: TypeId,
+        method: &som_ast::Ident,
+        args: Option<&[Id<Expr>]>,
+    ) {
+        let Some((trait_, declared)) = self.declared_in_trait(func) else {
+            return;
+        };
+        if self.ast.funcs[declared].on_values {
+            return;
+        }
+        let inside = self.current_func.and_then(|f| self.declared_in_trait(f));
+        if inside.is_some_and(|(t, _)| t == trait_) {
+            return;
+        }
+        let trait_name = self.names.def(trait_).name.to_string();
+        // `&mut list`: borrowed as the method takes `self`, unless it's a reference already.
+        let instead = args.map(|args| {
+            let receiver_ty = self.u.shallow(receiver_ty);
+            let borrow = match self.ast.funcs[declared].params.first().and_then(|p| p.ty) {
+                _ if matches!(self.u.get(receiver_ty), Ty::Ref { .. }) => "",
+                Some(ty) => match self.ast.types[ty] {
+                    som_ast::TypeExpr::Reference { mutable: true, .. } => "&mut ",
+                    som_ast::TypeExpr::Reference { mutable: false, .. } => "&",
+                    _ => "",
+                },
+                None => "",
+            };
+            let mut all = vec![format!("{borrow}{}", self.span(receiver).get_text())];
+            all.extend(args.iter().map(|&a| self.span(a).get_text().to_string()));
+            format!("{trait_name}::{}({})", method.name, all.join(", "))
+        });
+        self.errors.push(TypeError::TraitOnly {
+            method: method.name.to_string(),
+            prop: self.ast.funcs[declared].prop,
+            trait_: trait_name,
+            instead,
+            span: method.span.clone(),
+        });
+    }
+
     pub(super) fn trait_method(&self, trait_: DefId, name: &str) -> Option<Id<Func>> {
         let DefKind::Trait(t) = self.names.def(trait_).kind else {
             return None;
@@ -671,7 +724,7 @@ impl Checker<'_> {
             .find(|&m| !self.ast.funcs[m].prop && &*self.ast.funcs[m].name.name == name)
     }
 
-    fn assoc_index(&self, trait_: DefId, name: &str) -> Option<usize> {
+    pub(super) fn assoc_index(&self, trait_: DefId, name: &str) -> Option<usize> {
         let DefKind::Trait(t) = self.names.def(trait_).kind else {
             return None;
         };
@@ -742,6 +795,7 @@ impl Checker<'_> {
         let ret = self.normalize_assoc(sig.ret);
         self.records.methods.insert(call, self.names.func(func));
         self.type_args.insert(call, type_args.clone());
+        self.check_on_values(func, receiver, receiver_ty, method, Some(args));
         self.require_bounds(func, &type_args, self.span(call));
         let name = format!("{}::{}", self.u.display(base, self.names), method.name);
         match params.split_first() {
@@ -769,6 +823,68 @@ impl Checker<'_> {
             }
         }
         Some(ret)
+    }
+
+    /// `numbers.where(…)` of a `List`: a method taking an iterator by value, called on what
+    /// isn't one but makes one with `iter`, is called on what `numbers.iter()` makes. Gives
+    /// that iterator's type, or `ty` if it isn't such a call.
+    pub(super) fn auto_iter(&mut self, receiver: Id<Expr>, ty: TypeId, name: &str) -> TypeId {
+        let (Some(iterator), Some(iter_ref)) = (
+            self.names.lang(LangTrait::Iterator),
+            self.names.lang(LangTrait::IterRef),
+        ) else {
+            return ty;
+        };
+        let mut base = self.u.shallow(ty);
+        if let Ty::Ref { to, .. } = *self.u.get(base) {
+            base = self.u.shallow(to);
+        }
+        let own = match *self.u.get(base) {
+            Ty::Struct(owner, _) => {
+                self.names.method(owner, name).is_some() || !self.names.props(owner, name).is_empty()
+            }
+            Ty::Array { .. } | Ty::Slice(_) | Ty::Str => crate::ArrayMethod::from_name(name).is_some(),
+            Ty::Var(_) | Ty::Error | Ty::Param(_) => true,
+            _ => false,
+        };
+        if own
+            || !self.consumes_iterator(iterator, name)
+            || self.implements(base, iterator)
+            || !self.implements(base, iter_ref)
+        {
+            return ty;
+        }
+        let Some(index) = self.assoc_index(iter_ref, LangTrait::IterRef.assoc_type().unwrap_or("Iter"))
+        else {
+            return ty;
+        };
+        let assoc = self.u.intern(Ty::Assoc {
+            base,
+            trait_: iter_ref,
+            index,
+        });
+        self.records.auto_iter.insert(receiver);
+        self.normalize_assoc(assoc)
+    }
+
+    /// Whether `name` is a method values call on any `Iterator`, taking it by value: `where`
+    /// or `collect`, of `Iterator` or a trait every one has.
+    fn consumes_iterator(&self, iterator: DefId, name: &str) -> bool {
+        let blanket = (self.impls.iter())
+            .filter(|i| i.blanket.as_ref().is_some_and(|b| b.contains(&iterator)))
+            .filter_map(|i| i.trait_);
+        std::iter::once(iterator).chain(blanket).any(|t| {
+            self.trait_method(t, name).is_some_and(|m| {
+                let f = &self.ast.funcs[m];
+                let by_value = (f.params.first()).is_some_and(|p| {
+                    &*p.name.name == som_lang::SELF_VALUE
+                        && !p.ty.is_some_and(|t| {
+                            matches!(self.ast.types[t], som_ast::TypeExpr::Reference { .. })
+                        })
+                });
+                f.on_values && by_value
+            })
+        })
     }
 
     pub(super) fn iterator_loop(&mut self, stmt: Id<som_ast::Stmt>, ty: TypeId) -> Option<TypeId> {

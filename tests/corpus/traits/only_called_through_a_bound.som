@@ -1,0 +1,8 @@
+// expect: error TraitOnly
+
+/// Through a bound too: a `T: Reset` doesn't call `reset` on values either.
+pub trait Reset { fn reset(&mut self); }
+
+fn clear<T: Reset>(value: &mut T) { value.reset(); }
+
+fn main() -> i32 { 0 }

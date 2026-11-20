@@ -133,6 +133,9 @@ pub struct Func {
     pub library: Option<PathBuf>,
     /// A signature implementations follow, not a function of its own.
     pub in_trait: bool,
+    /// `pub fn next` in a trait: called on values too, `iter.next()`. Without it, a trait's
+    /// method is only called through the trait, `Collect::add(&mut all, value)`.
+    pub on_values: bool,
     /// `prop len: usize`, read as `list.len`, taking an unwritten `&self`. Properties are
     /// named apart from methods, so a type can have a `len` of each.
     pub prop: bool,

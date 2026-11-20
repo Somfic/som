@@ -3,7 +3,7 @@
 /// A trait can have properties: each implementation gives its own, and generic code reads
 /// them through the bound.
 trait Area {
-    prop area: i32;
+    pub prop area: i32;
 }
 
 struct Rect { w: i32, h: i32 }

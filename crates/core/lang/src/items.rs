@@ -39,6 +39,7 @@ named_enum! {
         Index = "Index",
         IndexMut = "IndexMut",
         Display = "Display",
+        Collect = "Collect",
     }
 }
 
@@ -62,7 +63,7 @@ impl LangTrait {
             LangTrait::Index => "at",
             LangTrait::IndexMut => "at_mut",
             LangTrait::Display => "display",
-            LangTrait::Copy => return None,
+            LangTrait::Copy | LangTrait::Collect => return None,
         })
     }
 
@@ -123,6 +124,8 @@ named_enum! {
         TestStart = "test_start",
         TestPassed = "test_passed",
         TestSummary = "test_summary",
+        /// What `let all: List<i32> = numbers.where(…)` calls to collect the values.
+        CollectInto = "collect_into",
     }
 }
 

@@ -2,7 +2,7 @@
 
 /// A trait's method implemented for a built-in type is the type's, by name too: `i32::double`.
 trait Double<T> {
-    fn double(self: T) -> T;
+    pub fn double(self: T) -> T;
 }
 
 impl Double<i32> for i32 {

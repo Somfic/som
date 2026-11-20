@@ -48,6 +48,101 @@ impl Checker<'_> {
         true
     }
 
+    /// Whether `expr`, an iterator, is collected into `expected`, which implements `Collect`
+    /// of what it gives: `let evens: List<i32> = numbers.where(…)` is
+    /// `numbers.where(…).collect()`. Records it if so. Only into a type that's known.
+    pub(super) fn collect_conversion(
+        &mut self,
+        expr: Id<Expr>,
+        expected: TypeId,
+        found: TypeId,
+    ) -> bool {
+        let (Some(iterator), Some(collect), Some(collect_into)) = (
+            self.names.lang(LangTrait::Iterator),
+            self.names.lang(LangTrait::Collect),
+            self.names.lang_func(som_lang::LangFunc::CollectInto),
+        ) else {
+            return false;
+        };
+        let (expected, found) = (self.u.shallow(expected), self.u.shallow(found));
+        let unknown = |ty: &Ty| matches!(ty, Ty::Var(_) | Ty::Error | Ty::Param(_));
+        if unknown(self.u.get(expected))
+            || unknown(self.u.get(found))
+            || !self.implements(found, iterator)
+        {
+            return false;
+        }
+        let Some(index) = self.assoc_index(iterator, "Item") else {
+            return false;
+        };
+        let assoc = self.u.intern(Ty::Assoc {
+            base: found,
+            trait_: iterator,
+            index,
+        });
+        let item = self.normalize_assoc(assoc);
+        let Some(target) = self.collected_into(collect, expected, item) else {
+            return false;
+        };
+        if self.u.unify(expected, target).is_err() {
+            return false;
+        }
+        self.conversions.insert(expr, (collect_into, vec![found, expected]));
+        true
+    }
+
+    /// What `expected`, maybe with parts not known yet (`List` for `List<_>`), is when it
+    /// collects `item`s: the type of the `Collect` implementation that takes them, its own
+    /// bounds met. Of several, one holding values beats one holding references: `&i32`s are
+    /// collected into a `List<i32>` by copying, not a `List<&i32>`. `None` if none fits, or
+    /// it isn't clear which.
+    fn collected_into(&mut self, collect: DefId, expected: TypeId, item: TypeId) -> Option<TypeId> {
+        let mut fitting = Vec::new();
+        for index in 0..self.impls.len() {
+            let info = self.impls[index].clone();
+            let (true, Some(target), Some(&arg)) =
+                (info.trait_ == Some(collect), info.target, info.trait_args.first())
+            else {
+                continue;
+            };
+            let mut bound = vec![None; info.params.len()];
+            let u = &self.u;
+            if !impls::match_type(&u.table, arg, item, &info.params, &mut bound, &|t| u.shallow(t)) {
+                continue;
+            }
+            // Those the item doesn't say are worked out from what's expected.
+            let subst: Vec<(DefId, TypeId)> = (info.params.iter().copied().zip(bound))
+                .map(|(p, b)| (p, b.unwrap_or_else(|| self.u.fresh(VarKind::Any))))
+                .collect();
+            let target = impls::substitute(&mut self.u.table, target, &subst);
+            if !self.u.could_fit(target, expected) {
+                continue;
+            }
+            let meets = subst.iter().all(|&(param, ty)| {
+                let known = !matches!(self.u.shallow_ty(ty), Ty::Var(_));
+                !known || (self.names.bounds(param).iter()).all(|&b| self.implements(ty, b))
+            });
+            if meets {
+                fitting.push(target);
+            }
+        }
+        let references = |c: &Self, ty: TypeId| {
+            let (mut count, mut stack) = (0, vec![ty]);
+            while let Some(ty) = stack.pop() {
+                let ty = c.u.shallow(ty);
+                count += usize::from(matches!(c.u.get(ty), Ty::Ref { .. }));
+                stack.extend(c.u.get(ty).children());
+            }
+            count
+        };
+        let fewest = fitting.iter().map(|&t| references(self, t)).min()?;
+        fitting.retain(|&t| references(self, t) == fewest);
+        match fitting[..] {
+            [target] => Some(target),
+            _ => None,
+        }
+    }
+
     /// Whether `param` takes `found` with the number inside it, if one's not decided yet,
     /// as the `i32` or `f64` it would be anyway: `&i32` for a `&` of an undecided integer.
     pub(super) fn fits_as_default(&self, param: TypeId, found: TypeId) -> bool {

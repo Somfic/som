@@ -56,12 +56,21 @@ impl<T> IndexMut for Queue<T> {
     fn at_mut(&mut self, i: usize) -> &mut T = .mem.at_mut(.slot(i));
 }
 
-impl<T> Iterator for Queue<T> {
+/// `for x in queue`: its values, dequeued one by one.
+pub struct QueueIntoIter<T> {
+    queue: Queue<T>,
+}
+
+impl<T> IterOwned for Queue<T> {
+    type Iter = QueueIntoIter<T>;
+
+    fn into_iter(self) -> QueueIntoIter<T> = QueueIntoIter { queue: self };
+}
+
+impl<T> Iterator for QueueIntoIter<T> {
     type Item = T;
 
-    fn next(self: &mut Queue<T>) -> Item? {
-        self.dequeue()
-    }
+    fn next(&mut self) -> T? = .queue.dequeue();
 }
 
 impl<T> Drop for Queue<T> {

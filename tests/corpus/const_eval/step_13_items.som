@@ -1,7 +1,7 @@
 // expect: exit 42
 
 trait Size {
-    fn bits(&self) -> i32;
+    pub fn bits(&self) -> i32;
 }
 
 /// One `impl` for each type: `T` is written as each of them.

@@ -50,8 +50,8 @@ pub trait Compare {
 pub trait Copy {}
 
 pub trait Sized {
-    prop len: usize;
-    prop is_empty = .len == 0;
+    pub prop len: usize;
+    pub prop is_empty = .len == 0;
 }
 
 /// Shown as text: what `{x}` in `"total: {x}"` writes. Measured first, so the text it's
@@ -65,7 +65,7 @@ pub trait Display {
     fn display(self: &Self, to: *u8);
 
     /// Its text, as a `string` of its own: `"{self}"`.
-    fn to_string(self: &Self) -> string = "{self}";
+    pub fn to_string(self: &Self) -> string = "{self}";
 }
 
 /// Copied by calling `share` rather than moved: using a value leaves it usable, and the

@@ -2,7 +2,7 @@
 
 /// A type implementing a trait for two arguments: the bound's says which is called.
 trait Score<T> {
-    fn score(&self, value: T) -> i32;
+    pub fn score(&self, value: T) -> i32;
 }
 
 struct Judge {}

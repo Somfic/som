@@ -26,7 +26,7 @@ impl<T> Collect<T> for List<T> {
 }
 
 trait Collecting: Iterator {
-    fn collect<C: Collect<Self::Item>>(self) -> C;
+    pub fn collect<C: Collect<Self::Item>>(self) -> C;
 }
 
 impl<I: Iterator> Collecting for I {
@@ -35,7 +35,7 @@ impl<I: Iterator> Collecting for I {
         let mut all: C = Collect::start();
         loop {
             let item = it.next() else return all;
-            all.add(item);
+            Collect::add(&mut all, item);
         }
     }
 }

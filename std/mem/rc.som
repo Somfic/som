@@ -51,5 +51,5 @@ impl<T> Drop for Rc<T> {
 /// What copying a `T?` of a `Share` `T` does: shares what it holds, if it holds anything.
 fn share_optional<T: Share>(value: &(T?)) -> T? {
     let held = value else return none;
-    held.share()
+    Share::share(held)
 }

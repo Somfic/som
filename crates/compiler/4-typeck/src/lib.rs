@@ -167,6 +167,11 @@ pub(crate) struct Records {
     pub(crate) read_through: HashMap<Id<Expr>, usize>,
     /// `#T`s read through to what they share: `node` in `node.value`, a `&T` from its `get`.
     pub(crate) shared: HashSet<Id<Expr>>,
+    /// Places read through extra references for a field or method: `n` in `n.len` of a
+    /// `&&string` → how many, for it to be a `&string`.
+    pub(crate) derefs: HashMap<Id<Expr>, usize>,
+    /// Receivers lent to their `iter` first: `numbers` in `numbers.where(…)`.
+    pub(crate) auto_iter: HashSet<Id<Expr>>,
     pub(crate) loops: HashMap<Id<Stmt>, Loop>,
     /// `@if`s → whether the condition holds: which branch there is.
     pub(crate) settled_ifs: HashMap<Id<Stmt>, bool>,
@@ -541,6 +546,18 @@ impl Typed {
     /// `&T` its `get` gives.
     pub fn is_shared_read(&self, expr: Id<Expr>) -> bool {
         self.records.shared.contains(&expr)
+    }
+
+    /// How many references more than one place `expr` is read through, for a field or method
+    /// of what they refer to: 1 for `n` in `n.len` of a `&&string`.
+    pub fn derefs(&self, expr: Id<Expr>) -> usize {
+        self.records.derefs.get(&expr).copied().unwrap_or(0)
+    }
+
+    /// `numbers` in `numbers.where(…)`: an iterator's method called on what makes one,
+    /// which is lent to its `iter` for it, `numbers.iter().where(…)`.
+    pub fn is_auto_iter(&self, expr: Id<Expr>) -> bool {
+        self.records.auto_iter.contains(&expr)
     }
 
     /// A `&mut T` used where a `&T` is expected: lent as `&*expr`, so it's still usable after.

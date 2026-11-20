@@ -21,5 +21,5 @@ impl<T: Eq + Hash> Set<T> {
 }
 
 impl<T> Sized for Set<T> {
-    pub prop len = .map.len;
+    prop len = .map.len;
 }

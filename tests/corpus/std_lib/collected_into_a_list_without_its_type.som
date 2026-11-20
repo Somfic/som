@@ -1,0 +1,18 @@
+// expect: exit 211
+
+/// Collected into a `List` with its type left out, it holds what it can: copies of lent
+/// values that copy, `List<i32>` from `&i32`s, and the references otherwise. A type written
+/// out is kept: `List<&i32>`.
+fn takes_values(l: List<i32>) -> i32 = l.len as i32;
+fn takes_names(l: List<&string>) -> i32 = l.len as i32;
+
+fn main() -> i32 {
+    let mut list: List<i32> = List::empty();
+    list.push(1); list.push(2); list.push(3);
+    let copied: List = list.where(x => x > 1);
+    let lent: List<&i32> = list.where(x => x > 2);
+    let mut names: List<string> = List::empty();
+    names.push("a"); names.push("bb");
+    let some: List = names.where(n => n.len > 1);
+    takes_values(copied) * 100 + lent.len as i32 * 10 + takes_names(some)
+}

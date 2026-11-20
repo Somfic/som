@@ -7,7 +7,7 @@ impl Point {
     pub fn sum(&self) = self.x + self.y;
 }
 
-pub trait Doubled { fn doubled(&self) -> i32 = 0; }
+pub trait Doubled { pub fn doubled(&self) -> i32 = 0; }
 
 impl Doubled for Point {
     fn doubled(&self) -> i32 = self.sum() * 2;

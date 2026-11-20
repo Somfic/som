@@ -127,7 +127,9 @@ impl Checker<'_> {
                         }
                         _ => None,
                     })
-                    .is_some_and(|self_ty| !matches!(self.u.shallow_ty(self_ty), Ty::Ref { .. }));
+                    .is_some_and(|self_ty| !matches!(self.u.shallow_ty(self_ty), Ty::Ref { .. }))
+                    // `numbers.where(…)`: `numbers` is only lent, to its `iter`.
+                    && !self.records.auto_iter.contains(receiver);
                 self.moves_in(*receiver, takes_self);
                 for &arg in args {
                     self.moves_in(arg, true);

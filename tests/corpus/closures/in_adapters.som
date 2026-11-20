@@ -46,8 +46,8 @@ impl<I: Iterator, O, F: fn(I::Item) -> O> Iterator for Map<I, O, F> {
 }
 
 trait Adapters: Iterator {
-    fn keep<P: fn(&Self::Item) -> bool>(self, test: P) -> Where<Self, P>;
-    fn map<O, F: fn(Self::Item) -> O>(self, change: F) -> Map<Self, O, F>;
+    pub fn keep<P: fn(&Self::Item) -> bool>(self, test: P) -> Where<Self, P>;
+    pub fn map<O, F: fn(Self::Item) -> O>(self, change: F) -> Map<Self, O, F>;
 }
 
 impl<I: Iterator> Adapters for I {

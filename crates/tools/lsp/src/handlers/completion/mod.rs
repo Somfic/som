@@ -264,6 +264,32 @@ mod tests {
         let labels = labels_after(source, "i.next");
         assert!(labels.iter().any(|l| l == "next"), "{labels:?}");
         assert!(labels.iter().any(|l| l == "where"), "{labels:?}");
+        assert!(labels.iter().any(|l| l == "collect"), "{labels:?}");
+    }
+
+    #[test]
+    fn a_trait_s_methods_without_pub_are_not_completed_on_values() {
+        let source = "fn main() -> i32 {\n    let list: List<i32> = List::empty();\n    \
+                      let n = list.len;\n    let x = 3;\n    let y = x.max(4);\n    0\n}\n";
+        let labels = labels_after(source, "list.len");
+        assert!(labels.iter().any(|l| l == "push"), "{labels:?}");
+        assert!(labels.iter().any(|l| l == "len"), "{labels:?}");
+        assert!(!labels.iter().any(|l| l == "add"), "{labels:?}");
+        let labels = labels_after(source, "x.max");
+        assert!(!labels.iter().any(|l| l == "compare"), "{labels:?}");
+        assert!(labels.iter().any(|l| l == "to_string"), "{labels:?}");
+    }
+
+    #[test]
+    fn a_list_completes_the_methods_its_iterator_has() {
+        let source = "fn main() -> i32 {\n    let list: List<i32> = List::empty();\n    \
+                      let n = list.len;\n    let a: &[i32] = [1, 2];\n    let m = a.len;\n    0\n}\n";
+        for marker in ["list.len", "a.len"] {
+            let labels = labels_after(source, marker);
+            assert!(labels.iter().any(|l| l == "where"), "{marker}: {labels:?}");
+            assert!(labels.iter().any(|l| l == "collect"), "{marker}: {labels:?}");
+            assert!(!labels.iter().any(|l| l == "next"), "{marker}: {labels:?}");
+        }
     }
 
     #[test]
