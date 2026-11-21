@@ -1,0 +1,54 @@
+use extern "raylib";
+use som::mem;
+use som::gpu;
+
+/// A shader for the GPU, `som::gpu::Shader<U>`, loaded into raylib: made from one wherever
+/// one is given, `let s: RaylibShader<Uniforms> = gpu::Shader::fragment(stripes);`.
+pub struct RaylibShader<U> {
+    /// What raylib calls it: for `begin_shader_mode`.
+    pub raw: raylib::Shader,
+    /// Where each uniform is, in `shader.uniforms`' order.
+    locations: List<i32>,
+    shader: gpu::Shader<U>,
+}
+
+impl<U> From<gpu::Shader<U>> for RaylibShader<U> {
+    fn from(shader: gpu::Shader<U>) -> RaylibShader<U> {
+        let raw = load_shader_from_memory(null() as cstr, shader.glsl.c_str);
+        let mut locations: List<i32> = List::empty();
+        for name in &shader.uniforms {
+            locations.push(get_shader_location(raw, name.c_str));
+        }
+        RaylibShader { raw, locations, shader }
+    }
+}
+
+impl<U> RaylibShader<U> {
+    /// Sets every uniform, from `uniforms`.
+    pub fn set(&self, uniforms: &U) {
+        self.shader.each(uniforms, (i, value) => {
+            let at = self.locations.get(i) else return;
+            set_uniform(self.raw, *at, value);
+        });
+    }
+}
+
+impl<U> Drop for RaylibShader<U> {
+    fn drop(&mut self) {
+        unload_shader(self.raw);
+    }
+}
+
+fn set_uniform(shader: raylib::Shader, at: i32, value: gpu::Uniform) {
+    match value {
+        gpu::Uniform::Float(x) => set_shader_value(shader, at, &x as *, ShaderUniformDataType::Float as i32),
+        gpu::Uniform::Int(x) => set_shader_value(shader, at, &x as *, ShaderUniformDataType::Int as i32),
+        gpu::Uniform::Bool(b) => {
+            let x: i32 = 1 if b else 0;
+            set_shader_value(shader, at, &x as *, ShaderUniformDataType::Int as i32);
+        }
+        gpu::Uniform::Vec2(v) => set_shader_value(shader, at, &v as *, ShaderUniformDataType::Vec2 as i32),
+        gpu::Uniform::Vec3(v) => set_shader_value(shader, at, &v as *, ShaderUniformDataType::Vec3 as i32),
+        gpu::Uniform::Vec4(v) => set_shader_value(shader, at, &v as *, ShaderUniformDataType::Vec4 as i32),
+    }
+}

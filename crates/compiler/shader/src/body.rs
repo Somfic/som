@@ -150,6 +150,15 @@ impl Body<'_> {
             );
         if straight {
             self.chain(t, entry, &joined, &ret, &mut lines, "    ")?;
+        } else if let Some(nodes) = crate::structure::structure(body) {
+            // `if`s and loops, as the program was written.
+            self.nodes(t, &nodes, &ret, &mut lines, 1)?;
+            // A function ending in a loop that only returns: GLSL wants every path to.
+            if let Some(zero) = &ret
+                && matches!(nodes.last(), Some(crate::structure::Node::Loop(_)))
+            {
+                lines.push(format!("    return {zero};"));
+            }
         } else {
             // Any shape of control flow: a `switch` on the block to run, in a loop. GLSL has
             // no `goto`.
@@ -170,6 +179,74 @@ impl Body<'_> {
         }
         let definition = format!("{} {{\n{}\n}}\n", prototype, lines.join("\n"));
         Ok((prototype, definition))
+    }
+
+    /// Structured control flow, `depth` levels in.
+    fn nodes(
+        &mut self,
+        t: &mut Translator,
+        nodes: &[crate::structure::Node],
+        ret: &Option<String>,
+        lines: &mut Vec<String>,
+        depth: usize,
+    ) -> Result<(), Problem> {
+        use crate::structure::Node;
+        let indent = "    ".repeat(depth);
+        for node in nodes {
+            match node {
+                Node::Block(id) => {
+                    for statement in &self.body.blocks[*id].stmts {
+                        self.statement(t, statement, lines, &indent)?;
+                    }
+                }
+                Node::If {
+                    on,
+                    then,
+                    otherwise,
+                } => {
+                    let block = &self.body.blocks[*on];
+                    self.span = block.terminator.span.clone();
+                    let TerminatorKind::Branch { condition, .. } = &block.terminator.kind else {
+                        unreachable!("an `if` is on a branch")
+                    };
+                    let condition = self.operand(t, condition)?;
+                    // Only an `else`: the condition turned around, `if (!c)`.
+                    let (mut then_lines, mut otherwise_lines) = (Vec::new(), Vec::new());
+                    self.nodes(t, then, ret, &mut then_lines, depth + 1)?;
+                    self.nodes(t, otherwise, ret, &mut otherwise_lines, depth + 1)?;
+                    match (then_lines.is_empty(), otherwise_lines.is_empty()) {
+                        (true, true) => {}
+                        (true, false) => {
+                            lines.push(format!("{indent}if (!{condition}) {{"));
+                            lines.append(&mut otherwise_lines);
+                            lines.push(format!("{indent}}}"));
+                        }
+                        (false, empty) => {
+                            lines.push(format!("{indent}if ({condition}) {{"));
+                            lines.append(&mut then_lines);
+                            if !empty {
+                                lines.push(format!("{indent}}} else {{"));
+                                lines.append(&mut otherwise_lines);
+                            }
+                            lines.push(format!("{indent}}}"));
+                        }
+                    }
+                }
+                Node::Loop(body) => {
+                    lines.push(format!("{indent}for (;;) {{"));
+                    self.nodes(t, body, ret, lines, depth + 1)?;
+                    lines.push(format!("{indent}}}"));
+                }
+                Node::Break => lines.push(format!("{indent}break;")),
+                Node::Continue => lines.push(format!("{indent}continue;")),
+                Node::Return(id) => {
+                    let block = &self.body.blocks[*id];
+                    self.span = block.terminator.span.clone();
+                    lines.push(format!("{indent}{}", self.end(t, &block.terminator.kind, ret)?));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Block `id`, then each block joined to it in turn, then where the last one goes.
@@ -400,6 +477,10 @@ impl Body<'_> {
         for projection in projections {
             match *projection {
                 Projection::Deref => return Err(self.kept_reference()),
+                // A `Vector`'s array is the vector itself.
+                Projection::Field(0) if t.vector(ty).is_some() => {
+                    ty = t.mir.project(ty, Projection::Field(0)).expect("validated MIR");
+                }
                 Projection::Field(index) => {
                     let member = match t.mir.types.get(ty) {
                         Ty::Ref { .. } => return Err(self.kept_reference()),
@@ -575,6 +656,10 @@ impl Body<'_> {
         variant: Option<usize>,
         fields: &[Operand],
     ) -> Result<String, Problem> {
+        // A `Vector` is its array.
+        if t.vector(ty).is_some() {
+            return self.operand(t, &fields[0]);
+        }
         let name = t.ty(ty).map_err(|no| self.no_gpu(no, None))?;
         let members = t.members(ty).map_err(|no| self.no_gpu(no, None))?;
         if members.is_empty() {
@@ -673,12 +758,44 @@ impl Body<'_> {
                 let glsl = if glsl == "atan2" { "atan" } else { glsl.as_str() };
                 format!("{glsl}({})", texts.join(", "))
             }
-            None => {
-                t.reach(self.func, func, &self.span);
-                format!("{}({})", t.func_name(func), texts.join(", "))
-            }
+            None => match vector_op(t, func, &texts) {
+                Some(native) => native,
+                None => {
+                    t.reach(self.func, func, &self.span);
+                    format!("{}({})", t.func_name(func), texts.join(", "))
+                }
+            },
         })
     }
+}
+
+/// A call of the standard library's `Vector` operations, as GLSL's own: `a + b`, `v * 2.0`,
+/// `v.xy`, `length(v)`. `None` for any other function.
+fn vector_op(t: &Translator, func: FuncId, args: &[String]) -> Option<String> {
+    let callee = &t.mir.funcs[func];
+    let rest = callee.name.strip_prefix("som::data::Vector::")?;
+    let op = rest.split('<').next()?;
+    let first = *callee.params.first()?;
+    let of = match t.mir.types.get(first) {
+        Ty::Ref { to, .. } => *to,
+        _ => first,
+    };
+    // `Vector::new`'s argument is the array, which is already the vector.
+    if op == "new" {
+        return t.native_vector(of).map(|_| args[0].clone());
+    }
+    t.vector(of)?;
+    let a = args.first()?;
+    Some(match (op, args.get(1)) {
+        ("add", Some(b)) => format!("({a} + {b})"),
+        ("subtract", Some(b)) => format!("({a} - {b})"),
+        ("multiply", Some(b)) => format!("({a} * {b})"),
+        ("divide", Some(b)) => format!("({a} / {b})"),
+        ("x" | "y" | "z" | "w" | "xy" | "yz" | "xz" | "xyz", None) => format!("{a}.{op}"),
+        ("magnitude", None) => format!("length({a})"),
+        ("normalized", None) => format!("normalize({a})"),
+        _ => return None,
+    })
 }
 
 fn binary(op: BinOp, scalar: Option<Scalar>, a: &str, b: &str) -> String {

@@ -1,10 +1,11 @@
 use extern "raylib";
 use som::mem;
+use som::gpu;
 
-/// What the shader is told each frame: set on the GPU by name, through raylib.
+/// What the shader is told each frame. Each field is a uniform, set by its name.
 struct Uniforms {
-    time: f32,
-    tint: Vector<4, f32>,
+    pub time: f32,
+    pub tint: Vector<4, f32>,
 }
 
 fn wave(x: f32, t: f32) -> f32 {
@@ -23,30 +24,29 @@ fn main() {
     init_window(800, 450, "som shader");
     set_target_fps(60);
 
-    let shader = load_shader_from_memory(null() as cstr, @glsl(stripes).c_str);
-    let time_at = get_shader_location(shader, "time");
-    let tint_at = get_shader_location(shader, "tint");
-
-    let image = gen_image_color(800, 450, Color { r: 255, g: 255, b: 255, a: 255 });
+    let shader: RaylibShader<Uniforms> = gpu::Shader::fragment(stripes);
+    let white = Color { r: 255, g: 255, b: 255, a: 255 };
+    let image = gen_image_color(800, 450, white);
     let canvas = load_texture_from_image(image);
     unload_image(image);
 
-    let tint: [f32; 4] = [0.3, 0.7, 1.0, 1.0];
     while !window_should_close() {
-        let time = get_time() as f32;
-        set_shader_value(shader, time_at, &time as *, ShaderUniformDataType::Float as i32);
-        set_shader_value(shader, tint_at, &tint as *, ShaderUniformDataType::Vec4 as i32);
+        shader.set(&Uniforms {
+            time: get_time() as f32,
+            tint: Vector::new([0.3, 0.7, 1.0, 1.0]),
+        });
 
         begin_drawing();
         clear_background(Color { r: 0, g: 0, b: 0, a: 255 });
-        begin_shader_mode(shader);
-        draw_texture(canvas, 0, 0, Color { r: 255, g: 255, b: 255, a: 255 });
+        begin_shader_mode(shader.raw);
+        draw_texture(canvas, 0, 0, white);
         end_shader_mode();
         draw_fps(10, 10);
         end_drawing();
     }
 
+    // Before the window: raylib's GPU state goes with it.
+    drop(shader);
     unload_texture(canvas);
-    unload_shader(shader);
     close_window();
 }

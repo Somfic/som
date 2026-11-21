@@ -11,7 +11,8 @@
 //! | `&mut T` parameter              | `inout T`: copied in and back out, which the borrow checker makes the same as through a pointer |
 //! | local reference                 | the place it refers to, written out where it's used   |
 //! | one block                       | its statements                                        |
-//! | more blocks                     | a `switch` on the block, in a loop                    |
+//! | `if`, `while`, `loop`, `match`  | `if` and `for (;;)` with `break`/`continue` (see [`structure`]) |
+//! | any other jumps                 | a `switch` on the block, in a loop                    |
 //! | `som::gl::sin`, …               | GLSL's own `sin`, …: std's math is `@if GPU` on them  |
 //!
 //! What the GPU has no way to do (text, pointers, memory, 64-bit numbers, calling C, failing,
@@ -21,6 +22,7 @@ mod body;
 mod entry;
 mod error;
 mod names;
+mod structure;
 mod types;
 
 pub use error::ShaderError;

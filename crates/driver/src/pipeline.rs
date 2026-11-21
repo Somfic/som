@@ -146,26 +146,80 @@ impl<'a> Passes<'a> {
 impl Passes<'_> {
     /// Each shader, `@vertex` or `@fragment`, compiled for the GPU: what `--emit glsl`
     /// writes. One that can't be is an error, whether or not `@glsl` asks for it.
-    pub fn shaders(&mut self, mir: &Mir) -> Result<Vec<crate::Shader>, Stopped> {
+    ///
+    /// Each instance of `glsl` then gives its shader's source when it runs too, so code
+    /// generic over a shader, like `Shader::fragment`, can call it.
+    pub fn shaders(&mut self, mir: &mut Mir) -> Result<Vec<crate::Shader>, Stopped> {
         let mut entries: Vec<_> = (mir.stages.iter())
             .filter(|(f, _)| mir.gpu.contains(f))
             .map(|(&f, &stage)| (f, stage))
             .collect();
         entries.sort_by_key(|(f, _)| mir.funcs[*f].span.start_offset);
         let mut shaders = Vec::new();
+        let mut sources = std::collections::HashMap::new();
         let mut errors = Vec::new();
         for (entry, stage) in entries {
             match som_shader::glsl(mir, entry) {
-                Ok(glsl) => shaders.push(crate::Shader {
-                    name: som_shader::short_fn(&mir.funcs[entry].name),
-                    stage,
-                    glsl,
-                }),
+                Ok(glsl) => {
+                    sources.insert(entry, glsl.clone());
+                    shaders.push(crate::Shader {
+                        name: som_shader::short_fn(&mir.funcs[entry].name),
+                        stage,
+                        glsl,
+                    });
+                }
                 Err(found) => errors.extend(found.into_iter().map(Error::Shader)),
             }
         }
         self.report(errors)?;
+        let instances: Vec<_> = mir.glsl.iter().map(|(&f, &entry)| (f, entry)).collect();
+        for (instance, entry) in instances {
+            if let Some(source) = entry.and_then(|entry| sources.get(&entry)) {
+                mir.funcs[instance].body = Some(gives_text(mir, instance, source));
+            }
+        }
         Ok(shaders)
+    }
+}
+
+/// A body for function `func` that gives `text`, whatever it's given.
+fn gives_text(mir: &Mir, func: som_mir::FuncId, text: &str) -> som_mir::Body {
+    use som_mir::*;
+    let function = &mir.funcs[func];
+    let span = function.span.clone();
+    let mut locals = Arena::new();
+    let local = |ty, name: Option<&str>| LocalDecl {
+        ty,
+        name: name.map(str::to_string),
+        mutable: false,
+        span: span.clone(),
+    };
+    locals.alloc(local(function.ret, None));
+    for &param in &function.params {
+        locals.alloc(local(param, Some("shader")));
+    }
+    let value = Const {
+        kind: ConstKind::Str(text.to_string()),
+        ty: function.ret,
+    };
+    let mut blocks = Arena::new();
+    blocks.alloc(Block {
+        stmts: vec![Statement {
+            kind: StatementKind::Assign(Place::local(RETURN), Rvalue::Use(Operand::Const(value))),
+            span: span.clone(),
+            reads: Vec::new(),
+        }],
+        terminator: Terminator {
+            kind: TerminatorKind::Return,
+            span,
+        },
+    });
+    Body {
+        locals,
+        arg_count: function.params.len(),
+        outs: Vec::new(),
+        two_phase: Vec::new(),
+        blocks,
     }
 }
 

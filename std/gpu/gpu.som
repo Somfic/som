@@ -11,7 +11,71 @@ pub struct Fragment {
 impl Copy for Fragment {}
 
 /// The source of shader `entry`, a `@vertex` or `@fragment` function, in GLSL 3.30: what
-/// a graphics library like raylib loads. Only while compiling: `@glsl(wobble)`.
+/// a graphics library like raylib loads. Made while compiling, so `glsl(wobble)` costs
+/// nothing when it runs; `@glsl(wobble)` is the same, as a constant. `entry` is a shader
+/// named where it's passed.
 pub fn glsl<F>(entry: F) -> string {
-    @fail("a shader's GLSL is made while compiling: write `@glsl(…)`")
+    // The compiler gives each use the shader's source instead.
+    @fail("`glsl` takes a shader by its name: `glsl(wobble)`")
+}
+
+/// A shader compiled for the GPU, and the uniforms it takes: the fields of `U`. Made from
+/// the shader itself, `Shader::fragment(stripes)`; a graphics library loads `glsl` and sets
+/// each uniform by name, from `each`.
+pub struct Shader<U> {
+    /// Its source in GLSL 3.30.
+    pub glsl: string,
+    /// Each uniform's name, in the order `U` has them: its fields' names.
+    pub uniforms: List<string>,
+}
+
+impl<U> Shader<U> {
+    /// Fragment shader `shader`, which takes a `Fragment` and its uniforms.
+    pub fn fragment<F: fn(Fragment, &U) -> Vector<4, f32>>(shader: F) -> Shader<U> {
+        let mut names: List<string> = List::empty();
+        @for f in U { names.push(@name(f)); }
+        Shader { glsl: glsl(shader), uniforms: names }
+    }
+
+    /// Calls `set` with each uniform's index in `self.uniforms` and its value in `uniforms`.
+    /// Written out for each field while compiling: no list, no loop.
+    pub fn each<F: fn(usize, Uniform)>(&self, uniforms: &U, set: F) -> () {
+        @for (i, f) in U { set(i, Uniform::from(uniforms.f)); }
+    }
+}
+
+/// A uniform's value, as the GPU takes it.
+pub enum Uniform {
+    Float(f32),
+    Int(i32),
+    Bool(bool),
+    Vec2([f32; 2]),
+    Vec3([f32; 3]),
+    Vec4([f32; 4]),
+}
+
+impl Copy for Uniform {}
+
+impl From<f32> for Uniform {
+    fn from(value: f32) -> Uniform = Uniform::Float(value);
+}
+
+impl From<i32> for Uniform {
+    fn from(value: i32) -> Uniform = Uniform::Int(value);
+}
+
+impl From<bool> for Uniform {
+    fn from(value: bool) -> Uniform = Uniform::Bool(value);
+}
+
+impl From<Vector<2, f32>> for Uniform {
+    fn from(value: Vector<2, f32>) -> Uniform = Uniform::Vec2([value.x, value.y]);
+}
+
+impl From<Vector<3, f32>> for Uniform {
+    fn from(value: Vector<3, f32>) -> Uniform = Uniform::Vec3([value.x, value.y, value.z]);
+}
+
+impl From<Vector<4, f32>> for Uniform {
+    fn from(value: Vector<4, f32>) -> Uniform = Uniform::Vec4([value.x, value.y, value.z, value.w]);
 }

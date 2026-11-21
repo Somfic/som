@@ -119,9 +119,10 @@ impl Translator<'_> {
                         Some("GLSL has the name; rename the field".into()),
                     ));
                 }
+                // What `som::gpu::Uniform` can hold, for the host to set.
                 let native = match (self.scalar(member_ty), self.vector(member_ty)) {
-                    (Ok(Some(scalar)), _) => scalar.name().to_string(),
-                    (_, Some((scalar, n))) => scalar.vector(n),
+                    (Ok(Some(scalar)), _) if scalar != Scalar::Uint => scalar.name().to_string(),
+                    (_, Some((Scalar::Float, n))) => Scalar::Float.vector(n),
                     _ => {
                         return Err(problem(
                             msg!["a uniform can't be a ", self.ty_part(member_ty)],
@@ -132,12 +133,12 @@ impl Translator<'_> {
                                 ", ",
                                 code("i32"),
                                 ", ",
-                                code("u32"),
-                                ", ",
                                 code("bool"),
                                 ", or a ",
                                 code("Vector"),
-                                " of 2 to 4 of those"
+                                " of 2 to 4 ",
+                                code("f32"),
+                                "s"
                             ]),
                         ));
                     }
@@ -190,27 +191,14 @@ impl Translator<'_> {
         Ok(Main { globals, main })
     }
 
-    /// GLSL value `native`, a scalar or `vecN`, as a value of `ty`: a `Vector` holds an array.
-    fn from_native(&mut self, native: &str, ty: TypeId) -> String {
-        match self.vector(ty) {
-            Some((scalar, n)) => {
-                let vector = self.ty(ty).expect("a vector is on the GPU");
-                let parts: Vec<String> = (0..n as usize)
-                    .map(|i| format!("{native}.{}", ["x", "y", "z", "w"][i]))
-                    .collect();
-                format!("{vector}({}[{n}]({}))", scalar.name(), parts.join(", "))
-            }
-            None => native.to_string(),
-        }
+    /// GLSL value `native`, a scalar or `vecN`, as a value of `ty`: the same, since a
+    /// `Vector` is GLSL's own.
+    fn from_native(&mut self, native: &str, _ty: TypeId) -> String {
+        native.to_string()
     }
 
-    /// `value`, a `Vector`, as GLSL's own vector.
-    fn to_native(&mut self, value: &str, ty: TypeId) -> String {
-        let (scalar, n) = self.vector(ty).expect("only vectors are converted");
-        let components = self.member_name(ty, 0).expect("a vector is on the GPU");
-        let parts: Vec<String> = (0..n)
-            .map(|i| format!("{value}.{components}[{i}]"))
-            .collect();
-        format!("{}({})", scalar.vector(n), parts.join(", "))
+    /// `value`, a `Vector`, as GLSL's own vector: it already is.
+    fn to_native(&mut self, value: &str, _ty: TypeId) -> String {
+        value.to_string()
     }
 }

@@ -206,6 +206,19 @@ impl Parser<'_> {
         self.advance();
         match Builtin::from_name(&text) {
             Some(Builtin::Unreachable) => Some(Expr::Unreachable),
+            // Written out by the `@for f in T` around it; anywhere else, there's no `f`.
+            Some(Builtin::Name) => {
+                self.error_at(
+                    start.clone(),
+                    msg![code("@name(f)"), " names a field of ", code("@for f in T")],
+                    msg!["use it inside ", code("@for f in T { … }")],
+                );
+                if self.eat(TokenKind::OpenParen) {
+                    self.parse_expr()?;
+                    self.expect(TokenKind::CloseParen, "`)`")?;
+                }
+                Some(Expr::Hole)
+            }
             Some(Builtin::Fail) => {
                 self.expect(TokenKind::OpenParen, "`(` and the message")?;
                 let message = self.parse_expr()?;

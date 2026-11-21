@@ -84,12 +84,24 @@ impl Translator<'_> {
             return None;
         }
         let s = self.mir.struct_def(*def, args);
-        let Ty::Array { element, len } = self.mir.types.get(s.fields.first()?.1) else {
+        self.small_array(s.fields.first()?.1)
+    }
+
+    /// `[T; N]` with `N` from 2 to 4 and `T` a scalar.
+    fn small_array(&self, ty: TypeId) -> Option<(Scalar, u64)> {
+        let Ty::Array { element, len } = self.mir.types.get(ty) else {
             return None;
         };
         let n = self.mir.types.len(*len);
         let scalar = self.scalar(*element).ok()??;
         (2..=4).contains(&n).then_some((scalar, n))
+    }
+
+    /// What's GLSL's own vector: a small array of numbers or `bool`s, `[f32; 4]` as `vec4`,
+    /// and so a `Vector`, which is one. Indexing and building it are the same as an array's,
+    /// and the shader's inputs and output need no converting.
+    pub(crate) fn native_vector(&self, ty: TypeId) -> Option<(Scalar, u64)> {
+        self.small_array(ty).or_else(|| self.vector(ty))
     }
 
     pub(crate) fn is_lang(&self, ty: TypeId, lang: LangStruct) -> bool {
@@ -100,6 +112,9 @@ impl Translator<'_> {
     pub(crate) fn ty(&mut self, ty: TypeId) -> Result<String, NoGpu> {
         if let Some(scalar) = self.scalar(ty)? {
             return Ok(scalar.name().into());
+        }
+        if let Some((scalar, n)) = self.native_vector(ty) {
+            return Ok(scalar.vector(n));
         }
         match self.mir.types.get(ty).clone() {
             Ty::Unit => Ok("void".into()),
@@ -222,6 +237,10 @@ impl Translator<'_> {
             .into());
         }
         let name = self.ty(ty)?;
+        if let Some((scalar, _)) = self.native_vector(ty) {
+            let zero = self.zero_scalar(scalar);
+            return Ok(format!("{name}({zero})"));
+        }
         match self.mir.types.get(ty).clone() {
             Ty::Array { element, len } => {
                 let zero = self.zero(element)?;
@@ -271,6 +290,10 @@ impl Translator<'_> {
     }
 
     fn aggregate(&mut self, ty: TypeId, parts: &[Const]) -> Result<String, NoGpu> {
+        // A `Vector` is its one field.
+        if self.vector(ty).is_some() {
+            return self.constant(&parts[0]);
+        }
         let name = self.ty(ty)?;
         if matches!(self.mir.types.get(ty), Ty::Array { .. }) {
             let parts = (parts.iter())
@@ -286,6 +309,15 @@ impl Translator<'_> {
             .map(|(_, _, i)| self.constant(&parts[i]))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(format!("{name}({})", parts.join(", ")))
+    }
+
+    fn zero_scalar(&self, scalar: Scalar) -> &'static str {
+        match scalar {
+            Scalar::Bool => "false",
+            Scalar::Int => "0",
+            Scalar::Uint => "0u",
+            Scalar::Float => "0.0",
+        }
     }
 
     /// The type `ty` names in messages.

@@ -507,6 +507,90 @@ fn parse_block(
 
 /// What each copy writes for the element: a variant's pattern, `Circle(_)`, or a field's
 /// name.
+/// Each field's or variant's name: what `@name(f)` is in its copy.
+fn element_names(s: &Struct) -> Vec<String> {
+    match s.is_enum() {
+        true => (s.variants().iter()).map(|v| v.name.name.to_string()).collect(),
+        false => (s.fields.iter()).map(|f| f.name.name.to_string()).collect(),
+    }
+}
+
+/// Whether `@name(element)` starts at `body[at]`: where its `)` is, if it does.
+fn name_of(body: &[Token], at: usize, element: &Ident) -> Option<usize> {
+    let builtin = &body[at];
+    if builtin.kind != TokenKind::Builtin || *builtin.text != *Builtin::Name.name() {
+        return None;
+    }
+    let mut next = (at + 1..body.len()).filter(|&k| !body[k].kind.is_trivia());
+    let open = next.next()?;
+    let name = next.next()?;
+    let close = next.next()?;
+    let fits = body[open].kind == TokenKind::OpenParen
+        && body[name].kind == TokenKind::Ident
+        && *body[name].text == *element.name
+        && body[close].kind == TokenKind::CloseParen;
+    fits.then_some(close)
+}
+
+/// Text token `quoted` as it is in a copy: `{@name(f)}` in it is the element's name, and
+/// `f` in its other `{…}` values the element. `None` if that changes nothing. It gets a
+/// source of its own, since a value in text is read from where the text is.
+fn text_copy(token: &Token, element: &Ident, name: &str, pattern: &str) -> Option<Token> {
+    let raw = crate::cursor::unquoted(&token.text);
+    if !raw.contains('{') {
+        return None;
+    }
+    let mut out = String::new();
+    let mut changed = false;
+    for part in som_lexer::text_parts(raw) {
+        match part {
+            som_lexer::TextPart::Value(range) => {
+                let code = &raw[range];
+                let tokens: Vec<Token> = (lex(Arc::new(Source::from_raw(code))).into_iter())
+                    .filter(|t| t.kind != TokenKind::Eof)
+                    .collect();
+                let solid: Vec<usize> = (0..tokens.len())
+                    .filter(|&k| !tokens[k].kind.is_trivia())
+                    .collect();
+                if solid.first().is_some_and(|&k| name_of(&tokens, k, element) == solid.last().copied())
+                    && solid.len() == 4
+                {
+                    out.push_str(name);
+                    changed = true;
+                    continue;
+                }
+                out.push('{');
+                for token in &tokens {
+                    if token.kind == TokenKind::Ident && *token.text == *element.name {
+                        out.push_str(pattern);
+                        changed = true;
+                    } else {
+                        out.push_str(&token.text);
+                    }
+                }
+                out.push('}');
+            }
+            som_lexer::TextPart::Literal(range) | som_lexer::TextPart::Brace(range) => {
+                out.push_str(&raw[range])
+            }
+            // Said where the text is first read.
+            _ => return None,
+        }
+    }
+    if !changed {
+        return None;
+    }
+    let text = format!("\"{out}\"");
+    // In the same file, which what's private to it can be used from.
+    let file = token.span.source.identifier().to_string();
+    let source = Arc::new(Source::from_raw_at(text.as_str(), file));
+    Some(Token {
+        kind: TokenKind::Text,
+        span: Span::from_range(0..text.len(), source),
+        text: text.into(),
+    })
+}
+
 fn element_texts(s: &Struct) -> Vec<String> {
     match s.is_enum() {
         true => s.variants().iter().map(variant_pattern).collect(),
@@ -530,6 +614,7 @@ fn variant_pattern(variant: &Variant) -> String {
 /// field, the element written as it (and its index, if it's named), then an `Eof`.
 fn write_copies(ast: &Ast, r: &Reflected, s: Id<Struct>) -> Result<Vec<Token>, ParseError> {
     let elements = element_texts(&ast.structs[s]);
+    let names = element_names(&ast.structs[s]);
     let body: Vec<Token> = (lex(r.body.source.clone()).into_iter())
         .filter(|t| {
             t.kind != TokenKind::Eof
@@ -550,7 +635,27 @@ fn write_copies(ast: &Ast, r: &Reflected, s: Id<Struct>) -> Result<Vec<Token>, P
     };
     let mut written = Vec::new();
     for (i, pattern) in elements.iter().enumerate() {
-        for token in &body {
+        let mut at = 0;
+        while at < body.len() {
+            let token = &body[at];
+            at += 1;
+            // `@name(f)`: the field's name, as text.
+            if let Some(close) = name_of(&body, at - 1, element) {
+                written.push(Token {
+                    kind: TokenKind::Text,
+                    text: format!("\"{}\"", names[i]).into(),
+                    span: token.span.clone(),
+                });
+                at = close + 1;
+                continue;
+            }
+            // Text: `{@name(f)}` and `{p.f}` in it are written out too.
+            if token.kind == TokenKind::Text
+                && let Some(text) = text_copy(token, element, &names[i], pattern)
+            {
+                written.push(text);
+                continue;
+            }
             let is = |name: &Ident| token.kind == TokenKind::Ident && *token.text == *name.name;
             if index.is_some_and(is) {
                 written.push(Token {

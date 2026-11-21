@@ -12,6 +12,7 @@ named_enum! {
         Where = "@where",
         Vertex = "@vertex",
         Fragment = "@fragment",
+        Name = "@name",
     }
 }
 
@@ -62,6 +63,10 @@ impl Builtin {
                 "On a line above a function: a fragment shader, run on the GPU for each pixel of \
                  what's drawn, giving its colour. It takes a `Fragment`, and may take a `&` to a \
                  struct of uniforms; its source for the GPU is `@glsl(name)`."
+            }
+            Builtin::Name => {
+                "In `@for f in T { … }`: the name of field `f` (or of variant `v`, going through \
+                 an enum) as text, `\"x\"`. `print(\"{@name(f)} = {p.f}\")` shows each field."
             }
             Builtin::Where => return None,
         })

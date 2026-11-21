@@ -1,7 +1,8 @@
 use extern "raylib";
 use som::mem;
+use som::gpu;
 
-struct Uniforms { time: f32 }
+struct Uniforms { pub time: f32 }
 
 @fragment
 fn fade(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
@@ -11,18 +12,56 @@ fn fade(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
 
 fn main() {
     init_window(800, 450, "shader");
-    let shader = load_shader_from_memory(null() as cstr, @glsl(fade).c_str);
-    let time_at = get_shader_location(shader, "time");
+    let shader: RaylibShader<Uniforms> = gpu::Shader::fragment(fade);
     let white = Color { r: 255, g: 255, b: 255, a: 255 };
     let canvas = load_texture_from_image(gen_image_color(800, 450, white));
 
     while !window_should_close() {
-        let time = get_time() as f32;
-        set_shader_value(shader, time_at, &time as *, ShaderUniformDataType::Float as i32);
+        shader.set(&Uniforms { time: get_time() as f32 });
         begin_drawing();
-        begin_shader_mode(shader);
+        begin_shader_mode(shader.raw);
         draw_texture(canvas, 0, 0, white);
         end_shader_mode();
         end_drawing();
+    }
+    drop(shader);
+    close_window();
+}
+
+/// A `gpu::Shader<U>` loaded into raylib, the same as `shader/raylib_shader.som`.
+struct RaylibShader<U> {
+    raw: raylib::Shader,
+    locations: List<i32>,
+    shader: gpu::Shader<U>,
+}
+
+impl<U> From<gpu::Shader<U>> for RaylibShader<U> {
+    fn from(shader: gpu::Shader<U>) -> RaylibShader<U> {
+        let raw = load_shader_from_memory(null() as cstr, shader.glsl.c_str);
+        let mut locations: List<i32> = List::empty();
+        for name in &shader.uniforms {
+            locations.push(get_shader_location(raw, name.c_str));
+        }
+        RaylibShader { raw, locations, shader }
+    }
+}
+
+impl<U> RaylibShader<U> {
+    fn set(&self, uniforms: &U) {
+        self.shader.each(uniforms, (index, value) => {
+            let at = self.locations.get(index) else return;
+            match value {
+                gpu::Uniform::Float(x) => set_shader_value(self.raw, *at, &x as *, ShaderUniformDataType::Float as i32),
+                gpu::Uniform::Int(x) => set_shader_value(self.raw, *at, &x as *, ShaderUniformDataType::Int as i32),
+                gpu::Uniform::Vec4(v) => set_shader_value(self.raw, *at, &v as *, ShaderUniformDataType::Vec4 as i32),
+                _ => {}
+            }
+        });
+    }
+}
+
+impl<U> Drop for RaylibShader<U> {
+    fn drop(&mut self) {
+        unload_shader(self.raw);
     }
 }

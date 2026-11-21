@@ -124,7 +124,7 @@ fn check_passes(ast: Ast, options: &Options, passes: &mut Passes) -> Result<Chec
     let front = passes.front(ast)?;
     let mut mir = passes.back(&front)?.expect("no errors, so lowered");
     // Before the optimizer shakes out the shaders nothing uses.
-    let shaders = passes.shaders(&mir)?;
+    let shaders = passes.shaders(&mut mir)?;
     if options.test
         && let Some(tests) = mir.tests
     {
@@ -188,7 +188,8 @@ pub fn analyze(path: &Path, options: &Options) -> Analysis {
         unreachable!("{continuing}")
     };
     // Shaders are checked as written, as the editor shows them.
-    if let Some(mir) = &mir
+    let mut mir = mir;
+    if let Some(mir) = &mut mir
         && passes.errors.is_empty()
     {
         let Ok(_) = passes.shaders(mir) else {

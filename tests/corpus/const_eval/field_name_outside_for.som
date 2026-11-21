@@ -1,0 +1,6 @@
+// expect: error
+
+/// `@name(f)` only means something in `@for f in T`.
+fn main() {
+    let n = @name(x);
+}

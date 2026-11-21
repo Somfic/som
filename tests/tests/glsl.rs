@@ -15,6 +15,9 @@ fn shaders_are_valid_glsl() {
     let mut checked = 0;
     for entry in std::fs::read_dir(&corpus).unwrap() {
         let path = entry.unwrap().path();
+        if !path.is_file() {
+            continue;
+        }
         let source = std::fs::read_to_string(&path).unwrap();
         if !source.starts_with("// expect: exit") && !source.starts_with("// expect: ok") {
             continue;

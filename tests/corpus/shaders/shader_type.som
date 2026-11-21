@@ -1,0 +1,37 @@
+// expect: exit 0
+
+/// `gpu::Shader::fragment(shader)`: the shader's GLSL and its uniforms' names, worked out
+/// from the shader; `each` gives each uniform's value, for a graphics library to set.
+use som::gpu;
+
+struct Uniforms {
+    pub time: f32,
+    pub count: i32,
+    pub tint: Vector<4, f32>,
+}
+
+@fragment
+fn tinted(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
+    u.tint * f32::sin(frag.uv.x + u.time)
+}
+
+fn main() -> i32 {
+    let shader = gpu::Shader::fragment(tinted);
+    if shader.glsl != @glsl(tinted) { return 1; }
+    if shader.uniforms.len != 3 { return 2; }
+    let mut names = "";
+    for name in &shader.uniforms { names = names + name + ","; }
+    if names != "time,count,tint," { return 3; }
+
+    // Each uniform, with its index: written out per field, no list.
+    shader.each(&Uniforms { time: 1.5, count: 7, tint: Vector::new([1.0, 0.5, 0.0, 1.0]) }, (i, value) => {
+        let fits = match value {
+            gpu::Uniform::Float(t) => i == 0 && t == 1.5,
+            gpu::Uniform::Int(n) => i == 1 && n == 7,
+            gpu::Uniform::Vec4(v) => i == 2 && v[1] == 0.5,
+            _ => false,
+        };
+        assert(fits);
+    });
+    0
+}

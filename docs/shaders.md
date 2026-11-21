@@ -9,9 +9,9 @@ source as a `string`. The function is still a normal function, so it runs and ca
 tested on the CPU too.
 
 ```som
-use extern "raylib";
+use som::gpu;
 
-struct Uniforms { time: f32, tint: Vector<4, f32> }
+struct Uniforms { pub time: f32, pub tint: Vector<4, f32> }
 
 @fragment
 fn stripes(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
@@ -22,11 +22,26 @@ fn stripes(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
 
 fn main() {
     // …
-    let shader = load_shader_from_memory(null() as cstr, @glsl(stripes).c_str);
-    let time_at = get_shader_location(shader, "time");
-    // set_shader_value(shader, time_at, &time as *, ShaderUniformDataType::Float as i32);
+    let shader: RaylibShader<Uniforms> = gpu::Shader::fragment(stripes);
+    shader.set(&Uniforms { time, tint });
+    begin_shader_mode(shader.raw);
+    // …
 }
 ```
+
+## `gpu::Shader<U>`
+
+`gpu::Shader::fragment(stripes)` makes a `Shader<U>` from the shader itself: `U` is worked
+out from its signature, `glsl` is its source (made while compiling: `glsl(f)` costs nothing
+when it runs, and `@glsl(f)` is the same as a constant), and `uniforms` are `U`'s field names
+(`@name(f)`). `shader.each(&u, (i, value) => …)` calls back with each field's index and
+value as a `gpu::Uniform` (`Float`, `Int`,
+`Bool`, `Vec2`–`Vec4`), written out per field while compiling: no list, no loop. Nothing in it knows about a graphics library: an
+adapter loads `glsl`, looks up each uniform by name once, and sets them from `each`.
+`example/shader/raylib_shader.som` is raylib's, as `impl From<gpu::Shader<U>> for
+RaylibShader<U>`, so a `gpu::Shader` becomes one wherever one is expected.
+
+The uniforms' fields have to be `pub` for now: `each` reads them from the standard library.
 
 ## Seeing the GLSL
 
@@ -93,12 +108,12 @@ The translation is MIR → GLSL, function by function:
 | MIR | GLSL |
 |---|---|
 | struct / enum / optional / range | struct (an enum's tag is a `uint`) |
-| `Vector<N, T>` | a struct holding `T[N]`; converted to `vecN` only at the shader's inputs and output |
+| `Vector<N, T>`, `[T; 2..4]` | GLSL's own `vecN`/`ivecN`/`bvecN`; std's `+ - * /`, `.x`/`.xy`…, `magnitude`, `normalized` are GLSL's operators, swizzles, `length` and `normalize` |
 | `&T` param | `T` (a copy: nothing changes it during the call) |
 | `&mut T` param | `inout T`: copy-in/copy-out, which equals passing a pointer because the borrow checker rules out aliasing |
 | local reference | the place it refers to, written out; indexes it reads are copied where it's made |
-| one block, or a chain of `goto`s | straight-line statements |
-| any other control flow | `switch` on the next block, inside `for (;;)` |
+| `if`, `while`, `loop`, `for`, `match` | `if`/`else` and `for (;;)` with `break`/`continue`, laid out by dominators (`structure.rs`, not tied to GLSL) |
+| what can't be laid out that way (a `break` out of two loops) | `switch` on the next block, inside `for (;;)` |
 
 `tests/tests/glsl.rs` runs every compiling shader in `tests/corpus/shaders` through `glslc`.
 

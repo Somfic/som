@@ -1,0 +1,23 @@
+// expect: exit 0
+
+/// `@name(f)` is field `f`'s name as text, in code and in text, in each copy.
+struct Point { x: i32, longer: i32 }
+
+fn names<T>(value: &T) -> usize {
+    let mut total = 0;
+    @for f in T { total = total + @name(f).len; }
+    total
+}
+
+fn described(p: &Point) -> string {
+    let mut text = "";
+    @for f in Point { text = text + "{@name(f)}={p.f};"; }
+    text
+}
+
+fn main() -> i32 {
+    let p = Point { x: 3, longer: 4 };
+    if names(&p) != 7 { return 1; }
+    if described(&p) != "x=3;longer=4;" { return 2; }
+    0
+}

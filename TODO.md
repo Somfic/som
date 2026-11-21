@@ -110,15 +110,21 @@ needed by the `@gpu` work too.
 `@fragment` → GLSL 3.30 via `@glsl(f)`, running through raylib (`example/shader`).
 
 - [x] `@if GPU`: GPU as a system, `som::gl` built-ins, availability over the call graph, GPU copies in lowering (2026-11-20).
+- [ ] A generic function without a written return type whose body ends in a per-instance `@for f in T` can't be called as a statement ("cannot infer the type"); write the return type.
 - [ ] `@if` as a value (`@if GPU { gl::sin(x) } else { c::sinf(x) }` as a function's tail); std now writes `return` in both branches.
 - [ ] `@if GPU || WINDOWS`: mixing the GPU and OSes in one condition isn't understood (it's treated as an ordinary `@if`).
 - [ ] Vector versions of `som::gl` (`vec4` `mix`, `dot`, `length`, `normalize`) once `Vector` maps to GLSL's own vectors.
 - [ ] Externs can't be overloaded, so GLSL's two-argument `atan` is `gl::atan2`, renamed by the translator.
 - [ ] `@vertex` shaders (inputs from raylib's `vertexPosition`/`vertexTexCoord`/`vertexColor`, `mvp`), and loading a vertex+fragment pair.
 - [ ] Textures: a `Texture` uniform → `sampler2D`, `sample(tex, uv)`; raylib's `texture0`. Wants structured control flow first (implicit derivatives in non-uniform control flow are undefined).
-- [ ] Structured control flow for `if`/`while`/`match` instead of the `switch`-in-a-loop (reducible CFGs only, which som's are).
-- [ ] Host side: `Shader<U>` in a raylib helper, `s.set(&uniforms)` setting each field by name with `@for f in U`.
-- [ ] Native vector ops: map `Vector` `+ - * /` and `x`/`y`/… to GLSL `vecN` operations instead of the generic array code.
+- [x] Structured control flow (`structure.rs`): `if`/`for (;;)`/`break`/`continue`; `switch` loop only as a fallback (2026-11-21).
+- [ ] Breaking out of two loops at once still falls back to the `switch` loop: use a flag variable instead.
+- [x] `gpu::Shader<U>` (GLSL + uniform names + allocation-free `each`), `@name(f)`, `glsl(f)` at run time, raylib adapter in `example/shader/raylib_shader.som` (2026-11-21).
+- [ ] Uniform structs need `pub` fields, since `Shader::each` reads them from std. Decide whether `@for f in T` copies may read private fields (reflection privilege).
+- [ ] `u32` uniforms: dropped because raylib 5.x has no unsigned uniform type; back with WGSL/wgpu.
+- [ ] A shader without uniforms can't use `Shader::fragment` (its signature bound takes `&U`): add a form for `fn(Fragment) -> Vector<4, f32>`.
+- [ ] With `use som::gpu;`, `Shader` means std's, so raylib's has to be written `raylib::Shader`.
+- [x] Native vectors: `[T; 2..4]` and `Vector` are `vecN`; std's vector ops are GLSL operators (2026-11-21).
 - [x] Every shader is checked (and `--emit glsl` writes it) whether or not `@glsl` asks for it.
 - [ ] `glsl` called without `@` fails at run time; make it a compile error.
 - [ ] Generated names are long (`som_data_Vector_4_f32`); shorten where unambiguous.
