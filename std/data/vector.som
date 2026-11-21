@@ -118,7 +118,8 @@ impl<T: Copy> Vector<4, T> {
 
     pub prop xyz: Vector = [.x, .y, .z];
 
-    /// As a colour: red, green, blue and how opaque.    pub prop r = .components[0];
+    /// As a colour: red, green, blue and how opaque.
+    pub prop r = .components[0];
     pub prop g = .components[1];
     pub prop b = .components[2];
     pub prop a = .components[3];

@@ -135,3 +135,13 @@ needed by the `@gpu` work too.
 - [ ] `glsl` called without `@` fails at run time; make it a compile error.
 - [ ] Generated names are long (`som_data_Vector_4_f32`); shorten where unambiguous.
 - [ ] WGSL emitter + wgpu-native host, then compute kernels (`@compute`), see the Parallelism section.
+
+From writing `example/shooter` (a raycasting shooter, 2026-11-21), what made shaders harder than they should be:
+
+- [x] A texture uniform before other uniforms shifted the later fields' indexes (translator panic); `Vec4` lost `.r` to a doc comment in std.
+- [ ] One level, two copies: an `[i32; 256]` for collision and a texture for the shaders, kept in step by hand. Something like `gpu::Grid<T>` (CPU array + GPU texture) would let one `raycast` serve both the game and the shader.
+- [ ] A per-monster draw: uniforms can't be arrays/lists, so each monster is its own `begin`/draw/`end`. Uniform arrays (`[Vec4; 16]`, or a `List` as a buffer) would let one pass draw them all.
+- [ ] Full-screen and sprite passes need a dummy `draw_texture_pro` for uvs from 0 to 1: add `shader.fullscreen(&u)` / `shader.draw(rect, &u)` to the adapter.
+- [ ] Two uniform structs repeat the camera (`pos`, `dir`, `plane`, `map`): uniforms can't nest structs yet.
+- [ ] Captured variables as uniforms (`gpu::fragment((frag) => … g.pos …)`) would remove the uniforms structs altogether.
+- [ ] `i32` has no `min`/`max`/`clamp`.

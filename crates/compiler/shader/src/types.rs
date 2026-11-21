@@ -176,13 +176,12 @@ impl Translator<'_> {
             other => unreachable!("only structs have members: {other:?}"),
         };
         // The uniforms' textures are uniforms of their own.
+        // Numbered first: an index is among all the MIR fields.
         let textures_apart = Some(ty) == self.uniforms;
-        let fields: Vec<(String, TypeId)> = (fields.into_iter())
-            .filter(|(_, t)| !(textures_apart && self.is_lang(*t, LangStruct::Texture)))
-            .collect();
         Ok(fields
             .into_iter()
             .enumerate()
+            .filter(|(_, (_, t))| !(textures_apart && self.is_lang(*t, LangStruct::Texture)))
             .filter(|(_, (_, t))| !self.is_unit(*t))
             .map(|(i, (name, t))| (member(&name), t, i))
             .collect())

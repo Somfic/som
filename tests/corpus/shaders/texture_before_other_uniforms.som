@@ -1,0 +1,19 @@
+// expect: exit 0
+
+/// A `Texture` that isn't the uniforms' last field: the fields after it are still read as
+/// themselves, and a color channel of what's sampled is read with `.r`.
+use som::gpu;
+
+struct Uniforms { pub image: gpu::Texture, pub time: f32, pub tint: Vec4 }
+
+@fragment
+fn shaded(frag: Fragment, u: &Uniforms) -> Vec4 {
+    let c = u.image.sample(frag.uv);
+    vec4(u.tint.rgb * c.r * u.time, 1.0)
+}
+
+fn main() -> i32 {
+    let shader = gpu::Shader::fragment(shaded);
+    if shader.uniforms.len != 3 { return 1; }
+    0
+}
