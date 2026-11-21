@@ -64,6 +64,9 @@ pub(crate) struct Checker<'a> {
     narrowed: Vec<Narrowing>,
     next_narrowing: usize,
     pub(crate) known: crate::ConstValues,
+    /// Checking one instance of a function: the program's anonymous functions, checked where
+    /// they're written, so one passed in can be called.
+    pub(crate) outer_closures: HashMap<Id<Expr>, crate::ClosureSig>,
     /// Constants needed before their values are known: worked out by running code.
     needed: Vec<Id<som_ast::Const>>,
     /// Checking one instance: what its generic parameters stand for.
@@ -164,6 +167,7 @@ impl<'a> Checker<'a> {
             narrowed: Vec::new(),
             next_narrowing: 0,
             known: crate::ConstValues::default(),
+            outer_closures: HashMap::new(),
             needed: Vec::new(),
             bound: HashMap::new(),
             returns: None,

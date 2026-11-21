@@ -264,6 +264,7 @@ impl<'a> Lowerer<'a> {
             func,
             args,
             &regions,
+            self.typed,
         );
         // Its types were added to lowering's: the ids lowering has are still theirs.
         self.mir.types = typed.table.clone();

@@ -137,11 +137,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         });
         let env = self.new_local(lent, None, false, span.clone());
         let fields = self.l.mir.struct_def(def, &self.args_of(this)).fields.clone();
-        for (index, ((captured, _), (_, field_ty))) in sig.captures.iter().zip(&fields).enumerate() {
+        for (index, ((captured, ty), (_, field_ty))) in sig.captures.iter().zip(&fields).enumerate() {
             let mut place = Place::local(env)
                 .project(Projection::Deref)
                 .project(Projection::Field(index));
-            if matches!(self.l.mir.types.get(*field_ty), Ty::Ref { .. }) {
+            // Lent, rather than copied: the field is a reference to it. A capture that is a
+            // reference itself, `self`, is copied.
+            if *field_ty != self.ty(*ty) {
                 place = place.project(Projection::Deref);
             }
             self.captures.insert(*captured, place);
@@ -191,17 +193,19 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         // Its body is made with it, even if nothing calls it.
         self.l.closure_instance(ty);
         let span = self.span(closure);
-        let captured = self.l.names.captures(closure).to_vec();
+        let captured = self.l.closure_sig(closure).captures;
         let fields_tys = self.l.mir.struct_def(def, &args).fields.clone();
         let mut fields = Vec::new();
-        for (def, (_, field_ty)) in captured.into_iter().zip(fields_tys) {
+        for ((def, captured_ty), (_, field_ty)) in captured.into_iter().zip(fields_tys) {
             let place = self.variable(def).expect("captures are variables");
-            let operand = match *self.l.mir.types.get(field_ty) {
-                Ty::Ref { to, .. } => {
-                    let lent = self.borrow_temp(place, false, to, span.clone());
+            let captured_ty = self.ty(captured_ty);
+            // Lent when the field is a reference to it; copied, even a reference, otherwise.
+            let operand = match field_ty == captured_ty {
+                true => Operand::Copy(place),
+                false => {
+                    let lent = self.borrow_temp(place, false, captured_ty, span.clone());
                     Operand::Copy(Place::local(lent))
                 }
-                _ => Operand::Copy(place),
             };
             fields.push(operand);
         }

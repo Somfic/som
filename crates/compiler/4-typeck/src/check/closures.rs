@@ -99,7 +99,9 @@ impl Checker<'_> {
         let DefKind::Closure(expr) = self.names.def(def).kind else {
             return None;
         };
-        let sig = self.records.closures.get(&expr)?.clone();
+        let sig = (self.records.closures.get(&expr))
+            .or_else(|| self.outer_closures.get(&expr))?
+            .clone();
         let subst: Vec<(DefId, TypeId)> = match sig.owner {
             Some(func) => (self.names.type_params(func).iter().copied())
                 .zip(args.iter().copied())

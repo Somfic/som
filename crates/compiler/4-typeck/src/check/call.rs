@@ -164,6 +164,10 @@ impl Checker<'_> {
             // `F: fn(&T) -> bool`.
             Ty::Param(param) => self.signatures.get(&param).copied(),
             Ty::Closure(def, args) => self.closure_signature(def, &args),
+            // In an instance lowering asked for, a closure is already the struct it is in MIR.
+            Ty::Struct(def, args) if matches!(self.names.def(def).kind, DefKind::Closure(_)) => {
+                self.closure_signature(def, &args)
+            }
             _ => None,
         }
     }

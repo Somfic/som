@@ -53,9 +53,11 @@ pub fn check_instance(
     func: Id<Func>,
     args: &[TypeId],
     regions: &[som_base::Span],
+    outer: &Typed,
 ) -> (Typed, Vec<TypeError>) {
     let mut checker = check::Checker::with_table(ast, names, table);
     checker.known = known.clone();
+    checker.outer_closures = outer.records.closures.clone();
     let (typed, errors) = checker.run_instance(func, args);
     let inside = |error: &TypeError| {
         let diagnostic = error.to_diagnostic();

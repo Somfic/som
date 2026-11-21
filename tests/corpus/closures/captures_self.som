@@ -1,0 +1,31 @@
+// expect: exit 0
+
+/// A closure in a method captures `self`, a reference, by copying it: its fields are read
+/// through it, in a generic method too, and from inside a per-field `@for`.
+struct Point { pub x: i32, pub y: i32 }
+
+fn call<F: fn(i32) -> i32>(f: F) -> i32 = f(1);
+
+fn each<T, F: fn(usize, i32)>(value: &T, f: F) -> () {
+    @for (i, field) in T { f(i, value.field); }
+}
+
+struct Holder { base: i32 }
+
+impl Holder {
+    fn add(&self) -> i32 = call(n => n + self.base);
+}
+
+struct Generic<T> { base: i32, value: T }
+
+impl<T> Generic<T> {
+    fn add(&self) -> i32 = call(n => n + self.base);
+}
+
+fn main() -> i32 {
+    if (Holder { base: 6 }).add() != 7 { return 1; }
+    if (Generic { base: 7, value: true }).add() != 8 { return 2; }
+    // 3, then 4: field `i` is `3 + i`.
+    each(&Point { x: 3, y: 4 }, (i, v) => assert(v == 3 + i as i32));
+    0
+}
