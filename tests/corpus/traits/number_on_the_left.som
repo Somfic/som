@@ -1,0 +1,18 @@
+// expect: exit 0
+
+/// A number can implement an operator with something that isn't a number on the right,
+/// `2 * money`; with a number there, its operators stay built in.
+struct Money { pub cents: i32 }
+
+impl Multiply<Money, Money> for i32 {
+    fn multiply(&self, money: &Money) -> Money = Money { cents: *self * money.cents };
+}
+
+fn main() -> i32 {
+    let m = 3 * Money { cents: 5 };
+    if m.cents != 15 { return 1; }
+    if 3 * 5 != 15 { return 2; }
+    let v = 0.5 * vec2(2.0, 4.0);
+    if v.y != 2.0 { return 3; }
+    0
+}

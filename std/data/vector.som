@@ -1,11 +1,16 @@
-pub type Vector2i = Vector<2, i32>;
-pub type Vector3i = Vector<3, i32>;
+pub type Vec2i = Vector<2, i32>;
+pub type Vec3i = Vector<3, i32>;
+pub type Vec4i = Vector<3, i32>;
 
-pub type Vector2f = Vector<2, f32>;
-pub type Vector3f = Vector<3, f32>;
+pub type Vec2 = Vector<2, f32>;
+pub type Vec3 = Vector<3, f32>;
+pub type Vec4 = Vector<4, f32>;
 
-pub type Vector2d = Vector<2, f64>;
-pub type Vector3d = Vector<3, f64>;
+pub fn vec2(x: f32, y: f32) -> Vec2 = Vector { components: [x, y] };
+pub fn vec3(x: f32, y: f32, z: f32) -> Vec3 = Vector { components: [x, y, z] };
+pub fn vec3(xy: Vec2, z: f32) -> Vec3 = Vector { components: [xy.x, xy.y, z] };
+pub fn vec4(x: f32, y: f32, z: f32, w: f32) -> Vec4 = Vector { components: [x, y, z, w] };
+pub fn vec4(xyz: Vec3, w: f32) -> Vec4 = Vector { components: [xyz.x, xyz.y, xyz.z, w] };
 
 pub struct Vector<N: usize, T> {
     components: [T; N]
@@ -19,7 +24,6 @@ impl<N: usize, T> Vector<N, T> {
 }
 
 impl<N: usize, T: Copy> Vector<N, T> {
-    /// Every component a copy of `value`.
     pub fn empty(empty: T) {
         Vector { components: [empty; N] }
     }
@@ -43,11 +47,6 @@ impl Vector<2, i64> {
 }
 
 impl Vector<2, f32> {
-    pub prop magnitude = f32::sqrt(.x * .x + .y * .y);
-    pub prop normalized {
-        Self { components: [ .x / .magnitude, .y / .magnitude ] }
-    }
-
     pub fn zero() {
         Self { components: [ 0.0, 0.0 ]}
     }
@@ -77,11 +76,6 @@ impl Vector<3, i64> {
 }
 
 impl Vector<3, f32> {
-    pub prop magnitude = f32::sqrt(.x * .x + .y * .y + .z * .z);
-    pub prop normalized {
-        Self { components: [ .x / .magnitude, .y / .magnitude, .z / .magnitude ] }
-    }
-
     pub fn zero() {
         Self { components: [ 0.0, 0.0, 0.0 ]}
     }
@@ -103,6 +97,10 @@ impl<T: Copy> Vector<3, T> {
     pub prop y = .components[1];
     pub prop z = .components[2];
 
+    pub prop r = .components[0];
+    pub prop g = .components[1];
+    pub prop b = .components[2];
+
     pub prop xy: Vector = [.x, .y];
     pub prop yz: Vector = [.y, .z];
     pub prop xz: Vector = [.x, .z];
@@ -119,6 +117,12 @@ impl<T: Copy> Vector<4, T> {
     pub prop xz: Vector = [.x, .z];
 
     pub prop xyz: Vector = [.x, .y, .z];
+
+    /// As a colour: red, green, blue and how opaque.    pub prop r = .components[0];
+    pub prop g = .components[1];
+    pub prop b = .components[2];
+    pub prop a = .components[3];
+    pub prop rgb: Vector = [.x, .y, .z];
 }
 
 impl<N: usize, T> From<[T; N]> for Vector<N, T> {
@@ -176,6 +180,72 @@ impl<N: usize, T: Divide + Copy> Divide for Vector<N, T> {
     fn divide(&self, other: &Self) -> Self {
         let mut c = self.components;
         @for i in 0..N { c[i] = c[i] / other.components[i]; }
+        Vector { components: c }
+    }
+}
+
+/// Each is GLSL's own in a shader.
+impl<N: usize> Vector<N, f32> {
+    /// The components multiplied pairwise and added up.
+    pub fn dot(&self, other: &Self) -> f32 {
+        let mut sum = 0.0;
+        @for i in 0..N { sum = sum + self.components[i] * other.components[i]; }
+        sum
+    }
+
+    /// How long it is.
+    pub prop length = self.dot(self).sqrt();
+    pub prop magnitude = self.length;
+
+    /// The same direction, length 1.
+    pub prop normalized: Self = *self * (1.0 / self.length);
+
+    /// From `self` to `to` by `t`: `self` at 0, `to` at 1.
+    pub fn mix(&self, to: &Self, t: f32) -> Self = *self + (*to - *self) * t;
+
+    /// Each component kept from `low` to `high`.
+    pub fn clamp(&self, low: f32, high: f32) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i].clamp(low, high); }
+        Vector { components: c }
+    }
+
+    /// Each component without its sign.
+    pub fn abs(&self) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i].abs(); }
+        Vector { components: c }
+    }
+
+    /// The smaller of each pair of components.
+    pub fn min(&self, other: &Self) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i].min(other.components[i]); }
+        Vector { components: c }
+    }
+
+    /// The larger of each pair of components.
+    pub fn max(&self, other: &Self) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i].max(other.components[i]); }
+        Vector { components: c }
+    }
+}
+
+/// `0.5 * v`: every component times the number.
+impl<N: usize> Multiply<Vector<N, f32>, Vector<N, f32>> for f32 {
+    fn multiply(&self, vector: &Vector<N, f32>) -> Vector<N, f32> {
+        let mut c = vector.components;
+        @for i in 0..N { c[i] = *self * c[i]; }
+        Vector { components: c }
+    }
+}
+
+/// `-v`: every component's sign turned around.
+impl<N: usize> Negate for Vector<N, f32> {
+    fn negate(&self) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = -c[i]; }
         Vector { components: c }
     }
 }

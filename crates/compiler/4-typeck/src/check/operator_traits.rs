@@ -81,12 +81,16 @@ impl Checker<'_> {
         }
         let trait_ = self.names.lang(lang)?;
         let base = self.u.shallow(lhs);
-        if self.has_builtin(base, lang)
-            || matches!(self.u.get(base), Ty::Var(_) | Ty::Error | Ty::Param(_))
-        {
+        let rhs = self.u.shallow(rhs);
+        if matches!(self.u.get(base), Ty::Error | Ty::Param(_)) {
             return None;
         }
-        let rhs = self.u.shallow(rhs);
+        // A number on the left: its own operator, unless what's on the right isn't a number,
+        // `0.5 * v`.
+        let number = |c: &Self, ty: TypeId| c.has_builtin(ty, lang) || matches!(c.u.get(ty), Ty::Var(_));
+        if number(self, base) && (number(self, rhs) || matches!(self.u.get(rhs), Ty::Error)) {
+            return None;
+        }
         let mut fitting = Vec::new();
         for index in 0..self.impls.len() {
             let info = &self.impls[index];

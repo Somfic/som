@@ -15,33 +15,33 @@ impl f32 {
     }
 
     // the trigonometric sine
-    pub fn sin(rads: f32) -> f32 {
-        @if GPU { return gl::sin(rads); } else { return c::sinf(rads); }
+    pub fn sin(self) -> f32 {
+        @if GPU { return gl::sin(self); } else { return c::sinf(self); }
     }
 
     // the hyperbolic sine
-    pub fn sinh(rads: f32) -> f32 {
-        @if GPU { return gl::sinh(rads); } else { return c::sinhf(rads); }
+    pub fn sinh(self) -> f32 {
+        @if GPU { return gl::sinh(self); } else { return c::sinhf(self); }
     }
 
     // the trigonometric cosine
-    pub fn cos(rads: f32) -> f32 {
-        @if GPU { return gl::cos(rads); } else { return c::cosf(rads); }
+    pub fn cos(self) -> f32 {
+        @if GPU { return gl::cos(self); } else { return c::cosf(self); }
     }
 
     // the hyperbolic cosine
-    pub fn cosh(rads: f32) -> f32 {
-        @if GPU { return gl::cosh(rads); } else { return c::coshf(rads); }
+    pub fn cosh(self) -> f32 {
+        @if GPU { return gl::cosh(self); } else { return c::coshf(self); }
     }
 
      // the trigonometric tangent
-    pub fn tan(rads: f32) -> f32 {
-        @if GPU { return gl::tan(rads); } else { return c::tanf(rads); }
+    pub fn tan(self) -> f32 {
+        @if GPU { return gl::tan(self); } else { return c::tanf(self); }
     }
 
     // the hyperbolic tangent
-    pub fn tanh(rads: f32) -> f32 {
-        @if GPU { return gl::tanh(rads); } else { return c::tanhf(rads); }
+    pub fn tanh(self) -> f32 {
+        @if GPU { return gl::tanh(self); } else { return c::tanhf(self); }
     }
 
     /// The angle from the x axis to the point `(x, y)`, from -π to π.

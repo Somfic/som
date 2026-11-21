@@ -89,7 +89,11 @@ impl Lowerer<'_> {
                 _ => {}
             }
         }
-        if !builtin_operator(self.mir.types.get(this), lang) {
+        // `f32`'s `multiply` of a `Vector` is an implementation's, not the number's own.
+        let other = type_args.get(1).copied().unwrap_or(this);
+        if !builtin_operator(self.mir.types.get(this), lang)
+            || !builtin_operator(self.mir.types.get(other), lang)
+        {
             return None;
         }
         let key = (func, type_args.to_vec());
@@ -608,7 +612,11 @@ impl FnBuilder<'_, '_> {
                 ty = to;
             }
         }
-        if builtin_operator(self.l.mir.types.get(ty), lang) {
+        // Numbers' own, unless what's on the right isn't one: `0.5 * v`.
+        let other = self.type_args(expr).get(1).copied().unwrap_or(ty);
+        if builtin_operator(self.l.mir.types.get(ty), lang)
+            && builtin_operator(self.l.mir.types.get(other), lang)
+        {
             return None;
         }
         let trait_ = self

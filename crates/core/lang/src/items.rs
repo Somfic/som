@@ -32,6 +32,7 @@ named_enum! {
         Subtract = "Subtract",
         Multiply = "Multiply",
         Divide = "Divide",
+        Negate = "Negate",
         Compare = "Compare",
         Drop = "Drop",
         Copy = "Copy",
@@ -57,6 +58,7 @@ impl LangTrait {
             LangTrait::Subtract => "subtract",
             LangTrait::Multiply => "multiply",
             LangTrait::Divide => "divide",
+            LangTrait::Negate => "negate",
             LangTrait::Compare => "compare",
             LangTrait::Drop => "drop",
             LangTrait::Share => "share",
@@ -102,7 +104,7 @@ impl LangTrait {
 
     /// Whether only the language calls its method, never a `value.method()` written out.
     pub fn called_implicitly(self) -> bool {
-        self.is_operator() || matches!(self, LangTrait::Drop | LangTrait::Share)
+        self.is_operator() || matches!(self, LangTrait::Drop | LangTrait::Share | LangTrait::Negate)
     }
 }
 

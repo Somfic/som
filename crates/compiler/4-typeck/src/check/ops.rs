@@ -150,6 +150,10 @@ impl Checker<'_> {
             _ => false,
         };
         if !negatable {
+            // `-v` through an implementation of `Negate`.
+            if let Some(output) = self.negate_impl(id, shallow) {
+                return output;
+            }
             self.errors.push(TypeError::CannotNegate {
                 ty: self.describe(ty),
                 span: self.span(id),
@@ -157,6 +161,31 @@ impl Checker<'_> {
             return self.u.table.error;
         }
         ty
+    }
+
+    /// What `-x` of a `ty` gives through `Negate`, if `ty` has it: recorded for `id`, with the
+    /// trait's type arguments.
+    fn negate_impl(&mut self, id: Id<Expr>, ty: TypeId) -> Option<TypeId> {
+        let trait_ = self.names.lang(som_lang::LangTrait::Negate)?;
+        let output = match self.u.get(ty).clone() {
+            // `T: Negate` is `T: Negate<T>`.
+            Ty::Param(def) => self.names.bounds(def).contains(&trait_).then_some(ty)?,
+            _ => {
+                let u = &self.u;
+                let (index, args) =
+                    crate::impls::find_impl(&self.impls, &u.table, trait_, ty, &[], &|t| u.shallow(t))?;
+                match self.impls[index].trait_args.first().copied() {
+                    Some(output) => {
+                        let subst = self.impls[index].subst(&args);
+                        crate::impls::substitute(&mut self.u.table, output, &subst)
+                    }
+                    None => ty,
+                }
+            }
+        };
+        self.records.trait_ops.insert(id, som_lang::LangTrait::Negate);
+        self.type_args.insert(id, vec![ty, output]);
+        Some(output)
     }
 
     fn binary(&mut self, id: Id<Expr>, op: BinOp, lhs: TypeId, rhs: TypeId) -> TypeId {

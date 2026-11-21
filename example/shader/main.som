@@ -5,19 +5,16 @@ use som::gpu;
 /// What the shader is told each frame. Each field is a uniform, set by its name.
 struct Uniforms {
     pub time: f32,
-    pub tint: Vector<4, f32>,
+    pub tint: Vec4,
 }
 
-fn wave(x: f32, t: f32) -> f32 {
-    f32::sin(x * 10.0 + t)
-}
+fn wave(x: f32, t: f32) -> f32 = (x * 10.0 + t).sin();
 
 /// Runs on the GPU for each pixel of what's drawn with it: stripes that move with `time`.
 @fragment
-fn stripes(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
+fn stripes(frag: Fragment, u: &Uniforms) -> Vec4 {
     let k = 0.5 + 0.5 * wave(frag.uv.x + frag.uv.y, u.time);
-    let c = u.tint * k;
-    Vector::new([c.x, c.y, c.z, 1.0])
+    vec4(u.tint.rgb * k, 1.0)
 }
 
 fn main() {
@@ -33,7 +30,7 @@ fn main() {
     while !window_should_close() {
         shader.set(&Uniforms {
             time: get_time() as f32,
-            tint: Vector::new([0.3, 0.7, 1.0, 1.0]),
+            tint: vec4(0.3, 0.7, 1.0, 1.0),
         });
 
         begin_drawing();

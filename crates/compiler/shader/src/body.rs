@@ -773,6 +773,25 @@ impl Body<'_> {
 /// `v.xy`, `length(v)`. `None` for any other function.
 fn vector_op(t: &Translator, func: FuncId, args: &[String]) -> Option<String> {
     let callee = &t.mir.funcs[func];
+    // `vec4(rgb, 1.0)`: GLSL's constructors take the same.
+    for n in ["vec2", "vec3", "vec4"] {
+        if callee.name == format!("som::data::{n}") {
+            return Some(format!("{n}({})", args.join(", ")));
+        }
+    }
+    // `0.5 * v`: a number times a vector, GLSL's own `*` too.
+    if callee.name.starts_with("som::data::f32::multiply<")
+        && let [a, b] = args
+        && callee.params.get(1).is_some_and(|&p| {
+            let of = match t.mir.types.get(p) {
+                Ty::Ref { to, .. } => *to,
+                _ => p,
+            };
+            t.vector(of).is_some()
+        })
+    {
+        return Some(format!("({a} * {b})"));
+    }
     let rest = callee.name.strip_prefix("som::data::Vector::")?;
     let op = rest.split('<').next()?;
     let first = *callee.params.first()?;
@@ -786,14 +805,19 @@ fn vector_op(t: &Translator, func: FuncId, args: &[String]) -> Option<String> {
     }
     t.vector(of)?;
     let a = args.first()?;
-    Some(match (op, args.get(1)) {
-        ("add", Some(b)) => format!("({a} + {b})"),
-        ("subtract", Some(b)) => format!("({a} - {b})"),
-        ("multiply", Some(b)) => format!("({a} * {b})"),
-        ("divide", Some(b)) => format!("({a} / {b})"),
-        ("x" | "y" | "z" | "w" | "xy" | "yz" | "xz" | "xyz", None) => format!("{a}.{op}"),
-        ("magnitude", None) => format!("length({a})"),
-        ("normalized", None) => format!("normalize({a})"),
+    Some(match (op, &args[1..]) {
+        ("add", [b]) => format!("({a} + {b})"),
+        ("subtract", [b]) => format!("({a} - {b})"),
+        ("multiply", [b]) => format!("({a} * {b})"),
+        ("divide", [b]) => format!("({a} / {b})"),
+        ("x" | "y" | "z" | "w" | "xy" | "yz" | "xz" | "xyz", []) => format!("{a}.{op}"),
+        ("r" | "g" | "b" | "a" | "rgb", []) => format!("{a}.{op}"),
+        ("magnitude" | "length", []) => format!("length({a})"),
+        ("normalized", []) => format!("normalize({a})"),
+        ("abs", []) => format!("abs({a})"),
+        ("negate", []) => format!("(-{a})"),
+        ("dot" | "min" | "max", [b]) => format!("{op}({a}, {b})"),
+        ("mix" | "clamp", [b, c]) => format!("{op}({a}, {b}, {c})"),
         _ => return None,
     })
 }

@@ -1,0 +1,17 @@
+// expect: exit 0
+
+/// `-x` of what implements `Negate` is its `negate`; numbers' own stays built in.
+struct Money { pub cents: i32 }
+
+impl Negate for Money {
+    fn negate(&self) -> Money = Money { cents: -self.cents };
+}
+
+fn main() -> i32 {
+    let m = -Money { cents: 5 };
+    if m.cents != -5 { return 1; }
+    if -(3) != 0 - 3 { return 2; }
+    let v = -vec3(1.0, -2.0, 0.5);
+    if v.x != -1.0 || v.y != 2.0 { return 3; }
+    0
+}

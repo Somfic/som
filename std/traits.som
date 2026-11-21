@@ -37,6 +37,11 @@ pub trait Divide<Other = Self, Output = Self> {
     fn divide(self: &Self, other: &Other) -> Output;
 }
 
+/// `-a`: `Output` is what comes out, `Self` unless an implementation says.
+pub trait Negate<Output = Self> {
+    fn negate(self: &Self) -> Output;
+}
+
 /// Which of two values comes first. The language relies on the variants' order.
 pub enum Ordering { Less, Equal, Greater }
 

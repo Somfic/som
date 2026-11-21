@@ -113,7 +113,10 @@ needed by the `@gpu` work too.
 - [ ] A generic function without a written return type whose body ends in a per-instance `@for f in T` can't be called as a statement ("cannot infer the type"); write the return type.
 - [ ] `@if` as a value (`@if GPU { gl::sin(x) } else { c::sinf(x) }` as a function's tail); std now writes `return` in both branches.
 - [ ] `@if GPU || WINDOWS`: mixing the GPU and OSes in one condition isn't understood (it's treated as an ordinary `@if`).
-- [ ] Vector versions of `som::gl` (`vec4` `mix`, `dot`, `length`, `normalize`) once `Vector` maps to GLSL's own vectors.
+- [x] Shader-friendly std (2026-11-21): `Vec2`–`Vec4`, `vec2`/`vec3`/`vec4` (also `vec4(rgb, a)`), `.r .g .b .a .rgb`, `dot`/`length`/`normalized`/`mix`/`clamp`/`abs`/`min`/`max` on `f32` vectors, trig as `f32` methods; all GLSL's own in shaders.
+- [x] `0.5 * v`: a built-in type can implement an operator when the other side isn't built in (2026-11-21).
+- [x] `-x` through a `Negate` trait; `Vector<N, f32>` has it (2026-11-21).
+- [ ] Scalar `f32` methods in shaders (`x.clamp(…)`, `x.sin()`) are still calls to translated std functions, not GLSL's directly.
 - [ ] Externs can't be overloaded, so GLSL's two-argument `atan` is `gl::atan2`, renamed by the translator.
 - [ ] `@vertex` shaders (inputs from raylib's `vertexPosition`/`vertexTexCoord`/`vertexColor`, `mvp`), and loading a vertex+fragment pair.
 - [ ] Textures: a `Texture` uniform → `sampler2D`, `sample(tex, uv)`; raylib's `texture0`. Wants structured control flow first (implicit derivatives in non-uniform control flow are undefined).

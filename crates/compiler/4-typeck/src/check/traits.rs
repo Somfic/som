@@ -187,10 +187,13 @@ impl Checker<'_> {
                     span: self.impl_target_span(index),
                 });
             }
-            // `impl Add for i32` would change what `1 + 2` means.
+            // `impl Add for i32` would change what `1 + 2` means. With something not built in
+            // on the right, `impl Multiply<Vector> for f32`, it means something new: `0.5 * v`.
+            let other = self.impls[index].trait_args.first().copied();
             if let Some(lang) = self.names.lang_of(trait_)
                 && let Some(target) = self.impls[index].target
                 && self.has_builtin(target, lang)
+                && other.is_none_or(|other| self.has_builtin(other, lang))
             {
                 self.errors.push(TypeError::BuiltinImpl {
                     ty: self.describe(target),

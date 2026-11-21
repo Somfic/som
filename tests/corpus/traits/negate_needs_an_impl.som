@@ -1,0 +1,8 @@
+// expect: error CannotNegate
+
+/// Without `Negate`, `-x` of a struct is an error.
+struct Point { x: i32 }
+
+fn main() {
+    let p = -Point { x: 1 };
+}

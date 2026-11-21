@@ -189,6 +189,7 @@ pub fn builtin_operator(ty: &Ty, lang: LangTrait) -> bool {
         LangTrait::Add | LangTrait::Subtract | LangTrait::Multiply | LangTrait::Divide => {
             matches!(ty, Ty::Int(_) | Ty::Float(_))
         }
+        LangTrait::Negate => matches!(ty, Ty::Int(int) if int.is_signed()) || matches!(ty, Ty::Float(_)),
         LangTrait::Compare => matches!(ty, Ty::Int(_) | Ty::Float(_) | Ty::Char),
         LangTrait::Eq => matches!(
             ty,

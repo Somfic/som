@@ -5,9 +5,9 @@ use som::gpu;
 struct Uniforms { pub time: f32 }
 
 @fragment
-fn fade(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
-    let t = 0.5 + 0.5 * f32::sin(u.time);
-    Vector::new([frag.uv.x, t, 1.0 - t, 1.0])
+fn fade(frag: Fragment, u: &Uniforms) -> Vec4 {
+    let t = 0.5 + 0.5 * u.time.sin();
+    vec4(frag.uv.x, t, 1.0 - t, 1.0)
 }
 
 fn main() {

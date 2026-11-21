@@ -11,13 +11,12 @@ tested on the CPU too.
 ```som
 use som::gpu;
 
-struct Uniforms { pub time: f32, pub tint: Vector<4, f32> }
+struct Uniforms { pub time: f32, pub tint: Vec4 }
 
 @fragment
-fn stripes(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
-    let k = 0.5 + 0.5 * f32::sin(frag.uv.x * 10.0 + u.time);
-    let c = u.tint * k;
-    Vector::new([c.x, c.y, c.z, 1.0])
+fn stripes(frag: Fragment, u: &Uniforms) -> Vec4 {
+    let k = 0.5 + 0.5 * (frag.uv.x * 10.0 + u.time).sin();
+    vec4(u.tint.rgb * k, 1.0)
 }
 
 fn main() {
@@ -49,6 +48,14 @@ The uniforms' fields have to be `pub` for now: `each` reads them from the standa
 file each next to the output (`main.stripes.frag`); `--emit glsl=DIR` puts them in DIR, and
 `--emit glsl=-` prints them. Every shader is compiled for the GPU while checking, used or not,
 so `som check` and the editor report a broken one before anything calls `@glsl` on it.
+
+## Vectors
+
+`Vec2`, `Vec3` and `Vec4` are `Vector<N, f32>`, made with `vec2(x, y)`, `vec3(xy, z)`,
+`vec4(rgb, a)` and so on. They have `+ - * /` (with another vector or an `f32`, on either side of `*`), `-v`,
+`.x .y .z .w`, `.r .g .b .a`, `.xy .xyz .rgb`, and `dot`, `length`, `normalized`, `mix`,
+`clamp`, `abs`, `min`, `max`; `f32` has `sin`, `cos`, `pow`, `sqrt`, `fract`, `clamp`, `mix`,
+`smoothstep` and more as methods. In a shader each is GLSL's own; on the CPU, ordinary code.
 
 ## A fragment shader
 

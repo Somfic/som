@@ -50,7 +50,7 @@ impl FnBuilder<'_, '_> {
             Expr::BitNot(inner) => Rvalue::Not(self.number(*inner)),
             Expr::Unreachable => self.failing(expr, None),
             Expr::Fail(message) => self.failing(expr, Some(*message)),
-            Expr::Neg(inner) => self.negated(*inner),
+            Expr::Neg(inner) => self.negated(expr, *inner),
             Expr::Borrow {
                 mutable,
                 expr: inner,
@@ -156,8 +156,24 @@ impl FnBuilder<'_, '_> {
     }
 
     /// `-x` is `0 - x`.
-    fn negated(&mut self, inner: Id<Expr>) -> Rvalue {
+    fn negated(&mut self, expr: Id<Expr>, inner: Id<Expr>) -> Rvalue {
         let ty = self.expr_ty(inner);
+        // `-v` of what implements `Negate`: its `negate`, given `&v`.
+        if self.typed.operator_trait(expr) == Some(som_lang::LangTrait::Negate) {
+            let trait_ = self.l.names.lang(som_lang::LangTrait::Negate).expect("checked");
+            let method = self.l.trait_method(trait_, "negate");
+            let span = self.span(expr);
+            let place = self.place(inner);
+            let reference = self.l.mir.types.intern(Ty::Ref { mutable: false, to: ty });
+            let temp = self.temp(reference, span.clone());
+            self.assign(Place::local(temp), Rvalue::Ref { mutable: false, place }, span);
+            let type_args = self.type_args(expr);
+            let func = self.l.instance(method, type_args);
+            return Rvalue::Call {
+                func,
+                args: vec![Operand::Copy(Place::local(temp))],
+            };
+        }
         let zero = match self.l.mir.types.get(ty) {
             Ty::Float(_) => ConstKind::Float(0.0),
             _ => ConstKind::Int(0),
