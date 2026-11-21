@@ -57,6 +57,17 @@ so `som check` and the editor report a broken one before anything calls `@glsl` 
 `clamp`, `abs`, `min`, `max`; `f32` has `sin`, `cos`, `pow`, `sqrt`, `fract`, `clamp`, `mix`,
 `smoothstep` and more as methods. In a shader each is GLSL's own; on the CPU, ordinary code.
 
+## Textures
+
+A `gpu::Texture` field of the uniforms is a texture to sample: `u.image.sample(uv)` gives its
+colour at `uv` (each from 0 to 1). It's GLSL's `uniform sampler2D image`, used where it's
+named, since GLSL can't put a sampler in a struct it builds; helpers take a `&gpu::Texture`.
+A texture can't be kept in a variable or put in another struct, and only the GPU samples
+one: on the CPU, `sample` fails. Its value for the host is `Uniform::Texture`, with the
+graphics library's `id`. raylib's adapter turns a raylib texture into one (`From`), and binds
+it with `SetShaderValueTexture`; it has to be set after `begin_shader_mode`, which starts a
+new batch, so the adapter's `shader.begin(&uniforms)` does both.
+
 ## A fragment shader
 
 - Takes a `Fragment` (`uv`, `color`, `position`), a `&` to a struct of uniforms, or both.

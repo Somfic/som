@@ -6,15 +6,22 @@ use som::gpu;
 struct Uniforms {
     pub time: f32,
     pub tint: Vec4,
+    pub image: gpu::Texture,
 }
 
-fn wave(x: f32, t: f32) -> f32 = (x * 10.0 + t).sin();
+/// `image` at `uv`, rippling with `time`.
+fn ripple(image: &gpu::Texture, uv: Vec2, time: f32) -> Vec4 {
+    let offset = vec2(0.0, 0.02 * (uv.x * 20.0 + time * 3.0).sin());
+    image.sample(uv + offset)
+}
 
-/// Runs on the GPU for each pixel of what's drawn with it: stripes that move with `time`.
+/// Runs on the GPU for each pixel of what's drawn with it: the checkerboard, rippling, and
+/// lit by stripes that move with `time`.
 @fragment
 fn stripes(frag: Fragment, u: &Uniforms) -> Vec4 {
-    let k = 0.5 + 0.5 * wave(frag.uv.x + frag.uv.y, u.time);
-    vec4(u.tint.rgb * k, 1.0)
+    let k = 0.6 + 0.4 * ((frag.uv.x + frag.uv.y) * 10.0 + u.time).sin();
+    let c = ripple(&u.image, frag.uv, u.time);
+    vec4(c.rgb * u.tint.rgb * k, 1.0)
 }
 
 fn main() {
@@ -23,20 +30,20 @@ fn main() {
 
     let shader: RaylibShader<Uniforms> = gpu::Shader::fragment(stripes);
     let white = Color { r: 255, g: 255, b: 255, a: 255 };
-    let image = gen_image_color(800, 450, white);
-    let canvas = load_texture_from_image(image);
-    unload_image(image);
+    let dark = Color { r: 40, g: 40, b: 60, a: 255 };
+    let checks = gen_image_checked(800, 450, 16, 9, white, dark);
+    let image = load_texture_from_image(checks);
+    unload_image(checks);
 
     while !window_should_close() {
-        shader.set(&Uniforms {
-            time: get_time() as f32,
-            tint: vec4(0.3, 0.7, 1.0, 1.0),
-        });
-
         begin_drawing();
         clear_background(Color { r: 0, g: 0, b: 0, a: 255 });
-        begin_shader_mode(shader.raw);
-        draw_texture(canvas, 0, 0, white);
+        shader.begin(&Uniforms {
+            time: get_time() as f32,
+            tint: vec4(0.4, 0.8, 1.0, 1.0),
+            image,
+        });
+        draw_texture(image, 0, 0, white);
         end_shader_mode();
         draw_fps(10, 10);
         end_drawing();
@@ -44,6 +51,6 @@ fn main() {
 
     // Before the window: raylib's GPU state goes with it.
     drop(shader);
-    unload_texture(canvas);
+    unload_texture(image);
     close_window();
 }

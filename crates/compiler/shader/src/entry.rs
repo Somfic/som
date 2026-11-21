@@ -102,15 +102,18 @@ impl Translator<'_> {
             "in vec2 fragTexCoord;\nin vec4 fragColor;\nout vec4 finalColor;\n",
         );
         let mut uniform_args = Vec::new();
+        self.uniforms = uniforms;
         if let Some(ty) = uniforms {
-            let members = self.members(ty).map_err(|no| no.at(&span, "its uniforms".into()))?;
             let Ty::Struct(def, args) = self.mir.types.get(ty).clone() else {
                 unreachable!("uniforms are a struct")
             };
             let fields = self.mir.struct_def(def, &args).fields.clone();
             let struct_name = self.display(ty);
-            for (_, member_ty, index) in members {
-                let name = &fields[index].0;
+            for (name, member_ty) in &fields {
+                let member_ty = *member_ty;
+                if self.is_unit(member_ty) {
+                    continue;
+                }
                 let what = || msg![field(format!("{struct_name}.{name}"))];
                 if ident(name) != *name || is_reserved(name) {
                     return Err(problem(
@@ -118,6 +121,11 @@ impl Translator<'_> {
                         msg!["its uniforms include ", what()],
                         Some("GLSL has the name; rename the field".into()),
                     ));
+                }
+                // A texture is a uniform of its own, used where it's named.
+                if self.is_lang(member_ty, LangStruct::Texture) {
+                    globals.push_str(&format!("uniform sampler2D {name};\n"));
+                    continue;
                 }
                 // What `som::gpu::Uniform` can hold, for the host to set.
                 let native = match (self.scalar(member_ty), self.vector(member_ty)) {
@@ -138,7 +146,8 @@ impl Translator<'_> {
                                 code("Vector"),
                                 " of 2 to 4 ",
                                 code("f32"),
-                                "s"
+                                "s, or a ",
+                                code("Texture")
                             ]),
                         ));
                     }

@@ -120,6 +120,8 @@ named_enum! {
         Vector = "Vector",
         /// What a `@fragment` shader is given.
         Fragment = "Fragment",
+        /// An image on the GPU a shader samples: a `sampler2D`.
+        Texture = "Texture",
     }
 }
 

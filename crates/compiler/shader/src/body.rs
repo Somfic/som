@@ -2,6 +2,7 @@
 
 use som_base::message::code;
 use som_base::{Message, Span, msg};
+use som_lang::LangStruct;
 use som_mir::*;
 use std::collections::{HashMap, HashSet};
 
@@ -91,6 +92,22 @@ impl Body<'_> {
                 continue;
             }
             self.span = decl.span.clone();
+            if t.is_lang(decl.ty, LangStruct::Texture) {
+                return Err(Problem {
+                    message: "a shader can't keep a texture in a variable".into(),
+                    span: decl.span.clone(),
+                    label: match &decl.name {
+                        Some(name) => msg![code(name), " holds a texture"],
+                        None => "this holds a texture".into(),
+                    },
+                    hint: Some(msg![
+                        "use it where it's named, ",
+                        code("u.image.sample(uv)"),
+                        ", or pass a ",
+                        code("&Texture")
+                    ]),
+                });
+            }
             let what = match &decl.name {
                 Some(name) => msg![code(name), " is a ", t.ty_part(decl.ty)],
                 None => msg!["this is a ", t.ty_part(decl.ty)],
@@ -480,6 +497,18 @@ impl Body<'_> {
                 // A `Vector`'s array is the vector itself.
                 Projection::Field(0) if t.vector(ty).is_some() => {
                     ty = t.mir.project(ty, Projection::Field(0)).expect("validated MIR");
+                }
+                // A texture among the uniforms is a GLSL uniform of its own: by its name.
+                Projection::Field(index)
+                    if Some(ty) == t.uniforms
+                        && (t.mir.project(ty, Projection::Field(index)))
+                            .is_some_and(|f| t.is_lang(f, LangStruct::Texture)) =>
+                {
+                    let Ty::Struct(def, args) = t.mir.types.get(ty) else {
+                        unreachable!("uniforms are a struct")
+                    };
+                    text = t.mir.struct_def(*def, args).fields[index].0.clone();
+                    ty = t.mir.project(ty, Projection::Field(index)).expect("validated MIR");
                 }
                 Projection::Field(index) => {
                     let member = match t.mir.types.get(ty) {

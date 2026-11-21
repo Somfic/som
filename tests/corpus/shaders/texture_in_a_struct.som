@@ -1,0 +1,15 @@
+// expect: error Shader
+
+/// A texture is one of the shader's uniforms, not part of another struct.
+use som::gpu;
+
+struct Sprite { pub image: gpu::Texture, pub scale: f32 }
+
+fn draw(sprite: &Sprite, uv: Vec2) -> Vec4 = sprite.image.sample(uv * sprite.scale);
+
+@fragment
+fn nested(frag: Fragment) -> Vec4 {
+    draw(&Sprite { image: gpu::Texture { id: 1, width: 1, height: 1 }, scale: 2.0 }, frag.uv)
+}
+
+fn main() {}

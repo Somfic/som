@@ -119,7 +119,10 @@ needed by the `@gpu` work too.
 - [ ] Scalar `f32` methods in shaders (`x.clamp(…)`, `x.sin()`) are still calls to translated std functions, not GLSL's directly.
 - [ ] Externs can't be overloaded, so GLSL's two-argument `atan` is `gl::atan2`, renamed by the translator.
 - [ ] `@vertex` shaders (inputs from raylib's `vertexPosition`/`vertexTexCoord`/`vertexColor`, `mvp`), and loading a vertex+fragment pair.
-- [ ] Textures: a `Texture` uniform → `sampler2D`, `sample(tex, uv)`; raylib's `texture0`. Wants structured control flow first (implicit derivatives in non-uniform control flow are undefined).
+- [x] Textures: `gpu::Texture` uniforms → `sampler2D`, `t.sample(uv)`, raylib adapter binds them (2026-11-21).
+- [ ] Sampling on the CPU (a `Texture` holding pixels), so shaders using textures can be tested there.
+- [ ] raylib's own `texture0` (the texture being drawn) isn't reachable from a shader yet; pass it as a uniform.
+- [ ] Building a `Texture` inside a shader reports "kept in a variable" rather than something more specific.
 - [x] Structured control flow (`structure.rs`): `if`/`for (;;)`/`break`/`continue`; `switch` loop only as a fallback (2026-11-21).
 - [ ] Breaking out of two loops at once still falls back to the `switch` loop: use a flag variable instead.
 - [x] `gpu::Shader<U>` (GLSL + uniform names + allocation-free `each`), `@name(f)`, `glsl(f)` at run time, raylib adapter in `example/shader/raylib_shader.som` (2026-11-21).

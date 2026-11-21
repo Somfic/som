@@ -1,3 +1,5 @@
+use som::gl;
+
 /// What a `@fragment` shader is told about the pixel it colours.
 pub struct Fragment {
     /// Where on the texture being drawn, each from 0 to 1.
@@ -44,6 +46,28 @@ impl<U> Shader<U> {
     }
 }
 
+/// An image on the GPU, for a shader to sample: a uniform, set like any other. Which one it
+/// is, `id`, is the graphics library's.
+pub struct Texture {
+    pub id: u32,
+    pub width: i32,
+    pub height: i32,
+}
+
+impl Copy for Texture {}
+
+impl Texture {
+    /// Its colour at `uv`, each from 0 to 1 across it. Only on the GPU: on the CPU there are
+    /// no pixels to read.
+    pub fn sample(&self, uv: Vec2) -> Vec4 {
+        @if GPU {
+            return gl::texture(self, uv);
+        } else {
+            @fail("a texture is only sampled on the GPU");
+        }
+    }
+}
+
 /// A uniform's value, as the GPU takes it.
 pub enum Uniform {
     Float(f32),
@@ -52,6 +76,7 @@ pub enum Uniform {
     Vec2([f32; 2]),
     Vec3([f32; 3]),
     Vec4([f32; 4]),
+    Texture(Texture),
 }
 
 impl Copy for Uniform {}
@@ -78,4 +103,8 @@ impl From<Vector<3, f32>> for Uniform {
 
 impl From<Vector<4, f32>> for Uniform {
     fn from(value: Vector<4, f32>) -> Uniform = Uniform::Vec4([value.x, value.y, value.z, value.w]);
+}
+
+impl From<Texture> for Uniform {
+    fn from(value: Texture) -> Uniform = Uniform::Texture(value);
 }

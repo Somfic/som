@@ -1,0 +1,14 @@
+// expect: error Shader
+
+/// GLSL can't keep a sampler in a variable: a texture is used where it's named.
+use som::gpu;
+
+struct Uniforms { pub image: gpu::Texture }
+
+@fragment
+fn kept(frag: Fragment, u: &Uniforms) -> Vec4 {
+    let image = u.image;
+    image.sample(frag.uv)
+}
+
+fn main() {}

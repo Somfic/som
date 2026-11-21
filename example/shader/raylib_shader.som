@@ -24,7 +24,15 @@ impl<U> From<gpu::Shader<U>> for RaylibShader<U> {
 }
 
 impl<U> RaylibShader<U> {
-    /// Sets every uniform, from `uniforms`.
+    /// Draws with it from here to `end_shader_mode()`, with `uniforms`. Set after raylib's
+    /// `begin_shader_mode`, which starts a new batch and forgets the textures set before it.
+    pub fn begin(&self, uniforms: &U) {
+        begin_shader_mode(self.raw);
+        self.set(uniforms);
+    }
+
+    /// Sets every uniform, from `uniforms`. A texture only stays set until raylib starts a
+    /// new batch: inside `begin_shader_mode`, or use `begin`.
     pub fn set(&self, uniforms: &U) {
         self.shader.each(uniforms, (i, value) => {
             let at = self.locations.get(i) else return;
@@ -50,5 +58,16 @@ fn set_uniform(shader: raylib::Shader, at: i32, value: gpu::Uniform) {
         gpu::Uniform::Vec2(v) => set_shader_value(shader, at, &v as *, ShaderUniformDataType::Vec2 as i32),
         gpu::Uniform::Vec3(v) => set_shader_value(shader, at, &v as *, ShaderUniformDataType::Vec3 as i32),
         gpu::Uniform::Vec4(v) => set_shader_value(shader, at, &v as *, ShaderUniformDataType::Vec4 as i32),
+        gpu::Uniform::Texture(t) => {
+            let texture = raylib::Texture { id: t.id, width: t.width, height: t.height, mipmaps: 1, format: 7 };
+            set_shader_value_texture(shader, at, texture);
+        }
+    }
+}
+
+/// A raylib texture as a shader's uniform: `Uniforms { image: texture }`.
+impl From<raylib::Texture> for gpu::Texture {
+    fn from(texture: raylib::Texture) -> gpu::Texture {
+        gpu::Texture { id: texture.id, width: texture.width, height: texture.height }
     }
 }

@@ -3,7 +3,11 @@
 //! `@if !GPU { … }`. The standard library's math does that already: `f32::sin` is GLSL's
 //! `sin` in a shader and C's `sinf` everywhere else.
 
+use som::gpu;
+
 extern "glsl" {
+    /// Texture `sampler`'s colour at `uv`. Fragment shaders only.
+    pub fn texture(sampler: &gpu::Texture, uv: Vector<2, f32>) -> Vector<4, f32>;
     pub fn sin(x: f32) -> f32;
     pub fn cos(x: f32) -> f32;
     pub fn tan(x: f32) -> f32;

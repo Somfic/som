@@ -87,6 +87,7 @@ pub fn glsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
         struct_names: HashMap::new(),
         func_names: HashMap::new(),
         used: HashSet::new(),
+        uniforms: None,
         reached: HashMap::new(),
         queue: Vec::new(),
         calls: Vec::new(),
@@ -118,6 +119,9 @@ pub(crate) struct Translator<'a> {
     func_names: HashMap<FuncId, String>,
     /// Names given to structs and functions.
     used: HashSet<String>,
+    /// The shader's struct of uniforms: its textures are GLSL's uniforms themselves, not
+    /// members, since GLSL can't make a struct holding one.
+    pub uniforms: Option<TypeId>,
     /// How each function the shader reaches is first reached: by which function, where.
     reached: HashMap<FuncId, (FuncId, Span)>,
     queue: Vec<FuncId>,

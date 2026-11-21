@@ -1,0 +1,31 @@
+// expect: exit 0
+
+/// A `Texture` among the uniforms is a `sampler2D`, sampled with `sample`, and passed to
+/// helpers as a `&Texture`. Its value for the host is a `Uniform::Texture`.
+use som::gpu;
+
+struct Uniforms { pub time: f32, pub image: gpu::Texture }
+
+fn ripple(image: &gpu::Texture, uv: Vec2, time: f32) -> Vec4 {
+    image.sample(uv + vec2(0.0, 0.02 * (uv.x * 20.0 + time).sin()))
+}
+
+@fragment
+fn wavy(frag: Fragment, u: &Uniforms) -> Vec4 {
+    let c = ripple(&u.image, frag.uv, u.time);
+    vec4(c.rgb * 0.9, 1.0)
+}
+
+fn main() -> i32 {
+    let shader = gpu::Shader::fragment(wavy);
+    if shader.uniforms.len != 2 { return 1; }
+    shader.each(&Uniforms { time: 1.0, image: gpu::Texture { id: 7, width: 2, height: 2 } }, (i, value) => {
+        let fits = match value {
+            gpu::Uniform::Float(_) => i == 0,
+            gpu::Uniform::Texture(t) => i == 1 && t.id == 7,
+            _ => false,
+        };
+        assert(fits);
+    });
+    0
+}

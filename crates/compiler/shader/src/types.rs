@@ -116,6 +116,9 @@ impl Translator<'_> {
         if let Some((scalar, n)) = self.native_vector(ty) {
             return Ok(scalar.vector(n));
         }
+        if self.is_lang(ty, LangStruct::Texture) {
+            return Ok("sampler2D".into());
+        }
         match self.mir.types.get(ty).clone() {
             Ty::Unit => Ok("void".into()),
             Ty::Struct(..) | Ty::Optional(_) | Ty::Range(_) => self.struct_ty(ty),
@@ -172,6 +175,11 @@ impl Translator<'_> {
             Ty::Range(int) => vec![("start".into(), int), ("end".into(), int)],
             other => unreachable!("only structs have members: {other:?}"),
         };
+        // The uniforms' textures are uniforms of their own.
+        let textures_apart = Some(ty) == self.uniforms;
+        let fields: Vec<(String, TypeId)> = (fields.into_iter())
+            .filter(|(_, t)| !(textures_apart && self.is_lang(*t, LangStruct::Texture)))
+            .collect();
         Ok(fields
             .into_iter()
             .enumerate()
@@ -204,6 +212,15 @@ impl Translator<'_> {
         }
         let mut lines = Vec::new();
         for (name, member_ty, _) in self.members(ty)? {
+            if self.is_lang(member_ty, LangStruct::Texture) {
+                return Err(NoGpu::new(
+                    msg!["a ", code("Texture"), " inside a struct"],
+                    Some(msg![
+                        "a texture is a field of the shader's uniforms, and passed to functions as a ",
+                        code("&Texture")
+                    ]),
+                ));
+            }
             // Said of the struct: what it holds is likely out of sight.
             let t = self.ty(member_ty).map_err(|inner| {
                 let mut hint = msg![code(self.display(ty)), " holds ", inner.what];
