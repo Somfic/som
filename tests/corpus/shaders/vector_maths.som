@@ -1,7 +1,7 @@
 // expect: exit 0
 
 /// The vectors shaders use: `Vec4`, `vec4(rgb, a)`, swizzles, `dot`, `normalized`, `mix`,
-/// `clamp`, on the CPU as on the GPU, where each is GLSL's own.
+/// `clamp`, on the CPU as on the GPU, where each is WGSL's own.
 struct Uniforms { pub tint: Vec4, pub light: Vec3 }
 
 @fragment

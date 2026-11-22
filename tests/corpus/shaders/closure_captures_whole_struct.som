@@ -1,8 +1,8 @@
 // expect: exit 0
 
 /// A shader closure that reads `g.camera` and `g.level.texture` captures those, which copy,
-/// not all of `g`, which doesn't. Its uniforms are named after them: `g_level_texture`, since
-/// GLSL has a `texture`, and `camera.pos`.
+/// not all of `g`, which doesn't. Its uniforms are named after them: `texture` and
+/// `camera.pos`.
 use som::gpu;
 
 struct Camera { pub pos: Vec2 }
@@ -20,7 +20,7 @@ fn main() {
     };
     let shade = (frag: Fragment) => g.level.texture.sample(frag.uv + g.camera.pos);
     let shader = gpu::Shader::closure(&shade);
-    let names = ["g_level_texture", "camera.pos"];
+    let names = ["texture", "camera.pos"];
     shader.each(&shade, (i, name, value) => {
         let expected = names.get(i) else @unreachable;
         assert(string::from_c(name) == expected);

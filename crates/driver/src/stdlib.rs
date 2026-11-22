@@ -76,6 +76,33 @@ pub fn submodules(name: &str) -> Vec<String> {
     children
 }
 
+/// Where libraries are looked for, after the program's own folders: each folder in
+/// `$SOM_PATH` (separated by `:`), then `libs/` beside the standard library, the libraries
+/// that come with som (`libs/wgpu`). A library is a folder of `.som` files, as a module of
+/// the program's own is, and `use wgpu;` loads it.
+pub fn library_roots() -> Vec<PathBuf> {
+    let mut roots: Vec<PathBuf> = std::env::var_os("SOM_PATH")
+        .map(|paths| std::env::split_paths(&paths).collect())
+        .unwrap_or_default();
+    if let Some(libs) = root().and_then(Path::parent).map(|p| p.join("libs")) {
+        roots.push(libs);
+    }
+    roots.retain(|r| r.is_dir());
+    roots
+}
+
+/// The folder of library `name` (`wgpu`, or `wgpu::text` inside it), if a library root has
+/// one.
+pub fn library_folder(name: &str) -> Option<PathBuf> {
+    if is_std_module(name) {
+        return None;
+    }
+    library_roots().into_iter().find_map(|root| {
+        let folder = name.split("::").fold(root, |p, s| p.join(s));
+        folder.is_dir().then_some(folder)
+    })
+}
+
 /// Whether a folder called `name` is a module: named like one, which `.build/`, where
 /// building puts what it makes, isn't.
 fn is_module_name(name: &str) -> bool {

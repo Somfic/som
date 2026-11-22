@@ -144,11 +144,11 @@ impl<'a> Passes<'a> {
 }
 
 impl Passes<'_> {
-    /// Each shader, `@vertex` or `@fragment`, compiled for the GPU: what `--emit glsl`
-    /// writes. One that can't be is an error, whether or not `@glsl` asks for it.
+    /// Each shader, `@fragment` or `@compute`, compiled for the GPU: what `--emit wgsl`
+    /// writes. One that can't be is an error, whether or not `gpu::shader` asks for it.
     ///
-    /// Each instance of `glsl` then gives its shader's source when it runs too, so code
-    /// generic over a shader, like `Shader::fragment`, can call it.
+    /// Each instance of `shader` and `kernel` then gives its shader's source when it runs
+    /// too, so code generic over a shader, like `Shader::fragment`, can call it.
     pub fn shaders(&mut self, mir: &mut Mir) -> Result<Vec<crate::Shader>, Stopped> {
         let mut entries: Vec<_> = (mir.stages.iter())
             .filter(|(f, _)| mir.gpu.contains(f))
@@ -157,62 +157,23 @@ impl Passes<'_> {
         entries.sort_by_key(|(f, _)| mir.funcs[*f].span.start_offset);
         let mut shaders = Vec::new();
         let mut sources = std::collections::HashMap::new();
-        let mut wgsl_sources = std::collections::HashMap::new();
         let mut errors = Vec::new();
-        let wanted: std::collections::HashSet<_> = mir.wgsl.values().flatten().copied().collect();
-        let wanted_glsl: std::collections::HashSet<_> = mir.glsl.values().flatten().copied().collect();
         for (entry, stage) in entries {
-            let wgsl = match som_shader::wgsl(mir, entry) {
+            match som_shader::wgsl(mir, entry) {
                 Ok(wgsl) => {
-                    wgsl_sources.insert(entry, wgsl.clone());
-                    Some(wgsl)
-                }
-                Err(found) => {
-                    // Said once, if the GLSL can be made: the same problems, likely. A kernel
-                    // has no GLSL.
-                    let compute = stage == som_lang::Stage::Compute;
-                    let only_wgsl = !wanted_glsl.contains(&entry);
-                    if compute || (wanted.contains(&entry) && (only_wgsl || som_shader::glsl(mir, entry).is_ok())) {
-                        errors.extend(found.into_iter().map(Error::Shader));
-                    }
-                    None
-                }
-            };
-            if stage == som_lang::Stage::Compute {
-                shaders.push(crate::Shader {
-                    name: som_shader::short_fn(&mir.funcs[entry].name),
-                    stage,
-                    glsl: String::new(),
-                    wgsl,
-                });
-                continue;
-            }
-            match som_shader::glsl(mir, entry) {
-                Ok(glsl) => {
-                    sources.insert(entry, glsl.clone());
+                    sources.insert(entry, wgsl.clone());
                     shaders.push(crate::Shader {
                         name: som_shader::short_fn(&mir.funcs[entry].name),
                         stage,
-                        glsl,
                         wgsl,
-                    });
-                }
-                // One only WGSL is asked for can use what only WebGPU has, a buffer.
-                Err(_) if wanted.contains(&entry) && !wanted_glsl.contains(&entry) => {
-                    shaders.push(crate::Shader {
-                        name: som_shader::short_fn(&mir.funcs[entry].name),
-                        stage,
-                        glsl: String::new(),
-                        wgsl: wgsl_sources.get(&entry).cloned(),
                     });
                 }
                 Err(found) => errors.extend(found.into_iter().map(Error::Shader)),
             }
         }
         self.report(errors)?;
-        let instances: Vec<_> = (mir.glsl.iter().map(|(&f, &entry)| (f, entry, &sources)))
-            .chain(mir.wgsl.iter().map(|(&f, &entry)| (f, entry, &wgsl_sources)))
-            .map(|(f, entry, sources)| (f, entry.and_then(|e| sources.get(&e)).cloned()))
+        let instances: Vec<_> = (mir.wgsl.iter())
+            .map(|(&f, &entry)| (f, entry.and_then(|e| sources.get(&e)).cloned()))
             .collect();
         for (instance, source) in instances {
             if let Some(source) = source {

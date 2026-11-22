@@ -1,5 +1,3 @@
-use som::gl;
-
 /// What a `@fragment` shader is told about the pixel it colours.
 pub struct Fragment {
     /// Where on the texture being drawn, each from 0 to 1.
@@ -12,25 +10,18 @@ pub struct Fragment {
 
 impl Copy for Fragment {}
 
-/// The source of shader `entry`, a `@vertex` or `@fragment` function, in GLSL 3.30: what
-/// a graphics library like raylib loads. Made while compiling, so `glsl(wobble)` costs
-/// nothing when it runs; `@glsl(wobble)` is the same, as a constant. `entry` is a shader
-/// named where it's passed, or a closure (or a `&` to one) written as a shader.
-pub fn glsl<F>(entry: F) -> string {
+/// The source of fragment shader `entry` in WGSL, for WebGPU: `fs_main`, and a vertex
+/// shader `vs_main` drawing it over the whole viewport. Made while compiling, so
+/// `shader(wobble)` costs nothing when it runs. `entry` is a `@fragment` function named where
+/// it's passed, or a closure (or a `&` to one) written as one. The uniforms are in one
+/// buffer, binding 0 of group 0, laid out in the order `each_uniform` gives them; the
+/// sampler is binding 1, and each texture and buffer the next.
+pub fn shader<F>(entry: F) -> string {
     // The compiler gives each use the shader's source instead.
-    @fail("`glsl` takes a shader by its name, `glsl(wobble)`, or a closure written as one")
+    @fail("`shader` takes a shader by its name, `shader(wobble)`, or a closure written as one")
 }
 
-/// The source of shader `entry` in WGSL, for WebGPU, as `glsl` gives GLSL: a fragment
-/// shader `fs_main`, and a vertex shader `vs_main` drawing it over the whole viewport. The
-/// uniforms are in one buffer, binding 0 of group 0, laid out in the order `each_uniform`
-/// gives them (see `Layout`); the sampler is binding 1 and each texture the next.
-pub fn wgsl<F>(entry: F) -> string {
-    // The compiler gives each use the shader's source instead.
-    @fail("`wgsl` takes a shader by its name, `wgsl(wobble)`, or a closure written as one")
-}
-
-/// The source of compute kernel `entry` in WGSL, as `wgsl` gives a shader's: `cs_main`, run
+/// The source of compute kernel `entry` in WGSL, as `shader` gives a fragment shader's: `cs_main`, run
 /// once for each item of the buffer it fills (binding after every other), giving it. `entry`
 /// is a closure, `(i) => …`, or a function marked `@compute`, given the item's index. Its
 /// uniforms are as a shader's; a `Buffer` among them is read with `get`. Each group of
@@ -52,24 +43,24 @@ pub fn each_uniform<U, F: fn(usize, cstr, Uniform)>(uniforms: &U, set: F) -> () 
 
 /// A shader compiled for the GPU, and the uniforms it takes: `U`'s fields, or for a shader
 /// written as a closure, its captures. Made from the shader itself,
-/// `Shader::fragment(stripes)` or `Shader::closure(&c)`; a graphics library loads `glsl` and
-/// sets each uniform by its name, from `each`.
+/// `Shader::fragment(stripes)` or `Shader::closure(&c)`; the host loads `wgsl` and sets each
+/// uniform, in order, from `each`.
 pub struct Shader<U> {
-    /// Its source in GLSL 3.30.
-    pub glsl: string,
+    /// Its source in WGSL.
+    pub wgsl: string,
 }
 
 impl<U> Shader<U> {
-    /// Fragment shader `shader`, which takes a `Fragment` and its uniforms.
-    pub fn fragment<F: fn(Fragment, &U) -> Vector<4, f32>>(shader: F) -> Shader<U> {
-        Shader { glsl: glsl(shader) }
+    /// Fragment shader `entry`, which takes a `Fragment` and its uniforms.
+    pub fn fragment<F: fn(Fragment, &U) -> Vector<4, f32>>(entry: F) -> Shader<U> {
+        Shader { wgsl: shader(entry) }
     }
 
-    /// Fragment shader `shader`, written as a closure that takes a `Fragment`: what it
+    /// Fragment shader `entry`, written as a closure that takes a `Fragment`: what it
     /// captures are its uniforms, `(frag: Fragment) => vec4(tint.rgb * time, 1.0)`. Each
     /// closure written out is its own shader; its uniforms are set from each value of it.
-    pub fn closure(shader: &U) -> Shader<U> {
-        Shader { glsl: glsl(shader) }
+    pub fn closure(entry: &U) -> Shader<U> {
+        Shader { wgsl: shader(entry) }
     }
 
     /// Calls `set` with each uniform's index, name and value, from `uniforms`.
@@ -121,7 +112,7 @@ impl Texture {
     /// no pixels to read.
     pub fn sample(&self, uv: Vec2) -> Vec4 {
         @if GPU {
-            return gl::texture(self, uv);
+            return textureSample(self, uv);
         } else {
             @fail("a texture is only sampled on the GPU");
         }
@@ -132,6 +123,7 @@ impl Texture {
 pub enum Uniform {
     Float(f32),
     Int(i32),
+    Uint(u32),
     Bool(bool),
     Vec2([f32; 2]),
     Vec3([f32; 3]),
@@ -141,11 +133,14 @@ pub enum Uniform {
     Numbers(Numbers),
     /// A `Buffer`, by its `id`: bound as a texture is, on WebGPU.
     Buffer(u32),
+    /// A `Matrix`: `count` columns of `size` numbers, each column 16 bytes after the one
+    /// before.
+    Matrix(Numbers),
 }
 
-/// `count` lots of `size` numbers, one after another from `data`: `f32`s, or `i32`s if
-/// `ints`. An array of uniforms (`count` of them) or a vector (`size` 2 to 4), as raylib's
-/// `SetShaderValueV` takes one. Read only while `each` is calling back.
+/// `count` lots of `size` numbers, one after another from `data`: `f32`s, or `i32`s or
+/// `u32`s if `ints`, 4 bytes each. An array of uniforms (`count` of them) or a vector
+/// (`size` 2 to 4). Read only while `each` is calling back.
 pub struct Numbers {
     pub size: i32,
     pub ints: bool,
@@ -163,6 +158,10 @@ impl From<&f32> for Uniform {
 
 impl From<&i32> for Uniform {
     fn from(value: &i32) -> Uniform = Uniform::Int(*value);
+}
+
+impl From<&u32> for Uniform {
+    fn from(value: &u32) -> Uniform = Uniform::Uint(*value);
 }
 
 impl From<&bool> for Uniform {
@@ -208,7 +207,22 @@ impl<N: usize> From<&[f32; N]> for Uniform {
     }
 }
 
-/// An array of `i32`s, `[i32; 16]`; or, 2 to 4 of them, a vector (`ivec3`).
+impl<C: usize, R: usize> From<&Matrix<C, R>> for Uniform {
+    fn from(value: &Matrix<C, R>) -> Uniform = Uniform::Matrix(Numbers { size: R as i32, ints: false, count: C as i32, data: value as * });
+}
+
+/// An array of `u32`s, `[u32; 16]`; or, 2 to 4 of them, a vector (`vec3<u32>`).
+impl<N: usize> From<&[u32; N]> for Uniform {
+    fn from(value: &[u32; N]) -> Uniform {
+        @if N >= 2 && N <= 4 {
+            return Uniform::Numbers(Numbers { size: N as i32, ints: true, count: 1, data: value as * });
+        } else {
+            return Uniform::Numbers(Numbers { size: 1, ints: true, count: N as i32, data: value as * });
+        }
+    }
+}
+
+/// An array of `i32`s, `[i32; 16]`; or, 2 to 4 of them, a vector (`vec3<i32>`).
 impl<N: usize> From<&[i32; N]> for Uniform {
     fn from(value: &[i32; N]) -> Uniform {
         @if N >= 2 && N <= 4 {
@@ -234,8 +248,8 @@ pub struct Grid {
     pub width: i32,
     pub height: i32,
     cells: List<i32>,
-    /// Where it is on the GPU, once a graphics library has loaded it: raylib's adapter does,
-    /// with `load_grid`. Its `Cells` there.
+    /// Where it is on the GPU, once the host has loaded it, with `load_grid`. Its `Cells`
+    /// there.
     pub texture: Texture,
 }
 
@@ -291,11 +305,11 @@ impl Cells for Texture {
     /// Its pixel (`x`, `y`)'s red, from 0 to 255: a loaded `Grid`'s cell. Only on the GPU.
     fn cell(&self, x: i32, y: i32) -> i32 {
         @if GPU {
-            let size = gl::textureSize(self, 0);
+            let size = textureDimensions(self, 0);
             if x < 0 || y < 0 || x >= size[0] || y >= size[1] {
                 return 0;
             }
-            let c = gl::texelFetch(self, [x, y], 0);
+            let c = textureLoad(self, [x, y], 0);
             return (c.x * 255.0 + 0.5) as i32;
         } else {
             @fail("a texture is only read on the GPU: look in the `Grid` it was loaded from");

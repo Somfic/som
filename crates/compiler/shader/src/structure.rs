@@ -157,7 +157,7 @@ impl Structurer<'_> {
                 return Some(Jump::Break);
             }
         }
-        // Out of a loop further out: GLSL's `break` and `continue` only leave the innermost.
+        // Out of a loop further out: WGSL's `break` and `continue` only leave the innermost.
         let outer = self.loops.iter().rev().skip(1);
         if outer.into_iter().any(|l| to == l.header || Some(to) == l.exit) {
             return None;

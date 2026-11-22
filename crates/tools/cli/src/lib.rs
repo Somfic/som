@@ -126,15 +126,14 @@ struct CheckArgs {
     #[arg(long, value_name = "DIR", requires = "targets")]
     sysroot: Option<PathBuf>,
 
-    /// Also write intermediate stages: tokens, ast, mir, c, glsl, wgsl.
+    /// Also write intermediate stages: tokens, ast, mir, c, wgsl.
     ///
     /// Each goes next to the output by default (`main.c`). Write `c=out.c` for
     /// another file, or `c=-` for standard output. Separate several with commas:
     /// `--emit ast,mir,c`.
     ///
-    /// `glsl` writes each `@fragment` and `@vertex` function as the GPU gets it, a file
-    /// each: `main.stripes.frag`. `glsl=DIR` puts them in DIR; `glsl=-` prints them all.
-    /// `wgsl` is the same in WGSL: `main.stripes.wgsl`.
+    /// `wgsl` writes each `@fragment` and `@compute` function as the GPU gets it, a file
+    /// each: `main.stripes.wgsl`. `wgsl=DIR` puts them in DIR; `wgsl=-` prints them all.
     #[arg(long, value_name = "STAGES", value_delimiter = ',', value_parser = EmitParser)]
     emit: Vec<Emit>,
 
@@ -195,7 +194,6 @@ enum Stage {
     Ast,
     Mir,
     C,
-    Glsl,
     Wgsl,
 }
 
@@ -206,7 +204,6 @@ impl Stage {
             Stage::Ast => "ast",
             Stage::Mir => "mir",
             Stage::C => "c",
-            Stage::Glsl => "glsl",
             Stage::Wgsl => "wgsl",
         }
     }
@@ -370,7 +367,7 @@ fn compile(
         ok &= match e.stage {
             Stage::Tokens => write(e, output, &som_driver::dump_tokens(&ast)),
             Stage::Ast => write(e, output, &ast.dump()),
-            Stage::Mir | Stage::C | Stage::Glsl | Stage::Wgsl => true,
+            Stage::Mir | Stage::C | Stage::Wgsl => true,
         };
     }
     if !errors.is_empty() {
@@ -410,7 +407,7 @@ fn compile(
                     false
                 }
             },
-            Stage::Glsl | Stage::Wgsl => write_shaders(e, output, &checked.shaders),
+            Stage::Wgsl => write_shaders(e, output, &checked.shaders),
             Stage::Tokens | Stage::Ast => true,
         };
     }
@@ -443,25 +440,10 @@ fn missing_program(path: &Path) -> Diagnostic {
     ])
 }
 
-/// Each shader in a file of its own, `main.stripes.frag`, or with `glsl=-` all of them on
+/// Each shader in a file of its own, `main.stripes.wgsl`, or with `wgsl=-` all of them on
 /// standard output, each after a line naming it.
 fn write_shaders(emit: &Emit, output: &Path, shaders: &[som_driver::Shader]) -> bool {
-    let wgsl = emit.stage == Stage::Wgsl;
-    let extension = |shader: &som_driver::Shader| match (wgsl, shader.stage) {
-        (true, _) => "wgsl",
-        (false, som_lang::Stage::Fragment) => "frag",
-        (false, som_lang::Stage::Vertex) => "vert",
-        (false, som_lang::Stage::Compute) => "comp",
-    };
-    // A kernel has no GLSL.
-    let shaders: Vec<&som_driver::Shader> = (shaders.iter())
-        .filter(|s| wgsl || s.stage != som_lang::Stage::Compute)
-        .collect();
-    // A shader WGSL can't have: its problems are said where `gpu::wgsl` asks for it.
-    let source = |shader: &som_driver::Shader| match wgsl {
-        true => shader.wgsl.clone().unwrap_or_else(|| "// not in WGSL yet\n".into()),
-        false => shader.glsl.clone(),
-    };
+    let source = |shader: &som_driver::Shader| shader.wgsl.clone();
     if emit.to.as_deref() == Some(Path::new(STDOUT)) {
         for shader in shaders {
             print!("// shader: {}\n{}\n", shader.name, source(shader));
@@ -471,7 +453,7 @@ fn write_shaders(emit: &Emit, output: &Path, shaders: &[som_driver::Shader]) -> 
     let stem = output.file_stem().map_or("main".into(), |s| s.to_string_lossy());
     let mut ok = true;
     for shader in shaders {
-        let file = format!("{stem}.{}.{}", shader.name, extension(shader));
+        let file = format!("{stem}.{}.wgsl", shader.name);
         let path = match &emit.to {
             Some(dir) => dir.join(&file),
             None => output.with_file_name(&file),

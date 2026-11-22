@@ -1,6 +1,5 @@
-//! What's around a shader in GLSL: its inputs, uniforms and output, and the `main` that calls
-//! it. They're named as raylib's own shaders name them, so it goes with raylib's vertex
-//! shader and its uniforms are set by name.
+//! What's around a shader: its inputs, uniforms and output, and the entry point that calls
+//! it.
 
 use som_base::message::{code, field};
 use som_base::{Message, msg};
@@ -9,10 +8,10 @@ use som_mir::*;
 
 use crate::Translator;
 use crate::error::{NoGpu, Problem};
-use crate::names::{ident, is_reserved};
+use crate::names::ident;
 use crate::types::Scalar;
 
-/// In WGSL, a vertex shader drawing one triangle over the whole of what's drawn to (the
+/// A vertex shader drawing one triangle over the whole of what's drawn to (the
 /// viewport, which the host sets to where the shader goes): `uv` from (0, 0) at its top left
 /// to (1, 1) at its bottom right.
 const VERTEX: &str = "struct SomVertex {
@@ -32,7 +31,7 @@ fn vs_main(@builtin(vertex_index) i: u32) -> SomVertex {
 }
 ";
 
-/// WGSL's uniforms, as they're declared.
+/// The uniforms, as they're declared.
 #[derive(Default)]
 struct Wgsl {
     /// `SomUniforms`' members.
@@ -143,10 +142,7 @@ impl Translator<'_> {
         }
 
         self.uniforms = uniforms;
-        let (mut globals, uniform_args) = self.uniform_fields(uniforms, &span)?;
-        if !self.wgsl() {
-            globals.insert_str(0, "in vec2 fragTexCoord;\nin vec4 fragColor;\nout vec4 finalColor;\n");
-        }
+        let (globals, uniform_args) = self.uniform_fields(uniforms, &span)?;
 
         let mut args = Vec::new();
         for param in params {
@@ -159,17 +155,13 @@ impl Translator<'_> {
                     };
                     let fields = self.mir.struct_def(def, &struct_args).fields.clone();
                     let mut parts = Vec::new();
-                    for (_, member_ty, index) in members {
-                        let native = match (fields[index].0.as_str(), self.wgsl()) {
-                            ("uv", false) => "fragTexCoord",
-                            ("color", false) => "fragColor",
-                            ("position", false) => "gl_FragCoord",
-                            ("uv", true) => "v.uv",
-                            ("color", true) => "v.color",
-                            ("position", true) => "v.position",
-                            (other, _) => unreachable!("`Fragment` has no `{other}`"),
-                        };
-                        parts.push(self.from_native(native, member_ty));
+                    for (_, _, index) in members {
+                        parts.push(match fields[index].0.as_str() {
+                            "uv" => "v.uv",
+                            "color" => "v.color",
+                            "position" => "v.position",
+                            other => unreachable!("`Fragment` has no `{other}`"),
+                        });
                     }
                     let name = self.ty(ty).map_err(|no| no.at(&span, "it".into()))?;
                     format!("{name}({})", parts.join(", "))
@@ -185,18 +177,9 @@ impl Translator<'_> {
         }
 
         let shader = self.func_name(self.entry);
-        let colour = self.ty(func.ret).map_err(|no| no.at(&span, "it".into()))?;
-        if self.wgsl() {
-            let main = format!(
-                "{VERTEX}\n@fragment\nfn fs_main(v: SomVertex) -> @location(0) vec4<f32> {{\n    return {shader}({});\n}}\n",
-                args.join(", "),
-            );
-            return Ok(Main { globals, main });
-        }
         let main = format!(
-            "void main() {{\n    {colour} colour = {shader}({});\n    finalColor = {};\n}}\n",
+            "{VERTEX}\n@fragment\nfn fs_main(v: SomVertex) -> @location(0) vec4<f32> {{\n    return {shader}({});\n}}\n",
             args.join(", "),
-            self.to_native("colour", func.ret),
         );
         Ok(Main { globals, main })
     }
@@ -210,8 +193,6 @@ impl Translator<'_> {
             label,
             hint,
         };
-        let mut globals = String::new();
-        let mut uniform_args = Vec::new();
         if let Some(ty) = uniforms {
             let Ty::Struct(def, args) = self.mir.types.get(ty).clone() else {
                 unreachable!("uniforms are a struct")
@@ -233,18 +214,6 @@ impl Translator<'_> {
                     true => msg!["it captures ", code(name)],
                     false => msg!["its uniforms include ", field(format!("{struct_name}.{name}"))],
                 };
-                // A capture GLSL has the name of is already renamed, `input_`.
-                let plain = name.trim_end_matches('_');
-                if ident(plain) != plain || is_reserved(name) {
-                    return Err(problem(
-                        msg!["a uniform can't be named ", code(name)],
-                        what(),
-                        Some(match closure {
-                            true => "GLSL has the name; rename the variable".into(),
-                            false => "GLSL has the name; rename the field".into(),
-                        }),
-                    ));
-                }
                 // Captured without copying: a reference, which the GPU can't be given.
                 if let Ty::Ref { to, .. } = *self.mir.types.get(member_ty) {
                     let index = fields.iter().position(|(n, _)| n == name).expect("its own field");
@@ -274,51 +243,13 @@ impl Translator<'_> {
                         Some(hint),
                     ));
                 }
-                // WGSL's are all declared below, in one buffer.
-                if self.wgsl() {
-                    if !self.is_handle(member_ty) && !self.uniform_fits(member_ty, 0) {
-                        return Err(self.unfit(span, what(), member_ty));
-                    }
-                    continue;
-                }
-                if self.is_lang(member_ty, LangStruct::Buffer) {
-                    return Err(problem(
-                        msg!["a ", code("gpu::Buffer"), " is WebGPU's"],
-                        what(),
-                        Some(msg!["OpenGL 3.3 has no storage buffers: draw with ", code("gpu::wgsl")]),
-                    ));
-                }
-                // A texture is a uniform of its own, used where it's named.
-                if self.is_lang(member_ty, LangStruct::Texture) {
-                    globals.push_str(&format!("uniform sampler2D {name};\n"));
-                    continue;
-                }
-                // What `som::gpu::Uniform` can hold, for the host to set; or a struct of
-                // those, set by each of its fields.
-                if !self.uniform_fits(member_ty, 0) {
+                // All declared below, in one buffer.
+                if !self.is_handle(member_ty) && !self.uniform_fits(member_ty, 0) {
                     return Err(self.unfit(span, what(), member_ty));
                 }
-                // A struct holding a texture is declared with it, then made without it.
-                if self.holds_texture(member_ty, 0) {
-                    let declared = self.uniform_struct(member_ty).map_err(|no| no.at(span, what()))?;
-                    globals.push_str(&format!("uniform {declared} {name};\n"));
-                    let made = self.from_uniform(name, member_ty).map_err(|no| no.at(span, what()))?;
-                    uniform_args.push(made);
-                    continue;
-                }
-                let native = self.ty(member_ty).map_err(|no| no.at(span, what()))?;
-                globals.push_str(&format!("uniform {native} {name};\n"));
-                uniform_args.push(self.from_native(name, member_ty));
             }
         }
-
-        if self.wgsl() {
-            let (more, made) = self.wgsl_uniforms(uniforms).map_err(|no| no.at(span, "its uniforms".into()))?;
-            globals = more;
-            uniform_args = made;
-        }
-        Ok((globals, uniform_args))
-
+        self.wgsl_uniforms(uniforms).map_err(|no| no.at(span, "its uniforms".into()))
     }
 
     /// What's bound apart from the uniform buffer: a texture or a storage buffer.
@@ -338,6 +269,8 @@ impl Translator<'_> {
                 ", ",
                 code("i32"),
                 ", ",
+                code("u32"),
+                ", ",
                 code("bool"),
                 ", a ",
                 code("Vector"),
@@ -348,7 +281,7 @@ impl Translator<'_> {
         }
     }
 
-    /// In WGSL, uniforms `ty`'s declarations, and each of its members made from them.
+    /// Uniforms `ty`'s declarations, and each of its members made from them.
     ///
     /// Every uniform but a texture is a member of one struct, `SomUniforms`, in one buffer
     /// (binding 0), in the order `som::gpu::each_uniform` gives them to the host, which lays
@@ -436,6 +369,23 @@ impl Translator<'_> {
             w.members.push(self.member_line(&member, "u32"));
             return Ok(Some(format!("({at} != 0u)")));
         }
+        // A matrix: its columns 16 bytes apart, as `vec4`s, each made as long as its own.
+        if self.is_lang(ty, LangStruct::Matrix)
+            && let Ty::Struct(def, args) = self.mir.types.get(ty).clone()
+        {
+            let columns = self.mir.struct_def(def, &args).fields[0].1;
+            let Ty::Array { element, len } = self.mir.types.get(columns).clone() else {
+                unreachable!("a matrix's columns are an array")
+            };
+            let n = self.mir.types.len(len);
+            let rows = self.native_vector(element).map_or(4, |(_, rows)| rows);
+            w.members.push(self.member_line(&member, &format!("array<vec4<f32>, {n}>")));
+            let swizzle = ["", "", ".xy", ".xyz", ""][rows as usize];
+            let items: Vec<String> = (0..n).map(|i| format!("{at}[{i}]{swizzle}")).collect();
+            let column_array = self.ty(columns)?;
+            let name = self.ty(ty)?;
+            return Ok(Some(format!("{name}({column_array}({}))", items.join(", "))));
+        }
         if let Ty::Array { element, len } = self.mir.types.get(ty).clone()
             && self.native_vector(ty).is_none()
         {
@@ -451,7 +401,7 @@ impl Translator<'_> {
                 w.members.push(self.member_line(&member, &native));
                 return Ok(Some(at));
             }
-            let slot = scalar.vector(4, true);
+            let slot = scalar.vector(4);
             w.members.push(self.member_line(&member, &format!("array<{slot}, {n}>")));
             let swizzle = if size == 1 { "x" } else { "xy" };
             let items: Vec<String> = (0..n).map(|i| format!("{at}[{i}].{swizzle}")).collect();
@@ -556,85 +506,27 @@ impl Translator<'_> {
         !s.name.starts_with("som::") && s.name != "closure" && s.variants.is_none() && !s.handle
     }
 
-    /// Whether `ty`, a struct among the uniforms, holds a texture, itself or in a struct it
-    /// holds.
-    fn holds_texture(&self, ty: TypeId, depth: usize) -> bool {
-        if !self.own_struct(ty) || depth >= 16 {
-            return false;
-        }
-        let Ty::Struct(def, args) = self.mir.types.get(ty) else {
-            return false;
-        };
-        (self.mir.struct_def(*def, args).fields.iter())
-            .any(|(_, f)| self.is_lang(*f, LangStruct::Texture) || self.holds_texture(*f, depth + 1))
-    }
-
-    /// Struct `ty` as a uniform is declared: with its textures, as `sampler2D`s.
-    fn uniform_struct(&mut self, ty: TypeId) -> Result<String, crate::error::NoGpu> {
-        if let Some(name) = self.uniform_structs.get(&ty) {
-            return Ok(name.clone());
-        }
-        let Ty::Struct(def, args) = self.mir.types.get(ty).clone() else {
-            unreachable!("a struct holds the texture")
-        };
-        let s = self.mir.struct_def(def, &args);
-        let base = format!("{}_uniform", ident(&s.name));
-        let mut lines = Vec::new();
-        for (name, field) in s.fields.clone() {
-            if self.is_unit(field) {
-                continue;
-            }
-            let t = if self.is_lang(field, LangStruct::Texture) {
-                "sampler2D".to_string()
-            } else if self.holds_texture(field, 0) {
-                self.uniform_struct(field)?
-            } else {
-                self.ty(field)?
-            };
-            lines.push(format!("    {t} {};", crate::names::member(&name)));
-        }
-        let name = self.unique(base);
-        self.structs.push(format!("struct {name} {{\n{}\n}};\n", lines.join("\n")));
-        self.uniform_structs.insert(ty, name.clone());
-        Ok(name)
-    }
-
-    /// Struct `ty` as the shader passes it around, made from uniform `from` (declared with
-    /// its textures): each member but those.
-    fn from_uniform(&mut self, from: &str, ty: TypeId) -> Result<String, crate::error::NoGpu> {
-        let name = self.ty(ty)?;
-        let mut parts = Vec::new();
-        for (member, member_ty, _) in self.members(ty)? {
-            let at = format!("{from}.{member}");
-            parts.push(match self.holds_texture(member_ty, 0) {
-                true => self.from_uniform(&at, member_ty)?,
-                false => at,
-            });
-        }
-        Ok(match parts.is_empty() {
-            true => format!("{name}(false)"),
-            false => format!("{name}({})", parts.join(", ")),
-        })
-    }
-
-    /// Whether `ty` can be a uniform the host sets: a number, `bool` or `f32` vector, an array
-    /// of `f32` vectors, or a struct of those (set by each of its fields). Textures only at
-    /// the top, where they're uniforms of their own.
+    /// Whether `ty` can be a uniform the host sets: a number, `bool` or vector of numbers, an
+    /// array of numbers or `f32` vectors, or a struct of those (set by each of its fields).
+    /// Textures and buffers below the top too, each bound on its own.
     fn uniform_fits(&self, ty: TypeId, depth: usize) -> bool {
-        if let Ok(Some(scalar)) = self.scalar(ty) {
-            return scalar != Scalar::Uint;
+        if let Ok(Some(_)) = self.scalar(ty) {
+            return true;
         }
         if let Some((scalar, _)) = self.native_vector(ty) {
-            return matches!(scalar, Scalar::Float | Scalar::Int);
+            return matches!(scalar, Scalar::Float | Scalar::Int | Scalar::Uint);
         }
         // Below the top, where it's a uniform of its own.
         if self.is_handle(ty) {
             return depth > 0;
         }
+        if self.is_lang(ty, LangStruct::Matrix) {
+            return true;
+        }
         match self.mir.types.get(ty).clone() {
             // Of numbers (more than 4: fewer is a vector) or of `f32` vectors.
             Ty::Array { element, .. } => {
-                matches!(self.scalar(element), Ok(Some(Scalar::Float | Scalar::Int)))
+                matches!(self.scalar(element), Ok(Some(Scalar::Float | Scalar::Int | Scalar::Uint)))
                     || matches!(self.native_vector(element), Some((Scalar::Float, _)))
             }
             Ty::Struct(def, args) if depth < 16 && !self.mir.lang_structs.contains_key(&def) => {
@@ -648,16 +540,5 @@ impl Translator<'_> {
             }
             _ => false,
         }
-    }
-
-    /// GLSL value `native`, a scalar or `vecN`, as a value of `ty`: the same, since a
-    /// `Vector` is GLSL's own.
-    fn from_native(&mut self, native: &str, _ty: TypeId) -> String {
-        native.to_string()
-    }
-
-    /// `value`, a `Vector`, as GLSL's own vector: it already is.
-    fn to_native(&mut self, value: &str, _ty: TypeId) -> String {
-        value.to_string()
     }
 }

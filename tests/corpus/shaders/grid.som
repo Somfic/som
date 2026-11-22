@@ -38,6 +38,6 @@ fn main() -> i32 {
     changed.set(1, 1, 200);
     if changed.cell(1, 1) != 200 || changed.cell(0, 0) != 0 { return 4; }
     let shader = gpu::Shader::fragment(rows);
-    if shader.glsl.len == 0 { return 5; }
+    if shader.wgsl.len == 0 { return 5; }
     0
 }

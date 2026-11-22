@@ -59,12 +59,12 @@ impl Builtin {
             }
             Builtin::Vertex => {
                 "On a line above a function: a vertex shader, run on the GPU for each corner of \
-                 what's drawn. Its source for the GPU is `@glsl(name)`."
+                 what's drawn. Its source for the GPU is `gpu::shader(name)`."
             }
             Builtin::Fragment => {
                 "On a line above a function: a fragment shader, run on the GPU for each pixel of \
                  what's drawn, giving its colour. It takes a `Fragment`, and may take a `&` to a \
-                 struct of uniforms; its source for the GPU is `@glsl(name)`."
+                 struct of uniforms; its source for the GPU is `gpu::shader(name)`."
             }
             Builtin::Compute => {
                 "On a line above a function: a compute kernel, run on the GPU once for each item \

@@ -118,9 +118,11 @@ named_enum! {
         Location = "Location",
         /// `[T; N]` as one value: on the GPU, a `vec2`, `vec3` or `vec4`.
         Vector = "Vector",
+        /// `C` columns of `R`-number `Vector`s: as a uniform, its columns 16 bytes apart.
+        Matrix = "Matrix",
         /// What a `@fragment` shader is given.
         Fragment = "Fragment",
-        /// An image on the GPU a shader samples: a `sampler2D`.
+        /// An image on the GPU a shader samples: a `texture_2d<f32>`.
         Texture = "Texture",
         /// A uniform's value, as `gpu::each_uniform` gives it to the host.
         Uniform = "Uniform",
@@ -139,10 +141,8 @@ named_enum! {
         TestSummary = "test_summary",
         /// What `let all: List<i32> = numbers.where(…)` calls to collect the values.
         CollectInto = "collect_into",
-        /// `@glsl(shader)`: a shader function's source for the GPU, made while compiling.
-        Glsl = "glsl",
-        /// `gpu::wgsl(shader)`: the same, in WGSL, for WebGPU.
-        Wgsl = "wgsl",
+        /// `gpu::shader(f)`: a fragment shader's source in WGSL, made while compiling.
+        Shader = "shader",
         /// `gpu::each_uniform(&u, set)`: written by the compiler for each type of uniforms,
         /// a struct or a shader closure.
         EachUniform = "each_uniform",

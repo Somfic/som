@@ -1,0 +1,25 @@
+// expect: exit 0
+
+/// A uniform can be a `u32`, or an array of them: WGSL has them, and the host sets them as it
+/// sets `i32`s, a word each.
+use som::gpu;
+
+fn main() -> i32 {
+    let salt: u32 = 2654435761;
+    let masks: [u32; 6] = [1, 2, 4, 8, 16, 32];
+    let shade = (frag: Fragment) => {
+        let bits = (frag.uv.x * 1000.0) as u32 ^ salt;
+        let lit = (bits & masks[3]) != 0;
+        if lit { vec4(1.0, 1.0, 1.0, 1.0) } else { vec4(0.0, 0.0, 0.0, 1.0) }
+    };
+    let shader = gpu::Shader::closure(&shade);
+    if shader.wgsl.len == 0 { return 1; }
+    shader.each(&shade, (i, name, value) => {
+        match value {
+            gpu::Uniform::Uint(n) => assert(i == 0 && n == 2654435761),
+            gpu::Uniform::Numbers(n) => assert(i == 1 && n.ints && n.count == 6),
+            _ => @unreachable,
+        }
+    });
+    0
+}

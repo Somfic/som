@@ -114,6 +114,8 @@ impl Prover<'_> {
                 lhs,
                 rhs,
             } => return self.sum_value(expr, op, lhs, rhs, subst),
+            // `key as usize` of a `u32`: the same number, which every value of it fits.
+            Expr::Cast { value, .. } if self.widens(value, expr) => return self.value_of(value, subst),
             _ => return None,
         };
         if self.is_unsigned(expr)
@@ -123,6 +125,28 @@ impl Prover<'_> {
             self.facts.unsigned(place.clone());
         }
         Some((value, Vec::new()))
+    }
+
+    /// Whether casting `from` to `to`'s type keeps every value as it is: an integer to one
+    /// at least as wide, of the same sign, or unsigned to a wider signed one. `usize` counts
+    /// as 32 bits here, the least it can be.
+    fn widens(&self, from: Id<Expr>, to: Id<Expr>) -> bool {
+        let int = |expr| match self.expr_ty(expr).map(|ty| self.typed.ty(self.through_ref(ty))) {
+            Some(&Ty::Int(int)) => Some(int),
+            _ => None,
+        };
+        let (Some(from), Some(to)) = (int(from), int(to)) else {
+            return false;
+        };
+        let least = |int: som_lang::IntTy| match int {
+            som_lang::IntTy::USize | som_lang::IntTy::ISize => 32,
+            _ => int.bits(),
+        };
+        match (from.is_signed(), to.is_signed()) {
+            (a, b) if a == b => from.bits() <= least(to),
+            (false, true) => from.bits() < least(to),
+            _ => false,
+        }
     }
 
     fn var_value(&mut self, def: DefId) -> Option<Value<Place>> {

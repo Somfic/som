@@ -1,0 +1,9 @@
+// expect: error InvalidOperands
+
+/// A `Matrix<K, R>` times a `Matrix<C, K>`: the columns on the left have to match the rows on
+/// the right. Two columns against four rows has no `*`, which the types say before it runs.
+fn main() {
+    let a: Matrix<2, 4> = Matrix::zero();
+    let b: Matrix<4, 4> = Matrix::identity();
+    let c = a * b;
+}

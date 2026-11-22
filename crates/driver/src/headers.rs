@@ -89,8 +89,8 @@ pub fn import(
             }
             continue;
         }
-        // GLSL's built-ins are `som::gl`'s own: the GPU has them, there's nothing to link.
-        if library.as_deref() == Some(som_lang::GL_LIBRARY) {
+        // WGSL's built-ins, `extern "wgsl"`: the GPU has them, there's nothing to link.
+        if library.as_deref() == Some(som_lang::GPU_BUILTINS_LIBRARY) {
             continue;
         }
         let name = module_name(library.as_deref(), header.as_ref().map_or("", |(h, _)| h));

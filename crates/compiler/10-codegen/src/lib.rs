@@ -95,8 +95,8 @@ struct Emitter<'a> {
 }
 
 impl<'a> Emitter<'a> {
-    /// The functions the program runs: not the copies compiled for the GPU, which `@glsl`
-    /// has already made GLSL of.
+    /// The functions the program runs: not the copies compiled for the GPU, which
+    /// `gpu::shader` has already made WGSL of.
     fn cpu_funcs(&self) -> impl Iterator<Item = (FuncId, &'a Function)> + use<'a> {
         let mir = self.mir;
         (mir.funcs.iter_with_ids()).filter(move |(id, _)| !mir.gpu.contains(id))

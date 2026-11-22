@@ -1,0 +1,190 @@
+/// `C` columns of `R` rows of `f32`s, as WGSL's `matCxR<f32>`: `Matrix<2, 4>` is two columns
+/// of four, a column at a time in memory. Multiplying needs the columns on the left to match
+/// the rows on the right, which the types check: a `Matrix<K, R>` times a `Matrix<C, K>` is a
+/// `Matrix<C, R>`, so `Matrix<2, 4> * Matrix<4, 4>` (2 columns against 4 rows) has no `*`.
+pub struct Matrix<C: usize, R: usize> {
+    pub columns: [Vector<R, f32>; C],
+}
+
+impl<C: usize, R: usize> Copy for Matrix<C, R> {}
+
+pub type Mat2 = Matrix<2, 2>;
+pub type Mat3 = Matrix<3, 3>;
+pub type Mat4 = Matrix<4, 4>;
+
+/// A 4 by 4 matrix from its columns.
+pub fn mat4(x: Vec4, y: Vec4, z: Vec4, w: Vec4) -> Mat4 = Matrix { columns: [x, y, z, w] };
+
+/// A 3 by 3 matrix from its columns.
+pub fn mat3(x: Vec3, y: Vec3, z: Vec3) -> Mat3 = Matrix { columns: [x, y, z] };
+
+/// A 2 by 2 matrix from its columns.
+pub fn mat2(x: Vec2, y: Vec2) -> Mat2 = Matrix { columns: [x, y] };
+
+impl<C: usize, R: usize> Matrix<C, R> {
+    /// Every number 0.
+    pub fn zero() -> Self = Matrix { columns: [Vector::empty(0.0); C] };
+
+    /// The number in column `column`, row `row`.
+    pub fn at(&self, column: usize, row: usize) -> f32 {
+        if column < self.columns.len {
+            let c = self.columns[column];
+            if row < c.components.len {
+                return c.components[row];
+            }
+        }
+        @fail("outside the matrix")
+    }
+
+    /// Its rows as columns: `R` columns of `C`.
+    pub fn transposed(&self) -> Matrix<R, C> {
+        let mut made: Matrix<R, C> = Matrix::zero();
+        for c in 0..self.columns.len {
+            for r in 0..made.columns.len {
+                let mut column = made.columns[r];
+                if c < column.components.len && r < self.columns[c].components.len {
+                    column.components[c] = self.columns[c].components[r];
+                }
+                made.columns[r] = column;
+            }
+        }
+        made
+    }
+}
+
+impl<N: usize> Matrix<N, N> {
+    /// 1 down the diagonal and 0 elsewhere: what multiplying by changes nothing.
+    pub fn identity() -> Self {
+        let mut made: Self = Matrix::zero();
+        for i in 0..made.columns.len {
+            let mut column = made.columns[i];
+            if i < column.components.len {
+                column.components[i] = 1.0;
+            }
+            made.columns[i] = column;
+        }
+        made
+    }
+}
+
+/// A matrix times a vector of as many numbers as it has columns: each column times its
+/// number, added up.
+impl<C: usize, R: usize> Multiply<Vector<C, f32>, Vector<R, f32>> for Matrix<C, R> {
+    fn multiply(&self, v: &Vector<C, f32>) -> Vector<R, f32> {
+        let mut made: Vector<R, f32> = Vector::empty(0.0);
+        for k in 0..self.columns.len {
+            made = made + self.columns[k] * v.components[k];
+        }
+        made
+    }
+}
+
+/// A `Matrix<K, R>` times a `Matrix<C, K>`: `K` columns on the left against `K` rows on the
+/// right. Each column of what comes made is the left matrix times that column on the right.
+impl<K: usize, C: usize, R: usize> Multiply<Matrix<C, K>, Matrix<C, R>> for Matrix<K, R> {
+    fn multiply(&self, other: &Matrix<C, K>) -> Matrix<C, R> {
+        let mut made: Matrix<C, R> = Matrix::zero();
+        for c in 0..other.columns.len {
+            made.columns[c] = *self * other.columns[c];
+        }
+        made
+    }
+}
+
+/// Every number times `by`.
+impl<C: usize, R: usize> Multiply<f32> for Matrix<C, R> {
+    fn multiply(&self, by: &f32) -> Self {
+        let mut made = *self;
+        for c in 0..made.columns.len {
+            made.columns[c] = made.columns[c] * *by;
+        }
+        made
+    }
+}
+
+impl<C: usize, R: usize> Add for Matrix<C, R> {
+    fn add(&self, other: &Self) -> Self {
+        let mut made = *self;
+        for c in 0..made.columns.len {
+            made.columns[c] = made.columns[c] + other.columns[c];
+        }
+        made
+    }
+}
+
+impl<C: usize, R: usize> Subtract for Matrix<C, R> {
+    fn subtract(&self, other: &Self) -> Self {
+        let mut made = *self;
+        for c in 0..made.columns.len {
+            made.columns[c] = made.columns[c] - other.columns[c];
+        }
+        made
+    }
+}
+
+/// The transforms a 3D scene is drawn with, for points `vec4(p, 1.0)` and directions
+/// `vec4(d, 0.0)`. Right-handed, looking down -z; depth from 0 to 1, as WebGPU has it.
+impl Matrix<4, 4> {
+    /// Moved by `by`.
+    pub fn translation(by: Vec3) -> Mat4 = mat4(
+        vec4(1.0, 0.0, 0.0, 0.0),
+        vec4(0.0, 1.0, 0.0, 0.0),
+        vec4(0.0, 0.0, 1.0, 0.0),
+        vec4(by.x, by.y, by.z, 1.0),
+    );
+
+    /// Stretched by `by` along each axis.
+    pub fn scaling(by: Vec3) -> Mat4 = mat4(
+        vec4(by.x, 0.0, 0.0, 0.0),
+        vec4(0.0, by.y, 0.0, 0.0),
+        vec4(0.0, 0.0, by.z, 0.0),
+        vec4(0.0, 0.0, 0.0, 1.0),
+    );
+
+    /// Turned by `angle` radians around the x axis, from y towards z.
+    pub fn rotation_x(angle: f32) -> Mat4 {
+        let c = angle.cos();
+        let s = angle.sin();
+        mat4(vec4(1.0, 0.0, 0.0, 0.0), vec4(0.0, c, s, 0.0), vec4(0.0, -s, c, 0.0), vec4(0.0, 0.0, 0.0, 1.0))
+    }
+
+    /// Turned by `angle` radians around the y axis, from z towards x.
+    pub fn rotation_y(angle: f32) -> Mat4 {
+        let c = angle.cos();
+        let s = angle.sin();
+        mat4(vec4(c, 0.0, -s, 0.0), vec4(0.0, 1.0, 0.0, 0.0), vec4(s, 0.0, c, 0.0), vec4(0.0, 0.0, 0.0, 1.0))
+    }
+
+    /// Turned by `angle` radians around the z axis, from x towards y.
+    pub fn rotation_z(angle: f32) -> Mat4 {
+        let c = angle.cos();
+        let s = angle.sin();
+        mat4(vec4(c, s, 0.0, 0.0), vec4(-s, c, 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4(0.0, 0.0, 0.0, 1.0))
+    }
+
+    /// A perspective projection: `fov` radians top to bottom, `aspect` its width over its
+    /// height, seeing from `near` to `far` in front.
+    pub fn perspective(fov: f32, aspect: f32, near: f32, far: f32) -> Mat4 {
+        let f = 1.0 / (fov / 2.0).tan();
+        let depth = far / (near - far);
+        mat4(
+            vec4(f / aspect, 0.0, 0.0, 0.0),
+            vec4(0.0, f, 0.0, 0.0),
+            vec4(0.0, 0.0, depth, -1.0),
+            vec4(0.0, 0.0, near * depth, 0.0),
+        )
+    }
+
+    /// The view from `eye` looking at `target`, with `up` up.
+    pub fn look_at(eye: Vec3, target: Vec3, up: Vec3) -> Mat4 {
+        let forward = (target - eye).normalized;
+        let right = forward.cross(&up).normalized;
+        let above = right.cross(&forward);
+        mat4(
+            vec4(right.x, above.x, -forward.x, 0.0),
+            vec4(right.y, above.y, -forward.y, 0.0),
+            vec4(right.z, above.z, -forward.z, 0.0),
+            vec4(-right.dot(&eye), -above.dot(&eye), forward.dot(&eye), 1.0),
+        )
+    }
+}

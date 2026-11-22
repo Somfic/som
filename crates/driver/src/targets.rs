@@ -9,7 +9,7 @@
 //! `@if GPU { … }`: code for shaders. The GPU is a system too, but it's not decided while
 //! loading: a shader is compiled for the GPU and, as an ordinary function, for the CPU, in
 //! the same build. Both branches of `@if GPU` are resolved and checked, and lowering takes
-//! the one for each copy. GLSL's built-ins (`som::gl`) are only on the GPU, C's only on the
+//! the one for each copy. WGSL's built-ins (`extern "wgsl"`, in `som::gpu`) are only on the GPU, C's only on the
 //! others; on the GPU, an `@if` on the system takes the target's branch.
 
 use som_ast::{Ast, BinOp, Child, Expr, Func, Id, Item, Path, Stmt, Visibility};
@@ -579,7 +579,7 @@ fn contains(within: &Span, span: &Span) -> bool {
 #[derive(Debug, Clone)]
 enum Need {
     Libc(String),
-    /// One of GLSL's, in `som::gl`.
+    /// One of WGSL's, from an `extern "wgsl"` block.
     Gl(String),
     Func(Id<Func>),
 }
@@ -752,10 +752,9 @@ impl Walk<'_, '_> {
             return None;
         }
         let def = self.names.def(self.names.expr(id)?);
-        let module = &self.ast.modules[def.module].name;
         match def.kind {
             _ if is_libc_source(&def.span.source) => Some(Need::Libc(def.name.to_string())),
-            DefKind::Func(_) if **module == *som_lang::GL_MODULE => {
+            DefKind::Func(f) if self.ast.gpu_builtins.contains(&f) => {
                 Some(Need::Gl(def.name.to_string()))
             }
             DefKind::Func(f) => Some(Need::Func(f)),

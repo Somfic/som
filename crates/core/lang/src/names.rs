@@ -11,10 +11,9 @@ pub const BUILD_DIR: &str = ".build";
 pub const IMPORTS_DIR: &str = "imports";
 /// The C library, which `extern "c";` also `use`s.
 pub const LIBC_MODULE: &str = "som::c";
-/// GLSL's built-in functions: only on the GPU.
-pub const GL_MODULE: &str = "som::gl";
-/// The `extern "glsl"` block declaring them: not a library to link.
-pub const GL_LIBRARY: &str = "glsl";
+/// The `extern "wgsl"` blocks declaring WGSL's built-in functions, which only the GPU has:
+/// not a library to link.
+pub const GPU_BUILTINS_LIBRARY: &str = "wgsl";
 /// `som::GPU`: whether the code is compiled for the GPU, in `@if GPU { … }`.
 pub const GPU_CONST: &str = "GPU";
 pub const FORGET: &str = "forget";

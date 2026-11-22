@@ -1,0 +1,41 @@
+// expect: exit 0
+
+/// `Matrix<C, R>` is `C` columns of `R` rows. Multiplying goes column into row, `Matrix<K, R>`
+/// times `Matrix<C, K>` giving `Matrix<C, R>`, and a vector is a column on the right.
+fn near(a: f32, b: f32) -> bool = (a - b).abs() < 0.0001;
+
+fn main() -> i32 {
+    // Moving a point, but not a direction.
+    let moved = Mat4::translation(vec3(1.0, 2.0, 3.0));
+    let p = moved * vec4(1.0, 1.0, 1.0, 1.0);
+    if !(near(p.x, 2.0) && near(p.y, 3.0) && near(p.z, 4.0) && near(p.w, 1.0)) { return 1; }
+    let d = moved * vec4(1.0, 0.0, 0.0, 0.0);
+    if !(near(d.x, 1.0) && near(d.y, 0.0)) { return 2; }
+
+    // A quarter turn around z takes x to y; the identity changes nothing.
+    let turned = Mat4::rotation_z(1.5707964) * Mat4::identity();
+    let q = turned * vec4(1.0, 0.0, 0.0, 0.0);
+    if !(near(q.x, 0.0) && near(q.y, 1.0)) { return 3; }
+
+    // Moving after turning is not turning after moving.
+    let a = moved * turned * vec4(1.0, 0.0, 0.0, 1.0);
+    let b = turned * moved * vec4(1.0, 0.0, 0.0, 1.0);
+    if !(near(a.x, 1.0) && near(a.y, 3.0) && near(b.x, -2.0) && near(b.y, 2.0)) { return 4; }
+
+    // Sizes: 2 columns of 3 times 4 columns of 2 is 4 columns of 3; transposed swaps them.
+    let wide: Matrix<2, 3> = Matrix { columns: [vec3(1.0, 2.0, 3.0), vec3(4.0, 5.0, 6.0)] };
+    let tall: Matrix<4, 2> = Matrix { columns: [vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(1.0, 1.0), vec2(2.0, 0.0)] };
+    let product: Matrix<4, 3> = wide * tall;
+    if !(near(product.at(2, 0), 5.0) && near(product.at(3, 2), 6.0)) { return 5; }
+    let flipped: Matrix<3, 2> = wide.transposed();
+    if !near(flipped.at(2, 1), 6.0) { return 6; }
+
+    // Looking down -z from the origin changes nothing; a point in front lands inside the
+    // view, its depth between 0 and 1.
+    let view = Mat4::look_at(vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, -1.0), vec3(0.0, 1.0, 0.0));
+    if !near((view * vec4(1.0, 2.0, 3.0, 1.0)).y, 2.0) { return 7; }
+    let clip = Mat4::perspective(1.0, 1.5, 0.1, 100.0) * vec4(0.0, 0.0, -10.0, 1.0);
+    let depth = clip.z / clip.w;
+    if !(depth > 0.0 && depth < 1.0) { return 8; }
+    0
+}

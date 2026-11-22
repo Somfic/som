@@ -308,7 +308,7 @@ impl Checker<'_> {
 
     /// What operator trait `lang`'s implementations for `ty` take on the right, as written:
     /// `usize` for `string`'s `*`.
-    pub(super) fn operator_takes(&self, ty: TypeId, lang: LangTrait) -> Vec<String> {
+    pub(super) fn operator_takes(&mut self, ty: TypeId, lang: LangTrait) -> Vec<String> {
         let Some(trait_) = self
             .names
             .lang(lang)
@@ -318,17 +318,32 @@ impl Checker<'_> {
         };
         let ty = self.u.shallow(ty);
         let mut takes = Vec::new();
-        for info in &self.impls {
+        for i in 0..self.impls.len() {
+            let info = &self.impls[i];
             let (Some(target), Some(&other)) = (info.target, info.trait_args.first()) else {
                 continue;
             };
-            if info.trait_ != Some(trait_) || !self.u.could_fit(target, ty) {
+            if info.trait_ != Some(trait_) {
+                continue;
+            }
+            // A generic one, `impl<K, C, R> Multiply<Matrix<C, K>> for Matrix<K, R>`: what
+            // the left fixes is put in, `Matrix<C, 2>` for a `Matrix<2, 4>`.
+            let params = info.params.clone();
+            let mut bound = vec![None; params.len()];
+            let u = &self.u;
+            let fits = impls::match_type(&u.table, target, ty, &params, &mut bound, &|t| u.shallow(t));
+            if !fits && !self.u.could_fit(target, ty) {
                 continue;
             }
             // `Self` on the right is the type itself.
             let other = match other == target {
                 true => ty,
-                false => other,
+                false => {
+                    let subst: Vec<(DefId, TypeId)> = (params.into_iter().zip(bound))
+                        .filter_map(|(p, b)| b.map(|b| (p, b)))
+                        .collect();
+                    impls::substitute(&mut self.u.table, other, &subst)
+                }
             };
             let shown = self.u.display(other, self.names);
             if !takes.contains(&shown) {

@@ -37,8 +37,7 @@ impl<'a> Lowerer<'a> {
         let sig = self.closure_sig(closure);
         let subst = self.closure_subst(closure, &args);
         // Each named after what it captures: the variable, or the last field of the part,
-        // `camera` for `g.camera`; the whole path, `g_camera`, where two would share one or
-        // GLSL has the name (a shader's captures are its uniforms, by these names).
+        // `camera` for `g.camera`; the whole path, `g_camera`, where two would share one.
         let short = |names: &som_resolve::Names, c: &som_typeck::Capture| match c.path.last() {
             Some(last) => last.to_string(),
             None => names.def(c.def).name.to_string(),
@@ -56,16 +55,13 @@ impl<'a> Lowerer<'a> {
                 }),
             };
             let unique = shorts.iter().filter(|s| **s == shorts[i]).count() == 1;
-            let mut name = match unique && !som_lang::glsl_reserved(&shorts[i]) {
+            let name = match unique {
                 true => shorts[i].clone(),
                 false => std::iter::once(self.names.def(capture.def).name.to_string())
                     .chain(capture.path.iter().map(|p| p.to_string()))
                     .collect::<Vec<_>>()
                     .join("_"),
             };
-            if som_lang::glsl_reserved(&name) {
-                name.push('_');
-            }
             fields.push((name, ty));
         }
         self.mir.add_struct(StructDef {

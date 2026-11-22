@@ -1,4 +1,4 @@
-//! A function the shader reaches, in GLSL: its signature, then its body.
+//! A function the shader reaches, in WGSL: its signature, then its body.
 
 use som_base::message::code;
 use som_base::{Message, Span, msg};
@@ -38,7 +38,7 @@ impl Translator<'_> {
     }
 }
 
-/// Each local's GLSL name: a named one's name and number, a temporary's `t` and number, and
+/// Each local's WGSL name: a named one's name and number, a temporary's `t` and number, and
 /// what's returned `ret`.
 fn local_names(body: &som_mir::Body) -> Vec<String> {
     let mut names = vec![String::new(); body.locals.slots()];
@@ -84,7 +84,7 @@ impl Body<'_> {
         let prototype = self.signature(t)?;
         self.find_aliases(t)?;
 
-        // Locals, each declared once at the top: GLSL has no `StorageLive`.
+        // Locals, each declared once at the top: WGSL has no `StorageLive`.
         let mut lines = Vec::new();
         for (local, decl) in self.body.locals.iter_with_ids() {
             let is_param = (1..=self.body.arg_count).contains(&local.id);
@@ -117,11 +117,11 @@ impl Body<'_> {
                 None => msg!["this is a ", t.ty_part(decl.ty)],
             };
             let ty = t.ty(decl.ty).map_err(|no| self.no_gpu(no, Some(what)))?;
-            lines.push(declare(t, self.name(local), &ty));
+            lines.push(declare(self.name(local), &ty));
         }
         for snapshots in self.snapshots.values() {
             for (name, _) in snapshots {
-                lines.push(declare(t, name, Scalar::Uint.name(t.wgsl())));
+                lines.push(declare(name, Scalar::Uint.name()));
             }
         }
 
@@ -174,19 +174,16 @@ impl Body<'_> {
         } else if let Some(nodes) = crate::structure::structure(body) {
             // `if`s and loops, as the program was written.
             self.nodes(t, &nodes, &ret, &mut lines, 1)?;
-            // A function ending in a loop that only returns: GLSL wants every path to.
+            // A function ending in a loop that only returns: WGSL wants every path to.
             if let Some(zero) = &ret
                 && matches!(nodes.last(), Some(crate::structure::Node::Loop(_)))
             {
                 lines.push(format!("    return {zero};"));
             }
         } else {
-            // Any shape of control flow: a `switch` on the block to run, in a loop. GLSL has
+            // Any shape of control flow: a `switch` on the block to run, in a loop. WGSL has
             // no `goto`.
-            lines.push(match t.wgsl() {
-                true => format!("    var {NEXT}: u32 = 0u;"),
-                false => format!("    uint {NEXT} = 0u;"),
-            });
+            lines.push(format!("    var {NEXT}: u32 = 0u;"));
             lines.push("    for (;;) {".into());
             lines.push(format!("        switch ({NEXT}) {{"));
             for head in heads {
@@ -195,12 +192,10 @@ impl Body<'_> {
                 lines.push("        }".into());
             }
             // WGSL's `switch` has to have one.
-            if t.wgsl() {
-                lines.push("        default: {}".into());
-            }
+            lines.push("        default: {}".into());
             lines.push("        }".into());
             lines.push("    }".into());
-            // Never reached; GLSL wants every path to return.
+            // Never reached; WGSL wants every path to return.
             if let Some(zero) = &ret {
                 lines.push(format!("    return {zero};"));
             }
@@ -329,16 +324,7 @@ impl Body<'_> {
                 otherwise,
             } => {
                 let condition = self.operand(t, condition)?;
-                match t.wgsl() {
-                    true => format!(
-                        "{NEXT} = select({}u, {}u, {condition}); break;",
-                        otherwise.id, then.id
-                    ),
-                    false => format!(
-                        "{NEXT} = {condition} ? {}u : {}u; break;",
-                        then.id, otherwise.id
-                    ),
-                }
+                format!("{NEXT} = select({}u, {}u, {condition}); break;", otherwise.id, then.id)
             }
             TerminatorKind::Return => match ret {
                 Some(_) => "return ret;".into(),
@@ -358,7 +344,6 @@ impl Body<'_> {
         let ret = (t.ty(function.ret)).map_err(|no| {
             self.no_gpu(no, Some(msg!["it returns a ", t.ty_part(function.ret)]))
         })?;
-        let wgsl = t.wgsl();
         let mut params = Vec::new();
         for (i, &param) in function.params.iter().enumerate() {
             let local = Local::new(i + 1);
@@ -371,9 +356,9 @@ impl Body<'_> {
                 Ty::Ref { mutable, to }
                     if !matches!(t.mir.types.get(*to), Ty::Slice(_) | Ty::Str) =>
                 {
-                    // In WGSL a `&mut` is a pointer, read through.
+                    // A `&mut` is a pointer, read through.
                     let name = &self.names[local.id];
-                    let alias = match wgsl && *mutable {
+                    let alias = match *mutable {
                         true => format!("(*{name})"),
                         false => name.clone(),
                     };
@@ -388,18 +373,15 @@ impl Body<'_> {
             };
             let native = t.ty(ty).map_err(|no| self.no_gpu(no, Some(what)))?;
             let name = self.name(local);
-            params.push(match (wgsl, mutable) {
-                (true, true) => format!("{name}: ptr<function, {native}>"),
-                (true, false) => format!("{name}: {native}"),
-                (false, true) => format!("inout {native} {name}"),
-                (false, false) => format!("{native} {name}"),
+            params.push(match mutable {
+                true => format!("{name}: ptr<function, {native}>"),
+                false => format!("{name}: {native}"),
             });
         }
         let name = t.func_name(self.func);
-        Ok(match (wgsl, t.is_unit(function.ret)) {
-            (true, true) => format!("fn {name}({})", params.join(", ")),
-            (true, false) => format!("fn {name}({}) -> {ret}", params.join(", ")),
-            (false, _) => format!("{ret} {name}({})", params.join(", ")),
+        Ok(match t.is_unit(function.ret) {
+            true => format!("fn {name}({})", params.join(", ")),
+            false => format!("fn {name}({}) -> {ret}", params.join(", ")),
         })
     }
 
@@ -532,8 +514,8 @@ impl Body<'_> {
                 Projection::Field(0) if t.vector(ty).is_some() => {
                     ty = t.mir.project(ty, Projection::Field(0)).expect("validated MIR");
                 }
-                // A texture among the uniforms is read from the GLSL uniform: by its name, or
-                // its path, `camera.sky`, in a struct among them.
+                // A texture or buffer among the uniforms is the global it's bound to: found by
+                // its name, or its path, `camera.sky`, in a struct among them.
                 Projection::Field(index)
                     if t.uniform_paths.contains_key(&ty)
                         && (t.mir.project(ty, Projection::Field(index)))
@@ -556,7 +538,6 @@ impl Body<'_> {
                         });
                     };
                     text = format!("{prefix}{name}");
-                    // In WGSL, the global it's bound to.
                     if let Some(global) = t.textures.get(&text) {
                         text = global.clone();
                     }
@@ -656,10 +637,10 @@ impl Body<'_> {
                 let scalar = t.scalar(operand_ty).map_err(|no| self.no_gpu(no, None))?;
                 let (a, mut b) = (self.operand(t, lhs)?, self.operand(t, rhs)?);
                 // WGSL shifts by a `u32`.
-                if t.wgsl() && matches!(op, BinOp::ShiftLeft | BinOp::ShiftRight) {
+                if matches!(op, BinOp::ShiftLeft | BinOp::ShiftRight) {
                     b = format!("u32({b})");
                 }
-                binary(*op, scalar, &a, &b, t.wgsl())
+                binary(*op, scalar, &a, &b)
             }
             Rvalue::Not(op) => {
                 let operand_ty = t.mir.operand_ty(&self.body.locals, op);
@@ -705,7 +686,7 @@ impl Body<'_> {
                 );
                 match (from, to) {
                     (Some(from), Some(to)) if from == to => text,
-                    (Some(_), Some(to)) => format!("{}({text})", to.name(t.wgsl())),
+                    (Some(_), Some(to)) => format!("{}({text})", to.name()),
                     _ => return Err(self.kept_reference()),
                 }
             }
@@ -783,7 +764,7 @@ impl Body<'_> {
                 hint: Some("the GPU can't stop the program, or say why".into()),
             });
         }
-        // One of GLSL's own, from `som::gl`; any other extern function is C's.
+        // One of WGSL's own, from an `extern "wgsl"` block; any other extern function is C's.
         let builtin = match (callee.body.is_none(), t.mir.gpu.contains(&func)) {
             (false, _) => None,
             (true, true) => Some(callee.link_name.clone().unwrap_or_else(|| name.clone())),
@@ -794,8 +775,8 @@ impl Body<'_> {
                     span: self.span.clone(),
                     label: msg![code(format!("{name}(…)")), " is called here"],
                     hint: Some(msg![
-                        "a shader calls GLSL's functions instead, from ",
-                        code("som::gl"),
+                        "a shader calls WGSL's functions instead, from ",
+                        code("som::gpu"),
                         ", inside ",
                         code("@if GPU { … }")
                     ]),
@@ -804,7 +785,7 @@ impl Body<'_> {
         };
         // What it takes and gives has to be on the GPU: said at the call, not inside it.
         // A buffer's item: read word by word, by a function made for the buffer.
-        if t.wgsl() && callee.name.starts_with("som::gpu::Buffer::get<") {
+        if callee.name.starts_with("som::gpu::Buffer::get<") {
             let ret = callee.ret;
             let texts = (args.iter())
                 .map(|op| self.operand(t, op))
@@ -852,20 +833,15 @@ impl Body<'_> {
         let params: Vec<TypeId> = (callee.params.iter().copied()).filter(|&p| !t.is_unit(p)).collect();
         for (op, param) in given.iter().zip(params) {
             let text = self.operand(t, op)?;
-            // WGSL's `&mut` parameters are pointers: given the place's address.
-            let pointer = t.wgsl() && matches!(t.mir.types.get(param), Ty::Ref { mutable: true, .. });
+            // `&mut` parameters are pointers: given the place's address.
+            let pointer = matches!(t.mir.types.get(param), Ty::Ref { mutable: true, .. });
             texts.push(match pointer {
                 true => format!("&{text}"),
                 false => text,
             });
         }
         Ok(match builtin {
-            Some(glsl) if t.wgsl() => wgsl_builtin(&glsl, &texts),
-            Some(glsl) => {
-                // GLSL's `atan` of two, which `som::gl` names apart: externs can't overload.
-                let glsl = if glsl == "atan2" { "atan" } else { glsl.as_str() };
-                format!("{glsl}({})", texts.join(", "))
-            }
+            Some(builtin) => wgsl_builtin(&builtin, &texts),
             None => match vector_op(t, func, &texts) {
                 Some(native) => native,
                 None => {
@@ -877,18 +853,18 @@ impl Body<'_> {
     }
 }
 
-/// A call of the standard library's `Vector` operations, as GLSL's own: `a + b`, `v * 2.0`,
+/// A call of the standard library's `Vector` operations, as WGSL's own: `a + b`, `v * 2.0`,
 /// `v.xy`, `length(v)`. `None` for any other function.
 fn vector_op(t: &Translator, func: FuncId, args: &[String]) -> Option<String> {
     let callee = &t.mir.funcs[func];
-    // `vec4(rgb, 1.0)`: GLSL's constructors take the same.
+    // `vec4(rgb, 1.0)`: WGSL's constructors take the same.
     for n in 2..=4 {
         if callee.name == format!("som::data::vec{n}") {
-            let ty = Scalar::Float.vector(n, t.wgsl());
+            let ty = Scalar::Float.vector(n);
             return Some(format!("{ty}({})", args.join(", ")));
         }
     }
-    // `0.5 * v`: a number times a vector, GLSL's own `*` too.
+    // `0.5 * v`: a number times a vector, WGSL's own `*` too.
     if callee.name.starts_with("som::data::f32::multiply<")
         && let [a, b] = args
         && callee.params.get(1).is_some_and(|&p| {
@@ -931,44 +907,33 @@ fn vector_op(t: &Translator, func: FuncId, args: &[String]) -> Option<String> {
     })
 }
 
-/// GLSL's built-in function `glsl`, from `som::gl`, called with `args` in WGSL.
-fn wgsl_builtin(glsl: &str, args: &[String]) -> String {
+/// WGSL's built-in function `name`, from `som::gpu`'s `extern "wgsl"`, called with `args`. The texture
+/// functions take what `som::gpu` gives them, without the sampler.
+fn wgsl_builtin(name: &str, args: &[String]) -> String {
     let all = args.join(", ");
-    match (glsl, args) {
+    match (name, args) {
         // Sampled at its full size: `textureSample` can't be inside a branch.
-        ("texture", [texture, uv]) => format!("textureSampleLevel({texture}, {SAMPLER}, {uv}, 0.0)"),
-        ("texelFetch", _) => format!("textureLoad({all})"),
-        ("textureSize", [texture, lod]) => format!("vec2<i32>(textureDimensions({texture}, {lod}))"),
-        ("inversesqrt", _) => format!("inverseSqrt({all})"),
-        ("dFdx", _) => format!("dpdx({all})"),
-        ("dFdy", _) => format!("dpdy({all})"),
+        ("textureSample", [texture, uv]) => format!("textureSampleLevel({texture}, {SAMPLER}, {uv}, 0.0)"),
+        ("textureDimensions", [texture, lod]) => format!("vec2<i32>(textureDimensions({texture}, {lod}))"),
         (name, _) => format!("{name}({all})"),
     }
 }
 
-/// In WGSL, the sampler every texture is sampled with.
+/// The sampler every texture is sampled with.
 pub(crate) const SAMPLER: &str = "som_sampler";
 
 /// Local `name` of type `ty`, declared at the top of a function.
-fn declare(t: &Translator, name: &str, ty: &str) -> String {
-    match t.wgsl() {
-        true => format!("    var {name}: {ty};"),
-        false => format!("    {ty} {name};"),
-    }
+fn declare(name: &str, ty: &str) -> String {
+    format!("    var {name}: {ty};")
 }
 
-fn binary(op: BinOp, scalar: Option<Scalar>, a: &str, b: &str, wgsl: bool) -> String {
+fn binary(op: BinOp, scalar: Option<Scalar>, a: &str, b: &str) -> String {
     let symbol = match (op, scalar) {
         (BinOp::Add, _) => "+",
         (BinOp::Subtract, _) => "-",
         (BinOp::Multiply, _) => "*",
         (BinOp::Divide, _) => "/",
-        // C's remainder: its sign is what's divided's. GLSL's `%` leaves negative ones open,
-        // and floats have `mod`, whose sign is the divisor's.
-        (BinOp::Modulo, Some(Scalar::Float)) => {
-            return format!("({a} - {b} * trunc({a} / {b}))");
-        }
-        (BinOp::Modulo, Some(Scalar::Int)) => return format!("({a} - {b} * ({a} / {b}))"),
+        // C's remainder, its sign what's divided's: WGSL's own, for floats too.
         (BinOp::Modulo, _) => "%",
         (BinOp::LessThan, _) => "<",
         (BinOp::GreaterThan, _) => ">",
@@ -978,7 +943,7 @@ fn binary(op: BinOp, scalar: Option<Scalar>, a: &str, b: &str, wgsl: bool) -> St
         (BinOp::NotEquals, _) => "!=",
         (BinOp::And, _) | (BinOp::BitAnd, Some(Scalar::Bool)) => "&&",
         (BinOp::Or, _) | (BinOp::BitOr, Some(Scalar::Bool)) => "||",
-        (BinOp::BitXor, Some(Scalar::Bool)) => if wgsl { "!=" } else { "^^" },
+        (BinOp::BitXor, Some(Scalar::Bool)) => "!=",
         (BinOp::BitAnd, _) => "&",
         (BinOp::BitOr, _) => "|",
         (BinOp::BitXor, _) => "^",

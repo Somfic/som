@@ -19,7 +19,7 @@ fn main() -> i32 {
     let strength = 2.0;
     let shade = (frag: Fragment) => glow(frag, &light, strength);
     let shader = gpu::Shader::closure(&shade);
-    if shader.glsl.len == 0 { return 1; }
+    if shader.wgsl.len == 0 { return 1; }
 
     let names = ["light.at", "light.color", "strength"];
     shader.each(&shade, (i, name, value) => {

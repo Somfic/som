@@ -38,6 +38,8 @@ pub struct Ast {
     /// Statements that were a block's last line without a `;`, where the block's value isn't
     /// used: `end_drawing()` in `while … { begin_drawing(); end_drawing() }`.
     pub unterminated: std::collections::HashSet<Id<Stmt>>,
+    /// The functions of `extern "wgsl"` blocks: WGSL's built-ins, which only the GPU has.
+    pub gpu_builtins: std::collections::HashSet<Id<Func>>,
     /// `@for` and `@if`: settled while compiling.
     pub settled: std::collections::HashSet<Id<Stmt>>,
     /// `@if`s on the target's system, decided while loading: whether the first branch is

@@ -1,88 +1,88 @@
 use som::c;
-use som::gl;
+use som::gpu;
 
-/// Each is GLSL's own function in a shader (`@if GPU`), and C's everywhere else.
+/// Each is gpu's own function in a shader (`@if GPU`), and C's everywhere else.
 impl f32 {
     pub @const PI = c::M_PI as f32;
     pub @const HALF_PI = PI / 2.0;
 
     pub fn pow(self, power: f32) -> f32 {
-        @if GPU { return gl::pow(self, power); } else { return c::powf(self, power); }
+        @if GPU { return gpu::pow(self, power); } else { return c::powf(self, power); }
     }
 
     pub fn sqrt(self) -> f32 {
-        @if GPU { return gl::sqrt(self); } else { return c::sqrtf(self); }
+        @if GPU { return gpu::sqrt(self); } else { return c::sqrtf(self); }
     }
 
     // the trigonometric sine
     pub fn sin(self) -> f32 {
-        @if GPU { return gl::sin(self); } else { return c::sinf(self); }
+        @if GPU { return gpu::sin(self); } else { return c::sinf(self); }
     }
 
     // the hyperbolic sine
     pub fn sinh(self) -> f32 {
-        @if GPU { return gl::sinh(self); } else { return c::sinhf(self); }
+        @if GPU { return gpu::sinh(self); } else { return c::sinhf(self); }
     }
 
     // the trigonometric cosine
     pub fn cos(self) -> f32 {
-        @if GPU { return gl::cos(self); } else { return c::cosf(self); }
+        @if GPU { return gpu::cos(self); } else { return c::cosf(self); }
     }
 
     // the hyperbolic cosine
     pub fn cosh(self) -> f32 {
-        @if GPU { return gl::cosh(self); } else { return c::coshf(self); }
+        @if GPU { return gpu::cosh(self); } else { return c::coshf(self); }
     }
 
      // the trigonometric tangent
     pub fn tan(self) -> f32 {
-        @if GPU { return gl::tan(self); } else { return c::tanf(self); }
+        @if GPU { return gpu::tan(self); } else { return c::tanf(self); }
     }
 
     // the hyperbolic tangent
     pub fn tanh(self) -> f32 {
-        @if GPU { return gl::tanh(self); } else { return c::tanhf(self); }
+        @if GPU { return gpu::tanh(self); } else { return c::tanhf(self); }
     }
 
     /// The angle from the x axis to the point `(x, y)`, from -π to π.
     pub fn atan2(y: f32, x: f32) -> f32 {
-        @if GPU { return gl::atan2(y, x); } else { return c::atan2f(y, x); }
+        @if GPU { return gpu::atan2(y, x); } else { return c::atan2f(y, x); }
     }
 
     /// e to the power of `self`.
     pub fn exp(self) -> f32 {
-        @if GPU { return gl::exp(self); } else { return c::expf(self); }
+        @if GPU { return gpu::exp(self); } else { return c::expf(self); }
     }
 
     /// The natural logarithm.
     pub fn ln(self) -> f32 {
-        @if GPU { return gl::log(self); } else { return c::logf(self); }
+        @if GPU { return gpu::log(self); } else { return c::logf(self); }
     }
 
     pub fn log2(self) -> f32 {
-        @if GPU { return gl::log2(self); } else { return c::log2f(self); }
+        @if GPU { return gpu::log2(self); } else { return c::log2f(self); }
     }
 
     /// Without its sign.
     pub fn abs(self) -> f32 {
-        @if GPU { return gl::abs(self); } else { return c::fabsf(self); }
+        @if GPU { return gpu::abs(self); } else { return c::fabsf(self); }
     }
 
     /// The nearest whole number at or below it.
     pub fn floor(self) -> f32 {
-        @if GPU { return gl::floor(self); } else { return c::floorf(self); }
+        @if GPU { return gpu::floor(self); } else { return c::floorf(self); }
     }
 
     /// The nearest whole number at or above it.
     pub fn ceil(self) -> f32 {
-        @if GPU { return gl::ceil(self); } else { return c::ceilf(self); }
+        @if GPU { return gpu::ceil(self); } else { return c::ceilf(self); }
     }
 
     /// The nearest whole number; halfway, the one further from zero.
     pub fn round(self) -> f32 {
-        // GLSL's `round` leaves halfway open.
+        // gpu's `round` goes to the even one, halfway.
         @if GPU {
-            return gl::sign(self) * gl::floor(gl::abs(self) + 0.5);
+            return gpu::sign(self) * gpu::floor(gpu::abs(self) + 0.5);
         } else {
             return c::roundf(self);
         }
@@ -90,7 +90,7 @@ impl f32 {
 
     /// The whole number part: towards zero.
     pub fn trunc(self) -> f32 {
-        @if GPU { return gl::trunc(self); } else { return c::truncf(self); }
+        @if GPU { return gpu::trunc(self); } else { return c::truncf(self); }
     }
 
     /// What's left after its `floor`: from 0 up to 1.
@@ -99,11 +99,11 @@ impl f32 {
     }
 
     pub fn min(self, other: f32) -> f32 {
-        @if GPU { return gl::min(self, other); } else { return c::fminf(self, other); }
+        @if GPU { return gpu::min(self, other); } else { return c::fminf(self, other); }
     }
 
     pub fn max(self, other: f32) -> f32 {
-        @if GPU { return gl::max(self, other); } else { return c::fmaxf(self, other); }
+        @if GPU { return gpu::max(self, other); } else { return c::fmaxf(self, other); }
     }
 
     /// Kept from `low` to `high`.

@@ -1,0 +1,20 @@
+// expect: exit 7
+
+/// `key as usize` of a `u32` is the same number as `key`, so a check of it holds where it's
+/// cast again: after `&&`, and in an `if`.
+struct Keys { held: [bool; 8] }
+
+fn held(keys: &Keys, key: u32) -> bool = key as usize < keys.held.len && keys.held[key as usize];
+
+fn counted(keys: &Keys, key: u8) -> i32 {
+    if (key as u32) < 8 { if keys.held[key as usize] { 4 } else { 0 } } else { 0 }
+}
+
+fn main() -> i32 {
+    let mut keys = Keys { held: [false; 8] };
+    keys.held[3] = true;
+    let mut n = 0;
+    if held(&keys, 3) { n = n + 3; }
+    if !held(&keys, 9) { n = n + 0; }
+    n + counted(&keys, 3)
+}

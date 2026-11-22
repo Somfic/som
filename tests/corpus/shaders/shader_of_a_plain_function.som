@@ -2,4 +2,4 @@
 
 fn plain() -> i32 { 1 }
 
-fn main() { let s = @glsl(plain); }
+fn main() { let s = @shader(plain); }

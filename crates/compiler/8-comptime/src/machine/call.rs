@@ -170,11 +170,8 @@ impl Machine<'_, '_> {
             .map(|a| self.operand(a, span))
             .collect::<Result<Vec<_>, _>>()?;
         let dest = self.loc(place, span)?;
-        if let Some(&shader) = self.mir().glsl.get(&func) {
-            return self.shader_source(shader, som_shader::Target::Glsl, dest, span);
-        }
         if let Some(&shader) = self.mir().wgsl.get(&func) {
-            return self.shader_source(shader, som_shader::Target::Wgsl, dest, span);
+            return self.shader_source(shader, dest, span);
         }
         let function = &self.mir().funcs[func];
         if function.body.is_none() {
@@ -229,25 +226,20 @@ impl Machine<'_, '_> {
 }
 
 impl Machine<'_, '_> {
-    /// `@glsl(shader)`: the shader's source for the GPU, as text, into `dest`.
+    /// `gpu::shader(f)` or `gpu::kernel(f)`: its WGSL source, as text, into `dest`.
     fn shader_source(
         &mut self,
         shader: Option<FuncId>,
-        target: som_shader::Target,
         (dest, ty): (Loc, TypeId),
         span: &Span,
     ) -> Result<(), Stop> {
         let Some(shader) = shader else {
             return Err(Stop::Report(
-                Fault::Failed("`glsl` takes a shader by its name: `@glsl(wobble)`".into()),
+                Fault::Failed("`shader` takes a shader by its name: `gpu::shader(wobble)`".into()),
                 span.clone(),
             ));
         };
-        let source = match target {
-            som_shader::Target::Glsl => som_shader::glsl(self.mir(), shader),
-            som_shader::Target::Wgsl => som_shader::wgsl(self.mir(), shader),
-        };
-        match source {
+        match som_shader::wgsl(self.mir(), shader) {
             Ok(source) => {
                 let value = self.text(&source, ty, span)?;
                 self.write(&dest, ty, value, span)

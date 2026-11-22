@@ -32,7 +32,7 @@ fn shapes(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
 }
 
 fn main() -> i32 {
-    let source = @glsl(shapes);
+    let source = @shader(shapes);
     if source.len < 100 { return 1; }
     0
 }

@@ -1,5 +1,5 @@
 //! Every shader in `corpus/shaders` that compiles is WGSL that wgpu takes: read and checked
-//! by naga, wgpu's shader compiler, as `glsl.rs` checks the GLSL.
+//! by naga, wgpu's shader compiler.
 
 use std::path::Path;
 
@@ -21,10 +21,7 @@ fn shaders_are_valid_wgsl() {
         let program = som_driver::check(&path, &Default::default())
             .unwrap_or_else(|_| panic!("{} doesn't compile", path.display()));
         for shader in &program.shaders {
-            let Some(wgsl) = &shader.wgsl else {
-                failed.push(format!("{}: `{}` has no WGSL", path.display(), shader.name));
-                continue;
-            };
+            let wgsl = &shader.wgsl;
             if let Err(problem) = check(wgsl) {
                 failed.push(format!("{}: naga rejected `{}`:\n{problem}\n{wgsl}", path.display(), shader.name));
             }

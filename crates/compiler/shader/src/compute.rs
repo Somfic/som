@@ -52,14 +52,6 @@ impl Translator<'_> {
                 " to a struct of uniforms"
             ])
         };
-        if !self.wgsl() {
-            return Err(Problem {
-                message: "a compute kernel can't be compiled to GLSL".into(),
-                span,
-                label: "a kernel".into(),
-                hint: Some(msg!["OpenGL 3.3 has no compute shaders: use ", code("gpu::kernel")]),
-            });
-        }
         let ret = func.ret;
         let item = (self.words(ret)).map_err(|no| no.at(&span, msg!["it gives a ", self.ty_part(ret)]))?;
         if item == 0 {

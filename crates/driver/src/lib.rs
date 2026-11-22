@@ -48,17 +48,13 @@ pub struct Checked {
     pub shaders: Vec<Shader>,
 }
 
-/// A `@vertex` or `@fragment` function, compiled for the GPU.
+/// A `@fragment` or `@compute` function, compiled for the GPU.
 pub struct Shader {
     /// The function's name, without its module: `stripes`.
     pub name: String,
     pub stage: som_lang::Stage,
-    /// Its GLSL 3.30 source, as `@glsl` gives it: empty for a compute kernel, which GLSL 3.30
-    /// can't have.
-    pub glsl: String,
-    /// Its WGSL source, as `gpu::wgsl` gives it, if it can be: only an error where `wgsl`
-    /// asks for it.
-    pub wgsl: Option<String>,
+    /// Its WGSL source, as `gpu::shader` or `gpu::kernel` gives it.
+    pub wgsl: String,
 }
 
 /// Why a program didn't pass its checks, with whatever warnings were found on the way.

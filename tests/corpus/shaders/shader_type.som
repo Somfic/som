@@ -1,7 +1,7 @@
 // expect: exit 0
 
-/// `gpu::Shader::fragment(shader)`: the shader's GLSL, worked out from the shader; `each`
-/// gives each uniform's index, name and value, for a graphics library to set.
+/// `gpu::Shader::fragment(shader)`: the shader's WGSL, worked out from the shader; `each`
+/// gives each uniform's index, name and value, for the host to set.
 use som::gpu;
 
 struct Uniforms {
@@ -16,12 +16,12 @@ fn tinted(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
 }
 
 fn main() -> i32 {
-    let shader = gpu::Shader::fragment(tinted);
-    if shader.glsl != @glsl(tinted) { return 1; }
+    let compiled = gpu::Shader::fragment(tinted);
+    if compiled.wgsl != gpu::shader(tinted) { return 1; }
 
     // Each uniform, with its index and name: written out per field, no list.
     let names = ["time", "count", "tint"];
-    shader.each(&Uniforms { time: 1.5, count: 7, tint: Vector::new([1.0, 0.5, 0.0, 1.0]) }, (i, name, value) => {
+    compiled.each(&Uniforms { time: 1.5, count: 7, tint: Vector::new([1.0, 0.5, 0.0, 1.0]) }, (i, name, value) => {
         let expected = names.get(i) else @unreachable;
         assert(string::from_c(name) == expected);
         let fits = match value {

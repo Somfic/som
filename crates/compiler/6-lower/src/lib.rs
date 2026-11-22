@@ -186,7 +186,7 @@ impl<'a> Lowerer<'a> {
             if func.generics.is_empty() && !self.is_alias(id) {
                 self.instance(id, Vec::new());
                 // A shader, compiled for the GPU too: each is checked, and can be emitted,
-                // whether or not `@glsl` asks for it.
+                // whether or not `gpu::shader` asks for it.
                 if func.stage.is_some() {
                     let outer = self.set_gpu(true);
                     self.instance(id, Vec::new());

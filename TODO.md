@@ -107,7 +107,7 @@ needed by the `@gpu` work too.
 
 ## Shaders (2026-11-20, see docs/shaders.md)
 
-`@fragment` → GLSL 3.30 via `@glsl(f)`, running through raylib (`example/shader`).
+`@fragment` and `@compute` → WGSL via `gpu::shader(f)`/`gpu::kernel(f)`, running through the `wgpu` library (`libs/wgpu`). GLSL and the raylib adapter were dropped 2026-11-23.
 
 - [x] `@if GPU`: GPU as a system, `som::gl` built-ins, availability over the call graph, GPU copies in lowering (2026-11-20).
 - [ ] A generic function without a written return type whose body ends in a per-instance `@for f in T` can't be called as a statement ("cannot infer the type"); write the return type.
@@ -116,31 +116,36 @@ needed by the `@gpu` work too.
 - [x] Shader-friendly std (2026-11-21): `Vec2`–`Vec4`, `vec2`/`vec3`/`vec4` (also `vec4(rgb, a)`), `.r .g .b .a .rgb`, `dot`/`length`/`normalized`/`mix`/`clamp`/`abs`/`min`/`max` on `f32` vectors, trig as `f32` methods; all GLSL's own in shaders.
 - [x] `0.5 * v`: a built-in type can implement an operator when the other side isn't built in (2026-11-21).
 - [x] `-x` through a `Negate` trait; `Vector<N, f32>` has it (2026-11-21).
-- [ ] Scalar `f32` methods in shaders (`x.clamp(…)`, `x.sin()`) are still calls to translated std functions, not GLSL's directly.
-- [ ] Externs can't be overloaded, so GLSL's two-argument `atan` is `gl::atan2`, renamed by the translator.
-- [ ] `@vertex` shaders (inputs from raylib's `vertexPosition`/`vertexTexCoord`/`vertexColor`, `mvp`), and loading a vertex+fragment pair.
+- [ ] Scalar `f32` methods in shaders (`x.clamp(…)`, `x.sin()`) are still calls to translated std functions, not WGSL's directly.
+- [ ] `@vertex` shaders, and drawing a vertex+fragment pair (meshes).
 - [x] Textures: `gpu::Texture` uniforms → `sampler2D`, `t.sample(uv)`, raylib adapter binds them (2026-11-21).
 - [ ] Sampling on the CPU (a `Texture` holding pixels), so shaders using textures can be tested there.
-- [ ] raylib's own `texture0` (the texture being drawn) isn't reachable from a shader yet; pass it as a uniform.
 - [ ] Building a `Texture` inside a shader reports "kept in a variable" rather than something more specific.
 - [x] Structured control flow (`structure.rs`): `if`/`for (;;)`/`break`/`continue`; `switch` loop only as a fallback (2026-11-21).
 - [ ] Breaking out of two loops at once still falls back to the `switch` loop: use a flag variable instead.
 - [x] `gpu::Shader<U>` (GLSL + uniform names + allocation-free `each`), `@name(f)`, `glsl(f)` at run time, raylib adapter in `example/shader/raylib_shader.som` (2026-11-21).
 - [ ] Uniform structs need `pub` fields, since `Shader::each` reads them from std. Decide whether `@for f in T` copies may read private fields (reflection privilege).
-- [ ] `u32` uniforms: dropped because raylib 5.x has no unsigned uniform type; back with WGSL/wgpu.
+- [x] `u32` uniforms (2026-11-23).
 - [ ] A shader without uniforms can't use `Shader::fragment` (its signature bound takes `&U`): add a form for `fn(Fragment) -> Vector<4, f32>`.
-- [ ] With `use som::gpu;`, `Shader` means std's, so raylib's has to be written `raylib::Shader`.
 - [x] Native vectors: `[T; 2..4]` and `Vector` are `vecN`; std's vector ops are GLSL operators (2026-11-21).
 - [x] Every shader is checked (and `--emit glsl` writes it) whether or not `@glsl` asks for it.
-- [ ] `glsl` called without `@` fails at run time; make it a compile error.
+- [ ] A local named `shader` hides `gpu::shader` for `@shader(f)`; write `gpu::shader(f)`.
 - [ ] Generated names are long (`som_data_Vector_4_f32`); shorten where unambiguous.
 - [x] WGSL emitter (`gpu::wgsl`, `--emit wgsl`, checked by naga) and a wgpu-native + SDL3 host in `example/wgpu` (2026-11-22).
 - [x] Compute kernels (`gpu::kernel`, `@compute`, `gpu::Buffer<T>` read with `get`, `mem::size_of<T>()`), and a `Kernel` in `example/wgpu` running the Game of Life (2026-11-22).
 - [ ] Pass a `gpu::Buffer` to a function on the GPU: specialise the function per buffer, until naga takes `unrestricted_pointer_parameters`.
 - [ ] Kernels writing more than their own item (scatter, atomics), or more than one buffer; 2D dispatch for images.
 - [ ] A `gpu::Buffer` on the CPU (holding its items), so kernels using `get` can be tested there.
-- [ ] The wgpu host as a library of its own (and raylib's adapter likewise), not copied into examples.
-- [ ] The shooter on wgpu: its input and HUD are raylib's; needs keyboard/mouse from SDL and text.
+- [x] The wgpu host as a library, `libs/wgpu`, found by `use wgpu;` through library roots (`$SOM_PATH`, then `libs/` beside std), with input, frame time, alpha blending and a `Painter` (rects, circles, a 5x7 font of its own) (2026-11-23).
+- [x] The shooter, `example/wgpu` and `example/life` on `wgpu` (2026-11-23).
+- [ ] The shooter runs at ~30 fps on a high density screen (4x raylib's pixels): draw the halls at a lower resolution, or in one pass with the HUD.
+- [ ] Each `Shader::draw` is its own render pass and submit: batch a frame's draws.
+- [ ] The `wgpu` library's window is macOS's (a Metal layer); Windows and Linux surfaces.
+- [ ] The font's `g`, `p`, `q`, `y` have no room below the line.
+- [ ] Libraries: no versions or dependencies yet, just folders found by name.
+- [x] `Matrix<C, R>` with the sizes in the type (`Matrix<K, R> * Matrix<C, K>`), `Mat4` transforms, matrices as uniforms (2026-11-23).
+- [ ] Matrices on the GPU are std's loops, not WGSL's `matCxR` and its `*`: once `@wgsl("…")` says how a std function is written in WGSL, use the native ones.
+- [ ] `@vertex` with a struct of the program's own passed to the fragment shader (`gpu::Vertex<S>`), meshes and a depth buffer in `wgpu`: for lit 3D (PBR).
 - [ ] Imported C enums whose variants start with a digit keep their whole name (`WGPUTextureDimension::WGPUTextureDimension2D`).
 - [ ] `static const` flags in headers (`WGPUBufferUsage_Uniform`) aren't imported; the wgpu host writes them out.
 - [ ] Closures can't change what they capture, so the wgpu host packs uniforms through a raw pointer.
@@ -156,7 +161,6 @@ From writing `example/shooter` (a raycasting shooter, 2026-11-21), what made sha
 - [x] A texture in a nested uniform struct: declared as `<Struct>_uniform` with its sampler, made without it, read as `material.image` (2026-11-21).
 - [x] Shaders as closures: captures are the uniforms (`gpu::Shader::closure`, `RaylibShader::empty()` + `fullscreen(closure)`); `gpu::each_uniform`'s body is written by lowering for each struct or closure, names and all (2026-11-21).
 - [ ] Arrays of structs as uniforms; a texture in a struct the uniforms hold twice.
-- [ ] raylib's adapter calls `get_shader_location` for each uniform as it sets it (each closure can't keep a cache: closures only read). Cache once closures can change what they capture, or `each` can hand back a location.
 - [x] A shader closure's parameter type is inferred, `(frag) =>`: `RaylibShader::empty()` is in an impl bounded by `U: fn(Fragment) -> Vector<4, f32>`, which gives `U`'s variable that signature (2026-11-22).
 - [ ] Calling `each` with the old two-parameter callback says "can't match an unknown type" about the `match` inside, not that the callback takes three.
 - [x] Capturing `g` (which doesn't copy) in a shader closure: the error names the parts it reads that copy, `let camera = g.camera;` (2026-11-22).

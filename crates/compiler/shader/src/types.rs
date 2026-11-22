@@ -1,4 +1,4 @@
-//! Types on the GPU: what each of the program's is in GLSL, and its values.
+//! Types on the GPU: what each of the program's is in WGSL, and its values.
 
 use som_base::message::{code, ty as ty_part};
 use som_base::msg;
@@ -9,7 +9,7 @@ use crate::Translator;
 use crate::error::NoGpu;
 use crate::names::{ident, member};
 
-/// A GLSL scalar: what a number or `bool` is on the GPU.
+/// A WGSL scalar: what a number or `bool` is on the GPU.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Scalar {
     Bool,
@@ -19,31 +19,19 @@ pub(crate) enum Scalar {
 }
 
 impl Scalar {
-    /// Its name in GLSL, or with `wgsl` in WGSL.
-    pub fn name(self, wgsl: bool) -> &'static str {
-        match (self, wgsl) {
-            (Scalar::Bool, _) => "bool",
-            (Scalar::Int, false) => "int",
-            (Scalar::Uint, false) => "uint",
-            (Scalar::Float, false) => "float",
-            (Scalar::Int, true) => "i32",
-            (Scalar::Uint, true) => "u32",
-            (Scalar::Float, true) => "f32",
+    /// Its name in WGSL.
+    pub fn name(self) -> &'static str {
+        match self {
+            Scalar::Bool => "bool",
+            Scalar::Int => "i32",
+            Scalar::Uint => "u32",
+            Scalar::Float => "f32",
         }
     }
 
-    /// The vector of `n` of them: `vec4` and `ivec2` in GLSL, `vec4<f32>` in WGSL.
-    pub fn vector(self, n: u64, wgsl: bool) -> String {
-        if wgsl {
-            return format!("vec{n}<{}>", self.name(true));
-        }
-        let prefix = match self {
-            Scalar::Bool => "b",
-            Scalar::Int => "i",
-            Scalar::Uint => "u",
-            Scalar::Float => "",
-        };
-        format!("{prefix}vec{n}")
+    /// The vector of `n` of them: `vec4<f32>`.
+    pub fn vector(self, n: u64) -> String {
+        format!("vec{n}<{}>", self.name())
     }
 }
 
@@ -82,7 +70,7 @@ impl Translator<'_> {
         }))
     }
 
-    /// `Vector<N, T>` with `N` from 2 to 4 and `T` a scalar: what GLSL has a vector type for.
+    /// `Vector<N, T>` with `N` from 2 to 4 and `T` a scalar: what WGSL has a vector type for.
     pub(crate) fn vector(&self, ty: TypeId) -> Option<(Scalar, u64)> {
         let Ty::Struct(def, args) = self.mir.types.get(ty) else {
             return None;
@@ -104,7 +92,7 @@ impl Translator<'_> {
         (2..=4).contains(&n).then_some((scalar, n))
     }
 
-    /// What's GLSL's own vector: a small array of numbers or `bool`s, `[f32; 4]` as `vec4`,
+    /// What's WGSL's own vector: a small array of numbers or `bool`s, `[f32; 4]` as `vec4<f32>`,
     /// and so a `Vector`, which is one. Indexing and building it are the same as an array's,
     /// and the shader's inputs and output need no converting.
     pub(crate) fn native_vector(&self, ty: TypeId) -> Option<(Scalar, u64)> {
@@ -115,56 +103,38 @@ impl Translator<'_> {
         matches!(self.mir.types.get(ty), Ty::Struct(def, _) if self.mir.lang_structs.get(def) == Some(&lang))
     }
 
-    /// The GLSL type of `ty`, declaring the structs it needs first.
+    /// The WGSL type of `ty`, declaring the structs it needs first.
     pub(crate) fn ty(&mut self, ty: TypeId) -> Result<String, NoGpu> {
         if let Some(scalar) = self.scalar(ty)? {
-            return Ok(scalar.name(self.wgsl()).into());
+            return Ok(scalar.name().into());
         }
         if let Some((scalar, n)) = self.native_vector(ty) {
-            return Ok(scalar.vector(n, self.wgsl()));
+            return Ok(scalar.vector(n));
         }
         if self.is_lang(ty, LangStruct::Texture) {
-            return Ok(match self.wgsl() {
-                true => "texture_2d<f32>".into(),
-                false => "sampler2D".into(),
-            });
+            return Ok("texture_2d<f32>".into());
         }
+        // WGSL can't pass a pointer to a buffer to a function (naga doesn't take
+        // `unrestricted_pointer_parameters` yet): each buffer is read where it's named.
         if self.is_lang(ty, LangStruct::Buffer) {
-            return Err(match self.wgsl() {
-                // WGSL can't pass a pointer to a buffer to a function (naga doesn't take
-                // `unrestricted_pointer_parameters` yet): each buffer is read where it's named.
-                true => NoGpu::new(
-                    msg![code("gpu::Buffer"), "s passed around"],
-                    Some(msg![
-                        "read a buffer's items where it's captured, ",
-                        code("cells.get(i)"),
-                        ", and pass those"
-                    ]),
-                ),
-                false => NoGpu::new(
-                    msg![code("gpu::Buffer"), "s"],
-                    Some("OpenGL 3.3 has no storage buffers: they're WebGPU's".into()),
-                ),
-            });
+            return Err(NoGpu::new(
+                msg![code("gpu::Buffer"), "s passed around"],
+                Some(msg![
+                    "read a buffer's items where it's captured, ",
+                    code("cells.get(i)"),
+                    ", and pass those"
+                ]),
+            ));
         }
         match self.mir.types.get(ty).clone() {
             Ty::Unit => Ok("void".into()),
             Ty::Struct(..) | Ty::Optional(_) | Ty::Range(_) => self.struct_ty(ty),
             Ty::Array { element, len } => {
-                if matches!(self.mir.types.get(element), Ty::Array { .. }) {
-                    return Err(NoGpu::new(
-                        "arrays of arrays",
-                        Some("GLSL 3.30 doesn't: use one array, indexed by both".into()),
-                    ));
-                }
                 let n = self.mir.types.len(len);
                 if n == 0 {
                     return Err(NoGpu::new("empty arrays", None));
                 }
-                Ok(match self.wgsl() {
-                    true => format!("array<{}, {n}>", self.ty(element)?),
-                    false => format!("{}[{n}]", self.ty(element)?),
-                })
+                Ok(format!("array<{}, {n}>", self.ty(element)?))
             }
             Ty::Str | Ty::CStr => Err(NoGpu::new("text", None)),
             Ty::Char => Err(NoGpu::new(code("char"), None)),
@@ -188,7 +158,7 @@ impl Translator<'_> {
         }
     }
 
-    /// `ty`'s members, as GLSL has them: each one's name, type and index among the MIR
+    /// `ty`'s members, as WGSL has them: each one's name, type and index among the MIR
     /// fields. `()` members aren't there.
     pub(crate) fn members(&mut self, ty: TypeId) -> Result<Vec<(String, TypeId, usize)>, NoGpu> {
         let fields: Vec<(String, TypeId)> = match self.mir.types.get(ty).clone() {
@@ -206,7 +176,7 @@ impl Translator<'_> {
             Ty::Range(int) => vec![("start".into(), int), ("end".into(), int)],
             other => unreachable!("only structs have members: {other:?}"),
         };
-        // The uniforms' textures are uniforms of their own.
+        // The uniforms' textures and buffers are globals of their own.
         // Numbered first: an index is among all the MIR fields.
         let textures_apart = self.uniform_paths.contains_key(&ty);
         Ok(fields
@@ -218,7 +188,7 @@ impl Translator<'_> {
             .collect())
     }
 
-    /// The name of GLSL member `index` of `ty`.
+    /// The name of WGSL member `index` of `ty`.
     pub(crate) fn member_name(&mut self, ty: TypeId, index: usize) -> Result<String, NoGpu> {
         let members = self.members(ty)?;
         Ok((members.into_iter())
@@ -261,7 +231,7 @@ impl Translator<'_> {
             })?;
             lines.push(self.member_line(&name, &t));
         }
-        // GLSL has no empty structs.
+        // WGSL has no empty structs.
         if lines.is_empty() {
             lines.push(self.member_line("nothing", "bool"));
         }
@@ -274,60 +244,24 @@ impl Translator<'_> {
 
     /// Member `name` of type `ty`, as a line of a struct.
     pub(crate) fn member_line(&self, name: &str, ty: &str) -> String {
-        match self.wgsl() {
-            true => format!("    {name}: {ty},"),
-            false => format!("    {ty} {name};"),
-        }
+        format!("    {name}: {ty},")
     }
 
     /// Struct `name` with member `lines`, declared.
     pub(crate) fn struct_text(&self, name: &str, lines: &[String]) -> String {
-        match self.wgsl() {
-            true => format!("struct {name} {{\n{}\n}}\n", lines.join("\n")),
-            false => format!("struct {name} {{\n{}\n}};\n", lines.join("\n")),
-        }
+        format!("struct {name} {{\n{}\n}}\n", lines.join("\n"))
     }
 
     /// `ty`'s value with every byte zero: `0`, `false`, or a struct or array of those.
     pub(crate) fn zero(&mut self, ty: TypeId) -> Result<String, NoGpu> {
-        // WGSL's constructors with nothing given are zero.
-        if self.wgsl() && self.scalar(ty)?.is_none() {
-            return Ok(format!("{}()", self.ty(ty)?));
-        }
-        if let Some(scalar) = self.scalar(ty)? {
-            return Ok(match scalar {
-                Scalar::Bool => "false",
-                Scalar::Int => "0",
-                Scalar::Uint => "0u",
-                Scalar::Float => "0.0",
-            }
-            .into());
-        }
-        let name = self.ty(ty)?;
-        if let Some((scalar, _)) = self.native_vector(ty) {
-            let zero = self.zero_scalar(scalar);
-            return Ok(format!("{name}({zero})"));
-        }
-        match self.mir.types.get(ty).clone() {
-            Ty::Array { element, len } => {
-                let zero = self.zero(element)?;
-                let n = self.mir.types.len(len) as usize;
-                Ok(format!("{name}({})", vec![zero; n].join(", ")))
-            }
-            _ => {
-                let members = self.members(ty)?;
-                if members.is_empty() {
-                    return Ok(format!("{name}(false)"));
-                }
-                let parts = (members.into_iter())
-                    .map(|(_, t, _)| self.zero(t))
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(format!("{name}({})", parts.join(", ")))
-            }
+        match self.scalar(ty)? {
+            Some(scalar) => Ok(self.zero_scalar(scalar).into()),
+            // WGSL's constructors with nothing given are zero.
+            None => Ok(format!("{}()", self.ty(ty)?)),
         }
     }
 
-    /// Constant `c` in GLSL.
+    /// Constant `c` in WGSL.
     pub(crate) fn constant(&mut self, c: &Const) -> Result<String, NoGpu> {
         match &c.kind {
             ConstKind::Int(n) => Ok(match self.scalar(c.ty)? {
@@ -393,7 +327,7 @@ impl Translator<'_> {
     }
 }
 
-/// A float literal GLSL reads: always with a `.` or an exponent.
+/// A float literal WGSL reads: always with a `.` or an exponent.
 fn float(x: f64) -> Result<String, NoGpu> {
     if !x.is_finite() {
         return Err(NoGpu::new(

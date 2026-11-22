@@ -1,6 +1,6 @@
 // expect: exit 0
 
-/// A shader is an ordinary function too: `@glsl` compiles it for the GPU, and it can be
+/// A shader is an ordinary function too: `gpu::shader` compiles it for the GPU, and it can be
 /// called, and tested, on the CPU.
 struct Uniforms { time: f32, tint: Vector<4, f32> }
 
@@ -14,7 +14,7 @@ fn stripes(frag: Fragment, u: &Uniforms) -> Vector<4, f32> {
 }
 
 fn main() -> i32 {
-    let source = @glsl(stripes);
+    let source = @shader(stripes);
     if source.len < 100 { return 1; }
     let frag = Fragment {
         uv: Vector::new([0.0, 0.0]),

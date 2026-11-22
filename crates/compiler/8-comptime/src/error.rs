@@ -70,7 +70,7 @@ pub enum ComptimeError {
         what: &'static str,
         span: Span,
     },
-    /// `@glsl(shader)` of a shader that can't be compiled for the GPU.
+    /// `gpu::shader(f)` of a shader that can't be compiled for the GPU.
     Shader(som_shader::ShaderError),
 }
 

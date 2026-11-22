@@ -1,0 +1,8 @@
+// expect: error MaybeOutOfBounds
+
+/// `big as u8` can be a different number from `big`: a check of `big` doesn't hold of it.
+fn main() -> i32 {
+    let xs = [1, 2, 3];
+    let big: u32 = 258;
+    if big < 3 { xs[big as u8 as usize] } else { 0 }
+}

@@ -381,6 +381,11 @@ impl Loader {
             let module = self.ast.add_module(name.as_str(), folder.to_path_buf());
             self.load_dir(module, folder);
             module
+        } else if let Some(library) = stdlib::library_folder(&name) {
+            // Not one of the program's own: a library, `use wgpu;`.
+            let module = self.ast.add_module(name.as_str(), library.clone());
+            self.load_dir(module, &library);
+            module
         } else {
             let nearby = nearby_modules(&name, folder);
             self.errors.push(LoadError::ModuleNotFound {

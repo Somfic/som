@@ -1,0 +1,24 @@
+// expect: exit 0
+
+/// A shader can capture a matrix and multiply by it: each column a `vec4` in the uniform
+/// buffer, 16 bytes apart, given to the host as `Uniform::Matrix`.
+use som::gpu;
+
+fn main() -> i32 {
+    let turn = Mat4::rotation_z(0.5);
+    let squash: Matrix<2, 3> = Matrix { columns: [vec3(1.0, 0.0, 0.0), vec3(0.0, 0.5, 0.0)] };
+    let shade = (frag: Fragment) => {
+        let p = turn * vec4(frag.uv.x, frag.uv.y, 0.0, 1.0);
+        let q = squash * frag.uv;
+        vec4(p.x, p.y, q.y, 1.0)
+    };
+    let shader = gpu::Shader::closure(&shade);
+    if shader.wgsl.len == 0 { return 1; }
+    shader.each(&shade, (i, name, value) => {
+        match value {
+            gpu::Uniform::Matrix(m) => assert(m.count == 4 - 2 * i as i32 && m.size == 4 - i as i32),
+            _ => @unreachable,
+        }
+    });
+    0
+}

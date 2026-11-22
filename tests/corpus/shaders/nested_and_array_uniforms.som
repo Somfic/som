@@ -1,8 +1,8 @@
 // expect: exit 0
 
-/// Uniforms can hold a struct of the program's own, which is a GLSL struct uniform set by
-/// each of its fields (`camera.pos`), and arrays of vectors and of numbers, set all at once.
-/// Two to four numbers are a vector, `ivec3`.
+/// Uniforms can hold a struct of the program's own, set by each of its fields (`camera.pos`),
+/// and arrays of vectors and of numbers, set all at once. Two to four numbers are a vector,
+/// `vec3<i32>`.
 use som::gpu;
 
 struct Camera { pub pos: Vec2, pub dir: Vec2 }

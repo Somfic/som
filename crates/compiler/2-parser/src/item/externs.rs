@@ -68,6 +68,9 @@ impl Parser<'_> {
             }
         }
         self.expect(TokenKind::CloseBrace, "a closing brace after extern block")?;
+        if library.as_ref().is_some_and(|(l, _)| l == som_lang::GPU_BUILTINS_LIBRARY) {
+            self.ast.gpu_builtins.extend(funcs.iter().copied());
+        }
         Some(self.extern_block(start, library, header, funcs))
     }
 

@@ -4,9 +4,20 @@ use som::mem;
 use som::io;
 use som::gpu;
 
-// som shaders on WebGPU: a window from SDL3, drawn to by wgpu (wgpu-native), each shader a
-// closure compiled to WGSL with `gpu::wgsl`. The same closures `RaylibShader` draws with
-// GLSL draw here.
+//! A window to draw to and a GPU to work things out on: SDL3 for the window and its input,
+//! wgpu (wgpu-native) for the GPU, both imported from their headers (`brew install
+//! wgpu-native sdl3`). Shaders and kernels are som closures, compiled to WGSL while compiling
+//! (`gpu::shader`, `gpu::kernel`) and loaded the first time they run.
+//!
+//! ```
+//! let mut gpu = wgpu::Gpu::open("demo", 800, 450);
+//! let mut background = wgpu::Shader::empty();
+//! while gpu.frame() {
+//!     let time = gpu.time();
+//!     background.fullscreen(&mut gpu, (frag) => vec4(frag.uv.x, 0.5 + 0.5 * time.sin(), 0.5, 1.0));
+//!     gpu.present();
+//! }
+//! ```
 
 /// `WGPUStringView`'s length for text ending in a 0 byte.
 @const STRLEN: u64 = 18446744073709551615;
@@ -39,7 +50,23 @@ use som::gpu;
 @const SDL_WINDOW_METAL: u64 = 536870912;
 @const SDL_EVENT_QUIT: u32 = 256;
 @const SDL_EVENT_KEY_DOWN: u32 = 768;
-@const SDL_SCANCODE_ESCAPE: u32 = 41;
+@const SDL_BUTTON_LMASK: u32 = 1;
+@const SDL_BUTTON_RMASK: u32 = 4;
+@const KEYS: usize = 512;
+
+/// A key on the keyboard, where it is rather than what it says: SDL's scancode.
+pub enum Key {
+    A = 4, B = 5, C = 6, D = 7, E = 8, F = 9, G = 10, H = 11, I = 12, J = 13, K = 14, L = 15,
+    M = 16, N = 17, O = 18, P = 19, Q = 20, R = 21, S = 22, T = 23, U = 24, V = 25, W = 26,
+    X = 27, Y = 28, Z = 29,
+    One = 30, Two = 31, Three = 32, Four = 33, Five = 34, Six = 35, Seven = 36, Eight = 37,
+    Nine = 38, Zero = 39,
+    Return = 40, Escape = 41, Backspace = 42, Tab = 43, Space = 44,
+    Right = 79, Left = 80, Down = 81, Up = 82,
+    LeftControl = 224, LeftShift = 225, LeftAlt = 226, RightControl = 228, RightShift = 229,
+}
+
+impl Copy for Key {}
 /// wgpu-native's `WGPUSurfaceGetCurrentTextureStatus_Occluded`, from `wgpu.h`.
 @const OCCLUDED: i32 = 196609;
 
@@ -56,6 +83,9 @@ pub struct Gpu {
     /// Its size, in pixels.
     pub width: i32,
     pub height: i32,
+    /// Pixels to a point: 2 on most high density screens. The window's size, the mouse's
+    /// and the `Painter`'s are in points.
+    pub scale: f32,
     /// This frame's: what's drawn to, and whether it's been cleared yet.
     frame: WGPUTextureImpl,
     view: WGPUTextureViewImpl,
@@ -72,6 +102,13 @@ pub struct Gpu {
     buffer_sizes: [u64; MAX_LOADED],
     buffer_count: usize,
     start: u64,
+    /// When this frame started, and how long after the one before, in seconds.
+    now: u64,
+    frame_time: f32,
+    /// The keys pressed since the frame before, by scancode.
+    pressed: [bool; KEYS],
+    /// How far the mouse moved since the frame before, in points.
+    moved: Vec2,
 }
 
 /// What a callback fills in, and whether it has: an adapter or a device.
@@ -107,6 +144,13 @@ fn say(message: WGPUStringView) {
 
 extern {
     fn write(fd: i32, data: cstr, count: u64) -> i64;
+}
+
+/// The mouse buttons held down, a bit each.
+fn buttons() -> u32 {
+    let mut x: f32 = 0.0;
+    let mut y: f32 = 0.0;
+    sdl_get_mouse_state(&mut x, &mut y)
 }
 
 /// `text`, which ends in a 0 byte, as WebGPU takes text.
@@ -187,6 +231,7 @@ impl Gpu {
             format,
             width: 0,
             height: 0,
+            scale: 1.0,
             frame: zeroed(),
             view: zeroed(),
             cleared: false,
@@ -198,6 +243,10 @@ impl Gpu {
             buffer_sizes: zeroed(),
             buffer_count: 0,
             start: sdl_get_ticks(),
+            now: sdl_get_ticks(),
+            frame_time: 0.0,
+            pressed: [false; KEYS],
+            moved: vec2(0.0, 0.0),
         };
         gpu.fit();
         gpu
@@ -213,6 +262,10 @@ impl Gpu {
         }
         self.width = width;
         self.height = height;
+        let mut points = 0;
+        let mut unused = 0;
+        sdl_get_window_size(self.window, &mut points, &mut unused);
+        self.scale = if points > 0 { width as f32 / points as f32 } else { 1.0 };
         let mut config: WGPUSurfaceConfiguration = zeroed();
         config.device = self.device;
         config.format = self.format;
@@ -227,14 +280,26 @@ impl Gpu {
     /// Starts a frame: `false` once the window is closed (or Escape pressed).
     pub fn frame(&mut self) -> bool {
         let mut event: [u32; 32] = zeroed();
+        self.pressed = [false; KEYS];
         while sdl_poll_event(&mut event as *) {
             if event[0] == SDL_EVENT_QUIT {
                 return false;
             }
-            if event[0] == SDL_EVENT_KEY_DOWN && event[6] == SDL_SCANCODE_ESCAPE {
+            if event[0] == SDL_EVENT_KEY_DOWN && event[6] == Key::Escape as u32 {
                 return false;
             }
+            let key = event[6] as usize;
+            if event[0] == SDL_EVENT_KEY_DOWN && key < self.pressed.len {
+                self.pressed[key] = true;
+            }
         }
+        let mut dx: f32 = 0.0;
+        let mut dy: f32 = 0.0;
+        sdl_get_relative_mouse_state(&mut dx, &mut dy);
+        self.moved = vec2(dx, dy);
+        let now = sdl_get_ticks();
+        self.frame_time = (now - self.now) as f32 / 1000.0;
+        self.now = now;
         self.fit();
         let mut got: WGPUSurfaceTexture = zeroed();
         wgpu_surface_get_current_texture(self.surface, &mut got);
@@ -275,8 +340,57 @@ impl Gpu {
         write(2, "\n", 1);
     }
 
+    /// Whether `key` was pressed since the frame before.
+    pub fn pressed(&self, key: Key) -> bool {
+        let at = key as usize;
+        if at < self.pressed.len { self.pressed[at] } else { false }
+    }
+
+    /// Whether `key` is held down.
+    pub fn held(&self, key: Key) -> bool {
+        let mut count: i32 = 0;
+        let keys = sdl_get_keyboard_state(&mut count) as *bool;
+        let at = key as i32;
+        at < count && *keys.at(at as usize)
+    }
+
+    /// How far the mouse moved since the frame before, in points: across, and down.
+    pub fn mouse_moved(&self) -> Vec2 = self.moved;
+
+    /// Hides the mouse and keeps it in the window, for `mouse_moved` to steer by.
+    pub fn grab_mouse(&mut self) {
+        sdl_set_window_relative_mouse_mode(self.window, true);
+    }
+
+    /// Where the mouse is, as a fragment's `uv` is: from (0, 0) at the window's top left
+    /// to (1, 1) at its bottom right.
+    pub fn mouse(&self) -> Vec2 {
+        let mut x: f32 = 0.0;
+        let mut y: f32 = 0.0;
+        sdl_get_mouse_state(&mut x, &mut y);
+        let mut width = 0;
+        let mut height = 0;
+        sdl_get_window_size(self.window, &mut width, &mut height);
+        if width == 0 || height == 0 {
+            return vec2(0.0, 0.0);
+        }
+        vec2(x / width as f32, y / height as f32)
+    }
+
+    /// Whether the left mouse button is held down.
+    pub fn left_held(&self) -> bool = buttons() & SDL_BUTTON_LMASK != 0;
+
+    /// Whether the right mouse button is held down.
+    pub fn right_held(&self) -> bool = buttons() & SDL_BUTTON_RMASK != 0;
+
     /// Seconds since the window opened.
     pub fn time(&self) -> f32 = (sdl_get_ticks() - self.start) as f32 / 1000.0;
+
+    /// Seconds since the frame before started: how far to move things this frame.
+    pub fn frame_time(&self) -> f32 = self.frame_time;
+
+    /// Frames a second, going by this frame.
+    pub fn fps(&self) -> i32 = if self.frame_time > 0.0 { (1.0 / self.frame_time + 0.5) as i32 } else { 0 };
 
     /// A texture `width` by `height` of `pixels`, 4 bytes each (red, green, blue, alpha), a
     /// row at a time: a shader's uniform.
@@ -459,7 +573,7 @@ impl Drop for Gpu {
 }
 
 /// The uniforms as they're written to the GPU's buffer: each at the next multiple of its
-/// alignment, as WGSL lays out a uniform buffer (see `gpu::wgsl`).
+/// alignment, as WGSL lays out a uniform buffer (see `gpu::shader`).
 struct Packing {
     /// The next free byte.
     at: usize,
@@ -515,6 +629,19 @@ impl Packing {
         self.align(16);
     }
 
+    /// `count` columns of `size` numbers each, 16 bytes apart: a `Matrix`.
+    fn columns(&mut self, n: gpu::Numbers) {
+        let size = n.size as usize;
+        let words = n.data as *u32;
+        for k in 0..n.count as usize {
+            self.align(16);
+            for c in 0..size {
+                self.word(*words.at(k * size + c));
+            }
+        }
+        self.align(16);
+    }
+
     fn bind(&mut self, id: u32) {
         if self.bound_count < MAX_BOUND {
             self.bound[self.bound_count] = id;
@@ -540,6 +667,10 @@ fn pack(into: *, value: gpu::Uniform) {
             p.align(4);
             p.word(x as u32);
         }
+        gpu::Uniform::Uint(x) => {
+            p.align(4);
+            p.word(x);
+        }
         gpu::Uniform::Bool(b) => {
             p.align(4);
             p.word(if b { 1 } else { 0 });
@@ -563,6 +694,7 @@ fn pack(into: *, value: gpu::Uniform) {
             p.float(v[3]);
         }
         gpu::Uniform::Numbers(n) => p.numbers(n),
+        gpu::Uniform::Matrix(n) => p.columns(n),
         gpu::Uniform::Texture(t) => p.bind(t.id),
         gpu::Uniform::Buffer(id) => p.bind(BUFFER_ID | id),
     }
@@ -686,24 +818,32 @@ fn shader_module(gpu: &mut Gpu, wgsl: string) -> WGPUShaderModuleImpl {
     wgpu_device_create_shader_module(gpu.device, &d)
 }
 
-/// A shader written as a closure, `(frag) => …`, drawn with WebGPU: compiled to WGSL and
-/// loaded the first time it's drawn. Each closure written out is its own shader, so one
-/// `WgpuShader` draws one.
-pub struct WgpuShader<U> {
+/// A fragment shader drawn with WebGPU, loaded the first time it's drawn: a closure,
+/// `(frag) => …`, whose captures are its uniforms (`Shader::empty()`, each closure written
+/// out its own shader, so one `Shader` draws one); or a `@fragment` function and its struct
+/// of uniforms (`Shader::fragment(stripes)`). What it gives is blended over what's drawn by
+/// its alpha.
+pub struct Shader<U> {
     loaded: bool,
     shader: gpu::Shader<U>,
     pipeline: WGPURenderPipelineImpl,
     bindings: Bindings,
 }
 
-impl<U: fn(Fragment) -> Vector<4, f32>> WgpuShader<U> {
-    /// Nothing loaded yet: it is the first time it's drawn.
-    pub fn empty() -> WgpuShader<U> {
-        WgpuShader { loaded: false, shader: gpu::Shader { glsl: "" }, pipeline: zeroed(), bindings: zeroed() }
+impl<U: fn(gpu::Fragment) -> Vector<4, f32>> Shader<U> {
+    /// For a shader closure, drawn below: the bound is what tells it `frag` is a `Fragment`.
+    /// Nothing is loaded yet: it is, the first time it's drawn.
+    pub fn empty() -> Shader<U> {
+        Shader { loaded: false, shader: gpu::Shader { wgsl: "" }, pipeline: zeroed(), bindings: zeroed() }
     }
 }
 
-impl<U> WgpuShader<U> {
+impl<U> Shader<U> {
+    /// `@fragment` function `entry`, drawn with a `U` of uniforms.
+    pub fn fragment<F: fn(gpu::Fragment, &U) -> Vector<4, f32>>(entry: F) -> Shader<U> {
+        Shader { loaded: false, shader: gpu::Shader::fragment(entry), pipeline: zeroed(), bindings: zeroed() }
+    }
+
     /// The shader, closure `uniforms`, over the whole window.
     pub fn fullscreen(&mut self, gpu: &mut Gpu, uniforms: U) {
         self.draw(gpu, 0.0, 0.0, gpu.width as f32, gpu.height as f32, uniforms);
@@ -711,15 +851,25 @@ impl<U> WgpuShader<U> {
 
     /// The shader, closure `uniforms`, over `width` by `height` pixels at `x`, `y`: its
     /// `frag.uv` goes from (0, 0) at the top left to (1, 1) at the bottom right.
+    /// Only what's inside the window is drawn: a shader partly outside it is squeezed into
+    /// the part inside.
     pub fn draw(&mut self, gpu: &mut Gpu, x: f32, y: f32, width: f32, height: f32, uniforms: U) {
-        if !gpu.drawing {
+        // WebGPU draws only inside what's drawn to.
+        let left = x.max(0.0);
+        let top = y.max(0.0);
+        let right = (x + width).min(gpu.width as f32);
+        let bottom = (y + height).min(gpu.height as f32);
+        if !gpu.drawing || right <= left || bottom <= top {
             return;
         }
         let mut packing = Packing::new();
         let into = &mut packing as *;
         self.shader.each(&uniforms, (i, name, value) => pack(into, value));
         if !self.loaded {
-            self.load(gpu, gpu::wgsl(&uniforms), &packing);
+            if self.shader.wgsl.len == 0 {
+                self.shader.wgsl = gpu::shader(&uniforms);
+            }
+            self.load(gpu, self.shader.wgsl, &packing);
         }
         let group = self.bindings.group(gpu, &packing, 0);
 
@@ -739,7 +889,7 @@ impl<U> WgpuShader<U> {
         wgpu_render_pass_encoder_set_pipeline(pass, self.pipeline);
         let no_offsets: u32 = 0;
         wgpu_render_pass_encoder_set_bind_group(pass, 0, group, 0, &no_offsets);
-        wgpu_render_pass_encoder_set_viewport(pass, x, y, width, height, 0.0, 1.0);
+        wgpu_render_pass_encoder_set_viewport(pass, left, top, right - left, bottom - top, 0.0, 1.0);
         wgpu_render_pass_encoder_draw(pass, 3, 1, 0, 0);
         wgpu_render_pass_encoder_end(pass);
         wgpu_render_pass_encoder_release(pass);
@@ -750,9 +900,18 @@ impl<U> WgpuShader<U> {
     fn load(&mut self, gpu: &mut Gpu, wgsl: string, packing: &Packing) {
         let module = shader_module(gpu, wgsl);
         self.bindings = bindings(gpu, packing, false);
+        // Over what's there by its alpha.
+        let mut blend: WGPUBlendState = zeroed();
+        blend.color.operation = WGPUBlendOperation::Add as i32;
+        blend.color.src_factor = WGPUBlendFactor::SrcAlpha as i32;
+        blend.color.dst_factor = WGPUBlendFactor::OneMinusSrcAlpha as i32;
+        blend.alpha.operation = WGPUBlendOperation::Add as i32;
+        blend.alpha.src_factor = WGPUBlendFactor::One as i32;
+        blend.alpha.dst_factor = WGPUBlendFactor::OneMinusSrcAlpha as i32;
         let mut target: WGPUColorTargetState = zeroed();
         target.format = gpu.format;
         target.write_mask = WRITE_ALL;
+        target.blend = &blend as *;
         let mut fragment: WGPUFragmentState = zeroed();
         fragment.module = module;
         fragment.entry_point = view("fs_main");
@@ -790,7 +949,7 @@ impl<T, F: fn(usize) -> T> Kernel<T, F> {
     pub fn empty() -> Kernel<T, F> {
         Kernel {
             loaded: false,
-            shader: gpu::Shader { glsl: "" },
+            shader: gpu::Shader { wgsl: "" },
             filled: gpu::Buffer { id: 0, len: 0 },
             pipeline: zeroed(),
             bindings: zeroed(),
@@ -834,3 +993,167 @@ impl<T, F> Kernel<T, F> {
         self.loaded = true;
     }
 }
+
+/// What a `Painter` paints with: one shape at a time, each a quad the shader is drawn over.
+struct Shape {
+    /// `RECT`, `CIRCLE` or `TEXT`.
+    pub kind: i32,
+    pub colour: Vector<4, f32>,
+    /// The text's characters, `count` of them, by their codes.
+    pub glyphs: [i32; MAX_GLYPHS],
+    pub count: i32,
+    /// `FONT`'s glyphs side by side, white where they're drawn.
+    pub font: gpu::Texture,
+}
+
+@const RECT: i32 = 0;
+@const CIRCLE: i32 = 1;
+@const TEXT: i32 = 2;
+/// The most characters `Painter::text` draws at once.
+@const MAX_GLYPHS: usize = 64;
+/// A glyph's size in `FONT`, and the room it takes in text: a column and a row more.
+@const GLYPH_W: usize = 5;
+@const GLYPH_H: usize = 7;
+@const GLYPHS: usize = 95;
+
+@fragment
+fn painted(frag: gpu::Fragment, s: &Shape) -> Vector<4, f32> {
+    let clear = vec4(0.0, 0.0, 0.0, 0.0);
+    if s.kind == CIRCLE {
+        let d = frag.uv - vec2(0.5, 0.5);
+        if d.length > 0.5 {
+            return clear;
+        }
+    }
+    if s.kind == TEXT {
+        let x = (frag.uv.x * (s.count as usize * (GLYPH_W + 1)) as f32) as usize;
+        let y = (frag.uv.y * (GLYPH_H + 1) as f32) as usize;
+        let i = x / (GLYPH_W + 1);
+        let column = x - i * (GLYPH_W + 1);
+        if column >= GLYPH_W || y >= GLYPH_H || i >= MAX_GLYPHS {
+            return clear;
+        }
+        let code = s.glyphs[i] - 32;
+        if code < 0 || code >= GLYPHS as i32 || s.font.cell(code * GLYPH_W as i32 + column as i32, y as i32) == 0 {
+            return clear;
+        }
+    }
+    s.colour
+}
+
+/// Draws flat shapes and text over what's drawn: a game's score, a crosshair, a health bar.
+/// Positions and sizes are in points, from the window's top left, as it was opened.
+pub struct Painter {
+    shader: Shader<Shape>,
+    font: gpu::Texture,
+}
+
+impl Painter {
+    /// Loads the font.
+    pub fn new(gpu: &mut Gpu) -> Painter {
+        let width = GLYPHS * GLYPH_W;
+        let mut pixels: [u32; GLYPHS * GLYPH_W * GLYPH_H] = zeroed();
+        for code in 0..GLYPHS {
+            for row in 0..GLYPH_H {
+                let bits = FONT[code * GLYPH_H + row];
+                for column in 0..GLYPH_W {
+                    if bits & (16 >> column as u8) != 0 {
+                        pixels[row * width + code * GLYPH_W + column] = 4294967295;
+                    }
+                }
+            }
+        }
+        let font = gpu.load_texture(width as i32, GLYPH_H as i32, &pixels as *);
+        Painter { shader: Shader::fragment(painted), font }
+    }
+
+    fn shape(&mut self, gpu: &mut Gpu, x: f32, y: f32, width: f32, height: f32, kind: i32, colour: Vector<4, f32>) {
+        let shape = Shape { kind, colour, glyphs: [0; MAX_GLYPHS], count: 0, font: self.font };
+        let k = gpu.scale;
+        self.shader.draw(gpu, x * k, y * k, width * k, height * k, shape);
+    }
+
+    /// A rectangle `width` by `height` at `x`, `y`.
+    pub fn rect(&mut self, gpu: &mut Gpu, x: f32, y: f32, width: f32, height: f32, colour: Vector<4, f32>) {
+        self.shape(gpu, x, y, width, height, RECT, colour);
+    }
+
+    /// A circle of `radius` around `x`, `y`.
+    pub fn circle(&mut self, gpu: &mut Gpu, x: f32, y: f32, radius: f32, colour: Vector<4, f32>) {
+        self.shape(gpu, x - radius, y - radius, radius * 2.0, radius * 2.0, CIRCLE, colour);
+    }
+
+    /// `text` with its top left at `x`, `y`, `size` pixels high: the first 64 characters, of
+    /// those from space to `~`.
+    pub fn text(&mut self, gpu: &mut Gpu, x: f32, y: f32, size: f32, text: string, colour: Vector<4, f32>) {
+        let mut glyphs = [0; MAX_GLYPHS];
+        let count = if text.len < MAX_GLYPHS { text.len } else { MAX_GLYPHS };
+        for i in 0..glyphs.len {
+            glyphs[i] = (text.get(i) else 0) as i32;
+        }
+        let shape = Shape { kind: TEXT, colour, glyphs, count: count as i32, font: self.font };
+        let scale = size / (GLYPH_H + 1) as f32;
+        let width = (count * (GLYPH_W + 1)) as f32 * scale;
+        let k = gpu.scale;
+        self.shader.draw(gpu, x * k, y * k, width * k, size * k, shape);
+    }
+
+    /// How wide `text` is, `size` pixels high.
+    pub fn text_width(&self, text: string, size: f32) -> f32 {
+        let count = if text.len < MAX_GLYPHS { text.len } else { MAX_GLYPHS };
+        (count * (GLYPH_W + 1)) as f32 * size / (GLYPH_H + 1) as f32
+    }
+}
+
+/// A 5 by 7 font for the characters from space to `~`: each one's 7 rows, top first, each
+/// row's 5 columns a bit each, the leftmost the highest.
+@const FONT: [u8; GLYPHS * GLYPH_H] = [
+    0, 0, 0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 0, 4,
+    10, 10, 10, 0, 0, 0, 0, 10, 10, 31, 10, 31, 10, 10,
+    4, 15, 20, 14, 5, 30, 4, 24, 25, 2, 4, 8, 19, 3,
+    12, 18, 20, 8, 21, 18, 13, 4, 4, 4, 0, 0, 0, 0,
+    2, 4, 8, 8, 8, 4, 2, 8, 4, 2, 2, 2, 4, 8,
+    0, 4, 21, 14, 21, 4, 0, 0, 4, 4, 31, 4, 4, 0,
+    0, 0, 0, 0, 12, 4, 8, 0, 0, 0, 31, 0, 0, 0,
+    0, 0, 0, 0, 0, 12, 12, 0, 1, 2, 4, 8, 16, 0,
+    14, 17, 19, 21, 25, 17, 14, 4, 12, 4, 4, 4, 4, 14,
+    14, 17, 1, 2, 4, 8, 31, 31, 2, 4, 2, 1, 17, 14,
+    2, 6, 10, 18, 31, 2, 2, 31, 16, 30, 1, 1, 17, 14,
+    6, 8, 16, 30, 17, 17, 14, 31, 1, 2, 4, 8, 8, 8,
+    14, 17, 17, 14, 17, 17, 14, 14, 17, 17, 15, 1, 2, 12,
+    0, 12, 12, 0, 12, 12, 0, 0, 12, 12, 0, 12, 4, 8,
+    2, 4, 8, 16, 8, 4, 2, 0, 0, 31, 0, 31, 0, 0,
+    8, 4, 2, 1, 2, 4, 8, 14, 17, 1, 2, 4, 0, 4,
+    14, 17, 1, 13, 21, 21, 14, 14, 17, 17, 31, 17, 17, 17,
+    30, 17, 17, 30, 17, 17, 30, 14, 17, 16, 16, 16, 17, 14,
+    28, 18, 17, 17, 17, 18, 28, 31, 16, 16, 30, 16, 16, 31,
+    31, 16, 16, 30, 16, 16, 16, 14, 17, 16, 23, 17, 17, 15,
+    17, 17, 17, 31, 17, 17, 17, 14, 4, 4, 4, 4, 4, 14,
+    7, 2, 2, 2, 2, 18, 12, 17, 18, 20, 24, 20, 18, 17,
+    16, 16, 16, 16, 16, 16, 31, 17, 27, 21, 21, 17, 17, 17,
+    17, 17, 25, 21, 19, 17, 17, 14, 17, 17, 17, 17, 17, 14,
+    30, 17, 17, 30, 16, 16, 16, 14, 17, 17, 17, 21, 18, 13,
+    30, 17, 17, 30, 20, 18, 17, 15, 16, 16, 14, 1, 1, 30,
+    31, 4, 4, 4, 4, 4, 4, 17, 17, 17, 17, 17, 17, 14,
+    17, 17, 17, 17, 17, 10, 4, 17, 17, 17, 21, 21, 21, 10,
+    17, 17, 10, 4, 10, 17, 17, 17, 17, 10, 4, 4, 4, 4,
+    31, 1, 2, 4, 8, 16, 31, 14, 8, 8, 8, 8, 8, 14,
+    0, 16, 8, 4, 2, 1, 0, 14, 2, 2, 2, 2, 2, 14,
+    4, 10, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 31,
+    8, 4, 2, 0, 0, 0, 0, 0, 0, 14, 1, 15, 17, 15,
+    16, 16, 22, 25, 17, 17, 30, 0, 0, 14, 16, 16, 17, 14,
+    1, 1, 13, 19, 17, 17, 15, 0, 0, 14, 17, 31, 16, 14,
+    6, 9, 8, 28, 8, 8, 8, 0, 15, 17, 17, 15, 1, 14,
+    16, 16, 22, 25, 17, 17, 17, 4, 0, 12, 4, 4, 4, 14,
+    2, 0, 6, 2, 2, 18, 12, 16, 16, 18, 20, 24, 20, 18,
+    12, 4, 4, 4, 4, 4, 14, 0, 0, 26, 21, 21, 17, 17,
+    0, 0, 22, 25, 17, 17, 17, 0, 0, 14, 17, 17, 17, 14,
+    0, 0, 30, 17, 30, 16, 16, 0, 0, 13, 19, 15, 1, 1,
+    0, 0, 22, 25, 16, 16, 16, 0, 0, 14, 16, 14, 1, 30,
+    8, 8, 28, 8, 8, 9, 6, 0, 0, 17, 17, 17, 19, 13,
+    0, 0, 17, 17, 17, 10, 4, 0, 0, 17, 17, 21, 21, 10,
+    0, 0, 17, 10, 4, 10, 17, 0, 0, 17, 17, 15, 1, 14,
+    0, 0, 31, 2, 4, 8, 31, 2, 4, 4, 8, 4, 4, 2,
+    4, 4, 4, 4, 4, 4, 4, 8, 4, 4, 2, 4, 4, 8,
+    0, 0, 8, 21, 2, 0, 0,
+];

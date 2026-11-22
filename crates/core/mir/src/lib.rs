@@ -27,19 +27,17 @@ pub struct Mir {
     /// What `som test` starts at instead of `main`: each `@test`, then a summary. Nothing
     /// else calls it, so it's shaken out of the program otherwise.
     pub tests: Option<FuncId>,
-    /// The `@vertex` and `@fragment` functions: shaders, which `@glsl(name)` compiles for the
-    /// GPU. They're ordinary functions otherwise.
+    /// The `@vertex`, `@fragment` and `@compute` functions: shaders, which `gpu::shader(name)`
+    /// and `gpu::kernel(name)` compile for the GPU. They're ordinary functions otherwise.
     pub stages: HashMap<FuncId, som_lang::Stage>,
-    /// Each instance of the standard library's `glsl`, which only works while compiling, and
-    /// the shader it's for: `None` if what it's given isn't a function named where it's
-    /// passed.
-    pub glsl: HashMap<FuncId, Option<FuncId>>,
-    /// Each instance of `wgsl`, the same in WGSL.
+    /// Each instance of the standard library's `shader` and `kernel`, which only work while
+    /// compiling, and the shader it's for: `None` if what it's given isn't a function named
+    /// where it's passed.
     pub wgsl: HashMap<FuncId, Option<FuncId>>,
     /// Each instance of `mem::size_of`, and the type it measures: given its body by the
     /// compile-time pass, which lays types out as C does.
     pub size_of: HashMap<FuncId, TypeId>,
-    /// The copies of functions compiled for the GPU, and GLSL's own functions: only shaders
+    /// The copies of functions compiled for the GPU, and WGSL's own functions: only shaders
     /// use them, never the program on the CPU.
     pub gpu: HashSet<FuncId>,
     /// The structs the language gives meaning to, by which they are.
@@ -58,7 +56,6 @@ impl Mir {
             checks: Vec::new(),
             tests: None,
             stages: HashMap::new(),
-            glsl: HashMap::new(),
             wgsl: HashMap::new(),
             size_of: HashMap::new(),
             lang_structs: HashMap::new(),

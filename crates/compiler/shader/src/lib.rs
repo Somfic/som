@@ -1,19 +1,19 @@
-//! Shaders: a `@vertex` or `@fragment` function and what it calls, from MIR to GLSL 3.30, the
-//! language OpenGL 3.3, and so raylib, takes. A shader is an ordinary function otherwise: it
-//! runs on the CPU too, so it can be tested there.
+//! Shaders: a `@fragment` or `@compute` function and what it calls, from MIR to WGSL, the
+//! language WebGPU takes. A shader is an ordinary function otherwise: it runs on the CPU too,
+//! so it can be tested there.
 //!
-//! | MIR                             | GLSL                                                  |
+//! | MIR                             | WGSL                                                  |
 //! |---------------------------------|-------------------------------------------------------|
-//! | struct, enum, optional, range   | struct (an enum's tag is a `uint`)                   |
-//! | `[T; N]`                        | `T[N]`                                                |
-//! | `usize`                         | `uint`: the GPU's integers are 32 bits                |
+//! | struct, enum, optional, range   | struct (an enum's tag is a `u32`)                     |
+//! | `[T; N]`                        | `array<T, N>`                                         |
+//! | `usize`                         | `u32`: the GPU's integers are 32 bits                 |
 //! | `&T` parameter                  | `T`: a copy, as nothing changes it while the call runs |
-//! | `&mut T` parameter              | `inout T`: copied in and back out, which the borrow checker makes the same as through a pointer |
+//! | `&mut T` parameter              | `ptr<function, T>`                                    |
 //! | local reference                 | the place it refers to, written out where it's used   |
 //! | one block                       | its statements                                        |
-//! | `if`, `while`, `loop`, `match`  | `if` and `for (;;)` with `break`/`continue` (see [`structure`]) |
+//! | `if`, `while`, `loop`, `match`  | `if` and `loop` with `break`/`continue` (see [`structure`]) |
 //! | any other jumps                 | a `switch` on the block, in a loop                    |
-//! | `som::gl::sin`, …               | GLSL's own `sin`, …: std's math is `@if GPU` on them  |
+//! | `som::gpu::sin`, …              | WGSL's own `sin`, …: std's math is `@if GPU` on them  |
 //!
 //! What the GPU has no way to do (text, pointers, memory, 64-bit numbers, calling C, failing,
 //! calling itself) is an error, said where the shader reaches it and through which calls.
@@ -80,47 +80,25 @@ pub(crate) fn head(span: &Span) -> Span {
     Span::from_range(span.start_offset..span.start_offset + end, span.source.clone())
 }
 
-/// The language a shader is written out in.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Target {
-    /// GLSL 3.30, for OpenGL 3.3 and raylib: uniforms each by name, raylib's vertex shader.
-    Glsl,
-    /// WGSL, for WebGPU: the uniforms in one buffer, a texture's sampler apart, and a vertex
-    /// shader of its own (see [`entry`]).
-    Wgsl,
-}
-
-/// The GLSL 3.30 source of shader `entry`: what a graphics library loads.
-pub fn glsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
-    translate(mir, entry, Target::Glsl)
-}
-
-/// The WGSL source of shader `entry`, for WebGPU: entry points `vs_main` and `fs_main`.
+/// The WGSL source of shader `entry`, for WebGPU: entry points `vs_main` and `fs_main` for a
+/// fragment shader, `cs_main` for a kernel. The uniforms are in one buffer, a texture's
+/// sampler apart (see [`entry`]).
 pub fn wgsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
-    translate(mir, entry, Target::Wgsl)
-}
-
-fn translate(mir: &Mir, entry: FuncId, target: Target) -> Result<String, Vec<ShaderError>> {
     let mut t = Translator {
         mir,
         entry,
-        target,
         textures: HashMap::new(),
         loads: HashMap::new(),
         bindings: 0,
         structs: Vec::new(),
         struct_names: HashMap::new(),
         func_names: HashMap::new(),
-        // What's around a WGSL shader.
-        used: match target {
-            Target::Glsl => HashSet::new(),
-            Target::Wgsl => ["SomVertex", "SomUniforms", "som_u", body::SAMPLER, "vs_main", "fs_main"]
-                .map(String::from)
-                .into(),
-        },
+        // What's around a shader.
+        used: ["SomVertex", "SomUniforms", "som_u", body::SAMPLER, "vs_main", "fs_main", "cs_main"]
+            .map(String::from)
+            .into(),
         uniforms: None,
         uniform_paths: HashMap::new(),
-        uniform_structs: HashMap::new(),
         reached: HashMap::new(),
         queue: Vec::new(),
         calls: Vec::new(),
@@ -146,30 +124,26 @@ fn translate(mir: &Mir, entry: FuncId, target: Target) -> Result<String, Vec<Sha
 pub(crate) struct Translator<'a> {
     pub mir: &'a Mir,
     entry: FuncId,
-    pub target: Target,
-    /// In WGSL, each texture among the uniforms, by its path as GLSL names its uniform
-    /// (`camera.sky`): the global it's bound to.
+    /// Each texture and buffer among the uniforms, by its path (`camera.sky`): the global
+    /// it's bound to.
     pub textures: HashMap<String, String>,
-    /// In WGSL, the function reading each storage buffer's items, by the buffer's global.
+    /// The function reading each storage buffer's items, by the buffer's global.
     loads: HashMap<String, String>,
-    /// In WGSL, how many textures and buffers are bound after the sampler.
+    /// How many textures and buffers are bound after the sampler.
     bindings: usize,
-    /// GLSL struct declarations, each after those it's made of.
+    /// Struct declarations, each after those it's made of.
     pub structs: Vec<String>,
     pub struct_names: HashMap<TypeId, String>,
     func_names: HashMap<FuncId, String>,
     /// Names given to structs and functions.
     used: HashSet<String>,
-    /// The shader's struct of uniforms: its textures are GLSL's uniforms themselves, not
-    /// members, since GLSL can't make a struct holding one.
+    /// The shader's struct of uniforms: its textures and buffers are globals of their own,
+    /// not members, since WGSL can't make a struct holding one.
     pub uniforms: Option<TypeId>,
     /// The uniforms' struct and each struct of the program's own inside it, with where it is
-    /// among the GLSL uniforms (`""` for the uniforms, `camera.` for a field): their textures
+    /// among the uniforms (`""` for the uniforms, `camera.` for a field): their textures
     /// are read from there. `None` for one the uniforms hold twice, which has no one place.
     pub uniform_paths: HashMap<TypeId, Option<String>>,
-    /// A struct among the uniforms that holds a texture, as the uniform is declared: with
-    /// its textures, which the struct the shader passes around can't hold.
-    pub uniform_structs: HashMap<TypeId, String>,
     /// How each function the shader reaches is first reached: by which function, where.
     reached: HashMap<FuncId, (FuncId, Span)>,
     queue: Vec<FuncId>,
@@ -216,7 +190,9 @@ impl Translator<'_> {
                         hint: Some(msg![
                             "only ",
                             code(Stage::Fragment.name()),
-                            " shaders can, for now; raylib's own vertex shader goes with them"
+                            " and ",
+                            code(Stage::Compute.name()),
+                            " shaders can, for now, drawn over what the host's vertex shader covers"
                         ]),
                     },
                 );
@@ -236,10 +212,7 @@ impl Translator<'_> {
         self.recursion();
 
         // Structs first: a uniform can be one.
-        let mut out = match self.target {
-            Target::Glsl => String::from("#version 330\n\n"),
-            Target::Wgsl => String::new(),
-        };
+        let mut out = String::new();
         for s in &self.structs {
             out.push_str(s);
             out.push('\n');
@@ -247,12 +220,6 @@ impl Translator<'_> {
         out.push_str(&main.globals);
         out.push('\n');
         // WGSL needs nothing declared before it's used.
-        if self.target == Target::Glsl {
-            for (prototype, _) in &self.functions {
-                out.push_str(&format!("{prototype};\n"));
-            }
-            out.push('\n');
-        }
         for (_, definition) in &self.functions {
             out.push_str(definition);
             out.push('\n');
@@ -262,10 +229,6 @@ impl Translator<'_> {
     }
 
     /// `base`, or with a number after it if that's taken.
-    pub(crate) fn wgsl(&self) -> bool {
-        self.target == Target::Wgsl
-    }
-
     pub(crate) fn unique(&mut self, base: String) -> String {
         let mut name = base.clone();
         let mut n = 2;
@@ -280,7 +243,7 @@ impl Translator<'_> {
         if let Some(name) = self.func_names.get(&func) {
             return name.clone();
         }
-        // GLSL's own functions can't be declared again: `sin`, `mix`, `length`.
+        // WGSL's own functions can't be declared again: `sin`, `mix`, `length`.
         let name = self.unique(format!("f_{}", names::ident(&self.mir.funcs[func].name)));
         self.func_names.insert(func, name.clone());
         name
@@ -318,7 +281,7 @@ impl Translator<'_> {
         });
     }
 
-    /// GLSL can't call a function from itself, even through others.
+    /// WGSL can't call a function from itself, even through others.
     fn recursion(&mut self) {
         let mut callees: HashMap<FuncId, Vec<(FuncId, Span)>> = HashMap::new();
         for (caller, callee, span) in &self.calls {

@@ -2,7 +2,7 @@
 name = "som_shader"
 version = "0.1.0"
 edition = "2024"
-description = "Shaders: MIR to GLSL"
+description = "Shaders: MIR to WGSL"
 
 [dependencies]
 som_base = { path = "../../core/base" }

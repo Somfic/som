@@ -1,0 +1,192 @@
+use som::gpu;
+use wgpu;
+
+// Conway's Game of Life, worked out and drawn on the GPU: kernels step the board, seed it
+// and paint on it, and a shader draws it, all reading buffers that never leave the GPU.
+//
+// Left mouse button paints cells, right button wipes them, Space pauses, Up and Down
+// change the speed, R seeds a new board and C clears it.
+
+@const W: usize = 320;
+@const H: usize = 180;
+/// How long a cell's trail stays after it dies, in generations.
+@const TRAIL: i32 = 24;
+/// The brush's radius, in cells.
+@const BRUSH: f32 = 3.0;
+
+// A cell is how many generations it's been alive (1 and up), or, once dead, how many
+// generations ago it died (-1 down to -TRAIL), or 0: long dead, or never alive.
+
+fn main() {
+    let mut gpu = wgpu::Gpu::open("life", 1280, 720);
+    gpu.say("life: left button paints, right wipes, Space pauses, Up/Down speed, R seeds, C clears");
+
+    let mut now: gpu::Buffer<i32> = gpu.buffer(W * H);
+    let mut next: gpu::Buffer<i32> = gpu.buffer(W * H);
+    let mut step = wgpu::Kernel::empty();
+    let mut seed = wgpu::Kernel::empty();
+    let mut paint = wgpu::Kernel::empty();
+    let mut board = wgpu::Shader::empty();
+    let mut hud = wgpu::Painter::new(&mut gpu);
+    let mut generation = 0;
+
+    let mut paused = false;
+    let mut speed: u32 = 1;
+    let mut seeds: i32 = 1;
+    let mut reseed = true;
+    let mut clear = false;
+    while gpu.frame() {
+        if gpu.pressed(wgpu::Key::Space) {
+            paused = !paused;
+        }
+        if gpu.pressed(wgpu::Key::Up) && speed < 8 {
+            speed = speed + 1;
+        }
+        if gpu.pressed(wgpu::Key::Down) && speed > 1 {
+            speed = speed - 1;
+        }
+        if gpu.pressed(wgpu::Key::R) {
+            reseed = true;
+        }
+        if gpu.pressed(wgpu::Key::C) {
+            clear = true;
+        }
+
+        // A new board: each cell alive one time in four, picked by a hash of its index.
+        if reseed || clear {
+            generation = 0;
+            let salt = seeds;
+            let empty = clear;
+            seed.fill(&mut gpu, &now, (i) => {
+                let mut h = i as u32 ^ (salt as u32 * 2654435761);
+                h = (h ^ (h >> 16)) * 2246822507;
+                h = (h ^ (h >> 13)) * 3266489909;
+                h = h ^ (h >> 16);
+                if !empty && h % 4 == 0 { 1 } else { 0 }
+            });
+            seeds = seeds + 1;
+            reseed = false;
+            clear = false;
+        }
+
+        // Painting: the cells under the brush come alive, or are wiped.
+        let mouse = gpu.mouse();
+        let mx = mouse.x * W as f32;
+        let my = mouse.y * H as f32;
+        let alive = gpu.left_held();
+        if alive || gpu.right_held() {
+            let board_now = now;
+            paint.fill(&mut gpu, &next, (i) => {
+                let dx = (i % W) as f32 + 0.5 - mx;
+                let dy = (i / W) as f32 + 0.5 - my;
+                let cell = board_now.get(i);
+                if dx * dx + dy * dy > BRUSH * BRUSH {
+                    cell
+                } else if alive {
+                    if cell > 0 { cell } else { 1 }
+                } else if cell > 0 {
+                    -1
+                } else {
+                    cell
+                }
+            });
+            let filled = next;
+            next = now;
+            now = filled;
+        }
+
+        // `speed` generations a frame, each read from one board and written to the other.
+        let generations = if paused { 0 } else { speed };
+        for _ in 0..generations {
+            let board_now = now;
+            step.fill(&mut gpu, &next, (i) => {
+                let x = (i % W) as i32;
+                let y = (i / W) as i32;
+                let mut around = 0;
+                for dy in 0..3 {
+                    for dx in 0..3 {
+                        if dx != 1 || dy != 1 {
+                            let nx = (x + dx - 1 + W as i32) % W as i32;
+                            let ny = (y + dy - 1 + H as i32) % H as i32;
+                            if board_now.get((ny * W as i32 + nx) as usize) > 0 {
+                                around = around + 1;
+                            }
+                        }
+                    }
+                }
+                let cell = board_now.get(i);
+                if cell > 0 {
+                    // Alive: it lives on with two or three around, older; or it dies.
+                    if around == 2 || around == 3 { if cell < 1000 { cell + 1 } else { cell } } else { -1 }
+                } else if around == 3 {
+                    1
+                } else if cell < 0 && cell > -TRAIL {
+                    cell - 1
+                } else {
+                    0
+                }
+            });
+            let filled = next;
+            next = now;
+            now = filled;
+            generation = generation + 1;
+        }
+
+        // Drawing: the newborn white, cooling to amber, then teal as they age; the dead
+        // leave a fading violet trail. The brush shows where the mouse is.
+        let shown = now;
+        let time = gpu.time();
+        let still = paused;
+        board.fullscreen(&mut gpu, (frag) => {
+            let fx = frag.uv.x * W as f32;
+            let fy = frag.uv.y * H as f32;
+            let x = fx as usize;
+            let y = fy as usize;
+            let at = (if y < H { y } else { H - 1 }) * W + (if x < W { x } else { W - 1 });
+            let cell = shown.get(at);
+            let mut colour = vec3(0.03, 0.035, 0.06 + 0.04 * frag.uv.y);
+            if cell > 0 {
+                let young = vec3(1.0, 0.97, 0.85);
+                let grown = vec3(1.0, 0.62, 0.18);
+                let old = vec3(0.2, 0.75, 0.7);
+                let a = cell as f32;
+                if a < 8.0 {
+                    colour = young.mix(&grown, a / 8.0);
+                } else {
+                    colour = grown.mix(&old, ((a - 8.0) / 60.0).min(1.0));
+                }
+            } else if cell < 0 {
+                let fade = 1.0 + cell as f32 / TRAIL as f32;
+                let trail = vec3(0.45, 0.2, 0.6);
+                colour = colour.mix(&trail, 0.6 * fade * fade);
+            }
+            // A little room between cells.
+            let gx = fx - x as f32;
+            let gy = fy - y as f32;
+            if gx < 0.08 || gy < 0.08 {
+                colour = colour * 0.8;
+            }
+            // The brush's ring.
+            let dx = fx - mx;
+            let dy = fy - my;
+            let d = (dx * dx + dy * dy).sqrt();
+            if d > BRUSH - 0.25 && d < BRUSH + 0.25 {
+                let white = vec3(1.0, 1.0, 1.0);
+                colour = colour.mix(&white, 0.35);
+            }
+            // Paused: the board breathes.
+            if still {
+                colour = colour * (0.85 + 0.1 * (time * 3.0).sin());
+            }
+            vec4(colour, 1.0)
+        });
+
+        // What's going on, in a corner.
+        let shown_speed = if paused { "paused" } else { "{speed}x" };
+        let status = "generation {generation}  {shown_speed}  {gpu.fps()} fps";
+        let width = hud.text_width(status, 16.0);
+        hud.rect(&mut gpu, 10.0, 10.0, width + 20.0, 30.0, vec4(0.0, 0.0, 0.0, 0.7));
+        hud.text(&mut gpu, 20.0, 17.0, 16.0, status, vec4(1.0, 0.95, 0.85, 1.0));
+        gpu.present();
+    }
+}
