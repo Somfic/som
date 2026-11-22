@@ -16,17 +16,21 @@ pub struct RaylibShader<U> {
 
 impl<U> From<gpu::Shader<U>> for RaylibShader<U> {
     fn from(shader: gpu::Shader<U>) -> RaylibShader<U> {
-        let mut loaded = RaylibShader::empty();
+        let mut loaded = RaylibShader::unloaded();
         loaded.load(shader);
         loaded
     }
 }
 
-impl<U> RaylibShader<U> {
+impl<U: fn(Fragment) -> Vector<4, f32>> RaylibShader<U> {
     /// Nothing loaded yet: a shader written as a closure is, the first time it's drawn,
-    /// `shader.fullscreen((frag: Fragment) => …)`. Each closure written out is its own
-    /// shader, so one `RaylibShader` draws one.
-    pub fn empty() -> RaylibShader<U> {
+    /// `shader.fullscreen((frag) => …)`. Each closure written out is its own shader, so one
+    /// `RaylibShader` draws one.
+    pub fn empty() -> RaylibShader<U> = RaylibShader::unloaded();
+}
+
+impl<U> RaylibShader<U> {
+    fn unloaded() -> RaylibShader<U> {
         RaylibShader {
             raw: raylib::Shader { id: 0, locs: null() },
             loaded: false,

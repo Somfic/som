@@ -1,59 +1,43 @@
 use som::gpu;
 
-/// What the world shader is told each frame.
-mod struct View {
+/// Where the player looks from: the game's own, and part of what the shader captures.
+mod struct Camera {
     pub pos: Vec2,
     pub dir: Vec2,
-    /// The camera plane: from the middle of the screen to its right edge, in the world.
+    /// From the middle of the screen to its right edge, in the world.
     pub plane: Vec2,
-    /// The level, a pixel per cell: red is the kind of wall, 0 for none.
-    pub map: gpu::Texture,
-    pub time: f32,
-    /// From 1 just after the player is hit, down to 0.
-    pub hurt: f32,
-    /// From 1 just after a shot, down to 0: the muzzle flash lights the halls.
-    pub flash: f32,
 }
 
-/// What the monster shader is told, for one monster.
-mod struct Monster {
-    pub pos: Vec2,
-    pub dir: Vec2,
-    pub plane: Vec2,
-    pub map: gpu::Texture,
-    pub time: f32,
-    pub flash: f32,
-    /// How far in front of the camera it is.
-    pub depth: f32,
-    /// The screen columns it covers, each from 0 to 1 across the screen.
-    pub left: f32,
-    pub width: f32,
-    /// From 1 just after it's shot, down to 0.
-    pub pain: f32,
-    /// From 0 while alive to 1 when it's gone.
-    pub dying: f32,
+impl Copy for Camera {}
+
+impl Camera {
+    /// The ray through screen column `x`, from 0 at the left to 1 at the right.
+    mod fn ray(&self, x: f32) -> Vec2 = self.dir + self.plane * (x * 2.0 - 1.0);
+
+    /// Where `at` is to the camera: across (times the depth, from -1 at the screen's left
+    /// edge to 1 at its right) and how far in front.
+    mod fn view(&self, at: Vec2) -> Vec2 {
+        let rel = at - self.pos;
+        let inv = 1.0 / (self.plane.x * self.dir.y - self.dir.x * self.plane.y);
+        vec2(inv * (self.dir.y * rel.x - self.dir.x * rel.y), inv * (self.plane.x * rel.y - self.plane.y * rel.x))
+    }
 }
 
 /// Where a ray first meets a wall.
-struct Hit {
+mod struct Hit {
     /// Distance to it, square to the camera: no fisheye.
-    dist: f32,
+    pub dist: f32,
     /// Its kind, from the map.
-    kind: f32,
+    pub kind: i32,
     /// Where across the wall, from 0 to 1.
-    along: f32,
+    pub along: f32,
     /// Whether it faces north or south, rather than east or west.
-    across: bool,
+    pub across: bool,
 }
 
-/// The kind of wall in `cell`, 0 for none.
-fn wall_kind(map: &gpu::Texture, x: f32, y: f32) -> f32 {
-    let c = map.sample(vec2((x + 0.5) / 16.0, (y + 0.5) / 16.0));
-    (c.r * 4.0 + 0.5).floor()
-}
-
-/// Steps cell by cell from `pos` along `ray` to the first wall (a DDA).
-fn raycast(map: &gpu::Texture, pos: Vec2, ray: Vec2) -> Hit {
+/// Steps cell by cell from `pos` along `ray` to the first wall (a DDA). The same on both
+/// sides: the game passes its `Grid`, the shader the `Texture` it's loaded into.
+mod fn raycast<M: gpu::Cells>(map: &M, pos: Vec2, ray: Vec2) -> Hit {
     let mut cx = pos.x.floor();
     let mut cy = pos.y.floor();
     let dx = if ray.x == 0.0 { 100000.0 } else { (1.0 / ray.x).abs() };
@@ -63,9 +47,8 @@ fn raycast(map: &gpu::Texture, pos: Vec2, ray: Vec2) -> Hit {
     let mut tx = if ray.x < 0.0 { (pos.x - cx) * dx } else { (cx + 1.0 - pos.x) * dx };
     let mut ty = if ray.y < 0.0 { (pos.y - cy) * dy } else { (cy + 1.0 - pos.y) * dy };
     let mut across = false;
-    let mut kind = 0.0;
-    let mut i = 0;
-    while i < 48 {
+    let mut kind = 0;
+    for _ in 0..48 {
         if tx < ty {
             tx += dx;
             cx += sx;
@@ -75,11 +58,10 @@ fn raycast(map: &gpu::Texture, pos: Vec2, ray: Vec2) -> Hit {
             cy += sy;
             across = true;
         }
-        kind = wall_kind(map, cx, cy);
-        if kind > 0.0 {
+        kind = map.cell(cx as i32, cy as i32);
+        if kind != 0 {
             break;
         }
-        i += 1;
     }
     let dist = if across { ty - dy } else { tx - dx };
     let at = pos + ray * dist;
@@ -93,8 +75,8 @@ fn noise(p: Vec2) -> f32 {
 }
 
 /// The colour of a wall of `kind` at (`u`, `v`) across it.
-fn wall_color(kind: f32, u: f32, v: f32, time: f32) -> Vec3 {
-    if kind < 1.5 {
+fn wall_color(kind: i32, u: f32, v: f32, time: f32) -> Vec3 {
+    if kind == 1 {
         // Bricks, every other row half a brick along.
         let row = (v * 6.0).floor();
         let x = u * 3.0 + 0.5 * (row * 0.5).fract() * 2.0;
@@ -106,7 +88,7 @@ fn wall_color(kind: f32, u: f32, v: f32, time: f32) -> Vec3 {
         let k = 0.75 + 0.25 * noise(brick);
         return vec3(0.55, 0.2, 0.13) * k;
     }
-    if kind < 2.5 {
+    if kind == 2 {
         // Big stone blocks, mottled.
         let block = vec2((u * 2.0).floor(), (v * 3.0).floor());
         let edge = ((u * 2.0).fract() < 0.04) || ((v * 3.0).fract() < 0.05);
@@ -161,33 +143,6 @@ fn light(dist: f32, flash: f32) -> f32 {
     falloff * (1.0 + flash * 1.5 / (1.0 + dist * 0.5))
 }
 
-/// The halls, for each pixel of the screen: walls, floor and ceiling, by casting a ray
-/// through it.
-@fragment
-mod fn world(frag: Fragment, u: &View) -> Vec4 {
-    let ray = u.dir + u.plane * (frag.uv.x * 2.0 - 1.0);
-    let hit = raycast(&u.map, u.pos, ray);
-    let half = 0.5 / hit.dist;
-    let y = frag.uv.y;
-    let mut color = vec3(0.0, 0.0, 0.0);
-    let mut dist = hit.dist;
-    if y > 0.5 - half && y < 0.5 + half {
-        let v = (y - (0.5 - half)) / (2.0 * half);
-        color = wall_color(hit.kind, hit.along, v, u.time);
-        if hit.across {
-            color = color * 0.75;
-        }
-    } else {
-        let below = y > 0.5;
-        dist = 0.5 / (y - 0.5).abs();
-        color = floor_color(u.pos + ray * dist, below, u.time);
-    }
-    color = color * light(dist, u.flash);
-    let red = vec3(0.8, 0.0, 0.0);
-    color = color.mix(&red, u.hurt * 0.5);
-    vec4(color, 1.0)
-}
-
 /// How far `p` is outside a horn from `base` to `tip`, `width` across at its base and
 /// coming to a point.
 fn horn(p: Vec2, base: Vec2, tip: Vec2, width: f32) -> f32 {
@@ -196,19 +151,13 @@ fn horn(p: Vec2, base: Vec2, tip: Vec2, width: f32) -> f32 {
     (p - (base + along * t)).length - width * (1.0 - t)
 }
 
-/// A monster, for each pixel of its rectangle: a horned, hunched thing with glowing eyes,
-/// hidden where a wall is in front of it.
-@fragment
-mod fn monster(frag: Fragment, u: &Monster) -> Vec4 {
-    let column = u.left + frag.uv.x * u.width;
-    let ray = u.dir + u.plane * (column * 2.0 - 1.0);
-    if raycast(&u.map, u.pos, ray).dist < u.depth {
-        return vec4(0.0, 0.0, 0.0, 0.0);
-    }
+/// A monster at `uv` across the square it's drawn in, `time` into its walk: a horned,
+/// hunched, angry thing. Its alpha is 0 where it isn't.
+fn monster(uv: Vec2, time: f32, pain: f32, dying: f32, lit: f32) -> Vec4 {
     // From -1 to 1 across, and from -1 at the top to 1 at the bottom; sinking as it dies.
-    let bob = 0.04 * (u.time * 9.0).sin() * (1.0 - u.dying);
-    let p = vec2(frag.uv.x * 2.0 - 1.0, frag.uv.y * 2.0 - 1.0 - bob - u.dying * 0.9);
-    let walk = (u.time * 9.0).sin();
+    let bob = 0.04 * (time * 9.0).sin() * (1.0 - dying);
+    let p = vec2(uv.x * 2.0 - 1.0, uv.y * 2.0 - 1.0 - bob - dying * 0.9);
+    let walk = (time * 9.0).sin();
 
     let body = vec2(p.x, (p.y - 0.05) * 1.3).length - 0.55;
     let head = vec2(p.x, p.y + 0.45).length - 0.3;
@@ -228,23 +177,99 @@ mod fn monster(frag: Fragment, u: &Monster) -> Vec4 {
     let bone = vec3(0.85, 0.8, 0.65);
     let mut color = if horn_l < 0.0 || horn_r < 0.0 { bone } else { skin };
     // Darker towards its edges, as if lit from the front.
-    color = color * (0.6 + 0.4 * (-shape * 6.0).clamp(0.0, 1.0));
+    color = color * (0.6 + 0.4 * (-shape * 6.0).clamp(0.0, 1.0)) * lit;
 
-    // Eyes under brows that slant down to the middle: it's angry.
+    // Eyes under brows that slant down to the middle.
     let eye_l = vec2(p.x + 0.12, p.y + 0.5).length;
     let eye_r = vec2(p.x - 0.12, p.y + 0.5).length;
     let brow = p.y + 0.5 < 0.5 * (0.16 - p.x.abs()) - 0.02;
     // A wide mouth, with a row of teeth along its top and bottom.
     let mouth = vec2(p.x * 0.45, (p.y + 0.3) * 2.2).length;
     let teeth = (p.x * 14.0).fract() < 0.6 && ((p.y + 0.3).abs() > 0.025);
-    let lit = light(u.depth, u.flash);
-    color = color * lit;
     if (eye_l < 0.065 || eye_r < 0.065) && !brow {
-        color = vec3(1.0, 0.55, 0.1) * (1.0 - u.dying) * 1.5;
+        color = vec3(1.0, 0.55, 0.1) * (1.0 - dying) * 1.5;
     } else if mouth < 0.11 {
         color = if teeth { bone * lit } else { vec3(0.08, 0.0, 0.0) };
     }
     let white = vec3(1.0, 1.0, 1.0);
-    color = color.mix(&white, u.pain * 0.7);
-    vec4(color, alpha * (1.0 - u.dying * 0.6))
+    color = color.mix(&white, pain * 0.7);
+    vec4(color, alpha * (1.0 - dying * 0.6))
+}
+
+/// What the halls look like this frame: what the shader closure captures.
+mod struct Scene {
+    pub camera: Camera,
+    /// The level, `Game::level` on the GPU.
+    pub map: gpu::Texture,
+    /// Each monster: where (`x`, `y`), from 1 just after it's shot down to 0 (`z`), and from 0
+    /// while alive to 1 once it's gone (`w`).
+    pub monsters: [Vec4; 8],
+    /// The screen's width over its height.
+    pub aspect: f32,
+    pub time: f32,
+    /// From 1 just after the player is hit, down to 0.
+    pub hurt: f32,
+    /// From 1 just after a shot, down to 0: the muzzle flash lights the halls.
+    pub flash: f32,
+}
+
+impl Copy for Scene {}
+
+/// The nearest monster at screen position `uv`, if it's nearer than `wall`: its colour,
+/// with alpha 0 where there's none.
+fn monsters(s: &Scene, uv: Vec2, wall: f32) -> Vec4 {
+    let mut best = vec4(0.0, 0.0, 0.0, 0.0);
+    let mut nearest = wall;
+    for i in 0..s.monsters.len {
+        let m = s.monsters[i];
+        if m.w >= 1.0 {
+            continue;
+        }
+        let c = s.camera.view(m.xy);
+        if c.y < 0.2 || c.y >= nearest {
+            continue;
+        }
+        // Its square on the screen: 0.8 of a wall high, standing on the floor.
+        let size = 0.8 / c.y;
+        let x = 0.5 * (1.0 + c.x / c.y);
+        let left = x - size / s.aspect / 2.0;
+        let top = 0.5 + 0.5 / c.y - size;
+        let local = vec2((uv.x - left) * s.aspect / size, (uv.y - top) / size);
+        if local.x < 0.0 || local.x > 1.0 || local.y < 0.0 || local.y > 1.0 {
+            continue;
+        }
+        let color = monster(local, s.time + i as f32, m.z, m.w, light(c.y, s.flash));
+        if color.a > 0.0 {
+            best = color;
+            nearest = c.y;
+        }
+    }
+    best
+}
+
+/// The halls at `frag`, a pixel of the screen: walls, floor and ceiling by casting a ray
+/// through it, and the monsters in front of them. What the shader closure in `main` gives.
+mod fn halls(frag: Fragment, s: &Scene) -> Vec4 {
+    let ray = s.camera.ray(frag.uv.x);
+    let hit = raycast(&s.map, s.camera.pos, ray);
+    let half = 0.5 / hit.dist;
+    let y = frag.uv.y;
+    let mut color = vec3(0.0, 0.0, 0.0);
+    let mut dist = hit.dist;
+    if y > 0.5 - half && y < 0.5 + half {
+        let v = (y - (0.5 - half)) / (2.0 * half);
+        color = wall_color(hit.kind, hit.along, v, s.time);
+        if hit.across {
+            color = color * 0.75;
+        }
+    } else {
+        dist = 0.5 / (y - 0.5).abs();
+        color = floor_color(s.camera.pos + ray * dist, y > 0.5, s.time);
+    }
+    color = color * light(dist, s.flash);
+    let m = monsters(s, frag.uv, hit.dist);
+    color = color.mix(&m.rgb, m.a);
+    let red = vec3(0.8, 0.0, 0.0);
+    color = color.mix(&red, s.hurt * 0.5);
+    vec4(color, 1.0)
 }

@@ -124,7 +124,7 @@ fn rotated(v: Vec2, by: f32) -> Vec2 {
     vec2(v.x * c - v.y * s, v.x * s + v.y * c)
 }
 
-fn alive(e: &Enemy) -> bool = e.health > 0;x
+fn alive(e: &Enemy) -> bool = e.health > 0;
 
 fn update(g: &mut Game, dt: f32) {
     g.time += dt;
@@ -285,7 +285,7 @@ fn main() {
         // The halls and every monster, a pixel at a time on the GPU: the closure is the
         // shader, and what it captures, `s`, its uniforms.
         let s = scene(&g);
-        world.fullscreen((frag: Fragment) => halls(frag, &s));
+        world.fullscreen((frag) => halls(frag, &s));
         hud(&g);
         draw_fps(10, 10);
         end_drawing();

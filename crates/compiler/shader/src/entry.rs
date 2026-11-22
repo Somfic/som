@@ -136,14 +136,31 @@ impl Translator<'_> {
                 }
                 // Captured without copying: a reference, which the GPU can't be given.
                 if let Ty::Ref { to, .. } = *self.mir.types.get(member_ty) {
-                    return Err(problem(
-                        msg!["a shader can't capture a ", self.ty_part(to), ", which doesn't copy"],
-                        what(),
-                        Some(msg![
+                    let index = fields.iter().position(|(n, _)| n == name).expect("its own field");
+                    let read = self.copies_read(index, name, to);
+                    let hint = match &read[..] {
+                        [] => msg![
                             "a shader closure's captures are its uniforms: capture copies of what it uses, ",
-                            code("let camera = g.camera;"),
+                            code(format!("let x = {name}.x;")),
                             " before the closure"
-                        ]),
+                        ],
+                        paths => {
+                            let lets: Vec<String> = (paths.iter())
+                                .map(|p| format!("let {} = {p};", p.rsplit('.').next().unwrap_or(p)))
+                                .collect();
+                            msg![
+                                "a shader closure's captures are its uniforms, and it reads ",
+                                code(paths.join(", ")),
+                                ": capture copies of those, ",
+                                code(lets.join(" ")),
+                                " before the closure, and use them in it"
+                            ]
+                        }
+                    };
+                    return Err(problem(
+                        msg!["a shader can't capture ", code(name), ", a ", self.ty_part(to), ", which doesn't copy"],
+                        what(),
+                        Some(hint),
                     ));
                 }
                 // A texture is a uniform of its own, used where it's named.
@@ -227,6 +244,63 @@ impl Translator<'_> {
             self.to_native("colour", func.ret),
         );
         Ok(Main { globals, main })
+    }
+
+    /// For capture `index` of the closure being compiled, `name`, a `to` that doesn't copy:
+    /// the parts of it the closure reads that do copy, as written, `g.camera`. Each is the
+    /// shortest path of fields to a value that copies.
+    fn copies_read(&self, index: usize, name: &str, to: TypeId) -> Vec<String> {
+        let Some(body) = &self.mir.funcs[self.entry].body else {
+            return Vec::new();
+        };
+        let env = Local::new(1);
+        let mut found: Vec<String> = Vec::new();
+        let mut note = |place: &Place| {
+            let p = &place.projection;
+            let reads_it = place.local == env
+                && matches!(p.get(..3), Some([Projection::Deref, Projection::Field(k), Projection::Deref]) if *k == index);
+            if !reads_it {
+                return;
+            }
+            let mut ty = to;
+            let mut path = name.to_string();
+            for projection in &p[3..] {
+                let Projection::Field(f) = *projection else {
+                    return;
+                };
+                let Ty::Struct(def, args) = self.mir.types.get(ty) else {
+                    return;
+                };
+                let s = self.mir.struct_def(*def, args);
+                let Some((field_name, field_ty)) = s.fields.get(f) else {
+                    return;
+                };
+                path = format!("{path}.{field_name}");
+                ty = *field_ty;
+                if self.mir.is_copy(ty) {
+                    if !found.contains(&path) {
+                        found.push(path);
+                    }
+                    return;
+                }
+            }
+        };
+        for block in body.blocks.iter() {
+            for stmt in &block.stmts {
+                if let StatementKind::Assign(place, rvalue) = &stmt.kind {
+                    note(place);
+                    for read in rvalue.places() {
+                        note(read);
+                    }
+                }
+            }
+            if let TerminatorKind::Branch { condition, .. } = &block.terminator.kind
+                && let Some(place) = condition.place()
+            {
+                note(place);
+            }
+        }
+        found
     }
 
     /// Notes struct `ty`, at `prefix` among the uniforms, and those it holds, if it's one of

@@ -1,0 +1,22 @@
+// expect: error
+
+/// A shader closure that reads `g.camera` captures all of `g`, which doesn't copy: the error
+/// names the parts it reads that do, to capture instead.
+use som::gpu;
+
+struct Camera { pub pos: Vec2 }
+impl Copy for Camera {}
+
+struct Level { pub cells: List<i32>, pub texture: gpu::Texture }
+
+struct Game { pub camera: Camera, pub level: Level, pub time: f32 }
+
+fn main() {
+    let g = Game {
+        camera: Camera { pos: vec2(0.0, 0.0) },
+        level: Level { cells: List::empty(), texture: gpu::Texture { id: 0, width: 1, height: 1 } },
+        time: 0.0,
+    };
+    let shade = (frag: Fragment) => g.level.texture.sample(frag.uv + g.camera.pos);
+    let shader = gpu::Shader::closure(&shade);
+}

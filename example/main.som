@@ -12,7 +12,7 @@ fn main() {
     while !window_should_close() {
         let time = get_time() as f32;
         begin_drawing();
-        shader.fullscreen((frag: Fragment) => {
+        shader.fullscreen((frag) => {
             let t = 0.5 + 0.5 * time.sin();
             vec4(frag.uv.x, t, 1.0 - t, 1.0)
         });
@@ -31,7 +31,8 @@ struct RaylibShader<U> {
     blank: raylib::Texture,
 }
 
-impl<U> RaylibShader<U> {
+impl<U: fn(Fragment) -> Vector<4, f32>> RaylibShader<U> {
+    /// For a shader closure, drawn below: the bound is what tells it `frag` is a `Fragment`.
     fn empty() -> RaylibShader<U> {
         RaylibShader {
             raw: raylib::Shader { id: 0, locs: null() },
@@ -40,7 +41,9 @@ impl<U> RaylibShader<U> {
             blank: raylib::Texture { id: 0, width: 0, height: 0, mipmaps: 0, format: 0 },
         }
     }
+}
 
+impl<U> RaylibShader<U> {
     /// The shader, closure `uniforms`, over the whole screen.
     fn fullscreen(&mut self, uniforms: U) {
         if !self.loaded {

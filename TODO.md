@@ -148,9 +148,10 @@ From writing `example/shooter` (a raycasting shooter, 2026-11-21), what made sha
 - [x] Shaders as closures: captures are the uniforms (`gpu::Shader::closure`, `RaylibShader::empty()` + `fullscreen(closure)`); `gpu::each_uniform`'s body is written by lowering for each struct or closure, names and all (2026-11-21).
 - [ ] Arrays of structs as uniforms; a texture in a struct the uniforms hold twice.
 - [ ] raylib's adapter calls `get_shader_location` for each uniform as it sets it (each closure can't keep a cache: closures only read). Cache once closures can change what they capture, or `each` can hand back a location.
-- [ ] A shader closure's parameter needs its type written, `(frag: Fragment) =>`, since `RaylibShader::empty()`'s `U` isn't known yet.
+- [x] A shader closure's parameter type is inferred, `(frag) =>`: `RaylibShader::empty()` is in an impl bounded by `U: fn(Fragment) -> Vector<4, f32>`, which gives `U`'s variable that signature (2026-11-22).
 - [ ] Calling `each` with the old two-parameter callback says "can't match an unknown type" about the `match` inside, not that the callback takes three.
-- [ ] Capturing `g.camera` inside a shader closure captures all of `g` (an error, as it doesn't copy); capturing paths, or a hint naming the field, would read better.
+- [x] Capturing `g` (which doesn't copy) in a shader closure: the error names the parts it reads that copy, `let camera = g.camera;` (2026-11-22).
+- [ ] Disjoint captures: a closure reading `g.camera` (which copies) captures a copy of it rather than lending all of `g`. Touches resolve (paths), typeck (which copy), lowering (closure fields, body rewrites, name clashes) and borrowck, for every closure.
 - [ ] `@leaves` decides "the program's own struct" by name while parsing; two structs with one name in different modules (neither the field's) aren't gone into.
 - [ ] `Grid` cells are 0 to 255 (a pixel's red); wider values would need a float or integer texture.
 - [ ] Printing a `Vector` (`"{v}"`) panics in lowering ("no implementation of trait method `display_len`") rather than saying it can't be shown.
