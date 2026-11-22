@@ -6,8 +6,8 @@
 //! written, so what's wrong in one is said where the body is.
 
 use som_ast::{
-    Arm, Ast, Expr, Id, Ident, Path, PerType, Reflected, ReflectedInto, Stmt, Struct, Variant,
-    VariantKind,
+    Arm, Ast, Expr, Id, Ident, Path, PerType, Reflected, ReflectedInto, Stmt, Struct, TypeExpr,
+    Variant, VariantKind,
 };
 use som_base::message::code;
 use som_base::{Source, Span, msg};
@@ -198,7 +198,7 @@ impl Parser<'_> {
 
     /// `@for (i, v) in Kind { … }`: what each copy calls the element, the type, and the
     /// body, kept to be written out once `Kind` is known.
-    pub(crate) fn parse_reflected_for(&mut self) -> Option<(Vec<Ident>, Path, Span)> {
+    pub(crate) fn parse_reflected_for(&mut self) -> Option<(Vec<Ident>, Path, bool, Span)> {
         self.advance();
         let mut names = Vec::new();
         if self.eat(TokenKind::OpenParen) {
@@ -213,6 +213,12 @@ impl Parser<'_> {
             names.push(self.parse_ident("a name for each element")?);
         }
         self.expect(TokenKind::In, "`in` and what to loop over")?;
+        // `@leaves(T)`: its fields, and those of its fields that are the program's structs.
+        let leaves = self.at_builtin(Builtin::Leaves);
+        if leaves {
+            self.advance();
+            self.expect(TokenKind::OpenParen, "`(` and a type")?;
+        }
         // `@variants(Kind)`: there's no such built-in. The rest of the `@for` is skipped.
         if self.at(TokenKind::Builtin) {
             let name = self.peek_token().text.to_string();
@@ -221,6 +227,9 @@ impl Parser<'_> {
             return None;
         }
         let of = self.parse_path("a type")?;
+        if leaves {
+            self.expect(TokenKind::CloseParen, "`)` after the type")?;
+        }
         let open = self.current_span();
         self.expect(TokenKind::OpenBrace, "`{` and what to write for each")?;
         // To the matching `}`: the body is what's between.
@@ -243,7 +252,7 @@ impl Parser<'_> {
             self.advance();
         }
         let body = Span::from_range(body_start..body_end, open.source.clone());
-        Some((names, of, body))
+        Some((names, of, leaves, body))
     }
 
     /// `0..4`, of literals: each number, as a token.
@@ -535,7 +544,13 @@ fn name_of(body: &[Token], at: usize, element: &Ident) -> Option<usize> {
 /// Text token `quoted` as it is in a copy: `{@name(f)}` in it is the element's name, and
 /// `f` in its other `{…}` values the element. `None` if that changes nothing. It gets a
 /// source of its own, since a value in text is read from where the text is.
-fn text_copy(token: &Token, element: &Ident, name: &str, pattern: &str) -> Option<Token> {
+fn text_copy(
+    token: &Token,
+    element: &Ident,
+    name: &str,
+    pattern: &str,
+    index: Option<(&Ident, usize)>,
+) -> Option<Token> {
     let raw = crate::cursor::unquoted(&token.text);
     if !raw.contains('{') {
         return None;
@@ -564,6 +579,12 @@ fn text_copy(token: &Token, element: &Ident, name: &str, pattern: &str) -> Optio
                     if token.kind == TokenKind::Ident && *token.text == *element.name {
                         out.push_str(pattern);
                         changed = true;
+                    } else if let Some((index, i)) = index
+                        && token.kind == TokenKind::Ident
+                        && *token.text == *index.name
+                    {
+                        out.push_str(&i.to_string());
+                        changed = true;
                     } else {
                         out.push_str(&token.text);
                     }
@@ -591,6 +612,65 @@ fn text_copy(token: &Token, element: &Ident, name: &str, pattern: &str) -> Optio
     })
 }
 
+/// For `@leaves(T)`: the path to each of struct `s`'s fields, `prefix` first, going into the
+/// fields that are [`own_struct`]s: `camera.pos`.
+fn leaves(ast: &Ast, s: Id<Struct>, prefix: &str, out: &mut Vec<String>, depth: usize) {
+    for f in &ast.structs[s].fields {
+        let path = format!("{prefix}{}", f.name.name);
+        // A struct that holds itself never ends: as deep as that, it's a leaf.
+        match own_struct(ast, s, f.ty).filter(|_| depth < 16) {
+            Some(inner) => leaves(ast, inner, &format!("{path}."), out, depth + 1),
+            None => out.push(path),
+        }
+    }
+}
+
+/// The struct `ty`, a field's type in struct `within`, names, if it's one of the program's
+/// own: not the standard library's, a C library's, an enum or generic. Looked for as `ty`
+/// is written, `gpu::Texture` in a module ending `gpu`, and a plain name in `within`'s module
+/// first, then anywhere it's the only one.
+fn own_struct(ast: &Ast, within: Id<Struct>, ty: Id<TypeExpr>) -> Option<Id<Struct>> {
+    let TypeExpr::Named { path, args } = &ast.types[ty] else {
+        return None;
+    };
+    if !args.is_empty() {
+        return None;
+    }
+    let name = &path.name().name;
+    let qualifier: Vec<&str> = (path.segments.iter().rev().skip(1).rev())
+        .map(|seg| &*seg.name)
+        .collect();
+    let qualifier = qualifier.join("::");
+    let module_of = |s: Id<Struct>| {
+        (ast.modules.iter().enumerate())
+            .find(|(_, m)| m.items.iter().any(|i| matches!(i, som_ast::Item::Struct(x) if *x == s)))
+            .map(|(k, _)| k)
+    };
+    let found: Vec<(usize, Id<Struct>)> = (ast.modules.iter().enumerate())
+        .filter(|(_, m)| {
+            qualifier.is_empty()
+                || *m.name == *qualifier
+                || m.name.ends_with(&format!("::{qualifier}"))
+        })
+        .flat_map(|(k, m)| m.items.iter().map(move |item| (k, item)))
+        .filter_map(|(k, item)| match item {
+            som_ast::Item::Struct(s) if ast.structs[*s].name.name == *name => Some((k, *s)),
+            _ => None,
+        })
+        .collect();
+    let home = module_of(within);
+    let (module, found) = match found.iter().find(|(k, _)| Some(*k) == home) {
+        Some(&here) => here,
+        None if found.len() == 1 => found[0],
+        None => return None,
+    };
+    let m = &ast.modules[module];
+    let std = &*m.name == "som" || m.name.starts_with("som::");
+    let foreign = m.path.to_string_lossy().starts_with('<');
+    let plain = !ast.structs[found].is_enum() && ast.structs[found].generics.is_empty();
+    (!std && !foreign && plain).then_some(found)
+}
+
 fn element_texts(s: &Struct) -> Vec<String> {
     match s.is_enum() {
         true => s.variants().iter().map(variant_pattern).collect(),
@@ -613,8 +693,14 @@ fn variant_pattern(variant: &Variant) -> String {
 /// The tokens of `r`'s copies for enum or struct `s`: its body once for each variant or
 /// field, the element written as it (and its index, if it's named), then an `Eof`.
 fn write_copies(ast: &Ast, r: &Reflected, s: Id<Struct>) -> Result<Vec<Token>, ParseError> {
-    let elements = element_texts(&ast.structs[s]);
-    let names = element_names(&ast.structs[s]);
+    let (elements, names) = match r.leaves && !ast.structs[s].is_enum() {
+        true => {
+            let mut paths = Vec::new();
+            leaves(ast, s, "", &mut paths, 0);
+            (paths.clone(), paths)
+        }
+        false => (element_texts(&ast.structs[s]), element_names(&ast.structs[s])),
+    };
     let body: Vec<Token> = (lex(r.body.source.clone()).into_iter())
         .filter(|t| {
             t.kind != TokenKind::Eof
@@ -651,7 +737,7 @@ fn write_copies(ast: &Ast, r: &Reflected, s: Id<Struct>) -> Result<Vec<Token>, P
             }
             // Text: `{@name(f)}` and `{p.f}` in it are written out too.
             if token.kind == TokenKind::Text
-                && let Some(text) = text_copy(token, element, &names[i], pattern)
+                && let Some(text) = text_copy(token, element, &names[i], pattern, index.map(|n| (n, i)))
             {
                 written.push(text);
                 continue;

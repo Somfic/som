@@ -88,6 +88,8 @@ pub fn glsl(mir: &Mir, entry: FuncId) -> Result<String, Vec<ShaderError>> {
         func_names: HashMap::new(),
         used: HashSet::new(),
         uniforms: None,
+        uniform_paths: HashMap::new(),
+        uniform_structs: HashMap::new(),
         reached: HashMap::new(),
         queue: Vec::new(),
         calls: Vec::new(),
@@ -122,6 +124,13 @@ pub(crate) struct Translator<'a> {
     /// The shader's struct of uniforms: its textures are GLSL's uniforms themselves, not
     /// members, since GLSL can't make a struct holding one.
     pub uniforms: Option<TypeId>,
+    /// The uniforms' struct and each struct of the program's own inside it, with where it is
+    /// among the GLSL uniforms (`""` for the uniforms, `camera.` for a field): their textures
+    /// are read from there. `None` for one the uniforms hold twice, which has no one place.
+    pub uniform_paths: HashMap<TypeId, Option<String>>,
+    /// A struct among the uniforms that holds a texture, as the uniform is declared: with
+    /// its textures, which the struct the shader passes around can't hold.
+    pub uniform_structs: HashMap<TypeId, String>,
     /// How each function the shader reaches is first reached: by which function, where.
     reached: HashMap<FuncId, (FuncId, Span)>,
     queue: Vec<FuncId>,
@@ -186,13 +195,14 @@ impl Translator<'_> {
         }
         self.recursion();
 
+        // Structs first: a uniform can be one.
         let mut out = String::from("#version 330\n\n");
-        out.push_str(&main.globals);
-        out.push('\n');
         for s in &self.structs {
             out.push_str(s);
             out.push('\n');
         }
+        out.push_str(&main.globals);
+        out.push('\n');
         for (prototype, _) in &self.functions {
             out.push_str(&format!("{prototype};\n"));
         }

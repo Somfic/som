@@ -15,34 +15,47 @@ impl Copy for Fragment {}
 /// The source of shader `entry`, a `@vertex` or `@fragment` function, in GLSL 3.30: what
 /// a graphics library like raylib loads. Made while compiling, so `glsl(wobble)` costs
 /// nothing when it runs; `@glsl(wobble)` is the same, as a constant. `entry` is a shader
-/// named where it's passed.
+/// named where it's passed, or a closure (or a `&` to one) written as a shader.
 pub fn glsl<F>(entry: F) -> string {
     // The compiler gives each use the shader's source instead.
-    @fail("`glsl` takes a shader by its name: `glsl(wobble)`")
+    @fail("`glsl` takes a shader by its name, `glsl(wobble)`, or a closure written as one")
 }
 
-/// A shader compiled for the GPU, and the uniforms it takes: the fields of `U`. Made from
-/// the shader itself, `Shader::fragment(stripes)`; a graphics library loads `glsl` and sets
-/// each uniform by name, from `each`.
+/// Calls `set` with each of `uniforms`' uniforms, in order: its index, its name as the GPU has
+/// it, and its value. `uniforms` is a shader's struct of uniforms (each field, going into
+/// those that are structs of the program's own, `camera.pos`), or a shader written as a
+/// closure (each of its captures). Written out for each type while compiling: no list, no
+/// loop. A field the GPU can't take is left out here; compiling the shader says why.
+pub fn each_uniform<U, F: fn(usize, cstr, Uniform)>(uniforms: &U, set: F) -> () {
+    // The compiler gives each instance its own body.
+    @fail("`each_uniform` is written by the compiler")
+}
+
+/// A shader compiled for the GPU, and the uniforms it takes: `U`'s fields, or for a shader
+/// written as a closure, its captures. Made from the shader itself,
+/// `Shader::fragment(stripes)` or `Shader::closure(&c)`; a graphics library loads `glsl` and
+/// sets each uniform by its name, from `each`.
 pub struct Shader<U> {
     /// Its source in GLSL 3.30.
     pub glsl: string,
-    /// Each uniform's name, in the order `U` has them: its fields' names.
-    pub uniforms: List<string>,
 }
 
 impl<U> Shader<U> {
     /// Fragment shader `shader`, which takes a `Fragment` and its uniforms.
     pub fn fragment<F: fn(Fragment, &U) -> Vector<4, f32>>(shader: F) -> Shader<U> {
-        let mut names: List<string> = List::empty();
-        @for f in U { names.push(@name(f)); }
-        Shader { glsl: glsl(shader), uniforms: names }
+        Shader { glsl: glsl(shader) }
     }
 
-    /// Calls `set` with each uniform's index in `self.uniforms` and its value in `uniforms`.
-    /// Written out for each field while compiling: no list, no loop.
-    pub fn each<F: fn(usize, Uniform)>(&self, uniforms: &U, set: F) -> () {
-        @for (i, f) in U { set(i, Uniform::from(uniforms.f)); }
+    /// Fragment shader `shader`, written as a closure that takes a `Fragment`: what it
+    /// captures are its uniforms, `(frag: Fragment) => vec4(tint.rgb * time, 1.0)`. Each
+    /// closure written out is its own shader; its uniforms are set from each value of it.
+    pub fn closure(shader: &U) -> Shader<U> {
+        Shader { glsl: glsl(shader) }
+    }
+
+    /// Calls `set` with each uniform's index, name and value, from `uniforms`.
+    pub fn each<F: fn(usize, cstr, Uniform)>(&self, uniforms: &U, set: F) -> () {
+        each_uniform(uniforms, set);
     }
 }
 
@@ -77,34 +90,166 @@ pub enum Uniform {
     Vec3([f32; 3]),
     Vec4([f32; 4]),
     Texture(Texture),
+    /// An array of numbers or vectors, `[f32; 16]` or `[Vec4; 8]`, or a vector of `i32`s.
+    Numbers(Numbers),
 }
+
+/// `count` lots of `size` numbers, one after another from `data`: `f32`s, or `i32`s if
+/// `ints`. An array of uniforms (`count` of them) or a vector (`size` 2 to 4), as raylib's
+/// `SetShaderValueV` takes one. Read only while `each` is calling back.
+pub struct Numbers {
+    pub size: i32,
+    pub ints: bool,
+    pub count: i32,
+    pub data: *,
+}
+
+impl Copy for Numbers {}
 
 impl Copy for Uniform {}
 
-impl From<f32> for Uniform {
-    fn from(value: f32) -> Uniform = Uniform::Float(value);
+impl From<&f32> for Uniform {
+    fn from(value: &f32) -> Uniform = Uniform::Float(*value);
 }
 
-impl From<i32> for Uniform {
-    fn from(value: i32) -> Uniform = Uniform::Int(value);
+impl From<&i32> for Uniform {
+    fn from(value: &i32) -> Uniform = Uniform::Int(*value);
 }
 
-impl From<bool> for Uniform {
-    fn from(value: bool) -> Uniform = Uniform::Bool(value);
+impl From<&bool> for Uniform {
+    fn from(value: &bool) -> Uniform = Uniform::Bool(*value);
 }
 
-impl From<Vector<2, f32>> for Uniform {
-    fn from(value: Vector<2, f32>) -> Uniform = Uniform::Vec2([value.x, value.y]);
+impl From<&Vector<2, f32>> for Uniform {
+    fn from(value: &Vector<2, f32>) -> Uniform = Uniform::Vec2([value.x, value.y]);
 }
 
-impl From<Vector<3, f32>> for Uniform {
-    fn from(value: Vector<3, f32>) -> Uniform = Uniform::Vec3([value.x, value.y, value.z]);
+impl From<&Vector<3, f32>> for Uniform {
+    fn from(value: &Vector<3, f32>) -> Uniform = Uniform::Vec3([value.x, value.y, value.z]);
 }
 
-impl From<Vector<4, f32>> for Uniform {
-    fn from(value: Vector<4, f32>) -> Uniform = Uniform::Vec4([value.x, value.y, value.z, value.w]);
+impl From<&Vector<4, f32>> for Uniform {
+    fn from(value: &Vector<4, f32>) -> Uniform = Uniform::Vec4([value.x, value.y, value.z, value.w]);
 }
 
-impl From<Texture> for Uniform {
-    fn from(value: Texture) -> Uniform = Uniform::Texture(value);
+impl From<&Texture> for Uniform {
+    fn from(value: &Texture) -> Uniform = Uniform::Texture(*value);
+}
+
+impl<N: usize> From<&[Vector<2, f32>; N]> for Uniform {
+    fn from(value: &[Vector<2, f32>; N]) -> Uniform = Uniform::Numbers(Numbers { size: 2, ints: false, count: N as i32, data: value as * });
+}
+
+impl<N: usize> From<&[Vector<3, f32>; N]> for Uniform {
+    fn from(value: &[Vector<3, f32>; N]) -> Uniform = Uniform::Numbers(Numbers { size: 3, ints: false, count: N as i32, data: value as * });
+}
+
+impl<N: usize> From<&[Vector<4, f32>; N]> for Uniform {
+    fn from(value: &[Vector<4, f32>; N]) -> Uniform = Uniform::Numbers(Numbers { size: 4, ints: false, count: N as i32, data: value as * });
+}
+
+/// An array of `f32`s, `[f32; 16]`; or, 2 to 4 of them, a vector (`[f32; 3]` is a `vec3`).
+impl<N: usize> From<&[f32; N]> for Uniform {
+    fn from(value: &[f32; N]) -> Uniform {
+        @if N >= 2 && N <= 4 {
+            return Uniform::Numbers(Numbers { size: N as i32, ints: false, count: 1, data: value as * });
+        } else {
+            return Uniform::Numbers(Numbers { size: 1, ints: false, count: N as i32, data: value as * });
+        }
+    }
+}
+
+/// An array of `i32`s, `[i32; 16]`; or, 2 to 4 of them, a vector (`ivec3`).
+impl<N: usize> From<&[i32; N]> for Uniform {
+    fn from(value: &[i32; N]) -> Uniform {
+        @if N >= 2 && N <= 4 {
+            return Uniform::Numbers(Numbers { size: N as i32, ints: true, count: 1, data: value as * });
+        } else {
+            return Uniform::Numbers(Numbers { size: 1, ints: true, count: N as i32, data: value as * });
+        }
+    }
+}
+
+/// What a shader can look cells up in, by column `x` and row `y`: a `Grid` on the CPU, the
+/// `Texture` it's loaded into on the GPU. Code written for any `M: Cells` (a raycast through a
+/// level, say) runs on both, the game passing its `Grid` and a shader its `Texture`.
+pub trait Cells {
+    /// What's in cell (`x`, `y`): from 0 to 255, and 0 outside.
+    pub fn cell(&self, x: i32, y: i32) -> i32;
+}
+
+/// A grid of numbers from 0 to 255, `width` by `height`, kept on the CPU and loaded onto the
+/// GPU as `texture`, a pixel per cell (the number is its red), for shaders to look up. One
+/// level, say, that the game collides with and a shader draws.
+pub struct Grid {
+    pub width: i32,
+    pub height: i32,
+    cells: List<i32>,
+    /// Where it is on the GPU, once a graphics library has loaded it: raylib's adapter does,
+    /// with `load_grid`. Its `Cells` there.
+    pub texture: Texture,
+}
+
+impl Grid {
+    /// `width` by `height` cells, each 0.
+    pub fn new(width: i32, height: i32) -> Grid {
+        let mut cells: List<i32> = List::empty();
+        for _ in 0..width * height {
+            cells.push(0);
+        }
+        Grid { width, height, cells, texture: Texture { id: 0, width, height } }
+    }
+
+    /// `width` by `height` cells, a row at a time from `cells`.
+    pub fn of(width: i32, height: i32, cells: &[i32]) -> Grid {
+        let mut grid = Grid::new(width, height);
+        for y in 0..height {
+            for x in 0..width {
+                let value = cells.get((y * width + x) as usize) else return grid;
+                grid.set(x, y, value);
+            }
+        }
+        grid
+    }
+
+    /// Puts `value` in cell (`x`, `y`); outside the grid, nowhere. A loaded grid has to be
+    /// loaded again for the GPU to see it.
+    pub fn set(&mut self, x: i32, y: i32, value: i32) {
+        if x < 0 || y < 0 || x >= self.width || y >= self.height {
+            return;
+        }
+        let at = (y * self.width + x) as usize;
+        if at < self.cells.len {
+            self.cells[at] = value;
+        }
+    }
+}
+
+impl Cells for Grid {
+    fn cell(&self, x: i32, y: i32) -> i32 {
+        if x < 0 || y < 0 || x >= self.width || y >= self.height {
+            return 0;
+        }
+        let at = (y * self.width + x) as usize;
+        if at < self.cells.len {
+            return self.cells[at];
+        }
+        0
+    }
+}
+
+impl Cells for Texture {
+    /// Its pixel (`x`, `y`)'s red, from 0 to 255: a loaded `Grid`'s cell. Only on the GPU.
+    fn cell(&self, x: i32, y: i32) -> i32 {
+        @if GPU {
+            let size = gl::textureSize(self, 0);
+            if x < 0 || y < 0 || x >= size[0] || y >= size[1] {
+                return 0;
+            }
+            let c = gl::texelFetch(self, [x, y], 0);
+            return (c.x * 255.0 + 0.5) as i32;
+        } else {
+            @fail("a texture is only read on the GPU: look in the `Grid` it was loaded from");
+        }
+    }
 }

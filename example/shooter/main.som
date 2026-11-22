@@ -1,8 +1,10 @@
 use extern "raylib";
 use som::gpu;
 
-// A small first-person shooter: the halls are drawn by a som shader, a ray cast through each
-// pixel (`shaders.som`), and so are the monsters, a rectangle each.
+// A small first-person shooter, drawn by one som shader, a closure in `main` calling
+// `halls` (`shaders.som`): a ray cast through each pixel for the halls, and every monster in
+// front of them. The level is one `gpu::Grid`, which the game collides with and the shader
+// draws, through the same `raycast`.
 
 @const W = 960;
 @const H = 540;
@@ -14,8 +16,8 @@ use som::gpu;
 @const RADIUS: f32 = 0.25;
 
 /// The level, a row of cells at a time: 0 is floor, anything else a wall of that kind.
-fn level() -> [i32; SIZE * SIZE] {
-    [
+fn level() -> gpu::Grid {
+    gpu::Grid::of(SIZE, SIZE, &[
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
         1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 1,
         1, 0, 1, 1, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 1,
@@ -32,7 +34,7 @@ fn level() -> [i32; SIZE * SIZE] {
         1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1,
         1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    ]
+    ])
 }
 
 struct Enemy {
@@ -49,10 +51,8 @@ struct Enemy {
 impl Copy for Enemy {}
 
 struct Game {
-    map: [i32; SIZE * SIZE],
-    pos: Vec2,
-    dir: Vec2,
-    plane: Vec2,
+    level: gpu::Grid,
+    camera: Camera,
     enemies: [Enemy; MONSTERS],
     health: i32,
     hurt: f32,
@@ -61,7 +61,7 @@ struct Game {
     time: f32,
 }
 
-fn new_game() -> Game {
+fn new_game(level: gpu::Grid) -> Game {
     let spots = [
         vec2(6.5, 2.5), vec2(13.5, 1.5), vec2(10.5, 4.5), vec2(5.5, 9.5),
         vec2(13.5, 9.5), vec2(3.5, 13.5), vec2(9.5, 13.5), vec2(13.5, 14.5),
@@ -71,10 +71,8 @@ fn new_game() -> Game {
         enemies[i].pos = spots[i];
     }
     Game {
-        map: level(),
-        pos: vec2(1.5, 1.5),
-        dir: vec2(1.0, 0.0),
-        plane: vec2(0.0, 0.89),
+        level,
+        camera: Camera { pos: vec2(1.5, 1.5), dir: vec2(1.0, 0.0), plane: vec2(0.0, 0.89) },
         enemies,
         health: 100,
         hurt: 0.0,
@@ -89,8 +87,7 @@ fn solid(g: &Game, x: f32, y: f32) -> bool {
     if x < 0.0 || y < 0.0 || x >= SIZE as f32 || y >= SIZE as f32 {
         return true;
     }
-    let cell = g.map.get((y as i32) * SIZE + (x as i32)) else return true;
-    cell != 0
+    g.level.cell(x as i32, y as i32) != 0
 }
 
 /// Whether something at `at`, `RADIUS` across, would be inside a wall.
@@ -111,19 +108,14 @@ fn slide(g: &Game, from: Vec2, by: Vec2) -> Vec2 {
     at
 }
 
-/// Whether nothing solid is between `a` and `b`.
+/// Whether no wall is between `a` and `b`: the shader's own `raycast`, on the level.
 fn sees(g: &Game, a: Vec2, b: Vec2) -> bool {
     let d = b - a;
-    let steps = (d.length * 10.0) as i32 + 1;
-    let mut i = 1;
-    while i < steps {
-        let at = a + d * (i as f32 / steps as f32);
-        if solid(g, at.x, at.y) {
-            return false;
-        }
-        i += 1;
+    let far = d.length;
+    if far < 0.001 {
+        return true;
     }
-    true
+    raycast(&g.level, a, d / far).dist >= far
 }
 
 fn rotated(v: Vec2, by: f32) -> Vec2 {
@@ -132,15 +124,7 @@ fn rotated(v: Vec2, by: f32) -> Vec2 {
     vec2(v.x * c - v.y * s, v.x * s + v.y * c)
 }
 
-/// Where `at` is to the camera: across (from -1 at the left edge of the screen to 1 at the
-/// right, times the depth) and how far in front.
-fn to_camera(g: &Game, at: Vec2) -> Vec2 {
-    let rel = at - g.pos;
-    let inv = 1.0 / (g.plane.x * g.dir.y - g.dir.x * g.plane.y);
-    vec2(inv * (g.dir.y * rel.x - g.dir.x * rel.y), inv * (g.plane.x * rel.y - g.plane.y * rel.x))
-}
-
-fn alive(e: &Enemy) -> bool = e.health > 0;
+fn alive(e: &Enemy) -> bool = e.health > 0;x
 
 fn update(g: &mut Game, dt: f32) {
     g.time += dt;
@@ -155,18 +139,19 @@ fn update(g: &mut Game, dt: f32) {
     let mut turn = get_mouse_delta().x * MOUSE_TURN;
     if is_key_down(KeyboardKey::Left as i32) { turn -= TURN * dt; }
     if is_key_down(KeyboardKey::Right as i32) { turn += TURN * dt; }
-    g.dir = rotated(g.dir, turn);
-    g.plane = rotated(g.plane, turn);
+    g.camera.dir = rotated(g.camera.dir, turn);
+    g.camera.plane = rotated(g.camera.plane, turn);
 
     // Walking: WASD.
-    let side = vec2(-g.dir.y, g.dir.x);
+    let forward = g.camera.dir;
+    let side = vec2(-forward.y, forward.x);
     let mut walk = vec2(0.0, 0.0);
-    if is_key_down(KeyboardKey::W as i32) { walk = walk + g.dir; }
-    if is_key_down(KeyboardKey::S as i32) { walk = walk - g.dir; }
+    if is_key_down(KeyboardKey::W as i32) { walk = walk + forward; }
+    if is_key_down(KeyboardKey::S as i32) { walk = walk - forward; }
     if is_key_down(KeyboardKey::D as i32) { walk = walk + side; }
     if is_key_down(KeyboardKey::A as i32) { walk = walk - side; }
     if walk.length > 0.0 {
-        g.pos = slide(g, g.pos, walk.normalized * SPEED * dt);
+        g.camera.pos = slide(g, g.camera.pos, walk.normalized * SPEED * dt);
     }
 
     // Shooting: the nearest monster under the crosshair that can be seen.
@@ -174,12 +159,12 @@ fn update(g: &mut Game, dt: f32) {
     if fire && g.reload <= 0.0 {
         g.reload = 0.35;
         g.flash = 1.0;
-        let mut target: usize = MONSTERS;
+        let mut target = MONSTERS;
         let mut nearest = 1000.0;
         for i in 0..MONSTERS {
             let e = g.enemies[i];
-            let c = to_camera(g, e.pos);
-            if alive(&e) && c.y > 0.1 && (c.x / c.y).abs() < 0.3 / c.y && c.y < nearest && sees(g, g.pos, e.pos) {
+            let c = g.camera.view(e.pos);
+            if alive(&e) && c.y > 0.1 && c.x.abs() < 0.3 && c.y < nearest && sees(g, g.camera.pos, e.pos) {
                 target = i;
                 nearest = c.y;
             }
@@ -198,9 +183,9 @@ fn update(g: &mut Game, dt: f32) {
         if !alive(&e) {
             e.dying = (e.dying + dt * 1.5).min(1.0);
         } else {
-            let to = g.pos - e.pos;
+            let to = g.camera.pos - e.pos;
             let dist = to.length;
-            if dist < 9.0 && sees(g, e.pos, g.pos) {
+            if dist < 9.0 && sees(g, e.pos, g.camera.pos) {
                 if dist > 0.8 {
                     let pace = 1.6 * (1.0 - e.pain * 0.8);
                     e.pos = slide(g, e.pos, to.normalized * pace * dt);
@@ -215,74 +200,29 @@ fn update(g: &mut Game, dt: f32) {
     }
 }
 
-/// The level as a texture, a pixel per cell, for the shaders: red is the wall's kind.
-fn map_texture(g: &Game) -> raylib::Texture {
-    let mut image = gen_image_color(SIZE, SIZE, Color { r: 0, g: 0, b: 0, a: 255 });
-    for y in 0..SIZE {
-        for x in 0..SIZE {
-            let kind = g.map.get(y * SIZE + x) else continue;
-            image_draw_pixel(&mut image, x, y, Color { r: (kind * 64) as u8, g: 0, b: 0, a: 255 });
-        }
-    }
-    let texture = load_texture_from_image(image);
-    unload_image(image);
-    texture
-}
-
-fn rect(x: f32, y: f32, w: f32, h: f32) -> Rectangle = Rectangle { x, y, width: w, height: h };
-
 fn color(r: i32, g: i32, b: i32, a: i32) -> Color = Color { r: r as u8, g: g as u8, b: b as u8, a: a as u8 };
 
-fn draw(g: &Game, world: &RaylibShader<View>, monster: &RaylibShader<Monster>, map: raylib::Texture) {
-    let whole = rect(0.0, 0.0, SIZE as f32, SIZE as f32);
-    let white = color(255, 255, 255, 255);
-    let origin = Vector2 { x: 0.0, y: 0.0 };
-    let image = gpu::Texture::from(map);
-
-    // The halls: one rectangle over the whole screen, a ray through each pixel.
-    world.begin(&View {
-        pos: g.pos, dir: g.dir, plane: g.plane, map: image,
-        time: g.time, hurt: g.hurt, flash: g.flash,
-    });
-    draw_texture_pro(map, whole, rect(0.0, 0.0, W as f32, H as f32), origin, 0.0, white);
-    end_shader_mode();
-
-    // Monsters, furthest first so nearer ones cover them.
-    let mut drawn = [false; MONSTERS];
-    for _ in 0..MONSTERS {
-        let mut far: usize = MONSTERS;
-        let mut depth = 0.0;
-        for i in 0..MONSTERS {
-            let d = to_camera(g, g.enemies[i].pos).y;
-            if !drawn[i] && (far == MONSTERS || d > depth) {
-                far = i;
-                depth = d;
-            }
-        }
-        if far >= MONSTERS {
-            break;
-        }
-        drawn[far] = true;
-        let e = g.enemies[far];
-        let c = to_camera(g, e.pos);
-        if c.y < 0.2 || e.dying >= 1.0 {
-            continue;
-        }
-        let x = (W as f32 / 2.0) * (1.0 + c.x / c.y);
-        let tall = H as f32 / c.y;
-        let size = tall * 0.8;
-        let left = x - size / 2.0;
-        let top = H as f32 / 2.0 + tall / 2.0 - size;
-        monster.begin(&Monster {
-            pos: g.pos, dir: g.dir, plane: g.plane, map: image,
-            time: g.time + far as f32, flash: g.flash,
-            depth: c.y,
-            left: left / W as f32, width: size / W as f32,
-            pain: e.pain, dying: e.dying,
-        });
-        draw_texture_pro(map, whole, rect(left, top, size, size), origin, 0.0, white);
-        end_shader_mode();
+/// What the shader draws this frame.
+fn scene(g: &Game) -> Scene {
+    let mut monsters = [vec4(0.0, 0.0, 0.0, 1.0); MONSTERS];
+    for i in 0..MONSTERS {
+        let e = g.enemies[i];
+        monsters[i] = vec4(e.pos.x, e.pos.y, e.pain, e.dying);
     }
+    Scene {
+        camera: g.camera,
+        map: g.level.texture,
+        monsters,
+        aspect: W as f32 / H as f32,
+        time: g.time,
+        hurt: g.hurt,
+        flash: g.flash,
+    }
+}
+
+/// The gun and what's written over the halls.
+fn hud(g: &Game) {
+    let white = color(255, 255, 255, 255);
 
     // The gun, kicking back as it fires.
     let kick = g.flash * 30.0;
@@ -326,25 +266,32 @@ fn main() {
     set_target_fps(60);
     disable_cursor();
 
-    let world: RaylibShader<View> = gpu::Shader::fragment(world);
-    let monster: RaylibShader<Monster> = gpu::Shader::fragment(monster);
-    let mut g = new_game();
-    let map = map_texture(&g);
+    // The shader: written below, where it's drawn.
+    let mut world = RaylibShader::empty();
+    let mut map = level();
+    load_grid(&mut map);
+    let mut g = new_game(map);
 
     while !window_should_close() {
         if is_key_pressed(KeyboardKey::R as i32) {
-            g = new_game();
+            let mut map = level();
+            load_grid(&mut map);
+            unload_grid(&mut g.level);
+            g = new_game(map);
         }
         update(&mut g, get_frame_time());
         begin_drawing();
         clear_background(color(0, 0, 0, 255));
-        draw(&g, &world, &monster, map);
+        // The halls and every monster, a pixel at a time on the GPU: the closure is the
+        // shader, and what it captures, `s`, its uniforms.
+        let s = scene(&g);
+        world.fullscreen((frag: Fragment) => halls(frag, &s));
+        hud(&g);
         draw_fps(10, 10);
         end_drawing();
     }
 
     drop(world);
-    drop(monster);
-    unload_texture(map);
+    unload_grid(&mut g.level);
     close_window();
 }

@@ -185,6 +185,15 @@ impl<N: usize, T: Divide + Copy> Divide for Vector<N, T> {
     }
 }
 
+/// Each component divided by `by`.
+impl<N: usize, T: Divide + Copy> Divide<T> for Vector<N, T> {
+    fn divide(&self, by: &T) -> Self {
+        let mut c = self.components;
+        @for i in 0..N { c[i] = c[i] / *by; }
+        Vector { components: c }
+    }
+}
+
 /// Each is GLSL's own in a shader.
 impl<N: usize> Vector<N, f32> {
     /// The components multiplied pairwise and added up.

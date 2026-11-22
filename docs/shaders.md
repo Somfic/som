@@ -1,16 +1,39 @@
 # Shaders
 
-*Status (2026-11-20): `@fragment` shaders compile to GLSL 3.30 and run through raylib
-(`example/shader`). `@vertex` is parsed but not compiled yet. WGSL/wgpu is planned.*
+*Status (2026-11-21): `@fragment` shaders, and closures written as shaders, compile to GLSL
+3.30 and run through raylib (`example/main.som`, `example/shader`, `example/shooter`).
+`@vertex` is parsed but not compiled yet. WGSL/wgpu is planned.*
 
-A shader is an ordinary som function with `@fragment` (or `@vertex`) on the line above it.
-`@glsl(name)` compiles it, and everything it calls, for the GPU while compiling, giving its
-source as a `string`. The function is still a normal function, so it runs and can be
-tested on the CPU too.
+A shader is ordinary som code that runs on the GPU for each pixel: a closure that takes a
+`Fragment`, written where it's drawn, or a function marked `@fragment`. It's compiled for
+the GPU while compiling, everything it calls with it, and it still runs (and can be tested)
+on the CPU.
+
+## A closure: what it captures are its uniforms
 
 ```som
-use som::gpu;
+let mut shader = RaylibShader::empty();
+while !window_should_close() {
+    let time = get_time() as f32;
+    shader.fullscreen((frag: Fragment) => vec4(frag.uv.x, 0.5 + 0.5 * time.sin(), 0.0, 1.0));
+}
+```
 
+The closure is the shader; `time`, which it captures, is a uniform named `time`, set from
+each frame's closure. There's no struct of uniforms to write and nothing to set by hand: a
+capture is a uniform by its name, and one that's a struct of the program's own is set field
+by field (`scene.camera.pos`). Captures have to copy, since each is a value for the GPU:
+`let camera = g.camera;` before the closure, not `g.camera` inside it (which would capture
+all of `g`); capturing what doesn't copy is an error that says so.
+
+Each closure written out is its own shader (its own type), compiled once. raylib's adapter
+loads it the first time it's drawn, which is why `RaylibShader::empty()` is written before
+the loop and the closure inside it. `gpu::Shader::closure(&c)` makes the `gpu::Shader` of
+one.
+
+## A `@fragment` function and a struct of uniforms
+
+```som
 struct Uniforms { pub time: f32, pub tint: Vec4 }
 
 @fragment
@@ -19,26 +42,29 @@ fn stripes(frag: Fragment, u: &Uniforms) -> Vec4 {
     vec4(u.tint.rgb * k, 1.0)
 }
 
-fn main() {
-    // …
-    let shader: RaylibShader<Uniforms> = gpu::Shader::fragment(stripes);
-    shader.set(&Uniforms { time, tint });
-    begin_shader_mode(shader.raw);
-    // …
-}
+let mut shader: RaylibShader<Uniforms> = gpu::Shader::fragment(stripes);
+shader.fullscreen(Uniforms { time, tint });   // or shader.draw(rect, u)
 ```
+
+`@glsl(stripes)` is its source as a constant. Every `@fragment` function is compiled for the
+GPU, used or not, so `som check` reports a broken one.
 
 ## `gpu::Shader<U>`
 
-`gpu::Shader::fragment(stripes)` makes a `Shader<U>` from the shader itself: `U` is worked
-out from its signature, `glsl` is its source (made while compiling: `glsl(f)` costs nothing
-when it runs, and `@glsl(f)` is the same as a constant), and `uniforms` are `U`'s field names
-(`@name(f)`). `shader.each(&u, (i, value) => …)` calls back with each field's index and
-value as a `gpu::Uniform` (`Float`, `Int`,
-`Bool`, `Vec2`–`Vec4`), written out per field while compiling: no list, no loop. Nothing in it knows about a graphics library: an
-adapter loads `glsl`, looks up each uniform by name once, and sets them from `each`.
-`example/shader/raylib_shader.som` is raylib's, as `impl From<gpu::Shader<U>> for
-RaylibShader<U>`, so a `gpu::Shader` becomes one wherever one is expected.
+A `Shader<U>` is a shader's GLSL (`glsl`, made while compiling: `glsl(f)` costs nothing when
+it runs) and the type of its uniforms, `U`: a struct, or the closure. `shader.each(&u, (i,
+name, value) => …)` calls back with each uniform's index, its name as the GPU has it (a
+`cstr`), and its value as a `gpu::Uniform` (`Float`, `Int`, `Bool`, `Vec2`–`Vec4`, `Texture`,
+or `Numbers` for an array or an `i32` vector). It's `gpu::each_uniform`, whose body the
+compiler writes for each `U` (`crates/compiler/6-lower/src/uniforms.rs`): a struct's fields,
+going into the program's own structs among them, or a closure's captures; each value made
+with `Uniform::from(&field)`. No list, no loop. Nothing in it knows about a graphics library:
+an adapter loads `glsl` and sets each uniform by name, from `each`.
+`example/shader/raylib_shader.som` is raylib's (`impl From<gpu::Shader<U>> for
+RaylibShader<U>`, or `RaylibShader::empty()` for a closure). It draws with
+`shader.fullscreen(u)` (the whole screen, `frag.uv` from 0 to 1 across it) or
+`shader.draw(rect, u)`, looks up each uniform's location by name as it sets it, and loads a
+`gpu::Grid` with `load_grid`.
 
 The uniforms' fields have to be `pub` for now: `each` reads them from the standard library.
 
@@ -68,13 +94,47 @@ graphics library's `id`. raylib's adapter turns a raylib texture into one (`From
 it with `SetShaderValueTexture`; it has to be set after `begin_shader_mode`, which starts a
 new batch, so the adapter's `shader.begin(&uniforms)` does both.
 
+## Uniform structs and arrays
+
+A uniform can be a struct of the program's own (not generic, not the standard library's) whose
+fields are uniforms too: GLSL's `uniform Camera camera;`, set field by field (`camera.pos`).
+The same `Camera` can be the game's own state, passed as it is. One holding a texture is
+declared with it (`struct Material_uniform { sampler2D image; vec4 tint; }`) and made without
+it for the shader to pass around, since GLSL can't make a struct holding a sampler; reading
+the texture, there or in a helper given the struct, reads the uniform, `material.image`. A
+struct the uniforms hold twice can't have its texture read, which is said where it's read.
+
+A uniform can also be an array of numbers or `f32` vectors, `[f32; 16]` or `[Vec4; 8]`:
+GLSL's `uniform vec4[8] monsters;`, set at once from a pointer (`Uniform::Numbers`, raylib's
+`SetShaderValueV`), and looped over in the shader with `for i in 0..u.monsters.len`. Two to
+four numbers are a vector, `[f32; 3]` a `vec3` and `[i32; 3]` an `ivec3`.
+
+## Grids: the same data on both sides
+
+`gpu::Grid` is a grid of numbers from 0 to 255, `Grid::of(w, h, &cells)`, kept on the CPU and
+loaded onto the GPU as `grid.texture` (raylib's adapter: `load_grid(&mut grid)`, a pixel per
+cell, the number its red). Both a `Grid` and a `Texture` are `gpu::Cells`, with `cell(x, y)`
+(0 outside), so code written for any `M: gpu::Cells` runs on both:
+
+```som
+fn raycast<M: gpu::Cells>(map: &M, pos: Vec2, ray: Vec2) -> Hit { … map.cell(x, y) … }
+
+raycast(&g.level, a, dir)          // the game: line of sight, against its Grid
+raycast(&u.map, u.camera.pos, ray) // the shader: the same function, on the texture
+```
+
+On the GPU, a texture's `cell` is `texelFetch` (`gl::texelFetch`, `gl::textureSize`); on the
+CPU, only a `Grid` has cells to read. `example/shooter` draws and collides with one level this
+way.
+
 ## A fragment shader
 
 - Takes a `Fragment` (`uv`, `color`, `position`), a `&` to a struct of uniforms, or both.
 - Gives a `Vector<4, f32>`: the pixel's colour.
-- Each field of the uniforms struct is a GLSL `uniform` **with the field's name**, so the
-  host sets it by that name. A field is an `f32`, `i32`, `u32`, `bool`, or a `Vector` of 2 to 4
-  of those.
+- Each field of the uniforms struct (or capture of the closure) is a GLSL `uniform` **with
+  its name**, so the host sets it by that name. It's an `f32`, `i32`, `bool`, a `Vector` or
+  array of 2 to 4 `f32`s or `i32`s, an array of numbers or `f32` vectors, a `Texture`, or a
+  struct of the program's own holding those.
 - Names match raylib's default shaders (`fragTexCoord`, `fragColor`, `finalColor`), so a
   som fragment shader works with raylib's own vertex shader.
 

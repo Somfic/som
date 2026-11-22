@@ -70,6 +70,8 @@ pub struct Reflected {
     /// `v`, or `(i, v)`.
     pub names: Vec<Ident>,
     pub of: Path,
+    /// `@for f in @leaves(T)`: into the fields of the program's own structs too.
+    pub leaves: bool,
     /// Between the braces.
     pub body: Span,
     pub into: ReflectedInto,

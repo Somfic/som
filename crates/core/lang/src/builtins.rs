@@ -13,6 +13,7 @@ named_enum! {
         Vertex = "@vertex",
         Fragment = "@fragment",
         Name = "@name",
+        Leaves = "@leaves",
     }
 }
 
@@ -67,6 +68,11 @@ impl Builtin {
             Builtin::Name => {
                 "In `@for f in T { … }`: the name of field `f` (or of variant `v`, going through \
                  an enum) as text, `\"x\"`. `print(\"{@name(f)} = {p.f}\")` shows each field."
+            }
+            Builtin::Leaves => {
+                "In `@for f in @leaves(T) { … }`: `T`'s fields, going into those that are structs \
+                 of the program's own (not the standard library's), so `f` is `camera.pos` and \
+                 `@name(f)` is `\"camera.pos\"`. What a shader's uniforms are set from."
             }
             Builtin::Where => return None,
         })

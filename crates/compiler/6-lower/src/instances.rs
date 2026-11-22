@@ -179,7 +179,12 @@ impl<'a> Lowerer<'a> {
             is_entry,
             variadic: ast_func.variadic,
         });
-        if ast_func.body.is_some() {
+        let each_uniform = self.names.lang_func(som_lang::LangFunc::EachUniform) == Some(def);
+        if let (true, [uniforms, set]) = (each_uniform, &type_args[..]) {
+            let span = self.ast.funcs.span(func).clone();
+            let body = self.each_uniform_body(*uniforms, *set, span);
+            self.mir.funcs[id].body = Some(body);
+        } else if ast_func.body.is_some() {
             self.queue.push((id, Job::Func(func, type_args.clone())));
         }
         if let Some(stage) = ast_func.stage {
@@ -191,8 +196,13 @@ impl<'a> Lowerer<'a> {
         }
         if self.names.lang_func(som_lang::LangFunc::Glsl) == Some(def) {
             // The shader as it's compiled for the GPU: its `@if GPU`s take the GPU's branch.
-            let entry = match type_args.first().map(|&t| self.mir.types.get(t).clone()) {
-                Some(Ty::FnItem(shader, args)) => match self.names.def(shader).kind {
+            // A closure, or a `&` to one: its body, a fragment shader taking its captures.
+            let mut given = type_args.first().copied();
+            while let Some(Ty::Ref { to, .. }) = given.map(|t| self.mir.types.get(t).clone()) {
+                given = Some(to);
+            }
+            let entry = match given.map(|t| (t, self.mir.types.get(t).clone())) {
+                Some((_, Ty::FnItem(shader, args))) => match self.names.def(shader).kind {
                     DefKind::Func(shader) => {
                         let outer = self.set_gpu(true);
                         let entry = self.instance(shader, args);
@@ -201,6 +211,17 @@ impl<'a> Lowerer<'a> {
                     }
                     _ => None,
                 },
+                Some((closure, Ty::Struct(def, _)))
+                    if matches!(self.names.def(def).kind, DefKind::Closure(_)) =>
+                {
+                    let outer = self.set_gpu(true);
+                    let entry = self.closure_instance(closure);
+                    self.set_gpu(outer);
+                    if let Some(entry) = entry {
+                        self.mir.stages.entry(entry).or_insert(som_lang::Stage::Fragment);
+                    }
+                    entry
+                }
                 _ => None,
             };
             self.mir.glsl.insert(id, entry);

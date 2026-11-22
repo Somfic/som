@@ -21,6 +21,7 @@ mod rvalue;
 mod stmt;
 mod testing;
 mod traits;
+mod uniforms;
 
 use instances::Subst;
 use som_ast::{Ast, Func, Id, Item, Span, Stmt};

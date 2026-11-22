@@ -122,6 +122,8 @@ named_enum! {
         Fragment = "Fragment",
         /// An image on the GPU a shader samples: a `sampler2D`.
         Texture = "Texture",
+        /// A uniform's value, as `gpu::each_uniform` gives it to the host.
+        Uniform = "Uniform",
     }
 }
 
@@ -136,6 +138,9 @@ named_enum! {
         CollectInto = "collect_into",
         /// `@glsl(shader)`: a shader function's source for the GPU, made while compiling.
         Glsl = "glsl",
+        /// `gpu::each_uniform(&u, set)`: written by the compiler for each type of uniforms,
+        /// a struct or a shader closure.
+        EachUniform = "each_uniform",
     }
 }
 

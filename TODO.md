@@ -139,9 +139,20 @@ needed by the `@gpu` work too.
 From writing `example/shooter` (a raycasting shooter, 2026-11-21), what made shaders harder than they should be:
 
 - [x] A texture uniform before other uniforms shifted the later fields' indexes (translator panic); `Vec4` lost `.r` to a doc comment in std.
-- [ ] One level, two copies: an `[i32; 256]` for collision and a texture for the shaders, kept in step by hand. Something like `gpu::Grid<T>` (CPU array + GPU texture) would let one `raycast` serve both the game and the shader.
-- [ ] A per-monster draw: uniforms can't be arrays/lists, so each monster is its own `begin`/draw/`end`. Uniform arrays (`[Vec4; 16]`, or a `List` as a buffer) would let one pass draw them all.
-- [ ] Full-screen and sprite passes need a dummy `draw_texture_pro` for uvs from 0 to 1: add `shader.fullscreen(&u)` / `shader.draw(rect, &u)` to the adapter.
-- [ ] Two uniform structs repeat the camera (`pos`, `dir`, `plane`, `map`): uniforms can't nest structs yet.
+- [x] One level for both sides: `gpu::Grid` (CPU cells, loaded as a texture), `gpu::Cells` for `Grid` and `Texture`, so one generic `raycast` serves the game and the shader (2026-11-21).
+- [x] Uniform arrays of `f32` vectors (`[Vec4; 8]`, `Uniform::Vectors`): the shooter draws every monster in its one pass (2026-11-21).
+- [x] raylib adapter: `shader.fullscreen(&u)`, `shader.draw(rect, &u)`, `load_grid`/`unload_grid` (2026-11-21).
+- [x] Uniforms nest the program's own structs (`camera: Camera`), set field by field through `@for f in @leaves(U)` (2026-11-21).
+- [x] Uniform arrays of numbers (`[f32; 16]`, `[i32; 16]`) and `i32` vectors, `Uniform::Numbers`; `From<&[f32; N]>` picks with `@if N >= 2 && N <= 4` (2026-11-21).
+- [x] A texture in a nested uniform struct: declared as `<Struct>_uniform` with its sampler, made without it, read as `material.image` (2026-11-21).
+- [x] Shaders as closures: captures are the uniforms (`gpu::Shader::closure`, `RaylibShader::empty()` + `fullscreen(closure)`); `gpu::each_uniform`'s body is written by lowering for each struct or closure, names and all (2026-11-21).
+- [ ] Arrays of structs as uniforms; a texture in a struct the uniforms hold twice.
+- [ ] raylib's adapter calls `get_shader_location` for each uniform as it sets it (each closure can't keep a cache: closures only read). Cache once closures can change what they capture, or `each` can hand back a location.
+- [ ] A shader closure's parameter needs its type written, `(frag: Fragment) =>`, since `RaylibShader::empty()`'s `U` isn't known yet.
+- [ ] Calling `each` with the old two-parameter callback says "can't match an unknown type" about the `match` inside, not that the callback takes three.
+- [ ] Capturing `g.camera` inside a shader closure captures all of `g` (an error, as it doesn't copy); capturing paths, or a hint naming the field, would read better.
+- [ ] `@leaves` decides "the program's own struct" by name while parsing; two structs with one name in different modules (neither the field's) aren't gone into.
+- [ ] `Grid` cells are 0 to 255 (a pixel's red); wider values would need a float or integer texture.
+- [ ] Printing a `Vector` (`"{v}"`) panics in lowering ("no implementation of trait method `display_len`") rather than saying it can't be shown.
 - [ ] Captured variables as uniforms (`gpu::fragment((frag) => … g.pos …)`) would remove the uniforms structs altogether.
 - [ ] `i32` has no `min`/`max`/`clamp`.

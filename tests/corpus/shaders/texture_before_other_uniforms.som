@@ -14,6 +14,6 @@ fn shaded(frag: Fragment, u: &Uniforms) -> Vec4 {
 
 fn main() -> i32 {
     let shader = gpu::Shader::fragment(shaded);
-    if shader.uniforms.len != 3 { return 1; }
+    if shader.glsl.len == 0 { return 1; }
     0
 }

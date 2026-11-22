@@ -498,16 +498,30 @@ impl Body<'_> {
                 Projection::Field(0) if t.vector(ty).is_some() => {
                     ty = t.mir.project(ty, Projection::Field(0)).expect("validated MIR");
                 }
-                // A texture among the uniforms is a GLSL uniform of its own: by its name.
+                // A texture among the uniforms is read from the GLSL uniform: by its name, or
+                // its path, `camera.sky`, in a struct among them.
                 Projection::Field(index)
-                    if Some(ty) == t.uniforms
+                    if t.uniform_paths.contains_key(&ty)
                         && (t.mir.project(ty, Projection::Field(index)))
                             .is_some_and(|f| t.is_lang(f, LangStruct::Texture)) =>
                 {
                     let Ty::Struct(def, args) = t.mir.types.get(ty) else {
                         unreachable!("uniforms are a struct")
                     };
-                    text = t.mir.struct_def(*def, args).fields[index].0.clone();
+                    let name = t.mir.struct_def(*def, args).fields[index].0.clone();
+                    let Some(prefix) = t.uniform_paths[&ty].clone() else {
+                        return Err(Problem {
+                            message: msg![
+                                "the uniforms hold ",
+                                code(t.display(ty)),
+                                " more than once, so its texture isn't in one place"
+                            ],
+                            span: self.span.clone(),
+                            label: msg!["its ", code(&name), " is read here"],
+                            hint: Some("hold the texture once, in a struct of its own or among the uniforms".into()),
+                        });
+                    };
+                    text = format!("{prefix}{name}");
                     ty = t.mir.project(ty, Projection::Field(index)).expect("validated MIR");
                 }
                 Projection::Field(index) => {

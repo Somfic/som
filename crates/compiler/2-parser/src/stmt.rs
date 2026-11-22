@@ -282,11 +282,12 @@ impl Parser<'_> {
         let span = self.span_from(&start);
         let hole = self.ast.exprs.alloc(Expr::Hole, span.clone());
         let stmt = self.ast.stmts.alloc(Stmt::Expr(hole), span);
-        if let Some((names, of, body)) = found {
+        if let Some((names, of, leaves, body)) = found {
             self.ast.reflected.push(som_ast::Reflected {
                 module: self.module,
                 names,
                 of,
+                leaves,
                 body,
                 into: som_ast::ReflectedInto::Stmts { stmt },
             });

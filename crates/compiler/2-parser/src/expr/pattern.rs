@@ -55,11 +55,12 @@ impl Parser<'_> {
             "a closing brace after the match arms",
         )?;
         let id = self.alloc_expr(Expr::Match { scrutinee, arms }, &start);
-        for (at, (names, of, body)) in reflected {
+        for (at, (names, of, leaves, body)) in reflected {
             self.ast.reflected.push(Reflected {
                 module: self.module,
                 names,
                 of,
+                leaves,
                 body,
                 into: ReflectedInto::Arms { expr: id, at },
             });

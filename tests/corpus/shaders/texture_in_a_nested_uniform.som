@@ -1,0 +1,40 @@
+// expect: exit 0
+
+/// A texture in a struct among the uniforms: the uniform is declared holding it, as
+/// `sampler2D`, and the struct the shader passes around without it. Reading it, here or in
+/// a helper given the struct, reads the uniform: `material.image`.
+use som::gpu;
+
+struct Material { pub image: gpu::Texture, pub tint: Vec4 }
+
+struct Uniforms { pub material: Material, pub time: f32 }
+
+fn shade(m: &Material, uv: Vec2) -> Vec4 {
+    m.image.sample(uv) * m.tint
+}
+
+@fragment
+fn painted(frag: Fragment, u: &Uniforms) -> Vec4 {
+    shade(&u.material, frag.uv) * u.time
+}
+
+fn main() -> i32 {
+    let shader = gpu::Shader::fragment(painted);
+    let names = ["material.image", "material.tint", "time"];
+    let u = Uniforms {
+        material: Material { image: gpu::Texture { id: 3, width: 1, height: 1 }, tint: vec4(1.0, 1.0, 1.0, 1.0) },
+        time: 1.0,
+    };
+    shader.each(&u, (i, name, value) => {
+        let expected = names.get(i) else @unreachable;
+        assert(string::from_c(name) == expected);
+        let fits = match value {
+            gpu::Uniform::Texture(t) => i == 0 && t.id == 3,
+            gpu::Uniform::Vec4(_) => i == 1,
+            gpu::Uniform::Float(_) => i == 2,
+            _ => false,
+        };
+        assert(fits);
+    });
+    0
+}

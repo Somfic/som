@@ -1,0 +1,63 @@
+// expect: exit 0
+
+/// Uniforms can hold a struct of the program's own, which is a GLSL struct uniform set by
+/// each of its fields (`camera.pos`), and arrays of vectors and of numbers, set all at once.
+/// Two to four numbers are a vector, `ivec3`.
+use som::gpu;
+
+struct Camera { pub pos: Vec2, pub dir: Vec2 }
+
+struct Uniforms {
+    pub camera: Camera,
+    pub time: f32,
+    pub lights: [Vec4; 3],
+    pub weights: [f32; 6],
+    pub cell: [i32; 3],
+}
+
+fn brightness(u: &Uniforms, at: Vec2) -> f32 {
+    let mut sum = 0.0;
+    for i in 0..u.lights.len {
+        let light = u.lights[i];
+        sum += light.w * u.weights[i] / (1.0 + (at - light.xy).length);
+    }
+    sum + u.cell[2] as f32
+}
+
+@fragment
+fn lit(frag: Fragment, u: &Uniforms) -> Vec4 {
+    let at = u.camera.pos + u.camera.dir * frag.uv.x;
+    vec4(vec3(1.0, 1.0, 1.0) * brightness(u, at) * u.time, 1.0)
+}
+
+fn main() -> i32 {
+    let shader = gpu::Shader::fragment(lit);
+    let names = ["camera.pos", "camera.dir", "time", "lights", "weights", "cell"];
+    let lights = [vec4(0.0, 0.0, 0.0, 1.0), vec4(1.0, 0.0, 0.0, 1.0), vec4(0.0, 1.0, 0.0, 2.0)];
+    let u = Uniforms {
+        camera: Camera { pos: vec2(0.0, 0.0), dir: vec2(1.0, 0.0) },
+        time: 1.0,
+        lights,
+        weights: [1.0, 1.0, 0.5, 0.0, 0.0, 0.0],
+        cell: [1, 2, 3],
+    };
+    shader.each(&u, (i, name, value) => {
+        let expected = names.get(i) else @unreachable;
+        assert(string::from_c(name) == expected);
+        match value {
+            gpu::Uniform::Numbers(n) => {
+                let fits = (i == 3 && n.size == 4 && n.count == 3 && !n.ints)
+                    || (i == 4 && n.size == 1 && n.count == 6 && !n.ints)
+                    || (i == 5 && n.size == 3 && n.count == 1 && n.ints);
+                assert(fits);
+            }
+            gpu::Uniform::Vec2(_) => assert(i < 2),
+            gpu::Uniform::Float(_) => assert(i == 2),
+            _ => assert(false),
+        }
+    });
+    // On the CPU too.
+    let c = lit(gpu::Fragment { uv: vec2(0.5, 0.5), color: vec4(1.0, 1.0, 1.0, 1.0), position: vec4(0.0, 0.0, 0.0, 0.0) }, &u);
+    if c.r <= 0.0 { return 3; }
+    0
+}

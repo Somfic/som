@@ -8,6 +8,10 @@ use som::gpu;
 extern "glsl" {
     /// Texture `sampler`'s colour at `uv`. Fragment shaders only.
     pub fn texture(sampler: &gpu::Texture, uv: Vector<2, f32>) -> Vector<4, f32>;
+    /// Texture `sampler`'s pixel at column and row `at`, of mipmap level `lod`, unfiltered.
+    pub fn texelFetch(sampler: &gpu::Texture, at: [i32; 2], lod: i32) -> Vector<4, f32>;
+    /// How many pixels across and down texture `sampler`'s mipmap level `lod` is.
+    pub fn textureSize(sampler: &gpu::Texture, lod: i32) -> [i32; 2];
     pub fn sin(x: f32) -> f32;
     pub fn cos(x: f32) -> f32;
     pub fn tan(x: f32) -> f32;

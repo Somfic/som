@@ -1,0 +1,43 @@
+// expect: exit 0
+
+/// A `gpu::Grid` on the CPU and the `Texture` it's loaded into on the GPU are both `Cells`,
+/// so code written for any `M: Cells` runs on both: here the game's own count and the
+/// shader's.
+use som::gpu;
+
+struct Uniforms { pub map: gpu::Texture }
+
+/// How many of the cells in row `y`, up to column `width`, are walls.
+fn walls<M: gpu::Cells>(map: &M, y: i32, width: i32) -> i32 {
+    let mut n = 0;
+    for x in 0..width {
+        if map.cell(x, y) != 0 {
+            n += 1;
+        }
+    }
+    n
+}
+
+@fragment
+fn rows(frag: Fragment, u: &Uniforms) -> Vec4 {
+    let y = (frag.uv.y * 4.0) as i32;
+    let k = walls(&u.map, y, 4) as f32 / 4.0;
+    vec4(k, k, k, 1.0)
+}
+
+fn main() -> i32 {
+    let level = gpu::Grid::of(4, 3, &[
+        1, 1, 1, 1,
+        1, 0, 0, 1,
+        1, 1, 1, 1,
+    ]);
+    if walls(&level, 0, 4) != 4 { return 1; }
+    if walls(&level, 1, 4) != 2 { return 2; }
+    if level.cell(9, 9) != 0 || level.cell(-1, 0) != 0 { return 3; }
+    let mut changed = gpu::Grid::new(2, 2);
+    changed.set(1, 1, 200);
+    if changed.cell(1, 1) != 200 || changed.cell(0, 0) != 0 { return 4; }
+    let shader = gpu::Shader::fragment(rows);
+    if shader.glsl.len == 0 { return 5; }
+    0
+}

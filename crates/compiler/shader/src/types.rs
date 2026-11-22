@@ -177,7 +177,7 @@ impl Translator<'_> {
         };
         // The uniforms' textures are uniforms of their own.
         // Numbered first: an index is among all the MIR fields.
-        let textures_apart = Some(ty) == self.uniforms;
+        let textures_apart = self.uniform_paths.contains_key(&ty);
         Ok(fields
             .into_iter()
             .enumerate()

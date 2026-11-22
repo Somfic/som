@@ -2,28 +2,48 @@ use extern "raylib";
 use som::mem;
 use som::gpu;
 
-/// A shader for the GPU, `som::gpu::Shader<U>`, loaded into raylib: made from one wherever
-/// one is given, `let s: RaylibShader<Uniforms> = gpu::Shader::fragment(stripes);`.
+/// A shader for the GPU, `som::gpu::Shader<U>`, loaded into raylib. Made from one wherever
+/// one is given, `let s: RaylibShader<Uniforms> = gpu::Shader::fragment(stripes);`, or for a
+/// shader written as a closure, `RaylibShader::empty()`, loaded the first time it draws.
 pub struct RaylibShader<U> {
     /// What raylib calls it: for `begin_shader_mode`.
     pub raw: raylib::Shader,
-    /// Where each uniform is, in `shader.uniforms`' order.
-    locations: List<i32>,
+    loaded: bool,
     shader: gpu::Shader<U>,
+    /// A white pixel, drawn stretched by `fullscreen` and `draw`: its `uv`s go from 0 to 1.
+    blank: raylib::Texture,
 }
 
 impl<U> From<gpu::Shader<U>> for RaylibShader<U> {
     fn from(shader: gpu::Shader<U>) -> RaylibShader<U> {
-        let raw = load_shader_from_memory(null() as cstr, shader.glsl.c_str);
-        let mut locations: List<i32> = List::empty();
-        for name in &shader.uniforms {
-            locations.push(get_shader_location(raw, name.c_str));
-        }
-        RaylibShader { raw, locations, shader }
+        let mut loaded = RaylibShader::empty();
+        loaded.load(shader);
+        loaded
     }
 }
 
 impl<U> RaylibShader<U> {
+    /// Nothing loaded yet: a shader written as a closure is, the first time it's drawn,
+    /// `shader.fullscreen((frag: Fragment) => …)`. Each closure written out is its own
+    /// shader, so one `RaylibShader` draws one.
+    pub fn empty() -> RaylibShader<U> {
+        RaylibShader {
+            raw: raylib::Shader { id: 0, locs: null() },
+            loaded: false,
+            shader: gpu::Shader { glsl: "" },
+            blank: raylib::Texture { id: 0, width: 0, height: 0, mipmaps: 0, format: 0 },
+        }
+    }
+
+    fn load(&mut self, shader: gpu::Shader<U>) {
+        self.raw = load_shader_from_memory(null() as cstr, shader.glsl.c_str);
+        let pixel = gen_image_color(1, 1, Color { r: 255, g: 255, b: 255, a: 255 });
+        self.blank = load_texture_from_image(pixel);
+        unload_image(pixel);
+        self.shader = shader;
+        self.loaded = true;
+    }
+
     /// Draws with it from here to `end_shader_mode()`, with `uniforms`. Set after raylib's
     /// `begin_shader_mode`, which starts a new batch and forgets the textures set before it.
     pub fn begin(&self, uniforms: &U) {
@@ -31,19 +51,40 @@ impl<U> RaylibShader<U> {
         self.set(uniforms);
     }
 
-    /// Sets every uniform, from `uniforms`. A texture only stays set until raylib starts a
-    /// new batch: inside `begin_shader_mode`, or use `begin`.
+    /// The shader over the whole screen, with `uniforms` (for a closure, the closure):
+    /// `frag.uv` goes from (0, 0) at the top left to (1, 1) at the bottom right.
+    pub fn fullscreen(&mut self, uniforms: U) {
+        let area = Rectangle { x: 0.0, y: 0.0, width: get_screen_width() as f32, height: get_screen_height() as f32 };
+        self.draw(area, uniforms);
+    }
+
+    /// The shader over `area` of the screen, with `uniforms` (for a closure, the closure):
+    /// `frag.uv` goes from (0, 0) at its top left to (1, 1) at its bottom right.
+    pub fn draw(&mut self, area: Rectangle, uniforms: U) {
+        if !self.loaded {
+            self.load(gpu::Shader::closure(&uniforms));
+        }
+        self.begin(&uniforms);
+        let whole = Rectangle { x: 0.0, y: 0.0, width: 1.0, height: 1.0 };
+        draw_texture_pro(self.blank, whole, area, Vector2 { x: 0.0, y: 0.0 }, 0.0, Color::WHITE);
+        end_shader_mode();
+    }
+
+    /// Sets every uniform, from `uniforms`, each by its name. A texture only stays set until
+    /// raylib starts a new batch: inside `begin_shader_mode`, or use `begin`.
     pub fn set(&self, uniforms: &U) {
-        self.shader.each(uniforms, (i, value) => {
-            let at = self.locations.get(i) else return;
-            set_uniform(self.raw, *at, value);
+        self.shader.each(uniforms, (i, name, value) => {
+            set_uniform(self.raw, get_shader_location(self.raw, name), value);
         });
     }
 }
 
 impl<U> Drop for RaylibShader<U> {
     fn drop(&mut self) {
-        unload_shader(self.raw);
+        if self.loaded {
+            unload_texture(self.blank);
+            unload_shader(self.raw);
+        }
     }
 }
 
@@ -58,16 +99,45 @@ fn set_uniform(shader: raylib::Shader, at: i32, value: gpu::Uniform) {
         gpu::Uniform::Vec2(v) => set_shader_value(shader, at, &v as *, ShaderUniformDataType::Vec2 as i32),
         gpu::Uniform::Vec3(v) => set_shader_value(shader, at, &v as *, ShaderUniformDataType::Vec3 as i32),
         gpu::Uniform::Vec4(v) => set_shader_value(shader, at, &v as *, ShaderUniformDataType::Vec4 as i32),
-        gpu::Uniform::Texture(t) => {
-            let texture = raylib::Texture { id: t.id, width: t.width, height: t.height, mipmaps: 1, format: 7 };
-            set_shader_value_texture(shader, at, texture);
+        gpu::Uniform::Texture(t) => set_shader_value_texture(shader, at, raw_texture(t)),
+        // raylib's types: `float` to `vec4`, then `int` to `ivec4`.
+        gpu::Uniform::Numbers(n) => {
+            let kind = if n.ints { 4 + n.size - 1 } else { n.size - 1 };
+            set_shader_value_v(shader, at, n.data, kind, n.count);
         }
     }
+}
+
+fn raw_texture(t: gpu::Texture) -> raylib::Texture {
+    raylib::Texture { id: t.id, width: t.width, height: t.height, mipmaps: 1, format: 7 }
 }
 
 /// A raylib texture as a shader's uniform: `Uniforms { image: texture }`.
 impl From<raylib::Texture> for gpu::Texture {
     fn from(texture: raylib::Texture) -> gpu::Texture {
         gpu::Texture { id: texture.id, width: texture.width, height: texture.height }
+    }
+}
+
+/// Loads `grid` onto the GPU, as `grid.texture`: a pixel per cell, its number the red. Again
+/// after changing it, for shaders to see the change.
+pub fn load_grid(grid: &mut gpu::Grid) {
+    unload_grid(grid);
+    let mut image = gen_image_color(grid.width, grid.height, Color { r: 0, g: 0, b: 0, a: 255 });
+    for y in 0..grid.height {
+        for x in 0..grid.width {
+            let red = grid.cell(x, y) as u8;
+            image_draw_pixel(&mut image, x, y, Color { r: red, g: 0, b: 0, a: 255 });
+        }
+    }
+    grid.texture = gpu::Texture::from(load_texture_from_image(image));
+    unload_image(image);
+}
+
+/// Takes `grid` off the GPU, if it's on it.
+pub fn unload_grid(grid: &mut gpu::Grid) {
+    if grid.texture.id != 0 {
+        unload_texture(raw_texture(grid.texture));
+        grid.texture.id = 0;
     }
 }

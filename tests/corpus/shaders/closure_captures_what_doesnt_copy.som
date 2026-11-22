@@ -1,0 +1,11 @@
+// expect: error
+
+/// A shader closure's captures are its uniforms, so each has to copy: a `List` can't be one.
+use som::gpu;
+
+fn main() {
+    let mut points: List<f32> = List::empty();
+    points.push(1.0);
+    let shade = (frag: Fragment) => vec4(frag.uv.x * points.len as f32, 0.0, 0.0, 1.0);
+    let shader = gpu::Shader::closure(&shade);
+}

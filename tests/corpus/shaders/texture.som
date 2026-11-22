@@ -18,8 +18,7 @@ fn wavy(frag: Fragment, u: &Uniforms) -> Vec4 {
 
 fn main() -> i32 {
     let shader = gpu::Shader::fragment(wavy);
-    if shader.uniforms.len != 2 { return 1; }
-    shader.each(&Uniforms { time: 1.0, image: gpu::Texture { id: 7, width: 2, height: 2 } }, (i, value) => {
+    shader.each(&Uniforms { time: 1.0, image: gpu::Texture { id: 7, width: 2, height: 2 } }, (i, name, value) => {
         let fits = match value {
             gpu::Uniform::Float(_) => i == 0,
             gpu::Uniform::Texture(t) => i == 1 && t.id == 7,

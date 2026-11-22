@@ -1,0 +1,23 @@
+// expect: exit 0
+
+/// `@for f in @leaves(T)` goes into the fields that are the program's own structs: `f` is
+/// `camera.zoom`, and `@name(f)` `"camera.zoom"`. The standard library's structs (`Vector`)
+/// are leaves. An index in text is its number.
+struct Camera { pub zoom: i32, pub at: Vec2 }
+struct View { pub camera: Camera, pub time: i32 }
+
+fn listed<T>(value: &T) -> string {
+    let mut text = "";
+    @for (i, f) in @leaves(T) { text = text + "{i}:{@name(f)};"; }
+    text
+}
+
+fn main() -> i32 {
+    let v = View { camera: Camera { zoom: 2, at: vec2(0.0, 0.0) }, time: 5 };
+    if listed(&v) != "0:camera.zoom;1:camera.at;2:time;" { return 1; }
+    // Each leaf read where it is.
+    let mut names = 0;
+    @for f in @leaves(View) { names = names + @name(f).len; }
+    if names != 11 + 9 + 4 { return 2; }
+    0
+}

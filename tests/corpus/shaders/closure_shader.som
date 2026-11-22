@@ -1,0 +1,40 @@
+// expect: exit 0
+
+/// A shader written as a closure that takes a `Fragment`: what it captures are its uniforms,
+/// by their names. `Shader::closure` compiles it; `each` gives each capture's value, from
+/// any value of that closure. It runs on the CPU too, as the closure it is.
+use som::gpu;
+
+struct Light { pub at: Vec2, pub color: Vec3 }
+
+impl Copy for Light {}
+
+fn glow(frag: Fragment, light: &Light, strength: f32) -> Vec4 {
+    let d = (frag.uv - light.at).length;
+    vec4(light.color * strength / (1.0 + d * 10.0), 1.0)
+}
+
+fn main() -> i32 {
+    let light = Light { at: vec2(0.5, 0.5), color: vec3(1.0, 0.5, 0.0) };
+    let strength = 2.0;
+    let shade = (frag: Fragment) => glow(frag, &light, strength);
+    let shader = gpu::Shader::closure(&shade);
+    if shader.glsl.len == 0 { return 1; }
+
+    let names = ["light.at", "light.color", "strength"];
+    shader.each(&shade, (i, name, value) => {
+        let expected = names.get(i) else @unreachable;
+        assert(string::from_c(name) == expected);
+        let fits = match value {
+            gpu::Uniform::Vec2(v) => i == 0 && v[0] == 0.5,
+            gpu::Uniform::Vec3(c) => i == 1 && c[1] == 0.5,
+            gpu::Uniform::Float(s) => i == 2 && s == 2.0,
+            _ => false,
+        };
+        assert(fits);
+    });
+
+    let c = shade(gpu::Fragment { uv: vec2(0.5, 0.5), color: vec4(1.0, 1.0, 1.0, 1.0), position: vec4(0.0, 0.0, 0.0, 0.0) });
+    if c.r != 2.0 { return 2; }
+    0
+}
