@@ -51,6 +51,10 @@ impl FnBuilder<'_, '_> {
 
     /// Stored in a temporary if it isn't a place already.
     pub(super) fn place_of(&mut self, expr: Id<Expr>) -> Place {
+        // A part of a variable the closure being built captures.
+        if let Some(place) = self.capture_uses.get(&expr) {
+            return place.clone();
+        }
         let ast = self.l.ast;
         match &ast.exprs[expr] {
             Expr::Var(path) if path.int_limit().is_none() => {

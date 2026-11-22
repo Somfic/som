@@ -40,6 +40,7 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
             current: Id::new(0),
             bindings: HashMap::new(),
             captures: HashMap::new(),
+            capture_uses: HashMap::new(),
             scopes: Vec::new(),
             loops: Vec::new(),
             reads: Vec::new(),

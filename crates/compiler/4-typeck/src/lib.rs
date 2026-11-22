@@ -105,14 +105,31 @@ pub struct Signature {
     pub ret: TypeId,
 }
 
-/// What an anonymous function takes and gives, and the variables around it it reads, each
-/// with its type: all in terms of the type parameters of `owner`, the function it's in.
+/// What an anonymous function takes and gives, and what it captures of the variables around
+/// it: all in terms of the type parameters of `owner`, the function it's in.
 #[derive(Clone, Debug)]
 pub struct ClosureSig {
     pub owner: Option<Id<som_ast::Func>>,
     pub params: Vec<TypeId>,
     pub ret: TypeId,
-    pub captures: Vec<(DefId, TypeId)>,
+    pub captures: Vec<Capture>,
+    /// The expressions in its body (nested closures' too) that read a capture: each is the
+    /// capture's field of the closure, `(expression, capture)`.
+    pub uses: Vec<(Id<Expr>, usize)>,
+}
+
+/// What a closure captures: a variable, or the part of one it reads, `g.camera`, when the
+/// variable doesn't copy and the part does (or is all it reads). Copied if it copies, and
+/// lent otherwise.
+#[derive(Clone, Debug)]
+pub struct Capture {
+    pub def: DefId,
+    /// The fields from the variable to what's captured: none for the variable itself.
+    pub path: Vec<Box<str>>,
+    pub ty: TypeId,
+    /// An expression in the closure reading it, `g.camera`: where the closure is made,
+    /// what's captured is that expression's place. `None` for the variable itself.
+    pub expr: Option<Id<Expr>>,
 }
 
 pub struct Typed {

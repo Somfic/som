@@ -36,9 +36,17 @@ impl<'a> Lowerer<'a> {
         };
         let sig = self.closure_sig(closure);
         let subst = self.closure_subst(closure, &args);
+        // Each named after what it captures: the variable, or the last field of the part,
+        // `camera` for `g.camera`; the whole path, `g_camera`, where two would share one or
+        // GLSL has the name (a shader's captures are its uniforms, by these names).
+        let short = |names: &som_resolve::Names, c: &som_typeck::Capture| match c.path.last() {
+            Some(last) => last.to_string(),
+            None => names.def(c.def).name.to_string(),
+        };
+        let shorts: Vec<String> = sig.captures.iter().map(|c| short(self.names, c)).collect();
         let mut fields = Vec::new();
-        for (captured, ty) in sig.captures {
-            let ty = subst.apply(&mut self.mir.types, ty);
+        for (i, capture) in sig.captures.iter().enumerate() {
+            let ty = subst.apply(&mut self.mir.types, capture.ty);
             self.make_structs_in(ty);
             let ty = match self.is_copy(ty) {
                 true => ty,
@@ -47,7 +55,18 @@ impl<'a> Lowerer<'a> {
                     to: ty,
                 }),
             };
-            fields.push((self.names.def(captured).name.to_string(), ty));
+            let unique = shorts.iter().filter(|s| **s == shorts[i]).count() == 1;
+            let mut name = match unique && !som_lang::glsl_reserved(&shorts[i]) {
+                true => shorts[i].clone(),
+                false => std::iter::once(self.names.def(capture.def).name.to_string())
+                    .chain(capture.path.iter().map(|p| p.to_string()))
+                    .collect::<Vec<_>>()
+                    .join("_"),
+            };
+            if som_lang::glsl_reserved(&name) {
+                name.push('_');
+            }
+            fields.push((name, ty));
         }
         self.mir.add_struct(StructDef {
             def,
@@ -137,16 +156,26 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         });
         let env = self.new_local(lent, None, false, span.clone());
         let fields = self.l.mir.struct_def(def, &self.args_of(this)).fields.clone();
-        for (index, ((captured, ty), (_, field_ty))) in sig.captures.iter().zip(&fields).enumerate() {
+        let mut places = Vec::new();
+        for (index, (capture, (_, field_ty))) in sig.captures.iter().zip(&fields).enumerate() {
             let mut place = Place::local(env)
                 .project(Projection::Deref)
                 .project(Projection::Field(index));
             // Lent, rather than copied: the field is a reference to it. A capture that is a
             // reference itself, `self`, is copied.
-            if *field_ty != self.ty(*ty) {
+            if *field_ty != self.ty(capture.ty) {
                 place = place.project(Projection::Deref);
             }
-            self.captures.insert(*captured, place);
+            if capture.path.is_empty() {
+                self.captures.insert(capture.def, place.clone());
+            }
+            places.push(place);
+        }
+        // A part of a variable, `g.camera`, wherever the body reads it.
+        for &(expr, index) in &sig.uses {
+            if !sig.captures[index].path.is_empty() {
+                self.capture_uses.insert(expr, places[index].clone());
+            }
         }
         let defs = self.l.names.closure_params(closure).to_vec();
         for ((param, def), &ty) in params.iter().zip(defs).zip(&sig.params) {
@@ -196,9 +225,13 @@ impl<'l, 'a> FnBuilder<'l, 'a> {
         let captured = self.l.closure_sig(closure).captures;
         let fields_tys = self.l.mir.struct_def(def, &args).fields.clone();
         let mut fields = Vec::new();
-        for ((def, captured_ty), (_, field_ty)) in captured.into_iter().zip(fields_tys) {
-            let place = self.variable(def).expect("captures are variables");
-            let captured_ty = self.ty(captured_ty);
+        for (capture, (_, field_ty)) in captured.into_iter().zip(fields_tys) {
+            // A part, `g.camera`: the place of an expression in the closure reading it, here.
+            let place = match capture.expr {
+                Some(expr) if !capture.path.is_empty() => self.place_of(expr),
+                _ => self.variable(capture.def).expect("captures are variables"),
+            };
+            let captured_ty = self.ty(capture.ty);
             // Lent when the field is a reference to it; copied, even a reference, otherwise.
             let operand = match field_ty == captured_ty {
                 true => Operand::Copy(place),

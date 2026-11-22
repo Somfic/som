@@ -535,6 +535,9 @@ struct FnBuilder<'l, 'a> {
     /// Inside a closure's body: where each variable it captures is, through its first
     /// parameter, the closure.
     captures: HashMap<DefId, Place>,
+    /// In a closure's body: the expressions reading a part of a variable it captures,
+    /// `g.camera`, each that capture's place.
+    capture_uses: HashMap<Id<som_ast::Expr>, Place>,
     /// The `let` locals of each enclosing scope.
     scopes: Vec<Vec<Local>>,
     loops: Vec<LoopTargets>,

@@ -22,9 +22,12 @@ while !window_should_close() {
 The closure is the shader; `time`, which it captures, is a uniform named `time`, set from
 each frame's closure. There's no struct of uniforms to write and nothing to set by hand: a
 capture is a uniform by its name, and one that's a struct of the program's own is set field
-by field (`scene.camera.pos`). Captures have to copy, since each is a value for the GPU:
-`let camera = g.camera;` before the closure, not `g.camera` inside it (which would capture
-all of `g`); capturing what doesn't copy is an error that says so.
+by field (`camera.pos`). Captures have to copy, since each is a value for the GPU. A closure
+captures the parts of a variable it reads when the variable itself doesn't copy, so
+`g.camera` and `g.level.texture` inside it capture those two (as uniforms `camera` and
+`g_level_texture`: the whole path where GLSL has the short name, or two would share it), not
+all of `g`. A part that doesn't copy is still lent, and an error says what to capture
+instead.
 
 Each closure written out is its own shader (its own type), compiled once. raylib's adapter
 loads it the first time it's drawn, which is why `RaylibShader::empty()` is written before

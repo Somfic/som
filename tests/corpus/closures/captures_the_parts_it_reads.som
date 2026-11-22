@@ -1,0 +1,28 @@
+// expect: exit 0
+
+/// A closure captures the parts of a variable it reads, when the variable doesn't copy:
+/// `g.speed`, copied, rather than all of `g`, lent. So `g` can still be changed, or moved,
+/// while the closure is used; it keeps the value it was made with.
+struct Game { speed: i32, score: i32, names: List<string> }
+
+fn main() -> i32 {
+    let mut g = Game { speed: 3, score: 1, names: List::empty() };
+    let step = (x: i32) => x * g.speed;
+    g.score = step(g.score);
+    g.score = step(g.score);
+    if g.score != 9 { return 1; }
+
+    // What doesn't copy is lent: only that part, so another part still changes.
+    g.names.push("a");
+    let count = () => g.names.len as i32;
+    g.score = count();
+    if g.score != 1 { return 2; }
+
+    // Two parts with one name, `a.x` and `b.x`, are two captures.
+    let a = Game { speed: 2, score: 0, names: List::empty() };
+    let b = Game { speed: 5, score: 0, names: List::empty() };
+    let both = () => a.speed * b.speed;
+    let moved = a;
+    if both() != 10 { return 3; }
+    0
+}

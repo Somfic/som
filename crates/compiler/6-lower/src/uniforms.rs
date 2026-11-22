@@ -213,6 +213,11 @@ impl Lowerer<'_> {
                 }
                 _ => field,
             };
+            // Below the top, a struct's member, as GLSL names it.
+            let name = match depth {
+                0 => name,
+                _ => som_lang::glsl_member(&name),
+            };
             self.uniform_leaves(field, &format!("{prefix}{name}."), at, out, depth + 1);
         }
     }

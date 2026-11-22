@@ -599,8 +599,8 @@ impl Checker<'_> {
                 for ty in sig.params.iter_mut().chain([&mut sig.ret]) {
                     *ty = self.u.finish(*ty, &mut ignore);
                 }
-                for (_, ty) in &mut sig.captures {
-                    *ty = self.u.finish(*ty, &mut ignore);
+                for capture in &mut sig.captures {
+                    capture.ty = self.u.finish(capture.ty, &mut ignore);
                 }
                 (expr, sig)
             })

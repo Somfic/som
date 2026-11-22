@@ -1,12 +1,12 @@
 // expect: error
 
 /// A closure lends what it captures that doesn't copy: it can't be moved while the closure
-/// is still used.
-struct Big { n: i32 }
+/// is still used. Here that's `big.items`, which `big` can't be moved away from.
+struct Big { items: List<i32> }
 
 fn main() -> i32 {
-    let big = Big { n: 3 };
-    let f = (k: i32) => big.n + k;
+    let big = Big { items: List::empty() };
+    let f = (k: i32) => big.items.len as i32 + k;
     let moved = big;
     f(1)
 }

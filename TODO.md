@@ -151,7 +151,7 @@ From writing `example/shooter` (a raycasting shooter, 2026-11-21), what made sha
 - [x] A shader closure's parameter type is inferred, `(frag) =>`: `RaylibShader::empty()` is in an impl bounded by `U: fn(Fragment) -> Vector<4, f32>`, which gives `U`'s variable that signature (2026-11-22).
 - [ ] Calling `each` with the old two-parameter callback says "can't match an unknown type" about the `match` inside, not that the callback takes three.
 - [x] Capturing `g` (which doesn't copy) in a shader closure: the error names the parts it reads that copy, `let camera = g.camera;` (2026-11-22).
-- [ ] Disjoint captures: a closure reading `g.camera` (which copies) captures a copy of it rather than lending all of `g`. Touches resolve (paths), typeck (which copy), lowering (closure fields, body rewrites, name clashes) and borrowck, for every closure.
+- [x] Disjoint captures, for every closure: one reading `g.camera` of a `g` that doesn't copy captures `g.camera` (the shortest part read that copies, else what's read, lent), so `g` can change while the closure lives. typeck works out the parts (`ClosureSig::captures`, `uses`); lowering reads each from its place (2026-11-22).
 - [ ] `@leaves` decides "the program's own struct" by name while parsing; two structs with one name in different modules (neither the field's) aren't gone into.
 - [ ] `Grid` cells are 0 to 255 (a pixel's red); wider values would need a float or integer texture.
 - [ ] Printing a `Vector` (`"{v}"`) panics in lowering ("no implementation of trait method `display_len`") rather than saying it can't be shown.
